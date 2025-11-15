@@ -112,3 +112,58 @@ export interface EC2RouteTable extends CloudFormationResource {
     }>
   }
 }
+
+export interface EC2Route extends CloudFormationResource {
+  Type: 'AWS::EC2::Route'
+  Properties: {
+    RouteTableId: string | { Ref: string }
+    DestinationCidrBlock: string
+    GatewayId?: string | { Ref: string }
+    NatGatewayId?: string | { Ref: string }
+    InstanceId?: string | { Ref: string }
+  }
+}
+
+export interface EC2SubnetRouteTableAssociation extends CloudFormationResource {
+  Type: 'AWS::EC2::SubnetRouteTableAssociation'
+  Properties: {
+    SubnetId: string | { Ref: string }
+    RouteTableId: string | { Ref: string }
+  }
+}
+
+export interface EC2VPCGatewayAttachment extends CloudFormationResource {
+  Type: 'AWS::EC2::VPCGatewayAttachment'
+  Properties: {
+    VpcId: string | { Ref: string }
+    InternetGatewayId: string | { Ref: string }
+  }
+}
+
+export interface EC2EIP extends CloudFormationResource {
+  Type: 'AWS::EC2::EIP'
+  Properties: {
+    Domain?: 'vpc' | 'standard'
+    Tags?: Array<{
+      Key: string
+      Value: string
+    }>
+  }
+}
+
+export interface EC2FlowLog extends CloudFormationResource {
+  Type: 'AWS::EC2::FlowLog'
+  Properties: {
+    ResourceType: 'VPC' | 'Subnet' | 'NetworkInterface'
+    ResourceIds: string[] | Array<{ Ref: string }>
+    TrafficType: 'ACCEPT' | 'REJECT' | 'ALL'
+    LogDestinationType?: 'cloud-watch-logs' | 's3'
+    LogDestination?: string
+    LogGroupName?: string
+    DeliverLogsPermissionArn?: string
+    Tags?: Array<{
+      Key: string
+      Value: string
+    }>
+  }
+}

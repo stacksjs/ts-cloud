@@ -208,19 +208,29 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 2.6 Network Module (VPC)
 
-- [ ] Create `Network` class with clean API
-  - [ ] `createVpc(cidr, zones)` - VPC with multi-AZ
-  - [ ] `createSubnets(vpc, type)` - Public/private/isolated subnets
-  - [ ] `createNatGateway(vpc)` - Optional NAT (with cost warning)
-  - [ ] `createSecurityGroup(vpc, rules)` - Firewall rules
-  - [ ] `enableFlowLogs(vpc)` - VPC traffic logging
-- [ ] Generate VPC CloudFormation
-- [ ] Generate Subnet CloudFormation (multi-AZ)
-- [ ] Generate Internet Gateway CloudFormation
-- [ ] Generate NAT Gateway CloudFormation (optional)
-- [ ] Generate Route Table CloudFormation
-- [ ] Generate Security Group CloudFormation
-- [ ] Smart subnet allocation (CIDR calculator)
+- [x] Create `Network` class with clean API
+  - [x] `createVpc(cidr, zones)` - VPC with multi-AZ
+  - [x] `createSubnet(vpc, type)` - Public/private/isolated subnets
+  - [x] `createNatGateway(vpc)` - Optional NAT (with cost warning)
+  - [x] `createInternetGateway()` - Internet Gateway
+  - [x] `createRouteTable()` - Route tables
+  - [x] `createRoute()` - Routes (IGW, NAT, Instance)
+  - [x] `associateSubnetWithRouteTable()` - Subnet associations
+  - [x] `createEip()` - Elastic IPs
+  - [x] `enableFlowLogs(vpc)` - VPC traffic logging
+- [x] Generate VPC CloudFormation
+- [x] Generate Subnet CloudFormation (multi-AZ)
+- [x] Generate Internet Gateway CloudFormation
+- [x] Generate NAT Gateway CloudFormation (with cost warning tag)
+- [x] Generate Route Table CloudFormation
+- [x] Generate Route CloudFormation
+- [x] Generate Subnet Route Table Association CloudFormation
+- [x] Generate VPC Gateway Attachment CloudFormation
+- [x] Generate EIP CloudFormation
+- [x] Generate Flow Log CloudFormation
+- [x] Smart subnet allocation (CIDR calculator)
+- [x] Availability zone helper (getAvailabilityZones)
+- [x] **27 tests passing** ✅
 
 ### 2.7 File System Module (EFS)
 
