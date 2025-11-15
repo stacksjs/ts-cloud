@@ -1,10 +1,11 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "ts-cloud",
       "devDependencies": {
-        "better-dx": "^0.2.1",
+        "better-dx": "^0.2.3",
       },
     },
   },
