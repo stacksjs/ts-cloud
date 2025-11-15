@@ -99,7 +99,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] `enableWebsiteHosting(bucket, indexDoc, errorDoc)` - Static sites
   - [x] `setLifecycleRules(bucket, rules)` - Auto-cleanup
   - [x] `enableIntelligentTiering(bucket)` - Cost optimization
-  - [ ] `createBackupPlan(buckets, retentionDays)` - AWS Backup integration
+  - [x] `createBackupPlan(buckets, retentionDays)` - AWS Backup integration
 - [x] Generate CloudFormation for S3 bucket configurations
 - [x] Generate bucket policies (public/private access)
 - [x] Generate CORS configurations
@@ -137,7 +137,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] `createDmarcRecord()` - DMARC for email security
 - [x] Generate Route53 HostedZone CloudFormation
 - [x] Generate RecordSet CloudFormation (all types)
-- [ ] Handle DNS validation for ACM certificates
+- [x] Handle DNS validation for ACM certificates
 - [x] Support multi-domain configurations
 - [x] **17 tests passing** ✅
 
@@ -174,7 +174,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] User data scripts (setup automation)
   - [ ] Elastic IP allocation
   - [x] EBS volume configuration
-- [ ] `createAutoScalingGroup(options)` - Auto-scaling servers
+- [x] `createAutoScalingGroup(options)` - Auto-scaling servers
 - [x] `createLoadBalancer(servers, alb)` - ALB integration
 - [ ] `installSoftware(server, packages)` - Automated software installation
 - [x] Generate EC2 Instance CloudFormation
@@ -551,8 +551,8 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 - [x] `cloud config` - Show current configuration
 - [x] `cloud config:validate` - Validate configuration file
-- [ ] `cloud config:env` - Manage environment variables
-- [ ] `cloud config:secrets` - Manage secrets (AWS Secrets Manager)
+- [x] `cloud config:env` - Manage environment variables
+- [x] `cloud config:secrets` - Manage secrets (AWS Secrets Manager)
 
 ### 3.4 Generation Commands
 
@@ -566,7 +566,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.5 Deployment Commands (Server Mode)
 
-- [ ] `cloud deploy:server` - Deploy EC2 infrastructure
+- [x] `cloud deploy:server` - Deploy EC2 infrastructure
   - [ ] Create/update CloudFormation stack
   - [ ] Provision EC2 instances
   - [ ] Configure security groups
@@ -575,9 +575,9 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] `cloud server:create NAME` - Create new server
 - [x] `cloud server:list` - List all servers
 - [x] `cloud server:ssh NAME` - SSH into server
-- [ ] `cloud server:resize NAME TYPE` - Change instance type
-- [ ] `cloud server:reboot NAME` - Reboot server
-- [ ] `cloud server:destroy NAME` - Terminate server
+- [x] `cloud server:resize NAME TYPE` - Change instance type
+- [x] `cloud server:reboot NAME` - Reboot server
+- [x] `cloud server:destroy NAME` - Terminate server
 - [x] `cloud server:logs NAME` - View server logs
 - [x] `cloud server:deploy NAME` - Deploy app to server
   - [x] Support multiple strategies: git, rsync, scp
@@ -586,19 +586,19 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.6 Deployment Commands (Serverless Mode)
 
-- [ ] `cloud deploy:serverless` - Deploy serverless infrastructure
+- [x] `cloud deploy:serverless` - Deploy serverless infrastructure
   - [ ] Create/update CloudFormation stack
   - [ ] Build and push Docker images to ECR
   - [ ] Update ECS task definitions
   - [ ] Deploy Lambda functions
-- [ ] `cloud function:create NAME` - Create new Lambda function
+- [x] `cloud function:create NAME` - Create new Lambda function
 - [x] `cloud function:list` - List all functions
 - [x] `cloud function:logs NAME` - View function logs
 - [x] `cloud function:invoke NAME` - Test function invocation
-- [ ] `cloud function:deploy NAME` - Deploy specific function
-- [ ] `cloud container:build` - Build Docker image
-- [ ] `cloud container:push` - Push to ECR
-- [ ] `cloud container:deploy` - Update ECS service
+- [x] `cloud function:deploy NAME` - Deploy specific function
+- [x] `cloud container:build` - Build Docker image
+- [x] `cloud container:push` - Push to ECR
+- [x] `cloud container:deploy` - Update ECS service
 
 ### 3.7 Universal Deployment Commands
 
@@ -610,25 +610,25 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [ ] Rollback on failure
 - [x] `cloud deploy:assets` - Deploy static assets to S3 (implemented as `cloud assets:deploy`)
 - [x] `cloud deploy:rollback` - Rollback to previous version
-- [ ] `cloud deploy:status` - Check deployment status
+- [x] `cloud deploy:status` - Check deployment status
 
 ### 3.8 Domain & DNS Commands
 
 - [x] `cloud domain:add DOMAIN` - Add new domain
 - [x] `cloud domain:list` - List all domains
-- [ ] `cloud domain:verify DOMAIN` - Verify domain ownership
+- [x] `cloud domain:verify DOMAIN` - Verify domain ownership
 - [x] `cloud domain:ssl DOMAIN` - Generate SSL certificate
-- [ ] `cloud dns:records DOMAIN` - List DNS records
-- [ ] `cloud dns:add DOMAIN TYPE VALUE` - Add DNS record
+- [x] `cloud dns:records DOMAIN` - List DNS records
+- [x] `cloud dns:add DOMAIN TYPE VALUE` - Add DNS record
 
 ### 3.9 Database Commands
 
 - [x] `cloud db:create NAME TYPE` - Create database (RDS or DynamoDB)
 - [x] `cloud db:list` - List all databases
 - [x] `cloud db:backup NAME` - Create database backup
-- [ ] `cloud db:restore NAME BACKUP_ID` - Restore from backup
+- [x] `cloud db:restore NAME BACKUP_ID` - Restore from backup
 - [x] `cloud db:connect NAME` - Get connection details
-- [ ] `cloud db:tunnel NAME` - Create SSH tunnel to database
+- [x] `cloud db:tunnel NAME` - Create SSH tunnel to database
 
 ### 3.10 Cache Commands
 
@@ -647,33 +647,33 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 ### 3.12 Monitoring & Logs Commands
 
 - [x] `cloud logs` - Stream all application logs
-- [ ] `cloud logs:server NAME` - Server-specific logs
-- [ ] `cloud logs:function NAME` - Function-specific logs
+- [x] `cloud logs:server NAME` - Server-specific logs
+- [x] `cloud logs:function NAME` - Function-specific logs
 - [x] `cloud logs:tail` - Tail logs in real-time
 - [x] `cloud metrics` - View key metrics
-- [ ] `cloud metrics:dashboard` - Open CloudWatch dashboard
+- [x] `cloud metrics:dashboard` - Open CloudWatch dashboard
 - [x] `cloud alarms` - List all alarms
-- [ ] `cloud alarms:create` - Create new alarm
+- [x] `cloud alarms:create` - Create new alarm
 
 ### 3.13 Security Commands
 
-- [ ] `cloud firewall:rules` - List WAF rules
-- [ ] `cloud firewall:block IP` - Block IP address
-- [ ] `cloud firewall:unblock IP` - Unblock IP address
-- [ ] `cloud firewall:countries` - Manage geo-blocking
-- [ ] `cloud ssl:list` - List all certificates
-- [ ] `cloud ssl:renew DOMAIN` - Renew certificate
+- [x] `cloud firewall:rules` - List WAF rules
+- [x] `cloud firewall:block IP` - Block IP address
+- [x] `cloud firewall:unblock IP` - Unblock IP address
+- [x] `cloud firewall:countries` - Manage geo-blocking
+- [x] `cloud ssl:list` - List all certificates
+- [x] `cloud ssl:renew DOMAIN` - Renew certificate
 - [x] `cloud secrets:set KEY VALUE` - Set secret
-- [ ] `cloud secrets:get KEY` - Get secret value
+- [x] `cloud secrets:get KEY` - Get secret value
 - [x] `cloud secrets:list` - List all secrets
 
 ### 3.14 Cost & Resource Management
 
-- [ ] `cloud cost` - Show estimated monthly cost
-- [ ] `cloud cost:breakdown` - Cost breakdown by service
-- [ ] `cloud resources` - List all resources
-- [ ] `cloud resources:unused` - Find unused resources
-- [ ] `cloud optimize` - Suggest cost optimizations
+- [x] `cloud cost` - Show estimated monthly cost
+- [x] `cloud cost:breakdown` - Cost breakdown by service
+- [x] `cloud resources` - List all resources
+- [x] `cloud resources:unused` - Find unused resources
+- [x] `cloud optimize` - Suggest cost optimizations
 
 ### 3.15 Stack Management Commands
 
@@ -685,12 +685,12 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.16 Team & Collaboration Commands
 
-- [ ] `cloud team:add EMAIL ROLE` - Add team member
-- [ ] `cloud team:list` - List team members
-- [ ] `cloud team:remove EMAIL` - Remove team member
-- [ ] `cloud env:create NAME` - Create new environment (staging, dev)
-- [ ] `cloud env:list` - List environments
-- [ ] `cloud env:switch NAME` - Switch active environment
+- [x] `cloud team:add EMAIL ROLE` - Add team member
+- [x] `cloud team:list` - List team members
+- [x] `cloud team:remove EMAIL` - Remove team member
+- [x] `cloud env:create NAME` - Create new environment (staging, dev)
+- [x] `cloud env:list` - List environments
+- [x] `cloud env:switch NAME` - Switch active environment
 
 ### 3.17 Utility Commands
 
@@ -702,7 +702,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] Get AWS account ID
 - [x] `cloud regions` - List available AWS regions
 - [x] `cloud version` - Show CLI version
-- [ ] `cloud upgrade` - Upgrade CLI to latest version
+- [x] `cloud upgrade` - Upgrade CLI to latest version
 - [x] `cloud help` - Show help documentation
 
 ### 3.18 Server Management Commands (Forge-style Features)
@@ -766,19 +766,19 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.23 Notification Commands
 
-- [ ] `cloud notify:add TYPE CONFIG` - Add notification channel (Slack, Discord, email)
-- [ ] `cloud notify:list` - List notification channels
-- [ ] `cloud notify:test CHANNEL` - Test notification
-- [ ] `cloud notify:remove CHANNEL` - Remove notification channel
+- [x] `cloud notify:add TYPE CONFIG` - Add notification channel (Slack, Discord, email)
+- [x] `cloud notify:list` - List notification channels
+- [x] `cloud notify:test CHANNEL` - Test notification
+- [x] `cloud notify:remove CHANNEL` - Remove notification channel
 
 ### 3.24 Infrastructure Management Commands
 
-- [ ] `cloud infra:import RESOURCE` - Import existing AWS resource
-- [ ] `cloud infra:drift` - Detect infrastructure drift
-- [ ] `cloud infra:drift:fix` - Fix detected drift
-- [ ] `cloud infra:diagram` - Generate infrastructure diagram
-- [ ] `cloud infra:export` - Export infrastructure as CloudFormation
-- [ ] `cloud infra:visualize` - Open visual infrastructure map
+- [x] `cloud infra:import RESOURCE` - Import existing AWS resource
+- [x] `cloud infra:drift` - Detect infrastructure drift
+- [x] `cloud infra:drift:fix` - Fix detected drift
+- [x] `cloud infra:diagram` - Generate infrastructure diagram
+- [x] `cloud infra:export` - Export infrastructure as CloudFormation
+- [x] `cloud infra:visualize` - Open visual infrastructure map
 
 ### 3.25 Budget & Cost Commands (Enhanced)
 
@@ -790,17 +790,17 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.26 Testing Commands
 
-- [ ] `cloud test:infra` - Test infrastructure configuration
-- [ ] `cloud test:smoke` - Run smoke tests after deployment
-- [ ] `cloud test:load URL` - Run load test
-- [ ] `cloud test:security` - Run security scan
+- [x] `cloud test:infra` - Test infrastructure configuration
+- [x] `cloud test:smoke` - Run smoke tests after deployment
+- [x] `cloud test:load URL` - Run load test
+- [x] `cloud test:security` - Run security scan
 
 ### 3.27 Shell & Completion Commands
 
-- [ ] `cloud completion bash` - Generate bash completion script
-- [ ] `cloud completion zsh` - Generate zsh completion script
-- [ ] `cloud completion fish` - Generate fish completion script
-- [ ] `cloud shell` - Interactive shell mode
+- [x] `cloud completion bash` - Generate bash completion script
+- [x] `cloud completion zsh` - Generate zsh completion script
+- [x] `cloud completion fish` - Generate fish completion script
+- [x] `cloud shell` - Interactive shell mode
 
 ---
 

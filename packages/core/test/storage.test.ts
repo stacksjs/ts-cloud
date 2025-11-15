@@ -357,4 +357,107 @@ describe('Storage Module', () => {
       expect(parsed.Resources[logicalId].Properties.BucketEncryption).toBeDefined()
     })
   })
+
+  describe('createBackupPlan', () => {
+    it('should create a backup plan with vault, plan, selection, and role', () => {
+      const { bucket: bucket1, logicalId: bucketId1 } = Storage.createBucket({
+        name: 'data1',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const { bucket: bucket2, logicalId: bucketId2 } = Storage.createBucket({
+        name: 'data2',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const { vault, plan, selection, role, vaultLogicalId, planLogicalId, selectionLogicalId, roleLogicalId }
+        = Storage.createBackupPlan({
+          name: 's3-backup',
+          slug: 'my-app',
+          environment: 'production',
+          bucketLogicalIds: [bucketId1, bucketId2],
+          retentionDays: 30,
+        })
+
+      expect(vault.Type).toBe('AWS::Backup::BackupVault')
+      expect(vault.Properties.BackupVaultName).toBe('my-app-production-backup-vault-s3-backup')
+      expect(vaultLogicalId).toBe('MyAppProductionBackupVaultS3Backup')
+
+      expect(plan.Type).toBe('AWS::Backup::BackupPlan')
+      expect(plan.Properties.BackupPlan.BackupPlanName).toBe('my-app-production-backup-plan-s3-backup')
+      expect(plan.Properties.BackupPlan.BackupPlanRule).toHaveLength(1)
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].ScheduleExpression).toBe('cron(0 5 * * ? *)')
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.DeleteAfterDays).toBe(30)
+      expect(planLogicalId).toBe('MyAppProductionBackupPlanS3Backup')
+
+      expect(selection.Type).toBe('AWS::Backup::BackupSelection')
+      expect(selection.Properties.BackupSelection.Resources).toHaveLength(2)
+      expect(selectionLogicalId).toBe('MyAppProductionBackupSelectionS3Backup')
+
+      expect(role.Type).toBe('AWS::IAM::Role')
+      expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup')
+      expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores')
+      expect(roleLogicalId).toBe('MyAppProductionBackupRoleS3Backup')
+    })
+
+    it('should create backup plan with custom schedule', () => {
+      const { bucket, logicalId } = Storage.createBucket({
+        name: 'data',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const { plan } = Storage.createBackupPlan({
+        name: 'hourly-backup',
+        slug: 'my-app',
+        environment: 'production',
+        bucketLogicalIds: [logicalId],
+        retentionDays: 7,
+        schedule: Storage.BackupSchedules.HOURLY,
+      })
+
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].ScheduleExpression).toBe('cron(0 * * * ? *)')
+    })
+
+    it('should create backup plan with cold storage transition', () => {
+      const { bucket, logicalId } = Storage.createBucket({
+        name: 'data',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const { plan } = Storage.createBackupPlan({
+        name: 'cold-storage',
+        slug: 'my-app',
+        environment: 'production',
+        bucketLogicalIds: [logicalId],
+        retentionDays: 90,
+        moveToColdStorageAfterDays: 30,
+      })
+
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.DeleteAfterDays).toBe(90)
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.MoveToColdStorageAfterDays).toBe(30)
+    })
+
+    it('should create backup plan with continuous backup enabled', () => {
+      const { bucket, logicalId } = Storage.createBucket({
+        name: 'data',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const { plan } = Storage.createBackupPlan({
+        name: 'continuous',
+        slug: 'my-app',
+        environment: 'production',
+        bucketLogicalIds: [logicalId],
+        retentionDays: 7,
+        enableContinuousBackup: true,
+      })
+
+      expect(plan.Properties.BackupPlan.BackupPlanRule[0].EnableContinuousBackup).toBe(true)
+    })
+  })
 })

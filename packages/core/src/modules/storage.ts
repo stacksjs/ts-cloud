@@ -1,4 +1,5 @@
-import type { S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
+import type { BackupPlan, BackupSelection, BackupVault, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
+import type { IAMRole } from '@ts-cloud/aws-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '@ts-cloud/types'
@@ -40,6 +41,18 @@ export interface S3NotificationConfig {
     prefix?: string
     suffix?: string
   }
+}
+
+export interface BackupPlanOptions {
+  name: string
+  slug: string
+  environment: EnvironmentType
+  bucketLogicalIds: string[]
+  retentionDays: number
+  schedule?: string // Cron expression (default: daily at 5am)
+  vaultName?: string
+  enableContinuousBackup?: boolean
+  moveToColdStorageAfterDays?: number
 }
 
 /**
@@ -381,5 +394,183 @@ export class Storage {
         prefix: folder.endsWith('/') ? folder : `${folder}/`,
       },
     }),
+  }
+
+  /**
+   * Create an AWS Backup plan for S3 buckets
+   */
+  static createBackupPlan(options: BackupPlanOptions): {
+    vault: BackupVault
+    plan: BackupPlan
+    selection: BackupSelection
+    role: IAMRole
+    vaultLogicalId: string
+    planLogicalId: string
+    selectionLogicalId: string
+    roleLogicalId: string
+  } {
+    const {
+      name,
+      slug,
+      environment,
+      bucketLogicalIds,
+      retentionDays,
+      schedule = 'cron(0 5 * * ? *)', // Daily at 5am UTC
+      vaultName,
+      enableContinuousBackup = false,
+      moveToColdStorageAfterDays,
+    } = options
+
+    // Create backup vault
+    const vaultResourceName = vaultName || generateResourceName({
+      slug,
+      environment,
+      resourceType: 'backup-vault',
+      suffix: name,
+    })
+
+    const vaultLogicalId = generateLogicalId(vaultResourceName)
+
+    const vault: BackupVault = {
+      Type: 'AWS::Backup::BackupVault',
+      Properties: {
+        BackupVaultName: vaultResourceName,
+      },
+    }
+
+    // Create IAM role for AWS Backup
+    const roleResourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'backup-role',
+      suffix: name,
+    })
+
+    const roleLogicalId = generateLogicalId(roleResourceName)
+
+    const role: IAMRole = {
+      Type: 'AWS::IAM::Role',
+      Properties: {
+        RoleName: roleResourceName,
+        AssumeRolePolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [{
+            Effect: 'Allow',
+            Principal: {
+              Service: 'backup.amazonaws.com',
+            },
+            Action: 'sts:AssumeRole',
+          }],
+        },
+        ManagedPolicyArns: [
+          'arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup',
+          'arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores',
+        ],
+      },
+    }
+
+    // Create backup plan
+    const planResourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'backup-plan',
+      suffix: name,
+    })
+
+    const planLogicalId = generateLogicalId(planResourceName)
+
+    const lifecycle: any = {
+      DeleteAfterDays: retentionDays,
+    }
+
+    if (moveToColdStorageAfterDays && moveToColdStorageAfterDays < retentionDays) {
+      lifecycle.MoveToColdStorageAfterDays = moveToColdStorageAfterDays
+    }
+
+    const plan: BackupPlan = {
+      Type: 'AWS::Backup::BackupPlan',
+      Properties: {
+        BackupPlan: {
+          BackupPlanName: planResourceName,
+          BackupPlanRule: [{
+            RuleName: `${name}-daily-backup`,
+            TargetBackupVault: Fn.Ref(vaultLogicalId) as any,
+            ScheduleExpression: schedule,
+            StartWindowMinutes: 60,
+            CompletionWindowMinutes: 120,
+            Lifecycle: lifecycle,
+            EnableContinuousBackup: enableContinuousBackup,
+          }],
+        },
+      },
+    }
+
+    // Create backup selection
+    const selectionResourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'backup-selection',
+      suffix: name,
+    })
+
+    const selectionLogicalId = generateLogicalId(selectionResourceName)
+
+    // Build bucket ARNs from logical IDs
+    const bucketArns = bucketLogicalIds.map(logicalId =>
+      Fn.GetAtt(logicalId, 'Arn') as any,
+    )
+
+    const selection: BackupSelection = {
+      Type: 'AWS::Backup::BackupSelection',
+      Properties: {
+        BackupPlanId: Fn.Ref(planLogicalId) as any,
+        BackupSelection: {
+          SelectionName: selectionResourceName,
+          IamRoleArn: Fn.GetAtt(roleLogicalId, 'Arn') as any,
+          Resources: bucketArns,
+        },
+      },
+    }
+
+    return {
+      vault,
+      plan,
+      selection,
+      role,
+      vaultLogicalId,
+      planLogicalId,
+      selectionLogicalId,
+      roleLogicalId,
+    }
+  }
+
+  /**
+   * Common backup schedule expressions
+   */
+  static readonly BackupSchedules = {
+    HOURLY: 'cron(0 * * * ? *)',
+    DAILY_5AM: 'cron(0 5 * * ? *)',
+    DAILY_MIDNIGHT: 'cron(0 0 * * ? *)',
+    WEEKLY_SUNDAY: 'cron(0 5 ? * SUN *)',
+    WEEKLY_SATURDAY: 'cron(0 5 ? * SAT *)',
+    MONTHLY_FIRST: 'cron(0 5 1 * ? *)',
+    EVERY_12_HOURS: 'cron(0 */12 * * ? *)',
+    EVERY_6_HOURS: 'cron(0 */6 * * ? *)',
+  }
+
+  /**
+   * Common backup retention periods (in days)
+   */
+  static readonly BackupRetention = {
+    ONE_DAY: 1,
+    ONE_WEEK: 7,
+    TWO_WEEKS: 14,
+    ONE_MONTH: 30,
+    THREE_MONTHS: 90,
+    SIX_MONTHS: 180,
+    ONE_YEAR: 365,
+    TWO_YEARS: 730,
+    FIVE_YEARS: 1825,
+    SEVEN_YEARS: 2555,
   }
 }
