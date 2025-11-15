@@ -77,3 +77,6 @@ export * from './backup'
 
 // Compliance & Governance (Phase 7.5)
 export * from './compliance'
+
+// Advanced Deployment Strategies (Phase 7.6)
+export * from './deployment'
