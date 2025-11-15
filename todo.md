@@ -1177,14 +1177,15 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 7.12 DNS Advanced Features
 
-- [ ] Health-based routing
-- [ ] Geolocation routing
-- [ ] Weighted routing
-- [ ] Failover routing
-- [ ] Latency-based routing
-- [ ] Traffic flow policies
-- [ ] DNSSEC configuration
-- [ ] Route53 Resolver (DNS firewall)
+- [x] Health-based routing ✅
+- [x] Geolocation routing ✅
+- [x] Weighted routing ✅
+- [x] Failover routing ✅
+- [x] Latency-based routing ✅
+- [x] Traffic flow policies ✅
+- [x] DNSSEC configuration ✅
+- [x] Route53 Resolver (DNS firewall) ✅
+- [x] **43 tests passing** ✅
 
 ### 7.13 Email Advanced Features
 
