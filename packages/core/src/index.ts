@@ -83,3 +83,6 @@ export * from './deployment'
 
 // Observability (Phase 7.7)
 export * from './observability'
+
+// Database Advanced Features (Phase 7.8)
+export * from './database'
