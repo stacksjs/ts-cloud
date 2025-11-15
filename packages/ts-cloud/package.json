@@ -66,9 +66,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@ts-cloud/aws-types": "workspace:*",
     "@ts-cloud/core": "workspace:*",
     "@ts-cloud/types": "workspace:*",
-    "@ts-cloud/aws-types": "workspace:*"
+    "fast-xml-parser": "^5.3.2"
   },
   "devDependencies": {
     "bunfig": "^0.15.6",

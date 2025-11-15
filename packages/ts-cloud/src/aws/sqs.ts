@@ -1,7 +1,9 @@
 /**
  * AWS SQS Operations
- * Uses AWS CLI (no SDK dependencies) for SQS management
+ * Direct API calls without AWS CLI dependency
  */
+
+import { AWSClient } from './client'
 
 export interface QueueAttributes {
   QueueUrl: string
@@ -43,177 +45,221 @@ export interface Message {
 }
 
 /**
- * SQS queue management using AWS CLI
+ * SQS queue management using direct API calls
  */
 export class SQSClient {
+  private client: AWSClient
   private region: string
-  private profile?: string
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.profile = profile
-  }
-
-  /**
-   * Build base AWS CLI command
-   */
-  private buildBaseCommand(): string[] {
-    const cmd = ['aws', 'sqs']
-
-    if (this.region) {
-      cmd.push('--region', this.region)
-    }
-
-    if (this.profile) {
-      cmd.push('--profile', this.profile)
-    }
-
-    cmd.push('--output', 'json')
-
-    return cmd
-  }
-
-  /**
-   * Execute AWS CLI command
-   */
-  private async executeCommand(args: string[]): Promise<any> {
-    const proc = Bun.spawn(args, {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
-    const stdout = await new Response(proc.stdout).text()
-    const stderr = await new Response(proc.stderr).text()
-
-    await proc.exited
-
-    if (proc.exitCode !== 0) {
-      throw new Error(`AWS CLI Error: ${stderr || stdout}`)
-    }
-
-    return stdout ? JSON.parse(stdout) : null
+    this.client = new AWSClient()
   }
 
   /**
    * Create a new SQS queue
    */
   async createQueue(options: CreateQueueOptions): Promise<{ QueueUrl: string }> {
-    const cmd = [...this.buildBaseCommand(), 'create-queue']
-
     const queueName = options.fifo && !options.queueName.endsWith('.fifo')
       ? `${options.queueName}.fifo`
       : options.queueName
 
-    cmd.push('--queue-name', queueName)
+    const params: Record<string, any> = {
+      Action: 'CreateQueue',
+      QueueName: queueName,
+      Version: '2012-11-05',
+    }
 
-    const attributes: Record<string, string> = {}
+    let attrIndex = 1
 
     if (options.visibilityTimeout !== undefined) {
-      attributes.VisibilityTimeout = options.visibilityTimeout.toString()
+      params[`Attribute.${attrIndex}.Name`] = 'VisibilityTimeout'
+      params[`Attribute.${attrIndex}.Value`] = options.visibilityTimeout.toString()
+      attrIndex++
     }
 
     if (options.messageRetentionPeriod !== undefined) {
-      attributes.MessageRetentionPeriod = options.messageRetentionPeriod.toString()
+      params[`Attribute.${attrIndex}.Name`] = 'MessageRetentionPeriod'
+      params[`Attribute.${attrIndex}.Value`] = options.messageRetentionPeriod.toString()
+      attrIndex++
     }
 
     if (options.delaySeconds !== undefined) {
-      attributes.DelaySeconds = options.delaySeconds.toString()
+      params[`Attribute.${attrIndex}.Name`] = 'DelaySeconds'
+      params[`Attribute.${attrIndex}.Value`] = options.delaySeconds.toString()
+      attrIndex++
     }
 
     if (options.maxMessageSize !== undefined) {
-      attributes.MaximumMessageSize = options.maxMessageSize.toString()
+      params[`Attribute.${attrIndex}.Name`] = 'MaximumMessageSize'
+      params[`Attribute.${attrIndex}.Value`] = options.maxMessageSize.toString()
+      attrIndex++
     }
 
     if (options.receiveMessageWaitTime !== undefined) {
-      attributes.ReceiveMessageWaitTimeSeconds = options.receiveMessageWaitTime.toString()
+      params[`Attribute.${attrIndex}.Name`] = 'ReceiveMessageWaitTimeSeconds'
+      params[`Attribute.${attrIndex}.Value`] = options.receiveMessageWaitTime.toString()
+      attrIndex++
     }
 
     if (options.fifo) {
-      attributes.FifoQueue = 'true'
+      params[`Attribute.${attrIndex}.Name`] = 'FifoQueue'
+      params[`Attribute.${attrIndex}.Value`] = 'true'
+      attrIndex++
 
       if (options.contentBasedDeduplication) {
-        attributes.ContentBasedDeduplication = 'true'
+        params[`Attribute.${attrIndex}.Name`] = 'ContentBasedDeduplication'
+        params[`Attribute.${attrIndex}.Value`] = 'true'
+        attrIndex++
       }
     }
 
     if (options.deadLetterTargetArn && options.maxReceiveCount) {
-      attributes.RedrivePolicy = JSON.stringify({
+      params[`Attribute.${attrIndex}.Name`] = 'RedrivePolicy'
+      params[`Attribute.${attrIndex}.Value`] = JSON.stringify({
         deadLetterTargetArn: options.deadLetterTargetArn,
         maxReceiveCount: options.maxReceiveCount,
       })
-    }
-
-    if (Object.keys(attributes).length > 0) {
-      cmd.push('--attributes', JSON.stringify(attributes))
+      attrIndex++
     }
 
     if (options.tags && Object.keys(options.tags).length > 0) {
-      cmd.push('--tags', JSON.stringify(options.tags))
+      let tagIndex = 1
+      for (const [key, value] of Object.entries(options.tags)) {
+        params[`Tag.${tagIndex}.Key`] = key
+        params[`Tag.${tagIndex}.Value`] = value
+        tagIndex++
+      }
     }
 
-    return await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
+
+    return { QueueUrl: result.QueueUrl || result.CreateQueueResult?.QueueUrl }
   }
 
   /**
    * List all queues
    */
   async listQueues(prefix?: string): Promise<{ QueueUrls: string[] }> {
-    const cmd = [...this.buildBaseCommand(), 'list-queues']
+    const params: Record<string, any> = {
+      Action: 'ListQueues',
+      Version: '2012-11-05',
+    }
 
     if (prefix) {
-      cmd.push('--queue-name-prefix', prefix)
+      params.QueueNamePrefix = prefix
     }
 
-    const result = await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
 
-    return {
-      QueueUrls: result?.QueueUrls || [],
+    // Parse queue URLs from response
+    const queueUrls: string[] = []
+    if (result.QueueUrl) {
+      queueUrls.push(result.QueueUrl)
     }
+    else if (result.ListQueuesResult?.QueueUrl) {
+      if (Array.isArray(result.ListQueuesResult.QueueUrl)) {
+        queueUrls.push(...result.ListQueuesResult.QueueUrl)
+      }
+      else {
+        queueUrls.push(result.ListQueuesResult.QueueUrl)
+      }
+    }
+
+    return { QueueUrls: queueUrls }
   }
 
   /**
    * Get queue attributes
    */
   async getQueueAttributes(queueUrl: string): Promise<{ Attributes: Record<string, string> }> {
-    const cmd = [...this.buildBaseCommand(), 'get-queue-attributes']
+    const params: Record<string, any> = {
+      Action: 'GetQueueAttributes',
+      QueueUrl: queueUrl,
+      Version: '2012-11-05',
+      'AttributeName.1': 'All',
+    }
 
-    cmd.push('--queue-url', queueUrl)
-    cmd.push('--attribute-names', 'All')
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
 
-    return await this.executeCommand(cmd)
+    return { Attributes: result.Attributes || result.GetQueueAttributesResult?.Attributes || {} }
   }
 
   /**
    * Get queue URL by name
    */
   async getQueueUrl(queueName: string): Promise<{ QueueUrl: string }> {
-    const cmd = [...this.buildBaseCommand(), 'get-queue-url']
+    const params: Record<string, any> = {
+      Action: 'GetQueueUrl',
+      QueueName: queueName,
+      Version: '2012-11-05',
+    }
 
-    cmd.push('--queue-name', queueName)
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
 
-    return await this.executeCommand(cmd)
+    return { QueueUrl: result.QueueUrl || result.GetQueueUrlResult?.QueueUrl }
   }
 
   /**
    * Delete a queue
    */
   async deleteQueue(queueUrl: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand(), 'delete-queue']
+    const params: Record<string, any> = {
+      Action: 'DeleteQueue',
+      QueueUrl: queueUrl,
+      Version: '2012-11-05',
+    }
 
-    cmd.push('--queue-url', queueUrl)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
   }
 
   /**
    * Purge queue (delete all messages)
    */
   async purgeQueue(queueUrl: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand(), 'purge-queue']
+    const params: Record<string, any> = {
+      Action: 'PurgeQueue',
+      QueueUrl: queueUrl,
+      Version: '2012-11-05',
+    }
 
-    cmd.push('--queue-url', queueUrl)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
   }
 
   /**
@@ -226,24 +272,34 @@ export class SQSClient {
     messageGroupId?: string
     messageDeduplicationId?: string
   }): Promise<{ MessageId: string }> {
-    const cmd = [...this.buildBaseCommand(), 'send-message']
-
-    cmd.push('--queue-url', options.queueUrl)
-    cmd.push('--message-body', options.messageBody)
+    const params: Record<string, any> = {
+      Action: 'SendMessage',
+      QueueUrl: options.queueUrl,
+      MessageBody: options.messageBody,
+      Version: '2012-11-05',
+    }
 
     if (options.delaySeconds !== undefined) {
-      cmd.push('--delay-seconds', options.delaySeconds.toString())
+      params.DelaySeconds = options.delaySeconds
     }
 
     if (options.messageGroupId) {
-      cmd.push('--message-group-id', options.messageGroupId)
+      params.MessageGroupId = options.messageGroupId
     }
 
     if (options.messageDeduplicationId) {
-      cmd.push('--message-deduplication-id', options.messageDeduplicationId)
+      params.MessageDeduplicationId = options.messageDeduplicationId
     }
 
-    return await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
+
+    return { MessageId: result.MessageId || result.SendMessageResult?.MessageId }
   }
 
   /**
@@ -255,38 +311,72 @@ export class SQSClient {
     visibilityTimeout?: number
     waitTimeSeconds?: number
   }): Promise<{ Messages: Message[] }> {
-    const cmd = [...this.buildBaseCommand(), 'receive-message']
-
-    cmd.push('--queue-url', options.queueUrl)
+    const params: Record<string, any> = {
+      Action: 'ReceiveMessage',
+      QueueUrl: options.queueUrl,
+      Version: '2012-11-05',
+    }
 
     if (options.maxMessages !== undefined) {
-      cmd.push('--max-number-of-messages', options.maxMessages.toString())
+      params.MaxNumberOfMessages = options.maxMessages
     }
 
     if (options.visibilityTimeout !== undefined) {
-      cmd.push('--visibility-timeout', options.visibilityTimeout.toString())
+      params.VisibilityTimeout = options.visibilityTimeout
     }
 
     if (options.waitTimeSeconds !== undefined) {
-      cmd.push('--wait-time-seconds', options.waitTimeSeconds.toString())
+      params.WaitTimeSeconds = options.waitTimeSeconds
     }
 
-    const result = await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
 
-    return {
-      Messages: result?.Messages || [],
+    const messages: Message[] = []
+    const msgData = result.Message || result.ReceiveMessageResult?.Message
+
+    if (msgData) {
+      if (Array.isArray(msgData)) {
+        messages.push(...msgData.map((m: any) => ({
+          MessageId: m.MessageId,
+          ReceiptHandle: m.ReceiptHandle,
+          Body: m.Body,
+        })))
+      }
+      else {
+        messages.push({
+          MessageId: msgData.MessageId,
+          ReceiptHandle: msgData.ReceiptHandle,
+          Body: msgData.Body,
+        })
+      }
     }
+
+    return { Messages: messages }
   }
 
   /**
    * Delete message from queue
    */
   async deleteMessage(queueUrl: string, receiptHandle: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand(), 'delete-message']
+    const params: Record<string, any> = {
+      Action: 'DeleteMessage',
+      QueueUrl: queueUrl,
+      ReceiptHandle: receiptHandle,
+      Version: '2012-11-05',
+    }
 
-    cmd.push('--queue-url', queueUrl)
-    cmd.push('--receipt-handle', receiptHandle)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'sqs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
   }
 }

@@ -265,33 +265,35 @@ export function box(message: string, color: keyof typeof colors = 'cyan'): void 
 }
 
 /**
- * Check if AWS CLI is installed
+ * Check if AWS CLI is installed (deprecated - no longer required)
+ * @deprecated AWS CLI is no longer required. Use checkAwsCredentials() instead.
  */
 export async function checkAwsCli(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(['aws', '--version'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    await proc.exited
-    return proc.exitCode === 0
-  }
-  catch {
-    return false
-  }
+  // AWS CLI is no longer required - direct API calls are used
+  return true
 }
 
 /**
  * Check if AWS credentials are configured
+ * Uses direct API call to STS GetCallerIdentity
  */
 export async function checkAwsCredentials(): Promise<boolean> {
   try {
-    const proc = Bun.spawn(['aws', 'sts', 'get-caller-identity'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
+    const { AWSClient } = await import('../aws/client')
+    const client = new AWSClient()
+
+    await client.request({
+      service: 'sts',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams({
+        Action: 'GetCallerIdentity',
+        Version: '2011-06-15',
+      }).toString(),
     })
-    await proc.exited
-    return proc.exitCode === 0
+
+    return true
   }
   catch {
     return false
@@ -299,57 +301,80 @@ export async function checkAwsCredentials(): Promise<boolean> {
 }
 
 /**
- * Get AWS account ID
+ * Get AWS account ID using direct STS API call
  */
 export async function getAwsAccountId(): Promise<string | null> {
   try {
-    const proc = Bun.spawn(['aws', 'sts', 'get-caller-identity', '--query', 'Account', '--output', 'text'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const output = await new Response(proc.stdout).text()
-    await proc.exited
+    const { AWSClient } = await import('../aws/client')
+    const client = new AWSClient()
 
-    if (proc.exitCode === 0) {
-      return output.trim()
-    }
+    const result = await client.request({
+      service: 'sts',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams({
+        Action: 'GetCallerIdentity',
+        Version: '2011-06-15',
+      }).toString(),
+    })
+
+    return result.Account || result.GetCallerIdentityResult?.Account || null
   }
   catch {
     return null
   }
-
-  return null
 }
 
 /**
- * Get AWS regions
+ * Get AWS regions using direct EC2 API call
  */
 export async function getAwsRegions(): Promise<string[]> {
   try {
-    const proc = Bun.spawn(['aws', 'ec2', 'describe-regions', '--query', 'Regions[].RegionName', '--output', 'text'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const output = await new Response(proc.stdout).text()
-    await proc.exited
+    const { AWSClient } = await import('../aws/client')
+    const client = new AWSClient()
 
-    if (proc.exitCode === 0) {
-      return output.trim().split('\t')
+    const result = await client.request({
+      service: 'ec2',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams({
+        Action: 'DescribeRegions',
+        Version: '2016-11-15',
+      }).toString(),
+    })
+
+    // Parse regions from response
+    const regions: string[] = []
+    if (result.regionInfo) {
+      const regionData = Array.isArray(result.regionInfo)
+        ? result.regionInfo
+        : [result.regionInfo]
+
+      regions.push(...regionData.map((r: any) => r.regionName))
     }
+
+    return regions.length > 0 ? regions : getCommonAwsRegions()
   }
   catch {
     // Return common regions as fallback
-    return [
-      'us-east-1',
-      'us-east-2',
-      'us-west-1',
-      'us-west-2',
-      'eu-west-1',
-      'eu-central-1',
-      'ap-southeast-1',
-      'ap-northeast-1',
-    ]
+    return getCommonAwsRegions()
   }
+}
 
-  return []
+/**
+ * Get common AWS regions as fallback
+ */
+function getCommonAwsRegions(): string[] {
+  return [
+    'us-east-1',
+    'us-east-2',
+    'us-west-1',
+    'us-west-2',
+    'eu-west-1',
+    'eu-central-1',
+    'ap-southeast-1',
+    'ap-northeast-1',
+  ]
 }

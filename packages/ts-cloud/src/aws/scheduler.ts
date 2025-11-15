@@ -1,7 +1,9 @@
 /**
  * AWS EventBridge Scheduler Operations
- * Uses AWS CLI (no SDK dependencies) for EventBridge Scheduler management
+ * Direct API calls without AWS CLI dependency
  */
+
+import { AWSClient } from './client'
 
 export interface Schedule {
   Name: string
@@ -53,55 +55,15 @@ export interface Target {
 }
 
 /**
- * EventBridge Scheduler management using AWS CLI
+ * EventBridge Scheduler management using direct API calls
  */
 export class SchedulerClient {
+  private client: AWSClient
   private region: string
-  private profile?: string
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.profile = profile
-  }
-
-  /**
-   * Build base AWS CLI command
-   */
-  private buildBaseCommand(service: 'events' | 'scheduler' = 'events'): string[] {
-    const cmd = ['aws', service]
-
-    if (this.region) {
-      cmd.push('--region', this.region)
-    }
-
-    if (this.profile) {
-      cmd.push('--profile', this.profile)
-    }
-
-    cmd.push('--output', 'json')
-
-    return cmd
-  }
-
-  /**
-   * Execute AWS CLI command
-   */
-  private async executeCommand(args: string[]): Promise<any> {
-    const proc = Bun.spawn(args, {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
-    const stdout = await new Response(proc.stdout).text()
-    const stderr = await new Response(proc.stderr).text()
-
-    await proc.exited
-
-    if (proc.exitCode !== 0) {
-      throw new Error(`AWS CLI Error: ${stderr || stdout}`)
-    }
-
-    return stdout ? JSON.parse(stdout) : null
+    this.client = new AWSClient()
   }
 
   /**
@@ -113,67 +75,135 @@ export class SchedulerClient {
     description?: string
     state?: 'ENABLED' | 'DISABLED'
   }): Promise<{ RuleArn: string }> {
-    const cmd = [...this.buildBaseCommand('events'), 'put-rule']
-
-    cmd.push('--name', options.name)
-    cmd.push('--schedule-expression', options.scheduleExpression)
+    const params: Record<string, any> = {
+      Action: 'PutRule',
+      Name: options.name,
+      ScheduleExpression: options.scheduleExpression,
+      Version: '2015-10-07',
+    }
 
     if (options.description) {
-      cmd.push('--description', options.description)
+      params.Description = options.description
     }
 
     if (options.state) {
-      cmd.push('--state', options.state)
+      params.State = options.state
+    }
+    else {
+      params.State = 'ENABLED'
     }
 
-    return await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.PutRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Name: options.name,
+        ScheduleExpression: options.scheduleExpression,
+        State: options.state || 'ENABLED',
+        Description: options.description,
+      }),
+    })
+
+    return { RuleArn: result.RuleArn }
   }
 
   /**
    * Add target to a rule
    */
   async putTargets(ruleName: string, targets: Target[]): Promise<void> {
-    const cmd = [...this.buildBaseCommand('events'), 'put-targets']
-
-    cmd.push('--rule', ruleName)
-    cmd.push('--targets', JSON.stringify(targets))
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.PutTargets',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Rule: ruleName,
+        Targets: targets,
+      }),
+    })
   }
 
   /**
    * List all rules
    */
   async listRules(namePrefix?: string): Promise<{ Rules: Rule[] }> {
-    const cmd = [...this.buildBaseCommand('events'), 'list-rules']
+    const payload: any = {}
 
     if (namePrefix) {
-      cmd.push('--name-prefix', namePrefix)
+      payload.NamePrefix = namePrefix
     }
 
-    return await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.ListRules',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    return { Rules: result.Rules || [] }
   }
 
   /**
    * Describe a rule
    */
   async describeRule(name: string): Promise<Rule> {
-    const cmd = [...this.buildBaseCommand('events'), 'describe-rule']
+    const result = await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.DescribeRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Name: name,
+      }),
+    })
 
-    cmd.push('--name', name)
-
-    return await this.executeCommand(cmd)
+    return {
+      Name: result.Name,
+      Arn: result.Arn,
+      ScheduleExpression: result.ScheduleExpression,
+      State: result.State,
+      Description: result.Description,
+    }
   }
 
   /**
    * List targets for a rule
    */
   async listTargetsByRule(ruleName: string): Promise<{ Targets: Target[] }> {
-    const cmd = [...this.buildBaseCommand('events'), 'list-targets-by-rule']
+    const result = await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.ListTargetsByRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Rule: ruleName,
+      }),
+    })
 
-    cmd.push('--rule', ruleName)
-
-    return await this.executeCommand(cmd)
+    return { Targets: result.Targets || [] }
   }
 
   /**
@@ -193,49 +223,78 @@ export class SchedulerClient {
       }
     }
 
-    const cmd = [...this.buildBaseCommand('events'), 'delete-rule']
-
-    cmd.push('--name', name)
-
-    if (force) {
-      cmd.push('--force')
-    }
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.DeleteRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Name: name,
+        Force: force || false,
+      }),
+    })
   }
 
   /**
    * Remove targets from a rule
    */
   async removeTargets(ruleName: string, targetIds: string[]): Promise<void> {
-    const cmd = [...this.buildBaseCommand('events'), 'remove-targets']
-
-    cmd.push('--rule', ruleName)
-    cmd.push('--ids', ...targetIds)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.RemoveTargets',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Rule: ruleName,
+        Ids: targetIds,
+      }),
+    })
   }
 
   /**
    * Enable a rule
    */
   async enableRule(name: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand('events'), 'enable-rule']
-
-    cmd.push('--name', name)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.EnableRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Name: name,
+      }),
+    })
   }
 
   /**
    * Disable a rule
    */
   async disableRule(name: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand('events'), 'disable-rule']
-
-    cmd.push('--name', name)
-
-    await this.executeCommand(cmd)
+    await this.client.request({
+      service: 'events',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AWSEvents.DisableRule',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({
+        Name: name,
+      }),
+    })
   }
 
   /**
@@ -290,19 +349,6 @@ export class SchedulerClient {
     })
 
     // Add ECS task as target
-    const ecsParameters = {
-      TaskDefinitionArn: options.taskDefinitionArn,
-      TaskCount: 1,
-      LaunchType: 'FARGATE',
-      NetworkConfiguration: {
-        awsvpcConfiguration: {
-          Subnets: options.subnets,
-          SecurityGroups: options.securityGroups || [],
-          AssignPublicIp: 'ENABLED',
-        },
-      },
-    }
-
     await this.putTargets(options.name, [
       {
         Id: '1',

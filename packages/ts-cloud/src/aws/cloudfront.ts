@@ -1,7 +1,9 @@
 /**
  * AWS CloudFront Operations
- * Uses AWS CLI (no SDK dependencies) for CloudFront operations
+ * Direct API calls without AWS CLI dependency
  */
+
+import { AWSClient } from './client'
 
 export interface InvalidationOptions {
   distributionId: string
@@ -19,49 +21,13 @@ export interface Distribution {
 }
 
 /**
- * CloudFront client using AWS CLI
+ * CloudFront client using direct API calls
  */
 export class CloudFrontClient {
-  private profile?: string
+  private client: AWSClient
 
   constructor(profile?: string) {
-    this.profile = profile
-  }
-
-  /**
-   * Build base AWS CLI command
-   */
-  private buildBaseCommand(): string[] {
-    const cmd = ['aws', 'cloudfront']
-
-    if (this.profile) {
-      cmd.push('--profile', this.profile)
-    }
-
-    cmd.push('--output', 'json')
-
-    return cmd
-  }
-
-  /**
-   * Execute AWS CLI command
-   */
-  private async executeCommand(args: string[]): Promise<any> {
-    const proc = Bun.spawn(args, {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-
-    const stdout = await new Response(proc.stdout).text()
-    const stderr = await new Response(proc.stderr).text()
-
-    await proc.exited
-
-    if (proc.exitCode !== 0) {
-      throw new Error(`AWS CLI Error: ${stderr || stdout}`)
-    }
-
-    return stdout ? JSON.parse(stdout) : null
+    this.client = new AWSClient()
   }
 
   /**
@@ -72,26 +38,34 @@ export class CloudFrontClient {
     Status: string
     CreateTime: string
   }> {
-    const cmd = [...this.buildBaseCommand(), 'create-invalidation']
+    const callerReference = options.callerReference || Date.now().toString()
 
-    cmd.push('--distribution-id', options.distributionId)
+    const invalidationBatchXml = `<?xml version="1.0" encoding="UTF-8"?>
+<InvalidationBatch>
+  <Paths>
+    <Quantity>${options.paths.length}</Quantity>
+    <Items>
+      ${options.paths.map(path => `<Path>${path}</Path>`).join('\n      ')}
+    </Items>
+  </Paths>
+  <CallerReference>${callerReference}</CallerReference>
+</InvalidationBatch>`
 
-    const invalidationBatch = {
-      Paths: {
-        Quantity: options.paths.length,
-        Items: options.paths,
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1', // CloudFront is global
+      method: 'POST',
+      path: `/2020-05-31/distribution/${options.distributionId}/invalidation`,
+      body: invalidationBatchXml,
+      headers: {
+        'Content-Type': 'application/xml',
       },
-      CallerReference: options.callerReference || Date.now().toString(),
-    }
-
-    cmd.push('--invalidation-batch', JSON.stringify(invalidationBatch))
-
-    const result = await this.executeCommand(cmd)
+    })
 
     return {
-      Id: result.Invalidation.Id,
-      Status: result.Invalidation.Status,
-      CreateTime: result.Invalidation.CreateTime,
+      Id: result.Id || result.Invalidation?.Id,
+      Status: result.Status || result.Invalidation?.Status || 'InProgress',
+      CreateTime: result.CreateTime || result.Invalidation?.CreateTime || new Date().toISOString(),
     }
   }
 
@@ -103,17 +77,17 @@ export class CloudFrontClient {
     Status: string
     CreateTime: string
   }> {
-    const cmd = [...this.buildBaseCommand(), 'get-invalidation']
-
-    cmd.push('--distribution-id', distributionId)
-    cmd.push('--id', invalidationId)
-
-    const result = await this.executeCommand(cmd)
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/invalidation/${invalidationId}`,
+    })
 
     return {
-      Id: result.Invalidation.Id,
-      Status: result.Invalidation.Status,
-      CreateTime: result.Invalidation.CreateTime,
+      Id: result.Id || result.Invalidation?.Id,
+      Status: result.Status || result.Invalidation?.Status,
+      CreateTime: result.CreateTime || result.Invalidation?.CreateTime,
     }
   }
 
@@ -125,67 +99,106 @@ export class CloudFrontClient {
     Status: string
     CreateTime: string
   }>> {
-    const cmd = [...this.buildBaseCommand(), 'list-invalidations']
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/invalidation`,
+    })
 
-    cmd.push('--distribution-id', distributionId)
+    // Parse invalidation list
+    const invalidations: Array<{ Id: string, Status: string, CreateTime: string }> = []
 
-    const result = await this.executeCommand(cmd)
+    // Simple parser - would need proper XML parsing in production
+    if (result.InvalidationSummary) {
+      const summaries = Array.isArray(result.InvalidationSummary)
+        ? result.InvalidationSummary
+        : [result.InvalidationSummary]
 
-    return result.InvalidationList?.Items || []
+      invalidations.push(...summaries.map((item: any) => ({
+        Id: item.Id,
+        Status: item.Status,
+        CreateTime: item.CreateTime,
+      })))
+    }
+
+    return invalidations
   }
 
   /**
    * Wait for invalidation to complete
    */
   async waitForInvalidation(distributionId: string, invalidationId: string): Promise<void> {
-    const cmd = [...this.buildBaseCommand(), 'wait', 'invalidation-completed']
+    const maxAttempts = 60 // 5 minutes
+    let attempts = 0
 
-    cmd.push('--distribution-id', distributionId)
-    cmd.push('--id', invalidationId)
+    while (attempts < maxAttempts) {
+      const invalidation = await this.getInvalidation(distributionId, invalidationId)
 
-    await this.executeCommand(cmd)
+      if (invalidation.Status === 'Completed') {
+        return
+      }
+
+      // Wait 5 seconds before next attempt
+      await new Promise(resolve => setTimeout(resolve, 5000))
+      attempts++
+    }
+
+    throw new Error(`Timeout waiting for invalidation ${invalidationId} to complete`)
   }
 
   /**
    * List distributions
    */
   async listDistributions(): Promise<Distribution[]> {
-    const cmd = [...this.buildBaseCommand(), 'list-distributions']
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: '/2020-05-31/distribution',
+    })
 
-    const result = await this.executeCommand(cmd)
+    const distributions: Distribution[] = []
 
-    if (!result.DistributionList || !result.DistributionList.Items) {
-      return []
+    // Simple parser - would need proper XML parsing in production
+    if (result.DistributionSummary) {
+      const summaries = Array.isArray(result.DistributionSummary)
+        ? result.DistributionSummary
+        : [result.DistributionSummary]
+
+      distributions.push(...summaries.map((item: any) => ({
+        Id: item.Id,
+        ARN: item.ARN,
+        Status: item.Status,
+        DomainName: item.DomainName,
+        Aliases: item.Aliases?.Items || [],
+        Enabled: item.Enabled === 'true' || item.Enabled === true,
+      })))
     }
 
-    return result.DistributionList.Items.map((item: any) => ({
-      Id: item.Id,
-      ARN: item.ARN,
-      Status: item.Status,
-      DomainName: item.DomainName,
-      Aliases: item.Aliases?.Items,
-      Enabled: item.Enabled,
-    }))
+    return distributions
   }
 
   /**
    * Get distribution by ID
    */
   async getDistribution(distributionId: string): Promise<Distribution> {
-    const cmd = [...this.buildBaseCommand(), 'get-distribution']
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}`,
+    })
 
-    cmd.push('--id', distributionId)
+    const dist = result.Distribution || result
 
-    const result = await this.executeCommand(cmd)
-
-    const dist = result.Distribution
     return {
       Id: dist.Id,
       ARN: dist.ARN,
       Status: dist.Status,
       DomainName: dist.DomainName,
-      Aliases: dist.DistributionConfig?.Aliases?.Items,
-      Enabled: dist.DistributionConfig?.Enabled,
+      Aliases: dist.DistributionConfig?.Aliases?.Items || dist.Aliases?.Items || [],
+      Enabled: dist.DistributionConfig?.Enabled === 'true' || dist.DistributionConfig?.Enabled === true,
     }
   }
 

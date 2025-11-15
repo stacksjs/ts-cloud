@@ -4,6 +4,7 @@
  */
 
 import * as crypto from 'node:crypto'
+import { XMLParser } from 'fast-xml-parser'
 
 export interface AWSCredentials {
   accessKeyId: string
@@ -20,6 +21,28 @@ export interface AWSRequestOptions {
   headers?: Record<string, string>
   body?: string
   credentials?: AWSCredentials
+  retries?: number
+  cacheKey?: string
+  cacheTTL?: number
+}
+
+export interface AWSClientConfig {
+  maxRetries?: number
+  retryDelay?: number
+  cacheEnabled?: boolean
+  defaultCacheTTL?: number
+}
+
+export interface AWSError extends Error {
+  code?: string
+  statusCode?: number
+  requestId?: string
+  type?: string
+}
+
+interface CacheEntry {
+  data: any
+  expires: number
 }
 
 /**
@@ -27,9 +50,27 @@ export interface AWSRequestOptions {
  */
 export class AWSClient {
   private credentials?: AWSCredentials
+  private config: AWSClientConfig
+  private cache: Map<string, CacheEntry>
+  private xmlParser: XMLParser
 
-  constructor(credentials?: AWSCredentials) {
+  constructor(credentials?: AWSCredentials, config?: AWSClientConfig) {
     this.credentials = credentials || this.loadCredentials()
+    this.config = {
+      maxRetries: 3,
+      retryDelay: 1000,
+      cacheEnabled: true,
+      defaultCacheTTL: 60000, // 1 minute
+      ...config,
+    }
+    this.cache = new Map()
+    this.xmlParser = new XMLParser({
+      ignoreAttributes: false,
+      attributeNamePrefix: '@_',
+      textNodeName: '#text',
+      parseAttributeValue: true,
+      trimValues: true,
+    })
   }
 
   /**
@@ -52,9 +93,66 @@ export class AWSClient {
   }
 
   /**
-   * Make a signed AWS API request
+   * Make a signed AWS API request with retry logic and caching
    */
   async request(options: AWSRequestOptions): Promise<any> {
+    // Check cache first for GET requests
+    if (options.method === 'GET' && this.config.cacheEnabled && options.cacheKey) {
+      const cached = this.getFromCache(options.cacheKey)
+      if (cached !== null) {
+        return cached
+      }
+    }
+
+    const maxRetries = options.retries ?? this.config.maxRetries ?? 3
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await this.makeRequest(options)
+
+        // Cache successful GET requests
+        if (options.method === 'GET' && this.config.cacheEnabled && options.cacheKey) {
+          this.setInCache(
+            options.cacheKey,
+            result,
+            options.cacheTTL ?? this.config.defaultCacheTTL ?? 60000,
+          )
+        }
+
+        return result
+      }
+      catch (error: any) {
+        lastError = error
+
+        // Don't retry on client errors (4xx)
+        if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+          throw error
+        }
+
+        // Don't retry on non-retryable errors
+        if (error.code && !this.isRetryableError(error.code)) {
+          throw error
+        }
+
+        // Last attempt
+        if (attempt === maxRetries) {
+          throw error
+        }
+
+        // Wait before retrying with exponential backoff
+        const delay = this.calculateRetryDelay(attempt)
+        await this.sleep(delay)
+      }
+    }
+
+    throw lastError || new Error('Request failed after retries')
+  }
+
+  /**
+   * Make the actual HTTP request
+   */
+  private async makeRequest(options: AWSRequestOptions): Promise<any> {
     const credentials = options.credentials || this.credentials
     if (!credentials) {
       throw new Error('AWS credentials not provided')
@@ -72,7 +170,7 @@ export class AWSClient {
     const responseText = await response.text()
 
     if (!response.ok) {
-      throw new Error(`AWS API Error (${response.status}): ${responseText}`)
+      throw this.parseError(responseText, response.status, response.headers)
     }
 
     // Handle empty responses
@@ -249,39 +347,181 @@ export class AWSClient {
   }
 
   /**
-   * Parse XML response to JSON
+   * Parse XML response using fast-xml-parser
    */
   private parseXmlResponse(xml: string): any {
-    // Simple XML parser for AWS responses
-    const result: any = {}
+    try {
+      const parsed = this.xmlParser.parse(xml)
 
-    // Remove XML declaration and root tags
-    const content = xml.replace(/<\?xml[^>]*\?>/g, '').trim()
+      // Extract the main result from common AWS response wrappers
+      if (parsed.ErrorResponse) {
+        throw this.createErrorFromXml(parsed.ErrorResponse.Error)
+      }
 
-    // Extract error information
-    const errorMatch = content.match(/<Error>([\s\S]*?)<\/Error>/)
-    if (errorMatch) {
-      const errorContent = errorMatch[1]
-      const codeMatch = errorContent.match(/<Code>(.*?)<\/Code>/)
-      const messageMatch = errorContent.match(/<Message>(.*?)<\/Message>/)
+      // Remove XML wrapper nodes to get to actual data
+      const keys = Object.keys(parsed)
+      if (keys.length === 1) {
+        return parsed[keys[0]]
+      }
 
-      if (codeMatch || messageMatch) {
-        throw new Error(`AWS Error: ${codeMatch?.[1] || 'Unknown'} - ${messageMatch?.[1] || 'No message'}`)
+      return parsed
+    }
+    catch (error: any) {
+      // If parsing fails, return empty object
+      if (error.code || error.statusCode) {
+        throw error
+      }
+      return {}
+    }
+  }
+
+  /**
+   * Parse error response and create detailed error object
+   */
+  private parseError(responseText: string, statusCode: number, headers: Headers): AWSError {
+    const error: AWSError = new Error() as AWSError
+    error.statusCode = statusCode
+    error.requestId = headers.get('x-amzn-requestid') || headers.get('x-amz-request-id') || undefined
+
+    // Try to parse XML error
+    if (responseText.startsWith('<')) {
+      try {
+        const parsed = this.xmlParser.parse(responseText)
+
+        if (parsed.ErrorResponse?.Error) {
+          const awsError = parsed.ErrorResponse.Error
+          error.code = awsError.Code
+          error.message = `AWS Error [${awsError.Code}]: ${awsError.Message || 'Unknown error'}`
+          error.type = awsError.Type
+          return error
+        }
+
+        if (parsed.Error) {
+          error.code = parsed.Error.Code
+          error.message = `AWS Error [${parsed.Error.Code}]: ${parsed.Error.Message || 'Unknown error'}`
+          return error
+        }
+      }
+      catch {
+        // Fall through to generic error
       }
     }
 
-    // Parse basic XML structure
-    const tagRegex = /<([^/>]+)>([^<]*)<\/\1>/g
-    let match: RegExpExecArray | null
-
-    while ((match = tagRegex.exec(content)) !== null) {
-      const [, key, value] = match
-      if (value.trim()) {
-        result[key] = value.trim()
+    // Try to parse JSON error
+    try {
+      const json = JSON.parse(responseText)
+      if (json.__type || json.code) {
+        error.code = json.__type || json.code
+        error.message = `AWS Error [${error.code}]: ${json.message || json.Message || 'Unknown error'}`
+        return error
       }
     }
+    catch {
+      // Fall through to generic error
+    }
 
-    return result
+    // Generic error
+    error.message = `AWS API Error (${statusCode}): ${responseText}`
+    return error
+  }
+
+  /**
+   * Create error from XML error object
+   */
+  private createErrorFromXml(errorData: any): AWSError {
+    const error: AWSError = new Error() as AWSError
+    error.code = errorData.Code
+    error.message = `AWS Error [${errorData.Code}]: ${errorData.Message || 'Unknown error'}`
+    error.type = errorData.Type
+    return error
+  }
+
+  /**
+   * Check if error code is retryable
+   */
+  private isRetryableError(code: string): boolean {
+    const retryableCodes = [
+      'RequestTimeout',
+      'RequestTimeoutException',
+      'PriorRequestNotComplete',
+      'ConnectionError',
+      'ThrottlingException',
+      'Throttling',
+      'TooManyRequestsException',
+      'ProvisionedThroughputExceededException',
+      'RequestLimitExceeded',
+      'BandwidthLimitExceeded',
+      'SlowDown',
+      'ServiceUnavailable',
+      'InternalError',
+    ]
+    return retryableCodes.includes(code)
+  }
+
+  /**
+   * Calculate retry delay with exponential backoff
+   */
+  private calculateRetryDelay(attempt: number): number {
+    const baseDelay = this.config.retryDelay ?? 1000
+    const maxDelay = 30000 // 30 seconds max
+    const delay = Math.min(baseDelay * (2 ** attempt), maxDelay)
+    // Add jitter to avoid thundering herd
+    const jitter = Math.random() * 0.3 * delay
+    return delay + jitter
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Get value from cache
+   */
+  private getFromCache(key: string): any | null {
+    const entry = this.cache.get(key)
+    if (!entry) {
+      return null
+    }
+
+    // Check if expired
+    if (Date.now() > entry.expires) {
+      this.cache.delete(key)
+      return null
+    }
+
+    return entry.data
+  }
+
+  /**
+   * Set value in cache
+   */
+  private setInCache(key: string, data: any, ttl: number): void {
+    this.cache.set(key, {
+      data,
+      expires: Date.now() + ttl,
+    })
+  }
+
+  /**
+   * Clear cache
+   */
+  clearCache(): void {
+    this.cache.clear()
+  }
+
+  /**
+   * Clear expired cache entries
+   */
+  clearExpiredCache(): void {
+    const now = Date.now()
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expires) {
+        this.cache.delete(key)
+      }
+    }
   }
 }
 
