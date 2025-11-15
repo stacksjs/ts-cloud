@@ -80,3 +80,6 @@ export * from './compliance'
 
 // Advanced Deployment Strategies (Phase 7.6)
 export * from './deployment'
+
+// Observability (Phase 7.7)
+export * from './observability'
