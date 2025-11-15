@@ -34,3 +34,22 @@ export type {
   UpdateStackOptions,
   StackEvent,
 } from './cloudformation'
+
+// S3 Client
+export {
+  S3Client,
+} from './s3'
+
+export type {
+  S3UploadOptions,
+  S3MultipartUploadOptions,
+} from './s3'
+
+// CloudFront Client
+export {
+  CloudFrontClient,
+} from './cloudfront'
+
+export type {
+  InvalidationOptions,
+} from './cloudfront'

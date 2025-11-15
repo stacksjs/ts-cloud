@@ -8,49 +8,271 @@
 
 # ts-cloud
 
-This is an opinionated TypeScript Starter kit to help kick-start development of your next Bun package.
+> Zero-dependency AWS infrastructure as TypeScript. Deploy production-ready cloud infrastructure without AWS SDK or CLI.
+
+## Overview
+
+TS Cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, TS Cloud:
+
+- **Zero AWS Dependencies** - No AWS SDK, no AWS CLI. Direct AWS API calls only.
+- **Type-Safe Configuration** - Full TypeScript types for all AWS resources
+- **Production-Ready Presets** - 13 battle-tested infrastructure templates
+- **Bun-Powered** - Lightning-fast builds and deployments
+- **CloudFormation Native** - Generate clean, reviewable CloudFormation templates
 
 ## Features
 
-This Starter Kit comes pre-configured with the following:
+### 🚀 Configuration Presets
 
-- 🛠️ [Powerful Build Process](https://github.com/oven-sh/bun) - via Bun
-- 💪🏽 [Fully Typed APIs](https://www.typescriptlang.org/) - via TypeScript
-- 📚 [Documentation-ready](https://vitepress.dev/) - via VitePress
-- ⌘ [CLI & Binary](https://www.npmjs.com/package/bunx) - via Bun & CAC
-- 🧪 [Built With Testing In Mind](https://bun.sh/docs/cli/test) - pre-configured unit-testing powered by [Bun](https://bun.sh/docs/cli/test)
-- 🤖 [Renovate](https://renovatebot.com/) - optimized & automated PR dependency updates
-- 🎨 [ESLint](https://eslint.org/) - for code linting _(and formatting)_
-- 📦️ [pkg.pr.new](https://pkg.pr.new) - Continuous (Preview) Releases for your libraries
-- 🐙 [GitHub Actions](https://github.com/features/actions) - runs your CI _(fixes code style issues, tags releases & creates its changelogs, runs the test suite, etc.)_
+Skip the boilerplate with production-ready presets for common architectures:
 
-## Get Started
+- **Static Sites** - S3 + CloudFront for SPAs and static websites
+- **Node.js Servers** - EC2 + ALB + RDS + Redis for traditional apps
+- **Serverless Apps** - ECS Fargate + ALB + DynamoDB for scalable services
+- **Full-Stack Apps** - Complete frontend + backend + database stack
+- **API Backends** - API Gateway + Lambda + DynamoDB for serverless APIs
+- **WordPress** - Optimized WordPress hosting with RDS + EFS + CloudFront
+- **JAMstack** - Modern static sites with Lambda@Edge for SSR
+- **Microservices** - Multi-service architecture with service discovery
+- **Real-time Apps** - WebSocket API + Lambda + DynamoDB Streams
+- **Data Pipelines** - Kinesis + Lambda + S3 + Athena + Glue for ETL
+- **ML APIs** - SageMaker + API Gateway for ML inference
+- **Traditional Web Apps** - Session-based apps with EFS + Redis + ALB
 
-It's rather simple to get your package development started:
+### 🛠️ Infrastructure Builders
+
+Complete CloudFormation template builders for:
+
+- **Network** - VPC, subnets, NAT gateways, routing, security groups
+- **Storage** - S3 buckets with versioning, encryption, lifecycle rules, EFS
+- **Compute** - EC2 Auto Scaling, ECS Fargate, Lambda functions
+- **Database** - RDS (PostgreSQL/MySQL), DynamoDB with streams and GSIs
+- **Cache** - ElastiCache Redis/Memcached with replication
+- **CDN** - CloudFront distributions with custom domains and Lambda@Edge
+- **API Gateway** - HTTP, REST, and WebSocket APIs
+- **Queue** - SQS queues with dead letter queues
+- **Messaging** - SNS topics and subscriptions
+- **Monitoring** - CloudWatch dashboards, alarms, and log groups
+- **Security** - ACM certificates, WAF rules, security groups
+
+### ☁️ Direct AWS Integration
+
+No SDK, no CLI - pure AWS Signature V4 API calls:
+
+- **CloudFormation** - CreateStack, UpdateStack, DeleteStack, DescribeStacks
+- **S3** - PutObject, multipart upload, sync directory
+- **CloudFront** - Cache invalidations with wait support
+- **Credentials** - Resolve from env vars, ~/.aws/credentials, or IAM roles
+
+## Quick Start
+
+### Installation
 
 ```bash
-# you may use this GitHub template or the following command:
-bunx degit stacksjs/ts-cloud my-pkg
-cd my-pkg
-
-bun i # install all deps
-bun run build # builds the library for production-ready use
-
-# after you have successfully committed, you may create a "release"
-bun run release # automates git commits, versioning, and changelog generations
+bun add ts-cloud
 ```
 
-_Check out the package.json scripts for more commands._
+### Your First Deployment
 
-## Testing
+Create a `cloud.config.ts`:
+
+```typescript
+import { createStaticSitePreset } from 'ts-cloud/presets'
+
+export default createStaticSitePreset({
+  name: 'My Website',
+  slug: 'my-website',
+  domain: 'example.com',
+})
+```
+
+Deploy:
 
 ```bash
+bun run cloud deploy
+```
+
+That's it! You now have:
+- ✅ S3 bucket with static website hosting
+- ✅ CloudFront CDN with HTTPS
+- ✅ Route53 DNS configuration
+- ✅ ACM SSL certificate
+
+### More Examples
+
+#### Full-Stack Application
+
+```typescript
+import { createFullStackAppPreset } from 'ts-cloud/presets'
+
+export default createFullStackAppPreset({
+  name: 'My App',
+  slug: 'my-app',
+  domain: 'app.example.com',
+  apiSubdomain: 'api.example.com',
+})
+```
+
+Includes:
+- Frontend: S3 + CloudFront
+- Backend: ECS Fargate with auto-scaling
+- Database: PostgreSQL RDS with Multi-AZ
+- Cache: Redis ElastiCache
+- Queue: SQS for background jobs
+
+#### Serverless API
+
+```typescript
+import { createApiBackendPreset } from 'ts-cloud/presets'
+
+export default createApiBackendPreset({
+  name: 'My API',
+  slug: 'my-api',
+  domain: 'api.example.com',
+})
+```
+
+Includes:
+- API Gateway HTTP API
+- Lambda functions with auto-scaling
+- DynamoDB tables with on-demand billing
+- CloudWatch monitoring and alarms
+
+## Configuration
+
+### Extending Presets
+
+You can extend any preset with custom configuration:
+
+```typescript
+import { createNodeJsServerPreset, extendPreset } from 'ts-cloud/presets'
+
+export default extendPreset(
+  createNodeJsServerPreset({
+    name: 'My App',
+    slug: 'my-app',
+  }),
+  {
+    infrastructure: {
+      compute: {
+        server: {
+          instanceType: 't3.large', // Upgrade instance type
+          autoScaling: {
+            max: 20, // Increase max instances
+          },
+        },
+      },
+    },
+  }
+)
+```
+
+### Composing Presets
+
+Combine multiple presets:
+
+```typescript
+import { composePresets, createStaticSitePreset, createApiBackendPreset } from 'ts-cloud/presets'
+
+export default composePresets(
+  createStaticSitePreset({ name: 'Frontend', slug: 'frontend', domain: 'example.com' }),
+  createApiBackendPreset({ name: 'Backend', slug: 'backend' }),
+  {
+    // Custom overrides
+    infrastructure: {
+      monitoring: {
+        alarms: [{ metric: 'Errors', threshold: 10 }],
+      },
+    },
+  }
+)
+```
+
+## Advanced Usage
+
+### Custom CloudFormation
+
+Generate templates programmatically:
+
+```typescript
+import { CloudFormationBuilder } from 'ts-cloud/cloudformation'
+
+const builder = new CloudFormationBuilder(config)
+const template = builder.build()
+
+console.log(JSON.stringify(template, null, 2))
+```
+
+### Direct AWS API Calls
+
+Use the AWS clients directly:
+
+```typescript
+import { CloudFormationClient, S3Client, CloudFrontClient } from 'ts-cloud/aws'
+
+// CloudFormation
+const cfn = new CloudFormationClient('us-east-1')
+await cfn.createStack({
+  stackName: 'my-stack',
+  templateBody: JSON.stringify(template),
+})
+
+// S3
+const s3 = new S3Client('us-east-1')
+await s3.putObject({
+  bucket: 'my-bucket',
+  key: 'file.txt',
+  body: 'Hello World',
+})
+
+// CloudFront
+const cloudfront = new CloudFrontClient()
+await cloudfront.createInvalidation({
+  distributionId: 'E1234567890',
+  paths: ['/*'],
+})
+```
+
+## Development
+
+```bash
+# Install dependencies
+bun install
+
+# Run tests
 bun test
+
+# Build
+bun run build
+
+# Type check
+bun run typecheck
 ```
 
-## Changelog
+## Architecture
 
-Please see our [releases](https://github.com/stackjs/ts-cloud/releases) page for more information on what has changed recently.
+### How It Works
+
+1. **Configuration** - Define infrastructure in TypeScript
+2. **CloudFormation Generation** - Convert config to CloudFormation templates
+3. **AWS API Calls** - Direct HTTPS calls to AWS CloudFormation API
+4. **Deployment** - Create/update stacks with change sets
+5. **Monitoring** - Track deployment progress with real-time events
+
+### No Dependencies
+
+TS Cloud uses **zero external dependencies** for AWS operations:
+
+- **AWS Signature V4** - Manual request signing for authentication
+- **Direct HTTPS** - Native `fetch()` for API calls
+- **Credentials** - Parse ~/.aws/credentials without SDK
+- **CloudFormation** - XML/JSON parsing for responses
+
+This means:
+- ⚡ Faster startup and execution
+- 📦 Smaller bundle size
+- 🔒 Better security (no supply chain attacks)
+- 🎯 Full control over AWS interactions
 
 ## Contributing
 
@@ -68,7 +290,7 @@ For casual chit-chat with others using this package:
 
 ## Postcardware
 
-“Software that is free, but hopes for a postcard.” We love receiving postcards from around the world showing where Stacks is being used! We showcase them on our website too.
+"Software that is free, but hopes for a postcard." We love receiving postcards from around the world showing where Stacks is being used! We showcase them on our website too.
 
 Our address: Stacks.js, 12665 Village Ln #2306, Playa Vista, CA 90094, United States 🌎
 

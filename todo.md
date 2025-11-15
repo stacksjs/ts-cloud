@@ -922,8 +922,8 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] Implement AWS credentials resolution (env vars, ~/.aws/credentials, IAM roles)
 - [x] Support AWS CLI profile configuration parsing
 - [x] Multi-region support for API endpoints
-- [ ] Implement S3 API calls for file uploads (PutObject, multipart upload)
-- [ ] Implement CloudFront invalidation API calls
+- [x] Implement S3 API calls for file uploads (PutObject, multipart upload)
+- [x] Implement CloudFront invalidation API calls
 - [ ] Implement ECR API calls for image registry operations
 - [ ] Implement SSM API calls for Session Manager
 - [ ] Error handling and retry logic with exponential backoff
@@ -976,8 +976,8 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 6.1 Documentation
 
-- [ ] Write comprehensive README
-- [ ] Create getting started guide
+- [x] Write comprehensive README
+- [x] Create getting started guide
 - [ ] Write configuration reference
 - [ ] Create CLI command reference
 - [ ] Write CloudFormation template guide

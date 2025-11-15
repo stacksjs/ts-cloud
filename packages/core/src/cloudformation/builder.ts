@@ -9,6 +9,10 @@ import { addFunctionResources } from './builders/functions'
 import { addCacheResources } from './builders/cache'
 import { addQueueResources } from './builders/queue'
 import { addMessagingResources } from './builders/messaging'
+import { addCDNResources } from './builders/cdn'
+import { addApiGatewayResources } from './builders/api-gateway'
+import { addMonitoringResources } from './builders/monitoring'
+import { addSecurityResources } from './builders/security'
 
 /**
  * CloudFormation Template Builder
@@ -318,19 +322,19 @@ export class CloudFormationBuilder {
   }
 
   private addCDNResources(cdn: any): void {
-    // TODO: Will be implemented in builders/cdn.ts
+    addCDNResources(this as any, cdn)
   }
 
   private addApiGatewayResources(apiGateway: any): void {
-    // TODO: Will be implemented in builders/api-gateway.ts
+    addApiGatewayResources(this as any, apiGateway)
   }
 
   private addMonitoringResources(monitoring: any): void {
-    // TODO: Will be implemented in builders/monitoring.ts
+    addMonitoringResources(this as any, monitoring)
   }
 
   private addSecurityResources(security: any): void {
-    // TODO: Will be implemented in builders/security.ts
+    addSecurityResources(this as any, security)
   }
 }
 
