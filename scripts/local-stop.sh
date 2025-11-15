@@ -11,7 +11,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}Stopping TS Cloud local development environment...${NC}"
+echo -e "${GREEN}Stopping ts-cloud local development environment...${NC}"
 
 # Check if docker-compose is installed
 if ! command -v docker-compose &> /dev/null; then

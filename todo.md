@@ -1,4 +1,4 @@
-# TS Cloud - Development Roadmap
+# ts-cloud - Development Roadmap
 
 A lightweight, performant infrastructure-as-code library and CLI for deploying both **server-based (EC2)** and **serverless** applications. Built with Bun, generates pure CloudFormation (no heavy SDKs), inspired by Laravel Forge + Vapor unified.
 
