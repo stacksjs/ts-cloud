@@ -8,6 +8,8 @@ import { TemplateBuilder } from '@ts-cloud/core'
 import { loadCloudConfig } from '../src/config'
 import { InfrastructureGenerator } from '../src/generators/infrastructure'
 import { CloudFormationClient } from '../src/aws/cloudformation'
+import { S3Client } from '../src/aws/s3'
+import { CloudFrontClient } from '../src/aws/cloudfront'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
 
@@ -236,6 +238,43 @@ app
       generator.generate()
       const output = format === 'yaml' ? generator.toYAML() : generator.toJSON()
       generationSpinner.succeed('Template generated')
+
+      // Validate template
+      cli.step('Validating template...')
+      const template = JSON.parse(generator.toJSON())
+      const validation = validateTemplate(template)
+      const sizeValidation = validateTemplateSize(output)
+      const limitsValidation = validateResourceLimits(template)
+
+      // Show errors
+      const allErrors = [
+        ...validation.errors,
+        ...sizeValidation.errors,
+        ...limitsValidation.errors,
+      ]
+
+      if (allErrors.length > 0) {
+        cli.error('Template validation failed:')
+        for (const error of allErrors) {
+          cli.error(`  • ${error.path}: ${error.message}`)
+        }
+      }
+      else {
+        cli.success('Template validated successfully')
+      }
+
+      // Show warnings
+      const allWarnings = [
+        ...validation.warnings,
+        ...sizeValidation.warnings,
+        ...limitsValidation.warnings,
+      ]
+
+      if (allWarnings.length > 0) {
+        for (const warning of allWarnings) {
+          cli.warn(`  • ${warning.path}: ${warning.message}`)
+        }
+      }
 
       // Write to file
       const filename = join(outputDir, `${environment}.${format}`)
@@ -1117,6 +1156,186 @@ app
     }
     catch (error: any) {
       cli.error(`Failed to load events: ${error.message}`)
+    }
+  })
+
+// ============================================
+// Asset Management Commands
+// ============================================
+
+app
+  .command('assets:deploy', 'Deploy static assets to S3')
+  .option('--source <path>', 'Source directory', 'dist')
+  .option('--bucket <name>', 'S3 bucket name')
+  .option('--prefix <prefix>', 'S3 prefix/folder')
+  .option('--delete', 'Delete files not in source')
+  .option('--cache-control <value>', 'Cache-Control header', 'public, max-age=31536000')
+  .action(async (options?: { source?: string, bucket?: string, prefix?: string, delete?: boolean, cacheControl?: string }) => {
+    cli.header('📦 Deploying Assets to S3')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const source = options?.source || 'dist'
+      const bucket = options?.bucket
+      const prefix = options?.prefix
+      const shouldDelete = options?.delete || false
+      const cacheControl = options?.cacheControl || 'public, max-age=31536000'
+
+      if (!bucket) {
+        cli.error('--bucket is required')
+        return
+      }
+
+      // Check if source directory exists
+      if (!existsSync(source)) {
+        cli.error(`Source directory not found: ${source}`)
+        return
+      }
+
+      cli.info(`Source: ${source}`)
+      cli.info(`Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}`)
+      cli.info(`Cache-Control: ${cacheControl}`)
+      if (shouldDelete) {
+        cli.warn('Delete mode enabled - files not in source will be removed')
+      }
+
+      const confirmed = await cli.confirm('\nDeploy assets now?', true)
+      if (!confirmed) {
+        cli.info('Deployment cancelled')
+        return
+      }
+
+      const s3 = new S3Client(region)
+
+      const spinner = new cli.Spinner('Uploading assets to S3...')
+      spinner.start()
+
+      await s3.sync({
+        source,
+        bucket,
+        prefix,
+        delete: shouldDelete,
+        cacheControl,
+        acl: 'public-read',
+      })
+
+      spinner.succeed('Assets deployed successfully!')
+
+      // Get bucket size
+      const size = await s3.getBucketSize(bucket, prefix)
+      const sizeInMB = (size / 1024 / 1024).toFixed(2)
+
+      cli.success(`\nDeployment complete!`)
+      cli.info(`Total size: ${sizeInMB} MB`)
+      cli.info(`\nAssets URL: https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}`)
+    }
+    catch (error: any) {
+      cli.error(`Deployment failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('assets:invalidate', 'Invalidate CloudFront cache')
+  .option('--distribution <id>', 'CloudFront distribution ID')
+  .option('--paths <paths>', 'Paths to invalidate (comma-separated)', '/*')
+  .option('--wait', 'Wait for invalidation to complete')
+  .action(async (options?: { distribution?: string, paths?: string, wait?: boolean }) => {
+    cli.header('🔄 Invalidating CloudFront Cache')
+
+    try {
+      const distributionId = options?.distribution
+
+      if (!distributionId) {
+        cli.error('--distribution is required')
+        return
+      }
+
+      const pathsStr = options?.paths || '/*'
+      const paths = pathsStr.split(',').map(p => p.trim())
+      const shouldWait = options?.wait || false
+
+      cli.info(`Distribution: ${distributionId}`)
+      cli.info(`Paths: ${paths.join(', ')}`)
+
+      const confirmed = await cli.confirm('\nInvalidate cache now?', true)
+      if (!confirmed) {
+        cli.info('Invalidation cancelled')
+        return
+      }
+
+      const cloudfront = new CloudFrontClient()
+
+      const spinner = new cli.Spinner('Creating invalidation...')
+      spinner.start()
+
+      const invalidation = await cloudfront.invalidatePaths(distributionId, paths)
+
+      spinner.succeed('Invalidation created')
+
+      cli.success(`\nInvalidation ID: ${invalidation.Id}`)
+      cli.info(`Status: ${invalidation.Status}`)
+      cli.info(`Created: ${new Date(invalidation.CreateTime).toLocaleString()}`)
+
+      if (shouldWait) {
+        const waitSpinner = new cli.Spinner('Waiting for invalidation to complete...')
+        waitSpinner.start()
+
+        await cloudfront.waitForInvalidation(distributionId, invalidation.Id)
+
+        waitSpinner.succeed('Invalidation completed!')
+      }
+      else {
+        cli.info('\nInvalidation is in progress. Use --wait to wait for completion.')
+      }
+    }
+    catch (error: any) {
+      cli.error(`Invalidation failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('cdn:list', 'List CloudFront distributions')
+  .action(async () => {
+    cli.header('☁️  CloudFront Distributions')
+
+    try {
+      const cloudfront = new CloudFrontClient()
+
+      const spinner = new cli.Spinner('Loading distributions...')
+      spinner.start()
+
+      const distributions = await cloudfront.listDistributions()
+
+      spinner.succeed(`Found ${distributions.length} distributions`)
+
+      if (distributions.length === 0) {
+        cli.info('No distributions found')
+        return
+      }
+
+      // Display distributions in a table
+      const headers = ['ID', 'Domain Name', 'Status', 'Enabled']
+      const rows = distributions.map(dist => [
+        dist.Id,
+        dist.DomainName,
+        dist.Status,
+        dist.Enabled ? 'Yes' : 'No',
+      ])
+
+      cli.table(headers, rows)
+
+      // Show aliases if any
+      cli.info('\nAliases:')
+      for (const dist of distributions) {
+        if (dist.Aliases && dist.Aliases.length > 0) {
+          cli.info(`  ${dist.Id}: ${dist.Aliases.join(', ')}`)
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to list distributions: ${error.message}`)
     }
   })
 

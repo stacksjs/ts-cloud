@@ -4,3 +4,5 @@
  */
 
 export * from './cloudformation'
+export * from './s3'
+export * from './cloudfront'

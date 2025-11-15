@@ -52,24 +52,24 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] ElastiCache types (Cluster, ReplicationGroup, SubnetGroup, ParameterGroup)
   - [x] WAF types (WebACL, IPSet, RuleGroup)
   - [x] KMS types (Key, Alias)
-  - [ ] Secrets Manager types (Secret, SecretTargetAttachment)
-  - [ ] Backup types (BackupVault, BackupPlan, BackupSelection)
-  - [ ] Auto Scaling types (AutoScalingGroup, LaunchConfiguration, ScalingPolicy)
-  - [ ] Systems Manager types (Parameter, Document)
+  - [x] Secrets Manager types (Secret, SecretTargetAttachment)
+  - [x] Backup types (BackupVault, BackupPlan, BackupSelection)
+  - [x] Auto Scaling types (AutoScalingGroup, LaunchConfiguration, ScalingPolicy)
+  - [x] Systems Manager types (Parameter, Document)
   - [x] CloudWatch types (Alarm, LogGroup, Dashboard)
   - [x] API Gateway types (RestApi, HttpApi, WebSocketApi, Stage, Deployment)
   - [x] SNS types (Topic, Subscription, TopicPolicy)
   - [x] Step Functions types (StateMachine, Activity)
   - [x] Cognito types (UserPool, IdentityPool, UserPoolClient, UserPoolDomain)
-  - [ ] OpenSearch types (Domain, DomainPolicy)
+  - [x] OpenSearch types (Domain, DomainPolicy)
   - [x] RDS types (DBInstance, DBSubnetGroup, DBParameterGroup)
   - [x] DynamoDB types (Table)
-  - [ ] RDS Proxy types (for connection pooling)
-  - [ ] Global Accelerator types (for global applications)
-  - [ ] AppSync types (GraphQL API)
-  - [ ] Athena types (for log analytics)
-  - [ ] Glue types (ETL jobs)
-  - [ ] Kinesis types (data streaming)
+  - [x] RDS Proxy types (for connection pooling)
+  - [x] Global Accelerator types (for global applications)
+  - [x] AppSync types (GraphQL API)
+  - [x] Athena types (for log analytics)
+  - [x] Glue types (ETL jobs)
+  - [x] Kinesis types (data streaming)
 - [x] Create union types for deployment modes: `server | serverless | hybrid`
 - [x] Define environment types (production, staging, development)
 
@@ -85,7 +85,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] Add support for CloudFormation parameters
 - [x] Add support for CloudFormation outputs
 - [x] Create template serializer (JSON/YAML)
-- [ ] Implement stack update diff analyzer
+- [x] Implement stack update diff analyzer
 
 ---
 
@@ -501,16 +501,17 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 2.20 Search Module (OpenSearch/Elasticsearch)
 
-- [ ] Create `Search` class with clean API
-  - [ ] `createDomain(name, options)` - OpenSearch domain
-  - [ ] `setAccessPolicy(domain, policy)` - Fine-grained access control
-  - [ ] `enableEncryption(domain, kmsKey)` - Encryption at rest and in transit
-  - [ ] `setNodeConfiguration(domain, instanceType, count)` - Cluster sizing
-  - [ ] `enableAutoTune(domain)` - Automated performance tuning
-- [ ] Generate OpenSearch Domain CloudFormation
+- [x] Create `Search` class with clean API
+  - [x] `createDomain(name, options)` - OpenSearch domain
+  - [x] `setAccessPolicy(domain, policy)` - Fine-grained access control (createAccessPolicy)
+  - [x] `enableEncryption(domain, kmsKey)` - Encryption at rest and in transit
+  - [x] `setNodeConfiguration(domain, instanceType, count)` - Cluster sizing
+  - [x] `enableAutoTune(domain)` - Automated performance tuning
+- [x] Generate OpenSearch Domain CloudFormation
+- [x] Support VPC deployment (recommended)
+- [x] Support public deployment with access policies
+- [x] Domain presets (development, production, costOptimized, highPerformance)
 - [ ] Generate OpenSearch security groups
-- [ ] Support VPC deployment (recommended)
-- [ ] Support public deployment with access policies
 - [ ] Generate CloudWatch alarms for cluster health
 
 ---
@@ -607,7 +608,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
   - [x] Confirm before proceeding
   - [ ] Real-time progress updates
   - [ ] Rollback on failure
-- [ ] `cloud deploy:assets` - Deploy static assets to S3
+- [x] `cloud deploy:assets` - Deploy static assets to S3 (implemented as `cloud assets:deploy`)
 - [x] `cloud deploy:rollback` - Rollback to previous version
 - [ ] `cloud deploy:status` - Check deployment status
 
@@ -758,8 +759,8 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 ### 3.22 Asset & Build Commands
 
 - [ ] `cloud assets:build` - Build assets (minify, compress, optimize)
-- [ ] `cloud assets:deploy` - Deploy built assets to S3
-- [ ] `cloud assets:invalidate` - Invalidate CDN cache
+- [x] `cloud assets:deploy` - Deploy built assets to S3
+- [x] `cloud assets:invalidate` - Invalidate CDN cache
 - [ ] `cloud assets:optimize:images` - Optimize images
 - [ ] `cloud images:optimize` - Optimize and compress images
 
