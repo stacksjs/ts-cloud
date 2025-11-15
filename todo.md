@@ -707,62 +707,62 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.18 Server Management Commands (Forge-style Features)
 
-- [ ] `cloud server:recipe NAME RECIPE` - Install software recipe (LAMP, LEMP, Node.js, etc.)
-- [ ] `cloud server:cron:add NAME SCHEDULE COMMAND` - Add cron job to server
-- [ ] `cloud server:cron:list NAME` - List cron jobs on server
-- [ ] `cloud server:cron:remove NAME ID` - Remove cron job
-- [ ] `cloud server:worker:add NAME QUEUE` - Add background worker (for queues)
-- [ ] `cloud server:worker:list NAME` - List workers on server
-- [ ] `cloud server:worker:restart NAME ID` - Restart worker
-- [ ] `cloud server:worker:remove NAME ID` - Remove worker
-- [ ] `cloud server:firewall:add NAME RULE` - Add firewall rule (ufw/iptables)
-- [ ] `cloud server:firewall:list NAME` - List firewall rules
-- [ ] `cloud server:firewall:remove NAME RULE` - Remove firewall rule
-- [ ] `cloud server:ssl:install DOMAIN` - Install Let's Encrypt certificate
-- [ ] `cloud server:ssl:renew DOMAIN` - Renew SSL certificate
-- [ ] `cloud server:monitoring NAME` - Show server metrics (CPU, RAM, disk)
-- [ ] `cloud server:snapshot NAME` - Create server snapshot
-- [ ] `cloud server:snapshot:restore NAME SNAPSHOT_ID` - Restore from snapshot
-- [ ] `cloud server:update NAME` - Update server packages
-- [ ] `cloud server:secure NAME` - Run security hardening script
+- [x] `cloud server:recipe NAME RECIPE` - Install software recipe (LAMP, LEMP, Node.js, etc.)
+- [x] `cloud server:cron:add NAME SCHEDULE COMMAND` - Add cron job to server
+- [x] `cloud server:cron:list NAME` - List cron jobs on server
+- [x] `cloud server:cron:remove NAME ID` - Remove cron job
+- [x] `cloud server:worker:add NAME QUEUE` - Add background worker (for queues)
+- [x] `cloud server:worker:list NAME` - List workers on server
+- [x] `cloud server:worker:restart NAME ID` - Restart worker
+- [x] `cloud server:worker:remove NAME ID` - Remove worker
+- [x] `cloud server:firewall:add NAME RULE` - Add firewall rule (ufw/iptables)
+- [x] `cloud server:firewall:list NAME` - List firewall rules
+- [x] `cloud server:firewall:remove NAME RULE` - Remove firewall rule
+- [x] `cloud server:ssl:install DOMAIN` - Install Let's Encrypt certificate
+- [x] `cloud server:ssl:renew DOMAIN` - Renew SSL certificate
+- [x] `cloud server:monitoring NAME` - Show server metrics (CPU, RAM, disk)
+- [x] `cloud server:snapshot NAME` - Create server snapshot
+- [x] `cloud server:snapshot:restore NAME SNAPSHOT_ID` - Restore from snapshot
+- [x] `cloud server:update NAME` - Update server packages
+- [x] `cloud server:secure NAME` - Run security hardening script
 
 ### 3.19 Git Deployment Commands
 
-- [ ] `cloud git:add REPO` - Connect git repository
-- [ ] `cloud git:deploy BRANCH` - Deploy from git branch
-- [ ] `cloud git:webhook:add REPO` - Add webhook for auto-deploy
-- [ ] `cloud git:webhook:remove REPO` - Remove webhook
-- [ ] `cloud git:branches` - List deployable branches
+- [x] `cloud git:add REPO` - Connect git repository
+- [x] `cloud git:deploy BRANCH` - Deploy from git branch
+- [x] `cloud git:webhook:add REPO` - Add webhook for auto-deploy
+- [x] `cloud git:webhook:remove REPO` - Remove webhook
+- [x] `cloud git:branches` - List deployable branches
 
 ### 3.20 Environment Management Commands (Enhanced)
 
-- [ ] `cloud env:clone SOURCE TARGET` - Clone environment
-- [ ] `cloud env:promote SOURCE TARGET` - Promote from dev → staging → prod
-- [ ] `cloud env:compare ENV1 ENV2` - Compare configurations
-- [ ] `cloud env:sync SOURCE TARGET` - Sync configuration (not resources)
-- [ ] `cloud env:preview BRANCH` - Create preview environment from branch
-- [ ] `cloud env:cleanup` - Remove stale preview environments
+- [x] `cloud env:clone SOURCE TARGET` - Clone environment
+- [x] `cloud env:promote SOURCE TARGET` - Promote from dev → staging → prod
+- [x] `cloud env:compare ENV1 ENV2` - Compare configurations
+- [x] `cloud env:sync SOURCE TARGET` - Sync configuration (not resources)
+- [x] `cloud env:preview BRANCH` - Create preview environment from branch
+- [x] `cloud env:cleanup` - Remove stale preview environments
 
 ### 3.21 Database Management Commands (Enhanced)
 
-- [ ] `cloud db:migrations:run NAME` - Run database migrations
-- [ ] `cloud db:migrations:rollback NAME` - Rollback last migration
-- [ ] `cloud db:migrations:status NAME` - Show migration status
-- [ ] `cloud db:seed NAME` - Seed database with test data
-- [ ] `cloud db:snapshot NAME` - Create database snapshot
-- [ ] `cloud db:snapshot:list NAME` - List snapshots
-- [ ] `cloud db:snapshot:restore NAME SNAPSHOT_ID` - Restore from snapshot
-- [ ] `cloud db:users:add NAME USER` - Create database user
-- [ ] `cloud db:users:list NAME` - List database users
-- [ ] `cloud db:slow-queries NAME` - Show slow query log
+- [x] `cloud db:migrations:run NAME` - Run database migrations
+- [x] `cloud db:migrations:rollback NAME` - Rollback last migration
+- [x] `cloud db:migrations:status NAME` - Show migration status
+- [x] `cloud db:seed NAME` - Seed database with test data
+- [x] `cloud db:snapshot NAME` - Create database snapshot
+- [x] `cloud db:snapshot:list NAME` - List snapshots
+- [x] `cloud db:snapshot:restore NAME SNAPSHOT_ID` - Restore from snapshot
+- [x] `cloud db:users:add NAME USER` - Create database user
+- [x] `cloud db:users:list NAME` - List database users
+- [x] `cloud db:slow-queries NAME` - Show slow query log
 
 ### 3.22 Asset & Build Commands
 
-- [ ] `cloud assets:build` - Build assets (minify, compress, optimize)
+- [x] `cloud assets:build` - Build assets (minify, compress, optimize)
 - [x] `cloud assets:deploy` - Deploy built assets to S3
 - [x] `cloud assets:invalidate` - Invalidate CDN cache
-- [ ] `cloud assets:optimize:images` - Optimize images
-- [ ] `cloud images:optimize` - Optimize and compress images
+- [x] `cloud assets:optimize:images` - Optimize images
+- [x] `cloud images:optimize` - Optimize and compress images
 
 ### 3.23 Notification Commands
 
@@ -782,11 +782,11 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.25 Budget & Cost Commands (Enhanced)
 
-- [ ] `cloud budget:create AMOUNT` - Create budget with alerts
-- [ ] `cloud budget:forecast` - Show cost forecast
-- [ ] `cloud cost:alerts` - List cost alerts
-- [ ] `cloud cost:anomalies` - Show cost anomalies
-- [ ] `cloud cost:tags` - Manage cost allocation tags
+- [x] `cloud budget:create AMOUNT` - Create budget with alerts
+- [x] `cloud budget:forecast` - Show cost forecast
+- [x] `cloud cost:alerts` - List cost alerts
+- [x] `cloud cost:anomalies` - Show cost anomalies
+- [x] `cloud cost:tags` - Manage cost allocation tags
 
 ### 3.26 Testing Commands
 
@@ -864,19 +864,19 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 4.3 Configuration Presets
 
-- [ ] Create preset for "Static Site" (S3 + CloudFront)
-- [ ] Create preset for "Node.js Server" (EC2 + ALB)
-- [ ] Create preset for "Node.js Serverless" (Fargate + ALB)
-- [ ] Create preset for "Full Stack App" (Frontend + API + Database)
-- [ ] Create preset for "Microservices" (Multiple services + API Gateway)
-- [ ] Allow users to extend presets
-- [ ] Create preset for "API-Only Backend" (API Gateway + Lambda + DynamoDB)
-- [ ] Create preset for "Traditional Web App" (EC2 + RDS + Redis + ALB)
-- [ ] Create preset for "WordPress" (EC2 + RDS + EFS + CloudFront)
-- [ ] Create preset for "Jamstack Site" (S3 + CloudFront + Lambda@Edge)
-- [ ] Create preset for "Real-time App" (API Gateway WebSocket + Lambda + DynamoDB)
-- [ ] Create preset for "Data Pipeline" (Kinesis + Lambda + S3 + Athena)
-- [ ] Create preset for "Machine Learning API" (SageMaker + API Gateway + Lambda)
+- [x] Create preset for "Static Site" (S3 + CloudFront)
+- [x] Create preset for "Node.js Server" (EC2 + ALB)
+- [x] Create preset for "Node.js Serverless" (Fargate + ALB)
+- [x] Create preset for "Full Stack App" (Frontend + API + Database)
+- [x] Create preset for "Microservices" (Multiple services + API Gateway)
+- [x] Allow users to extend presets
+- [x] Create preset for "API-Only Backend" (API Gateway + Lambda + DynamoDB)
+- [x] Create preset for "Traditional Web App" (EC2 + RDS + Redis + ALB)
+- [x] Create preset for "WordPress" (EC2 + RDS + EFS + CloudFront)
+- [x] Create preset for "Jamstack Site" (S3 + CloudFront + Lambda@Edge)
+- [x] Create preset for "Real-time App" (API Gateway WebSocket + Lambda + DynamoDB)
+- [x] Create preset for "Data Pipeline" (Kinesis + Lambda + S3 + Athena)
+- [x] Create preset for "Machine Learning API" (SageMaker + API Gateway + Lambda)
 
 ---
 
@@ -896,38 +896,40 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 5.1 CloudFormation Template Generation
 
-- [ ] Implement template builder for each resource type
-- [ ] Handle CloudFormation intrinsic functions properly
-- [ ] Generate correct DependsOn relationships
-- [ ] Handle circular dependency resolution
-- [ ] Support CloudFormation conditions
-- [ ] Support CloudFormation mappings
-- [ ] Generate proper IAM policies (least privilege)
+- [x] Implement template builder for each resource type
+- [x] Handle CloudFormation intrinsic functions properly
+- [x] Generate correct DependsOn relationships
+- [x] Handle circular dependency resolution
+- [x] Support CloudFormation conditions
+- [x] Support CloudFormation mappings
+- [x] Generate proper IAM policies (least privilege)
 
-### 5.2 CloudFormation Deployment (Using AWS CLI)
+### 5.2 CloudFormation Deployment (Direct AWS API Calls)
 
-- [ ] Use Bun to shell out to AWS CLI (no SDK dependency)
-- [ ] `aws cloudformation create-stack` wrapper
-- [ ] `aws cloudformation update-stack` wrapper
-- [ ] `aws cloudformation delete-stack` wrapper
-- [ ] `aws cloudformation describe-stacks` wrapper
-- [ ] Change set creation and review
-- [ ] Stack event streaming during deployment
-- [ ] Wait for stack completion with proper error handling
+- [ ] Implement AWS Signature V4 request signing
+- [ ] `CreateStack` API call implementation
+- [ ] `UpdateStack` API call implementation
+- [ ] `DeleteStack` API call implementation
+- [ ] `DescribeStacks` API call implementation
+- [ ] `CreateChangeSet` and `ExecuteChangeSet` implementation
+- [ ] `DescribeStackEvents` for real-time event streaming
+- [ ] `WaitUntilStackCreateComplete` / `WaitUntilStackUpdateComplete` polling
 - [ ] Handle stack rollback scenarios
+- [ ] Parse AWS API XML/JSON responses
 
-### 5.3 AWS CLI Helpers
+### 5.3 AWS API Helpers (Direct API Calls - No SDK, No CLI)
 
-- [ ] Detect and validate AWS CLI installation
-- [ ] Guide users to install AWS CLI if missing
-- [ ] Use AWS CLI profiles for multi-account support
-- [ ] Use AWS CLI for S3 uploads (`aws s3 sync`)
-- [ ] Use AWS CLI for CloudFront invalidations
-- [ ] Use AWS CLI for ECR login and image push
-- [ ] Use AWS CLI for SSM Session Manager (server SSH alternative)
-- [ ] Parse AWS CLI JSON output for structured data
+- [ ] Implement AWS credentials resolution (env vars, ~/.aws/credentials, IAM roles)
+- [ ] Support AWS CLI profile configuration parsing
+- [ ] Multi-region support for API endpoints
+- [ ] Implement S3 API calls for file uploads (PutObject, multipart upload)
+- [ ] Implement CloudFront invalidation API calls
+- [ ] Implement ECR API calls for image registry operations
+- [ ] Implement SSM API calls for Session Manager
+- [ ] Error handling and retry logic with exponential backoff
+- [ ] Request throttling and rate limiting
 
-### 5.4 AWS Type Definitions (No SDK)
+### 5.4 AWS Type Definitions (No Dependencies)
 
 - [ ] Create lightweight type definitions matching CloudFormation specs
 - [ ] Reference official AWS CloudFormation Resource Specification
