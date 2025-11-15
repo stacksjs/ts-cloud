@@ -4,9 +4,9 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ## 🎯 Current Progress
 
-**Phase 2 Core Modules: 15/19 Complete ✅ (418 tests passing)**
+**Phase 2 Core Modules: 16/19 Complete ✅ (448 tests passing)**
 
-Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging
+Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging, Workflow
 
 ---
 
@@ -53,7 +53,7 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
   - [x] CloudWatch types (Alarm, LogGroup, Dashboard)
   - [x] API Gateway types (RestApi, HttpApi, WebSocketApi, Stage, Deployment)
   - [x] SNS types (Topic, Subscription, TopicPolicy)
-  - [ ] Step Functions types (StateMachine, Activity)
+  - [x] Step Functions types (StateMachine, Activity)
   - [ ] Cognito types (UserPool, IdentityPool, UserPoolClient, UserPoolDomain)
   - [ ] OpenSearch types (Domain, DomainPolicy)
   - [x] RDS types (DBInstance, DBSubnetGroup, DBParameterGroup)
@@ -417,20 +417,28 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 2.18 Workflow Module (Step Functions)
 
-- [ ] Create `Workflow` class with clean API
-  - [ ] `createStateMachine(name, definition)` - Step Functions creation
-  - [ ] `addTask(machine, task, type)` - Lambda, ECS, Batch, etc.
-  - [ ] `addChoice(machine, condition)` - Branching logic
-  - [ ] `addParallel(machine, branches)` - Parallel execution
-  - [ ] `addMap(machine, iterator)` - Process arrays
-  - [ ] `addWait(machine, seconds)` - Delays
-  - [ ] `addRetry(task, config)` - Retry logic with backoff
-  - [ ] `addCatch(task, handler)` - Error handling
-- [ ] Generate Step Functions StateMachine CloudFormation
-- [ ] Generate IAM roles for state machine execution
-- [ ] Support Express workflows (high-volume, short-duration)
-- [ ] Support Standard workflows (long-running, auditable)
-- [ ] Generate CloudWatch logging for executions
+- [x] Create `Workflow` class with clean API
+  - [x] `createStateMachine(name, definition)` - Step Functions creation
+  - [x] `createLambdaTask()` - Lambda task states
+  - [x] `createDynamoDBTask()` - DynamoDB task states
+  - [x] `createSNSPublishTask()` - SNS publish task states
+  - [x] `createSQSSendMessageTask()` - SQS send message task states
+  - [x] `createPassState()` - Pass states
+  - [x] `createWaitState()` - Wait states (seconds, timestamp)
+  - [x] `createChoiceState()` - Branching logic
+  - [x] `createParallelState()` - Parallel execution
+  - [x] `createMapState()` - Process arrays
+  - [x] `createSucceedState()` - Succeed states
+  - [x] `createFailState()` - Fail states
+  - [x] Retry policies (standard, aggressive, custom)
+  - [x] Catch policies (all, specific errors)
+- [x] Generate Step Functions StateMachine CloudFormation
+- [x] Generate IAM roles for state machine execution
+- [x] Support Express workflows (high-volume, short-duration)
+- [x] Support Standard workflows (long-running, auditable)
+- [x] Support logging and tracing configurations
+- [x] Common workflow patterns (sequential, fanout, map, error handling)
+- [x] **30 tests passing** ✅
 
 ### 2.19 Authentication Module (Cognito)
 
