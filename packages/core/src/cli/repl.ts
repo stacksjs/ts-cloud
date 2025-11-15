@@ -1,5 +1,5 @@
 /**
- * Interactive REPL mode for TS Cloud CLI
+ * Interactive REPL mode for ts-cloud CLI
  * Provides a shell-like experience for running commands
  */
 
@@ -39,7 +39,7 @@ export class REPL {
   constructor(options: REPLOptions) {
     this.options = {
       prompt: options.prompt || '> ',
-      welcome: options.welcome || 'Welcome to TS Cloud interactive mode. Type "help" for available commands.',
+      welcome: options.welcome || 'Welcome to ts-cloud interactive mode. Type "help" for available commands.',
       ...options,
     }
   }

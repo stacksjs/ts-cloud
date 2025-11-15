@@ -16,7 +16,7 @@ import { addSecurityResources } from './builders/security'
 
 /**
  * CloudFormation Template Builder
- * Converts CloudConfig to CloudFormation templates
+ * Converts-cloudConfig to CloudFormation templates
  */
 export class CloudFormationBuilder {
   private template: CloudFormationTemplate

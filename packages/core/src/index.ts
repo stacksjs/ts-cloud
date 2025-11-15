@@ -1,5 +1,5 @@
 /**
- * TS Cloud Core - CloudFormation Generator Engine
+ * ts-cloud Core - CloudFormation Generator Engine
  */
 
 // Core types

@@ -498,7 +498,7 @@ describe('Performance Manager', () => {
   })
 
   describe('CloudFormation Generation', () => {
-    it('should generate performance insights CloudFormation', () => {
+    it('should generate performance insights-cloudFormation', () => {
       const insights = manager.enablePerformanceInsights({
         name: 'test-insights',
         databaseIdentifier: 'test-db',

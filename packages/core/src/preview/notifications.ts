@@ -144,7 +144,7 @@ export class PreviewNotificationService {
     }[type]
 
     return {
-      username: config.username || 'TS Cloud',
+      username: config.username || 'ts-cloud',
       icon_emoji: config.iconEmoji || ':cloud:',
       channel: config.channel,
       attachments: [
@@ -195,7 +195,7 @@ export class PreviewNotificationService {
                 ]
               : []),
           ],
-          footer: 'TS Cloud Preview Environments',
+          footer: 'ts-cloud Preview Environments',
           ts: Math.floor(event.timestamp.getTime() / 1000),
         },
       ],
@@ -252,7 +252,7 @@ export class PreviewNotificationService {
     }[type]
 
     return {
-      username: config.username || 'TS Cloud',
+      username: config.username || 'ts-cloud',
       avatar_url: config.avatarUrl,
       embeds: [
         {
@@ -295,7 +295,7 @@ export class PreviewNotificationService {
           ],
           timestamp: event.timestamp.toISOString(),
           footer: {
-            text: 'TS Cloud Preview Environments',
+            text: 'ts-cloud Preview Environments',
           },
         },
       ],

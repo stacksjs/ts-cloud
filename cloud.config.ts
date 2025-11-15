@@ -1,7 +1,7 @@
 import type { CloudConfig } from '@ts-cloud/types'
 
 /**
- * TS Cloud Configuration
+ * ts-cloud Configuration
  *
  * This file defines your cloud infrastructure configuration.
  * Supports both server mode (Forge-style) and serverless mode (Vapor-style).
@@ -17,7 +17,7 @@ const config: CloudConfig = {
    * Project configuration
    */
   project: {
-    name: 'TS Cloud',
+    name: 'ts-cloud',
     slug: 'ts-cloud',
     region: 'us-east-1', // Default AWS region
   },

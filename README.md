@@ -12,7 +12,7 @@
 
 ## Overview
 
-TS Cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, TS Cloud:
+ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, ts-cloud:
 
 - **Zero AWS Dependencies** - No AWS SDK, no AWS CLI. Direct AWS API calls only.
 - **Type-Safe Configuration** - Full TypeScript types for all AWS resources
@@ -93,6 +93,7 @@ bun run cloud deploy
 ```
 
 That's it! You now have:
+
 - ✅ S3 bucket with static website hosting
 - ✅ CloudFront CDN with HTTPS
 - ✅ Route53 DNS configuration
@@ -114,6 +115,7 @@ export default createFullStackAppPreset({
 ```
 
 Includes:
+
 - Frontend: S3 + CloudFront
 - Backend: ECS Fargate with auto-scaling
 - Database: PostgreSQL RDS with Multi-AZ
@@ -133,6 +135,7 @@ export default createApiBackendPreset({
 ```
 
 Includes:
+
 - API Gateway HTTP API
 - Lambda functions with auto-scaling
 - DynamoDB tables with on-demand billing
@@ -261,7 +264,7 @@ bun run typecheck
 
 ### No Dependencies
 
-TS Cloud uses **zero external dependencies** for AWS operations:
+ts-cloud uses **zero external dependencies** for AWS operations:
 
 - **AWS Signature V4** - Manual request signing for authentication
 - **Direct HTTPS** - Native `fetch()` for API calls
@@ -269,6 +272,7 @@ TS Cloud uses **zero external dependencies** for AWS operations:
 - **CloudFormation** - XML/JSON parsing for responses
 
 This means:
+
 - ⚡ Faster startup and execution
 - 📦 Smaller bundle size
 - 🔒 Better security (no supply chain attacks)

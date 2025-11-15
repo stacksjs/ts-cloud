@@ -33,12 +33,12 @@ app
 // ============================================
 
 app
-  .command('init', 'Initialize a new TS Cloud project')
+  .command('init', 'Initialize a new ts-cloud project')
   .option('--mode <mode>', 'Deployment mode: server, serverless, or hybrid')
   .option('--name <name>', 'Project name')
   .option('--region <region>', 'AWS Region')
   .action(async (options?: { mode?: string, name?: string, region?: string }) => {
-    cli.header('🚀 Initializing TS Cloud Project')
+    cli.header('🚀 Initializing ts-cloud Project')
 
     // Check if already initialized
     if (existsSync('cloud.config.ts')) {
@@ -116,7 +116,7 @@ cloudformation/
       cli.success('Created cloudformation/ directory')
     }
 
-    cli.box(`✨ TS Cloud project initialized!
+    cli.box(`✨ ts-cloud project initialized!
 
 Next steps:
   1. Edit cloud.config.ts to configure your infrastructure
@@ -3090,7 +3090,7 @@ app
 app
   .command('upgrade', 'Upgrade CLI to latest version')
   .action(async () => {
-    cli.header('⬆️  Upgrading TS Cloud CLI')
+    cli.header('⬆️  Upgrading ts-cloud CLI')
 
     const spinner = new cli.Spinner('Checking for updates...')
     spinner.start()
@@ -3117,7 +3117,7 @@ app
 
     upgradeSpinner.succeed('Upgrade completed successfully')
 
-    cli.success('\n✓ TS Cloud CLI upgraded to v0.2.0!')
+    cli.success('\n✓ ts-cloud CLI upgraded to v0.2.0!')
 
     cli.info('\nWhat\'s new in v0.2.0:')
     cli.info('  • New cost optimization commands')
@@ -3194,7 +3194,7 @@ app
   .command('version', 'Show the version of the CLI')
   .alias('v')
   .action(() => {
-    console.log(`TS Cloud v${version}`)
+    console.log(`ts-cloud v${version}`)
   })
 
 // ============================================
@@ -5459,7 +5459,7 @@ app
   .action(async () => {
     cli.header('🐚 Bash Completion')
 
-    const script = `# TS Cloud CLI bash completion
+    const script = `# ts-cloud CLI bash completion
 _cloud_completions() {
   local cur prev commands
   COMPREPLY=()
@@ -5488,7 +5488,7 @@ app
   .action(async () => {
     cli.header('🐚 Zsh Completion')
 
-    const script = `# TS Cloud CLI zsh completion
+    const script = `# ts-cloud CLI zsh completion
 #compdef cloud
 
 _cloud() {
@@ -5535,7 +5535,7 @@ app
   .action(async () => {
     cli.header('🐚 Fish Completion')
 
-    const script = `# TS Cloud CLI fish completion
+    const script = `# ts-cloud CLI fish completion
 complete -c cloud -f
 
 # Commands
@@ -5572,9 +5572,9 @@ complete -c cloud -n "__fish_use_subcommand" -a help -d "Show help"
 app
   .command('shell', 'Interactive shell mode')
   .action(async () => {
-    cli.header('🐚 TS Cloud Interactive Shell')
+    cli.header('🐚 ts-cloud Interactive Shell')
 
-    cli.info('Welcome to TS Cloud interactive mode!')
+    cli.info('Welcome to ts-cloud interactive mode!')
     cli.info('Type commands without "cloud" prefix. Type "exit" to quit.\n')
 
     cli.warn('⚠️  Interactive shell mode is not yet implemented')

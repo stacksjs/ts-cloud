@@ -1,6 +1,6 @@
 /**
  * Local development configuration
- * Configures TS Cloud to use LocalStack and local services
+ * Configures ts-cloud to use LocalStack and local services
  */
 
 export interface LocalConfig {

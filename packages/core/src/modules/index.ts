@@ -1,5 +1,5 @@
 /**
- * TS Cloud Resource Modules
+ * ts-cloud Resource Modules
  * Clean API abstractions for AWS CloudFormation resources
  */
 
