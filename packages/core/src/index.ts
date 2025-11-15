@@ -71,3 +71,9 @@ export * from './multi-account'
 
 // CI/CD integration (Phase 7.3)
 export * from './cicd'
+
+// Backup & Disaster Recovery (Phase 7.4)
+export * from './backup'
+
+// Compliance & Governance (Phase 7.5)
+export * from './compliance'
