@@ -89,3 +89,6 @@ export * from './database'
 
 // Secrets & Security Advanced (Phase 7.9)
 export * from './security'
+
+// Container Advanced Features (Phase 7.10)
+export * from './containers'
