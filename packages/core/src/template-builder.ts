@@ -30,7 +30,7 @@ export class TemplateBuilder {
   /**
    * Add a parameter to the template
    */
-  addParameter(name: string, parameter: CloudFormationTemplate['Parameters'][string]): this {
+  addParameter(name: string, parameter: NonNullable<CloudFormationTemplate['Parameters']>[string]): this {
     if (!this.template.Parameters) {
       this.template.Parameters = {}
     }
@@ -41,7 +41,7 @@ export class TemplateBuilder {
   /**
    * Add an output to the template
    */
-  addOutput(name: string, output: CloudFormationTemplate['Outputs'][string]): this {
+  addOutput(name: string, output: NonNullable<CloudFormationTemplate['Outputs']>[string]): this {
     if (!this.template.Outputs) {
       this.template.Outputs = {}
     }

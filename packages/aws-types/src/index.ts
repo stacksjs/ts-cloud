@@ -194,8 +194,20 @@ export interface CloudFrontOriginAccessControl extends CloudFormationResource {
   }
 }
 
-// Export all types
+// Export all AWS CloudFormation resource types
 export * from './route53'
 export * from './ec2'
 export * from './iam'
 export * from './lambda'
+export * from './ecs'
+export * from './alb'
+export * from './rds'
+export * from './dynamodb'
+export * from './apigateway'
+export * from './sns'
+export * from './ses'
+export * from './cloudwatch'
+export * from './kms'
+export * from './acm'
+export * from './efs'
+export * from './waf'

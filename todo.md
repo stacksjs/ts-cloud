@@ -8,67 +8,69 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 1.1 Project Structure
 
-- [ ] Set up monorepo structure with workspaces (check our current boilerplate ./packages/* for structure)
-  - [ ] `/packages/core` - Core library (CloudFormation generator)
-  - [ ] `/packages/cli` - CLI interface
-  - [ ] `/packages/types` - Shared TypeScript types
-  - [ ] `/packages/aws-types` - AWS CloudFormation resource type definitions
-- [ ] Configure Bun build pipeline
-- [ ] Set up TypeScript with strict mode
-- [ ] Configure path aliases for clean imports
+- [x] Set up monorepo structure with workspaces (check our current boilerplate ./packages/* for structure)
+  - [x] `/packages/core` - Core library (CloudFormation generator)
+  - [x] `/packages/cli` - CLI interface (using existing packages/ts-cloud)
+  - [x] `/packages/types` - Shared TypeScript types
+  - [x] `/packages/aws-types` - AWS CloudFormation resource type definitions
+- [x] Configure Bun build pipeline
+- [x] Set up TypeScript with strict mode
+- [x] Configure path aliases for clean imports
 - [ ] Set up Pickier for code quality (~/Code/pickier, (`bun link` it locally, bc the currently released version is behind the latest source there, and better-dx installs it))
-- [ ] Create initial package.json for each workspace
+- [x] Create initial package.json for each workspace
 
 ### 1.2 Type System Design
 
-- [ ] Define core configuration types (CloudConfig, SiteConfig, InfrastructureConfig)
-- [ ] Create AWS CloudFormation resource type definitions (without AWS SDK)
-  - [ ] S3 types (Bucket, BucketPolicy, WebsiteConfiguration)
-  - [ ] CloudFront types (Distribution, CachePolicy, OriginAccessControl)
-  - [ ] Route53 types (HostedZone, RecordSet)
-  - [ ] ACM types (Certificate, CertificateValidation)
-  - [ ] EC2 types (Instance, SecurityGroup, KeyPair, LaunchTemplate)
-  - [ ] ECS types (Cluster, TaskDefinition, Service)
-  - [ ] VPC types (VPC, Subnet, RouteTable, InternetGateway, NatGateway)
-  - [ ] ALB types (LoadBalancer, TargetGroup, Listener)
-  - [ ] IAM types (Role, Policy, User, Group)
-  - [ ] EFS types (FileSystem, MountTarget, AccessPoint)
-  - [ ] SES types (EmailIdentity, ReceiptRuleSet, ConfigurationSet)
-  - [ ] Lambda types (Function, Permission, EventSourceMapping)
+- [x] Define core configuration types (CloudConfig, SiteConfig, InfrastructureConfig)
+- [x] Create AWS CloudFormation resource type definitions (without AWS SDK)
+  - [x] S3 types (Bucket, BucketPolicy, WebsiteConfiguration)
+  - [x] CloudFront types (Distribution, CachePolicy, OriginAccessControl)
+  - [x] Route53 types (HostedZone, RecordSet)
+  - [x] ACM types (Certificate, CertificateValidation)
+  - [x] EC2 types (Instance, SecurityGroup, KeyPair, LaunchTemplate)
+  - [x] ECS types (Cluster, TaskDefinition, Service)
+  - [x] VPC types (VPC, Subnet, RouteTable, InternetGateway, NatGateway)
+  - [x] ALB types (LoadBalancer, TargetGroup, Listener)
+  - [x] IAM types (Role, Policy, User, Group)
+  - [x] EFS types (FileSystem, MountTarget, AccessPoint)
+  - [x] SES types (EmailIdentity, ReceiptRuleSet, ConfigurationSet)
+  - [x] Lambda types (Function, Permission, EventSourceMapping)
   - [ ] EventBridge types (Rule, Target)
-  - [ ] WAF types (WebACL, IPSet, RuleGroup)
-  - [ ] KMS types (Key, Alias)
+  - [x] WAF types (WebACL, IPSet, RuleGroup)
+  - [x] KMS types (Key, Alias)
   - [ ] Secrets Manager types (Secret, SecretTargetAttachment)
   - [ ] Backup types (BackupVault, BackupPlan, BackupSelection)
   - [ ] Auto Scaling types (AutoScalingGroup, LaunchConfiguration, ScalingPolicy)
   - [ ] Systems Manager types (Parameter, Document)
-  - [ ] CloudWatch types (Alarm, LogGroup, Dashboard)
-  - [ ] API Gateway types (RestApi, HttpApi, WebSocketApi, Stage, Deployment)
-  - [ ] SNS types (Topic, Subscription, TopicPolicy)
+  - [x] CloudWatch types (Alarm, LogGroup, Dashboard)
+  - [x] API Gateway types (RestApi, HttpApi, WebSocketApi, Stage, Deployment)
+  - [x] SNS types (Topic, Subscription, TopicPolicy)
   - [ ] Step Functions types (StateMachine, Activity)
   - [ ] Cognito types (UserPool, IdentityPool, UserPoolClient, UserPoolDomain)
   - [ ] OpenSearch types (Domain, DomainPolicy)
+  - [ ] RDS types (DBInstance, DBSubnetGroup, DBParameterGroup) - Partially done
+  - [ ] DynamoDB types (Table) - Partially done
   - [ ] RDS Proxy types (for connection pooling)
   - [ ] Global Accelerator types (for global applications)
   - [ ] AppSync types (GraphQL API)
   - [ ] Athena types (for log analytics)
   - [ ] Glue types (ETL jobs)
   - [ ] Kinesis types (data streaming)
-- [ ] Create union types for deployment modes: `server | serverless | hybrid`
-- [ ] Define environment types (production, staging, development)
+- [x] Create union types for deployment modes: `server | serverless | hybrid`
+- [x] Define environment types (production, staging, development)
 
 ---
 
 ### 1.3 CloudFormation Generator Engine
 
-- [ ] Create CloudFormation template builder class
-- [ ] Implement resource naming convention system (slugs, timestamps, environments)
-- [ ] Build dependency graph resolver (ensures correct resource ordering)
-- [ ] Create intrinsic function helpers (Ref, GetAtt, Sub, Join, etc.)
+- [x] Create CloudFormation template builder class
+- [x] Implement resource naming convention system (slugs, timestamps, environments)
+- [x] Build dependency graph resolver (ensures correct resource ordering)
+- [x] Create intrinsic function helpers (Ref, GetAtt, Sub, Join, etc.)
 - [ ] Implement template validation
-- [ ] Add support for CloudFormation parameters
-- [ ] Add support for CloudFormation outputs
-- [ ] Create template serializer (JSON/YAML)
+- [x] Add support for CloudFormation parameters
+- [x] Add support for CloudFormation outputs
+- [x] Create template serializer (JSON/YAML)
 - [ ] Implement stack update diff analyzer
 
 ---
@@ -77,16 +79,16 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 2.1 Storage Module (S3)
 
-- [ ] Create `Storage` class with clean API
-  - [ ] `createBucket(name, options)` - Public/private/encrypted buckets
-  - [ ] `enableVersioning(bucket)` - Version control
-  - [ ] `enableWebsiteHosting(bucket, indexDoc, errorDoc)` - Static sites
-  - [ ] `setLifecycleRules(bucket, rules)` - Auto-cleanup
-  - [ ] `enableIntelligentTiering(bucket)` - Cost optimization
+- [x] Create `Storage` class with clean API
+  - [x] `createBucket(name, options)` - Public/private/encrypted buckets
+  - [x] `enableVersioning(bucket)` - Version control
+  - [x] `enableWebsiteHosting(bucket, indexDoc, errorDoc)` - Static sites
+  - [x] `setLifecycleRules(bucket, rules)` - Auto-cleanup
+  - [x] `enableIntelligentTiering(bucket)` - Cost optimization
   - [ ] `createBackupPlan(buckets, retentionDays)` - AWS Backup integration
-- [ ] Generate CloudFormation for S3 bucket configurations
-- [ ] Generate bucket policies (public/private access)
-- [ ] Generate CORS configurations
+- [x] Generate CloudFormation for S3 bucket configurations
+- [x] Generate bucket policies (public/private access)
+- [x] Generate CORS configurations
 - [ ] Generate S3 notifications (Lambda triggers)
 
 ### 2.2 CDN Module (CloudFront)
