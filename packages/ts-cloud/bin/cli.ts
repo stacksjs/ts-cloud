@@ -7,6 +7,8 @@ import { version } from '../package.json'
 import { TemplateBuilder } from '@ts-cloud/core'
 import { loadCloudConfig } from '../src/config'
 import { InfrastructureGenerator } from '../src/generators/infrastructure'
+import { CloudFormationClient } from '../src/aws/cloudformation'
+import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
 
 const app = new CLI('cloud')
@@ -677,52 +679,445 @@ app
   .action(async (options?: { stack?: string, env?: string }) => {
     cli.header('🚀 Deploying Infrastructure')
 
-    const config = await loadCloudConfig()
-    const stackName = options?.stack || `${config.project.slug}-${options?.env || 'development'}`
+    try {
+      // Load configuration
+      const config = await loadCloudConfig()
+      const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+      const stackName = options?.stack || `${config.project.slug}-${environment}`
+      const region = config.project.region || 'us-east-1'
 
-    cli.info(`Stack: ${stackName}`)
-    cli.info(`Region: ${config.project.region || 'us-east-1'}`)
+      cli.info(`Stack: ${stackName}`)
+      cli.info(`Region: ${region}`)
+      cli.info(`Environment: ${environment}`)
 
-    const confirmed = await cli.confirm('Deploy now?', true)
-    if (!confirmed) {
-      cli.info('Deployment cancelled')
-      return
-    }
+      // Generate CloudFormation template
+      cli.step('Generating CloudFormation template...')
+      const generator = new InfrastructureGenerator({
+        config,
+        environment,
+      })
 
-    const spinner = new cli.Spinner('Deploying stack...')
-    spinner.start()
+      generator.generate()
+      const templateBody = generator.toJSON()
+      const template = JSON.parse(templateBody)
 
-    // TODO: Implement AWS CloudFormation deployment
-    await new Promise(resolve => setTimeout(resolve, 3000))
+      // Validate template
+      cli.step('Validating template...')
+      const validation = validateTemplate(template)
+      const sizeValidation = validateTemplateSize(templateBody)
+      const limitsValidation = validateResourceLimits(template)
 
-    spinner.succeed('Stack deployed successfully!')
-    cli.box(`✨ Deployment Complete!
+      // Show errors
+      const allErrors = [
+        ...validation.errors,
+        ...sizeValidation.errors,
+        ...limitsValidation.errors,
+      ]
+
+      if (allErrors.length > 0) {
+        cli.error('Template validation failed:')
+        for (const error of allErrors) {
+          cli.error(`  • ${error.path}: ${error.message}`)
+        }
+        return
+      }
+
+      // Show warnings
+      const allWarnings = [
+        ...validation.warnings,
+        ...sizeValidation.warnings,
+        ...limitsValidation.warnings,
+      ]
+
+      if (allWarnings.length > 0) {
+        for (const warning of allWarnings) {
+          cli.warn(`  • ${warning.path}: ${warning.message}`)
+        }
+      }
+
+      cli.success('Template validated successfully')
+
+      // Show resource summary
+      const resourceCount = Object.keys(template.Resources).length
+      cli.info(`\n📦 Resources to deploy: ${resourceCount}`)
+
+      // Count resource types
+      const typeCounts: Record<string, number> = {}
+      for (const resource of Object.values(template.Resources)) {
+        const type = (resource as any).Type
+        typeCounts[type] = (typeCounts[type] || 0) + 1
+      }
+
+      for (const [type, count] of Object.entries(typeCounts).sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+        cli.info(`  • ${type}: ${count}`)
+      }
+
+      // Confirm deployment
+      const confirmed = await cli.confirm('\nDeploy now?', true)
+      if (!confirmed) {
+        cli.info('Deployment cancelled')
+        return
+      }
+
+      // Initialize CloudFormation client
+      const cfn = new CloudFormationClient(region)
+
+      // Check if stack exists
+      cli.step('Checking stack status...')
+      let stackExists = false
+      try {
+        const result = await cfn.describeStacks({ stackName })
+        stackExists = result.Stacks && result.Stacks.length > 0
+      }
+      catch (error) {
+        // Stack doesn't exist, that's fine
+        stackExists = false
+      }
+
+      if (stackExists) {
+        cli.info('Stack exists, updating...')
+        const updateSpinner = new cli.Spinner('Updating CloudFormation stack...')
+        updateSpinner.start()
+
+        try {
+          await cfn.updateStack({
+            stackName,
+            templateBody,
+            capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
+            tags: [
+              { Key: 'Project', Value: config.project.name },
+              { Key: 'Environment', Value: environment },
+              { Key: 'ManagedBy', Value: 'ts-cloud' },
+            ],
+          })
+
+          updateSpinner.succeed('Update initiated')
+
+          // Wait for completion
+          cli.step('Waiting for stack update to complete...')
+          await cfn.waitForStack(stackName, 'stack-update-complete')
+
+          cli.success('Stack updated successfully!')
+        }
+        catch (error: any) {
+          if (error.message.includes('No updates are to be performed')) {
+            updateSpinner.succeed('No changes detected')
+            cli.info('Stack is already up to date')
+            return
+          }
+          throw error
+        }
+      }
+      else {
+        cli.info('Creating new stack...')
+        const createSpinner = new cli.Spinner('Creating CloudFormation stack...')
+        createSpinner.start()
+
+        await cfn.createStack({
+          stackName,
+          templateBody,
+          capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
+          tags: [
+            { Key: 'Project', Value: config.project.name },
+            { Key: 'Environment', Value: environment },
+            { Key: 'ManagedBy', Value: 'ts-cloud' },
+          ],
+        })
+
+        createSpinner.succeed('Stack creation initiated')
+
+        // Wait for completion
+        cli.step('Waiting for stack creation to complete...')
+        await cfn.waitForStack(stackName, 'stack-create-complete')
+
+        cli.success('Stack created successfully!')
+      }
+
+      // Get stack outputs
+      const outputs = await cfn.getStackOutputs(stackName)
+
+      cli.box(`✨ Deployment Complete!
 
 Stack: ${stackName}
-Status: CREATE_COMPLETE
+Region: ${region}
+Environment: ${environment}
+Resources: ${resourceCount}
 
 View in console:
-https://console.aws.amazon.com/cloudformation`, 'green')
+https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stackinfo?stackId=${encodeURIComponent(stackName)}`, 'green')
+
+      if (Object.keys(outputs).length > 0) {
+        cli.info('\n📤 Stack Outputs:')
+        for (const [key, value] of Object.entries(outputs)) {
+          cli.info(`  • ${key}: ${value}`)
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Deployment failed: ${error.message}`)
+      if (error.stack) {
+        cli.info('\nStack trace:')
+        console.error(error.stack)
+      }
+    }
   })
 
 app
   .command('deploy:rollback', 'Rollback to previous version')
-  .action(async () => {
+  .option('--stack <name>', 'Stack name')
+  .option('--env <environment>', 'Environment')
+  .action(async (options?: { stack?: string, env?: string }) => {
     cli.header('⏪ Rolling Back Deployment')
 
-    const confirmed = await cli.confirm('Are you sure you want to rollback?', false)
-    if (!confirmed) {
-      cli.info('Rollback cancelled')
-      return
+    try {
+      const config = await loadCloudConfig()
+      const environment = options?.env || 'production'
+      const stackName = options?.stack || `${config.project.slug}-${environment}`
+      const region = config.project.region || 'us-east-1'
+
+      cli.info(`Stack: ${stackName}`)
+      cli.info(`Region: ${region}`)
+
+      const confirmed = await cli.confirm('\nAre you sure you want to rollback?', false)
+      if (!confirmed) {
+        cli.info('Rollback cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Rolling back stack...')
+      spinner.start()
+
+      const cfn = new CloudFormationClient(region)
+
+      // Delete the stack
+      await cfn.deleteStack(stackName)
+
+      spinner.succeed('Stack deletion initiated')
+
+      // Wait for deletion
+      cli.step('Waiting for stack deletion...')
+      await cfn.waitForStack(stackName, 'stack-delete-complete')
+
+      cli.success('Stack rolled back successfully!')
     }
+    catch (error: any) {
+      cli.error(`Rollback failed: ${error.message}`)
+    }
+  })
 
-    const spinner = new cli.Spinner('Rolling back...')
-    spinner.start()
+// ============================================
+// Stack Management Commands
+// ============================================
 
-    // TODO: Implement rollback
-    await new Promise(resolve => setTimeout(resolve, 2000))
+app
+  .command('stack:list', 'List all CloudFormation stacks')
+  .action(async () => {
+    cli.header('📚 CloudFormation Stacks')
 
-    spinner.succeed('Rollback complete')
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Loading stacks...')
+      spinner.start()
+
+      const result = await cfn.listStacks([
+        'CREATE_COMPLETE',
+        'UPDATE_COMPLETE',
+        'ROLLBACK_COMPLETE',
+        'UPDATE_ROLLBACK_COMPLETE',
+        'CREATE_IN_PROGRESS',
+        'UPDATE_IN_PROGRESS',
+      ])
+
+      spinner.succeed(`Found ${result.StackSummaries.length} stacks`)
+
+      if (result.StackSummaries.length === 0) {
+        cli.info('No stacks found')
+        return
+      }
+
+      // Display stacks in a table
+      const headers = ['Stack Name', 'Status', 'Created', 'Updated']
+      const rows = result.StackSummaries.map(stack => [
+        stack.StackName,
+        stack.StackStatus,
+        new Date(stack.CreationTime).toLocaleString(),
+        stack.LastUpdatedTime ? new Date(stack.LastUpdatedTime).toLocaleString() : 'Never',
+      ])
+
+      cli.table(headers, rows)
+    }
+    catch (error: any) {
+      cli.error(`Failed to list stacks: ${error.message}`)
+    }
+  })
+
+app
+  .command('stack:describe STACK_NAME', 'Describe a CloudFormation stack')
+  .action(async (stackName: string) => {
+    cli.header(`📋 Stack: ${stackName}`)
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Loading stack details...')
+      spinner.start()
+
+      const result = await cfn.describeStacks({ stackName })
+
+      if (!result.Stacks || result.Stacks.length === 0) {
+        spinner.fail('Stack not found')
+        return
+      }
+
+      const stack = result.Stacks[0]
+      spinner.succeed('Stack details loaded')
+
+      // Display stack info
+      cli.info(`\n📦 Stack Information:`)
+      cli.info(`  • Name: ${stack.StackName}`)
+      cli.info(`  • Status: ${stack.StackStatus}`)
+      cli.info(`  • Created: ${new Date(stack.CreationTime).toLocaleString()}`)
+      if (stack.LastUpdatedTime) {
+        cli.info(`  • Updated: ${new Date(stack.LastUpdatedTime).toLocaleString()}`)
+      }
+
+      // Display parameters
+      if (stack.Parameters && stack.Parameters.length > 0) {
+        cli.info('\n⚙️  Parameters:')
+        for (const param of stack.Parameters) {
+          cli.info(`  • ${param.ParameterKey}: ${param.ParameterValue}`)
+        }
+      }
+
+      // Display outputs
+      if (stack.Outputs && stack.Outputs.length > 0) {
+        cli.info('\n📤 Outputs:')
+        for (const output of stack.Outputs) {
+          cli.info(`  • ${output.OutputKey}: ${output.OutputValue}`)
+          if (output.Description) {
+            cli.info(`    ${output.Description}`)
+          }
+        }
+      }
+
+      // Display tags
+      if (stack.Tags && stack.Tags.length > 0) {
+        cli.info('\n🏷️  Tags:')
+        for (const tag of stack.Tags) {
+          cli.info(`  • ${tag.Key}: ${tag.Value}`)
+        }
+      }
+
+      // List resources
+      cli.step('\nLoading stack resources...')
+      const resources = await cfn.listStackResources(stackName)
+
+      if (resources.StackResourceSummaries.length > 0) {
+        cli.info(`\n🔧 Resources (${resources.StackResourceSummaries.length}):`)
+        const resourceHeaders = ['Logical ID', 'Type', 'Status']
+        const resourceRows = resources.StackResourceSummaries.slice(0, 10).map(resource => [
+          resource.LogicalResourceId,
+          resource.ResourceType,
+          resource.ResourceStatus,
+        ])
+
+        cli.table(resourceHeaders, resourceRows)
+
+        if (resources.StackResourceSummaries.length > 10) {
+          cli.info(`\n... and ${resources.StackResourceSummaries.length - 10} more resources`)
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to describe stack: ${error.message}`)
+    }
+  })
+
+app
+  .command('stack:delete STACK_NAME', 'Delete a CloudFormation stack')
+  .action(async (stackName: string) => {
+    cli.header(`🗑️  Delete Stack: ${stackName}`)
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      cli.warn('This will permanently delete the stack and all its resources!')
+
+      const confirmed = await cli.confirm('\nAre you sure you want to delete this stack?', false)
+      if (!confirmed) {
+        cli.info('Deletion cancelled')
+        return
+      }
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Deleting stack...')
+      spinner.start()
+
+      await cfn.deleteStack(stackName)
+
+      spinner.succeed('Stack deletion initiated')
+
+      // Wait for deletion
+      cli.step('Waiting for stack deletion...')
+      await cfn.waitForStack(stackName, 'stack-delete-complete')
+
+      cli.success('Stack deleted successfully!')
+    }
+    catch (error: any) {
+      cli.error(`Failed to delete stack: ${error.message}`)
+    }
+  })
+
+app
+  .command('stack:events STACK_NAME', 'Show stack events')
+  .option('--limit <number>', 'Limit number of events', '20')
+  .action(async (stackName: string, options?: { limit?: string }) => {
+    cli.header(`📜 Stack Events: ${stackName}`)
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Loading events...')
+      spinner.start()
+
+      const result = await cfn.describeStackEvents(stackName)
+
+      spinner.succeed(`Found ${result.StackEvents.length} events`)
+
+      const limit = options?.limit ? Number.parseInt(options.limit) : 20
+      const events = result.StackEvents.slice(0, limit)
+
+      if (events.length === 0) {
+        cli.info('No events found')
+        return
+      }
+
+      // Display events
+      const headers = ['Time', 'Resource', 'Status', 'Reason']
+      const rows = events.map(event => [
+        new Date(event.Timestamp).toLocaleString(),
+        event.LogicalResourceId,
+        event.ResourceStatus,
+        event.ResourceStatusReason || '',
+      ])
+
+      cli.table(headers, rows)
+    }
+    catch (error: any) {
+      cli.error(`Failed to load events: ${error.message}`)
+    }
   })
 
 // ============================================
