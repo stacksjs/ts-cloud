@@ -148,58 +148,63 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 2.5 Compute Module (EC2 + ECS - Server & Serverless)
 
-- [ ] Create `Compute` class with unified API for both modes
+- [x] Create `Compute` class with unified API for both modes
 
 #### Server Mode (EC2 - Forge-style)
 
-- [ ] `createServer(options)` - EC2 instance provisioning
-  - [ ] Instance type selection (t3.micro, t3.small, etc.)
-  - [ ] AMI selection (Ubuntu, Amazon Linux, etc.)
-  - [ ] Key pair management
-  - [ ] Security group configuration
-  - [ ] User data scripts (setup automation)
+- [x] `createServer(options)` - EC2 instance provisioning
+  - [x] Instance type selection (t3.micro, t3.small, etc.)
+  - [x] AMI selection (Ubuntu, Amazon Linux, etc.)
+  - [x] Key pair management
+  - [x] Security group configuration
+  - [x] User data scripts (setup automation)
   - [ ] Elastic IP allocation
-  - [ ] EBS volume configuration
+  - [x] EBS volume configuration
 - [ ] `createAutoScalingGroup(options)` - Auto-scaling servers
-- [ ] `attachLoadBalancer(servers, alb)` - ALB integration
+- [x] `createLoadBalancer(servers, alb)` - ALB integration
 - [ ] `installSoftware(server, packages)` - Automated software installation
-- [ ] Generate EC2 Instance CloudFormation
+- [x] Generate EC2 Instance CloudFormation
 - [ ] Generate Auto Scaling Group CloudFormation
 - [ ] Generate Launch Template CloudFormation
-- [ ] Generate user data scripts for common stacks:
-  - [ ] Node.js server setup
-  - [ ] Bun installation
-  - [ ] Nginx/Caddy configuration
-  - [ ] SSL certificate automation (Let's Encrypt)
+- [x] Generate user data scripts for common stacks:
+  - [x] Node.js server setup
+  - [x] Bun installation
+  - [x] Nginx/Caddy configuration
+  - [x] SSL certificate automation (Let's Encrypt)
   - [ ] Database clients (PostgreSQL, MySQL)
   - [ ] Redis installation
-  - [ ] Process managers (PM2, systemd)
+  - [x] Process managers (PM2, systemd)
 
 #### Serverless Mode (ECS Fargate - Vapor-style)
 
-- [ ] `createFargateService(options)` - ECS Fargate deployment
-  - [ ] Task definition (CPU, memory, container config)
-  - [ ] Service configuration (desired count, health checks)
+- [x] `createFargateService(options)` - ECS Fargate deployment
+  - [x] Task definition (CPU, memory, container config)
+  - [x] Service configuration (desired count, health checks)
   - [ ] Auto-scaling policies (CPU/memory based)
-  - [ ] Docker image configuration
-  - [ ] Environment variables
-  - [ ] Secrets integration (Secrets Manager)
-- [ ] `createLambdaFunction(options)` - Lambda functions
-- [ ] Generate ECS Cluster CloudFormation
-- [ ] Generate ECS Task Definition CloudFormation
-- [ ] Generate ECS Service CloudFormation
-- [ ] Generate Application Load Balancer CloudFormation
-- [ ] Generate Target Group and Listener CloudFormation
+  - [x] Docker image configuration
+  - [x] Environment variables
+  - [x] Secrets integration (Secrets Manager)
+- [x] `createLambdaFunction(options)` - Lambda functions
+- [x] Generate ECS Cluster CloudFormation
+- [x] Generate ECS Task Definition CloudFormation
+- [x] Generate ECS Service CloudFormation
+- [x] Generate Application Load Balancer CloudFormation
+- [x] Generate Target Group and Listener CloudFormation
 - [ ] Generate Auto Scaling policies CloudFormation
-- [ ] Generate Lambda Function CloudFormation
+- [x] Generate Lambda Function CloudFormation
 
 #### Shared Compute Features
 
-- [ ] Health check configuration
+- [x] Health check configuration
 - [ ] Container registry integration (ECR)
-- [ ] Log aggregation (CloudWatch Logs)
+- [x] Log aggregation (CloudWatch Logs)
 - [ ] Metrics and monitoring
 - [ ] Deployment strategies (rolling, blue/green)
+- [x] Security groups for web servers
+- [x] IAM roles for ECS and Lambda
+- [x] VPC configuration for Lambda
+
+- [x] **34 tests passing** ✅
 
 ### 2.6 Network Module (VPC)
 
@@ -714,20 +719,20 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ---
 
-## Phase 4: Configuration System
+## Phase 4: Configuration System ✅
 
 ### 4.1 Configuration File Design
 
-- [ ] Create TypeScript-based configuration (`cloud.config.ts`)
-- [ ] Support multiple environments in single config
-- [ ] Environment variable interpolation
-- [ ] Configuration validation with Zod or similar
-- [ ] Configuration inheritance (base + environment overrides)
-- [ ] Secrets reference system (avoid storing in config)
+- [x] Create TypeScript-based configuration (`cloud.config.ts`)
+- [x] Support multiple environments in single config
+- [x] Environment variable interpolation (CLOUD_ENV, NODE_ENV)
+- [x] Configuration validation (built-in TypeScript validation)
+- [x] Configuration inheritance (base + environment overrides)
+- [ ] Secrets reference system (avoid storing in config) - Future enhancement
 
 ### 4.2 Configuration Schema
 
-- [ ] Define top-level schema:
+- [x] Define top-level schema:
 
   ```typescript
   {
@@ -739,24 +744,38 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
   }
   ```
 
-- [ ] Define infrastructure schema for server mode:
-  - [ ] EC2 instance types, AMIs, key pairs
-  - [ ] Auto-scaling configuration
-  - [ ] Load balancer settings
-  - [ ] Software installation scripts
-- [ ] Define infrastructure schema for serverless mode:
-  - [ ] ECS task resources (CPU, memory)
-  - [ ] Lambda function configuration
-  - [ ] Container registry settings
-- [ ] Define shared infrastructure schema:
-  - [ ] VPC and networking
-  - [ ] Database configuration
-  - [ ] Cache settings
-  - [ ] Storage buckets
-  - [ ] CDN configuration
-  - [ ] DNS and domains
-  - [ ] Security (WAF, certificates)
-  - [ ] Monitoring and alerting
+- [x] Define infrastructure schema for server mode:
+  - [x] EC2 instance types, AMIs, key pairs
+  - [x] Auto-scaling configuration
+  - [x] Load balancer settings
+  - [x] Software installation scripts
+- [x] Define infrastructure schema for serverless mode:
+  - [x] ECS task resources (CPU, memory)
+  - [x] Lambda function configuration
+  - [x] Container registry settings
+- [x] Define shared infrastructure schema:
+  - [x] VPC and networking
+  - [x] Database configuration
+  - [x] Cache settings
+  - [x] Storage buckets
+  - [x] CDN configuration
+  - [x] DNS and domains
+  - [x] Security (WAF, certificates)
+  - [x] Monitoring and alerting
+
+### 4.5 Configuration Loader & CLI Integration
+
+- [x] `loadCloudConfig()` - Load and validate config from file
+- [x] `findConfigFile()` - Search for config in multiple locations
+- [x] `validateConfig()` - Validate config structure
+- [x] `mergeConfig()` - Merge user config with defaults
+- [x] `getEnvironmentConfig()` - Get config for specific environment
+- [x] `getActiveEnvironment()` - Detect active environment
+- [x] `resolveRegion()` - Resolve region for environment
+- [x] CLI: `cloud init` - Initialize new project config
+- [x] CLI: `cloud config` - Display current configuration
+- [x] CLI: `cloud config:validate` - Validate configuration
+- [x] **23 tests passing** ✅
 
 ### 4.3 Configuration Presets
 

@@ -1,7 +1,17 @@
 #!/usr/bin/env bun
+import { existsSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { CLI } from '@stacksjs/clapp'
-import { version } from '../package.json'
 import { TemplateBuilder } from '@ts-cloud/core'
+import { version } from '../package.json'
+import {
+  findConfigFile,
+  getActiveEnvironment,
+  loadCloudConfig,
+  loadConfigWithEnvironment,
+  validateConfig,
+} from '../src/config'
+import type { CloudConfig } from '@ts-cloud/types'
 
 const cli = new CLI('cloud')
 
@@ -17,10 +27,93 @@ cli
 cli
   .command('init', 'Initialize a new TS Cloud project')
   .option('--mode <mode>', 'Deployment mode: server, serverless, or hybrid')
-  .action(async (options?: { mode?: string }) => {
+  .option('--name <name>', 'Project name')
+  .option('--slug <slug>', 'Project slug')
+  .option('--region <region>', 'Default AWS region')
+  .action(async (options?: { mode?: string, name?: string, slug?: string, region?: string }) => {
     console.log('🚀 Initializing TS Cloud project...')
-    console.log(`Mode: ${options?.mode || 'serverless'}`)
-    // TODO: Implement init logic
+
+    // Check if config already exists
+    const existingConfig = findConfigFile()
+    if (existingConfig) {
+      console.error('❌ Configuration file already exists:', existingConfig)
+      console.error('   Remove it first or edit it directly.')
+      process.exit(1)
+    }
+
+    const projectName = options?.name || 'my-project'
+    const projectSlug = options?.slug || projectName.toLowerCase().replace(/\s+/g, '-')
+    const mode = options?.mode || 'serverless'
+    const region = options?.region || 'us-east-1'
+
+    const configTemplate = `import type { CloudConfig } from '@ts-cloud/types'
+
+/**
+ * TS Cloud Configuration
+ *
+ * This file defines your cloud infrastructure configuration.
+ * Supports both server mode (Forge-style) and serverless mode (Vapor-style).
+ *
+ * Environment variables:
+ * - CLOUD_ENV: Set the active environment (production, staging, development)
+ * - NODE_ENV: Fallback for CLOUD_ENV
+ */
+const config: CloudConfig = {
+  project: {
+    name: '${projectName}',
+    slug: '${projectSlug}',
+    region: '${region}',
+  },
+
+  mode: '${mode}',
+
+  environments: {
+    production: {
+      type: 'production',
+      region: '${region}',
+      variables: {
+        NODE_ENV: 'production',
+        LOG_LEVEL: 'info',
+      },
+    },
+    staging: {
+      type: 'staging',
+      region: '${region}',
+      variables: {
+        NODE_ENV: 'staging',
+        LOG_LEVEL: 'debug',
+      },
+    },
+    development: {
+      type: 'development',
+      region: '${region}',
+      variables: {
+        NODE_ENV: 'development',
+        LOG_LEVEL: 'debug',
+      },
+    },
+  },
+
+  infrastructure: {
+    // Define your infrastructure here
+    // See documentation for available options
+  },
+}
+
+export default config
+`
+
+    const configPath = join(process.cwd(), 'cloud.config.ts')
+    writeFileSync(configPath, configTemplate, 'utf-8')
+
+    console.log('✅ Created cloud.config.ts')
+    console.log(`   Project: ${projectName}`)
+    console.log(`   Mode: ${mode}`)
+    console.log(`   Region: ${region}`)
+    console.log('\nNext steps:')
+    console.log('  1. Edit cloud.config.ts to configure your infrastructure')
+    console.log('  2. Run `cloud config:validate` to validate your configuration')
+    console.log('  3. Run `cloud generate` to create CloudFormation templates')
   })
 
 // Generate command
@@ -100,16 +193,102 @@ cli
 // Config commands
 cli
   .command('config', 'Show current configuration')
-  .action(async () => {
-    console.log('⚙️  Configuration:')
-    // TODO: Load and display configuration
+  .option('--env <environment>', 'Show config for specific environment')
+  .action(async (options?: { env?: string }) => {
+    try {
+      const { config, environment, environmentConfig } = await loadConfigWithEnvironment()
+
+      console.log('⚙️  Configuration:\n')
+      console.log('Project:')
+      console.log(`  Name:   ${config.project.name}`)
+      console.log(`  Slug:   ${config.project.slug}`)
+      console.log(`  Region: ${config.project.region}`)
+      console.log(`  Mode:   ${config.mode}\n`)
+
+      const targetEnv = options?.env || environment
+      const targetEnvConfig = options?.env ? config.environments[options.env] : environmentConfig
+
+      if (!targetEnvConfig) {
+        console.error(`❌ Environment '${targetEnv}' not found`)
+        process.exit(1)
+      }
+
+      console.log(`Active Environment: ${targetEnv}`)
+      console.log(`  Type:   ${targetEnvConfig.type}`)
+      console.log(`  Region: ${targetEnvConfig.region || config.project.region}`)
+
+      if (targetEnvConfig.variables) {
+        console.log(`  Variables:`)
+        for (const [key, value] of Object.entries(targetEnvConfig.variables)) {
+          console.log(`    ${key}: ${value}`)
+        }
+      }
+
+      if (config.infrastructure) {
+        console.log('\nInfrastructure:')
+        if (config.infrastructure.vpc) {
+          console.log(`  VPC: ${config.infrastructure.vpc.cidr || 'default'}`)
+        }
+        if (config.infrastructure.storage?.buckets) {
+          console.log(`  Buckets: ${config.infrastructure.storage.buckets.length}`)
+        }
+        if (config.infrastructure.compute) {
+          console.log(`  Compute: ${config.infrastructure.compute.mode || config.mode}`)
+        }
+        if (config.infrastructure.database) {
+          console.log(`  Database: ${config.infrastructure.database.type || 'none'}`)
+        }
+        if (config.infrastructure.cdn?.enabled) {
+          console.log(`  CDN: enabled`)
+        }
+        if (config.infrastructure.security?.waf?.enabled) {
+          console.log(`  WAF: enabled`)
+        }
+      }
+
+      const configPath = findConfigFile()
+      if (configPath) {
+        console.log(`\nConfig file: ${configPath}`)
+      }
+    }
+    catch (error) {
+      if (error instanceof Error) {
+        console.error('❌ Error loading configuration:', error.message)
+      }
+      process.exit(1)
+    }
   })
 
 cli
   .command('config:validate', 'Validate configuration file')
   .action(async () => {
-    console.log('✅ Validating configuration...')
-    // TODO: Implement config validation
+    console.log('✅ Validating configuration...\n')
+
+    try {
+      const configPath = findConfigFile()
+
+      if (!configPath) {
+        console.error('❌ No configuration file found')
+        console.error('   Run `cloud init` to create one')
+        process.exit(1)
+      }
+
+      console.log(`📄 Found: ${configPath}`)
+
+      const config = await loadCloudConfig()
+
+      // Validation happens automatically in loadCloudConfig
+      console.log('✅ Configuration is valid!\n')
+      console.log(`   Project: ${config.project.name}`)
+      console.log(`   Mode: ${config.mode}`)
+      console.log(`   Environments: ${Object.keys(config.environments).join(', ')}`)
+    }
+    catch (error) {
+      if (error instanceof Error) {
+        console.error('\n❌ Validation failed:', error.message)
+      }
+      process.exit(1)
+    }
   })
 
 // Doctor command
