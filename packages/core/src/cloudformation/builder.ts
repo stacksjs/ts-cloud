@@ -6,6 +6,9 @@ import { addStorageResources } from './builders/storage'
 import { addComputeResources } from './builders/compute'
 import { addDatabaseResources } from './builders/database'
 import { addFunctionResources } from './builders/functions'
+import { addCacheResources } from './builders/cache'
+import { addQueueResources } from './builders/queue'
+import { addMessagingResources } from './builders/messaging'
 
 /**
  * CloudFormation Template Builder
@@ -303,7 +306,15 @@ export class CloudFormationBuilder {
   }
 
   private addCacheResources(cache: any): void {
-    // TODO: Will be implemented in builders/cache.ts
+    addCacheResources(this as any, cache)
+  }
+
+  private addQueueResources(queue: any): void {
+    addQueueResources(this as any, queue)
+  }
+
+  private addMessagingResources(messaging: any): void {
+    addMessagingResources(this as any, messaging)
   }
 
   private addCDNResources(cdn: any): void {
@@ -312,14 +323,6 @@ export class CloudFormationBuilder {
 
   private addApiGatewayResources(apiGateway: any): void {
     // TODO: Will be implemented in builders/api-gateway.ts
-  }
-
-  private addQueueResources(queue: any): void {
-    // TODO: Will be implemented in builders/queue.ts
-  }
-
-  private addMessagingResources(messaging: any): void {
-    // TODO: Will be implemented in builders/messaging.ts
   }
 
   private addMonitoringResources(monitoring: any): void {

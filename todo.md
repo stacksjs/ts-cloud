@@ -906,22 +906,22 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 5.2 CloudFormation Deployment (Direct AWS API Calls)
 
-- [ ] Implement AWS Signature V4 request signing
-- [ ] `CreateStack` API call implementation
-- [ ] `UpdateStack` API call implementation
-- [ ] `DeleteStack` API call implementation
-- [ ] `DescribeStacks` API call implementation
-- [ ] `CreateChangeSet` and `ExecuteChangeSet` implementation
-- [ ] `DescribeStackEvents` for real-time event streaming
-- [ ] `WaitUntilStackCreateComplete` / `WaitUntilStackUpdateComplete` polling
-- [ ] Handle stack rollback scenarios
-- [ ] Parse AWS API XML/JSON responses
+- [x] Implement AWS Signature V4 request signing
+- [x] `CreateStack` API call implementation
+- [x] `UpdateStack` API call implementation
+- [x] `DeleteStack` API call implementation
+- [x] `DescribeStacks` API call implementation
+- [x] `CreateChangeSet` and `ExecuteChangeSet` implementation
+- [x] `DescribeStackEvents` for real-time event streaming
+- [x] `WaitUntilStackCreateComplete` / `WaitUntilStackUpdateComplete` polling
+- [x] Handle stack rollback scenarios
+- [x] Parse AWS API XML/JSON responses
 
 ### 5.3 AWS API Helpers (Direct API Calls - No SDK, No CLI)
 
-- [ ] Implement AWS credentials resolution (env vars, ~/.aws/credentials, IAM roles)
-- [ ] Support AWS CLI profile configuration parsing
-- [ ] Multi-region support for API endpoints
+- [x] Implement AWS credentials resolution (env vars, ~/.aws/credentials, IAM roles)
+- [x] Support AWS CLI profile configuration parsing
+- [x] Multi-region support for API endpoints
 - [ ] Implement S3 API calls for file uploads (PutObject, multipart upload)
 - [ ] Implement CloudFront invalidation API calls
 - [ ] Implement ECR API calls for image registry operations
