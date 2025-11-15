@@ -101,3 +101,30 @@ export * from './dns'
 
 // Email Advanced Features (Phase 7.13)
 export * from './email'
+
+// Queue Advanced Features (Phase 7.14)
+export * from './queue'
+
+// Static Site Advanced Features (Phase 7.15)
+export * from './static-site'
+
+// Storage Advanced Features (Phase 7.16)
+export * from './storage-advanced'
+
+// Health Checks & Monitoring (Phase 7.17)
+export * from './health-checks'
+
+// Network Security (Phase 7.18)
+export * from './network-security'
+
+// Backup & Recovery Advanced (Phase 7.19)
+export * from './backup-advanced'
+
+// Resource Management (Phase 7.20)
+export * from './resource-mgmt'
+
+// Deployment Enhancements (Phase 7.21)
+export * from './deployment-advanced'
+
+// Observability Enhancements (Phase 7.22)
+export * from './observability-advanced'
