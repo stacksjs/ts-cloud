@@ -50,6 +50,13 @@ export class TemplateBuilder {
   }
 
   /**
+   * Get resources from the template
+   */
+  getResources(): Record<string, CloudFormationResource> {
+    return this.template.Resources
+  }
+
+  /**
    * Build and return the CloudFormation template
    */
   build(): CloudFormationTemplate {

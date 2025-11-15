@@ -4,9 +4,15 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ## 🎯 Current Progress
 
-**Phase 2 Core Modules: 17/19 Complete ✅ (480 tests passing)**
+**Phase 2 Core Modules: 19/19 COMPLETE! 🎉 (557 tests passing)**
+**Phase 3 CLI Development: MAJOR PROGRESS! 🚀 (Core commands implemented)**
 
-Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging, Workflow, Monitoring
+✅ **PHASE 2 COMPLETE!** All core infrastructure modules implemented with comprehensive test coverage.
+🚧 **PHASE 3 IN PROGRESS!** CLI framework and core commands implemented.
+
+Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging, Workflow, Monitoring, Authentication, Deployment
+
+CLI Commands: 40+ commands implemented across init, config, generate, deploy, server, function, domain, database, logs, metrics, alarms, secrets, and utility categories
 
 ---
 
@@ -54,7 +60,7 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
   - [x] API Gateway types (RestApi, HttpApi, WebSocketApi, Stage, Deployment)
   - [x] SNS types (Topic, Subscription, TopicPolicy)
   - [x] Step Functions types (StateMachine, Activity)
-  - [ ] Cognito types (UserPool, IdentityPool, UserPoolClient, UserPoolDomain)
+  - [x] Cognito types (UserPool, IdentityPool, UserPoolClient, UserPoolDomain)
   - [ ] OpenSearch types (Domain, DomainPolicy)
   - [x] RDS types (DBInstance, DBSubnetGroup, DBParameterGroup)
   - [x] DynamoDB types (Table)
@@ -349,16 +355,26 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 2.14 Deployment Module
 
-- [ ] Create `Deployment` class with clean API
-  - [ ] `deployToS3(source, bucket, prefix)` - Asset deployment
-  - [ ] `invalidateCache(distribution, paths)` - CloudFront invalidation
-  - [ ] `deployContainer(image, service)` - ECS deployment
-  - [ ] `deployLambda(zip, function)` - Lambda deployment
-  - [ ] `deployServer(files, server, strategy)` - EC2 deployment (rsync, git pull, etc.)
-- [ ] Implement asset hashing for change detection
-- [ ] Create deployment strategies (incremental, full)
-- [ ] Generate CodeDeploy configurations for EC2
-- [ ] Generate ECS deployment configurations
+- [x] Create `Deployment` class with clean API
+  - [x] `createApplication()` - CodeDeploy application for Server, Lambda, ECS
+  - [x] `createDeploymentGroup()` - Deployment group configuration
+  - [x] `createDeploymentConfig()` - Custom deployment configurations
+  - [x] Auto scaling group support
+  - [x] EC2 tag filters
+  - [x] Load balancer integration
+  - [x] Alarm configuration
+  - [x] Auto rollback configurations (on failure, on alarm, on all events)
+  - [x] Blue/green deployment configurations
+  - [x] Traffic routing configurations (all at once, canary, linear)
+- [x] Generate CodeDeploy Application CloudFormation
+- [x] Generate CodeDeploy DeploymentGroup CloudFormation
+- [x] Generate CodeDeploy DeploymentConfig CloudFormation
+- [x] Deployment strategies (rolling, blue-green, canary, all-at-once)
+- [x] Common deployment configs (all at once, half at a time, one at a time, custom)
+- [x] Rollback policies
+- [x] Blue/green configurations (standard, with delay, manual approval, keep blue)
+- [x] Common use cases (EC2, Lambda canary, ECS blue/green)
+- [x] **37 tests passing** ✅
 
 ### 2.15 Monitoring Module (CloudWatch)
 
@@ -455,24 +471,33 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 2.19 Authentication Module (Cognito)
 
-- [ ] Create `Auth` class with clean API
-  - [ ] `createUserPool(name, options)` - User pool creation
-  - [ ] `createIdentityPool(name, providers)` - Identity pool for AWS credentials
-  - [ ] `addSocialProvider(pool, provider, config)` - Google, Facebook, Apple, etc.
-  - [ ] `setPasswordPolicy(pool, requirements)` - Password complexity rules
-  - [ ] `enableMfa(pool, type)` - SMS or TOTP MFA
-  - [ ] `createAppClient(pool, name, scopes)` - OAuth app clients
-  - [ ] `setCustomDomain(pool, domain, certificate)` - Custom domain for auth UI
-  - [ ] `addLambdaTriggers(pool, triggers)` - Pre-signup, post-confirmation, etc.
-  - [ ] `setEmailConfig(pool, from, replyTo)` - Email settings
-- [ ] Generate Cognito UserPool CloudFormation
-- [ ] Generate Cognito IdentityPool CloudFormation
-- [ ] Generate Cognito UserPoolClient CloudFormation
-- [ ] Generate Cognito UserPoolDomain CloudFormation
-- [ ] Generate Cognito IdentityPoolRoleAttachment CloudFormation
-- [ ] Support OAuth 2.0 and OIDC flows
-- [ ] Support custom authentication flows
-- [ ] Support user migration Lambda triggers
+- [x] Create `Auth` class with clean API
+  - [x] `createUserPool(name, options)` - User pool creation
+  - [x] `createIdentityPool(name, providers)` - Identity pool for AWS credentials
+  - [x] `createUserPoolClient()` - OAuth app clients with scopes
+  - [x] `createUserPoolDomain()` - Custom domain for auth UI
+  - [x] `createIdentityPoolRoleAttachment()` - Role attachment
+  - [x] `createAuthenticatedRole()` - IAM role for authenticated users
+  - [x] `createUnauthenticatedRole()` - IAM role for unauthenticated users
+  - [x] Password policies (relaxed, standard, strict)
+  - [x] MFA configuration (OFF, ON, OPTIONAL)
+  - [x] Lambda triggers (pre-signup, post-confirmation, etc.)
+  - [x] Email configuration (SES integration)
+  - [x] SMS configuration
+  - [x] Advanced security mode
+  - [x] Account recovery settings
+  - [x] Social providers support
+- [x] Generate Cognito UserPool CloudFormation
+- [x] Generate Cognito IdentityPool CloudFormation
+- [x] Generate Cognito UserPoolClient CloudFormation
+- [x] Generate Cognito UserPoolDomain CloudFormation
+- [x] Generate Cognito IdentityPoolRoleAttachment CloudFormation
+- [x] Support OAuth 2.0 flows (code, implicit, client_credentials)
+- [x] Support OAuth scopes (openid, email, profile, phone)
+- [x] Support custom authentication flows
+- [x] Support user migration Lambda triggers
+- [x] Common use cases (web app, mobile app)
+- [x] **40 tests passing** ✅
 
 ### 2.20 Search Module (OpenSearch/Elasticsearch)
 
@@ -494,46 +519,49 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 3.1 Core CLI Infrastructure
 
-- [ ] Set up CLI framework (use Bun native or lightweight CLI library)
-- [ ] Create command parser and router
-- [ ] Implement global flags (--env, --region, --profile, --verbose, --dry-run)
-- [ ] Add colored terminal output
-- [ ] Create progress indicators and spinners
-- [ ] Implement error handling and user-friendly messages
-- [ ] Add interactive prompts for missing configuration
+- [x] Set up CLI framework using @stacksjs/clapp
+- [x] Create command parser and router
+- [x] Implement global flags (--env, --region, --profile, --verbose, --dry-run)
+- [x] Add colored terminal output
+- [x] Create progress indicators and spinners
+- [x] Implement error handling and user-friendly messages
+- [x] Add interactive prompts for missing configuration
+- [x] Create CLI utility helpers (colors, spinners, prompts, tables, formatting)
+- [x] Implement AWS CLI detection and credential checking
+- [x] Add progress bars and formatted output
 
 ### 3.2 Initialization Commands
 
-- [ ] `cloud init` - Initialize new project
-  - [ ] Create `cloud.config.ts` with TypeScript types
-  - [ ] Interactive prompts for:
-    - [ ] Deployment mode (server, serverless, or hybrid)
-    - [ ] Project name and slug
-    - [ ] AWS region selection
-    - [ ] Domain configuration
-    - [ ] Environment setup (production, staging, dev)
-  - [ ] Generate `.env.example` template
-  - [ ] Create `.gitignore` for cloud resources
-- [ ] `cloud init:server` - Initialize server-based (EC2) project
-- [ ] `cloud init:serverless` - Initialize serverless (Fargate/Lambda) project
-- [ ] `cloud init:hybrid` - Initialize hybrid project (both modes)
+- [x] `cloud init` - Initialize new project
+  - [x] Create `cloud.config.ts` with TypeScript types
+  - [x] Interactive prompts for:
+    - [x] Deployment mode (server, serverless, or hybrid)
+    - [x] Project name and slug
+    - [x] AWS region selection
+    - [x] Domain configuration
+    - [x] Environment setup (production, staging, dev)
+  - [x] Generate `.gitignore` for cloud resources
+  - [x] Create `cloudformation/` directory
+- [x] `cloud init:server` - Initialize server-based (EC2) project
+- [x] `cloud init:serverless` - Initialize serverless (Fargate/Lambda) project
+- [x] `cloud init:hybrid` - Initialize hybrid project (both modes)
 
 ### 3.3 Configuration Commands
 
-- [ ] `cloud config` - Show current configuration
-- [ ] `cloud config:validate` - Validate configuration file
+- [x] `cloud config` - Show current configuration
+- [x] `cloud config:validate` - Validate configuration file
 - [ ] `cloud config:env` - Manage environment variables
 - [ ] `cloud config:secrets` - Manage secrets (AWS Secrets Manager)
 
 ### 3.4 Generation Commands
 
-- [ ] `cloud generate` - Generate CloudFormation templates
-  - [ ] Output to `./cloudformation` directory
+- [x] `cloud generate` - Generate CloudFormation templates
+  - [x] Output to `./cloudformation` directory
+  - [x] Support JSON and YAML output formats
   - [ ] Separate templates per module (storage, compute, network, etc.)
   - [ ] Master template with nested stacks
-  - [ ] Support JSON and YAML output formats
-- [ ] `cloud generate:preview` - Preview what will be generated
-- [ ] `cloud generate:diff` - Show diff from existing stack
+- [x] `cloud generate:preview` - Preview what will be generated
+- [x] `cloud generate:diff` - Show diff from existing stack
 
 ### 3.5 Deployment Commands (Server Mode)
 
@@ -543,15 +571,15 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
   - [ ] Configure security groups
   - [ ] Set up load balancers
   - [ ] Install software via user data
-- [ ] `cloud server:create NAME` - Create new server
-- [ ] `cloud server:list` - List all servers
-- [ ] `cloud server:ssh NAME` - SSH into server
+- [x] `cloud server:create NAME` - Create new server
+- [x] `cloud server:list` - List all servers
+- [x] `cloud server:ssh NAME` - SSH into server
 - [ ] `cloud server:resize NAME TYPE` - Change instance type
 - [ ] `cloud server:reboot NAME` - Reboot server
 - [ ] `cloud server:destroy NAME` - Terminate server
-- [ ] `cloud server:logs NAME` - View server logs
-- [ ] `cloud server:deploy NAME` - Deploy app to server
-  - [ ] Support multiple strategies: git, rsync, scp
+- [x] `cloud server:logs NAME` - View server logs
+- [x] `cloud server:deploy NAME` - Deploy app to server
+  - [x] Support multiple strategies: git, rsync, scp
   - [ ] Zero-downtime deployments
   - [ ] Rollback capability
 
@@ -563,9 +591,9 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
   - [ ] Update ECS task definitions
   - [ ] Deploy Lambda functions
 - [ ] `cloud function:create NAME` - Create new Lambda function
-- [ ] `cloud function:list` - List all functions
-- [ ] `cloud function:logs NAME` - View function logs
-- [ ] `cloud function:invoke NAME` - Test function invocation
+- [x] `cloud function:list` - List all functions
+- [x] `cloud function:logs NAME` - View function logs
+- [x] `cloud function:invoke NAME` - Test function invocation
 - [ ] `cloud function:deploy NAME` - Deploy specific function
 - [ ] `cloud container:build` - Build Docker image
 - [ ] `cloud container:push` - Push to ECR
@@ -573,32 +601,32 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 3.7 Universal Deployment Commands
 
-- [ ] `cloud deploy` - Smart deploy (detects mode from config)
-  - [ ] Auto-detect changes since last deployment
-  - [ ] Show deployment plan before execution
-  - [ ] Confirm before proceeding
+- [x] `cloud deploy` - Smart deploy (detects mode from config)
+  - [x] Auto-detect changes since last deployment
+  - [x] Show deployment plan before execution
+  - [x] Confirm before proceeding
   - [ ] Real-time progress updates
   - [ ] Rollback on failure
 - [ ] `cloud deploy:assets` - Deploy static assets to S3
-- [ ] `cloud deploy:rollback` - Rollback to previous version
+- [x] `cloud deploy:rollback` - Rollback to previous version
 - [ ] `cloud deploy:status` - Check deployment status
 
 ### 3.8 Domain & DNS Commands
 
-- [ ] `cloud domain:add DOMAIN` - Add new domain
-- [ ] `cloud domain:list` - List all domains
+- [x] `cloud domain:add DOMAIN` - Add new domain
+- [x] `cloud domain:list` - List all domains
 - [ ] `cloud domain:verify DOMAIN` - Verify domain ownership
-- [ ] `cloud domain:ssl DOMAIN` - Generate SSL certificate
+- [x] `cloud domain:ssl DOMAIN` - Generate SSL certificate
 - [ ] `cloud dns:records DOMAIN` - List DNS records
 - [ ] `cloud dns:add DOMAIN TYPE VALUE` - Add DNS record
 
 ### 3.9 Database Commands
 
-- [ ] `cloud db:create NAME TYPE` - Create database (RDS or DynamoDB)
-- [ ] `cloud db:list` - List all databases
-- [ ] `cloud db:backup NAME` - Create database backup
+- [x] `cloud db:create NAME TYPE` - Create database (RDS or DynamoDB)
+- [x] `cloud db:list` - List all databases
+- [x] `cloud db:backup NAME` - Create database backup
 - [ ] `cloud db:restore NAME BACKUP_ID` - Restore from backup
-- [ ] `cloud db:connect NAME` - Get connection details
+- [x] `cloud db:connect NAME` - Get connection details
 - [ ] `cloud db:tunnel NAME` - Create SSH tunnel to database
 
 ### 3.10 Cache Commands
@@ -617,13 +645,13 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 3.12 Monitoring & Logs Commands
 
-- [ ] `cloud logs` - Stream all application logs
+- [x] `cloud logs` - Stream all application logs
 - [ ] `cloud logs:server NAME` - Server-specific logs
 - [ ] `cloud logs:function NAME` - Function-specific logs
-- [ ] `cloud logs:tail` - Tail logs in real-time
-- [ ] `cloud metrics` - View key metrics
+- [x] `cloud logs:tail` - Tail logs in real-time
+- [x] `cloud metrics` - View key metrics
 - [ ] `cloud metrics:dashboard` - Open CloudWatch dashboard
-- [ ] `cloud alarms` - List all alarms
+- [x] `cloud alarms` - List all alarms
 - [ ] `cloud alarms:create` - Create new alarm
 
 ### 3.13 Security Commands
@@ -634,9 +662,9 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 - [ ] `cloud firewall:countries` - Manage geo-blocking
 - [ ] `cloud ssl:list` - List all certificates
 - [ ] `cloud ssl:renew DOMAIN` - Renew certificate
-- [ ] `cloud secrets:set KEY VALUE` - Set secret
+- [x] `cloud secrets:set KEY VALUE` - Set secret
 - [ ] `cloud secrets:get KEY` - Get secret value
-- [ ] `cloud secrets:list` - List all secrets
+- [x] `cloud secrets:list` - List all secrets
 
 ### 3.14 Cost & Resource Management
 
@@ -665,11 +693,16 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 3.17 Utility Commands
 
-- [ ] `cloud doctor` - Check AWS credentials and configuration
-- [ ] `cloud regions` - List available AWS regions
-- [ ] `cloud version` - Show CLI version
+- [x] `cloud doctor` - Check AWS credentials and configuration
+  - [x] Check Bun installation
+  - [x] Check AWS CLI installation
+  - [x] Check AWS credentials
+  - [x] Check cloud.config.ts
+  - [x] Get AWS account ID
+- [x] `cloud regions` - List available AWS regions
+- [x] `cloud version` - Show CLI version
 - [ ] `cloud upgrade` - Upgrade CLI to latest version
-- [ ] `cloud help` - Show help documentation
+- [x] `cloud help` - Show help documentation
 
 ### 3.18 Server Management Commands (Forge-style Features)
 

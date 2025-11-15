@@ -14,20 +14,6 @@
         "typescript": "^5.6.3",
       },
     },
-    "packages/cli": {
-      "name": "@ts-cloud/cli",
-      "version": "0.0.0",
-      "bin": {
-        "cloud": "./dist/cli.js",
-      },
-      "dependencies": {
-        "@ts-cloud/core": "workspace:*",
-        "@ts-cloud/types": "workspace:*",
-      },
-      "devDependencies": {
-        "typescript": "^5.6.3",
-      },
-    },
     "packages/core": {
       "name": "@ts-cloud/core",
       "version": "0.0.0",
@@ -85,8 +71,6 @@
     "@szmarczak/http-timer": ["@szmarczak/http-timer@4.0.6", "", { "dependencies": { "defer-to-connect": "^2.0.0" } }, "sha512-4BAffykYOgO+5nzBWYwE3W90sBgLJoUPRWWcL8wlyiM8IB8ipJz3UMJ9KXQd1RKQXpKp8Tutn80HZtWsu2u76w=="],
 
     "@ts-cloud/aws-types": ["@ts-cloud/aws-types@workspace:packages/aws-types"],
-
-    "@ts-cloud/cli": ["@ts-cloud/cli@workspace:packages/cli"],
 
     "@ts-cloud/core": ["@ts-cloud/core@workspace:packages/core"],
 

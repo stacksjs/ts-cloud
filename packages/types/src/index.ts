@@ -25,14 +25,16 @@ export interface EnvironmentConfig {
 
 export interface InfrastructureConfig {
   vpc?: VpcConfig
-  storage?: StorageConfig
-  compute?: ComputeConfig
-  database?: DatabaseConfig
+  storage?: Record<string, StorageItemConfig>
+  functions?: Record<string, FunctionConfig>
+  servers?: Record<string, ServerItemConfig>
+  databases?: Record<string, DatabaseItemConfig>
   cache?: CacheConfig
-  cdn?: CdnConfig
+  cdn?: Record<string, CdnItemConfig>
   dns?: DnsConfig
   security?: SecurityConfig
   monitoring?: MonitoringConfig
+  api?: ApiConfig
 }
 
 export interface SiteConfig {
@@ -118,7 +120,7 @@ export interface WafConfig {
 }
 
 export interface MonitoringConfig {
-  alarms?: AlarmConfig[]
+  alarms?: Record<string, AlarmItemConfig>
   dashboards?: boolean
 }
 
@@ -126,6 +128,63 @@ export interface AlarmConfig {
   name: string
   metric: string
   threshold: number
+}
+
+export interface AlarmItemConfig {
+  metricName: string
+  namespace: string
+  threshold: number
+  comparisonOperator: string
+}
+
+export interface StorageItemConfig {
+  versioning?: boolean
+  encryption?: boolean
+  website?: {
+    indexDocument?: string
+    errorDocument?: string
+  }
+}
+
+export interface FunctionConfig {
+  handler?: string
+  runtime?: string
+  code?: string
+  timeout?: number
+  memorySize?: number
+}
+
+export interface ServerItemConfig {
+  instanceType?: string
+  ami?: string
+  userData?: string
+}
+
+export interface DatabaseItemConfig {
+  engine?: 'dynamodb' | 'postgres' | 'mysql'
+  partitionKey?: {
+    name: string
+    type: string
+  }
+  sortKey?: {
+    name: string
+    type: string
+  }
+  username?: string
+  password?: string
+  storage?: number
+  instanceClass?: string
+}
+
+export interface CdnItemConfig {
+  origin: string
+  customDomain?: string
+  certificateArn?: string
+}
+
+export interface ApiConfig {
+  enabled?: boolean
+  name?: string
 }
 
 export type CloudOptions = Partial<CloudConfig>
