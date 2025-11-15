@@ -4,9 +4,9 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ## 🎯 Current Progress
 
-**Phase 2 Core Modules: 14/19 Complete ✅ (380 tests passing)**
+**Phase 2 Core Modules: 15/19 Complete ✅ (418 tests passing)**
 
-Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway
+Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging
 
 ---
 
@@ -393,19 +393,27 @@ Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Em
 
 ### 2.17 Messaging Module (SNS)
 
-- [ ] Create `Messaging` class with clean API
-  - [ ] `createTopic(name, options)` - SNS topic creation
-  - [ ] `subscribe(topic, protocol, endpoint)` - Email, SMS, Lambda, SQS subscriptions
-  - [ ] `setTopicPolicy(topic, policy)` - Access control
-  - [ ] `enableEncryption(topic, kmsKey)` - Message encryption
-  - [ ] `setDeliveryPolicy(topic, policy)` - Retry and delivery settings
-- [ ] Generate SNS Topic CloudFormation
-- [ ] Generate SNS Subscription CloudFormation
-- [ ] Generate SNS Topic Policy CloudFormation
-- [ ] Support fan-out patterns (SNS → multiple SQS)
-- [ ] Support alert routing (CloudWatch → SNS → Slack/PagerDuty)
-- [ ] Support SMS notifications with rate limiting
-- [ ] Support email notifications with templates
+- [x] Create `Messaging` class with clean API
+  - [x] `createTopic(name, options)` - SNS topic creation
+  - [x] `subscribe(topic, protocol, endpoint)` - Email, SMS, Lambda, SQS subscriptions
+  - [x] `subscribeEmail()` - Email subscriptions helper
+  - [x] `subscribeLambda()` - Lambda subscriptions helper
+  - [x] `subscribeSqs()` - SQS subscriptions helper
+  - [x] `subscribeHttp()` - HTTP/HTTPS webhook subscriptions
+  - [x] `subscribeSms()` - SMS subscriptions
+  - [x] `setTopicPolicy(topic, policy)` - Access control
+  - [x] `enableEncryption(topic, kmsKey)` - Message encryption
+  - [x] `allowCloudWatchAlarms()` - CloudWatch integration
+  - [x] `allowEventBridge()` - EventBridge integration
+  - [x] `allowS3()` - S3 notification integration
+- [x] Generate SNS Topic CloudFormation
+- [x] Generate SNS Subscription CloudFormation
+- [x] Generate SNS Topic Policy CloudFormation
+- [x] Support fan-out patterns (SNS → multiple SQS)
+- [x] Support filter policies for message filtering
+- [x] Support raw message delivery
+- [x] Common use cases (alerts, events, notifications)
+- [x] **38 tests passing** ✅
 
 ### 2.18 Workflow Module (Step Functions)
 
