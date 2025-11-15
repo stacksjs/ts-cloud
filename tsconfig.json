@@ -19,6 +19,17 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipDefaultLibCheck": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ts-cloud/core": ["./packages/core/src"],
+      "@ts-cloud/core/*": ["./packages/core/src/*"],
+      "@ts-cloud/cli": ["./packages/cli/src"],
+      "@ts-cloud/cli/*": ["./packages/cli/src/*"],
+      "@ts-cloud/types": ["./packages/types/src"],
+      "@ts-cloud/types/*": ["./packages/types/src/*"],
+      "@ts-cloud/aws-types": ["./packages/aws-types/src"],
+      "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"]
+    }
   }
 }

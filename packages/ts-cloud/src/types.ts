@@ -1,5 +1,2 @@
-export interface CloudConfig {
-  verbose: boolean
-}
-
-export type CloudOptions = Partial<CloudConfig>
+// Re-export types from @ts-cloud/types
+export * from '@ts-cloud/types'

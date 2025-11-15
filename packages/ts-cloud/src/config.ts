@@ -1,12 +1,29 @@
-import type { CloudConfig } from './types'
-import { loadConfig } from 'bunfig'
+import type { CloudConfig } from '@ts-cloud/types'
 
-export const defaultConfig: CloudConfig = {
-  verbose: true,
+export const defaultConfig: Partial<CloudConfig> = {
+  project: {
+    name: 'my-project',
+    slug: 'my-project',
+    region: 'us-east-1',
+  },
+  mode: 'serverless',
+  environments: {
+    production: {
+      type: 'production',
+    },
+  },
 }
 
-// eslint-disable-next-line antfu/no-top-level-await
-export const config: CloudConfig = await loadConfig({
-  name: 'binary',
-  defaultConfig,
-})
+/**
+ * Load cloud configuration from cloud.config.ts
+ */
+export async function loadCloudConfig(): Promise<CloudConfig> {
+  try {
+    const config = await import(`${process.cwd()}/cloud.config.ts`)
+    return config.default || config
+  }
+  catch (error) {
+    console.warn('No cloud.config.ts found, using default configuration')
+    return defaultConfig as CloudConfig
+  }
+}

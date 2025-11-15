@@ -1,0 +1,26 @@
+{
+  "name": "@ts-cloud/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "CLI for TS Cloud infrastructure deployment",
+  "author": "Chris Breuer <chris@stacksjs.org>",
+  "license": "MIT",
+  "bin": {
+    "cloud": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist --target bun",
+    "dev": "bun run src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ts-cloud/core": "workspace:*",
+    "@ts-cloud/types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

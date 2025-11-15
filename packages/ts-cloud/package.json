@@ -2,7 +2,7 @@
   "name": "ts-cloud",
   "type": "module",
   "version": "0.0.0",
-  "description": "Like our `ts-starter`, but optimized for monorepos.",
+  "description": "A lightweight, performant infrastructure-as-code library and CLI for deploying both server-based (EC2) and serverless applications.",
   "author": "Chris Breuer <chris@stacksjs.org>",
   "license": "MIT",
   "homepage": "https://github.com/stacksjs/cloud#readme",
@@ -14,10 +14,16 @@
     "url": "https://github.com/stacksjs/cloud/issues"
   },
   "keywords": [
-    "monorepo",
-    "ts-starter",
-    "ts-starter-monorepo",
-    "template"
+    "typescript",
+    "aws",
+    "cloudformation",
+    "infrastructure",
+    "bun",
+    "serverless",
+    "ec2",
+    "forge",
+    "vapor",
+    "iac"
   ],
   "exports": {
     ".": {
@@ -59,8 +65,14 @@
     "prepublishOnly": "bun --bun run build && bun run compile:all && bun run zip",
     "test": "bun test"
   },
+  "dependencies": {
+    "@ts-cloud/core": "workspace:*",
+    "@ts-cloud/types": "workspace:*",
+    "@ts-cloud/aws-types": "workspace:*"
+  },
   "devDependencies": {
-    "bunfig": "^0.15.6"
+    "bunfig": "^0.15.6",
+    "better-dx": "^0.2.3"
   },
   "lint-staged": {
     "*.{js,ts}": "bunx --bun eslint . --fix"
