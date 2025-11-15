@@ -59,9 +59,80 @@ export interface IAMUser extends CloudFormationResource {
     UserName?: string
     ManagedPolicyArns?: string[]
     Groups?: string[]
+    Policies?: Array<{
+      PolicyName: string
+      PolicyDocument: {
+        Version: '2012-10-17'
+        Statement: Array<{
+          Effect: 'Allow' | 'Deny'
+          Action: string | string[]
+          Resource: string | string[]
+        }>
+      }
+    }>
     Tags?: Array<{
       Key: string
       Value: string
     }>
+  }
+}
+
+export interface IAMManagedPolicy extends CloudFormationResource {
+  Type: 'AWS::IAM::ManagedPolicy'
+  Properties: {
+    ManagedPolicyName?: string
+    Description?: string
+    Path?: string
+    PolicyDocument: {
+      Version: '2012-10-17'
+      Statement: Array<{
+        Sid?: string
+        Effect: 'Allow' | 'Deny'
+        Action: string | string[]
+        Resource: string | string[]
+        Condition?: Record<string, unknown>
+      }>
+    }
+    Roles?: Array<string | { Ref: string }>
+    Users?: Array<string | { Ref: string }>
+    Groups?: Array<string | { Ref: string }>
+  }
+}
+
+export interface IAMGroup extends CloudFormationResource {
+  Type: 'AWS::IAM::Group'
+  Properties: {
+    GroupName?: string
+    ManagedPolicyArns?: string[]
+    Policies?: Array<{
+      PolicyName: string
+      PolicyDocument: {
+        Version: '2012-10-17'
+        Statement: Array<{
+          Effect: 'Allow' | 'Deny'
+          Action: string | string[]
+          Resource: string | string[]
+        }>
+      }
+    }>
+    Path?: string
+  }
+}
+
+export interface IAMAccessKey extends CloudFormationResource {
+  Type: 'AWS::IAM::AccessKey'
+  Properties: {
+    UserName: string | { Ref: string }
+    Status?: 'Active' | 'Inactive'
+    Serial?: number
+  }
+}
+
+export interface IAMInstanceProfile extends CloudFormationResource {
+  Type: 'AWS::IAM::InstanceProfile'
+  Properties: {
+    InstanceProfileName?: string
+    Path?: string
+    Roles: Array<string | { Ref: string }>
   }
 }
