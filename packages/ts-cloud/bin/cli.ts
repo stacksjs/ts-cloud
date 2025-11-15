@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { CLI } from '@stacksjs/clapp'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { version } from '../package.json'
@@ -1156,6 +1156,113 @@ app
     }
     catch (error: any) {
       cli.error(`Failed to load events: ${error.message}`)
+    }
+  })
+
+app
+  .command('stack:outputs STACK_NAME', 'Show stack outputs')
+  .action(async (stackName: string) => {
+    cli.header(`📤 Stack Outputs: ${stackName}`)
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Loading stack outputs...')
+      spinner.start()
+
+      const result = await cfn.describeStacks({ stackName })
+
+      if (!result.Stacks || result.Stacks.length === 0) {
+        spinner.fail('Stack not found')
+        return
+      }
+
+      const stack = result.Stacks[0]
+      spinner.succeed('Stack outputs loaded')
+
+      if (!stack.Outputs || stack.Outputs.length === 0) {
+        cli.info('No outputs found for this stack')
+        return
+      }
+
+      // Display outputs in a table
+      const headers = ['Key', 'Value', 'Description', 'Export Name']
+      const rows = stack.Outputs.map(output => [
+        output.OutputKey || '',
+        output.OutputValue || '',
+        output.Description || '',
+        output.ExportName || '',
+      ])
+
+      cli.table(headers, rows)
+
+      // Also display in key=value format for easy copying
+      cli.info('\n📋 Copy-friendly format:')
+      for (const output of stack.Outputs) {
+        cli.info(`${output.OutputKey}=${output.OutputValue}`)
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to load outputs: ${error.message}`)
+    }
+  })
+
+app
+  .command('stack:export STACK_NAME', 'Export stack template')
+  .option('--output <file>', 'Output file path')
+  .option('--format <format>', 'Output format (json or yaml)', 'json')
+  .action(async (stackName: string, options?: { output?: string, format?: string }) => {
+    cli.header(`💾 Export Stack: ${stackName}`)
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cfn = new CloudFormationClient(region)
+
+      const spinner = new cli.Spinner('Fetching stack template...')
+      spinner.start()
+
+      const result = await cfn.getTemplate(stackName)
+
+      if (!result.TemplateBody) {
+        spinner.fail('Template not found')
+        return
+      }
+
+      spinner.succeed('Template fetched')
+
+      const format = options?.format || 'json'
+      let templateContent = result.TemplateBody
+
+      // Parse and re-format if needed
+      if (format === 'json') {
+        const template = JSON.parse(templateContent)
+        templateContent = JSON.stringify(template, null, 2)
+      }
+
+      // Save to file or display
+      if (options?.output) {
+        const outputPath = options.output
+        writeFileSync(outputPath, templateContent, 'utf-8')
+        cli.success(`Template exported to: ${outputPath}`)
+
+        // Show file size
+        const stats = statSync(outputPath)
+        const sizeInKB = (stats.size / 1024).toFixed(2)
+        cli.info(`File size: ${sizeInKB} KB`)
+      }
+      else {
+        // Display template
+        cli.info('\n📄 Template:')
+        console.log(templateContent)
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to export template: ${error.message}`)
     }
   })
 

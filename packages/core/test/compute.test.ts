@@ -635,4 +635,227 @@ describe('Compute Module', () => {
       expect(parsed.Resources[roleLogicalId].Type).toBe('AWS::IAM::Role')
     })
   })
+
+  describe('Auto Scaling', () => {
+    describe('createLaunchConfiguration', () => {
+      it('should create a launch configuration', () => {
+        const { launchConfiguration, logicalId } = Compute.createLaunchConfiguration({
+          slug: 'test-app',
+          environment: 'production',
+          imageId: 'ami-12345678',
+          instanceType: 't3.micro',
+        })
+
+        expect(launchConfiguration.Type).toBe('AWS::AutoScaling::LaunchConfiguration')
+        expect(launchConfiguration.Properties.ImageId).toBe('ami-12345678')
+        expect(launchConfiguration.Properties.InstanceType).toBe('t3.micro')
+        expect(launchConfiguration.Properties.BlockDeviceMappings).toBeDefined()
+        expect(launchConfiguration.Properties.BlockDeviceMappings?.[0].Ebs?.VolumeSize).toBe(20)
+        expect(launchConfiguration.Properties.BlockDeviceMappings?.[0].Ebs?.Encrypted).toBe(true)
+        expect(logicalId).toBe('TestAppProductionLaunchConfig')
+      })
+
+      it('should include security groups when provided', () => {
+        const { launchConfiguration } = Compute.createLaunchConfiguration({
+          slug: 'test-app',
+          environment: 'production',
+          imageId: 'ami-12345678',
+          instanceType: 't3.micro',
+          securityGroups: [{ Ref: 'WebServerSecurityGroup' }],
+        })
+
+        expect(launchConfiguration.Properties.SecurityGroups).toEqual([{ Ref: 'WebServerSecurityGroup' }])
+      })
+
+      it('should include user data when provided', () => {
+        const { launchConfiguration } = Compute.createLaunchConfiguration({
+          slug: 'test-app',
+          environment: 'production',
+          imageId: 'ami-12345678',
+          instanceType: 't3.micro',
+          userData: '#!/bin/bash\necho "Hello"',
+        })
+
+        expect(launchConfiguration.Properties.UserData).toBeDefined()
+        expect(launchConfiguration.Properties.UserData).toHaveProperty('Fn::Base64')
+      })
+    })
+
+    describe('createAutoScalingGroup', () => {
+      it('should create an auto scaling group', () => {
+        const { autoScalingGroup, logicalId } = Compute.createAutoScalingGroup({
+          slug: 'test-app',
+          environment: 'production',
+          launchConfigurationName: { Ref: 'MyLaunchConfig' },
+          minSize: 2,
+          maxSize: 4,
+        })
+
+        expect(autoScalingGroup.Type).toBe('AWS::AutoScaling::AutoScalingGroup')
+        expect(autoScalingGroup.Properties.MinSize).toBe(2)
+        expect(autoScalingGroup.Properties.MaxSize).toBe(4)
+        expect(autoScalingGroup.Properties.LaunchConfigurationName).toEqual({ Ref: 'MyLaunchConfig' })
+        expect(autoScalingGroup.Properties.Tags).toBeDefined()
+        expect(logicalId).toBe('TestAppProductionAsg')
+      })
+
+      it('should set desired capacity when provided', () => {
+        const { autoScalingGroup } = Compute.createAutoScalingGroup({
+          slug: 'test-app',
+          environment: 'production',
+          launchConfigurationName: { Ref: 'MyLaunchConfig' },
+          minSize: 2,
+          maxSize: 4,
+          desiredCapacity: 3,
+        })
+
+        expect(autoScalingGroup.Properties.DesiredCapacity).toBe(3)
+      })
+
+      it('should include VPC subnets when provided', () => {
+        const { autoScalingGroup } = Compute.createAutoScalingGroup({
+          slug: 'test-app',
+          environment: 'production',
+          launchConfigurationName: { Ref: 'MyLaunchConfig' },
+          minSize: 2,
+          maxSize: 4,
+          vpcZoneIdentifier: ['subnet-123', 'subnet-456'],
+        })
+
+        expect(autoScalingGroup.Properties.VPCZoneIdentifier).toEqual(['subnet-123', 'subnet-456'])
+      })
+
+      it('should include target groups when provided', () => {
+        const { autoScalingGroup } = Compute.createAutoScalingGroup({
+          slug: 'test-app',
+          environment: 'production',
+          launchConfigurationName: { Ref: 'MyLaunchConfig' },
+          minSize: 2,
+          maxSize: 4,
+          targetGroupArns: [{ Ref: 'MyTargetGroup' }],
+        })
+
+        expect(autoScalingGroup.Properties.TargetGroupARNs).toEqual([{ Ref: 'MyTargetGroup' }])
+      })
+
+      it('should include rolling update policy', () => {
+        const { autoScalingGroup } = Compute.createAutoScalingGroup({
+          slug: 'test-app',
+          environment: 'production',
+          launchConfigurationName: { Ref: 'MyLaunchConfig' },
+          minSize: 2,
+          maxSize: 4,
+        })
+
+        expect(autoScalingGroup.UpdatePolicy).toBeDefined()
+        expect(autoScalingGroup.UpdatePolicy?.AutoScalingRollingUpdate).toBeDefined()
+        expect(autoScalingGroup.UpdatePolicy?.AutoScalingRollingUpdate?.MaxBatchSize).toBe(1)
+      })
+    })
+
+    describe('createScalingPolicy', () => {
+      it('should create a CPU-based scaling policy', () => {
+        const { scalingPolicy, logicalId } = Compute.createScalingPolicy({
+          slug: 'test-app',
+          environment: 'production',
+          autoScalingGroupName: { Ref: 'MyASG' },
+        })
+
+        expect(scalingPolicy.Type).toBe('AWS::AutoScaling::ScalingPolicy')
+        expect(scalingPolicy.Properties.PolicyType).toBe('TargetTrackingScaling')
+        expect(scalingPolicy.Properties.AutoScalingGroupName).toEqual({ Ref: 'MyASG' })
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration).toBeDefined()
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(70)
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ASGAverageCPUUtilization')
+        expect(logicalId).toBe('TestAppProductionScalingPolicy')
+      })
+
+      it('should allow custom target value', () => {
+        const { scalingPolicy } = Compute.createScalingPolicy({
+          slug: 'test-app',
+          environment: 'production',
+          autoScalingGroupName: { Ref: 'MyASG' },
+          targetValue: 80,
+        })
+
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(80)
+      })
+
+      it('should allow custom metric type', () => {
+        const { scalingPolicy } = Compute.createScalingPolicy({
+          slug: 'test-app',
+          environment: 'production',
+          autoScalingGroupName: { Ref: 'MyASG' },
+          predefinedMetricType: 'ALBRequestCountPerTarget',
+        })
+
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ALBRequestCountPerTarget')
+      })
+    })
+
+    describe('AutoScaling presets', () => {
+      it('should create small web server auto scaling', () => {
+        const { autoScalingGroup } = Compute.AutoScaling.smallWebServer(
+          'test-app',
+          'production',
+          { Ref: 'MyLaunchConfig' },
+          ['subnet-123', 'subnet-456'],
+        )
+
+        expect(autoScalingGroup.Properties.MinSize).toBe(2)
+        expect(autoScalingGroup.Properties.MaxSize).toBe(4)
+        expect(autoScalingGroup.Properties.DesiredCapacity).toBe(2)
+      })
+
+      it('should create medium web server auto scaling', () => {
+        const { autoScalingGroup } = Compute.AutoScaling.mediumWebServer(
+          'test-app',
+          'production',
+          { Ref: 'MyLaunchConfig' },
+          ['subnet-123', 'subnet-456'],
+        )
+
+        expect(autoScalingGroup.Properties.MinSize).toBe(3)
+        expect(autoScalingGroup.Properties.MaxSize).toBe(10)
+        expect(autoScalingGroup.Properties.DesiredCapacity).toBe(3)
+      })
+
+      it('should create large web server auto scaling', () => {
+        const { autoScalingGroup } = Compute.AutoScaling.largeWebServer(
+          'test-app',
+          'production',
+          { Ref: 'MyLaunchConfig' },
+          ['subnet-123', 'subnet-456'],
+        )
+
+        expect(autoScalingGroup.Properties.MinSize).toBe(5)
+        expect(autoScalingGroup.Properties.MaxSize).toBe(20)
+        expect(autoScalingGroup.Properties.DesiredCapacity).toBe(5)
+      })
+
+      it('should create CPU scaling policy', () => {
+        const { scalingPolicy } = Compute.AutoScaling.cpuScaling(
+          'test-app',
+          'production',
+          { Ref: 'MyASG' },
+          75,
+        )
+
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ASGAverageCPUUtilization')
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(75)
+      })
+
+      it('should create request count scaling policy', () => {
+        const { scalingPolicy } = Compute.AutoScaling.requestCountScaling(
+          'test-app',
+          'production',
+          { Ref: 'MyASG' },
+          500,
+        )
+
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.PredefinedMetricSpecification?.PredefinedMetricType).toBe('ALBRequestCountPerTarget')
+        expect(scalingPolicy.Properties.TargetTrackingConfiguration?.TargetValue).toBe(500)
+      })
+    })
+  })
 })

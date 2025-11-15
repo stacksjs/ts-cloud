@@ -1,5 +1,8 @@
 import type {
   ApplicationLoadBalancer,
+  AutoScalingGroup,
+  AutoScalingLaunchConfiguration,
+  AutoScalingScalingPolicy,
   EC2Instance,
   EC2SecurityGroup,
   ECSCluster,
@@ -114,6 +117,46 @@ export interface LambdaFunctionOptions {
     securityGroupIds: string[]
     subnetIds: string[]
   }
+}
+
+export interface LaunchConfigurationOptions {
+  slug: string
+  environment: EnvironmentType
+  imageId: string
+  instanceType: string
+  keyName?: string
+  securityGroups?: Array<string | { Ref: string }>
+  userData?: string
+  volumeSize?: number
+  volumeType?: 'gp2' | 'gp3' | 'io1' | 'io2'
+  encrypted?: boolean
+  iamInstanceProfile?: string | { Ref: string }
+}
+
+export interface AutoScalingGroupOptions {
+  slug: string
+  environment: EnvironmentType
+  launchConfigurationName: string | { Ref: string }
+  minSize: number
+  maxSize: number
+  desiredCapacity?: number
+  vpcZoneIdentifier?: string[] | { Ref: string }
+  targetGroupArns?: Array<string | { Ref: string }>
+  healthCheckType?: 'EC2' | 'ELB'
+  healthCheckGracePeriod?: number
+  cooldown?: number
+  tags?: Record<string, string>
+}
+
+export interface ScalingPolicyOptions {
+  slug: string
+  environment: EnvironmentType
+  autoScalingGroupName: string | { Ref: string }
+  policyType?: 'TargetTrackingScaling' | 'StepScaling' | 'SimpleScaling'
+  targetValue?: number
+  predefinedMetricType?: 'ASGAverageCPUUtilization' | 'ASGAverageNetworkIn' | 'ASGAverageNetworkOut' | 'ALBRequestCountPerTarget'
+  scaleInCooldown?: number
+  scaleOutCooldown?: number
 }
 
 /**
@@ -875,5 +918,308 @@ systemctl start caddy
 
 echo "Bun server setup complete!"
 `
+  }
+
+  /**
+   * Create a Launch Configuration for Auto Scaling
+   */
+  static createLaunchConfiguration(options: LaunchConfigurationOptions): {
+    launchConfiguration: AutoScalingLaunchConfiguration
+    logicalId: string
+  } {
+    const {
+      slug,
+      environment,
+      imageId,
+      instanceType,
+      keyName,
+      securityGroups,
+      userData,
+      volumeSize = 20,
+      volumeType = 'gp3',
+      encrypted = true,
+      iamInstanceProfile,
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'launch-config',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const launchConfiguration: AutoScalingLaunchConfiguration = {
+      Type: 'AWS::AutoScaling::LaunchConfiguration',
+      Properties: {
+        ImageId: imageId,
+        InstanceType: instanceType,
+        BlockDeviceMappings: [
+          {
+            DeviceName: '/dev/xvda',
+            Ebs: {
+              VolumeSize: volumeSize,
+              VolumeType: volumeType,
+              Encrypted: encrypted,
+              DeleteOnTermination: true,
+            },
+          },
+        ],
+      },
+    }
+
+    if (keyName) {
+      launchConfiguration.Properties.KeyName = keyName
+    }
+
+    if (securityGroups) {
+      launchConfiguration.Properties.SecurityGroups = securityGroups
+    }
+
+    if (userData) {
+      launchConfiguration.Properties.UserData = Fn.Base64(userData)
+    }
+
+    if (iamInstanceProfile) {
+      launchConfiguration.Properties.IamInstanceProfile = iamInstanceProfile
+    }
+
+    return { launchConfiguration, logicalId }
+  }
+
+  /**
+   * Create an Auto Scaling Group
+   */
+  static createAutoScalingGroup(options: AutoScalingGroupOptions): {
+    autoScalingGroup: AutoScalingGroup
+    logicalId: string
+  } {
+    const {
+      slug,
+      environment,
+      launchConfigurationName,
+      minSize,
+      maxSize,
+      desiredCapacity,
+      vpcZoneIdentifier,
+      targetGroupArns,
+      healthCheckType = 'EC2',
+      healthCheckGracePeriod = 300,
+      cooldown = 300,
+      tags = {},
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'asg',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const autoScalingGroup: AutoScalingGroup = {
+      Type: 'AWS::AutoScaling::AutoScalingGroup',
+      Properties: {
+        AutoScalingGroupName: resourceName,
+        LaunchConfigurationName: launchConfigurationName,
+        MinSize: minSize,
+        MaxSize: maxSize,
+        HealthCheckType: healthCheckType,
+        HealthCheckGracePeriod: healthCheckGracePeriod,
+        Cooldown: cooldown,
+        Tags: [
+          { Key: 'Name', Value: resourceName, PropagateAtLaunch: true },
+          { Key: 'Environment', Value: environment, PropagateAtLaunch: true },
+          ...Object.entries(tags).map(([key, value]) => ({
+            Key: key,
+            Value: value,
+            PropagateAtLaunch: true,
+          })),
+        ],
+      },
+    }
+
+    if (desiredCapacity !== undefined) {
+      autoScalingGroup.Properties.DesiredCapacity = desiredCapacity
+    }
+
+    if (vpcZoneIdentifier) {
+      autoScalingGroup.Properties.VPCZoneIdentifier = vpcZoneIdentifier
+    }
+
+    if (targetGroupArns) {
+      autoScalingGroup.Properties.TargetGroupARNs = targetGroupArns
+    }
+
+    // Add rolling update policy for safer deployments
+    autoScalingGroup.UpdatePolicy = {
+      AutoScalingRollingUpdate: {
+        MaxBatchSize: 1,
+        MinInstancesInService: Math.max(0, minSize - 1),
+        PauseTime: 'PT5M',
+        WaitOnResourceSignals: false,
+      },
+    }
+
+    return { autoScalingGroup, logicalId }
+  }
+
+  /**
+   * Create a Target Tracking Scaling Policy (CPU-based by default)
+   */
+  static createScalingPolicy(options: ScalingPolicyOptions): {
+    scalingPolicy: AutoScalingScalingPolicy
+    logicalId: string
+  } {
+    const {
+      slug,
+      environment,
+      autoScalingGroupName,
+      policyType = 'TargetTrackingScaling',
+      targetValue = 70, // 70% CPU by default
+      predefinedMetricType = 'ASGAverageCPUUtilization',
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'scaling-policy',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const scalingPolicy: AutoScalingScalingPolicy = {
+      Type: 'AWS::AutoScaling::ScalingPolicy',
+      Properties: {
+        AutoScalingGroupName: autoScalingGroupName,
+        PolicyType: policyType,
+      },
+    }
+
+    if (policyType === 'TargetTrackingScaling') {
+      scalingPolicy.Properties.TargetTrackingConfiguration = {
+        PredefinedMetricSpecification: {
+          PredefinedMetricType: predefinedMetricType,
+        },
+        TargetValue: targetValue,
+      }
+    }
+
+    return { scalingPolicy, logicalId }
+  }
+
+  /**
+   * Common Auto Scaling configurations
+   */
+  static readonly AutoScaling = {
+    /**
+     * Small web server auto scaling (2-4 instances)
+     */
+    smallWebServer: (
+      slug: string,
+      environment: EnvironmentType,
+      launchConfigRef: string | { Ref: string },
+      subnetIds: string[],
+      targetGroupArns?: Array<string | { Ref: string }>,
+    ) => {
+      return Compute.createAutoScalingGroup({
+        slug,
+        environment,
+        launchConfigurationName: launchConfigRef,
+        minSize: 2,
+        maxSize: 4,
+        desiredCapacity: 2,
+        vpcZoneIdentifier: subnetIds,
+        targetGroupArns,
+        healthCheckType: targetGroupArns ? 'ELB' : 'EC2',
+        healthCheckGracePeriod: 300,
+      })
+    },
+
+    /**
+     * Medium web server auto scaling (3-10 instances)
+     */
+    mediumWebServer: (
+      slug: string,
+      environment: EnvironmentType,
+      launchConfigRef: string | { Ref: string },
+      subnetIds: string[],
+      targetGroupArns?: Array<string | { Ref: string }>,
+    ) => {
+      return Compute.createAutoScalingGroup({
+        slug,
+        environment,
+        launchConfigurationName: launchConfigRef,
+        minSize: 3,
+        maxSize: 10,
+        desiredCapacity: 3,
+        vpcZoneIdentifier: subnetIds,
+        targetGroupArns,
+        healthCheckType: targetGroupArns ? 'ELB' : 'EC2',
+        healthCheckGracePeriod: 300,
+      })
+    },
+
+    /**
+     * Large web server auto scaling (5-20 instances)
+     */
+    largeWebServer: (
+      slug: string,
+      environment: EnvironmentType,
+      launchConfigRef: string | { Ref: string },
+      subnetIds: string[],
+      targetGroupArns?: Array<string | { Ref: string }>,
+    ) => {
+      return Compute.createAutoScalingGroup({
+        slug,
+        environment,
+        launchConfigurationName: launchConfigRef,
+        minSize: 5,
+        maxSize: 20,
+        desiredCapacity: 5,
+        vpcZoneIdentifier: subnetIds,
+        targetGroupArns,
+        healthCheckType: targetGroupArns ? 'ELB' : 'EC2',
+        healthCheckGracePeriod: 300,
+      })
+    },
+
+    /**
+     * CPU-based scaling policy (default 70%)
+     */
+    cpuScaling: (
+      slug: string,
+      environment: EnvironmentType,
+      asgName: string | { Ref: string },
+      targetCpu = 70,
+    ) => {
+      return Compute.createScalingPolicy({
+        slug,
+        environment,
+        autoScalingGroupName: asgName,
+        policyType: 'TargetTrackingScaling',
+        predefinedMetricType: 'ASGAverageCPUUtilization',
+        targetValue: targetCpu,
+      })
+    },
+
+    /**
+     * Request count scaling policy (ALB)
+     */
+    requestCountScaling: (
+      slug: string,
+      environment: EnvironmentType,
+      asgName: string | { Ref: string },
+      targetRequestCount = 1000,
+    ) => {
+      return Compute.createScalingPolicy({
+        slug,
+        environment,
+        autoScalingGroupName: asgName,
+        policyType: 'TargetTrackingScaling',
+        predefinedMetricType: 'ALBRequestCountPerTarget',
+        targetValue: targetRequestCount,
+      })
+    },
   }
 }

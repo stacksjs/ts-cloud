@@ -59,6 +59,7 @@ export interface Stack {
     OutputKey: string
     OutputValue: string
     Description?: string
+    ExportName?: string
   }>
   Tags?: StackTag[]
 }
@@ -388,5 +389,16 @@ export class CloudFormationClient {
     }
 
     return outputs
+  }
+
+  /**
+   * Get stack template
+   */
+  async getTemplate(stackName: string): Promise<{ TemplateBody: string }> {
+    const cmd = [...this.buildBaseCommand(), 'get-template']
+
+    cmd.push('--stack-name', stackName)
+
+    return await this.executeCommand(cmd)
   }
 }

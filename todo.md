@@ -81,7 +81,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] Implement resource naming convention system (slugs, timestamps, environments)
 - [x] Build dependency graph resolver (ensures correct resource ordering)
 - [x] Create intrinsic function helpers (Ref, GetAtt, Sub, Join, etc.)
-- [ ] Implement template validation
+- [x] Implement template validation
 - [x] Add support for CloudFormation parameters
 - [x] Add support for CloudFormation outputs
 - [x] Create template serializer (JSON/YAML)
@@ -178,8 +178,8 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] `createLoadBalancer(servers, alb)` - ALB integration
 - [ ] `installSoftware(server, packages)` - Automated software installation
 - [x] Generate EC2 Instance CloudFormation
-- [ ] Generate Auto Scaling Group CloudFormation
-- [ ] Generate Launch Template CloudFormation
+- [x] Generate Auto Scaling Group CloudFormation
+- [x] Generate Launch Configuration CloudFormation
 - [x] Generate user data scripts for common stacks:
   - [x] Node.js server setup
   - [x] Bun installation
@@ -204,7 +204,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] Generate ECS Service CloudFormation
 - [x] Generate Application Load Balancer CloudFormation
 - [x] Generate Target Group and Listener CloudFormation
-- [ ] Generate Auto Scaling policies CloudFormation
+- [x] Generate Auto Scaling policies CloudFormation
 - [x] Generate Lambda Function CloudFormation
 
 #### Shared Compute Features
@@ -677,11 +677,11 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.15 Stack Management Commands
 
-- [ ] `cloud stack:list` - List all CloudFormation stacks
-- [ ] `cloud stack:events STACK` - Show stack events
-- [ ] `cloud stack:outputs STACK` - Show stack outputs
-- [ ] `cloud stack:delete STACK` - Delete stack
-- [ ] `cloud stack:export STACK` - Export stack template
+- [x] `cloud stack:list` - List all CloudFormation stacks
+- [x] `cloud stack:events STACK` - Show stack events
+- [x] `cloud stack:outputs STACK` - Show stack outputs
+- [x] `cloud stack:delete STACK` - Delete stack
+- [x] `cloud stack:export STACK` - Export stack template
 
 ### 3.16 Team & Collaboration Commands
 

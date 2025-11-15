@@ -3,6 +3,7 @@
  */
 
 export * from './template-builder'
+export * from './template-validator'
 export * from './intrinsic-functions'
 export * from './resource-naming'
 export * from './dependency-graph'
