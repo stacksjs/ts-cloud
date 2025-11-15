@@ -234,16 +234,25 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 2.7 File System Module (EFS)
 
-- [ ] Create `FileSystem` class with clean API
-  - [ ] `createFileSystem(options)` - EFS creation
-  - [ ] `createMountTarget(fs, subnet)` - Multi-AZ mount targets
-  - [ ] `createAccessPoint(fs, path, permissions)` - POSIX permissions
-  - [ ] `setLifecyclePolicy(fs, daysToIA)` - Cost optimization
-  - [ ] `enableBackup(fs)` - Automatic backups
-- [ ] Generate EFS FileSystem CloudFormation
-- [ ] Generate EFS MountTarget CloudFormation
-- [ ] Generate EFS AccessPoint CloudFormation
-- [ ] Generate backup configurations
+- [x] Create `FileSystem` class with clean API
+  - [x] `createFileSystem(options)` - EFS creation
+  - [x] `createMountTarget(fs, subnet)` - Multi-AZ mount targets
+  - [x] `createAccessPoint(fs, path, permissions)` - POSIX permissions
+  - [x] `setLifecyclePolicy(fs, daysToIA)` - Cost optimization
+  - [x] `enableBackup(fs)` - Automatic backups
+  - [x] `disableBackup(fs)` - Disable backups
+  - [x] `setProvisionedThroughput(fs, mibps)` - Provisioned throughput
+  - [x] `setElasticThroughput(fs)` - Elastic throughput
+  - [x] `enableMaxIO(fs)` - Max I/O performance mode
+- [x] Generate EFS FileSystem CloudFormation
+- [x] Generate EFS MountTarget CloudFormation
+- [x] Generate EFS AccessPoint CloudFormation
+- [x] Generate backup configurations
+- [x] Support encryption with KMS
+- [x] Support lifecycle policies (IA transitions)
+- [x] Support performance modes (generalPurpose, maxIO)
+- [x] Support throughput modes (bursting, provisioned, elastic)
+- [x] **24 tests passing** ✅
 
 ### 2.8 Email Module (SES)
 
