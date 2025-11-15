@@ -103,7 +103,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [x] Generate CloudFormation for S3 bucket configurations
 - [x] Generate bucket policies (public/private access)
 - [x] Generate CORS configurations
-- [ ] Generate S3 notifications (Lambda triggers)
+- [x] Generate S3 notifications (Lambda triggers)
 
 ### 2.2 CDN Module (CloudFront)
 
@@ -210,7 +210,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 #### Shared Compute Features
 
 - [x] Health check configuration
-- [ ] Container registry integration (ECR)
+- [x] Container registry integration (ECR)
 - [x] Log aggregation (CloudWatch Logs)
 - [ ] Metrics and monitoring
 - [ ] Deployment strategies (rolling, blue/green)
@@ -632,17 +632,17 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 3.10 Cache Commands
 
-- [ ] `cloud cache:create NAME` - Create cache cluster
-- [ ] `cloud cache:flush NAME` - Flush cache
-- [ ] `cloud cache:stats NAME` - View cache statistics
+- [x] `cloud cache:create NAME` - Create cache cluster
+- [x] `cloud cache:flush NAME` - Flush cache
+- [x] `cloud cache:stats NAME` - View cache statistics
 
 ### 3.11 Queue & Job Commands
 
-- [ ] `cloud queue:create NAME` - Create SQS queue
-- [ ] `cloud queue:list` - List all queues
-- [ ] `cloud schedule:add NAME CRON TASK` - Add scheduled job
-- [ ] `cloud schedule:list` - List all schedules
-- [ ] `cloud schedule:remove NAME` - Remove schedule
+- [x] `cloud queue:create NAME` - Create SQS queue
+- [x] `cloud queue:list` - List all queues
+- [x] `cloud schedule:add NAME CRON TASK` - Add scheduled job
+- [x] `cloud schedule:list` - List all schedules
+- [x] `cloud schedule:remove NAME` - Remove schedule
 
 ### 3.12 Monitoring & Logs Commands
 

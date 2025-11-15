@@ -10,6 +10,9 @@ import { InfrastructureGenerator } from '../src/generators/infrastructure'
 import { CloudFormationClient } from '../src/aws/cloudformation'
 import { S3Client } from '../src/aws/s3'
 import { CloudFrontClient } from '../src/aws/cloudfront'
+import { ElastiCacheClient } from '../src/aws/elasticache'
+import { SQSClient } from '../src/aws/sqs'
+import { SchedulerClient } from '../src/aws/scheduler'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
 
@@ -1443,6 +1446,813 @@ app
     }
     catch (error: any) {
       cli.error(`Failed to list distributions: ${error.message}`)
+    }
+  })
+
+// ============================================
+// Cache Commands
+// ============================================
+
+app
+  .command('cache:create <name>', 'Create a cache cluster')
+  .option('--engine <engine>', 'Cache engine (redis or memcached)', 'redis')
+  .option('--node-type <type>', 'Node type', 'cache.t3.micro')
+  .option('--nodes <count>', 'Number of nodes', '1')
+  .action(async (name: string, options?: { engine?: string, nodeType?: string, nodes?: string }) => {
+    cli.header('🗄️  Creating Cache Cluster')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+
+      const engine = (options?.engine || 'redis') as 'redis' | 'memcached'
+      const nodeType = options?.nodeType || 'cache.t3.micro'
+      const numNodes = Number.parseInt(options?.nodes || '1')
+
+      cli.info(`Name: ${name}`)
+      cli.info(`Engine: ${engine}`)
+      cli.info(`Node Type: ${nodeType}`)
+      cli.info(`Nodes: ${numNodes}`)
+
+      const confirmed = await cli.confirm('\nCreate cache cluster?', true)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Creating cache cluster...')
+      spinner.start()
+
+      const result = await elasticache.createCacheCluster({
+        cacheClusterId: name,
+        engine,
+        cacheNodeType: nodeType,
+        numCacheNodes: numNodes,
+      })
+
+      spinner.succeed('Cache cluster created successfully!')
+
+      cli.success(`\n✓ Cache cluster "${name}" is being created`)
+      cli.info(`  Status: ${result.CacheCluster.CacheClusterStatus}`)
+      cli.info(`  Engine: ${result.CacheCluster.Engine} ${result.CacheCluster.EngineVersion}`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to create cache cluster: ${error.message}`)
+    }
+  })
+
+app
+  .command('cache:list', 'List all cache clusters')
+  .action(async () => {
+    cli.header('🗄️  Cache Clusters')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Loading cache clusters...')
+      spinner.start()
+
+      const result = await elasticache.describeCacheClusters()
+
+      spinner.succeed(`Found ${result.CacheClusters.length} cache clusters`)
+
+      if (result.CacheClusters.length === 0) {
+        cli.info('No cache clusters found')
+        return
+      }
+
+      // Display clusters in a table
+      const headers = ['ID', 'Engine', 'Type', 'Nodes', 'Status']
+      const rows = result.CacheClusters.map(cluster => [
+        cluster.CacheClusterId,
+        `${cluster.Engine} ${cluster.EngineVersion}`,
+        cluster.CacheNodeType,
+        cluster.NumCacheNodes.toString(),
+        cluster.CacheClusterStatus,
+      ])
+
+      cli.table(headers, rows)
+
+      // Show endpoints
+      cli.info('\nEndpoints:')
+      for (const cluster of result.CacheClusters) {
+        if (cluster.CacheNodes && cluster.CacheNodes.length > 0) {
+          const endpoint = cluster.CacheNodes[0].Endpoint
+          if (endpoint) {
+            cli.info(`  ${cluster.CacheClusterId}: ${endpoint.Address}:${endpoint.Port}`)
+          }
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to list cache clusters: ${error.message}`)
+    }
+  })
+
+app
+  .command('cache:flush <name>', 'Flush cache cluster (reboot nodes)')
+  .action(async (name: string) => {
+    cli.header('🔄 Flushing Cache Cluster')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+
+      cli.info(`Cache Cluster: ${name}`)
+
+      const confirmed = await cli.confirm('\nThis will reboot all cache nodes. Continue?', false)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Getting cache cluster info...')
+      spinner.start()
+
+      const result = await elasticache.describeCacheClusters(name)
+
+      if (!result.CacheClusters || result.CacheClusters.length === 0) {
+        spinner.fail('Cache cluster not found')
+        return
+      }
+
+      const cluster = result.CacheClusters[0]
+      const nodeIds = cluster.CacheNodes?.map(node => node.CacheNodeId) || []
+
+      spinner.text = 'Rebooting cache nodes...'
+
+      await elasticache.rebootCacheCluster(name, nodeIds)
+
+      spinner.succeed('Cache cluster flushed successfully!')
+
+      cli.success(`\n✓ Cache cluster "${name}" is being rebooted`)
+      cli.info(`  ${nodeIds.length} nodes will be restarted`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to flush cache: ${error.message}`)
+    }
+  })
+
+app
+  .command('cache:stats <name>', 'View cache cluster statistics')
+  .action(async (name: string) => {
+    cli.header('📊 Cache Cluster Statistics')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Loading statistics...')
+      spinner.start()
+
+      const cluster = await elasticache.describeCacheClusters(name)
+
+      if (!cluster.CacheClusters || cluster.CacheClusters.length === 0) {
+        spinner.fail('Cache cluster not found')
+        return
+      }
+
+      const stats = await elasticache.getCacheStatistics(name)
+
+      spinner.succeed('Statistics loaded')
+
+      const info = cluster.CacheClusters[0]
+
+      cli.info('\nCluster Information:')
+      cli.info(`  ID: ${info.CacheClusterId}`)
+      cli.info(`  Engine: ${info.Engine} ${info.EngineVersion}`)
+      cli.info(`  Node Type: ${info.CacheNodeType}`)
+      cli.info(`  Nodes: ${info.NumCacheNodes}`)
+      cli.info(`  Status: ${info.CacheClusterStatus}`)
+
+      if (info.CacheNodes && info.CacheNodes.length > 0) {
+        cli.info('\nEndpoints:')
+        for (const node of info.CacheNodes) {
+          if (node.Endpoint) {
+            cli.info(`  ${node.CacheNodeId}: ${node.Endpoint.Address}:${node.Endpoint.Port}`)
+          }
+        }
+      }
+
+      cli.info('\nMetrics:')
+      cli.info(`  CPU Utilization: ${stats.cpuUtilization}%`)
+      cli.info(`  Evictions: ${stats.evictions}`)
+      cli.info(`  Cache Hits: ${stats.hits}`)
+      cli.info(`  Cache Misses: ${stats.misses}`)
+      cli.info(`  Connections: ${stats.connections}`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to get statistics: ${error.message}`)
+    }
+  })
+
+app
+  .command('cache:delete <name>', 'Delete a cache cluster')
+  .option('--snapshot <id>', 'Create final snapshot with this ID')
+  .action(async (name: string, options?: { snapshot?: string }) => {
+    cli.header('🗑️  Deleting Cache Cluster')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+
+      cli.info(`Cache Cluster: ${name}`)
+
+      if (options?.snapshot) {
+        cli.info(`Final Snapshot: ${options.snapshot}`)
+      }
+
+      const confirmed = await cli.confirm('\nDelete cache cluster?', false)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Deleting cache cluster...')
+      spinner.start()
+
+      await elasticache.deleteCacheCluster(name, options?.snapshot)
+
+      spinner.succeed('Cache cluster deleted successfully!')
+
+      cli.success(`\n✓ Cache cluster "${name}" is being deleted`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to delete cache cluster: ${error.message}`)
+    }
+  })
+
+// ============================================
+// Queue Commands
+// ============================================
+
+app
+  .command('queue:create <name>', 'Create an SQS queue')
+  .option('--fifo', 'Create FIFO queue')
+  .option('--visibility-timeout <seconds>', 'Visibility timeout in seconds', '30')
+  .option('--retention <seconds>', 'Message retention period in seconds', '345600')
+  .option('--delay <seconds>', 'Delay seconds', '0')
+  .action(async (name: string, options?: { fifo?: boolean, visibilityTimeout?: string, retention?: string, delay?: string }) => {
+    cli.header('📬 Creating SQS Queue')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      const isFifo = options?.fifo || false
+      const queueName = isFifo && !name.endsWith('.fifo') ? `${name}.fifo` : name
+
+      cli.info(`Queue Name: ${queueName}`)
+      cli.info(`Type: ${isFifo ? 'FIFO' : 'Standard'}`)
+      cli.info(`Visibility Timeout: ${options?.visibilityTimeout || '30'}s`)
+      cli.info(`Message Retention: ${options?.retention || '345600'}s (4 days)`)
+
+      const confirmed = await cli.confirm('\nCreate queue?', true)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Creating queue...')
+      spinner.start()
+
+      const result = await sqs.createQueue({
+        queueName: name,
+        fifo: isFifo,
+        visibilityTimeout: Number.parseInt(options?.visibilityTimeout || '30'),
+        messageRetentionPeriod: Number.parseInt(options?.retention || '345600'),
+        delaySeconds: Number.parseInt(options?.delay || '0'),
+      })
+
+      spinner.succeed('Queue created successfully!')
+
+      cli.success(`\n✓ Queue "${queueName}" created`)
+      cli.info(`  URL: ${result.QueueUrl}`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to create queue: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:list', 'List all SQS queues')
+  .option('--prefix <prefix>', 'Filter by queue name prefix')
+  .action(async (options?: { prefix?: string }) => {
+    cli.header('📬 SQS Queues')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Loading queues...')
+      spinner.start()
+
+      const result = await sqs.listQueues(options?.prefix)
+      const queueUrls = result.QueueUrls || []
+
+      spinner.succeed(`Found ${queueUrls.length} queues`)
+
+      if (queueUrls.length === 0) {
+        cli.info('No queues found')
+        return
+      }
+
+      // Get attributes for each queue
+      const queues = await Promise.all(
+        queueUrls.map(async (url) => {
+          try {
+            const attrs = await sqs.getQueueAttributes(url)
+            const name = url.split('/').pop() || url
+            return {
+              name,
+              url,
+              messages: attrs.Attributes.ApproximateNumberOfMessages || '0',
+              type: attrs.Attributes.FifoQueue === 'true' ? 'FIFO' : 'Standard',
+            }
+          }
+          catch {
+            const name = url.split('/').pop() || url
+            return {
+              name,
+              url,
+              messages: 'N/A',
+              type: 'Unknown',
+            }
+          }
+        }),
+      )
+
+      // Display queues in a table
+      const headers = ['Name', 'Type', 'Messages']
+      const rows = queues.map(q => [q.name, q.type, q.messages])
+
+      cli.table(headers, rows)
+
+      // Show URLs
+      cli.info('\nQueue URLs:')
+      for (const queue of queues) {
+        cli.info(`  ${queue.name}: ${queue.url}`)
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to list queues: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:stats <name>', 'View queue statistics')
+  .action(async (name: string) => {
+    cli.header('📊 Queue Statistics')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Loading queue statistics...')
+      spinner.start()
+
+      const urlResult = await sqs.getQueueUrl(name)
+      const attrs = await sqs.getQueueAttributes(urlResult.QueueUrl)
+
+      spinner.succeed('Statistics loaded')
+
+      cli.info(`\nQueue: ${name}`)
+      cli.info(`URL: ${urlResult.QueueUrl}`)
+      cli.info(`\nQueue Configuration:`)
+      cli.info(`  Type: ${attrs.Attributes.FifoQueue === 'true' ? 'FIFO' : 'Standard'}`)
+      cli.info(`  Visibility Timeout: ${attrs.Attributes.VisibilityTimeout}s`)
+      cli.info(`  Message Retention: ${attrs.Attributes.MessageRetentionPeriod}s`)
+      cli.info(`  Max Message Size: ${attrs.Attributes.MaximumMessageSize} bytes`)
+      cli.info(`  Delay: ${attrs.Attributes.DelaySeconds}s`)
+
+      cli.info(`\nMessages:`)
+      cli.info(`  Available: ${attrs.Attributes.ApproximateNumberOfMessages || '0'}`)
+      cli.info(`  In Flight: ${attrs.Attributes.ApproximateNumberOfMessagesNotVisible || '0'}`)
+      cli.info(`  Delayed: ${attrs.Attributes.ApproximateNumberOfMessagesDelayed || '0'}`)
+
+      if (attrs.Attributes.CreatedTimestamp) {
+        const created = new Date(Number.parseInt(attrs.Attributes.CreatedTimestamp) * 1000)
+        cli.info(`\nCreated: ${created.toLocaleString()}`)
+      }
+
+      if (attrs.Attributes.LastModifiedTimestamp) {
+        const modified = new Date(Number.parseInt(attrs.Attributes.LastModifiedTimestamp) * 1000)
+        cli.info(`Last Modified: ${modified.toLocaleString()}`)
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to get queue statistics: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:purge <name>', 'Purge all messages from a queue')
+  .action(async (name: string) => {
+    cli.header('🗑️  Purging Queue')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      cli.info(`Queue: ${name}`)
+
+      const confirmed = await cli.confirm('\nThis will delete all messages. Continue?', false)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Purging queue...')
+      spinner.start()
+
+      const urlResult = await sqs.getQueueUrl(name)
+      await sqs.purgeQueue(urlResult.QueueUrl)
+
+      spinner.succeed('Queue purged successfully!')
+
+      cli.success(`\n✓ All messages deleted from "${name}"`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to purge queue: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:delete <name>', 'Delete a queue')
+  .action(async (name: string) => {
+    cli.header('🗑️  Deleting Queue')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      cli.info(`Queue: ${name}`)
+
+      const confirmed = await cli.confirm('\nDelete queue?', false)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Deleting queue...')
+      spinner.start()
+
+      const urlResult = await sqs.getQueueUrl(name)
+      await sqs.deleteQueue(urlResult.QueueUrl)
+
+      spinner.succeed('Queue deleted successfully!')
+
+      cli.success(`\n✓ Queue "${name}" deleted`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to delete queue: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:send <name> <message>', 'Send a message to a queue')
+  .option('--delay <seconds>', 'Delay seconds', '0')
+  .option('--group-id <id>', 'Message group ID (for FIFO queues)')
+  .action(async (name: string, message: string, options?: { delay?: string, groupId?: string }) => {
+    cli.header('📤 Sending Message')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Sending message...')
+      spinner.start()
+
+      const urlResult = await sqs.getQueueUrl(name)
+
+      const result = await sqs.sendMessage({
+        queueUrl: urlResult.QueueUrl,
+        messageBody: message,
+        delaySeconds: options?.delay ? Number.parseInt(options.delay) : undefined,
+        messageGroupId: options?.groupId,
+      })
+
+      spinner.succeed('Message sent successfully!')
+
+      cli.success(`\n✓ Message sent to "${name}"`)
+      cli.info(`  Message ID: ${result.MessageId}`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to send message: ${error.message}`)
+    }
+  })
+
+app
+  .command('queue:receive <name>', 'Receive messages from a queue')
+  .option('--max <count>', 'Maximum number of messages', '1')
+  .option('--wait <seconds>', 'Wait time for long polling', '0')
+  .action(async (name: string, options?: { max?: string, wait?: string }) => {
+    cli.header('📥 Receiving Messages')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Receiving messages...')
+      spinner.start()
+
+      const urlResult = await sqs.getQueueUrl(name)
+
+      const result = await sqs.receiveMessages({
+        queueUrl: urlResult.QueueUrl,
+        maxMessages: options?.max ? Number.parseInt(options.max) : 1,
+        waitTimeSeconds: options?.wait ? Number.parseInt(options.wait) : 0,
+      })
+
+      const messages = result.Messages || []
+
+      spinner.succeed(`Received ${messages.length} messages`)
+
+      if (messages.length === 0) {
+        cli.info('No messages available')
+        return
+      }
+
+      cli.info('\nMessages:')
+      for (const msg of messages) {
+        cli.info(`\n  Message ID: ${msg.MessageId}`)
+        cli.info(`  Body: ${msg.Body}`)
+        cli.info(`  Receipt Handle: ${msg.ReceiptHandle.substring(0, 50)}...`)
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to receive messages: ${error.message}`)
+    }
+  })
+
+// ============================================
+// Schedule Commands
+// ============================================
+
+app
+  .command('schedule:add <name> <cron> <target>', 'Add a scheduled job')
+  .option('--description <desc>', 'Schedule description')
+  .option('--input <json>', 'Input data (JSON string)')
+  .action(async (name: string, cron: string, target: string, options?: { description?: string, input?: string }) => {
+    cli.header('⏰ Creating Schedule')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      cli.info(`Name: ${name}`)
+      cli.info(`Schedule: ${cron}`)
+      cli.info(`Target: ${target}`)
+
+      if (options?.description) {
+        cli.info(`Description: ${options.description}`)
+      }
+
+      const confirmed = await cli.confirm('\nCreate schedule?', true)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Creating schedule...')
+      spinner.start()
+
+      // Create the EventBridge rule
+      const result = await scheduler.createRule({
+        name,
+        scheduleExpression: cron,
+        description: options?.description,
+        state: 'ENABLED',
+      })
+
+      // Add the target
+      await scheduler.putTargets(name, [
+        {
+          Id: '1',
+          Arn: target,
+          Input: options?.input,
+        },
+      ])
+
+      spinner.succeed('Schedule created successfully!')
+
+      cli.success(`\n✓ Schedule "${name}" created`)
+      cli.info(`  ARN: ${result.RuleArn}`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to create schedule: ${error.message}`)
+    }
+  })
+
+app
+  .command('schedule:list', 'List all scheduled jobs')
+  .option('--prefix <prefix>', 'Filter by name prefix')
+  .action(async (options?: { prefix?: string }) => {
+    cli.header('⏰ Scheduled Jobs')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Loading schedules...')
+      spinner.start()
+
+      const result = await scheduler.listRules(options?.prefix)
+      const rules = result.Rules || []
+
+      spinner.succeed(`Found ${rules.length} schedules`)
+
+      if (rules.length === 0) {
+        cli.info('No schedules found')
+        return
+      }
+
+      // Display rules in a table
+      const headers = ['Name', 'Schedule', 'State']
+      const rows = rules.map(rule => [
+        rule.Name,
+        rule.ScheduleExpression || 'N/A',
+        rule.State,
+      ])
+
+      cli.table(headers, rows)
+
+      // Show details
+      cli.info('\nSchedule Details:')
+      for (const rule of rules) {
+        cli.info(`\n  ${rule.Name}:`)
+        if (rule.Description) {
+          cli.info(`    Description: ${rule.Description}`)
+        }
+        cli.info(`    ARN: ${rule.Arn}`)
+        cli.info(`    State: ${rule.State}`)
+
+        // Get targets
+        try {
+          const targets = await scheduler.listTargetsByRule(rule.Name)
+          if (targets.Targets && targets.Targets.length > 0) {
+            cli.info(`    Targets: ${targets.Targets.length}`)
+            for (const target of targets.Targets) {
+              cli.info(`      - ${target.Arn}`)
+            }
+          }
+        }
+        catch {
+          // Ignore errors getting targets
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to list schedules: ${error.message}`)
+    }
+  })
+
+app
+  .command('schedule:remove <name>', 'Remove a scheduled job')
+  .option('--force', 'Force deletion (remove targets first)')
+  .action(async (name: string, options?: { force?: boolean }) => {
+    cli.header('🗑️  Removing Schedule')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      cli.info(`Schedule: ${name}`)
+
+      const confirmed = await cli.confirm('\nRemove schedule?', false)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Removing schedule...')
+      spinner.start()
+
+      await scheduler.deleteRule(name, options?.force || true)
+
+      spinner.succeed('Schedule removed successfully!')
+
+      cli.success(`\n✓ Schedule "${name}" removed`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to remove schedule: ${error.message}`)
+    }
+  })
+
+app
+  .command('schedule:enable <name>', 'Enable a scheduled job')
+  .action(async (name: string) => {
+    cli.header('✅ Enabling Schedule')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Enabling schedule...')
+      spinner.start()
+
+      await scheduler.enableRule(name)
+
+      spinner.succeed('Schedule enabled successfully!')
+
+      cli.success(`\n✓ Schedule "${name}" enabled`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to enable schedule: ${error.message}`)
+    }
+  })
+
+app
+  .command('schedule:disable <name>', 'Disable a scheduled job')
+  .action(async (name: string) => {
+    cli.header('⏸️  Disabling Schedule')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      const spinner = new cli.Spinner('Disabling schedule...')
+      spinner.start()
+
+      await scheduler.disableRule(name)
+
+      spinner.succeed('Schedule disabled successfully!')
+
+      cli.success(`\n✓ Schedule "${name}" disabled`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to disable schedule: ${error.message}`)
+    }
+  })
+
+app
+  .command('schedule:lambda <name> <cron> <function-arn>', 'Schedule Lambda function execution')
+  .option('--description <desc>', 'Schedule description')
+  .option('--input <json>', 'Input data for Lambda (JSON string)')
+  .action(async (name: string, cron: string, functionArn: string, options?: { description?: string, input?: string }) => {
+    cli.header('⏰ Creating Lambda Schedule')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.aws.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws.profile)
+
+      cli.info(`Name: ${name}`)
+      cli.info(`Schedule: ${cron}`)
+      cli.info(`Function: ${functionArn}`)
+
+      const confirmed = await cli.confirm('\nCreate Lambda schedule?', true)
+
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Creating Lambda schedule...')
+      spinner.start()
+
+      const result = await scheduler.createLambdaSchedule({
+        name,
+        scheduleExpression: cron,
+        functionArn,
+        description: options?.description,
+        input: options?.input,
+      })
+
+      spinner.succeed('Lambda schedule created successfully!')
+
+      cli.success(`\n✓ Lambda schedule "${name}" created`)
+      cli.info(`  ARN: ${result.RuleArn}`)
+      cli.info(`\nNote: Make sure Lambda has permission to be invoked by EventBridge`)
+    }
+    catch (error: any) {
+      cli.error(`Failed to create Lambda schedule: ${error.message}`)
     }
   })
 

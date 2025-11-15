@@ -138,6 +138,180 @@ describe('Storage Module', () => {
     })
   })
 
+  describe('addLambdaNotification', () => {
+    it('should add Lambda notification for object creation', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'uploads',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: 'arn:aws:lambda:us-east-1:123456789:function:ProcessUpload',
+        events: ['s3:ObjectCreated:*'],
+      })
+
+      expect(updated.Properties?.NotificationConfiguration).toBeDefined()
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations).toHaveLength(1)
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Event).toBe('s3:ObjectCreated:*')
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Function).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessUpload')
+    })
+
+    it('should add Lambda notification with prefix filter', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'uploads',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: 'arn:aws:lambda:us-east-1:123456789:function:ProcessImage',
+        events: ['s3:ObjectCreated:Put'],
+        filter: {
+          prefix: 'images/',
+        },
+      })
+
+      const config = updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0]
+      expect(config?.Filter).toBeDefined()
+      expect(config?.Filter?.S3Key?.Rules).toContainEqual({ Name: 'prefix', Value: 'images/' })
+    })
+
+    it('should add Lambda notification with suffix filter', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'uploads',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: 'arn:aws:lambda:us-east-1:123456789:function:ProcessPDF',
+        events: ['s3:ObjectCreated:*'],
+        filter: {
+          suffix: '.pdf',
+        },
+      })
+
+      const config = updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0]
+      expect(config?.Filter).toBeDefined()
+      expect(config?.Filter?.S3Key?.Rules).toContainEqual({ Name: 'suffix', Value: '.pdf' })
+    })
+
+    it('should add Lambda notification with both prefix and suffix filters', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'uploads',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: 'arn:aws:lambda:us-east-1:123456789:function:ProcessDoc',
+        events: ['s3:ObjectCreated:*'],
+        filter: {
+          prefix: 'documents/',
+          suffix: '.docx',
+        },
+      })
+
+      const config = updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0]
+      expect(config?.Filter?.S3Key?.Rules).toHaveLength(2)
+      expect(config?.Filter?.S3Key?.Rules).toContainEqual({ Name: 'prefix', Value: 'documents/' })
+      expect(config?.Filter?.S3Key?.Rules).toContainEqual({ Name: 'suffix', Value: '.docx' })
+    })
+
+    it('should add multiple Lambda notifications for multiple events', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'monitored',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: 'arn:aws:lambda:us-east-1:123456789:function:Monitor',
+        events: ['s3:ObjectCreated:*', 's3:ObjectRemoved:*'],
+      })
+
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations).toHaveLength(2)
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Event).toBe('s3:ObjectCreated:*')
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[1].Event).toBe('s3:ObjectRemoved:*')
+    })
+
+    it('should support Fn::GetAtt for Lambda ARN', () => {
+      const { bucket } = Storage.createBucket({
+        name: 'uploads',
+        slug: 'my-app',
+        environment: 'production',
+      })
+
+      const updated = Storage.addLambdaNotification(bucket, {
+        functionArn: { 'Fn::GetAtt': ['ProcessorFunction', 'Arn'] },
+        events: ['s3:ObjectCreated:*'],
+      })
+
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Function).toEqual({
+        'Fn::GetAtt': ['ProcessorFunction', 'Arn'],
+      })
+    })
+  })
+
+  describe('Storage.Notifications helpers', () => {
+    it('should create onObjectCreated notification config', () => {
+      const config = Storage.Notifications.onObjectCreated('arn:aws:lambda:us-east-1:123456789:function:OnCreate')
+
+      expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:OnCreate')
+      expect(config.events).toContain('s3:ObjectCreated:*')
+    })
+
+    it('should create onObjectRemoved notification config', () => {
+      const config = Storage.Notifications.onObjectRemoved('arn:aws:lambda:us-east-1:123456789:function:OnDelete')
+
+      expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:OnDelete')
+      expect(config.events).toContain('s3:ObjectRemoved:*')
+    })
+
+    it('should create onImageUpload notification config', () => {
+      const config = Storage.Notifications.onImageUpload('arn:aws:lambda:us-east-1:123456789:function:ProcessImage', 'uploads/')
+
+      expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessImage')
+      expect(config.events).toContain('s3:ObjectCreated:*')
+      expect(config.filter?.prefix).toBe('uploads/')
+      expect(config.filter?.suffix).toBe('.jpg')
+    })
+
+    it('should create onFileType notification config', () => {
+      const config = Storage.Notifications.onFileType(
+        'arn:aws:lambda:us-east-1:123456789:function:ProcessPDF',
+        '.pdf',
+        'documents/',
+      )
+
+      expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessPDF')
+      expect(config.events).toContain('s3:ObjectCreated:*')
+      expect(config.filter?.prefix).toBe('documents/')
+      expect(config.filter?.suffix).toBe('.pdf')
+    })
+
+    it('should create onFolderUpload notification config', () => {
+      const config = Storage.Notifications.onFolderUpload('arn:aws:lambda:us-east-1:123456789:function:ProcessFolder', 'uploads')
+
+      expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessFolder')
+      expect(config.events).toContain('s3:ObjectCreated:*')
+      expect(config.filter?.prefix).toBe('uploads/')
+    })
+
+    it('should handle folder paths with trailing slash', () => {
+      const config = Storage.Notifications.onFolderUpload('arn:aws:lambda:us-east-1:123456789:function:Process', 'uploads/')
+
+      expect(config.filter?.prefix).toBe('uploads/')
+    })
+
+    it('should work with Fn::GetAtt in helper methods', () => {
+      const config = Storage.Notifications.onObjectCreated({ 'Fn::GetAtt': ['MyFunction', 'Arn'] })
+
+      expect(config.functionArn).toEqual({ 'Fn::GetAtt': ['MyFunction', 'Arn'] })
+    })
+  })
+
   describe('Integration with TemplateBuilder', () => {
     it('should integrate with CloudFormation template', () => {
       const template = new TemplateBuilder('Test Infrastructure')

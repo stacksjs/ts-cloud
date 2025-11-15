@@ -4,6 +4,7 @@
  */
 
 export * from './storage'
+export * from './registry'
 export * from './cdn'
 export * from './dns'
 export * from './security'

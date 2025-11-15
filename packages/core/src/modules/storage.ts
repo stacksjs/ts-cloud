@@ -33,6 +33,15 @@ export interface LifecycleRule {
   }>
 }
 
+export interface S3NotificationConfig {
+  functionArn: string | { 'Fn::GetAtt': [string, string] }
+  events: Array<'s3:ObjectCreated:*' | 's3:ObjectCreated:Put' | 's3:ObjectCreated:Post' | 's3:ObjectCreated:Copy' | 's3:ObjectCreated:CompleteMultipartUpload' | 's3:ObjectRemoved:*' | 's3:ObjectRemoved:Delete' | 's3:ObjectRemoved:DeleteMarkerCreated'>
+  filter?: {
+    prefix?: string
+    suffix?: string
+  }
+}
+
 /**
  * Storage Module - S3 Bucket Management
  * Provides clean API for creating and configuring S3 buckets
@@ -268,5 +277,109 @@ export class Storage {
     })
 
     return bucket
+  }
+
+  /**
+   * Add Lambda notification to bucket
+   */
+  static addLambdaNotification(bucket: S3Bucket, config: S3NotificationConfig): S3Bucket {
+    if (!bucket.Properties) {
+      bucket.Properties = {}
+    }
+
+    if (!bucket.Properties.NotificationConfiguration) {
+      bucket.Properties.NotificationConfiguration = {}
+    }
+
+    if (!bucket.Properties.NotificationConfiguration.LambdaConfigurations) {
+      bucket.Properties.NotificationConfiguration.LambdaConfigurations = []
+    }
+
+    const lambdaConfig: any = {
+      Event: config.events[0], // S3 requires single event per config
+      Function: config.functionArn,
+    }
+
+    if (config.filter) {
+      lambdaConfig.Filter = {
+        S3Key: {
+          Rules: [
+            ...(config.filter.prefix ? [{ Name: 'prefix', Value: config.filter.prefix }] : []),
+            ...(config.filter.suffix ? [{ Name: 'suffix', Value: config.filter.suffix }] : []),
+          ],
+        },
+      }
+    }
+
+    // Add a configuration for each event type
+    for (const event of config.events) {
+      const eventConfig = { ...lambdaConfig, Event: event }
+      bucket.Properties.NotificationConfiguration.LambdaConfigurations.push(eventConfig)
+    }
+
+    return bucket
+  }
+
+  /**
+   * Common notification configurations
+   */
+  static readonly Notifications = {
+    /**
+     * Trigger Lambda on any object creation
+     */
+    onObjectCreated: (functionArn: string | { 'Fn::GetAtt': [string, string] }) => ({
+      functionArn,
+      events: ['s3:ObjectCreated:*' as const],
+    }),
+
+    /**
+     * Trigger Lambda on object deletion
+     */
+    onObjectRemoved: (functionArn: string | { 'Fn::GetAtt': [string, string] }) => ({
+      functionArn,
+      events: ['s3:ObjectRemoved:*' as const],
+    }),
+
+    /**
+     * Trigger Lambda on image uploads (jpg, png, gif)
+     */
+    onImageUpload: (functionArn: string | { 'Fn::GetAtt': [string, string] }, prefix?: string) => ({
+      functionArn,
+      events: ['s3:ObjectCreated:*' as const],
+      filter: {
+        prefix,
+        suffix: '.jpg',
+      },
+    }),
+
+    /**
+     * Trigger Lambda on specific file type
+     */
+    onFileType: (
+      functionArn: string | { 'Fn::GetAtt': [string, string] },
+      suffix: string,
+      prefix?: string,
+    ) => ({
+      functionArn,
+      events: ['s3:ObjectCreated:*' as const],
+      filter: {
+        prefix,
+        suffix,
+      },
+    }),
+
+    /**
+     * Trigger Lambda on uploads to specific folder
+     */
+    onFolderUpload: (
+      functionArn: string | { 'Fn::GetAtt': [string, string] },
+      folder: string,
+    ) => ({
+      functionArn,
+      events: ['s3:ObjectCreated:*' as const],
+      filter: {
+        prefix: folder.endsWith('/') ? folder : `${folder}/`,
+      },
+    }),
   }
 }
