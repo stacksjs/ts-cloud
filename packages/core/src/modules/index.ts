@@ -4,3 +4,6 @@
  */
 
 export * from './storage'
+export * from './cdn'
+export * from './dns'
+export * from './security'

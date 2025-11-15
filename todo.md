@@ -93,48 +93,58 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 
 ### 2.2 CDN Module (CloudFront)
 
-- [ ] Create `CDN` class with clean API
-  - [ ] `createDistribution(origin, options)` - CloudFront setup
-  - [ ] `setCachePolicy(distribution, ttl)` - Custom cache behavior
-  - [ ] `setCustomDomain(distribution, domain, certificate)` - Custom domains
-  - [ ] `setErrorPages(distribution, mappings)` - SPA routing (404 → index.html)
-  - [ ] `enableHttp3(distribution)` - Modern protocols
-  - [ ] `addEdgeFunction(distribution, event, functionArn)` - Lambda@Edge
-- [ ] Generate CloudFront distribution CloudFormation
-- [ ] Generate Origin Access Control for S3
-- [ ] Generate cache policies and behaviors
-- [ ] Generate Lambda@Edge associations
-- [ ] Support multiple origins (S3, ALB, custom)
+- [x] Create `CDN` class with clean API
+  - [x] `createDistribution(origin, options)` - CloudFront setup
+  - [x] `setCachePolicy(distribution, ttl)` - Custom cache behavior
+  - [x] `setCustomDomain(distribution, domain, certificate)` - Custom domains
+  - [x] `setErrorPages(distribution, mappings)` - SPA routing (404 → index.html)
+  - [x] `enableHttp3(distribution)` - Modern protocols
+  - [x] `addEdgeFunction(distribution, event, functionArn)` - Lambda@Edge
+  - [x] `createSpaDistribution()` - Pre-configured SPA setup
+- [x] Generate CloudFront distribution CloudFormation
+- [x] Generate Origin Access Control for S3
+- [x] Generate cache policies and behaviors
+- [x] Generate Lambda@Edge associations
+- [x] Support multiple origins (S3, ALB, custom)
+- [x] **23 tests passing** ✅
 
 ### 2.3 DNS Module (Route53)
 
-- [ ] Create `DNS` class with clean API
-  - [ ] `createHostedZone(domain)` - DNS zone creation
-  - [ ] `lookupHostedZone(domain)` - Existing zone lookup
-  - [ ] `createRecord(zone, name, type, value)` - A, AAAA, CNAME, MX, TXT records
-  - [ ] `createAlias(zone, name, target)` - Alias to CloudFront/ALB
-  - [ ] `createWwwRedirect(domain)` - www → non-www redirect
-  - [ ] `createCustomRedirect(from, to)` - Domain redirects
-- [ ] Generate Route53 HostedZone CloudFormation
-- [ ] Generate RecordSet CloudFormation (all types)
+- [x] Create `DNS` class with clean API
+  - [x] `createHostedZone(domain)` - DNS zone creation
+  - [x] `createRecord(zone, name, type, value)` - A, AAAA, CNAME, MX, TXT records
+  - [x] `createCloudFrontAlias()` - Alias to CloudFront
+  - [x] `createAlbAlias()` - Alias to ALB
+  - [x] `createWwwRedirect(domain)` - www → non-www redirect
+  - [x] `createCname()` - CNAME records
+  - [x] `createMxRecords()` - Email records
+  - [x] `createTxtRecord()` - TXT records
+  - [x] `createSpfRecord()` - SPF for email
+  - [x] `createDmarcRecord()` - DMARC for email security
+- [x] Generate Route53 HostedZone CloudFormation
+- [x] Generate RecordSet CloudFormation (all types)
 - [ ] Handle DNS validation for ACM certificates
-- [ ] Support multi-domain configurations
+- [x] Support multi-domain configurations
+- [x] **17 tests passing** ✅
 
 ### 2.4 Security Module (WAF, ACM, KMS)
 
-- [ ] Create `Security` class with clean API
-  - [ ] `createCertificate(domain, subdomains)` - SSL/TLS wildcard certs
-  - [ ] `createKmsKey(description, rotation)` - Encryption keys
-  - [ ] `createFirewall(rules)` - WAF configuration
-  - [ ] `blockCountries(countries)` - Geo-blocking
-  - [ ] `blockIpAddresses(ips)` - IP blocking
-  - [ ] `setRateLimit(requests, window)` - DDoS protection
-  - [ ] `addManagedRules(ruleGroups)` - AWS Managed Rules
-- [ ] Generate ACM Certificate CloudFormation
-- [ ] Generate KMS Key CloudFormation
-- [ ] Generate WAF WebACL CloudFormation
-- [ ] Generate WAF IPSet and RuleGroup CloudFormation
+- [x] Create `Security` class with clean API
+  - [x] `createCertificate(domain, subdomains)` - SSL/TLS wildcard certs
+  - [x] `createKmsKey(description, rotation)` - Encryption keys
+  - [x] `createFirewall(rules)` - WAF configuration
+  - [x] `blockCountries(countries)` - Geo-blocking
+  - [x] `blockIpAddresses(ips)` - IP blocking
+  - [x] `setRateLimit(requests, window)` - DDoS protection
+  - [x] `addManagedRules(ruleGroups)` - AWS Managed Rules
+- [x] Generate ACM Certificate CloudFormation
+- [x] Generate KMS Key CloudFormation
+- [x] Generate WAF WebACL CloudFormation
+- [x] Generate WAF IPSet CloudFormation
 - [ ] Handle certificate validation wait conditions
+- [x] Support DNS validation with Route53
+- [x] Predefined AWS Managed Rule Groups
+- [x] **23 tests passing** ✅
 
 ### 2.5 Compute Module (EC2 + ECS - Server & Serverless)
 
