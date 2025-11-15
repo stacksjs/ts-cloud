@@ -1164,15 +1164,16 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 ### 7.11 Lambda Advanced Features
 
-- [ ] Lambda layers management
-- [ ] Lambda versions and aliases
-- [ ] Reserved concurrency configuration
-- [ ] Provisioned concurrency (warming)
-- [ ] Lambda destinations setup
-- [ ] VPC configuration for Lambdas
-- [ ] Lambda dead letter queues
+- [x] Lambda layers management ✅
+- [x] Lambda versions and aliases ✅
+- [x] Reserved concurrency configuration ✅
+- [x] Provisioned concurrency (warming) ✅
+- [x] Lambda destinations setup ✅
+- [x] VPC configuration for Lambdas ✅
+- [x] Lambda dead letter queues ✅
 - [ ] Lambda insights integration
 - [ ] Function URL configuration
+- [x] **56 tests passing** ✅
 
 ### 7.12 DNS Advanced Features
 

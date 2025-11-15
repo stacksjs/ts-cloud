@@ -92,3 +92,9 @@ export * from './security'
 
 // Container Advanced Features (Phase 7.10)
 export * from './containers'
+
+// Lambda Advanced Features (Phase 7.11)
+export * from './lambda'
+
+// DNS Advanced Features (Phase 7.12)
+export * from './dns'
