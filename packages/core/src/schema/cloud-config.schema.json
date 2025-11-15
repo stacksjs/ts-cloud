@@ -1,0 +1,554 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TS Cloud Configuration",
+  "description": "Configuration schema for TS Cloud infrastructure-as-code",
+  "type": "object",
+  "required": ["project"],
+  "properties": {
+    "project": {
+      "type": "object",
+      "description": "Project configuration",
+      "required": ["name", "slug"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable project name",
+          "minLength": 1
+        },
+        "slug": {
+          "type": "string",
+          "description": "URL-safe project identifier (lowercase, alphanumeric, hyphens only)",
+          "pattern": "^[a-z0-9-]+$",
+          "minLength": 1,
+          "maxLength": 63
+        },
+        "region": {
+          "type": "string",
+          "description": "Default AWS region",
+          "enum": [
+            "us-east-1",
+            "us-east-2",
+            "us-west-1",
+            "us-west-2",
+            "eu-west-1",
+            "eu-west-2",
+            "eu-west-3",
+            "eu-central-1",
+            "ap-southeast-1",
+            "ap-southeast-2",
+            "ap-northeast-1",
+            "ap-northeast-2",
+            "sa-east-1",
+            "ca-central-1"
+          ]
+        }
+      }
+    },
+    "mode": {
+      "type": "string",
+      "description": "Deployment mode",
+      "enum": ["server", "serverless", "hybrid"],
+      "default": "serverless"
+    },
+    "environments": {
+      "type": "object",
+      "description": "Environment-specific configurations",
+      "properties": {
+        "production": {
+          "$ref": "#/definitions/environment"
+        },
+        "staging": {
+          "$ref": "#/definitions/environment"
+        },
+        "development": {
+          "$ref": "#/definitions/environment"
+        }
+      }
+    },
+    "infrastructure": {
+      "type": "object",
+      "description": "Infrastructure configuration",
+      "properties": {
+        "network": {
+          "$ref": "#/definitions/network"
+        },
+        "storage": {
+          "type": "object",
+          "description": "S3 storage configuration",
+          "additionalProperties": {
+            "$ref": "#/definitions/storage"
+          }
+        },
+        "compute": {
+          "$ref": "#/definitions/compute"
+        },
+        "database": {
+          "$ref": "#/definitions/database"
+        },
+        "cache": {
+          "$ref": "#/definitions/cache"
+        },
+        "cdn": {
+          "$ref": "#/definitions/cdn"
+        },
+        "functions": {
+          "type": "object",
+          "description": "Lambda functions configuration",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/function"
+            }
+          }
+        },
+        "monitoring": {
+          "$ref": "#/definitions/monitoring"
+        },
+        "security": {
+          "$ref": "#/definitions/security"
+        },
+        "queue": {
+          "type": "object",
+          "description": "SQS queue configuration",
+          "additionalProperties": {
+            "$ref": "#/definitions/queue"
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "environment": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "Custom domain for this environment"
+        },
+        "region": {
+          "type": "string",
+          "description": "AWS region override for this environment"
+        }
+      }
+    },
+    "network": {
+      "type": "object",
+      "properties": {
+        "vpc": {
+          "type": "object",
+          "properties": {
+            "cidr": {
+              "type": "string",
+              "description": "VPC CIDR block",
+              "pattern": "^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$",
+              "default": "10.0.0.0/16"
+            },
+            "availabilityZones": {
+              "type": "number",
+              "description": "Number of availability zones",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 2
+            },
+            "natGateways": {
+              "type": "number",
+              "description": "Number of NAT gateways (0 for no NAT, saves cost)",
+              "minimum": 0,
+              "maximum": 3,
+              "default": 1
+            }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "public": {
+          "type": "boolean",
+          "description": "Allow public access",
+          "default": false
+        },
+        "versioning": {
+          "type": "boolean",
+          "description": "Enable versioning",
+          "default": false
+        },
+        "encryption": {
+          "type": "boolean",
+          "description": "Enable server-side encryption",
+          "default": true
+        },
+        "website": {
+          "type": "boolean",
+          "description": "Enable static website hosting",
+          "default": false
+        },
+        "cors": {
+          "type": "object",
+          "description": "CORS configuration",
+          "properties": {
+            "allowedOrigins": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "allowedMethods": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["GET", "PUT", "POST", "DELETE", "HEAD"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "compute": {
+      "type": "object",
+      "properties": {
+        "server": {
+          "type": "object",
+          "description": "EC2 server configuration",
+          "properties": {
+            "instanceType": {
+              "type": "string",
+              "description": "EC2 instance type",
+              "enum": ["t3.micro", "t3.small", "t3.medium", "t3.large", "t3.xlarge", "t3.2xlarge"]
+            },
+            "autoScaling": {
+              "type": "object",
+              "properties": {
+                "min": {
+                  "type": "number",
+                  "minimum": 1
+                },
+                "max": {
+                  "type": "number",
+                  "minimum": 1
+                },
+                "desired": {
+                  "type": "number",
+                  "minimum": 1
+                }
+              }
+            }
+          }
+        },
+        "fargate": {
+          "type": "object",
+          "description": "ECS Fargate configuration",
+          "properties": {
+            "cpu": {
+              "type": "number",
+              "description": "CPU units (256, 512, 1024, 2048, 4096)",
+              "enum": [256, 512, 1024, 2048, 4096]
+            },
+            "memory": {
+              "type": "number",
+              "description": "Memory in MB"
+            },
+            "desiredCount": {
+              "type": "number",
+              "description": "Desired number of tasks",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "postgres": {
+          "type": "object",
+          "properties": {
+            "instanceClass": {
+              "type": "string",
+              "description": "RDS instance class",
+              "pattern": "^db\\.[a-z0-9]+\\.[a-z0-9]+$"
+            },
+            "engine": {
+              "type": "string",
+              "const": "postgres"
+            },
+            "version": {
+              "type": "string",
+              "description": "PostgreSQL version"
+            },
+            "multiAZ": {
+              "type": "boolean",
+              "description": "Enable Multi-AZ deployment",
+              "default": false
+            },
+            "backupRetentionDays": {
+              "type": "number",
+              "description": "Backup retention period in days",
+              "minimum": 0,
+              "maximum": 35,
+              "default": 7
+            }
+          }
+        },
+        "mysql": {
+          "type": "object",
+          "properties": {
+            "instanceClass": {
+              "type": "string",
+              "pattern": "^db\\.[a-z0-9]+\\.[a-z0-9]+$"
+            },
+            "engine": {
+              "type": "string",
+              "const": "mysql"
+            },
+            "version": {
+              "type": "string"
+            },
+            "multiAZ": {
+              "type": "boolean",
+              "default": false
+            },
+            "backupRetentionDays": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 35,
+              "default": 7
+            }
+          }
+        },
+        "dynamodb": {
+          "type": "object",
+          "properties": {
+            "tables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["name", "partitionKey"],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "partitionKey": {
+                    "type": "string"
+                  },
+                  "sortKey": {
+                    "type": "string"
+                  },
+                  "billingMode": {
+                    "type": "string",
+                    "enum": ["PAY_PER_REQUEST", "PROVISIONED"],
+                    "default": "PAY_PER_REQUEST"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "properties": {
+        "redis": {
+          "type": "object",
+          "properties": {
+            "nodeType": {
+              "type": "string",
+              "description": "ElastiCache node type",
+              "pattern": "^cache\\.[a-z0-9]+\\.[a-z0-9]+$"
+            },
+            "numCacheNodes": {
+              "type": "number",
+              "minimum": 1,
+              "default": 1
+            },
+            "engineVersion": {
+              "type": "string",
+              "description": "Redis engine version"
+            }
+          }
+        },
+        "memcached": {
+          "type": "object",
+          "properties": {
+            "nodeType": {
+              "type": "string",
+              "pattern": "^cache\\.[a-z0-9]+\\.[a-z0-9]+$"
+            },
+            "numCacheNodes": {
+              "type": "number",
+              "minimum": 1,
+              "default": 1
+            }
+          }
+        }
+      }
+    },
+    "cdn": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "compress": {
+          "type": "boolean",
+          "description": "Enable automatic compression",
+          "default": true
+        },
+        "http3": {
+          "type": "boolean",
+          "description": "Enable HTTP/3 support",
+          "default": true
+        },
+        "customDomain": {
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string"
+            },
+            "certificateArn": {
+              "type": "string"
+            }
+          }
+        },
+        "cachePolicy": {
+          "type": "object",
+          "properties": {
+            "minTTL": {
+              "type": "number",
+              "minimum": 0
+            },
+            "defaultTTL": {
+              "type": "number",
+              "minimum": 0
+            },
+            "maxTTL": {
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "function": {
+      "type": "object",
+      "required": ["name", "runtime"],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string",
+          "enum": ["nodejs18.x", "nodejs20.x", "python3.10", "python3.11", "python3.12"]
+        },
+        "handler": {
+          "type": "string",
+          "default": "index.handler"
+        },
+        "timeout": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 900,
+          "default": 30
+        },
+        "memory": {
+          "type": "number",
+          "minimum": 128,
+          "maximum": 10240,
+          "default": 1024
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "alarms": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["metric", "threshold"],
+            "properties": {
+              "metric": {
+                "type": "string"
+              },
+              "threshold": {
+                "type": "number"
+              },
+              "evaluationPeriods": {
+                "type": "number",
+                "minimum": 1,
+                "default": 2
+              }
+            }
+          }
+        },
+        "dashboard": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "widgets": {
+              "type": "array"
+            }
+          }
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "properties": {
+        "waf": {
+          "type": "boolean",
+          "description": "Enable AWS WAF",
+          "default": false
+        },
+        "certificates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["domain"],
+            "properties": {
+              "domain": {
+                "type": "string"
+              },
+              "subdomains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "queue": {
+      "type": "object",
+      "properties": {
+        "fifo": {
+          "type": "boolean",
+          "default": false
+        },
+        "deadLetterQueue": {
+          "type": "boolean",
+          "default": true
+        },
+        "visibilityTimeout": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 43200,
+          "default": 30
+        },
+        "messageRetentionPeriod": {
+          "type": "number",
+          "minimum": 60,
+          "maximum": 1209600,
+          "default": 345600
+        }
+      }
+    }
+  }
+}

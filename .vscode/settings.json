@@ -1,4 +1,13 @@
 {
+  // JSON Schema for cloud configuration
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "cloud.config.json"
+      ],
+      "url": "./packages/core/src/schema/cloud-config.schema.json"
+    }
+  ],
   // Disable the default formatter, use eslint instead
   "prettier.enable": false,
   "biome.enabled": false,
