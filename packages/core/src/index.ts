@@ -52,3 +52,16 @@ export * from './utils'
 
 // Schema (Phase 6.5)
 export * from './schema'
+
+// Local development (Phase 6.6)
+export * from './local/config'
+export * from './local/mock-aws'
+
+// Preview environments (Phase 6.7)
+export * from './preview'
+
+// Advanced CLI utilities (Phase 6.8)
+export * from './cli'
+
+// Multi-region support (Phase 7)
+export * from './multi-region'
