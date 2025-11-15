@@ -98,3 +98,6 @@ export * from './lambda'
 
 // DNS Advanced Features (Phase 7.12)
 export * from './dns'
+
+// Email Advanced Features (Phase 7.13)
+export * from './email'
