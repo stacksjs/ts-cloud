@@ -63,5 +63,11 @@ export * from './preview'
 // Advanced CLI utilities (Phase 6.8)
 export * from './cli'
 
-// Multi-region support (Phase 7)
+// Multi-region support (Phase 7.1)
 export * from './multi-region'
+
+// Multi-account support (Phase 7.2)
+export * from './multi-account'
+
+// CI/CD integration (Phase 7.3)
+export * from './cicd'

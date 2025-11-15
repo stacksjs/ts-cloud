@@ -1031,7 +1031,7 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 
 - [ ] TypeScript types for autocomplete in config files
 - [ ] JSON schema for `cloud.config.json`
-- [ ] VSCode extension (future consideration)
+- [ ] VSCode extension (./packages/vscode)
 - [ ] Syntax highlighting for CloudFormation output
 
 ### 6.6 Local Development & Testing
