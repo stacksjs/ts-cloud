@@ -43,6 +43,13 @@ export interface RestoreJob {
   error?: string
 }
 
+export interface ContinuousBackup {
+  id: string
+  resourceId: string
+  enabled: boolean
+  retentionDays: number
+}
+
 /**
  * Backup manager for automated backup and recovery
  */
@@ -50,8 +57,10 @@ export class BackupManager {
   private backupPlans: Map<string, BackupPlan> = new Map()
   private backupVaults: Map<string, BackupVault> = new Map()
   private restoreJobs: Map<string, RestoreJob> = new Map()
+  private continuousBackups: Map<string, ContinuousBackup> = new Map()
   private planCounter = 0
   private restoreCounter = 0
+  private continuousBackupCounter = 0
 
   /**
    * Create backup vault
@@ -197,6 +206,28 @@ export class BackupManager {
         deleteAfterDays: retentionDays,
       },
     })
+  }
+
+  /**
+   * Enable continuous backup for a resource
+   */
+  enableContinuousBackup(resourceId: string, retentionDays = 35): ContinuousBackup {
+    const id = `continuous-backup-${Date.now()}-${this.continuousBackupCounter++}`
+    const backup: ContinuousBackup = {
+      id,
+      resourceId,
+      enabled: true,
+      retentionDays,
+    }
+    this.continuousBackups.set(id, backup)
+    return backup
+  }
+
+  /**
+   * Get continuous backup configuration
+   */
+  getContinuousBackup(id: string): ContinuousBackup | undefined {
+    return this.continuousBackups.get(id)
   }
 
   /**
@@ -388,8 +419,10 @@ export class BackupManager {
     this.backupPlans.clear()
     this.backupVaults.clear()
     this.restoreJobs.clear()
+    this.continuousBackups.clear()
     this.planCounter = 0
     this.restoreCounter = 0
+    this.continuousBackupCounter = 0
   }
 }
 

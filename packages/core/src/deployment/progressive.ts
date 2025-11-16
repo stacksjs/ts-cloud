@@ -1,12 +1,31 @@
 /**
- * Deployment Enhancements - Progressive rollouts, feature flags, deployment gates
+ * Progressive Rollouts, Feature Flags, and Deployment Gates
  */
 
-export interface ProgressiveRollout { id: string; name: string; stages: Array<{ percentage: number; durationMinutes: number }>; currentStage: number }
-export interface FeatureFlag { id: string; name: string; enabled: boolean; rolloutPercentage: number; targetingRules: Array<{ attribute: string; operator: string; value: any }> }
-export interface DeploymentGate { id: string; name: string; type: 'manual' | 'automated'; approvers?: string[]; conditions?: Array<{ metric: string; threshold: number }> }
+export interface ProgressiveRollout {
+  id: string
+  name: string
+  stages: Array<{ percentage: number; durationMinutes: number }>
+  currentStage: number
+}
 
-export class DeploymentAdvancedManager {
+export interface FeatureFlag {
+  id: string
+  name: string
+  enabled: boolean
+  rolloutPercentage: number
+  targetingRules: Array<{ attribute: string; operator: string; value: any }>
+}
+
+export interface DeploymentGate {
+  id: string
+  name: string
+  type: 'manual' | 'automated'
+  approvers?: string[]
+  conditions?: Array<{ metric: string; threshold: number }>
+}
+
+export class ProgressiveDeploymentManager {
   private rollouts = new Map<string, ProgressiveRollout>()
   private flags = new Map<string, FeatureFlag>()
   private gates = new Map<string, DeploymentGate>()
@@ -33,7 +52,11 @@ export class DeploymentAdvancedManager {
     return gate
   }
 
-  clear() { this.rollouts.clear(); this.flags.clear(); this.gates.clear() }
+  clear() {
+    this.rollouts.clear()
+    this.flags.clear()
+    this.gates.clear()
+  }
 }
 
-export const deploymentAdvancedManager = new DeploymentAdvancedManager()
+export const progressiveDeploymentManager = new ProgressiveDeploymentManager()

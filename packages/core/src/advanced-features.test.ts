@@ -3,9 +3,9 @@ import { StaticSiteManager, staticSiteManager } from './static-site'
 import { StorageAdvancedManager, storageAdvancedManager } from './storage-advanced'
 import { HealthCheckManager, healthCheckManager } from './health-checks'
 import { NetworkSecurityManager, networkSecurityManager } from './network-security'
-import { BackupAdvancedManager, backupAdvancedManager } from './backup-advanced'
+import { BackupManager, backupManager, ContinuousBackup } from './backup/manager'
 import { ResourceManagementManager, resourceManagementManager } from './resource-mgmt'
-import { DeploymentAdvancedManager, deploymentAdvancedManager } from './deployment-advanced'
+import { ProgressiveDeploymentManager, progressiveDeploymentManager } from './deployment/progressive'
 import { ObservabilityAdvancedManager, observabilityAdvancedManager } from './observability-advanced'
 
 describe('Static Site Manager', () => {
@@ -135,10 +135,10 @@ describe('Network Security Manager', () => {
 })
 
 describe('Backup Advanced Manager', () => {
-  let manager: BackupAdvancedManager
+  let manager: BackupManager
 
   beforeEach(() => {
-    manager = new BackupAdvancedManager()
+    manager = new BackupManager()
   })
 
   it('should enable continuous backup', () => {
@@ -148,18 +148,19 @@ describe('Backup Advanced Manager', () => {
   })
 
   it('should enable PITR', () => {
-    const pitr = manager.enablePITR('table-1')
+    const pitr = manager.enablePointInTimeRecovery('arn:aws:rds:us-east-1:123:db:table-1', 'rds')
     expect(pitr.enabled).toBe(true)
-    expect(pitr.earliestRecoveryPoint).toBeDefined()
+    expect(pitr.earliestRestorableTime).toBeDefined()
   })
 
   it('should create backup vault', () => {
-    const vault = manager.createBackupVault('production-vault', 'arn:aws:kms:us-east-1:123:key/abc')
-    expect(vault.name).toBe('production-vault')
+    const vault = { name: 'production-vault', region: 'us-east-1', encryptionKeyArn: 'arn:aws:kms:us-east-1:123:key/abc' }
+    manager.createVault(vault)
+    expect(manager.getVault('production-vault')?.name).toBe('production-vault')
   })
 
   it('should use global instance', () => {
-    expect(backupAdvancedManager).toBeInstanceOf(BackupAdvancedManager)
+    expect(backupManager).toBeInstanceOf(BackupManager)
   })
 })
 
@@ -199,10 +200,10 @@ describe('Resource Management Manager', () => {
 })
 
 describe('Deployment Advanced Manager', () => {
-  let manager: DeploymentAdvancedManager
+  let manager: ProgressiveDeploymentManager
 
   beforeEach(() => {
-    manager = new DeploymentAdvancedManager()
+    manager = new ProgressiveDeploymentManager()
   })
 
   it('should create progressive rollout', () => {
@@ -228,7 +229,7 @@ describe('Deployment Advanced Manager', () => {
   })
 
   it('should use global instance', () => {
-    expect(deploymentAdvancedManager).toBeInstanceOf(DeploymentAdvancedManager)
+    expect(progressiveDeploymentManager).toBeInstanceOf(ProgressiveDeploymentManager)
   })
 })
 

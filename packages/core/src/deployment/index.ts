@@ -38,3 +38,12 @@ export {
   ABTestManager,
   abTestManager,
 } from './ab-testing'
+
+// Progressive Deployments
+export {
+  ProgressiveRollout,
+  FeatureFlag,
+  DeploymentGate,
+  ProgressiveDeploymentManager,
+  progressiveDeploymentManager,
+} from './progressive'
