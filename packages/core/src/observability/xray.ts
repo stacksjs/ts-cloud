@@ -322,6 +322,26 @@ export class XRayManager {
   }
 
   /**
+   * Create a distributed trace
+   */
+  createTrace(
+    traceId: string,
+    spans: Array<{ spanId: string; name: string; duration: number; tags: Record<string, any> }>
+  ): {
+    id: string
+    traceId: string
+    spans: Array<{ spanId: string; name: string; duration: number; tags: Record<string, any> }>
+  } {
+    const id = `trace-${Date.now()}-${this.configCounter++}`
+    const trace = {
+      id,
+      traceId,
+      spans,
+    }
+    return trace
+  }
+
+  /**
    * Clear all data
    */
   clear(): void {

@@ -1,12 +1,14 @@
 import { describe, expect, it, beforeEach } from 'bun:test'
 import { StaticSiteManager, staticSiteManager } from './static-site'
-import { StorageAdvancedManager, storageAdvancedManager } from './storage-advanced'
+import { StorageAdvancedManager, storageAdvancedManager } from './s3'
 import { HealthCheckManager, healthCheckManager } from './health-checks'
 import { NetworkSecurityManager, networkSecurityManager } from './network-security'
 import { BackupManager, backupManager, ContinuousBackup } from './backup/manager'
 import { ResourceManagementManager, resourceManagementManager } from './resource-mgmt'
 import { ProgressiveDeploymentManager, progressiveDeploymentManager } from './deployment/progressive'
-import { ObservabilityAdvancedManager, observabilityAdvancedManager } from './observability-advanced'
+import { XRayManager, xrayManager } from './observability/xray'
+import { MetricsManager, metricsManager } from './observability/metrics'
+import { LogsManager, logsManager } from './observability/logs'
 
 describe('Static Site Manager', () => {
   let manager: StaticSiteManager
@@ -233,11 +235,11 @@ describe('Deployment Advanced Manager', () => {
   })
 })
 
-describe('Observability Advanced Manager', () => {
-  let manager: ObservabilityAdvancedManager
+describe('Observability Advanced - Distributed Tracing', () => {
+  let manager: XRayManager
 
   beforeEach(() => {
-    manager = new ObservabilityAdvancedManager()
+    manager = new XRayManager()
   })
 
   it('should create distributed trace', () => {
@@ -248,10 +250,34 @@ describe('Observability Advanced Manager', () => {
     expect(trace.spans).toHaveLength(2)
   })
 
+  it('should use global instance', () => {
+    expect(xrayManager).toBeInstanceOf(XRayManager)
+  })
+})
+
+describe('Observability Advanced - Custom Metrics', () => {
+  let manager: MetricsManager
+
+  beforeEach(() => {
+    manager = new MetricsManager()
+  })
+
   it('should publish custom metric', () => {
     const metric = manager.publishCustomMetric('MyApp', 'RequestCount', 100, { Environment: 'production' })
     expect(metric.value).toBe(100)
     expect(metric.namespace).toBe('MyApp')
+  })
+
+  it('should use global instance', () => {
+    expect(metricsManager).toBeInstanceOf(MetricsManager)
+  })
+})
+
+describe('Observability Advanced - Log Aggregation', () => {
+  let manager: LogsManager
+
+  beforeEach(() => {
+    manager = new LogsManager()
   })
 
   it('should create log aggregation', () => {
@@ -263,6 +289,6 @@ describe('Observability Advanced Manager', () => {
   })
 
   it('should use global instance', () => {
-    expect(observabilityAdvancedManager).toBeInstanceOf(ObservabilityAdvancedManager)
+    expect(logsManager).toBeInstanceOf(LogsManager)
   })
 })

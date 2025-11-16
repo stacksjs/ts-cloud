@@ -449,6 +449,52 @@ export class LogsManager {
   }
 
   /**
+   * Create log aggregation with multiple filters
+   */
+  createLogAggregation(
+    logGroup: string,
+    filters: Array<{ pattern: string; metric: string }>,
+    retention = 7
+  ): {
+    id: string
+    logGroup: string
+    filters: Array<{ pattern: string; metric: string }>
+    retention: number
+  } {
+    const id = `aggregation-${Date.now()}-${this.logGroupCounter++}`
+
+    // Create log group if it doesn't exist
+    const group = this.createLogGroup({
+      name: logGroup,
+      retentionDays: retention,
+    })
+
+    // Create metric filters for each pattern
+    filters.forEach(filter => {
+      this.createMetricFilter(group.id, {
+        name: filter.metric,
+        filterPattern: filter.pattern,
+        metricTransformations: [
+          {
+            metricName: filter.metric,
+            metricNamespace: 'CustomMetrics',
+            metricValue: '1',
+            defaultValue: 0,
+            unit: 'Count',
+          },
+        ],
+      })
+    })
+
+    return {
+      id,
+      logGroup,
+      filters,
+      retention,
+    }
+  }
+
+  /**
    * Clear all data
    */
   clear(): void {

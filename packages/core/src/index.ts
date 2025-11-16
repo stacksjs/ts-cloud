@@ -108,8 +108,8 @@ export * from './queue'
 // Static Site Features (Phase 7.15)
 export * from './static-site'
 
-// Storage Advanced Features (Phase 7.16)
-export * from './storage-advanced'
+// S3 Advanced Features (Phase 7.16)
+export * from './s3'
 
 // Health Checks & Monitoring (Phase 7.17)
 export * from './health-checks'

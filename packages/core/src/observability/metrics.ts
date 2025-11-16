@@ -412,6 +412,37 @@ export class MetricsManager {
   }
 
   /**
+   * Publish a custom metric value directly
+   */
+  publishCustomMetric(
+    namespace: string,
+    name: string,
+    value: number,
+    dimensions: Record<string, string> = {},
+    unit: string = 'Count'
+  ): {
+    id: string
+    namespace: string
+    name: string
+    dimensions: Record<string, string>
+    value: number
+    unit: string
+    timestamp: Date
+  } {
+    const id = `metric-${Date.now()}-${this.metricCounter++}`
+    const metric = {
+      id,
+      namespace,
+      name,
+      dimensions,
+      value,
+      unit,
+      timestamp: new Date(),
+    }
+    return metric
+  }
+
+  /**
    * Clear all data
    */
   clear(): void {
