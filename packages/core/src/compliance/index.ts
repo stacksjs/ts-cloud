@@ -5,29 +5,40 @@
 
 // AWS Config
 export {
+  AWSConfigManager,
+  awsConfigManager,
+} from './aws-config'
+
+export type {
   ConfigRule,
   ConfigScope,
   ConfigRecorder,
   RecordingGroup,
   DeliveryChannel,
-  AWSConfigManager,
-  awsConfigManager,
 } from './aws-config'
 
 // CloudTrail
 export {
+  CloudTrailManager,
+  cloudTrailManager,
+} from './cloudtrail'
+
+export type {
   CloudTrailConfig,
   EventSelector,
   DataResource,
   InsightSelector,
   AdvancedEventSelector,
   FieldSelector,
-  CloudTrailManager,
-  cloudTrailManager,
 } from './cloudtrail'
 
 // GuardDuty
 export {
+  GuardDutyManager,
+  guardDutyManager,
+} from './guardduty'
+
+export type {
   GuardDutyDetector,
   DataSourceConfigurations,
   DetectorFeature,
@@ -35,12 +46,15 @@ export {
   IPSet,
   FindingFilter,
   FindingCriteria,
-  GuardDutyManager,
-  guardDutyManager,
 } from './guardduty'
 
 // Security Hub
 export {
+  SecurityHubManager,
+  securityHubManager,
+} from './security-hub'
+
+export type {
   SecurityHubConfig,
   SecurityStandard,
   AutomationRule,
@@ -49,6 +63,4 @@ export {
   StringFilter,
   NumberFilter,
   MapFilter,
-  SecurityHubManager,
-  securityHubManager,
 } from './security-hub'

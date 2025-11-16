@@ -4,27 +4,34 @@
  */
 
 export {
-  PreviewEnvironment,
-  PreviewEnvironmentOptions,
-  PreviewCleanupOptions,
   PreviewEnvironmentManager,
   previewManager,
 } from './manager'
 
+export type {
+  PreviewEnvironment,
+  PreviewEnvironmentOptions,
+  PreviewCleanupOptions,
+} from './manager'
+
 export {
-  GitHubWorkflowOptions,
   generatePreviewWorkflow,
   generateCleanupWorkflow,
   generateCostReportWorkflow,
 } from './github'
 
+export type { GitHubWorkflowOptions } from './github'
+
 export {
+  PreviewNotificationService,
+  previewNotifications,
+} from './notifications'
+
+export type {
   NotificationChannel,
   SlackConfig,
   DiscordConfig,
   EmailConfig,
   WebhookConfig,
   NotificationEvent,
-  PreviewNotificationService,
-  previewNotifications,
 } from './notifications'
