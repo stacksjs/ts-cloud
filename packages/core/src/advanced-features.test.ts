@@ -46,7 +46,7 @@ describe('Static Site Manager', () => {
   })
 })
 
-describe('Storage Advanced Manager', () => {
+describe('S3 Advanced Manager', () => {
   let manager: StorageAdvancedManager
 
   beforeEach(() => {
@@ -71,6 +71,176 @@ describe('Storage Advanced Manager', () => {
   it('should create replication rule', () => {
     const rule = manager.createReplicationRule('us-east-1', 'us-west-2', 'backup-bucket')
     expect(rule.destRegion).toBe('us-west-2')
+  })
+
+  it('should enable object lock in compliance mode', () => {
+    const lock = manager.enableObjectLock({
+      bucketName: 'compliance-bucket',
+      mode: 'COMPLIANCE',
+      retentionDays: 90,
+      legalHoldEnabled: true,
+    })
+    expect(lock.mode).toBe('COMPLIANCE')
+    expect(lock.retentionDays).toBe(90)
+    expect(lock.legalHoldEnabled).toBe(true)
+  })
+
+  it('should enable object lock in governance mode', () => {
+    const lock = manager.enableObjectLock({
+      bucketName: 'governance-bucket',
+      mode: 'GOVERNANCE',
+      retentionYears: 7,
+    })
+    expect(lock.mode).toBe('GOVERNANCE')
+    expect(lock.retentionYears).toBe(7)
+  })
+
+  it('should enable transfer acceleration', () => {
+    const config = manager.enableTransferAcceleration('my-bucket')
+    expect(config.enabled).toBe(true)
+    expect(config.endpoint).toBe('my-bucket.s3-accelerate.amazonaws.com')
+  })
+
+  it('should create access point', () => {
+    const accessPoint = manager.createAccessPoint({
+      name: 'my-access-point',
+      bucketName: 'my-bucket',
+      publicAccessBlock: true,
+    })
+    expect(accessPoint.name).toBe('my-access-point')
+    expect(accessPoint.publicAccessBlock).toBe(true)
+  })
+
+  it('should create VPC access point', () => {
+    const accessPoint = manager.createAccessPoint({
+      name: 'vpc-access-point',
+      bucketName: 'my-bucket',
+      vpcId: 'vpc-12345',
+      publicAccessBlock: true,
+    })
+    expect(accessPoint.vpcId).toBe('vpc-12345')
+  })
+
+  it('should create glacier deep archive configuration', () => {
+    const glacier = manager.createGlacierArchive({
+      bucketName: 'archive-bucket',
+      archiveType: 'DEEP_ARCHIVE',
+      transitionDays: 90,
+      restoreTier: 'Bulk',
+      restoreDays: 14,
+    })
+    expect(glacier.archiveType).toBe('DEEP_ARCHIVE')
+    expect(glacier.transitionDays).toBe(90)
+    expect(glacier.restoreConfig?.tier).toBe('Bulk')
+    expect(glacier.restoreConfig?.days).toBe(14)
+  })
+
+  it('should create standard glacier configuration', () => {
+    const glacier = manager.createGlacierArchive({
+      bucketName: 'archive-bucket',
+      archiveType: 'GLACIER',
+      transitionDays: 30,
+    })
+    expect(glacier.archiveType).toBe('GLACIER')
+    expect(glacier.transitionDays).toBe(30)
+  })
+
+  it('should create inventory configuration', () => {
+    const inventory = manager.createInventory({
+      sourceBucket: 'source-bucket',
+      destinationBucket: 'inventory-bucket',
+      schedule: 'Daily',
+      format: 'Parquet',
+      includedFields: ['Size', 'LastModifiedDate', 'StorageClass', 'ETag', 'ReplicationStatus'],
+      prefix: 'documents/',
+    })
+    expect(inventory.schedule).toBe('Daily')
+    expect(inventory.format).toBe('Parquet')
+    expect(inventory.includedFields).toContain('ReplicationStatus')
+    expect(inventory.prefix).toBe('documents/')
+  })
+
+  it('should create batch operation', () => {
+    const batchOp = manager.createBatchOperation({
+      operation: 'Copy',
+      manifestBucket: 'manifest-bucket',
+      manifestKey: 'manifest.csv',
+      priority: 5,
+    })
+    expect(batchOp.operation).toBe('Copy')
+    expect(batchOp.priority).toBe(5)
+    expect(batchOp.status).toBe('pending')
+  })
+
+  it('should execute batch operation', () => {
+    const batchOp = manager.createBatchOperation({
+      operation: 'Delete',
+      manifestBucket: 'manifest-bucket',
+      manifestKey: 'delete-list.csv',
+    })
+    const executed = manager.executeBatchOperation(batchOp.id)
+    expect(executed.status).toBe('in_progress')
+    expect(executed.totalObjects).toBeDefined()
+  })
+
+  it('should create Lambda event notification', () => {
+    const notification = manager.createLambdaNotification({
+      bucketName: 'event-bucket',
+      lambdaArn: 'arn:aws:lambda:us-east-1:123:function:processor',
+      events: ['s3:ObjectCreated:*'],
+      prefix: 'uploads/',
+      suffix: '.jpg',
+    })
+    expect(notification.destination.type).toBe('Lambda')
+    expect(notification.events).toContain('s3:ObjectCreated:*')
+    expect(notification.filter?.prefix).toBe('uploads/')
+    expect(notification.filter?.suffix).toBe('.jpg')
+  })
+
+  it('should create SQS event notification', () => {
+    const notification = manager.createSQSNotification({
+      bucketName: 'event-bucket',
+      queueArn: 'arn:aws:sqs:us-east-1:123:queue:events',
+      events: ['s3:ObjectRemoved:*'],
+    })
+    expect(notification.destination.type).toBe('SQS')
+    expect(notification.events).toContain('s3:ObjectRemoved:*')
+  })
+
+  it('should create SNS event notification', () => {
+    const notification = manager.createSNSNotification({
+      bucketName: 'event-bucket',
+      topicArn: 'arn:aws:sns:us-east-1:123:topic:s3-events',
+      events: ['s3:ObjectRestore:*', 's3:Replication:*'],
+      prefix: 'important/',
+    })
+    expect(notification.destination.type).toBe('SNS')
+    expect(notification.events).toHaveLength(2)
+    expect(notification.filter?.prefix).toBe('important/')
+  })
+
+  it('should generate CloudFormation for object lock', () => {
+    const lock = manager.enableObjectLock({
+      bucketName: 'compliance-bucket',
+      mode: 'COMPLIANCE',
+      retentionDays: 90,
+    })
+    const cf = manager.generateObjectLockCF(lock)
+    expect(cf.ObjectLockEnabled).toBe('Enabled')
+    expect(cf.ObjectLockConfiguration.Rule.DefaultRetention.Mode).toBe('COMPLIANCE')
+    expect(cf.ObjectLockConfiguration.Rule.DefaultRetention.Days).toBe(90)
+  })
+
+  it('should generate CloudFormation for access point', () => {
+    const accessPoint = manager.createAccessPoint({
+      name: 'my-access-point',
+      bucketName: 'my-bucket',
+      vpcId: 'vpc-12345',
+    })
+    const cf = manager.generateAccessPointCF(accessPoint)
+    expect(cf.Type).toBe('AWS::S3::AccessPoint')
+    expect(cf.Properties.Name).toBe('my-access-point')
+    expect(cf.Properties.VpcConfiguration.VpcId).toBe('vpc-12345')
   })
 
   it('should use global instance', () => {
