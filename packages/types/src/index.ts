@@ -1,11 +1,40 @@
 // Core configuration types
 export interface CloudConfig {
   project: ProjectConfig
-  mode: DeploymentMode
+  mode?: DeploymentMode // Optional - auto-detected from infrastructure config
   environments: Record<string, EnvironmentConfig>
   infrastructure?: InfrastructureConfig
   sites?: Record<string, SiteConfig>
+
+  /**
+   * Feature flags to enable/disable resources conditionally
+   * Example: { enableCache: true, enableMonitoring: false }
+   */
+  features?: Record<string, boolean>
+
+  /**
+   * Deployment hooks for custom logic
+   */
+  hooks?: {
+    beforeDeploy?: string | ((config: CloudConfig) => Promise<void>)
+    afterDeploy?: string | ((config: CloudConfig) => Promise<void>)
+    beforeBuild?: string | ((config: CloudConfig) => Promise<void>)
+    afterBuild?: string | ((config: CloudConfig) => Promise<void>)
+  }
+
+  /**
+   * Cost optimization preset
+   * Automatically adjusts resource sizes based on budget
+   */
+  costPreset?: 'minimal' | 'balanced' | 'performance' | 'custom'
+
+  /**
+   * Tags applied to all resources
+   */
+  tags?: Record<string, string>
 }
+
+export type CloudOptions = Partial<CloudConfig>
 
 export interface ProjectConfig {
   name: string
@@ -13,6 +42,12 @@ export interface ProjectConfig {
   region: string
 }
 
+/**
+ * Deployment mode (optional)
+ * @deprecated Mode is now auto-detected from your infrastructure configuration.
+ * Simply define the resources you need (functions, servers, storage, etc.) and
+ * ts-cloud will deploy them accordingly. No need to specify a mode.
+ */
 export type DeploymentMode = 'server' | 'serverless' | 'hybrid'
 
 export type EnvironmentType = 'production' | 'staging' | 'development'
@@ -21,20 +56,53 @@ export interface EnvironmentConfig {
   type: EnvironmentType
   region?: string
   variables?: Record<string, string>
+  /**
+   * Environment-specific infrastructure overrides
+   * Allows different infrastructure per environment
+   * Example: smaller instances in dev, larger in production
+   */
+  infrastructure?: Partial<InfrastructureConfig>
 }
 
 export interface InfrastructureConfig {
   vpc?: VpcConfig
-  storage?: Record<string, StorageItemConfig>
-  functions?: Record<string, FunctionConfig>
-  servers?: Record<string, ServerItemConfig>
-  databases?: Record<string, DatabaseItemConfig>
+  storage?: Record<string, StorageItemConfig & ResourceConditions>
+  functions?: Record<string, FunctionConfig & ResourceConditions>
+  servers?: Record<string, ServerItemConfig & ResourceConditions>
+  databases?: Record<string, DatabaseItemConfig & ResourceConditions>
   cache?: CacheConfig
-  cdn?: Record<string, CdnItemConfig>
+  cdn?: Record<string, CdnItemConfig & ResourceConditions>
   dns?: DnsConfig
   security?: SecurityConfig
   monitoring?: MonitoringConfig
   api?: ApiConfig
+}
+
+/**
+ * Conditions that determine if a resource should be deployed
+ */
+export interface ResourceConditions {
+  /**
+   * Only deploy in these environments
+   * Example: ['production', 'staging']
+   */
+  environments?: EnvironmentType[]
+
+  /**
+   * Only deploy if these features are enabled
+   * Example: ['enableDatabase', 'enableCache']
+   */
+  requiresFeatures?: string[]
+
+  /**
+   * Only deploy in these regions
+   */
+  regions?: string[]
+
+  /**
+   * Custom condition function
+   */
+  condition?: (config: CloudConfig, env: EnvironmentType) => boolean
 }
 
 export interface SiteConfig {

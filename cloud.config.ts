@@ -81,27 +81,24 @@ const config: CloudConfig = {
      * S3 buckets for files, backups, etc.
      */
     storage: {
-      buckets: [
-        {
-          name: 'assets',
-          public: true,
-          website: true,
-          encryption: true,
-          versioning: false,
-        },
-        {
-          name: 'uploads',
-          public: false,
-          encryption: true,
-          versioning: true,
-        },
-        {
-          name: 'backups',
-          public: false,
-          encryption: true,
-          versioning: true,
-        },
-      ],
+      'frontend': {
+        public: true,
+        website: true,
+        encryption: true,
+        versioning: false,
+      },
+      'assets': {
+        public: true,
+        website: false,
+        encryption: true,
+        versioning: false,
+      },
+      'uploads': {
+        public: false,
+        website: false,
+        encryption: true,
+        versioning: true,
+      },
     },
 
     /**
@@ -131,12 +128,17 @@ const config: CloudConfig = {
     },
 
     /**
-     * Database Configuration
+     * Database Configuration (optional for frontend-only deployments)
      */
-    database: {
-      type: 'rds', // 'rds' for relational, 'dynamodb' for NoSQL
-      engine: 'postgres',
-      instanceType: 'db.t3.micro',
+    databases: {
+      // Uncomment to add a database
+      // 'main': {
+      //   engine: 'postgres',
+      //   instanceClass: 'db.t3.micro',
+      //   storage: 20,
+      //   username: 'admin',
+      //   password: 'changeme123',
+      // },
     },
 
     /**
@@ -152,9 +154,10 @@ const config: CloudConfig = {
      * CloudFront distribution for global content delivery
      */
     cdn: {
-      enabled: true,
-      customDomain: 'cdn.example.com',
-      // certificateArn will be auto-created if not provided
+      'frontend': {
+        origin: 'ts-cloud-production-frontend.s3.us-east-1.amazonaws.com',
+        customDomain: 'ts-cloud.example.com',
+      },
     },
 
     /**

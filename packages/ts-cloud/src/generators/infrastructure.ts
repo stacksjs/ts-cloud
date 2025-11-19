@@ -37,6 +37,7 @@ export class InfrastructureGenerator {
   private builder: TemplateBuilder
   private config: CloudConfig
   private environment: 'production' | 'staging' | 'development'
+  private mergedConfig: CloudConfig
 
   constructor(options: GenerationOptions) {
     this.config = options.config
@@ -44,28 +45,118 @@ export class InfrastructureGenerator {
     this.builder = new TemplateBuilder(
       `${this.config.project.name} - ${this.environment}`,
     )
+
+    // Merge environment-specific infrastructure overrides
+    this.mergedConfig = this.mergeEnvironmentConfig()
+  }
+
+  /**
+   * Merge base config with environment-specific overrides
+   */
+  private mergeEnvironmentConfig(): CloudConfig {
+    const envConfig = this.config.environments[this.environment]
+    const envInfra = envConfig?.infrastructure
+
+    if (!envInfra) {
+      return this.config
+    }
+
+    return {
+      ...this.config,
+      infrastructure: {
+        ...this.config.infrastructure,
+        ...envInfra,
+        // Deep merge for nested objects
+        storage: { ...this.config.infrastructure?.storage, ...envInfra.storage },
+        functions: { ...this.config.infrastructure?.functions, ...envInfra.functions },
+        servers: { ...this.config.infrastructure?.servers, ...envInfra.servers },
+        databases: { ...this.config.infrastructure?.databases, ...envInfra.databases },
+        cdn: { ...this.config.infrastructure?.cdn, ...envInfra.cdn },
+      },
+    }
+  }
+
+  /**
+   * Check if a resource should be deployed based on conditions
+   */
+  private shouldDeploy(resource: any): boolean {
+    // Check environment conditions
+    if (resource.environments && !resource.environments.includes(this.environment)) {
+      return false
+    }
+
+    // Check feature flag requirements
+    if (resource.requiresFeatures) {
+      const features = this.config.features || {}
+      const hasRequiredFeatures = resource.requiresFeatures.every(
+        (feature: string) => features[feature] === true
+      )
+      if (!hasRequiredFeatures) {
+        return false
+      }
+    }
+
+    // Check region conditions
+    if (resource.regions) {
+      const currentRegion = this.config.environments[this.environment]?.region || this.config.project.region
+      if (!resource.regions.includes(currentRegion)) {
+        return false
+      }
+    }
+
+    // Check custom condition function
+    if (resource.condition && typeof resource.condition === 'function') {
+      return resource.condition(this.config, this.environment)
+    }
+
+    return true
   }
 
   /**
    * Generate complete infrastructure
+   * Auto-detects what to generate based on configuration
    */
   generate(): this {
-    const slug = this.config.project.slug
+    const slug = this.mergedConfig.project.slug
     const env = this.environment
 
-    // Generate based on mode
-    if (this.config.mode === 'serverless' || this.config.mode === 'hybrid') {
+    // Auto-detect and generate based on what's configured (using merged config)
+    // If functions or API are defined, generate serverless resources
+    const hasServerlessConfig = !!(
+      this.mergedConfig.infrastructure?.functions
+      || this.mergedConfig.infrastructure?.api
+    )
+
+    // If servers are defined, generate server resources
+    const hasServerConfig = !!(
+      this.mergedConfig.infrastructure?.servers
+    )
+
+    if (hasServerlessConfig) {
       this.generateServerless(slug, env)
     }
 
-    if (this.config.mode === 'server' || this.config.mode === 'hybrid') {
+    if (hasServerConfig) {
       this.generateServer(slug, env)
     }
 
-    // Generate shared infrastructure
+    // Always generate shared infrastructure (storage, CDN, databases, etc.)
     this.generateSharedInfrastructure(slug, env)
 
+    // Apply global tags if specified
+    if (this.config.tags) {
+      this.applyGlobalTags(this.config.tags)
+    }
+
     return this
+  }
+
+  /**
+   * Apply global tags to all resources
+   */
+  private applyGlobalTags(tags: Record<string, string>): void {
+    // This would iterate through all resources in the builder and add tags
+    // Implementation depends on TemplateBuilder structure
   }
 
   /**
@@ -73,8 +164,12 @@ export class InfrastructureGenerator {
    */
   private generateServerless(slug: string, env: typeof this.environment): void {
     // Example: Lambda function
-    if (this.config.infrastructure?.functions) {
-      for (const [name, fnConfig] of Object.entries(this.config.infrastructure.functions)) {
+    if (this.mergedConfig.infrastructure?.functions) {
+      for (const [name, fnConfig] of Object.entries(this.mergedConfig.infrastructure.functions)) {
+        // Check if this function should be deployed
+        if (!this.shouldDeploy(fnConfig)) {
+          continue
+        }
         // Create Lambda execution role
         const { role, logicalId: roleLogicalId } = Permissions.createRole({
           slug,
