@@ -205,6 +205,18 @@ export class AWSClient {
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
     }
+    else if (service === 'iam') {
+      // IAM is a global service - no region in the endpoint
+      host = 'iam.amazonaws.com'
+    }
+    else if (service === 'route53') {
+      // Route53 is a global service
+      host = 'route53.amazonaws.com'
+    }
+    else if (service === 'route53domains') {
+      // Route53 Domains is only available in us-east-1
+      host = 'route53domains.us-east-1.amazonaws.com'
+    }
     else {
       host = `${service}.${region}.amazonaws.com`
     }
@@ -236,6 +248,18 @@ export class AWSClient {
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
     }
+    else if (service === 'iam') {
+      // IAM is a global service - no region in the endpoint
+      host = 'iam.amazonaws.com'
+    }
+    else if (service === 'route53') {
+      // Route53 is a global service
+      host = 'route53.amazonaws.com'
+    }
+    else if (service === 'route53domains') {
+      // Route53 Domains is only available in us-east-1
+      host = 'route53domains.us-east-1.amazonaws.com'
+    }
     else {
       host = `${service}.${region}.amazonaws.com`
     }
@@ -252,7 +276,10 @@ export class AWSClient {
     }
 
     if (body) {
-      headers['content-type'] = 'application/x-www-form-urlencoded'
+      // Don't override content-type if already set (e.g., for JSON APIs like Route53Domains)
+      if (!headers['content-type']) {
+        headers['content-type'] = 'application/x-www-form-urlencoded'
+      }
       headers['content-length'] = Buffer.byteLength(body).toString()
     }
 

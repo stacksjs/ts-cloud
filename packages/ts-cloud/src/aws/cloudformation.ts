@@ -54,6 +54,7 @@ export interface Stack {
   StackId: string
   StackName: string
   StackStatus: string
+  StackStatusReason?: string
   CreationTime: string
   LastUpdatedTime?: string
   Parameters?: StackParameter[]
@@ -201,7 +202,7 @@ export class CloudFormationClient {
   /**
    * Delete a CloudFormation stack
    */
-  async deleteStack(stackName: string, roleArn?: string): Promise<void> {
+  async deleteStack(stackName: string, roleArn?: string, retainResources?: string[]): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteStack',
       StackName: stackName,
@@ -210,6 +211,13 @@ export class CloudFormationClient {
 
     if (roleArn) {
       params.RoleARN = roleArn
+    }
+
+    // Add retained resources if provided
+    if (retainResources && retainResources.length > 0) {
+      retainResources.forEach((resource, index) => {
+        params[`RetainResources.member.${index + 1}`] = resource
+      })
     }
 
     await this.client.request({
@@ -269,6 +277,29 @@ export class CloudFormationClient {
   }
 
   /**
+   * List stack resources
+   */
+  async listStackResources(stackName: string): Promise<any[]> {
+    const params: Record<string, any> = {
+      Action: 'ListStackResources',
+      StackName: stackName,
+      Version: '2010-05-15',
+    }
+
+    const result = await this.client.request({
+      service: 'cloudformation',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      body: new URLSearchParams(params).toString(),
+    })
+
+    // Parse resources from XML response
+    const resources = result?.ListStackResourcesResult?.StackResourceSummaries?.member || []
+    return Array.isArray(resources) ? resources : [resources]
+  }
+
+  /**
    * Wait for stack to reach a specific status
    */
   async waitForStack(stackName: string, waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete'): Promise<void> {
@@ -282,7 +313,6 @@ export class CloudFormationClient {
       'CREATE_FAILED',
       'ROLLBACK_FAILED',
       'ROLLBACK_COMPLETE',
-      'DELETE_FAILED',
       'UPDATE_ROLLBACK_FAILED',
       'UPDATE_ROLLBACK_COMPLETE',
     ]
@@ -299,13 +329,25 @@ export class CloudFormationClient {
           if (waitType === 'stack-delete-complete') {
             return // Stack deleted successfully
           }
-          throw new Error(`Stack ${stackName} not found`)
+          // For create/update operations, stack might not be visible yet - retry
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          attempts++
+          continue
         }
 
         const stack = result.Stacks[0]
 
         if (targets.includes(stack.StackStatus)) {
           return // Target status reached
+        }
+
+        // Handle DELETE_FAILED specifically - might need to retain resources
+        if (stack.StackStatus === 'DELETE_FAILED' && waitType === 'stack-delete-complete') {
+          const error: any = new Error(`Stack deletion failed - may have resources that need to be retained`)
+          error.code = 'DELETE_FAILED'
+          error.stackStatus = stack.StackStatus
+          error.statusReason = stack.StackStatusReason
+          throw error
         }
 
         if (failureStatuses.includes(stack.StackStatus)) {
@@ -319,6 +361,12 @@ export class CloudFormationClient {
       catch (error: any) {
         if (waitType === 'stack-delete-complete' && error.message?.includes('does not exist')) {
           return // Stack deleted
+        }
+        // For create operations, stack might not be visible yet - retry
+        if (waitType === 'stack-create-complete' && error.message?.includes('does not exist')) {
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          attempts++
+          continue
         }
         throw error
       }
@@ -568,11 +616,36 @@ export class CloudFormationClient {
    * Parse stacks response
    */
   private parseStacksResponse(result: any): Stack[] {
-    // Simple parser for now - in production, would use a proper XML parser
     const stacks: Stack[] = []
 
-    // This is a simplified version - the actual XML parsing would be more robust
-    if (result.StackId) {
+    // Handle different response structures from XML parsing
+    // The XML response is: DescribeStacksResponse > DescribeStacksResult > Stacks > member
+    let stackData = result?.DescribeStacksResult?.Stacks?.member
+      || result?.Stacks?.member
+      || result?.Stacks
+      || result
+
+    // If it's a single stack, wrap in array
+    if (stackData && !Array.isArray(stackData)) {
+      stackData = [stackData]
+    }
+
+    if (Array.isArray(stackData)) {
+      for (const s of stackData) {
+        if (s.StackId || s.StackName) {
+          stacks.push({
+            StackId: s.StackId,
+            StackName: s.StackName,
+            StackStatus: s.StackStatus,
+            CreationTime: s.CreationTime,
+            LastUpdatedTime: s.LastUpdatedTime,
+            StackStatusReason: s.StackStatusReason,
+          })
+        }
+      }
+    }
+    // Fallback for flat response
+    else if (result.StackId) {
       stacks.push({
         StackId: result.StackId,
         StackName: result.StackName,

@@ -30,6 +30,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/src/index.js"
     },
+    "./aws": {
+      "types": "./src/aws/index.ts",
+      "import": "./src/aws/index.ts"
+    },
     "./*": {
       "import": "./dist/*"
     }
