@@ -76,6 +76,8 @@ export interface InfrastructureConfig {
   security?: SecurityConfig
   monitoring?: MonitoringConfig
   api?: ApiConfig
+  loadBalancer?: LoadBalancerConfig
+  ssl?: SslConfig
 }
 
 /**
@@ -253,6 +255,113 @@ export interface CdnItemConfig {
 export interface ApiConfig {
   enabled?: boolean
   name?: string
+}
+
+/**
+ * Load Balancer Configuration
+ * Controls whether and how traffic is load balanced
+ */
+export interface LoadBalancerConfig {
+  /**
+   * Enable Application Load Balancer
+   * When false, traffic goes directly to EC2 instances
+   * @default true for production with SSL
+   */
+  enabled?: boolean
+
+  /**
+   * Load balancer type
+   * - 'application': HTTP/HTTPS traffic (ALB)
+   * - 'network': TCP/UDP traffic (NLB)
+   * @default 'application'
+   */
+  type?: 'application' | 'network'
+
+  /**
+   * Health check configuration
+   */
+  healthCheck?: {
+    path?: string
+    interval?: number
+    timeout?: number
+    healthyThreshold?: number
+    unhealthyThreshold?: number
+  }
+
+  /**
+   * Idle timeout in seconds
+   * @default 60
+   */
+  idleTimeout?: number
+
+  /**
+   * Enable access logs
+   */
+  accessLogs?: {
+    enabled?: boolean
+    bucket?: string
+    prefix?: string
+  }
+}
+
+/**
+ * SSL/TLS Configuration
+ * Supports both AWS ACM certificates and Let's Encrypt
+ */
+export interface SslConfig {
+  /**
+   * Enable HTTPS
+   * @default true for production
+   */
+  enabled?: boolean
+
+  /**
+   * SSL certificate provider
+   * - 'acm': AWS Certificate Manager (requires ALB or CloudFront)
+   * - 'letsencrypt': Free certificates from Let's Encrypt (works without ALB)
+   * @default 'acm' if loadBalancer.enabled, otherwise 'letsencrypt'
+   */
+  provider?: 'acm' | 'letsencrypt'
+
+  /**
+   * ACM certificate ARN (if using ACM)
+   * If not provided, a certificate will be automatically requested
+   */
+  certificateArn?: string
+
+  /**
+   * Domain names for the certificate
+   * If not provided, uses the primary domain from dns config
+   */
+  domains?: string[]
+
+  /**
+   * Redirect HTTP to HTTPS
+   * @default true when SSL is enabled
+   */
+  redirectHttp?: boolean
+
+  /**
+   * Let's Encrypt specific options
+   */
+  letsEncrypt?: {
+    /**
+     * Email for Let's Encrypt notifications
+     */
+    email?: string
+
+    /**
+     * Use staging server for testing
+     * @default false
+     */
+    staging?: boolean
+
+    /**
+     * Auto-renew certificates
+     * @default true
+     */
+    autoRenew?: boolean
+  }
 }
 
 export type CloudOptions = Partial<CloudConfig>

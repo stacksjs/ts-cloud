@@ -196,6 +196,136 @@ export class Route53DomainsClient {
   }
 
   /**
+   * Get domain pricing information
+   */
+  async getDomainPrice(params: {
+    DomainName: string
+  }): Promise<{
+    RegistrationPrice?: { Price: number, Currency: string }
+    RenewalPrice?: { Price: number, Currency: string }
+    TransferPrice?: { Price: number, Currency: string }
+  }> {
+    // Extract TLD from domain name
+    const tld = params.DomainName.split('.').slice(1).join('.')
+
+    const body = JSON.stringify({
+      Tld: tld,
+    })
+
+    const result = await this.client.request({
+      service: 'route53domains',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'content-type': 'application/x-amz-json-1.1',
+        'x-amz-target': 'Route53Domains_v20140515.ListPrices',
+      },
+      body,
+    })
+
+    const prices = result.Prices?.[0] || {}
+    return {
+      RegistrationPrice: prices.RegistrationPrice ? {
+        Price: prices.RegistrationPrice.Price,
+        Currency: prices.RegistrationPrice.Currency,
+      } : undefined,
+      RenewalPrice: prices.RenewalPrice ? {
+        Price: prices.RenewalPrice.Price,
+        Currency: prices.RenewalPrice.Currency,
+      } : undefined,
+      TransferPrice: prices.TransferPrice ? {
+        Price: prices.TransferPrice.Price,
+        Currency: prices.TransferPrice.Currency,
+      } : undefined,
+    }
+  }
+
+  /**
+   * Register a new domain
+   */
+  async registerDomain(params: {
+    DomainName: string
+    DurationInYears: number
+    AutoRenew?: boolean
+    AdminContact: ContactDetail
+    RegistrantContact: ContactDetail
+    TechContact: ContactDetail
+    PrivacyProtectAdminContact?: boolean
+    PrivacyProtectRegistrantContact?: boolean
+    PrivacyProtectTechContact?: boolean
+  }): Promise<{
+    OperationId: string
+  }> {
+    const body = JSON.stringify({
+      DomainName: params.DomainName,
+      DurationInYears: params.DurationInYears,
+      AutoRenew: params.AutoRenew ?? true,
+      AdminContact: params.AdminContact,
+      RegistrantContact: params.RegistrantContact,
+      TechContact: params.TechContact,
+      PrivacyProtectAdminContact: params.PrivacyProtectAdminContact ?? true,
+      PrivacyProtectRegistrantContact: params.PrivacyProtectRegistrantContact ?? true,
+      PrivacyProtectTechContact: params.PrivacyProtectTechContact ?? true,
+    })
+
+    const result = await this.client.request({
+      service: 'route53domains',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'content-type': 'application/x-amz-json-1.1',
+        'x-amz-target': 'Route53Domains_v20140515.RegisterDomain',
+      },
+      body,
+    })
+
+    return {
+      OperationId: result.OperationId || '',
+    }
+  }
+
+  /**
+   * Get operation details (for tracking domain registration status)
+   */
+  async getOperationDetail(params: {
+    OperationId: string
+  }): Promise<{
+    OperationId: string
+    Status: 'SUBMITTED' | 'IN_PROGRESS' | 'ERROR' | 'SUCCESSFUL' | 'FAILED'
+    Message?: string
+    DomainName?: string
+    Type?: string
+    SubmittedDate?: string
+  }> {
+    const body = JSON.stringify({
+      OperationId: params.OperationId,
+    })
+
+    const result = await this.client.request({
+      service: 'route53domains',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'content-type': 'application/x-amz-json-1.1',
+        'x-amz-target': 'Route53Domains_v20140515.GetOperationDetail',
+      },
+      body,
+    })
+
+    return {
+      OperationId: result.OperationId || '',
+      Status: result.Status || 'SUBMITTED',
+      Message: result.Message,
+      DomainName: result.DomainName,
+      Type: result.Type,
+      SubmittedDate: result.SubmittedDate,
+    }
+  }
+
+  /**
    * Parse domain detail response
    */
   private parseDomainDetail(result: any): GetDomainDetailResult {

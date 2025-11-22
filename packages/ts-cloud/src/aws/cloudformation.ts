@@ -279,7 +279,7 @@ export class CloudFormationClient {
   /**
    * List stack resources
    */
-  async listStackResources(stackName: string): Promise<any[]> {
+  async listStackResources(stackName: string): Promise<{ StackResourceSummaries: any[] }> {
     const params: Record<string, any> = {
       Action: 'ListStackResources',
       StackName: stackName,
@@ -294,9 +294,15 @@ export class CloudFormationClient {
       body: new URLSearchParams(params).toString(),
     })
 
-    // Parse resources from XML response
-    const resources = result?.ListStackResourcesResult?.StackResourceSummaries?.member || []
-    return Array.isArray(resources) ? resources : [resources]
+    // Parse resources from XML response - handle single member (object) or multiple members (array)
+    const member = result?.ListStackResourcesResult?.StackResourceSummaries?.member
+    let resources: any[] = []
+
+    if (member) {
+      resources = Array.isArray(member) ? member : [member]
+    }
+
+    return { StackResourceSummaries: resources }
   }
 
   /**
@@ -633,6 +639,18 @@ export class CloudFormationClient {
     if (Array.isArray(stackData)) {
       for (const s of stackData) {
         if (s.StackId || s.StackName) {
+          // Parse outputs
+          let outputs: Array<{ OutputKey: string, OutputValue: string, Description?: string, ExportName?: string }> | undefined
+          if (s.Outputs?.member) {
+            const outputData = Array.isArray(s.Outputs.member) ? s.Outputs.member : [s.Outputs.member]
+            outputs = outputData.map((o: any) => ({
+              OutputKey: o.OutputKey,
+              OutputValue: o.OutputValue,
+              Description: o.Description,
+              ExportName: o.ExportName,
+            }))
+          }
+
           stacks.push({
             StackId: s.StackId,
             StackName: s.StackName,
@@ -640,6 +658,7 @@ export class CloudFormationClient {
             CreationTime: s.CreationTime,
             LastUpdatedTime: s.LastUpdatedTime,
             StackStatusReason: s.StackStatusReason,
+            Outputs: outputs,
           })
         }
       }

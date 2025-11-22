@@ -3,6 +3,7 @@ export * from './types'
 export * from './generators'
 export * from './validation'
 export * from './aws'
+export * from './ssl'
 
 // Re-export core functionality
 export * from '@ts-cloud/core'
