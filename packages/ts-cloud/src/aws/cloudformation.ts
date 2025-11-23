@@ -434,32 +434,6 @@ export class CloudFormationClient {
     return { StackSummaries: [] } // TODO: Parse response
   }
 
-  /**
-   * Get stack resources
-   */
-  async listStackResources(stackName: string): Promise<{ StackResourceSummaries: Array<{
-    LogicalResourceId: string
-    PhysicalResourceId: string
-    ResourceType: string
-    ResourceStatus: string
-    LastUpdatedTimestamp: string
-  }> }> {
-    const params: Record<string, any> = {
-      Action: 'ListStackResources',
-      StackName: stackName,
-      Version: '2010-05-15',
-    }
-
-    const result = await this.client.request({
-      service: 'cloudformation',
-      region: this.region,
-      method: 'POST',
-      path: '/',
-      body: new URLSearchParams(params).toString(),
-    })
-
-    return { StackResourceSummaries: [] } // TODO: Parse response
-  }
 
   /**
    * Create change set (for preview before updating)
@@ -681,7 +655,143 @@ export class CloudFormationClient {
    * Parse stack events response
    */
   private parseStackEvents(result: any): StackEvent[] {
-    // Simplified parser
-    return []
+    const events: StackEvent[] = []
+
+    // Handle XML response structure: DescribeStackEventsResult > StackEvents > member
+    let eventData = result?.DescribeStackEventsResult?.StackEvents?.member
+      || result?.StackEvents?.member
+      || result?.StackEvents
+      || []
+
+    // If single event, wrap in array
+    if (eventData && !Array.isArray(eventData)) {
+      eventData = [eventData]
+    }
+
+    for (const e of eventData) {
+      if (e.LogicalResourceId) {
+        events.push({
+          Timestamp: e.Timestamp,
+          ResourceType: e.ResourceType,
+          LogicalResourceId: e.LogicalResourceId,
+          ResourceStatus: e.ResourceStatus,
+          ResourceStatusReason: e.ResourceStatusReason,
+        })
+      }
+    }
+
+    return events
+  }
+
+  /**
+   * Wait for stack with real-time progress output (CDK-style)
+   */
+  async waitForStackWithProgress(
+    stackName: string,
+    waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete',
+    onProgress?: (event: {
+      resourceId: string
+      resourceType: string
+      status: string
+      reason?: string
+      timestamp: string
+    }) => void,
+  ): Promise<void> {
+    const targetStatuses = {
+      'stack-create-complete': ['CREATE_COMPLETE'],
+      'stack-update-complete': ['UPDATE_COMPLETE'],
+      'stack-delete-complete': ['DELETE_COMPLETE'],
+    }
+
+    const failureStatuses = [
+      'CREATE_FAILED',
+      'ROLLBACK_FAILED',
+      'ROLLBACK_COMPLETE',
+      'UPDATE_ROLLBACK_FAILED',
+      'UPDATE_ROLLBACK_COMPLETE',
+    ]
+
+    const targets = targetStatuses[waitType]
+    const maxAttempts = 120 // 10 minutes
+    let attempts = 0
+    const seenEvents = new Set<string>()
+
+    while (attempts < maxAttempts) {
+      try {
+        // Get stack events for progress
+        if (onProgress) {
+          try {
+            const eventsResult = await this.describeStackEvents(stackName)
+            // Events are returned newest first, reverse for chronological order
+            const events = [...(eventsResult.StackEvents || [])].reverse()
+
+            for (const event of events) {
+              // Create unique key for this event
+              const eventKey = `${event.LogicalResourceId}-${event.ResourceStatus}-${event.Timestamp}`
+
+              if (!seenEvents.has(eventKey)) {
+                seenEvents.add(eventKey)
+                onProgress({
+                  resourceId: event.LogicalResourceId,
+                  resourceType: event.ResourceType,
+                  status: event.ResourceStatus,
+                  reason: event.ResourceStatusReason,
+                  timestamp: event.Timestamp,
+                })
+              }
+            }
+          }
+          catch {
+            // Events might not be available yet, continue
+          }
+        }
+
+        // Check stack status
+        const result = await this.describeStacks({ stackName })
+
+        if (result.Stacks.length === 0) {
+          if (waitType === 'stack-delete-complete') {
+            return // Stack deleted successfully
+          }
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          attempts++
+          continue
+        }
+
+        const stack = result.Stacks[0]
+
+        if (targets.includes(stack.StackStatus)) {
+          return // Target status reached
+        }
+
+        if (stack.StackStatus === 'DELETE_FAILED' && waitType === 'stack-delete-complete') {
+          const error: any = new Error(`Stack deletion failed - may have resources that need to be retained`)
+          error.code = 'DELETE_FAILED'
+          error.stackStatus = stack.StackStatus
+          error.statusReason = stack.StackStatusReason
+          throw error
+        }
+
+        if (failureStatuses.includes(stack.StackStatus)) {
+          throw new Error(`Stack reached failure status: ${stack.StackStatus}`)
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        attempts++
+      }
+      catch (error: any) {
+        if (waitType === 'stack-delete-complete' && error.message?.includes('does not exist')) {
+          return
+        }
+        if (waitType === 'stack-create-complete' && error.message?.includes('does not exist')) {
+          await new Promise(resolve => setTimeout(resolve, 2000))
+          attempts++
+          continue
+        }
+        throw error
+      }
+    }
+
+    throw new Error(`Timeout waiting for stack to reach ${waitType}`)
   }
 }

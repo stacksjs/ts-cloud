@@ -58,6 +58,153 @@ export class S3Client {
   }
 
   /**
+   * List all S3 buckets in the account
+   */
+  async listBuckets(): Promise<{ Buckets: Array<{ Name: string, CreationDate?: string }> }> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: '/',
+    })
+
+    const buckets: Array<{ Name: string, CreationDate?: string }> = []
+    const bucketList = result?.ListAllMyBucketsResult?.Buckets?.Bucket
+
+    if (bucketList) {
+      const list = Array.isArray(bucketList) ? bucketList : [bucketList]
+      for (const b of list) {
+        buckets.push({
+          Name: b.Name,
+          CreationDate: b.CreationDate,
+        })
+      }
+    }
+
+    return { Buckets: buckets }
+  }
+
+  /**
+   * Create an S3 bucket
+   */
+  async createBucket(bucket: string, options?: { acl?: string }): Promise<void> {
+    const headers: Record<string, string> = {}
+    if (options?.acl) {
+      headers['x-amz-acl'] = options.acl
+    }
+
+    // For us-east-1, don't include LocationConstraint
+    // For other regions, include it in the body
+    let body: string | undefined
+    if (this.region !== 'us-east-1') {
+      body = `<?xml version="1.0" encoding="UTF-8"?>
+<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <LocationConstraint>${this.region}</LocationConstraint>
+</CreateBucketConfiguration>`
+      headers['Content-Type'] = 'application/xml'
+    }
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      headers,
+      body,
+    })
+  }
+
+  /**
+   * Delete an S3 bucket (must be empty)
+   */
+  async deleteBucket(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+    })
+  }
+
+  /**
+   * Empty and delete an S3 bucket
+   */
+  async emptyAndDeleteBucket(bucket: string): Promise<void> {
+    // First list and delete all objects
+    let hasMore = true
+    while (hasMore) {
+      const objects = await this.listAllObjects({ bucket })
+      if (objects.length === 0) {
+        hasMore = false
+        break
+      }
+
+      // Delete in batches of 1000 (S3 limit)
+      const keys = objects.map(obj => obj.Key)
+      for (let i = 0; i < keys.length; i += 1000) {
+        const batch = keys.slice(i, i + 1000)
+        await this.deleteObjects(bucket, batch)
+      }
+    }
+
+    // Now delete the bucket
+    await this.deleteBucket(bucket)
+  }
+
+  /**
+   * List all objects in a bucket (handles pagination)
+   */
+  async listAllObjects(options: S3ListOptions): Promise<S3Object[]> {
+    const allObjects: S3Object[] = []
+    let continuationToken: string | undefined
+
+    do {
+      const params: Record<string, any> = {
+        'list-type': '2',
+        'max-keys': '1000',
+      }
+
+      if (options.prefix) {
+        params.prefix = options.prefix
+      }
+
+      if (continuationToken) {
+        params['continuation-token'] = continuationToken
+      }
+
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${options.bucket}`,
+        queryParams: params,
+      })
+
+      const contents = result?.ListBucketResult?.Contents
+      if (contents) {
+        const list = Array.isArray(contents) ? contents : [contents]
+        for (const obj of list) {
+          allObjects.push({
+            Key: obj.Key,
+            LastModified: obj.LastModified || '',
+            Size: Number.parseInt(obj.Size || '0'),
+            ETag: obj.ETag,
+          })
+        }
+      }
+
+      // Check for more results
+      const isTruncated = result?.ListBucketResult?.IsTruncated
+      continuationToken = isTruncated === 'true' || isTruncated === true
+        ? result?.ListBucketResult?.NextContinuationToken
+        : undefined
+
+    } while (continuationToken)
+
+    return allObjects
+  }
+
+  /**
    * List objects in S3 bucket
    */
   async list(options: S3ListOptions): Promise<S3Object[]> {
