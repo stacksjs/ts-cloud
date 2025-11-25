@@ -324,7 +324,7 @@ export class CloudFormationClient {
     ]
 
     const targets = targetStatuses[waitType]
-    const maxAttempts = 120 // 10 minutes
+    const maxAttempts = 360 // 30 minutes (DNS records can take 10-30 minutes)
     let attempts = 0
 
     while (attempts < maxAttempts) {
@@ -712,7 +712,7 @@ export class CloudFormationClient {
     ]
 
     const targets = targetStatuses[waitType]
-    const maxAttempts = 120 // 10 minutes
+    const maxAttempts = 360 // 30 minutes (DNS records can take 10-30 minutes)
     let attempts = 0
     const seenEvents = new Set<string>()
 

@@ -1,8 +1,12 @@
-# ts-cloud - Development Roadmap
+# ts-cloud - Complete Development Roadmap
 
-A lightweight, performant infrastructure-as-code library and CLI for deploying both **server-based (EC2)** and **serverless** applications. Built with Bun, generates pure CloudFormation (no heavy SDKs), inspired by Laravel Forge + Vapor unified.
+A lightweight, zero-dependency infrastructure-as-code library and CLI for deploying both **server-based (EC2)** and **serverless** applications. Built with Bun, generates pure CloudFormation (no AWS SDK, no AWS CLI required), inspired by Laravel Forge + Vapor unified.
 
-## 🎯 Current Progress
+**Goal:** Replace the existing `@stacksjs/cloud` CDK-based implementation with a pure TypeScript solution that has zero AWS dependencies.
+
+---
+
+## 🎯 Current Progress Summary
 
 **Phase 2 Core Modules: 19/19 COMPLETE! 🎉 (557 tests passing)**
 **Phase 3 CLI Development: MAJOR PROGRESS! 🚀 (Core commands implemented)**
@@ -13,6 +17,416 @@ A lightweight, performant infrastructure-as-code library and CLI for deploying b
 Completed modules: Storage, CDN, DNS, Security, Compute, Network, FileSystem, Email, Queue, AI, Database, Cache, Permissions, API Gateway, Messaging, Workflow, Monitoring, Authentication, Deployment
 
 CLI Commands: 40+ commands implemented across init, config, generate, deploy, server, function, domain, database, logs, metrics, alarms, secrets, and utility categories
+
+---
+
+# PART A: STACKS FRAMEWORK PARITY
+
+These tasks ensure ts-cloud can fully replace the existing `@stacksjs/cloud` CDK-based implementation.
+
+---
+
+## A.1 Core Cloud Stack Components (Stacks Parity)
+
+The existing Stacks framework has these cloud stacks that ts-cloud must replicate:
+
+### A.1.1 DNS Stack
+
+- [x] Route53 hosted zone lookup/creation
+- [x] A record creation for domains
+- [ ] **www redirect bucket** - S3 bucket configured to redirect <www.domain> to domain
+- [ ] **www A record** - Route53 A record pointing to www redirect bucket
+- [ ] **Store subdomain** - A record for store.domain (Lemon Squeezy integration)
+- [ ] Automatic hosted zone creation if not exists
+- [ ] DNS validation for certificates
+
+### A.1.2 Security Stack
+
+- [x] WAF WebACL creation with CloudFront scope
+- [x] Country-based geo-blocking rules
+- [x] IP address blocking rules (IPSet)
+- [x] HTTP header blocking rules
+- [ ] **Rate limiting rules** (commented out in stacks, needs implementation)
+- [ ] **IP reputation list rules** (AWS managed rules)
+- [ ] **Known bad inputs rules** (AWS managed rules)
+- [ ] **Anonymous IP list rules**
+- [ ] **Linux/Unix rule sets**
+- [x] KMS key creation with rotation
+- [x] ACM certificate creation with DNS validation
+- [x] Subject alternative names (www, api, docs subdomains)
+- [x] CloudFront Origin Access Identity
+
+### A.1.3 Storage Stack
+
+- [x] Public bucket with website hosting
+- [x] Private bucket with encryption
+- [x] Logs bucket with proper ACLs
+- [ ] **Docs bucket** - Conditional creation based on docs presence
+- [x] Versioning support
+- [x] Auto-delete objects on stack removal
+- [x] S3 managed encryption
+- [x] Daily backup tagging
+- [x] Weekly backup tagging (for docs)
+- [x] AWS Backup vault creation
+- [x] AWS Backup plan (daily 35-day retention)
+- [x] Backup selection by tags
+- [x] Backup IAM role with proper S3/KMS permissions
+
+### A.1.4 Network Stack
+
+- [x] VPC creation with configurable CIDR
+- [x] Multi-AZ support (3 AZs)
+- [x] Public subnets
+- [x] Private isolated subnets
+- [ ] **NAT Gateway support** (currently disabled, needs configurable option)
+- [ ] **VPC Flow Logs** (optional)
+- [x] Subnet configuration with proper CIDR masks
+
+### A.1.5 FileSystem Stack (EFS)
+
+- [x] EFS file system creation
+- [x] Lifecycle policy (transition to IA after 7 days)
+- [x] Performance mode (General Purpose)
+- [x] Throughput mode (Bursting)
+- [x] Automatic backups enabled
+- [x] Encryption at rest
+- [x] Access point with POSIX user configuration
+- [ ] **Mount targets for each subnet**
+- [ ] **Security group for EFS**
+
+### A.1.6 Compute Stack (ECS Fargate)
+
+- [x] ECS Cluster creation
+- [x] Fargate task definition
+- [x] Container definition with logging
+- [x] Health check configuration
+- [x] Port mappings
+- [x] Service security group
+- [x] Application Load Balancer
+- [x] ALB security group
+- [x] Target group with health checks
+- [x] HTTPS listener with ACM certificate
+- [x] HTTP listener
+- [x] Route53 A record for API subdomain
+- [x] EFS volume mounting
+- [x] Auto-scaling policies (CPU/Memory)
+- [ ] **Secrets Manager integration** - Store environment variables as secrets
+- [ ] **Secrets ARN injection** into container environment
+- [ ] **Docker image building** from framework server path
+- [ ] **ECR integration** for container images
+
+### A.1.7 CDN Stack (CloudFront)
+
+- [x] CloudFront distribution creation
+- [x] S3 origin with Origin Access Control
+- [x] Custom cache policy
+- [x] HTTPS redirect
+- [x] HTTP/2 and HTTP/3 support
+- [x] Price class configuration
+- [x] WAF integration
+- [x] Logging to S3
+- [x] Custom error responses (404/403 → index.html)
+- [ ] **Lambda@Edge origin request function** - URL rewriting for docs
+- [ ] **Docs distribution** - Separate CloudFront for docs subdomain
+- [ ] **ALB origin** - CloudFront origin pointing to ALB for API
+- [ ] **Multiple origins** support (S3 + ALB)
+- [x] Route53 alias records for distributions
+- [x] Cookie behavior configuration
+- [x] Allowed/cached methods configuration
+
+### A.1.8 Email Stack (SES)
+
+- [x] SES email identity verification
+- [x] DKIM configuration
+- [x] DKIM DNS records (3 CNAME records)
+- [x] MX record for mail subdomain
+- [x] SPF TXT record
+- [x] DMARC TXT record
+- [ ] **Email bucket** for storing emails
+- [ ] **SES receipt rule set** for inbound emails
+- [ ] **Lambda for outbound email** - JSON to raw email conversion
+- [ ] **Lambda for inbound email** - Email organization by From/To
+- [ ] **Lambda for email conversion** - Raw to HTML/text
+- [ ] **S3 event notifications** for email processing
+- [ ] **IAM roles** for email Lambda functions
+
+### A.1.9 Queue Stack (EventBridge + ECS)
+
+- [x] EventBridge rule creation
+- [x] Cron schedule support
+- [x] ECS task targets
+- [ ] **Dynamic job loading** - Load jobs from app/Jobs/*.ts
+- [ ] **Dynamic action loading** - Load actions from app/Actions/*.ts
+- [ ] **Container overrides** for job execution
+- [ ] **Job configuration** (backoff, retries, delay, jitter)
+- [ ] **Rate string to cron conversion**
+
+### A.1.10 Deployment Stack
+
+- [x] S3 bucket deployment
+- [ ] **Asset hashing** for cache invalidation
+- [ ] **Docs deployment** - Conditional deployment based on docs presence
+- [ ] **Private files deployment**
+- [ ] **CloudFront invalidation** after deployment
+- [ ] **Source path configuration** (views/web/dist, docs/dist, private)
+
+### A.1.11 Additional Stacks
+
+#### JumpBox Stack
+
+- [ ] EC2 instance for SSH access to private resources
+- [ ] Security group allowing SSH
+- [ ] EFS mount for file access
+- [ ] IAM instance profile
+
+#### Docs Stack
+
+- [ ] Lambda@Edge origin request function for docs URL rewriting
+- [ ] Suffix handling (.html appending)
+- [ ] Trailing slash handling
+- [ ] Root URI handling (/ → /index.html)
+
+#### Redirects Stack
+
+- [ ] Custom redirect rules
+- [ ] Domain redirects
+- [ ] Path-based redirects
+
+#### Permissions Stack
+
+- [ ] IAM users for CI/CD
+- [ ] IAM policies for deployment
+- [ ] Cross-account access roles
+
+#### AI Stack (Bedrock)
+
+- [x] IAM policy for Bedrock model invocation
+- [x] IAM role for ECS tasks
+- [x] Support for multiple models
+- [x] Streaming invocation support
+
+#### CLI Stack
+
+- [ ] IAM user for CLI access
+- [ ] Access key generation
+- [ ] Minimal permissions policy
+
+#### Dashboard Stack (Optional)
+
+- [ ] CloudWatch dashboard creation
+- [ ] Custom widgets
+- [ ] Metric visualization
+
+---
+
+## A.2 Configuration Parity with Stacks
+
+The ts-cloud config must support all options from Stacks' cloud.ts:
+
+### A.2.1 Environment Configuration
+
+- [x] Production environment
+- [x] Staging environment
+- [x] Development environment
+- [x] Per-environment variables
+- [x] Per-environment region
+
+### A.2.2 Compute Configuration
+
+- [ ] **Instance count** (instances: number)
+- [ ] **Instance size** (nano, micro, small, medium, large, xlarge, 2xlarge)
+- [ ] **Disk configuration** (size, type: standard/ssd/premium, encrypted)
+- [ ] **Auto-scaling** (min, max, scaleUpThreshold, scaleDownThreshold)
+- [ ] **Mixed instance fleet** (size, weight, spot)
+- [ ] **Spot configuration** (baseCapacity, onDemandPercentage, strategy)
+
+### A.2.3 Load Balancer Configuration
+
+- [ ] **Enabled flag**
+- [ ] **Type** (application)
+- [ ] **Health check** (path, interval, healthyThreshold, unhealthyThreshold)
+
+### A.2.4 SSL Configuration
+
+- [ ] **Enabled flag**
+- [ ] **Provider** (acm, letsencrypt)
+- [ ] **Domains array**
+- [ ] **HTTP redirect**
+- [ ] **Existing certificate ARN**
+- [ ] **Let's Encrypt config** (email, staging, autoRenew)
+
+### A.2.5 DNS Configuration
+
+- [x] Domain
+- [ ] **Hosted zone ID** (optional, for existing zones)
+
+### A.2.6 Storage Configuration
+
+- [x] Named buckets
+- [x] Encryption per bucket
+- [x] Versioning per bucket
+
+### A.2.7 Functions Configuration
+
+- [ ] **Named functions**
+- [ ] **Handler path**
+- [ ] **Runtime**
+- [ ] **Timeout**
+- [ ] **Memory size**
+
+### A.2.8 Database Configuration
+
+- [x] Engine (postgres, mysql)
+- [x] Instance class
+- [x] Storage size
+- [x] Username/password
+
+### A.2.9 CDN Configuration
+
+- [x] Named distributions
+- [x] Origin
+- [x] Custom domain
+- [ ] **Min/Max/Default TTL**
+- [ ] **Cookie behavior** (none, all, allowList)
+- [ ] **Allowed methods** (ALL, GET_HEAD, GET_HEAD_OPTIONS)
+- [ ] **Cached methods** (GET_HEAD, GET_HEAD_OPTIONS)
+- [ ] **Compress flag**
+
+### A.2.10 Monitoring Configuration
+
+- [x] Alarms array
+- [ ] **Metric name**
+- [ ] **Namespace**
+- [ ] **Threshold**
+- [ ] **Comparison operator**
+
+### A.2.11 Sites Configuration
+
+- [x] Named sites
+- [x] Root path
+- [x] URL path
+- [x] Domain
+
+---
+
+## A.3 Server Mode (Forge-style) Features
+
+For traditional EC2-based deployments:
+
+### A.3.1 Server Provisioning
+
+- [ ] **EC2 instance creation** with configurable:
+  - [ ] Instance type (t3.micro, t3.small, etc.)
+  - [ ] AMI selection (Ubuntu, Amazon Linux)
+  - [ ] Disk size and type
+  - [ ] Key pair management
+  - [ ] Security groups
+  - [ ] VPC/Subnet placement
+- [ ] **User data scripts** for initial setup
+- [ ] **Elastic IP allocation**
+- [ ] **Instance tagging**
+
+### A.3.2 Software Installation (User Data)
+
+- [ ] **Bun installation** with version selection
+- [ ] **Node.js installation** (optional)
+- [ ] **Nginx configuration**
+- [ ] **Caddy configuration** (alternative)
+- [ ] **PM2 process manager**
+- [ ] **systemd service setup**
+- [ ] **Database clients** (PostgreSQL, MySQL)
+- [ ] **Redis installation**
+- [ ] **Let's Encrypt SSL** (certbot)
+
+### A.3.3 Server Configuration (from servers.ts)
+
+- [ ] **Server types**: app, web, worker, cache, search
+- [ ] **Per-server configuration**:
+  - [ ] Name
+  - [ ] Domain
+  - [ ] Region
+  - [ ] Size
+  - [ ] Disk size
+  - [ ] Private network (VPC)
+  - [ ] Subnet
+  - [ ] Server OS
+  - [ ] Bun version
+  - [ ] Database type
+  - [ ] Database name
+  - [ ] Custom user data
+
+### A.3.4 Load Balancer for Servers
+
+- [ ] **ALB creation** when useLoadBalancer: true
+- [ ] **Target group** for EC2 instances
+- [ ] **Health checks**
+- [ ] **SSL termination**
+
+---
+
+## A.4 Docker/Container Support
+
+Based on Stacks' Dockerfile:
+
+### A.4.1 Dockerfile Generation
+
+- [ ] **Multi-stage build** (builder + release)
+- [ ] **Bun base image** (oven/bun:debian)
+- [ ] **Source file copying** (app, config, docs, dist)
+- [ ] **Storage directory setup**
+- [ ] **Health check** (curl)
+- [ ] **Volume configuration**
+- [ ] **Non-root user** (bun)
+- [ ] **Port exposure** (3000)
+- [ ] **Entrypoint configuration**
+
+### A.4.2 ECR Integration
+
+- [ ] **ECR repository creation**
+- [ ] **Docker image building**
+- [ ] **Image pushing to ECR**
+- [ ] **Image tagging** (latest, version, git sha)
+- [ ] **Lifecycle policies** for old images
+
+### A.4.3 Container Configuration
+
+- [ ] **CPU/Memory allocation**
+- [ ] **Environment variables**
+- [ ] **Secrets injection**
+- [ ] **Log configuration**
+- [ ] **Health check command**
+
+---
+
+## A.5 Deployment Pipeline
+
+### A.5.1 Asset Deployment
+
+- [ ] **S3 sync** for static files
+- [ ] **Asset hashing** for cache busting
+- [ ] **CloudFront invalidation**
+- [ ] **Gzip/Brotli compression**
+
+### A.5.2 Container Deployment
+
+- [ ] **ECS service update**
+- [ ] **Rolling deployment**
+- [ ] **Blue/green deployment**
+- [ ] **Rollback capability**
+
+### A.5.3 Server Deployment
+
+- [ ] **Git-based deployment**
+- [ ] **Rsync deployment**
+- [ ] **SCP deployment**
+- [ ] **Zero-downtime deployment**
+- [ ] **Post-deploy hooks**
+
+---
+
+# PART B: EXISTING TODO ITEMS
+
+These are the previously documented tasks that remain relevant:
 
 ---
 
@@ -1445,3 +1859,290 @@ CLI Commands: 40+ commands implemented across init, config, generate, deploy, se
 - [ ] SEO analyzer for static sites
 - [ ] Progressive Web App (PWA) support
 - [ ] Mobile app backend presets
+
+---
+
+# PART C: STACKS INTEGRATION & MIGRATION
+
+These tasks are specifically for integrating ts-cloud back into the Stacks framework.
+
+---
+
+## C.1 Stacks Framework Integration
+
+### C.1.1 Package Integration
+
+- [ ] Create `@stacksjs/ts-cloud` wrapper package
+- [ ] Export all ts-cloud modules with Stacks-compatible API
+- [ ] Maintain backward compatibility with existing Stacks cloud config
+- [ ] Create migration script from CDK-based cloud to ts-cloud
+
+### C.1.2 Configuration Migration
+
+- [ ] Parse existing `config/cloud.ts` format
+- [ ] Convert to ts-cloud `cloud.config.ts` format
+- [ ] Support both formats during transition
+- [ ] Deprecation warnings for old format
+
+### C.1.3 CLI Integration
+
+- [ ] Integrate `cloud` commands into `buddy` CLI
+- [ ] `buddy deploy` → `cloud deploy`
+- [ ] `buddy cloud:*` command namespace
+- [ ] Maintain existing command signatures
+
+### C.1.4 Path Integration
+
+- [ ] Use `@stacksjs/path` for all path resolution
+- [ ] Support Stacks project structure:
+  - [ ] `app/Jobs/*.ts` for queue jobs
+  - [ ] `app/Actions/*.ts` for actions
+  - [ ] `views/web/dist/` for frontend
+  - [ ] `docs/dist/` for documentation
+  - [ ] `storage/` for uploads
+  - [ ] `config/` for configuration
+
+### C.1.5 Config Integration
+
+- [ ] Use `@stacksjs/config` for configuration loading
+- [ ] Support `config.cloud.*` namespace
+- [ ] Support `config.app.*` for app settings
+- [ ] Support `config.security.*` for security settings
+
+---
+
+## C.2 Remove CDK Dependencies
+
+### C.2.1 Dependencies to Remove from Stacks
+
+- [ ] `aws-cdk-lib`
+- [ ] `aws-cdk`
+- [ ] `constructs`
+- [ ] `@aws-cdk/*` packages
+- [ ] `cdk.json` configuration
+- [ ] `cdk.context.json`
+- [ ] `cdk.out/` directory
+
+### C.2.2 Replace CDK Constructs
+
+- [ ] Replace `Stack` with ts-cloud CloudFormation builder
+- [ ] Replace `Construct` with ts-cloud resource classes
+- [ ] Replace CDK L2 constructs with ts-cloud modules
+- [ ] Replace CDK intrinsic functions with ts-cloud helpers
+
+### C.2.3 Update Deployment Process
+
+- [ ] Remove `cdk deploy` command
+- [ ] Use ts-cloud direct AWS API calls
+- [ ] Update CI/CD workflows
+- [ ] Update deployment documentation
+
+---
+
+## C.3 Feature Parity Verification
+
+### C.3.1 Functional Testing
+
+- [ ] Deploy static site (S3 + CloudFront)
+- [ ] Deploy API (ECS Fargate + ALB)
+- [ ] Deploy with database (RDS)
+- [ ] Deploy with cache (ElastiCache)
+- [ ] Deploy with email (SES)
+- [ ] Deploy with queue (EventBridge + ECS)
+- [ ] Deploy with file system (EFS)
+- [ ] Deploy with AI (Bedrock)
+
+### C.3.2 Performance Testing
+
+- [ ] Compare deployment time vs CDK
+- [ ] Compare CloudFormation template size
+- [ ] Compare memory usage during deployment
+- [ ] Compare cold start time for CLI
+
+### C.3.3 Compatibility Testing
+
+- [ ] Test with existing Stacks projects
+- [ ] Test migration from CDK-based deployment
+- [ ] Test rollback scenarios
+- [ ] Test multi-environment deployments
+
+---
+
+## C.4 Documentation for Stacks Users
+
+### C.4.1 Migration Guide
+
+- [ ] Step-by-step migration from CDK to ts-cloud
+- [ ] Configuration mapping reference
+- [ ] Breaking changes documentation
+- [ ] Troubleshooting common issues
+
+### C.4.2 Updated Stacks Cloud Documentation
+
+- [ ] Update cloud configuration reference
+- [ ] Update deployment guide
+- [ ] Update CLI command reference
+- [ ] Add ts-cloud architecture overview
+
+---
+
+# PART D: CRITICAL PATH ITEMS
+
+These are the highest priority items needed for a working deployment:
+
+---
+
+## D.1 Minimum Viable Deployment (MVP)
+
+### D.1.1 Static Site Deployment (Priority 1)
+
+- [x] S3 bucket creation
+- [x] CloudFront distribution
+- [x] Route53 DNS records
+- [x] ACM certificate
+- [ ] **S3 file upload** (direct API, not CLI)
+- [ ] **CloudFront invalidation** (direct API)
+- [ ] **End-to-end deployment command**
+
+### D.1.2 API Deployment (Priority 2)
+
+- [x] VPC creation
+- [x] ECS cluster
+- [x] Fargate task definition
+- [x] ALB setup
+- [ ] **ECR repository creation**
+- [ ] **Docker image push to ECR**
+- [ ] **ECS service deployment**
+- [ ] **End-to-end deployment command**
+
+### D.1.3 Full Stack Deployment (Priority 3)
+
+- [ ] Combined static + API deployment
+- [ ] Database provisioning
+- [ ] Cache provisioning
+- [ ] Secrets management
+- [ ] Environment variable injection
+
+---
+
+## D.2 AWS API Implementation (Zero Dependencies)
+
+### D.2.1 Core AWS APIs (Implemented)
+
+- [x] AWS Signature V4 signing
+- [x] CloudFormation API (CreateStack, UpdateStack, DeleteStack, DescribeStacks)
+- [x] S3 API (PutObject, multipart upload)
+- [x] CloudFront API (CreateInvalidation)
+- [x] Credentials resolution (env vars, ~/.aws/credentials)
+
+### D.2.2 Additional AWS APIs Needed
+
+- [ ] **ECR API** (CreateRepository, GetAuthorizationToken, PutImage)
+- [ ] **ECS API** (UpdateService, DescribeServices)
+- [ ] **Route53 API** (ChangeResourceRecordSets, ListHostedZones)
+- [ ] **ACM API** (RequestCertificate, DescribeCertificate)
+- [ ] **STS API** (GetCallerIdentity, AssumeRole)
+- [ ] **SSM API** (GetParameter, PutParameter)
+- [ ] **Secrets Manager API** (CreateSecret, GetSecretValue)
+- [ ] **SES API** (VerifyDomainIdentity, SendEmail)
+
+### D.2.3 API Error Handling
+
+- [ ] Retry logic with exponential backoff
+- [ ] Rate limiting handling
+- [ ] Detailed error messages
+- [ ] Request/response logging (debug mode)
+
+---
+
+## D.3 CLI Commands for Deployment
+
+### D.3.1 Essential Commands
+
+- [x] `cloud init` - Initialize project
+- [x] `cloud generate` - Generate CloudFormation
+- [ ] **`cloud deploy`** - Full deployment (needs completion)
+- [ ] **`cloud deploy:assets`** - Deploy static files
+- [ ] **`cloud deploy:api`** - Deploy API/containers
+- [x] `cloud status` - Check deployment status
+- [x] `cloud destroy` - Remove infrastructure
+
+### D.3.2 Debugging Commands
+
+- [x] `cloud doctor` - Check prerequisites
+- [x] `cloud logs` - View logs
+- [ ] **`cloud events`** - View CloudFormation events
+- [ ] **`cloud resources`** - List deployed resources
+- [ ] **`cloud outputs`** - Show stack outputs
+
+---
+
+# PART E: TESTING & QUALITY
+
+---
+
+## E.1 Test Coverage
+
+### E.1.1 Unit Tests
+
+- [x] CloudFormation template generation (557 tests)
+- [x] Resource modules (all 19 modules)
+- [ ] AWS API clients
+- [ ] CLI commands
+- [ ] Configuration loading
+
+### E.1.2 Integration Tests
+
+- [ ] End-to-end static site deployment
+- [ ] End-to-end API deployment
+- [ ] End-to-end full stack deployment
+- [ ] Rollback scenarios
+- [ ] Multi-environment deployments
+
+### E.1.3 Compatibility Tests
+
+- [ ] Test with LocalStack
+- [ ] Test with real AWS account
+- [ ] Test with different AWS regions
+- [ ] Test with different Node.js/Bun versions
+
+---
+
+## E.2 Documentation
+
+### E.2.1 API Documentation
+
+- [ ] All module APIs documented
+- [ ] All CLI commands documented
+- [ ] Configuration reference
+- [ ] Type definitions exported
+
+### E.2.2 Guides
+
+- [x] Getting started guide
+- [ ] Static site deployment guide
+- [ ] API deployment guide
+- [ ] Full stack deployment guide
+- [ ] Migration from CDK guide
+- [ ] Migration from Terraform guide
+- [ ] Troubleshooting guide
+
+### E.2.3 Examples
+
+- [ ] Static site example project
+- [ ] API example project
+- [ ] Full stack example project
+- [ ] Microservices example project
+
+---
+
+# SUMMARY: Priority Order
+
+1. **D.1.1** - Complete static site deployment (S3 upload, CloudFront invalidation)
+2. **D.2.2** - Implement missing AWS APIs (ECR, ECS, Route53, ACM)
+3. **D.1.2** - Complete API deployment (ECR push, ECS deploy)
+4. **A.1** - Achieve full Stacks parity for all cloud stacks
+5. **C.1** - Integrate into Stacks framework
+6. **C.2** - Remove CDK dependencies from Stacks
+7. **E.1** - Complete test coverage
+8. **E.2** - Complete documentation
