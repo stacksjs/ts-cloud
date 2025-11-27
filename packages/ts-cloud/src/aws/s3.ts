@@ -3,6 +3,7 @@
  * Direct API calls without AWS CLI dependency
  */
 
+import * as crypto from 'node:crypto'
 import { AWSClient } from './client'
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -55,6 +56,21 @@ export class S3Client {
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
     this.client = new AWSClient()
+  }
+
+  /**
+   * Get AWS credentials from environment
+   */
+  private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+    const sessionToken = process.env.AWS_SESSION_TOKEN
+
+    if (!accessKeyId || !secretAccessKey) {
+      throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.')
+    }
+
+    return { accessKeyId, secretAccessKey, sessionToken }
   }
 
   /**
@@ -276,13 +292,102 @@ export class S3Client {
       }
     }
 
+    // For binary data (Buffer), we need to convert to base64 and set proper content encoding
+    // or pass the raw binary. Since fetch supports Buffer directly, we can use it.
+    const bodyContent = typeof options.body === 'string'
+      ? options.body
+      : Buffer.isBuffer(options.body)
+        ? options.body.toString('base64')
+        : String(options.body)
+
+    // If we're sending base64-encoded binary, mark it in headers
+    if (Buffer.isBuffer(options.body)) {
+      // Actually, for S3 we need to send raw binary, not base64
+      // Let's use Bun's fetch which handles Buffer natively
+      const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+      const host = `${options.bucket}.s3.${this.region}.amazonaws.com`
+      const url = `https://${host}/${options.key}`
+
+      const now = new Date()
+      const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+      const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+      const payloadHash = crypto.createHash('sha256').update(options.body).digest('hex')
+
+      const requestHeaders: Record<string, string> = {
+        'host': host,
+        'x-amz-date': amzDate,
+        'x-amz-content-sha256': payloadHash,
+        ...headers,
+      }
+
+      if (sessionToken) {
+        requestHeaders['x-amz-security-token'] = sessionToken
+      }
+
+      // Create canonical request
+      const canonicalHeaders = Object.keys(requestHeaders)
+        .sort()
+        .map(key => `${key.toLowerCase()}:${requestHeaders[key].trim()}\n`)
+        .join('')
+
+      const signedHeaders = Object.keys(requestHeaders)
+        .sort()
+        .map(key => key.toLowerCase())
+        .join(';')
+
+      const canonicalRequest = [
+        'PUT',
+        `/${options.key}`,
+        '',
+        canonicalHeaders,
+        signedHeaders,
+        payloadHash,
+      ].join('\n')
+
+      // Create string to sign
+      const algorithm = 'AWS4-HMAC-SHA256'
+      const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+      const stringToSign = [
+        algorithm,
+        amzDate,
+        credentialScope,
+        crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+      ].join('\n')
+
+      // Calculate signature
+      const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+      const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+      const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+      const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+      const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+      const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          ...requestHeaders,
+          'Authorization': authorizationHeader,
+        },
+        body: options.body,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`S3 PUT failed: ${response.status} ${errorText}`)
+      }
+
+      return
+    }
+
     await this.client.request({
       service: 's3',
       region: this.region,
       method: 'PUT',
       path: `/${options.bucket}/${options.key}`,
       headers,
-      body: typeof options.body === 'string' ? options.body : options.body.toString(),
+      body: bodyContent,
     })
   }
 

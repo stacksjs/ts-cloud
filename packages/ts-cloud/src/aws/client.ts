@@ -215,6 +215,10 @@ export class AWSClient {
       // Route53 Domains is only available in us-east-1
       host = 'route53domains.us-east-1.amazonaws.com'
     }
+    else if (service === 'ecr') {
+      // ECR uses api.ecr subdomain for the JSON API
+      host = `api.ecr.${region}.amazonaws.com`
+    }
     else {
       host = `${service}.${region}.amazonaws.com`
     }
@@ -258,6 +262,10 @@ export class AWSClient {
       // Route53 Domains is only available in us-east-1
       host = 'route53domains.us-east-1.amazonaws.com'
     }
+    else if (service === 'ecr') {
+      // ECR uses api.ecr subdomain for the JSON API
+      host = `api.ecr.${region}.amazonaws.com`
+    }
     else {
       host = `${service}.${region}.amazonaws.com`
     }
@@ -274,8 +282,11 @@ export class AWSClient {
     }
 
     if (body) {
-      // Don't override content-type if already set (e.g., for JSON APIs like Route53Domains)
-      if (!headers['content-type']) {
+      // Don't override content-type if already set (case-insensitive check)
+      const hasContentType = Object.keys(headers).some(
+        k => k.toLowerCase() === 'content-type'
+      )
+      if (!hasContentType) {
         headers['content-type'] = 'application/x-www-form-urlencoded'
       }
       headers['content-length'] = Buffer.byteLength(body).toString()
@@ -290,13 +301,16 @@ export class AWSClient {
       ? new URLSearchParams(queryParams).toString()
       : ''
 
-    const canonicalHeaders = Object.keys(headers)
-      .sort()
+    // Sort headers by lowercase key name (AWS SigV4 requirement)
+    const sortedHeaderKeys = Object.keys(headers).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    )
+
+    const canonicalHeaders = sortedHeaderKeys
       .map(key => `${key.toLowerCase()}:${headers[key].trim()}\n`)
       .join('')
 
-    const signedHeaders = Object.keys(headers)
-      .sort()
+    const signedHeaders = sortedHeaderKeys
       .map(key => key.toLowerCase())
       .join(';')
 
