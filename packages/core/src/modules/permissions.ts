@@ -499,4 +499,583 @@ export class Permissions {
     CodeDeploy: 'codedeploy.amazonaws.com',
     CloudFormation: 'cloudformation.amazonaws.com',
   } as const
+
+  /**
+   * Create a CI/CD user with deployment permissions
+   */
+  static createCiCdUser(options: {
+    slug: string
+    environment: EnvironmentType
+    permissions: {
+      s3Buckets?: string[]
+      cloudFrontDistributions?: string[]
+      ecrRepositories?: string[]
+      ecsServices?: string[]
+      cloudFormationStacks?: string[]
+      lambdaFunctions?: string[]
+      secretsManagerSecrets?: string[]
+    }
+    createAccessKey?: boolean
+  }): {
+    user: IAMUser
+    accessKey?: IAMAccessKey
+    policy: IAMManagedPolicy
+    userLogicalId: string
+    accessKeyLogicalId?: string
+    policyLogicalId: string
+    resources: Record<string, any>
+  } {
+    const {
+      slug,
+      environment,
+      permissions,
+      createAccessKey = true,
+    } = options
+
+    const resources: Record<string, any> = {}
+
+    // Build policy statements based on permissions
+    const statements: PolicyStatement[] = []
+
+    // S3 permissions
+    if (permissions.s3Buckets && permissions.s3Buckets.length > 0) {
+      statements.push({
+        sid: 'S3Access',
+        actions: [
+          's3:GetBucketLocation',
+          's3:ListBucket',
+          's3:GetObject',
+          's3:PutObject',
+          's3:DeleteObject',
+          's3:ListBucketMultipartUploads',
+          's3:AbortMultipartUpload',
+        ],
+        resources: [
+          ...permissions.s3Buckets,
+          ...permissions.s3Buckets.map(b => `${b}/*`),
+        ],
+      })
+    }
+
+    // CloudFront permissions
+    if (permissions.cloudFrontDistributions && permissions.cloudFrontDistributions.length > 0) {
+      statements.push({
+        sid: 'CloudFrontAccess',
+        actions: [
+          'cloudfront:CreateInvalidation',
+          'cloudfront:GetInvalidation',
+          'cloudfront:ListInvalidations',
+          'cloudfront:GetDistribution',
+        ],
+        resources: permissions.cloudFrontDistributions,
+      })
+    }
+
+    // ECR permissions
+    if (permissions.ecrRepositories && permissions.ecrRepositories.length > 0) {
+      statements.push({
+        sid: 'ECRAccess',
+        actions: [
+          'ecr:GetAuthorizationToken',
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:GetDownloadUrlForLayer',
+          'ecr:GetRepositoryPolicy',
+          'ecr:DescribeRepositories',
+          'ecr:ListImages',
+          'ecr:DescribeImages',
+          'ecr:BatchGetImage',
+          'ecr:InitiateLayerUpload',
+          'ecr:UploadLayerPart',
+          'ecr:CompleteLayerUpload',
+          'ecr:PutImage',
+        ],
+        resources: permissions.ecrRepositories,
+      })
+
+      // ECR login requires permission on all resources
+      statements.push({
+        sid: 'ECRLogin',
+        actions: ['ecr:GetAuthorizationToken'],
+        resources: '*',
+      })
+    }
+
+    // ECS permissions
+    if (permissions.ecsServices && permissions.ecsServices.length > 0) {
+      statements.push({
+        sid: 'ECSAccess',
+        actions: [
+          'ecs:DescribeServices',
+          'ecs:DescribeTaskDefinition',
+          'ecs:DescribeTasks',
+          'ecs:ListTasks',
+          'ecs:RegisterTaskDefinition',
+          'ecs:UpdateService',
+          'ecs:RunTask',
+          'ecs:StopTask',
+        ],
+        resources: permissions.ecsServices,
+      })
+
+      // Task definition registration requires broader permissions
+      statements.push({
+        sid: 'ECSTaskDefinitions',
+        actions: [
+          'ecs:RegisterTaskDefinition',
+          'ecs:DeregisterTaskDefinition',
+        ],
+        resources: '*',
+      })
+
+      // IAM PassRole for ECS
+      statements.push({
+        sid: 'ECSPassRole',
+        actions: ['iam:PassRole'],
+        resources: '*',
+        conditions: {
+          StringLike: {
+            'iam:PassedToService': 'ecs-tasks.amazonaws.com',
+          },
+        },
+      })
+    }
+
+    // CloudFormation permissions
+    if (permissions.cloudFormationStacks && permissions.cloudFormationStacks.length > 0) {
+      statements.push({
+        sid: 'CloudFormationAccess',
+        actions: [
+          'cloudformation:CreateStack',
+          'cloudformation:UpdateStack',
+          'cloudformation:DeleteStack',
+          'cloudformation:DescribeStacks',
+          'cloudformation:DescribeStackEvents',
+          'cloudformation:DescribeStackResources',
+          'cloudformation:GetTemplate',
+          'cloudformation:ListStackResources',
+          'cloudformation:ValidateTemplate',
+        ],
+        resources: permissions.cloudFormationStacks,
+      })
+    }
+
+    // Lambda permissions
+    if (permissions.lambdaFunctions && permissions.lambdaFunctions.length > 0) {
+      statements.push({
+        sid: 'LambdaAccess',
+        actions: [
+          'lambda:GetFunction',
+          'lambda:UpdateFunctionCode',
+          'lambda:UpdateFunctionConfiguration',
+          'lambda:PublishVersion',
+          'lambda:UpdateAlias',
+          'lambda:CreateAlias',
+        ],
+        resources: permissions.lambdaFunctions,
+      })
+    }
+
+    // Secrets Manager permissions
+    if (permissions.secretsManagerSecrets && permissions.secretsManagerSecrets.length > 0) {
+      statements.push({
+        sid: 'SecretsManagerAccess',
+        actions: [
+          'secretsmanager:GetSecretValue',
+          'secretsmanager:DescribeSecret',
+        ],
+        resources: permissions.secretsManagerSecrets,
+      })
+    }
+
+    // Create the policy
+    const { policy, logicalId: policyLogicalId } = Permissions.createPolicy({
+      slug,
+      environment,
+      policyName: generateResourceName({
+        slug,
+        environment,
+        resourceType: 'cicd-policy',
+      }),
+      description: `CI/CD deployment policy for ${slug} (${environment})`,
+      statements,
+    })
+    resources[policyLogicalId] = policy
+
+    // Create the user
+    const { user, logicalId: userLogicalId } = Permissions.createUser({
+      slug,
+      environment,
+      userName: generateResourceName({
+        slug,
+        environment,
+        resourceType: 'cicd-user',
+      }),
+      managedPolicyArns: [Fn.Ref(policyLogicalId) as unknown as string],
+    })
+    resources[userLogicalId] = user
+
+    // Create access key if requested
+    let accessKey: IAMAccessKey | undefined
+    let accessKeyLogicalId: string | undefined
+
+    if (createAccessKey) {
+      const keyResult = Permissions.createAccessKey(userLogicalId, { slug, environment })
+      accessKey = keyResult.accessKey
+      accessKeyLogicalId = keyResult.logicalId
+      resources[accessKeyLogicalId] = accessKey
+    }
+
+    return {
+      user,
+      accessKey,
+      policy,
+      userLogicalId,
+      accessKeyLogicalId,
+      policyLogicalId,
+      resources,
+    }
+  }
+
+  /**
+   * Create a cross-account access role
+   */
+  static createCrossAccountRole(options: {
+    slug: string
+    environment: EnvironmentType
+    trustedAccountIds: string[]
+    externalId?: string
+    permissions: PolicyStatement[]
+    maxSessionDuration?: number
+  }): {
+    role: IAMRole
+    policy: IAMManagedPolicy
+    roleLogicalId: string
+    policyLogicalId: string
+    resources: Record<string, any>
+  } {
+    const {
+      slug,
+      environment,
+      trustedAccountIds,
+      externalId,
+      permissions,
+      maxSessionDuration = 3600,
+    } = options
+
+    const resources: Record<string, any> = {}
+
+    // Create the policy
+    const { policy, logicalId: policyLogicalId } = Permissions.createPolicy({
+      slug,
+      environment,
+      policyName: generateResourceName({
+        slug,
+        environment,
+        resourceType: 'cross-account-policy',
+      }),
+      description: `Cross-account access policy for ${slug} (${environment})`,
+      statements: permissions,
+    })
+    resources[policyLogicalId] = policy
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'cross-account-role',
+    })
+
+    const roleLogicalId = generateLogicalId(resourceName)
+
+    // Build trust policy
+    const conditions: Record<string, any> = {}
+    if (externalId) {
+      conditions.StringEquals = {
+        'sts:ExternalId': externalId,
+      }
+    }
+
+    const role: IAMRole = {
+      Type: 'AWS::IAM::Role',
+      Properties: {
+        RoleName: resourceName,
+        MaxSessionDuration: maxSessionDuration,
+        AssumeRolePolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [{
+            Effect: 'Allow',
+            Principal: {
+              AWS: trustedAccountIds.map(id => `arn:aws:iam::${id}:root`),
+            },
+            Action: 'sts:AssumeRole',
+            ...(Object.keys(conditions).length > 0 ? { Condition: conditions } : {}),
+          }],
+        },
+        ManagedPolicyArns: [Fn.Ref(policyLogicalId) as unknown as string],
+        Tags: [
+          { Key: 'Name', Value: resourceName },
+          { Key: 'Environment', Value: environment },
+          { Key: 'Purpose', Value: 'Cross-Account Access' },
+        ],
+      },
+    }
+    resources[roleLogicalId] = role
+
+    return {
+      role,
+      policy,
+      roleLogicalId,
+      policyLogicalId,
+      resources,
+    }
+  }
+
+  /**
+   * Create a CLI access user with minimal permissions
+   */
+  static createCliUser(options: {
+    slug: string
+    environment: EnvironmentType
+    permissions?: 'readonly' | 'deploy' | 'admin'
+  }): {
+    user: IAMUser
+    accessKey: IAMAccessKey
+    policy?: IAMManagedPolicy
+    userLogicalId: string
+    accessKeyLogicalId: string
+    policyLogicalId?: string
+    resources: Record<string, any>
+  } {
+    const {
+      slug,
+      environment,
+      permissions = 'readonly',
+    } = options
+
+    const resources: Record<string, any> = {}
+
+    // Define statements based on permission level
+    let statements: PolicyStatement[] = []
+    let managedPolicyArns: string[] = []
+
+    switch (permissions) {
+      case 'readonly':
+        managedPolicyArns = [Permissions.ManagedPolicies.ReadOnlyAccess]
+        break
+
+      case 'deploy':
+        statements = [
+          {
+            sid: 'S3Deploy',
+            actions: ['s3:*'],
+            resources: '*',
+          },
+          {
+            sid: 'CloudFrontDeploy',
+            actions: ['cloudfront:*'],
+            resources: '*',
+          },
+          {
+            sid: 'ECSDeploy',
+            actions: ['ecs:*'],
+            resources: '*',
+          },
+          {
+            sid: 'ECRDeploy',
+            actions: ['ecr:*'],
+            resources: '*',
+          },
+          {
+            sid: 'LambdaDeploy',
+            actions: ['lambda:*'],
+            resources: '*',
+          },
+          {
+            sid: 'CloudFormationDeploy',
+            actions: ['cloudformation:*'],
+            resources: '*',
+          },
+          {
+            sid: 'IAMPassRole',
+            actions: ['iam:PassRole'],
+            resources: '*',
+          },
+        ]
+        break
+
+      case 'admin':
+        managedPolicyArns = [Permissions.ManagedPolicies.AdministratorAccess]
+        break
+    }
+
+    // Create policy if needed
+    let policy: IAMManagedPolicy | undefined
+    let policyLogicalId: string | undefined
+
+    if (statements.length > 0) {
+      const policyResult = Permissions.createPolicy({
+        slug,
+        environment,
+        policyName: generateResourceName({
+          slug,
+          environment,
+          resourceType: 'cli-policy',
+        }),
+        description: `CLI access policy for ${slug} (${environment})`,
+        statements,
+      })
+      policy = policyResult.policy
+      policyLogicalId = policyResult.logicalId
+      resources[policyLogicalId] = policy
+      managedPolicyArns = [Fn.Ref(policyLogicalId) as unknown as string]
+    }
+
+    // Create user
+    const { user, logicalId: userLogicalId } = Permissions.createUser({
+      slug,
+      environment,
+      userName: generateResourceName({
+        slug,
+        environment,
+        resourceType: 'cli-user',
+      }),
+      managedPolicyArns,
+    })
+    resources[userLogicalId] = user
+
+    // Create access key
+    const { accessKey, logicalId: accessKeyLogicalId } = Permissions.createAccessKey(
+      userLogicalId,
+      { slug, environment },
+    )
+    resources[accessKeyLogicalId] = accessKey
+
+    return {
+      user,
+      accessKey,
+      policy,
+      userLogicalId,
+      accessKeyLogicalId,
+      policyLogicalId,
+      resources,
+    }
+  }
+
+  /**
+   * Common CI/CD policy templates
+   */
+  static readonly CiCdPolicies = {
+    /**
+     * S3 static site deployment policy
+     */
+    s3Deployment: (bucketArns: string[]): PolicyStatement[] => [
+      {
+        sid: 'S3ListBuckets',
+        actions: ['s3:ListBucket', 's3:GetBucketLocation'],
+        resources: bucketArns,
+      },
+      {
+        sid: 'S3Objects',
+        actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
+        resources: bucketArns.map(arn => `${arn}/*`),
+      },
+    ],
+
+    /**
+     * CloudFront invalidation policy
+     */
+    cloudFrontInvalidation: (distributionArns: string[]): PolicyStatement[] => [
+      {
+        sid: 'CloudFrontInvalidation',
+        actions: [
+          'cloudfront:CreateInvalidation',
+          'cloudfront:GetInvalidation',
+          'cloudfront:ListInvalidations',
+        ],
+        resources: distributionArns,
+      },
+    ],
+
+    /**
+     * ECS deployment policy
+     */
+    ecsDeployment: (): PolicyStatement[] => [
+      {
+        sid: 'ECSServices',
+        actions: [
+          'ecs:DescribeServices',
+          'ecs:UpdateService',
+          'ecs:DescribeTaskDefinition',
+          'ecs:RegisterTaskDefinition',
+        ],
+        resources: '*',
+      },
+      {
+        sid: 'ECSPassRole',
+        actions: ['iam:PassRole'],
+        resources: '*',
+        conditions: {
+          StringLike: {
+            'iam:PassedToService': 'ecs-tasks.amazonaws.com',
+          },
+        },
+      },
+    ],
+
+    /**
+     * ECR push policy
+     */
+    ecrPush: (repositoryArns: string[]): PolicyStatement[] => [
+      {
+        sid: 'ECRAuth',
+        actions: ['ecr:GetAuthorizationToken'],
+        resources: '*',
+      },
+      {
+        sid: 'ECRPush',
+        actions: [
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:GetDownloadUrlForLayer',
+          'ecr:BatchGetImage',
+          'ecr:InitiateLayerUpload',
+          'ecr:UploadLayerPart',
+          'ecr:CompleteLayerUpload',
+          'ecr:PutImage',
+        ],
+        resources: repositoryArns,
+      },
+    ],
+
+    /**
+     * Lambda deployment policy
+     */
+    lambdaDeployment: (functionArns: string[]): PolicyStatement[] => [
+      {
+        sid: 'LambdaDeploy',
+        actions: [
+          'lambda:GetFunction',
+          'lambda:UpdateFunctionCode',
+          'lambda:UpdateFunctionConfiguration',
+          'lambda:PublishVersion',
+        ],
+        resources: functionArns,
+      },
+    ],
+
+    /**
+     * CloudFormation deployment policy
+     */
+    cloudFormationDeployment: (stackArns: string[]): PolicyStatement[] => [
+      {
+        sid: 'CloudFormationDeploy',
+        actions: [
+          'cloudformation:CreateStack',
+          'cloudformation:UpdateStack',
+          'cloudformation:DescribeStacks',
+          'cloudformation:DescribeStackEvents',
+          'cloudformation:GetTemplate',
+        ],
+        resources: stackArns,
+      },
+    ],
+  }
 }

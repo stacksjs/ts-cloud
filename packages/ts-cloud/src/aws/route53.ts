@@ -594,4 +594,453 @@ export class Route53Client {
       HealthCheckId: rs.HealthCheckId,
     }
   }
+
+  // Helper methods for common operations
+
+  /**
+   * Find hosted zone by domain name
+   */
+  async findHostedZoneByName(domainName: string): Promise<HostedZone | null> {
+    // Ensure domain ends with a dot
+    const normalizedDomain = domainName.endsWith('.') ? domainName : `${domainName}.`
+
+    const result = await this.listHostedZonesByName({ DNSName: normalizedDomain })
+    const zone = result.HostedZones.find(z => z.Name === normalizedDomain)
+
+    return zone || null
+  }
+
+  /**
+   * Create an A record
+   */
+  async createARecord(params: {
+    HostedZoneId: string
+    Name: string
+    Value: string | string[]
+    TTL?: number
+  }): Promise<ChangeResourceRecordSetsResult> {
+    const values = Array.isArray(params.Value) ? params.Value : [params.Value]
+
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: params.Name,
+            Type: 'A',
+            TTL: params.TTL || 300,
+            ResourceRecords: values.map(v => ({ Value: v })),
+          },
+        }],
+      },
+    })
+  }
+
+  /**
+   * Create a CNAME record
+   */
+  async createCnameRecord(params: {
+    HostedZoneId: string
+    Name: string
+    Value: string
+    TTL?: number
+  }): Promise<ChangeResourceRecordSetsResult> {
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: params.Name,
+            Type: 'CNAME',
+            TTL: params.TTL || 300,
+            ResourceRecords: [{ Value: params.Value }],
+          },
+        }],
+      },
+    })
+  }
+
+  /**
+   * Create an alias record (for CloudFront, ALB, etc.)
+   */
+  async createAliasRecord(params: {
+    HostedZoneId: string
+    Name: string
+    TargetHostedZoneId: string
+    TargetDNSName: string
+    EvaluateTargetHealth?: boolean
+    Type?: 'A' | 'AAAA'
+  }): Promise<ChangeResourceRecordSetsResult> {
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: params.Name,
+            Type: params.Type || 'A',
+            AliasTarget: {
+              HostedZoneId: params.TargetHostedZoneId,
+              DNSName: params.TargetDNSName,
+              EvaluateTargetHealth: params.EvaluateTargetHealth ?? false,
+            },
+          },
+        }],
+      },
+    })
+  }
+
+  /**
+   * Create a TXT record
+   */
+  async createTxtRecord(params: {
+    HostedZoneId: string
+    Name: string
+    Value: string | string[]
+    TTL?: number
+  }): Promise<ChangeResourceRecordSetsResult> {
+    const values = Array.isArray(params.Value) ? params.Value : [params.Value]
+    // TXT records need to be quoted
+    const quotedValues = values.map((v) => {
+      if (!v.startsWith('"')) {
+        return `"${v}"`
+      }
+      return v
+    })
+
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: params.Name,
+            Type: 'TXT',
+            TTL: params.TTL || 300,
+            ResourceRecords: quotedValues.map(v => ({ Value: v })),
+          },
+        }],
+      },
+    })
+  }
+
+  /**
+   * Create an MX record
+   */
+  async createMxRecord(params: {
+    HostedZoneId: string
+    Name: string
+    Values: Array<{ priority: number, mailServer: string }>
+    TTL?: number
+  }): Promise<ChangeResourceRecordSetsResult> {
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: params.Name,
+            Type: 'MX',
+            TTL: params.TTL || 300,
+            ResourceRecords: params.Values.map(v => ({
+              Value: `${v.priority} ${v.mailServer}`,
+            })),
+          },
+        }],
+      },
+    })
+  }
+
+  /**
+   * Delete a record
+   */
+  async deleteRecord(params: {
+    HostedZoneId: string
+    RecordSet: ResourceRecordSet
+  }): Promise<ChangeResourceRecordSetsResult> {
+    return this.changeResourceRecordSets({
+      HostedZoneId: params.HostedZoneId,
+      ChangeBatch: {
+        Changes: [{
+          Action: 'DELETE',
+          ResourceRecordSet: params.RecordSet,
+        }],
+      },
+    })
+  }
+
+  /**
+   * Wait for a change to become INSYNC
+   */
+  async waitForChange(changeId: string, maxAttempts = 60, delayMs = 5000): Promise<boolean> {
+    const id = changeId.replace('/change/', '')
+
+    for (let i = 0; i < maxAttempts; i++) {
+      const result = await this.client.request({
+        service: 'route53',
+        region: this.region,
+        method: 'GET',
+        path: `/2013-04-01/change/${id}`,
+      })
+
+      const status = result.GetChangeResponse?.ChangeInfo?.Status || result.ChangeInfo?.Status
+      if (status === 'INSYNC') {
+        return true
+      }
+
+      await new Promise(resolve => setTimeout(resolve, delayMs))
+    }
+
+    return false
+  }
+
+  /**
+   * Find or create a hosted zone for a domain
+   * Automatically creates the zone if it doesn't exist
+   */
+  async findOrCreateHostedZone(params: {
+    domainName: string
+    comment?: string
+    privateZone?: boolean
+    vpc?: {
+      VPCRegion: string
+      VPCId: string
+    }
+  }): Promise<{
+    hostedZone: HostedZone
+    nameServers: string[]
+    isNew: boolean
+  }> {
+    // Normalize domain (ensure it ends with a dot)
+    const normalizedDomain = params.domainName.endsWith('.')
+      ? params.domainName
+      : `${params.domainName}.`
+
+    // First, try to find existing hosted zone
+    const existing = await this.findHostedZoneByName(normalizedDomain)
+
+    if (existing) {
+      // Get the delegation set for name servers
+      const zoneDetails = await this.getHostedZone({ Id: existing.Id })
+      return {
+        hostedZone: existing,
+        nameServers: zoneDetails.DelegationSet.NameServers,
+        isNew: false,
+      }
+    }
+
+    // Create new hosted zone
+    const result = await this.createHostedZone({
+      Name: normalizedDomain,
+      HostedZoneConfig: {
+        Comment: params.comment || `Hosted zone for ${params.domainName}`,
+        PrivateZone: params.privateZone,
+      },
+      VPC: params.vpc,
+    })
+
+    return {
+      hostedZone: result.HostedZone,
+      nameServers: result.DelegationSet.NameServers,
+      isNew: true,
+    }
+  }
+
+  /**
+   * Get the root domain from a subdomain
+   * e.g., "api.example.com" -> "example.com"
+   */
+  static getRootDomain(domain: string): string {
+    const parts = domain.replace(/\.$/, '').split('.')
+    if (parts.length <= 2) {
+      return domain
+    }
+    // Return last two parts (handles most TLDs)
+    return parts.slice(-2).join('.')
+  }
+
+  /**
+   * Find the hosted zone for a domain or its parent domain
+   * Useful when you have a subdomain and need to find the zone
+   */
+  async findHostedZoneForDomain(domain: string): Promise<HostedZone | null> {
+    const normalizedDomain = domain.replace(/\.$/, '')
+    const parts = normalizedDomain.split('.')
+
+    // Try from most specific to least specific
+    for (let i = 0; i < parts.length - 1; i++) {
+      const testDomain = parts.slice(i).join('.')
+      const zone = await this.findHostedZoneByName(testDomain)
+      if (zone) {
+        return zone
+      }
+    }
+
+    return null
+  }
+
+  /**
+   * Ensure a hosted zone exists for a domain, creating it if necessary
+   * Returns the hosted zone ID suitable for use in CloudFormation
+   */
+  async ensureHostedZone(params: {
+    domainName: string
+    comment?: string
+  }): Promise<{
+    hostedZoneId: string
+    nameServers: string[]
+    isNew: boolean
+    action: 'found' | 'created'
+  }> {
+    const result = await this.findOrCreateHostedZone({
+      domainName: params.domainName,
+      comment: params.comment,
+    })
+
+    // Strip /hostedzone/ prefix for compatibility
+    const hostedZoneId = result.hostedZone.Id.replace('/hostedzone/', '')
+
+    return {
+      hostedZoneId,
+      nameServers: result.nameServers,
+      isNew: result.isNew,
+      action: result.isNew ? 'created' : 'found',
+    }
+  }
+
+  /**
+   * Setup DNS for a domain with automatic hosted zone creation
+   * Creates the hosted zone if needed and returns setup information
+   */
+  async setupDomainDns(params: {
+    domain: string
+    createIfNotExists?: boolean
+  }): Promise<{
+    success: boolean
+    hostedZoneId: string | null
+    nameServers: string[]
+    isNew: boolean
+    message: string
+  }> {
+    const { domain, createIfNotExists = true } = params
+
+    // Try to find existing zone
+    const existing = await this.findHostedZoneByName(domain)
+
+    if (existing) {
+      const zoneDetails = await this.getHostedZone({ Id: existing.Id })
+      return {
+        success: true,
+        hostedZoneId: existing.Id.replace('/hostedzone/', ''),
+        nameServers: zoneDetails.DelegationSet.NameServers,
+        isNew: false,
+        message: `Found existing hosted zone for ${domain}`,
+      }
+    }
+
+    if (!createIfNotExists) {
+      return {
+        success: false,
+        hostedZoneId: null,
+        nameServers: [],
+        isNew: false,
+        message: `No hosted zone found for ${domain} and createIfNotExists is false`,
+      }
+    }
+
+    // Create the hosted zone
+    const result = await this.createHostedZone({
+      Name: domain,
+      HostedZoneConfig: {
+        Comment: `Created automatically by ts-cloud for ${domain}`,
+      },
+    })
+
+    return {
+      success: true,
+      hostedZoneId: result.HostedZone.Id.replace('/hostedzone/', ''),
+      nameServers: result.DelegationSet.NameServers,
+      isNew: true,
+      message: `Created new hosted zone for ${domain}. Please update your domain registrar with these name servers: ${result.DelegationSet.NameServers.join(', ')}`,
+    }
+  }
+
+  /**
+   * CloudFront hosted zone ID (global)
+   */
+  static readonly CloudFrontHostedZoneId = 'Z2FDTNDATAQYW2'
+
+  /**
+   * S3 website hosting hosted zone IDs by region
+   */
+  static readonly S3WebsiteHostedZoneIds: Record<string, string> = {
+    'us-east-1': 'Z3AQBSTGFYJSTF',
+    'us-east-2': 'Z2O1EMRO9K5GLX',
+    'us-west-1': 'Z2F56UZL2M1ACD',
+    'us-west-2': 'Z3BJ6K6RIION7M',
+    'ap-east-1': 'ZNB98KWMFR0R6',
+    'ap-south-1': 'Z11RGJOFQNVJUP',
+    'ap-northeast-1': 'Z2M4EHUR26P7ZW',
+    'ap-northeast-2': 'Z3W03O7B5YMIYP',
+    'ap-northeast-3': 'Z2YQB5RD63NC85',
+    'ap-southeast-1': 'Z3O0J2DXBE1FTB',
+    'ap-southeast-2': 'Z1WCIGYICN2BYD',
+    'ca-central-1': 'Z1QDHH18159H29',
+    'eu-central-1': 'Z21DNDUVLTQW6Q',
+    'eu-west-1': 'Z1BKCTXD74EZPE',
+    'eu-west-2': 'Z3GKZC51ZF0DB4',
+    'eu-west-3': 'Z3R1K369G5AVDG',
+    'eu-north-1': 'Z3BAZG2TWCNX0D',
+    'sa-east-1': 'Z7KQH4QJS55SO',
+  }
+
+  /**
+   * ALB hosted zone IDs by region
+   */
+  static readonly ALBHostedZoneIds: Record<string, string> = {
+    'us-east-1': 'Z35SXDOTRQ7X7K',
+    'us-east-2': 'Z3AADJGX6KTTL2',
+    'us-west-1': 'Z368ELLRRE2KJ0',
+    'us-west-2': 'Z1H1FL5HABSF5',
+    'ap-east-1': 'Z3DQVH9N71FHZ0',
+    'ap-south-1': 'ZP97RAFLXTNZK',
+    'ap-northeast-1': 'Z14GRHDCWA56QT',
+    'ap-northeast-2': 'ZWKZPGTI48KDX',
+    'ap-northeast-3': 'Z5LXEBD8Y73MNV',
+    'ap-southeast-1': 'Z1LMS91P8CMLE5',
+    'ap-southeast-2': 'Z1GM3OXH4ZPM65',
+    'ca-central-1': 'ZQSVJUPU6J1EY',
+    'eu-central-1': 'Z215JYRZR1TBD5',
+    'eu-west-1': 'Z32O12XQLNTSW2',
+    'eu-west-2': 'ZHURV8PSTC4K8',
+    'eu-west-3': 'Z3Q77PNBQS71R4',
+    'eu-north-1': 'Z23TAZ6LKFMNIO',
+    'sa-east-1': 'Z2P70J7HTTTPLU',
+  }
+
+  /**
+   * API Gateway hosted zone IDs by region
+   */
+  static readonly APIGatewayHostedZoneIds: Record<string, string> = {
+    'us-east-1': 'Z1UJRXOUMOOFQ8',
+    'us-east-2': 'ZOJJZC49E0EPZ',
+    'us-west-1': 'Z2MUQ32089INYE',
+    'us-west-2': 'Z2OJLYMUO9EFXC',
+    'ap-east-1': 'Z3FD1VL90ND7K5',
+    'ap-south-1': 'Z3VO1THU9YC4UR',
+    'ap-northeast-1': 'Z1YSHQZHG15GKL',
+    'ap-northeast-2': 'Z20JF4UZKIW1U8',
+    'ap-northeast-3': 'Z2YQB5RD63NC85',
+    'ap-southeast-1': 'ZL327KTPIQFUL',
+    'ap-southeast-2': 'Z2RPCDW04V8134',
+    'ca-central-1': 'Z19DQILCV0OWEC',
+    'eu-central-1': 'Z1U9ULNL0V5AJ3',
+    'eu-west-1': 'ZLY8HYME6SFDD',
+    'eu-west-2': 'ZJ5UAJN8Y3Z2Q',
+    'eu-west-3': 'Z3KY65QIEKYHQQ',
+    'eu-north-1': 'Z3UWIKFBOOGXPP',
+    'sa-east-1': 'ZCMLWB8V5SYIT',
+  }
 }

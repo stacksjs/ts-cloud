@@ -125,13 +125,11 @@ export class AWSClient {
       catch (error: any) {
         lastError = error
 
-        // Don't retry on client errors (4xx)
-        if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
-          throw error
-        }
+        // Check if error is retryable
+        const isRetryable = this.shouldRetry(error)
 
-        // Don't retry on non-retryable errors
-        if (error.code && !this.isRetryableError(error.code)) {
+        // Don't retry non-retryable errors
+        if (!isRetryable) {
           throw error
         }
 
@@ -468,10 +466,12 @@ export class AWSClient {
    */
   private isRetryableError(code: string): boolean {
     const retryableCodes = [
+      // Timeout errors
       'RequestTimeout',
       'RequestTimeoutException',
       'PriorRequestNotComplete',
       'ConnectionError',
+      // Throttling errors
       'ThrottlingException',
       'Throttling',
       'TooManyRequestsException',
@@ -479,10 +479,66 @@ export class AWSClient {
       'RequestLimitExceeded',
       'BandwidthLimitExceeded',
       'SlowDown',
+      // Service errors
       'ServiceUnavailable',
+      'ServiceUnavailableException',
       'InternalError',
+      'InternalFailure',
+      'InternalServerError',
+      'InternalServiceException',
+      // Transient errors
+      'TransientError',
+      'TransientFailure',
+      'IDPCommunicationErrorException',
+      // Network errors
+      'NetworkError',
+      'ConnectionRefusedException',
+      'EC2ThrottledException',
+      // S3 specific
+      '503 Slow Down',
+      '500 InternalError',
     ]
     return retryableCodes.includes(code)
+  }
+
+  /**
+   * Check if HTTP status code is retryable
+   */
+  private isRetryableStatusCode(statusCode: number): boolean {
+    return statusCode >= 500 || statusCode === 429 // Server errors or Too Many Requests
+  }
+
+  /**
+   * Determine if an error should be retried
+   */
+  private shouldRetry(error: any): boolean {
+    // Network/fetch errors should be retried
+    if (error.name === 'FetchError' || error.name === 'TypeError' || error.code === 'ECONNRESET') {
+      return true
+    }
+
+    // Check by error code
+    if (error.code && this.isRetryableError(error.code)) {
+      return true
+    }
+
+    // Check by status code
+    if (error.statusCode && this.isRetryableStatusCode(error.statusCode)) {
+      return true
+    }
+
+    // Don't retry client errors (4xx) except 429
+    if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500 && error.statusCode !== 429) {
+      return false
+    }
+
+    // Default: don't retry if we have a status code
+    if (error.statusCode) {
+      return false
+    }
+
+    // Unknown errors: retry once in case it's a transient issue
+    return true
   }
 
   /**

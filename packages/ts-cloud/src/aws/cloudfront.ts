@@ -249,4 +249,122 @@ export class CloudFrontClient {
       paths: [path],
     })
   }
+
+  /**
+   * Invalidate after deployment
+   * Useful for CI/CD pipelines
+   */
+  async invalidateAfterDeployment(options: {
+    distributionId: string
+    changedPaths?: string[]
+    invalidateAll?: boolean
+    wait?: boolean
+  }): Promise<{
+    invalidationId: string
+    status: string
+  }> {
+    const { distributionId, changedPaths, invalidateAll = false, wait = false } = options
+
+    let result
+
+    if (invalidateAll || !changedPaths || changedPaths.length === 0) {
+      result = await this.invalidateAll(distributionId)
+    }
+    else {
+      result = await this.invalidatePaths(distributionId, changedPaths)
+    }
+
+    if (wait) {
+      await this.waitForInvalidation(distributionId, result.Id)
+    }
+
+    return {
+      invalidationId: result.Id,
+      status: result.Status,
+    }
+  }
+
+  /**
+   * Find distribution by domain name or alias
+   */
+  async findDistributionByDomain(domain: string): Promise<Distribution | null> {
+    const distributions = await this.listDistributions()
+
+    // Check both CloudFront domain and aliases
+    const found = distributions.find((dist) => {
+      if (dist.DomainName === domain) {
+        return true
+      }
+      if (dist.Aliases && dist.Aliases.includes(domain)) {
+        return true
+      }
+      return false
+    })
+
+    return found || null
+  }
+
+  /**
+   * Batch invalidate multiple distributions
+   * Useful for multi-region or blue/green deployments
+   */
+  async batchInvalidate(distributionIds: string[], paths: string[] = ['/*']): Promise<Array<{
+    distributionId: string
+    invalidationId: string
+    status: string
+  }>> {
+    const results = await Promise.all(
+      distributionIds.map(async (distributionId) => {
+        const result = await this.createInvalidation({
+          distributionId,
+          paths,
+        })
+        return {
+          distributionId,
+          invalidationId: result.Id,
+          status: result.Status,
+        }
+      }),
+    )
+
+    return results
+  }
+
+  /**
+   * Get origin access control configurations
+   */
+  async listOriginAccessControls(): Promise<Array<{
+    Id: string
+    Name: string
+    Description?: string
+    SigningProtocol: string
+    SigningBehavior: string
+    OriginAccessControlOriginType: string
+  }>> {
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: '/2020-05-31/origin-access-control',
+    })
+
+    const items: any[] = []
+
+    if (result.OriginAccessControlList?.Items?.OriginAccessControlSummary) {
+      const summaries = Array.isArray(result.OriginAccessControlList.Items.OriginAccessControlSummary)
+        ? result.OriginAccessControlList.Items.OriginAccessControlSummary
+        : [result.OriginAccessControlList.Items.OriginAccessControlSummary]
+
+      items.push(...summaries.map((item: any) => ({
+        Id: item.Id,
+        Name: item.Name,
+        Description: item.Description,
+        SigningProtocol: item.SigningProtocol,
+        SigningBehavior: item.SigningBehavior,
+        OriginAccessControlOriginType: item.OriginAccessControlOriginType,
+      })))
+    }
+
+    return items
+  }
 }

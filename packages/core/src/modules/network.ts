@@ -443,4 +443,222 @@ export class Network {
     const zoneSuffixes = ['a', 'b', 'c', 'd', 'e', 'f']
     return zoneSuffixes.slice(0, count).map(suffix => `${region}${suffix}`)
   }
+
+  /**
+   * Create a complete multi-AZ network setup with optional NAT Gateway
+   * This creates VPC, public/private subnets, IGW, and optionally NAT
+   */
+  static createMultiAzNetwork(options: {
+    slug: string
+    environment: EnvironmentType
+    region: string
+    cidr?: string
+    zones?: number
+    enableNatGateway?: boolean
+    singleNatGateway?: boolean // Use single NAT for cost savings (not HA)
+    enableFlowLogs?: boolean
+  }): {
+    resources: Record<string, any>
+    outputs: {
+      vpcId: string
+      publicSubnetIds: string[]
+      privateSubnetIds: string[]
+      natGatewayIds?: string[]
+    }
+  } {
+    const {
+      slug,
+      environment,
+      region,
+      cidr = '10.0.0.0/16',
+      zones = 3,
+      enableNatGateway = false,
+      singleNatGateway = false,
+      enableFlowLogs = false,
+    } = options
+
+    const resources: Record<string, any> = {}
+    const publicSubnetIds: string[] = []
+    const privateSubnetIds: string[] = []
+    const natGatewayIds: string[] = []
+
+    // Create VPC
+    const { vpc, logicalId: vpcLogicalId } = Network.createVpc({
+      slug,
+      environment,
+      cidr,
+    })
+    resources[vpcLogicalId] = vpc
+
+    // Create Internet Gateway
+    const { internetGateway, logicalId: igwLogicalId } = Network.createInternetGateway(slug, environment)
+    resources[igwLogicalId] = internetGateway
+
+    // Attach IGW to VPC
+    const { attachment, logicalId: attachmentLogicalId } = Network.attachInternetGateway(vpcLogicalId, igwLogicalId)
+    resources[attachmentLogicalId] = attachment
+
+    // Create public route table
+    const { routeTable: publicRouteTable, logicalId: publicRtLogicalId } = Network.createRouteTable(
+      slug,
+      environment,
+      vpcLogicalId,
+      'public',
+    )
+    resources[publicRtLogicalId] = publicRouteTable
+
+    // Create route to IGW in public route table
+    const { route: publicRoute, logicalId: publicRouteLogicalId } = Network.createRoute(
+      publicRtLogicalId,
+      '0.0.0.0/0',
+      { type: 'igw', logicalId: igwLogicalId },
+    )
+    publicRoute.DependsOn = attachmentLogicalId
+    resources[publicRouteLogicalId] = publicRoute
+
+    // Calculate subnet CIDRs
+    const subnetCidrs = Network.calculateSubnetCidrs(cidr, zones, 2) // public + private
+    const availabilityZones = Network.getAvailabilityZones(region, zones)
+
+    // Create private route table(s)
+    const privateRouteTables: string[] = []
+
+    // Create subnets for each AZ
+    for (let i = 0; i < zones; i++) {
+      const az = availabilityZones[i]
+      const publicCidr = subnetCidrs[i * 2]
+      const privateCidr = subnetCidrs[i * 2 + 1]
+
+      // Public subnet
+      const { subnet: publicSubnet, logicalId: publicSubnetLogicalId } = Network.createSubnet({
+        slug,
+        environment,
+        vpcId: Fn.Ref(vpcLogicalId),
+        type: 'public',
+        cidr: publicCidr,
+        availabilityZone: az,
+      })
+      resources[publicSubnetLogicalId] = publicSubnet
+      publicSubnetIds.push(publicSubnetLogicalId)
+
+      // Associate public subnet with public route table
+      const { association: publicAssoc, logicalId: publicAssocLogicalId } = Network.associateSubnetWithRouteTable(
+        publicSubnetLogicalId,
+        publicRtLogicalId,
+      )
+      resources[publicAssocLogicalId] = publicAssoc
+
+      // Private subnet
+      const { subnet: privateSubnet, logicalId: privateSubnetLogicalId } = Network.createSubnet({
+        slug,
+        environment,
+        vpcId: Fn.Ref(vpcLogicalId),
+        type: 'private',
+        cidr: privateCidr,
+        availabilityZone: az,
+      })
+      resources[privateSubnetLogicalId] = privateSubnet
+      privateSubnetIds.push(privateSubnetLogicalId)
+
+      // Create NAT Gateway if enabled
+      if (enableNatGateway && (!singleNatGateway || i === 0)) {
+        // Create EIP for NAT
+        const { eip, logicalId: eipLogicalId } = Network.createEip(`${slug}-${az}`, environment)
+        resources[eipLogicalId] = eip
+
+        // Create NAT Gateway in public subnet
+        const { natGateway, logicalId: natLogicalId } = Network.createNatGateway(
+          { slug: `${slug}-${az}`, environment, subnetId: Fn.Ref(publicSubnetLogicalId) },
+          eipLogicalId,
+        )
+        natGateway.DependsOn = attachmentLogicalId
+        resources[natLogicalId] = natGateway
+        natGatewayIds.push(natLogicalId)
+
+        // Create private route table for this AZ
+        const { routeTable: privateRt, logicalId: privateRtLogicalId } = Network.createRouteTable(
+          `${slug}-${az}`,
+          environment,
+          vpcLogicalId,
+          'private',
+        )
+        resources[privateRtLogicalId] = privateRt
+        privateRouteTables.push(privateRtLogicalId)
+
+        // Create route to NAT in private route table
+        const { route: natRoute, logicalId: natRouteLogicalId } = Network.createRoute(
+          privateRtLogicalId,
+          '0.0.0.0/0',
+          { type: 'nat', logicalId: natLogicalId },
+        )
+        resources[natRouteLogicalId] = natRoute
+
+        // Associate private subnet with its route table
+        const { association: privateAssoc, logicalId: privateAssocLogicalId } = Network.associateSubnetWithRouteTable(
+          privateSubnetLogicalId,
+          privateRtLogicalId,
+        )
+        resources[privateAssocLogicalId] = privateAssoc
+      }
+      else if (enableNatGateway && singleNatGateway && i > 0) {
+        // Reuse single NAT gateway for all private subnets
+        const { association: privateAssoc, logicalId: privateAssocLogicalId } = Network.associateSubnetWithRouteTable(
+          privateSubnetLogicalId,
+          privateRouteTables[0],
+        )
+        resources[privateAssocLogicalId] = privateAssoc
+      }
+      else {
+        // No NAT - private subnets are isolated
+        const { routeTable: isolatedRt, logicalId: isolatedRtLogicalId } = Network.createRouteTable(
+          `${slug}-${az}-isolated`,
+          environment,
+          vpcLogicalId,
+          'private',
+        )
+        resources[isolatedRtLogicalId] = isolatedRt
+
+        const { association: isolatedAssoc, logicalId: isolatedAssocLogicalId } = Network.associateSubnetWithRouteTable(
+          privateSubnetLogicalId,
+          isolatedRtLogicalId,
+        )
+        resources[isolatedAssocLogicalId] = isolatedAssoc
+      }
+    }
+
+    // Enable flow logs if requested
+    if (enableFlowLogs) {
+      const { flowLog, logicalId: flowLogId } = Network.enableFlowLogs({
+        slug,
+        environment,
+        resourceId: Fn.Ref(vpcLogicalId),
+        resourceType: 'VPC',
+      })
+      resources[flowLogId] = flowLog
+    }
+
+    return {
+      resources,
+      outputs: {
+        vpcId: vpcLogicalId,
+        publicSubnetIds,
+        privateSubnetIds,
+        natGatewayIds: natGatewayIds.length > 0 ? natGatewayIds : undefined,
+      },
+    }
+  }
+
+  /**
+   * NAT Gateway cost warning
+   * NAT Gateways cost ~$32/month plus data transfer charges
+   */
+  static readonly NatGatewayCostWarning = `
+⚠️ NAT Gateway Cost Warning:
+- Each NAT Gateway costs approximately $32-45/month (hourly charges)
+- Data processing charges: $0.045/GB processed
+- For development environments, consider:
+  - Using a single NAT Gateway (singleNatGateway: true)
+  - Using NAT Instances instead (cheaper but requires management)
+  - Disabling NAT entirely for isolated private subnets
+`
 }

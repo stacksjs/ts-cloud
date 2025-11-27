@@ -817,4 +817,1104 @@ export class Monitoring {
      */
     http5xx: '[..., status_code = 5*, ...]',
   } as const
+
+  /**
+   * Create a comprehensive application dashboard
+   */
+  static createApplicationDashboard(options: {
+    slug: string
+    environment: EnvironmentType
+    region?: string
+    components?: {
+      ec2InstanceIds?: string[]
+      lambdaFunctionNames?: string[]
+      ecsClusterName?: string
+      ecsServiceName?: string
+      albName?: string
+      targetGroupName?: string
+      rdsInstanceId?: string
+      sqsQueueNames?: string[]
+      logGroupNames?: string[]
+    }
+  }): {
+    dashboard: CloudWatchDashboard
+    logicalId: string
+  } {
+    const {
+      slug,
+      environment,
+      region = 'us-east-1',
+      components = {},
+    } = options
+
+    const widgets: DashboardWidget[] = []
+    let currentY = 0
+
+    // Header text widget
+    widgets.push({
+      type: 'text',
+      x: 0,
+      y: currentY,
+      width: 24,
+      height: 1,
+      properties: {
+        markdown: `# ${slug.toUpperCase()} Dashboard (${environment})`,
+      },
+    })
+    currentY += 1
+
+    // EC2 metrics
+    if (components.ec2InstanceIds && components.ec2InstanceIds.length > 0) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## EC2 Instances',
+        },
+      })
+      currentY += 1
+
+      // CPU utilization
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'CPU Utilization',
+          region,
+          metrics: components.ec2InstanceIds.map(id => [
+            'AWS/EC2',
+            'CPUUtilization',
+            'InstanceId',
+            id,
+          ]),
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      // Network In/Out
+      widgets.push({
+        type: 'metric',
+        x: 8,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Network Traffic',
+          region,
+          metrics: [
+            ...components.ec2InstanceIds.flatMap(id => [
+              ['AWS/EC2', 'NetworkIn', 'InstanceId', id, { label: `${id} In` }],
+              ['AWS/EC2', 'NetworkOut', 'InstanceId', id, { label: `${id} Out` }],
+            ]),
+          ],
+          period: 300,
+          stat: 'Sum',
+        },
+      })
+
+      // Status check
+      widgets.push({
+        type: 'metric',
+        x: 16,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Status Checks',
+          region,
+          metrics: components.ec2InstanceIds.map(id => [
+            'AWS/EC2',
+            'StatusCheckFailed',
+            'InstanceId',
+            id,
+          ]),
+          period: 60,
+          stat: 'Maximum',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // Lambda metrics
+    if (components.lambdaFunctionNames && components.lambdaFunctionNames.length > 0) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## Lambda Functions',
+        },
+      })
+      currentY += 1
+
+      // Invocations
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Invocations',
+          region,
+          metrics: components.lambdaFunctionNames.map(name => [
+            'AWS/Lambda',
+            'Invocations',
+            'FunctionName',
+            name,
+          ]),
+          period: 300,
+          stat: 'Sum',
+        },
+      })
+
+      // Duration
+      widgets.push({
+        type: 'metric',
+        x: 8,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Duration',
+          region,
+          metrics: components.lambdaFunctionNames.map(name => [
+            'AWS/Lambda',
+            'Duration',
+            'FunctionName',
+            name,
+          ]),
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      // Errors
+      widgets.push({
+        type: 'metric',
+        x: 16,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Errors',
+          region,
+          metrics: components.lambdaFunctionNames.map(name => [
+            'AWS/Lambda',
+            'Errors',
+            'FunctionName',
+            name,
+          ]),
+          period: 300,
+          stat: 'Sum',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // ECS metrics
+    if (components.ecsClusterName && components.ecsServiceName) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## ECS Service',
+        },
+      })
+      currentY += 1
+
+      // CPU utilization
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'CPU Utilization',
+          region,
+          metrics: [
+            ['AWS/ECS', 'CPUUtilization', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+          ],
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      // Memory utilization
+      widgets.push({
+        type: 'metric',
+        x: 8,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Memory Utilization',
+          region,
+          metrics: [
+            ['AWS/ECS', 'MemoryUtilization', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+          ],
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      // Running tasks
+      widgets.push({
+        type: 'metric',
+        x: 16,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Running Tasks',
+          region,
+          metrics: [
+            ['ECS/ContainerInsights', 'RunningTaskCount', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+          ],
+          period: 60,
+          stat: 'Average',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // ALB metrics
+    if (components.albName) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## Application Load Balancer',
+        },
+      })
+      currentY += 1
+
+      // Request count
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Request Count',
+          region,
+          metrics: [
+            ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', components.albName],
+          ],
+          period: 60,
+          stat: 'Sum',
+        },
+      })
+
+      // Response time
+      widgets.push({
+        type: 'metric',
+        x: 8,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Response Time',
+          region,
+          metrics: [
+            ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', components.albName],
+          ],
+          period: 60,
+          stat: 'Average',
+        },
+      })
+
+      // HTTP errors
+      widgets.push({
+        type: 'metric',
+        x: 16,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'HTTP Errors',
+          region,
+          metrics: [
+            ['AWS/ApplicationELB', 'HTTPCode_Target_4XX_Count', 'LoadBalancer', components.albName, { label: '4XX' }],
+            ['AWS/ApplicationELB', 'HTTPCode_Target_5XX_Count', 'LoadBalancer', components.albName, { label: '5XX' }],
+          ],
+          period: 60,
+          stat: 'Sum',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // RDS metrics
+    if (components.rdsInstanceId) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## RDS Database',
+        },
+      })
+      currentY += 1
+
+      // CPU
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'CPU Utilization',
+          region,
+          metrics: [
+            ['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', components.rdsInstanceId],
+          ],
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      // Connections
+      widgets.push({
+        type: 'metric',
+        x: 8,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Database Connections',
+          region,
+          metrics: [
+            ['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', components.rdsInstanceId],
+          ],
+          period: 60,
+          stat: 'Sum',
+        },
+      })
+
+      // Free storage
+      widgets.push({
+        type: 'metric',
+        x: 16,
+        y: currentY,
+        width: 8,
+        height: 6,
+        properties: {
+          title: 'Free Storage Space',
+          region,
+          metrics: [
+            ['AWS/RDS', 'FreeStorageSpace', 'DBInstanceIdentifier', components.rdsInstanceId],
+          ],
+          period: 300,
+          stat: 'Average',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // SQS metrics
+    if (components.sqsQueueNames && components.sqsQueueNames.length > 0) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## SQS Queues',
+        },
+      })
+      currentY += 1
+
+      // Messages visible
+      widgets.push({
+        type: 'metric',
+        x: 0,
+        y: currentY,
+        width: 12,
+        height: 6,
+        properties: {
+          title: 'Messages Visible',
+          region,
+          metrics: components.sqsQueueNames.map(name => [
+            'AWS/SQS',
+            'ApproximateNumberOfMessagesVisible',
+            'QueueName',
+            name,
+          ]),
+          period: 60,
+          stat: 'Sum',
+        },
+      })
+
+      // Age of oldest message
+      widgets.push({
+        type: 'metric',
+        x: 12,
+        y: currentY,
+        width: 12,
+        height: 6,
+        properties: {
+          title: 'Message Age',
+          region,
+          metrics: components.sqsQueueNames.map(name => [
+            'AWS/SQS',
+            'ApproximateAgeOfOldestMessage',
+            'QueueName',
+            name,
+          ]),
+          period: 60,
+          stat: 'Maximum',
+        },
+      })
+
+      currentY += 6
+    }
+
+    // Log widget
+    if (components.logGroupNames && components.logGroupNames.length > 0) {
+      widgets.push({
+        type: 'text',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 1,
+        properties: {
+          markdown: '## Application Logs',
+        },
+      })
+      currentY += 1
+
+      widgets.push({
+        type: 'log',
+        x: 0,
+        y: currentY,
+        width: 24,
+        height: 6,
+        properties: {
+          query: `SOURCE '${components.logGroupNames.join("' | SOURCE '")}'
+| fields @timestamp, @message
+| filter @message like /ERROR|WARN|Exception/
+| sort @timestamp desc
+| limit 50`,
+          region,
+          title: 'Recent Errors and Warnings',
+        },
+      })
+
+      currentY += 6
+    }
+
+    return Monitoring.createDashboard({
+      slug,
+      environment,
+      widgets,
+    })
+  }
+
+  /**
+   * Dashboard templates for common architectures
+   */
+  static readonly DashboardTemplates = {
+    /**
+     * Static website dashboard (S3 + CloudFront)
+     */
+    staticWebsite: (options: {
+      slug: string
+      environment: EnvironmentType
+      region?: string
+      cloudFrontDistributionId: string
+      s3BucketName: string
+    }): DashboardOptions => ({
+      slug: options.slug,
+      environment: options.environment,
+      widgets: [
+        {
+          type: 'text',
+          x: 0,
+          y: 0,
+          width: 24,
+          height: 1,
+          properties: {
+            markdown: `# ${options.slug.toUpperCase()} Static Website Dashboard`,
+          },
+        },
+        {
+          type: 'metric',
+          x: 0,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'CloudFront Requests',
+            region: 'us-east-1',
+            metrics: [
+              ['AWS/CloudFront', 'Requests', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global'],
+            ],
+            period: 300,
+            stat: 'Sum',
+          },
+        },
+        {
+          type: 'metric',
+          x: 8,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'Error Rate',
+            region: 'us-east-1',
+            metrics: [
+              ['AWS/CloudFront', '4xxErrorRate', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global', { label: '4XX' }],
+              ['AWS/CloudFront', '5xxErrorRate', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global', { label: '5XX' }],
+            ],
+            period: 300,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 16,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'Bytes Downloaded',
+            region: 'us-east-1',
+            metrics: [
+              ['AWS/CloudFront', 'BytesDownloaded', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global'],
+            ],
+            period: 300,
+            stat: 'Sum',
+          },
+        },
+        {
+          type: 'metric',
+          x: 0,
+          y: 7,
+          width: 12,
+          height: 6,
+          properties: {
+            title: 'S3 Bucket Size',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/S3', 'BucketSizeBytes', 'BucketName', options.s3BucketName, 'StorageType', 'StandardStorage'],
+            ],
+            period: 86400,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 12,
+          y: 7,
+          width: 12,
+          height: 6,
+          properties: {
+            title: 'S3 Number of Objects',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/S3', 'NumberOfObjects', 'BucketName', options.s3BucketName, 'StorageType', 'AllStorageTypes'],
+            ],
+            period: 86400,
+            stat: 'Average',
+          },
+        },
+      ],
+    }),
+
+    /**
+     * Serverless API dashboard (Lambda + API Gateway)
+     */
+    serverlessApi: (options: {
+      slug: string
+      environment: EnvironmentType
+      region?: string
+      apiGatewayName: string
+      lambdaFunctionNames: string[]
+    }): DashboardOptions => ({
+      slug: options.slug,
+      environment: options.environment,
+      widgets: [
+        {
+          type: 'text',
+          x: 0,
+          y: 0,
+          width: 24,
+          height: 1,
+          properties: {
+            markdown: `# ${options.slug.toUpperCase()} Serverless API Dashboard`,
+          },
+        },
+        {
+          type: 'metric',
+          x: 0,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'API Requests',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApiGateway', 'Count', 'ApiName', options.apiGatewayName],
+            ],
+            period: 60,
+            stat: 'Sum',
+          },
+        },
+        {
+          type: 'metric',
+          x: 8,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'API Latency',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApiGateway', 'Latency', 'ApiName', options.apiGatewayName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 16,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'API Errors',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApiGateway', '4XXError', 'ApiName', options.apiGatewayName, { label: '4XX' }],
+              ['AWS/ApiGateway', '5XXError', 'ApiName', options.apiGatewayName, { label: '5XX' }],
+            ],
+            period: 60,
+            stat: 'Sum',
+          },
+        },
+        ...options.lambdaFunctionNames.map((name, index) => ({
+          type: 'metric' as const,
+          x: (index % 3) * 8,
+          y: 7 + Math.floor(index / 3) * 6,
+          width: 8,
+          height: 6,
+          properties: {
+            title: `${name} Metrics`,
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/Lambda', 'Invocations', 'FunctionName', name],
+              ['AWS/Lambda', 'Duration', 'FunctionName', name],
+              ['AWS/Lambda', 'Errors', 'FunctionName', name],
+            ],
+            period: 300,
+            stat: 'Sum',
+          },
+        })),
+      ],
+    }),
+
+    /**
+     * Container service dashboard (ECS + ALB)
+     */
+    containerService: (options: {
+      slug: string
+      environment: EnvironmentType
+      region?: string
+      ecsClusterName: string
+      ecsServiceName: string
+      albName: string
+      rdsInstanceId?: string
+    }): DashboardOptions => ({
+      slug: options.slug,
+      environment: options.environment,
+      widgets: [
+        {
+          type: 'text',
+          x: 0,
+          y: 0,
+          width: 24,
+          height: 1,
+          properties: {
+            markdown: `# ${options.slug.toUpperCase()} Container Service Dashboard`,
+          },
+        },
+        // ECS metrics
+        {
+          type: 'metric',
+          x: 0,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'ECS CPU',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ECS', 'CPUUtilization', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 8,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'ECS Memory',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ECS', 'MemoryUtilization', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 16,
+          y: 1,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'Running Tasks',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['ECS/ContainerInsights', 'RunningTaskCount', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        // ALB metrics
+        {
+          type: 'metric',
+          x: 0,
+          y: 7,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'ALB Requests',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', options.albName],
+            ],
+            period: 60,
+            stat: 'Sum',
+          },
+        },
+        {
+          type: 'metric',
+          x: 8,
+          y: 7,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'Response Time',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', options.albName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        {
+          type: 'metric',
+          x: 16,
+          y: 7,
+          width: 8,
+          height: 6,
+          properties: {
+            title: 'Healthy Hosts',
+            region: options.region || 'us-east-1',
+            metrics: [
+              ['AWS/ApplicationELB', 'HealthyHostCount', 'LoadBalancer', options.albName],
+            ],
+            period: 60,
+            stat: 'Average',
+          },
+        },
+        ...(options.rdsInstanceId
+          ? [
+              {
+                type: 'metric' as const,
+                x: 0,
+                y: 13,
+                width: 12,
+                height: 6,
+                properties: {
+                  title: 'RDS CPU',
+                  region: options.region || 'us-east-1',
+                  metrics: [
+                    ['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', options.rdsInstanceId],
+                  ],
+                  period: 300,
+                  stat: 'Average',
+                },
+              },
+              {
+                type: 'metric' as const,
+                x: 12,
+                y: 13,
+                width: 12,
+                height: 6,
+                properties: {
+                  title: 'RDS Connections',
+                  region: options.region || 'us-east-1',
+                  metrics: [
+                    ['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', options.rdsInstanceId],
+                  ],
+                  period: 60,
+                  stat: 'Sum',
+                },
+              },
+            ]
+          : []),
+      ],
+    }),
+  }
+
+  /**
+   * Monitoring Configuration helpers
+   * Provides Stacks configuration parity for monitoring options
+   */
+  static readonly Config = {
+    /**
+     * Create alarm configuration
+     */
+    createAlarmConfig: (options: {
+      metricName: string
+      namespace: string
+      threshold: number
+      comparisonOperator?: 'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
+      evaluationPeriods?: number
+      period?: number
+      statistic?: 'Average' | 'Sum' | 'Maximum' | 'Minimum' | 'SampleCount'
+      treatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
+    }): {
+      MetricName: string
+      Namespace: string
+      Threshold: number
+      ComparisonOperator: string
+      EvaluationPeriods: number
+      Period: number
+      Statistic: string
+      TreatMissingData: string
+    } => {
+      const {
+        metricName,
+        namespace,
+        threshold,
+        comparisonOperator = 'GreaterThanThreshold',
+        evaluationPeriods = 1,
+        period = 300,
+        statistic = 'Average',
+        treatMissingData = 'missing',
+      } = options
+
+      return {
+        MetricName: metricName,
+        Namespace: namespace,
+        Threshold: threshold,
+        ComparisonOperator: comparisonOperator,
+        EvaluationPeriods: evaluationPeriods,
+        Period: period,
+        Statistic: statistic,
+        TreatMissingData: treatMissingData,
+      }
+    },
+
+    /**
+     * AWS namespace constants
+     */
+    namespaces: {
+      ec2: 'AWS/EC2',
+      ecs: 'AWS/ECS',
+      lambda: 'AWS/Lambda',
+      rds: 'AWS/RDS',
+      sqs: 'AWS/SQS',
+      sns: 'AWS/SNS',
+      s3: 'AWS/S3',
+      cloudfront: 'AWS/CloudFront',
+      alb: 'AWS/ApplicationELB',
+      nlb: 'AWS/NetworkELB',
+      apiGateway: 'AWS/ApiGateway',
+      dynamodb: 'AWS/DynamoDB',
+      elasticache: 'AWS/ElastiCache',
+    } as const,
+
+    /**
+     * Comparison operator options
+     */
+    comparisonOperators: {
+      greaterThan: 'GreaterThanThreshold',
+      greaterOrEqual: 'GreaterThanOrEqualToThreshold',
+      lessThan: 'LessThanThreshold',
+      lessOrEqual: 'LessThanOrEqualToThreshold',
+    } as const,
+
+    /**
+     * Common metric configurations by service
+     */
+    metrics: {
+      ec2: {
+        cpu: { metricName: 'CPUUtilization', namespace: 'AWS/EC2' },
+        networkIn: { metricName: 'NetworkIn', namespace: 'AWS/EC2' },
+        networkOut: { metricName: 'NetworkOut', namespace: 'AWS/EC2' },
+        statusCheck: { metricName: 'StatusCheckFailed', namespace: 'AWS/EC2' },
+      },
+      ecs: {
+        cpu: { metricName: 'CPUUtilization', namespace: 'AWS/ECS' },
+        memory: { metricName: 'MemoryUtilization', namespace: 'AWS/ECS' },
+      },
+      lambda: {
+        invocations: { metricName: 'Invocations', namespace: 'AWS/Lambda' },
+        errors: { metricName: 'Errors', namespace: 'AWS/Lambda' },
+        duration: { metricName: 'Duration', namespace: 'AWS/Lambda' },
+        throttles: { metricName: 'Throttles', namespace: 'AWS/Lambda' },
+        concurrentExecutions: { metricName: 'ConcurrentExecutions', namespace: 'AWS/Lambda' },
+      },
+      rds: {
+        cpu: { metricName: 'CPUUtilization', namespace: 'AWS/RDS' },
+        connections: { metricName: 'DatabaseConnections', namespace: 'AWS/RDS' },
+        freeStorage: { metricName: 'FreeStorageSpace', namespace: 'AWS/RDS' },
+        readLatency: { metricName: 'ReadLatency', namespace: 'AWS/RDS' },
+        writeLatency: { metricName: 'WriteLatency', namespace: 'AWS/RDS' },
+      },
+      alb: {
+        requestCount: { metricName: 'RequestCount', namespace: 'AWS/ApplicationELB' },
+        responseTime: { metricName: 'TargetResponseTime', namespace: 'AWS/ApplicationELB' },
+        httpCode4xx: { metricName: 'HTTPCode_Target_4XX_Count', namespace: 'AWS/ApplicationELB' },
+        httpCode5xx: { metricName: 'HTTPCode_Target_5XX_Count', namespace: 'AWS/ApplicationELB' },
+        healthyHosts: { metricName: 'HealthyHostCount', namespace: 'AWS/ApplicationELB' },
+      },
+      sqs: {
+        messagesVisible: { metricName: 'ApproximateNumberOfMessagesVisible', namespace: 'AWS/SQS' },
+        messagesDelayed: { metricName: 'ApproximateNumberOfMessagesDelayed', namespace: 'AWS/SQS' },
+        messageAge: { metricName: 'ApproximateAgeOfOldestMessage', namespace: 'AWS/SQS' },
+      },
+    },
+
+    /**
+     * Common alarm presets
+     */
+    presets: {
+      /**
+       * High CPU alarm
+       */
+      highCpu: (threshold: number = 80) => ({
+        metricName: 'CPUUtilization',
+        threshold,
+        comparisonOperator: 'GreaterThanThreshold' as const,
+        evaluationPeriods: 3,
+        period: 300,
+        statistic: 'Average' as const,
+      }),
+
+      /**
+       * High memory alarm (for ECS)
+       */
+      highMemory: (threshold: number = 80) => ({
+        metricName: 'MemoryUtilization',
+        threshold,
+        comparisonOperator: 'GreaterThanThreshold' as const,
+        evaluationPeriods: 3,
+        period: 300,
+        statistic: 'Average' as const,
+      }),
+
+      /**
+       * High error rate alarm
+       */
+      highErrors: (threshold: number = 10) => ({
+        metricName: 'Errors',
+        threshold,
+        comparisonOperator: 'GreaterThanThreshold' as const,
+        evaluationPeriods: 1,
+        period: 60,
+        statistic: 'Sum' as const,
+      }),
+
+      /**
+       * High latency alarm
+       */
+      highLatency: (threshold: number = 5000) => ({
+        metricName: 'Duration',
+        threshold,
+        comparisonOperator: 'GreaterThanThreshold' as const,
+        evaluationPeriods: 3,
+        period: 300,
+        statistic: 'Average' as const,
+      }),
+
+      /**
+       * Low healthy hosts alarm
+       */
+      lowHealthyHosts: (threshold: number = 1) => ({
+        metricName: 'HealthyHostCount',
+        namespace: 'AWS/ApplicationELB',
+        threshold,
+        comparisonOperator: 'LessThanThreshold' as const,
+        evaluationPeriods: 2,
+        period: 60,
+        statistic: 'Minimum' as const,
+      }),
+
+      /**
+       * Queue depth alarm
+       */
+      queueDepth: (threshold: number = 1000) => ({
+        metricName: 'ApproximateNumberOfMessagesVisible',
+        namespace: 'AWS/SQS',
+        threshold,
+        comparisonOperator: 'GreaterThanThreshold' as const,
+        evaluationPeriods: 3,
+        period: 300,
+        statistic: 'Average' as const,
+      }),
+
+      /**
+       * Low storage alarm
+       */
+      lowStorage: (threshold: number = 10737418240) => ({ // 10 GB
+        metricName: 'FreeStorageSpace',
+        namespace: 'AWS/RDS',
+        threshold,
+        comparisonOperator: 'LessThanThreshold' as const,
+        evaluationPeriods: 1,
+        period: 300,
+        statistic: 'Average' as const,
+      }),
+    },
+  }
 }

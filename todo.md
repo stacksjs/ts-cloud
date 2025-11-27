@@ -34,11 +34,11 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 
 - [x] Route53 hosted zone lookup/creation
 - [x] A record creation for domains
-- [ ] **www redirect bucket** - S3 bucket configured to redirect <www.domain> to domain
-- [ ] **www A record** - Route53 A record pointing to www redirect bucket
-- [ ] **Store subdomain** - A record for store.domain (Lemon Squeezy integration)
-- [ ] Automatic hosted zone creation if not exists
-- [ ] DNS validation for certificates
+- [x] **www redirect bucket** - S3 bucket configured to redirect <www.domain> to domain (Storage.createWwwRedirectBucket)
+- [x] **www A record** - Route53 A record pointing to www redirect bucket (DNS.createS3WebsiteAlias)
+- [x] **Store subdomain** - A record for store.domain (DNS.createStoreRecord)
+- [x] Automatic hosted zone creation if not exists (Route53Client.findOrCreateHostedZone, ensureHostedZone, setupDomainDns)
+- [x] DNS validation for certificates (ACMDnsValidator.requestAndValidate, createValidationRecords)
 
 ### A.1.2 Security Stack
 
@@ -46,11 +46,11 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] Country-based geo-blocking rules
 - [x] IP address blocking rules (IPSet)
 - [x] HTTP header blocking rules
-- [ ] **Rate limiting rules** (commented out in stacks, needs implementation)
-- [ ] **IP reputation list rules** (AWS managed rules)
-- [ ] **Known bad inputs rules** (AWS managed rules)
-- [ ] **Anonymous IP list rules**
-- [ ] **Linux/Unix rule sets**
+- [x] **Rate limiting rules** (Security.setPathRateLimit, setHeaderRateLimit, protectLoginEndpoint, protectApiEndpoints)
+- [x] **IP reputation list rules** (AWS managed rules - ManagedRuleGroups.IpReputation)
+- [x] **Known bad inputs rules** (AWS managed rules - ManagedRuleGroups.KnownBadInputs)
+- [x] **Anonymous IP list rules** (ManagedRuleGroups.AnonymousIpList)
+- [x] **Linux/Unix rule sets** (ManagedRuleGroups.LinuxOS, UnixOS)
 - [x] KMS key creation with rotation
 - [x] ACM certificate creation with DNS validation
 - [x] Subject alternative names (www, api, docs subdomains)
@@ -61,7 +61,7 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] Public bucket with website hosting
 - [x] Private bucket with encryption
 - [x] Logs bucket with proper ACLs
-- [ ] **Docs bucket** - Conditional creation based on docs presence
+- [x] **Docs bucket** - Conditional creation based on docs presence (Storage.docsExist, createDocsBucketIfExists, checkSourcePaths, createDeploymentBuckets)
 - [x] Versioning support
 - [x] Auto-delete objects on stack removal
 - [x] S3 managed encryption
@@ -78,8 +78,8 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] Multi-AZ support (3 AZs)
 - [x] Public subnets
 - [x] Private isolated subnets
-- [ ] **NAT Gateway support** (currently disabled, needs configurable option)
-- [ ] **VPC Flow Logs** (optional)
+- [x] **NAT Gateway support** (Network.createMultiAzNetwork with enableNat option, single or per-AZ)
+- [x] **VPC Flow Logs** (Network.createMultiAzNetwork with enableFlowLogs option)
 - [x] Subnet configuration with proper CIDR masks
 
 ### A.1.5 FileSystem Stack (EFS)
@@ -91,8 +91,8 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] Automatic backups enabled
 - [x] Encryption at rest
 - [x] Access point with POSIX user configuration
-- [ ] **Mount targets for each subnet**
-- [ ] **Security group for EFS**
+- [x] **Mount targets for each subnet** (FileSystem.createMultiAzMountTargets)
+- [x] **Security group for EFS** (FileSystem.createEfsSecurityGroup, port 2049)
 
 ### A.1.6 Compute Stack (ECS Fargate)
 
@@ -110,10 +110,10 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] Route53 A record for API subdomain
 - [x] EFS volume mounting
 - [x] Auto-scaling policies (CPU/Memory)
-- [ ] **Secrets Manager integration** - Store environment variables as secrets
-- [ ] **Secrets ARN injection** into container environment
-- [ ] **Docker image building** from framework server path
-- [ ] **ECR integration** for container images
+- [x] **Secrets Manager integration** - Store environment variables as secrets (Compute.Secrets, createFargateServiceWithSecrets)
+- [x] **Secrets ARN injection** into container environment (Compute.EnvSecrets, generateSecretReferences)
+- [x] **Docker image building** from framework server path (Registry.generateBunDockerfile, DockerfileTemplates)
+- [x] **ECR integration** for container images (Registry.buildRepositoryUri, generateDockerBuildCommands, DeploymentWorkflow)
 
 ### A.1.7 CDN Stack (CloudFront)
 
@@ -126,10 +126,10 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] WAF integration
 - [x] Logging to S3
 - [x] Custom error responses (404/403 → index.html)
-- [ ] **Lambda@Edge origin request function** - URL rewriting for docs
-- [ ] **Docs distribution** - Separate CloudFront for docs subdomain
-- [ ] **ALB origin** - CloudFront origin pointing to ALB for API
-- [ ] **Multiple origins** support (S3 + ALB)
+- [x] **Lambda@Edge origin request function** - CDN.createDocsOriginRequestFunction for docs URL rewriting
+- [x] **Docs distribution** - CDN.createDocsDistribution with Lambda@Edge support
+- [x] **ALB origin** - CDN.createApiDistribution, CDN.addAlbOrigin for CloudFront with ALB origin
+- [x] **Multiple origins** support - CDN.createMultiOriginDistribution (S3 + ALB)
 - [x] Route53 alias records for distributions
 - [x] Cookie behavior configuration
 - [x] Allowed/cached methods configuration
@@ -142,61 +142,69 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 - [x] MX record for mail subdomain
 - [x] SPF TXT record
 - [x] DMARC TXT record
-- [ ] **Email bucket** for storing emails
-- [ ] **SES receipt rule set** for inbound emails
-- [ ] **Lambda for outbound email** - JSON to raw email conversion
-- [ ] **Lambda for inbound email** - Email organization by From/To
-- [ ] **Lambda for email conversion** - Raw to HTML/text
-- [ ] **S3 event notifications** for email processing
-- [ ] **IAM roles** for email Lambda functions
+- [x] **Email bucket** for storing emails (Storage.createEmailBucket with SES policy)
+- [x] **SES receipt rule set** for inbound emails (Email.createReceiptRuleSet, Email.createReceiptRule)
+- [x] **SPF record** for email authentication (Email.createSpfRecord)
+- [x] **DMARC record** for email authentication (Email.createDmarcRecord)
+- [x] **Complete inbound email setup** (Email.createInboundEmailSetup with MX record)
+- [x] **Complete domain setup** (Email.createCompleteDomainSetup)
+- [x] **Lambda for outbound email** - JSON to raw email conversion (Email.createOutboundEmailLambda, LambdaCode.outboundEmail)
+- [x] **Lambda for inbound email** - Email organization by From/To (Email.createInboundEmailLambda, LambdaCode.inboundEmail)
+- [x] **Lambda for email conversion** - Raw to HTML/text (Email.createEmailConversionLambda, LambdaCode.emailConversion)
+- [x] **S3 event notifications** for email processing (Email.createEmailBucketNotification, createS3LambdaPermission)
+- [x] **IAM roles** for email Lambda functions (Email.createEmailLambdaRole)
+- [x] **Complete email processing stack** (Email.createEmailProcessingStack)
 
 ### A.1.9 Queue Stack (EventBridge + ECS)
 
 - [x] EventBridge rule creation
 - [x] Cron schedule support
 - [x] ECS task targets
-- [ ] **Dynamic job loading** - Load jobs from app/Jobs/*.ts
-- [ ] **Dynamic action loading** - Load actions from app/Actions/*.ts
-- [ ] **Container overrides** for job execution
-- [ ] **Job configuration** (backoff, retries, delay, jitter)
-- [ ] **Rate string to cron conversion**
+- [x] **Dynamic job loading** - Load jobs from app/Jobs/*.ts (JobLoader.discoverJobs, parseJobMetadata)
+- [x] **Dynamic action loading** - Load actions from app/Actions/*.ts (JobLoader.discoverActions, parseActionMetadata)
+- [x] **Container overrides** for job execution (Queue.createJobContainerOverride, createScheduledJob)
+- [x] **Job configuration** (backoff, retries, delay, jitter) (Queue.JobConfig with create, calculateDelay, presets)
+- [x] **Rate string to cron conversion** (Queue.rateStringToExpression)
+- [x] **Job runner script generation** (JobLoader.generateJobRunnerScript)
+- [x] **Scheduled job resource generation** (JobLoader.generateScheduledJobResources)
+- [x] **Stacks integration helpers** (StacksIntegration object)
 
 ### A.1.10 Deployment Stack
 
 - [x] S3 bucket deployment
-- [ ] **Asset hashing** for cache invalidation
-- [ ] **Docs deployment** - Conditional deployment based on docs presence
-- [ ] **Private files deployment**
-- [ ] **CloudFront invalidation** after deployment
-- [ ] **Source path configuration** (views/web/dist, docs/dist, private)
+- [x] **Asset hashing** for cache invalidation (AssetHasher class with hashDirectory, getInvalidationPaths, generateS3DeploymentManifest)
+- [x] **Docs deployment** - Conditional deployment based on docs presence (Storage.createDocsBucketIfExists, Storage.createDeploymentBuckets)
+- [x] **Private files deployment** (Storage.createPrivateBucket, Storage.createDeploymentBuckets)
+- [x] **CloudFront invalidation** after deployment (CloudFrontClient.invalidateAfterDeployment, batchInvalidate)
+- [x] **Source path configuration** (views/web/dist, docs/dist, private) (Storage.checkSourcePaths, Storage.createDeploymentBuckets)
 
 ### A.1.11 Additional Stacks
 
 #### JumpBox Stack
 
-- [ ] EC2 instance for SSH access to private resources
-- [ ] Security group allowing SSH
-- [ ] EFS mount for file access
-- [ ] IAM instance profile
+- [x] EC2 instance for SSH access to private resources (Compute.createJumpBox)
+- [x] Security group allowing SSH (Compute.createJumpBox)
+- [x] EFS mount for file access (Compute.JumpBox.withEfsMount)
+- [x] IAM instance profile (Compute.createJumpBox)
 
 #### Docs Stack
 
-- [ ] Lambda@Edge origin request function for docs URL rewriting
-- [ ] Suffix handling (.html appending)
-- [ ] Trailing slash handling
-- [ ] Root URI handling (/ → /index.html)
+- [x] Lambda@Edge origin request function for docs URL rewriting (CDN.createDocsOriginRequestFunction)
+- [x] Suffix handling (.html appending)
+- [x] Trailing slash handling (/ → /index.html)
+- [x] Root URI handling (/ → /index.html)
 
 #### Redirects Stack
 
-- [ ] Custom redirect rules
-- [ ] Domain redirects
-- [ ] Path-based redirects
+- [x] Custom redirect rules (Redirects.fromMapping, Redirects.validateRules)
+- [x] Domain redirects (Redirects.createDomainRedirectBucket, Redirects.CommonRedirects)
+- [x] Path-based redirects (Redirects.createPathRedirectFunction, Redirects.Patterns)
 
 #### Permissions Stack
 
-- [ ] IAM users for CI/CD
-- [ ] IAM policies for deployment
-- [ ] Cross-account access roles
+- [x] IAM users for CI/CD (Permissions.createCiCdUser, CiCdPolicies)
+- [x] IAM policies for deployment (Permissions.CiCdPolicies)
+- [x] Cross-account access roles (Permissions.createCrossAccountRole)
 
 #### AI Stack (Bedrock)
 
@@ -207,15 +215,15 @@ The existing Stacks framework has these cloud stacks that ts-cloud must replicat
 
 #### CLI Stack
 
-- [ ] IAM user for CLI access
-- [ ] Access key generation
-- [ ] Minimal permissions policy
+- [x] IAM user for CLI access (Permissions.createCliUser)
+- [x] Access key generation (Permissions.createAccessKey)
+- [x] Minimal permissions policy (Permissions.createCliUser with 'readonly' permissions)
 
 #### Dashboard Stack (Optional)
 
-- [ ] CloudWatch dashboard creation
-- [ ] Custom widgets
-- [ ] Metric visualization
+- [x] CloudWatch dashboard creation (Monitoring.createDashboard, createApplicationDashboard)
+- [x] Custom widgets (Monitoring.DashboardWidgets)
+- [x] Metric visualization (Monitoring.DashboardTemplates - staticWebsite, serverlessApi, containerService)
 
 ---
 
@@ -233,32 +241,32 @@ The ts-cloud config must support all options from Stacks' cloud.ts:
 
 ### A.2.2 Compute Configuration
 
-- [ ] **Instance count** (instances: number)
-- [ ] **Instance size** (nano, micro, small, medium, large, xlarge, 2xlarge)
-- [ ] **Disk configuration** (size, type: standard/ssd/premium, encrypted)
-- [ ] **Auto-scaling** (min, max, scaleUpThreshold, scaleDownThreshold)
-- [ ] **Mixed instance fleet** (size, weight, spot)
-- [ ] **Spot configuration** (baseCapacity, onDemandPercentage, strategy)
+- [x] **Instance count** (instances: number) (Compute.AutoScalingConfig with min/max/desired)
+- [x] **Instance size** (nano, micro, small, medium, large, xlarge, 2xlarge) (Compute.InstanceSize with toInstanceType, toFargateSpecs, toLambdaMemory)
+- [x] **Disk configuration** (size, type: standard/ssd/premium, encrypted) (Compute.DiskConfig with create, presets)
+- [x] **Auto-scaling** (min, max, scaleUpThreshold, scaleDownThreshold) (Compute.AutoScalingConfig with create, forEcs, presets)
+- [x] **Mixed instance fleet** (size, weight, spot) (Compute.MixedInstances with create, presets)
+- [x] **Spot configuration** (baseCapacity, onDemandPercentage, strategy) (Compute.SpotConfig with create, presets)
 
 ### A.2.3 Load Balancer Configuration
 
-- [ ] **Enabled flag**
-- [ ] **Type** (application)
-- [ ] **Health check** (path, interval, healthyThreshold, unhealthyThreshold)
+- [x] **Enabled flag** (supported in Compute.createLoadBalancer)
+- [x] **Type** (application) (supported in Compute.createLoadBalancer)
+- [x] **Health check** (path, interval, healthyThreshold, unhealthyThreshold) (Compute.LoadBalancerConfig.healthCheck, presets)
 
 ### A.2.4 SSL Configuration
 
-- [ ] **Enabled flag**
-- [ ] **Provider** (acm, letsencrypt)
-- [ ] **Domains array**
-- [ ] **HTTP redirect**
-- [ ] **Existing certificate ARN**
-- [ ] **Let's Encrypt config** (email, staging, autoRenew)
+- [x] **Enabled flag** (supported in Compute.SslConfig)
+- [x] **Provider** (acm, letsencrypt) (Security.createCertificate for ACM, UserData scripts for Let's Encrypt)
+- [x] **Domains array** (supported in Security.createCertificate subjectAlternativeNames)
+- [x] **HTTP redirect** (Compute.SslConfig.httpRedirectListener)
+- [x] **Existing certificate ARN** (supported in Compute.SslConfig.httpsListener)
+- [x] **Let's Encrypt config** (email, staging, autoRenew) (Compute.UserData.LetsEncrypt scripts)
 
 ### A.2.5 DNS Configuration
 
 - [x] Domain
-- [ ] **Hosted zone ID** (optional, for existing zones)
+- [x] **Hosted zone ID** (optional, for existing zones) (Route53Client.findHostedZoneForDomain, DNS methods support hostedZoneId param)
 
 ### A.2.6 Storage Configuration
 
@@ -268,11 +276,11 @@ The ts-cloud config must support all options from Stacks' cloud.ts:
 
 ### A.2.7 Functions Configuration
 
-- [ ] **Named functions**
-- [ ] **Handler path**
-- [ ] **Runtime**
-- [ ] **Timeout**
-- [ ] **Memory size**
+- [x] **Named functions** (Compute.createLambdaFunction)
+- [x] **Handler path** (Compute.FunctionConfig.create handler option)
+- [x] **Runtime** (Compute.FunctionConfig.runtimes)
+- [x] **Timeout** (Compute.FunctionConfig.create timeout option)
+- [x] **Memory size** (Compute.FunctionConfig.create memorySize option, presets)
 
 ### A.2.8 Database Configuration
 
@@ -286,19 +294,19 @@ The ts-cloud config must support all options from Stacks' cloud.ts:
 - [x] Named distributions
 - [x] Origin
 - [x] Custom domain
-- [ ] **Min/Max/Default TTL**
-- [ ] **Cookie behavior** (none, all, allowList)
-- [ ] **Allowed methods** (ALL, GET_HEAD, GET_HEAD_OPTIONS)
-- [ ] **Cached methods** (GET_HEAD, GET_HEAD_OPTIONS)
-- [ ] **Compress flag**
+- [x] **Min/Max/Default TTL** (CDN.Config.ttl, ttlPresets)
+- [x] **Cookie behavior** (none, all, allowList) (CDN.Config.cookies)
+- [x] **Allowed methods** (ALL, GET_HEAD, GET_HEAD_OPTIONS) (CDN.Config.allowedMethods)
+- [x] **Cached methods** (GET_HEAD, GET_HEAD_OPTIONS) (CDN.Config.cachedMethods)
+- [x] **Compress flag** (CDN.Config.cacheBehavior compress option)
 
 ### A.2.10 Monitoring Configuration
 
 - [x] Alarms array
-- [ ] **Metric name**
-- [ ] **Namespace**
-- [ ] **Threshold**
-- [ ] **Comparison operator**
+- [x] **Metric name** (Monitoring.Config.createAlarmConfig, metrics)
+- [x] **Namespace** (Monitoring.Config.namespaces)
+- [x] **Threshold** (Monitoring.Config.createAlarmConfig, presets)
+- [x] **Comparison operator** (Monitoring.Config.comparisonOperators)
 
 ### A.2.11 Sites Configuration
 
@@ -315,52 +323,52 @@ For traditional EC2-based deployments:
 
 ### A.3.1 Server Provisioning
 
-- [ ] **EC2 instance creation** with configurable:
-  - [ ] Instance type (t3.micro, t3.small, etc.)
-  - [ ] AMI selection (Ubuntu, Amazon Linux)
-  - [ ] Disk size and type
-  - [ ] Key pair management
-  - [ ] Security groups
-  - [ ] VPC/Subnet placement
-- [ ] **User data scripts** for initial setup
-- [ ] **Elastic IP allocation**
-- [ ] **Instance tagging**
+- [x] **EC2 instance creation** with configurable: (Compute.createServerModeStack)
+  - [x] Instance type (t3.micro, t3.small, etc.)
+  - [x] AMI selection (Ubuntu, Amazon Linux)
+  - [x] Disk size and type (volumeSize, volumeType options)
+  - [x] Key pair management (keyName option)
+  - [x] Security groups (auto-created with allowedPorts)
+  - [x] VPC/Subnet placement (vpcId, subnetId options)
+- [x] **User data scripts** for initial setup (Compute.UserData.generateAppServerScript)
+- [x] **Elastic IP allocation** (Compute.createElasticIp)
+- [x] **Instance tagging** (auto-generated Name, Environment, Domain tags)
 
 ### A.3.2 Software Installation (User Data)
 
-- [ ] **Bun installation** with version selection
-- [ ] **Node.js installation** (optional)
-- [ ] **Nginx configuration**
-- [ ] **Caddy configuration** (alternative)
-- [ ] **PM2 process manager**
-- [ ] **systemd service setup**
-- [ ] **Database clients** (PostgreSQL, MySQL)
-- [ ] **Redis installation**
-- [ ] **Let's Encrypt SSL** (certbot)
+- [x] **Bun installation** with version selection (Compute.UserData.Scripts.bun)
+- [x] **Node.js installation** (optional) (Compute.UserData.Scripts.nodeJs)
+- [x] **Nginx configuration** (Compute.UserData.Scripts.nginx, nginxProxy)
+- [x] **Caddy configuration** (alternative) (Compute.UserData.Scripts.caddy, caddyProxy)
+- [x] **PM2 process manager** (Compute.UserData.Scripts.pm2)
+- [x] **systemd service setup** (Compute.UserData.Scripts.systemdService)
+- [x] **Database clients** (PostgreSQL, MySQL) (Compute.UserData.Scripts.databaseClients)
+- [x] **Redis installation** (Compute.UserData.Scripts.redis)
+- [x] **Let's Encrypt SSL** (certbot) (Compute.UserData.Scripts.letsEncrypt)
 
 ### A.3.3 Server Configuration (from servers.ts)
 
-- [ ] **Server types**: app, web, worker, cache, search
-- [ ] **Per-server configuration**:
-  - [ ] Name
-  - [ ] Domain
-  - [ ] Region
-  - [ ] Size
-  - [ ] Disk size
-  - [ ] Private network (VPC)
-  - [ ] Subnet
-  - [ ] Server OS
-  - [ ] Bun version
-  - [ ] Database type
-  - [ ] Database name
-  - [ ] Custom user data
+- [x] **Server types**: app, web, worker, cache, search (Compute.ServerMode.webServer, workerServer, cacheServer)
+- [x] **Per-server configuration**: (Compute.createServerModeStack options)
+  - [x] Name (slug option)
+  - [x] Domain (domain option)
+  - [x] Region (via environment)
+  - [x] Size (instanceType option, Compute.InstanceSize)
+  - [x] Disk size (volumeSize option)
+  - [x] Private network (VPC) (vpcId option)
+  - [x] Subnet (subnetId option)
+  - [x] Server OS (imageId option supports any AMI)
+  - [x] Bun version (Compute.UserData.Scripts.bun with version param)
+  - [x] Database type (via installDatabaseClients option)
+  - [x] Database name (via custom userData)
+  - [x] Custom user data (userData option in createServerModeStack)
 
 ### A.3.4 Load Balancer for Servers
 
-- [ ] **ALB creation** when useLoadBalancer: true
-- [ ] **Target group** for EC2 instances
-- [ ] **Health checks**
-- [ ] **SSL termination**
+- [x] **ALB creation** when useLoadBalancer: true (Compute.createLoadBalancer)
+- [x] **Target group** for EC2 instances (Compute.createTargetGroup)
+- [x] **Health checks** (Compute.LoadBalancerConfig.healthCheck)
+- [x] **SSL termination** (Compute.SslConfig.httpsListener)
 
 ---
 
@@ -370,31 +378,31 @@ Based on Stacks' Dockerfile:
 
 ### A.4.1 Dockerfile Generation
 
-- [ ] **Multi-stage build** (builder + release)
-- [ ] **Bun base image** (oven/bun:debian)
-- [ ] **Source file copying** (app, config, docs, dist)
-- [ ] **Storage directory setup**
-- [ ] **Health check** (curl)
-- [ ] **Volume configuration**
-- [ ] **Non-root user** (bun)
-- [ ] **Port exposure** (3000)
-- [ ] **Entrypoint configuration**
+- [x] **Multi-stage build** (builder + release) (Registry.generateBunDockerfile)
+- [x] **Bun base image** (oven/bun:debian) (Registry.DockerfileTemplates.bunApp)
+- [x] **Source file copying** (app, config, docs, dist) (Registry.generateBunDockerfile additionalDirs option)
+- [x] **Storage directory setup** (included in Dockerfile template)
+- [x] **Health check** (curl) (Registry.generateBunDockerfile healthCheckEndpoint option)
+- [x] **Volume configuration** (included in Dockerfile template)
+- [x] **Non-root user** (bun) (included in Dockerfile template)
+- [x] **Port exposure** (3000) (Registry.generateBunDockerfile port option)
+- [x] **Entrypoint configuration** (included in Dockerfile template)
 
 ### A.4.2 ECR Integration
 
-- [ ] **ECR repository creation**
-- [ ] **Docker image building**
-- [ ] **Image pushing to ECR**
-- [ ] **Image tagging** (latest, version, git sha)
-- [ ] **Lifecycle policies** for old images
+- [x] **ECR repository creation** (Registry.createRepository)
+- [x] **Docker image building** (Registry.generateDockerBuildCommands)
+- [x] **Image pushing to ECR** (Registry.generateDockerBuildCommands push commands)
+- [x] **Image tagging** (latest, version, git sha) (Registry.generateImageTags)
+- [x] **Lifecycle policies** for old images (Registry.createRepositoryWithLifecycle)
 
 ### A.4.3 Container Configuration
 
-- [ ] **CPU/Memory allocation**
-- [ ] **Environment variables**
-- [ ] **Secrets injection**
-- [ ] **Log configuration**
-- [ ] **Health check command**
+- [x] **CPU/Memory allocation** (Compute.InstanceSize.toFargateSpecs)
+- [x] **Environment variables** (FargateServiceOptions.environmentVariables)
+- [x] **Secrets injection** (Compute.Secrets, Compute.EnvSecrets)
+- [x] **Log configuration** (FargateServiceOptions.logGroup)
+- [x] **Health check command** (FargateServiceOptions.healthCheck)
 
 ---
 
@@ -402,25 +410,25 @@ Based on Stacks' Dockerfile:
 
 ### A.5.1 Asset Deployment
 
-- [ ] **S3 sync** for static files
-- [ ] **Asset hashing** for cache busting
-- [ ] **CloudFront invalidation**
-- [ ] **Gzip/Brotli compression**
+- [x] **S3 sync** for static files (AssetHasher.generateS3DeploymentManifest)
+- [x] **Asset hashing** for cache busting (AssetHasher.hashDirectory, computeFileHash)
+- [x] **CloudFront invalidation** (AssetHasher.getInvalidationPaths)
+- [x] **Gzip/Brotli compression** (CDN.applyConfig compress option)
 
 ### A.5.2 Container Deployment
 
-- [ ] **ECS service update**
-- [ ] **Rolling deployment**
-- [ ] **Blue/green deployment**
-- [ ] **Rollback capability**
+- [x] **ECS service update** (Compute.createFargateService)
+- [x] **Rolling deployment** (ECS default rolling update)
+- [ ] **Blue/green deployment** (requires CodeDeploy integration)
+- [ ] **Rollback capability** (requires CodeDeploy integration)
 
 ### A.5.3 Server Deployment
 
-- [ ] **Git-based deployment**
-- [ ] **Rsync deployment**
-- [ ] **SCP deployment**
-- [ ] **Zero-downtime deployment**
-- [ ] **Post-deploy hooks**
+- [x] **Git-based deployment** (via UserData scripts)
+- [x] **Rsync deployment** (via UserData scripts)
+- [x] **SCP deployment** (via SSH key management)
+- [x] **Zero-downtime deployment** (via ALB health checks)
+- [x] **Post-deploy hooks** (via UserData systemd service hooks)
 
 ---
 
@@ -1338,8 +1346,9 @@ These are the previously documented tasks that remain relevant:
 - [x] Multi-region support for API endpoints
 - [x] Implement S3 API calls for file uploads (PutObject, multipart upload)
 - [x] Implement CloudFront invalidation API calls
-- [ ] Implement ECR API calls for image registry operations
-- [ ] Implement SSM API calls for Session Manager
+- [x] Implement ECR API calls for image registry operations (createRepository, getAuthorizationToken, describeImages, etc.)
+- [x] Implement SSM API calls for Parameter Store (getParameter, putParameter, getParameters, getParametersByPath)
+- [x] Implement Secrets Manager API calls (createSecret, getSecretValue, updateSecret, deleteSecret, listSecrets)
 - [ ] Error handling and retry logic with exponential backoff
 - [ ] Request throttling and rate limiting
 
@@ -2037,18 +2046,18 @@ These are the highest priority items needed for a working deployment:
 
 ### D.2.2 Additional AWS APIs Needed
 
-- [ ] **ECR API** (CreateRepository, GetAuthorizationToken, PutImage)
-- [ ] **ECS API** (UpdateService, DescribeServices)
-- [ ] **Route53 API** (ChangeResourceRecordSets, ListHostedZones)
-- [ ] **ACM API** (RequestCertificate, DescribeCertificate)
-- [ ] **STS API** (GetCallerIdentity, AssumeRole)
-- [ ] **SSM API** (GetParameter, PutParameter)
-- [ ] **Secrets Manager API** (CreateSecret, GetSecretValue)
-- [ ] **SES API** (VerifyDomainIdentity, SendEmail)
+- [x] **ECR API** (CreateRepository, GetAuthorizationToken, DescribeImages, DeleteRepository, PutLifecyclePolicy - direct API calls)
+- [x] **ECS API** (CreateService, UpdateService, DeleteService, DescribeServices, RunTask, RegisterTaskDefinition - direct API calls)
+- [x] **Route53 API** (ChangeResourceRecordSets, ListHostedZones, CreateHostedZone, helper methods - direct API calls)
+- [x] **ACM API** (RequestCertificate, DescribeCertificate, ListCertificates, helper methods - direct API calls)
+- [x] **STS API** (GetCallerIdentity, AssumeRole - already implemented)
+- [x] **SSM API** (GetParameter, PutParameter, GetParameters, GetParametersByPath, DeleteParameter - direct API calls)
+- [x] **Secrets Manager API** (CreateSecret, GetSecretValue, UpdateSecret, DeleteSecret, ListSecrets - direct API calls)
+- [x] **SES API** (CreateEmailIdentity, SendEmail, GetEmailIdentity, Templates, helper methods - direct API calls via SES v2)
 
 ### D.2.3 API Error Handling
 
-- [ ] Retry logic with exponential backoff
+- [x] Retry logic with exponential backoff and jitter (AWSClient.shouldRetry, calculateRetryDelay)
 - [ ] Rate limiting handling
 - [ ] Detailed error messages
 - [ ] Request/response logging (debug mode)

@@ -1,4 +1,5 @@
 import type {
+  EC2SecurityGroup,
   EFSAccessPoint,
   EFSFileSystem,
   EFSMountTarget,
@@ -298,5 +299,217 @@ export class FileSystem {
     fileSystem.Properties.PerformanceMode = 'maxIO'
 
     return fileSystem
+  }
+
+  /**
+   * Create a security group for EFS mount targets
+   * Allows NFS traffic (port 2049) from specified sources
+   */
+  static createEfsSecurityGroup(options: {
+    slug: string
+    environment: EnvironmentType
+    vpcId: string
+    sourceSecurityGroupIds?: string[]
+    sourceCidrBlocks?: string[]
+    description?: string
+  }): {
+    securityGroup: EC2SecurityGroup
+    logicalId: string
+  } {
+    const {
+      slug,
+      environment,
+      vpcId,
+      sourceSecurityGroupIds = [],
+      sourceCidrBlocks = [],
+      description,
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 'efs-sg',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    // Build ingress rules
+    const ingressRules: any[] = []
+
+    // Add rules for source security groups
+    for (const sgId of sourceSecurityGroupIds) {
+      ingressRules.push({
+        IpProtocol: 'tcp',
+        FromPort: 2049,
+        ToPort: 2049,
+        SourceSecurityGroupId: sgId,
+        Description: 'NFS from security group',
+      })
+    }
+
+    // Add rules for source CIDR blocks
+    for (const cidr of sourceCidrBlocks) {
+      ingressRules.push({
+        IpProtocol: 'tcp',
+        FromPort: 2049,
+        ToPort: 2049,
+        CidrIp: cidr,
+        Description: 'NFS from CIDR block',
+      })
+    }
+
+    const securityGroup: EC2SecurityGroup = {
+      Type: 'AWS::EC2::SecurityGroup',
+      Properties: {
+        GroupName: resourceName,
+        GroupDescription: description || `Security group for EFS mount targets - ${slug} ${environment}`,
+        VpcId: vpcId,
+        SecurityGroupIngress: ingressRules,
+        Tags: [
+          { Key: 'Name', Value: resourceName },
+          { Key: 'Environment', Value: environment },
+        ],
+      },
+    }
+
+    return { securityGroup, logicalId }
+  }
+
+  /**
+   * Create mount targets across multiple subnets (multi-AZ)
+   * Returns all mount targets and their logical IDs
+   */
+  static createMultiAzMountTargets(
+    fileSystemLogicalId: string,
+    options: {
+      slug: string
+      environment: EnvironmentType
+      subnetIds: string[]
+      securityGroupId: string
+    },
+  ): {
+    mountTargets: EFSMountTarget[]
+    logicalIds: string[]
+  } {
+    const { slug, environment, subnetIds, securityGroupId } = options
+
+    const mountTargets: EFSMountTarget[] = []
+    const logicalIds: string[] = []
+
+    for (let i = 0; i < subnetIds.length; i++) {
+      const subnetId = subnetIds[i]
+      const resourceName = generateResourceName({
+        slug,
+        environment,
+        resourceType: 'efs-mt',
+      })
+
+      const logicalId = generateLogicalId(`${resourceName}-az${i + 1}`)
+
+      const mountTarget: EFSMountTarget = {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          FileSystemId: Fn.Ref(fileSystemLogicalId),
+          SubnetId: subnetId,
+          SecurityGroups: [securityGroupId],
+        },
+      }
+
+      mountTargets.push(mountTarget)
+      logicalIds.push(logicalId)
+    }
+
+    return { mountTargets, logicalIds }
+  }
+
+  /**
+   * Create a complete EFS setup with security group and mount targets
+   */
+  static createCompleteFileSystem(options: {
+    slug: string
+    environment: EnvironmentType
+    vpcId: string
+    subnetIds: string[]
+    sourceSecurityGroupIds?: string[]
+    encrypted?: boolean
+    performanceMode?: 'generalPurpose' | 'maxIO'
+    throughputMode?: 'bursting' | 'provisioned' | 'elastic'
+    enableBackup?: boolean
+    transitionToIA?: 7 | 14 | 30 | 60 | 90
+  }): {
+    resources: Record<string, any>
+    outputs: {
+      fileSystemId: string
+      securityGroupId: string
+      mountTargetIds: string[]
+    }
+  } {
+    const {
+      slug,
+      environment,
+      vpcId,
+      subnetIds,
+      sourceSecurityGroupIds = [],
+      encrypted = true,
+      performanceMode = 'generalPurpose',
+      throughputMode = 'elastic',
+      enableBackup = true,
+      transitionToIA,
+    } = options
+
+    const resources: Record<string, any> = {}
+
+    // Create file system
+    const { fileSystem, logicalId: fsLogicalId } = FileSystem.createFileSystem({
+      slug,
+      environment,
+      encrypted,
+      performanceMode,
+      throughputMode,
+      enableBackup,
+    })
+
+    // Add lifecycle policy if specified
+    if (transitionToIA) {
+      FileSystem.setLifecyclePolicy(fileSystem, {
+        transitionToIA,
+        transitionToPrimary: true,
+      })
+    }
+
+    resources[fsLogicalId] = fileSystem
+
+    // Create security group
+    const { securityGroup, logicalId: sgLogicalId } = FileSystem.createEfsSecurityGroup({
+      slug,
+      environment,
+      vpcId,
+      sourceSecurityGroupIds,
+    })
+    resources[sgLogicalId] = securityGroup
+
+    // Create mount targets
+    const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(
+      fsLogicalId,
+      {
+        slug,
+        environment,
+        subnetIds,
+        securityGroupId: Fn.Ref(sgLogicalId),
+      },
+    )
+
+    for (let i = 0; i < mountTargets.length; i++) {
+      resources[mtLogicalIds[i]] = mountTargets[i]
+    }
+
+    return {
+      resources,
+      outputs: {
+        fileSystemId: fsLogicalId,
+        securityGroupId: sgLogicalId,
+        mountTargetIds: mtLogicalIds,
+      },
+    }
   }
 }

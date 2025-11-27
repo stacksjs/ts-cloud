@@ -1,5 +1,7 @@
 import type { BackupPlan, BackupSelection, BackupVault, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
 import type { IAMRole } from '@ts-cloud/aws-types'
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '@ts-cloud/types'
@@ -572,5 +574,528 @@ export class Storage {
     TWO_YEARS: 730,
     FIVE_YEARS: 1825,
     SEVEN_YEARS: 2555,
+  }
+
+  /**
+   * Create a www redirect bucket
+   * This bucket redirects www.domain.com to domain.com (or vice versa)
+   */
+  static createWwwRedirectBucket(options: {
+    slug: string
+    environment: EnvironmentType
+    sourceDomain: string // e.g., www.example.com
+    targetDomain: string // e.g., example.com
+    protocol?: 'http' | 'https'
+  }): { bucket: S3Bucket, bucketPolicy: S3BucketPolicy, logicalId: string } {
+    const {
+      slug,
+      environment,
+      sourceDomain,
+      targetDomain,
+      protocol = 'https',
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 's3',
+      suffix: 'www-redirect',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const bucket: S3Bucket = {
+      Type: 'AWS::S3::Bucket',
+      Properties: {
+        BucketName: sourceDomain,
+        WebsiteConfiguration: {
+          RedirectAllRequestsTo: {
+            HostName: targetDomain,
+            Protocol: protocol,
+          },
+        },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: false,
+          BlockPublicPolicy: false,
+          IgnorePublicAcls: false,
+          RestrictPublicBuckets: false,
+        },
+      },
+    }
+
+    // Policy to allow public read access for redirect
+    const bucketPolicy: S3BucketPolicy = {
+      Type: 'AWS::S3::BucketPolicy',
+      Properties: {
+        Bucket: Fn.Ref(logicalId),
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [{
+            Sid: 'PublicReadForRedirect',
+            Effect: 'Allow',
+            Principal: '*',
+            Action: ['s3:GetObject'],
+            Resource: [Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any],
+          }],
+        },
+      },
+    }
+
+    return {
+      bucket,
+      bucketPolicy,
+      logicalId,
+    }
+  }
+
+  /**
+   * Create a docs bucket (for documentation sites)
+   * Conditional creation based on docs presence
+   */
+  static createDocsBucket(options: {
+    slug: string
+    environment: EnvironmentType
+    domain?: string
+  }): { bucket: S3Bucket, bucketPolicy?: S3BucketPolicy, logicalId: string } {
+    const {
+      slug,
+      environment,
+      domain,
+    } = options
+
+    const resourceName = domain || generateResourceName({
+      slug,
+      environment,
+      resourceType: 's3',
+      suffix: 'docs',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const bucket: S3Bucket = {
+      Type: 'AWS::S3::Bucket',
+      Properties: {
+        BucketName: resourceName,
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [{
+            ServerSideEncryptionByDefault: {
+              SSEAlgorithm: 'AES256',
+            },
+          }],
+        },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          BlockPublicPolicy: true,
+          IgnorePublicAcls: true,
+          RestrictPublicBuckets: true,
+        },
+        Tags: [{
+          Key: 'backup',
+          Value: 'weekly',
+        }],
+      },
+    }
+
+    return {
+      bucket,
+      logicalId,
+    }
+  }
+
+  /**
+   * Create an email bucket for storing emails
+   */
+  static createEmailBucket(options: {
+    slug: string
+    environment: EnvironmentType
+  }): { bucket: S3Bucket, bucketPolicy: S3BucketPolicy, logicalId: string } {
+    const {
+      slug,
+      environment,
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 's3',
+      suffix: 'email',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const bucket: S3Bucket = {
+      Type: 'AWS::S3::Bucket',
+      Properties: {
+        BucketName: resourceName,
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [{
+            ServerSideEncryptionByDefault: {
+              SSEAlgorithm: 'AES256',
+            },
+          }],
+        },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          BlockPublicPolicy: true,
+          IgnorePublicAcls: true,
+          RestrictPublicBuckets: true,
+        },
+        LifecycleConfiguration: {
+          Rules: [{
+            Id: 'EmailRetention',
+            Status: 'Enabled',
+            ExpirationInDays: 90, // Keep emails for 90 days
+            Transitions: [{
+              TransitionInDays: 30,
+              StorageClass: 'STANDARD_IA', // Move to IA after 30 days
+            }],
+          }],
+        },
+      },
+    }
+
+    // Policy to allow SES to deliver emails to this bucket
+    const bucketPolicy: S3BucketPolicy = {
+      Type: 'AWS::S3::BucketPolicy',
+      Properties: {
+        Bucket: Fn.Ref(logicalId),
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [{
+            Sid: 'AllowSESPuts',
+            Effect: 'Allow',
+            Principal: {
+              Service: 'ses.amazonaws.com',
+            },
+            Action: 's3:PutObject',
+            Resource: Fn.Join('', [Fn.GetAtt(logicalId, 'Arn'), '/*']) as any,
+            Condition: {
+              StringEquals: {
+                'AWS:SourceAccount': Fn.Ref('AWS::AccountId') as any,
+              },
+            },
+          }],
+        },
+      },
+    }
+
+    return {
+      bucket,
+      bucketPolicy,
+      logicalId,
+    }
+  }
+
+  /**
+   * Check if a docs directory exists and has content
+   */
+  static docsExist(options: {
+    projectRoot?: string
+    docsPaths?: string[]
+  } = {}): {
+    exists: boolean
+    path: string | null
+    hasDistFolder: boolean
+    distPath: string | null
+  } {
+    const {
+      projectRoot = process.cwd(),
+      docsPaths = ['docs', 'documentation', 'doc'],
+    } = options
+
+    for (const docsPath of docsPaths) {
+      const fullPath = join(projectRoot, docsPath)
+
+      if (existsSync(fullPath)) {
+        // Check for dist/build folder within docs
+        const distPaths = ['dist', 'build', '.vitepress/dist', '_site', 'out', 'public']
+
+        for (const distPath of distPaths) {
+          const fullDistPath = join(fullPath, distPath)
+          if (existsSync(fullDistPath)) {
+            // Verify it has files
+            try {
+              const files = readdirSync(fullDistPath)
+              if (files.length > 0) {
+                return {
+                  exists: true,
+                  path: fullPath,
+                  hasDistFolder: true,
+                  distPath: fullDistPath,
+                }
+              }
+            }
+            catch {
+              // Continue to next path
+            }
+          }
+        }
+
+        // Docs folder exists but no dist yet
+        return {
+          exists: true,
+          path: fullPath,
+          hasDistFolder: false,
+          distPath: null,
+        }
+      }
+    }
+
+    return {
+      exists: false,
+      path: null,
+      hasDistFolder: false,
+      distPath: null,
+    }
+  }
+
+  /**
+   * Conditionally create docs bucket if docs exist
+   */
+  static createDocsBucketIfExists(options: {
+    slug: string
+    environment: EnvironmentType
+    domain?: string
+    projectRoot?: string
+    docsPaths?: string[]
+  }): {
+    bucket: S3Bucket | null
+    bucketPolicy?: S3BucketPolicy
+    logicalId: string | null
+    docsInfo: {
+      exists: boolean
+      path: string | null
+      hasDistFolder: boolean
+      distPath: string | null
+    }
+  } {
+    const docsInfo = Storage.docsExist({
+      projectRoot: options.projectRoot,
+      docsPaths: options.docsPaths,
+    })
+
+    if (!docsInfo.exists) {
+      return {
+        bucket: null,
+        logicalId: null,
+        docsInfo,
+      }
+    }
+
+    const result = Storage.createDocsBucket({
+      slug: options.slug,
+      environment: options.environment,
+      domain: options.domain,
+    })
+
+    return {
+      bucket: result.bucket,
+      bucketPolicy: result.bucketPolicy,
+      logicalId: result.logicalId,
+      docsInfo,
+    }
+  }
+
+  /**
+   * Create private files bucket
+   * For storing private/sensitive files not accessible publicly
+   */
+  static createPrivateBucket(options: {
+    slug: string
+    environment: EnvironmentType
+    enableVersioning?: boolean
+    retentionDays?: number
+    encryptionKeyArn?: string
+  }): { bucket: S3Bucket, logicalId: string } {
+    const {
+      slug,
+      environment,
+      enableVersioning = true,
+      retentionDays,
+      encryptionKeyArn,
+    } = options
+
+    const resourceName = generateResourceName({
+      slug,
+      environment,
+      resourceType: 's3',
+      suffix: 'private',
+    })
+
+    const logicalId = generateLogicalId(resourceName)
+
+    const bucket: S3Bucket = {
+      Type: 'AWS::S3::Bucket',
+      Properties: {
+        BucketName: resourceName,
+        BucketEncryption: {
+          ServerSideEncryptionConfiguration: [{
+            ServerSideEncryptionByDefault: encryptionKeyArn
+              ? {
+                  SSEAlgorithm: 'aws:kms',
+                  KMSMasterKeyID: encryptionKeyArn,
+                }
+              : {
+                  SSEAlgorithm: 'AES256',
+                },
+          }],
+        },
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          BlockPublicPolicy: true,
+          IgnorePublicAcls: true,
+          RestrictPublicBuckets: true,
+        },
+        VersioningConfiguration: enableVersioning
+          ? { Status: 'Enabled' }
+          : undefined,
+        LifecycleConfiguration: retentionDays
+          ? {
+              Rules: [{
+                Id: 'RetentionPolicy',
+                Status: 'Enabled',
+                ExpirationInDays: retentionDays,
+              }],
+            }
+          : undefined,
+        Tags: [{
+          Key: 'backup',
+          Value: 'daily',
+        }],
+      },
+    }
+
+    return {
+      bucket,
+      logicalId,
+    }
+  }
+
+  /**
+   * Check if source paths exist for deployment
+   * Common paths: views/web/dist, docs/dist, private
+   */
+  static checkSourcePaths(options: {
+    projectRoot?: string
+    paths?: {
+      web?: string
+      docs?: string
+      private?: string
+    }
+  } = {}): {
+    web: { exists: boolean, path: string }
+    docs: { exists: boolean, path: string }
+    private: { exists: boolean, path: string }
+  } {
+    const {
+      projectRoot = process.cwd(),
+      paths = {},
+    } = options
+
+    const webPath = paths.web || 'views/web/dist'
+    const docsPath = paths.docs || 'docs/dist'
+    const privatePath = paths.private || 'private'
+
+    return {
+      web: {
+        exists: existsSync(join(projectRoot, webPath)),
+        path: join(projectRoot, webPath),
+      },
+      docs: {
+        exists: existsSync(join(projectRoot, docsPath)),
+        path: join(projectRoot, docsPath),
+      },
+      private: {
+        exists: existsSync(join(projectRoot, privatePath)),
+        path: join(projectRoot, privatePath),
+      },
+    }
+  }
+
+  /**
+   * Create all deployment buckets based on source paths
+   * Conditionally creates buckets only for source paths that exist
+   */
+  static createDeploymentBuckets(options: {
+    slug: string
+    environment: EnvironmentType
+    domain?: string
+    projectRoot?: string
+    paths?: {
+      web?: string
+      docs?: string
+      private?: string
+    }
+  }): {
+    resources: Record<string, S3Bucket | S3BucketPolicy>
+    created: {
+      web: boolean
+      docs: boolean
+      private: boolean
+    }
+    sourcePaths: {
+      web: { exists: boolean, path: string }
+      docs: { exists: boolean, path: string }
+      private: { exists: boolean, path: string }
+    }
+  } {
+    const {
+      slug,
+      environment,
+      domain,
+      projectRoot,
+      paths,
+    } = options
+
+    const sourcePaths = Storage.checkSourcePaths({ projectRoot, paths })
+    const resources: Record<string, S3Bucket | S3BucketPolicy> = {}
+    const created = {
+      web: false,
+      docs: false,
+      private: false,
+    }
+
+    // Create web bucket (always created for main site)
+    const webBucket = Storage.createBucket({
+      name: 'web',
+      slug,
+      environment,
+      public: false,
+      versioning: false,
+      encryption: true,
+    })
+    resources[webBucket.logicalId] = webBucket.bucket
+    created.web = true
+
+    // Create docs bucket if docs exist
+    if (sourcePaths.docs.exists) {
+      const docsBucket = Storage.createDocsBucket({
+        slug,
+        environment,
+        domain: domain ? `docs.${domain}` : undefined,
+      })
+      resources[docsBucket.logicalId] = docsBucket.bucket
+      if (docsBucket.bucketPolicy) {
+        resources[`${docsBucket.logicalId}Policy`] = docsBucket.bucketPolicy
+      }
+      created.docs = true
+    }
+
+    // Create private bucket if private files exist
+    if (sourcePaths.private.exists) {
+      const privateBucket = Storage.createPrivateBucket({
+        slug,
+        environment,
+        enableVersioning: true,
+      })
+      resources[privateBucket.logicalId] = privateBucket.bucket
+      created.private = true
+    }
+
+    return {
+      resources,
+      created,
+      sourcePaths,
+    }
   }
 }

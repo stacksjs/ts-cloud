@@ -1,6 +1,6 @@
 /**
  * AWS Integration Layer
- * CLI wrappers for AWS services (no SDK dependencies)
+ * Direct API calls for AWS services (no SDK dependencies)
  */
 
 export * from './client'
@@ -10,3 +10,10 @@ export * from './cloudfront'
 export * from './route53'
 export * from './route53-domains'
 export * from './acm'
+export * from './ecr'
+export * from './ecs'
+export * from './sts'
+export * from './ssm'
+export * from './secrets-manager'
+export * from './ses'
+export * from './cloudwatch-logs'
