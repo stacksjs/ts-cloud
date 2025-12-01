@@ -771,4 +771,1189 @@ export class S3Client {
     const text = await response.text()
     return JSON.parse(text)
   }
+
+  /**
+   * Delete bucket policy
+   */
+  async deleteBucketPolicy(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { policy: '' },
+    })
+  }
+
+  /**
+   * Head bucket - check if bucket exists and you have access
+   */
+  async headBucket(bucket: string): Promise<{ exists: boolean; region?: string }> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'HEAD',
+        path: `/${bucket}`,
+        returnHeaders: true,
+      })
+      return { exists: true, region: result?.headers?.['x-amz-bucket-region'] }
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return { exists: false }
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Head object - get object metadata without downloading
+   */
+  async headObject(bucket: string, key: string): Promise<{
+    ContentLength?: number
+    ContentType?: string
+    ETag?: string
+    LastModified?: string
+    Metadata?: Record<string, string>
+  } | null> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'HEAD',
+        path: `/${bucket}/${key}`,
+        returnHeaders: true,
+      })
+      return {
+        ContentLength: result?.headers?.['content-length'] ? parseInt(result.headers['content-length']) : undefined,
+        ContentType: result?.headers?.['content-type'],
+        ETag: result?.headers?.['etag'],
+        LastModified: result?.headers?.['last-modified'],
+      }
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Get object as Buffer
+   */
+  async getObjectBuffer(bucket: string, key: string): Promise<Buffer> {
+    const content = await this.getObject(bucket, key)
+    return Buffer.from(content)
+  }
+
+  /**
+   * Get object as JSON
+   */
+  async getObjectJson<T = any>(bucket: string, key: string): Promise<T> {
+    const content = await this.getObject(bucket, key)
+    return JSON.parse(content)
+  }
+
+  /**
+   * Put JSON object
+   */
+  async putObjectJson(bucket: string, key: string, data: any, options?: {
+    acl?: string
+    cacheControl?: string
+    metadata?: Record<string, string>
+  }): Promise<void> {
+    await this.putObject({
+      bucket,
+      key,
+      body: JSON.stringify(data),
+      contentType: 'application/json',
+      ...options,
+    })
+  }
+
+  /**
+   * Get bucket versioning configuration
+   */
+  async getBucketVersioning(bucket: string): Promise<{ Status?: 'Enabled' | 'Suspended' }> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { versioning: '' },
+    })
+    return {
+      Status: result?.VersioningConfiguration?.Status,
+    }
+  }
+
+  /**
+   * Put bucket versioning configuration
+   */
+  async putBucketVersioning(bucket: string, status: 'Enabled' | 'Suspended'): Promise<void> {
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Status>${status}</Status>
+</VersioningConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { versioning: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Get bucket lifecycle configuration
+   */
+  async getBucketLifecycleConfiguration(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { lifecycle: '' },
+      })
+      return result?.LifecycleConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put bucket lifecycle configuration
+   */
+  async putBucketLifecycleConfiguration(bucket: string, rules: Array<{
+    ID: string
+    Status: 'Enabled' | 'Disabled'
+    Filter?: { Prefix?: string }
+    Expiration?: { Days?: number; Date?: string }
+    Transitions?: Array<{ Days?: number; StorageClass: string }>
+    NoncurrentVersionExpiration?: { NoncurrentDays: number }
+  }>): Promise<void> {
+    const rulesXml = rules.map(rule => {
+      let ruleXml = `<Rule><ID>${rule.ID}</ID><Status>${rule.Status}</Status>`
+      
+      if (rule.Filter) {
+        ruleXml += `<Filter><Prefix>${rule.Filter.Prefix || ''}</Prefix></Filter>`
+      } else {
+        ruleXml += '<Filter><Prefix></Prefix></Filter>'
+      }
+      
+      if (rule.Expiration) {
+        if (rule.Expiration.Days) {
+          ruleXml += `<Expiration><Days>${rule.Expiration.Days}</Days></Expiration>`
+        } else if (rule.Expiration.Date) {
+          ruleXml += `<Expiration><Date>${rule.Expiration.Date}</Date></Expiration>`
+        }
+      }
+      
+      if (rule.Transitions) {
+        for (const t of rule.Transitions) {
+          ruleXml += `<Transition><Days>${t.Days}</Days><StorageClass>${t.StorageClass}</StorageClass></Transition>`
+        }
+      }
+      
+      if (rule.NoncurrentVersionExpiration) {
+        ruleXml += `<NoncurrentVersionExpiration><NoncurrentDays>${rule.NoncurrentVersionExpiration.NoncurrentDays}</NoncurrentDays></NoncurrentVersionExpiration>`
+      }
+      
+      ruleXml += '</Rule>'
+      return ruleXml
+    }).join('')
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<LifecycleConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  ${rulesXml}
+</LifecycleConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { lifecycle: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete bucket lifecycle configuration
+   */
+  async deleteBucketLifecycleConfiguration(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { lifecycle: '' },
+    })
+  }
+
+  /**
+   * Get bucket CORS configuration
+   */
+  async getBucketCors(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { cors: '' },
+      })
+      return result?.CORSConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put bucket CORS configuration
+   */
+  async putBucketCors(bucket: string, rules: Array<{
+    AllowedOrigins: string[]
+    AllowedMethods: string[]
+    AllowedHeaders?: string[]
+    ExposeHeaders?: string[]
+    MaxAgeSeconds?: number
+  }>): Promise<void> {
+    const rulesXml = rules.map(rule => {
+      let ruleXml = '<CORSRule>'
+      for (const origin of rule.AllowedOrigins) {
+        ruleXml += `<AllowedOrigin>${origin}</AllowedOrigin>`
+      }
+      for (const method of rule.AllowedMethods) {
+        ruleXml += `<AllowedMethod>${method}</AllowedMethod>`
+      }
+      if (rule.AllowedHeaders) {
+        for (const header of rule.AllowedHeaders) {
+          ruleXml += `<AllowedHeader>${header}</AllowedHeader>`
+        }
+      }
+      if (rule.ExposeHeaders) {
+        for (const header of rule.ExposeHeaders) {
+          ruleXml += `<ExposeHeader>${header}</ExposeHeader>`
+        }
+      }
+      if (rule.MaxAgeSeconds) {
+        ruleXml += `<MaxAgeSeconds>${rule.MaxAgeSeconds}</MaxAgeSeconds>`
+      }
+      ruleXml += '</CORSRule>'
+      return ruleXml
+    }).join('')
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<CORSConfiguration>
+  ${rulesXml}
+</CORSConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { cors: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete bucket CORS configuration
+   */
+  async deleteBucketCors(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { cors: '' },
+    })
+  }
+
+  /**
+   * Get bucket encryption configuration
+   */
+  async getBucketEncryption(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { encryption: '' },
+      })
+      return result?.ServerSideEncryptionConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put bucket encryption configuration
+   */
+  async putBucketEncryption(bucket: string, sseAlgorithm: 'AES256' | 'aws:kms', kmsKeyId?: string): Promise<void> {
+    let ruleXml = `<ApplyServerSideEncryptionByDefault><SSEAlgorithm>${sseAlgorithm}</SSEAlgorithm>`
+    if (kmsKeyId) {
+      ruleXml += `<KMSMasterKeyID>${kmsKeyId}</KMSMasterKeyID>`
+    }
+    ruleXml += '</ApplyServerSideEncryptionByDefault>'
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<ServerSideEncryptionConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Rule>${ruleXml}</Rule>
+</ServerSideEncryptionConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { encryption: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete bucket encryption configuration
+   */
+  async deleteBucketEncryption(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { encryption: '' },
+    })
+  }
+
+  /**
+   * Get bucket tagging
+   */
+  async getBucketTagging(bucket: string): Promise<Array<{ Key: string; Value: string }>> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { tagging: '' },
+      })
+      const tagSet = result?.Tagging?.TagSet?.Tag
+      if (!tagSet) return []
+      return Array.isArray(tagSet) ? tagSet : [tagSet]
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return []
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put bucket tagging
+   */
+  async putBucketTagging(bucket: string, tags: Array<{ Key: string; Value: string }>): Promise<void> {
+    const tagsXml = tags.map(t => `<Tag><Key>${t.Key}</Key><Value>${t.Value}</Value></Tag>`).join('')
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<Tagging>
+  <TagSet>${tagsXml}</TagSet>
+</Tagging>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { tagging: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete bucket tagging
+   */
+  async deleteBucketTagging(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { tagging: '' },
+    })
+  }
+
+  /**
+   * Get object tagging
+   */
+  async getObjectTagging(bucket: string, key: string): Promise<Array<{ Key: string; Value: string }>> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}/${key}`,
+        queryParams: { tagging: '' },
+      })
+      const tagSet = result?.Tagging?.TagSet?.Tag
+      if (!tagSet) return []
+      return Array.isArray(tagSet) ? tagSet : [tagSet]
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return []
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put object tagging
+   */
+  async putObjectTagging(bucket: string, key: string, tags: Array<{ Key: string; Value: string }>): Promise<void> {
+    const tagsXml = tags.map(t => `<Tag><Key>${t.Key}</Key><Value>${t.Value}</Value></Tag>`).join('')
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<Tagging>
+  <TagSet>${tagsXml}</TagSet>
+</Tagging>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}/${key}`,
+      queryParams: { tagging: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete object tagging
+   */
+  async deleteObjectTagging(bucket: string, key: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}/${key}`,
+      queryParams: { tagging: '' },
+    })
+  }
+
+  /**
+   * Get bucket ACL
+   */
+  async getBucketAcl(bucket: string): Promise<any> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { acl: '' },
+    })
+    return result?.AccessControlPolicy
+  }
+
+  /**
+   * Put bucket ACL (canned ACL)
+   */
+  async putBucketAcl(bucket: string, acl: 'private' | 'public-read' | 'public-read-write' | 'authenticated-read'): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { acl: '' },
+      headers: { 'x-amz-acl': acl },
+    })
+  }
+
+  /**
+   * Get object ACL
+   */
+  async getObjectAcl(bucket: string, key: string): Promise<any> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}/${key}`,
+      queryParams: { acl: '' },
+    })
+    return result?.AccessControlPolicy
+  }
+
+  /**
+   * Put object ACL (canned ACL)
+   */
+  async putObjectAcl(bucket: string, key: string, acl: 'private' | 'public-read' | 'public-read-write' | 'authenticated-read'): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}/${key}`,
+      queryParams: { acl: '' },
+      headers: { 'x-amz-acl': acl },
+    })
+  }
+
+  /**
+   * Get bucket location
+   */
+  async getBucketLocation(bucket: string): Promise<string> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { location: '' },
+    })
+    // Empty string means us-east-1
+    return result?.LocationConstraint || 'us-east-1'
+  }
+
+  /**
+   * Get bucket logging configuration
+   */
+  async getBucketLogging(bucket: string): Promise<any> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { logging: '' },
+    })
+    return result?.BucketLoggingStatus
+  }
+
+  /**
+   * Put bucket logging configuration
+   */
+  async putBucketLogging(bucket: string, targetBucket: string, targetPrefix: string): Promise<void> {
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<BucketLoggingStatus xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <LoggingEnabled>
+    <TargetBucket>${targetBucket}</TargetBucket>
+    <TargetPrefix>${targetPrefix}</TargetPrefix>
+  </LoggingEnabled>
+</BucketLoggingStatus>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { logging: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Get bucket notification configuration
+   */
+  async getBucketNotificationConfiguration(bucket: string): Promise<any> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { notification: '' },
+    })
+    return result?.NotificationConfiguration
+  }
+
+  /**
+   * Put bucket notification configuration
+   */
+  async putBucketNotificationConfiguration(bucket: string, config: {
+    LambdaFunctionConfigurations?: Array<{
+      Id?: string
+      LambdaFunctionArn: string
+      Events: string[]
+      Filter?: { Key?: { FilterRules: Array<{ Name: string; Value: string }> } }
+    }>
+    TopicConfigurations?: Array<{
+      Id?: string
+      TopicArn: string
+      Events: string[]
+      Filter?: { Key?: { FilterRules: Array<{ Name: string; Value: string }> } }
+    }>
+    QueueConfigurations?: Array<{
+      Id?: string
+      QueueArn: string
+      Events: string[]
+      Filter?: { Key?: { FilterRules: Array<{ Name: string; Value: string }> } }
+    }>
+  }): Promise<void> {
+    let configXml = ''
+
+    if (config.LambdaFunctionConfigurations) {
+      for (const c of config.LambdaFunctionConfigurations) {
+        configXml += '<CloudFunctionConfiguration>'
+        if (c.Id) configXml += `<Id>${c.Id}</Id>`
+        configXml += `<CloudFunction>${c.LambdaFunctionArn}</CloudFunction>`
+        for (const event of c.Events) {
+          configXml += `<Event>${event}</Event>`
+        }
+        if (c.Filter?.Key?.FilterRules) {
+          configXml += '<Filter><S3Key>'
+          for (const rule of c.Filter.Key.FilterRules) {
+            configXml += `<FilterRule><Name>${rule.Name}</Name><Value>${rule.Value}</Value></FilterRule>`
+          }
+          configXml += '</S3Key></Filter>'
+        }
+        configXml += '</CloudFunctionConfiguration>'
+      }
+    }
+
+    if (config.TopicConfigurations) {
+      for (const c of config.TopicConfigurations) {
+        configXml += '<TopicConfiguration>'
+        if (c.Id) configXml += `<Id>${c.Id}</Id>`
+        configXml += `<Topic>${c.TopicArn}</Topic>`
+        for (const event of c.Events) {
+          configXml += `<Event>${event}</Event>`
+        }
+        configXml += '</TopicConfiguration>'
+      }
+    }
+
+    if (config.QueueConfigurations) {
+      for (const c of config.QueueConfigurations) {
+        configXml += '<QueueConfiguration>'
+        if (c.Id) configXml += `<Id>${c.Id}</Id>`
+        configXml += `<Queue>${c.QueueArn}</Queue>`
+        for (const event of c.Events) {
+          configXml += `<Event>${event}</Event>`
+        }
+        configXml += '</QueueConfiguration>'
+      }
+    }
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<NotificationConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  ${configXml}
+</NotificationConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { notification: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Get bucket website configuration
+   */
+  async getBucketWebsite(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { website: '' },
+      })
+      return result?.WebsiteConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put bucket website configuration
+   */
+  async putBucketWebsite(bucket: string, config: {
+    IndexDocument: string
+    ErrorDocument?: string
+    RedirectAllRequestsTo?: { HostName: string; Protocol?: string }
+  }): Promise<void> {
+    let configXml = ''
+
+    if (config.RedirectAllRequestsTo) {
+      configXml = `<RedirectAllRequestsTo>
+        <HostName>${config.RedirectAllRequestsTo.HostName}</HostName>
+        ${config.RedirectAllRequestsTo.Protocol ? `<Protocol>${config.RedirectAllRequestsTo.Protocol}</Protocol>` : ''}
+      </RedirectAllRequestsTo>`
+    } else {
+      configXml = `<IndexDocument><Suffix>${config.IndexDocument}</Suffix></IndexDocument>`
+      if (config.ErrorDocument) {
+        configXml += `<ErrorDocument><Key>${config.ErrorDocument}</Key></ErrorDocument>`
+      }
+    }
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<WebsiteConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  ${configXml}
+</WebsiteConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { website: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete bucket website configuration
+   */
+  async deleteBucketWebsite(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { website: '' },
+    })
+  }
+
+  /**
+   * Get bucket replication configuration
+   */
+  async getBucketReplication(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { replication: '' },
+      })
+      return result?.ReplicationConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Delete bucket replication configuration
+   */
+  async deleteBucketReplication(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { replication: '' },
+    })
+  }
+
+  /**
+   * Get public access block configuration
+   */
+  async getPublicAccessBlock(bucket: string): Promise<any> {
+    try {
+      const result = await this.client.request({
+        service: 's3',
+        region: this.region,
+        method: 'GET',
+        path: `/${bucket}`,
+        queryParams: { publicAccessBlock: '' },
+      })
+      return result?.PublicAccessBlockConfiguration
+    } catch (e: any) {
+      if (e.statusCode === 404) {
+        return null
+      }
+      throw e
+    }
+  }
+
+  /**
+   * Put public access block configuration
+   */
+  async putPublicAccessBlock(bucket: string, config: {
+    BlockPublicAcls?: boolean
+    IgnorePublicAcls?: boolean
+    BlockPublicPolicy?: boolean
+    RestrictPublicBuckets?: boolean
+  }): Promise<void> {
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<PublicAccessBlockConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <BlockPublicAcls>${config.BlockPublicAcls ?? true}</BlockPublicAcls>
+  <IgnorePublicAcls>${config.IgnorePublicAcls ?? true}</IgnorePublicAcls>
+  <BlockPublicPolicy>${config.BlockPublicPolicy ?? true}</BlockPublicPolicy>
+  <RestrictPublicBuckets>${config.RestrictPublicBuckets ?? true}</RestrictPublicBuckets>
+</PublicAccessBlockConfiguration>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${bucket}`,
+      queryParams: { publicAccessBlock: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Delete public access block configuration
+   */
+  async deletePublicAccessBlock(bucket: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}`,
+      queryParams: { publicAccessBlock: '' },
+    })
+  }
+
+  /**
+   * Generate a presigned URL for GET
+   */
+  generatePresignedGetUrl(bucket: string, key: string, expiresInSeconds: number = 3600): string {
+    const { accessKeyId, secretAccessKey } = this.getCredentials()
+    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const credential = `${accessKeyId}/${credentialScope}`
+
+    const queryParams = new URLSearchParams({
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': credential,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': expiresInSeconds.toString(),
+      'X-Amz-SignedHeaders': 'host',
+    })
+
+    const canonicalRequest = [
+      'GET',
+      `/${key}`,
+      queryParams.toString(),
+      `host:${host}\n`,
+      'host',
+      'UNSIGNED-PAYLOAD',
+    ].join('\n')
+
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    queryParams.append('X-Amz-Signature', signature)
+
+    return `https://${host}/${key}?${queryParams.toString()}`
+  }
+
+  /**
+   * Generate a presigned URL for PUT
+   */
+  generatePresignedPutUrl(bucket: string, key: string, contentType: string, expiresInSeconds: number = 3600): string {
+    const { accessKeyId, secretAccessKey } = this.getCredentials()
+    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const credential = `${accessKeyId}/${credentialScope}`
+
+    const queryParams = new URLSearchParams({
+      'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
+      'X-Amz-Credential': credential,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': expiresInSeconds.toString(),
+      'X-Amz-SignedHeaders': 'content-type;host',
+    })
+
+    const canonicalRequest = [
+      'PUT',
+      `/${key}`,
+      queryParams.toString(),
+      `content-type:${contentType}\nhost:${host}\n`,
+      'content-type;host',
+      'UNSIGNED-PAYLOAD',
+    ].join('\n')
+
+    const stringToSign = [
+      'AWS4-HMAC-SHA256',
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    queryParams.append('X-Amz-Signature', signature)
+
+    return `https://${host}/${key}?${queryParams.toString()}`
+  }
+
+  /**
+   * Initiate multipart upload
+   */
+  async createMultipartUpload(bucket: string, key: string, options?: {
+    contentType?: string
+    metadata?: Record<string, string>
+  }): Promise<{ UploadId: string }> {
+    const headers: Record<string, string> = {}
+    if (options?.contentType) {
+      headers['Content-Type'] = options.contentType
+    }
+    if (options?.metadata) {
+      for (const [k, v] of Object.entries(options.metadata)) {
+        headers[`x-amz-meta-${k}`] = v
+      }
+    }
+
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'POST',
+      path: `/${bucket}/${key}`,
+      queryParams: { uploads: '' },
+      headers,
+    })
+
+    return { UploadId: result?.InitiateMultipartUploadResult?.UploadId }
+  }
+
+  /**
+   * Upload a part in multipart upload
+   */
+  async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Buffer): Promise<{ ETag: string }> {
+    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const url = `https://${host}/${key}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
+
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+    const payloadHash = crypto.createHash('sha256').update(body).digest('hex')
+
+    const requestHeaders: Record<string, string> = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+    }
+
+    if (sessionToken) {
+      requestHeaders['x-amz-security-token'] = sessionToken
+    }
+
+    const canonicalHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(k => `${k.toLowerCase()}:${requestHeaders[k].trim()}\n`)
+      .join('')
+
+    const signedHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(k => k.toLowerCase())
+      .join(';')
+
+    const canonicalRequest = [
+      'PUT',
+      `/${key}`,
+      `partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n')
+
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...requestHeaders,
+        'Authorization': authHeader,
+      },
+      body,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`Upload part failed: ${response.status} ${text}`)
+    }
+
+    return { ETag: response.headers.get('etag') || '' }
+  }
+
+  /**
+   * Complete multipart upload
+   */
+  async completeMultipartUpload(bucket: string, key: string, uploadId: string, parts: Array<{ PartNumber: number; ETag: string }>): Promise<void> {
+    const partsXml = parts
+      .sort((a, b) => a.PartNumber - b.PartNumber)
+      .map(p => `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`)
+      .join('')
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<CompleteMultipartUpload>${partsXml}</CompleteMultipartUpload>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'POST',
+      path: `/${bucket}/${key}`,
+      queryParams: { uploadId },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Abort multipart upload
+   */
+  async abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void> {
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'DELETE',
+      path: `/${bucket}/${key}`,
+      queryParams: { uploadId },
+    })
+  }
+
+  /**
+   * List multipart uploads
+   */
+  async listMultipartUploads(bucket: string): Promise<Array<{ Key: string; UploadId: string; Initiated: string }>> {
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams: { uploads: '' },
+    })
+
+    const uploads = result?.ListMultipartUploadsResult?.Upload
+    if (!uploads) return []
+    const list = Array.isArray(uploads) ? uploads : [uploads]
+    return list.map((u: any) => ({
+      Key: u.Key,
+      UploadId: u.UploadId,
+      Initiated: u.Initiated,
+    }))
+  }
+
+  /**
+   * Restore object from Glacier
+   */
+  async restoreObject(bucket: string, key: string, days: number, tier: 'Standard' | 'Bulk' | 'Expedited' = 'Standard'): Promise<void> {
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<RestoreRequest>
+  <Days>${days}</Days>
+  <GlacierJobParameters>
+    <Tier>${tier}</Tier>
+  </GlacierJobParameters>
+</RestoreRequest>`
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'POST',
+      path: `/${bucket}/${key}`,
+      queryParams: { restore: '' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+    })
+  }
+
+  /**
+   * Select object content (S3 Select)
+   */
+  async selectObjectContent(bucket: string, key: string, expression: string, inputFormat: 'CSV' | 'JSON' | 'Parquet', outputFormat: 'CSV' | 'JSON' = 'JSON'): Promise<string> {
+    let inputSerialization = ''
+    if (inputFormat === 'CSV') {
+      inputSerialization = '<CSV><FileHeaderInfo>USE</FileHeaderInfo></CSV>'
+    } else if (inputFormat === 'JSON') {
+      inputSerialization = '<JSON><Type>DOCUMENT</Type></JSON>'
+    } else {
+      inputSerialization = '<Parquet/>'
+    }
+
+    let outputSerialization = ''
+    if (outputFormat === 'CSV') {
+      outputSerialization = '<CSV/>'
+    } else {
+      outputSerialization = '<JSON/>'
+    }
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<SelectObjectContentRequest>
+  <Expression>${expression}</Expression>
+  <ExpressionType>SQL</ExpressionType>
+  <InputSerialization>${inputSerialization}</InputSerialization>
+  <OutputSerialization>${outputSerialization}</OutputSerialization>
+</SelectObjectContentRequest>`
+
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'POST',
+      path: `/${bucket}/${key}`,
+      queryParams: { select: '', 'select-type': '2' },
+      headers: { 'Content-Type': 'application/xml' },
+      body,
+      rawResponse: true,
+    })
+
+    return result
+  }
 }
