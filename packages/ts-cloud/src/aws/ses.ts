@@ -563,4 +563,296 @@ export class SESClient {
 
     return false
   }
+
+  // ============================================
+  // SES v1 API - Receipt Rules (for inbound email)
+  // Note: Receipt rules use the legacy SES v1 API
+  // ============================================
+
+  /**
+   * Build form-encoded body for SES v1 API
+   */
+  private buildFormBody(params: Record<string, string | undefined>): string {
+    const entries = Object.entries(params)
+      .filter(([, value]) => value !== undefined)
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value!)}`)
+    return entries.join('&')
+  }
+
+  /**
+   * Create a receipt rule set
+   * Uses SES v1 API
+   */
+  async createReceiptRuleSet(ruleSetName: string): Promise<void> {
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'CreateReceiptRuleSet',
+        Version: '2010-12-01',
+        RuleSetName: ruleSetName,
+      }),
+    })
+  }
+
+  /**
+   * Delete a receipt rule set
+   */
+  async deleteReceiptRuleSet(ruleSetName: string): Promise<void> {
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'DeleteReceiptRuleSet',
+        Version: '2010-12-01',
+        RuleSetName: ruleSetName,
+      }),
+    })
+  }
+
+  /**
+   * Set the active receipt rule set
+   */
+  async setActiveReceiptRuleSet(ruleSetName: string): Promise<void> {
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'SetActiveReceiptRuleSet',
+        Version: '2010-12-01',
+        RuleSetName: ruleSetName,
+      }),
+    })
+  }
+
+  /**
+   * List receipt rule sets
+   */
+  async listReceiptRuleSets(nextToken?: string): Promise<{
+    RuleSets?: Array<{ Name?: string, CreatedTimestamp?: string }>
+    NextToken?: string
+  }> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'ListReceiptRuleSets',
+      Version: '2010-12-01',
+    }
+
+    if (nextToken) {
+      formParams.NextToken = nextToken
+    }
+
+    const result = await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+
+    const ruleSets = result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult?.RuleSets?.member
+    return {
+      RuleSets: Array.isArray(ruleSets) ? ruleSets : ruleSets ? [ruleSets] : [],
+      NextToken: result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult?.NextToken,
+    }
+  }
+
+  /**
+   * Describe a receipt rule set
+   */
+  async describeReceiptRuleSet(ruleSetName: string): Promise<{
+    Metadata?: { Name?: string, CreatedTimestamp?: string }
+    Rules?: Array<{
+      Name?: string
+      Enabled?: boolean
+      Recipients?: string[]
+      Actions?: Array<{
+        S3Action?: { BucketName?: string, ObjectKeyPrefix?: string }
+        LambdaAction?: { FunctionArn?: string, InvocationType?: string }
+        SNSAction?: { TopicArn?: string }
+      }>
+    }>
+  }> {
+    const result = await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'DescribeReceiptRuleSet',
+        Version: '2010-12-01',
+        RuleSetName: ruleSetName,
+      }),
+    })
+
+    const response = result?.DescribeReceiptRuleSetResponse?.DescribeReceiptRuleSetResult
+    const rules = response?.Rules?.member
+    return {
+      Metadata: response?.Metadata,
+      Rules: Array.isArray(rules) ? rules : rules ? [rules] : [],
+    }
+  }
+
+  /**
+   * Create a receipt rule
+   */
+  async createReceiptRule(params: {
+    RuleSetName: string
+    Rule: {
+      Name: string
+      Enabled?: boolean
+      TlsPolicy?: 'Require' | 'Optional'
+      Recipients?: string[]
+      ScanEnabled?: boolean
+      Actions: Array<{
+        S3Action?: {
+          BucketName: string
+          ObjectKeyPrefix?: string
+          KmsKeyArn?: string
+        }
+        LambdaAction?: {
+          FunctionArn: string
+          InvocationType?: 'Event' | 'RequestResponse'
+        }
+        SNSAction?: {
+          TopicArn: string
+          Encoding?: 'UTF-8' | 'Base64'
+        }
+        StopAction?: {
+          Scope: 'RuleSet'
+          TopicArn?: string
+        }
+      }>
+    }
+    After?: string
+  }): Promise<void> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'CreateReceiptRule',
+      Version: '2010-12-01',
+      RuleSetName: params.RuleSetName,
+      'Rule.Name': params.Rule.Name,
+      'Rule.Enabled': params.Rule.Enabled !== false ? 'true' : 'false',
+    }
+
+    if (params.Rule.TlsPolicy) {
+      formParams['Rule.TlsPolicy'] = params.Rule.TlsPolicy
+    }
+
+    if (params.Rule.ScanEnabled !== undefined) {
+      formParams['Rule.ScanEnabled'] = params.Rule.ScanEnabled ? 'true' : 'false'
+    }
+
+    if (params.After) {
+      formParams.After = params.After
+    }
+
+    // Add recipients
+    if (params.Rule.Recipients) {
+      params.Rule.Recipients.forEach((recipient, index) => {
+        formParams[`Rule.Recipients.member.${index + 1}`] = recipient
+      })
+    }
+
+    // Add actions
+    params.Rule.Actions.forEach((action, index) => {
+      const actionNum = index + 1
+
+      if (action.S3Action) {
+        formParams[`Rule.Actions.member.${actionNum}.S3Action.BucketName`] = action.S3Action.BucketName
+        if (action.S3Action.ObjectKeyPrefix) {
+          formParams[`Rule.Actions.member.${actionNum}.S3Action.ObjectKeyPrefix`] = action.S3Action.ObjectKeyPrefix
+        }
+        if (action.S3Action.KmsKeyArn) {
+          formParams[`Rule.Actions.member.${actionNum}.S3Action.KmsKeyArn`] = action.S3Action.KmsKeyArn
+        }
+      }
+
+      if (action.LambdaAction) {
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.FunctionArn`] = action.LambdaAction.FunctionArn
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] = action.LambdaAction.InvocationType || 'Event'
+      }
+
+      if (action.SNSAction) {
+        formParams[`Rule.Actions.member.${actionNum}.SNSAction.TopicArn`] = action.SNSAction.TopicArn
+        if (action.SNSAction.Encoding) {
+          formParams[`Rule.Actions.member.${actionNum}.SNSAction.Encoding`] = action.SNSAction.Encoding
+        }
+      }
+
+      if (action.StopAction) {
+        formParams[`Rule.Actions.member.${actionNum}.StopAction.Scope`] = action.StopAction.Scope
+        if (action.StopAction.TopicArn) {
+          formParams[`Rule.Actions.member.${actionNum}.StopAction.TopicArn`] = action.StopAction.TopicArn
+        }
+      }
+    })
+
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+  }
+
+  /**
+   * Delete a receipt rule
+   */
+  async deleteReceiptRule(ruleSetName: string, ruleName: string): Promise<void> {
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'DeleteReceiptRule',
+        Version: '2010-12-01',
+        RuleSetName: ruleSetName,
+        RuleName: ruleName,
+      }),
+    })
+  }
+
+  /**
+   * Check if receipt rule set exists
+   */
+  async receiptRuleSetExists(ruleSetName: string): Promise<boolean> {
+    try {
+      await this.describeReceiptRuleSet(ruleSetName)
+      return true
+    }
+    catch (error: any) {
+      if (error.code === 'RuleSetDoesNotExist' || error.statusCode === 400) {
+        return false
+      }
+      throw error
+    }
+  }
 }

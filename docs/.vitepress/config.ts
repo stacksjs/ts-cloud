@@ -19,7 +19,7 @@ const analyticsHead: HeadConfig[] = [
 ]
 
 const nav = [
-  { text: 'News', link: 'https://stacksjs.org/news' },
+  { text: 'News', link: 'https://stacksjs.com/news' },
   {
     text: 'Changelog',
     link: 'https://github.com/stacksjs/ts-cloud/blob/main/CHANGELOG.md',

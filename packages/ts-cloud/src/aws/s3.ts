@@ -393,6 +393,7 @@ export class S3Client {
 
   /**
    * Get object from S3 bucket
+   * Returns raw content as string (not parsed as XML)
    */
   async getObject(bucket: string, key: string): Promise<string> {
     const result = await this.client.request({
@@ -400,9 +401,49 @@ export class S3Client {
       region: this.region,
       method: 'GET',
       path: `/${bucket}/${key}`,
+      rawResponse: true,
     })
 
     return result
+  }
+
+  /**
+   * Copy object within S3 (server-side copy)
+   */
+  async copyObject(options: {
+    sourceBucket: string
+    sourceKey: string
+    destinationBucket: string
+    destinationKey: string
+    contentType?: string
+    metadata?: Record<string, string>
+    metadataDirective?: 'COPY' | 'REPLACE'
+  }): Promise<void> {
+    const headers: Record<string, string> = {
+      'x-amz-copy-source': `/${options.sourceBucket}/${options.sourceKey}`,
+    }
+
+    if (options.metadataDirective) {
+      headers['x-amz-metadata-directive'] = options.metadataDirective
+    }
+
+    if (options.contentType) {
+      headers['Content-Type'] = options.contentType
+    }
+
+    if (options.metadata) {
+      for (const [key, value] of Object.entries(options.metadata)) {
+        headers[`x-amz-meta-${key}`] = value
+      }
+    }
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'PUT',
+      path: `/${options.destinationBucket}/${options.destinationKey}`,
+      headers,
+    })
   }
 
   /**
@@ -559,5 +600,175 @@ export class S3Client {
     }
 
     return files
+  }
+
+  /**
+   * Put bucket policy for an S3 bucket
+   * Uses path-style URLs to avoid redirect issues
+   */
+  async putBucketPolicy(bucket: string, policy: object | string): Promise<void> {
+    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+    const host = `s3.${this.region}.amazonaws.com`
+    const policyString = typeof policy === 'string' ? policy : JSON.stringify(policy)
+
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+    const payloadHash = crypto.createHash('sha256').update(policyString).digest('hex')
+
+    // Use path-style URL: s3.region.amazonaws.com/bucket?policy
+    const canonicalUri = '/' + bucket
+    const canonicalQuerystring = 'policy='
+
+    const requestHeaders: Record<string, string> = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+      'content-type': 'application/json',
+    }
+
+    if (sessionToken) {
+      requestHeaders['x-amz-security-token'] = sessionToken
+    }
+
+    const canonicalHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(key => `${key.toLowerCase()}:${requestHeaders[key].trim()}\n`)
+      .join('')
+
+    const signedHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(key => key.toLowerCase())
+      .join(';')
+
+    const canonicalRequest = [
+      'PUT',
+      canonicalUri,
+      canonicalQuerystring,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n')
+
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', 'AWS4' + secretAccessKey).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+    const url = `https://${host}${canonicalUri}?${canonicalQuerystring}`
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        ...requestHeaders,
+        'Authorization': authHeader,
+      },
+      body: policyString,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`Failed to put bucket policy: ${response.status} ${text}`)
+    }
+  }
+
+  /**
+   * Get bucket policy for an S3 bucket
+   * Uses path-style URLs to avoid redirect issues
+   */
+  async getBucketPolicy(bucket: string): Promise<object | null> {
+    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+    const host = `s3.${this.region}.amazonaws.com`
+
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+    const payloadHash = crypto.createHash('sha256').update('').digest('hex')
+
+    // Use path-style URL: s3.region.amazonaws.com/bucket?policy
+    const canonicalUri = '/' + bucket
+    const canonicalQuerystring = 'policy='
+
+    const requestHeaders: Record<string, string> = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+    }
+
+    if (sessionToken) {
+      requestHeaders['x-amz-security-token'] = sessionToken
+    }
+
+    const canonicalHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(key => `${key.toLowerCase()}:${requestHeaders[key].trim()}\n`)
+      .join('')
+
+    const signedHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(key => key.toLowerCase())
+      .join(';')
+
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      canonicalQuerystring,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n')
+
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', 'AWS4' + secretAccessKey).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+    const url = `https://${host}${canonicalUri}?${canonicalQuerystring}`
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...requestHeaders,
+        'Authorization': authHeader,
+      },
+    })
+
+    if (response.status === 404) {
+      return null
+    }
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`Failed to get bucket policy: ${response.status} ${text}`)
+    }
+
+    const text = await response.text()
+    return JSON.parse(text)
   }
 }

@@ -95,6 +95,30 @@ export class CloudWatchLogsClient {
     return result
   }
 
+  async describeLogGroups(options?: {
+    logGroupNamePrefix?: string
+    limit?: number
+  }): Promise<{ logGroups?: { logGroupName?: string, arn?: string, creationTime?: number }[], nextToken?: string }> {
+    const params: Record<string, any> = {}
+
+    if (options?.logGroupNamePrefix) params.logGroupNamePrefix = options.logGroupNamePrefix
+    if (options?.limit) params.limit = options.limit
+
+    const result = await this.client.request({
+      service: 'logs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'Logs_20140328.DescribeLogGroups',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(params),
+    })
+
+    return result
+  }
+
   async filterLogEvents(options: {
     logGroupName: string
     logStreamNames?: string[]

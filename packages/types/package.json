@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "description": "Shared TypeScript types for ts-cloud",
-  "author": "Chris Breuer <chris@stacksjs.org>",
+  "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
   "exports": {
     ".": {

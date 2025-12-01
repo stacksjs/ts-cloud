@@ -24,6 +24,8 @@ export interface AWSRequestOptions {
   retries?: number
   cacheKey?: string
   cacheTTL?: number
+  returnHeaders?: boolean
+  rawResponse?: boolean
 }
 
 export interface AWSClientConfig {
@@ -173,21 +175,51 @@ export class AWSClient {
 
     // Handle empty responses
     if (!responseText || responseText.trim() === '') {
+      if (options.returnHeaders) {
+        return { body: null, headers: this.headersToObject(response.headers) }
+      }
       return null
     }
 
+    // Return raw response if requested (useful for S3 getObject with non-XML content)
+    if (options.rawResponse) {
+      if (options.returnHeaders) {
+        return { body: responseText, headers: this.headersToObject(response.headers) }
+      }
+      return responseText
+    }
+
     // Parse XML or JSON response
+    let body: any
     if (responseText.startsWith('<')) {
-      return this.parseXmlResponse(responseText)
+      body = this.parseXmlResponse(responseText)
     }
     else {
       try {
-        return JSON.parse(responseText)
+        body = JSON.parse(responseText)
       }
       catch {
-        return responseText
+        body = responseText
       }
     }
+
+    // Return with headers if requested
+    if (options.returnHeaders) {
+      return { body, headers: this.headersToObject(response.headers) }
+    }
+
+    return body
+  }
+
+  /**
+   * Convert Headers object to plain object
+   */
+  private headersToObject(headers: Headers): Record<string, string> {
+    const result: Record<string, string> = {}
+    headers.forEach((value, key) => {
+      result[key] = value
+    })
+    return result
   }
 
   /**
@@ -325,7 +357,9 @@ export class AWSClient {
 
     // Create string to sign
     const algorithm = 'AWS4-HMAC-SHA256'
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
+    // SES v2 API uses 'email' as endpoint but 'ses' for credential scope
+    const signingService = service === 'email' ? 'ses' : service
+    const credentialScope = `${dateStamp}/${region}/${signingService}/aws4_request`
     const stringToSign = [
       algorithm,
       amzDate,
@@ -334,7 +368,7 @@ export class AWSClient {
     ].join('\n')
 
     // Calculate signature
-    const signingKey = this.getSignatureKey(credentials.secretAccessKey, dateStamp, region, service)
+    const signingKey = this.getSignatureKey(credentials.secretAccessKey, dateStamp, region, signingService)
     const signature = this.hmac(signingKey, stringToSign)
 
     // Build authorization header
