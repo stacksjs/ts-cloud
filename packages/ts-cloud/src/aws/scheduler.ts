@@ -37,7 +37,7 @@ export interface CreateScheduleOptions {
   }
 }
 
-export interface Rule {
+export interface SchedulerRule {
   Name: string
   Arn: string
   EventPattern?: string
@@ -46,7 +46,7 @@ export interface Rule {
   Description?: string
 }
 
-export interface Target {
+export interface SchedulerTarget {
   Id: string
   Arn: string
   RoleArn?: string
@@ -116,7 +116,7 @@ export class SchedulerClient {
   /**
    * Add target to a rule
    */
-  async putTargets(ruleName: string, targets: Target[]): Promise<void> {
+  async putTargets(ruleName: string, targets: SchedulerTarget[]): Promise<void> {
     await this.client.request({
       service: 'events',
       region: this.region,
@@ -136,7 +136,7 @@ export class SchedulerClient {
   /**
    * List all rules
    */
-  async listRules(namePrefix?: string): Promise<{ Rules: Rule[] }> {
+  async listRules(namePrefix?: string): Promise<{ Rules: SchedulerRule[] }> {
     const payload: any = {}
 
     if (namePrefix) {
@@ -161,7 +161,7 @@ export class SchedulerClient {
   /**
    * Describe a rule
    */
-  async describeRule(name: string): Promise<Rule> {
+  async describeRule(name: string): Promise<SchedulerRule> {
     const result = await this.client.request({
       service: 'events',
       region: this.region,
@@ -188,7 +188,7 @@ export class SchedulerClient {
   /**
    * List targets for a rule
    */
-  async listTargetsByRule(ruleName: string): Promise<{ Targets: Target[] }> {
+  async listTargetsByRule(ruleName: string): Promise<{ Targets: SchedulerTarget[] }> {
     const result = await this.client.request({
       service: 'events',
       region: this.region,

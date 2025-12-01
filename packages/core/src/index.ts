@@ -102,6 +102,12 @@ export * from './dns'
 // Email Advanced Features (Phase 7.13)
 export * from './email'
 
+// Phone Advanced Features
+export * from './phone'
+
+// SMS Advanced Features
+export * from './sms'
+
 // Queue Advanced Features (Phase 7.14)
 export * from './queue'
 
