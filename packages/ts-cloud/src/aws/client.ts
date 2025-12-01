@@ -357,8 +357,12 @@ export class AWSClient {
 
     // Create string to sign
     const algorithm = 'AWS4-HMAC-SHA256'
+    // Some AWS services use different service names for endpoint vs credential scope
     // SES v2 API uses 'email' as endpoint but 'ses' for credential scope
-    const signingService = service === 'email' ? 'ses' : service
+    // Pinpoint uses 'pinpoint' as endpoint but 'mobiletargeting' for credential scope
+    let signingService = service
+    if (service === 'email') signingService = 'ses'
+    if (service === 'pinpoint') signingService = 'mobiletargeting'
     const credentialScope = `${dateStamp}/${region}/${signingService}/aws4_request`
     const stringToSign = [
       algorithm,

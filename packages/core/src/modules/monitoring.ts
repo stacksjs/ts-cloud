@@ -682,6 +682,120 @@ export class Monitoring {
       dimensions: { LoadBalancer: loadBalancer, TargetGroup: targetGroup },
       alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
     }),
+
+    /**
+     * SES bounce rate alarm
+     */
+    sesBounceRate: (
+      slug: string,
+      environment: EnvironmentType,
+      threshold: number = 5,
+      snsTopicArn?: string,
+    ): AlarmOptions => ({
+      slug,
+      environment,
+      alarmName: `${slug}-${environment}-ses-bounce-rate`,
+      metricName: 'Reputation.BounceRate',
+      namespace: 'AWS/SES',
+      statistic: 'Average',
+      period: 3600,
+      evaluationPeriods: 1,
+      threshold: threshold / 100, // Convert percentage to decimal
+      comparisonOperator: 'GreaterThanThreshold',
+      alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
+    }),
+
+    /**
+     * SES complaint rate alarm
+     */
+    sesComplaintRate: (
+      slug: string,
+      environment: EnvironmentType,
+      threshold: number = 0.1,
+      snsTopicArn?: string,
+    ): AlarmOptions => ({
+      slug,
+      environment,
+      alarmName: `${slug}-${environment}-ses-complaint-rate`,
+      metricName: 'Reputation.ComplaintRate',
+      namespace: 'AWS/SES',
+      statistic: 'Average',
+      period: 3600,
+      evaluationPeriods: 1,
+      threshold: threshold / 100,
+      comparisonOperator: 'GreaterThanThreshold',
+      alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
+    }),
+
+    /**
+     * Pinpoint SMS delivery failure alarm
+     */
+    smsDeliveryFailure: (
+      slug: string,
+      environment: EnvironmentType,
+      applicationId: string,
+      threshold: number = 10,
+      snsTopicArn?: string,
+    ): AlarmOptions => ({
+      slug,
+      environment,
+      alarmName: `${slug}-${environment}-sms-delivery-failure`,
+      metricName: 'DirectSendMessagePermanentFailure',
+      namespace: 'AWS/Pinpoint',
+      statistic: 'Sum',
+      period: 300,
+      evaluationPeriods: 1,
+      threshold,
+      comparisonOperator: 'GreaterThanThreshold',
+      dimensions: { ApplicationId: applicationId },
+      alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
+    }),
+
+    /**
+     * Pinpoint SMS spend alarm
+     */
+    smsSpendLimit: (
+      slug: string,
+      environment: EnvironmentType,
+      threshold: number = 100,
+      snsTopicArn?: string,
+    ): AlarmOptions => ({
+      slug,
+      environment,
+      alarmName: `${slug}-${environment}-sms-spend-limit`,
+      metricName: 'DirectSendMessageSpend',
+      namespace: 'AWS/Pinpoint',
+      statistic: 'Sum',
+      period: 86400, // Daily
+      evaluationPeriods: 1,
+      threshold,
+      comparisonOperator: 'GreaterThanThreshold',
+      alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
+    }),
+
+    /**
+     * Connect missed calls alarm
+     */
+    connectMissedCalls: (
+      slug: string,
+      environment: EnvironmentType,
+      instanceId: string,
+      threshold: number = 5,
+      snsTopicArn?: string,
+    ): AlarmOptions => ({
+      slug,
+      environment,
+      alarmName: `${slug}-${environment}-connect-missed-calls`,
+      metricName: 'MissedCalls',
+      namespace: 'AWS/Connect',
+      statistic: 'Sum',
+      period: 3600,
+      evaluationPeriods: 1,
+      threshold,
+      comparisonOperator: 'GreaterThanThreshold',
+      dimensions: { InstanceId: instanceId },
+      alarmActions: snsTopicArn ? [snsTopicArn] : undefined,
+    }),
   } as const
 
   /**
