@@ -71,5 +71,8 @@
       }
     },
     "commit-msg": "bunx gitlint --edit .git/COMMIT_EDITMSG"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
   }
 }

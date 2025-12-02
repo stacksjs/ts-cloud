@@ -472,12 +472,152 @@ app
   })
 
 app
-  .command('generate:diff', 'Show diff from existing stack')
+  .command('diff', 'Show diff between local config and deployed stack')
+  .alias('generate:diff')
   .option('--stack <name>', 'Stack name to compare against')
-  .action(async () => {
-    cli.header('📊 Template Diff')
-    cli.info('This command will show differences from the existing stack')
-    // TODO: Implement diff logic
+  .option('--env <environment>', 'Environment (production, staging, development)')
+  .action(async (options?: { stack?: string, env?: string }) => {
+    cli.header('📊 Infrastructure Diff')
+
+    try {
+      const config = await loadCloudConfig()
+      const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+      const stackName = options?.stack || `${config.project.slug}-${environment}`
+      const region = config.project.region || 'us-east-1'
+
+      cli.info(`Stack: ${stackName}`)
+      cli.info(`Region: ${region}`)
+      cli.info(`Environment: ${environment}`)
+
+      // Generate new template from config
+      cli.step('Generating template from configuration...')
+      const generator = new InfrastructureGenerator({
+        config,
+        environment,
+      })
+      generator.generate()
+      const newTemplateBody = generator.toJSON()
+      const newTemplate = JSON.parse(newTemplateBody)
+
+      // Get existing template from CloudFormation
+      cli.step('Fetching deployed template...')
+      const cfn = new CloudFormationClient(region)
+
+      let existingTemplate: any = null
+      try {
+        const result = await cfn.getTemplate(stackName)
+        if (result.TemplateBody) {
+          existingTemplate = JSON.parse(result.TemplateBody)
+        }
+      }
+      catch (error: any) {
+        if (error.message?.includes('does not exist')) {
+          cli.warn(`Stack "${stackName}" does not exist yet`)
+          cli.info('\nThis will be a new deployment with the following resources:')
+
+          const resourceCount = Object.keys(newTemplate.Resources || {}).length
+          cli.info(`\n📦 Resources to create: ${resourceCount}`)
+
+          // Count and display resource types
+          const typeCounts: Record<string, number> = {}
+          for (const resource of Object.values(newTemplate.Resources || {})) {
+            const type = (resource as any).Type
+            typeCounts[type] = (typeCounts[type] || 0) + 1
+          }
+
+          for (const [type, count] of Object.entries(typeCounts).sort((a, b) => b[1] - a[1])) {
+            cli.info(`  + ${type}: ${count}`)
+          }
+
+          cli.info('\n💡 Run `cloud deploy` to create this stack')
+          return
+        }
+        throw error
+      }
+
+      // Compare templates
+      cli.step('Comparing templates...')
+
+      const existingResources = existingTemplate.Resources || {}
+      const newResources = newTemplate.Resources || {}
+
+      const existingKeys = new Set(Object.keys(existingResources))
+      const newKeys = new Set(Object.keys(newResources))
+
+      // Find added resources
+      const added: string[] = []
+      for (const key of newKeys) {
+        if (!existingKeys.has(key)) {
+          added.push(key)
+        }
+      }
+
+      // Find removed resources
+      const removed: string[] = []
+      for (const key of existingKeys) {
+        if (!newKeys.has(key)) {
+          removed.push(key)
+        }
+      }
+
+      // Find modified resources
+      const modified: string[] = []
+      for (const key of newKeys) {
+        if (existingKeys.has(key)) {
+          const existingJson = JSON.stringify(existingResources[key])
+          const newJson = JSON.stringify(newResources[key])
+          if (existingJson !== newJson) {
+            modified.push(key)
+          }
+        }
+      }
+
+      // Display results
+      if (added.length === 0 && removed.length === 0 && modified.length === 0) {
+        cli.success('\n✓ No changes detected - infrastructure is up to date')
+        return
+      }
+
+      cli.info('\n📊 Changes detected:\n')
+
+      if (added.length > 0) {
+        cli.success(`➕ Resources to add (${added.length}):`)
+        for (const key of added) {
+          const type = newResources[key].Type
+          cli.info(`  + ${key} (${type})`)
+        }
+        console.log()
+      }
+
+      if (removed.length > 0) {
+        cli.error(`➖ Resources to remove (${removed.length}):`)
+        for (const key of removed) {
+          const type = existingResources[key].Type
+          cli.info(`  - ${key} (${type})`)
+        }
+        console.log()
+      }
+
+      if (modified.length > 0) {
+        cli.warn(`📝 Resources to modify (${modified.length}):`)
+        for (const key of modified) {
+          const type = newResources[key].Type
+          cli.info(`  ~ ${key} (${type})`)
+        }
+        console.log()
+      }
+
+      // Summary
+      cli.info('Summary:')
+      cli.info(`  • Add: ${added.length}`)
+      cli.info(`  • Remove: ${removed.length}`)
+      cli.info(`  • Modify: ${modified.length}`)
+
+      cli.info('\n💡 Run `cloud deploy` to apply these changes')
+    }
+    catch (error: any) {
+      cli.error(`Diff failed: ${error.message}`)
+    }
   })
 
 // ============================================

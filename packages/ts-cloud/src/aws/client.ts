@@ -251,6 +251,10 @@ export class AWSClient {
       // ECR uses api.ecr subdomain for the JSON API
       host = `api.ecr.${region}.amazonaws.com`
     }
+    else if (service === 'ses') {
+      // SES v1 API uses email subdomain
+      host = `email.${region}.amazonaws.com`
+    }
     else {
       host = `${service}.${region}.amazonaws.com`
     }
@@ -297,6 +301,10 @@ export class AWSClient {
     else if (service === 'ecr') {
       // ECR uses api.ecr subdomain for the JSON API
       host = `api.ecr.${region}.amazonaws.com`
+    }
+    else if (service === 'ses') {
+      // SES v1 API uses email subdomain
+      host = `email.${region}.amazonaws.com`
     }
     else {
       host = `${service}.${region}.amazonaws.com`

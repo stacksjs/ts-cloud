@@ -16,6 +16,11 @@ export interface EmailIdentity {
     Tokens?: string[]
     SigningAttributesOrigin?: 'AWS_SES' | 'EXTERNAL'
   }
+  MailFromAttributes?: {
+    MailFromDomain?: string
+    MailFromDomainStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'TEMPORARY_FAILURE'
+    BehaviorOnMxFailure?: 'USE_DEFAULT_VALUE' | 'REJECT_MESSAGE'
+  }
 }
 
 export interface SendEmailResult {
@@ -89,7 +94,27 @@ export class SESClient {
       SendingEnabled: result.VerifiedForSendingStatus,
       VerificationStatus: result.VerificationStatus,
       DkimAttributes: result.DkimAttributes,
+      MailFromAttributes: result.MailFromAttributes,
     }
+  }
+
+  /**
+   * Configure MAIL FROM domain for an email identity
+   */
+  async putEmailIdentityMailFromAttributes(emailIdentity: string, params: {
+    MailFromDomain?: string
+    BehaviorOnMxFailure?: 'USE_DEFAULT_VALUE' | 'REJECT_MESSAGE'
+  }): Promise<void> {
+    await this.client.request({
+      service: 'email',
+      region: this.region,
+      method: 'PUT',
+      path: `/v2/email/identities/${encodeURIComponent(emailIdentity)}/mail-from`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
   }
 
   /**

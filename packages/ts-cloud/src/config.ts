@@ -28,5 +28,8 @@ export async function getConfig(): Promise<CloudOptions> {
   return _config
 }
 
+// Alias for CLI usage
+export const loadCloudConfig: () => Promise<CloudOptions> = getConfig
+
 // For backwards compatibility - synchronous access with default fallback
 export const config: CloudOptions = defaultConfig

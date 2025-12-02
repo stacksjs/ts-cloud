@@ -589,7 +589,9 @@ export class CloudFormationClient {
       body: new URLSearchParams(params).toString(),
     })
 
-    return { TemplateBody: result.TemplateBody }
+    // Handle the GetTemplateResult wrapper
+    const templateBody = result?.GetTemplateResult?.TemplateBody || result?.TemplateBody || ''
+    return { TemplateBody: templateBody }
   }
 
   /**
