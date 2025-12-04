@@ -153,10 +153,12 @@ export class SNSClient {
       body: this.buildFormBody(formParams),
     })
 
-    const topics = result?.ListTopicsResponse?.ListTopicsResult?.Topics?.member
+    // Handle both response formats (with and without ListTopicsResponse wrapper)
+    const listResult = result?.ListTopicsResponse?.ListTopicsResult || result?.ListTopicsResult
+    const topics = listResult?.Topics?.member
     return {
       Topics: Array.isArray(topics) ? topics : topics ? [topics] : [],
-      NextToken: result?.ListTopicsResponse?.ListTopicsResult?.NextToken,
+      NextToken: listResult?.NextToken,
     }
   }
 
