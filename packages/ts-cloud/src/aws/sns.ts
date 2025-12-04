@@ -483,4 +483,274 @@ export class SNSClient {
       throw error
     }
   }
+
+  /**
+   * Get SMS attributes (sandbox status, spending limits, etc.)
+   */
+  async getSMSAttributes(): Promise<{
+    MonthlySpendLimit?: string
+    DeliveryStatusIAMRole?: string
+    DeliveryStatusSuccessSamplingRate?: string
+    DefaultSenderID?: string
+    DefaultSMSType?: 'Promotional' | 'Transactional'
+    UsageReportS3Bucket?: string
+  }> {
+    const result = await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'GetSMSAttributes',
+        Version: '2010-03-31',
+      }),
+    })
+
+    const attrs = result?.GetSMSAttributesResponse?.GetSMSAttributesResult?.attributes?.entry
+    const attributes: Record<string, string> = {}
+
+    if (Array.isArray(attrs)) {
+      attrs.forEach((entry: { key: string, value: string }) => {
+        attributes[entry.key] = entry.value
+      })
+    } else if (attrs) {
+      attributes[attrs.key] = attrs.value
+    }
+
+    return attributes
+  }
+
+  /**
+   * Set SMS attributes (sender ID, message type, etc.)
+   */
+  async setSMSAttributes(attributes: {
+    MonthlySpendLimit?: string
+    DeliveryStatusIAMRole?: string
+    DeliveryStatusSuccessSamplingRate?: string
+    DefaultSenderID?: string
+    DefaultSMSType?: 'Promotional' | 'Transactional'
+    UsageReportS3Bucket?: string
+  }): Promise<void> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'SetSMSAttributes',
+      Version: '2010-03-31',
+    }
+
+    let attrIndex = 1
+    Object.entries(attributes).forEach(([key, value]) => {
+      if (value !== undefined) {
+        formParams[`attributes.entry.${attrIndex}.key`] = key
+        formParams[`attributes.entry.${attrIndex}.value`] = value
+        attrIndex++
+      }
+    })
+
+    await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+  }
+
+  /**
+   * Check if phone number is opted out
+   */
+  async checkIfPhoneNumberIsOptedOut(phoneNumber: string): Promise<boolean> {
+    const result = await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'CheckIfPhoneNumberIsOptedOut',
+        Version: '2010-03-31',
+        phoneNumber: phoneNumber,
+      }),
+    })
+
+    return result?.CheckIfPhoneNumberIsOptedOutResponse?.CheckIfPhoneNumberIsOptedOutResult?.isOptedOut === 'true'
+  }
+
+  /**
+   * List phone numbers that have opted out of receiving SMS
+   */
+  async listPhoneNumbersOptedOut(nextToken?: string): Promise<{
+    phoneNumbers?: string[]
+    nextToken?: string
+  }> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'ListPhoneNumbersOptedOut',
+      Version: '2010-03-31',
+    }
+    if (nextToken) formParams.nextToken = nextToken
+
+    const result = await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+
+    const phones = result?.ListPhoneNumbersOptedOutResponse?.ListPhoneNumbersOptedOutResult?.phoneNumbers?.member
+    return {
+      phoneNumbers: Array.isArray(phones) ? phones : phones ? [phones] : [],
+      nextToken: result?.ListPhoneNumbersOptedOutResponse?.ListPhoneNumbersOptedOutResult?.nextToken,
+    }
+  }
+
+  /**
+   * Opt a phone number back in to receive SMS (requires user consent)
+   */
+  async optInPhoneNumber(phoneNumber: string): Promise<void> {
+    await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'OptInPhoneNumber',
+        Version: '2010-03-31',
+        phoneNumber: phoneNumber,
+      }),
+    })
+  }
+
+  /**
+   * List sandbox phone numbers (for SMS sandbox mode)
+   */
+  async listSMSSandboxPhoneNumbers(nextToken?: string): Promise<{
+    PhoneNumbers?: Array<{
+      PhoneNumber?: string
+      Status?: 'Pending' | 'Verified'
+    }>
+    NextToken?: string
+  }> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'ListSMSSandboxPhoneNumbers',
+      Version: '2010-03-31',
+    }
+    if (nextToken) formParams.NextToken = nextToken
+
+    const result = await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+
+    const phones = result?.ListSMSSandboxPhoneNumbersResponse?.ListSMSSandboxPhoneNumbersResult?.PhoneNumbers?.member
+    return {
+      PhoneNumbers: Array.isArray(phones) ? phones : phones ? [phones] : [],
+      NextToken: result?.ListSMSSandboxPhoneNumbersResponse?.ListSMSSandboxPhoneNumbersResult?.NextToken,
+    }
+  }
+
+  /**
+   * Create a sandbox phone number for testing
+   */
+  async createSMSSandboxPhoneNumber(phoneNumber: string, languageCode?: string): Promise<void> {
+    await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'CreateSMSSandboxPhoneNumber',
+        Version: '2010-03-31',
+        PhoneNumber: phoneNumber,
+        LanguageCode: languageCode || 'en-US',
+      }),
+    })
+  }
+
+  /**
+   * Verify a sandbox phone number with OTP
+   */
+  async verifySMSSandboxPhoneNumber(phoneNumber: string, oneTimePassword: string): Promise<void> {
+    await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'VerifySMSSandboxPhoneNumber',
+        Version: '2010-03-31',
+        PhoneNumber: phoneNumber,
+        OneTimePassword: oneTimePassword,
+      }),
+    })
+  }
+
+  /**
+   * Delete a sandbox phone number
+   */
+  async deleteSMSSandboxPhoneNumber(phoneNumber: string): Promise<void> {
+    await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'DeleteSMSSandboxPhoneNumber',
+        Version: '2010-03-31',
+        PhoneNumber: phoneNumber,
+      }),
+    })
+  }
+
+  /**
+   * Get SMS sandbox account status
+   */
+  async getSMSSandboxAccountStatus(): Promise<{
+    IsInSandbox: boolean
+  }> {
+    const result = await this.client.request({
+      service: 'sns',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'GetSMSSandboxAccountStatus',
+        Version: '2010-03-31',
+      }),
+    })
+
+    return {
+      IsInSandbox: result?.GetSMSSandboxAccountStatusResponse?.GetSMSSandboxAccountStatusResult?.IsInSandbox === 'true',
+    }
+  }
 }

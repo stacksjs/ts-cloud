@@ -629,4 +629,179 @@ export class SSMClient {
       Tier: p.Tier,
     }
   }
+
+  /**
+   * Send a command to EC2 instances via SSM
+   */
+  async sendCommand(options: {
+    InstanceIds: string[]
+    DocumentName: string
+    Parameters?: Record<string, string[]>
+    TimeoutSeconds?: number
+    Comment?: string
+    OutputS3BucketName?: string
+    OutputS3KeyPrefix?: string
+  }): Promise<{
+    CommandId?: string
+    Status?: string
+    StatusDetails?: string
+  }> {
+    const params: Record<string, any> = {
+      InstanceIds: options.InstanceIds,
+      DocumentName: options.DocumentName,
+    }
+
+    if (options.Parameters) {
+      params.Parameters = options.Parameters
+    }
+
+    if (options.TimeoutSeconds) {
+      params.TimeoutSeconds = options.TimeoutSeconds
+    }
+
+    if (options.Comment) {
+      params.Comment = options.Comment
+    }
+
+    if (options.OutputS3BucketName) {
+      params.OutputS3BucketName = options.OutputS3BucketName
+    }
+
+    if (options.OutputS3KeyPrefix) {
+      params.OutputS3KeyPrefix = options.OutputS3KeyPrefix
+    }
+
+    const result = await this.client.request({
+      service: 'ssm',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AmazonSSM.SendCommand',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(params),
+    })
+
+    return {
+      CommandId: result.Command?.CommandId,
+      Status: result.Command?.Status,
+      StatusDetails: result.Command?.StatusDetails,
+    }
+  }
+
+  /**
+   * Get command invocation result
+   */
+  async getCommandInvocation(options: {
+    CommandId: string
+    InstanceId: string
+  }): Promise<{
+    Status?: string
+    StatusDetails?: string
+    StandardOutputContent?: string
+    StandardErrorContent?: string
+    ResponseCode?: number
+  }> {
+    const params = {
+      CommandId: options.CommandId,
+      InstanceId: options.InstanceId,
+    }
+
+    const result = await this.client.request({
+      service: 'ssm',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AmazonSSM.GetCommandInvocation',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(params),
+    })
+
+    return {
+      Status: result.Status,
+      StatusDetails: result.StatusDetails,
+      StandardOutputContent: result.StandardOutputContent,
+      StandardErrorContent: result.StandardErrorContent,
+      ResponseCode: result.ResponseCode,
+    }
+  }
+
+  /**
+   * Run a shell command on an EC2 instance and wait for result
+   */
+  async runShellCommand(instanceId: string, commands: string[], options?: {
+    timeoutSeconds?: number
+    waitForCompletion?: boolean
+    pollIntervalMs?: number
+    maxWaitMs?: number
+  }): Promise<{
+    success: boolean
+    output?: string
+    error?: string
+    status?: string
+  }> {
+    const sendResult = await this.sendCommand({
+      InstanceIds: [instanceId],
+      DocumentName: 'AWS-RunShellScript',
+      Parameters: {
+        commands,
+      },
+      TimeoutSeconds: options?.timeoutSeconds || 600,
+    })
+
+    if (!sendResult.CommandId) {
+      return { success: false, error: 'Failed to send command' }
+    }
+
+    if (options?.waitForCompletion === false) {
+      return { success: true, status: 'Pending' }
+    }
+
+    // Poll for completion
+    const pollInterval = options?.pollIntervalMs || 2000
+    const maxWait = options?.maxWaitMs || 300000 // 5 minutes default
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval))
+
+      try {
+        const invocation = await this.getCommandInvocation({
+          CommandId: sendResult.CommandId,
+          InstanceId: instanceId,
+        })
+
+        if (invocation.Status === 'Success') {
+          return {
+            success: true,
+            output: invocation.StandardOutputContent,
+            error: invocation.StandardErrorContent,
+            status: invocation.Status,
+          }
+        }
+
+        if (invocation.Status === 'Failed' || invocation.Status === 'Cancelled' || invocation.Status === 'TimedOut') {
+          return {
+            success: false,
+            output: invocation.StandardOutputContent,
+            error: invocation.StandardErrorContent || invocation.StatusDetails,
+            status: invocation.Status,
+          }
+        }
+
+        // Still pending/in progress, continue polling
+      }
+      catch (e: any) {
+        // InvocationDoesNotExist means command is still being sent
+        if (!e.message?.includes('InvocationDoesNotExist')) {
+          return { success: false, error: e.message }
+        }
+      }
+    }
+
+    return { success: false, error: 'Command timed out waiting for completion' }
+  }
 }

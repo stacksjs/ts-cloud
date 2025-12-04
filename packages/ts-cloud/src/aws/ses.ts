@@ -692,10 +692,13 @@ export class SESClient {
       body: this.buildFormBody(formParams),
     })
 
-    const ruleSets = result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult?.RuleSets?.member
+    // Handle both response formats (with and without Response wrapper)
+    const ruleSetsResult = result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult
+      || result?.ListReceiptRuleSetsResult
+    const ruleSets = ruleSetsResult?.RuleSets?.member
     return {
       RuleSets: Array.isArray(ruleSets) ? ruleSets : ruleSets ? [ruleSets] : [],
-      NextToken: result?.ListReceiptRuleSetsResponse?.ListReceiptRuleSetsResult?.NextToken,
+      NextToken: ruleSetsResult?.NextToken,
     }
   }
 
@@ -730,7 +733,9 @@ export class SESClient {
       }),
     })
 
+    // Handle both response formats (with and without Response wrapper)
     const response = result?.DescribeReceiptRuleSetResponse?.DescribeReceiptRuleSetResult
+      || result?.DescribeReceiptRuleSetResult
     const rules = response?.Rules?.member
     return {
       Metadata: response?.Metadata,
@@ -878,6 +883,199 @@ export class SESClient {
         return false
       }
       throw error
+    }
+  }
+
+  /**
+   * Get the active receipt rule set
+   */
+  async getActiveReceiptRuleSet(): Promise<{
+    Metadata?: { Name?: string, CreatedTimestamp?: string }
+    Rules?: Array<{
+      Name?: string
+      Enabled?: boolean
+      Recipients?: string[]
+      Actions?: Array<{
+        S3Action?: { BucketName?: string, ObjectKeyPrefix?: string }
+        LambdaAction?: { FunctionArn?: string, InvocationType?: string }
+        SNSAction?: { TopicArn?: string }
+      }>
+    }>
+  } | null> {
+    const result = await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody({
+        Action: 'DescribeActiveReceiptRuleSet',
+        Version: '2010-12-01',
+      }),
+    })
+
+    // Handle response format
+    const response = result?.DescribeActiveReceiptRuleSetResponse?.DescribeActiveReceiptRuleSetResult
+      || result?.DescribeActiveReceiptRuleSetResult
+
+    if (!response?.Metadata) {
+      return null // No active rule set
+    }
+
+    const rules = response?.Rules?.member
+    return {
+      Metadata: response?.Metadata,
+      Rules: Array.isArray(rules) ? rules : rules ? [rules] : [],
+    }
+  }
+
+  /**
+   * Update a receipt rule
+   */
+  async updateReceiptRule(params: {
+    RuleSetName: string
+    Rule: {
+      Name: string
+      Enabled?: boolean
+      TlsPolicy?: 'Require' | 'Optional'
+      Recipients?: string[]
+      ScanEnabled?: boolean
+      Actions: Array<{
+        S3Action?: {
+          BucketName: string
+          ObjectKeyPrefix?: string
+          KmsKeyArn?: string
+        }
+        LambdaAction?: {
+          FunctionArn: string
+          InvocationType?: 'Event' | 'RequestResponse'
+        }
+        SNSAction?: {
+          TopicArn: string
+          Encoding?: 'UTF-8' | 'Base64'
+        }
+        StopAction?: {
+          Scope: 'RuleSet'
+          TopicArn?: string
+        }
+      }>
+    }
+  }): Promise<void> {
+    const formParams: Record<string, string | undefined> = {
+      Action: 'UpdateReceiptRule',
+      Version: '2010-12-01',
+      RuleSetName: params.RuleSetName,
+      'Rule.Name': params.Rule.Name,
+    }
+
+    if (params.Rule.Enabled !== undefined) {
+      formParams['Rule.Enabled'] = params.Rule.Enabled ? 'true' : 'false'
+    }
+
+    if (params.Rule.TlsPolicy) {
+      formParams['Rule.TlsPolicy'] = params.Rule.TlsPolicy
+    }
+
+    if (params.Rule.ScanEnabled !== undefined) {
+      formParams['Rule.ScanEnabled'] = params.Rule.ScanEnabled ? 'true' : 'false'
+    }
+
+    // Add recipients
+    if (params.Rule.Recipients) {
+      params.Rule.Recipients.forEach((recipient, index) => {
+        formParams[`Rule.Recipients.member.${index + 1}`] = recipient
+      })
+    }
+
+    // Add actions
+    params.Rule.Actions.forEach((action, index) => {
+      const actionNum = index + 1
+
+      if (action.S3Action) {
+        formParams[`Rule.Actions.member.${actionNum}.S3Action.BucketName`] = action.S3Action.BucketName
+        if (action.S3Action.ObjectKeyPrefix) {
+          formParams[`Rule.Actions.member.${actionNum}.S3Action.ObjectKeyPrefix`] = action.S3Action.ObjectKeyPrefix
+        }
+        if (action.S3Action.KmsKeyArn) {
+          formParams[`Rule.Actions.member.${actionNum}.S3Action.KmsKeyArn`] = action.S3Action.KmsKeyArn
+        }
+      }
+
+      if (action.LambdaAction) {
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.FunctionArn`] = action.LambdaAction.FunctionArn
+        formParams[`Rule.Actions.member.${actionNum}.LambdaAction.InvocationType`] = action.LambdaAction.InvocationType || 'Event'
+      }
+
+      if (action.SNSAction) {
+        formParams[`Rule.Actions.member.${actionNum}.SNSAction.TopicArn`] = action.SNSAction.TopicArn
+        if (action.SNSAction.Encoding) {
+          formParams[`Rule.Actions.member.${actionNum}.SNSAction.Encoding`] = action.SNSAction.Encoding
+        }
+      }
+
+      if (action.StopAction) {
+        formParams[`Rule.Actions.member.${actionNum}.StopAction.Scope`] = action.StopAction.Scope
+        if (action.StopAction.TopicArn) {
+          formParams[`Rule.Actions.member.${actionNum}.StopAction.TopicArn`] = action.StopAction.TopicArn
+        }
+      }
+    })
+
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+  }
+
+  /**
+   * Send raw email (for SMTP relay)
+   * Uses SES v1 API SendRawEmail action
+   */
+  async sendRawEmail(params: {
+    source: string
+    destinations: string[]
+    rawMessage: string
+  }): Promise<{ MessageId?: string }> {
+    // Encode the raw message as base64
+    const rawMessageBase64 = Buffer.from(params.rawMessage).toString('base64')
+
+    const formParams: Record<string, string | undefined> = {
+      Action: 'SendRawEmail',
+      Version: '2010-12-01',
+      Source: params.source,
+      'RawMessage.Data': rawMessageBase64,
+    }
+
+    // Add destinations
+    params.destinations.forEach((dest, index) => {
+      formParams[`Destinations.member.${index + 1}`] = dest
+    })
+
+    const result = await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: this.buildFormBody(formParams),
+    })
+
+    // Handle response format
+    const response = result?.SendRawEmailResponse?.SendRawEmailResult
+      || result?.SendRawEmailResult
+
+    return {
+      MessageId: response?.MessageId,
     }
   }
 }

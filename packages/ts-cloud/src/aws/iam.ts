@@ -687,7 +687,7 @@ export class IAMClient {
   /**
    * Make IAM API request
    */
-  private async request(action: string, params: object = {}): Promise<string> {
+  private async request(action: string, params: object = {}): Promise<any> {
     const body = buildQueryParams(action, params as Record<string, unknown>)
 
     const response = await this.client.request({
@@ -701,7 +701,7 @@ export class IAMClient {
       body,
     })
 
-    return typeof response === 'string' ? response : JSON.stringify(response)
+    return response
   }
 
   // ==========================================================================
@@ -1357,13 +1357,32 @@ export class IAMClient {
    */
   async createAccessKey(params: CreateAccessKeyParams = {}): Promise<CreateAccessKeyResult> {
     const response = await this.request('CreateAccessKey', params)
+
+    // Handle both string (XML) and object (parsed) responses
+    if (typeof response === 'object') {
+      const accessKey = (response as any)?.CreateAccessKeyResult?.AccessKey
+        || (response as any)?.AccessKey
+      if (accessKey) {
+        return {
+          AccessKey: {
+            UserName: accessKey.UserName || '',
+            AccessKeyId: accessKey.AccessKeyId || '',
+            Status: (accessKey.Status as 'Active' | 'Inactive') || 'Active',
+            SecretAccessKey: accessKey.SecretAccessKey || '',
+            CreateDate: accessKey.CreateDate,
+          },
+        }
+      }
+    }
+
+    // Fallback to XML parsing for string responses
     return {
       AccessKey: {
-        UserName: parseXmlValue(response, 'UserName') || '',
-        AccessKeyId: parseXmlValue(response, 'AccessKeyId') || '',
-        Status: (parseXmlValue(response, 'Status') as 'Active' | 'Inactive') || 'Active',
-        SecretAccessKey: parseXmlValue(response, 'SecretAccessKey') || '',
-        CreateDate: parseXmlValue(response, 'CreateDate'),
+        UserName: parseXmlValue(response as string, 'UserName') || '',
+        AccessKeyId: parseXmlValue(response as string, 'AccessKeyId') || '',
+        Status: (parseXmlValue(response as string, 'Status') as 'Active' | 'Inactive') || 'Active',
+        SecretAccessKey: parseXmlValue(response as string, 'SecretAccessKey') || '',
+        CreateDate: parseXmlValue(response as string, 'CreateDate'),
       },
     }
   }

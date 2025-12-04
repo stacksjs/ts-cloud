@@ -47,6 +47,7 @@ export interface CreateSecretOptions {
   Tags?: { Key: string, Value: string }[]
   AddReplicaRegions?: { Region: string, KmsKeyId?: string }[]
   ForceOverwriteReplicaSecret?: boolean
+  ClientRequestToken?: string
 }
 
 export interface UpdateSecretOptions {
@@ -129,6 +130,9 @@ export class SecretsManagerClient {
     if (options.ForceOverwriteReplicaSecret !== undefined) {
       params.ForceOverwriteReplicaSecret = options.ForceOverwriteReplicaSecret
     }
+
+    // Generate a unique client request token if not provided
+    params.ClientRequestToken = options.ClientRequestToken || crypto.randomUUID()
 
     const result = await this.client.request({
       service: 'secretsmanager',

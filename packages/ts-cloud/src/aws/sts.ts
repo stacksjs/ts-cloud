@@ -60,6 +60,33 @@ export class STSClient {
       }
     }
 
-    return result
+    // Handle parsed XML response - the structure can be either:
+    // 1. { GetCallerIdentityResponse: { GetCallerIdentityResult: { Account, UserId, Arn } } }
+    // 2. { GetCallerIdentityResult: { Account, UserId, Arn } }  (more common)
+    const identityResult = result?.GetCallerIdentityResponse?.GetCallerIdentityResult
+      || result?.GetCallerIdentityResult
+
+    if (identityResult) {
+      return {
+        Account: String(identityResult.Account),
+        UserId: identityResult.UserId,
+        Arn: identityResult.Arn,
+      }
+    }
+
+    // Direct object structure
+    if (result?.Account) {
+      return {
+        Account: String(result.Account),
+        UserId: result.UserId,
+        Arn: result.Arn,
+      }
+    }
+
+    return {
+      Account: undefined,
+      UserId: undefined,
+      Arn: undefined,
+    }
   }
 }

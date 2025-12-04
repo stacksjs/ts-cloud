@@ -224,37 +224,37 @@ export class S3Client {
    * List objects in S3 bucket
    */
   async list(options: S3ListOptions): Promise<S3Object[]> {
-    const params: Record<string, any> = {
-      'list-type': '2',
-    }
-
-    if (options.prefix) {
-      params.prefix = options.prefix
-    }
-
-    if (options.maxKeys) {
-      params['max-keys'] = options.maxKeys.toString()
-    }
-
+    // Use path-style URL without query params for simpler signing
     const result = await this.client.request({
       service: 's3',
       region: this.region,
       method: 'GET',
       path: `/${options.bucket}`,
-      queryParams: params,
     })
 
     // Parse S3 XML response
     const objects: S3Object[] = []
 
-    // Simple parsing - in production would use proper XML parser
-    if (result.Key) {
-      objects.push({
-        Key: result.Key,
-        LastModified: result.LastModified || '',
-        Size: Number.parseInt(result.Size || '0'),
-        ETag: result.ETag,
-      })
+    // Handle ListBucketResult structure from XML parsing
+    const contents = result?.ListBucketResult?.Contents
+    if (contents) {
+      const items = Array.isArray(contents) ? contents : [contents]
+      for (const item of items) {
+        // Filter by prefix if specified
+        if (options.prefix && !item.Key?.startsWith(options.prefix)) {
+          continue
+        }
+        objects.push({
+          Key: item.Key || '',
+          LastModified: item.LastModified || '',
+          Size: Number.parseInt(item.Size || '0'),
+          ETag: item.ETag,
+        })
+        // Respect maxKeys
+        if (options.maxKeys && objects.length >= options.maxKeys) {
+          break
+        }
+      }
     }
 
     return objects
