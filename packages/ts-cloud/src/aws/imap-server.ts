@@ -62,6 +62,8 @@ export class ImapServer {
   private sessions: Map<string, ImapSession> = new Map()
   private messageCache: Map<string, Map<string, EmailMessage[]>> = new Map() // email -> folder -> messages
   private flagsCache: Map<string, Record<string, string[]>> = new Map() // email -> {s3Key: flags[]}
+  private uidMappingCache: Map<string, Record<string, number>> = new Map() // email -> {s3Key: uid}
+  private nextUidCache: Map<string, number> = new Map() // email -> nextUid
   private cacheTimestamp: Map<string, number> = new Map()
   private uidCounter: Map<string, Map<string, number>> = new Map() // email -> folder -> uidCounter
   private readonly CACHE_TTL_MS = 10000 // 10 seconds cache TTL
@@ -1294,10 +1296,17 @@ export class ImapServer {
       }
     }
 
-    // Load persisted flags
+    // Load persisted flags and UID mapping
     const persistedFlags = await this.loadFlags(email)
+    await this.loadUidMapping(email)
 
     try {
+      // Handle "All Mail" virtual folder - aggregate from all folders
+      if (this.isAllMailFolder(folder)) {
+        await this.loadAllMailFolder(email, persistedFlags)
+        return
+      }
+
       // Determine S3 prefix for this folder
       const prefix = this.getFolderPrefix(folder)
 
@@ -1309,7 +1318,7 @@ export class ImapServer {
       })
 
       const messages: EmailMessage[] = []
-      let uidCounter = this.getUidCounterForFolder(email, folder)
+      let hasNewMessages = false
 
       for (const obj of objects) {
         if (!obj.Key)
@@ -1336,13 +1345,19 @@ export class ImapServer {
           }
         }
 
-        uidCounter++
+        // Get or assign a persistent UID for this message
+        const existingUid = this.uidMappingCache.get(email)?.[obj.Key]
+        const uid = this.getOrAssignUid(email, obj.Key)
+        if (!existingUid) {
+          hasNewMessages = true
+        }
 
-        // Get persisted flags or use defaults
-        const flags = persistedFlags[obj.Key] || ['\\Recent']
+        // Get persisted flags or use empty array for new messages (no \Recent by default)
+        // Mail.app will show unread messages based on absence of \Seen flag
+        const flags = persistedFlags[obj.Key] || []
 
         messages.push({
-          uid: uidCounter,
+          uid,
           key: obj.Key,
           size: obj.Size || raw.length,
           date: new Date(obj.LastModified || Date.now()),
@@ -1354,10 +1369,20 @@ export class ImapServer {
         })
       }
 
-      this.setUidCounterForFolder(email, folder, uidCounter)
+      // Sort messages by UID (ascending) for correct sequence numbers
+      messages.sort((a, b) => a.uid - b.uid)
+
+      // Save UID mapping if new messages were added
+      if (hasNewMessages) {
+        await this.saveUidMapping(email)
+      }
+
+      // Update UID counter for folder to max UID
+      const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+      this.setUidCounterForFolder(email, folder, maxUid)
       this.setMessagesForFolder(email, folder, messages)
       this.cacheTimestamp.set(cacheKey, Date.now())
-      console.log(`Loaded ${messages.length} messages for ${email} in ${folder} from S3`)
+      console.log(`Loaded ${messages.length} messages for ${email} in ${folder} from S3 (hasNewMessages=${hasNewMessages})`)
     }
     catch (err) {
       console.error(`Error loading messages from S3: ${err}`)
@@ -1365,7 +1390,109 @@ export class ImapServer {
   }
 
   /**
+   * Load all messages from all folders for the "All Mail" virtual folder
+   * Uses persistent UIDs for stable message identification across sessions
+   */
+  private async loadAllMailFolder(email: string, persistedFlags: Record<string, string[]>): Promise<void> {
+    const folder = 'ALL MAIL'
+    const cacheKey = `${email}:${folder}`
+
+    // Load UID mapping for persistent UIDs
+    await this.loadUidMapping(email)
+
+    // All folder prefixes to aggregate
+    const allPrefixes = [
+      this.config.prefix || 'incoming/', // INBOX
+      'sent/',
+      'trash/',
+      'drafts/',
+      'junk/',
+      'archive/',
+    ]
+
+    const allMessages: EmailMessage[] = []
+    const seenKeys = new Set<string>() // Avoid duplicates
+    let hasNewMessages = false
+
+    for (const prefix of allPrefixes) {
+      try {
+        const objects = await this.s3.list({
+          bucket: this.config.bucket,
+          prefix,
+          maxKeys: 1000,
+        })
+
+        for (const obj of objects) {
+          if (!obj.Key || seenKeys.has(obj.Key))
+            continue
+
+          seenKeys.add(obj.Key)
+
+          let raw = ''
+          try {
+            raw = await this.s3.getObject(this.config.bucket, obj.Key)
+          }
+          catch {
+            continue
+          }
+
+          const headers = this.parseHeaders(raw)
+
+          // For incoming (INBOX) folder, filter by recipient
+          if (prefix === (this.config.prefix || 'incoming/')) {
+            const toHeader = headers.to || ''
+            if (!toHeader.toLowerCase().includes(email.toLowerCase())) {
+              continue
+            }
+          }
+
+          // Get or assign a persistent UID for this message
+          const existingUid = this.uidMappingCache.get(email)?.[obj.Key]
+          const uid = this.getOrAssignUid(email, obj.Key)
+          if (!existingUid) {
+            hasNewMessages = true
+          }
+
+          // Get persisted flags or use empty array for new messages
+          const flags = persistedFlags[obj.Key] || []
+
+          allMessages.push({
+            uid,
+            key: obj.Key,
+            size: obj.Size || raw.length,
+            date: new Date(obj.LastModified || Date.now()),
+            flags: [...flags],
+            from: headers.from,
+            to: headers.to,
+            subject: headers.subject,
+            raw,
+          })
+        }
+      }
+      catch (err) {
+        console.error(`Error loading messages from prefix ${prefix}: ${err}`)
+      }
+    }
+
+    // Sort messages by UID (ascending) for correct sequence numbers
+    allMessages.sort((a, b) => a.uid - b.uid)
+
+    // Save UID mapping if new messages were added
+    if (hasNewMessages) {
+      await this.saveUidMapping(email)
+    }
+
+    // Update UID counter for folder to max UID
+    const maxUid = allMessages.length > 0 ? Math.max(...allMessages.map(m => m.uid)) : 0
+    this.setUidCounterForFolder(email, folder, maxUid)
+    this.setMessagesForFolder(email, folder, allMessages)
+    this.cacheTimestamp.set(cacheKey, Date.now())
+    console.log(`Loaded ${allMessages.length} total messages for ${email} in All Mail from S3 (hasNewMessages=${hasNewMessages})`)
+  }
+
+  /**
    * Load messages from S3 for a specific folder (used by STATUS command)
+   * Uses persistent UIDs for stable message identification across sessions
    */
   private async loadMessagesForFolder(session: ImapSession, folder: string): Promise<void> {
     const email = session.email
@@ -1386,6 +1513,13 @@ export class ImapServer {
     }
 
     const persistedFlags = await this.loadFlags(email)
+    await this.loadUidMapping(email)
+
+    // Handle "All Mail" virtual folder - aggregate from all folders
+    if (this.isAllMailFolder(folder)) {
+      await this.loadAllMailFolder(email, persistedFlags)
+      return
+    }
 
     try {
       const prefix = this.getFolderPrefix(folder)
@@ -1397,7 +1531,7 @@ export class ImapServer {
       })
 
       const messages: EmailMessage[] = []
-      let uidCounter = this.getUidCounterForFolder(email, folder)
+      let hasNewMessages = false
 
       for (const obj of objects) {
         if (!obj.Key)
@@ -1421,12 +1555,18 @@ export class ImapServer {
           }
         }
 
-        uidCounter++
+        // Get or assign a persistent UID for this message
+        const existingUid = this.uidMappingCache.get(email)?.[obj.Key]
+        const uid = this.getOrAssignUid(email, obj.Key)
+        if (!existingUid) {
+          hasNewMessages = true
+        }
 
-        const flags = persistedFlags[obj.Key] || ['\\Recent']
+        // Get persisted flags or use empty array for new messages
+        const flags = persistedFlags[obj.Key] || []
 
         messages.push({
-          uid: uidCounter,
+          uid,
           key: obj.Key,
           size: obj.Size || raw.length,
           date: new Date(obj.LastModified || Date.now()),
@@ -1438,7 +1578,17 @@ export class ImapServer {
         })
       }
 
-      this.setUidCounterForFolder(email, folder, uidCounter)
+      // Sort messages by UID (ascending) for correct sequence numbers
+      messages.sort((a, b) => a.uid - b.uid)
+
+      // Save UID mapping if new messages were added
+      if (hasNewMessages) {
+        await this.saveUidMapping(email)
+      }
+
+      // Update UID counter for folder to max UID
+      const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+      this.setUidCounterForFolder(email, folder, maxUid)
       this.setMessagesForFolder(email, folder, messages)
       this.cacheTimestamp.set(cacheKey, Date.now())
     }
@@ -1635,9 +1785,18 @@ export class ImapServer {
         return 'junk/'
       case 'ARCHIVE':
         return 'archive/'
+      case 'ALL MAIL':
+        return '' // All Mail is a virtual folder - handled specially
       default:
         return `folders/${folder.toLowerCase()}/`
     }
+  }
+
+  /**
+   * Check if a folder is the virtual "All Mail" folder
+   */
+  private isAllMailFolder(folder: string): boolean {
+    return folder.toUpperCase() === 'ALL MAIL'
   }
 
   /**
@@ -1680,6 +1839,80 @@ export class ImapServer {
     } catch (err) {
       console.error(`Failed to save flags for ${email}:`, err)
     }
+  }
+
+  /**
+   * Load UID mapping from S3 (maps S3 keys to persistent UIDs)
+   */
+  private async loadUidMapping(email: string): Promise<{ mapping: Record<string, number>, nextUid: number }> {
+    const cached = this.uidMappingCache.get(email)
+    const nextUid = this.nextUidCache.get(email)
+    if (cached && nextUid !== undefined) {
+      return { mapping: cached, nextUid }
+    }
+
+    try {
+      const uidKey = `uids/${email.replace('@', '_at_')}.json`
+      const content = await this.s3.getObject(this.config.bucket, uidKey)
+      const data = JSON.parse(content)
+      const mapping = data.mapping || {}
+      const loadedNextUid = data.nextUid || 1
+      this.uidMappingCache.set(email, mapping)
+      this.nextUidCache.set(email, loadedNextUid)
+      return { mapping, nextUid: loadedNextUid }
+    } catch {
+      // No UID mapping file yet
+      const empty: Record<string, number> = {}
+      this.uidMappingCache.set(email, empty)
+      this.nextUidCache.set(email, 1)
+      return { mapping: empty, nextUid: 1 }
+    }
+  }
+
+  /**
+   * Save UID mapping to S3
+   */
+  private async saveUidMapping(email: string): Promise<void> {
+    const mapping = this.uidMappingCache.get(email)
+    const nextUid = this.nextUidCache.get(email)
+    if (!mapping) return
+
+    try {
+      const uidKey = `uids/${email.replace('@', '_at_')}.json`
+      await this.s3.putObject({
+        bucket: this.config.bucket,
+        key: uidKey,
+        body: JSON.stringify({ mapping, nextUid }),
+        contentType: 'application/json',
+      })
+    } catch (err) {
+      console.error(`Failed to save UID mapping for ${email}:`, err)
+    }
+  }
+
+  /**
+   * Get or assign a UID for a message (S3 key)
+   * Returns existing UID if message was seen before, assigns new UID otherwise
+   */
+  private getOrAssignUid(email: string, s3Key: string): number {
+    let mapping = this.uidMappingCache.get(email)
+    if (!mapping) {
+      mapping = {}
+      this.uidMappingCache.set(email, mapping)
+    }
+
+    // Return existing UID if message was seen before
+    if (mapping[s3Key]) {
+      return mapping[s3Key]
+    }
+
+    // Assign new UID
+    let nextUid = this.nextUidCache.get(email) || 1
+    mapping[s3Key] = nextUid
+    nextUid++
+    this.nextUidCache.set(email, nextUid)
+
+    return mapping[s3Key]
   }
 
   /**
