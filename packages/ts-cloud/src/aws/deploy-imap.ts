@@ -15,6 +15,11 @@ import { AWSClient } from './client'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 
+export interface MailboxConfig {
+  email: string
+  password?: string
+}
+
 export interface MailServerDeployConfig {
   instanceId: string
   region: string
@@ -22,7 +27,47 @@ export interface MailServerDeployConfig {
   domain: string
   bucket: string
   prefix: string
-  mailboxes: Array<{ email: string, password?: string }>
+  /** Mailboxes can be simple strings or objects with optional passwords */
+  mailboxes: Array<string | MailboxConfig>
+}
+
+/**
+ * Normalize mailbox config to object format with password lookup
+ * Supports:
+ *   - Simple usernames: 'chris' -> 'chris@{domain}', looks up MAIL_PASSWORD_CHRIS
+ *   - Full email strings: 'chris@stacksjs.com' -> looks up MAIL_PASSWORD_CHRIS
+ *   - Objects with email: { email: 'chris@stacksjs.com', password: '...' }
+ *   - Objects with address (deprecated): { address: 'chris@stacksjs.com' }
+ */
+function normalizeMailbox(mailbox: string | MailboxConfig | { address: string, password?: string }, domain: string): MailboxConfig {
+  if (typeof mailbox === 'string') {
+    // If it's just a username (no @), append the domain
+    const email = mailbox.includes('@') ? mailbox : `${mailbox}@${domain}`
+    const username = email.split('@')[0].toUpperCase()
+    const envKey = `MAIL_PASSWORD_${username}`
+    const password = process.env[envKey]
+    return { email, password }
+  }
+
+  // Handle both 'email' and 'address' fields (address is deprecated)
+  let email = mailbox.email || (mailbox as any).address
+  if (!email) {
+    throw new Error('Mailbox must have either "email" or "address" field')
+  }
+
+  // If it's just a username (no @), append the domain
+  if (!email.includes('@')) {
+    email = `${email}@${domain}`
+  }
+
+  // If object format but no password, try env lookup
+  if (!mailbox.password) {
+    const username = email.split('@')[0].toUpperCase()
+    const envKey = `MAIL_PASSWORD_${username}`
+    const password = process.env[envKey]
+    return { email, password }
+  }
+  return { email, password: mailbox.password }
 }
 
 const defaultConfig: MailServerDeployConfig = {
@@ -42,9 +87,12 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
   const ssm = new SSMClient(config.region)
   const awsClient = new AWSClient()
 
-  // Build credentials from config mailboxes
+  // Normalize all mailboxes to object format with password lookup
+  const normalizedMailboxes = config.mailboxes.map((m) => normalizeMailbox(m, config.domain))
+
+  // Build credentials from normalized mailboxes
   const credentials: Record<string, string> = {}
-  for (const mailbox of config.mailboxes) {
+  for (const mailbox of normalizedMailboxes) {
     // Extract username from email (chris@stacksjs.com -> chris)
     const username = mailbox.email.split('@')[0]
     if (mailbox.password) {
@@ -121,8 +169,8 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
   const s3ClientCode = fs.readFileSync(path.join(__dirname, 's3.ts'), 'utf-8')
   const clientCode = fs.readFileSync(path.join(__dirname, 'client.ts'), 'utf-8')
 
-  // Build users config for server script from mailboxes
-  const usersConfig = config.mailboxes.map((m) => {
+  // Build users config for server script from normalized mailboxes
+  const usersConfig = normalizedMailboxes.map((m) => {
     const username = m.email.split('@')[0]
     return `      ${username}: {
         password: passwords.${username} || 'changeme',
