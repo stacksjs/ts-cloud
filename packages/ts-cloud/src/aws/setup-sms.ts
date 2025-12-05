@@ -654,7 +654,7 @@ export async function getSmsInfrastructureStatus(config: {
  */
 export async function createSmsInfrastructure(smsConfig: {
   enabled: boolean
-  provider: 'pinpoint' | 'sns' | 'end-user-messaging'
+  provider: 'end-user-messaging' | 'sns'
   originationNumber?: string
   defaultCountryCode: string
   messageType: 'TRANSACTIONAL' | 'PROMOTIONAL'
