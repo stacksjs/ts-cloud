@@ -3,7 +3,7 @@
  * Provides voice calling and voicemail with S3 storage
  *
  * Similar to the Email and SMS modules, this provides:
- * - Making outbound calls via Connect or Pinpoint
+ * - Making outbound calls via Connect
  * - Receiving voicemails stored in S3
  * - Voicemail management (list, read, delete)
  * - Call recording storage
@@ -11,7 +11,6 @@
  */
 
 import { ConnectClient } from './connect'
-import { PinpointSmsVoiceClient } from './pinpoint-sms-voice'
 import { S3Client } from './s3'
 import { TranscribeClient } from './transcribe'
 
@@ -26,8 +25,6 @@ export interface VoiceClientConfig {
   connectContactFlowId?: string
   // Default caller ID
   defaultCallerId?: string
-  // Use Connect (full) or Pinpoint (simple) for calls
-  provider?: 'connect' | 'pinpoint'
   // Enable automatic transcription of voicemails
   enableTranscription?: boolean
   // Language for transcription
@@ -134,7 +131,6 @@ export interface CallForwardingRule {
 export class VoiceClient {
   private config: VoiceClientConfig
   private connect?: ConnectClient
-  private pinpoint?: PinpointSmsVoiceClient
   private s3?: S3Client
   private transcribe?: TranscribeClient
 
@@ -143,16 +139,13 @@ export class VoiceClient {
       region: 'us-east-1',
       voicemailPrefix: 'voicemail/',
       recordingsPrefix: 'recordings/',
-      provider: 'pinpoint',
       transcriptionLanguage: 'en-US',
       ...config,
     }
 
-    if (this.config.provider === 'connect' || this.config.connectInstanceId) {
+    if (this.config.connectInstanceId) {
       this.connect = new ConnectClient(this.config.region!)
     }
-
-    this.pinpoint = new PinpointSmsVoiceClient(this.config.region!)
 
     if (this.config.voicemailBucket) {
       this.s3 = new S3Client(this.config.region!)
@@ -168,73 +161,53 @@ export class VoiceClient {
   // ============================================
 
   /**
-   * Make an outbound voice call
+   * Make an outbound voice call via Connect
    */
   async call(options: MakeCallOptions): Promise<{ callId: string }> {
+    if (!this.connect || !this.config.connectInstanceId) {
+      throw new Error('Connect instance ID required for voice calls. Set connectInstanceId in config.')
+    }
+
     const from = options.from || this.config.defaultCallerId
+    const contactFlowId = options.contactFlowId || this.config.connectContactFlowId
 
-    // Use Connect for full call center features
-    if (this.config.provider === 'connect' && this.connect && this.config.connectInstanceId) {
-      const contactFlowId = options.contactFlowId || this.config.connectContactFlowId
-
-      if (!contactFlowId) {
-        throw new Error('Contact flow ID required for Connect calls')
-      }
-
-      const result = await this.connect.makeCall({
-        instanceId: this.config.connectInstanceId,
-        contactFlowId,
-        to: options.to,
-        from,
-        attributes: options.attributes,
-      })
-
-      return { callId: result.ContactId || '' }
+    if (!contactFlowId) {
+      throw new Error('Contact flow ID required for Connect calls')
     }
 
-    // Use Pinpoint for simple voice messages
-    if (this.pinpoint) {
-      if (options.message) {
-        const result = await this.pinpoint.makeCall({
-          to: options.to,
-          from,
-          message: options.message,
-          voiceId: options.voiceId,
-        })
-        return { callId: result.MessageId || '' }
-      }
+    const result = await this.connect.makeCall({
+      instanceId: this.config.connectInstanceId,
+      contactFlowId,
+      to: options.to,
+      from,
+      attributes: options.attributes,
+    })
 
-      throw new Error('Message required for Pinpoint voice calls')
-    }
-
-    throw new Error('No voice provider configured')
+    return { callId: result.ContactId || '' }
   }
 
   /**
-   * Send a voice message (one-way TTS call)
+   * Send a voice message (one-way TTS call) via Connect
+   *
+   * Note: This requires a Contact Flow configured for TTS playback.
+   * The message is passed as an attribute that the Contact Flow can use.
    */
   async sendVoiceMessage(options: SendVoiceMessageOptions): Promise<{ messageId: string }> {
-    if (!this.pinpoint) {
-      throw new Error('Pinpoint required for voice messages')
-    }
-
-    const result = await this.pinpoint.sendVoiceMessage({
-      DestinationPhoneNumber: options.to,
-      OriginationPhoneNumber: options.from || this.config.defaultCallerId,
-      Content: {
-        SSMLMessage: {
-          Text: options.message,
-          VoiceId: options.voiceId || 'Joanna',
-          LanguageCode: options.languageCode || 'en-US',
-        },
+    const result = await this.call({
+      to: options.to,
+      from: options.from,
+      attributes: {
+        message: options.message,
+        voiceId: options.voiceId || 'Joanna',
+        languageCode: options.languageCode || 'en-US',
       },
     })
 
-    return { messageId: result.MessageId || '' }
+    return { messageId: result.callId }
   }
 
   /**
-   * Send a TTS voice message (alias)
+   * Send a TTS voice message (alias for sendVoiceMessage)
    */
   async speak(to: string, message: string, voiceId?: string): Promise<{ messageId: string }> {
     return this.sendVoiceMessage({ to, message, voiceId })

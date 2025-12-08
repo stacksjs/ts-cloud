@@ -3,15 +3,16 @@
  * Handles complete SMS infrastructure setup during deploy
  *
  * This module automates:
- * - Phone number provisioning (toll-free, long codes)
  * - S3 inbox setup for incoming messages
  * - SNS topics for two-way messaging
  * - Spending limit management
  * - Sandbox exit requests via AWS Support
  * - Delivery receipt configuration
+ *
+ * Note: Phone number provisioning requires AWS End User Messaging console.
+ * SNS uses a shared pool for sending unless you configure an origination number.
  */
 
-import { PinpointSmsVoiceClient } from './pinpoint-sms-voice'
 import { SNSClient } from './sns'
 import { S3Client } from './s3'
 import { IAMClient } from './iam'
@@ -25,15 +26,6 @@ export interface SmsSetupConfig {
   accountName?: string
   // AWS account ID
   accountId?: string
-  // Phone number configuration
-  phoneNumber?: {
-    // Request a new phone number if one doesn't exist
-    provision?: boolean
-    // Type of phone number to provision
-    type?: 'TOLL_FREE' | 'LONG_CODE' | 'TEN_DLC'
-    // Country code
-    countryCode?: string
-  }
   // S3 inbox configuration
   inbox?: {
     enabled?: boolean
@@ -87,9 +79,6 @@ export interface SmsSetupConfig {
 
 export interface SmsSetupResult {
   success: boolean
-  phoneNumber?: string
-  phoneNumberId?: string
-  phoneNumberStatus?: string
   inboxBucket?: string
   inboxPrefix?: string
   twoWayTopicArn?: string
@@ -114,10 +103,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
     warnings: [],
   }
 
-  const pinpoint = new PinpointSmsVoiceClient(region)
   const sns = new SNSClient(region)
   const s3 = new S3Client(region)
-  const iam = new IAMClient(region)
   const support = new SupportClient(region)
   const awsClient = new AWSClient()
 
@@ -126,7 +113,7 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
   // 1. Check current SMS status
   console.log('  Checking SMS account status...')
   try {
-    const accountStatus = await checkSmsAccountStatus(pinpoint, sns)
+    const accountStatus = await checkSmsAccountStatus(sns)
     result.sandboxStatus = accountStatus.inSandbox ? 'IN_SANDBOX' : 'OUT_OF_SANDBOX'
 
     if (accountStatus.inSandbox) {
@@ -165,8 +152,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
     ) {
       console.log(`  Requesting spending limit increase to $${config.spending.monthlyLimit}/month...`)
       try {
-        // Try to set it directly first (works for small increases)
-        await pinpoint.setTextMessageSpendLimitOverride(config.spending.monthlyLimit)
+        // Try to set it directly via SNS attributes
+        await setSnsSpendingLimit(awsClient, region, config.spending.monthlyLimit)
         result.spendingLimit = config.spending.monthlyLimit
         console.log('  Spending limit updated successfully')
       } catch (err: any) {
@@ -242,70 +229,16 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
     }
   }
 
-  // 5. Provision phone number
-  if (config.phoneNumber?.provision) {
-    console.log('  Checking phone numbers...')
-    try {
-      // Check if we already have a phone number
-      const existingNumbers = await pinpoint.describePhoneNumbers({})
-      const activeNumbers = (existingNumbers.PhoneNumbers || []).filter(
-        n => n.Status === 'ACTIVE' || n.Status === 'PENDING',
-      )
-
-      if (activeNumbers.length > 0) {
-        const phone = activeNumbers[0]
-        result.phoneNumber = phone.PhoneNumber
-        result.phoneNumberId = phone.PhoneNumberId
-        result.phoneNumberStatus = phone.Status
-        console.log(`  Using existing phone number: ${phone.PhoneNumber} (${phone.Status})`)
-
-        // Enable two-way if we have a topic
-        if (result.twoWayTopicArn && !phone.TwoWayEnabled) {
-          console.log('  Enabling two-way messaging on phone number...')
-          try {
-            await pinpoint.enableTwoWaySms(phone.PhoneNumberId!, result.twoWayTopicArn)
-            console.log('  Two-way messaging enabled')
-          } catch (twoWayErr: any) {
-            result.warnings.push(`Failed to enable two-way SMS: ${twoWayErr.message}`)
-          }
-        }
-      } else {
-        // Request new phone number
-        console.log(`  Requesting new ${config.phoneNumber.type || 'TOLL_FREE'} phone number...`)
-        try {
-          const newNumber = await pinpoint.requestPhoneNumber({
-            IsoCountryCode: config.phoneNumber.countryCode || 'US',
-            MessageType: 'TRANSACTIONAL',
-            NumberCapabilities: ['SMS'],
-            NumberType: config.phoneNumber.type || 'TOLL_FREE',
-            OptOutListName: 'Default',
-          })
-          result.phoneNumber = newNumber.PhoneNumber
-          result.phoneNumberId = newNumber.PhoneNumberId
-          result.phoneNumberStatus = newNumber.Status
-          console.log(`  Phone number requested: ${newNumber.PhoneNumber} (${newNumber.Status})`)
-
-          // Note: Can't enable two-way until number is ACTIVE (may take 24-72 hours for toll-free)
-          if (newNumber.Status !== 'ACTIVE') {
-            result.warnings.push(
-              `Phone number ${newNumber.PhoneNumber} is ${newNumber.Status}. ` +
-                'Two-way messaging will be enabled when number becomes ACTIVE.',
-            )
-          }
-        } catch (provisionErr: any) {
-          result.errors.push(`Failed to provision phone number: ${provisionErr.message}`)
-          console.log(`  Error provisioning phone number: ${provisionErr.message}`)
-        }
-      }
-    } catch (err: any) {
-      result.errors.push(`Failed to check/provision phone numbers: ${err.message}`)
-      console.log(`  Error with phone numbers: ${err.message}`)
-    }
-  }
-
   // Final status
   result.success = result.errors.length === 0
   console.log(result.success ? '  SMS setup completed successfully!' : '  SMS setup completed with errors')
+
+  // Note about phone numbers
+  if (result.success) {
+    result.warnings.push(
+      'For dedicated phone numbers, use AWS End User Messaging console. SNS uses shared pool by default.',
+    )
+  }
 
   return result
 }
@@ -313,10 +246,7 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
 /**
  * Check SMS account status (sandbox, spending limits)
  */
-async function checkSmsAccountStatus(
-  pinpoint: PinpointSmsVoiceClient,
-  sns: SNSClient,
-): Promise<{
+async function checkSmsAccountStatus(sns: SNSClient): Promise<{
   inSandbox: boolean
   spendingLimit: number
   usedThisMonth: number
@@ -325,37 +255,49 @@ async function checkSmsAccountStatus(
   let spendingLimit = 1
   let usedThisMonth = 0
 
-  // Check Pinpoint SMS Voice V2 status
+  // Check SNS sandbox status
   try {
-    const spendLimits = await pinpoint.describeSpendLimits()
-    const textLimit = spendLimits.SpendLimits?.find(l => l.Name === 'TEXT_MESSAGE_MONTHLY_SPEND_LIMIT')
-    if (textLimit) {
-      spendingLimit = textLimit.EnforcedLimit || 1
-      // If limit is > $1, likely out of sandbox
-      inSandbox = spendingLimit <= 1
-    }
+    const sandboxStatus = await sns.getSMSSandboxAccountStatus()
+    inSandbox = sandboxStatus.IsInSandbox
   } catch {
-    // Fall back to SNS sandbox check
-    try {
-      const sandboxStatus = await sns.getSMSSandboxAccountStatus()
-      inSandbox = sandboxStatus.IsInSandbox
-    } catch {
-      // Assume sandbox if we can't check
-      inSandbox = true
-    }
+    // Assume sandbox if we can't check
+    inSandbox = true
   }
 
-  // Get sending quota from SNS
+  // Get spending quota from SNS attributes
   try {
     const smsAttrs = await sns.getSMSAttributes()
     if (smsAttrs.MonthlySpendLimit) {
-      spendingLimit = Math.max(spendingLimit, parseFloat(smsAttrs.MonthlySpendLimit))
+      spendingLimit = parseFloat(smsAttrs.MonthlySpendLimit)
     }
   } catch {
     // Ignore
   }
 
   return { inSandbox, spendingLimit, usedThisMonth }
+}
+
+/**
+ * Set SNS SMS spending limit
+ */
+async function setSnsSpendingLimit(awsClient: AWSClient, region: string, limit: number): Promise<void> {
+  const params = new URLSearchParams({
+    Action: 'SetSMSAttributes',
+    Version: '2010-03-31',
+    'attributes.entry.1.key': 'MonthlySpendLimit',
+    'attributes.entry.1.value': limit.toString(),
+  })
+
+  await awsClient.request({
+    service: 'sns',
+    region,
+    method: 'POST',
+    path: '/',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  })
 }
 
 /**
@@ -475,7 +417,7 @@ async function setupTwoWayTopic(
     throw new Error('Failed to create SNS topic')
   }
 
-  // Set up topic policy to allow Pinpoint SMS to publish
+  // Set up topic policy to allow SMS Voice service to publish
   const policyParams = new URLSearchParams({
     Action: 'SetTopicAttributes',
     Version: '2010-03-31',
@@ -485,7 +427,7 @@ async function setupTwoWayTopic(
       Version: '2012-10-17',
       Statement: [
         {
-          Sid: 'AllowPinpointSMSPublish',
+          Sid: 'AllowSMSVoicePublish',
           Effect: 'Allow',
           Principal: {
             Service: 'sms-voice.amazonaws.com',
@@ -526,88 +468,12 @@ async function setupDeliveryReceiptsTopic(
 }
 
 /**
- * Enable two-way SMS on a phone number
- * Call this after phone number becomes ACTIVE
- */
-export async function enableTwoWaySms(config: {
-  region?: string
-  phoneNumberId: string
-  snsTopicArn: string
-}): Promise<void> {
-  const pinpoint = new PinpointSmsVoiceClient(config.region || 'us-east-1')
-  await pinpoint.enableTwoWaySms(config.phoneNumberId, config.snsTopicArn)
-}
-
-/**
- * Check if phone number is ready for two-way SMS
- */
-export async function checkPhoneNumberStatus(config: {
-  region?: string
-  phoneNumberId: string
-}): Promise<{
-  status: string
-  phoneNumber?: string
-  twoWayEnabled: boolean
-}> {
-  const pinpoint = new PinpointSmsVoiceClient(config.region || 'us-east-1')
-  const result = await pinpoint.describePhoneNumbers({
-    PhoneNumberIds: [config.phoneNumberId],
-  })
-
-  const phone = result.PhoneNumbers?.[0]
-  return {
-    status: phone?.Status || 'UNKNOWN',
-    phoneNumber: phone?.PhoneNumber,
-    twoWayEnabled: phone?.TwoWayEnabled || false,
-  }
-}
-
-/**
- * Poll until phone number is active (for toll-free verification)
- */
-export async function waitForPhoneNumberActive(config: {
-  region?: string
-  phoneNumberId: string
-  timeoutMs?: number
-  pollIntervalMs?: number
-}): Promise<boolean> {
-  const timeout = config.timeoutMs || 300000 // 5 minutes default
-  const pollInterval = config.pollIntervalMs || 30000 // 30 seconds default
-  const startTime = Date.now()
-
-  while (Date.now() - startTime < timeout) {
-    const status = await checkPhoneNumberStatus({
-      region: config.region,
-      phoneNumberId: config.phoneNumberId,
-    })
-
-    if (status.status === 'ACTIVE') {
-      return true
-    }
-
-    if (status.status === 'DELETED') {
-      throw new Error('Phone number was deleted')
-    }
-
-    await new Promise(resolve => setTimeout(resolve, pollInterval))
-  }
-
-  return false
-}
-
-/**
  * Get complete SMS infrastructure status
  */
 export async function getSmsInfrastructureStatus(config: {
   region?: string
   accountName?: string
 }): Promise<{
-  phoneNumbers: Array<{
-    phoneNumber: string
-    status: string
-    twoWayEnabled: boolean
-    capabilities: string[]
-  }>
   sandboxStatus: 'IN_SANDBOX' | 'OUT_OF_SANDBOX' | 'UNKNOWN'
   spendingLimit: number
   topics: Array<{
@@ -616,20 +482,10 @@ export async function getSmsInfrastructureStatus(config: {
   }>
 }> {
   const region = config.region || 'us-east-1'
-  const pinpoint = new PinpointSmsVoiceClient(region)
   const sns = new SNSClient(region)
 
-  // Get phone numbers
-  const phoneNumbersResult = await pinpoint.describePhoneNumbers({})
-  const phoneNumbers = (phoneNumbersResult.PhoneNumbers || []).map(p => ({
-    phoneNumber: p.PhoneNumber || '',
-    status: p.Status || 'UNKNOWN',
-    twoWayEnabled: p.TwoWayEnabled || false,
-    capabilities: p.NumberCapabilities || [],
-  }))
-
   // Get sandbox status
-  const accountStatus = await checkSmsAccountStatus(pinpoint, sns)
+  const accountStatus = await checkSmsAccountStatus(sns)
 
   // Get topics
   const topicsResult = await sns.listTopics()
@@ -641,7 +497,6 @@ export async function getSmsInfrastructureStatus(config: {
     }))
 
   return {
-    phoneNumbers,
     sandboxStatus: accountStatus.inSandbox ? 'IN_SANDBOX' : 'OUT_OF_SANDBOX',
     spendingLimit: accountStatus.spendingLimit,
     topics: smsTopics,
@@ -654,7 +509,7 @@ export async function getSmsInfrastructureStatus(config: {
  */
 export async function createSmsInfrastructure(smsConfig: {
   enabled: boolean
-  provider: 'end-user-messaging' | 'sns'
+  provider: 'sns'
   originationNumber?: string
   defaultCountryCode: string
   messageType: 'TRANSACTIONAL' | 'PROMOTIONAL'
@@ -686,11 +541,6 @@ export async function createSmsInfrastructure(smsConfig: {
   const setupConfig: SmsSetupConfig = {
     region: 'us-east-1',
     accountName: 'stacks',
-    phoneNumber: {
-      provision: true,
-      type: 'TOLL_FREE',
-      countryCode: smsConfig.defaultCountryCode,
-    },
     inbox: smsConfig.inbox
       ? {
           enabled: smsConfig.inbox.enabled,
@@ -711,7 +561,8 @@ export async function createSmsInfrastructure(smsConfig: {
     sandbox: {
       autoRequestExit: true,
       companyName: 'Stacks',
-      useCase: 'Transactional notifications, verification codes, and account alerts for web applications built with Stacks framework.',
+      useCase:
+        'Transactional notifications, verification codes, and account alerts for web applications built with Stacks framework.',
       expectedMonthlyVolume: 5000,
       websiteUrl: 'https://stacksjs.com',
     },
@@ -725,9 +576,6 @@ export async function createSmsInfrastructure(smsConfig: {
 
 export default {
   setupSmsInfrastructure,
-  enableTwoWaySms,
-  checkPhoneNumberStatus,
-  waitForPhoneNumberActive,
   getSmsInfrastructureStatus,
   createSmsInfrastructure,
 }

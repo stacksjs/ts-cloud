@@ -3,14 +3,13 @@
  * Provides SMS sending and receiving with S3 storage for incoming messages
  *
  * Similar to the Email module, this provides:
- * - Sending SMS via SNS or Pinpoint
+ * - Sending SMS via SNS
  * - Receiving SMS stored in S3
  * - Inbox management (list, read, delete)
  * - Two-way messaging support
  */
 
 import { SNSClient } from './sns'
-import { PinpointSmsVoiceClient } from './pinpoint-sms-voice'
 import { S3Client } from './s3'
 import { SchedulerClient } from './scheduler'
 import { LambdaClient } from './lambda'
@@ -22,8 +21,6 @@ export interface SmsClientConfig {
   inboxPrefix?: string
   // Default sender (phone number or sender ID)
   defaultSender?: string
-  // Use Pinpoint (modern) or SNS (legacy) for sending
-  provider?: 'pinpoint' | 'sns'
   // Lambda function ARN for scheduled SMS
   schedulerLambdaArn?: string
   // Role ARN for scheduler to invoke Lambda
@@ -65,8 +62,6 @@ export interface SendSmsOptions {
   from?: string
   // SMS type for SNS
   type?: 'Promotional' | 'Transactional'
-  // Media attachments (MMS) - Pinpoint only
-  mediaUrls?: string[]
   // Scheduled sending
   scheduledAt?: Date
   // Template ID (if using templates)
@@ -115,7 +110,7 @@ export interface DeliveryReceipt {
   errorCode?: string
   errorMessage?: string
   carrierName?: string
-  // Pricing info (if available from Pinpoint)
+  // Pricing info (if available from delivery status)
   priceInUsd?: number
   // Message parts (for long SMS)
   messagePartCount?: number
@@ -141,7 +136,6 @@ export interface DeliveryReceiptWebhookConfig {
 export class SmsClient {
   private config: SmsClientConfig
   private sns: SNSClient
-  private pinpoint?: PinpointSmsVoiceClient
   private s3?: S3Client
   private scheduler?: SchedulerClient
 
@@ -151,15 +145,10 @@ export class SmsClient {
       inboxPrefix: 'sms/inbox/',
       scheduledPrefix: 'sms/scheduled/',
       receiptPrefix: 'sms/receipts/',
-      provider: 'sns',
       ...config,
     }
 
     this.sns = new SNSClient(this.config.region!)
-
-    if (this.config.provider === 'pinpoint') {
-      this.pinpoint = new PinpointSmsVoiceClient(this.config.region!)
-    }
 
     if (this.config.inboxBucket || this.config.scheduledBucket) {
       this.s3 = new S3Client(this.config.region!)
@@ -178,7 +167,7 @@ export class SmsClient {
    * Send an SMS message (optionally scheduled)
    */
   async send(options: SendSmsOptions): Promise<{ messageId: string; scheduledId?: string }> {
-    const { to, from, type, mediaUrls, scheduledAt, templateId, templateVariables } = options
+    const { to, from, type, scheduledAt, templateId, templateVariables } = options
     const sender = from || this.config.defaultSender
 
     // Resolve message body (handle templates)
@@ -203,31 +192,7 @@ export class SmsClient {
       return { messageId: '', scheduledId: scheduledSms.id }
     }
 
-    // If MMS (has media), must use Pinpoint
-    if (mediaUrls && mediaUrls.length > 0) {
-      if (!this.pinpoint) {
-        throw new Error('MMS requires Pinpoint provider. Set provider: "pinpoint" in config')
-      }
-      const result = await this.pinpoint.sendMediaMessage({
-        destinationPhoneNumber: to,
-        originationIdentity: sender!,
-        messageBody: body,
-        mediaUrls,
-      })
-      return { messageId: result.MessageId || '' }
-    }
-
-    // Use configured provider for SMS
-    if (this.config.provider === 'pinpoint' && this.pinpoint) {
-      const result = await this.pinpoint.sendSms({
-        to,
-        message: body,
-        from: sender,
-      })
-      return { messageId: result.MessageId || '' }
-    }
-
-    // Default to SNS
+    // Send via SNS
     const result = await this.sns.publish({
       PhoneNumber: to,
       Message: body,
@@ -253,18 +218,6 @@ export class SmsClient {
    */
   async sendText(to: string, message: string, from?: string): Promise<{ messageId: string }> {
     return this.send({ to, body: message, from })
-  }
-
-  /**
-   * Send an MMS with media attachments
-   */
-  async sendMms(
-    to: string,
-    message: string,
-    mediaUrls: string[],
-    from?: string,
-  ): Promise<{ messageId: string }> {
-    return this.send({ to, body: message, mediaUrls, from })
   }
 
   // ============================================
@@ -516,7 +469,7 @@ export class SmsClient {
 
   /**
    * Store an incoming SMS to S3
-   * This is typically called from a Lambda handler that receives SNS/Pinpoint webhooks
+   * This is typically called from a Lambda handler that receives SNS webhooks
    */
   async storeIncomingSms(message: {
     from: string
@@ -551,36 +504,6 @@ export class SmsClient {
     })
 
     return key
-  }
-
-  // ============================================
-  // Phone Number Management
-  // ============================================
-
-  /**
-   * Get phone numbers (Pinpoint only)
-   */
-  async getPhoneNumbers(): Promise<any[]> {
-    if (!this.pinpoint) {
-      throw new Error('Phone number management requires Pinpoint provider')
-    }
-
-    const result = await this.pinpoint.describePhoneNumbers({})
-    return result.PhoneNumbers || []
-  }
-
-  /**
-   * Enable two-way SMS on a phone number
-   */
-  async enableTwoWay(
-    phoneNumberId: string,
-    destinationArn: string,
-  ): Promise<void> {
-    if (!this.pinpoint) {
-      throw new Error('Two-way SMS requires Pinpoint provider')
-    }
-
-    await this.pinpoint.enableTwoWaySms(phoneNumberId, destinationArn)
   }
 
   // ============================================
@@ -1258,7 +1181,7 @@ export class SmsClient {
   // ============================================
 
   /**
-   * Parse incoming SMS from various formats (SNS notification, Pinpoint, raw JSON)
+   * Parse incoming SMS from various formats (SNS notification, raw JSON)
    */
   private parseIncomingSms(content: string, key: string): SmsMessage | null {
     try {
@@ -1374,28 +1297,6 @@ export function createSmsInboxHandler(config: {
       }
     }
 
-    // Handle direct Pinpoint event
-    if (event.originationNumber && event.messageBody) {
-      const message = {
-        from: event.originationNumber,
-        to: event.destinationNumber,
-        body: event.messageBody,
-        messageId: event.inboundMessageId,
-        timestamp: new Date(),
-        raw: event,
-      }
-
-      const key = await smsClient.storeIncomingSms(message)
-      console.log(`Stored incoming SMS: ${key}`)
-
-      if (config.onMessage) {
-        const storedMessage = await smsClient.getMessage(key)
-        if (storedMessage) {
-          await config.onMessage(storedMessage)
-        }
-      }
-    }
-
     return {
       statusCode: 200,
       body: JSON.stringify({ message: 'SMS processed' }),
@@ -1482,7 +1383,7 @@ export function createSmsClient(config?: SmsClientConfig): SmsClient {
 
 /**
  * Create a Lambda handler for processing SMS delivery receipts
- * This handles SNS notifications from Pinpoint/SNS delivery status events
+ * This handles SNS notifications for SMS delivery status events
  *
  * @example
  * ```typescript
@@ -1523,7 +1424,7 @@ export function createDeliveryReceiptHandler(config: {
 
     const receipts: DeliveryReceipt[] = []
 
-    // Handle SNS events (delivery status from Pinpoint/SNS)
+    // Handle SNS events (delivery status notifications)
     if (event.Records) {
       for (const record of event.Records) {
         if (record.Sns) {
@@ -1542,14 +1443,6 @@ export function createDeliveryReceiptHandler(config: {
             receipts.push(receipt)
           }
         }
-      }
-    }
-
-    // Handle direct CloudWatch Events from Pinpoint
-    if (event.detail?.eventType) {
-      const receipt = parsePinpointEvent(event)
-      if (receipt) {
-        receipts.push(receipt)
       }
     }
 
@@ -1597,23 +1490,6 @@ export function createDeliveryReceiptHandler(config: {
  * Parse delivery status from various event formats
  */
 function parseDeliveryStatus(data: any, snsMessage: any): DeliveryReceipt | null {
-  // Pinpoint SMS event format
-  if (data.eventType === 'TEXT_DELIVERED' || data.eventType === 'TEXT_SENT' || data.eventType === '_SMS.SUCCESS' || data.eventType === '_SMS.FAILURE') {
-    return {
-      messageId: data.attributes?.message_id || data.client_context?.custom?.message_id || snsMessage.MessageId,
-      status: data.eventType.includes('DELIVERED') || data.eventType.includes('SUCCESS') ? 'delivered' : 'failed',
-      timestamp: new Date(data.event_timestamp || snsMessage.Timestamp),
-      to: data.attributes?.destination_phone_number || data.endpoint?.address || '',
-      from: data.attributes?.origination_phone_number || '',
-      errorCode: data.attributes?.record_status,
-      errorMessage: data.attributes?.status_message,
-      carrierName: data.attributes?.carrier_name,
-      priceInUsd: data.metrics?.price_in_millicents_usd ? data.metrics.price_in_millicents_usd / 100000 : undefined,
-      messagePartCount: data.attributes?.number_of_message_parts,
-      raw: data,
-    }
-  }
-
   // SNS SMS delivery status format
   if (data.status !== undefined && data.PhoneNumber) {
     const status = data.status === 'SUCCESS' ? 'delivered'
@@ -1651,40 +1527,6 @@ function parseDeliveryStatus(data: any, snsMessage: any): DeliveryReceipt | null
   }
 
   return null
-}
-
-/**
- * Parse Pinpoint CloudWatch event
- */
-function parsePinpointEvent(event: any): DeliveryReceipt | null {
-  const detail = event.detail
-
-  if (!detail) return null
-
-  const eventType = detail.eventType || detail.event_type
-  let status: DeliveryReceipt['status'] = 'unknown'
-
-  if (eventType?.includes('DELIVERED') || eventType?.includes('SUCCESS')) {
-    status = 'delivered'
-  } else if (eventType?.includes('FAILURE') || eventType?.includes('FAILED')) {
-    status = 'failed'
-  } else if (eventType?.includes('SENT')) {
-    status = 'sent'
-  }
-
-  return {
-    messageId: detail.attributes?.message_id || detail.messageId || event.id,
-    status,
-    timestamp: new Date(detail.event_timestamp || event.time || Date.now()),
-    to: detail.attributes?.destination_phone_number || detail.endpoint?.address || '',
-    from: detail.attributes?.origination_phone_number,
-    errorCode: detail.attributes?.record_status,
-    errorMessage: detail.attributes?.status_message,
-    carrierName: detail.attributes?.carrier_name,
-    priceInUsd: detail.metrics?.price_in_millicents_usd ? detail.metrics.price_in_millicents_usd / 100000 : undefined,
-    messagePartCount: detail.attributes?.number_of_message_parts,
-    raw: event,
-  }
 }
 
 /**

@@ -34,8 +34,10 @@ export * from './scheduler'
 export * from './iam'
 export * from './imap-server'
 export * from './smtp-server'
-export * from './pinpoint-sms-voice'
 export * from './sms'
 export * from './voice'
 export * from './support'
 export * from './setup-sms'
+
+// DNS Provider integrations (Route53, Porkbun, GoDaddy)
+export * from '../dns'
