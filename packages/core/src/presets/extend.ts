@@ -291,7 +291,7 @@ export function withCDN(
  * ```
  */
 export function withQueue(
-  queue: Partial<CloudConfig['infrastructure']>['queue'],
+  queues: Partial<CloudConfig['infrastructure']>['queues'],
 ): Partial<CloudConfig> {
-  return mergeInfrastructure({ queue })
+  return mergeInfrastructure({ queues })
 }

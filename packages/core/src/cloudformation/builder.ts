@@ -137,8 +137,8 @@ export class CloudFormationBuilder {
     }
 
     // Queue resources
-    if (infrastructure.queue) {
-      this.addQueueResources(infrastructure.queue)
+    if (infrastructure.queues) {
+      this.addQueueResources(infrastructure.queues)
     }
 
     // Messaging resources

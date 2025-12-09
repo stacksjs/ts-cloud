@@ -72,6 +72,7 @@ export class InfrastructureGenerator {
         servers: { ...this.config.infrastructure?.servers, ...envInfra.servers },
         databases: { ...this.config.infrastructure?.databases, ...envInfra.databases },
         cdn: { ...this.config.infrastructure?.cdn, ...envInfra.cdn },
+        queues: { ...this.config.infrastructure?.queues, ...envInfra.queues },
       },
     }
   }
@@ -318,6 +319,234 @@ export class InfrastructureGenerator {
         })
 
         this.builder.addResource(logicalId, distribution)
+      }
+    }
+
+    // Queues (SQS)
+    if (this.mergedConfig.infrastructure?.queues) {
+      for (const [name, queueConfig] of Object.entries(this.mergedConfig.infrastructure.queues)) {
+        // Check if this queue should be deployed
+        if (!this.shouldDeploy(queueConfig)) {
+          continue
+        }
+
+        // Create the main queue
+        const { queue, logicalId } = Queue.createQueue({
+          slug,
+          environment: env,
+          name: `${slug}-${env}-${name}`,
+          fifo: queueConfig.fifo,
+          visibilityTimeout: queueConfig.visibilityTimeout,
+          messageRetentionPeriod: queueConfig.messageRetentionPeriod,
+          delaySeconds: queueConfig.delaySeconds,
+          maxMessageSize: queueConfig.maxMessageSize,
+          receiveMessageWaitTime: queueConfig.receiveMessageWaitTime,
+          contentBasedDeduplication: queueConfig.contentBasedDeduplication,
+          encrypted: queueConfig.encrypted,
+          kmsKeyId: queueConfig.kmsKeyId,
+        })
+
+        this.builder.addResource(logicalId, queue)
+
+        // Create dead letter queue if enabled
+        let dlqLogicalId: string | undefined
+        if (queueConfig.deadLetterQueue) {
+          const {
+            deadLetterQueue,
+            updatedSourceQueue,
+            deadLetterLogicalId,
+          } = Queue.createDeadLetterQueue(logicalId, {
+            slug,
+            environment: env,
+            maxReceiveCount: queueConfig.maxReceiveCount,
+          })
+
+          dlqLogicalId = deadLetterLogicalId
+          this.builder.addResource(deadLetterLogicalId, deadLetterQueue)
+
+          // Update the main queue with redrive policy
+          const resources = this.builder.getResources()
+          const existingQueue = resources[logicalId]
+          if (existingQueue?.Properties) {
+            existingQueue.Properties.RedrivePolicy = updatedSourceQueue.Properties?.RedrivePolicy
+          }
+        }
+
+        // Lambda trigger (Event Source Mapping)
+        if (queueConfig.trigger) {
+          const triggerConfig = queueConfig.trigger
+          const functionLogicalId = `${slug}${env}${triggerConfig.functionName}`.replace(/[^a-zA-Z0-9]/g, '')
+
+          const eventSourceMapping = {
+            Type: 'AWS::Lambda::EventSourceMapping',
+            Properties: {
+              EventSourceArn: { 'Fn::GetAtt': [logicalId, 'Arn'] },
+              FunctionName: { Ref: functionLogicalId },
+              BatchSize: triggerConfig.batchSize || 10,
+              MaximumBatchingWindowInSeconds: triggerConfig.batchWindow || 0,
+              Enabled: true,
+              ...(triggerConfig.reportBatchItemFailures !== false && {
+                FunctionResponseTypes: ['ReportBatchItemFailures'],
+              }),
+              ...(triggerConfig.maxConcurrency && {
+                ScalingConfig: {
+                  MaximumConcurrency: triggerConfig.maxConcurrency,
+                },
+              }),
+              ...(triggerConfig.filterPattern && {
+                FilterCriteria: {
+                  Filters: [{ Pattern: JSON.stringify(triggerConfig.filterPattern) }],
+                },
+              }),
+            },
+            DependsOn: [logicalId, functionLogicalId],
+          }
+
+          this.builder.addResource(`${logicalId}Trigger`, eventSourceMapping as any)
+        }
+
+        // CloudWatch Alarms
+        if (queueConfig.alarms?.enabled) {
+          const alarmsConfig = queueConfig.alarms
+
+          // Create SNS topic for notifications if emails are provided
+          let alarmTopicArn = alarmsConfig.notificationTopicArn
+          if (!alarmTopicArn && alarmsConfig.notificationEmails?.length) {
+            const topicLogicalId = `${logicalId}AlarmTopic`
+            this.builder.addResource(topicLogicalId, {
+              Type: 'AWS::SNS::Topic',
+              Properties: {
+                TopicName: `${slug}-${env}-${name}-alarms`,
+                DisplayName: `${name} Queue Alarms`,
+              },
+            } as any)
+
+            // Add email subscriptions
+            alarmsConfig.notificationEmails.forEach((email, idx) => {
+              this.builder.addResource(`${topicLogicalId}Sub${idx}`, {
+                Type: 'AWS::SNS::Subscription',
+                Properties: {
+                  TopicArn: { Ref: topicLogicalId },
+                  Protocol: 'email',
+                  Endpoint: email,
+                },
+              } as any)
+            })
+
+            alarmTopicArn = { Ref: topicLogicalId } as any
+          }
+
+          // Queue depth alarm
+          const depthThreshold = alarmsConfig.queueDepthThreshold || 1000
+          this.builder.addResource(`${logicalId}DepthAlarm`, {
+            Type: 'AWS::CloudWatch::Alarm',
+            Properties: {
+              AlarmName: `${slug}-${env}-${name}-queue-depth`,
+              AlarmDescription: `Queue ${name} depth exceeds ${depthThreshold} messages`,
+              MetricName: 'ApproximateNumberOfMessagesVisible',
+              Namespace: 'AWS/SQS',
+              Statistic: 'Average',
+              Period: 300,
+              EvaluationPeriods: 2,
+              Threshold: depthThreshold,
+              ComparisonOperator: 'GreaterThanThreshold',
+              Dimensions: [{ Name: 'QueueName', Value: { 'Fn::GetAtt': [logicalId, 'QueueName'] } }],
+              ...(alarmTopicArn && { AlarmActions: [alarmTopicArn], OKActions: [alarmTopicArn] }),
+            },
+          } as any)
+
+          // Message age alarm
+          const ageThreshold = alarmsConfig.messageAgeThreshold || 3600
+          this.builder.addResource(`${logicalId}AgeAlarm`, {
+            Type: 'AWS::CloudWatch::Alarm',
+            Properties: {
+              AlarmName: `${slug}-${env}-${name}-message-age`,
+              AlarmDescription: `Queue ${name} oldest message exceeds ${ageThreshold} seconds`,
+              MetricName: 'ApproximateAgeOfOldestMessage',
+              Namespace: 'AWS/SQS',
+              Statistic: 'Maximum',
+              Period: 300,
+              EvaluationPeriods: 2,
+              Threshold: ageThreshold,
+              ComparisonOperator: 'GreaterThanThreshold',
+              Dimensions: [{ Name: 'QueueName', Value: { 'Fn::GetAtt': [logicalId, 'QueueName'] } }],
+              ...(alarmTopicArn && { AlarmActions: [alarmTopicArn], OKActions: [alarmTopicArn] }),
+            },
+          } as any)
+
+          // DLQ alarm (if DLQ is enabled)
+          if (dlqLogicalId && alarmsConfig.dlqAlarm !== false) {
+            this.builder.addResource(`${dlqLogicalId}Alarm`, {
+              Type: 'AWS::CloudWatch::Alarm',
+              Properties: {
+                AlarmName: `${slug}-${env}-${name}-dlq-messages`,
+                AlarmDescription: `Dead letter queue for ${name} has messages`,
+                MetricName: 'ApproximateNumberOfMessagesVisible',
+                Namespace: 'AWS/SQS',
+                Statistic: 'Sum',
+                Period: 300,
+                EvaluationPeriods: 1,
+                Threshold: 0,
+                ComparisonOperator: 'GreaterThanThreshold',
+                Dimensions: [{ Name: 'QueueName', Value: { 'Fn::GetAtt': [dlqLogicalId, 'QueueName'] } }],
+                ...(alarmTopicArn && { AlarmActions: [alarmTopicArn] }),
+              },
+            } as any)
+          }
+        }
+
+        // SNS Subscription
+        if (queueConfig.subscribe) {
+          const subConfig = queueConfig.subscribe
+
+          // Determine topic ARN
+          let topicArn = subConfig.topicArn
+          if (!topicArn && subConfig.topicName) {
+            // Reference existing topic in the stack
+            topicArn = { Ref: subConfig.topicName } as any
+          }
+
+          if (topicArn) {
+            // Queue policy to allow SNS to send messages
+            this.builder.addResource(`${logicalId}SnsPolicy`, {
+              Type: 'AWS::SQS::QueuePolicy',
+              Properties: {
+                Queues: [{ Ref: logicalId }],
+                PolicyDocument: {
+                  Version: '2012-10-17',
+                  Statement: [{
+                    Effect: 'Allow',
+                    Principal: { Service: 'sns.amazonaws.com' },
+                    Action: 'sqs:SendMessage',
+                    Resource: { 'Fn::GetAtt': [logicalId, 'Arn'] },
+                    Condition: {
+                      ArnEquals: { 'aws:SourceArn': topicArn },
+                    },
+                  }],
+                },
+              },
+            } as any)
+
+            // SNS Subscription
+            const subscriptionProps: Record<string, any> = {
+              TopicArn: topicArn,
+              Protocol: 'sqs',
+              Endpoint: { 'Fn::GetAtt': [logicalId, 'Arn'] },
+              RawMessageDelivery: subConfig.rawMessageDelivery || false,
+            }
+
+            if (subConfig.filterPolicy) {
+              subscriptionProps.FilterPolicy = subConfig.filterPolicy
+              subscriptionProps.FilterPolicyScope = subConfig.filterPolicyScope || 'MessageAttributes'
+            }
+
+            this.builder.addResource(`${logicalId}SnsSub`, {
+              Type: 'AWS::SNS::Subscription',
+              Properties: subscriptionProps,
+              DependsOn: `${logicalId}SnsPolicy`,
+            } as any)
+          }
+        }
       }
     }
 

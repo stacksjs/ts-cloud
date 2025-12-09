@@ -99,6 +99,31 @@ export interface InfrastructureConfig {
   databases?: Record<string, DatabaseItemConfig & ResourceConditions>
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions>
+
+  /**
+   * Queue (SQS) configuration
+   * Defines message queues for async processing, background jobs, and event-driven architectures
+   *
+   * @example
+   * queues: {
+   *   // Standard queue for background jobs
+   *   jobs: {
+   *     visibilityTimeout: 120,
+   *     deadLetterQueue: true,
+   *   },
+   *   // FIFO queue for ordered processing
+   *   orders: {
+   *     fifo: true,
+   *     contentBasedDeduplication: true,
+   *   },
+   *   // High-throughput events queue
+   *   events: {
+   *     receiveMessageWaitTime: 20,
+   *   },
+   * }
+   */
+  queues?: Record<string, QueueItemConfig & ResourceConditions>
+
   dns?: DnsConfig
   security?: SecurityConfig
   monitoring?: MonitoringConfig
@@ -430,6 +455,411 @@ export interface CdnItemConfig {
   customDomain?: string
   certificateArn?: string
 }
+
+/**
+ * Lambda trigger configuration for SQS queues
+ */
+export interface QueueLambdaTrigger {
+  /**
+   * Name of the Lambda function to trigger (references functions config)
+   * @example 'processOrders' - references infrastructure.functions.processOrders
+   */
+  functionName: string
+
+  /**
+   * Number of messages to process in each batch
+   * @default 10
+   */
+  batchSize?: number
+
+  /**
+   * Maximum time to gather messages before invoking (0-300 seconds)
+   * Helps reduce Lambda invocations for low-traffic queues
+   * @default 0
+   */
+  batchWindow?: number
+
+  /**
+   * Enable partial batch responses (report individual failures)
+   * @default true
+   */
+  reportBatchItemFailures?: boolean
+
+  /**
+   * Maximum concurrency for Lambda invocations (2-1000)
+   * Limits how many concurrent Lambda instances process this queue
+   */
+  maxConcurrency?: number
+
+  /**
+   * Filter pattern to selectively process messages
+   * @example { body: { type: ['order'] } }
+   */
+  filterPattern?: Record<string, unknown>
+}
+
+/**
+ * CloudWatch alarm configuration for SQS queues
+ */
+export interface QueueAlarms {
+  /**
+   * Enable all default alarms
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Alarm when queue depth exceeds this threshold
+   * @default 1000
+   */
+  queueDepthThreshold?: number
+
+  /**
+   * Alarm when oldest message age exceeds this (in seconds)
+   * @default 3600 (1 hour)
+   */
+  messageAgeThreshold?: number
+
+  /**
+   * Alarm when DLQ has any messages
+   * @default true when deadLetterQueue is enabled
+   */
+  dlqAlarm?: boolean
+
+  /**
+   * SNS topic ARN for alarm notifications
+   */
+  notificationTopicArn?: string
+
+  /**
+   * Email addresses to notify (creates SNS topic automatically)
+   */
+  notificationEmails?: string[]
+}
+
+/**
+ * SNS subscription configuration for SQS queues
+ */
+export interface QueueSnsSubscription {
+  /**
+   * SNS topic ARN to subscribe to
+   */
+  topicArn?: string
+
+  /**
+   * SNS topic name (references infrastructure or creates new)
+   */
+  topicName?: string
+
+  /**
+   * Filter policy for selective message delivery
+   * @example { eventType: ['order.created', 'order.updated'] }
+   */
+  filterPolicy?: Record<string, string[]>
+
+  /**
+   * Apply filter to message attributes (default) or body
+   * @default 'MessageAttributes'
+   */
+  filterPolicyScope?: 'MessageAttributes' | 'MessageBody'
+
+  /**
+   * Enable raw message delivery (no SNS envelope)
+   * @default false
+   */
+  rawMessageDelivery?: boolean
+}
+
+/**
+ * Queue (SQS) Configuration
+ * Defines message queue settings for async processing
+ *
+ * @example Standard queue with Lambda trigger
+ * queues: {
+ *   orders: {
+ *     visibilityTimeout: 60,
+ *     deadLetterQueue: true,
+ *     trigger: {
+ *       functionName: 'processOrders',
+ *       batchSize: 10,
+ *     },
+ *   }
+ * }
+ *
+ * @example FIFO queue with alarms
+ * queues: {
+ *   transactions: {
+ *     fifo: true,
+ *     contentBasedDeduplication: true,
+ *     alarms: {
+ *       enabled: true,
+ *       queueDepthThreshold: 500,
+ *       notificationEmails: ['ops@example.com'],
+ *     },
+ *   }
+ * }
+ *
+ * @example Queue subscribed to SNS topic
+ * queues: {
+ *   notifications: {
+ *     subscribe: {
+ *       topicArn: 'arn:aws:sns:us-east-1:123456789:events',
+ *       filterPolicy: { eventType: ['user.created'] },
+ *     },
+ *   }
+ * }
+ */
+export interface QueueItemConfig {
+  /**
+   * Enable FIFO (First-In-First-Out) queue
+   * FIFO queues guarantee message ordering and exactly-once processing
+   * @default false
+   */
+  fifo?: boolean
+
+  /**
+   * Time (in seconds) a message is invisible after being received
+   * Should be long enough for your consumer to process the message
+   * @default 30
+   */
+  visibilityTimeout?: number
+
+  /**
+   * Time (in seconds) messages are retained in the queue
+   * Valid range: 60 (1 minute) to 1209600 (14 days)
+   * @default 345600 (4 days)
+   */
+  messageRetentionPeriod?: number
+
+  /**
+   * Time (in seconds) to delay message delivery
+   * Useful for scheduling or rate limiting
+   * Valid range: 0 to 900 (15 minutes)
+   * @default 0
+   */
+  delaySeconds?: number
+
+  /**
+   * Maximum message size in bytes
+   * Valid range: 1024 (1 KB) to 262144 (256 KB)
+   * @default 262144 (256 KB)
+   */
+  maxMessageSize?: number
+
+  /**
+   * Time (in seconds) to wait for messages when polling
+   * Use 1-20 for long polling (recommended), 0 for short polling
+   * Long polling reduces costs and improves responsiveness
+   * @default 0
+   */
+  receiveMessageWaitTime?: number
+
+  /**
+   * Enable dead letter queue for failed messages
+   * Messages that fail processing will be moved to a DLQ
+   * @default false
+   */
+  deadLetterQueue?: boolean
+
+  /**
+   * Number of times a message can be received before going to DLQ
+   * Only used when deadLetterQueue is true
+   * @default 3
+   */
+  maxReceiveCount?: number
+
+  /**
+   * Enable content-based deduplication (FIFO queues only)
+   * Uses SHA-256 hash of message body as deduplication ID
+   * @default false
+   */
+  contentBasedDeduplication?: boolean
+
+  /**
+   * Enable server-side encryption
+   * @default true
+   */
+  encrypted?: boolean
+
+  /**
+   * Custom KMS key ID for encryption
+   * If not specified, uses AWS managed key
+   */
+  kmsKeyId?: string
+
+  /**
+   * Lambda function trigger configuration
+   * Automatically invokes a Lambda when messages arrive
+   *
+   * @example
+   * trigger: {
+   *   functionName: 'processOrders',
+   *   batchSize: 10,
+   *   batchWindow: 30,
+   * }
+   */
+  trigger?: QueueLambdaTrigger
+
+  /**
+   * CloudWatch alarms for queue monitoring
+   * Creates alarms for queue depth, message age, and DLQ
+   *
+   * @example
+   * alarms: {
+   *   enabled: true,
+   *   queueDepthThreshold: 500,
+   *   notificationEmails: ['ops@example.com'],
+   * }
+   */
+  alarms?: QueueAlarms
+
+  /**
+   * Subscribe this queue to an SNS topic
+   * Enables fan-out patterns where one message reaches multiple queues
+   *
+   * @example
+   * subscribe: {
+   *   topicArn: 'arn:aws:sns:us-east-1:123456789:events',
+   *   filterPolicy: { eventType: ['order.created'] },
+   * }
+   */
+  subscribe?: QueueSnsSubscription
+
+  /**
+   * Custom tags for the queue
+   * Useful for cost allocation and organization
+   */
+  tags?: Record<string, string>
+}
+
+/**
+ * Queue configuration presets for common use cases
+ * Use these to quickly configure queues with sensible defaults
+ *
+ * @example Basic usage
+ * import { QueuePresets } from '@ts-cloud/types'
+ *
+ * queues: {
+ *   jobs: QueuePresets.backgroundJobs,
+ *   orders: QueuePresets.fifo,
+ *   events: QueuePresets.highThroughput,
+ * }
+ *
+ * @example With Lambda trigger
+ * queues: {
+ *   orders: {
+ *     ...QueuePresets.backgroundJobs,
+ *     trigger: { functionName: 'processOrders' },
+ *   },
+ * }
+ *
+ * @example With monitoring
+ * queues: {
+ *   critical: {
+ *     ...QueuePresets.monitored,
+ *     alarms: {
+ *       ...QueuePresets.monitored.alarms,
+ *       notificationEmails: ['ops@example.com'],
+ *     },
+ *   },
+ * }
+ */
+export const QueuePresets = {
+  /**
+   * Background job queue with dead letter support
+   * Good for: async tasks, email sending, file processing
+   */
+  backgroundJobs: {
+    visibilityTimeout: 120,
+    messageRetentionPeriod: 604800, // 7 days
+    deadLetterQueue: true,
+    maxReceiveCount: 3,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * FIFO queue for ordered, exactly-once processing
+   * Good for: financial transactions, order processing
+   */
+  fifo: {
+    fifo: true,
+    contentBasedDeduplication: true,
+    visibilityTimeout: 30,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * High-throughput queue with long polling
+   * Good for: event streaming, real-time processing
+   */
+  highThroughput: {
+    visibilityTimeout: 30,
+    receiveMessageWaitTime: 20,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * Delayed queue for scheduled messages
+   * Good for: scheduled tasks, rate limiting
+   */
+  delayed: {
+    delaySeconds: 60,
+    visibilityTimeout: 60,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * Long-running task queue
+   * Good for: video processing, ML inference, batch jobs
+   */
+  longRunning: {
+    visibilityTimeout: 900, // 15 minutes
+    messageRetentionPeriod: 1209600, // 14 days
+    deadLetterQueue: true,
+    maxReceiveCount: 2,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * Production queue with full monitoring
+   * Good for: critical workloads requiring observability
+   */
+  monitored: {
+    visibilityTimeout: 60,
+    messageRetentionPeriod: 604800, // 7 days
+    deadLetterQueue: true,
+    maxReceiveCount: 3,
+    encrypted: true,
+    alarms: {
+      enabled: true,
+      queueDepthThreshold: 1000,
+      messageAgeThreshold: 3600,
+      dlqAlarm: true,
+    },
+  } satisfies QueueItemConfig,
+
+  /**
+   * Event-driven queue optimized for Lambda processing
+   * Good for: serverless event processing, webhooks
+   */
+  lambdaOptimized: {
+    visibilityTimeout: 360, // 6x default Lambda timeout
+    receiveMessageWaitTime: 20,
+    deadLetterQueue: true,
+    maxReceiveCount: 3,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+
+  /**
+   * Fan-out queue for SNS integration
+   * Good for: pub/sub patterns, multi-consumer scenarios
+   */
+  fanOut: {
+    visibilityTimeout: 30,
+    receiveMessageWaitTime: 20,
+    encrypted: true,
+  } satisfies QueueItemConfig,
+} as const
 
 export interface ApiConfig {
   enabled?: boolean

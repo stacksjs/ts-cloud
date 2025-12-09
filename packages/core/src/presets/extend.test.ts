@@ -267,7 +267,7 @@ describe('withQueue', () => {
       },
     }))
 
-    expect(result.infrastructure?.queue?.jobs).toBeDefined()
-    expect(result.infrastructure?.queue?.jobs?.fifo).toBe(false)
+    expect(result.infrastructure?.queues?.jobs).toBeDefined()
+    expect(result.infrastructure?.queues?.jobs?.fifo).toBe(false)
   })
 })
