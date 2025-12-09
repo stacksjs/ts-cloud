@@ -5,6 +5,7 @@
 
 export * from './client'
 export * from './cloudformation'
+export * from './ec2'
 export * from './s3'
 export * from './cloudfront'
 export * from './route53'
