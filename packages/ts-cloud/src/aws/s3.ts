@@ -266,7 +266,7 @@ export class S3Client {
   async putObject(options: {
     bucket: string
     key: string
-    body: string | Buffer
+    body: string | Buffer | Uint8Array
     acl?: string
     cacheControl?: string
     contentType?: string
@@ -292,16 +292,15 @@ export class S3Client {
       }
     }
 
-    // For binary data (Buffer), we need to convert to base64 and set proper content encoding
-    // or pass the raw binary. Since fetch supports Buffer directly, we can use it.
-    const bodyContent = typeof options.body === 'string'
-      ? options.body
-      : Buffer.isBuffer(options.body)
-        ? options.body.toString('base64')
-        : String(options.body)
+    // Normalize body to Buffer for binary data
+    // Uint8Array needs to be converted to Buffer for proper handling
+    const normalizedBody = options.body instanceof Uint8Array && !Buffer.isBuffer(options.body)
+      ? Buffer.from(options.body)
+      : options.body
 
-    // If we're sending base64-encoded binary, mark it in headers
-    if (Buffer.isBuffer(options.body)) {
+    // For binary data (Buffer/Uint8Array), use direct binary upload
+    if (Buffer.isBuffer(normalizedBody) || normalizedBody instanceof Uint8Array) {
+      const binaryBody = Buffer.isBuffer(normalizedBody) ? normalizedBody : Buffer.from(normalizedBody)
       // Actually, for S3 we need to send raw binary, not base64
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
@@ -312,7 +311,7 @@ export class S3Client {
       const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
       const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
 
-      const payloadHash = crypto.createHash('sha256').update(options.body).digest('hex')
+      const payloadHash = crypto.createHash('sha256').update(binaryBody).digest('hex')
 
       const requestHeaders: Record<string, string> = {
         'host': host,
@@ -370,7 +369,7 @@ export class S3Client {
           ...requestHeaders,
           'Authorization': authorizationHeader,
         },
-        body: options.body,
+        body: binaryBody,
       })
 
       if (!response.ok) {
