@@ -124,6 +124,22 @@ export interface InfrastructureConfig {
    */
   queues?: Record<string, QueueItemConfig & ResourceConditions>
 
+  /**
+   * Realtime (WebSocket) configuration
+   * Laravel Echo / Pusher-compatible broadcasting for Stacks.js
+   *
+   * @example
+   * realtime: {
+   *   enabled: true,
+   *   channels: { public: true, private: true, presence: true },
+   *   auth: { functionName: 'authorizeChannel' },
+   * }
+   *
+   * @example Using presets
+   * realtime: RealtimePresets.production
+   */
+  realtime?: RealtimeConfig
+
   dns?: DnsConfig
   security?: SecurityConfig
   monitoring?: MonitoringConfig
@@ -859,6 +875,1153 @@ export const QueuePresets = {
     receiveMessageWaitTime: 20,
     encrypted: true,
   } satisfies QueueItemConfig,
+} as const
+
+// ============================================================================
+// Realtime (WebSocket) Configuration
+// Laravel Echo / Pusher-compatible broadcasting for Stacks.js
+// Supports both serverless (API Gateway) and server (ts-broadcasting) modes
+// ============================================================================
+
+/**
+ * Realtime deployment mode
+ * - 'serverless': Uses API Gateway WebSocket + Lambda (auto-scales, pay-per-use)
+ * - 'server': Uses ts-broadcasting Bun WebSocket server on EC2/ECS (lowest latency)
+ */
+export type RealtimeMode = 'serverless' | 'server'
+
+/**
+ * Server mode configuration (ts-broadcasting)
+ * High-performance Bun WebSocket server for EC2/ECS deployments
+ */
+export interface RealtimeServerConfig {
+  /**
+   * Server host binding
+   * @default '0.0.0.0'
+   */
+  host?: string
+
+  /**
+   * Server port
+   * @default 6001
+   */
+  port?: number
+
+  /**
+   * WebSocket scheme
+   * @default 'wss' in production, 'ws' in development
+   */
+  scheme?: 'ws' | 'wss'
+
+  /**
+   * Driver to use
+   * @default 'bun'
+   */
+  driver?: 'bun' | 'reverb' | 'pusher' | 'ably'
+
+  /**
+   * Idle connection timeout in seconds
+   * @default 120
+   */
+  idleTimeout?: number
+
+  /**
+   * Maximum message payload size in bytes
+   * @default 16777216 (16 MB)
+   */
+  maxPayloadLength?: number
+
+  /**
+   * Backpressure limit in bytes
+   * @default 1048576 (1 MB)
+   */
+  backpressureLimit?: number
+
+  /**
+   * Close connection when backpressure limit is reached
+   * @default false
+   */
+  closeOnBackpressureLimit?: boolean
+
+  /**
+   * Send WebSocket ping frames
+   * @default true
+   */
+  sendPings?: boolean
+
+  /**
+   * Enable per-message deflate compression
+   * @default true
+   */
+  perMessageDeflate?: boolean
+
+  /**
+   * Redis configuration for horizontal scaling
+   * Enables multiple server instances to share state
+   */
+  redis?: RealtimeRedisConfig
+
+  /**
+   * Rate limiting configuration
+   */
+  rateLimit?: RealtimeRateLimitConfig
+
+  /**
+   * Message encryption configuration
+   */
+  encryption?: RealtimeEncryptionConfig
+
+  /**
+   * Webhook notifications configuration
+   */
+  webhooks?: RealtimeWebhooksConfig
+
+  /**
+   * Queue configuration for background jobs
+   */
+  queue?: RealtimeQueueConfig
+
+  /**
+   * Load management configuration
+   */
+  loadManagement?: RealtimeLoadConfig
+
+  /**
+   * Prometheus metrics endpoint
+   * @default false
+   */
+  metrics?: boolean | {
+    enabled: boolean
+    path?: string
+  }
+
+  /**
+   * Health check endpoint path
+   * @default '/health'
+   */
+  healthCheckPath?: string
+
+  /**
+   * Number of server instances to run
+   * Used when deploying to EC2/ECS
+   * @default 1
+   */
+  instances?: number
+
+  /**
+   * Auto-scaling configuration for EC2/ECS
+   */
+  autoScaling?: {
+    min?: number
+    max?: number
+    targetCPU?: number
+    targetConnections?: number
+  }
+}
+
+/**
+ * Redis configuration for ts-broadcasting horizontal scaling
+ */
+export interface RealtimeRedisConfig {
+  /**
+   * Enable Redis adapter
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Redis host
+   * @default 'localhost'
+   */
+  host?: string
+
+  /**
+   * Redis port
+   * @default 6379
+   */
+  port?: number
+
+  /**
+   * Redis password
+   */
+  password?: string
+
+  /**
+   * Redis database number
+   * @default 0
+   */
+  database?: number
+
+  /**
+   * Redis connection URL (overrides host/port)
+   * @example 'redis://user:pass@localhost:6379/0'
+   */
+  url?: string
+
+  /**
+   * Key prefix for Redis keys
+   * @default 'broadcasting:'
+   */
+  keyPrefix?: string
+
+  /**
+   * Use existing ElastiCache from cache config
+   * References infrastructure.cache
+   */
+  useElastiCache?: boolean
+}
+
+/**
+ * Rate limiting for WebSocket connections
+ */
+export interface RealtimeRateLimitConfig {
+  /**
+   * Enable rate limiting
+   * @default true
+   */
+  enabled?: boolean
+
+  /**
+   * Maximum messages per window
+   * @default 100
+   */
+  max?: number
+
+  /**
+   * Time window in milliseconds
+   * @default 60000 (1 minute)
+   */
+  window?: number
+
+  /**
+   * Apply rate limit per channel
+   * @default true
+   */
+  perChannel?: boolean
+
+  /**
+   * Apply rate limit per user
+   * @default true
+   */
+  perUser?: boolean
+}
+
+/**
+ * Message encryption configuration
+ */
+export interface RealtimeEncryptionConfig {
+  /**
+   * Enable message encryption
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Encryption algorithm
+   * @default 'aes-256-gcm'
+   */
+  algorithm?: 'aes-256-gcm' | 'aes-128-gcm'
+
+  /**
+   * Key rotation interval in milliseconds
+   * @default 86400000 (24 hours)
+   */
+  keyRotationInterval?: number
+}
+
+/**
+ * Webhook notifications for realtime events
+ */
+export interface RealtimeWebhooksConfig {
+  /**
+   * Enable webhooks
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Webhook endpoints for different events
+   */
+  endpoints?: {
+    /**
+     * Called when a client connects
+     */
+    connection?: string
+
+    /**
+     * Called when a client subscribes to a channel
+     */
+    subscribe?: string
+
+    /**
+     * Called when a client unsubscribes
+     */
+    unsubscribe?: string
+
+    /**
+     * Called when a client disconnects
+     */
+    disconnect?: string
+
+    /**
+     * Custom event webhooks
+     */
+    [event: string]: string | undefined
+  }
+}
+
+/**
+ * Queue configuration for background broadcasting
+ */
+export interface RealtimeQueueConfig {
+  /**
+   * Enable queue for broadcast operations
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Default queue name
+   * @default 'broadcasts'
+   */
+  defaultQueue?: string
+
+  /**
+   * Retry configuration
+   */
+  retry?: {
+    attempts?: number
+    backoff?: {
+      type: 'fixed' | 'exponential'
+      delay: number
+    }
+  }
+
+  /**
+   * Dead letter queue for failed broadcasts
+   */
+  deadLetter?: {
+    enabled?: boolean
+    maxRetries?: number
+  }
+}
+
+/**
+ * Load management for server mode
+ */
+export interface RealtimeLoadConfig {
+  /**
+   * Enable load management
+   * @default true
+   */
+  enabled?: boolean
+
+  /**
+   * Maximum concurrent connections
+   * @default 10000
+   */
+  maxConnections?: number
+
+  /**
+   * Maximum subscriptions per connection
+   * @default 100
+   */
+  maxSubscriptionsPerConnection?: number
+
+  /**
+   * CPU threshold to start shedding load (0-1)
+   * @default 0.8
+   */
+  shedLoadThreshold?: number
+}
+
+/**
+ * Channel authorization configuration
+ */
+export interface RealtimeChannelAuth {
+  /**
+   * Lambda function name for channel authorization
+   * Called when clients join private/presence channels
+   * @example 'authorizeChannel'
+   */
+  functionName?: string
+
+  /**
+   * Authorization endpoint URL (if using external auth)
+   * @example 'https://api.example.com/broadcasting/auth'
+   */
+  endpoint?: string
+
+  /**
+   * JWT secret for token validation
+   * Can reference Secrets Manager: '{{resolve:secretsmanager:my-secret}}'
+   */
+  jwtSecret?: string
+
+  /**
+   * Token expiration time in seconds
+   * @default 3600
+   */
+  tokenExpiration?: number
+}
+
+/**
+ * Presence channel configuration
+ */
+export interface RealtimePresenceConfig {
+  /**
+   * Enable presence channels (who's online)
+   * @default true
+   */
+  enabled?: boolean
+
+  /**
+   * Maximum members per presence channel
+   * @default 100
+   */
+  maxMembers?: number
+
+  /**
+   * How often to send presence heartbeats (seconds)
+   * @default 30
+   */
+  heartbeatInterval?: number
+
+  /**
+   * Time before considering a member offline (seconds)
+   * @default 60
+   */
+  inactivityTimeout?: number
+}
+
+/**
+ * Connection storage configuration
+ */
+export interface RealtimeStorageConfig {
+  /**
+   * Storage type for connection management
+   * - 'dynamodb': DynamoDB tables (recommended, auto-scales)
+   * - 'elasticache': Redis cluster (lowest latency)
+   * @default 'dynamodb'
+   */
+  type?: 'dynamodb' | 'elasticache'
+
+  /**
+   * DynamoDB table configuration
+   */
+  dynamodb?: {
+    /**
+     * Billing mode for DynamoDB
+     * @default 'PAY_PER_REQUEST'
+     */
+    billingMode?: 'PAY_PER_REQUEST' | 'PROVISIONED'
+
+    /**
+     * Read capacity units (only for PROVISIONED)
+     * @default 5
+     */
+    readCapacity?: number
+
+    /**
+     * Write capacity units (only for PROVISIONED)
+     * @default 5
+     */
+    writeCapacity?: number
+
+    /**
+     * Enable point-in-time recovery
+     * @default false
+     */
+    pointInTimeRecovery?: boolean
+
+    /**
+     * TTL for connection records (seconds)
+     * @default 86400 (24 hours)
+     */
+    connectionTTL?: number
+  }
+
+  /**
+   * ElastiCache configuration (if using Redis)
+   */
+  elasticache?: {
+    /**
+     * Node type for Redis cluster
+     * @default 'cache.t3.micro'
+     */
+    nodeType?: string
+
+    /**
+     * Number of cache nodes
+     * @default 1
+     */
+    numNodes?: number
+  }
+}
+
+/**
+ * WebSocket scaling configuration
+ */
+export interface RealtimeScalingConfig {
+  /**
+   * Maximum concurrent connections
+   * @default 10000
+   */
+  maxConnections?: number
+
+  /**
+   * Message throughput limit per second
+   * @default 1000
+   */
+  messagesPerSecond?: number
+
+  /**
+   * Lambda memory for WebSocket handlers (MB)
+   * @default 256
+   */
+  handlerMemory?: number
+
+  /**
+   * Lambda timeout for WebSocket handlers (seconds)
+   * @default 30
+   */
+  handlerTimeout?: number
+
+  /**
+   * Enable Lambda provisioned concurrency for low latency
+   */
+  provisionedConcurrency?: number
+}
+
+/**
+ * Realtime monitoring and alarms
+ */
+export interface RealtimeMonitoringConfig {
+  /**
+   * Enable CloudWatch alarms
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Alert when concurrent connections exceed threshold
+   * @default 8000
+   */
+  connectionThreshold?: number
+
+  /**
+   * Alert when message errors exceed threshold per minute
+   * @default 100
+   */
+  errorThreshold?: number
+
+  /**
+   * Alert when latency exceeds threshold (ms)
+   * @default 1000
+   */
+  latencyThreshold?: number
+
+  /**
+   * SNS topic ARN for alarm notifications
+   */
+  notificationTopicArn?: string
+
+  /**
+   * Email addresses for alarm notifications
+   */
+  notificationEmails?: string[]
+}
+
+/**
+ * Realtime event hooks
+ */
+export interface RealtimeHooksConfig {
+  /**
+   * Lambda function called on new connections
+   * Receives: { connectionId, requestContext }
+   */
+  onConnect?: string
+
+  /**
+   * Lambda function called on disconnections
+   * Receives: { connectionId, requestContext }
+   */
+  onDisconnect?: string
+
+  /**
+   * Lambda function called for incoming messages
+   * Receives: { connectionId, body, requestContext }
+   */
+  onMessage?: string
+
+  /**
+   * Lambda function called when clients subscribe to channels
+   * Receives: { connectionId, channel, auth }
+   */
+  onSubscribe?: string
+
+  /**
+   * Lambda function called when clients unsubscribe
+   * Receives: { connectionId, channel }
+   */
+  onUnsubscribe?: string
+}
+
+/**
+ * Realtime (WebSocket) Configuration
+ * Provides Laravel Echo / Pusher-compatible broadcasting
+ *
+ * @example Serverless mode (API Gateway WebSocket)
+ * realtime: {
+ *   enabled: true,
+ *   mode: 'serverless',
+ *   channels: { public: true, private: true, presence: true },
+ * }
+ *
+ * @example Server mode (ts-broadcasting on EC2/ECS)
+ * realtime: {
+ *   enabled: true,
+ *   mode: 'server',
+ *   server: {
+ *     port: 6001,
+ *     redis: { enabled: true, host: 'redis.example.com' },
+ *     rateLimit: { max: 100, window: 60000 },
+ *   },
+ * }
+ *
+ * @example Production server mode with clustering
+ * realtime: {
+ *   enabled: true,
+ *   mode: 'server',
+ *   server: {
+ *     port: 6001,
+ *     instances: 3,
+ *     redis: { enabled: true, useElastiCache: true },
+ *     autoScaling: { min: 2, max: 10, targetCPU: 70 },
+ *     metrics: true,
+ *   },
+ *   channels: { public: true, private: true, presence: true },
+ * }
+ *
+ * @example Integration with Stacks.js
+ * // In your Stacks app:
+ * import { Broadcast } from '@stacksjs/broadcast'
+ *
+ * // Broadcast to a channel
+ * Broadcast.channel('orders').emit('order.created', { id: 123 })
+ *
+ * // Client-side (similar to Laravel Echo)
+ * Echo.channel('orders').listen('order.created', (e) => {
+ *   console.log('New order:', e.id)
+ * })
+ *
+ * // Private channel
+ * Echo.private(`user.${userId}`).listen('notification', (e) => {
+ *   console.log('Private notification:', e)
+ * })
+ *
+ * // Presence channel
+ * Echo.join('chat-room')
+ *   .here((users) => console.log('Online:', users))
+ *   .joining((user) => console.log('Joined:', user))
+ *   .leaving((user) => console.log('Left:', user))
+ */
+export interface RealtimeConfig {
+  /**
+   * Enable realtime/WebSocket support
+   * @default false
+   */
+  enabled?: boolean
+
+  /**
+   * Deployment mode
+   * - 'serverless': API Gateway WebSocket + Lambda (auto-scales, pay-per-use)
+   * - 'server': ts-broadcasting Bun WebSocket on EC2/ECS (lowest latency)
+   * @default 'serverless'
+   */
+  mode?: RealtimeMode
+
+  /**
+   * Custom WebSocket API/server name
+   */
+  name?: string
+
+  /**
+   * Server mode configuration (ts-broadcasting)
+   * Only used when mode is 'server'
+   */
+  server?: RealtimeServerConfig
+
+  /**
+   * Channel configuration
+   */
+  channels?: {
+    /**
+     * Enable public channels (no auth required)
+     * @default true
+     */
+    public?: boolean
+
+    /**
+     * Enable private channels (requires auth)
+     * @default true
+     */
+    private?: boolean
+
+    /**
+     * Enable presence channels (track online users)
+     * @default false
+     */
+    presence?: boolean | RealtimePresenceConfig
+  }
+
+  /**
+   * Channel authorization configuration
+   */
+  auth?: RealtimeChannelAuth
+
+  /**
+   * Connection storage configuration
+   */
+  storage?: RealtimeStorageConfig
+
+  /**
+   * Scaling configuration
+   */
+  scaling?: RealtimeScalingConfig
+
+  /**
+   * Monitoring and alarms
+   */
+  monitoring?: RealtimeMonitoringConfig
+
+  /**
+   * Event hooks (Lambda functions)
+   */
+  hooks?: RealtimeHooksConfig
+
+  /**
+   * Custom domain for WebSocket endpoint
+   * @example 'ws.example.com'
+   */
+  customDomain?: string
+
+  /**
+   * ACM certificate ARN for custom domain
+   */
+  certificateArn?: string
+
+  /**
+   * Enable connection keep-alive pings
+   * @default true
+   */
+  keepAlive?: boolean
+
+  /**
+   * Keep-alive interval in seconds
+   * @default 30
+   */
+  keepAliveInterval?: number
+
+  /**
+   * Idle connection timeout in seconds
+   * @default 600 (10 minutes)
+   */
+  idleTimeout?: number
+
+  /**
+   * Maximum message size in bytes
+   * @default 32768 (32 KB)
+   */
+  maxMessageSize?: number
+
+  /**
+   * Enable message compression
+   * @default false
+   */
+  compression?: boolean
+
+  /**
+   * Custom tags for all realtime resources
+   */
+  tags?: Record<string, string>
+}
+
+/**
+ * Realtime configuration presets
+ *
+ * @example Serverless presets
+ * import { RealtimePresets } from '@ts-cloud/types'
+ * realtime: RealtimePresets.serverless.production
+ *
+ * @example Server presets (ts-broadcasting)
+ * realtime: RealtimePresets.server.production
+ */
+export const RealtimePresets = {
+  // ============================================
+  // SERVERLESS MODE PRESETS (API Gateway WebSocket)
+  // ============================================
+  serverless: {
+    /**
+     * Development preset - minimal resources
+     */
+    development: {
+      enabled: true,
+      mode: 'serverless',
+      channels: {
+        public: true,
+        private: true,
+        presence: true,
+      },
+      storage: {
+        type: 'dynamodb',
+        dynamodb: { billingMode: 'PAY_PER_REQUEST' },
+      },
+      scaling: {
+        maxConnections: 1000,
+        handlerMemory: 128,
+      },
+    } satisfies RealtimeConfig,
+
+    /**
+     * Production preset - scalable with monitoring
+     */
+    production: {
+      enabled: true,
+      mode: 'serverless',
+      channels: {
+        public: true,
+        private: true,
+        presence: {
+          enabled: true,
+          maxMembers: 100,
+          heartbeatInterval: 30,
+          inactivityTimeout: 60,
+        },
+      },
+      storage: {
+        type: 'dynamodb',
+        dynamodb: {
+          billingMode: 'PAY_PER_REQUEST',
+          pointInTimeRecovery: true,
+          connectionTTL: 86400,
+        },
+      },
+      scaling: {
+        maxConnections: 50000,
+        messagesPerSecond: 5000,
+        handlerMemory: 256,
+        handlerTimeout: 30,
+      },
+      monitoring: {
+        enabled: true,
+        connectionThreshold: 40000,
+        errorThreshold: 100,
+        latencyThreshold: 500,
+      },
+      keepAlive: true,
+      keepAliveInterval: 30,
+      idleTimeout: 600,
+    } satisfies RealtimeConfig,
+
+    /**
+     * Notifications only preset - no presence
+     */
+    notifications: {
+      enabled: true,
+      mode: 'serverless',
+      channels: {
+        public: false,
+        private: true,
+        presence: false,
+      },
+      storage: {
+        type: 'dynamodb',
+        dynamodb: { billingMode: 'PAY_PER_REQUEST' },
+      },
+      scaling: {
+        maxConnections: 50000,
+        messagesPerSecond: 2000,
+        handlerMemory: 128,
+      },
+      keepAlive: true,
+      keepAliveInterval: 60,
+      idleTimeout: 1800,
+    } satisfies RealtimeConfig,
+  },
+
+  // ============================================
+  // SERVER MODE PRESETS (ts-broadcasting / Bun)
+  // ============================================
+  server: {
+    /**
+     * Development preset - single server, no clustering
+     */
+    development: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: true,
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'ws',
+        driver: 'bun',
+        idleTimeout: 120,
+        perMessageDeflate: false, // Faster in dev
+        metrics: false,
+      },
+    } satisfies RealtimeConfig,
+
+    /**
+     * Production preset - clustered with Redis
+     */
+    production: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: true,
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'wss',
+        driver: 'bun',
+        idleTimeout: 120,
+        maxPayloadLength: 16 * 1024 * 1024, // 16 MB
+        backpressureLimit: 1024 * 1024, // 1 MB
+        sendPings: true,
+        perMessageDeflate: true,
+        instances: 2,
+        redis: {
+          enabled: true,
+          keyPrefix: 'broadcasting:',
+        },
+        rateLimit: {
+          enabled: true,
+          max: 100,
+          window: 60000,
+          perChannel: true,
+          perUser: true,
+        },
+        loadManagement: {
+          enabled: true,
+          maxConnections: 10000,
+          maxSubscriptionsPerConnection: 100,
+          shedLoadThreshold: 0.8,
+        },
+        metrics: true,
+        autoScaling: {
+          min: 2,
+          max: 10,
+          targetCPU: 70,
+        },
+      },
+      monitoring: {
+        enabled: true,
+        connectionThreshold: 8000,
+        errorThreshold: 100,
+      },
+    } satisfies RealtimeConfig,
+
+    /**
+     * High-performance preset - optimized for lowest latency
+     */
+    highPerformance: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: true,
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'wss',
+        driver: 'bun',
+        idleTimeout: 60,
+        maxPayloadLength: 8 * 1024 * 1024, // 8 MB
+        backpressureLimit: 2 * 1024 * 1024, // 2 MB
+        closeOnBackpressureLimit: true,
+        sendPings: true,
+        perMessageDeflate: true,
+        instances: 4,
+        redis: {
+          enabled: true,
+          useElastiCache: true,
+          keyPrefix: 'rt:',
+        },
+        rateLimit: {
+          enabled: true,
+          max: 200,
+          window: 60000,
+          perChannel: true,
+        },
+        loadManagement: {
+          enabled: true,
+          maxConnections: 25000,
+          maxSubscriptionsPerConnection: 50,
+          shedLoadThreshold: 0.7,
+        },
+        metrics: { enabled: true, path: '/metrics' },
+        autoScaling: {
+          min: 4,
+          max: 20,
+          targetCPU: 60,
+          targetConnections: 20000,
+        },
+      },
+      monitoring: {
+        enabled: true,
+        connectionThreshold: 80000,
+        errorThreshold: 50,
+        latencyThreshold: 50,
+      },
+    } satisfies RealtimeConfig,
+
+    /**
+     * Chat application preset - optimized for presence and typing indicators
+     */
+    chat: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: {
+          enabled: true,
+          maxMembers: 200,
+          heartbeatInterval: 20,
+          inactivityTimeout: 60,
+        },
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'wss',
+        driver: 'bun',
+        idleTimeout: 300, // 5 minutes for chat
+        maxPayloadLength: 1024 * 1024, // 1 MB (smaller for chat)
+        sendPings: true,
+        perMessageDeflate: true,
+        instances: 2,
+        redis: {
+          enabled: true,
+          keyPrefix: 'chat:',
+        },
+        rateLimit: {
+          enabled: true,
+          max: 60, // 1 message per second
+          window: 60000,
+          perChannel: true,
+        },
+        loadManagement: {
+          enabled: true,
+          maxConnections: 15000,
+          maxSubscriptionsPerConnection: 20,
+        },
+        metrics: true,
+      },
+      keepAlive: true,
+      keepAliveInterval: 25,
+      idleTimeout: 900,
+    } satisfies RealtimeConfig,
+
+    /**
+     * Gaming/real-time app preset - ultra-low latency
+     */
+    gaming: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: {
+          enabled: true,
+          maxMembers: 100,
+          heartbeatInterval: 10,
+          inactivityTimeout: 30,
+        },
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'wss',
+        driver: 'bun',
+        idleTimeout: 30,
+        maxPayloadLength: 64 * 1024, // 64 KB (small, fast messages)
+        backpressureLimit: 512 * 1024, // 512 KB
+        closeOnBackpressureLimit: true,
+        sendPings: true,
+        perMessageDeflate: false, // Disable for lowest latency
+        instances: 4,
+        redis: {
+          enabled: true,
+          useElastiCache: true,
+        },
+        rateLimit: {
+          enabled: true,
+          max: 120, // 2 messages per second
+          window: 60000,
+        },
+        loadManagement: {
+          enabled: true,
+          maxConnections: 5000,
+          maxSubscriptionsPerConnection: 10,
+          shedLoadThreshold: 0.6,
+        },
+        metrics: true,
+        autoScaling: {
+          min: 4,
+          max: 16,
+          targetCPU: 50,
+        },
+      },
+      keepAlive: true,
+      keepAliveInterval: 10,
+      idleTimeout: 60,
+    } satisfies RealtimeConfig,
+
+    /**
+     * Single server preset - no clustering, simple setup
+     */
+    single: {
+      enabled: true,
+      mode: 'server',
+      channels: {
+        public: true,
+        private: true,
+        presence: true,
+      },
+      server: {
+        host: '0.0.0.0',
+        port: 6001,
+        scheme: 'wss',
+        driver: 'bun',
+        idleTimeout: 120,
+        sendPings: true,
+        perMessageDeflate: true,
+        instances: 1,
+        rateLimit: {
+          enabled: true,
+          max: 100,
+          window: 60000,
+        },
+        loadManagement: {
+          enabled: true,
+          maxConnections: 10000,
+        },
+        metrics: true,
+      },
+    } satisfies RealtimeConfig,
+  },
+
 } as const
 
 export interface ApiConfig {
