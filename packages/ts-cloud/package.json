@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.0.0",
   "description": "A lightweight, performant infrastructure-as-code library and CLI for deploying both server-based (EC2) and serverless applications.",
-  "author": "Chris Breuer <chris@stacksjs.org>",
+  "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
   "homepage": "https://github.com/stacksjs/cloud#readme",
   "repository": {
@@ -29,6 +29,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./aws": {
+      "types": "./src/aws/index.ts",
+      "import": "./src/aws/index.ts"
+    },
+    "./dns": {
+      "types": "./src/dns/index.ts",
+      "import": "./src/dns/index.ts"
+    },
+    "./push": {
+      "types": "./src/push/index.ts",
+      "import": "./src/push/index.ts"
     },
     "./*": {
       "import": "./dist/*"
@@ -66,9 +78,10 @@
     "test": "bun test"
   },
   "dependencies": {
+    "@ts-cloud/aws-types": "workspace:*",
     "@ts-cloud/core": "workspace:*",
     "@ts-cloud/types": "workspace:*",
-    "@ts-cloud/aws-types": "workspace:*"
+    "fast-xml-parser": "^5.3.3"
   },
   "devDependencies": {
     "bunfig": "^0.15.6",
