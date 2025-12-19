@@ -1662,6 +1662,329 @@ export class BedrockClient {
     const result = await this.listFoundationModels({ byOutputModality: 'EMBEDDING' })
     return result.modelSummaries || []
   }
+
+  // -------------------------------------------------------------------------
+  // Batch Inference (Create/Get/Stop)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a batch inference job
+   */
+  async createModelInvocationJob(params: CreateModelInvocationJobCommandInput): Promise<CreateModelInvocationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: '/model-invocation-jobs',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get batch inference job details
+   */
+  async getModelInvocationJob(params: GetModelInvocationJobCommandInput): Promise<GetModelInvocationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/model-invocation-jobs/${encodeURIComponent(params.jobIdentifier)}`,
+    })
+  }
+
+  /**
+   * Stop a batch inference job
+   */
+  async stopModelInvocationJob(params: StopModelInvocationJobCommandInput): Promise<StopModelInvocationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: `/model-invocation-jobs/${encodeURIComponent(params.jobIdentifier)}/stop`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Provisioned Throughput
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create provisioned throughput for a model
+   */
+  async createProvisionedModelThroughput(params: CreateProvisionedModelThroughputCommandInput): Promise<CreateProvisionedModelThroughputCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: '/provisioned-model-throughput',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get provisioned throughput details
+   */
+  async getProvisionedModelThroughput(params: GetProvisionedModelThroughputCommandInput): Promise<GetProvisionedModelThroughputCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/provisioned-model-throughput/${encodeURIComponent(params.provisionedModelId)}`,
+    })
+  }
+
+  /**
+   * List provisioned throughputs
+   */
+  async listProvisionedModelThroughputs(params?: ListProvisionedModelThroughputsCommandInput): Promise<ListProvisionedModelThroughputsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
+    if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
+    if (params?.statusEquals) queryParams.statusEquals = params.statusEquals
+    if (params?.modelArnEquals) queryParams.modelArnEquals = params.modelArnEquals
+    if (params?.nameContains) queryParams.nameContains = params.nameContains
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+    if (params?.sortBy) queryParams.sortBy = params.sortBy
+    if (params?.sortOrder) queryParams.sortOrder = params.sortOrder
+
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: '/provisioned-model-throughput',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Update provisioned throughput
+   */
+  async updateProvisionedModelThroughput(params: UpdateProvisionedModelThroughputCommandInput): Promise<UpdateProvisionedModelThroughputCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'PATCH',
+      path: `/provisioned-model-throughput/${encodeURIComponent(params.provisionedModelId)}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        desiredProvisionedModelName: params.desiredProvisionedModelName,
+        desiredModelId: params.desiredModelId,
+      }),
+    })
+  }
+
+  /**
+   * Delete provisioned throughput
+   */
+  async deleteProvisionedModelThroughput(params: DeleteProvisionedModelThroughputCommandInput): Promise<DeleteProvisionedModelThroughputCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'DELETE',
+      path: `/provisioned-model-throughput/${encodeURIComponent(params.provisionedModelId)}`,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Model Evaluation
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a model evaluation job
+   */
+  async createEvaluationJob(params: CreateEvaluationJobCommandInput): Promise<CreateEvaluationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: '/evaluation-jobs',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get evaluation job details
+   */
+  async getEvaluationJob(params: GetEvaluationJobCommandInput): Promise<GetEvaluationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/evaluation-jobs/${encodeURIComponent(params.jobIdentifier)}`,
+    })
+  }
+
+  /**
+   * List evaluation jobs
+   */
+  async listEvaluationJobs(params?: ListEvaluationJobsCommandInput): Promise<ListEvaluationJobsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
+    if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
+    if (params?.statusEquals) queryParams.statusEquals = params.statusEquals
+    if (params?.nameContains) queryParams.nameContains = params.nameContains
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+    if (params?.sortBy) queryParams.sortBy = params.sortBy
+    if (params?.sortOrder) queryParams.sortOrder = params.sortOrder
+
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: '/evaluation-jobs',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Stop an evaluation job
+   */
+  async stopEvaluationJob(params: StopEvaluationJobCommandInput): Promise<StopEvaluationJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: `/evaluation-jobs/${encodeURIComponent(params.jobIdentifier)}/stop`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Inference Profiles
+  // -------------------------------------------------------------------------
+
+  /**
+   * Get inference profile details
+   */
+  async getInferenceProfile(params: GetInferenceProfileCommandInput): Promise<GetInferenceProfileCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/inference-profiles/${encodeURIComponent(params.inferenceProfileIdentifier)}`,
+    })
+  }
+
+  /**
+   * List inference profiles
+   */
+  async listInferenceProfiles(params?: ListInferenceProfilesCommandInput): Promise<ListInferenceProfilesCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+    if (params?.typeEquals) queryParams.typeEquals = params.typeEquals
+
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: '/inference-profiles',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Create an inference profile
+   */
+  async createInferenceProfile(params: CreateInferenceProfileCommandInput): Promise<CreateInferenceProfileCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: '/inference-profiles',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Delete an inference profile
+   */
+  async deleteInferenceProfile(params: DeleteInferenceProfileCommandInput): Promise<DeleteInferenceProfileCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'DELETE',
+      path: `/inference-profiles/${encodeURIComponent(params.inferenceProfileIdentifier)}`,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Model Copy
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a model copy job
+   */
+  async createModelCopyJob(params: CreateModelCopyJobCommandInput): Promise<CreateModelCopyJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'POST',
+      path: '/model-copy-jobs',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get model copy job details
+   */
+  async getModelCopyJob(params: GetModelCopyJobCommandInput): Promise<GetModelCopyJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: `/model-copy-jobs/${encodeURIComponent(params.jobArn)}`,
+    })
+  }
+
+  /**
+   * List model copy jobs
+   */
+  async listModelCopyJobs(params?: ListModelCopyJobsCommandInput): Promise<ListModelCopyJobsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
+    if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
+    if (params?.statusEquals) queryParams.statusEquals = params.statusEquals
+    if (params?.sourceAccountEquals) queryParams.sourceAccountEquals = params.sourceAccountEquals
+    if (params?.sourceModelArnEquals) queryParams.sourceModelArnEquals = params.sourceModelArnEquals
+    if (params?.targetModelNameContains) queryParams.targetModelNameContains = params.targetModelNameContains
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+    if (params?.sortBy) queryParams.sortBy = params.sortBy
+    if (params?.sortOrder) queryParams.sortOrder = params.sortOrder
+
+    return this.client.request({
+      service: 'bedrock',
+      region: this.region,
+      method: 'GET',
+      path: '/model-copy-jobs',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
 }
 
 // ============================================================================
@@ -2020,6 +2343,1665 @@ export class BedrockAgentClient {
       path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}`,
     })
   }
+
+  // -------------------------------------------------------------------------
+  // Data Sources
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a data source for a knowledge base
+   */
+  async createDataSource(params: CreateDataSourceCommandInput): Promise<CreateDataSourceCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'PUT',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get data source details
+   */
+  async getDataSource(params: GetDataSourceCommandInput): Promise<GetDataSourceCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}`,
+    })
+  }
+
+  /**
+   * List data sources for a knowledge base
+   */
+  async listDataSources(params: ListDataSourcesCommandInput): Promise<ListDataSourcesCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params.nextToken) queryParams.nextToken = params.nextToken
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Update a data source
+   */
+  async updateDataSource(params: UpdateDataSourceCommandInput): Promise<UpdateDataSourceCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'PUT',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Delete a data source
+   */
+  async deleteDataSource(params: DeleteDataSourceCommandInput): Promise<DeleteDataSourceCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'DELETE',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}`,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Ingestion Jobs
+  // -------------------------------------------------------------------------
+
+  /**
+   * Start an ingestion job to sync data source with knowledge base
+   */
+  async startIngestionJob(params: StartIngestionJobCommandInput): Promise<StartIngestionJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'PUT',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}/ingestionjobs/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        clientToken: params.clientToken,
+        description: params.description,
+      }),
+    })
+  }
+
+  /**
+   * Get ingestion job details
+   */
+  async getIngestionJob(params: GetIngestionJobCommandInput): Promise<GetIngestionJobCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}/ingestionjobs/${encodeURIComponent(params.ingestionJobId)}`,
+    })
+  }
+
+  /**
+   * List ingestion jobs
+   */
+  async listIngestionJobs(params: ListIngestionJobsCommandInput): Promise<ListIngestionJobsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params.nextToken) queryParams.nextToken = params.nextToken
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/datasources/${encodeURIComponent(params.dataSourceId)}/ingestionjobs/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filters: params.filters,
+        sortBy: params.sortBy,
+        maxResults: params.maxResults,
+        nextToken: params.nextToken,
+      }),
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Prompts
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a prompt
+   */
+  async createPrompt(params: CreatePromptCommandInput): Promise<CreatePromptCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: '/prompts/',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get prompt details
+   */
+  async getPrompt(params: GetPromptCommandInput): Promise<GetPromptCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params.promptVersion) queryParams.promptVersion = params.promptVersion
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: `/prompts/${encodeURIComponent(params.promptIdentifier)}/`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * List prompts
+   */
+  async listPrompts(params?: ListPromptsCommandInput): Promise<ListPromptsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.promptIdentifier) queryParams.promptIdentifier = params.promptIdentifier
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: '/prompts/',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Delete a prompt
+   */
+  async deletePrompt(params: DeletePromptCommandInput): Promise<DeletePromptCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params.promptVersion) queryParams.promptVersion = params.promptVersion
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'DELETE',
+      path: `/prompts/${encodeURIComponent(params.promptIdentifier)}/`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Create a new version of a prompt
+   */
+  async createPromptVersion(params: CreatePromptVersionCommandInput): Promise<CreatePromptVersionCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: `/prompts/${encodeURIComponent(params.promptIdentifier)}/versions/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        description: params.description,
+        clientToken: params.clientToken,
+        tags: params.tags,
+      }),
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Flows
+  // -------------------------------------------------------------------------
+
+  /**
+   * Create a flow
+   */
+  async createFlow(params: CreateFlowCommandInput): Promise<CreateFlowCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: '/flows/',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Get flow details
+   */
+  async getFlow(params: GetFlowCommandInput): Promise<GetFlowCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/`,
+    })
+  }
+
+  /**
+   * List flows
+   */
+  async listFlows(params?: ListFlowsCommandInput): Promise<ListFlowsCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
+    if (params?.nextToken) queryParams.nextToken = params.nextToken
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'GET',
+      path: '/flows/',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Update a flow
+   */
+  async updateFlow(params: UpdateFlowCommandInput): Promise<UpdateFlowCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'PUT',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+
+  /**
+   * Delete a flow
+   */
+  async deleteFlow(params: DeleteFlowCommandInput): Promise<DeleteFlowCommandOutput> {
+    const queryParams: Record<string, string> = {}
+    if (params.skipResourceInUseCheck !== undefined) {
+      queryParams.skipResourceInUseCheck = params.skipResourceInUseCheck.toString()
+    }
+
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'DELETE',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * Prepare a flow for execution
+   */
+  async prepareFlow(params: PrepareFlowCommandInput): Promise<PrepareFlowCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
+  /**
+   * Create a new version of a flow
+   */
+  async createFlowVersion(params: CreateFlowVersionCommandInput): Promise<CreateFlowVersionCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/versions/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        description: params.description,
+        clientToken: params.clientToken,
+      }),
+    })
+  }
+
+  /**
+   * Create a flow alias
+   */
+  async createFlowAlias(params: CreateFlowAliasCommandInput): Promise<CreateFlowAliasCommandOutput> {
+    return this.client.request({
+      service: 'bedrock-agent',
+      region: this.region,
+      method: 'POST',
+      path: `/flows/${encodeURIComponent(params.flowIdentifier)}/aliases/`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    })
+  }
+}
+
+// ============================================================================
+// Batch Inference Types
+// ============================================================================
+
+export interface CreateModelInvocationJobCommandInput {
+  jobName: string
+  modelId: string
+  roleArn: string
+  inputDataConfig: {
+    s3InputDataConfig: {
+      s3Uri: string
+      s3InputFormat?: 'JSONL'
+    }
+  }
+  outputDataConfig: {
+    s3OutputDataConfig: {
+      s3Uri: string
+      s3EncryptionKeyId?: string
+    }
+  }
+  clientRequestToken?: string
+  timeoutDurationInHours?: number
+  tags?: Array<{ key: string; value: string }>
+  vpcConfig?: {
+    subnetIds: string[]
+    securityGroupIds: string[]
+  }
+}
+
+export interface CreateModelInvocationJobCommandOutput {
+  jobArn: string
+}
+
+export interface GetModelInvocationJobCommandInput {
+  jobIdentifier: string
+}
+
+export interface GetModelInvocationJobCommandOutput {
+  jobArn: string
+  jobName: string
+  modelId: string
+  clientRequestToken?: string
+  roleArn: string
+  status: 'Submitted' | 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped' | 'PartiallyCompleted' | 'Expired' | 'Validating' | 'Scheduled'
+  message?: string
+  submitTime: string
+  lastModifiedTime?: string
+  endTime?: string
+  inputDataConfig: {
+    s3InputDataConfig: {
+      s3Uri: string
+      s3InputFormat?: string
+    }
+  }
+  outputDataConfig: {
+    s3OutputDataConfig: {
+      s3Uri: string
+      s3EncryptionKeyId?: string
+    }
+  }
+  vpcConfig?: {
+    subnetIds: string[]
+    securityGroupIds: string[]
+  }
+  timeoutDurationInHours?: number
+  jobExpirationTime?: string
+}
+
+export interface StopModelInvocationJobCommandInput {
+  jobIdentifier: string
+}
+
+export interface StopModelInvocationJobCommandOutput {
+  // Empty response
+}
+
+// ============================================================================
+// Provisioned Throughput Types
+// ============================================================================
+
+export interface CreateProvisionedModelThroughputCommandInput {
+  modelUnits: number
+  provisionedModelName: string
+  modelId: string
+  clientRequestToken?: string
+  commitmentDuration?: 'ONE_MONTH' | 'SIX_MONTHS'
+  tags?: Array<{ key: string; value: string }>
+}
+
+export interface CreateProvisionedModelThroughputCommandOutput {
+  provisionedModelArn: string
+}
+
+export interface GetProvisionedModelThroughputCommandInput {
+  provisionedModelId: string
+}
+
+export interface GetProvisionedModelThroughputCommandOutput {
+  modelUnits: number
+  desiredModelUnits: number
+  provisionedModelName: string
+  provisionedModelArn: string
+  modelArn: string
+  desiredModelArn: string
+  foundationModelArn: string
+  status: 'Creating' | 'InService' | 'Updating' | 'Failed'
+  creationTime: string
+  lastModifiedTime: string
+  failureMessage?: string
+  commitmentDuration?: 'ONE_MONTH' | 'SIX_MONTHS'
+  commitmentExpirationTime?: string
+}
+
+export interface ListProvisionedModelThroughputsCommandInput {
+  creationTimeAfter?: string
+  creationTimeBefore?: string
+  statusEquals?: 'Creating' | 'InService' | 'Updating' | 'Failed'
+  modelArnEquals?: string
+  nameContains?: string
+  maxResults?: number
+  nextToken?: string
+  sortBy?: 'CreationTime'
+  sortOrder?: 'Ascending' | 'Descending'
+}
+
+export interface ListProvisionedModelThroughputsCommandOutput {
+  nextToken?: string
+  provisionedModelSummaries?: Array<{
+    provisionedModelName: string
+    provisionedModelArn: string
+    modelArn: string
+    desiredModelArn: string
+    foundationModelArn: string
+    modelUnits: number
+    desiredModelUnits: number
+    status: 'Creating' | 'InService' | 'Updating' | 'Failed'
+    commitmentDuration?: 'ONE_MONTH' | 'SIX_MONTHS'
+    commitmentExpirationTime?: string
+    creationTime: string
+    lastModifiedTime: string
+  }>
+}
+
+export interface UpdateProvisionedModelThroughputCommandInput {
+  provisionedModelId: string
+  desiredProvisionedModelName?: string
+  desiredModelId?: string
+}
+
+export interface UpdateProvisionedModelThroughputCommandOutput {
+  // Empty response
+}
+
+export interface DeleteProvisionedModelThroughputCommandInput {
+  provisionedModelId: string
+}
+
+export interface DeleteProvisionedModelThroughputCommandOutput {
+  // Empty response
+}
+
+// ============================================================================
+// Model Evaluation Types
+// ============================================================================
+
+export interface CreateEvaluationJobCommandInput {
+  jobName: string
+  jobDescription?: string
+  clientRequestToken?: string
+  roleArn: string
+  customerEncryptionKeyId?: string
+  jobTags?: Array<{ key: string; value: string }>
+  evaluationConfig: {
+    automated?: {
+      datasetMetricConfigs: Array<{
+        taskType: 'Summarization' | 'Classification' | 'QuestionAndAnswer' | 'Generation' | 'Custom'
+        dataset: {
+          name: string
+          datasetLocation?: {
+            s3Uri: string
+          }
+        }
+        metricNames: string[]
+      }>
+    }
+    human?: {
+      humanWorkflowConfig: {
+        flowDefinitionArn: string
+        instructions?: string
+      }
+      customMetrics?: Array<{
+        name: string
+        description?: string
+        ratingMethod: 'ThumbsUpDown' | 'IndividualLikertScale' | 'ComparisonLikertScale' | 'ComparisonChoice' | 'ComparisonRank' | 'FreeformFeedback'
+      }>
+      datasetMetricConfigs: Array<{
+        taskType: 'Summarization' | 'Classification' | 'QuestionAndAnswer' | 'Generation' | 'Custom'
+        dataset: {
+          name: string
+          datasetLocation?: {
+            s3Uri: string
+          }
+        }
+        metricNames: string[]
+      }>
+    }
+  }
+  inferenceConfig: {
+    models: Array<{
+      bedrockModel?: {
+        modelIdentifier: string
+        inferenceParams: string
+      }
+    }>
+  }
+  outputDataConfig: {
+    s3Uri: string
+  }
+}
+
+export interface CreateEvaluationJobCommandOutput {
+  jobArn: string
+}
+
+export interface GetEvaluationJobCommandInput {
+  jobIdentifier: string
+}
+
+export interface GetEvaluationJobCommandOutput {
+  jobName: string
+  status: 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped'
+  jobArn: string
+  jobDescription?: string
+  roleArn: string
+  customerEncryptionKeyId?: string
+  jobType: 'Human' | 'Automated'
+  evaluationConfig: {
+    automated?: {
+      datasetMetricConfigs: Array<{
+        taskType: string
+        dataset: {
+          name: string
+          datasetLocation?: {
+            s3Uri: string
+          }
+        }
+        metricNames: string[]
+      }>
+    }
+    human?: {
+      humanWorkflowConfig: {
+        flowDefinitionArn: string
+        instructions?: string
+      }
+      customMetrics?: Array<{
+        name: string
+        description?: string
+        ratingMethod: string
+      }>
+      datasetMetricConfigs: Array<{
+        taskType: string
+        dataset: {
+          name: string
+          datasetLocation?: {
+            s3Uri: string
+          }
+        }
+        metricNames: string[]
+      }>
+    }
+  }
+  inferenceConfig: {
+    models: Array<{
+      bedrockModel?: {
+        modelIdentifier: string
+        inferenceParams: string
+      }
+    }>
+  }
+  outputDataConfig: {
+    s3Uri: string
+  }
+  creationTime: string
+  lastModifiedTime?: string
+  failureMessages?: string[]
+}
+
+export interface ListEvaluationJobsCommandInput {
+  creationTimeAfter?: string
+  creationTimeBefore?: string
+  statusEquals?: 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped'
+  nameContains?: string
+  maxResults?: number
+  nextToken?: string
+  sortBy?: 'CreationTime'
+  sortOrder?: 'Ascending' | 'Descending'
+}
+
+export interface ListEvaluationJobsCommandOutput {
+  nextToken?: string
+  jobSummaries?: Array<{
+    jobArn: string
+    jobName: string
+    status: 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped'
+    creationTime: string
+    jobType: 'Human' | 'Automated'
+    evaluationTaskTypes: string[]
+    modelIdentifiers: string[]
+  }>
+}
+
+export interface StopEvaluationJobCommandInput {
+  jobIdentifier: string
+}
+
+export interface StopEvaluationJobCommandOutput {
+  // Empty response
+}
+
+// ============================================================================
+// Inference Profiles Types
+// ============================================================================
+
+export interface GetInferenceProfileCommandInput {
+  inferenceProfileIdentifier: string
+}
+
+export interface GetInferenceProfileCommandOutput {
+  inferenceProfileName: string
+  inferenceProfileArn: string
+  inferenceProfileId: string
+  description?: string
+  createdAt?: string
+  updatedAt?: string
+  models: Array<{
+    modelArn: string
+  }>
+  status: 'ACTIVE'
+  type: 'SYSTEM_DEFINED' | 'APPLICATION'
+}
+
+export interface ListInferenceProfilesCommandInput {
+  maxResults?: number
+  nextToken?: string
+  typeEquals?: 'SYSTEM_DEFINED' | 'APPLICATION'
+}
+
+export interface ListInferenceProfilesCommandOutput {
+  inferenceProfileSummaries?: Array<{
+    inferenceProfileName: string
+    inferenceProfileArn: string
+    inferenceProfileId: string
+    description?: string
+    createdAt?: string
+    updatedAt?: string
+    models: Array<{
+      modelArn: string
+    }>
+    status: 'ACTIVE'
+    type: 'SYSTEM_DEFINED' | 'APPLICATION'
+  }>
+  nextToken?: string
+}
+
+export interface CreateInferenceProfileCommandInput {
+  inferenceProfileName: string
+  description?: string
+  clientRequestToken?: string
+  modelSource: {
+    copyFrom: string
+  }
+  tags?: Array<{ key: string; value: string }>
+}
+
+export interface CreateInferenceProfileCommandOutput {
+  inferenceProfileArn: string
+  status?: 'ACTIVE'
+}
+
+export interface DeleteInferenceProfileCommandInput {
+  inferenceProfileIdentifier: string
+}
+
+export interface DeleteInferenceProfileCommandOutput {
+  // Empty response
+}
+
+// ============================================================================
+// Prompt Management Types
+// ============================================================================
+
+export interface CreatePromptCommandInput {
+  name: string
+  description?: string
+  customerEncryptionKeyArn?: string
+  defaultVariant?: string
+  variants?: Array<{
+    name: string
+    modelId?: string
+    templateType: 'TEXT'
+    templateConfiguration: {
+      text: {
+        text: string
+        inputVariables?: Array<{
+          name: string
+        }>
+      }
+    }
+    inferenceConfiguration?: {
+      text?: {
+        temperature?: number
+        topP?: number
+        maxTokens?: number
+        stopSequences?: string[]
+      }
+    }
+  }>
+  clientToken?: string
+  tags?: Record<string, string>
+}
+
+export interface CreatePromptCommandOutput {
+  name: string
+  description?: string
+  customerEncryptionKeyArn?: string
+  defaultVariant?: string
+  variants?: Array<{
+    name: string
+    modelId?: string
+    templateType: string
+    templateConfiguration: {
+      text?: {
+        text: string
+        inputVariables?: Array<{
+          name: string
+        }>
+      }
+    }
+    inferenceConfiguration?: {
+      text?: {
+        temperature?: number
+        topP?: number
+        maxTokens?: number
+        stopSequences?: string[]
+      }
+    }
+  }>
+  id: string
+  arn: string
+  version: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GetPromptCommandInput {
+  promptIdentifier: string
+  promptVersion?: string
+}
+
+export interface GetPromptCommandOutput {
+  name: string
+  description?: string
+  customerEncryptionKeyArn?: string
+  defaultVariant?: string
+  variants?: Array<{
+    name: string
+    modelId?: string
+    templateType: string
+    templateConfiguration: {
+      text?: {
+        text: string
+        inputVariables?: Array<{
+          name: string
+        }>
+      }
+    }
+    inferenceConfiguration?: {
+      text?: {
+        temperature?: number
+        topP?: number
+        maxTokens?: number
+        stopSequences?: string[]
+      }
+    }
+  }>
+  id: string
+  arn: string
+  version: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ListPromptsCommandInput {
+  promptIdentifier?: string
+  maxResults?: number
+  nextToken?: string
+}
+
+export interface ListPromptsCommandOutput {
+  promptSummaries: Array<{
+    name: string
+    description?: string
+    id: string
+    arn: string
+    version: string
+    createdAt: string
+    updatedAt: string
+  }>
+  nextToken?: string
+}
+
+export interface DeletePromptCommandInput {
+  promptIdentifier: string
+  promptVersion?: string
+}
+
+export interface DeletePromptCommandOutput {
+  id: string
+  version?: string
+}
+
+export interface CreatePromptVersionCommandInput {
+  promptIdentifier: string
+  description?: string
+  clientToken?: string
+  tags?: Record<string, string>
+}
+
+export interface CreatePromptVersionCommandOutput {
+  name: string
+  description?: string
+  customerEncryptionKeyArn?: string
+  defaultVariant?: string
+  variants?: Array<{
+    name: string
+    modelId?: string
+    templateType: string
+    templateConfiguration: {
+      text?: {
+        text: string
+        inputVariables?: Array<{
+          name: string
+        }>
+      }
+    }
+    inferenceConfiguration?: {
+      text?: {
+        temperature?: number
+        topP?: number
+        maxTokens?: number
+        stopSequences?: string[]
+      }
+    }
+  }>
+  id: string
+  arn: string
+  version: string
+  createdAt: string
+  updatedAt: string
+}
+
+// ============================================================================
+// Flows Types
+// ============================================================================
+
+export interface FlowNodeConfiguration {
+  input?: Record<string, never>
+  output?: Record<string, never>
+  knowledgeBase?: {
+    knowledgeBaseId: string
+    modelId?: string
+  }
+  condition?: {
+    conditions: Array<{
+      name: string
+      expression: string
+    }>
+  }
+  lex?: {
+    botAliasArn: string
+    localeId: string
+  }
+  prompt?: {
+    sourceConfiguration: {
+      resource?: {
+        promptArn: string
+      }
+      inline?: {
+        modelId: string
+        templateType: 'TEXT'
+        templateConfiguration: {
+          text: {
+            text: string
+            inputVariables?: Array<{ name: string }>
+          }
+        }
+        inferenceConfiguration?: {
+          text?: {
+            temperature?: number
+            topP?: number
+            maxTokens?: number
+            stopSequences?: string[]
+          }
+        }
+      }
+    }
+  }
+  lambdaFunction?: {
+    lambdaArn: string
+  }
+  agent?: {
+    agentAliasArn: string
+  }
+  storage?: {
+    serviceConfiguration: {
+      s3?: {
+        bucketName: string
+      }
+    }
+  }
+  retrieval?: {
+    serviceConfiguration: {
+      s3?: {
+        bucketName: string
+      }
+    }
+  }
+  iterator?: Record<string, never>
+  collector?: Record<string, never>
+}
+
+export interface FlowNode {
+  name: string
+  type: 'Input' | 'Output' | 'KnowledgeBase' | 'Condition' | 'Lex' | 'Prompt' | 'LambdaFunction' | 'Agent' | 'Storage' | 'Retrieval' | 'Iterator' | 'Collector'
+  configuration?: FlowNodeConfiguration
+  inputs?: Array<{
+    name: string
+    type: 'String' | 'Number' | 'Boolean' | 'Object' | 'Array'
+    expression: string
+  }>
+  outputs?: Array<{
+    name: string
+    type: 'String' | 'Number' | 'Boolean' | 'Object' | 'Array'
+  }>
+}
+
+export interface FlowConnection {
+  name: string
+  source: string
+  target: string
+  type: 'Data' | 'Conditional'
+  configuration?: {
+    data?: {
+      sourceOutput: string
+      targetInput: string
+    }
+    conditional?: {
+      condition: string
+    }
+  }
+}
+
+export interface CreateFlowCommandInput {
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+  clientToken?: string
+  tags?: Record<string, string>
+}
+
+export interface CreateFlowCommandOutput {
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  id: string
+  arn: string
+  status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+  createdAt: string
+  updatedAt: string
+  version: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+}
+
+export interface GetFlowCommandInput {
+  flowIdentifier: string
+}
+
+export interface GetFlowCommandOutput {
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  id: string
+  arn: string
+  status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+  createdAt: string
+  updatedAt: string
+  version: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+  validations?: Array<{
+    message: string
+    severity: 'Warning' | 'Error'
+  }>
+}
+
+export interface ListFlowsCommandInput {
+  maxResults?: number
+  nextToken?: string
+}
+
+export interface ListFlowsCommandOutput {
+  flowSummaries: Array<{
+    name: string
+    description?: string
+    id: string
+    arn: string
+    status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+    createdAt: string
+    updatedAt: string
+    version: string
+  }>
+  nextToken?: string
+}
+
+export interface UpdateFlowCommandInput {
+  flowIdentifier: string
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+}
+
+export interface UpdateFlowCommandOutput {
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  id: string
+  arn: string
+  status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+  createdAt: string
+  updatedAt: string
+  version: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+}
+
+export interface DeleteFlowCommandInput {
+  flowIdentifier: string
+  skipResourceInUseCheck?: boolean
+}
+
+export interface DeleteFlowCommandOutput {
+  id: string
+}
+
+export interface PrepareFlowCommandInput {
+  flowIdentifier: string
+}
+
+export interface PrepareFlowCommandOutput {
+  id: string
+  status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+}
+
+export interface CreateFlowVersionCommandInput {
+  flowIdentifier: string
+  description?: string
+  clientToken?: string
+}
+
+export interface CreateFlowVersionCommandOutput {
+  name: string
+  description?: string
+  executionRoleArn: string
+  customerEncryptionKeyArn?: string
+  id: string
+  arn: string
+  status: 'NotPrepared' | 'Preparing' | 'Prepared' | 'Failed'
+  createdAt: string
+  version: string
+  definition?: {
+    nodes?: FlowNode[]
+    connections?: FlowConnection[]
+  }
+}
+
+export interface CreateFlowAliasCommandInput {
+  flowIdentifier: string
+  name: string
+  description?: string
+  routingConfiguration: Array<{
+    flowVersion: string
+  }>
+  clientToken?: string
+  tags?: Record<string, string>
+}
+
+export interface CreateFlowAliasCommandOutput {
+  name: string
+  description?: string
+  routingConfiguration: Array<{
+    flowVersion: string
+  }>
+  flowId: string
+  id: string
+  arn: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InvokeFlowCommandInput {
+  flowIdentifier: string
+  flowAliasIdentifier: string
+  inputs: Array<{
+    nodeName: string
+    nodeOutputName: string
+    content: {
+      document?: unknown
+    }
+  }>
+}
+
+export interface InvokeFlowCommandOutput {
+  responseStream: AsyncIterable<{
+    flowOutputEvent?: {
+      nodeName: string
+      nodeType: string
+      content: {
+        document?: unknown
+      }
+    }
+    flowCompletionEvent?: {
+      completionReason: 'SUCCESS'
+    }
+  }>
+}
+
+// ============================================================================
+// Data Sources Types
+// ============================================================================
+
+export interface S3DataSourceConfiguration {
+  bucketArn: string
+  inclusionPrefixes?: string[]
+  bucketOwnerAccountId?: string
+}
+
+export interface ConfluenceDataSourceConfiguration {
+  sourceConfiguration: {
+    hostUrl: string
+    hostType: 'SAAS'
+    authType: 'BASIC' | 'OAUTH2_CLIENT_CREDENTIALS'
+    credentialsSecretArn: string
+  }
+  crawlerConfiguration?: {
+    filterConfiguration?: {
+      type: 'PATTERN'
+      patternObjectFilter?: {
+        filters: Array<{
+          objectType: 'Attachment' | 'Blog' | 'Comment' | 'Page' | 'Space'
+          inclusionFilters?: string[]
+          exclusionFilters?: string[]
+        }>
+      }
+    }
+  }
+}
+
+export interface SalesforceDataSourceConfiguration {
+  sourceConfiguration: {
+    hostUrl: string
+    authType: 'OAUTH2_CLIENT_CREDENTIALS'
+    credentialsSecretArn: string
+  }
+  crawlerConfiguration?: {
+    filterConfiguration?: {
+      type: 'PATTERN'
+      patternObjectFilter?: {
+        filters: Array<{
+          objectType: 'Account' | 'Case' | 'Campaign' | 'Contact' | 'Contract' | 'Document' | 'Lead' | 'Opportunity' | 'Partner' | 'PricebookEntry' | 'Product2' | 'Solution' | 'Task'
+          inclusionFilters?: string[]
+          exclusionFilters?: string[]
+        }>
+      }
+    }
+  }
+}
+
+export interface SharePointDataSourceConfiguration {
+  sourceConfiguration: {
+    siteUrls: string[]
+    hostType: 'ONLINE'
+    authType: 'OAUTH2_CLIENT_CREDENTIALS'
+    credentialsSecretArn: string
+    tenantId?: string
+    domain: string
+  }
+  crawlerConfiguration?: {
+    filterConfiguration?: {
+      type: 'PATTERN'
+      patternObjectFilter?: {
+        filters: Array<{
+          objectType: 'Page' | 'File' | 'Event' | 'Attachment'
+          inclusionFilters?: string[]
+          exclusionFilters?: string[]
+        }>
+      }
+    }
+  }
+}
+
+export interface WebDataSourceConfiguration {
+  sourceConfiguration: {
+    urlConfiguration: {
+      seedUrls: Array<{ url: string }>
+    }
+  }
+  crawlerConfiguration?: {
+    crawlerLimits?: {
+      rateLimit?: number
+    }
+    inclusionFilters?: string[]
+    exclusionFilters?: string[]
+    scope?: 'HOST_ONLY' | 'SUBDOMAINS'
+  }
+}
+
+export interface CreateDataSourceCommandInput {
+  knowledgeBaseId: string
+  clientToken?: string
+  name: string
+  description?: string
+  dataSourceConfiguration: {
+    type: 'S3' | 'CONFLUENCE' | 'SALESFORCE' | 'SHAREPOINT' | 'WEB'
+    s3Configuration?: S3DataSourceConfiguration
+    confluenceConfiguration?: ConfluenceDataSourceConfiguration
+    salesforceConfiguration?: SalesforceDataSourceConfiguration
+    sharePointConfiguration?: SharePointDataSourceConfiguration
+    webConfiguration?: WebDataSourceConfiguration
+  }
+  dataDeletionPolicy?: 'RETAIN' | 'DELETE'
+  serverSideEncryptionConfiguration?: {
+    kmsKeyArn?: string
+  }
+  vectorIngestionConfiguration?: {
+    chunkingConfiguration?: {
+      chunkingStrategy: 'FIXED_SIZE' | 'NONE' | 'HIERARCHICAL' | 'SEMANTIC'
+      fixedSizeChunkingConfiguration?: {
+        maxTokens: number
+        overlapPercentage: number
+      }
+      hierarchicalChunkingConfiguration?: {
+        levelConfigurations: Array<{
+          maxTokens: number
+        }>
+        overlapTokens: number
+      }
+      semanticChunkingConfiguration?: {
+        maxTokens: number
+        bufferSize: number
+        breakpointPercentileThreshold: number
+      }
+    }
+    parsingConfiguration?: {
+      parsingStrategy: 'BEDROCK_FOUNDATION_MODEL'
+      bedrockFoundationModelConfiguration?: {
+        modelArn: string
+        parsingPrompt?: {
+          parsingPromptText: string
+        }
+      }
+    }
+    customTransformationConfiguration?: {
+      intermediateStorage: {
+        s3Location: {
+          uri: string
+        }
+      }
+      transformations: Array<{
+        stepToApply: 'POST_CHUNKING'
+        transformationFunction: {
+          transformationLambdaConfiguration: {
+            lambdaArn: string
+          }
+        }
+      }>
+    }
+  }
+}
+
+export interface CreateDataSourceCommandOutput {
+  dataSource: {
+    knowledgeBaseId: string
+    dataSourceId: string
+    name: string
+    description?: string
+    status: 'AVAILABLE' | 'DELETING' | 'DELETE_UNSUCCESSFUL'
+    dataSourceConfiguration: {
+      type: string
+      s3Configuration?: S3DataSourceConfiguration
+    }
+    dataDeletionPolicy?: string
+    serverSideEncryptionConfiguration?: {
+      kmsKeyArn?: string
+    }
+    vectorIngestionConfiguration?: {
+      chunkingConfiguration?: {
+        chunkingStrategy: string
+      }
+    }
+    createdAt: string
+    updatedAt: string
+    failureReasons?: string[]
+  }
+}
+
+export interface GetDataSourceCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+}
+
+export interface GetDataSourceCommandOutput {
+  dataSource: {
+    knowledgeBaseId: string
+    dataSourceId: string
+    name: string
+    description?: string
+    status: 'AVAILABLE' | 'DELETING' | 'DELETE_UNSUCCESSFUL'
+    dataSourceConfiguration: {
+      type: string
+      s3Configuration?: S3DataSourceConfiguration
+    }
+    dataDeletionPolicy?: string
+    serverSideEncryptionConfiguration?: {
+      kmsKeyArn?: string
+    }
+    vectorIngestionConfiguration?: {
+      chunkingConfiguration?: {
+        chunkingStrategy: string
+      }
+    }
+    createdAt: string
+    updatedAt: string
+    failureReasons?: string[]
+  }
+}
+
+export interface ListDataSourcesCommandInput {
+  knowledgeBaseId: string
+  maxResults?: number
+  nextToken?: string
+}
+
+export interface ListDataSourcesCommandOutput {
+  dataSourceSummaries: Array<{
+    knowledgeBaseId: string
+    dataSourceId: string
+    name: string
+    description?: string
+    status: 'AVAILABLE' | 'DELETING' | 'DELETE_UNSUCCESSFUL'
+    updatedAt: string
+  }>
+  nextToken?: string
+}
+
+export interface UpdateDataSourceCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+  name: string
+  description?: string
+  dataSourceConfiguration: {
+    type: 'S3' | 'CONFLUENCE' | 'SALESFORCE' | 'SHAREPOINT' | 'WEB'
+    s3Configuration?: S3DataSourceConfiguration
+    confluenceConfiguration?: ConfluenceDataSourceConfiguration
+    salesforceConfiguration?: SalesforceDataSourceConfiguration
+    sharePointConfiguration?: SharePointDataSourceConfiguration
+    webConfiguration?: WebDataSourceConfiguration
+  }
+  dataDeletionPolicy?: 'RETAIN' | 'DELETE'
+  serverSideEncryptionConfiguration?: {
+    kmsKeyArn?: string
+  }
+  vectorIngestionConfiguration?: {
+    chunkingConfiguration?: {
+      chunkingStrategy: 'FIXED_SIZE' | 'NONE' | 'HIERARCHICAL' | 'SEMANTIC'
+      fixedSizeChunkingConfiguration?: {
+        maxTokens: number
+        overlapPercentage: number
+      }
+    }
+  }
+}
+
+export interface UpdateDataSourceCommandOutput {
+  dataSource: {
+    knowledgeBaseId: string
+    dataSourceId: string
+    name: string
+    description?: string
+    status: 'AVAILABLE' | 'DELETING' | 'DELETE_UNSUCCESSFUL'
+    dataSourceConfiguration: {
+      type: string
+      s3Configuration?: S3DataSourceConfiguration
+    }
+    dataDeletionPolicy?: string
+    serverSideEncryptionConfiguration?: {
+      kmsKeyArn?: string
+    }
+    vectorIngestionConfiguration?: {
+      chunkingConfiguration?: {
+        chunkingStrategy: string
+      }
+    }
+    createdAt: string
+    updatedAt: string
+    failureReasons?: string[]
+  }
+}
+
+export interface DeleteDataSourceCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+}
+
+export interface DeleteDataSourceCommandOutput {
+  knowledgeBaseId: string
+  dataSourceId: string
+  status: string
+}
+
+export interface StartIngestionJobCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+  clientToken?: string
+  description?: string
+}
+
+export interface StartIngestionJobCommandOutput {
+  ingestionJob: {
+    knowledgeBaseId: string
+    dataSourceId: string
+    ingestionJobId: string
+    description?: string
+    status: 'STARTING' | 'IN_PROGRESS' | 'COMPLETE' | 'FAILED' | 'STOPPING' | 'STOPPED'
+    statistics?: {
+      numberOfDocumentsScanned?: number
+      numberOfNewDocumentsIndexed?: number
+      numberOfModifiedDocumentsIndexed?: number
+      numberOfDocumentsDeleted?: number
+      numberOfDocumentsFailed?: number
+    }
+    failureReasons?: string[]
+    startedAt: string
+    updatedAt: string
+  }
+}
+
+export interface GetIngestionJobCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+  ingestionJobId: string
+}
+
+export interface GetIngestionJobCommandOutput {
+  ingestionJob: {
+    knowledgeBaseId: string
+    dataSourceId: string
+    ingestionJobId: string
+    description?: string
+    status: 'STARTING' | 'IN_PROGRESS' | 'COMPLETE' | 'FAILED' | 'STOPPING' | 'STOPPED'
+    statistics?: {
+      numberOfDocumentsScanned?: number
+      numberOfNewDocumentsIndexed?: number
+      numberOfModifiedDocumentsIndexed?: number
+      numberOfDocumentsDeleted?: number
+      numberOfDocumentsFailed?: number
+    }
+    failureReasons?: string[]
+    startedAt: string
+    updatedAt: string
+  }
+}
+
+export interface ListIngestionJobsCommandInput {
+  knowledgeBaseId: string
+  dataSourceId: string
+  filters?: Array<{
+    attribute: 'STATUS'
+    operator: 'EQ'
+    values: string[]
+  }>
+  sortBy?: {
+    attribute: 'STARTED_AT' | 'STATUS'
+    order: 'ASCENDING' | 'DESCENDING'
+  }
+  maxResults?: number
+  nextToken?: string
+}
+
+export interface ListIngestionJobsCommandOutput {
+  ingestionJobSummaries: Array<{
+    knowledgeBaseId: string
+    dataSourceId: string
+    ingestionJobId: string
+    description?: string
+    status: 'STARTING' | 'IN_PROGRESS' | 'COMPLETE' | 'FAILED' | 'STOPPING' | 'STOPPED'
+    startedAt: string
+    updatedAt: string
+    statistics?: {
+      numberOfDocumentsScanned?: number
+      numberOfNewDocumentsIndexed?: number
+      numberOfModifiedDocumentsIndexed?: number
+      numberOfDocumentsDeleted?: number
+      numberOfDocumentsFailed?: number
+    }
+  }>
+  nextToken?: string
+}
+
+// ============================================================================
+// Model Copy Types
+// ============================================================================
+
+export interface CreateModelCopyJobCommandInput {
+  sourceModelArn: string
+  targetModelName: string
+  modelKmsKeyId?: string
+  targetModelTags?: Array<{ key: string; value: string }>
+  clientRequestToken?: string
+}
+
+export interface CreateModelCopyJobCommandOutput {
+  jobArn: string
+}
+
+export interface GetModelCopyJobCommandInput {
+  jobArn: string
+}
+
+export interface GetModelCopyJobCommandOutput {
+  jobArn: string
+  status: 'InProgress' | 'Completed' | 'Failed'
+  creationTime: string
+  targetModelArn?: string
+  targetModelName: string
+  sourceAccountId: string
+  sourceModelArn: string
+  targetModelKmsKeyArn?: string
+  targetModelTags?: Array<{ key: string; value: string }>
+  failureMessage?: string
+}
+
+export interface ListModelCopyJobsCommandInput {
+  creationTimeAfter?: string
+  creationTimeBefore?: string
+  statusEquals?: 'InProgress' | 'Completed' | 'Failed'
+  sourceAccountEquals?: string
+  sourceModelArnEquals?: string
+  targetModelNameContains?: string
+  maxResults?: number
+  nextToken?: string
+  sortBy?: 'CreationTime'
+  sortOrder?: 'Ascending' | 'Descending'
+}
+
+export interface ListModelCopyJobsCommandOutput {
+  nextToken?: string
+  modelCopyJobSummaries?: Array<{
+    jobArn: string
+    status: 'InProgress' | 'Completed' | 'Failed'
+    creationTime: string
+    targetModelArn?: string
+    targetModelName: string
+    sourceAccountId: string
+    sourceModelArn: string
+    targetModelKmsKeyArn?: string
+    failureMessage?: string
+  }>
 }
 
 // ============================================================================
