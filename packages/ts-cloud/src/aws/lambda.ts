@@ -509,4 +509,129 @@ export class LambdaClient {
       throw error
     }
   }
+
+  /**
+   * Create a function URL for the Lambda function
+   */
+  async createFunctionUrl(params: {
+    FunctionName: string
+    AuthType: 'NONE' | 'AWS_IAM'
+    Cors?: {
+      AllowOrigins?: string[]
+      AllowMethods?: string[]
+      AllowHeaders?: string[]
+      ExposeHeaders?: string[]
+      MaxAge?: number
+      AllowCredentials?: boolean
+    }
+    InvokeMode?: 'BUFFERED' | 'RESPONSE_STREAM'
+  }): Promise<{
+    FunctionUrl?: string
+    FunctionArn?: string
+    AuthType?: string
+    CreationTime?: string
+  }> {
+    const { FunctionName, ...rest } = params
+    const result = await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'POST',
+      path: `/2021-10-31/functions/${encodeURIComponent(FunctionName)}/url`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rest),
+    })
+
+    return result
+  }
+
+  /**
+   * Get function URL configuration
+   */
+  async getFunctionUrl(functionName: string): Promise<{
+    FunctionUrl?: string
+    FunctionArn?: string
+    AuthType?: string
+    Cors?: {
+      AllowOrigins?: string[]
+      AllowMethods?: string[]
+      AllowHeaders?: string[]
+    }
+    CreationTime?: string
+  } | null> {
+    try {
+      const result = await this.client.request({
+        service: 'lambda',
+        region: this.region,
+        method: 'GET',
+        path: `/2021-10-31/functions/${encodeURIComponent(functionName)}/url`,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      return result
+    }
+    catch (error: any) {
+      if (error.statusCode === 404) {
+        return null
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Delete function URL configuration
+   */
+  async deleteFunctionUrl(functionName: string): Promise<void> {
+    await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'DELETE',
+      path: `/2021-10-31/functions/${encodeURIComponent(functionName)}/url`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
+
+  /**
+   * Create function with inline code (convenience method)
+   */
+  async createFunctionWithCode(params: {
+    FunctionName: string
+    Runtime: 'nodejs18.x' | 'nodejs20.x' | 'python3.11' | 'python3.12' | string
+    Role: string
+    Handler: string
+    Code: string
+    Filename?: string
+    Description?: string
+    Timeout?: number
+    MemorySize?: number
+    Environment?: { Variables: Record<string, string> }
+  }): Promise<LambdaFunctionConfiguration> {
+    const { Code, Filename = 'index.js', ...rest } = params
+    const zipBuffer = createZipFile(Filename, Code)
+
+    return this.createFunction({
+      ...rest,
+      Code: {
+        ZipFile: zipBuffer.toString('base64'),
+      },
+    })
+  }
+
+  /**
+   * Add permission for Function URL public access
+   */
+  async addFunctionUrlPermission(functionName: string): Promise<{ Statement?: string }> {
+    return this.addPermission({
+      FunctionName: functionName,
+      StatementId: 'FunctionURLAllowPublicAccess',
+      Action: 'lambda:InvokeFunctionUrl',
+      Principal: '*',
+      // @ts-ignore - FunctionUrlAuthType is a valid parameter
+      FunctionUrlAuthType: 'NONE',
+    })
+  }
 }

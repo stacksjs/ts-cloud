@@ -10,7 +10,9 @@ export interface DnsRecord {
   type: DnsRecordType
   content: string
   ttl?: number
-  priority?: number // For MX records
+  priority?: number // For MX and SRV records
+  weight?: number // For SRV records
+  port?: number // For SRV records
 }
 
 export interface DnsRecordResult extends DnsRecord {

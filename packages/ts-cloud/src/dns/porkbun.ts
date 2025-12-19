@@ -132,9 +132,15 @@ export class PorkbunProvider implements DnsProvider {
         body.name = subdomain
       }
 
-      // MX records require priority
-      if (record.type === 'MX' && record.priority !== undefined) {
+      // MX and SRV records require priority
+      if ((record.type === 'MX' || record.type === 'SRV') && record.priority !== undefined) {
         body.prio = String(record.priority)
+      }
+
+      // SRV records: Porkbun expects content as "WEIGHT PORT TARGET"
+      // Override content format if weight and port are provided separately
+      if (record.type === 'SRV' && record.weight !== undefined && record.port !== undefined) {
+        body.content = `${record.weight} ${record.port} ${record.content}`
       }
 
       const response = await this.request<PorkbunCreateRecordResponse>(
@@ -183,8 +189,13 @@ export class PorkbunProvider implements DnsProvider {
             body.name = subdomain
           }
 
-          if (record.type === 'MX' && record.priority !== undefined) {
+          if ((record.type === 'MX' || record.type === 'SRV') && record.priority !== undefined) {
             body.prio = String(record.priority)
+          }
+
+          // SRV records: Porkbun expects content as "WEIGHT PORT TARGET"
+          if (record.type === 'SRV' && record.weight !== undefined && record.port !== undefined) {
+            body.content = `${record.weight} ${record.port} ${record.content}`
           }
 
           await this.request(
