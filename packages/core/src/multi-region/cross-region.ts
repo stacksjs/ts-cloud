@@ -404,7 +404,7 @@ export class StackDependencyManager {
 /**
  * Global instances
  */
-export const crossRegionReferenceManager = new CrossRegionReferenceManager()
-export const globalResourceManager = new GlobalResourceManager()
-export const regionPairManager = new RegionPairManager()
-export const stackDependencyManager = new StackDependencyManager()
+export const crossRegionReferenceManager: CrossRegionReferenceManager = new CrossRegionReferenceManager()
+export const globalResourceManager: GlobalResourceManager = new GlobalResourceManager()
+export const regionPairManager: RegionPairManager = new RegionPairManager()
+export const stackDependencyManager: StackDependencyManager = new StackDependencyManager()

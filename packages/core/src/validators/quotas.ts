@@ -33,7 +33,7 @@ export const DEFAULT_SERVICE_LIMITS = {
   },
   lambda: {
     'Concurrent Executions': 1000,
-    'Function Storage': 75 * 1024 * 1024 * 1024, // 75 GB
+    'Function Storage': 75 * 1024 * 1024 * 1024 as number, // 75 GB
   },
   s3: {
     'Buckets': 100,

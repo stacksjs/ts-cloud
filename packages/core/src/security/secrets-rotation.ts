@@ -453,4 +453,4 @@ export class SecretsRotationManager {
 /**
  * Global secrets rotation manager instance
  */
-export const secretsRotationManager = new SecretsRotationManager()
+export const secretsRotationManager: SecretsRotationManager = new SecretsRotationManager()

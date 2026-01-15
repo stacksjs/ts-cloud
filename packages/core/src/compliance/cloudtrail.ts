@@ -373,4 +373,4 @@ export class CloudTrailManager {
 /**
  * Global CloudTrail manager instance
  */
-export const cloudTrailManager = new CloudTrailManager()
+export const cloudTrailManager: CloudTrailManager = new CloudTrailManager()

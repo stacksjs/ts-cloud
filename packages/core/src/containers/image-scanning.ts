@@ -357,4 +357,4 @@ export class ImageScanningManager {
 /**
  * Global image scanning manager instance
  */
-export const imageScanningManager = new ImageScanningManager()
+export const imageScanningManager: ImageScanningManager = new ImageScanningManager()

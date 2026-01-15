@@ -312,4 +312,4 @@ export class DNSSECManager {
 /**
  * Global DNSSEC manager instance
  */
-export const dnssecManager = new DNSSECManager()
+export const dnssecManager: DNSSECManager = new DNSSECManager()

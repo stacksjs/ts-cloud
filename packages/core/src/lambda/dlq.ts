@@ -422,4 +422,4 @@ export class LambdaDLQManager {
 /**
  * Global Lambda DLQ manager instance
  */
-export const lambdaDLQManager = new LambdaDLQManager()
+export const lambdaDLQManager: LambdaDLQManager = new LambdaDLQManager()

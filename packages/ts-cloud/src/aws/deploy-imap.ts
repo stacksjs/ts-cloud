@@ -80,7 +80,7 @@ const defaultConfig: MailServerDeployConfig = {
   mailboxes: [],
 }
 
-export async function deployImapServer(config: MailServerDeployConfig = defaultConfig) {
+export async function deployImapServer(config: MailServerDeployConfig = defaultConfig): Promise<void> {
   console.log('Deploying IMAP-to-S3 bridge server to EC2...')
   console.log('')
 

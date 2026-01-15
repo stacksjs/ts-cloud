@@ -519,4 +519,4 @@ export class LogsManager {
 /**
  * Global logs manager instance
  */
-export const logsManager = new LogsManager()
+export const logsManager: LogsManager = new LogsManager()

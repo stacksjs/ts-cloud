@@ -7,8 +7,8 @@ export class CloudError extends Error {
   constructor(
     message: string,
     public code: string,
-    public solution?: string,
-    public details?: Record<string, any>,
+    public solution?: string | undefined,
+    public details?: Record<string, any> | undefined,
   ) {
     super(message)
     this.name = 'CloudError'
@@ -228,7 +228,7 @@ export const ErrorCodes = {
 /**
  * Get error details by code
  */
-export function getErrorDetails(code: keyof typeof ErrorCodes) {
+export function getErrorDetails(code: keyof typeof ErrorCodes): { message: string; solution: string } {
   return ErrorCodes[code]
 }
 

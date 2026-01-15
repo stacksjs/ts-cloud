@@ -663,7 +663,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
     /**
      * Minimal Bun server
      */
-    bunServer: (serverPath: string, port = 3000) => Registry.generateBunDockerfile({
+    bunServer: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
     }),
@@ -671,7 +671,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
     /**
      * Bun with build step
      */
-    bunWithBuild: (serverPath: string, buildCommand: string, port = 3000) => Registry.generateBunDockerfile({
+    bunWithBuild: (serverPath: string, buildCommand: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
       buildCommands: [buildCommand],
@@ -680,7 +680,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
     /**
      * Full-stack Bun app with static files
      */
-    bunFullStack: (serverPath: string, port = 3000) => Registry.generateBunDockerfile({
+    bunFullStack: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
       additionalDirs: ['public', 'views', 'dist'],
@@ -690,7 +690,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
     /**
      * API-only Bun server
      */
-    bunApi: (serverPath: string, port = 3000) => Registry.generateBunDockerfile({
+    bunApi: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
       healthCheckEndpoint: '/api/health',

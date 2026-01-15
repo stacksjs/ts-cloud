@@ -791,7 +791,7 @@ exports.handler = async (event) => {
     /**
      * Origin request handler for docs/VitePress routing
      */
-    docsOriginRequest: `
+    docsOriginRequest: (`
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -805,12 +805,12 @@ exports.handler = async (event) => {
 
   return request;
 };
-`.trim(),
+`).trim() as string,
 
     /**
      * Viewer response handler for security headers
      */
-    securityHeaders: `
+    securityHeaders: (`
 'use strict';
 exports.handler = async (event) => {
   const response = event.Records[0].cf.response;
@@ -824,12 +824,12 @@ exports.handler = async (event) => {
 
   return response;
 };
-`.trim(),
+`).trim() as string,
 
     /**
      * Viewer request handler for basic auth (staging/preview environments)
      */
-    basicAuth: (username: string, password: string) => `
+    basicAuth: (username: string, password: string): string => `
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -855,7 +855,7 @@ exports.handler = async (event) => {
     /**
      * Origin request handler for path-based routing (e.g., /api to different origin)
      */
-    pathBasedRouting: (pathPrefix: string, targetOriginId: string) => `
+    pathBasedRouting: (pathPrefix: string, targetOriginId: string): string => `
 'use strict';
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;

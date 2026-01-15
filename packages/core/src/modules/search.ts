@@ -266,7 +266,7 @@ export class Search {
     /**
      * Development domain (small, single node)
      */
-    development: (slug: string, environment: string) => {
+    development: (slug: string, environment: string): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,
@@ -286,7 +286,7 @@ export class Search {
     /**
      * Production domain (HA, multi-AZ)
      */
-    production: (slug: string, environment: string, vpc?: SearchDomainOptions['vpc']) => {
+    production: (slug: string, environment: string, vpc?: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,
@@ -315,7 +315,7 @@ export class Search {
     /**
      * Cost-optimized domain (bursting workloads)
      */
-    costOptimized: (slug: string, environment: string) => {
+    costOptimized: (slug: string, environment: string): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,
@@ -336,7 +336,7 @@ export class Search {
     /**
      * High-performance domain (analytics, large datasets)
      */
-    highPerformance: (slug: string, environment: string, vpc: SearchDomainOptions['vpc']) => {
+    highPerformance: (slug: string, environment: string, vpc: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
         environment,

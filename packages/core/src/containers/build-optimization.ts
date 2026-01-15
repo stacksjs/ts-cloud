@@ -413,4 +413,4 @@ export class BuildOptimizationManager {
 /**
  * Global build optimization manager instance
  */
-export const buildOptimizationManager = new BuildOptimizationManager()
+export const buildOptimizationManager: BuildOptimizationManager = new BuildOptimizationManager()

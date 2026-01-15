@@ -489,4 +489,4 @@ export class CertificateManager {
 /**
  * Global certificate manager instance
  */
-export const certificateManager = new CertificateManager()
+export const certificateManager: CertificateManager = new CertificateManager()

@@ -300,4 +300,4 @@ export class SenderReputationManager {
 /**
  * Global sender reputation manager instance
  */
-export const senderReputationManager = new SenderReputationManager()
+export const senderReputationManager: SenderReputationManager = new SenderReputationManager()

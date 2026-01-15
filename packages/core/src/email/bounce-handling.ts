@@ -422,4 +422,4 @@ export class BounceComplaintHandler {
 /**
  * Global bounce and complaint handler instance
  */
-export const bounceComplaintHandler = new BounceComplaintHandler()
+export const bounceComplaintHandler: BounceComplaintHandler = new BounceComplaintHandler()

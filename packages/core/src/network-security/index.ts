@@ -42,7 +42,7 @@ export class NetworkSecurityManager {
     return nacl
   }
 
-  clear() { this.wafRules.clear(); this.shieldProtections.clear(); this.securityGroups.clear(); this.nacls.clear() }
+  clear(): void { this.wafRules.clear(); this.shieldProtections.clear(); this.securityGroups.clear(); this.nacls.clear() }
 }
 
-export const networkSecurityManager = new NetworkSecurityManager()
+export const networkSecurityManager: NetworkSecurityManager = new NetworkSecurityManager()

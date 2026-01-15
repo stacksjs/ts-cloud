@@ -182,7 +182,7 @@ If you have any questions, feel free to reply to this email.
 
 Best regards,
 The {{appName}} Team`,
-      variables: ['appName', 'userName', 'verificationUrl'],
+      variables: ['appName', 'userName', 'verificationUrl'] as const,
       category: 'onboarding',
     },
 
@@ -229,7 +229,7 @@ If you didn't request this, you can safely ignore this email.
 
 Best regards,
 The {{appName}} Team`,
-      variables: ['appName', 'userName', 'resetUrl', 'expiresIn'],
+      variables: ['appName', 'userName', 'resetUrl', 'expiresIn'] as const,
       category: 'auth',
     },
 
@@ -269,7 +269,7 @@ The {{appName}} Team`,
 {{/if}}
 
 — {{appName}}`,
-      variables: ['subject', 'title', 'message', 'actionUrl', 'actionText', 'appName'],
+      variables: ['subject', 'title', 'message', 'actionUrl', 'actionText', 'appName'] as const,
       category: 'notification',
     },
 
@@ -325,7 +325,7 @@ The {{appName}} Team`,
   <p>Best regards,<br>The {{appName}} Team</p>
 </body>
 </html>`,
-      variables: ['invoiceNumber', 'customerName', 'period', 'items', 'total', 'paymentUrl', 'appName'],
+      variables: ['invoiceNumber', 'customerName', 'period', 'items', 'total', 'paymentUrl', 'appName'] as const,
       category: 'billing',
     },
   }

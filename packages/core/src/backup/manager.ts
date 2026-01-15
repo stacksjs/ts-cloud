@@ -429,4 +429,4 @@ export class BackupManager {
 /**
  * Global backup manager instance
  */
-export const backupManager = new BackupManager()
+export const backupManager: BackupManager = new BackupManager()

@@ -339,4 +339,4 @@ export class FIFOQueueManager {
 /**
  * Global FIFO queue manager instance
  */
-export const fifoQueueManager = new FIFOQueueManager()
+export const fifoQueueManager: FIFOQueueManager = new FIFOQueueManager()

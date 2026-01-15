@@ -491,4 +491,4 @@ export class DatabaseUserManager {
 /**
  * Global database user manager instance
  */
-export const databaseUserManager = new DatabaseUserManager()
+export const databaseUserManager: DatabaseUserManager = new DatabaseUserManager()

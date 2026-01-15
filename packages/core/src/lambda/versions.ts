@@ -373,4 +373,4 @@ export class LambdaVersionsManager {
 /**
  * Global Lambda versions manager instance
  */
-export const lambdaVersionsManager = new LambdaVersionsManager()
+export const lambdaVersionsManager: LambdaVersionsManager = new LambdaVersionsManager()

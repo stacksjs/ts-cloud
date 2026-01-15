@@ -33,7 +33,7 @@ export class ResourceManagementManager {
     return group
   }
 
-  clear() { this.strategies.clear(); this.allocations.clear(); this.groups.clear() }
+  clear(): void { this.strategies.clear(); this.allocations.clear(); this.groups.clear() }
 }
 
-export const resourceManagementManager = new ResourceManagementManager()
+export const resourceManagementManager: ResourceManagementManager = new ResourceManagementManager()

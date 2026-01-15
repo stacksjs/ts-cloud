@@ -703,7 +703,12 @@ export class Auth {
     /**
      * Create a basic user pool for web application
      */
-    webApp: (slug: string, environment: EnvironmentType, callbackUrl: string) => {
+    webApp: (slug: string, environment: EnvironmentType, callbackUrl: string): {
+      userPool: CognitoUserPool
+      poolId: string
+      client: CognitoUserPoolClient
+      clientId: string
+    } => {
       const { userPool, logicalId: poolId } = Auth.createUserPool({
         slug,
         environment,
@@ -729,7 +734,18 @@ export class Auth {
     /**
      * Create a user pool with identity pool for mobile app
      */
-    mobileApp: (slug: string, environment: EnvironmentType) => {
+    mobileApp: (slug: string, environment: EnvironmentType): {
+      userPool: CognitoUserPool
+      poolId: string
+      client: CognitoUserPoolClient
+      clientId: string
+      identityPool: CognitoIdentityPool
+      identityPoolId: string
+      authRole: IAMRole
+      authRoleId: string
+      attachment: CognitoIdentityPoolRoleAttachment
+      attachmentId: string
+    } => {
       const { userPool, logicalId: poolId } = Auth.createUserPool({
         slug,
         environment,

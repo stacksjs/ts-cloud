@@ -327,4 +327,4 @@ export class LambdaConcurrencyManager {
 /**
  * Global Lambda concurrency manager instance
  */
-export const lambdaConcurrencyManager = new LambdaConcurrencyManager()
+export const lambdaConcurrencyManager: LambdaConcurrencyManager = new LambdaConcurrencyManager()

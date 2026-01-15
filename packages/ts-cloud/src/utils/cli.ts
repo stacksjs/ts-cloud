@@ -49,7 +49,7 @@ export function warn(message: string): void {
 /**
  * Warning message (alias)
  */
-export const warning = warn
+export const warning: typeof warn = warn
 
 /**
  * Info message

@@ -338,4 +338,4 @@ export class PreviewNotificationService {
 /**
  * Global notification service instance
  */
-export const previewNotifications = new PreviewNotificationService()
+export const previewNotifications: PreviewNotificationService = new PreviewNotificationService()

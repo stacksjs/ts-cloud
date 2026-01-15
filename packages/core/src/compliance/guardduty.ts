@@ -443,4 +443,4 @@ export class GuardDutyManager {
 /**
  * Global GuardDuty manager instance
  */
-export const guardDutyManager = new GuardDutyManager()
+export const guardDutyManager: GuardDutyManager = new GuardDutyManager()

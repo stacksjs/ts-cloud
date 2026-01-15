@@ -34,7 +34,7 @@ export class HealthCheckManager {
     return tracker
   }
 
-  clear() { this.checks.clear(); this.synthetics.clear(); this.uptimeTrackers.clear() }
+  clear(): void { this.checks.clear(); this.synthetics.clear(); this.uptimeTrackers.clear() }
 }
 
-export const healthCheckManager = new HealthCheckManager()
+export const healthCheckManager: HealthCheckManager = new HealthCheckManager()

@@ -464,4 +464,4 @@ export class EmailAnalyticsManager {
 /**
  * Global email analytics manager instance
  */
-export const emailAnalyticsManager = new EmailAnalyticsManager()
+export const emailAnalyticsManager: EmailAnalyticsManager = new EmailAnalyticsManager()

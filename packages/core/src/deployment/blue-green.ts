@@ -449,4 +449,4 @@ export class BlueGreenManager {
 /**
  * Global blue/green manager instance
  */
-export const blueGreenManager = new BlueGreenManager()
+export const blueGreenManager: BlueGreenManager = new BlueGreenManager()

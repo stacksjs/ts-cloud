@@ -399,4 +399,4 @@ export class DLQMonitoringManager {
 /**
  * Global DLQ monitoring manager instance
  */
-export const dlqMonitoringManager = new DLQMonitoringManager()
+export const dlqMonitoringManager: DLQMonitoringManager = new DLQMonitoringManager()

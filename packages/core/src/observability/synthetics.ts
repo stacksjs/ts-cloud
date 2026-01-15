@@ -565,4 +565,4 @@ export interface WorkflowAction {
 /**
  * Global synthetics manager instance
  */
-export const syntheticsManager = new SyntheticsManager()
+export const syntheticsManager: SyntheticsManager = new SyntheticsManager()

@@ -457,4 +457,4 @@ export class MetricsManager {
 /**
  * Global metrics manager instance
  */
-export const metricsManager = new MetricsManager()
+export const metricsManager: MetricsManager = new MetricsManager()

@@ -72,9 +72,9 @@ export class StaticSiteManager {
     return prerenderConfig
   }
 
-  listOptimizations() { return Array.from(this.optimizations.values()) }
-  listImageConfigs() { return Array.from(this.imageConfigs.values()) }
-  clear() {
+  listOptimizations(): AssetOptimization[] { return Array.from(this.optimizations.values()) }
+  listImageConfigs(): ImageOptimization[] { return Array.from(this.imageConfigs.values()) }
+  clear(): void {
     this.optimizations.clear()
     this.imageConfigs.clear()
     this.ssgConfigs.clear()
@@ -82,4 +82,4 @@ export class StaticSiteManager {
   }
 }
 
-export const staticSiteManager = new StaticSiteManager()
+export const staticSiteManager: StaticSiteManager = new StaticSiteManager()

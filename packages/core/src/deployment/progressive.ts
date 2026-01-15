@@ -52,11 +52,11 @@ export class ProgressiveDeploymentManager {
     return gate
   }
 
-  clear() {
+  clear(): void {
     this.rollouts.clear()
     this.flags.clear()
     this.gates.clear()
   }
 }
 
-export const progressiveDeploymentManager = new ProgressiveDeploymentManager()
+export const progressiveDeploymentManager: ProgressiveDeploymentManager = new ProgressiveDeploymentManager()

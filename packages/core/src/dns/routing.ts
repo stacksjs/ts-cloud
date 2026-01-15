@@ -590,4 +590,4 @@ export class Route53RoutingManager {
 /**
  * Global Route53 routing manager instance
  */
-export const route53RoutingManager = new Route53RoutingManager()
+export const route53RoutingManager: Route53RoutingManager = new Route53RoutingManager()

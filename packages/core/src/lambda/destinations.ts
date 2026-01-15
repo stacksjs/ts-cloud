@@ -342,4 +342,4 @@ export class LambdaDestinationsManager {
 /**
  * Global Lambda destinations manager instance
  */
-export const lambdaDestinationsManager = new LambdaDestinationsManager()
+export const lambdaDestinationsManager: LambdaDestinationsManager = new LambdaDestinationsManager()

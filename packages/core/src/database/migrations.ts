@@ -441,4 +441,4 @@ export interface SchemaChange {
 /**
  * Global migration manager instance
  */
-export const migrationManager = new MigrationManager()
+export const migrationManager: MigrationManager = new MigrationManager()

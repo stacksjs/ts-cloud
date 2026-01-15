@@ -24,7 +24,11 @@ export class Phone {
   /**
    * Lambda code for phone handlers
    */
-  static LambdaCode = {
+  static LambdaCode: {
+    incomingCall: string;
+    voicemail: string;
+    missedCall: string;
+  } = {
     incomingCall: incomingCallHandler,
     voicemail: voicemailHandler,
     missedCall: missedCallHandler,

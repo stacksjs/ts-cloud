@@ -213,7 +213,7 @@ export const RECOMMENDED_SCPS = {
             },
           },
         },
-      ],
+      ] as const,
     },
   },
 
@@ -234,7 +234,7 @@ export const RECOMMENDED_SCPS = {
             },
           },
         },
-      ],
+      ] as const,
     },
   },
 
@@ -265,7 +265,7 @@ export const RECOMMENDED_SCPS = {
             },
           },
         },
-      ],
+      ] as const,
     },
   },
 
@@ -281,7 +281,7 @@ export const RECOMMENDED_SCPS = {
           Action: 'organizations:LeaveOrganization',
           Resource: '*',
         },
-      ],
+      ] as const,
     },
   },
 
@@ -305,7 +305,7 @@ export const RECOMMENDED_SCPS = {
             },
           },
         },
-      ],
+      ] as const,
     },
   },
 }
@@ -327,7 +327,7 @@ export const COMMON_CROSS_ACCOUNT_ROLES = {
       'iam:PassRole',
       'logs:*',
       'events:*',
-    ],
+    ] as const,
   },
 
   readOnlyRole: {
@@ -344,7 +344,7 @@ export const COMMON_CROSS_ACCOUNT_ROLES = {
       's3:List*',
       'logs:Get*',
       'logs:Describe*',
-    ],
+    ] as const,
   },
 
   securityAuditRole: {
@@ -362,13 +362,13 @@ export const COMMON_CROSS_ACCOUNT_ROLES = {
       'config:Describe*',
       'config:Get*',
       'config:List*',
-    ],
+    ] as const,
   },
 
   breakGlassRole: {
     name: 'CrossAccountBreakGlassRole',
     description: 'Emergency access role (use with caution)',
-    permissions: ['*'],
+    permissions: ['*'] as const,
   },
 }
 

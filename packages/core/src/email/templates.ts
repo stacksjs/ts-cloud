@@ -349,4 +349,4 @@ export class EmailTemplateManager {
 /**
  * Global email template manager instance
  */
-export const emailTemplateManager = new EmailTemplateManager()
+export const emailTemplateManager: EmailTemplateManager = new EmailTemplateManager()

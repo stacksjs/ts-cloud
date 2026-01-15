@@ -531,4 +531,4 @@ export class ReplicaManager {
 /**
  * Global replica manager instance
  */
-export const replicaManager = new ReplicaManager()
+export const replicaManager: ReplicaManager = new ReplicaManager()

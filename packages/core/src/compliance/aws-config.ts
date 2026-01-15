@@ -540,4 +540,4 @@ export class AWSConfigManager {
 /**
  * Global AWS Config manager instance
  */
-export const awsConfigManager = new AWSConfigManager()
+export const awsConfigManager: AWSConfigManager = new AWSConfigManager()

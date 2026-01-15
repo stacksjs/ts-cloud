@@ -399,4 +399,4 @@ export class BatchProcessingManager {
 /**
  * Global batch processing manager instance
  */
-export const batchProcessingManager = new BatchProcessingManager()
+export const batchProcessingManager: BatchProcessingManager = new BatchProcessingManager()

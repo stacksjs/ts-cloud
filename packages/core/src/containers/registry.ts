@@ -290,4 +290,4 @@ export class ContainerRegistryManager {
 /**
  * Global container registry manager instance
  */
-export const containerRegistryManager = new ContainerRegistryManager()
+export const containerRegistryManager: ContainerRegistryManager = new ContainerRegistryManager()

@@ -1127,7 +1127,7 @@ echo "Bun server setup complete!"
       launchConfigRef: string | { Ref: string },
       subnetIds: string[],
       targetGroupArns?: Array<string | { Ref: string }>,
-    ) => {
+    ): { autoScalingGroup: AutoScalingGroup; logicalId: string } => {
       return Compute.createAutoScalingGroup({
         slug,
         environment,
@@ -1151,7 +1151,7 @@ echo "Bun server setup complete!"
       launchConfigRef: string | { Ref: string },
       subnetIds: string[],
       targetGroupArns?: Array<string | { Ref: string }>,
-    ) => {
+    ): { autoScalingGroup: AutoScalingGroup; logicalId: string } => {
       return Compute.createAutoScalingGroup({
         slug,
         environment,
@@ -1175,7 +1175,7 @@ echo "Bun server setup complete!"
       launchConfigRef: string | { Ref: string },
       subnetIds: string[],
       targetGroupArns?: Array<string | { Ref: string }>,
-    ) => {
+    ): { autoScalingGroup: AutoScalingGroup; logicalId: string } => {
       return Compute.createAutoScalingGroup({
         slug,
         environment,
@@ -1198,7 +1198,7 @@ echo "Bun server setup complete!"
       environment: EnvironmentType,
       asgName: string | { Ref: string },
       targetCpu = 70,
-    ) => {
+    ): { scalingPolicy: AutoScalingScalingPolicy; logicalId: string } => {
       return Compute.createScalingPolicy({
         slug,
         environment,
@@ -1217,7 +1217,7 @@ echo "Bun server setup complete!"
       environment: EnvironmentType,
       asgName: string | { Ref: string },
       targetRequestCount = 1000,
-    ) => {
+    ): { scalingPolicy: AutoScalingScalingPolicy; logicalId: string } => {
       return Compute.createScalingPolicy({
         slug,
         environment,
@@ -1688,7 +1688,17 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       fileSystemId: string
       mountPath?: string
       allowedCidrs?: string[]
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      instanceProfile: any
+      instanceRole: IAMRole
+      instanceLogicalId: string
+      securityGroupLogicalId: string
+      instanceProfileLogicalId: string
+      instanceRoleLogicalId: string
+      resources: Record<string, any>
+    } => {
       return Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
@@ -1713,7 +1723,17 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       subnetId: string
       keyName: string
       allowedCidrs?: string[]
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      instanceProfile: any
+      instanceRole: IAMRole
+      instanceLogicalId: string
+      securityGroupLogicalId: string
+      instanceProfileLogicalId: string
+      instanceRoleLogicalId: string
+      resources: Record<string, any>
+    } => {
       return Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
@@ -1735,7 +1755,17 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
       subnetId: string
       keyName: string
       allowedCidrs?: string[]
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      instanceProfile: any
+      instanceRole: IAMRole
+      instanceLogicalId: string
+      securityGroupLogicalId: string
+      instanceProfileLogicalId: string
+      instanceRoleLogicalId: string
+      resources: Record<string, any>
+    } => {
       const result = Compute.createJumpBox({
         slug: params.slug,
         environment: params.environment,
@@ -1771,8 +1801,8 @@ echo "Database tools installed!"
      * Allowed CIDRs for corporate VPNs (common patterns)
      */
     commonCidrs: {
-      any: ['0.0.0.0/0'],
-      privateOnly: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+      any: ['0.0.0.0/0'] as const,
+      privateOnly: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] as const,
     },
   }
 
@@ -2115,7 +2145,7 @@ echo "Database tools installed!"
         instanceTypes: [
           { size: 'small', weight: 1 },
           { size: 'medium', weight: 2 },
-        ],
+        ] as const,
       },
 
       /**
@@ -2128,7 +2158,7 @@ echo "Database tools installed!"
         instanceTypes: [
           { size: 'medium', weight: 1 },
           { size: 'large', weight: 2 },
-        ],
+        ] as const,
       },
 
       /**
@@ -2140,7 +2170,7 @@ echo "Database tools installed!"
         spotAllocationStrategy: 'capacity-optimized-prioritized',
         instanceTypes: [
           { size: 'medium', weight: 1 },
-        ],
+        ] as const,
       },
     },
   }
@@ -2883,7 +2913,7 @@ ufw --force enable
       /**
        * Bun app server with Nginx
        */
-      bunWithNginx: (domain: string, appPort: number = 3000) =>
+      bunWithNginx: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'bun',
           webServer: 'nginx',
@@ -2896,7 +2926,7 @@ ufw --force enable
       /**
        * Bun app server with Caddy (auto SSL)
        */
-      bunWithCaddy: (domain: string, appPort: number = 3000) =>
+      bunWithCaddy: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'bun',
           webServer: 'caddy',
@@ -2909,7 +2939,7 @@ ufw --force enable
       /**
        * Node.js app server with PM2 and Nginx
        */
-      nodeWithPm2: (domain: string, appPort: number = 3000) =>
+      nodeWithPm2: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'node',
           webServer: 'nginx',
@@ -2922,7 +2952,7 @@ ufw --force enable
       /**
        * Minimal worker server (no web server)
        */
-      worker: (runtime: 'bun' | 'node' = 'bun') =>
+      worker: (runtime: 'bun' | 'node' = 'bun'): string =>
         Compute.UserData.generateAppServerScript({
           runtime,
           webServer: 'none',
@@ -3197,7 +3227,23 @@ ufw --force enable
       domain: string
       runtime?: 'bun' | 'node'
       webServer?: 'nginx' | 'caddy'
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      eip: any
+      eipAssociation: any
+      instanceRole: IAMRole
+      instanceProfile: any
+      resources: Record<string, any>
+      outputs: {
+        instanceLogicalId: string
+        securityGroupLogicalId: string
+        eipLogicalId: string
+        associationLogicalId: string
+        roleLogicalId: string
+        profileLogicalId: string
+      }
+    } => {
       const userData = Compute.UserData.generateAppServerScript({
         runtime: options.runtime || 'bun',
         webServer: options.webServer || 'nginx',
@@ -3224,7 +3270,23 @@ ufw --force enable
       keyName: string
       runtime?: 'bun' | 'node'
       installRedis?: boolean
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      eip: any
+      eipAssociation: any
+      instanceRole: IAMRole
+      instanceProfile: any
+      resources: Record<string, any>
+      outputs: {
+        instanceLogicalId: string
+        securityGroupLogicalId: string
+        eipLogicalId: string
+        associationLogicalId: string
+        roleLogicalId: string
+        profileLogicalId: string
+      }
+    } => {
       const userData = Compute.UserData.generateAppServerScript({
         runtime: options.runtime || 'bun',
         webServer: 'none',
@@ -3248,7 +3310,23 @@ ufw --force enable
       vpcId: string
       subnetId: string
       keyName: string
-    }) => {
+    }): {
+      instance: EC2Instance
+      securityGroup: EC2SecurityGroup
+      eip: any
+      eipAssociation: any
+      instanceRole: IAMRole
+      instanceProfile: any
+      resources: Record<string, any>
+      outputs: {
+        instanceLogicalId: string
+        securityGroupLogicalId: string
+        eipLogicalId: string
+        associationLogicalId: string
+        roleLogicalId: string
+        profileLogicalId: string
+      }
+    } => {
       const userData = `#!/bin/bash
 set -e
 apt-get update && apt-get upgrade -y

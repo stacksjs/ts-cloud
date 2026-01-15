@@ -355,4 +355,4 @@ export class XRayManager {
 /**
  * Global X-Ray manager instance
  */
-export const xrayManager = new XRayManager()
+export const xrayManager: XRayManager = new XRayManager()

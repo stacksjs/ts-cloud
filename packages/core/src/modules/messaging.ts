@@ -406,43 +406,43 @@ export class Messaging {
     /**
      * Filter by event type
      */
-    eventType: (types: string[]) => ({
+    eventType: (types: string[]): { eventType: string[] } => ({
       eventType: types,
     }),
 
     /**
      * Filter by status
      */
-    status: (statuses: string[]) => ({
+    status: (statuses: string[]): { status: string[] } => ({
       status: statuses,
     }),
 
     /**
      * Filter by numeric range
      */
-    numericRange: (attribute: string, min: number, max: number) => ({
+    numericRange: (attribute: string, min: number, max: number): Record<string, Array<{ numeric: (string | number)[] }>> => ({
       [attribute]: [{ numeric: ['>=', min, '<=', max] }],
     }),
 
     /**
      * Filter by string prefix
      */
-    prefix: (attribute: string, prefix: string) => ({
-      [attribute]: [{ prefix }],
+    prefix: (attribute: string, prefixValue: string): Record<string, Array<{ prefix: string }>> => ({
+      [attribute]: [{ prefix: prefixValue }],
     }),
 
     /**
      * Filter by multiple attributes (AND logic)
      */
-    and: (...policies: Record<string, unknown>[]) => {
+    and: (...policies: Record<string, unknown>[]): Record<string, unknown> => {
       return Object.assign({}, ...policies)
     },
 
     /**
      * Filter by exists/not exists
      */
-    exists: (attribute: string, exists: boolean) => ({
-      [attribute]: [{ exists }],
+    exists: (attribute: string, existsValue: boolean): Record<string, Array<{ exists: boolean }>> => ({
+      [attribute]: [{ exists: existsValue }],
     }),
   } as const
 
@@ -453,7 +453,7 @@ export class Messaging {
     /**
      * Create alert topic for CloudWatch alarms
      */
-    createAlertTopic: (options: TopicOptions) => {
+    createAlertTopic: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,
         topicName: options.topicName || `${options.slug}-${options.environment}-alerts`,
@@ -464,7 +464,7 @@ export class Messaging {
     /**
      * Create event fanout topic for distributing events
      */
-    createEventFanout: (options: TopicOptions) => {
+    createEventFanout: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,
         topicName: options.topicName || `${options.slug}-${options.environment}-events`,
@@ -475,7 +475,7 @@ export class Messaging {
     /**
      * Create notification topic for user notifications
      */
-    createNotificationTopic: (options: TopicOptions) => {
+    createNotificationTopic: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,
         topicName: options.topicName || `${options.slug}-${options.environment}-notifications`,

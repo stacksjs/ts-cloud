@@ -396,4 +396,4 @@ export class LambdaVPCManager {
 /**
  * Global Lambda VPC manager instance
  */
-export const lambdaVPCManager = new LambdaVPCManager()
+export const lambdaVPCManager: LambdaVPCManager = new LambdaVPCManager()

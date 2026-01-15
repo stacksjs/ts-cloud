@@ -453,4 +453,4 @@ export class SecurityHubManager {
 /**
  * Global Security Hub manager instance
  */
-export const securityHubManager = new SecurityHubManager()
+export const securityHubManager: SecurityHubManager = new SecurityHubManager()

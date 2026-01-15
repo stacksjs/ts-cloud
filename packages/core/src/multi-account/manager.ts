@@ -423,5 +423,5 @@ export interface ServiceControlPolicy {
 /**
  * Global instances
  */
-export const multiAccountManager = new MultiAccountManager()
-export const organizationManager = new OrganizationManager()
+export const multiAccountManager: MultiAccountManager = new MultiAccountManager()
+export const organizationManager: OrganizationManager = new OrganizationManager()

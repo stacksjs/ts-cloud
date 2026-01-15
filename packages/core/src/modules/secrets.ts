@@ -335,7 +335,7 @@ export class Secrets {
     /**
      * API key secret (32 chars, alphanumeric only)
      */
-    apiKey: (slug: string, environment: string, serviceName: string) => {
+    apiKey: (slug: string, environment: string, serviceName: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,
@@ -352,7 +352,7 @@ export class Secrets {
     /**
      * OAuth client secret (strong password)
      */
-    oauthClientSecret: (slug: string, environment: string, clientName: string) => {
+    oauthClientSecret: (slug: string, environment: string, clientName: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,
@@ -367,7 +367,7 @@ export class Secrets {
     /**
      * JWT signing secret
      */
-    jwtSecret: (slug: string, environment: string) => {
+    jwtSecret: (slug: string, environment: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,
@@ -381,7 +381,7 @@ export class Secrets {
     /**
      * Encryption key (base64-compatible)
      */
-    encryptionKey: (slug: string, environment: string) => {
+    encryptionKey: (slug: string, environment: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,

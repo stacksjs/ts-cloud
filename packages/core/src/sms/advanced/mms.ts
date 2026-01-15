@@ -298,11 +298,11 @@ async function sendFallbackSms(to, message) {
   /**
    * Media size limits (in bytes)
    */
-  static readonly MediaSizeLimits = {
+  static readonly MediaSizeLimits: { image: number, video: number, audio: number } = {
     image: 1024 * 1024, // 1MB
     video: 5 * 1024 * 1024, // 5MB
     audio: 1024 * 1024, // 1MB
-  } as const
+  }
 }
 
 export default MmsSupport

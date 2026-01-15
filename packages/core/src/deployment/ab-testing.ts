@@ -579,4 +579,4 @@ exports.handler = (event, context, callback) => {
 /**
  * Global A/B testing manager instance
  */
-export const abTestManager = new ABTestManager()
+export const abTestManager: ABTestManager = new ABTestManager()

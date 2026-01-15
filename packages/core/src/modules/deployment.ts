@@ -488,7 +488,12 @@ export class Deployment {
       environment: EnvironmentType,
       serviceRoleArn: string,
       autoScalingGroups: string[],
-    ) => {
+    ): {
+      application: CodeDeployApplication
+      appId: string
+      deploymentGroup: CodeDeployDeploymentGroup
+      groupId: string
+    } => {
       const { application, logicalId: appId } = Deployment.createApplication({
         slug,
         environment,
@@ -516,7 +521,14 @@ export class Deployment {
       serviceRoleArn: string,
       canaryPercentage: number = 10,
       canaryInterval: number = 5,
-    ) => {
+    ): {
+      application: CodeDeployApplication
+      appId: string
+      deploymentConfig: CodeDeployDeploymentConfig
+      configId: string
+      deploymentGroup: CodeDeployDeploymentGroup
+      groupId: string
+    } => {
       const { application, logicalId: appId } = Deployment.createApplication({
         slug,
         environment,
@@ -548,7 +560,12 @@ export class Deployment {
       environment: EnvironmentType,
       serviceRoleArn: string,
       targetGroupName: string,
-    ) => {
+    ): {
+      application: CodeDeployApplication
+      appId: string
+      deploymentGroup: CodeDeployDeploymentGroup
+      groupId: string
+    } => {
       const { application, logicalId: appId } = Deployment.createApplication({
         slug,
         environment,

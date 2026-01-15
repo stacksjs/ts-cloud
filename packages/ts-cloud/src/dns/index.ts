@@ -175,4 +175,4 @@ export class DnsProviderFactory {
 /**
  * Default factory instance (can be configured globally)
  */
-export const dnsProviders = new DnsProviderFactory()
+export const dnsProviders: DnsProviderFactory = new DnsProviderFactory()

@@ -914,12 +914,12 @@ export class Monitoring {
     /**
      * Match JSON logs with specific field
      */
-    jsonField: (field: string, value: string) => `{ $.${field} = "${value}" }`,
+    jsonField: (field: string, value: string): string => `{ $.${field} = "${value}" }`,
 
     /**
      * Match HTTP status codes
      */
-    httpStatus: (statusCode: number) => `[..., status_code = ${statusCode}, ...]`,
+    httpStatus: (statusCode: number): string => `[..., status_code = ${statusCode}, ...]`,
 
     /**
      * Match 4xx errors
@@ -1946,7 +1946,14 @@ export class Monitoring {
       /**
        * High CPU alarm
        */
-      highCpu: (threshold: number = 80) => ({
+      highCpu: (threshold: number = 80): {
+        metricName: string;
+        threshold: number;
+        comparisonOperator: 'GreaterThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Average';
+      } => ({
         metricName: 'CPUUtilization',
         threshold,
         comparisonOperator: 'GreaterThanThreshold' as const,
@@ -1958,7 +1965,14 @@ export class Monitoring {
       /**
        * High memory alarm (for ECS)
        */
-      highMemory: (threshold: number = 80) => ({
+      highMemory: (threshold: number = 80): {
+        metricName: string;
+        threshold: number;
+        comparisonOperator: 'GreaterThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Average';
+      } => ({
         metricName: 'MemoryUtilization',
         threshold,
         comparisonOperator: 'GreaterThanThreshold' as const,
@@ -1970,7 +1984,14 @@ export class Monitoring {
       /**
        * High error rate alarm
        */
-      highErrors: (threshold: number = 10) => ({
+      highErrors: (threshold: number = 10): {
+        metricName: string;
+        threshold: number;
+        comparisonOperator: 'GreaterThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Sum';
+      } => ({
         metricName: 'Errors',
         threshold,
         comparisonOperator: 'GreaterThanThreshold' as const,
@@ -1982,7 +2003,14 @@ export class Monitoring {
       /**
        * High latency alarm
        */
-      highLatency: (threshold: number = 5000) => ({
+      highLatency: (threshold: number = 5000): {
+        metricName: string;
+        threshold: number;
+        comparisonOperator: 'GreaterThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Average';
+      } => ({
         metricName: 'Duration',
         threshold,
         comparisonOperator: 'GreaterThanThreshold' as const,
@@ -1994,7 +2022,15 @@ export class Monitoring {
       /**
        * Low healthy hosts alarm
        */
-      lowHealthyHosts: (threshold: number = 1) => ({
+      lowHealthyHosts: (threshold: number = 1): {
+        metricName: string;
+        namespace: string;
+        threshold: number;
+        comparisonOperator: 'LessThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Minimum';
+      } => ({
         metricName: 'HealthyHostCount',
         namespace: 'AWS/ApplicationELB',
         threshold,
@@ -2007,7 +2043,15 @@ export class Monitoring {
       /**
        * Queue depth alarm
        */
-      queueDepth: (threshold: number = 1000) => ({
+      queueDepth: (threshold: number = 1000): {
+        metricName: string;
+        namespace: string;
+        threshold: number;
+        comparisonOperator: 'GreaterThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Average';
+      } => ({
         metricName: 'ApproximateNumberOfMessagesVisible',
         namespace: 'AWS/SQS',
         threshold,
@@ -2020,7 +2064,15 @@ export class Monitoring {
       /**
        * Low storage alarm
        */
-      lowStorage: (threshold: number = 10737418240) => ({ // 10 GB
+      lowStorage: (threshold: number = 10737418240): {
+        metricName: string;
+        namespace: string;
+        threshold: number;
+        comparisonOperator: 'LessThanThreshold';
+        evaluationPeriods: number;
+        period: number;
+        statistic: 'Average';
+      } => ({ // 10 GB
         metricName: 'FreeStorageSpace',
         namespace: 'AWS/RDS',
         threshold,

@@ -517,4 +517,4 @@ export class ServiceMeshManager {
 /**
  * Global service mesh manager instance
  */
-export const serviceMeshManager = new ServiceMeshManager()
+export const serviceMeshManager: ServiceMeshManager = new ServiceMeshManager()

@@ -814,7 +814,10 @@ export class Queue {
     /**
      * High-throughput queue with short visibility
      */
-    highThroughput: (slug: string, environment: EnvironmentType) =>
+    highThroughput: (slug: string, environment: EnvironmentType): {
+      queue: SQSQueue
+      logicalId: string
+    } =>
       Queue.createQueue({
         slug,
         environment,
@@ -826,7 +829,10 @@ export class Queue {
     /**
      * Long-running job queue
      */
-    longRunning: (slug: string, environment: EnvironmentType) =>
+    longRunning: (slug: string, environment: EnvironmentType): {
+      queue: SQSQueue
+      logicalId: string
+    } =>
       Queue.createQueue({
         slug,
         environment,
@@ -837,7 +843,10 @@ export class Queue {
     /**
      * FIFO queue for ordered processing
      */
-    fifo: (slug: string, environment: EnvironmentType) =>
+    fifo: (slug: string, environment: EnvironmentType): {
+      queue: SQSQueue
+      logicalId: string
+    } =>
       Queue.createQueue({
         slug,
         environment,
@@ -848,7 +857,10 @@ export class Queue {
     /**
      * Delayed queue for scheduled messages
      */
-    delayed: (slug: string, environment: EnvironmentType, delaySeconds: number = 60) =>
+    delayed: (slug: string, environment: EnvironmentType, delaySeconds: number = 60): {
+      queue: SQSQueue
+      logicalId: string
+    } =>
       Queue.createQueue({
         slug,
         environment,
@@ -1206,7 +1218,17 @@ run()
 /**
  * Stacks framework job/action integration helpers
  */
-export const StacksIntegration = {
+export const StacksIntegration: {
+  loadJobs: typeof JobLoader.discoverJobs
+  loadActions: typeof JobLoader.discoverActions
+  generateScheduledJobs: typeof JobLoader.generateScheduledJobResources
+  generateRunner: typeof JobLoader.generateJobRunnerScript
+  paths: {
+    jobs: string
+    actions: string
+    runner: string
+  }
+} = {
   /**
    * Load jobs from Stacks app/Jobs directory
    */

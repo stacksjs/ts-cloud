@@ -288,4 +288,4 @@ export class TemplateCache {
 /**
  * Global template cache instance
  */
-export const templateCache = new TemplateCache()
+export const templateCache: TemplateCache = new TemplateCache()

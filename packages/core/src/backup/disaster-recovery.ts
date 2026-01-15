@@ -497,4 +497,4 @@ export class DisasterRecoveryManager {
 /**
  * Global disaster recovery manager instance
  */
-export const drManager = new DisasterRecoveryManager()
+export const drManager: DisasterRecoveryManager = new DisasterRecoveryManager()

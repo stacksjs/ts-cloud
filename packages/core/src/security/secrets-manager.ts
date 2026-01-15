@@ -473,4 +473,4 @@ export class SecretsManager {
 /**
  * Global secrets manager instance
  */
-export const secretsManager = new SecretsManager()
+export const secretsManager: SecretsManager = new SecretsManager()

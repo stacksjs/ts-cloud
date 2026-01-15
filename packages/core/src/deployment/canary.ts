@@ -497,4 +497,4 @@ export class CanaryManager {
 /**
  * Global canary manager instance
  */
-export const canaryManager = new CanaryManager()
+export const canaryManager: CanaryManager = new CanaryManager()

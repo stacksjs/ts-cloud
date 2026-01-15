@@ -338,7 +338,11 @@ export class MockDynamoDB {
 /**
  * Create mock AWS services
  */
-export function createMockAWS(config?: MockAWSConfig) {
+export function createMockAWS(config?: MockAWSConfig): {
+  cloudformation: MockCloudFormation
+  s3: MockS3
+  dynamodb: MockDynamoDB
+} {
   return {
     cloudformation: new MockCloudFormation(),
     s3: new MockS3(),

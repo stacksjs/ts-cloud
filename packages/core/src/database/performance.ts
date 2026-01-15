@@ -525,4 +525,4 @@ export class PerformanceManager {
 /**
  * Global performance manager instance
  */
-export const performanceManager = new PerformanceManager()
+export const performanceManager: PerformanceManager = new PerformanceManager()

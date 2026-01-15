@@ -425,4 +425,4 @@ export class QueueManagementManager {
 /**
  * Global queue management manager instance
  */
-export const queueManagementManager = new QueueManagementManager()
+export const queueManagementManager: QueueManagementManager = new QueueManagementManager()

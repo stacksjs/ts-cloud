@@ -542,4 +542,4 @@ export class SecurityScanningManager {
 /**
  * Global security scanning manager instance
  */
-export const securityScanningManager = new SecurityScanningManager()
+export const securityScanningManager: SecurityScanningManager = new SecurityScanningManager()

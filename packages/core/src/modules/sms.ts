@@ -22,7 +22,7 @@ export class SMS {
   /**
    * Lambda code for SMS handlers
    */
-  static LambdaCode = {
+  static LambdaCode: { send: typeof sendHandler; receive: typeof receiveHandler; deliveryStatus: typeof deliveryStatusHandler } = {
     send: sendHandler,
     receive: receiveHandler,
     deliveryStatus: deliveryStatusHandler,

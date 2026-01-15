@@ -260,4 +260,4 @@ export class LambdaLayersManager {
 /**
  * Global Lambda layers manager instance
  */
-export const lambdaLayersManager = new LambdaLayersManager()
+export const lambdaLayersManager: LambdaLayersManager = new LambdaLayersManager()

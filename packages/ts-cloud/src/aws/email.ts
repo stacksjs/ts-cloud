@@ -925,4 +925,4 @@ export class EmailClient {
 }
 
 // Export a default instance for convenience
-export const email = new EmailClient()
+export const email: EmailClient = new EmailClient()

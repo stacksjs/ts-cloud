@@ -340,6 +340,14 @@ export interface InfrastructureConfig {
       }>
     }
   }
+  workflow?: {
+    pipelines?: Array<{
+      name?: string
+      type?: 'stepFunctions' | string
+      definition?: Record<string, unknown>
+      schedule?: string
+    }>
+  }
 }
 
 /**
@@ -1372,7 +1380,16 @@ export interface QueueItemConfig {
  *   },
  * }
  */
-export const QueuePresets = {
+export const QueuePresets: {
+  backgroundJobs: QueueItemConfig
+  fifo: QueueItemConfig
+  highThroughput: QueueItemConfig
+  delayed: QueueItemConfig
+  longRunning: QueueItemConfig
+  monitored: QueueItemConfig
+  lambdaOptimized: QueueItemConfig
+  fanOut: QueueItemConfig
+} = {
   /**
    * Background job queue with dead letter support
    * Good for: async tasks, email sending, file processing
@@ -1383,7 +1400,7 @@ export const QueuePresets = {
     deadLetterQueue: true,
     maxReceiveCount: 3,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * FIFO queue for ordered, exactly-once processing
@@ -1394,7 +1411,7 @@ export const QueuePresets = {
     contentBasedDeduplication: true,
     visibilityTimeout: 30,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * High-throughput queue with long polling
@@ -1404,7 +1421,7 @@ export const QueuePresets = {
     visibilityTimeout: 30,
     receiveMessageWaitTime: 20,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * Delayed queue for scheduled messages
@@ -1414,7 +1431,7 @@ export const QueuePresets = {
     delaySeconds: 60,
     visibilityTimeout: 60,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * Long-running task queue
@@ -1426,7 +1443,7 @@ export const QueuePresets = {
     deadLetterQueue: true,
     maxReceiveCount: 2,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * Production queue with full monitoring
@@ -1444,7 +1461,7 @@ export const QueuePresets = {
       messageAgeThreshold: 3600,
       dlqAlarm: true,
     },
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * Event-driven queue optimized for Lambda processing
@@ -1456,7 +1473,7 @@ export const QueuePresets = {
     deadLetterQueue: true,
     maxReceiveCount: 3,
     encrypted: true,
-  } satisfies QueueItemConfig,
+  },
 
   /**
    * Fan-out queue for SNS integration
@@ -1466,8 +1483,8 @@ export const QueuePresets = {
     visibilityTimeout: 30,
     receiveMessageWaitTime: 20,
     encrypted: true,
-  } satisfies QueueItemConfig,
-} as const
+  },
+}
 
 // ============================================================================
 // Realtime (WebSocket) Configuration
@@ -2249,7 +2266,21 @@ export interface RealtimeConfig {
  * @example Server presets (ts-broadcasting)
  * realtime: RealtimePresets.server.production
  */
-export const RealtimePresets = {
+export const RealtimePresets: {
+  serverless: {
+    development: RealtimeConfig
+    production: RealtimeConfig
+    notifications: RealtimeConfig
+  }
+  server: {
+    development: RealtimeConfig
+    production: RealtimeConfig
+    highPerformance: RealtimeConfig
+    chat: RealtimeConfig
+    gaming: RealtimeConfig
+    single: RealtimeConfig
+  }
+} = {
   // ============================================
   // SERVERLESS MODE PRESETS (API Gateway WebSocket)
   // ============================================
@@ -2273,7 +2304,7 @@ export const RealtimePresets = {
         maxConnections: 1000,
         handlerMemory: 128,
       },
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Production preset - scalable with monitoring
@@ -2314,7 +2345,7 @@ export const RealtimePresets = {
       keepAlive: true,
       keepAliveInterval: 30,
       idleTimeout: 600,
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Notifications only preset - no presence
@@ -2339,7 +2370,7 @@ export const RealtimePresets = {
       keepAlive: true,
       keepAliveInterval: 60,
       idleTimeout: 1800,
-    } satisfies RealtimeConfig,
+    },
   },
 
   // ============================================
@@ -2366,7 +2397,7 @@ export const RealtimePresets = {
         perMessageDeflate: false, // Faster in dev
         metrics: false,
       },
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Production preset - clustered with Redis
@@ -2419,7 +2450,7 @@ export const RealtimePresets = {
         connectionThreshold: 8000,
         errorThreshold: 100,
       },
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * High-performance preset - optimized for lowest latency
@@ -2475,7 +2506,7 @@ export const RealtimePresets = {
         errorThreshold: 50,
         latencyThreshold: 50,
       },
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Chat application preset - optimized for presence and typing indicators
@@ -2523,7 +2554,7 @@ export const RealtimePresets = {
       keepAlive: true,
       keepAliveInterval: 25,
       idleTimeout: 900,
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Gaming/real-time app preset - ultra-low latency
@@ -2578,7 +2609,7 @@ export const RealtimePresets = {
       keepAlive: true,
       keepAliveInterval: 10,
       idleTimeout: 60,
-    } satisfies RealtimeConfig,
+    },
 
     /**
      * Single server preset - no clustering, simple setup
@@ -2611,10 +2642,9 @@ export const RealtimePresets = {
         },
         metrics: true,
       },
-    } satisfies RealtimeConfig,
+    },
   },
-
-} as const
+}
 
 export interface ApiConfig {
   enabled?: boolean

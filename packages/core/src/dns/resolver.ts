@@ -493,4 +493,4 @@ export class Route53ResolverManager {
 /**
  * Global Route53 Resolver manager instance
  */
-export const route53ResolverManager = new Route53ResolverManager()
+export const route53ResolverManager: Route53ResolverManager = new Route53ResolverManager()

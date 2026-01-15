@@ -480,4 +480,4 @@ export class MultiRegionManager {
 /**
  * Global multi-region manager instance
  */
-export const multiRegionManager = new MultiRegionManager()
+export const multiRegionManager: MultiRegionManager = new MultiRegionManager()

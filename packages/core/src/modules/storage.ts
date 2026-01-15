@@ -343,27 +343,37 @@ export class Storage {
     /**
      * Trigger Lambda on any object creation
      */
-    onObjectCreated: (functionArn: string | { 'Fn::GetAtt': [string, string] }) => ({
-      functionArn,
-      events: ['s3:ObjectCreated:*' as const],
+    onObjectCreated: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
+      functionArn: string | { 'Fn::GetAtt': [string, string] }
+      events: readonly ['s3:ObjectCreated:*']
+    } => ({
+      functionArn: functionArn,
+      events: ['s3:ObjectCreated:*'] as const,
     }),
 
     /**
      * Trigger Lambda on object deletion
      */
-    onObjectRemoved: (functionArn: string | { 'Fn::GetAtt': [string, string] }) => ({
-      functionArn,
-      events: ['s3:ObjectRemoved:*' as const],
+    onObjectRemoved: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
+      functionArn: string | { 'Fn::GetAtt': [string, string] }
+      events: readonly ['s3:ObjectRemoved:*']
+    } => ({
+      functionArn: functionArn,
+      events: ['s3:ObjectRemoved:*'] as const,
     }),
 
     /**
      * Trigger Lambda on image uploads (jpg, png, gif)
      */
-    onImageUpload: (functionArn: string | { 'Fn::GetAtt': [string, string] }, prefix?: string) => ({
-      functionArn,
-      events: ['s3:ObjectCreated:*' as const],
+    onImageUpload: (functionArn: string | { 'Fn::GetAtt': [string, string] }, prefix?: string): {
+      functionArn: string | { 'Fn::GetAtt': [string, string] }
+      events: readonly ['s3:ObjectCreated:*']
+      filter: { prefix: string | undefined; suffix: string }
+    } => ({
+      functionArn: functionArn,
+      events: ['s3:ObjectCreated:*'] as const,
       filter: {
-        prefix,
+        prefix: prefix,
         suffix: '.jpg',
       },
     }),
@@ -375,12 +385,16 @@ export class Storage {
       functionArn: string | { 'Fn::GetAtt': [string, string] },
       suffix: string,
       prefix?: string,
-    ) => ({
-      functionArn,
-      events: ['s3:ObjectCreated:*' as const],
+    ): {
+      functionArn: string | { 'Fn::GetAtt': [string, string] }
+      events: readonly ['s3:ObjectCreated:*']
+      filter: { prefix: string | undefined; suffix: string }
+    } => ({
+      functionArn: functionArn,
+      events: ['s3:ObjectCreated:*'] as const,
       filter: {
-        prefix,
-        suffix,
+        prefix: prefix,
+        suffix: suffix,
       },
     }),
 
@@ -390,9 +404,13 @@ export class Storage {
     onFolderUpload: (
       functionArn: string | { 'Fn::GetAtt': [string, string] },
       folder: string,
-    ) => ({
-      functionArn,
-      events: ['s3:ObjectCreated:*' as const],
+    ): {
+      functionArn: string | { 'Fn::GetAtt': [string, string] }
+      events: readonly ['s3:ObjectCreated:*']
+      filter: { prefix: string }
+    } => ({
+      functionArn: functionArn,
+      events: ['s3:ObjectCreated:*'] as const,
       filter: {
         prefix: folder.endsWith('/') ? folder : `${folder}/`,
       },

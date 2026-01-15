@@ -570,7 +570,11 @@ export async function createSmsInfrastructure(smsConfig: {
 }
 
 export default {
-  setupSmsInfrastructure,
-  getSmsInfrastructureStatus,
-  createSmsInfrastructure,
+  setupSmsInfrastructure: setupSmsInfrastructure,
+  getSmsInfrastructureStatus: getSmsInfrastructureStatus,
+  createSmsInfrastructure: createSmsInfrastructure,
+} as {
+  setupSmsInfrastructure: typeof setupSmsInfrastructure
+  getSmsInfrastructureStatus: typeof getSmsInfrastructureStatus
+  createSmsInfrastructure: typeof createSmsInfrastructure
 }

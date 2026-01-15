@@ -505,7 +505,7 @@ export class StorageAdvancedManager {
     }
   }
 
-  clear() {
+  clear(): void {
     this.policies.clear()
     this.versioningConfigs.clear()
     this.replicationRules.clear()
@@ -520,4 +520,4 @@ export class StorageAdvancedManager {
   }
 }
 
-export const storageAdvancedManager = new StorageAdvancedManager()
+export const storageAdvancedManager: StorageAdvancedManager = new StorageAdvancedManager()

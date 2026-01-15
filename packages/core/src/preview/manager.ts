@@ -323,4 +323,4 @@ export class PreviewEnvironmentManager {
 /**
  * Global preview environment manager instance
  */
-export const previewManager = new PreviewEnvironmentManager()
+export const previewManager: PreviewEnvironmentManager = new PreviewEnvironmentManager()
