@@ -1,7 +1,11 @@
 import { dts } from 'bun-plugin-dtsx'
 
-await Bun.build({
-  entrypoints: ['src/index.ts'],
-  outdir: './dist',
-  plugins: [dts()],
-})
+async function build() {
+  await Bun.build({
+    entrypoints: ['src/index.ts'],
+    outdir: './dist',
+    plugins: [dts()],
+  })
+}
+
+build()

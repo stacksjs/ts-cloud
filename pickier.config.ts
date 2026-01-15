@@ -33,6 +33,7 @@ const config: PickierConfig = {
   rules: {
     noDebugger: 'error',
     noConsole: 'off',
+    quotes: 'off',
   },
 
   pluginRules: {
@@ -40,11 +41,12 @@ const config: PickierConfig = {
     'ts/no-explicit-any': 'off',
     'ts/no-unused-vars': 'warn',
 
-    // General rules
-    'general/no-empty': 'warn',
-
-    // Quality rules
-    'quality/no-nested-ternary': 'off',
+    // Disable buggy rules (false positives on TypeScript syntax)
+    'regexp/no-unused-capturing-group': 'off',
+    'no-super-linear-backtracking': 'off',
+    'style/brace-style': 'off',
+    'max-statements-per-line': 'off',
+    'quotes': 'off',
 
     // Markdown rules
     'markdown/heading-increment': 'error',
