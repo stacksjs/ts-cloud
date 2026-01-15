@@ -15,6 +15,7 @@ import { SQSClient } from '../src/aws/sqs'
 import { SchedulerClient } from '../src/aws/scheduler'
 import { ECRClient } from '../src/aws/ecr'
 import { ECSClient } from '../src/aws/ecs'
+import { ApplicationAutoScalingClient } from '../src/aws/application-autoscaling'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
 
@@ -4505,6 +4506,411 @@ https://console.aws.amazon.com/ecs/home?region=${region}#/clusters/${cluster}/se
     }
     catch (error: any) {
       cli.error(`Deployment failed: ${error.message}`)
+    }
+  })
+
+// ============================================
+// Auto-Scaling Commands
+// ============================================
+
+app
+  .command('scaling:setup', 'Set up auto-scaling for an ECS service')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .option('--min <count>', 'Minimum task count', '1')
+  .option('--max <count>', 'Maximum task count', '10')
+  .option('--cpu <percent>', 'Target CPU utilization percentage')
+  .option('--memory <percent>', 'Target memory utilization percentage')
+  .action(async (options?: {
+    cluster?: string
+    service?: string
+    min?: string
+    max?: string
+    cpu?: string
+    memory?: string
+  }) => {
+    cli.header('📈 Setting Up Auto-Scaling')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+      const minCapacity = Number.parseInt(options?.min || '1')
+      const maxCapacity = Number.parseInt(options?.max || '10')
+      const targetCPU = options?.cpu ? Number.parseInt(options.cpu) : undefined
+      const targetMemory = options?.memory ? Number.parseInt(options.memory) : undefined
+
+      if (!cluster || !service) {
+        cli.error('--cluster and --service are required')
+        return
+      }
+
+      if (!targetCPU && !targetMemory) {
+        cli.error('At least one of --cpu or --memory is required')
+        return
+      }
+
+      cli.info(`Cluster: ${cluster}`)
+      cli.info(`Service: ${service}`)
+      cli.info(`Min Capacity: ${minCapacity}`)
+      cli.info(`Max Capacity: ${maxCapacity}`)
+      if (targetCPU) cli.info(`Target CPU: ${targetCPU}%`)
+      if (targetMemory) cli.info(`Target Memory: ${targetMemory}%`)
+
+      const confirmed = await cli.confirm('\nSet up auto-scaling?', true)
+      if (!confirmed) {
+        cli.info('Setup cancelled')
+        return
+      }
+
+      const autoscaling = new ApplicationAutoScalingClient(region)
+
+      // Step 1: Register scalable target
+      const registerSpinner = new cli.Spinner('Registering scalable target...')
+      registerSpinner.start()
+
+      await autoscaling.registerECSServiceScaling({
+        clusterName: cluster,
+        serviceName: service,
+        minCapacity,
+        maxCapacity,
+      })
+
+      registerSpinner.succeed('Scalable target registered')
+
+      // Step 2: Create CPU scaling policy (if specified)
+      if (targetCPU) {
+        const cpuSpinner = new cli.Spinner('Creating CPU scaling policy...')
+        cpuSpinner.start()
+
+        const cpuResult = await autoscaling.createECSCPUScalingPolicy({
+          clusterName: cluster,
+          serviceName: service,
+          policyName: `${service}-cpu-scaling`,
+          targetCPUPercent: targetCPU,
+        })
+
+        cpuSpinner.succeed('CPU scaling policy created')
+        cli.info(`  Policy ARN: ${cpuResult.PolicyARN}`)
+      }
+
+      // Step 3: Create Memory scaling policy (if specified)
+      if (targetMemory) {
+        const memorySpinner = new cli.Spinner('Creating memory scaling policy...')
+        memorySpinner.start()
+
+        const memoryResult = await autoscaling.createECSMemoryScalingPolicy({
+          clusterName: cluster,
+          serviceName: service,
+          policyName: `${service}-memory-scaling`,
+          targetMemoryPercent: targetMemory,
+        })
+
+        memorySpinner.succeed('Memory scaling policy created')
+        cli.info(`  Policy ARN: ${memoryResult.PolicyARN}`)
+      }
+
+      cli.box(`✨ Auto-Scaling Configured!
+
+Service: ${cluster}/${service}
+Min Tasks: ${minCapacity}
+Max Tasks: ${maxCapacity}
+${targetCPU ? `CPU Target: ${targetCPU}%` : ''}
+${targetMemory ? `Memory Target: ${targetMemory}%` : ''}
+
+View in console:
+https://console.aws.amazon.com/ecs/home?region=${region}#/clusters/${cluster}/services/${service}/configuration`, 'green')
+    }
+    catch (error: any) {
+      cli.error(`Setup failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('scaling:status', 'Show auto-scaling status for an ECS service')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .action(async (options?: { cluster?: string, service?: string }) => {
+    cli.header('📊 Auto-Scaling Status')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+
+      if (!cluster || !service) {
+        cli.error('--cluster and --service are required')
+        return
+      }
+
+      const autoscaling = new ApplicationAutoScalingClient(region)
+      const resourceId = autoscaling.getECSServiceResourceId(cluster, service)
+
+      const spinner = new cli.Spinner('Fetching scaling configuration...')
+      spinner.start()
+
+      // Get scalable target
+      const targets = await autoscaling.describeScalableTargets({
+        serviceNamespace: 'ecs',
+        resourceIds: [resourceId],
+      })
+
+      // Get scaling policies
+      const policies = await autoscaling.getECSServiceScalingPolicies(cluster, service)
+
+      // Get recent scaling activities
+      const activities = await autoscaling.getECSScalingActivities(cluster, service, 5)
+
+      spinner.succeed('Configuration loaded')
+
+      if (targets.ScalableTargets.length === 0) {
+        cli.warn(`No auto-scaling configured for ${cluster}/${service}`)
+        return
+      }
+
+      const target = targets.ScalableTargets[0]
+
+      cli.info(`\nService: ${cluster}/${service}`)
+      cli.info(`Min Capacity: ${target.MinCapacity}`)
+      cli.info(`Max Capacity: ${target.MaxCapacity}`)
+
+      if (policies.length > 0) {
+        cli.info('\n📋 Scaling Policies:')
+        for (const policy of policies) {
+          cli.info(`  • ${policy.PolicyName}`)
+          cli.info(`    Type: ${policy.PolicyType}`)
+          if (policy.TargetTrackingScalingPolicyConfiguration) {
+            const config = policy.TargetTrackingScalingPolicyConfiguration
+            cli.info(`    Target Value: ${config.TargetValue}%`)
+            if (config.PredefinedMetricSpecification) {
+              cli.info(`    Metric: ${config.PredefinedMetricSpecification.PredefinedMetricType}`)
+            }
+            cli.info(`    Scale Out Cooldown: ${config.ScaleOutCooldown}s`)
+            cli.info(`    Scale In Cooldown: ${config.ScaleInCooldown}s`)
+          }
+        }
+      }
+
+      if (activities.length > 0) {
+        cli.info('\n📈 Recent Scaling Activities:')
+        for (const activity of activities) {
+          const time = new Date(activity.StartTime).toLocaleString()
+          cli.info(`  • [${activity.StatusCode}] ${time}`)
+          cli.info(`    ${activity.Description}`)
+        }
+      }
+    }
+    catch (error: any) {
+      cli.error(`Failed to get status: ${error.message}`)
+    }
+  })
+
+app
+  .command('scaling:update', 'Update auto-scaling configuration')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .option('--min <count>', 'Minimum task count')
+  .option('--max <count>', 'Maximum task count')
+  .action(async (options?: {
+    cluster?: string
+    service?: string
+    min?: string
+    max?: string
+  }) => {
+    cli.header('🔄 Updating Auto-Scaling')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+
+      if (!cluster || !service) {
+        cli.error('--cluster and --service are required')
+        return
+      }
+
+      if (!options?.min && !options?.max) {
+        cli.error('At least one of --min or --max is required')
+        return
+      }
+
+      const autoscaling = new ApplicationAutoScalingClient(region)
+      const resourceId = autoscaling.getECSServiceResourceId(cluster, service)
+
+      // Get current configuration
+      const spinner = new cli.Spinner('Fetching current configuration...')
+      spinner.start()
+
+      const targets = await autoscaling.describeScalableTargets({
+        serviceNamespace: 'ecs',
+        resourceIds: [resourceId],
+      })
+
+      if (targets.ScalableTargets.length === 0) {
+        spinner.fail('No auto-scaling configured for this service')
+        return
+      }
+
+      const current = targets.ScalableTargets[0]
+      spinner.succeed('Current configuration loaded')
+
+      const minCapacity = options?.min ? Number.parseInt(options.min) : current.MinCapacity
+      const maxCapacity = options?.max ? Number.parseInt(options.max) : current.MaxCapacity
+
+      cli.info(`Current: Min=${current.MinCapacity}, Max=${current.MaxCapacity}`)
+      cli.info(`New: Min=${minCapacity}, Max=${maxCapacity}`)
+
+      const confirmed = await cli.confirm('\nUpdate auto-scaling?', true)
+      if (!confirmed) {
+        cli.info('Update cancelled')
+        return
+      }
+
+      const updateSpinner = new cli.Spinner('Updating scalable target...')
+      updateSpinner.start()
+
+      await autoscaling.registerECSServiceScaling({
+        clusterName: cluster,
+        serviceName: service,
+        minCapacity,
+        maxCapacity,
+      })
+
+      updateSpinner.succeed('Auto-scaling updated!')
+
+      cli.success(`\nMin: ${current.MinCapacity} → ${minCapacity}`)
+      cli.success(`Max: ${current.MaxCapacity} → ${maxCapacity}`)
+    }
+    catch (error: any) {
+      cli.error(`Update failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('scaling:remove', 'Remove auto-scaling from an ECS service')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .action(async (options?: { cluster?: string, service?: string }) => {
+    cli.header('🗑️  Removing Auto-Scaling')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+
+      if (!cluster || !service) {
+        cli.error('--cluster and --service are required')
+        return
+      }
+
+      cli.warn(`This will remove all auto-scaling configuration for ${cluster}/${service}`)
+
+      const confirmed = await cli.confirm('\nRemove auto-scaling?', false)
+      if (!confirmed) {
+        cli.info('Removal cancelled')
+        return
+      }
+
+      const autoscaling = new ApplicationAutoScalingClient(region)
+
+      const spinner = new cli.Spinner('Removing auto-scaling...')
+      spinner.start()
+
+      await autoscaling.removeECSServiceScaling(cluster, service)
+
+      spinner.succeed('Auto-scaling removed!')
+
+      cli.success(`\nAuto-scaling has been removed from ${cluster}/${service}`)
+    }
+    catch (error: any) {
+      cli.error(`Removal failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('scaling:schedule', 'Create a scheduled scaling action')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .option('--name <name>', 'Schedule name')
+  .option('--schedule <cron>', 'Cron schedule (e.g., "cron(0 9 * * ? *)" for 9 AM daily)')
+  .option('--timezone <tz>', 'Timezone (e.g., "America/New_York")')
+  .option('--min <count>', 'Minimum task count')
+  .option('--max <count>', 'Maximum task count')
+  .action(async (options?: {
+    cluster?: string
+    service?: string
+    name?: string
+    schedule?: string
+    timezone?: string
+    min?: string
+    max?: string
+  }) => {
+    cli.header('📅 Creating Scheduled Scaling')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+      const actionName = options?.name
+      const schedule = options?.schedule
+      const timezone = options?.timezone
+      const minCapacity = options?.min ? Number.parseInt(options.min) : undefined
+      const maxCapacity = options?.max ? Number.parseInt(options.max) : undefined
+
+      if (!cluster || !service || !actionName || !schedule) {
+        cli.error('--cluster, --service, --name, and --schedule are required')
+        return
+      }
+
+      if (minCapacity === undefined && maxCapacity === undefined) {
+        cli.error('At least one of --min or --max is required')
+        return
+      }
+
+      cli.info(`Cluster: ${cluster}`)
+      cli.info(`Service: ${service}`)
+      cli.info(`Schedule: ${schedule}`)
+      if (timezone) cli.info(`Timezone: ${timezone}`)
+      if (minCapacity !== undefined) cli.info(`Min Capacity: ${minCapacity}`)
+      if (maxCapacity !== undefined) cli.info(`Max Capacity: ${maxCapacity}`)
+
+      const confirmed = await cli.confirm('\nCreate scheduled action?', true)
+      if (!confirmed) {
+        cli.info('Creation cancelled')
+        return
+      }
+
+      const autoscaling = new ApplicationAutoScalingClient(region)
+
+      const spinner = new cli.Spinner('Creating scheduled action...')
+      spinner.start()
+
+      await autoscaling.createECSScheduledScaling({
+        clusterName: cluster,
+        serviceName: service,
+        actionName,
+        schedule,
+        timezone,
+        minCapacity,
+        maxCapacity,
+      })
+
+      spinner.succeed('Scheduled action created!')
+
+      cli.success(`\nScheduled scaling "${actionName}" created for ${cluster}/${service}`)
+    }
+    catch (error: any) {
+      cli.error(`Creation failed: ${error.message}`)
     }
   })
 
