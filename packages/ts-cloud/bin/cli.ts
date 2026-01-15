@@ -13,6 +13,8 @@ import { CloudFrontClient } from '../src/aws/cloudfront'
 import { ElastiCacheClient } from '../src/aws/elasticache'
 import { SQSClient } from '../src/aws/sqs'
 import { SchedulerClient } from '../src/aws/scheduler'
+import { ECRClient } from '../src/aws/ecr'
+import { ECSClient } from '../src/aws/ecs'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
 
@@ -4171,6 +4173,338 @@ app
     }
     catch (error: any) {
       cli.error(`Invalidation failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('deploy:static', 'Deploy static site (S3 + CloudFront invalidation)')
+  .option('--source <path>', 'Source directory', 'dist')
+  .option('--bucket <name>', 'S3 bucket name')
+  .option('--distribution <id>', 'CloudFront distribution ID')
+  .option('--prefix <prefix>', 'S3 prefix/folder')
+  .option('--delete', 'Delete files not in source')
+  .option('--cache-control <value>', 'Cache-Control header', 'public, max-age=31536000')
+  .option('--no-invalidate', 'Skip CloudFront invalidation')
+  .option('--wait', 'Wait for invalidation to complete')
+  .action(async (options?: {
+    source?: string
+    bucket?: string
+    distribution?: string
+    prefix?: string
+    delete?: boolean
+    cacheControl?: string
+    invalidate?: boolean
+    wait?: boolean
+  }) => {
+    cli.header('🚀 Deploying Static Site')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const source = options?.source || 'dist'
+      const bucket = options?.bucket
+      const distributionId = options?.distribution
+      const prefix = options?.prefix
+      const shouldDelete = options?.delete || false
+      const cacheControl = options?.cacheControl || 'public, max-age=31536000'
+      const shouldInvalidate = options?.invalidate !== false
+      const shouldWait = options?.wait || false
+
+      if (!bucket) {
+        cli.error('--bucket is required')
+        return
+      }
+
+      // Check if source directory exists
+      if (!existsSync(source)) {
+        cli.error(`Source directory not found: ${source}`)
+        return
+      }
+
+      cli.info(`Source: ${source}`)
+      cli.info(`Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}`)
+      cli.info(`Cache-Control: ${cacheControl}`)
+      if (distributionId) {
+        cli.info(`CloudFront Distribution: ${distributionId}`)
+      }
+      if (shouldDelete) {
+        cli.warn('Delete mode enabled - files not in source will be removed')
+      }
+
+      const confirmed = await cli.confirm('\nDeploy static site now?', true)
+      if (!confirmed) {
+        cli.info('Deployment cancelled')
+        return
+      }
+
+      // Step 1: Upload to S3
+      const s3 = new S3Client(region)
+      const uploadSpinner = new cli.Spinner('Uploading files to S3...')
+      uploadSpinner.start()
+
+      await s3.sync({
+        source,
+        bucket,
+        prefix,
+        delete: shouldDelete,
+        cacheControl,
+        acl: 'public-read',
+      })
+
+      uploadSpinner.succeed('Files uploaded successfully!')
+
+      // Get bucket size
+      const size = await s3.getBucketSize(bucket, prefix)
+      const sizeInMB = (size / 1024 / 1024).toFixed(2)
+      cli.info(`Total size: ${sizeInMB} MB`)
+
+      // Step 2: Invalidate CloudFront (if distribution provided)
+      if (shouldInvalidate && distributionId) {
+        const cloudfront = new CloudFrontClient()
+        const invalidateSpinner = new cli.Spinner('Invalidating CloudFront cache...')
+        invalidateSpinner.start()
+
+        const invalidation = await cloudfront.invalidateAll(distributionId)
+        invalidateSpinner.succeed('Invalidation created')
+
+        cli.info(`Invalidation ID: ${invalidation.Id}`)
+
+        if (shouldWait) {
+          const waitSpinner = new cli.Spinner('Waiting for invalidation to complete...')
+          waitSpinner.start()
+          await cloudfront.waitForInvalidation(distributionId, invalidation.Id)
+          waitSpinner.succeed('Invalidation completed!')
+        }
+      }
+
+      cli.box(`✨ Static Site Deployed!
+
+Source: ${source}
+Bucket: s3://${bucket}${prefix ? `/${prefix}` : ''}
+Size: ${sizeInMB} MB
+${distributionId ? `Distribution: ${distributionId}` : ''}
+
+View your site:
+https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.html`, 'green')
+    }
+    catch (error: any) {
+      cli.error(`Deployment failed: ${error.message}`)
+    }
+  })
+
+app
+  .command('deploy:container', 'Deploy container (ECR push + ECS service update)')
+  .option('--cluster <name>', 'ECS cluster name')
+  .option('--service <name>', 'ECS service name')
+  .option('--repository <name>', 'ECR repository name')
+  .option('--image <tag>', 'Docker image tag', 'latest')
+  .option('--dockerfile <path>', 'Dockerfile path', 'Dockerfile')
+  .option('--context <path>', 'Docker build context', '.')
+  .option('--task-definition <name>', 'Task definition family name')
+  .option('--force', 'Force new deployment even if no changes')
+  .option('--wait', 'Wait for deployment to stabilize')
+  .action(async (options?: {
+    cluster?: string
+    service?: string
+    repository?: string
+    image?: string
+    dockerfile?: string
+    context?: string
+    taskDefinition?: string
+    force?: boolean
+    wait?: boolean
+  }) => {
+    cli.header('🐳 Deploying Container')
+
+    try {
+      const config = await loadCloudConfig()
+      const region = config.project.region || 'us-east-1'
+
+      const cluster = options?.cluster
+      const service = options?.service
+      const repository = options?.repository
+      const imageTag = options?.image || 'latest'
+      const dockerfile = options?.dockerfile || 'Dockerfile'
+      const context = options?.context || '.'
+      const taskDefinition = options?.taskDefinition
+      const forceDeployment = options?.force || false
+      const shouldWait = options?.wait || false
+
+      if (!cluster || !service) {
+        cli.error('--cluster and --service are required')
+        return
+      }
+
+      if (!repository) {
+        cli.error('--repository is required')
+        return
+      }
+
+      // Check if Dockerfile exists
+      if (!existsSync(dockerfile)) {
+        cli.error(`Dockerfile not found: ${dockerfile}`)
+        return
+      }
+
+      cli.info(`Cluster: ${cluster}`)
+      cli.info(`Service: ${service}`)
+      cli.info(`Repository: ${repository}`)
+      cli.info(`Image Tag: ${imageTag}`)
+      cli.info(`Dockerfile: ${dockerfile}`)
+
+      const confirmed = await cli.confirm('\nDeploy container now?', true)
+      if (!confirmed) {
+        cli.info('Deployment cancelled')
+        return
+      }
+
+      const ecr = new ECRClient(region)
+      const ecs = new ECSClient(region)
+
+      // Step 1: Get ECR login credentials
+      const loginSpinner = new cli.Spinner('Getting ECR credentials...')
+      loginSpinner.start()
+
+      const authResult = await ecr.getAuthorizationToken()
+      if (!authResult.authorizationData?.[0]) {
+        loginSpinner.fail('Failed to get ECR credentials')
+        return
+      }
+
+      const auth = authResult.authorizationData[0]
+      const registryEndpoint = auth.proxyEndpoint || ''
+      const registryHost = registryEndpoint.replace('https://', '')
+
+      loginSpinner.succeed('ECR credentials obtained')
+
+      // Step 2: Docker login to ECR
+      const dockerLoginSpinner = new cli.Spinner('Logging into ECR...')
+      dockerLoginSpinner.start()
+
+      const token = auth.authorizationToken || ''
+      const decoded = Buffer.from(token, 'base64').toString('utf8')
+      const password = decoded.split(':')[1]
+
+      // Run docker login
+      const { spawn } = await import('child_process')
+      const dockerLogin = spawn('docker', ['login', '--username', 'AWS', '--password-stdin', registryHost], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      dockerLogin.stdin.write(password)
+      dockerLogin.stdin.end()
+
+      await new Promise<void>((resolve, reject) => {
+        dockerLogin.on('close', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`Docker login failed with code ${code}`))
+        })
+      })
+
+      dockerLoginSpinner.succeed('Logged into ECR')
+
+      // Step 3: Build Docker image
+      const buildSpinner = new cli.Spinner('Building Docker image...')
+      buildSpinner.start()
+
+      const imageUri = `${registryHost}/${repository}:${imageTag}`
+
+      const dockerBuild = spawn('docker', ['build', '-t', imageUri, '-f', dockerfile, context], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        let stderr = ''
+        dockerBuild.stderr.on('data', (data) => { stderr += data.toString() })
+        dockerBuild.on('close', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`Docker build failed: ${stderr}`))
+        })
+      })
+
+      buildSpinner.succeed('Docker image built')
+
+      // Step 4: Push to ECR
+      const pushSpinner = new cli.Spinner('Pushing image to ECR...')
+      pushSpinner.start()
+
+      const dockerPush = spawn('docker', ['push', imageUri], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      await new Promise<void>((resolve, reject) => {
+        let stderr = ''
+        dockerPush.stderr.on('data', (data) => { stderr += data.toString() })
+        dockerPush.on('close', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`Docker push failed: ${stderr}`))
+        })
+      })
+
+      pushSpinner.succeed('Image pushed to ECR')
+
+      // Step 5: Update ECS service
+      const updateSpinner = new cli.Spinner('Updating ECS service...')
+      updateSpinner.start()
+
+      const updateParams: {
+        cluster: string
+        service: string
+        forceNewDeployment?: boolean
+        taskDefinition?: string
+      } = {
+        cluster,
+        service,
+      }
+
+      if (forceDeployment) {
+        updateParams.forceNewDeployment = true
+      }
+
+      if (taskDefinition) {
+        updateParams.taskDefinition = taskDefinition
+      }
+
+      await ecs.updateService(updateParams)
+
+      updateSpinner.succeed('ECS service updated')
+
+      // Step 6: Wait for deployment (optional)
+      if (shouldWait) {
+        const waitSpinner = new cli.Spinner('Waiting for deployment to stabilize...')
+        waitSpinner.start()
+
+        const stable = await ecs.waitForServiceStable(cluster, service)
+
+        if (stable) {
+          waitSpinner.succeed('Deployment stabilized!')
+        }
+        else {
+          waitSpinner.fail('Deployment did not stabilize within timeout')
+        }
+      }
+
+      // Get service status
+      const serviceResult = await ecs.describeServices({
+        cluster,
+        services: [service],
+      })
+
+      const svc = serviceResult.services?.[0]
+
+      cli.box(`✨ Container Deployed!
+
+Cluster: ${cluster}
+Service: ${service}
+Image: ${imageUri}
+Running: ${svc?.runningCount || 0}/${svc?.desiredCount || 0}
+
+View in console:
+https://console.aws.amazon.com/ecs/home?region=${region}#/clusters/${cluster}/services/${service}`, 'green')
+    }
+    catch (error: any) {
+      cli.error(`Deployment failed: ${error.message}`)
     }
   })
 
