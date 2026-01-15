@@ -18,7 +18,7 @@ export interface Accelerator {
   UpdateReplacePolicy?: 'Delete' | 'Retain'
 }
 
-export interface Listener {
+export interface GlobalAcceleratorListener {
   Type: 'AWS::GlobalAccelerator::Listener'
   Properties: {
     AcceleratorArn: string | { Ref: string }

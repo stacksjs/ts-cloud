@@ -4,6 +4,7 @@ export interface IAMRole extends CloudFormationResource {
   Type: 'AWS::IAM::Role'
   Properties: {
     RoleName?: string
+    MaxSessionDuration?: number
     AssumeRolePolicyDocument: {
       Version: '2012-10-17'
       Statement: Array<{
@@ -11,8 +12,10 @@ export interface IAMRole extends CloudFormationResource {
         Principal: {
           Service?: string | string[]
           AWS?: string | string[]
+          Federated?: string | string[]
         }
         Action: string | string[]
+        Condition?: Record<string, unknown>
       }>
     }
     ManagedPolicyArns?: string[]
@@ -41,6 +44,7 @@ export interface IAMPolicy extends CloudFormationResource {
     PolicyDocument: {
       Version: '2012-10-17'
       Statement: Array<{
+        Sid?: string
         Effect: 'Allow' | 'Deny'
         Action: string | string[]
         Resource: string | string[]

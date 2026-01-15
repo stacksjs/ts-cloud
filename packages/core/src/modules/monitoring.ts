@@ -300,7 +300,7 @@ export class Monitoring {
     }
 
     if (retentionInDays !== undefined) {
-      logGroup.Properties!.RetentionInDays = retentionInDays
+      logGroup.Properties!.RetentionInDays = retentionInDays as 1 | 3 | 5 | 7 | 14 | 30 | 60 | 90 | 120 | 150 | 180 | 365 | 400 | 545 | 731 | 1827 | 3653
     }
 
     if (kmsKeyId) {

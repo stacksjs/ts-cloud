@@ -84,7 +84,7 @@ export class GoDaddyProvider implements DnsProvider {
     // Handle errors
     let errorMessage = `GoDaddy API error: ${response.status} ${response.statusText}`
     try {
-      const errorData = await response.json()
+      const errorData = await response.json() as Record<string, any>
       if (errorData.message) {
         errorMessage = `GoDaddy API error: ${errorData.message}`
       }

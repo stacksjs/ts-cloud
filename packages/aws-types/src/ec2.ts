@@ -38,6 +38,7 @@ export interface EC2SecurityGroup extends CloudFormationResource {
       ToPort?: number
       CidrIp?: string
       SourceSecurityGroupId?: string
+      Description?: string
     }>
     SecurityGroupEgress?: Array<{
       IpProtocol: string
@@ -45,6 +46,7 @@ export interface EC2SecurityGroup extends CloudFormationResource {
       ToPort?: number
       CidrIp?: string
       DestinationSecurityGroupId?: string
+      Description?: string
     }>
     Tags?: Array<{
       Key: string

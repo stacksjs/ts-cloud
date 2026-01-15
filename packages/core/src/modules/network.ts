@@ -533,7 +533,7 @@ export class Network {
       const { subnet: publicSubnet, logicalId: publicSubnetLogicalId } = Network.createSubnet({
         slug,
         environment,
-        vpcId: Fn.Ref(vpcLogicalId),
+        vpcId: Fn.Ref(vpcLogicalId) as any,
         type: 'public',
         cidr: publicCidr,
         availabilityZone: az,
@@ -552,7 +552,7 @@ export class Network {
       const { subnet: privateSubnet, logicalId: privateSubnetLogicalId } = Network.createSubnet({
         slug,
         environment,
-        vpcId: Fn.Ref(vpcLogicalId),
+        vpcId: Fn.Ref(vpcLogicalId) as any,
         type: 'private',
         cidr: privateCidr,
         availabilityZone: az,
@@ -568,7 +568,7 @@ export class Network {
 
         // Create NAT Gateway in public subnet
         const { natGateway, logicalId: natLogicalId } = Network.createNatGateway(
-          { slug: `${slug}-${az}`, environment, subnetId: Fn.Ref(publicSubnetLogicalId) },
+          { slug: `${slug}-${az}`, environment, subnetId: Fn.Ref(publicSubnetLogicalId) as any },
           eipLogicalId,
         )
         natGateway.DependsOn = attachmentLogicalId
@@ -631,7 +631,7 @@ export class Network {
       const { flowLog, logicalId: flowLogId } = Network.enableFlowLogs({
         slug,
         environment,
-        resourceId: Fn.Ref(vpcLogicalId),
+        resourceId: Fn.Ref(vpcLogicalId) as any,
         resourceType: 'VPC',
       })
       resources[flowLogId] = flowLog

@@ -984,7 +984,7 @@ export class BedrockRuntimeClient {
       throw new Error('No response body for streaming')
     }
 
-    return this.parseEventStream(reader)
+    return this.parseEventStream(reader as any)
   }
 
   /**

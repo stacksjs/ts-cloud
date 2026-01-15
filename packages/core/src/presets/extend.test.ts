@@ -50,6 +50,8 @@ describe('extendPreset', () => {
 
     const extension: Partial<CloudConfig> = {
       project: {
+        name: 'Base',
+        slug: 'base',
         region: 'eu-west-1',
       },
     }
@@ -91,11 +93,14 @@ describe('composePresets', () => {
       project: {
         name: 'Project',
         slug: 'project',
+        region: 'us-west-2',
       },
     }
 
     const preset2: Partial<CloudConfig> = {
       project: {
+        name: 'Project',
+        slug: 'project',
         region: 'us-east-1',
       },
     }
@@ -117,12 +122,16 @@ describe('composePresets', () => {
   it('should apply later presets over earlier ones', () => {
     const preset1: Partial<CloudConfig> = {
       project: {
+        name: 'Project',
+        slug: 'project',
         region: 'us-east-1',
       },
     }
 
     const preset2: Partial<CloudConfig> = {
       project: {
+        name: 'Project',
+        slug: 'project',
         region: 'eu-west-1',
       },
     }
@@ -136,6 +145,8 @@ describe('composePresets', () => {
     const preset1: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 
@@ -151,6 +162,7 @@ describe('withMonitoring', () => {
       project: {
         name: 'Test',
         slug: 'test',
+        region: 'us-east-1',
       },
     }
 
@@ -184,15 +196,17 @@ describe('withSecurity', () => {
     const base: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 
     const result = extendPreset(base, withSecurity({
-      waf: true,
+      waf: { enabled: true },
     }))
 
     expect(result.infrastructure?.security).toBeDefined()
-    expect(result.infrastructure?.security?.waf).toBe(true)
+    expect(result.infrastructure?.security?.waf?.enabled).toBe(true)
   })
 })
 
@@ -201,6 +215,8 @@ describe('withDatabase', () => {
     const base: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 
@@ -210,8 +226,8 @@ describe('withDatabase', () => {
       },
     }))
 
-    expect(result.infrastructure?.database?.postgres).toBeDefined()
-    expect(result.infrastructure?.database?.postgres?.instanceClass).toBe('db.t3.micro')
+    expect(result.infrastructure?.databases?.postgres).toBeDefined()
+    expect(result.infrastructure?.databases?.postgres?.instanceClass).toBe('db.t3.micro')
   })
 })
 
@@ -220,6 +236,8 @@ describe('withCache', () => {
     const base: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 
@@ -239,6 +257,8 @@ describe('withCDN', () => {
     const base: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 
@@ -258,6 +278,8 @@ describe('withQueue', () => {
     const base: Partial<CloudConfig> = {
       project: {
         name: 'Test',
+        slug: 'test',
+        region: 'us-east-1',
       },
     }
 

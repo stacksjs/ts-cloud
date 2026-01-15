@@ -21,12 +21,13 @@ export function createApiBackendPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
     infrastructure: {
       apiGateway: {
-        type: 'http', // HTTP API is cheaper and simpler
+        type: 'HTTP', // HTTP API is cheaper and simpler
         cors: {
           allowOrigins: ['*'],
           allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
@@ -47,8 +48,7 @@ export function createApiBackendPreset(options: {
         },
       },
       functions: {
-        api: [{
-          name: 'users',
+        users: {
           runtime: 'nodejs20.x',
           handler: 'dist/api/users.handler',
           memory: 512,
@@ -62,8 +62,8 @@ export function createApiBackendPreset(options: {
             path: '/users',
             method: 'POST',
           }],
-        }, {
-          name: 'products',
+        },
+        products: {
           runtime: 'nodejs20.x',
           handler: 'dist/api/products.handler',
           memory: 512,
@@ -73,28 +73,29 @@ export function createApiBackendPreset(options: {
             path: '/products',
             method: 'GET',
           }],
-        }],
+        },
       },
-      database: {
+      databases: {
         dynamodb: {
-          tables: [{
-            name: `${slug}-users`,
-            partitionKey: 'userId',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: true,
-            pointInTimeRecovery: true,
-            globalSecondaryIndexes: [{
-              name: 'EmailIndex',
-              partitionKey: 'email',
-              projectionType: 'ALL',
-            }],
-          }, {
-            name: `${slug}-products`,
-            partitionKey: 'productId',
-            sortKey: 'category',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: false,
-          }],
+          tables: {
+            [`${slug}-users`]: {
+              partitionKey: { name: 'userId', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: true,
+              pointInTimeRecovery: true,
+              globalSecondaryIndexes: [{
+                name: 'EmailIndex',
+                partitionKey: { name: 'email', type: 'S' },
+                projection: 'ALL',
+              }],
+            },
+            [`${slug}-products`]: {
+              partitionKey: { name: 'productId', type: 'S' },
+              sortKey: { name: 'category', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: false,
+            },
+          },
         },
       },
       cache: {

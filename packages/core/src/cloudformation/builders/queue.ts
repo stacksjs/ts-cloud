@@ -116,8 +116,7 @@ function addQueue(
   })
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Url`]: {
       Description: `${name} queue URL`,
       Value: Fn.ref(logicalId),
@@ -132,15 +131,17 @@ function addQueue(
         Name: Fn.sub(`\${AWS::StackName}-${name}-queue-arn`),
       },
     },
-  }
+  })
 
   if (config.deadLetterQueue) {
-    builder.template.Outputs[`${logicalId}DLQUrl`] = {
-      Description: `${name} dead letter queue URL`,
-      Value: Fn.ref(`${logicalId}DLQ`),
-      Export: {
-        Name: Fn.sub(`\${AWS::StackName}-${name}-dlq-url`),
+    builder.addOutputs({
+      [`${logicalId}DLQUrl`]: {
+        Description: `${name} dead letter queue URL`,
+        Value: Fn.ref(`${logicalId}DLQ`),
+        Export: {
+          Name: Fn.sub(`\${AWS::StackName}-${name}-dlq-url`),
+        },
       },
-    }
+    })
   }
 }

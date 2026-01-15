@@ -238,8 +238,7 @@ export function addNetworkResources(
   })
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     VPCId: {
       Description: 'VPC ID',
       Value: Fn.ref('VPC'),
@@ -261,5 +260,5 @@ export function addNetworkResources(
         Name: Fn.sub('${AWS::StackName}-PrivateSubnets'),
       },
     },
-  }
+  })
 }

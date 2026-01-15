@@ -4,6 +4,93 @@ import type { CloudFormationResource } from './index'
  * AWS EventBridge Types
  */
 
+/**
+ * ECS Parameters for EventBridge targets
+ */
+export interface EventBridgeEcsParameters {
+  TaskDefinitionArn: string
+  TaskCount?: number
+  LaunchType?: 'EC2' | 'FARGATE' | 'EXTERNAL'
+  NetworkConfiguration?: {
+    awsvpcConfiguration: {
+      Subnets: string[]
+      SecurityGroups?: string[]
+      AssignPublicIp?: 'ENABLED' | 'DISABLED'
+    }
+  }
+  PlatformVersion?: string
+  Group?: string
+  CapacityProviderStrategy?: Array<{
+    capacityProvider: string
+    weight?: number
+    base?: number
+  }>
+  EnableECSManagedTags?: boolean
+  EnableExecuteCommand?: boolean
+  PlacementConstraints?: Array<{
+    type?: string
+    expression?: string
+  }>
+  PlacementStrategy?: Array<{
+    type?: string
+    field?: string
+  }>
+  PropagateTags?: 'TASK_DEFINITION'
+  ReferenceId?: string
+  Tags?: Array<{
+    Key: string
+    Value: string
+  }>
+}
+
+/**
+ * EventBridge Rule Target
+ */
+export interface EventBridgeTarget {
+  Id: string
+  Arn: string
+  RoleArn?: string
+  Input?: string
+  InputPath?: string
+  InputTransformer?: {
+    InputPathsMap?: Record<string, string>
+    InputTemplate: string
+  }
+  KinesisParameters?: {
+    PartitionKeyPath: string
+  }
+  EcsParameters?: EventBridgeEcsParameters
+  SqsParameters?: {
+    MessageGroupId: string
+  }
+  HttpParameters?: {
+    PathParameterValues?: string[]
+    HeaderParameters?: Record<string, string>
+    QueryStringParameters?: Record<string, string>
+  }
+  RedshiftDataParameters?: {
+    Database: string
+    Sql: string
+    DbUser?: string
+    SecretManagerArn?: string
+    StatementName?: string
+    WithEvent?: boolean
+  }
+  SageMakerPipelineParameters?: {
+    PipelineParameterList?: Array<{
+      Name: string
+      Value: string
+    }>
+  }
+  DeadLetterConfig?: {
+    Arn: string
+  }
+  RetryPolicy?: {
+    MaximumRetryAttempts?: number
+    MaximumEventAge?: number
+  }
+}
+
 export interface EventBridgeRule extends CloudFormationResource {
   Type: 'AWS::Events::Rule'
   Properties: {
@@ -21,84 +108,7 @@ export interface EventBridgeRule extends CloudFormationResource {
     }
     EventBusName?: string
     RoleArn?: string
-    Targets?: Array<{
-      Id: string
-      Arn: string
-      RoleArn?: string
-      Input?: string
-      InputPath?: string
-      InputTransformer?: {
-        InputPathsMap?: Record<string, string>
-        InputTemplate: string
-      }
-      KinesisParameters?: {
-        PartitionKeyPath: string
-      }
-      EcsParameters?: {
-        TaskDefinitionArn: string
-        TaskCount?: number
-        LaunchType?: 'EC2' | 'FARGATE' | 'EXTERNAL'
-        NetworkConfiguration?: {
-          awsvpcConfiguration: {
-            Subnets: string[]
-            SecurityGroups?: string[]
-            AssignPublicIp?: 'ENABLED' | 'DISABLED'
-          }
-        }
-        PlatformVersion?: string
-        Group?: string
-        CapacityProviderStrategy?: Array<{
-          capacityProvider: string
-          weight?: number
-          base?: number
-        }>
-        EnableECSManagedTags?: boolean
-        EnableExecuteCommand?: boolean
-        PlacementConstraints?: Array<{
-          type?: string
-          expression?: string
-        }>
-        PlacementStrategy?: Array<{
-          type?: string
-          field?: string
-        }>
-        PropagateTags?: 'TASK_DEFINITION'
-        ReferenceId?: string
-        Tags?: Array<{
-          Key: string
-          Value: string
-        }>
-      }
-      SqsParameters?: {
-        MessageGroupId: string
-      }
-      HttpParameters?: {
-        PathParameterValues?: string[]
-        HeaderParameters?: Record<string, string>
-        QueryStringParameters?: Record<string, string>
-      }
-      RedshiftDataParameters?: {
-        Database: string
-        Sql: string
-        DbUser?: string
-        SecretManagerArn?: string
-        StatementName?: string
-        WithEvent?: boolean
-      }
-      SageMakerPipelineParameters?: {
-        PipelineParameterList?: Array<{
-          Name: string
-          Value: string
-        }>
-      }
-      DeadLetterConfig?: {
-        Arn: string
-      }
-      RetryPolicy?: {
-        MaximumRetryAttempts?: number
-        MaximumEventAge?: number
-      }
-    }>
+    Targets?: EventBridgeTarget[]
   }
 }
 

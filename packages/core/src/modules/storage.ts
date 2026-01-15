@@ -7,7 +7,8 @@ import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '@ts-cloud/types'
 
 export interface BucketOptions {
-  name: string
+  name?: string
+  bucketName?: string // Alias for name
   slug: string
   environment: EnvironmentType
   public?: boolean

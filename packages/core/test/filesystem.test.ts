@@ -337,7 +337,7 @@ describe('FileSystem Module', () => {
       // FileSystem + 2 MountTargets + 2 AccessPoints = 5 resources
       expect(Object.keys(result.Resources)).toHaveLength(5)
       expect(result.Resources[fsId].Type).toBe('AWS::EFS::FileSystem')
-      expect(result.Resources[fsId].Properties.LifecyclePolicies).toHaveLength(2)
+      expect(result.Resources[fsId]!.Properties!.LifecyclePolicies).toHaveLength(2)
     })
 
     it('should create high-performance EFS for database workloads', () => {
@@ -357,9 +357,9 @@ describe('FileSystem Module', () => {
 
       const result = template.build()
 
-      expect(result.Resources[logicalId].Properties.PerformanceMode).toBe('maxIO')
-      expect(result.Resources[logicalId].Properties.ThroughputMode).toBe('provisioned')
-      expect(result.Resources[logicalId].Properties.ProvisionedThroughputInMibps).toBe(1024)
+      expect(result.Resources[logicalId]!.Properties!.PerformanceMode).toBe('maxIO')
+      expect(result.Resources[logicalId]!.Properties!.ThroughputMode).toBe('provisioned')
+      expect(result.Resources[logicalId]!.Properties!.ProvisionedThroughputInMibps).toBe(1024)
     })
 
     it('should generate valid JSON template', () => {

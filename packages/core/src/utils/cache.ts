@@ -58,7 +58,9 @@ export class Cache<T = any> {
     // If cache is full, remove oldest entry
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value
-      this.cache.delete(firstKey)
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey)
+      }
     }
 
     this.cache.set(key, {

@@ -248,7 +248,7 @@ describe('Storage Module', () => {
         events: ['s3:ObjectCreated:*'],
       })
 
-      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Function).toEqual({
+      expect((updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0] as any).Function).toEqual({
         'Fn::GetAtt': ['ProcessorFunction', 'Arn'],
       })
     })
@@ -275,7 +275,7 @@ describe('Storage Module', () => {
       expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessImage')
       expect(config.events).toContain('s3:ObjectCreated:*')
       expect(config.filter?.prefix).toBe('uploads/')
-      expect(config.filter?.suffix).toBe('.jpg')
+      expect((config.filter as any)?.suffix).toBe('.jpg')
     })
 
     it('should create onFileType notification config', () => {
@@ -388,8 +388,8 @@ describe('Storage Module', () => {
       expect(plan.Type).toBe('AWS::Backup::BackupPlan')
       expect(plan.Properties.BackupPlan.BackupPlanName).toBe('my-app-production-backup-plan-s3-backup')
       expect(plan.Properties.BackupPlan.BackupPlanRule).toHaveLength(1)
-      expect(plan.Properties.BackupPlan.BackupPlanRule[0].ScheduleExpression).toBe('cron(0 5 * * ? *)')
-      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.DeleteAfterDays).toBe(30)
+      expect(plan.Properties!.BackupPlan.BackupPlanRule![0].ScheduleExpression).toBe('cron(0 5 * * ? *)')
+      expect(plan.Properties!.BackupPlan.BackupPlanRule![0].Lifecycle!.DeleteAfterDays).toBe(30)
       expect(planLogicalId).toBe('MyAppProductionBackupPlanS3Backup')
 
       expect(selection.Type).toBe('AWS::Backup::BackupSelection')
@@ -437,8 +437,8 @@ describe('Storage Module', () => {
         moveToColdStorageAfterDays: 30,
       })
 
-      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.DeleteAfterDays).toBe(90)
-      expect(plan.Properties.BackupPlan.BackupPlanRule[0].Lifecycle.MoveToColdStorageAfterDays).toBe(30)
+      expect(plan.Properties!.BackupPlan.BackupPlanRule![0].Lifecycle!.DeleteAfterDays).toBe(90)
+      expect(plan.Properties!.BackupPlan.BackupPlanRule![0].Lifecycle!.MoveToColdStorageAfterDays).toBe(30)
     })
 
     it('should create backup plan with continuous backup enabled', () => {

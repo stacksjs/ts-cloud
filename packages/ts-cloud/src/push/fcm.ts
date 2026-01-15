@@ -222,7 +222,7 @@ export class FCMClient {
       throw new Error(`Failed to get access token: ${errorText}`)
     }
 
-    const data = await response.json()
+    const data = await response.json() as Record<string, any>
     this.accessToken = data.access_token
     this.tokenExpiresAt = Date.now() + TOKEN_EXPIRY_MS
 
@@ -331,7 +331,7 @@ export class FCMClient {
         }
       )
 
-      const data = await response.json()
+      const data = await response.json() as Record<string, any>
 
       if (response.ok) {
         return {
@@ -461,7 +461,7 @@ export class FCMClient {
       if (response.ok) {
         return { success: true }
       } else {
-        const data = await response.json()
+        const data = await response.json() as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to subscribe' }
       }
     } catch (error: any) {
@@ -494,7 +494,7 @@ export class FCMClient {
       if (response.ok) {
         return { success: true }
       } else {
-        const data = await response.json()
+        const data = await response.json() as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to unsubscribe' }
       }
     } catch (error: any) {

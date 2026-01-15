@@ -35,6 +35,7 @@ export function createTraditionalWebAppPreset(options: {
     mode: 'server',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -118,7 +119,7 @@ export function createTraditionalWebAppPreset(options: {
         enabled: true,
         origins: [{
           // Static assets from S3
-          id: 'static-assets',
+          originId: 'static-assets',
           domainName: `${slug}-static.s3.amazonaws.com`,
           pathPattern: '/static/*',
         }],
@@ -134,7 +135,7 @@ export function createTraditionalWebAppPreset(options: {
         compress: true,
         http3: true,
       },
-      database: databaseEngine === 'mysql' ? {
+      databases: databaseEngine === 'mysql' ? {
         mysql: {
           engine: 'mysql',
           version: '8.0',
@@ -192,7 +193,7 @@ export function createTraditionalWebAppPreset(options: {
           automaticFailoverEnabled: true,
         },
       } : undefined,
-      queue: {
+      queues: {
         jobs: {
           // Background job processing
           fifo: false,
@@ -211,9 +212,8 @@ export function createTraditionalWebAppPreset(options: {
         },
       },
       functions: {
-        workers: [{
-          // Background job worker
-          name: 'job-worker',
+        // Background job worker
+        'job-worker': {
           runtime: 'nodejs20.x',
           handler: 'dist/workers/jobs.handler',
           memory: 2048,
@@ -223,9 +223,9 @@ export function createTraditionalWebAppPreset(options: {
             queueName: `${slug}-jobs`,
             batchSize: 10,
           }],
-        }, {
-          // Email sender
-          name: 'email-sender',
+        },
+        // Email sender
+        'email-sender': {
           runtime: 'nodejs20.x',
           handler: 'dist/workers/email.handler',
           memory: 512,
@@ -235,10 +235,9 @@ export function createTraditionalWebAppPreset(options: {
             queueName: `${slug}-emails`,
             batchSize: 10,
           }],
-        }],
-        scheduled: [{
-          // Cleanup task
-          name: 'cleanup',
+        },
+        // Cleanup task
+        cleanup: {
           runtime: 'nodejs20.x',
           handler: 'dist/tasks/cleanup.handler',
           memory: 512,
@@ -247,7 +246,7 @@ export function createTraditionalWebAppPreset(options: {
             type: 'schedule',
             expression: 'cron(0 2 * * ? *)', // Daily at 2 AM
           }],
-        }],
+        },
       },
       monitoring: {
         dashboard: {
@@ -326,11 +325,13 @@ export function createTraditionalWebAppPreset(options: {
               { port: databaseEngine === 'mysql' ? 3306 : 5432, protocol: 'tcp', source: 'app-sg' },
             ],
           },
-          cache: sessionStore === 'redis' ? {
-            ingress: [
-              { port: 6379, protocol: 'tcp', source: 'app-sg' },
-            ],
-          } : undefined,
+          ...(sessionStore === 'redis' && {
+            cache: {
+              ingress: [
+                { port: 6379, protocol: 'tcp', source: 'app-sg' },
+              ],
+            },
+          }),
         },
       },
     },

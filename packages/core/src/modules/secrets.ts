@@ -4,6 +4,7 @@
  */
 
 import type { SecretsManagerSecret, SecretsManagerSecretTargetAttachment, SecretsManagerRotationSchedule } from '@ts-cloud/aws-types'
+import type { EnvironmentType } from '@ts-cloud/types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface SecretOptions {
@@ -75,7 +76,7 @@ export class Secrets {
 
     const resourceName = secretName || generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'secret',
     })
 
@@ -127,7 +128,7 @@ export class Secrets {
 
     const resourceName = secretName || generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'secret',
     })
 
@@ -193,7 +194,7 @@ export class Secrets {
 
     const resourceName = secretName || generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'db-secret',
     })
 
@@ -256,7 +257,7 @@ export class Secrets {
 
     const resourceName = generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'secret-attachment',
     })
 
@@ -295,7 +296,7 @@ export class Secrets {
 
     const resourceName = generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'secret-rotation',
     })
 

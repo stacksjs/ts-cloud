@@ -1,30 +1,34 @@
 import type { CloudFormationBuilder } from '../builder'
 import { Arn, Fn } from '../types'
 
+export interface FunctionEvent {
+  type: 'http' | 's3' | 'sqs' | 'sns' | 'kinesis' | 'dynamodb-stream' | 'schedule'
+  path?: string
+  method?: string
+  bucket?: string
+  filterPrefix?: string
+  filterSuffix?: string
+  queueName?: string
+  streamName?: string
+  tableName?: string
+  batchSize?: number
+  startingPosition?: 'LATEST' | 'TRIM_HORIZON'
+  parallelizationFactor?: number
+  expression?: string // cron or rate expression
+}
+
+export interface FunctionItem {
+  name: string
+  runtime: string
+  handler: string
+  memory: number
+  timeout: number
+  events?: FunctionEvent[]
+  environment?: Record<string, string>
+}
+
 export interface FunctionsConfig {
-  [category: string]: Array<{
-    name: string
-    runtime: string
-    handler: string
-    memory: number
-    timeout: number
-    events?: Array<{
-      type: 'http' | 's3' | 'sqs' | 'sns' | 'kinesis' | 'dynamodb-stream' | 'schedule'
-      path?: string
-      method?: string
-      bucket?: string
-      filterPrefix?: string
-      filterSuffix?: string
-      queueName?: string
-      streamName?: string
-      tableName?: string
-      batchSize?: number
-      startingPosition?: 'LATEST' | 'TRIM_HORIZON'
-      parallelizationFactor?: number
-      expression?: string // cron or rate expression
-    }>
-    environment?: Record<string, string>
-  }>
+  [category: string]: FunctionItem[]
 }
 
 /**
@@ -46,7 +50,7 @@ export function addFunctionResources(
  */
 function addLambdaFunction(
   builder: CloudFormationBuilder,
-  config: FunctionsConfig[string][0],
+  config: FunctionItem,
   category: string,
 ): void {
   const logicalId = builder.toLogicalId(`${category}-${config.name}-function`)
@@ -133,8 +137,7 @@ function addLambdaFunction(
   }
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Arn`]: {
       Description: `${config.name} function ARN`,
       Value: Fn.getAtt(logicalId, 'Arn'),
@@ -142,7 +145,7 @@ function addLambdaFunction(
         Name: Fn.sub(`\${AWS::StackName}-${config.name}-function-arn`),
       },
     },
-  }
+  })
 }
 
 /**
@@ -151,7 +154,7 @@ function addLambdaFunction(
 function addEventSource(
   builder: CloudFormationBuilder,
   functionLogicalId: string,
-  event: FunctionsConfig[string][0]['events'][0],
+  event: FunctionEvent,
   index: number,
 ): void {
   const eventSourceId = `${functionLogicalId}EventSource${index}`
@@ -170,7 +173,7 @@ function addEventSource(
           FunctionName: Fn.ref(functionLogicalId),
           Action: 'lambda:InvokeFunction',
           Principal: 's3.amazonaws.com',
-          SourceArn: Arn.s3Bucket(Fn.ref(bucketLogicalId)),
+          SourceArn: Arn.s3Bucket(Fn.ref(bucketLogicalId) as any),
         }, {
           dependsOn: [functionLogicalId, bucketLogicalId],
         })
@@ -256,9 +259,13 @@ function addEventSource(
  * Generate IAM policy statements based on function events
  */
 function generateEventPermissions(
-  events: FunctionsConfig[string][0]['events'],
+  events: FunctionEvent[] | undefined,
 ): any[] {
   const statements: any[] = []
+
+  if (!events) {
+    return statements
+  }
 
   events.forEach(event => {
     switch (event.type) {

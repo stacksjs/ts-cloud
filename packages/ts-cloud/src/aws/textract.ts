@@ -437,28 +437,28 @@ export class TextractClient {
    * Detect text in a document (OCR)
    */
   async detectDocumentText(params: DetectDocumentTextCommandInput): Promise<DetectDocumentTextCommandOutput> {
-    return this.request('DetectDocumentText', params)
+    return this.request('DetectDocumentText', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze a document (forms, tables, queries)
    */
   async analyzeDocument(params: AnalyzeDocumentCommandInput): Promise<AnalyzeDocumentCommandOutput> {
-    return this.request('AnalyzeDocument', params)
+    return this.request('AnalyzeDocument', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze expense document (receipts, invoices)
    */
   async analyzeExpense(params: AnalyzeExpenseCommandInput): Promise<AnalyzeExpenseCommandOutput> {
-    return this.request('AnalyzeExpense', params)
+    return this.request('AnalyzeExpense', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze ID document (driver's license, passport)
    */
   async analyzeID(params: AnalyzeIDCommandInput): Promise<AnalyzeIDCommandOutput> {
-    return this.request('AnalyzeID', params)
+    return this.request('AnalyzeID', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -469,56 +469,56 @@ export class TextractClient {
    * Start async text detection job
    */
   async startDocumentTextDetection(params: StartDocumentTextDetectionCommandInput): Promise<StartDocumentTextDetectionCommandOutput> {
-    return this.request('StartDocumentTextDetection', params)
+    return this.request('StartDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of text detection job
    */
   async getDocumentTextDetection(params: GetDocumentTextDetectionCommandInput): Promise<GetDocumentTextDetectionCommandOutput> {
-    return this.request('GetDocumentTextDetection', params)
+    return this.request('GetDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async document analysis job
    */
   async startDocumentAnalysis(params: StartDocumentAnalysisCommandInput): Promise<StartDocumentAnalysisCommandOutput> {
-    return this.request('StartDocumentAnalysis', params)
+    return this.request('StartDocumentAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of document analysis job
    */
   async getDocumentAnalysis(params: GetDocumentAnalysisCommandInput): Promise<GetDocumentAnalysisCommandOutput> {
-    return this.request('GetDocumentAnalysis', params)
+    return this.request('GetDocumentAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async expense analysis job
    */
   async startExpenseAnalysis(params: StartExpenseAnalysisCommandInput): Promise<StartExpenseAnalysisCommandOutput> {
-    return this.request('StartExpenseAnalysis', params)
+    return this.request('StartExpenseAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of expense analysis job
    */
   async getExpenseAnalysis(params: GetExpenseAnalysisCommandInput): Promise<GetExpenseAnalysisCommandOutput> {
-    return this.request('GetExpenseAnalysis', params)
+    return this.request('GetExpenseAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async lending analysis job
    */
   async startLendingAnalysis(params: StartLendingAnalysisCommandInput): Promise<StartLendingAnalysisCommandOutput> {
-    return this.request('StartLendingAnalysis', params)
+    return this.request('StartLendingAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of lending analysis job
    */
   async getLendingAnalysis(params: GetLendingAnalysisCommandInput): Promise<GetLendingAnalysisCommandOutput> {
-    return this.request('GetLendingAnalysis', params)
+    return this.request('GetLendingAnalysis', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

@@ -32,6 +32,7 @@ export interface WAFv2WebACL extends CloudFormationResource {
         RateBasedStatement?: {
           Limit: number
           AggregateKeyType: 'IP' | 'FORWARDED_IP'
+          ScopeDownStatement?: unknown
         }
         ManagedRuleGroupStatement?: {
           VendorName: string

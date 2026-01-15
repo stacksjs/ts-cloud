@@ -225,9 +225,9 @@ export class InfrastructureGenerator {
         const { instance, logicalId } = Compute.createServer({
           slug,
           environment: env,
-          instanceType: serverConfig.instanceType || 't3.micro',
-          imageId: serverConfig.ami || 'ami-0c55b159cbfafe1f0',
-          userData: serverConfig.userData,
+          instanceType: serverConfig.size || 't3.micro',
+          imageId: serverConfig.image || 'ami-0c55b159cbfafe1f0',
+          userData: serverConfig.startupScript,
         })
 
         this.builder.addResource(logicalId, instance)
@@ -254,10 +254,11 @@ export class InfrastructureGenerator {
 
         // Enable website hosting if configured
         if (storageConfig.website) {
+          const websiteConfig = typeof storageConfig.website === 'object' ? storageConfig.website : {}
           const enhanced = Storage.enableWebsiteHosting(
             bucket,
-            storageConfig.website.indexDocument || 'index.html',
-            storageConfig.website.errorDocument,
+            websiteConfig.indexDocument || 'index.html',
+            websiteConfig.errorDocument,
           )
           this.builder.addResource(logicalId, enhanced)
         }
@@ -272,8 +273,8 @@ export class InfrastructureGenerator {
             slug,
             environment: env,
             tableName: `${slug}-${env}-${name}`,
-            partitionKey: dbConfig.partitionKey || { name: 'id', type: 'S' },
-            sortKey: dbConfig.sortKey,
+            partitionKey: (dbConfig.partitionKey || { name: 'id', type: 'S' }) as { name: string; type: 'S' | 'N' | 'B' },
+            sortKey: dbConfig.sortKey as any,
           })
 
           this.builder.addResource(logicalId, table)
@@ -569,10 +570,10 @@ export class InfrastructureGenerator {
           slug,
           environment: env,
           alarmName: `${slug}-${env}-${name}`,
-          metricName: alarmConfig.metricName,
-          namespace: alarmConfig.namespace,
-          threshold: alarmConfig.threshold,
-          comparisonOperator: alarmConfig.comparisonOperator,
+          metricName: alarmConfig.metricName || 'Errors',
+          namespace: alarmConfig.namespace || 'AWS/Lambda',
+          threshold: alarmConfig.threshold || 1,
+          comparisonOperator: (alarmConfig.comparisonOperator || 'GreaterThanThreshold') as 'GreaterThanThreshold',
         })
 
         this.builder.addResource(logicalId, alarm)
@@ -1039,13 +1040,13 @@ export class InfrastructureGenerator {
     this.builder.addOutput(`${apiId}Endpoint`, {
       Description: 'WebSocket API endpoint URL',
       Value: { 'Fn::Sub': `wss://\${${apiId}}.execute-api.\${AWS::Region}.amazonaws.com/${env}` },
-      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-endpoint` } },
+      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-endpoint` } as any },
     })
 
     this.builder.addOutput(`${apiId}Id`, {
       Description: 'WebSocket API ID',
       Value: { Ref: apiId },
-      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-api-id` } },
+      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-api-id` } as any },
     })
   }
 
@@ -1571,7 +1572,7 @@ exports.handler = async (event) => {
     this.builder.addOutput(`${slug}${env}RealtimeEndpoint`.replace(/[^a-zA-Z0-9]/g, ''), {
       Description: 'Realtime WebSocket server endpoint',
       Value: { 'Fn::Sub': `wss://${slug}-${env}-realtime.\${AWS::Region}.elb.amazonaws.com:${port}` },
-      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-endpoint` } },
+      Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-realtime-endpoint` } as any },
     })
   }
 

@@ -365,7 +365,7 @@ describe('DNSSEC Manager', () => {
 
       const dsRecord = manager.getDSRecord(ksk.id)
 
-      expect(dsRecord).toContain(ksk.keyTag?.toString())
+      expect(dsRecord).toContain(ksk.keyTag !== undefined ? ksk.keyTag.toString() : '')
     })
   })
 

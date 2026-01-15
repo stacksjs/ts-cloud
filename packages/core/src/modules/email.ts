@@ -511,7 +511,7 @@ export class Email {
       {
         slug,
         environment,
-        ruleSetName: ruleSet.Properties.RuleSetName,
+        ruleSetName: ruleSet.Properties!.RuleSetName || `${slug}-${environment}-receipt-rule-set`,
         recipients: [domain, `@${domain}`],
         s3Action: {
           bucketName: s3BucketName,
@@ -969,7 +969,7 @@ export class Email {
     suffix?: string
     events?: string[]
   }): {
-    notificationConfiguration: S3Bucket['Properties']['NotificationConfiguration']
+    notificationConfiguration: NonNullable<NonNullable<S3Bucket['Properties']>['NotificationConfiguration']>
   } {
     const {
       lambdaArn,
@@ -991,7 +991,7 @@ export class Email {
       }
     }
 
-    const notificationConfiguration: S3Bucket['Properties']['NotificationConfiguration'] = {
+    const notificationConfiguration = {
       LambdaConfigurations: [
         {
           Event: events[0],

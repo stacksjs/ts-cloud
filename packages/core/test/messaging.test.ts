@@ -195,7 +195,7 @@ describe('Messaging Module', () => {
       })
 
       expect(policy.Type).toBe('AWS::SNS::TopicPolicy')
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.AWS).toBe('arn:aws:iam::123456789:root')
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).AWS).toBe('arn:aws:iam::123456789:root')
       expect(policy.Properties.PolicyDocument.Statement[0].Action).toBe('SNS:Publish')
       expect(logicalId).toBeDefined()
     })
@@ -208,7 +208,7 @@ describe('Messaging Module', () => {
         actions: 'SNS:Publish',
       })
 
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.Service).toBe('lambda.amazonaws.com')
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).Service).toBe('lambda.amazonaws.com')
     })
 
     it('should support multiple principals', () => {
@@ -218,7 +218,7 @@ describe('Messaging Module', () => {
         allowedPrincipals: ['arn:aws:iam::123456789:root', 'arn:aws:iam::987654321:root'],
       })
 
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.AWS).toEqual([
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).AWS).toEqual([
         'arn:aws:iam::123456789:root',
         'arn:aws:iam::987654321:root',
       ])
@@ -243,7 +243,7 @@ describe('Messaging Module', () => {
         environment: 'production',
       })
 
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.Service).toBe('cloudwatch.amazonaws.com')
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).Service).toBe('cloudwatch.amazonaws.com')
       expect(policy.Properties.PolicyDocument.Statement[0].Action).toBe('SNS:Publish')
     })
   })
@@ -255,7 +255,7 @@ describe('Messaging Module', () => {
         environment: 'production',
       })
 
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.Service).toBe('events.amazonaws.com')
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).Service).toBe('events.amazonaws.com')
     })
   })
 
@@ -266,7 +266,7 @@ describe('Messaging Module', () => {
         environment: 'production',
       })
 
-      expect(policy.Properties.PolicyDocument.Statement[0].Principal.Service).toBe('s3.amazonaws.com')
+      expect((policy.Properties.PolicyDocument.Statement[0].Principal as any).Service).toBe('s3.amazonaws.com')
     })
   })
 
@@ -468,8 +468,8 @@ describe('Messaging Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(3)
-      expect(result.Resources[queue1SubId].Properties.FilterPolicy).toBeDefined()
-      expect(result.Resources[queue2SubId].Properties.FilterPolicy).toBeDefined()
+      expect(result.Resources[queue1SubId]!.Properties!.FilterPolicy).toBeDefined()
+      expect(result.Resources[queue2SubId]!.Properties!.FilterPolicy).toBeDefined()
     })
 
     it('should create topic with policy', () => {

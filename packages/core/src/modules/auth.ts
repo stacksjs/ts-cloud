@@ -14,7 +14,7 @@ export interface UserPoolOptions {
   slug: string
   environment: EnvironmentType
   userPoolName?: string
-  aliasAttributes?: ('email' | 'phone_number' | 'preferred_username')[]
+  aliasAttributes?: ('email' | 'phone_number')[]
   autoVerifiedAttributes?: ('email' | 'phone_number')[]
   passwordPolicy?: PasswordPolicyOptions
   mfaConfiguration?: 'OFF' | 'ON' | 'OPTIONAL'
@@ -26,8 +26,8 @@ export interface UserPoolOptions {
   }
   accountRecoverySetting?: {
     recoveryMechanisms: Array<{
-      name: 'verified_email' | 'verified_phone_number' | 'admin_only'
-      priority: number
+      Name: 'verified_email' | 'verified_phone_number' | 'admin_only'
+      Priority: number
     }>
   }
 }
@@ -76,9 +76,9 @@ export interface UserPoolClientOptions {
   accessTokenValidity?: number
   idTokenValidity?: number
   tokenValidityUnits?: {
-    refreshToken?: 'seconds' | 'minutes' | 'hours' | 'days'
-    accessToken?: 'seconds' | 'minutes' | 'hours' | 'days'
-    idToken?: 'seconds' | 'minutes' | 'hours' | 'days'
+    RefreshToken?: 'seconds' | 'minutes' | 'hours' | 'days'
+    AccessToken?: 'seconds' | 'minutes' | 'hours' | 'days'
+    IdToken?: 'seconds' | 'minutes' | 'hours' | 'days'
   }
   readAttributes?: string[]
   writeAttributes?: string[]
@@ -98,7 +98,7 @@ export interface UserPoolDomainOptions {
   environment: EnvironmentType
   domain: string
   customDomainConfig?: {
-    certificateArn: string
+    CertificateArn: string
   }
 }
 
@@ -108,9 +108,9 @@ export interface IdentityPoolOptions {
   identityPoolName?: string
   allowUnauthenticatedIdentities?: boolean
   cognitoIdentityProviders?: Array<{
-    clientId: string
-    providerName: string
-    serverSideTokenCheck?: boolean
+    ClientId: string
+    ProviderName: string
+    ServerSideTokenCheck?: boolean
   }>
   supportedLoginProviders?: Record<string, string>
   samlProviderARNs?: string[]
@@ -123,14 +123,14 @@ export interface IdentityPoolRoleAttachmentOptions {
   authenticatedRole: string
   unauthenticatedRole?: string
   roleMappings?: Record<string, {
-    type: 'Token' | 'Rules'
-    ambiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
-    rulesConfiguration?: {
-      rules: Array<{
-        claim: string
-        matchType: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
-        value: string
-        roleArn: string
+    Type: 'Token' | 'Rules'
+    AmbiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
+    RulesConfiguration?: {
+      Rules: Array<{
+        Claim: string
+        MatchType: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
+        Value: string
+        RoleARN: string
       }>
     }
   }>
@@ -716,10 +716,10 @@ export class Auth {
       const { client, logicalId: clientId } = Auth.createUserPoolClient(poolId, {
         slug,
         environment,
-        explicitAuthFlows: Auth.AuthFlows.standard,
+        explicitAuthFlows: [...Auth.AuthFlows.standard],
         callbackURLs: [callbackUrl],
         allowedOAuthFlows: ['code'],
-        allowedOAuthScopes: Auth.OAuthScopes.basic,
+        allowedOAuthScopes: [...Auth.OAuthScopes.basic],
         allowedOAuthFlowsUserPoolClient: true,
       })
 
@@ -742,7 +742,7 @@ export class Auth {
       const { client, logicalId: clientId } = Auth.createUserPoolClient(poolId, {
         slug,
         environment,
-        explicitAuthFlows: Auth.AuthFlows.standard,
+        explicitAuthFlows: [...Auth.AuthFlows.standard],
       })
 
       const { identityPool, logicalId: identityPoolId } = Auth.createIdentityPool({
@@ -751,8 +751,8 @@ export class Auth {
         allowUnauthenticatedIdentities: false,
         cognitoIdentityProviders: [
           {
-            clientId: Fn.Ref(clientId) as unknown as string,
-            providerName: Fn.GetAtt(poolId, 'ProviderName') as unknown as string,
+            ClientId: Fn.Ref(clientId) as unknown as string,
+            ProviderName: Fn.GetAtt(poolId, 'ProviderName') as unknown as string,
           },
         ],
       })

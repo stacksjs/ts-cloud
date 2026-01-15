@@ -239,8 +239,7 @@ export function addCDNResources(
   }
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     CloudFrontDistributionId: {
       Description: 'CloudFront distribution ID',
       Value: Fn.ref('CloudFrontDistribution'),
@@ -255,13 +254,15 @@ export function addCDNResources(
         Name: Fn.sub('${AWS::StackName}-cloudfront-domain'),
       },
     },
-  }
+  })
 
   if (config.customDomain) {
-    builder.template.Outputs.CloudFrontURL = {
-      Description: 'CloudFront custom domain URL',
-      Value: Fn.sub(`https://${config.customDomain.domain}`),
-    }
+    builder.addOutputs({
+      CloudFrontURL: {
+        Description: 'CloudFront custom domain URL',
+        Value: Fn.sub(`https://${config.customDomain.domain}`),
+      },
+    })
   }
 }
 

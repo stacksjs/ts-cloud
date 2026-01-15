@@ -74,9 +74,17 @@ export interface S3Bucket extends CloudFormationResource {
       Status: 'Enabled' | 'Suspended'
     }
     WebsiteConfiguration?: {
-      IndexDocument: string
+      IndexDocument?: string
       ErrorDocument?: string
+      RedirectAllRequestsTo?: {
+        HostName: string
+        Protocol?: string
+      }
     }
+    Tags?: Array<{
+      Key: string
+      Value: string
+    }>
     LifecycleConfiguration?: {
       Rules: Array<{
         Id: string
@@ -106,7 +114,14 @@ export interface S3Bucket extends CloudFormationResource {
       LambdaConfigurations?: Array<{
         Event: string
         Function: string
-        Filter?: unknown
+        Filter?: {
+          S3Key?: {
+            Rules?: Array<{
+              Name: string
+              Value: string
+            }>
+          }
+        }
       }>
     }
   }
@@ -130,6 +145,58 @@ export interface S3BucketPolicy extends CloudFormationResource {
   }
 }
 
+// CloudFront Cache Behavior Type
+export interface CloudFrontCacheBehavior {
+  TargetOriginId: string
+  ViewerProtocolPolicy: 'allow-all' | 'https-only' | 'redirect-to-https'
+  AllowedMethods?: string[]
+  CachedMethods?: string[]
+  CachePolicyId?: string
+  Compress?: boolean
+  LambdaFunctionAssociations?: Array<{
+    EventType: 'origin-request' | 'origin-response' | 'viewer-request' | 'viewer-response'
+    LambdaFunctionARN: string
+  }>
+  // TTL settings
+  DefaultTTL?: number
+  MaxTTL?: number
+  MinTTL?: number
+  // Forwarded values (legacy, but still used)
+  ForwardedValues?: {
+    QueryString?: boolean
+    Headers?: string[]
+    Cookies?: {
+      Forward: string
+      WhitelistedNames?: string[]
+    }
+  }
+  // Path pattern for cache behaviors
+  PathPattern?: string
+}
+
+// CloudFront Origin Type
+export interface CloudFrontOrigin {
+  Id: string
+  DomainName: string
+  OriginPath?: string
+  S3OriginConfig?: {
+    OriginAccessIdentity?: string
+  }
+  CustomOriginConfig?: {
+    HTTPPort?: number
+    HTTPSPort?: number
+    OriginProtocolPolicy: 'http-only' | 'https-only' | 'match-viewer'
+    OriginSSLProtocols?: string[]
+    OriginReadTimeout?: number
+    OriginKeepaliveTimeout?: number
+  }
+  OriginAccessControlId?: string
+  OriginCustomHeaders?: Array<{
+    HeaderName: string
+    HeaderValue: string
+  }>
+}
+
 // CloudFront Types
 export interface CloudFrontDistribution extends CloudFormationResource {
   Type: 'AWS::CloudFront::Distribution'
@@ -138,31 +205,9 @@ export interface CloudFrontDistribution extends CloudFormationResource {
       Enabled: boolean
       Comment?: string
       DefaultRootObject?: string
-      Origins: Array<{
-        Id: string
-        DomainName: string
-        S3OriginConfig?: {
-          OriginAccessIdentity?: string
-        }
-        CustomOriginConfig?: {
-          HTTPPort?: number
-          HTTPSPort?: number
-          OriginProtocolPolicy: 'http-only' | 'https-only' | 'match-viewer'
-        }
-        OriginAccessControlId?: string
-      }>
-      DefaultCacheBehavior: {
-        TargetOriginId: string
-        ViewerProtocolPolicy: 'allow-all' | 'https-only' | 'redirect-to-https'
-        AllowedMethods?: string[]
-        CachedMethods?: string[]
-        CachePolicyId?: string
-        Compress?: boolean
-        LambdaFunctionAssociations?: Array<{
-          EventType: 'origin-request' | 'origin-response' | 'viewer-request' | 'viewer-response'
-          LambdaFunctionARN: string
-        }>
-      }
+      Origins: CloudFrontOrigin[]
+      DefaultCacheBehavior: CloudFrontCacheBehavior
+      CacheBehaviors?: CloudFrontCacheBehavior[]
       PriceClass?: string
       ViewerCertificate?: {
         AcmCertificateArn?: string
@@ -191,6 +236,56 @@ export interface CloudFrontOriginAccessControl extends CloudFormationResource {
       SigningBehavior: 'always' | 'never' | 'no-override'
       SigningProtocol: 'sigv4'
     }
+  }
+}
+
+export interface CloudFrontFunction extends CloudFormationResource {
+  Type: 'AWS::CloudFront::Function'
+  Properties: {
+    Name: string
+    FunctionCode: string
+    FunctionConfig: {
+      Comment?: string
+      Runtime: 'cloudfront-js-1.0' | 'cloudfront-js-2.0'
+      KeyValueStoreAssociations?: Array<{
+        KeyValueStoreARN: string
+      }>
+    }
+    AutoPublish?: boolean
+  }
+}
+
+// Step Functions Types
+export interface StepFunctionsStateMachine extends CloudFormationResource {
+  Type: 'AWS::StepFunctions::StateMachine'
+  Properties: {
+    StateMachineName?: string
+    StateMachineType?: 'STANDARD' | 'EXPRESS'
+    Definition?: Record<string, unknown>
+    DefinitionString?: string
+    DefinitionS3Location?: {
+      Bucket: string
+      Key: string
+      Version?: string
+    }
+    DefinitionSubstitutions?: Record<string, string>
+    RoleArn: string | { 'Fn::GetAtt': [string, string] } | { Ref: string }
+    LoggingConfiguration?: {
+      Destinations?: Array<{
+        CloudWatchLogsLogGroup?: {
+          LogGroupArn: string | { 'Fn::GetAtt': [string, string] }
+        }
+      }>
+      IncludeExecutionData?: boolean
+      Level?: 'ALL' | 'ERROR' | 'FATAL' | 'OFF'
+    }
+    TracingConfiguration?: {
+      Enabled?: boolean
+    }
+    Tags?: Array<{
+      Key: string
+      Value: string
+    }>
   }
 }
 
@@ -229,3 +324,5 @@ export * from './glue'
 export * from './connect'
 export * from './pinpoint'
 export * from './common'
+export * from './cognito'
+export * from './codedeploy'

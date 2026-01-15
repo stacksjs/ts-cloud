@@ -56,11 +56,14 @@ export interface StackEvent {
  */
 export class CloudFormationClient {
   private credentials: AWSCredentials | null = null
+  private region: string
 
   constructor(
-    private readonly region: string = 'us-east-1',
+    region: string = 'us-east-1',
     private readonly profile: string = 'default',
-  ) {}
+  ) {
+    this.region = region
+  }
 
   /**
    * Initialize client with credentials

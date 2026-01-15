@@ -148,7 +148,7 @@ describe('Email Module', () => {
       })
 
       expect(ruleSet.Type).toBe('AWS::SES::ReceiptRuleSet')
-      expect(ruleSet.Properties.RuleSetName).toBeDefined()
+      expect(ruleSet.Properties!.RuleSetName).toBeDefined()
       expect(logicalId).toBeDefined()
     })
 
@@ -159,7 +159,7 @@ describe('Email Module', () => {
         name: 'custom-ruleset',
       })
 
-      expect(ruleSet.Properties.RuleSetName).toBe('custom-ruleset')
+      expect(ruleSet.Properties!.RuleSetName).toBe('custom-ruleset')
     })
   })
 

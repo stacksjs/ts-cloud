@@ -28,6 +28,7 @@ export function createMicroservicesPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -73,7 +74,7 @@ export function createMicroservicesPreset(options: {
         })),
       },
       apiGateway: {
-        type: 'http',
+        type: 'HTTP',
         customDomain: {
           domain,
           certificateArn: 'TO_BE_GENERATED',
@@ -90,18 +91,22 @@ export function createMicroservicesPreset(options: {
           },
         })),
       },
-      database: {
+      databases: {
         dynamodb: {
-          tables: services.map(service => ({
-            name: `${slug}-${service.name}`,
-            partitionKey: 'id',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: true,
-            pointInTimeRecovery: true,
-          })),
+          tables: Object.fromEntries(
+            services.map(service => [
+              `${slug}-${service.name}`,
+              {
+                partitionKey: { name: 'id', type: 'S' },
+                billingMode: 'PAY_PER_REQUEST',
+                streamEnabled: true,
+                pointInTimeRecovery: true,
+              },
+            ]),
+          ),
         },
       },
-      queue: {
+      queues: {
         events: {
           fifo: false,
           visibilityTimeout: 300,
@@ -110,16 +115,18 @@ export function createMicroservicesPreset(options: {
         },
       },
       messaging: {
-        topics: [{
-          name: `${slug}-events`,
-          subscriptions: services.map(service => ({
-            protocol: 'sqs',
-            endpoint: `${slug}-${service.name}-queue`,
-            filterPolicy: {
-              service: [service.name],
-            },
-          })),
-        }],
+        topics: {
+          events: {
+            name: `${slug}-events`,
+            subscriptions: services.map(service => ({
+              protocol: 'sqs' as const,
+              endpoint: `${slug}-${service.name}-queue`,
+              filterPolicy: {
+                service: [service.name],
+              },
+            })),
+          },
+        },
       },
       monitoring: {
         dashboard: {

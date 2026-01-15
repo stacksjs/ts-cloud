@@ -1,5 +1,14 @@
 import type { CloudFormationResource } from './index'
 
+/**
+ * IAM Principal type for ECR policies
+ * Supports AWS accounts, services, or wildcard
+ */
+export interface ECRPrincipal {
+  AWS?: string | string[]
+  Service?: string | string[]
+}
+
 export interface ECRRepository extends CloudFormationResource {
   Type: 'AWS::ECR::Repository'
   Properties?: {
@@ -21,7 +30,7 @@ export interface ECRRepository extends CloudFormationResource {
       Statement: Array<{
         Sid?: string
         Effect: 'Allow' | 'Deny'
-        Principal: '*' | { AWS: string | string[] } | { Service: string | string[] }
+        Principal: '*' | ECRPrincipal
         Action: string | string[]
         Condition?: Record<string, any>
       }>

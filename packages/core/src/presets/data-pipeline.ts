@@ -58,8 +58,7 @@ export function createDataPipelinePreset(options: {
         },
       },
       functions: {
-        processors: [{
-          name: 'stream-processor',
+        'stream-processor': {
           runtime: 'nodejs20.x',
           handler: 'dist/processors/stream.handler',
           memory: 2048,
@@ -71,8 +70,8 @@ export function createDataPipelinePreset(options: {
             startingPosition: 'LATEST',
             parallelizationFactor: 10,
           }],
-        }, {
-          name: 'transformer',
+        },
+        transformer: {
           runtime: 'nodejs20.x',
           handler: 'dist/processors/transform.handler',
           memory: 3008,
@@ -80,11 +79,10 @@ export function createDataPipelinePreset(options: {
           events: [{
             type: 's3',
             bucket: `${slug}-raw`,
-            events: ['s3:ObjectCreated:*'],
-            filterPrefix: 'incoming/',
+            prefix: 'incoming/',
           }],
-        }, {
-          name: 'aggregator',
+        },
+        aggregator: {
           runtime: 'nodejs20.x',
           handler: 'dist/processors/aggregate.handler',
           memory: 2048,
@@ -93,7 +91,7 @@ export function createDataPipelinePreset(options: {
             type: 'schedule',
             expression: 'cron(0 * * * ? *)', // Every hour
           }],
-        }],
+        },
       },
       analytics: {
         athena: {
@@ -131,17 +129,18 @@ export function createDataPipelinePreset(options: {
           }],
         },
       },
-      database: {
+      databases: {
         dynamodb: {
-          tables: [{
-            name: `${slug}-metadata`,
-            partitionKey: 'pipelineId',
-            sortKey: 'timestamp',
-            billingMode: 'PAY_PER_REQUEST',
-          }],
+          tables: {
+            [`${slug}-metadata`]: {
+              partitionKey: { name: 'pipelineId', type: 'S' },
+              sortKey: { name: 'timestamp', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+            },
+          },
         },
       },
-      queue: {
+      queues: {
         failedJobs: {
           fifo: false,
           visibilityTimeout: 900, // 15 minutes

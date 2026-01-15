@@ -1,3 +1,23 @@
+/**
+ * AWS-specific configuration
+ */
+export interface AwsConfig {
+  /**
+   * AWS region for deployment
+   */
+  region?: string
+
+  /**
+   * AWS CLI profile to use
+   */
+  profile?: string
+
+  /**
+   * AWS account ID
+   */
+  accountId?: string
+}
+
 // Core configuration types
 export interface CloudConfig {
   project: ProjectConfig
@@ -5,6 +25,11 @@ export interface CloudConfig {
   environments: Record<string, EnvironmentConfig>
   infrastructure?: InfrastructureConfig
   sites?: Record<string, SiteConfig>
+
+  /**
+   * AWS-specific configuration
+   */
+  aws?: AwsConfig
 
   /**
    * Feature flags to enable/disable resources conditionally
@@ -57,6 +82,11 @@ export interface EnvironmentConfig {
   region?: string
   variables?: Record<string, string>
   /**
+   * Custom domain for this environment
+   * Example: 'example.com' for production, 'staging.example.com' for staging
+   */
+  domain?: string
+  /**
    * Environment-specific infrastructure overrides
    * Allows different infrastructure per environment
    * Example: smaller instances in dev, larger in production
@@ -64,8 +94,81 @@ export interface EnvironmentConfig {
   infrastructure?: Partial<InfrastructureConfig>
 }
 
+/**
+ * Network/VPC configuration
+ */
+export interface NetworkConfig {
+  vpc?: VpcConfig
+  subnets?: {
+    public?: number
+    private?: number
+  }
+  natGateway?: boolean | 'single' | 'perAz'
+}
+
+/**
+ * API Gateway configuration
+ */
+export interface ApiGatewayConfig {
+  type?: 'REST' | 'HTTP' | 'websocket'
+  name?: string
+  description?: string
+  stageName?: string
+  cors?: boolean | {
+    allowOrigins?: string[]
+    allowMethods?: string[]
+    allowHeaders?: string[]
+    maxAge?: number
+  }
+  authorization?: 'NONE' | 'IAM' | 'COGNITO' | 'LAMBDA'
+  throttling?: {
+    rateLimit?: number
+    burstLimit?: number
+  }
+  customDomain?: {
+    domain?: string
+    certificateArn?: string
+  }
+  authorizer?: {
+    type?: string
+    identitySource?: string
+    audience?: string[]
+  }
+  routes?: Array<{
+    path?: string
+    method?: string
+    integration?: string | { type?: string; service?: string }
+    authorizer?: string
+  }> | Record<string, {
+    path?: string
+    method?: string
+    integration?: string | { type?: string; service?: string }
+  }>
+}
+
+/**
+ * Messaging (SNS) configuration
+ */
+export interface MessagingConfig {
+  topics?: Record<string, {
+    name?: string
+    displayName?: string
+    subscriptions?: Array<{
+      protocol: 'email' | 'sqs' | 'lambda' | 'http' | 'https'
+      endpoint: string
+      filterPolicy?: Record<string, string[]>
+    }>
+  }>
+}
+
 export interface InfrastructureConfig {
   vpc?: VpcConfig
+
+  /**
+   * Network/VPC configuration
+   * Defines the network infrastructure including VPC, subnets, and NAT gateways
+   */
+  network?: NetworkConfig
 
   /**
    * Compute/EC2 configuration
@@ -98,7 +201,24 @@ export interface InfrastructureConfig {
   servers?: Record<string, ServerItemConfig & ResourceConditions>
   databases?: Record<string, DatabaseItemConfig & ResourceConditions>
   cache?: CacheConfig
-  cdn?: Record<string, CdnItemConfig & ResourceConditions>
+  cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
+  /**
+   * Elastic File System (EFS) configuration
+   * For shared file storage across multiple instances
+   */
+  fileSystem?: Record<string, FileSystemItemConfig>
+
+  /**
+   * API Gateway configuration
+   * Defines the API Gateway for routing HTTP requests to Lambda functions
+   */
+  apiGateway?: ApiGatewayConfig
+
+  /**
+   * Messaging (SNS) configuration
+   * Defines SNS topics for pub/sub messaging patterns
+   */
+  messaging?: MessagingConfig
 
   /**
    * Queue (SQS) configuration
@@ -146,6 +266,80 @@ export interface InfrastructureConfig {
   api?: ApiConfig
   loadBalancer?: LoadBalancerConfig
   ssl?: SslConfig
+  streaming?: Record<string, {
+    name?: string
+    shardCount?: number
+    retentionPeriod?: number
+    encryption?: boolean | string
+  }>
+  machineLearning?: {
+    sagemakerEndpoint?: string
+    modelBucket?: string
+    sagemaker?: {
+      endpointName?: string
+      instanceType?: string
+      endpoints?: Array<{
+        name?: string
+        modelName?: string
+        modelS3Path?: string
+        instanceType?: string
+        instanceCount?: number
+        initialInstanceCount?: number
+        autoScaling?: {
+          minInstances?: number
+          maxInstances?: number
+          targetInvocationsPerInstance?: number
+        }
+      }>
+      trainingJobs?: Array<{
+        name?: string
+        algorithmSpecification?: {
+          trainingImage?: string
+          trainingInputMode?: string
+        }
+        instanceType?: string
+        instanceCount?: number
+        volumeSizeInGB?: number
+        maxRuntimeInSeconds?: number
+      }>
+    }
+  }
+  analytics?: {
+    enabled?: boolean
+    firehose?: Record<string, {
+      name?: string
+      destination?: string
+      bufferSize?: number
+      bufferInterval?: number
+    }>
+    athena?: {
+      database?: string
+      workgroup?: string
+      outputLocation?: string
+      outputBucket?: string
+      tables?: Array<{
+        name?: string
+        location?: string
+        format?: string
+        partitionKeys?: string[]
+      }>
+    }
+    glue?: {
+      crawlers?: Array<{
+        name?: string
+        databaseName?: string
+        s3Targets?: string[]
+        schedule?: string
+      }>
+      jobs?: Array<{
+        name?: string
+        scriptLocation?: string
+        role?: string
+        maxCapacity?: number
+        timeout?: number
+      }>
+    }
+  }
 }
 
 /**
@@ -184,7 +378,9 @@ export interface SiteConfig {
 export interface VpcConfig {
   cidr?: string
   zones?: number
+  availabilityZones?: number // Alias for zones
   natGateway?: boolean
+  natGateways?: number | boolean
 }
 
 export interface StorageConfig {
@@ -208,6 +404,29 @@ export interface DatabaseConfig {
 export interface CacheConfig {
   type?: 'redis' | 'memcached'
   nodeType?: string
+  /**
+   * Redis-specific configuration
+   */
+  redis?: {
+    nodeType?: string
+    numCacheNodes?: number
+    engine?: string
+    engineVersion?: string
+    port?: number
+    parameterGroup?: Record<string, string>
+    snapshotRetentionLimit?: number
+    snapshotWindow?: string
+    automaticFailoverEnabled?: boolean
+  }
+  /**
+   * ElastiCache configuration
+   */
+  elasticache?: {
+    nodeType?: string
+    numCacheNodes?: number
+    engine?: string
+    engineVersion?: string
+  }
 }
 
 export interface CdnConfig {
@@ -224,6 +443,31 @@ export interface DnsConfig {
 export interface SecurityConfig {
   waf?: WafConfig
   kms?: boolean
+  /**
+   * SSL/TLS Certificate configuration
+   */
+  certificate?: {
+    domain: string
+    subdomains?: string[]
+    validationMethod?: 'DNS' | 'EMAIL'
+  }
+  /**
+   * Security groups configuration
+   */
+  securityGroups?: Record<string, {
+    ingress?: Array<{
+      port: number
+      protocol: string
+      cidr?: string
+      source?: string
+    }>
+    egress?: Array<{
+      port: number
+      protocol: string
+      cidr?: string
+      destination?: string
+    }>
+  }>
 }
 
 export interface WafConfig {
@@ -231,11 +475,36 @@ export interface WafConfig {
   blockCountries?: string[]
   blockIps?: string[]
   rateLimit?: number
+  /**
+   * WAF rules to enable
+   * @example ['rateLimit', 'sqlInjection', 'xss']
+   */
+  rules?: string[]
 }
 
 export interface MonitoringConfig {
-  alarms?: Record<string, AlarmItemConfig>
+  alarms?: Record<string, AlarmItemConfig> | AlarmItemConfig[]
   dashboards?: boolean
+  /**
+   * Dashboard configuration
+   */
+  dashboard?: {
+    name?: string
+    widgets?: Array<{
+      type?: string
+      metrics?: string[] | Array<{
+        service?: string
+        metric?: string
+      }>
+    }>
+  }
+  /**
+   * Log configuration
+   */
+  logs?: {
+    retention?: number
+    groups?: string[]
+  }
 }
 
 export interface AlarmConfig {
@@ -245,18 +514,86 @@ export interface AlarmConfig {
 }
 
 export interface AlarmItemConfig {
-  metricName: string
-  namespace: string
+  /**
+   * Name of the alarm (optional, auto-generated if not provided)
+   */
+  name?: string
+  /**
+   * Metric name (short form)
+   */
+  metric?: string
+  metricName?: string
+  namespace?: string
   threshold: number
-  comparisonOperator: string
+  comparisonOperator?: string
+  /**
+   * Period in seconds for metric aggregation
+   */
+  period?: number
+  /**
+   * Number of periods to evaluate
+   */
+  evaluationPeriods?: number
+  /**
+   * Service name for service-specific alarms
+   */
+  service?: string
 }
 
 export interface StorageItemConfig {
+  /**
+   * Make bucket publicly accessible
+   */
+  public?: boolean
   versioning?: boolean
   encryption?: boolean
-  website?: {
+  encrypted?: boolean // Alias for encryption (for EFS compatibility)
+  website?: boolean | {
     indexDocument?: string
     errorDocument?: string
+  }
+  /**
+   * Storage type (for special storage like EFS)
+   */
+  type?: 'efs' | 's3'
+  /**
+   * Enable Intelligent Tiering for cost optimization
+   */
+  intelligentTiering?: boolean
+  /**
+   * CORS configuration
+   */
+  cors?: Array<{
+    allowedOrigins?: string[]
+    allowedMethods?: string[]
+    allowedHeaders?: string[]
+    maxAge?: number
+  }>
+  /**
+   * Lifecycle rules for automatic transitions/deletions
+   */
+  lifecycleRules?: Array<{
+    id?: string
+    enabled?: boolean
+    expirationDays?: number
+    transitions?: Array<{
+      days?: number
+      storageClass?: string
+    }>
+  }>
+  /**
+   * Performance mode (for EFS)
+   */
+  performanceMode?: string
+  /**
+   * Throughput mode (for EFS)
+   */
+  throughputMode?: string
+  /**
+   * Lifecycle policy (for EFS)
+   */
+  lifecyclePolicy?: {
+    transitionToIA?: number
   }
 }
 
@@ -266,6 +603,51 @@ export interface FunctionConfig {
   code?: string
   timeout?: number
   memorySize?: number
+  memory?: number // Alias for memorySize
+  events?: Array<{
+    type?: string
+    path?: string
+    method?: string
+    queueName?: string
+    streamName?: string
+    tableName?: string
+    expression?: string
+    batchSize?: number
+    startingPosition?: string
+    parallelizationFactor?: number
+    bucket?: string
+    prefix?: string
+    suffix?: string
+  }>
+  environment?: Record<string, string>
+}
+
+/**
+ * Elastic File System (EFS) configuration
+ */
+export interface FileSystemItemConfig {
+  /**
+   * Performance mode
+   */
+  performanceMode?: 'generalPurpose' | 'maxIO' | string
+  /**
+   * Throughput mode
+   */
+  throughputMode?: 'bursting' | 'provisioned' | string
+  /**
+   * Enable encryption
+   */
+  encrypted?: boolean
+  /**
+   * Lifecycle policy
+   */
+  lifecyclePolicy?: {
+    transitionToIA?: number
+  }
+  /**
+   * Mount path
+   */
+  mountPath?: string
 }
 
 /**
@@ -364,6 +746,11 @@ export interface InstanceConfig {
  */
 export interface ComputeConfig {
   /**
+   * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
+   */
+  mode?: 'server' | 'serverless'
+
+  /**
    * Number of instances to run
    * When > 1, load balancer is automatically enabled
    * @default 1
@@ -395,6 +782,133 @@ export interface ComputeConfig {
    * If not specified, uses the provider's default Linux image
    */
   image?: string
+
+  /**
+   * Server mode (EC2) configuration
+   */
+  server?: {
+    instanceType?: string
+    ami?: string
+    keyPair?: string
+    autoScaling?: {
+      min?: number
+      max?: number
+      desired?: number
+      targetCPU?: number
+      scaleUpCooldown?: number
+      scaleDownCooldown?: number
+    }
+    loadBalancer?: {
+      type?: string
+      healthCheck?: {
+        path?: string
+        interval?: number
+        timeout?: number
+        healthyThreshold?: number
+        unhealthyThreshold?: number
+      }
+      stickySession?: {
+        enabled?: boolean
+        duration?: number
+      }
+    }
+    userData?: string | {
+      packages?: string[]
+      commands?: string[]
+    }
+  }
+
+  /**
+   * Serverless configuration (ECS/Lambda)
+   */
+  serverless?: {
+    cpu?: number
+    memory?: number
+    desiredCount?: number
+  }
+
+  /**
+   * Fargate configuration
+   */
+  fargate?: {
+    taskDefinition?: {
+      cpu?: string
+      memory?: string
+      containerDefinitions?: Array<{
+        name?: string
+        image?: string
+        portMappings?: Array<{
+          containerPort?: number
+        }>
+        environment?: unknown[]
+        secrets?: unknown[]
+      }>
+    }
+    service?: {
+      desiredCount?: number
+      healthCheck?: {
+        path?: string
+        interval?: number
+        timeout?: number
+        healthyThreshold?: number
+        unhealthyThreshold?: number
+      }
+      serviceDiscovery?: {
+        enabled?: boolean
+        namespace?: string
+      }
+      autoScaling?: {
+        min?: number
+        max?: number
+        targetCPU?: number
+        targetMemory?: number
+      }
+    }
+    loadBalancer?: {
+      type?: string
+      customDomain?: {
+        domain?: string
+        certificateArn?: string
+      }
+    }
+  }
+
+  /**
+   * Microservices configuration
+   */
+  services?: Array<{
+    name: string
+    type?: string
+    taskDefinition?: {
+      cpu?: string
+      memory?: string
+      containerDefinitions?: Array<{
+        name?: string
+        image?: string
+        portMappings?: Array<{
+          containerPort?: number
+        }>
+        healthCheck?: {
+          command?: string[]
+          interval?: number
+          timeout?: number
+          retries?: number
+        }
+      }>
+    }
+    service?: {
+      desiredCount?: number
+      serviceDiscovery?: {
+        enabled?: boolean
+        namespace?: string
+      }
+      autoScaling?: {
+        min?: number
+        max?: number
+        targetCPU?: number
+      }
+    }
+  }>
 
   /**
    * Auto Scaling configuration
@@ -452,24 +966,102 @@ export interface ComputeConfig {
 
 export interface DatabaseItemConfig {
   engine?: 'dynamodb' | 'postgres' | 'mysql'
-  partitionKey?: {
-    name: string
-    type: string
-  }
-  sortKey?: {
-    name: string
-    type: string
-  }
+  partitionKey?: string | { name: string; type: string }
+  sortKey?: string | { name: string; type: string }
   username?: string
   password?: string
   storage?: number
   instanceClass?: string
+  version?: string
+  allocatedStorage?: number
+  maxAllocatedStorage?: number
+  multiAZ?: boolean
+  backupRetentionDays?: number
+  preferredBackupWindow?: string
+  preferredMaintenanceWindow?: string
+  deletionProtection?: boolean
+  streamEnabled?: boolean
+  pointInTimeRecovery?: boolean
+  billingMode?: string
+  parameters?: Record<string, string | number>
+  databaseName?: string
+  enablePerformanceInsights?: boolean
+  performanceInsightsRetention?: number
+  tables?: Record<string, {
+    name?: string
+    partitionKey?: string | { name: string; type: string }
+    sortKey?: string | { name: string; type: string }
+    billing?: string
+    billingMode?: string
+    streamEnabled?: boolean
+    pointInTimeRecovery?: boolean
+    globalSecondaryIndexes?: Array<{
+      name: string
+      partitionKey: { name: string; type: string }
+      sortKey?: { name: string; type: string }
+      projection: string
+    }>
+  }>
 }
 
 export interface CdnItemConfig {
-  origin: string
-  customDomain?: string
+  origin?: string
+  customDomain?: string | {
+    domain: string
+    certificateArn?: string
+  }
   certificateArn?: string
+  /**
+   * Custom domain configuration
+   */
+  domain?: string
+  /**
+   * Enable CDN
+   */
+  enabled?: boolean
+  /**
+   * Cache policy configuration
+   */
+  cachePolicy?: {
+    minTTL?: number
+    defaultTTL?: number
+    maxTTL?: number
+  }
+  /**
+   * TTL settings
+   */
+  minTTL?: number
+  defaultTTL?: number
+  maxTTL?: number
+  /**
+   * Enable compression
+   */
+  compress?: boolean
+  /**
+   * Enable HTTP/3
+   */
+  http3?: boolean
+  /**
+   * Custom error pages
+   */
+  errorPages?: Record<number | string, string>
+  /**
+   * Origins configuration
+   */
+  origins?: Array<{
+    type?: string
+    pathPattern?: string
+    domainName?: string
+    originId?: string
+  }>
+  /**
+   * Edge functions for Lambda@Edge
+   */
+  edgeFunctions?: Array<{
+    eventType?: string
+    functionArn?: string
+    name?: string
+  }>
 }
 
 /**

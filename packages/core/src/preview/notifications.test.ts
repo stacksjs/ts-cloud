@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, mock } from 'bun:test'
 import { PreviewNotificationService } from './notifications'
-import type { NotificationEvent, PreviewEnvironment } from './manager'
+import type { NotificationEvent } from './notifications'
+import type { PreviewEnvironment } from './manager'
 
 describe('PreviewNotificationService', () => {
   let service: PreviewNotificationService
@@ -63,7 +64,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -94,8 +95,8 @@ describe('PreviewNotificationService', () => {
         }),
       )
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
 
       expect(body.username).toBe('Preview Bot')
       expect(body.icon_emoji).toBe(':rocket:')
@@ -112,7 +113,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -129,8 +130,8 @@ describe('PreviewNotificationService', () => {
 
       await service.notify(event)
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
 
       expect(body.attachments[0].title).toContain('Preview Environment Destroyed')
       expect(body.attachments[0].color).toBe('#808080')
@@ -143,7 +144,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -160,8 +161,8 @@ describe('PreviewNotificationService', () => {
 
       await service.notify(event)
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
 
       expect(body.attachments[0].title).toContain('Preview Environment Failed')
       expect(body.attachments[0].color).toBe('#f44336')
@@ -174,7 +175,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -191,8 +192,8 @@ describe('PreviewNotificationService', () => {
 
       await service.notify(event)
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
       const fields = body.attachments[0].fields
 
       expect(fields).toContainEqual({
@@ -233,7 +234,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'Bad Request',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -261,7 +262,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'discord',
@@ -291,8 +292,8 @@ describe('PreviewNotificationService', () => {
         }),
       )
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
 
       expect(body.username).toBe('Preview Bot')
       expect(body.avatar_url).toBe('https://example.com/avatar.png')
@@ -308,7 +309,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'discord',
@@ -325,8 +326,8 @@ describe('PreviewNotificationService', () => {
 
       await service.notify(event)
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
       const fields = body.embeds[0].fields
 
       expect(fields).toContainEqual({
@@ -357,7 +358,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'webhook',
@@ -392,8 +393,8 @@ describe('PreviewNotificationService', () => {
         }),
       )
 
-      const callArgs = fetchMock.mock.calls[0]
-      const body = JSON.parse(callArgs[1].body as string)
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      const body = JSON.parse(callArgs[1]!.body as string)
 
       expect(body.event).toBe('created')
       expect(body.environment).toBeDefined()
@@ -409,7 +410,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'webhook',
@@ -427,8 +428,8 @@ describe('PreviewNotificationService', () => {
 
       await service.notify(event)
 
-      const callArgs = fetchMock.mock.calls[0]
-      expect(callArgs[1].method).toBe('GET')
+      const callArgs = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(callArgs[1]!.method).toBe('GET')
     })
   })
 
@@ -440,7 +441,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -476,7 +477,7 @@ describe('PreviewNotificationService', () => {
           statusText: callCount === 1 ? 'Bad Request' : 'OK',
         } as Response)
       })
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -513,7 +514,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -526,7 +527,7 @@ describe('PreviewNotificationService', () => {
         timestamp: new Date(),
       })
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+      const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]!.body as string)
       expect(body.attachments[0].title).toContain('Created')
     })
 
@@ -537,7 +538,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -550,7 +551,7 @@ describe('PreviewNotificationService', () => {
         timestamp: new Date(),
       })
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+      const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]!.body as string)
       expect(body.attachments[0].title).toContain('Updated')
     })
 
@@ -561,7 +562,7 @@ describe('PreviewNotificationService', () => {
           statusText: 'OK',
         } as Response),
       )
-      global.fetch = fetchMock
+      global.fetch = fetchMock as any
 
       service.addChannel({
         type: 'slack',
@@ -574,7 +575,7 @@ describe('PreviewNotificationService', () => {
         timestamp: new Date(),
       })
 
-      const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+      const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]!.body as string)
       expect(body.attachments[0].title).toContain('Expired')
     })
   })

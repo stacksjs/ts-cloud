@@ -210,8 +210,9 @@ describe('Registry Module', () => {
       expect(updated.Properties?.RepositoryPolicyText).toBeDefined()
       expect(updated.Properties?.RepositoryPolicyText?.Statement).toHaveLength(1)
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Effect).toBe('Allow')
-      expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Principal.AWS).toContain('arn:aws:iam::123456789012:root')
-      expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Principal.AWS).toContain('arn:aws:iam::210987654321:root')
+      const principal = updated.Properties?.RepositoryPolicyText?.Statement[0].Principal as { AWS?: string | string[] }
+      expect(principal.AWS).toContain('arn:aws:iam::123456789012:root')
+      expect(principal.AWS).toContain('arn:aws:iam::210987654321:root')
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Action).toContain('ecr:GetDownloadUrlForLayer')
     })
   })
@@ -229,7 +230,8 @@ describe('Registry Module', () => {
       expect(updated.Properties?.RepositoryPolicyText).toBeDefined()
       expect(updated.Properties?.RepositoryPolicyText?.Statement).toHaveLength(1)
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Effect).toBe('Allow')
-      expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Principal.Service).toBe('lambda.amazonaws.com')
+      const principal = updated.Properties?.RepositoryPolicyText?.Statement[0].Principal as { Service?: string | string[] }
+      expect(principal.Service).toBe('lambda.amazonaws.com')
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Action).toContain('ecr:GetDownloadUrlForLayer')
       expect(updated.Properties?.RepositoryPolicyText?.Statement[0].Action).toContain('ecr:BatchGetImage')
     })

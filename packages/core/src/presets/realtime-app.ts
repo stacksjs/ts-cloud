@@ -21,6 +21,7 @@ export function createRealtimeAppPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -31,60 +32,67 @@ export function createRealtimeAppPreset(options: {
           domain,
           certificateArn: 'TO_BE_GENERATED',
         } : undefined,
-        routes: {
-          connect: {
-            functionName: 'websocket-connect',
+        routes: [
+          {
+            path: '$connect',
+            method: 'WEBSOCKET',
+            integration: 'websocket-connect',
           },
-          disconnect: {
-            functionName: 'websocket-disconnect',
+          {
+            path: '$disconnect',
+            method: 'WEBSOCKET',
+            integration: 'websocket-disconnect',
           },
-          default: {
-            functionName: 'websocket-default',
+          {
+            path: '$default',
+            method: 'WEBSOCKET',
+            integration: 'websocket-default',
           },
-          custom: [{
-            routeKey: 'sendMessage',
-            functionName: 'websocket-send-message',
-          }, {
-            routeKey: 'joinRoom',
-            functionName: 'websocket-join-room',
-          }],
-        },
+          {
+            path: 'sendMessage',
+            method: 'WEBSOCKET',
+            integration: 'websocket-send-message',
+          },
+          {
+            path: 'joinRoom',
+            method: 'WEBSOCKET',
+            integration: 'websocket-join-room',
+          },
+        ],
       },
       functions: {
-        websocket: [{
-          name: 'connect',
+        connect: {
           runtime: 'nodejs20.x',
           handler: 'dist/websocket/connect.handler',
           memory: 512,
           timeout: 30,
-        }, {
-          name: 'disconnect',
+        },
+        disconnect: {
           runtime: 'nodejs20.x',
           handler: 'dist/websocket/disconnect.handler',
           memory: 512,
           timeout: 30,
-        }, {
-          name: 'default',
+        },
+        default: {
           runtime: 'nodejs20.x',
           handler: 'dist/websocket/default.handler',
           memory: 512,
           timeout: 30,
-        }, {
-          name: 'send-message',
+        },
+        'send-message': {
           runtime: 'nodejs20.x',
           handler: 'dist/websocket/sendMessage.handler',
           memory: 512,
           timeout: 30,
-        }, {
-          name: 'join-room',
+        },
+        'join-room': {
           runtime: 'nodejs20.x',
           handler: 'dist/websocket/joinRoom.handler',
           memory: 512,
           timeout: 30,
-        }],
+        },
         // Stream processor for broadcasting
-        streams: [{
-          name: 'broadcast',
+        broadcast: {
           runtime: 'nodejs20.x',
           handler: 'dist/streams/broadcast.handler',
           memory: 1024,
@@ -95,42 +103,39 @@ export function createRealtimeAppPreset(options: {
             startingPosition: 'LATEST',
             batchSize: 100,
           }],
-        }],
+        },
       },
-      database: {
+      databases: {
         dynamodb: {
-          tables: [{
-            name: `${slug}-connections`,
-            partitionKey: 'connectionId',
-            billingMode: 'PAY_PER_REQUEST',
-            ttl: {
-              enabled: true,
-              attributeName: 'ttl',
+          tables: {
+            [`${slug}-connections`]: {
+              partitionKey: { name: 'connectionId', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              globalSecondaryIndexes: [{
+                name: 'RoomIndex',
+                partitionKey: { name: 'roomId', type: 'S' },
+                sortKey: { name: 'connectionId', type: 'S' },
+                projection: 'ALL',
+              }],
             },
-            globalSecondaryIndexes: [{
-              name: 'RoomIndex',
-              partitionKey: 'roomId',
-              sortKey: 'connectionId',
-              projectionType: 'ALL',
-            }],
-          }, {
-            name: `${slug}-messages`,
-            partitionKey: 'roomId',
-            sortKey: 'timestamp',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: true,
-            pointInTimeRecovery: true,
-            globalSecondaryIndexes: [{
-              name: 'UserIndex',
-              partitionKey: 'userId',
-              sortKey: 'timestamp',
-              projectionType: 'ALL',
-            }],
-          }, {
-            name: `${slug}-rooms`,
-            partitionKey: 'roomId',
-            billingMode: 'PAY_PER_REQUEST',
-          }],
+            [`${slug}-messages`]: {
+              partitionKey: { name: 'roomId', type: 'S' },
+              sortKey: { name: 'timestamp', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: true,
+              pointInTimeRecovery: true,
+              globalSecondaryIndexes: [{
+                name: 'UserIndex',
+                partitionKey: { name: 'userId', type: 'S' },
+                sortKey: { name: 'timestamp', type: 'S' },
+                projection: 'ALL',
+              }],
+            },
+            [`${slug}-rooms`]: {
+              partitionKey: { name: 'roomId', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+            },
+          },
         },
       },
       cache: {

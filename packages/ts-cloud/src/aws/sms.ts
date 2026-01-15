@@ -283,10 +283,7 @@ export class SmsClient {
       throw new Error('Inbox bucket not configured')
     }
 
-    await this.s3.deleteObject({
-      bucket: this.config.inboxBucket,
-      key,
-    })
+    await this.s3.deleteObject(this.config.inboxBucket, key)
   }
 
   /**
@@ -308,10 +305,7 @@ export class SmsClient {
       contentType: 'application/json',
     })
 
-    await this.s3.deleteObject({
-      bucket: this.config.inboxBucket,
-      key,
-    })
+    await this.s3.deleteObject(this.config.inboxBucket, key)
 
     return newKey
   }
@@ -563,7 +557,7 @@ export class SmsClient {
    */
   async listSandboxNumbers(): Promise<Array<{ PhoneNumber: string; Status: string }>> {
     const result = await this.sns.listSMSSandboxPhoneNumbers()
-    return result.phoneNumbers || []
+    return (result?.PhoneNumbers || []) as { PhoneNumber: string; Status: string }[]
   }
 
   // ============================================
@@ -927,10 +921,7 @@ export class SmsClient {
       throw new Error('Templates bucket not configured')
     }
 
-    await this.s3.deleteObject({
-      bucket,
-      key: `sms/templates/${id}.json`,
-    })
+    await this.s3.deleteObject(bucket, `sms/templates/${id}.json`)
   }
 
   /**

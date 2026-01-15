@@ -13,6 +13,7 @@ export interface RestApiOptions {
   slug: string
   environment: EnvironmentType
   name?: string
+  apiName?: string // Alias for name
   description?: string
   endpointType?: 'EDGE' | 'REGIONAL' | 'PRIVATE'
   binaryMediaTypes?: string[]

@@ -50,7 +50,7 @@ function normalizeMailbox(mailbox: string | MailboxConfig | { address: string, p
   }
 
   // Handle both 'email' and 'address' fields (address is deprecated)
-  let email = mailbox.email || (mailbox as any).address
+  let email = 'email' in mailbox ? mailbox.email : (mailbox as { address: string }).address
   if (!email) {
     throw new Error('Mailbox must have either "email" or "address" field')
   }

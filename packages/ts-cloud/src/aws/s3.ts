@@ -299,7 +299,7 @@ export class S3Client {
       : options.body
 
     // For binary data (Buffer/Uint8Array), use direct binary upload
-    if (Buffer.isBuffer(normalizedBody) || normalizedBody instanceof Uint8Array) {
+    if (Buffer.isBuffer(normalizedBody) || (normalizedBody as any) instanceof Uint8Array) {
       const binaryBody = Buffer.isBuffer(normalizedBody) ? normalizedBody : Buffer.from(normalizedBody)
       // Actually, for S3 we need to send raw binary, not base64
       // Let's use Bun's fetch which handles Buffer natively
@@ -386,7 +386,7 @@ export class S3Client {
       method: 'PUT',
       path: `/${options.bucket}/${options.key}`,
       headers,
-      body: bodyContent,
+      body: options.body as string,
     })
   }
 
@@ -1954,5 +1954,83 @@ export class S3Client {
     })
 
     return result
+  }
+
+  /**
+   * Generate a presigned URL for S3 object access
+   * Allows temporary access to private objects without authentication
+   */
+  async getSignedUrl(options: {
+    bucket: string
+    key: string
+    expiresIn?: number
+    operation?: 'getObject' | 'putObject'
+  }): Promise<string> {
+    const { bucket, key, expiresIn = 3600, operation = 'getObject' } = options
+    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const method = operation === 'putObject' ? 'PUT' : 'GET'
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const credential = `${accessKeyId}/${credentialScope}`
+
+    // Build query parameters
+    const queryParams: Record<string, string> = {
+      'X-Amz-Algorithm': algorithm,
+      'X-Amz-Credential': credential,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': expiresIn.toString(),
+      'X-Amz-SignedHeaders': 'host',
+    }
+
+    if (sessionToken) {
+      queryParams['X-Amz-Security-Token'] = sessionToken
+    }
+
+    // Sort and encode query string
+    const sortedParams = Object.keys(queryParams).sort()
+    const canonicalQuerystring = sortedParams
+      .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
+      .join('&')
+
+    // Canonical request
+    const canonicalUri = '/' + key
+    const canonicalHeaders = `host:${host}\n`
+    const signedHeaders = 'host'
+    const payloadHash = 'UNSIGNED-PAYLOAD'
+
+    const canonicalRequest = [
+      method,
+      canonicalUri,
+      canonicalQuerystring,
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n')
+
+    // String to sign
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    // Calculate signature
+    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    // Build presigned URL
+    const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`
+
+    return presignedUrl
   }
 }

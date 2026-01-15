@@ -244,7 +244,6 @@ export class LogsManager {
 
     const subscriptionFilter: SubscriptionFilter = {
       id,
-      logGroupName: logGroup.name,
       ...filter,
     }
 
@@ -266,8 +265,13 @@ export class LogsManager {
     roleArn: string
     filterPattern?: string
   }): SubscriptionFilter {
+    const logGroup = this.logGroups.get(options.logGroupId)
+    if (!logGroup) {
+      throw new Error(`Log group not found: ${options.logGroupId}`)
+    }
     return this.createSubscriptionFilter(options.logGroupId, {
       name: 'KinesisSubscription',
+      logGroupName: logGroup.name,
       filterPattern: options.filterPattern || '',
       destinationArn: options.kinesisStreamArn,
       roleArn: options.roleArn,
@@ -283,8 +287,13 @@ export class LogsManager {
     lambdaFunctionArn: string
     filterPattern?: string
   }): SubscriptionFilter {
+    const logGroup = this.logGroups.get(options.logGroupId)
+    if (!logGroup) {
+      throw new Error(`Log group not found: ${options.logGroupId}`)
+    }
     return this.createSubscriptionFilter(options.logGroupId, {
       name: 'LambdaSubscription',
+      logGroupName: logGroup.name,
       filterPattern: options.filterPattern || '',
       destinationArn: options.lambdaFunctionArn,
       distribution: 'ByLogStream',

@@ -31,6 +31,7 @@ export function createNodeJsServerPreset(options: {
     mode: 'server',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -72,7 +73,7 @@ export function createNodeJsServerPreset(options: {
           },
         },
       },
-      database: {
+      databases: {
         postgres: {
           engine: 'postgres',
           version: '15',

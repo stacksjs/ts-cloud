@@ -104,8 +104,7 @@ function addHttpApi(
   }
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     HttpApiId: {
       Description: 'HTTP API ID',
       Value: Fn.ref('HttpApi'),
@@ -120,7 +119,7 @@ function addHttpApi(
         Name: Fn.sub('${AWS::StackName}-http-api-endpoint'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -199,8 +198,7 @@ function addRestApi(
   }
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     RestApiId: {
       Description: 'REST API ID',
       Value: Fn.ref('RestApi'),
@@ -215,7 +213,7 @@ function addRestApi(
         Name: Fn.sub('${AWS::StackName}-rest-api-endpoint'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -276,8 +274,7 @@ function addWebSocketApi(
   }
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     WebSocketApiId: {
       Description: 'WebSocket API ID',
       Value: Fn.ref('WebSocketApi'),
@@ -292,7 +289,7 @@ function addWebSocketApi(
         Name: Fn.sub('${AWS::StackName}-websocket-api-endpoint'),
       },
     },
-  }
+  })
 }
 
 /**

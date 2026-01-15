@@ -128,14 +128,14 @@ describe('auth Module - User Pool', () => {
       environment,
       accountRecoverySetting: {
         recoveryMechanisms: [
-          { name: 'verified_email', priority: 1 },
-          { name: 'verified_phone_number', priority: 2 },
+          { Name: 'verified_email', Priority: 1 },
+          { Name: 'verified_phone_number', Priority: 2 },
         ],
       },
     })
 
     expect(userPool.Properties?.AccountRecoverySetting?.RecoveryMechanisms).toHaveLength(2)
-    expect(userPool.Properties?.AccountRecoverySetting?.RecoveryMechanisms?.[0].name).toBe('verified_email')
+    expect(userPool.Properties?.AccountRecoverySetting?.RecoveryMechanisms?.[0].Name).toBe('verified_email')
   })
 })
 
@@ -199,16 +199,16 @@ describe('auth Module - User Pool Client', () => {
       accessTokenValidity: 60,
       idTokenValidity: 60,
       tokenValidityUnits: {
-        refreshToken: 'days',
-        accessToken: 'minutes',
-        idToken: 'minutes',
+        RefreshToken: 'days',
+        AccessToken: 'minutes',
+        IdToken: 'minutes',
       },
     })
 
     expect(client.Properties?.RefreshTokenValidity).toBe(30)
     expect(client.Properties?.AccessTokenValidity).toBe(60)
     expect(client.Properties?.IdTokenValidity).toBe(60)
-    expect(client.Properties?.TokenValidityUnits?.refreshToken).toBe('days')
+    expect(client.Properties?.TokenValidityUnits?.RefreshToken).toBe('days')
   })
 
   test('should create a client with explicit auth flows', () => {
@@ -220,7 +220,7 @@ describe('auth Module - User Pool Client', () => {
     const { client } = Auth.createUserPoolClient(poolId, {
       slug,
       environment,
-      explicitAuthFlows: Auth.AuthFlows.standard,
+      explicitAuthFlows: [...Auth.AuthFlows.standard],
     })
 
     expect(client.Properties?.ExplicitAuthFlows).toContain('ALLOW_USER_SRP_AUTH')
@@ -239,7 +239,7 @@ describe('auth Module - User Pool Client', () => {
       callbackURLs: ['https://example.com/callback'],
       logoutURLs: ['https://example.com/logout'],
       allowedOAuthFlows: ['code'],
-      allowedOAuthScopes: Auth.OAuthScopes.basic,
+      allowedOAuthScopes: [...Auth.OAuthScopes.basic],
       allowedOAuthFlowsUserPoolClient: true,
     })
 
@@ -294,12 +294,12 @@ describe('auth Module - User Pool Domain', () => {
       environment,
       domain: 'auth.example.com',
       customDomainConfig: {
-        certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678',
+        CertificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/12345678',
       },
     })
 
     expect(domain.Properties?.Domain).toBe('auth.example.com')
-    expect(domain.Properties?.CustomDomainConfig?.certificateArn).toBeTruthy()
+    expect(domain.Properties?.CustomDomainConfig?.CertificateArn).toBeTruthy()
   })
 })
 
@@ -342,14 +342,14 @@ describe('auth Module - Identity Pool', () => {
       environment,
       cognitoIdentityProviders: [
         {
-          clientId: 'abc123',
-          providerName: 'cognito-idp.us-east-1.amazonaws.com/us-east-1_ABC123',
+          ClientId: 'abc123',
+          ProviderName: 'cognito-idp.us-east-1.amazonaws.com/us-east-1_ABC123',
         },
       ],
     })
 
     expect(identityPool.Properties?.CognitoIdentityProviders).toHaveLength(1)
-    expect(identityPool.Properties?.CognitoIdentityProviders?.[0].clientId).toBe('abc123')
+    expect(identityPool.Properties?.CognitoIdentityProviders?.[0].ClientId).toBe('abc123')
   })
 
   test('should create an identity pool with social providers', () => {
@@ -564,7 +564,7 @@ describe('auth Module - Integration with TemplateBuilder', () => {
     const { client, logicalId: clientId } = Auth.createUserPoolClient(poolId, {
       slug,
       environment,
-      explicitAuthFlows: Auth.AuthFlows.standard,
+      explicitAuthFlows: [...Auth.AuthFlows.standard],
     })
 
     const { domain, logicalId: domainId } = Auth.createUserPoolDomain(poolId, {

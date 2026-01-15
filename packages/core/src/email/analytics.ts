@@ -130,11 +130,9 @@ export class EmailAnalyticsManager {
     tags?: Record<string, string>
   }): OpenEvent {
     return this.trackEvent({
+      ...options,
       eventType: 'open',
       timestamp: new Date(),
-      ipAddress: options.ipAddress,
-      userAgent: options.userAgent,
-      ...options,
     }) as OpenEvent
   }
 
@@ -150,12 +148,9 @@ export class EmailAnalyticsManager {
     tags?: Record<string, string>
   }): ClickEvent {
     return this.trackEvent({
+      ...options,
       eventType: 'click',
       timestamp: new Date(),
-      link: options.link,
-      ipAddress: options.ipAddress,
-      userAgent: options.userAgent,
-      ...options,
     }) as ClickEvent
   }
 

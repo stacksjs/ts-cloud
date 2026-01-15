@@ -133,8 +133,7 @@ function addRedisCluster(
     })
 
     // Output
-    builder.template.Outputs = {
-      ...builder.template.Outputs,
+    builder.addOutputs({
       RedisEndpoint: {
         Description: 'Redis primary endpoint',
         Value: Fn.getAtt('RedisReplicationGroup', 'PrimaryEndPoint.Address'),
@@ -149,7 +148,7 @@ function addRedisCluster(
           Name: Fn.sub('${AWS::StackName}-redis-port'),
         },
       },
-    }
+    })
   }
   else {
     // Single node Redis cluster
@@ -178,8 +177,7 @@ function addRedisCluster(
     })
 
     // Output
-    builder.template.Outputs = {
-      ...builder.template.Outputs,
+    builder.addOutputs({
       RedisEndpoint: {
         Description: 'Redis endpoint',
         Value: Fn.getAtt('RedisCacheCluster', 'RedisEndpoint.Address'),
@@ -194,7 +192,7 @@ function addRedisCluster(
           Name: Fn.sub('${AWS::StackName}-redis-port'),
         },
       },
-    }
+    })
   }
 }
 
@@ -208,7 +206,7 @@ function addMemcachedCluster(
   if (!config) return
 
   // Cache Subnet Group
-  if (!builder.template.Resources.CacheSubnetGroup) {
+  if (!builder.hasResource('CacheSubnetGroup')) {
     builder.addResource('CacheSubnetGroup', 'AWS::ElastiCache::SubnetGroup', {
       Description: 'Subnet group for ElastiCache',
       SubnetIds: [
@@ -221,7 +219,7 @@ function addMemcachedCluster(
   }
 
   // Cache Security Group
-  if (!builder.template.Resources.CacheSecurityGroup) {
+  if (!builder.hasResource('CacheSecurityGroup')) {
     builder.addResource('CacheSecurityGroup', 'AWS::EC2::SecurityGroup', {
       GroupDescription: 'Security group for ElastiCache Memcached',
       VpcId: Fn.ref('VPC'),
@@ -258,8 +256,7 @@ function addMemcachedCluster(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     MemcachedEndpoint: {
       Description: 'Memcached configuration endpoint',
       Value: Fn.getAtt('MemcachedCacheCluster', 'ConfigurationEndpoint.Address'),
@@ -274,7 +271,7 @@ function addMemcachedCluster(
         Name: Fn.sub('${AWS::StackName}-memcached-port'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -289,7 +286,7 @@ function addElastiCacheCluster(
   const isRedis = config.engine === 'redis'
 
   // Reuse subnet and security groups from Redis/Memcached functions
-  if (!builder.template.Resources.CacheSubnetGroup) {
+  if (!builder.hasResource('CacheSubnetGroup')) {
     builder.addResource('CacheSubnetGroup', 'AWS::ElastiCache::SubnetGroup', {
       Description: 'Subnet group for ElastiCache',
       SubnetIds: [
@@ -301,7 +298,7 @@ function addElastiCacheCluster(
     })
   }
 
-  if (!builder.template.Resources.CacheSecurityGroup) {
+  if (!builder.hasResource('CacheSecurityGroup')) {
     builder.addResource('CacheSecurityGroup', 'AWS::EC2::SecurityGroup', {
       GroupDescription: 'Security group for ElastiCache',
       VpcId: Fn.ref('VPC'),

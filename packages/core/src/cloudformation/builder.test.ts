@@ -10,6 +10,7 @@ describe('CloudFormationBuilder', () => {
   it('should initialize with empty template', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     const template = builder.build()
@@ -22,6 +23,7 @@ describe('CloudFormationBuilder', () => {
   it('should add resources to template', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('MyBucket', 'AWS::S3::Bucket', {
@@ -32,12 +34,13 @@ describe('CloudFormationBuilder', () => {
 
     expect(template.Resources.MyBucket).toBeDefined()
     expect(template.Resources.MyBucket.Type).toBe('AWS::S3::Bucket')
-    expect(template.Resources.MyBucket.Properties.BucketName).toBe('my-test-bucket')
+    expect(template.Resources.MyBucket.Properties!.BucketName).toBe('my-test-bucket')
   })
 
   it('should add multiple resources', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Bucket1', 'AWS::S3::Bucket', { BucketName: 'bucket1' })
@@ -52,6 +55,7 @@ describe('CloudFormationBuilder', () => {
   it('should handle resource with DependsOn', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Bucket', 'AWS::S3::Bucket', { BucketName: 'bucket' })
@@ -69,6 +73,7 @@ describe('CloudFormationBuilder', () => {
   it('should handle resource with multiple DependsOn', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Resource1', 'AWS::S3::Bucket', {})
@@ -85,6 +90,7 @@ describe('CloudFormationBuilder', () => {
   it('should handle deletion policy', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Database', 'AWS::RDS::DBInstance', {
@@ -101,6 +107,7 @@ describe('CloudFormationBuilder', () => {
   it('should include parameters in built template', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     const template = builder.build()
@@ -112,6 +119,7 @@ describe('CloudFormationBuilder', () => {
   it('should include conditions in built template', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     const template = builder.build()
@@ -122,6 +130,7 @@ describe('CloudFormationBuilder', () => {
   it('should throw error for circular dependencies', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Resource1', 'AWS::S3::Bucket', {}, { dependsOn: 'Resource2' })
@@ -133,6 +142,7 @@ describe('CloudFormationBuilder', () => {
   it('should detect complex circular dependencies', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('A', 'AWS::S3::Bucket', {}, { dependsOn: 'B' })
@@ -145,6 +155,7 @@ describe('CloudFormationBuilder', () => {
   it('should handle valid dependency chains', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('A', 'AWS::S3::Bucket', {})
@@ -157,6 +168,7 @@ describe('CloudFormationBuilder', () => {
   it('should handle tags', () => {
     const builder = new CloudFormationBuilder({
       project: { name: 'Test', slug: 'test', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
     })
 
     builder.addResource('Bucket', 'AWS::S3::Bucket', {
@@ -169,8 +181,8 @@ describe('CloudFormationBuilder', () => {
 
     const template = builder.build()
 
-    expect(template.Resources.Bucket.Properties.Tags).toHaveLength(2)
-    expect(template.Resources.Bucket.Properties.Tags[0]).toEqual({
+    expect(template.Resources.Bucket.Properties!.Tags).toHaveLength(2)
+    expect(template.Resources.Bucket.Properties!.Tags![0]).toEqual({
       Key: 'Environment',
       Value: 'production',
     })

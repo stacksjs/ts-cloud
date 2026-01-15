@@ -31,6 +31,7 @@ export function createNodeJsServerlessPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -76,21 +77,21 @@ export function createNodeJsServerlessPreset(options: {
           },
         },
       },
-      database: {
+      databases: {
         dynamodb: {
-          tables: [{
-            name: `${slug}-main`,
-            partitionKey: 'id',
-            sortKey: 'createdAt',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: true,
-            pointInTimeRecovery: true,
-          }],
+          tables: {
+            [`${slug}-main`]: {
+              partitionKey: { name: 'id', type: 'S' },
+              sortKey: { name: 'createdAt', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: true,
+              pointInTimeRecovery: true,
+            },
+          },
         },
       },
       functions: {
-        workers: [{
-          name: 'process-queue',
+        'process-queue': {
           runtime: 'nodejs20.x',
           handler: 'dist/workers/queue.handler',
           memory: 512,
@@ -99,7 +100,7 @@ export function createNodeJsServerlessPreset(options: {
             type: 'sqs',
             queueName: `${slug}-queue`,
           }],
-        }],
+        },
       },
       security: {
         certificate: domain ? {

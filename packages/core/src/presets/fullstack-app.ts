@@ -27,6 +27,7 @@ export function createFullStackAppPreset(options: {
     mode: 'hybrid',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -98,7 +99,7 @@ export function createFullStackAppPreset(options: {
         },
       },
       // Database: PostgreSQL
-      database: {
+      databases: {
         postgres: {
           engine: 'postgres',
           version: '15',
@@ -119,7 +120,7 @@ export function createFullStackAppPreset(options: {
         },
       },
       // Queue for async jobs
-      queue: {
+      queues: {
         jobs: {
           fifo: false,
           visibilityTimeout: 300,

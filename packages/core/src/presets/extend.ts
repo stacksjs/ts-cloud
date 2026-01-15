@@ -183,7 +183,7 @@ export function mergeInfrastructure(
  * ```
  */
 export function withMonitoring(
-  monitoring: Partial<CloudConfig['infrastructure']>['monitoring'],
+  monitoring: NonNullable<CloudConfig['infrastructure']>['monitoring'],
 ): Partial<CloudConfig> {
   return mergeInfrastructure({ monitoring })
 }
@@ -202,7 +202,7 @@ export function withMonitoring(
  * ```
  */
 export function withSecurity(
-  security: Partial<CloudConfig['infrastructure']>['security'],
+  security: NonNullable<CloudConfig['infrastructure']>['security'],
 ): Partial<CloudConfig> {
   return mergeInfrastructure({ security })
 }
@@ -226,9 +226,9 @@ export function withSecurity(
  * ```
  */
 export function withDatabase(
-  database: Partial<CloudConfig['infrastructure']>['database'],
+  databases: NonNullable<CloudConfig['infrastructure']>['databases'],
 ): Partial<CloudConfig> {
-  return mergeInfrastructure({ database })
+  return mergeInfrastructure({ databases })
 }
 
 /**
@@ -248,7 +248,7 @@ export function withDatabase(
  * ```
  */
 export function withCache(
-  cache: Partial<CloudConfig['infrastructure']>['cache'],
+  cache: NonNullable<CloudConfig['infrastructure']>['cache'],
 ): Partial<CloudConfig> {
   return mergeInfrastructure({ cache })
 }
@@ -269,7 +269,7 @@ export function withCache(
  * ```
  */
 export function withCDN(
-  cdn: Partial<CloudConfig['infrastructure']>['cdn'],
+  cdn: NonNullable<CloudConfig['infrastructure']>['cdn'],
 ): Partial<CloudConfig> {
   return mergeInfrastructure({ cdn })
 }
@@ -291,7 +291,7 @@ export function withCDN(
  * ```
  */
 export function withQueue(
-  queues: Partial<CloudConfig['infrastructure']>['queues'],
+  queues: NonNullable<CloudConfig['infrastructure']>['queues'],
 ): Partial<CloudConfig> {
   return mergeInfrastructure({ queues })
 }

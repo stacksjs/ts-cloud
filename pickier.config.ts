@@ -14,14 +14,14 @@ const config: PickierConfig = {
   ],
 
   lint: {
-    extensions: ['ts', 'js', 'mjs', 'cjs'],
+    extensions: ['ts', 'js'],
     reporter: 'stylish',
     cache: false,
     maxWarnings: -1,
   },
 
   format: {
-    extensions: ['ts', 'js', 'mjs', 'cjs', 'json', 'md', 'yaml', 'yml'],
+    extensions: ['ts', 'js', 'json', 'md', 'yaml', 'yml'],
     trimTrailingWhitespace: true,
     maxConsecutiveBlankLines: 1,
     finalNewline: 'one',
@@ -33,7 +33,6 @@ const config: PickierConfig = {
   rules: {
     noDebugger: 'error',
     noConsole: 'off',
-    quotes: 'off',
   },
 
   pluginRules: {

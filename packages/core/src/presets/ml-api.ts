@@ -29,6 +29,7 @@ export function createMLApiPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -91,7 +92,7 @@ export function createMLApiPreset(options: {
         },
       },
       apiGateway: {
-        type: 'http',
+        type: 'HTTP',
         customDomain: domain ? {
           domain,
           certificateArn: 'TO_BE_GENERATED',
@@ -107,8 +108,7 @@ export function createMLApiPreset(options: {
         },
       },
       functions: {
-        inference: [{
-          name: 'predict',
+        predict: {
           runtime: 'python3.11',
           handler: 'handlers/predict.handler',
           memory: 2048,
@@ -122,8 +122,8 @@ export function createMLApiPreset(options: {
             SAGEMAKER_ENDPOINT: `${slug}-inference`,
             MODEL_BUCKET: `${slug}-models`,
           },
-        }, {
-          name: 'batch-predict',
+        },
+        'batch-predict': {
           runtime: 'python3.11',
           handler: 'handlers/batchPredict.handler',
           memory: 3008,
@@ -131,12 +131,10 @@ export function createMLApiPreset(options: {
           events: [{
             type: 's3',
             bucket: `${slug}-datasets`,
-            events: ['s3:ObjectCreated:*'],
-            filterSuffix: '.csv',
+            suffix: '.csv',
           }],
-        }],
-        training: [{
-          name: 'trigger-training',
+        },
+        'trigger-training': {
           runtime: 'python3.11',
           handler: 'handlers/training.handler',
           memory: 1024,
@@ -145,29 +143,26 @@ export function createMLApiPreset(options: {
             type: 'schedule',
             expression: 'cron(0 2 * * ? *)', // Daily at 2 AM
           }],
-        }],
-      },
-      database: {
-        dynamodb: {
-          tables: [{
-            name: `${slug}-predictions`,
-            partitionKey: 'requestId',
-            sortKey: 'timestamp',
-            billingMode: 'PAY_PER_REQUEST',
-            ttl: {
-              enabled: true,
-              attributeName: 'expiresAt',
-            },
-            streamEnabled: true,
-          }, {
-            name: `${slug}-models`,
-            partitionKey: 'modelId',
-            sortKey: 'version',
-            billingMode: 'PAY_PER_REQUEST',
-          }],
         },
       },
-      queue: {
+      databases: {
+        dynamodb: {
+          tables: {
+            [`${slug}-predictions`]: {
+              partitionKey: { name: 'requestId', type: 'S' },
+              sortKey: { name: 'timestamp', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: true,
+            },
+            [`${slug}-models`]: {
+              partitionKey: { name: 'modelId', type: 'S' },
+              sortKey: { name: 'version', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+            },
+          },
+        },
+      },
+      queues: {
         predictions: {
           fifo: false,
           visibilityTimeout: 300,

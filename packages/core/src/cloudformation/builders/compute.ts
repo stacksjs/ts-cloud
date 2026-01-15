@@ -1,33 +1,37 @@
 import type { CloudFormationBuilder } from '../builder'
 import { Fn } from '../types'
 
-export interface ComputeConfig {
-  server?: {
-    instanceType: string
-    ami?: string
-    autoScaling?: {
-      min: number
-      max: number
-      targetCPU?: number
-      scaleUpCooldown?: number
-      scaleDownCooldown?: number
-    }
-    loadBalancer?: {
-      type: 'application' | 'network'
-      healthCheck?: {
-        path?: string
-        interval?: number
-        timeout?: number
-        healthyThreshold?: number
-        unhealthyThreshold?: number
-      }
-      stickySession?: {
-        enabled: boolean
-        duration?: number
-      }
-    }
-    userData?: string
+export interface LoadBalancerConfig {
+  type: 'application' | 'network'
+  healthCheck?: {
+    path?: string
+    interval?: number
+    timeout?: number
+    healthyThreshold?: number
+    unhealthyThreshold?: number
   }
+  stickySession?: {
+    enabled: boolean
+    duration?: number
+  }
+}
+
+export interface ServerConfig {
+  instanceType: string
+  ami?: string
+  autoScaling?: {
+    min: number
+    max: number
+    targetCPU?: number
+    scaleUpCooldown?: number
+    scaleDownCooldown?: number
+  }
+  loadBalancer?: LoadBalancerConfig
+  userData?: string
+}
+
+export interface ComputeConfig {
+  server?: ServerConfig
   fargate?: {
     taskDefinition: {
       cpu: string
@@ -285,7 +289,7 @@ rpm -U ./amazon-cloudwatch-agent.rpm || true
  */
 function addLoadBalancer(
   builder: CloudFormationBuilder,
-  config: ComputeConfig['server']['loadBalancer'],
+  config: LoadBalancerConfig | undefined,
 ): void {
   if (!config) return
 
@@ -368,8 +372,7 @@ function addLoadBalancer(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     LoadBalancerDNS: {
       Description: 'Load Balancer DNS Name',
       Value: Fn.getAtt('LoadBalancer', 'DNSName'),
@@ -377,7 +380,7 @@ function addLoadBalancer(
         Name: Fn.sub('${AWS::StackName}-alb-dns'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -391,7 +394,7 @@ function addFargateResources(
   const serviceId = builder.toLogicalId(serviceName)
 
   // ECS Cluster
-  if (!builder.template.Resources.ECSCluster) {
+  if (!builder.hasResource('ECSCluster')) {
     builder.addResource('ECSCluster', 'AWS::ECS::Cluster', {
       ClusterName: Fn.sub('${AWS::StackName}-cluster'),
       Tags: [

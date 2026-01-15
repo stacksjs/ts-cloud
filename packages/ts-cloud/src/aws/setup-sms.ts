@@ -318,7 +318,7 @@ async function setupS3Inbox(
 
     if (!bucketExists) {
       // Create bucket
-      await s3.createBucket({ Bucket: config.bucket })
+      await s3.createBucket(config.bucket)
     }
 
     // Create placeholder files to ensure prefixes exist
@@ -347,25 +347,20 @@ async function setupS3Inbox(
     // Set up lifecycle rules for retention
     if (config.retentionDays) {
       try {
-        await s3.putBucketLifecycleConfiguration({
-          Bucket: config.bucket,
-          LifecycleConfiguration: {
-            Rules: [
-              {
-                ID: 'SmsInboxRetention',
-                Status: 'Enabled',
-                Filter: { Prefix: config.prefix },
-                Expiration: { Days: config.retentionDays },
-              },
-              {
-                ID: 'SmsReceiptsRetention',
-                Status: 'Enabled',
-                Filter: { Prefix: 'sms/receipts/' },
-                Expiration: { Days: config.retentionDays },
-              },
-            ],
+        await s3.putBucketLifecycleConfiguration(config.bucket, [
+          {
+            ID: 'SmsInboxRetention',
+            Status: 'Enabled',
+            Filter: { Prefix: config.prefix },
+            Expiration: { Days: config.retentionDays },
           },
-        })
+          {
+            ID: 'SmsReceiptsRetention',
+            Status: 'Enabled',
+            Filter: { Prefix: 'sms/receipts/' },
+            Expiration: { Days: config.retentionDays },
+          },
+        ])
       } catch (err: any) {
         // Lifecycle configuration might fail if not owner, continue anyway
         console.log(`  Note: Could not set lifecycle rules: ${err.message}`)

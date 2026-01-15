@@ -61,7 +61,7 @@ export type CloudFormationIntrinsicFunction =
   | { 'Fn::GetAtt': [string, string] }
   | { 'Fn::Join': [string, any[]] }
   | { 'Fn::Sub': string | [string, Record<string, any>] }
-  | { 'Fn::Select': [number, any[]] }
+  | { 'Fn::Select': [number, any[] | CloudFormationIntrinsicFunction] }
   | { 'Fn::Split': [string, string] }
   | { 'Fn::GetAZs': string }
   | { 'Fn::ImportValue': any }
@@ -87,7 +87,7 @@ export const Fn = {
   sub: (template: string, variables?: Record<string, any>) =>
     variables ? { 'Fn::Sub': [template, variables] } : { 'Fn::Sub': template },
 
-  select: (index: number, list: any[]) => ({ 'Fn::Select': [index, list] }),
+  select: (index: number, list: any[] | CloudFormationIntrinsicFunction) => ({ 'Fn::Select': [index, list] }),
 
   split: (delimiter: string, source: string) => ({ 'Fn::Split': [delimiter, source] }),
 
@@ -100,15 +100,15 @@ export const Fn = {
 
   base64: (value: any) => ({ 'Fn::Base64': value }),
 
-  cidr: (ipBlock: any, count: number, cidrBits: number) =>
+  cidr: (ipBlock: any, count: number, cidrBits: number): { 'Fn::Cidr': [any, number, number] } =>
     ({ 'Fn::Cidr': [ipBlock, count, cidrBits] }),
 
-  equals: (value1: any, value2: any) => ({ 'Fn::Equals': [value1, value2] }),
+  equals: (value1: any, value2: any): { 'Fn::Equals': [any, any] } => ({ 'Fn::Equals': [value1, value2] }),
 
-  if: (conditionName: string, trueValue: any, falseValue: any) =>
+  if: (conditionName: string, trueValue: any, falseValue: any): { 'Fn::If': [string, any, any] } =>
     ({ 'Fn::If': [conditionName, trueValue, falseValue] }),
 
-  not: (condition: any) => ({ 'Fn::Not': [condition] }),
+  not: (condition: any): { 'Fn::Not': [any] } => ({ 'Fn::Not': [condition] }),
 
   and: (...conditions: any[]) => ({ 'Fn::And': conditions }),
 
@@ -119,10 +119,10 @@ export const Fn = {
  * Common AWS resource ARN patterns
  */
 export const Arn = {
-  s3Bucket: (bucketName: string) =>
+  s3Bucket: (bucketName: any) =>
     Fn.sub(`arn:aws:s3:::${bucketName}`),
 
-  s3Object: (bucketName: string, key: string = '*') =>
+  s3Object: (bucketName: any, key: string = '*') =>
     Fn.sub(`arn:aws:s3:::${bucketName}/${key}`),
 
   lambda: (functionName: string, region?: string, account?: string) =>

@@ -103,6 +103,7 @@ export interface FargateServiceOptions {
 export interface LambdaFunctionOptions {
   slug: string
   environment: EnvironmentType
+  functionName?: string
   runtime: string
   handler: string
   code: {
@@ -110,6 +111,7 @@ export interface LambdaFunctionOptions {
     s3Key?: string
     zipFile?: string
   }
+  role?: string
   timeout?: number
   memorySize?: number
   environmentVariables?: Record<string, string>
@@ -219,7 +221,7 @@ export class Compute {
 
     if (userData) {
       // Base64 encode user data
-      instance.Properties.UserData = Fn.Base64(userData)
+      instance.Properties.UserData = Fn.Base64(userData) as any
     }
 
     // Configure EBS volume
@@ -641,7 +643,7 @@ export class Compute {
         LogDriver: 'awslogs',
         Options: {
           'awslogs-group': logGroup,
-          'awslogs-region': Fn.Ref('AWS::Region'),
+          'awslogs-region': Fn.Ref('AWS::Region') as any,
           'awslogs-stream-prefix': slug,
         },
       }
@@ -762,7 +764,11 @@ export class Compute {
         Runtime: runtime,
         Role: Fn.GetAtt(roleLogicalId, 'Arn') as any,
         Handler: handler,
-        Code: code,
+        Code: {
+          ...(code.s3Bucket && { S3Bucket: code.s3Bucket }),
+          ...(code.s3Key && { S3Key: code.s3Key }),
+          ...(code.zipFile && { ZipFile: code.zipFile }),
+        },
         Timeout: timeout,
         MemorySize: memorySize,
         Tags: [
@@ -1268,9 +1274,9 @@ echo "Bun server setup complete!"
     createAccessPolicy: (secretArns: string[]): {
       PolicyName: string
       PolicyDocument: {
-        Version: string
+        Version: '2012-10-17'
         Statement: Array<{
-          Effect: string
+          Effect: 'Allow' | 'Deny'
           Action: string[]
           Resource: string[]
         }>
@@ -1278,9 +1284,9 @@ echo "Bun server setup complete!"
     } => ({
       PolicyName: 'SecretsManagerAccess',
       PolicyDocument: {
-        Version: '2012-10-17',
+        Version: '2012-10-17' as const,
         Statement: [{
-          Effect: 'Allow',
+          Effect: 'Allow' as const,
           Action: [
             'secretsmanager:GetSecretValue',
             'secretsmanager:DescribeSecret',
@@ -1296,9 +1302,9 @@ echo "Bun server setup complete!"
     createKmsPolicy: (kmsKeyArns: string[]): {
       PolicyName: string
       PolicyDocument: {
-        Version: string
+        Version: '2012-10-17'
         Statement: Array<{
-          Effect: string
+          Effect: 'Allow' | 'Deny'
           Action: string[]
           Resource: string[]
         }>
@@ -1306,9 +1312,9 @@ echo "Bun server setup complete!"
     } => ({
       PolicyName: 'KMSDecryptAccess',
       PolicyDocument: {
-        Version: '2012-10-17',
+        Version: '2012-10-17' as const,
         Statement: [{
-          Effect: 'Allow',
+          Effect: 'Allow' as const,
           Action: ['kms:Decrypt'],
           Resource: kmsKeyArns,
         }],

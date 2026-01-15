@@ -334,8 +334,8 @@ describe('Cache Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.NumNodeGroups).toBe(3)
-      expect(result.Resources[logicalId].Properties.ReplicasPerNodeGroup).toBe(2)
+      expect(result.Resources[logicalId]!.Properties!.NumNodeGroups).toBe(3)
+      expect(result.Resources[logicalId]!.Properties!.ReplicasPerNodeGroup).toBe(2)
     })
 
     it('should create Memcached cluster infrastructure', () => {

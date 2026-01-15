@@ -33,28 +33,30 @@ export interface DatabaseConfig {
     parameters?: Record<string, string>
   }
   dynamodb?: {
-    tables: Array<{
-      name: string
-      partitionKey: string
-      sortKey?: string
-      billingMode?: 'PROVISIONED' | 'PAY_PER_REQUEST'
-      readCapacity?: number
-      writeCapacity?: number
-      streamEnabled?: boolean
-      pointInTimeRecovery?: boolean
-      ttl?: {
-        enabled: boolean
-        attributeName: string
-      }
-      globalSecondaryIndexes?: Array<{
-        name: string
-        partitionKey: string
-        sortKey?: string
-        projectionType?: 'ALL' | 'KEYS_ONLY' | 'INCLUDE'
-        nonKeyAttributes?: string[]
-      }>
-    }>
+    tables: DynamoDBTableConfig[]
   }
+}
+
+export interface DynamoDBTableConfig {
+  name: string
+  partitionKey: string
+  sortKey?: string
+  billingMode?: 'PROVISIONED' | 'PAY_PER_REQUEST'
+  readCapacity?: number
+  writeCapacity?: number
+  streamEnabled?: boolean
+  pointInTimeRecovery?: boolean
+  ttl?: {
+    enabled: boolean
+    attributeName: string
+  }
+  globalSecondaryIndexes?: Array<{
+    name: string
+    partitionKey: string
+    sortKey?: string
+    projectionType?: 'ALL' | 'KEYS_ONLY' | 'INCLUDE'
+    nonKeyAttributes?: string[]
+  }>
 }
 
 /**
@@ -201,8 +203,7 @@ function addRDSInstance(
   })
 
   // Outputs
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     DBEndpoint: {
       Description: 'Database endpoint',
       Value: Fn.getAtt(logicalId, 'Endpoint.Address'),
@@ -224,7 +225,7 @@ function addRDSInstance(
         Name: Fn.sub('${AWS::StackName}-db-secret-arn'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -232,7 +233,7 @@ function addRDSInstance(
  */
 function addDynamoDBTable(
   builder: CloudFormationBuilder,
-  config: DatabaseConfig['dynamodb']['tables'][0],
+  config: DynamoDBTableConfig,
 ): void {
   const logicalId = builder.toLogicalId(`${config.name}-table`)
 
@@ -360,8 +361,7 @@ function addDynamoDBTable(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Name`]: {
       Description: `${config.name} table name`,
       Value: Fn.ref(logicalId),
@@ -376,15 +376,17 @@ function addDynamoDBTable(
         Name: Fn.sub(`\${AWS::StackName}-${config.name}-table-arn`),
       },
     },
-  }
+  })
 
   if (config.streamEnabled) {
-    builder.template.Outputs[`${logicalId}StreamArn`] = {
-      Description: `${config.name} stream ARN`,
-      Value: Fn.getAtt(logicalId, 'StreamArn'),
-      Export: {
-        Name: Fn.sub(`\${AWS::StackName}-${config.name}-stream-arn`),
+    builder.addOutputs({
+      [`${logicalId}StreamArn`]: {
+        Description: `${config.name} stream ARN`,
+        Value: Fn.getAtt(logicalId, 'StreamArn'),
+        Export: {
+          Name: Fn.sub(`\${AWS::StackName}-${config.name}-stream-arn`),
+        },
       },
-    }
+    })
   }
 }

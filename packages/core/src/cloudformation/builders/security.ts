@@ -81,8 +81,7 @@ function addCertificate(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     CertificateArn: {
       Description: 'ACM Certificate ARN',
       Value: Fn.ref('Certificate'),
@@ -90,7 +89,7 @@ function addCertificate(
         Name: Fn.sub('${AWS::StackName}-certificate-arn'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -317,7 +316,7 @@ function addWAF(
   })
 
   // Associate WAF with ALB (if exists)
-  if (builder.template.Resources.LoadBalancer) {
+  if (builder.hasResource('LoadBalancer')) {
     builder.addResource('WebACLAssociation', 'AWS::WAFv2::WebACLAssociation', {
       ResourceArn: Fn.ref('LoadBalancer'),
       WebACLArn: Fn.getAtt('WebACL', 'Arn'),
@@ -327,8 +326,7 @@ function addWAF(
   }
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     WebACLId: {
       Description: 'WAF Web ACL ID',
       Value: Fn.ref('WebACL'),
@@ -343,7 +341,7 @@ function addWAF(
         Name: Fn.sub('${AWS::StackName}-waf-arn'),
       },
     },
-  }
+  })
 }
 
 /**
@@ -352,11 +350,13 @@ function addWAF(
 function addSecurityGroup(
   builder: CloudFormationBuilder,
   name: string,
-  config: SecurityConfig['securityGroups'][string],
+  config: NonNullable<SecurityConfig['securityGroups']>[string] | undefined,
 ): void {
+  if (!config) return
+
   const logicalId = builder.toLogicalId(`${name}-security-group`)
 
-  const ingressRules = config.ingress?.map(rule => ({
+  const ingressRules = config.ingress?.map((rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['ingress']>[number]) => ({
     IpProtocol: rule.protocol,
     FromPort: rule.port,
     ToPort: rule.port,
@@ -364,7 +364,7 @@ function addSecurityGroup(
     SourceSecurityGroupId: rule.source ? Fn.ref(rule.source) : undefined,
   })) || []
 
-  const egressRules = config.egress?.map(rule => ({
+  const egressRules = config.egress?.map((rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['egress']>[number]) => ({
     IpProtocol: rule.protocol,
     FromPort: rule.port,
     ToPort: rule.port,
@@ -387,8 +387,7 @@ function addSecurityGroup(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Id`]: {
       Description: `${name} security group ID`,
       Value: Fn.ref(logicalId),
@@ -396,5 +395,5 @@ function addSecurityGroup(
         Name: Fn.sub(`\${AWS::StackName}-${name}-sg-id`),
       },
     },
-  }
+  })
 }

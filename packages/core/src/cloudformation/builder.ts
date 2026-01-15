@@ -19,7 +19,7 @@ import { addSecurityResources } from './builders/security'
  * Converts-cloudConfig to CloudFormation templates
  */
 export class CloudFormationBuilder {
-  private template: CloudFormationTemplate
+  protected template: CloudFormationTemplate
   private config: CloudConfig
   private resourceDependencies: Map<string, Set<string>>
 
@@ -41,7 +41,7 @@ export class CloudFormationBuilder {
     this.addMappings()
     this.addConditions()
     this.addResources()
-    this.addOutputs()
+    this.initializeOutputs()
     this.resolveDependencies()
 
     return this.template
@@ -112,8 +112,8 @@ export class CloudFormationBuilder {
     }
 
     // Database resources
-    if (infrastructure.database) {
-      this.addDatabaseResources(infrastructure.database)
+    if (infrastructure.databases) {
+      this.addDatabaseResources(infrastructure.databases)
     }
 
     // Cache resources
@@ -158,9 +158,9 @@ export class CloudFormationBuilder {
   }
 
   /**
-   * Add outputs to the template
+   * Initialize default outputs in the template
    */
-  private addOutputs(): void {
+  private initializeOutputs(): void {
     this.template.Outputs = {
       StackName: {
         Description: 'Stack name',
@@ -225,6 +225,37 @@ export class CloudFormationBuilder {
     }
 
     this.template.Resources[logicalId] = resource
+  }
+
+  /**
+   * Add or merge outputs to the template
+   */
+  addOutputs(outputs: Record<string, any>): void {
+    this.template.Outputs = {
+      ...this.template.Outputs,
+      ...outputs,
+    }
+  }
+
+  /**
+   * Get the current outputs
+   */
+  getOutputs(): Record<string, any> {
+    return this.template.Outputs || {}
+  }
+
+  /**
+   * Check if a resource exists in the template
+   */
+  hasResource(logicalId: string): boolean {
+    return logicalId in this.template.Resources
+  }
+
+  /**
+   * Get a resource from the template
+   */
+  getResource(logicalId: string): CloudFormationResource | undefined {
+    return this.template.Resources[logicalId]
   }
 
   /**

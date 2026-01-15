@@ -1,16 +1,18 @@
 import type { CloudFormationBuilder } from '../builder'
 import { Fn } from '../types'
 
-export interface MessagingConfig {
-  topics?: Array<{
-    name: string
-    displayName?: string
-    subscriptions?: Array<{
-      protocol: 'http' | 'https' | 'email' | 'email-json' | 'sms' | 'sqs' | 'lambda'
-      endpoint: string
-      filterPolicy?: Record<string, any>
-    }>
+export interface TopicConfig {
+  name: string
+  displayName?: string
+  subscriptions?: Array<{
+    protocol: 'http' | 'https' | 'email' | 'email-json' | 'sms' | 'sqs' | 'lambda'
+    endpoint: string
+    filterPolicy?: Record<string, any>
   }>
+}
+
+export interface MessagingConfig {
+  topics?: TopicConfig[]
 }
 
 /**
@@ -32,7 +34,7 @@ export function addMessagingResources(
  */
 function addTopic(
   builder: CloudFormationBuilder,
-  config: MessagingConfig['topics'][0],
+  config: TopicConfig,
 ): void {
   const logicalId = builder.toLogicalId(`${config.name}-topic`)
 
@@ -126,8 +128,7 @@ function addTopic(
   }
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Arn`]: {
       Description: `${config.name} topic ARN`,
       Value: Fn.ref(logicalId),
@@ -135,5 +136,5 @@ function addTopic(
         Name: Fn.sub(`\${AWS::StackName}-${config.name}-topic-arn`),
       },
     },
-  }
+  })
 }

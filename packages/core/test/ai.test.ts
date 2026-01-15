@@ -12,10 +12,10 @@ describe('AI Module', () => {
 
       expect(role.Type).toBe('AWS::IAM::Role')
       expect(role.Properties.AssumeRolePolicyDocument.Statement[0].Principal.Service).toBe('lambda.amazonaws.com')
-      expect(role.Properties.Policies).toHaveLength(1)
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/*')
+      expect(role.Properties!.Policies).toHaveLength(1)
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/*')
       expect(logicalId).toBeDefined()
     })
 
@@ -26,9 +26,9 @@ describe('AI Module', () => {
         models: [AI.Models.Claude3_5_Sonnet, AI.Models.TitanTextG1Express],
       })
 
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Resource).toHaveLength(2)
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/amazon.titan-text-express-v1')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toHaveLength(2)
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/amazon.titan-text-express-v1')
     })
 
     it('should disable streaming when requested', () => {
@@ -38,8 +38,8 @@ describe('AI Module', () => {
         allowStreaming: false,
       })
 
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toEqual(['bedrock:InvokeModel'])
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).not.toContain('bedrock:InvokeModelWithResponseStream')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toEqual(['bedrock:InvokeModel'])
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).not.toContain('bedrock:InvokeModelWithResponseStream')
     })
 
     it('should support custom role name', () => {
@@ -102,7 +102,7 @@ describe('AI Module', () => {
       })
 
       expect(role.Properties.AssumeRolePolicyDocument.Statement[0].Principal.Service).toBe('lambda.amazonaws.com')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
     })
   })
 
@@ -114,7 +114,7 @@ describe('AI Module', () => {
       })
 
       expect(role.Properties.AssumeRolePolicyDocument.Statement[0].Principal.Service).toBe('ecs-tasks.amazonaws.com')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
     })
   })
 
@@ -126,7 +126,7 @@ describe('AI Module', () => {
       })
 
       expect(role.Properties.AssumeRolePolicyDocument.Statement[0].Principal.Service).toBe('ec2.amazonaws.com')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
     })
   })
 
@@ -146,10 +146,10 @@ describe('AI Module', () => {
       // Add Bedrock permissions
       AI.addBedrockPermissions(role, [AI.Models.Claude3_5_Sonnet], true)
 
-      expect(role.Properties.Policies).toHaveLength(1)
-      expect(role.Properties.Policies[0].PolicyName).toBe('bedrock-permissions')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
+      expect(role.Properties!.Policies).toHaveLength(1)
+      expect(role.Properties!.Policies![0].PolicyName).toBe('bedrock-permissions')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
     })
 
     it('should add Bedrock permissions without streaming', () => {
@@ -163,7 +163,7 @@ describe('AI Module', () => {
 
       AI.addBedrockPermissions(role, ['*'], false)
 
-      expect(role.Properties.Policies[0].PolicyDocument.Statement[0].Action).toEqual(['bedrock:InvokeModel'])
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toEqual(['bedrock:InvokeModel'])
     })
   })
 
@@ -247,7 +247,7 @@ describe('AI Module', () => {
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
       expect(result.Resources[logicalId].Type).toBe('AWS::IAM::Role')
-      expect(result.Resources[logicalId].Properties.Policies).toHaveLength(1)
+      expect(result.Resources[logicalId]!.Properties!.Policies).toHaveLength(1)
     })
 
     it('should create ECS task with Bedrock permissions', () => {
@@ -257,7 +257,7 @@ describe('AI Module', () => {
       const { role, logicalId } = AI.enableBedrockForEcs({
         slug: 'my-app',
         environment: 'production',
-        models: AI.ModelGroups.AllClaude,
+        models: [...AI.ModelGroups.AllClaude],
       })
 
       template.addResource(logicalId, role)
@@ -265,7 +265,7 @@ describe('AI Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.Policies[0].PolicyDocument.Statement[0].Resource).toHaveLength(5)
+      expect(((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).length).toHaveLength(5)
     })
 
     it('should create standalone Bedrock policy', () => {
@@ -274,7 +274,7 @@ describe('AI Module', () => {
       const { policy, logicalId } = AI.createBedrockPolicy({
         slug: 'my-app',
         environment: 'production',
-        models: AI.ModelGroups.TextModels,
+        models: [...AI.ModelGroups.TextModels],
         allowStreaming: true,
       })
 
@@ -304,7 +304,7 @@ describe('AI Module', () => {
 
       const result = template.build()
 
-      expect(result.Resources[logicalId].Properties.Policies[0].PolicyDocument.Statement[0].Resource.length).toBeGreaterThan(1)
+      expect(((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).length).toBeGreaterThan(1)
     })
 
     it('should generate valid JSON template', () => {

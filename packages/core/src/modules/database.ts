@@ -11,11 +11,14 @@ import { generateLogicalId, generateResourceName } from '../resource-naming'
 export interface RDSOptions {
   slug: string
   environment: EnvironmentType
-  instanceClass?: string
+  dbInstanceIdentifier?: string
+  dbInstanceClass?: string
+  instanceClass?: string // Alias for dbInstanceClass
   allocatedStorage?: number
   storageType?: 'gp2' | 'gp3' | 'io1' | 'io2'
   masterUsername?: string
-  masterPassword?: string
+  masterUserPassword?: string
+  masterPassword?: string // Alias for masterUserPassword
   databaseName?: string
   subnetIds?: string[]
   securityGroupIds?: string[]
@@ -469,7 +472,7 @@ export class Database {
     }
 
     // Build GSI key schema
-    const gsiKeySchema: DynamoDBTable['Properties']['GlobalSecondaryIndexes'][0]['KeySchema'] = [
+    const gsiKeySchema: { AttributeName: string, KeyType: 'HASH' | 'RANGE' }[] = [
       {
         AttributeName: partitionKey.name,
         KeyType: 'HASH',
@@ -484,13 +487,14 @@ export class Database {
     }
 
     // Build GSI
-    const gsi: DynamoDBTable['Properties']['GlobalSecondaryIndexes'][0] = {
+    const gsi = {
       IndexName: indexName,
       KeySchema: gsiKeySchema,
       Projection: {
-        ProjectionType: projectionType,
+        ProjectionType: projectionType as 'ALL' | 'KEYS_ONLY' | 'INCLUDE',
         NonKeyAttributes: projectionType === 'INCLUDE' ? nonKeyAttributes : undefined,
       },
+      ProvisionedThroughput: undefined as { ReadCapacityUnits: number, WriteCapacityUnits: number } | undefined,
     }
 
     if (table.Properties.BillingMode === 'PROVISIONED') {

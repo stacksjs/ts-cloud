@@ -1,6 +1,20 @@
 import type { CloudFormationBuilder } from '../builder'
 import { Fn } from '../types'
 
+export interface AlarmConfig {
+  name?: string
+  metric: string
+  threshold: number
+  evaluationPeriods?: number
+  comparisonOperator?: 'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
+  statistic?: 'Average' | 'Sum' | 'Minimum' | 'Maximum' | 'SampleCount'
+  period?: number
+  treatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
+  service?: string
+  namespace?: string
+  dimensions?: Record<string, string>
+}
+
 export interface MonitoringConfig {
   dashboard?: {
     name: string
@@ -13,19 +27,7 @@ export interface MonitoringConfig {
       height?: number
     }>
   }
-  alarms?: Array<{
-    name?: string
-    metric: string
-    threshold: number
-    evaluationPeriods?: number
-    comparisonOperator?: 'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
-    statistic?: 'Average' | 'Sum' | 'Minimum' | 'Maximum' | 'SampleCount'
-    period?: number
-    treatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
-    service?: string
-    namespace?: string
-    dimensions?: Record<string, string>
-  }>
+  alarms?: AlarmConfig[]
   logs?: {
     retention?: number
     groups?: string[]
@@ -63,7 +65,7 @@ export function addMonitoringResources(
   // Log Groups
   if (config.logs?.groups) {
     config.logs.groups.forEach(group => {
-      addLogGroup(builder, group, config.logs.retention)
+      addLogGroup(builder, group, config.logs?.retention)
     })
   }
 }
@@ -73,7 +75,7 @@ export function addMonitoringResources(
  */
 function addCloudWatchAlarm(
   builder: CloudFormationBuilder,
-  config: MonitoringConfig['alarms'][0],
+  config: AlarmConfig,
   index: number,
 ): void {
   const alarmId = builder.toLogicalId(`alarm-${config.name || config.metric}-${index}`)
@@ -202,15 +204,14 @@ function addCloudWatchDashboard(
   })
 
   // Output
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     DashboardURL: {
       Description: 'CloudWatch Dashboard URL',
       Value: Fn.sub(
         `https://console.aws.amazon.com/cloudwatch/home?region=\${AWS::Region}#dashboards:name=\${CloudWatchDashboard}`,
       ),
     },
-  }
+  })
 }
 
 /**

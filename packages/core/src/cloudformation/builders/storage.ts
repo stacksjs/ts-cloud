@@ -164,7 +164,7 @@ function addS3Bucket(
           Effect: 'Allow',
           Principal: '*',
           Action: 's3:GetObject',
-          Resource: Fn.join('', [Arn.s3Bucket(Fn.ref(logicalId)), '/*']),
+          Resource: Fn.join('', [Arn.s3Bucket(Fn.ref(logicalId) as any), '/*']),
         }],
       },
     }, {
@@ -173,8 +173,7 @@ function addS3Bucket(
   }
 
   // Output bucket name and ARN
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Name`]: {
       Description: `${bucketName} bucket name`,
       Value: Fn.ref(logicalId),
@@ -189,13 +188,15 @@ function addS3Bucket(
         Name: Fn.sub(`\${AWS::StackName}-${bucketName}-bucket-arn`),
       },
     },
-  }
+  })
 
   if (config.website) {
-    builder.template.Outputs[`${logicalId}WebsiteURL`] = {
-      Description: `${bucketName} website URL`,
-      Value: Fn.getAtt(logicalId, 'WebsiteURL'),
-    }
+    builder.addOutputs({
+      [`${logicalId}WebsiteURL`]: {
+        Description: `${bucketName} website URL`,
+        Value: Fn.getAtt(logicalId, 'WebsiteURL'),
+      },
+    })
   }
 }
 
@@ -272,8 +273,7 @@ function addEFSResource(
   })
 
   // Output EFS ID
-  builder.template.Outputs = {
-    ...builder.template.Outputs,
+  builder.addOutputs({
     [`${logicalId}Id`]: {
       Description: `${name} EFS file system ID`,
       Value: Fn.ref(logicalId),
@@ -281,5 +281,5 @@ function addEFSResource(
         Name: Fn.sub(`\${AWS::StackName}-${name}-efs`),
       },
     },
-  }
+  })
 }

@@ -436,8 +436,9 @@ describe('workflow Module - Common Patterns', () => {
 
     expect(definition.StartAt).toBe('Parallel')
     expect(definition.States.Parallel.Type).toBe('Parallel')
-    expect(definition.States.Parallel.Branches).toHaveLength(2)
-    expect(definition.States.Parallel.End).toBe(true)
+    const parallelState = definition.States.Parallel as { Type: 'Parallel', Branches: unknown[], End: boolean }
+    expect(parallelState.Branches).toHaveLength(2)
+    expect(parallelState.End).toBe(true)
   })
 
   test('should create map workflow pattern', () => {
@@ -452,9 +453,10 @@ describe('workflow Module - Common Patterns', () => {
 
     expect(definition.StartAt).toBe('Map')
     expect(definition.States.Map.Type).toBe('Map')
-    expect(definition.States.Map.Iterator).toEqual(itemProcessor)
-    expect(definition.States.Map.MaxConcurrency).toBe(10)
-    expect(definition.States.Map.End).toBe(true)
+    const mapState = definition.States.Map as { Type: 'Map', Iterator: unknown, MaxConcurrency: number, End: boolean }
+    expect(mapState.Iterator).toEqual(itemProcessor)
+    expect(mapState.MaxConcurrency).toBe(10)
+    expect(mapState.End).toBe(true)
   })
 
   test('should create error handling workflow pattern', () => {
@@ -472,8 +474,9 @@ describe('workflow Module - Common Patterns', () => {
     )
 
     expect(definition.StartAt).toBe('Main')
-    expect(definition.States.Main.Catch).toHaveLength(1)
-    expect(definition.States.Main.Catch?.[0].Next).toBe('ErrorHandler')
+    const mainState = definition.States.Main as { Catch?: Array<{ Next: string }> }
+    expect(mainState.Catch).toHaveLength(1)
+    expect(mainState.Catch?.[0].Next).toBe('ErrorHandler')
     expect(definition.States.ErrorHandler).toEqual(errorHandler)
     expect(definition.States.Success.Type).toBe('Succeed')
   })
@@ -576,7 +579,7 @@ describe('workflow Module - Integration with TemplateBuilder', () => {
 
     const template = builder.build()
     const parsedDefinition = JSON.parse(
-      template.Resources[logicalId].Properties.DefinitionString,
+      template.Resources[logicalId]!.Properties!.DefinitionString as string,
     )
 
     expect(parsedDefinition.States.Initialize.Type).toBe('Pass')

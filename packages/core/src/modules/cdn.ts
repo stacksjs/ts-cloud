@@ -17,8 +17,10 @@ export interface DistributionOptions {
 }
 
 export interface OriginConfig {
-  type: 's3' | 'alb' | 'custom'
-  domainName: string
+  type?: 's3' | 'alb' | 'custom'
+  id?: string
+  originId?: string // Alias for id
+  domainName?: string
   originPath?: string
   customHeaders?: Record<string, string>
   s3OriginAccessControl?: string

@@ -415,12 +415,12 @@ export class ImapServer {
   private async handleNoop(session: ImapSession, tag: string): Promise<void> {
     if (session.state === 'selected' && session.selectedMailbox === 'INBOX') {
       // Get old message count
-      const oldMessages = this.messageCache.get(session.email || '') || []
+      const oldMessages = this.getMessagesForFolder(session.email || '', session.selectedMailbox || 'INBOX')
       const oldCount = oldMessages.length
 
       // Force refresh to check for new messages
       await this.loadMessages(session, true)
-      const newMessages = this.messageCache.get(session.email || '') || []
+      const newMessages = this.getMessagesForFolder(session.email || '', session.selectedMailbox || 'INBOX')
       const newCount = newMessages.length
 
       // Notify client of changes
@@ -440,7 +440,7 @@ export class ImapServer {
     // CHECK requests a checkpoint, we use it to refresh the cache
     if (session.state === 'selected') {
       await this.loadMessages(session, true)
-      const messages = this.messageCache.get(session.email || '') || []
+      const messages = this.getMessagesForFolder(session.email || '', session.selectedMailbox || 'INBOX')
       this.send(session, `* ${messages.length} EXISTS`)
     }
     this.send(session, `${tag} OK CHECK completed`)
@@ -1255,7 +1255,7 @@ export class ImapServer {
     this.send(session, `${tag} OK Begin TLS negotiation`)
 
     // Upgrade connection to TLS
-    const tlsOptions: tls.TlsOptions = {
+    const tlsOptions: tls.TLSSocketOptions = {
       key: fs.readFileSync(this.config.tls.key),
       cert: fs.readFileSync(this.config.tls.cert),
       isServer: true,

@@ -1,6 +1,6 @@
 import type {
   IAMRole,
-  IAMPolicy,
+  IAMManagedPolicy,
 } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '@ts-cloud/types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -112,7 +112,7 @@ export class AI {
    * Create an IAM policy for Bedrock model invocation
    */
   static createBedrockPolicy(options: BedrockPolicyOptions): {
-    policy: IAMPolicy
+    policy: IAMManagedPolicy
     logicalId: string
   } {
     const {
@@ -152,7 +152,7 @@ export class AI {
         : `arn:aws:bedrock:*::foundation-model/${model}`,
     )
 
-    const policy: IAMPolicy = {
+    const policy: IAMManagedPolicy = {
       Type: 'AWS::IAM::ManagedPolicy',
       Properties: {
         ManagedPolicyName: resourceName,

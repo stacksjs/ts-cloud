@@ -4,7 +4,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFileSync, statSync } from 'node:fs'
+import { openSync, readSync, closeSync, readFileSync, statSync } from 'node:fs'
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
 import { makeAWSRequest, parseXMLResponse, signRequest } from './signature'
@@ -34,11 +34,14 @@ export interface S3MultipartUploadOptions {
  */
 export class S3Client {
   private credentials: AWSCredentials | null = null
+  private region: string
 
   constructor(
-    private readonly region: string = 'us-east-1',
+    region: string = 'us-east-1',
     private readonly profile: string = 'default',
-  ) {}
+  ) {
+    this.region = region
+  }
 
   /**
    * Initialize client with credentials
@@ -206,10 +209,15 @@ export class S3Client {
       for (let partNumber = 1; partNumber <= numParts; partNumber++) {
         const start = (partNumber - 1) * partSize
         const end = Math.min(start + partSize, fileSize)
-        const partData = readFileSync(options.filePath, {
-          start,
-          end: end - 1,
-        })
+        const length = end - start
+        const partData = Buffer.alloc(length)
+        const fd = openSync(options.filePath, 'r')
+        try {
+          readSync(fd, partData, 0, length, start)
+        }
+        finally {
+          closeSync(fd)
+        }
 
         const etag = await this.uploadPart(
           options.bucket,

@@ -448,7 +448,7 @@ describe('API Gateway Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.CorsConfiguration.AllowOrigins).toHaveLength(2)
+      expect((result.Resources[logicalId]!.Properties as { CorsConfiguration: { AllowOrigins: string[] } }).CorsConfiguration.AllowOrigins).toHaveLength(2)
     })
 
     it('should create WebSocket API', () => {
@@ -464,7 +464,7 @@ describe('API Gateway Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.ProtocolType).toBe('WEBSOCKET')
+      expect(result.Resources[logicalId]!.Properties!.ProtocolType).toBe('WEBSOCKET')
     })
 
     it('should create REST API with authorizer', () => {
@@ -488,7 +488,7 @@ describe('API Gateway Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(2)
-      expect(result.Resources[authId].Properties.Type).toBe('TOKEN')
+      expect(result.Resources[authId]!.Properties!.Type).toBe('TOKEN')
     })
 
     it('should generate valid JSON template', () => {

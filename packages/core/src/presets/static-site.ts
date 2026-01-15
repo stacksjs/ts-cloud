@@ -22,6 +22,7 @@ export function createStaticSitePreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain: subdomain && domain ? `${subdomain}.${domain}` : domain,
       },
     },

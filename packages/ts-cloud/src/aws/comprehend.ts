@@ -527,63 +527,63 @@ export class ComprehendClient {
    * Detect sentiment in text
    */
   async detectSentiment(params: DetectSentimentCommandInput): Promise<DetectSentimentCommandOutput> {
-    return this.request('DetectSentiment', params)
+    return this.request('DetectSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect entities in text
    */
   async detectEntities(params: DetectEntitiesCommandInput): Promise<DetectEntitiesCommandOutput> {
-    return this.request('DetectEntities', params)
+    return this.request('DetectEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect key phrases in text
    */
   async detectKeyPhrases(params: DetectKeyPhrasesCommandInput): Promise<DetectKeyPhrasesCommandOutput> {
-    return this.request('DetectKeyPhrases', params)
+    return this.request('DetectKeyPhrases', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect the dominant language of text
    */
   async detectDominantLanguage(params: DetectDominantLanguageCommandInput): Promise<DetectDominantLanguageCommandOutput> {
-    return this.request('DetectDominantLanguage', params)
+    return this.request('DetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect PII entities in text
    */
   async detectPiiEntities(params: DetectPiiEntitiesCommandInput): Promise<DetectPiiEntitiesCommandOutput> {
-    return this.request('DetectPiiEntities', params)
+    return this.request('DetectPiiEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Check if text contains PII
    */
   async containsPiiEntities(params: ContainsPiiEntitiesCommandInput): Promise<ContainsPiiEntitiesCommandOutput> {
-    return this.request('ContainsPiiEntities', params)
+    return this.request('ContainsPiiEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect syntax (parts of speech) in text
    */
   async detectSyntax(params: DetectSyntaxCommandInput): Promise<DetectSyntaxCommandOutput> {
-    return this.request('DetectSyntax', params)
+    return this.request('DetectSyntax', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect targeted sentiment (sentiment per entity)
    */
   async detectTargetedSentiment(params: DetectTargetedSentimentCommandInput): Promise<DetectTargetedSentimentCommandOutput> {
-    return this.request('DetectTargetedSentiment', params)
+    return this.request('DetectTargetedSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Classify a document using a custom endpoint
    */
   async classifyDocument(params: ClassifyDocumentCommandInput): Promise<ClassifyDocumentCommandOutput> {
-    return this.request('ClassifyDocument', params)
+    return this.request('ClassifyDocument', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -594,35 +594,35 @@ export class ComprehendClient {
    * Batch detect sentiment
    */
   async batchDetectSentiment(params: BatchDetectSentimentCommandInput): Promise<BatchDetectSentimentCommandOutput> {
-    return this.request('BatchDetectSentiment', params)
+    return this.request('BatchDetectSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect entities
    */
   async batchDetectEntities(params: BatchDetectEntitiesCommandInput): Promise<BatchDetectEntitiesCommandOutput> {
-    return this.request('BatchDetectEntities', params)
+    return this.request('BatchDetectEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect key phrases
    */
   async batchDetectKeyPhrases(params: BatchDetectKeyPhrasesCommandInput): Promise<BatchDetectKeyPhrasesCommandOutput> {
-    return this.request('BatchDetectKeyPhrases', params)
+    return this.request('BatchDetectKeyPhrases', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect dominant language
    */
   async batchDetectDominantLanguage(params: BatchDetectDominantLanguageCommandInput): Promise<BatchDetectDominantLanguageCommandOutput> {
-    return this.request('BatchDetectDominantLanguage', params)
+    return this.request('BatchDetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect syntax
    */
   async batchDetectSyntax(params: BatchDetectSyntaxCommandInput): Promise<BatchDetectSyntaxCommandOutput> {
-    return this.request('BatchDetectSyntax', params)
+    return this.request('BatchDetectSyntax', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -633,35 +633,35 @@ export class ComprehendClient {
    * Start an async sentiment detection job
    */
   async startSentimentDetectionJob(params: StartSentimentDetectionJobCommandInput): Promise<StartSentimentDetectionJobCommandOutput> {
-    return this.request('StartSentimentDetectionJob', params)
+    return this.request('StartSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async entities detection job
    */
   async startEntitiesDetectionJob(params: StartEntitiesDetectionJobCommandInput): Promise<StartEntitiesDetectionJobCommandOutput> {
-    return this.request('StartEntitiesDetectionJob', params)
+    return this.request('StartEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async key phrases detection job
    */
   async startKeyPhrasesDetectionJob(params: StartKeyPhrasesDetectionJobCommandInput): Promise<StartKeyPhrasesDetectionJobCommandOutput> {
-    return this.request('StartKeyPhrasesDetectionJob', params)
+    return this.request('StartKeyPhrasesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async PII entities detection job
    */
   async startPiiEntitiesDetectionJob(params: StartPiiEntitiesDetectionJobCommandInput): Promise<StartPiiEntitiesDetectionJobCommandOutput> {
-    return this.request('StartPiiEntitiesDetectionJob', params)
+    return this.request('StartPiiEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a sentiment detection job
    */
   async describeSentimentDetectionJob(params: DescribeSentimentDetectionJobCommandInput): Promise<DescribeSentimentDetectionJobCommandOutput> {
-    return this.request('DescribeSentimentDetectionJob', params)
+    return this.request('DescribeSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

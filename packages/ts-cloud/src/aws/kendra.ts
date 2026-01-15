@@ -797,19 +797,19 @@ export class KendraClient {
   // -------------------------------------------------------------------------
 
   async createIndex(params: CreateIndexCommandInput): Promise<CreateIndexCommandOutput> {
-    return this.request('CreateIndex', params)
+    return this.request('CreateIndex', params as unknown as Record<string, unknown>)
   }
 
   async describeIndex(params: DescribeIndexCommandInput): Promise<DescribeIndexCommandOutput> {
-    return this.request('DescribeIndex', params)
+    return this.request('DescribeIndex', params as unknown as Record<string, unknown>)
   }
 
   async listIndices(params?: ListIndicesCommandInput): Promise<ListIndicesCommandOutput> {
-    return this.request('ListIndices', params || {})
+    return this.request('ListIndices', (params || {}) as unknown as Record<string, unknown>)
   }
 
   async deleteIndex(params: DeleteIndexCommandInput): Promise<DeleteIndexCommandOutput> {
-    return this.request('DeleteIndex', params)
+    return this.request('DeleteIndex', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -817,23 +817,23 @@ export class KendraClient {
   // -------------------------------------------------------------------------
 
   async createDataSource(params: CreateDataSourceCommandInput): Promise<CreateDataSourceCommandOutput> {
-    return this.request('CreateDataSource', params)
+    return this.request('CreateDataSource', params as unknown as Record<string, unknown>)
   }
 
   async describeDataSource(params: DescribeDataSourceCommandInput): Promise<DescribeDataSourceCommandOutput> {
-    return this.request('DescribeDataSource', params)
+    return this.request('DescribeDataSource', params as unknown as Record<string, unknown>)
   }
 
   async listDataSources(params: ListDataSourcesCommandInput): Promise<ListDataSourcesCommandOutput> {
-    return this.request('ListDataSources', params)
+    return this.request('ListDataSources', params as unknown as Record<string, unknown>)
   }
 
   async startDataSourceSyncJob(params: StartDataSourceSyncJobCommandInput): Promise<StartDataSourceSyncJobCommandOutput> {
-    return this.request('StartDataSourceSyncJob', params)
+    return this.request('StartDataSourceSyncJob', params as unknown as Record<string, unknown>)
   }
 
   async stopDataSourceSyncJob(params: StopDataSourceSyncJobCommandInput): Promise<StopDataSourceSyncJobCommandOutput> {
-    return this.request('StopDataSourceSyncJob', params)
+    return this.request('StopDataSourceSyncJob', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -841,11 +841,11 @@ export class KendraClient {
   // -------------------------------------------------------------------------
 
   async query(params: QueryCommandInput): Promise<QueryCommandOutput> {
-    return this.request('Query', params)
+    return this.request('Query', params as unknown as Record<string, unknown>)
   }
 
   async retrieve(params: RetrieveCommandInput): Promise<RetrieveCommandOutput> {
-    return this.request('Retrieve', params)
+    return this.request('Retrieve', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -853,11 +853,11 @@ export class KendraClient {
   // -------------------------------------------------------------------------
 
   async batchPutDocument(params: BatchPutDocumentCommandInput): Promise<BatchPutDocumentCommandOutput> {
-    return this.request('BatchPutDocument', params)
+    return this.request('BatchPutDocument', params as unknown as Record<string, unknown>)
   }
 
   async batchDeleteDocument(params: BatchDeleteDocumentCommandInput): Promise<BatchDeleteDocumentCommandOutput> {
-    return this.request('BatchDeleteDocument', params)
+    return this.request('BatchDeleteDocument', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

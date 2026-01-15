@@ -495,8 +495,8 @@ describe('Database Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.GlobalSecondaryIndexes).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.StreamSpecification).toBeDefined()
+      expect(result.Resources[logicalId]!.Properties!.GlobalSecondaryIndexes).toHaveLength(1)
+      expect(result.Resources[logicalId]!.Properties!.StreamSpecification).toBeDefined()
     })
 
     it('should generate valid JSON template', () => {

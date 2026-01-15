@@ -541,15 +541,15 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createDatasetGroup(params: CreateDatasetGroupCommandInput): Promise<CreateDatasetGroupCommandOutput> {
-    return this.request('CreateDatasetGroup', params)
+    return this.request('CreateDatasetGroup', params as unknown as Record<string, unknown>)
   }
 
   async describeDatasetGroup(params: DescribeDatasetGroupCommandInput): Promise<DescribeDatasetGroupCommandOutput> {
-    return this.request('DescribeDatasetGroup', params)
+    return this.request('DescribeDatasetGroup', params as unknown as Record<string, unknown>)
   }
 
   async listDatasetGroups(params?: ListDatasetGroupsCommandInput): Promise<ListDatasetGroupsCommandOutput> {
-    return this.request('ListDatasetGroups', params || {})
+    return this.request('ListDatasetGroups', (params || {}) as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -557,7 +557,7 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createSchema(params: CreateSchemaCommandInput): Promise<CreateSchemaCommandOutput> {
-    return this.request('CreateSchema', params)
+    return this.request('CreateSchema', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -565,15 +565,15 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createDataset(params: CreateDatasetCommandInput): Promise<CreateDatasetCommandOutput> {
-    return this.request('CreateDataset', params)
+    return this.request('CreateDataset', params as unknown as Record<string, unknown>)
   }
 
   async createDatasetImportJob(params: CreateDatasetImportJobCommandInput): Promise<CreateDatasetImportJobCommandOutput> {
-    return this.request('CreateDatasetImportJob', params)
+    return this.request('CreateDatasetImportJob', params as unknown as Record<string, unknown>)
   }
 
   async describeDatasetImportJob(params: DescribeDatasetImportJobCommandInput): Promise<DescribeDatasetImportJobCommandOutput> {
-    return this.request('DescribeDatasetImportJob', params)
+    return this.request('DescribeDatasetImportJob', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -581,15 +581,15 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createSolution(params: CreateSolutionCommandInput): Promise<CreateSolutionCommandOutput> {
-    return this.request('CreateSolution', params)
+    return this.request('CreateSolution', params as unknown as Record<string, unknown>)
   }
 
   async createSolutionVersion(params: CreateSolutionVersionCommandInput): Promise<CreateSolutionVersionCommandOutput> {
-    return this.request('CreateSolutionVersion', params)
+    return this.request('CreateSolutionVersion', params as unknown as Record<string, unknown>)
   }
 
   async describeSolutionVersion(params: DescribeSolutionVersionCommandInput): Promise<DescribeSolutionVersionCommandOutput> {
-    return this.request('DescribeSolutionVersion', params)
+    return this.request('DescribeSolutionVersion', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -597,11 +597,11 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createCampaign(params: CreateCampaignCommandInput): Promise<CreateCampaignCommandOutput> {
-    return this.request('CreateCampaign', params)
+    return this.request('CreateCampaign', params as unknown as Record<string, unknown>)
   }
 
   async describeCampaign(params: DescribeCampaignCommandInput): Promise<DescribeCampaignCommandOutput> {
-    return this.request('DescribeCampaign', params)
+    return this.request('DescribeCampaign', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -609,15 +609,15 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createRecommender(params: CreateRecommenderCommandInput): Promise<CreateRecommenderCommandOutput> {
-    return this.request('CreateRecommender', params)
+    return this.request('CreateRecommender', params as unknown as Record<string, unknown>)
   }
 
   async describeRecommender(params: DescribeRecommenderCommandInput): Promise<DescribeRecommenderCommandOutput> {
-    return this.request('DescribeRecommender', params)
+    return this.request('DescribeRecommender', params as unknown as Record<string, unknown>)
   }
 
   async listRecommenders(params?: ListRecommendersCommandInput): Promise<ListRecommendersCommandOutput> {
-    return this.request('ListRecommenders', params || {})
+    return this.request('ListRecommenders', (params || {}) as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -625,11 +625,11 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createEventTracker(params: CreateEventTrackerCommandInput): Promise<CreateEventTrackerCommandOutput> {
-    return this.request('CreateEventTracker', params)
+    return this.request('CreateEventTracker', params as unknown as Record<string, unknown>)
   }
 
   async describeEventTracker(params: DescribeEventTrackerCommandInput): Promise<DescribeEventTrackerCommandOutput> {
-    return this.request('DescribeEventTracker', params)
+    return this.request('DescribeEventTracker', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -637,7 +637,7 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async createFilter(params: CreateFilterCommandInput): Promise<CreateFilterCommandOutput> {
-    return this.request('CreateFilter', params)
+    return this.request('CreateFilter', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -645,7 +645,7 @@ export class PersonalizeClient {
   // -------------------------------------------------------------------------
 
   async listRecipes(params?: ListRecipesCommandInput): Promise<ListRecipesCommandOutput> {
-    return this.request('ListRecipes', params || {})
+    return this.request('ListRecipes', (params || {}) as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -768,14 +768,14 @@ export class PersonalizeRuntimeClient {
    * Get recommendations for a user
    */
   async getRecommendations(params: GetRecommendationsCommandInput): Promise<GetRecommendationsCommandOutput> {
-    return this.request('GetRecommendations', params)
+    return this.request('GetRecommendations', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get personalized ranking of items for a user
    */
   async getPersonalizedRanking(params: GetPersonalizedRankingCommandInput): Promise<GetPersonalizedRankingCommandOutput> {
-    return this.request('GetPersonalizedRanking', params)
+    return this.request('GetPersonalizedRanking', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -862,21 +862,21 @@ export class PersonalizeEventsClient {
    * Record user events
    */
   async putEvents(params: PutEventsCommandInput): Promise<PutEventsCommandOutput> {
-    return this.request('PutEvents', params)
+    return this.request('PutEvents', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Add or update items
    */
   async putItems(params: PutItemsCommandInput): Promise<PutItemsCommandOutput> {
-    return this.request('PutItems', params)
+    return this.request('PutItems', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Add or update users
    */
   async putUsers(params: PutUsersCommandInput): Promise<PutUsersCommandOutput> {
-    return this.request('PutUsers', params)
+    return this.request('PutUsers', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

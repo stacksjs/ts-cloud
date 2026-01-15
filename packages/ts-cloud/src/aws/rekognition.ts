@@ -594,42 +594,42 @@ export class RekognitionClient {
    * Detect faces in an image
    */
   async detectFaces(params: DetectFacesCommandInput): Promise<DetectFacesCommandOutput> {
-    return this.request('DetectFaces', params)
+    return this.request('DetectFaces', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect labels (objects, scenes, concepts) in an image
    */
   async detectLabels(params: DetectLabelsCommandInput): Promise<DetectLabelsCommandOutput> {
-    return this.request('DetectLabels', params)
+    return this.request('DetectLabels', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect text in an image
    */
   async detectText(params: DetectTextCommandInput): Promise<DetectTextCommandOutput> {
-    return this.request('DetectText', params)
+    return this.request('DetectText', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect moderation labels (unsafe content)
    */
   async detectModerationLabels(params: DetectModerationLabelsCommandInput): Promise<DetectModerationLabelsCommandOutput> {
-    return this.request('DetectModerationLabels', params)
+    return this.request('DetectModerationLabels', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Recognize celebrities in an image
    */
   async recognizeCelebrities(params: RecognizeCelebritiesCommandInput): Promise<RecognizeCelebritiesCommandOutput> {
-    return this.request('RecognizeCelebrities', params)
+    return this.request('RecognizeCelebrities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Compare faces between source and target images
    */
   async compareFaces(params: CompareFacesCommandInput): Promise<CompareFacesCommandOutput> {
-    return this.request('CompareFaces', params)
+    return this.request('CompareFaces', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -640,42 +640,42 @@ export class RekognitionClient {
    * Create a face collection
    */
   async createCollection(params: CreateCollectionCommandInput): Promise<CreateCollectionCommandOutput> {
-    return this.request('CreateCollection', params)
+    return this.request('CreateCollection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Delete a face collection
    */
   async deleteCollection(params: DeleteCollectionCommandInput): Promise<DeleteCollectionCommandOutput> {
-    return this.request('DeleteCollection', params)
+    return this.request('DeleteCollection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List face collections
    */
   async listCollections(params?: ListCollectionsCommandInput): Promise<ListCollectionsCommandOutput> {
-    return this.request('ListCollections', params || {})
+    return this.request('ListCollections', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Index faces from an image into a collection
    */
   async indexFaces(params: IndexFacesCommandInput): Promise<IndexFacesCommandOutput> {
-    return this.request('IndexFaces', params)
+    return this.request('IndexFaces', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Search for faces in a collection using an image
    */
   async searchFacesByImage(params: SearchFacesByImageCommandInput): Promise<SearchFacesByImageCommandOutput> {
-    return this.request('SearchFacesByImage', params)
+    return this.request('SearchFacesByImage', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Search for faces in a collection using a face ID
    */
   async searchFaces(params: SearchFacesCommandInput): Promise<SearchFacesCommandOutput> {
-    return this.request('SearchFaces', params)
+    return this.request('SearchFaces', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -686,42 +686,42 @@ export class RekognitionClient {
    * Start async label detection on video
    */
   async startLabelDetection(params: StartLabelDetectionCommandInput): Promise<StartLabelDetectionCommandOutput> {
-    return this.request('StartLabelDetection', params)
+    return this.request('StartLabelDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of label detection job
    */
   async getLabelDetection(params: GetLabelDetectionCommandInput): Promise<GetLabelDetectionCommandOutput> {
-    return this.request('GetLabelDetection', params)
+    return this.request('GetLabelDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async face detection on video
    */
   async startFaceDetection(params: StartFaceDetectionCommandInput): Promise<StartFaceDetectionCommandOutput> {
-    return this.request('StartFaceDetection', params)
+    return this.request('StartFaceDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of face detection job
    */
   async getFaceDetection(params: GetFaceDetectionCommandInput): Promise<GetFaceDetectionCommandOutput> {
-    return this.request('GetFaceDetection', params)
+    return this.request('GetFaceDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async content moderation on video
    */
   async startContentModeration(params: StartContentModerationCommandInput): Promise<StartContentModerationCommandOutput> {
-    return this.request('StartContentModeration', params)
+    return this.request('StartContentModeration', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of content moderation job
    */
   async getContentModeration(params: GetContentModerationCommandInput): Promise<GetContentModerationCommandOutput> {
-    return this.request('GetContentModeration', params)
+    return this.request('GetContentModeration', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

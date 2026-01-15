@@ -27,6 +27,7 @@ export function createJamstackPreset(options: {
     mode: 'serverless',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -73,29 +74,29 @@ export function createJamstackPreset(options: {
         }],
       },
       functions: {
-        edge: [{
-          name: 'ssr',
+        ssr: {
           runtime: 'nodejs20.x',
           handler: 'dist/edge/ssr.handler',
           memory: 512,
           timeout: 5, // Edge functions have strict limits
-        }],
+        },
         // API routes as Lambda functions
-        api: apiDomain ? [{
-          name: 'api',
-          runtime: 'nodejs20.x',
-          handler: 'dist/api/index.handler',
-          memory: 1024,
-          timeout: 30,
-          events: [{
-            type: 'http',
-            path: '/{proxy+}',
-            method: 'ANY',
-          }],
-        }] : [],
+        ...(apiDomain ? {
+          api: {
+            runtime: 'nodejs20.x',
+            handler: 'dist/api/index.handler',
+            memory: 1024,
+            timeout: 30,
+            events: [{
+              type: 'http',
+              path: '/{proxy+}',
+              method: 'ANY',
+            }],
+          },
+        } : {}),
       },
       apiGateway: apiDomain ? {
-        type: 'http',
+        type: 'HTTP',
         customDomain: {
           domain: apiDomain,
           certificateArn: 'TO_BE_GENERATED',
@@ -106,15 +107,16 @@ export function createJamstackPreset(options: {
           allowHeaders: ['Content-Type', 'Authorization'],
         },
       } : undefined,
-      database: {
+      databases: {
         dynamodb: {
-          tables: [{
-            name: `${slug}-content`,
-            partitionKey: 'id',
-            sortKey: 'type',
-            billingMode: 'PAY_PER_REQUEST',
-            streamEnabled: false,
-          }],
+          tables: {
+            content: {
+              partitionKey: { name: 'id', type: 'S' },
+              sortKey: { name: 'type', type: 'S' },
+              billingMode: 'PAY_PER_REQUEST',
+              streamEnabled: false,
+            },
+          },
         },
       },
       security: {

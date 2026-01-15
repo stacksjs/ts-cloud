@@ -298,18 +298,12 @@ export class VoiceClient {
     }
 
     // Delete audio file
-    await this.s3.deleteObject({
-      bucket: this.config.voicemailBucket,
-      key,
-    })
+    await this.s3.deleteObject(this.config.voicemailBucket, key)
 
     // Delete metadata file if exists
     const metadataKey = key.replace(/\.[^/.]+$/, '.json')
     try {
-      await this.s3.deleteObject({
-        bucket: this.config.voicemailBucket,
-        key: metadataKey,
-      })
+      await this.s3.deleteObject(this.config.voicemailBucket, metadataKey)
     } catch {
       // Metadata might not exist
     }
@@ -335,10 +329,7 @@ export class VoiceClient {
     })
 
     // Delete original
-    await this.s3.deleteObject({
-      bucket: this.config.voicemailBucket,
-      key,
-    })
+    await this.s3.deleteObject(this.config.voicemailBucket, key)
 
     return newKey
   }
@@ -792,19 +783,13 @@ export class VoiceClient {
     const greeting = await this.getGreeting(id)
     if (greeting?.audioKey) {
       try {
-        await this.s3.deleteObject({
-          bucket: this.config.voicemailBucket,
-          key: greeting.audioKey,
-        })
+        await this.s3.deleteObject(this.config.voicemailBucket, greeting.audioKey)
       } catch {
         // Audio may not exist
       }
     }
 
-    await this.s3.deleteObject({
-      bucket: this.config.voicemailBucket,
-      key: `greetings/${id}.json`,
-    })
+    await this.s3.deleteObject(this.config.voicemailBucket, `greetings/${id}.json`)
   }
 
   /**
@@ -965,10 +950,7 @@ export class VoiceClient {
       throw new Error('Voicemail bucket not configured')
     }
 
-    await this.s3.deleteObject({
-      bucket: this.config.voicemailBucket,
-      key: `forwarding/${id}.json`,
-    })
+    await this.s3.deleteObject(this.config.voicemailBucket, `forwarding/${id}.json`)
   }
 
   /**

@@ -4,6 +4,7 @@
  */
 
 import type { OpenSearchDomain } from '@ts-cloud/aws-types'
+import type { EnvironmentType } from '@ts-cloud/types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface SearchDomainOptions {
@@ -87,7 +88,7 @@ export class Search {
 
     const resourceName = domainName || generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'search',
     })
     const logicalId = generateLogicalId(resourceName)
@@ -130,7 +131,10 @@ export class Search {
         },
 
         ...(vpc && {
-          VPCOptions: vpc,
+          VPCOptions: {
+            SubnetIds: vpc.subnetIds,
+            SecurityGroupIds: vpc.securityGroupIds,
+          },
         }),
 
         ...(encryption && {

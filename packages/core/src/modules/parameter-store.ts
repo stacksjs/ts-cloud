@@ -4,6 +4,7 @@
  */
 
 import type { SSMParameter } from '@ts-cloud/aws-types'
+import type { EnvironmentType } from '@ts-cloud/types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface ParameterOptions {
@@ -41,7 +42,7 @@ export class ParameterStore {
 
     const resourceName = parameterName || generateResourceName({
       slug,
-      environment,
+      environment: environment as EnvironmentType,
       resourceType: 'parameter',
     })
 

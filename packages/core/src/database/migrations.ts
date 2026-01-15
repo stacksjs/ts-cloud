@@ -311,7 +311,7 @@ export class MigrationManager {
 
         case 'add_index':
           upStatements.push(
-            `CREATE INDEX ${change.indexName} ON ${tableName} (${change.columns.join(', ')});`
+            `CREATE INDEX ${change.indexName} ON ${tableName} (${(change.columns ?? []).join(', ')});`
           )
           downStatements.push(`DROP INDEX ${change.indexName};`)
           break

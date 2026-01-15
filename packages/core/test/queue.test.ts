@@ -131,7 +131,7 @@ describe('Queue Module', () => {
       expect(rule.Type).toBe('AWS::Events::Rule')
       expect(rule.Properties.ScheduleExpression).toBe('cron(0 12 * * ? *)')
       expect(rule.Properties.State).toBe('ENABLED')
-      expect(rule.Properties.Targets).toEqual([])
+      expect(rule.Properties!.Targets).toEqual([])
       expect(logicalId).toBeDefined()
     })
 
@@ -175,13 +175,13 @@ describe('Queue Module', () => {
 
       expect(rule.Type).toBe('AWS::Events::Rule')
       expect(rule.Properties.ScheduleExpression).toBe('cron(0 2 * * ? *)')
-      expect(rule.Properties.Targets).toHaveLength(1)
-      expect(rule.Properties.Targets[0].Arn).toBe('arn:aws:ecs:us-east-1:123456789:cluster/my-cluster')
-      expect(rule.Properties.Targets[0].RoleArn).toBe('arn:aws:iam::123456789:role/ecsEventsRole')
-      expect(rule.Properties.Targets[0].EcsParameters?.TaskDefinitionArn).toBe('arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1')
-      expect(rule.Properties.Targets[0].EcsParameters?.LaunchType).toBe('FARGATE')
-      expect(rule.Properties.Targets[0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.Subnets).toEqual(['subnet-1', 'subnet-2'])
-      expect(rule.Properties.Targets[0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.SecurityGroups).toEqual(['sg-123'])
+      expect(rule.Properties!.Targets).toHaveLength(1)
+      expect(rule.Properties!.Targets![0].Arn).toBe('arn:aws:ecs:us-east-1:123456789:cluster/my-cluster')
+      expect(rule.Properties!.Targets![0].RoleArn).toBe('arn:aws:iam::123456789:role/ecsEventsRole')
+      expect(rule.Properties!.Targets![0].EcsParameters?.TaskDefinitionArn).toBe('arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1')
+      expect(rule.Properties!.Targets![0].EcsParameters?.LaunchType).toBe('FARGATE')
+      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.Subnets).toEqual(['subnet-1', 'subnet-2'])
+      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.SecurityGroups).toEqual(['sg-123'])
       expect(logicalId).toBeDefined()
     })
 
@@ -199,7 +199,7 @@ describe('Queue Module', () => {
         },
       )
 
-      expect(rule.Properties.Targets[0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.AssignPublicIp).toBe('ENABLED')
+      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.AssignPublicIp).toBe('ENABLED')
     })
 
     it('should support custom task count', () => {
@@ -216,7 +216,7 @@ describe('Queue Module', () => {
         },
       )
 
-      expect(rule.Properties.Targets[0].EcsParameters?.TaskCount).toBe(3)
+      expect(rule.Properties!.Targets![0].EcsParameters?.TaskCount).toBe(3)
     })
 
     it('should support container overrides', () => {
@@ -241,8 +241,8 @@ describe('Queue Module', () => {
         },
       )
 
-      expect(rule.Properties.Targets[0].Input).toBeDefined()
-      const input = JSON.parse(rule.Properties.Targets[0].Input!)
+      expect(rule.Properties!.Targets![0].Input).toBeDefined()
+      const input = JSON.parse(rule.Properties!.Targets![0].Input!)
       expect(input.containerOverrides).toHaveLength(1)
       expect(input.containerOverrides[0].name).toBe('app')
     })
@@ -258,8 +258,8 @@ describe('Queue Module', () => {
 
       expect(rule.Type).toBe('AWS::Events::Rule')
       expect(rule.Properties.ScheduleExpression).toBe('cron(0 9 * * ? *)')
-      expect(rule.Properties.Targets).toHaveLength(1)
-      expect(rule.Properties.Targets[0].Arn).toBe('arn:aws:lambda:us-east-1:123456789:function:my-function')
+      expect(rule.Properties!.Targets).toHaveLength(1)
+      expect(rule.Properties!.Targets![0].Arn).toBe('arn:aws:lambda:us-east-1:123456789:function:my-function')
       expect(logicalId).toBeDefined()
     })
 
@@ -274,8 +274,8 @@ describe('Queue Module', () => {
         },
       })
 
-      expect(rule.Properties.Targets[0].Input).toBeDefined()
-      const input = JSON.parse(rule.Properties.Targets[0].Input!)
+      expect(rule.Properties!.Targets![0].Input).toBeDefined()
+      const input = JSON.parse(rule.Properties!.Targets![0].Input!)
       expect(input.action).toBe('process')
       expect(input.batch).toBe(100)
     })
@@ -291,8 +291,8 @@ describe('Queue Module', () => {
 
       expect(rule.Type).toBe('AWS::Events::Rule')
       expect(rule.Properties.ScheduleExpression).toBe('rate(5 minutes)')
-      expect(rule.Properties.Targets).toHaveLength(1)
-      expect(rule.Properties.Targets[0].Arn).toBe('arn:aws:sqs:us-east-1:123456789:my-queue')
+      expect(rule.Properties!.Targets).toHaveLength(1)
+      expect(rule.Properties!.Targets![0].Arn).toBe('arn:aws:sqs:us-east-1:123456789:my-queue')
       expect(logicalId).toBeDefined()
     })
 
@@ -304,7 +304,7 @@ describe('Queue Module', () => {
         messageGroupId: 'scheduled-messages',
       })
 
-      expect(rule.Properties.Targets[0].SqsParameters?.MessageGroupId).toBe('scheduled-messages')
+      expect(rule.Properties!.Targets![0].SqsParameters?.MessageGroupId).toBe('scheduled-messages')
     })
   })
 
@@ -320,9 +320,9 @@ describe('Queue Module', () => {
         arn: 'arn:aws:lambda:us-east-1:123456789:function:my-function',
       })
 
-      expect(rule.Properties.Targets).toHaveLength(1)
-      expect(rule.Properties.Targets[0].Id).toBe('target1')
-      expect(rule.Properties.Targets[0].Arn).toBe('arn:aws:lambda:us-east-1:123456789:function:my-function')
+      expect(rule.Properties!.Targets).toHaveLength(1)
+      expect(rule.Properties!.Targets![0].Id).toBe('target1')
+      expect(rule.Properties!.Targets![0].Arn).toBe('arn:aws:lambda:us-east-1:123456789:function:my-function')
     })
 
     it('should add multiple targets to rule', () => {
@@ -342,7 +342,7 @@ describe('Queue Module', () => {
         input: { batch: 50 },
       })
 
-      expect(rule.Properties.Targets).toHaveLength(2)
+      expect(rule.Properties!.Targets).toHaveLength(2)
     })
   })
 
@@ -437,7 +437,7 @@ describe('Queue Module', () => {
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
       expect(result.Resources[logicalId].Type).toBe('AWS::Events::Rule')
-      expect(result.Resources[logicalId].Properties.Targets).toHaveLength(1)
+      expect(result.Resources[logicalId]!.Properties!.Targets).toHaveLength(1)
     })
 
     it('should create scheduled ECS task', () => {
@@ -461,7 +461,7 @@ describe('Queue Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.ScheduleExpression).toBe('rate(6 hours)')
+      expect(result.Resources[logicalId]!.Properties!.ScheduleExpression).toBe('rate(6 hours)')
     })
 
     it('should generate valid JSON template', () => {

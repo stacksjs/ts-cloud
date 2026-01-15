@@ -1,5 +1,7 @@
 import type {
+  EventBridgeEcsParameters,
   EventBridgeRule,
+  EventBridgeTarget,
   SQSQueue,
 } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '@ts-cloud/types'
@@ -262,7 +264,7 @@ export class Queue {
 
     const logicalId = generateLogicalId(resourceName)
 
-    const ecsParameters: EventBridgeRule['Properties']['Targets'][0]['EcsParameters'] = {
+    const ecsParameters: EventBridgeEcsParameters = {
       TaskDefinitionArn: taskDefinitionArn,
       TaskCount: taskCount,
       LaunchType: 'FARGATE',
@@ -276,7 +278,7 @@ export class Queue {
       PlatformVersion: 'LATEST',
     }
 
-    const target: EventBridgeRule['Properties']['Targets'][0] = {
+    const target: EventBridgeTarget = {
       Id: '1',
       Arn: clusterArn,
       RoleArn: roleArn,
@@ -332,7 +334,7 @@ export class Queue {
 
     const logicalId = generateLogicalId(resourceName)
 
-    const target: EventBridgeRule['Properties']['Targets'][0] = {
+    const target: EventBridgeTarget = {
       Id: '1',
       Arn: functionArn,
     }
@@ -383,7 +385,7 @@ export class Queue {
 
     const logicalId = generateLogicalId(resourceName)
 
-    const target: EventBridgeRule['Properties']['Targets'][0] = {
+    const target: EventBridgeTarget = {
       Id: '1',
       Arn: queueArn,
     }
@@ -424,7 +426,7 @@ export class Queue {
       rule.Properties.Targets = []
     }
 
-    const eventTarget: EventBridgeRule['Properties']['Targets'][0] = {
+    const eventTarget: EventBridgeTarget = {
       Id: target.id,
       Arn: target.arn,
     }

@@ -435,7 +435,7 @@ describe('Permissions Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(result.Resources[logicalId].Properties.ManagedPolicyArns).toHaveLength(2)
+      expect(result.Resources[logicalId]!.Properties!.ManagedPolicyArns).toHaveLength(2)
     })
 
     it('should create custom policy and attach to role', () => {

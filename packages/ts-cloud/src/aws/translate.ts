@@ -388,14 +388,14 @@ export class TranslateClient {
    * Translate text
    */
   async translateText(params: TranslateTextCommandInput): Promise<TranslateTextCommandOutput> {
-    return this.request('TranslateText', params)
+    return this.request('TranslateText', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Translate a document
    */
   async translateDocument(params: TranslateDocumentCommandInput): Promise<TranslateDocumentCommandOutput> {
-    return this.request('TranslateDocument', params)
+    return this.request('TranslateDocument', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -406,28 +406,28 @@ export class TranslateClient {
    * Start a batch translation job
    */
   async startTextTranslationJob(params: StartTextTranslationJobCommandInput): Promise<StartTextTranslationJobCommandOutput> {
-    return this.request('StartTextTranslationJob', params)
+    return this.request('StartTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a batch translation job
    */
   async describeTextTranslationJob(params: DescribeTextTranslationJobCommandInput): Promise<DescribeTextTranslationJobCommandOutput> {
-    return this.request('DescribeTextTranslationJob', params)
+    return this.request('DescribeTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List batch translation jobs
    */
   async listTextTranslationJobs(params?: ListTextTranslationJobsCommandInput): Promise<ListTextTranslationJobsCommandOutput> {
-    return this.request('ListTextTranslationJobs', params || {})
+    return this.request('ListTextTranslationJobs', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Stop a batch translation job
    */
   async stopTextTranslationJob(params: StopTextTranslationJobCommandInput): Promise<StopTextTranslationJobCommandOutput> {
-    return this.request('StopTextTranslationJob', params)
+    return this.request('StopTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -438,7 +438,7 @@ export class TranslateClient {
    * List supported languages
    */
   async listLanguages(params?: ListLanguagesCommandInput): Promise<ListLanguagesCommandOutput> {
-    return this.request('ListLanguages', params || {})
+    return this.request('ListLanguages', (params || {}) as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -449,28 +449,28 @@ export class TranslateClient {
    * Import a custom terminology
    */
   async importTerminology(params: ImportTerminologyCommandInput): Promise<ImportTerminologyCommandOutput> {
-    return this.request('ImportTerminology', params)
+    return this.request('ImportTerminology', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get a terminology
    */
   async getTerminology(params: GetTerminologyCommandInput): Promise<GetTerminologyCommandOutput> {
-    return this.request('GetTerminology', params)
+    return this.request('GetTerminology', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List terminologies
    */
   async listTerminologies(params?: ListTerminologiesCommandInput): Promise<ListTerminologiesCommandOutput> {
-    return this.request('ListTerminologies', params || {})
+    return this.request('ListTerminologies', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Delete a terminology
    */
   async deleteTerminology(params: DeleteTerminologyCommandInput): Promise<DeleteTerminologyCommandOutput> {
-    return this.request('DeleteTerminology', params)
+    return this.request('DeleteTerminology', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------
@@ -481,28 +481,28 @@ export class TranslateClient {
    * Create parallel data for custom translation
    */
   async createParallelData(params: CreateParallelDataCommandInput): Promise<CreateParallelDataCommandOutput> {
-    return this.request('CreateParallelData', params)
+    return this.request('CreateParallelData', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get parallel data
    */
   async getParallelData(params: GetParallelDataCommandInput): Promise<GetParallelDataCommandOutput> {
-    return this.request('GetParallelData', params)
+    return this.request('GetParallelData', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List parallel data
    */
   async listParallelData(params?: ListParallelDataCommandInput): Promise<ListParallelDataCommandOutput> {
-    return this.request('ListParallelData', params || {})
+    return this.request('ListParallelData', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Delete parallel data
    */
   async deleteParallelData(params: DeleteParallelDataCommandInput): Promise<DeleteParallelDataCommandOutput> {
-    return this.request('DeleteParallelData', params)
+    return this.request('DeleteParallelData', params as unknown as Record<string, unknown>)
   }
 
   // -------------------------------------------------------------------------

@@ -5,7 +5,8 @@ export interface RDSDBInstance extends CloudFormationResource {
   Properties: {
     DBInstanceIdentifier?: string
     DBInstanceClass: string
-    Engine: 'mysql' | 'postgres' | 'mariadb' | 'oracle-ee' | 'oracle-se2' | 'oracle-se1' | 'oracle-se' | 'sqlserver-ee' | 'sqlserver-se' | 'sqlserver-ex' | 'sqlserver-web'
+    Engine?: 'mysql' | 'postgres' | 'mariadb' | 'oracle-ee' | 'oracle-se2' | 'oracle-se1' | 'oracle-se' | 'sqlserver-ee' | 'sqlserver-se' | 'sqlserver-ex' | 'sqlserver-web'
+    SourceDBInstanceIdentifier?: string
     EngineVersion?: string
     MasterUsername?: string
     MasterUserPassword?: string

@@ -47,6 +47,11 @@ export function warn(message: string): void {
 }
 
 /**
+ * Warning message (alias)
+ */
+export const warning = warn
+
+/**
  * Info message
  */
 export function info(message: string): void {
@@ -78,6 +83,14 @@ export class Spinner {
 
   constructor(message: string) {
     this.message = message
+  }
+
+  get text(): string {
+    return this.message
+  }
+
+  set text(value: string) {
+    this.message = value
   }
 
   start(): void {

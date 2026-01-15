@@ -194,12 +194,38 @@ export class Deployment {
         DeploymentGroupName: resourceName,
         ServiceRoleArn: serviceRoleArn,
         AutoScalingGroups: autoScalingGroups,
-        Ec2TagFilters: ec2TagFilters,
+        Ec2TagFilters: ec2TagFilters?.map(f => ({
+          Key: f.key,
+          Value: f.value,
+          Type: f.type,
+        })),
         DeploymentConfigName: deploymentConfigName,
-        AutoRollbackConfiguration: autoRollbackConfiguration,
-        AlarmConfiguration: alarmConfiguration,
-        LoadBalancerInfo: loadBalancerInfo,
-        BlueGreenDeploymentConfiguration: blueGreenDeploymentConfiguration,
+        AutoRollbackConfiguration: autoRollbackConfiguration ? {
+          Enabled: autoRollbackConfiguration.enabled,
+          Events: autoRollbackConfiguration.events,
+        } : undefined,
+        AlarmConfiguration: alarmConfiguration ? {
+          Enabled: alarmConfiguration.enabled,
+          Alarms: alarmConfiguration.alarms?.map(a => ({ Name: a.name })),
+          IgnorePollAlarmFailure: alarmConfiguration.ignorePollAlarmFailure,
+        } : undefined,
+        LoadBalancerInfo: loadBalancerInfo ? {
+          TargetGroupInfoList: loadBalancerInfo.targetGroupInfoList?.map(t => ({ Name: t.name })),
+          ElbInfoList: loadBalancerInfo.elbInfoList?.map(e => ({ Name: e.name })),
+        } : undefined,
+        BlueGreenDeploymentConfiguration: blueGreenDeploymentConfiguration ? {
+          TerminateBlueInstancesOnDeploymentSuccess: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess ? {
+            Action: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess.action,
+            TerminationWaitTimeInMinutes: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess.terminationWaitTimeInMinutes,
+          } : undefined,
+          DeploymentReadyOption: blueGreenDeploymentConfiguration.deploymentReadyOption ? {
+            ActionOnTimeout: blueGreenDeploymentConfiguration.deploymentReadyOption.actionOnTimeout,
+            WaitTimeInMinutes: blueGreenDeploymentConfiguration.deploymentReadyOption.waitTimeInMinutes,
+          } : undefined,
+          GreenFleetProvisioningOption: blueGreenDeploymentConfiguration.greenFleetProvisioningOption ? {
+            Action: blueGreenDeploymentConfiguration.greenFleetProvisioningOption.action,
+          } : undefined,
+        } : undefined,
         Tags: [
           { Key: 'Name', Value: resourceName },
           { Key: 'Environment', Value: environment },
@@ -237,8 +263,21 @@ export class Deployment {
       Type: 'AWS::CodeDeploy::DeploymentConfig',
       Properties: {
         DeploymentConfigName: resourceName,
-        MinimumHealthyHosts: minimumHealthyHosts,
-        TrafficRoutingConfig: trafficRoutingConfig,
+        MinimumHealthyHosts: minimumHealthyHosts ? {
+          Type: minimumHealthyHosts.type,
+          Value: minimumHealthyHosts.value,
+        } : undefined,
+        TrafficRoutingConfig: trafficRoutingConfig ? {
+          Type: trafficRoutingConfig.type,
+          TimeBasedCanary: trafficRoutingConfig.timeBasedCanary ? {
+            CanaryPercentage: trafficRoutingConfig.timeBasedCanary.canaryPercentage,
+            CanaryInterval: trafficRoutingConfig.timeBasedCanary.canaryInterval,
+          } : undefined,
+          TimeBasedLinear: trafficRoutingConfig.timeBasedLinear ? {
+            LinearPercentage: trafficRoutingConfig.timeBasedLinear.linearPercentage,
+            LinearInterval: trafficRoutingConfig.timeBasedLinear.linearInterval,
+          } : undefined,
+        } : undefined,
       },
     }
 

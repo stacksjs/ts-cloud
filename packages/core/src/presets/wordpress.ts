@@ -27,6 +27,7 @@ export function createWordPressPreset(options: {
     mode: 'server',
     environments: {
       production: {
+        type: 'production',
         domain,
       },
     },
@@ -84,7 +85,7 @@ export function createWordPressPreset(options: {
           mountPath: '/var/www/wordpress/wp-content/uploads',
         },
       },
-      database: {
+      databases: {
         mysql: {
           engine: 'mysql',
           version: '8.0',

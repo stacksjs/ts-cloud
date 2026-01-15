@@ -5,7 +5,20 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { version } from '../package.json'
 import { TemplateBuilder } from '@ts-cloud/core'
+import type { CloudConfig } from '@ts-cloud/types'
 import { loadCloudConfig } from '../src/config'
+
+/**
+ * Load and validate the cloud config, ensuring project config exists.
+ * Returns the config with project guaranteed to exist.
+ */
+async function loadValidatedConfig(): Promise<CloudConfig> {
+  const cloudConfig = await loadCloudConfig()
+  if (!cloudConfig.project) {
+    throw new Error('Missing required project configuration in cloud.config.ts')
+  }
+  return cloudConfig as CloudConfig
+}
 import { InfrastructureGenerator } from '../src/generators/infrastructure'
 import { CloudFormationClient } from '../src/aws/cloudformation'
 import { S3Client } from '../src/aws/s3'
@@ -159,7 +172,7 @@ app
     cli.header('⚙️  Configuration')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       console.log(JSON.stringify(config, null, 2))
     }
     catch (error) {
@@ -176,7 +189,7 @@ app
     spinner.start()
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
 
       // Basic validation
       if (!config.project?.name) {
@@ -287,7 +300,7 @@ app
     }
     else if (options?.create) {
       if (!options.value) {
-        const value = await cli.prompt('Enter secret value', '', true)
+        const value = await cli.prompt('Enter secret value', '')
         options.value = value
       }
 
@@ -312,7 +325,7 @@ app
     }
     else if (options?.update) {
       if (!options.value) {
-        const value = await cli.prompt('Enter new secret value', '', true)
+        const value = await cli.prompt('Enter new secret value', '')
         options.value = value
       }
 
@@ -357,8 +370,8 @@ app
 app
   .command('generate', 'Generate CloudFormation templates')
   .alias('gen')
-  .option('--output <path>', 'Output directory for templates', 'cloudformation')
-  .option('--format <format>', 'Output format: json or yaml', 'json')
+  .option('--output <path>', 'Output directory for templates', { default: 'cloudformation' })
+  .option('--format <format>', 'Output format: json or yaml', { default: 'json' })
   .option('--module <module>', 'Generate specific module only')
   .action(async (options?: { output?: string, format?: string, module?: string }) => {
     cli.header('📝 Generating CloudFormation Templates')
@@ -367,7 +380,7 @@ app
     spinner.start()
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       spinner.succeed('Configuration loaded')
 
       const outputDir = options?.output || 'cloudformation'
@@ -483,7 +496,7 @@ app
     cli.header('📊 Infrastructure Diff')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
       const stackName = options?.stack || `${config.project.slug}-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -646,7 +659,7 @@ app
 
 app
   .command('server:create <name>', 'Create a new server')
-  .option('--type <type>', 'Instance type (e.g., t3.micro)', 't3.micro')
+  .option('--type <type>', 'Instance type (e.g., t3.micro)', { default: 't3.micro' })
   .option('--ami <ami>', 'AMI ID')
   .action(async (name: string, options?: { type?: string, ami?: string }) => {
     cli.header(`🖥️  Creating Server: ${name}`)
@@ -850,10 +863,10 @@ app
 
 app
   .command('function:create <name>', 'Create a new Lambda function')
-  .option('--runtime <runtime>', 'Runtime (nodejs20.x, python3.12, etc.)', 'nodejs20.x')
-  .option('--memory <mb>', 'Memory allocation in MB', '128')
-  .option('--timeout <seconds>', 'Timeout in seconds', '30')
-  .option('--handler <handler>', 'Function handler', 'index.handler')
+  .option('--runtime <runtime>', 'Runtime (nodejs20.x, python3.12, etc.)', { default: 'nodejs20.x' })
+  .option('--memory <mb>', 'Memory allocation in MB', { default: '128' })
+  .option('--timeout <seconds>', 'Timeout in seconds', { default: '30' })
+  .option('--handler <handler>', 'Function handler', { default: 'index.handler' })
   .action(async (name: string, options?: { runtime?: string, memory?: string, timeout?: string, handler?: string }) => {
     cli.header(`⚡ Creating Lambda Function: ${name}`)
 
@@ -925,8 +938,8 @@ app
 
 app
   .command('container:build', 'Build Docker image')
-  .option('--tag <tag>', 'Image tag', 'latest')
-  .option('--file <dockerfile>', 'Dockerfile path', 'Dockerfile')
+  .option('--tag <tag>', 'Image tag', { default: 'latest' })
+  .option('--file <dockerfile>', 'Dockerfile path', { default: 'Dockerfile' })
   .action(async (options?: { tag?: string, file?: string }) => {
     cli.header('🐳 Building Docker Image')
 
@@ -947,7 +960,7 @@ app
 
 app
   .command('container:push', 'Push Docker image to ECR')
-  .option('--tag <tag>', 'Image tag', 'latest')
+  .option('--tag <tag>', 'Image tag', { default: 'latest' })
   .option('--repository <name>', 'ECR repository name')
   .action(async (options?: { tag?: string, repository?: string }) => {
     cli.header('📤 Pushing to ECR')
@@ -983,7 +996,7 @@ app
   .command('container:deploy', 'Update ECS service with new image')
   .option('--service <name>', 'ECS service name')
   .option('--cluster <name>', 'ECS cluster name')
-  .option('--tag <tag>', 'Image tag', 'latest')
+  .option('--tag <tag>', 'Image tag', { default: 'latest' })
   .action(async (options?: { service?: string, cluster?: string, tag?: string }) => {
     cli.header('🚀 Deploying Container')
 
@@ -1119,8 +1132,8 @@ app
 
 app
   .command('dns:add <domain> <type> <value>', 'Add DNS record')
-  .option('--name <name>', 'Record name (subdomain)', '@')
-  .option('--ttl <seconds>', 'Time to live in seconds', '300')
+  .option('--name <name>', 'Record name (subdomain)', { default: '@' })
+  .option('--ttl <seconds>', 'Time to live in seconds', { default: '300' })
   .action(async (domain: string, type: string, value: string, options?: { name?: string, ttl?: string }) => {
     cli.header(`📝 Adding DNS Record`)
 
@@ -1248,7 +1261,7 @@ app
 
 app
   .command('db:tunnel <name>', 'Create SSH tunnel to database')
-  .option('--local-port <port>', 'Local port for tunnel', '5432')
+  .option('--local-port <port>', 'Local port for tunnel', { default: '5432' })
   .action(async (name: string, options?: { localPort?: string }) => {
     cli.header(`🔌 Creating SSH Tunnel to ${name}`)
 
@@ -1394,7 +1407,7 @@ app
   .option('--name <name>', 'Alarm name')
   .option('--metric <metric>', 'Metric to monitor (CPU, Memory, etc.)')
   .option('--threshold <value>', 'Threshold value')
-  .option('--comparison <op>', 'Comparison operator (>, <, >=, <=)', '>')
+  .option('--comparison <op>', 'Comparison operator (>, <, >=, <=)', { default: '>' })
   .action(async (options?: { name?: string, metric?: string, threshold?: string, comparison?: string }) => {
     cli.header('🚨 Creating CloudWatch Alarm')
 
@@ -1721,7 +1734,7 @@ app
 app
   .command('cost:breakdown', 'Cost breakdown by service')
   .option('--env <environment>', 'Environment (production, staging, development)')
-  .option('--days <days>', 'Number of days to analyze', '30')
+  .option('--days <days>', 'Number of days to analyze', { default: '30' })
   .action(async (options?: { env?: string, days?: string }) => {
     const environment = options?.env || 'production'
     const days = options?.days || '30'
@@ -1998,7 +2011,7 @@ app
 
 app
   .command('server:worker:add <name> <queue>', 'Add background worker')
-  .option('--processes <count>', 'Number of worker processes', '1')
+  .option('--processes <count>', 'Number of worker processes', { default: '1' })
   .action(async (name: string, queue: string, options?: { processes?: string }) => {
     const processes = options?.processes || '1'
 
@@ -2352,7 +2365,7 @@ app
 
 app
   .command('git:add <repo>', 'Connect git repository')
-  .option('--branch <branch>', 'Default branch to deploy', 'main')
+  .option('--branch <branch>', 'Default branch to deploy', { default: 'main' })
   .action(async (repo: string, options?: { branch?: string }) => {
     const branch = options?.branch || 'main'
 
@@ -2924,7 +2937,7 @@ app
 
 app
   .command('db:slow-queries <name>', 'Show slow query log')
-  .option('--limit <count>', 'Number of queries to show', '10')
+  .option('--limit <count>', 'Number of queries to show', { default: '10' })
   .action(async (name: string, options?: { limit?: string }) => {
     const limit = options?.limit || '10'
 
@@ -2991,7 +3004,7 @@ app
 
 app
   .command('assets:optimize:images', 'Optimize images')
-  .option('--quality <quality>', 'Image quality (1-100)', '85')
+  .option('--quality <quality>', 'Image quality (1-100)', { default: '85' })
   .action(async (options?: { quality?: string }) => {
     const quality = options?.quality || '85'
 
@@ -3017,7 +3030,7 @@ app
 
 app
   .command('images:optimize', 'Optimize and compress images')
-  .option('--dir <directory>', 'Directory to optimize', './public/images')
+  .option('--dir <directory>', 'Directory to optimize', { default: './public/images' })
   .action(async (options?: { dir?: string }) => {
     const dir = options?.dir || './public/images'
 
@@ -3353,7 +3366,7 @@ app
 
     try {
       // Load configuration
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
       const stackName = options?.stack || `${config.project.slug}-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -3541,7 +3554,7 @@ app
     cli.header('🖥️  Deploying Server Infrastructure')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
       const stackName = `${config.project.slug}-server-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -3584,7 +3597,7 @@ app
     cli.header('⚡ Deploying Serverless Infrastructure')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
       const stackName = `${config.project.slug}-serverless-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -3632,7 +3645,7 @@ app
     cli.header('📊 Deployment Status')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = options?.env || 'production'
       const stackName = options?.stack || `${config.project.slug}-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -3646,15 +3659,15 @@ app
       const cfn = new CloudFormationClient(region)
 
       // Get stack status
-      const stacks = await cfn.describeStacks(stackName)
+      const result = await cfn.describeStacks({ stackName })
 
-      if (stacks.length === 0) {
+      if (result.Stacks.length === 0) {
         spinner.fail('Stack not found')
         cli.warning('No deployment found for this environment')
         return
       }
 
-      const stack = stacks[0]
+      const stack = result.Stacks[0]
       spinner.succeed('Status retrieved')
 
       cli.info(`\nStatus: ${stack.StackStatus}`)
@@ -3684,7 +3697,7 @@ app
     cli.header('⏪ Rolling Back Deployment')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const environment = options?.env || 'production'
       const stackName = options?.stack || `${config.project.slug}-${environment}`
       const region = config.project.region || 'us-east-1'
@@ -3729,7 +3742,7 @@ app
     cli.header('📚 CloudFormation Stacks')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cfn = new CloudFormationClient(region)
@@ -3775,7 +3788,7 @@ app
     cli.header(`📋 Stack: ${stackName}`)
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cfn = new CloudFormationClient(region)
@@ -3860,7 +3873,7 @@ app
     cli.header(`🗑️  Delete Stack: ${stackName}`)
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       cli.warn('This will permanently delete the stack and all its resources!')
@@ -3893,12 +3906,12 @@ app
 
 app
   .command('stack:events STACK_NAME', 'Show stack events')
-  .option('--limit <number>', 'Limit number of events', '20')
+  .option('--limit <number>', 'Limit number of events', { default: '20' })
   .action(async (stackName: string, options?: { limit?: string }) => {
     cli.header(`📜 Stack Events: ${stackName}`)
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cfn = new CloudFormationClient(region)
@@ -3940,7 +3953,7 @@ app
     cli.header(`📤 Stack Outputs: ${stackName}`)
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cfn = new CloudFormationClient(region)
@@ -3988,12 +4001,12 @@ app
 app
   .command('stack:export STACK_NAME', 'Export stack template')
   .option('--output <file>', 'Output file path')
-  .option('--format <format>', 'Output format (json or yaml)', 'json')
+  .option('--format <format>', 'Output format (json or yaml)', { default: 'json' })
   .action(async (stackName: string, options?: { output?: string, format?: string }) => {
     cli.header(`💾 Export Stack: ${stackName}`)
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cfn = new CloudFormationClient(region)
@@ -4047,16 +4060,16 @@ app
 
 app
   .command('assets:deploy', 'Deploy static assets to S3')
-  .option('--source <path>', 'Source directory', 'dist')
+  .option('--source <path>', 'Source directory', { default: 'dist' })
   .option('--bucket <name>', 'S3 bucket name')
   .option('--prefix <prefix>', 'S3 prefix/folder')
   .option('--delete', 'Delete files not in source')
-  .option('--cache-control <value>', 'Cache-Control header', 'public, max-age=31536000')
+  .option('--cache-control <value>', 'Cache-Control header', { default: 'public, max-age=31536000' })
   .action(async (options?: { source?: string, bucket?: string, prefix?: string, delete?: boolean, cacheControl?: string }) => {
     cli.header('📦 Deploying Assets to S3')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const source = options?.source || 'dist'
@@ -4121,7 +4134,7 @@ app
 app
   .command('assets:invalidate', 'Invalidate CloudFront cache')
   .option('--distribution <id>', 'CloudFront distribution ID')
-  .option('--paths <paths>', 'Paths to invalidate (comma-separated)', '/*')
+  .option('--paths <paths>', 'Paths to invalidate (comma-separated)', { default: '/*' })
   .option('--wait', 'Wait for invalidation to complete')
   .action(async (options?: { distribution?: string, paths?: string, wait?: boolean }) => {
     cli.header('🔄 Invalidating CloudFront Cache')
@@ -4179,12 +4192,12 @@ app
 
 app
   .command('deploy:static', 'Deploy static site (S3 + CloudFront invalidation)')
-  .option('--source <path>', 'Source directory', 'dist')
+  .option('--source <path>', 'Source directory', { default: 'dist' })
   .option('--bucket <name>', 'S3 bucket name')
   .option('--distribution <id>', 'CloudFront distribution ID')
   .option('--prefix <prefix>', 'S3 prefix/folder')
   .option('--delete', 'Delete files not in source')
-  .option('--cache-control <value>', 'Cache-Control header', 'public, max-age=31536000')
+  .option('--cache-control <value>', 'Cache-Control header', { default: 'public, max-age=31536000' })
   .option('--no-invalidate', 'Skip CloudFront invalidation')
   .option('--wait', 'Wait for invalidation to complete')
   .action(async (options?: {
@@ -4200,7 +4213,7 @@ app
     cli.header('🚀 Deploying Static Site')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const source = options?.source || 'dist'
@@ -4299,9 +4312,9 @@ app
   .option('--cluster <name>', 'ECS cluster name')
   .option('--service <name>', 'ECS service name')
   .option('--repository <name>', 'ECR repository name')
-  .option('--image <tag>', 'Docker image tag', 'latest')
-  .option('--dockerfile <path>', 'Dockerfile path', 'Dockerfile')
-  .option('--context <path>', 'Docker build context', '.')
+  .option('--image <tag>', 'Docker image tag', { default: 'latest' })
+  .option('--dockerfile <path>', 'Dockerfile path', { default: 'Dockerfile' })
+  .option('--context <path>', 'Docker build context', { default: '.' })
   .option('--task-definition <name>', 'Task definition family name')
   .option('--force', 'Force new deployment even if no changes')
   .option('--wait', 'Wait for deployment to stabilize')
@@ -4319,7 +4332,7 @@ app
     cli.header('🐳 Deploying Container')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4517,8 +4530,8 @@ app
   .command('scaling:setup', 'Set up auto-scaling for an ECS service')
   .option('--cluster <name>', 'ECS cluster name')
   .option('--service <name>', 'ECS service name')
-  .option('--min <count>', 'Minimum task count', '1')
-  .option('--max <count>', 'Maximum task count', '10')
+  .option('--min <count>', 'Minimum task count', { default: '1' })
+  .option('--max <count>', 'Maximum task count', { default: '10' })
   .option('--cpu <percent>', 'Target CPU utilization percentage')
   .option('--memory <percent>', 'Target memory utilization percentage')
   .action(async (options?: {
@@ -4532,7 +4545,7 @@ app
     cli.header('📈 Setting Up Auto-Scaling')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4636,7 +4649,7 @@ app
     cli.header('📊 Auto-Scaling Status')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4724,7 +4737,7 @@ app
     cli.header('🔄 Updating Auto-Scaling')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4800,7 +4813,7 @@ app
     cli.header('🗑️  Removing Auto-Scaling')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4856,7 +4869,7 @@ app
     cli.header('📅 Creating Scheduled Scaling')
 
     try {
-      const config = await loadCloudConfig()
+      const config = await loadValidatedConfig()
       const region = config.project.region || 'us-east-1'
 
       const cluster = options?.cluster
@@ -4964,16 +4977,16 @@ app
 
 app
   .command('cache:create <name>', 'Create a cache cluster')
-  .option('--engine <engine>', 'Cache engine (redis or memcached)', 'redis')
-  .option('--node-type <type>', 'Node type', 'cache.t3.micro')
-  .option('--nodes <count>', 'Number of nodes', '1')
+  .option('--engine <engine>', 'Cache engine (redis or memcached)', { default: 'redis' })
+  .option('--node-type <type>', 'Node type', { default: 'cache.t3.micro' })
+  .option('--nodes <count>', 'Number of nodes', { default: '1' })
   .action(async (name: string, options?: { engine?: string, nodeType?: string, nodes?: string }) => {
     cli.header('🗄️  Creating Cache Cluster')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws?.profile)
 
       const engine = (options?.engine || 'redis') as 'redis' | 'memcached'
       const nodeType = options?.nodeType || 'cache.t3.micro'
@@ -5018,9 +5031,9 @@ app
     cli.header('🗄️  Cache Clusters')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Loading cache clusters...')
       spinner.start()
@@ -5068,9 +5081,9 @@ app
     cli.header('🔄 Flushing Cache Cluster')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws?.profile)
 
       cli.info(`Cache Cluster: ${name}`)
 
@@ -5114,9 +5127,9 @@ app
     cli.header('📊 Cache Cluster Statistics')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Loading statistics...')
       spinner.start()
@@ -5169,9 +5182,9 @@ app
     cli.header('🗑️  Deleting Cache Cluster')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const elasticache = new ElastiCacheClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const elasticache = new ElastiCacheClient(region, config.aws?.profile)
 
       cli.info(`Cache Cluster: ${name}`)
 
@@ -5207,16 +5220,16 @@ app
 app
   .command('queue:create <name>', 'Create an SQS queue')
   .option('--fifo', 'Create FIFO queue')
-  .option('--visibility-timeout <seconds>', 'Visibility timeout in seconds', '30')
-  .option('--retention <seconds>', 'Message retention period in seconds', '345600')
-  .option('--delay <seconds>', 'Delay seconds', '0')
+  .option('--visibility-timeout <seconds>', 'Visibility timeout in seconds', { default: '30' })
+  .option('--retention <seconds>', 'Message retention period in seconds', { default: '345600' })
+  .option('--delay <seconds>', 'Delay seconds', { default: '0' })
   .action(async (name: string, options?: { fifo?: boolean, visibilityTimeout?: string, retention?: string, delay?: string }) => {
     cli.header('📬 Creating SQS Queue')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       const isFifo = options?.fifo || false
       const queueName = isFifo && !name.endsWith('.fifo') ? `${name}.fifo` : name
@@ -5261,9 +5274,9 @@ app
     cli.header('📬 SQS Queues')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Loading queues...')
       spinner.start()
@@ -5326,9 +5339,9 @@ app
     cli.header('📊 Queue Statistics')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Loading queue statistics...')
       spinner.start()
@@ -5373,9 +5386,9 @@ app
     cli.header('🗑️  Purging Queue')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       cli.info(`Queue: ${name}`)
 
@@ -5407,9 +5420,9 @@ app
     cli.header('🗑️  Deleting Queue')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       cli.info(`Queue: ${name}`)
 
@@ -5437,15 +5450,15 @@ app
 
 app
   .command('queue:send <name> <message>', 'Send a message to a queue')
-  .option('--delay <seconds>', 'Delay seconds', '0')
+  .option('--delay <seconds>', 'Delay seconds', { default: '0' })
   .option('--group-id <id>', 'Message group ID (for FIFO queues)')
   .action(async (name: string, message: string, options?: { delay?: string, groupId?: string }) => {
     cli.header('📤 Sending Message')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Sending message...')
       spinner.start()
@@ -5471,15 +5484,15 @@ app
 
 app
   .command('queue:receive <name>', 'Receive messages from a queue')
-  .option('--max <count>', 'Maximum number of messages', '1')
-  .option('--wait <seconds>', 'Wait time for long polling', '0')
+  .option('--max <count>', 'Maximum number of messages', { default: '1' })
+  .option('--wait <seconds>', 'Wait time for long polling', { default: '0' })
   .action(async (name: string, options?: { max?: string, wait?: string }) => {
     cli.header('📥 Receiving Messages')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const sqs = new SQSClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const sqs = new SQSClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Receiving messages...')
       spinner.start()
@@ -5525,9 +5538,9 @@ app
     cli.header('⏰ Creating Schedule')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       cli.info(`Name: ${name}`)
       cli.info(`Schedule: ${cron}`)
@@ -5581,9 +5594,9 @@ app
     cli.header('⏰ Scheduled Jobs')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Loading schedules...')
       spinner.start()
@@ -5645,9 +5658,9 @@ app
     cli.header('🗑️  Removing Schedule')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       cli.info(`Schedule: ${name}`)
 
@@ -5678,9 +5691,9 @@ app
     cli.header('✅ Enabling Schedule')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Enabling schedule...')
       spinner.start()
@@ -5702,9 +5715,9 @@ app
     cli.header('⏸️  Disabling Schedule')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       const spinner = new cli.Spinner('Disabling schedule...')
       spinner.start()
@@ -5728,9 +5741,9 @@ app
     cli.header('⏰ Creating Lambda Schedule')
 
     try {
-      const config = await loadCloudConfig()
-      const region = config.aws.region || 'us-east-1'
-      const scheduler = new SchedulerClient(region, config.aws.profile)
+      const config = await loadValidatedConfig()
+      const region = config.aws?.region || 'us-east-1'
+      const scheduler = new SchedulerClient(region, config.aws?.profile)
 
       cli.info(`Name: ${name}`)
       cli.info(`Schedule: ${cron}`)
@@ -5771,8 +5784,8 @@ app
 
 app
   .command('budget:create <amount>', 'Create budget with alerts')
-  .option('--period <period>', 'Budget period (monthly, quarterly, annually)', 'monthly')
-  .option('--alert <percentage>', 'Alert threshold percentage', '80')
+  .option('--period <period>', 'Budget period (monthly, quarterly, annually)', { default: 'monthly' })
+  .option('--alert <percentage>', 'Alert threshold percentage', { default: '80' })
   .action(async (amount: string, options?: { period?: string, alert?: string }) => {
     const period = options?.period || 'monthly'
     const alert = options?.alert || '80'
@@ -5807,7 +5820,7 @@ app
 
 app
   .command('budget:forecast', 'Show cost forecast')
-  .option('--months <count>', 'Number of months to forecast', '3')
+  .option('--months <count>', 'Number of months to forecast', { default: '3' })
   .action(async (options?: { months?: string }) => {
     const months = Number.parseInt(options?.months || '3')
 
@@ -5866,7 +5879,7 @@ app
 
 app
   .command('cost:anomalies', 'Show cost anomalies')
-  .option('--days <count>', 'Number of days to analyze', '30')
+  .option('--days <count>', 'Number of days to analyze', { default: '30' })
   .action(async (options?: { days?: string }) => {
     const days = options?.days || '30'
 
@@ -6265,8 +6278,8 @@ app
 
 app
   .command('test:load <url>', 'Run load test')
-  .option('--users <count>', 'Number of concurrent users', '100')
-  .option('--duration <seconds>', 'Test duration in seconds', '60')
+  .option('--users <count>', 'Number of concurrent users', { default: '100' })
+  .option('--duration <seconds>', 'Test duration in seconds', { default: '60' })
   .action(async (url: string, options?: { users?: string, duration?: string }) => {
     const users = options?.users || '100'
     const duration = options?.duration || '60'

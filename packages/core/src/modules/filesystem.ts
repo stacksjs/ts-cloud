@@ -495,7 +495,7 @@ export class FileSystem {
         slug,
         environment,
         subnetIds,
-        securityGroupId: Fn.Ref(sgLogicalId),
+        securityGroupId: Fn.Ref(sgLogicalId) as any,
       },
     )
 
