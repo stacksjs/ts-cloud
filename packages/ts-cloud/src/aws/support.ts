@@ -226,6 +226,35 @@ export class SupportClient {
   }
 }
 
+export interface SmsSandboxExitParams {
+  companyName: string
+  useCase: string
+  expectedMonthlyVolume: number
+  websiteUrl?: string
+}
+
+export interface SmsSpendLimitIncreaseParams {
+  companyName: string
+  currentLimit: number
+  requestedLimit: number
+  useCase: string
+}
+
+export interface SesSandboxExitParams {
+  companyName: string
+  websiteUrl: string
+  useCase: string
+  expectedDailyVolume: number
+}
+
+export interface ConnectPhoneNumberIncreaseParams {
+  companyName: string
+  instanceId: string
+  currentLimit: number
+  requestedLimit: number
+  useCase: string
+}
+
 /**
  * Pre-built support case templates for common requests
  */
@@ -233,12 +262,7 @@ export const SupportTemplates = {
   /**
    * Request to exit SMS sandbox
    */
-  smsSandboxExit: (params: {
-    companyName: string
-    useCase: string
-    expectedMonthlyVolume: number
-    websiteUrl?: string
-  }): CreateCaseParams => ({
+  smsSandboxExit: (params: SmsSandboxExitParams): CreateCaseParams => ({
     subject: 'Request to exit SMS sandbox for production use',
     serviceCode: 'service-limit-increase',
     categoryCode: 'service-limit-increase-sms-pinpoint',
@@ -273,12 +297,7 @@ Thank you for reviewing this request.`,
   /**
    * Request to increase SMS spending limit
    */
-  smsSpendLimitIncrease: (params: {
-    companyName: string
-    currentLimit: number
-    requestedLimit: number
-    useCase: string
-  }): CreateCaseParams => ({
+  smsSpendLimitIncrease: (params: SmsSpendLimitIncreaseParams): CreateCaseParams => ({
     subject: `Request to increase SMS spending limit from $${params.currentLimit} to $${params.requestedLimit}`,
     serviceCode: 'service-limit-increase',
     categoryCode: 'service-limit-increase-sms-pinpoint',
@@ -308,12 +327,7 @@ Thank you for reviewing this request.`,
   /**
    * Request SES production access (exit sandbox)
    */
-  sesSandboxExit: (params: {
-    companyName: string
-    websiteUrl: string
-    useCase: string
-    expectedDailyVolume: number
-  }): CreateCaseParams => ({
+  sesSandboxExit: (params: SesSandboxExitParams): CreateCaseParams => ({
     subject: 'Request to move out of Amazon SES sandbox',
     serviceCode: 'service-limit-increase',
     categoryCode: 'service-limit-increase-ses-702',
@@ -352,13 +366,7 @@ Thank you for reviewing this request.`,
   /**
    * Request Connect phone number limit increase
    */
-  connectPhoneNumberIncrease: (params: {
-    companyName: string
-    instanceId: string
-    currentLimit: number
-    requestedLimit: number
-    useCase: string
-  }): CreateCaseParams => ({
+  connectPhoneNumberIncrease: (params: ConnectPhoneNumberIncreaseParams): CreateCaseParams => ({
     subject: `Request to increase Amazon Connect phone number limit from ${params.currentLimit} to ${params.requestedLimit}`,
     serviceCode: 'service-limit-increase',
     categoryCode: 'service-limit-increase-connect',

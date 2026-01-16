@@ -5,4 +5,3 @@
  */
 export * from '@ts-cloud/core'
 export * from '@ts-cloud/types'
-export * from '@ts-cloud/aws-types'
