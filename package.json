@@ -61,9 +61,7 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
-    "better-dx": "^0.2.3",
-    "pickier": "^0.1.10",
-    "typescript": "^5.9.3"
+    "better-dx": "^0.2.3"
   },
   "workspaces": [
     "packages/*"
