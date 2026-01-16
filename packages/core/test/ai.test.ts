@@ -265,7 +265,7 @@ describe('AI Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect(((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).length).toHaveLength(5)
+      expect((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).toHaveLength(5)
     })
 
     it('should create standalone Bedrock policy', () => {

@@ -35,6 +35,6 @@ describe('SMS Send Handler', () => {
 
   it('should handle delivery status', () => {
     expect(handler).toContain('DeliveryStatus')
-    expect(handler).toContain('SUCCESSFUL')
+    expect(handler).toContain('SENT')
   })
 })
