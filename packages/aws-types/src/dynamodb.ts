@@ -1,5 +1,33 @@
 import type { CloudFormationResource } from './index'
 
+export interface DynamoDBKeySchemaElement {
+  AttributeName: string
+  KeyType: 'HASH' | 'RANGE'
+}
+
+export interface DynamoDBProjection {
+  ProjectionType: 'ALL' | 'KEYS_ONLY' | 'INCLUDE'
+  NonKeyAttributes?: string[]
+}
+
+export interface DynamoDBProvisionedThroughput {
+  ReadCapacityUnits: number
+  WriteCapacityUnits: number
+}
+
+export interface DynamoDBGlobalSecondaryIndex {
+  IndexName: string
+  KeySchema: DynamoDBKeySchemaElement[]
+  Projection: DynamoDBProjection
+  ProvisionedThroughput?: DynamoDBProvisionedThroughput
+}
+
+export interface DynamoDBLocalSecondaryIndex {
+  IndexName: string
+  KeySchema: DynamoDBKeySchemaElement[]
+  Projection: DynamoDBProjection
+}
+
 export interface DynamoDBTable extends CloudFormationResource {
   Type: 'AWS::DynamoDB::Table'
   Properties: {
@@ -9,40 +37,10 @@ export interface DynamoDBTable extends CloudFormationResource {
       AttributeName: string
       AttributeType: 'S' | 'N' | 'B'
     }>
-    KeySchema: Array<{
-      AttributeName: string
-      KeyType: 'HASH' | 'RANGE'
-    }>
-    ProvisionedThroughput?: {
-      ReadCapacityUnits: number
-      WriteCapacityUnits: number
-    }
-    GlobalSecondaryIndexes?: Array<{
-      IndexName: string
-      KeySchema: Array<{
-        AttributeName: string
-        KeyType: 'HASH' | 'RANGE'
-      }>
-      Projection: {
-        ProjectionType: 'ALL' | 'KEYS_ONLY' | 'INCLUDE'
-        NonKeyAttributes?: string[]
-      }
-      ProvisionedThroughput?: {
-        ReadCapacityUnits: number
-        WriteCapacityUnits: number
-      }
-    }>
-    LocalSecondaryIndexes?: Array<{
-      IndexName: string
-      KeySchema: Array<{
-        AttributeName: string
-        KeyType: 'HASH' | 'RANGE'
-      }>
-      Projection: {
-        ProjectionType: 'ALL' | 'KEYS_ONLY' | 'INCLUDE'
-        NonKeyAttributes?: string[]
-      }
-    }>
+    KeySchema: DynamoDBKeySchemaElement[]
+    ProvisionedThroughput?: DynamoDBProvisionedThroughput
+    GlobalSecondaryIndexes?: DynamoDBGlobalSecondaryIndex[]
+    LocalSecondaryIndexes?: DynamoDBLocalSecondaryIndex[]
     StreamSpecification?: {
       StreamViewType: 'NEW_IMAGE' | 'OLD_IMAGE' | 'NEW_AND_OLD_IMAGES' | 'KEYS_ONLY'
     }

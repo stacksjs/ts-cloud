@@ -38,7 +38,7 @@ const config: ReverseProxyOptions = {
     keyPath: path.join(os.homedir(), '.stacks', 'ssl', `stacks.localhost.crt.key`),
     altNameIPs: ['127.0.0.1'],
     altNameURIs: ['localhost'],
-    organizationName: 'stacksjs.org',
+    organizationName: 'stacksjs.com',
     countryName: 'US',
     stateName: 'California',
     localityName: 'Playa Vista',

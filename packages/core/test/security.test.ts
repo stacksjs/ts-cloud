@@ -406,7 +406,7 @@ describe('Security Module', () => {
       expect(result.Resources[certId].Type).toBe('AWS::CertificateManager::Certificate')
       expect(result.Resources[keyId].Type).toBe('AWS::KMS::Key')
       expect(result.Resources[wafId].Type).toBe('AWS::WAFv2::WebACL')
-      expect(result.Resources[wafId].Properties.Rules).toHaveLength(4)
+      expect(result.Resources[wafId]!.Properties!.Rules).toHaveLength(4)
     })
 
     it('should generate valid JSON template', () => {

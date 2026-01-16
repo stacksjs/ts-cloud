@@ -1,0 +1,137 @@
+# Docker Compose for Local AWS Development with LocalStack
+# Provides local AWS services for testing without incurring AWS costs
+
+version: '3.8'
+
+services:
+  # LocalStack - Local AWS cloud stack
+  localstack:
+    image: localstack/localstack:latest
+    container_name: ts-cloud-localstack
+    ports:
+      - "4566:4566"            # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      # LocalStack configuration
+      - SERVICES=s3,dynamodb,lambda,cloudformation,iam,sts,cloudwatch,logs,sns,sqs,apigateway,route53,acm,cloudfront,secretsmanager,ssm,ec2,ecs,rds,elasticache
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - HOST_TMP_FOLDER=${TMPDIR}
+      - PERSISTENCE=1
+      # AWS configuration
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    volumes:
+      - "${TMPDIR:-/tmp}/localstack:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - ts-cloud-network
+
+  # PostgreSQL for local database testing
+  postgres:
+    image: postgres:15-alpine
+    container_name: ts-cloud-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=tscloud
+      - POSTGRES_PASSWORD=tscloud
+      - POSTGRES_DB=tscloud
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - ts-cloud-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tscloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for local caching
+  redis:
+    image: redis:7-alpine
+    container_name: ts-cloud-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - ts-cloud-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # DynamoDB Local
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: ts-cloud-dynamodb
+    ports:
+      - "8000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "/data"]
+    volumes:
+      - dynamodb-data:/data
+    networks:
+      - ts-cloud-network
+
+  # DynamoDB Admin (Web UI for DynamoDB)
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: ts-cloud-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb-local:8000
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - dynamodb-local
+    networks:
+      - ts-cloud-network
+
+  # S3 Local (MinIO for S3-compatible storage)
+  minio:
+    image: minio/minio:latest
+    container_name: ts-cloud-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=tscloud
+      - MINIO_ROOT_PASSWORD=tscloud123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - ts-cloud-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # Mailhog for local email testing
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: ts-cloud-mailhog
+    ports:
+      - "1025:1025"  # SMTP server
+      - "8025:8025"  # Web UI
+    networks:
+      - ts-cloud-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  dynamodb-data:
+  minio-data:
+
+networks:
+  ts-cloud-network:
+    driver: bridge

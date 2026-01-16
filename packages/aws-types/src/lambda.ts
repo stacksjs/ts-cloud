@@ -4,6 +4,7 @@ export interface LambdaFunction extends CloudFormationResource {
   Type: 'AWS::Lambda::Function'
   Properties: {
     FunctionName?: string
+    Description?: string
     Runtime: string
     Role: string | { 'Fn::GetAtt': [string, string] }
     Handler: string

@@ -1,12 +1,13 @@
-import type { CloudConfig } from '@ts-cloud/types'
+import type { CloudOptions } from '@ts-cloud/types'
+import { loadConfig } from 'bunfig'
 
-export const defaultConfig: Partial<CloudConfig> = {
+export const defaultConfig: CloudOptions = {
   project: {
     name: 'my-project',
     slug: 'my-project',
     region: 'us-east-1',
   },
-  mode: 'serverless',
+  // mode is optional - auto-detected from infrastructure config
   environments: {
     production: {
       type: 'production',
@@ -14,16 +15,21 @@ export const defaultConfig: Partial<CloudConfig> = {
   },
 }
 
-/**
- * Load cloud configuration from cloud.config.ts
- */
-export async function loadCloudConfig(): Promise<CloudConfig> {
-  try {
-    const config = await import(`${process.cwd()}/cloud.config.ts`)
-    return config.default || config
+// Lazy-loaded config to avoid top-level await (enables bun --compile)
+let _config: CloudOptions | null = null
+
+export async function getConfig(): Promise<CloudOptions> {
+  if (!_config) {
+    _config = await loadConfig({
+  name: 'cloud',
+  defaultConfig,
+})
   }
-  catch (error) {
-    console.warn('No cloud.config.ts found, using default configuration')
-    return defaultConfig as CloudConfig
-  }
+  return _config
 }
+
+// Alias for CLI usage
+export const loadCloudConfig: () => Promise<CloudOptions> = getConfig
+
+// For backwards compatibility - synchronous access with default fallback
+export const config: CloudOptions = defaultConfig

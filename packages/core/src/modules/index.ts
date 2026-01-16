@@ -1,9 +1,32 @@
 /**
- * TS Cloud Resource Modules
+ * ts-cloud Resource Modules
  * Clean API abstractions for AWS CloudFormation resources
  */
 
 export * from './storage'
+export * from './registry'
 export * from './cdn'
 export * from './dns'
 export * from './security'
+export * from './compute'
+export * from './network'
+export * from './filesystem'
+export * from './email'
+export * from './phone'
+export * from './queue'
+export * from './sms'
+export * from './ai'
+export * from './database'
+export * from './cache'
+export * from './permissions'
+export * from './api'
+export * from './messaging'
+export * from './workflow'
+export * from './monitoring'
+export * from './auth'
+export * from './deployment'
+export * from './secrets'
+export * from './parameter-store'
+export * from './search'
+export * from './redirects'
+export * from './communication'

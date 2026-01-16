@@ -21,6 +21,10 @@ export interface CloudWatchAlarm extends CloudFormationResource {
       Value: string
     }>
     TreatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
+    /** Unit of the metric (e.g., 'Seconds', 'Bytes', 'Count') */
+    Unit?: string
+    /** Number of datapoints that must be breaching to trigger the alarm */
+    DatapointsToAlarm?: number
   }
 }
 
@@ -42,5 +46,53 @@ export interface CloudWatchDashboard extends CloudFormationResource {
   Properties: {
     DashboardName?: string
     DashboardBody: string
+  }
+}
+
+export interface CloudWatchLogStream extends CloudFormationResource {
+  Type: 'AWS::Logs::LogStream'
+  Properties: {
+    LogGroupName: string | { Ref: string }
+    LogStreamName?: string
+  }
+}
+
+export interface CloudWatchMetricFilter extends CloudFormationResource {
+  Type: 'AWS::Logs::MetricFilter'
+  Properties: {
+    LogGroupName: string | { Ref: string }
+    FilterPattern: string
+    MetricTransformations: Array<{
+      MetricName: string
+      MetricNamespace: string
+      MetricValue: string
+      DefaultValue?: number
+      Unit?: string
+      Dimensions?: Array<{
+        Key: string
+        Value: string
+      }>
+    }>
+    FilterName?: string
+  }
+}
+
+export interface CloudWatchCompositeAlarm extends CloudFormationResource {
+  Type: 'AWS::CloudWatch::CompositeAlarm'
+  Properties: {
+    AlarmName: string
+    AlarmRule: string
+    AlarmDescription?: string
+    ActionsEnabled?: boolean
+    AlarmActions?: string[]
+    InsufficientDataActions?: string[]
+    OKActions?: string[]
+    ActionsSuppressor?: string
+    ActionsSuppressorExtensionPeriod?: number
+    ActionsSuppressorWaitPeriod?: number
+    Tags?: Array<{
+      Key: string
+      Value: string
+    }>
   }
 }

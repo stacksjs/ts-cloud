@@ -99,10 +99,10 @@ describe('Integration Tests - Full Stack Deployment', () => {
 
       const result = template.build()
 
-      expect(result.Resources[logicalId].Properties.BucketName).toContain(env)
+      expect(result.Resources[logicalId]!.Properties!.BucketName).toContain(env)
 
       if (env === 'production') {
-        expect(result.Resources[logicalId].Properties.VersioningConfiguration).toBeDefined()
+        expect(result.Resources[logicalId]!.Properties!.VersioningConfiguration).toBeDefined()
       }
     }
   })
@@ -170,9 +170,9 @@ describe('Integration Tests - Full Stack Deployment', () => {
     const result = template.build()
 
     expect(Object.keys(result.Resources)).toHaveLength(5)
-    expect(result.Resources[mxId].Properties.Type).toBe('MX')
-    expect(result.Resources[spfId].Properties.Type).toBe('TXT')
-    expect(result.Resources[dmarcId].Properties.Name).toBe('_dmarc.example.com')
+    expect(result.Resources[mxId]!.Properties!.Type).toBe('MX')
+    expect(result.Resources[spfId]!.Properties!.Type).toBe('TXT')
+    expect(result.Resources[dmarcId]!.Properties!.Name).toBe('_dmarc.example.com')
   })
 
   it('should handle resource naming across environments', () => {
@@ -225,8 +225,8 @@ describe('Integration Tests - Full Stack Deployment', () => {
 
     const result = template.build()
 
-    expect(result.Resources[id1].Properties.DistributionConfig.Origins[0].S3OriginConfig).toBeUndefined()
-    expect(result.Resources[id2].Properties.DistributionConfig.Origins[0].CustomOriginConfig).toBeDefined()
+    expect((result.Resources[id1]!.Properties as any).DistributionConfig.Origins[0].S3OriginConfig).toBeUndefined()
+    expect((result.Resources[id2]!.Properties as any).DistributionConfig.Origins[0].CustomOriginConfig).toBeDefined()
   })
 
   it('should create complete secure website with SSL and WAF', () => {
@@ -338,7 +338,7 @@ describe('Integration Tests - Full Stack Deployment', () => {
     expect(result.Resources[certId].Type).toBe('AWS::CertificateManager::Certificate')
     expect(result.Resources[keyId].Type).toBe('AWS::KMS::Key')
     expect(result.Resources[wafId].Type).toBe('AWS::WAFv2::WebACL')
-    expect(result.Resources[wafId].Properties.Rules).toHaveLength(5)
+    expect(result.Resources[wafId]!.Properties!.Rules).toHaveLength(5)
     expect(result.Resources[bucketId].Type).toBe('AWS::S3::Bucket')
     expect(result.Resources[cdnId].Type).toBe('AWS::CloudFront::Distribution')
 
