@@ -75,6 +75,7 @@
     "commit-msg": "bunx gitlint --edit .git/COMMIT_EDITMSG"
   },
   "dependencies": {
+    "bun-plugin-dtsx": "^0.21.17",
     "jszip": "^3.10.1"
   }
 }
