@@ -83,7 +83,7 @@
     "@ts-cloud/aws-types": "workspace:*",
     "@ts-cloud/core": "workspace:*",
     "@ts-cloud/types": "workspace:*",
-    "fast-xml-parser": "^5.3.2"
+    "fast-xml-parser": "^5.3.3"
   },
   "devDependencies": {
     "bunfig": "^0.15.6",
