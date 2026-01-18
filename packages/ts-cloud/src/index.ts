@@ -95,6 +95,21 @@ export type {
 
 export * from './ssl'
 
+// Export deployment modules
+export {
+  deployStaticSite,
+  deployStaticSiteFull,
+  uploadStaticFiles,
+  invalidateCache,
+  deleteStaticSite,
+  generateStaticSiteTemplate,
+} from './deploy'
+export type {
+  StaticSiteConfig,
+  DeployResult,
+  UploadOptions,
+} from './deploy'
+
 // Re-export core functionality (these take precedence for common types)
 export * from '@ts-cloud/core'
 

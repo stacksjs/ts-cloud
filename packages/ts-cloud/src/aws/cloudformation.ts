@@ -336,6 +336,9 @@ export class CloudFormationClient {
             return // Stack deleted successfully
           }
           // For create/update operations, stack might not be visible yet - retry
+          if (attempts % 10 === 0) {
+            console.log(`[waitForStack] Attempt ${attempts}: Stack not visible yet`)
+          }
           await new Promise(resolve => setTimeout(resolve, 2000))
           attempts++
           continue
@@ -343,8 +346,32 @@ export class CloudFormationClient {
 
         const stack = result.Stacks[0]
 
+        if (attempts % 10 === 0) {
+          console.log(`[waitForStack] Attempt ${attempts}: Status = ${stack.StackStatus}${stack.StackStatusReason ? ` (${stack.StackStatusReason})` : ''}`)
+        }
+
         if (targets.includes(stack.StackStatus)) {
           return // Target status reached
+        }
+
+        // If stack is being deleted but we're waiting for create/update, something went wrong
+        if ((waitType === 'stack-create-complete' || waitType === 'stack-update-complete') &&
+            (stack.StackStatus === 'DELETE_IN_PROGRESS' || stack.StackStatus === 'DELETE_COMPLETE')) {
+          console.log(`[waitForStack] Stack is being deleted (creation/update failed)`)
+          // Try to get stack events to understand the failure
+          try {
+            const eventsResult = await this.describeStackEvents(stackName)
+            console.log('[waitForStack] Stack events (most recent first):')
+            for (const event of eventsResult.StackEvents.slice(0, 15)) {
+              if (event.ResourceStatus.includes('FAILED') || event.ResourceStatusReason) {
+                console.log(`  ${event.LogicalResourceId}: ${event.ResourceStatus} - ${event.ResourceStatusReason || 'No reason provided'}`)
+              }
+            }
+          }
+          catch {
+            // Ignore errors fetching events
+          }
+          throw new Error(`Stack creation/update failed - stack is being deleted. Reason: ${stack.StackStatusReason || 'Check CloudFormation console for details.'}`)
         }
 
         // Handle DELETE_FAILED specifically - might need to retain resources
@@ -370,14 +397,19 @@ export class CloudFormationClient {
         }
         // For create operations, stack might not be visible yet - retry
         if (waitType === 'stack-create-complete' && error.message?.includes('does not exist')) {
+          if (attempts % 10 === 0) {
+            console.log(`[waitForStack] Attempt ${attempts}: Stack does not exist (error), retrying...`)
+          }
           await new Promise(resolve => setTimeout(resolve, 2000))
           attempts++
           continue
         }
+        console.log(`[waitForStack] Unexpected error: ${error.message}`)
         throw error
       }
     }
 
+    console.log(`[waitForStack] Timeout after ${attempts} attempts`)
     throw new Error(`Timeout waiting for stack to reach ${waitType}`)
   }
 
@@ -795,5 +827,63 @@ export class CloudFormationClient {
     }
 
     throw new Error(`Timeout waiting for stack to reach ${waitType}`)
+  }
+
+  /**
+   * Wait for stack operation to complete (create, update, or delete)
+   * Returns a result object with success status
+   */
+  async waitForStackComplete(
+    stackName: string,
+    maxAttempts: number = 120,
+    delayMs: number = 5000,
+  ): Promise<{ success: boolean; status: string; reason?: string }> {
+    const successStatuses = [
+      'CREATE_COMPLETE',
+      'UPDATE_COMPLETE',
+      'DELETE_COMPLETE',
+    ]
+    const failureStatuses = [
+      'CREATE_FAILED',
+      'UPDATE_FAILED',
+      'DELETE_FAILED',
+      'ROLLBACK_COMPLETE',
+      'ROLLBACK_FAILED',
+      'UPDATE_ROLLBACK_COMPLETE',
+      'UPDATE_ROLLBACK_FAILED',
+    ]
+
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const result = await this.describeStacks({ stackName })
+
+        if (result.Stacks.length === 0) {
+          // Stack was deleted
+          return { success: true, status: 'DELETE_COMPLETE' }
+        }
+
+        const stack = result.Stacks[0]
+        const status = stack.StackStatus
+
+        if (successStatuses.includes(status)) {
+          return { success: true, status }
+        }
+
+        if (failureStatuses.includes(status)) {
+          return { success: false, status, reason: stack.StackStatusReason }
+        }
+
+        // Still in progress, wait and retry
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
+      catch (error: any) {
+        if (error.message?.includes('does not exist')) {
+          return { success: true, status: 'DELETE_COMPLETE' }
+        }
+        throw error
+      }
+    }
+
+    return { success: false, status: 'TIMEOUT', reason: 'Timeout waiting for stack operation' }
   }
 }

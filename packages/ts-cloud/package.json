@@ -34,6 +34,10 @@
       "types": "./src/aws/index.ts",
       "import": "./src/aws/index.ts"
     },
+    "./deploy": {
+      "types": "./src/deploy/index.ts",
+      "import": "./src/deploy/index.ts"
+    },
     "./dns": {
       "types": "./src/dns/index.ts",
       "import": "./src/dns/index.ts"
