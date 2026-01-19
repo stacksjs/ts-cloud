@@ -11,3 +11,5 @@ node_modules
 temp
 docs/.vitepress/cache
 packages/ts-cloud/bin/cloud
+/docs/.bunpress
+.env

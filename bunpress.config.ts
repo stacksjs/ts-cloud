@@ -3,10 +3,18 @@ import type { BunPressConfig } from 'bunpress'
 const config: BunPressConfig = {
   name: 'ts-cloud',
   description: 'Infrastructure as Code for TypeScript',
-  url: 'https://ts-cloud.stacksjs.org',
+  url: 'https://ts-cloud.stacksjs.com',
 
   theme: {
     primaryColor: '#f97316',
+  },
+
+  cloud: {
+    driver: 'aws',
+    region: 'us-east-1',
+    domain: 'ts-cloud.stacksjs.com',
+    subdomain: 'ts-cloud',
+    baseDomain: 'stacksjs.com',
   },
 
   sidebar: [
