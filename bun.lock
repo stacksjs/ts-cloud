@@ -5,6 +5,7 @@
     "": {
       "name": "ts-cloud",
       "dependencies": {
+        "bun-plugin-dtsx": "^0.9.9",
         "jszip": "^3.10.1",
       },
       "devDependencies": {

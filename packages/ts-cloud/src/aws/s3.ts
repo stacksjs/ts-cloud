@@ -2033,4 +2033,172 @@ export class S3Client {
 
     return presignedUrl
   }
+
+  /**
+   * Empty a bucket by deleting all objects (required before bucket deletion)
+   */
+  async emptyBucket(bucket: string): Promise<{ deletedCount: number }> {
+    let deletedCount = 0
+    let continuationToken: string | undefined
+
+    do {
+      // List objects in the bucket
+      const listResult = await this.listObjects({
+        bucket,
+        maxKeys: 1000,
+        continuationToken,
+      })
+
+      if (listResult.objects.length === 0) {
+        break
+      }
+
+      // Delete objects in batches
+      const keys = listResult.objects.map(obj => obj.Key)
+      await this.deleteObjects(bucket, keys)
+      deletedCount += keys.length
+
+      continuationToken = listResult.nextContinuationToken
+    } while (continuationToken)
+
+    // Also delete any object versions if versioning is enabled
+    try {
+      let keyMarker: string | undefined
+      let versionIdMarker: string | undefined
+
+      do {
+        const versionsResult = await this.listObjectVersions({
+          bucket,
+          keyMarker,
+          versionIdMarker,
+          maxKeys: 1000,
+        })
+
+        const versionsToDelete: Array<{ Key: string; VersionId?: string }> = []
+
+        if (versionsResult.versions) {
+          for (const version of versionsResult.versions) {
+            versionsToDelete.push({ Key: version.Key, VersionId: version.VersionId })
+          }
+        }
+
+        if (versionsResult.deleteMarkers) {
+          for (const marker of versionsResult.deleteMarkers) {
+            versionsToDelete.push({ Key: marker.Key, VersionId: marker.VersionId })
+          }
+        }
+
+        if (versionsToDelete.length > 0) {
+          await this.deleteObjectVersions(bucket, versionsToDelete)
+          deletedCount += versionsToDelete.length
+        }
+
+        keyMarker = versionsResult.nextKeyMarker
+        versionIdMarker = versionsResult.nextVersionIdMarker
+      } while (keyMarker)
+    }
+    catch {
+      // Versioning might not be enabled, ignore errors
+    }
+
+    return { deletedCount }
+  }
+
+  /**
+   * List object versions in a bucket
+   */
+  async listObjectVersions(options: {
+    bucket: string
+    prefix?: string
+    keyMarker?: string
+    versionIdMarker?: string
+    maxKeys?: number
+  }): Promise<{
+    versions: Array<{ Key: string; VersionId: string; IsLatest: boolean }>
+    deleteMarkers: Array<{ Key: string; VersionId: string; IsLatest: boolean }>
+    nextKeyMarker?: string
+    nextVersionIdMarker?: string
+  }> {
+    const { bucket, prefix, keyMarker, versionIdMarker, maxKeys = 1000 } = options
+
+    const queryParams: Record<string, string> = {
+      versions: '',
+      'max-keys': maxKeys.toString(),
+    }
+
+    if (prefix) queryParams.prefix = prefix
+    if (keyMarker) queryParams['key-marker'] = keyMarker
+    if (versionIdMarker) queryParams['version-id-marker'] = versionIdMarker
+
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams,
+    })
+
+    const versions: Array<{ Key: string; VersionId: string; IsLatest: boolean }> = []
+    const deleteMarkers: Array<{ Key: string; VersionId: string; IsLatest: boolean }> = []
+
+    // Parse versions
+    if (result.Version) {
+      const versionList = Array.isArray(result.Version) ? result.Version : [result.Version]
+      for (const v of versionList) {
+        versions.push({
+          Key: v.Key,
+          VersionId: v.VersionId,
+          IsLatest: v.IsLatest === 'true',
+        })
+      }
+    }
+
+    // Parse delete markers
+    if (result.DeleteMarker) {
+      const markerList = Array.isArray(result.DeleteMarker) ? result.DeleteMarker : [result.DeleteMarker]
+      for (const m of markerList) {
+        deleteMarkers.push({
+          Key: m.Key,
+          VersionId: m.VersionId,
+          IsLatest: m.IsLatest === 'true',
+        })
+      }
+    }
+
+    return {
+      versions,
+      deleteMarkers,
+      nextKeyMarker: result.NextKeyMarker,
+      nextVersionIdMarker: result.NextVersionIdMarker,
+    }
+  }
+
+  /**
+   * Delete specific object versions
+   */
+  async deleteObjectVersions(
+    bucket: string,
+    objects: Array<{ Key: string; VersionId?: string }>,
+  ): Promise<void> {
+    const deleteXml = `<?xml version="1.0" encoding="UTF-8"?>
+<Delete>
+  <Quiet>true</Quiet>
+  ${objects.map(obj => `<Object><Key>${obj.Key}</Key>${obj.VersionId ? `<VersionId>${obj.VersionId}</VersionId>` : ''}</Object>`).join('\n  ')}
+</Delete>`
+
+    const contentMd5 = crypto.createHash('md5').update(deleteXml).digest('base64')
+
+    await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'POST',
+      path: `/${bucket}`,
+      queryParams: { delete: '' },
+      body: deleteXml,
+      headers: {
+        'Content-Type': 'application/xml',
+        'Content-MD5': contentMd5,
+      },
+    })
+  }
 }

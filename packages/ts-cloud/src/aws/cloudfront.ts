@@ -16,7 +16,7 @@ export interface Distribution {
   ARN: string
   Status: string
   DomainName: string
-  Aliases?: string[]
+  Aliases?: { Quantity?: number; Items?: string[] }
   Enabled: boolean
 }
 
@@ -160,18 +160,22 @@ export class CloudFrontClient {
 
     const distributions: Distribution[] = []
 
-    // Simple parser - would need proper XML parsing in production
-    if (result.DistributionSummary) {
-      const summaries = Array.isArray(result.DistributionSummary)
-        ? result.DistributionSummary
-        : [result.DistributionSummary]
+    // The response structure is: DistributionList.Items.DistributionSummary
+    const distList = result.DistributionList || result
+    const items = distList.Items
+    const summaryData = items?.DistributionSummary
+
+    if (summaryData) {
+      const summaries = Array.isArray(summaryData)
+        ? summaryData
+        : [summaryData]
 
       distributions.push(...summaries.map((item: any) => ({
         Id: item.Id,
         ARN: item.ARN,
         Status: item.Status,
         DomainName: item.DomainName,
-        Aliases: item.Aliases?.Items || [],
+        Aliases: item.Aliases || undefined,
         Enabled: item.Enabled === 'true' || item.Enabled === true,
       })))
     }
@@ -358,7 +362,7 @@ export class CloudFrontClient {
       if (dist.DomainName === domain) {
         return true
       }
-      if (dist.Aliases && dist.Aliases.includes(domain)) {
+      if (dist.Aliases?.Items && dist.Aliases.Items.includes(domain)) {
         return true
       }
       return false
@@ -577,44 +581,142 @@ export class CloudFrontClient {
 
   /**
    * Helper to build XML from distribution config object
+   * CloudFront requires specific XML structures - this method handles the complex nesting
    */
   private buildDistributionConfigXml(config: any): string {
-    const buildXmlElement = (name: string, value: any, indent: string = ''): string => {
+    const escapeXml = (str: string): string => {
+      return str.replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+    }
+
+    // Map of parent element names to their child element names for array items
+    const arrayChildNames: Record<string, string> = {
+      Items: '', // Will be determined by context
+      Methods: 'Method',
+      Headers: 'Name',
+      Cookies: 'Name',
+      QueryStringCacheKeys: 'Name',
+      TrustedKeyGroups: 'KeyGroup',
+      TrustedSigners: 'AwsAccountNumber',
+      LambdaFunctionAssociations: 'LambdaFunctionAssociation',
+      FunctionAssociations: 'FunctionAssociation',
+      CacheBehaviors: 'CacheBehavior',
+      CustomErrorResponses: 'CustomErrorResponse',
+      GeoRestriction: 'Location',
+    }
+
+    // Elements inside Items that have specific child names
+    const itemsChildNames: Record<string, string> = {
+      Origins: 'Origin',
+      Aliases: 'CNAME',
+      AllowedMethods: 'Method',
+      CachedMethods: 'Method',
+      CustomErrorResponses: 'CustomErrorResponse',
+      CacheBehaviors: 'CacheBehavior',
+    }
+
+    const buildXmlElement = (name: string, value: any, indent: string = '', parentContext: string = ''): string => {
       if (value === null || value === undefined) {
         return ''
       }
 
+      // Skip XML metadata attributes
+      if (name.startsWith('@_') || name === '?xml') {
+        return ''
+      }
+
       if (typeof value === 'boolean') {
-        return `${indent}<${name}>${value}<//${name}>\n`
+        return `${indent}<${name}>${value}</${name}>\n`
       }
 
       if (typeof value === 'number' || typeof value === 'string') {
-        return `${indent}<${name}>${value}<//${name}>\n`
+        return `${indent}<${name}>${escapeXml(String(value))}</${name}>\n`
       }
 
       if (Array.isArray(value)) {
-        return value.map(item => buildXmlElement(name, item, indent)).join('')
+        // For arrays, we need to output each item with the appropriate element name
+        const childName = arrayChildNames[name] || name.replace(/s$/, '')
+        return value.map(item => buildXmlElement(childName, item, indent, name)).join('')
       }
 
       if (typeof value === 'object') {
-        // Skip XML metadata attributes
-        if (name.startsWith('@_') || name === '?xml') {
-          return ''
+        // Handle Items specially - they contain the actual array items
+        if (name === 'Items') {
+          // Figure out what type of items these are based on parent context
+          const childElementName = itemsChildNames[parentContext] || ''
+
+          // Check if Items has named children (like CNAME, Origin, etc.)
+          const keys = Object.keys(value).filter(k => !k.startsWith('@_'))
+
+          if (keys.length === 1 && !Array.isArray(value[keys[0]])) {
+            // Single named child that's not an array - could be a single item
+            const childKey = keys[0]
+            const childValue = value[childKey]
+            if (typeof childValue === 'string') {
+              // Single item like {CNAME: "domain.com"}
+              return `${indent}<Items>\n${indent}  <${childKey}>${escapeXml(childValue)}</${childKey}>\n${indent}</Items>\n`
+            }
+            else if (typeof childValue === 'object' && !Array.isArray(childValue)) {
+              // Single complex item like {Origin: {...}}
+              return `${indent}<Items>\n${buildXmlElement(childKey, childValue, indent + '  ', name)}${indent}</Items>\n`
+            }
+          }
+
+          if (keys.length === 1 && Array.isArray(value[keys[0]])) {
+            // Named array child like {CNAME: ["a.com", "b.com"]} or {Origin: [{...}, {...}]}
+            const childKey = keys[0]
+            const childArray = value[childKey]
+            let children = ''
+            for (const item of childArray) {
+              if (typeof item === 'string') {
+                children += `${indent}  <${childKey}>${escapeXml(item)}</${childKey}>\n`
+              }
+              else {
+                children += buildXmlElement(childKey, item, indent + '  ', name)
+              }
+            }
+            return `${indent}<Items>\n${children}${indent}</Items>\n`
+          }
+
+          // Check if Items is an array directly passed in
+          if (Array.isArray(value)) {
+            let children = ''
+            const childName = childElementName || 'Item'
+            for (const item of value) {
+              if (typeof item === 'string') {
+                children += `${indent}  <${childName}>${escapeXml(item)}</${childName}>\n`
+              }
+              else {
+                children += buildXmlElement(childName, item, indent + '  ', name)
+              }
+            }
+            return `${indent}<Items>\n${children}${indent}</Items>\n`
+          }
+
+          // Fall through to regular object handling if none of the special cases match
         }
 
         let children = ''
         for (const [key, val] of Object.entries(value)) {
           if (!key.startsWith('@_')) {
-            children += buildXmlElement(key, val, indent + '  ')
+            children += buildXmlElement(key, val, indent + '  ', name)
           }
         }
+
+        if (children === '') {
+          return `${indent}<${name}/>\n`
+        }
+
         return `${indent}<${name}>\n${children}${indent}</${name}>\n`
       }
 
       return ''
     }
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n${buildXmlElement('DistributionConfig', { ...config, '@_xmlns': 'http://cloudfront.amazonaws.com/doc/2020-05-31/' })}`
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">\n${Object.entries(config).filter(([k]) => !k.startsWith('@_')).map(([key, val]) => buildXmlElement(key, val, '  ', 'DistributionConfig')).join('')}</DistributionConfig>`
   }
 
   /**
@@ -999,5 +1101,441 @@ export class CloudFrontClient {
     }
 
     return items
+  }
+
+  /**
+   * Create an Origin Access Control for S3
+   */
+  async createOriginAccessControl(options: {
+    name: string
+    description?: string
+    signingProtocol?: 'sigv4'
+    signingBehavior?: 'always' | 'never' | 'no-override'
+    originType?: 's3'
+  }): Promise<{
+    Id: string
+    Name: string
+    Description: string
+    SigningProtocol: string
+    SigningBehavior: string
+    OriginAccessControlOriginType: string
+    ETag: string
+  }> {
+    const {
+      name,
+      description = `OAC for ${name}`,
+      signingProtocol = 'sigv4',
+      signingBehavior = 'always',
+      originType = 's3',
+    } = options
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<OriginAccessControlConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">
+  <Name>${name}</Name>
+  <Description>${description}</Description>
+  <SigningProtocol>${signingProtocol}</SigningProtocol>
+  <SigningBehavior>${signingBehavior}</SigningBehavior>
+  <OriginAccessControlOriginType>${originType}</OriginAccessControlOriginType>
+</OriginAccessControlConfig>`
+
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/2020-05-31/origin-access-control',
+      body,
+      headers: {
+        'Content-Type': 'application/xml',
+      },
+      returnHeaders: true,
+    })
+
+    const oac = result.body?.OriginAccessControl || result.OriginAccessControl || result.body || result
+
+    return {
+      Id: oac.Id,
+      Name: oac.OriginAccessControlConfig?.Name || name,
+      Description: oac.OriginAccessControlConfig?.Description || description,
+      SigningProtocol: oac.OriginAccessControlConfig?.SigningProtocol || signingProtocol,
+      SigningBehavior: oac.OriginAccessControlConfig?.SigningBehavior || signingBehavior,
+      OriginAccessControlOriginType: oac.OriginAccessControlConfig?.OriginAccessControlOriginType || originType,
+      ETag: result.headers?.etag || result.ETag || '',
+    }
+  }
+
+  /**
+   * Find or create an Origin Access Control
+   */
+  async findOrCreateOriginAccessControl(name: string): Promise<{
+    Id: string
+    Name: string
+    isNew: boolean
+  }> {
+    const oacs = await this.listOriginAccessControls()
+    const existing = oacs.find(oac => oac.Name === name)
+
+    if (existing) {
+      return { Id: existing.Id, Name: existing.Name, isNew: false }
+    }
+
+    const created = await this.createOriginAccessControl({ name })
+    return { Id: created.Id, Name: created.Name, isNew: true }
+  }
+
+  /**
+   * Create a CloudFront distribution for a static S3 website
+   */
+  async createDistributionForS3(options: {
+    bucketName: string
+    bucketRegion: string
+    originAccessControlId: string
+    aliases?: string[]
+    certificateArn?: string
+    defaultRootObject?: string
+    comment?: string
+    priceClass?: 'PriceClass_100' | 'PriceClass_200' | 'PriceClass_All'
+    enabled?: boolean
+  }): Promise<{
+    Id: string
+    ARN: string
+    DomainName: string
+    Status: string
+    ETag: string
+  }> {
+    const {
+      bucketName,
+      bucketRegion,
+      originAccessControlId,
+      aliases = [],
+      certificateArn,
+      defaultRootObject = 'index.html',
+      comment = `Distribution for ${bucketName}`,
+      priceClass = 'PriceClass_100',
+      enabled = true,
+    } = options
+
+    const originId = `S3-${bucketName}`
+    const s3DomainName = `${bucketName}.s3.${bucketRegion}.amazonaws.com`
+    const callerReference = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    // Build aliases XML
+    let aliasesXml = '<Aliases><Quantity>0</Quantity></Aliases>'
+    if (aliases.length > 0) {
+      aliasesXml = `<Aliases>
+    <Quantity>${aliases.length}</Quantity>
+    <Items>
+      ${aliases.map(a => `<CNAME>${a}</CNAME>`).join('\n      ')}
+    </Items>
+  </Aliases>`
+    }
+
+    // Build viewer certificate XML
+    let viewerCertificateXml = `<ViewerCertificate>
+    <CloudFrontDefaultCertificate>true</CloudFrontDefaultCertificate>
+  </ViewerCertificate>`
+
+    if (certificateArn && aliases.length > 0) {
+      viewerCertificateXml = `<ViewerCertificate>
+    <ACMCertificateArn>${certificateArn}</ACMCertificateArn>
+    <SSLSupportMethod>sni-only</SSLSupportMethod>
+    <MinimumProtocolVersion>TLSv1.2_2021</MinimumProtocolVersion>
+    <CertificateSource>acm</CertificateSource>
+  </ViewerCertificate>`
+    }
+
+    const body = `<?xml version="1.0" encoding="UTF-8"?>
+<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">
+  <CallerReference>${callerReference}</CallerReference>
+  <Comment>${comment}</Comment>
+  <DefaultRootObject>${defaultRootObject}</DefaultRootObject>
+  <Origins>
+    <Quantity>1</Quantity>
+    <Items>
+      <Origin>
+        <Id>${originId}</Id>
+        <DomainName>${s3DomainName}</DomainName>
+        <OriginPath></OriginPath>
+        <S3OriginConfig>
+          <OriginAccessIdentity></OriginAccessIdentity>
+        </S3OriginConfig>
+        <OriginAccessControlId>${originAccessControlId}</OriginAccessControlId>
+      </Origin>
+    </Items>
+  </Origins>
+  <DefaultCacheBehavior>
+    <TargetOriginId>${originId}</TargetOriginId>
+    <ViewerProtocolPolicy>redirect-to-https</ViewerProtocolPolicy>
+    <AllowedMethods>
+      <Quantity>2</Quantity>
+      <Items>
+        <Method>GET</Method>
+        <Method>HEAD</Method>
+      </Items>
+      <CachedMethods>
+        <Quantity>2</Quantity>
+        <Items>
+          <Method>GET</Method>
+          <Method>HEAD</Method>
+        </Items>
+      </CachedMethods>
+    </AllowedMethods>
+    <Compress>true</Compress>
+    <CachePolicyId>658327ea-f89d-4fab-a63d-7e88639e58f6</CachePolicyId>
+  </DefaultCacheBehavior>
+  ${aliasesXml}
+  ${viewerCertificateXml}
+  <PriceClass>${priceClass}</PriceClass>
+  <Enabled>${enabled}</Enabled>
+  <HttpVersion>http2and3</HttpVersion>
+  <IsIPV6Enabled>true</IsIPV6Enabled>
+  <CustomErrorResponses>
+    <Quantity>1</Quantity>
+    <Items>
+      <CustomErrorResponse>
+        <ErrorCode>403</ErrorCode>
+        <ResponsePagePath>/index.html</ResponsePagePath>
+        <ResponseCode>200</ResponseCode>
+        <ErrorCachingMinTTL>300</ErrorCachingMinTTL>
+      </CustomErrorResponse>
+    </Items>
+  </CustomErrorResponses>
+</DistributionConfig>`
+
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/2020-05-31/distribution',
+      body,
+      headers: {
+        'Content-Type': 'application/xml',
+      },
+      returnHeaders: true,
+    })
+
+    const dist = result.body?.Distribution || result.Distribution || result.body || result
+
+    return {
+      Id: dist.Id,
+      ARN: dist.ARN,
+      DomainName: dist.DomainName,
+      Status: dist.Status,
+      ETag: result.headers?.etag || result.ETag || '',
+    }
+  }
+
+  /**
+   * Get S3 bucket policy for CloudFront OAC access
+   */
+  static getS3BucketPolicyForCloudFront(bucketName: string, distributionArn: string): object {
+    return {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Sid: 'AllowCloudFrontServicePrincipal',
+          Effect: 'Allow',
+          Principal: {
+            Service: 'cloudfront.amazonaws.com',
+          },
+          Action: 's3:GetObject',
+          Resource: `arn:aws:s3:::${bucketName}/*`,
+          Condition: {
+            StringEquals: {
+              'AWS:SourceArn': distributionArn,
+            },
+          },
+        },
+      ],
+    }
+  }
+
+  /**
+   * Wait for distribution to be deployed
+   */
+  async waitForDistributionDeployed(distributionId: string, maxAttempts = 60): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const dist = await this.getDistribution(distributionId)
+
+      if (dist.Status === 'Deployed') {
+        return true
+      }
+
+      // Wait 30 seconds between checks
+      await new Promise(resolve => setTimeout(resolve, 30000))
+    }
+
+    return false
+  }
+
+  /**
+   * Disable a CloudFront distribution
+   * Must be disabled before it can be deleted
+   */
+  async disableDistribution(distributionId: string): Promise<{ ETag: string }> {
+    // Get current config with ETag
+    const getResult = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      returnHeaders: true,
+    })
+
+    const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
+    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+
+    if (!currentConfig) {
+      throw new Error('Failed to get current distribution config')
+    }
+
+    // Set enabled to false
+    currentConfig.Enabled = false
+
+    // Build the XML for the update request
+    const configXml = this.buildDistributionConfigXml(currentConfig)
+
+    // Update the distribution
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'PUT',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      body: configXml,
+      headers: {
+        'Content-Type': 'application/xml',
+        'If-Match': etag,
+      },
+      returnHeaders: true,
+    })
+
+    return { ETag: result.headers?.etag || result.headers?.ETag || result.ETag || '' }
+  }
+
+  /**
+   * Delete a CloudFront distribution
+   * Distribution must be disabled first
+   */
+  async deleteDistribution(distributionId: string, etag?: string): Promise<void> {
+    // If no ETag provided, get it first
+    let etagToUse = etag
+    if (!etagToUse) {
+      const getResult = await this.client.request({
+        service: 'cloudfront',
+        region: 'us-east-1',
+        method: 'GET',
+        path: `/2020-05-31/distribution/${distributionId}`,
+        returnHeaders: true,
+      })
+      etagToUse = getResult.headers?.etag || getResult.headers?.ETag || ''
+    }
+
+    await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'DELETE',
+      path: `/2020-05-31/distribution/${distributionId}`,
+      headers: {
+        'If-Match': etagToUse,
+      },
+    })
+  }
+
+  /**
+   * Wait for distribution to be disabled (ready for deletion)
+   */
+  async waitForDistributionDisabled(distributionId: string, maxAttempts = 60): Promise<boolean> {
+    for (let i = 0; i < maxAttempts; i++) {
+      const dist = await this.getDistribution(distributionId)
+
+      if (dist.Status === 'Deployed' && !dist.Enabled) {
+        return true
+      }
+
+      // Wait 30 seconds between checks
+      await new Promise(resolve => setTimeout(resolve, 30000))
+    }
+
+    return false
+  }
+
+  /**
+   * Remove a specific alias (CNAME) from a CloudFront distribution
+   * This allows the alias to be used by another distribution
+   */
+  async removeAlias(distributionId: string, alias: string): Promise<{ ETag: string }> {
+    // Get current config with ETag
+    const getResult = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      returnHeaders: true,
+    })
+
+    const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
+    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+
+    if (!currentConfig) {
+      throw new Error('Failed to get current distribution config')
+    }
+
+    // Remove the alias from the Aliases list
+    // Handle various structures: Items can be an array, or Items.CNAME can be a string or array
+    let items: string[] = []
+    if (currentConfig.Aliases?.Items) {
+      if (Array.isArray(currentConfig.Aliases.Items)) {
+        items = currentConfig.Aliases.Items
+      }
+      else if (typeof currentConfig.Aliases.Items === 'object') {
+        const cname = currentConfig.Aliases.Items.CNAME
+        if (typeof cname === 'string') {
+          items = [cname]
+        }
+        else if (Array.isArray(cname)) {
+          items = cname
+        }
+      }
+    }
+
+    if (items.length === 0) {
+      throw new Error(`Distribution has no aliases to remove`)
+    }
+
+    const newItems = items.filter((a: string) => a !== alias)
+
+    if (newItems.length === items.length) {
+      throw new Error(`Alias ${alias} not found in distribution`)
+    }
+
+    currentConfig.Aliases.Quantity = newItems.length
+    // CloudFront expects Items to be an array, not Items.CNAME
+    currentConfig.Aliases.Items = newItems.length > 0 ? newItems : undefined
+
+    // If removing the last alias, we need to also remove the ViewerCertificate ACM config
+    if (newItems.length === 0) {
+      currentConfig.ViewerCertificate = {
+        CloudFrontDefaultCertificate: true,
+        MinimumProtocolVersion: 'TLSv1.2_2021',
+      }
+    }
+
+    // Build the XML for the update request
+    const configXml = this.buildDistributionConfigXml(currentConfig)
+
+    // Update the distribution
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'PUT',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      body: configXml,
+      headers: {
+        'Content-Type': 'application/xml',
+        'If-Match': etag,
+      },
+      returnHeaders: true,
+    })
+
+    return { ETag: result.headers?.etag || result.headers?.ETag || result.ETag || '' }
   }
 }
