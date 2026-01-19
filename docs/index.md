@@ -1,33 +1,32 @@
 ---
-# https://vitepress.dev/reference/default-theme-home-page
 layout: home
 
 hero:
   name: "ts-cloud"
-  text: "For a better local environment."
-  tagline: "Modern and smart reverse proxy."
+  text: "Infrastructure as Code for TypeScript"
+  tagline: "Zero-dependency AWS infrastructure. Deploy production-ready cloud infrastructure without AWS SDK or CLI."
   image: /images/logo-white.png
   actions:
     - theme: brand
       text: Get Started
-      link: /intro
+      link: /guide/getting-started
     - theme: alt
       text: View on GitHub
-      link: https://github.com/stacksjs/rpx
+      link: https://github.com/stacksjs/ts-cloud
 
 features:
-  - title: "Minimal Starter Kit"
-    icon: "🔀"
-    details: "Bootstrap your next TypeScript project."
-  - title: "Documentation"
-    icon: "📚"
-    details: "Easily document your idea/package/library."
-  - title: "CLI"
-    icon: "🛠"
-    details: "Build your own CLI."
-  - title: "Binary"
+  - title: "Zero Dependencies"
+    icon: "⚡"
+    details: "No AWS SDK, no AWS CLI. Pure TypeScript with direct AWS API calls using Signature V4."
+  - title: "Type-Safe Configuration"
+    icon: "🔒"
+    details: "Full TypeScript types for all AWS resources. Catch errors at compile time, not runtime."
+  - title: "Production-Ready Presets"
     icon: "🚀"
-    details: "Automatically builds a binary for your project out of your CLI."
+    details: "13 battle-tested infrastructure templates for static sites, serverless apps, APIs, and more."
+  - title: "CloudFormation Native"
+    icon: "☁️"
+    details: "Generate clean, reviewable CloudFormation templates. Full control over your infrastructure."
 ---
 
 <Home />

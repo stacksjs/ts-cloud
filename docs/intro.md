@@ -1,93 +1,101 @@
-<p align="center"><img src="https://github.com/stacksjs/rpx/blob/main/.github/art/cover.jpg?raw=true" alt="Social Card of this repo"></p>
+# Introduction
 
-# A Better Developer Experience
+ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, ts-cloud takes a fundamentally different approach.
 
-> A TypeScript Starter Kit that will help you bootstrap your next project without minimal opinion.
+## Why ts-cloud?
 
-# ts-cloud
+### Zero AWS Dependencies
 
-This is an opinionated TypeScript Starter kit to help kick-start development of your next Bun package.
+Most infrastructure tools require the AWS SDK, AWS CLI, or both. ts-cloud uses **zero external dependencies** for AWS operations:
 
-## Get Started
+- **AWS Signature V4** - Manual request signing for authentication
+- **Direct HTTPS** - Native `fetch()` for API calls
+- **Credentials** - Parse `~/.aws/credentials` without SDK
+- **CloudFormation** - XML/JSON parsing for responses
 
-It's rather simple to get your package development started:
+This means:
 
-```bash
-# you may use this GitHub template or the following command:
-bunx degit stacksjs/ts-cloud my-pkg
-cd my-pkg
+- ⚡ **Faster startup and execution** - No SDK initialization overhead
+- 📦 **Smaller bundle size** - No heavy dependencies to ship
+- 🔒 **Better security** - Reduced supply chain attack surface
+- 🎯 **Full control** - You see exactly what's happening
 
- # if you don't have pnpm installed, run `npm i -g pnpm`
-bun i # install all deps
-bun run build # builds the library for production-ready use
+### Type-Safe Configuration
 
-# after you have successfully committed, you may create a "release"
-bun run release # automates git commits, versioning, and changelog generations
+Define your infrastructure with full TypeScript support:
+
+```typescript
+import { createStaticSitePreset } from 'ts-cloud/presets'
+
+export default createStaticSitePreset({
+  name: 'My Website',
+  slug: 'my-website',
+  domain: 'example.com',
+})
 ```
 
-_Check out the package.json scripts for more commands._
+Your editor provides autocomplete, type checking catches errors before deployment, and refactoring is safe.
 
-### Developer Experience (DX)
+### Production-Ready Presets
 
-This Starter Kit comes pre-configured with the following:
+Skip weeks of CloudFormation research with battle-tested presets:
 
-- [Powerful Build Process](https://github.com/oven-sh/bun) - via Bun
-- [Fully Typed APIs](https://www.typescriptlang.org/) - via TypeScript
-- [Documentation-ready](https://vitepress.dev/) - via VitePress
-- [CLI & Binary](https://www.npmjs.com/package/bunx) - via Bun & CAC
-- [Be a Good Commitizen](https://www.npmjs.com/package/git-cz) - pre-configured Commitizen & git-cz setup to simplify semantic git commits, versioning, and changelog generations
-- [Built With Testing In Mind](https://bun.sh/docs/cli/test) - pre-configured unit-testing powered by [Bun](https://bun.sh/docs/cli/test)
-- [Renovate](https://renovatebot.com/) - optimized & automated PR dependency updates
-- [ESLint](https://eslint.org/) - for code linting _(and formatting)_
-- [GitHub Actions](https://github.com/features/actions) - runs your CI _(fixes code style issues, tags releases & creates its changelogs, runs the test suite, etc.)_
+| Preset | Use Case |
+|--------|----------|
+| Static Sites | S3 + CloudFront for SPAs and static websites |
+| Node.js Servers | EC2 + ALB + RDS + Redis for traditional apps |
+| Serverless Apps | ECS Fargate + ALB + DynamoDB for scalable services |
+| Full-Stack Apps | Complete frontend + backend + database stack |
+| API Backends | API Gateway + Lambda + DynamoDB for serverless APIs |
+| WordPress | Optimized WordPress hosting with RDS + EFS + CloudFront |
+| JAMstack | Modern static sites with Lambda@Edge for SSR |
+| Microservices | Multi-service architecture with service discovery |
+| Real-time Apps | WebSocket API + Lambda + DynamoDB Streams |
+| Data Pipelines | Kinesis + Lambda + S3 + Athena + Glue for ETL |
+| ML APIs | SageMaker + API Gateway for ML inference |
 
-## Changelog
+### CloudFormation Native
 
-Please see our [releases](https://github.com/stacksjs/stacks/releases) page for more information on what has changed recently.
+ts-cloud generates clean CloudFormation templates you can:
 
-## Stargazers
+- Review before deployment
+- Version control
+- Audit for compliance
+- Use with existing AWS tooling
 
-[![Stargazers](https://starchart.cc/stacksjs/ts-cloud.svg?variant=adaptive)](https://starchart.cc/stacksjs/ts-cloud)
+## How It Works
 
-## Contributing
+1. **Configuration** - Define infrastructure in TypeScript
+2. **Generation** - Convert config to CloudFormation templates
+3. **Deployment** - Direct HTTPS calls to AWS CloudFormation API
+4. **Monitoring** - Track deployment progress with real-time events
 
-Please review the [Contributing Guide](https://github.com/stacksjs/contributing) for details.
+## Quick Example
 
-## Community
+Deploy a static website with HTTPS and CDN in under 10 lines:
 
-For help, discussion about best practices, or any other conversation that would benefit from being searchable:
+```typescript
+import { createStaticSitePreset } from 'ts-cloud/presets'
 
-[Discussions on GitHub](https://github.com/stacksjs/stacks/discussions)
+export default createStaticSitePreset({
+  name: 'My Docs',
+  slug: 'my-docs',
+  domain: 'docs.example.com',
+})
+```
 
-For casual chit-chat with others using this package:
+```bash
+bun run cloud deploy
+```
 
-[Join the Stacks Discord Server](https://discord.gg/stacksjs)
+That's it! You now have:
+- ✅ S3 bucket with static website hosting
+- ✅ CloudFront CDN with HTTPS
+- ✅ Route53 DNS configuration
+- ✅ ACM SSL certificate
 
-## Postcardware
+## Next Steps
 
-Two things are true: Stacks OSS will always stay open-source, and we do love to receive postcards from wherever Stacks is used! 🌍 _We also publish them on our website. And thank you, Spatie_
-
-Our address: Stacks.js, 12665 Village Ln #2306, Playa Vista, CA 90094
-
-## Sponsors
-
-We would like to extend our thanks to the following sponsors for funding Stacks development. If you are interested in becoming a sponsor, please reach out to us.
-
-- [JetBrains](https://www.jetbrains.com/)
-- [The Solana Foundation](https://solana.com/)
-
-## Credits
-
-- [Chris Breuer](https://github.com/chrisbbreuer)
-- [All Contributors](https://github.com/stacksjs/rpx/graphs/contributors)
-
-## License
-
-The MIT License (MIT). Please see [LICENSE](https://github.com/stacksjs/ts-cloud/tree/main/LICENSE.md) for more information.
-
-Made with 💙
-
-<!-- Badges -->
-
-<!-- [codecov-src]: https://img.shields.io/codecov/c/gh/stacksjs/rpx/main?style=flat-square
-[codecov-href]: https://codecov.io/gh/stacksjs/rpx -->
+- [Installation](/install) - Install ts-cloud
+- [Getting Started](/guide/getting-started) - Build your first infrastructure
+- [Configuration](/config) - Learn the configuration options
