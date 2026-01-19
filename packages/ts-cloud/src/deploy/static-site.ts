@@ -128,6 +128,34 @@ export function generateStaticSiteTemplate(config: {
     },
   }
 
+  // CloudFront Function for URL rewriting (append .html to URLs without extensions)
+  resources.UrlRewriteFunction = {
+    Type: 'AWS::CloudFront::Function',
+    Properties: {
+      Name: { 'Fn::Sub': '${AWS::StackName}-url-rewrite' },
+      AutoPublish: true,
+      FunctionConfig: {
+        Comment: 'Append .html extension to URLs without extensions',
+        Runtime: 'cloudfront-js-2.0',
+      },
+      FunctionCode: `function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+
+  // If URI ends with /, serve index.html
+  if (uri.endsWith('/')) {
+    request.uri = uri + 'index.html';
+  }
+  // If URI doesn't have an extension, append .html
+  else if (!uri.includes('.')) {
+    request.uri = uri + '.html';
+  }
+
+  return request;
+}`,
+    },
+  }
+
   // CloudFront Distribution
   const distributionConfig: any = {
     Enabled: true,
@@ -152,6 +180,12 @@ export function generateStaticSiteTemplate(config: {
       CachedMethods: ['GET', 'HEAD'],
       Compress: true,
       CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // Managed-CachingOptimized
+      FunctionAssociations: [
+        {
+          EventType: 'viewer-request',
+          FunctionARN: { 'Fn::GetAtt': ['UrlRewriteFunction', 'FunctionARN'] },
+        },
+      ],
     },
     CustomErrorResponses: [
       {
@@ -186,7 +220,7 @@ export function generateStaticSiteTemplate(config: {
 
   resources.CloudFrontDistribution = {
     Type: 'AWS::CloudFront::Distribution',
-    DependsOn: ['S3Bucket', 'CloudFrontOAC'],
+    DependsOn: ['S3Bucket', 'CloudFrontOAC', 'UrlRewriteFunction'],
     Properties: {
       DistributionConfig: distributionConfig,
     },
@@ -347,10 +381,12 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 
   // Check if stack already exists
   let stackExists = false
+  let existingBucketName: string | undefined
   try {
     const existingStacks = await cf.describeStacks({ stackName })
     if (existingStacks.Stacks.length > 0) {
-      const stackStatus = existingStacks.Stacks[0].StackStatus
+      const stack = existingStacks.Stacks[0]
+      const stackStatus = stack.StackStatus
 
       // If stack is being deleted, wait for it to complete
       if (stackStatus === 'DELETE_IN_PROGRESS') {
@@ -363,6 +399,9 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
       }
       else {
         stackExists = true
+        // Get existing bucket name from stack outputs to ensure consistency during updates
+        const outputs = stack.Outputs || []
+        existingBucketName = outputs.find(o => o.OutputKey === 'BucketName')?.OutputValue
       }
     }
   }
@@ -378,7 +417,8 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 
   // If stack doesn't exist, check for orphaned resources and clean them up
   // Use a unique bucket name suffix if cleanup fails
-  let finalBucket = bucket
+  // If stack exists, use the existing bucket name to avoid CloudFormation trying to recreate resources
+  let finalBucket = existingBucketName || bucket
   if (!stackExists) {
     const s3 = new S3Client(region)
     const cloudfront = new CloudFrontClient()
@@ -513,14 +553,13 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
   // Create or update stack
   let stackId: string
   let isUpdate = false
-  console.log(`Creating CloudFormation stack: ${stackName}`)
-  console.log(`Bucket name: ${finalBucket}`)
-  console.log(`Domain: ${domain || 'not specified'}`)
-  console.log(`Certificate ARN: ${certificateArn || 'not specified'}`)
 
   if (stackExists) {
     isUpdate = true
-    console.log('Stack exists, updating...')
+    console.log(`Updating CloudFormation stack: ${stackName}`)
+    console.log(`Using existing bucket: ${finalBucket}`)
+    console.log(`Domain: ${domain || 'not specified'}`)
+    console.log(`Certificate ARN: ${certificateArn || 'not specified'}`)
     try {
       const result = await cf.updateStack({
         stackName,
@@ -558,6 +597,10 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
     }
   }
   else {
+    console.log(`Creating CloudFormation stack: ${stackName}`)
+    console.log(`Bucket name: ${finalBucket}`)
+    console.log(`Domain: ${domain || 'not specified'}`)
+    console.log(`Certificate ARN: ${certificateArn || 'not specified'}`)
     console.log('Stack does not exist, creating...')
     const result = await cf.createStack({
       stackName,
@@ -734,9 +777,10 @@ export async function deleteStaticSite(stackName: string, region: string = 'us-e
  */
 export async function deployStaticSiteFull(config: StaticSiteConfig & {
   sourceDir: string
+  cleanBucket?: boolean
   onProgress?: (stage: string, detail?: string) => void
 }): Promise<DeployResult & { filesUploaded?: number }> {
-  const { sourceDir, onProgress, ...siteConfig } = config
+  const { sourceDir, cleanBucket = true, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
   onProgress?.('infrastructure', 'Deploying CloudFormation stack...')
@@ -746,7 +790,20 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
     return infraResult
   }
 
-  // Step 2: Upload files
+  // Step 2: Clean bucket before upload (ensures no stale files)
+  if (cleanBucket) {
+    onProgress?.('clean', 'Cleaning old files from S3...')
+    try {
+      const s3 = new S3Client(siteConfig.region || 'us-east-1')
+      await s3.emptyBucket(infraResult.bucket)
+    }
+    catch (err: any) {
+      // Log but don't fail - bucket might be empty
+      console.log(`Note: Could not clean bucket: ${err.message}`)
+    }
+  }
+
+  // Step 3: Upload files
   onProgress?.('upload', 'Uploading files to S3...')
   const uploadResult = await uploadStaticFiles({
     sourceDir,

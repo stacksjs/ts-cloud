@@ -466,6 +466,9 @@ export class S3Client {
   ${keys.map(key => `<Object><Key>${key}</Key></Object>`).join('\n  ')}
 </Delete>`
 
+    // S3 DeleteObjects requires Content-MD5 header
+    const contentMd5 = crypto.createHash('md5').update(deleteXml).digest('base64')
+
     await this.client.request({
       service: 's3',
       region: this.region,
@@ -475,6 +478,7 @@ export class S3Client {
       body: deleteXml,
       headers: {
         'Content-Type': 'application/xml',
+        'Content-MD5': contentMd5,
       },
     })
   }
@@ -2032,6 +2036,59 @@ export class S3Client {
     const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`
 
     return presignedUrl
+  }
+
+  /**
+   * List objects in a bucket with pagination support
+   */
+  async listObjects(options: {
+    bucket: string
+    prefix?: string
+    maxKeys?: number
+    continuationToken?: string
+  }): Promise<{
+    objects: S3Object[]
+    nextContinuationToken?: string
+  }> {
+    const { bucket, prefix, maxKeys = 1000, continuationToken } = options
+
+    // Build query parameters for ListObjectsV2
+    const queryParams: Record<string, string> = {
+      'list-type': '2',
+      'max-keys': maxKeys.toString(),
+    }
+
+    if (prefix) queryParams.prefix = prefix
+    if (continuationToken) queryParams['continuation-token'] = continuationToken
+
+    const result = await this.client.request({
+      service: 's3',
+      region: this.region,
+      method: 'GET',
+      path: `/${bucket}`,
+      queryParams,
+    })
+
+    // Parse S3 XML response
+    const objects: S3Object[] = []
+    const listResult = result?.ListBucketResult
+
+    if (listResult?.Contents) {
+      const items = Array.isArray(listResult.Contents) ? listResult.Contents : [listResult.Contents]
+      for (const item of items) {
+        objects.push({
+          Key: item.Key || '',
+          LastModified: item.LastModified || '',
+          Size: Number.parseInt(item.Size || '0'),
+          ETag: item.ETag,
+        })
+      }
+    }
+
+    return {
+      objects,
+      nextContinuationToken: listResult?.NextContinuationToken,
+    }
   }
 
   /**
