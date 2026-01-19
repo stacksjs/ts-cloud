@@ -572,7 +572,7 @@ export class CloudFrontClient {
         ARN: dist.ARN,
         Status: dist.Status,
         DomainName: dist.DomainName,
-        Aliases: aliases || [],
+        Aliases: aliases ? { Quantity: aliases.length, Items: aliases } : { Quantity: 0, Items: [] },
         Enabled: dist.DistributionConfig?.Enabled === 'true' || dist.DistributionConfig?.Enabled === true,
       },
       ETag: result.ETag || '',
@@ -1417,7 +1417,7 @@ export class CloudFrontClient {
    */
   async deleteDistribution(distributionId: string, etag?: string): Promise<void> {
     // If no ETag provided, get it first
-    let etagToUse = etag
+    let etagToUse = etag || ''
     if (!etagToUse) {
       const getResult = await this.client.request({
         service: 'cloudfront',

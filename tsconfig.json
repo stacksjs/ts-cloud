@@ -29,5 +29,6 @@
       "@ts-cloud/aws-types": ["./packages/aws-types/src"],
       "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"]
     }
-  }
+  },
+  "exclude": ["docs", "dist", "node_modules"]
 }

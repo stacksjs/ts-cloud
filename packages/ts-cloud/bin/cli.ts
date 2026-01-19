@@ -4961,8 +4961,8 @@ app
       // Show aliases if any
       cli.info('\nAliases:')
       for (const dist of distributions) {
-        if (dist.Aliases && dist.Aliases.length > 0) {
-          cli.info(`  ${dist.Id}: ${dist.Aliases.join(', ')}`)
+        if (dist.Aliases?.Items && dist.Aliases.Items.length > 0) {
+          cli.info(`  ${dist.Id}: ${dist.Aliases.Items.join(', ')}`)
         }
       }
     }

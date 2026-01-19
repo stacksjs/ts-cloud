@@ -2039,27 +2039,19 @@ export class S3Client {
    */
   async emptyBucket(bucket: string): Promise<{ deletedCount: number }> {
     let deletedCount = 0
-    let continuationToken: string | undefined
 
-    do {
-      // List objects in the bucket
-      const listResult = await this.listObjects({
-        bucket,
-        maxKeys: 1000,
-        continuationToken,
-      })
+    // List all objects in the bucket (handles pagination internally)
+    const objects = await this.listAllObjects({ bucket })
 
-      if (listResult.objects.length === 0) {
-        break
+    if (objects.length > 0) {
+      // Delete objects in batches of 1000
+      for (let i = 0; i < objects.length; i += 1000) {
+        const batch = objects.slice(i, i + 1000)
+        const keys = batch.map((obj: S3Object) => obj.Key)
+        await this.deleteObjects(bucket, keys)
+        deletedCount += keys.length
       }
-
-      // Delete objects in batches
-      const keys = listResult.objects.map(obj => obj.Key)
-      await this.deleteObjects(bucket, keys)
-      deletedCount += keys.length
-
-      continuationToken = listResult.nextContinuationToken
-    } while (continuationToken)
+    }
 
     // Also delete any object versions if versioning is enabled
     try {
