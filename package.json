@@ -58,7 +58,7 @@
     "dev:docs": "bun --bun vitepress dev docs",
     "build:docs": "bun --bun vitepress build docs",
     "preview:docs": "bun --bun vitepress preview docs",
-    "deploy:docs": "bun /Users/chrisbreuer/Code/Tools/bunpress/bin/cli.ts deploy --domain ts-cloud.stacksjs.com",
+    "deploy:docs": "bunx bunpress deploy --domain ts-cloud.stacksjs.com",
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
