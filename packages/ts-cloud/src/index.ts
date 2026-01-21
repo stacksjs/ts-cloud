@@ -103,12 +103,44 @@ export {
   invalidateCache,
   deleteStaticSite,
   generateStaticSiteTemplate,
+  // External DNS support
+  deployStaticSiteWithExternalDns,
+  deployStaticSiteWithExternalDnsFull,
+  generateExternalDnsStaticSiteTemplate,
 } from './deploy'
 export type {
   StaticSiteConfig,
   DeployResult,
   UploadOptions,
+  // External DNS types
+  ExternalDnsStaticSiteConfig,
+  ExternalDnsDeployResult,
 } from './deploy'
+
+// Export DNS providers
+export {
+  createDnsProvider,
+  detectDnsProvider,
+  DnsProviderFactory,
+  dnsProviders,
+  PorkbunProvider,
+  GoDaddyProvider,
+  Route53Provider,
+  UnifiedDnsValidator,
+  createPorkbunValidator,
+  createGoDaddyValidator,
+  createRoute53Validator,
+} from './dns'
+export type {
+  DnsProvider,
+  DnsProviderConfig,
+  DnsRecord,
+  DnsRecordType,
+  DnsRecordResult,
+  CreateRecordResult,
+  DeleteRecordResult,
+  ListRecordsResult,
+} from './dns'
 
 // Re-export core functionality (these take precedence for common types)
 export * from '@ts-cloud/core'

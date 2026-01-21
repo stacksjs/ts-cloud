@@ -7,7 +7,12 @@ export * from './types'
 export { PorkbunProvider } from './porkbun'
 export { GoDaddyProvider } from './godaddy'
 export { Route53Provider } from './route53-adapter'
-export { UnifiedDnsValidator } from './validator'
+export {
+  UnifiedDnsValidator,
+  createPorkbunValidator,
+  createGoDaddyValidator,
+  createRoute53Validator,
+} from './validator'
 
 import type { DnsProvider, DnsProviderConfig } from './types'
 import { GoDaddyProvider } from './godaddy'

@@ -4,3 +4,4 @@
  */
 
 export * from './static-site'
+export * from './static-site-external-dns'
