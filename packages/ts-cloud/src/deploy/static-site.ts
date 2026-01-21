@@ -1,6 +1,6 @@
 /**
  * Static Site Deployment Module
- * Deploys static sites to AWS using CloudFormation (S3 + CloudFront + Route53 + ACM)
+ * Deploys static sites to AWS using CloudFormation (S3 + CloudFront + Route53/External DNS + ACM)
  */
 
 import { CloudFormationClient } from '../aws/cloudformation'
@@ -8,6 +8,8 @@ import { S3Client } from '../aws/s3'
 import { CloudFrontClient } from '../aws/cloudfront'
 import { Route53Client } from '../aws/route53'
 import { ACMClient, ACMDnsValidator } from '../aws/acm'
+import type { DnsProviderConfig } from '../dns/types'
+import { deployStaticSiteWithExternalDns, deployStaticSiteWithExternalDnsFull } from './static-site-external-dns'
 
 export interface StaticSiteConfig {
   /** Site name used for resource naming */
@@ -36,6 +38,12 @@ export interface StaticSiteConfig {
   cacheControl?: string
   /** Tags to apply to resources */
   tags?: Record<string, string>
+  /**
+   * External DNS provider configuration (optional)
+   * When provided, DNS records will be managed via the specified provider (Porkbun, GoDaddy, etc.)
+   * instead of Route53. Useful when your domain is registered outside AWS.
+   */
+  dnsProvider?: DnsProviderConfig
 }
 
 export interface DeployResult {
@@ -315,8 +323,36 @@ export function generateStaticSiteTemplate(config: {
 
 /**
  * Deploy a static site to AWS
+ * Automatically routes to external DNS deployment when a non-Route53 dnsProvider is configured
  */
 export async function deployStaticSite(config: StaticSiteConfig): Promise<DeployResult> {
+  // If using external DNS provider (not Route53), delegate to the external DNS deployment
+  if (config.dnsProvider && config.dnsProvider.provider !== 'route53') {
+    const domain = config.domain || (config.subdomain && config.baseDomain ? `${config.subdomain}.${config.baseDomain}` : undefined)
+    if (!domain) {
+      return {
+        success: false,
+        stackName: config.stackName || `${config.siteName}-static-site`,
+        bucket: config.bucket || `${config.siteName}-${Date.now()}`,
+        message: 'Domain is required when using external DNS provider',
+      }
+    }
+
+    return deployStaticSiteWithExternalDns({
+      siteName: config.siteName,
+      region: config.region,
+      domain,
+      bucket: config.bucket,
+      certificateArn: config.certificateArn,
+      stackName: config.stackName,
+      defaultRootObject: config.defaultRootObject,
+      errorDocument: config.errorDocument,
+      cacheControl: config.cacheControl,
+      tags: config.tags,
+      dnsProvider: config.dnsProvider,
+    })
+  }
+
   const region = config.region || 'us-east-1'
   const cfRegion = 'us-east-1' // CloudFormation for global resources must be in us-east-1
 

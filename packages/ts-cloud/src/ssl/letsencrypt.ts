@@ -2,9 +2,11 @@
  * Let's Encrypt Integration for Stacks
  *
  * Provides utilities for obtaining and managing Let's Encrypt certificates.
- * Supports both HTTP-01 and DNS-01 challenges.
+ * Supports both HTTP-01 and DNS-01 challenges with multiple DNS providers.
  */
 
+import type { DnsProvider, DnsProviderConfig } from '../dns/types'
+import { createDnsProvider } from '../dns'
 import { Route53Client } from '../aws/route53'
 
 export interface LetsEncryptConfig {
@@ -33,9 +35,16 @@ export interface LetsEncryptConfig {
   challengeType?: 'http-01' | 'dns-01'
 
   /**
-   * Route53 hosted zone ID (required for dns-01 challenge)
+   * Route53 hosted zone ID (required for dns-01 challenge with Route53)
+   * @deprecated Use dnsProvider config instead
    */
   hostedZoneId?: string
+
+  /**
+   * DNS provider configuration for dns-01 challenge
+   * Supports: route53, porkbun, godaddy
+   */
+  dnsProvider?: DnsProviderConfig
 
   /**
    * Certificate storage path
@@ -48,6 +57,27 @@ export interface LetsEncryptConfig {
    * @default true
    */
   autoRenew?: boolean
+}
+
+/**
+ * DNS-01 challenge configuration for programmatic use
+ */
+export interface Dns01ChallengeConfig {
+  domain: string
+  challengeValue: string
+  /**
+   * Route53 hosted zone ID (legacy, use dnsProvider instead)
+   * @deprecated Use dnsProvider config instead
+   */
+  hostedZoneId?: string
+  /**
+   * DNS provider configuration
+   */
+  dnsProvider?: DnsProviderConfig
+  /**
+   * AWS region (only for Route53)
+   */
+  region?: string
 }
 
 /**
@@ -79,7 +109,11 @@ export function generateLetsEncryptUserData(config: LetsEncryptConfig): string {
       stagingFlag,
       primaryDomain,
     })
-  } else {
+  }
+  else {
+    // Determine DNS provider type
+    const dnsProviderType = config.dnsProvider?.provider || (config.hostedZoneId ? 'route53' : undefined)
+
     return generateDns01UserData({
       domains,
       email,
@@ -90,6 +124,8 @@ export function generateLetsEncryptUserData(config: LetsEncryptConfig): string {
       stagingFlag,
       primaryDomain,
       hostedZoneId: config.hostedZoneId,
+      dnsProvider: config.dnsProvider,
+      dnsProviderType,
     })
   }
 }
@@ -104,6 +140,8 @@ interface UserDataParams {
   stagingFlag: string
   primaryDomain: string
   hostedZoneId?: string
+  dnsProvider?: DnsProviderConfig
+  dnsProviderType?: string
 }
 
 /**
@@ -154,18 +192,31 @@ systemctl start stacks
 }
 
 /**
- * Generate UserData for DNS-01 challenge using Route53
+ * Generate UserData for DNS-01 challenge
+ * Supports Route53 (via certbot plugin) and manual mode for external DNS providers
  */
 function generateDns01UserData(params: UserDataParams): string {
-  const { email, certPath, autoRenew, domainFlags, stagingFlag, primaryDomain, hostedZoneId } = params
+  const {
+    email,
+    certPath,
+    autoRenew,
+    domainFlags,
+    stagingFlag,
+    primaryDomain,
+    hostedZoneId,
+    dnsProvider,
+    dnsProviderType,
+  } = params
 
-  if (!hostedZoneId) {
-    throw new Error('hostedZoneId is required for DNS-01 challenge')
-  }
+  // Route53 uses certbot's native plugin
+  if (dnsProviderType === 'route53' || hostedZoneId) {
+    if (!hostedZoneId) {
+      throw new Error('hostedZoneId is required for DNS-01 challenge with Route53')
+    }
 
-  return `
+    return `
 # ==========================================
-# Let's Encrypt Certificate Setup (DNS-01)
+# Let's Encrypt Certificate Setup (DNS-01 via Route53)
 # ==========================================
 
 # Install certbot with Route53 plugin
@@ -196,6 +247,234 @@ fi
 
 ${autoRenew ? generateRenewalSetup(primaryDomain) : '# Auto-renewal disabled'}
 `
+  }
+
+  // For external DNS providers (Porkbun, GoDaddy), use manual mode with hooks
+  // The DNS records need to be managed via the API
+  if (!dnsProvider) {
+    throw new Error('dnsProvider configuration is required for DNS-01 challenge with external DNS providers')
+  }
+
+  const providerName = dnsProvider.provider.toUpperCase()
+  const envVars = generateDnsProviderEnvVars(dnsProvider)
+
+  return `
+# ==========================================
+# Let's Encrypt Certificate Setup (DNS-01 via ${providerName})
+# ==========================================
+
+# Install certbot
+dnf install -y certbot jq curl
+
+${envVars}
+
+# Create DNS challenge hook scripts directory
+mkdir -p /etc/letsencrypt/hooks
+
+# Create authenticator hook for ${providerName}
+cat > /etc/letsencrypt/hooks/auth-hook.sh << 'AUTHHOOK'
+#!/bin/bash
+# DNS-01 authenticator hook for ${providerName}
+# This creates the TXT record for ACME challenge
+
+DOMAIN="\$CERTBOT_DOMAIN"
+VALIDATION="\$CERTBOT_VALIDATION"
+RECORD_NAME="_acme-challenge.\$DOMAIN"
+
+${generateDnsCreateRecordScript(dnsProvider)}
+
+# Wait for DNS propagation
+echo "Waiting 60 seconds for DNS propagation..."
+sleep 60
+AUTHHOOK
+
+chmod +x /etc/letsencrypt/hooks/auth-hook.sh
+
+# Create cleanup hook for ${providerName}
+cat > /etc/letsencrypt/hooks/cleanup-hook.sh << 'CLEANUPHOOK'
+#!/bin/bash
+# DNS-01 cleanup hook for ${providerName}
+# This removes the TXT record after validation
+
+DOMAIN="\$CERTBOT_DOMAIN"
+VALIDATION="\$CERTBOT_VALIDATION"
+RECORD_NAME="_acme-challenge.\$DOMAIN"
+
+${generateDnsDeleteRecordScript(dnsProvider)}
+CLEANUPHOOK
+
+chmod +x /etc/letsencrypt/hooks/cleanup-hook.sh
+
+# Obtain certificate using manual DNS-01 challenge with hooks
+certbot certonly \\
+  --manual \\
+  --preferred-challenges dns \\
+  --manual-auth-hook /etc/letsencrypt/hooks/auth-hook.sh \\
+  --manual-cleanup-hook /etc/letsencrypt/hooks/cleanup-hook.sh \\
+  --non-interactive \\
+  --agree-tos \\
+  --email ${email} \\
+  ${stagingFlag} \\
+  ${domainFlags}
+
+# Check if certificate was obtained
+if [ -f "${certPath}/${primaryDomain}/fullchain.pem" ]; then
+  echo "Certificate obtained successfully!"
+
+  # Create symlinks for easier access
+  mkdir -p /etc/ssl/stacks
+  ln -sf ${certPath}/${primaryDomain}/fullchain.pem /etc/ssl/stacks/fullchain.pem
+  ln -sf ${certPath}/${primaryDomain}/privkey.pem /etc/ssl/stacks/privkey.pem
+  ln -sf ${certPath}/${primaryDomain}/cert.pem /etc/ssl/stacks/cert.pem
+  ln -sf ${certPath}/${primaryDomain}/chain.pem /etc/ssl/stacks/chain.pem
+else
+  echo "Failed to obtain certificate!"
+fi
+
+${autoRenew ? generateRenewalSetup(primaryDomain) : '# Auto-renewal disabled'}
+`
+}
+
+/**
+ * Generate environment variables for DNS provider
+ */
+function generateDnsProviderEnvVars(config: DnsProviderConfig): string {
+  switch (config.provider) {
+    case 'porkbun':
+      return `
+# Porkbun API credentials
+export PORKBUN_API_KEY="${config.apiKey}"
+export PORKBUN_SECRET_KEY="${config.secretKey}"
+`
+    case 'godaddy':
+      return `
+# GoDaddy API credentials
+export GODADDY_API_KEY="${config.apiKey}"
+export GODADDY_API_SECRET="${config.apiSecret}"
+export GODADDY_ENV="${config.environment || 'production'}"
+`
+    case 'route53':
+      return `
+# Route53 uses IAM role credentials
+`
+    default:
+      return ''
+  }
+}
+
+/**
+ * Generate DNS record creation script for the provider
+ */
+function generateDnsCreateRecordScript(config: DnsProviderConfig): string {
+  switch (config.provider) {
+    case 'porkbun':
+      return `
+# Extract root domain (last two parts)
+ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+SUBDOMAIN="_acme-challenge"
+if [ "$DOMAIN" != "$ROOT_DOMAIN" ]; then
+  SUBDOMAIN="_acme-challenge.$(echo "$DOMAIN" | sed "s/\\.$ROOT_DOMAIN$//")"
+fi
+
+echo "Creating TXT record via Porkbun: $SUBDOMAIN.$ROOT_DOMAIN -> $VALIDATION"
+
+curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/create/$ROOT_DOMAIN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "apikey": "'"$PORKBUN_API_KEY"'",
+    "secretapikey": "'"$PORKBUN_SECRET_KEY"'",
+    "type": "TXT",
+    "name": "'"$SUBDOMAIN"'",
+    "content": "'"$VALIDATION"'",
+    "ttl": "600"
+  }'
+`
+    case 'godaddy':
+      return `
+# Extract root domain
+ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+RECORD_NAME="_acme-challenge"
+if [ "$DOMAIN" != "$ROOT_DOMAIN" ]; then
+  RECORD_NAME="_acme-challenge.$(echo "$DOMAIN" | sed "s/\\.$ROOT_DOMAIN$//")"
+fi
+
+echo "Creating TXT record via GoDaddy: $RECORD_NAME.$ROOT_DOMAIN -> $VALIDATION"
+
+API_URL="https://api.godaddy.com"
+if [ "$GODADDY_ENV" = "ote" ]; then
+  API_URL="https://api.ote-godaddy.com"
+fi
+
+curl -s -X PATCH "$API_URL/v1/domains/$ROOT_DOMAIN/records" \\
+  -H "Authorization: sso-key $GODADDY_API_KEY:$GODADDY_API_SECRET" \\
+  -H "Content-Type: application/json" \\
+  -d '[{
+    "type": "TXT",
+    "name": "'"$RECORD_NAME"'",
+    "data": "'"$VALIDATION"'",
+    "ttl": 600
+  }]'
+`
+    default:
+      return 'echo "Unsupported DNS provider"'
+  }
+}
+
+/**
+ * Generate DNS record deletion script for the provider
+ */
+function generateDnsDeleteRecordScript(config: DnsProviderConfig): string {
+  switch (config.provider) {
+    case 'porkbun':
+      return `
+# Extract root domain
+ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+
+echo "Deleting TXT record via Porkbun for _acme-challenge.$DOMAIN"
+
+# First, get all TXT records to find the ID
+RECORDS=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieveByNameType/$ROOT_DOMAIN/TXT" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "apikey": "'"$PORKBUN_API_KEY"'",
+    "secretapikey": "'"$PORKBUN_SECRET_KEY"'"
+  }')
+
+# Extract record ID for _acme-challenge and delete it
+RECORD_ID=$(echo "$RECORDS" | jq -r '.records[] | select(.name | contains("_acme-challenge")) | .id' | head -1)
+
+if [ -n "$RECORD_ID" ] && [ "$RECORD_ID" != "null" ]; then
+  curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/delete/$ROOT_DOMAIN/$RECORD_ID" \\
+    -H "Content-Type: application/json" \\
+    -d '{
+      "apikey": "'"$PORKBUN_API_KEY"'",
+      "secretapikey": "'"$PORKBUN_SECRET_KEY"'"
+    }'
+  echo "Deleted record ID: $RECORD_ID"
+fi
+`
+    case 'godaddy':
+      return `
+# Extract root domain
+ROOT_DOMAIN=$(echo "$DOMAIN" | awk -F. '{print $(NF-1)"."$NF}')
+RECORD_NAME="_acme-challenge"
+if [ "$DOMAIN" != "$ROOT_DOMAIN" ]; then
+  RECORD_NAME="_acme-challenge.$(echo "$DOMAIN" | sed "s/\\.$ROOT_DOMAIN$//")"
+fi
+
+echo "Deleting TXT record via GoDaddy: $RECORD_NAME.$ROOT_DOMAIN"
+
+API_URL="https://api.godaddy.com"
+if [ "$GODADDY_ENV" = "ote" ]; then
+  API_URL="https://api.ote-godaddy.com"
+fi
+
+curl -s -X DELETE "$API_URL/v1/domains/$ROOT_DOMAIN/records/TXT/$RECORD_NAME" \\
+  -H "Authorization: sso-key $GODADDY_API_KEY:$GODADDY_API_SECRET"
+`
+    default:
+      return 'echo "Unsupported DNS provider"'
+  }
 }
 
 /**
@@ -292,7 +571,8 @@ if (hasCerts) {
   })
   console.log(\`HTTPS server running on port \${HTTPS_PORT}\`)
 
-  ${redirectHttp ? `
+  ${redirectHttp
+? `
   // Start HTTP server for redirect
   const httpServer = Bun.serve({
     port: HTTP_PORT,
@@ -312,7 +592,8 @@ if (hasCerts) {
     },
   })
   console.log(\`HTTP redirect server running on port \${HTTP_PORT}\`)
-  ` : ''}
+  `
+: ''}
 } else {
   // No certificates yet, run HTTP only
   console.log('No SSL certificates found, running HTTP only')
@@ -355,64 +636,97 @@ async function handleRequest(request: Request): Promise<Response> {
 }
 
 /**
- * Generate DNS-01 challenge setup using Route53
- * Can be used programmatically to set up challenges
+ * Setup DNS-01 challenge programmatically using any DNS provider
+ * This is the unified API that works with Route53, Porkbun, GoDaddy, etc.
  */
-export async function setupDns01Challenge(options: {
-  domain: string
-  hostedZoneId: string
-  challengeValue: string
-  region?: string
-}): Promise<void> {
-  const { domain, hostedZoneId, challengeValue, region = 'us-east-1' } = options
+export async function setupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
+  const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
 
-  const r53 = new Route53Client(region)
+  // Use the unified DNS provider abstraction if available
+  if (dnsProvider) {
+    const provider: DnsProvider = createDnsProvider(dnsProvider)
+    const result = await provider.upsertRecord(domain, {
+      name: `_acme-challenge.${domain}`,
+      type: 'TXT',
+      content: challengeValue,
+      ttl: 60,
+    })
 
-  await r53.changeResourceRecordSets({
-    HostedZoneId: hostedZoneId,
-    ChangeBatch: {
-      Comment: 'ACME DNS-01 challenge',
-      Changes: [{
-        Action: 'UPSERT',
-        ResourceRecordSet: {
-          Name: `_acme-challenge.${domain}`,
-          Type: 'TXT',
-          TTL: 60,
-          ResourceRecords: [{ Value: `"${challengeValue}"` }],
-        },
-      }],
-    },
-  })
+    if (!result.success) {
+      throw new Error(`Failed to create DNS challenge record: ${result.message}`)
+    }
+    return
+  }
+
+  // Legacy: Use Route53 directly if hostedZoneId is provided
+  if (hostedZoneId) {
+    const r53 = new Route53Client(region)
+
+    await r53.changeResourceRecordSets({
+      HostedZoneId: hostedZoneId,
+      ChangeBatch: {
+        Comment: 'ACME DNS-01 challenge',
+        Changes: [{
+          Action: 'UPSERT',
+          ResourceRecordSet: {
+            Name: `_acme-challenge.${domain}`,
+            Type: 'TXT',
+            TTL: 60,
+            ResourceRecords: [{ Value: `"${challengeValue}"` }],
+          },
+        }],
+      },
+    })
+    return
+  }
+
+  throw new Error('Either dnsProvider or hostedZoneId must be provided')
 }
 
 /**
- * Clean up DNS-01 challenge record
+ * Clean up DNS-01 challenge record using any DNS provider
  */
-export async function cleanupDns01Challenge(options: {
-  domain: string
-  hostedZoneId: string
-  challengeValue: string
-  region?: string
-}): Promise<void> {
-  const { domain, hostedZoneId, challengeValue, region = 'us-east-1' } = options
+export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
+  const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
 
-  const r53 = new Route53Client(region)
+  // Use the unified DNS provider abstraction if available
+  if (dnsProvider) {
+    const provider: DnsProvider = createDnsProvider(dnsProvider)
+    const result = await provider.deleteRecord(domain, {
+      name: `_acme-challenge.${domain}`,
+      type: 'TXT',
+      content: challengeValue,
+    })
 
-  await r53.changeResourceRecordSets({
-    HostedZoneId: hostedZoneId,
-    ChangeBatch: {
-      Comment: 'Remove ACME DNS-01 challenge',
-      Changes: [{
-        Action: 'DELETE',
-        ResourceRecordSet: {
-          Name: `_acme-challenge.${domain}`,
-          Type: 'TXT',
-          TTL: 60,
-          ResourceRecords: [{ Value: `"${challengeValue}"` }],
-        },
-      }],
-    },
-  })
+    if (!result.success) {
+      console.warn(`Failed to delete DNS challenge record: ${result.message}`)
+    }
+    return
+  }
+
+  // Legacy: Use Route53 directly if hostedZoneId is provided
+  if (hostedZoneId) {
+    const r53 = new Route53Client(region)
+
+    await r53.changeResourceRecordSets({
+      HostedZoneId: hostedZoneId,
+      ChangeBatch: {
+        Comment: 'Remove ACME DNS-01 challenge',
+        Changes: [{
+          Action: 'DELETE',
+          ResourceRecordSet: {
+            Name: `_acme-challenge.${domain}`,
+            Type: 'TXT',
+            TTL: 60,
+            ResourceRecords: [{ Value: `"${challengeValue}"` }],
+          },
+        }],
+      },
+    })
+    return
+  }
+
+  throw new Error('Either dnsProvider or hostedZoneId must be provided')
 }
 
 /**
@@ -423,10 +737,11 @@ export function needsRenewal(certPath: string): boolean {
     const { execSync } = require('node:child_process')
     const result = execSync(
       `openssl x509 -checkend 2592000 -noout -in ${certPath}/cert.pem`,
-      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
     )
     return false // Certificate is still valid for > 30 days
-  } catch {
+  }
+  catch {
     return true // Certificate expires within 30 days or doesn't exist
   }
 }

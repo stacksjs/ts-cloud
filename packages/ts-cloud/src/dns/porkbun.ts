@@ -312,6 +312,23 @@ export class PorkbunProvider implements DnsProvider {
   }
 
   /**
+   * List all domains managed by this Porkbun account
+   * Uses the domain list API endpoint
+   */
+  async listDomains(): Promise<string[]> {
+    try {
+      // Porkbun's /domain/listAll endpoint returns domains with API access enabled
+      const response = await this.request<PorkbunApiResponse & { domains?: Array<{ domain: string }> }>(
+        '/domain/listAll',
+      )
+      return (response.domains || []).map(d => d.domain)
+    }
+    catch {
+      return []
+    }
+  }
+
+  /**
    * Get nameservers for a domain (Porkbun-specific)
    */
   async getNameServers(domain: string): Promise<string[]> {

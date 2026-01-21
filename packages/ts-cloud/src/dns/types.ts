@@ -9,6 +9,8 @@ export interface DnsRecord {
   name: string
   type: DnsRecordType
   content: string
+  /** Alias for content - some providers use 'value' instead */
+  value?: string
   ttl?: number
   priority?: number // For MX and SRV records
   weight?: number // For SRV records
@@ -70,6 +72,12 @@ export interface DnsProvider {
    * Check if the provider can manage this domain
    */
   canManageDomain(domain: string): Promise<boolean>
+
+  /**
+   * List all domains managed by this provider
+   * Returns an array of domain names (e.g., ['example.com', 'mysite.org'])
+   */
+  listDomains(): Promise<string[]>
 }
 
 /**

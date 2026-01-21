@@ -423,25 +423,44 @@ export class ACMClient {
 }
 
 import { Route53Client } from './route53'
+import type { DnsProvider, DnsProviderConfig } from '../dns/types'
+import { createDnsProvider } from '../dns'
 
 /**
  * Helper class for ACM DNS validation with Route53 integration
+ * @deprecated Use UnifiedDnsValidator from 'ts-cloud/dns' for multi-provider support (Route53, Porkbun, GoDaddy)
  */
 export class ACMDnsValidator {
   private acm: ACMClient
   private route53: Route53Client
+  private dnsProvider?: DnsProvider
 
-  constructor(region: string = 'us-east-1') {
+  /**
+   * Create ACM DNS validator
+   * @param region - AWS region for ACM (default: us-east-1)
+   * @param dnsProviderConfig - Optional external DNS provider config (Porkbun, GoDaddy)
+   */
+  constructor(region: string = 'us-east-1', dnsProviderConfig?: DnsProviderConfig) {
     this.acm = new ACMClient(region)
     this.route53 = new Route53Client()
+
+    // Initialize external DNS provider if config provided
+    if (dnsProviderConfig && dnsProviderConfig.provider !== 'route53') {
+      this.dnsProvider = createDnsProvider(dnsProviderConfig)
+    }
   }
 
   /**
    * Request certificate and automatically create DNS validation records
+   * @param params.domainName - Primary domain name for the certificate
+   * @param params.hostedZoneId - Route53 hosted zone ID (required if no external DNS provider configured)
+   * @param params.subjectAlternativeNames - Additional domain names (SANs)
+   * @param params.waitForValidation - Wait for certificate to be issued
+   * @param params.maxWaitMinutes - Maximum wait time in minutes
    */
   async requestAndValidate(params: {
     domainName: string
-    hostedZoneId: string
+    hostedZoneId?: string
     subjectAlternativeNames?: string[]
     waitForValidation?: boolean
     maxWaitMinutes?: number
@@ -461,6 +480,11 @@ export class ACMDnsValidator {
       maxWaitMinutes = 30,
     } = params
 
+    // Validate that we have a DNS provider
+    if (!this.dnsProvider && !hostedZoneId) {
+      throw new Error('Either hostedZoneId or external DNS provider configuration is required')
+    }
+
     // Request certificate
     const { CertificateArn } = await this.acm.requestCertificate({
       DomainName: domainName,
@@ -476,23 +500,41 @@ export class ACMDnsValidator {
     // Get validation records
     const validationRecords = await this.acm.getDnsValidationRecords(CertificateArn)
 
-    // Create Route53 records for each validation record
-    for (const record of validationRecords) {
-      await this.route53.changeResourceRecordSets({
-        HostedZoneId: hostedZoneId,
-        ChangeBatch: {
-          Comment: `ACM DNS validation for ${record.domainName}`,
-          Changes: [{
-            Action: 'UPSERT',
-            ResourceRecordSet: {
-              Name: record.recordName,
-              Type: record.recordType as any,
-              TTL: 300,
-              ResourceRecords: [{ Value: record.recordValue }],
-            },
-          }],
-        },
-      })
+    // Create DNS records using the appropriate provider
+    if (this.dnsProvider) {
+      // Use external DNS provider (Porkbun, GoDaddy, etc.)
+      for (const record of validationRecords) {
+        const result = await this.dnsProvider.upsertRecord(domainName, {
+          name: record.recordName,
+          type: record.recordType as any,
+          content: record.recordValue,
+          ttl: 300,
+        })
+
+        if (!result.success) {
+          console.warn(`Failed to create validation record for ${record.domainName}: ${result.message}`)
+        }
+      }
+    }
+    else if (hostedZoneId) {
+      // Use Route53
+      for (const record of validationRecords) {
+        await this.route53.changeResourceRecordSets({
+          HostedZoneId: hostedZoneId,
+          ChangeBatch: {
+            Comment: `ACM DNS validation for ${record.domainName}`,
+            Changes: [{
+              Action: 'UPSERT',
+              ResourceRecordSet: {
+                Name: record.recordName,
+                Type: record.recordType as any,
+                TTL: 300,
+                ResourceRecords: [{ Value: record.recordValue }],
+              },
+            }],
+          },
+        })
+      }
     }
 
     // Wait for validation if requested
@@ -535,17 +577,24 @@ export class ACMDnsValidator {
 
   /**
    * Create validation records for an existing certificate
+   * Uses external DNS provider if configured, otherwise Route53
    */
   async createValidationRecords(params: {
     certificateArn: string
-    hostedZoneId: string
+    hostedZoneId?: string
+    domain?: string
   }): Promise<Array<{
     domainName: string
     recordName: string
     recordValue: string
     changeId?: string
   }>> {
-    const { certificateArn, hostedZoneId } = params
+    const { certificateArn, hostedZoneId, domain } = params
+
+    // Validate DNS provider availability
+    if (!this.dnsProvider && !hostedZoneId) {
+      throw new Error('Either hostedZoneId or external DNS provider configuration is required')
+    }
 
     // Get validation records
     const validationRecords = await this.acm.getDnsValidationRecords(certificateArn)
@@ -556,54 +605,32 @@ export class ACMDnsValidator {
       changeId?: string
     }> = []
 
-    // Create Route53 records for each validation record
-    for (const record of validationRecords) {
-      const result = await this.route53.changeResourceRecordSets({
-        HostedZoneId: hostedZoneId,
-        ChangeBatch: {
-          Comment: `ACM DNS validation for ${record.domainName}`,
-          Changes: [{
-            Action: 'UPSERT',
-            ResourceRecordSet: {
-              Name: record.recordName,
-              Type: record.recordType as any,
-              TTL: 300,
-              ResourceRecords: [{ Value: record.recordValue }],
-            },
-          }],
-        },
-      })
+    if (this.dnsProvider) {
+      // Use external DNS provider
+      const targetDomain = domain || validationRecords[0]?.domainName
+      for (const record of validationRecords) {
+        const result = await this.dnsProvider.upsertRecord(targetDomain, {
+          name: record.recordName,
+          type: record.recordType as any,
+          content: record.recordValue,
+          ttl: 300,
+        })
 
-      results.push({
-        ...record,
-        changeId: result.ChangeInfo?.Id,
-      })
+        results.push({
+          ...record,
+          changeId: result.success ? result.id : undefined,
+        })
+      }
     }
-
-    return results
-  }
-
-  /**
-   * Delete validation records after certificate is issued
-   */
-  async deleteValidationRecords(params: {
-    certificateArn: string
-    hostedZoneId: string
-  }): Promise<void> {
-    const { certificateArn, hostedZoneId } = params
-
-    // Get validation records
-    const validationRecords = await this.acm.getDnsValidationRecords(certificateArn)
-
-    // Delete Route53 records
-    for (const record of validationRecords) {
-      try {
-        await this.route53.changeResourceRecordSets({
+    else if (hostedZoneId) {
+      // Use Route53
+      for (const record of validationRecords) {
+        const result = await this.route53.changeResourceRecordSets({
           HostedZoneId: hostedZoneId,
           ChangeBatch: {
-            Comment: `Cleanup ACM DNS validation for ${record.domainName}`,
+            Comment: `ACM DNS validation for ${record.domainName}`,
             Changes: [{
-              Action: 'DELETE',
+              Action: 'UPSERT',
               ResourceRecordSet: {
                 Name: record.recordName,
                 Type: record.recordType as any,
@@ -613,19 +640,81 @@ export class ACMDnsValidator {
             }],
           },
         })
+
+        results.push({
+          ...record,
+          changeId: result.ChangeInfo?.Id,
+        })
       }
-      catch {
-        // Ignore errors if record doesn't exist
+    }
+
+    return results
+  }
+
+  /**
+   * Delete validation records after certificate is issued
+   * Uses external DNS provider if configured, otherwise Route53
+   */
+  async deleteValidationRecords(params: {
+    certificateArn: string
+    hostedZoneId?: string
+    domain?: string
+  }): Promise<void> {
+    const { certificateArn, hostedZoneId, domain } = params
+
+    // Get validation records
+    const validationRecords = await this.acm.getDnsValidationRecords(certificateArn)
+
+    if (this.dnsProvider) {
+      // Use external DNS provider
+      const targetDomain = domain || validationRecords[0]?.domainName
+      for (const record of validationRecords) {
+        try {
+          await this.dnsProvider.deleteRecord(targetDomain, {
+            name: record.recordName,
+            type: record.recordType as any,
+            content: record.recordValue,
+          })
+        }
+        catch {
+          // Ignore errors if record doesn't exist
+        }
+      }
+    }
+    else if (hostedZoneId) {
+      // Use Route53
+      for (const record of validationRecords) {
+        try {
+          await this.route53.changeResourceRecordSets({
+            HostedZoneId: hostedZoneId,
+            ChangeBatch: {
+              Comment: `Cleanup ACM DNS validation for ${record.domainName}`,
+              Changes: [{
+                Action: 'DELETE',
+                ResourceRecordSet: {
+                  Name: record.recordName,
+                  Type: record.recordType as any,
+                  TTL: 300,
+                  ResourceRecords: [{ Value: record.recordValue }],
+                },
+              }],
+            },
+          })
+        }
+        catch {
+          // Ignore errors if record doesn't exist
+        }
       }
     }
   }
 
   /**
    * Find or create a certificate for a domain
+   * Uses external DNS provider if configured, otherwise Route53
    */
   async findOrCreateCertificate(params: {
     domainName: string
-    hostedZoneId: string
+    hostedZoneId?: string
     subjectAlternativeNames?: string[]
     waitForValidation?: boolean
   }): Promise<{
@@ -633,6 +722,11 @@ export class ACMDnsValidator {
     isNew: boolean
   }> {
     const { domainName, hostedZoneId, subjectAlternativeNames, waitForValidation = true } = params
+
+    // Validate DNS provider availability
+    if (!this.dnsProvider && !hostedZoneId) {
+      throw new Error('Either hostedZoneId or external DNS provider configuration is required')
+    }
 
     // Try to find existing certificate
     const existing = await this.acm.findCertificateByDomain(domainName)
@@ -656,5 +750,19 @@ export class ACMDnsValidator {
       certificateArn,
       isNew: true,
     }
+  }
+
+  /**
+   * Check if using external DNS provider
+   */
+  hasExternalDnsProvider(): boolean {
+    return this.dnsProvider !== undefined
+  }
+
+  /**
+   * Get the DNS provider name if using external provider
+   */
+  getDnsProviderName(): string {
+    return this.dnsProvider?.name || 'route53'
   }
 }

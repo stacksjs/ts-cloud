@@ -325,6 +325,19 @@ export class GoDaddyProvider implements DnsProvider {
   }
 
   /**
+   * List all domains managed by this GoDaddy account
+   */
+  async listDomains(): Promise<string[]> {
+    try {
+      const response = await this.request<Array<{ domain: string }>>('GET', '/v1/domains')
+      return response.map(d => d.domain)
+    }
+    catch {
+      return []
+    }
+  }
+
+  /**
    * Get domain details (GoDaddy-specific)
    */
   async getDomainDetails(domain: string): Promise<{

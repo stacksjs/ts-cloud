@@ -31,6 +31,89 @@ import { ECSClient } from '../src/aws/ecs'
 import { ApplicationAutoScalingClient } from '../src/aws/application-autoscaling'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/validation/template'
 import * as cli from '../src/utils/cli'
+import { createDnsProvider, DnsProviderFactory, UnifiedDnsValidator } from '../src/dns'
+import type { DnsProviderConfig, DnsProvider } from '../src/dns/types'
+import { ACMClient } from '../src/aws/acm'
+
+/**
+ * Resolve DNS provider configuration from CLI options and environment variables
+ */
+function resolveDnsProviderConfig(providerName?: string): DnsProviderConfig | null {
+  // Explicit provider from CLI option
+  if (providerName) {
+    switch (providerName.toLowerCase()) {
+      case 'porkbun': {
+        const apiKey = process.env.PORKBUN_API_KEY
+        const secretKey = process.env.PORKBUN_SECRET_KEY
+        if (!apiKey || !secretKey) {
+          throw new Error('PORKBUN_API_KEY and PORKBUN_SECRET_KEY environment variables are required for Porkbun provider')
+        }
+        return { provider: 'porkbun', apiKey, secretKey }
+      }
+      case 'godaddy': {
+        const apiKey = process.env.GODADDY_API_KEY
+        const apiSecret = process.env.GODADDY_API_SECRET
+        if (!apiKey || !apiSecret) {
+          throw new Error('GODADDY_API_KEY and GODADDY_API_SECRET environment variables are required for GoDaddy provider')
+        }
+        const environment = (process.env.GODADDY_ENVIRONMENT as 'production' | 'ote') || 'production'
+        return { provider: 'godaddy', apiKey, apiSecret, environment }
+      }
+      case 'route53': {
+        const region = process.env.AWS_REGION || 'us-east-1'
+        const hostedZoneId = process.env.AWS_HOSTED_ZONE_ID
+        return { provider: 'route53', region, hostedZoneId }
+      }
+      default:
+        throw new Error(`Unknown DNS provider: ${providerName}. Supported: porkbun, godaddy, route53`)
+    }
+  }
+
+  // Auto-detect from environment
+  const factory = new DnsProviderFactory().loadFromEnv()
+  const providers = factory.getAllProviders()
+
+  if (providers.length === 0) {
+    return null
+  }
+
+  // Return the first configured provider's config
+  if (process.env.PORKBUN_API_KEY && process.env.PORKBUN_SECRET_KEY) {
+    return {
+      provider: 'porkbun',
+      apiKey: process.env.PORKBUN_API_KEY,
+      secretKey: process.env.PORKBUN_SECRET_KEY,
+    }
+  }
+  if (process.env.GODADDY_API_KEY && process.env.GODADDY_API_SECRET) {
+    return {
+      provider: 'godaddy',
+      apiKey: process.env.GODADDY_API_KEY,
+      apiSecret: process.env.GODADDY_API_SECRET,
+      environment: (process.env.GODADDY_ENVIRONMENT as 'production' | 'ote') || 'production',
+    }
+  }
+  if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_REGION) {
+    return {
+      provider: 'route53',
+      region: process.env.AWS_REGION || 'us-east-1',
+      hostedZoneId: process.env.AWS_HOSTED_ZONE_ID,
+    }
+  }
+
+  return null
+}
+
+/**
+ * Get a DNS provider instance from configuration
+ */
+function getDnsProvider(providerName?: string): DnsProvider {
+  const config = resolveDnsProviderConfig(providerName)
+  if (!config) {
+    throw new Error('No DNS provider configured. Set environment variables for Porkbun (PORKBUN_API_KEY, PORKBUN_SECRET_KEY), GoDaddy (GODADDY_API_KEY, GODADDY_API_SECRET), or Route53 (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)')
+  }
+  return createDnsProvider(config)
+}
 
 const app = new CLI('cloud')
 
@@ -1043,120 +1126,392 @@ app
 
 app
   .command('domain:list', 'List all domains')
-  .action(async () => {
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+  .action(async (options?: { provider?: string }) => {
     cli.header('🌐 Domains')
 
-    const domains = [
-      ['example.com', 'Active', 'Yes', 'Route53'],
-      ['app.example.com', 'Active', 'Yes', 'Route53'],
-    ]
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-    cli.table(
-      ['Domain', 'Status', 'SSL', 'Provider'],
-      domains,
-    )
+      const spinner = new cli.Spinner(`Fetching domains from ${providerName}...`)
+      spinner.start()
+
+      const domains = await provider.listDomains()
+      spinner.succeed(`Found ${domains.length} domain(s)`)
+
+      if (domains.length === 0) {
+        cli.info('No domains found in this provider')
+        return
+      }
+
+      // Format domains for table display
+      const domainRows = domains.map(d => [
+        d,
+        'Active',
+        '-',
+        providerName.charAt(0).toUpperCase() + providerName.slice(1),
+      ])
+
+      cli.table(
+        ['Domain', 'Status', 'SSL', 'Provider'],
+        domainRows,
+      )
+    }
+    catch (error) {
+      cli.error(`Failed to list domains: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 app
   .command('domain:add <domain>', 'Add a new domain')
-  .action(async (domain: string) => {
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+  .action(async (domain: string, options?: { provider?: string }) => {
     cli.header(`🌐 Adding Domain: ${domain}`)
 
-    const spinner = new cli.Spinner('Creating hosted zone...')
-    spinner.start()
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-    // TODO: Implement domain addition
-    await new Promise(resolve => setTimeout(resolve, 2000))
+      // Check if provider can manage the domain
+      const spinner = new cli.Spinner(`Checking if ${providerName} can manage ${domain}...`)
+      spinner.start()
 
-    spinner.succeed(`Domain ${domain} added successfully`)
+      const canManage = await provider.canManageDomain(domain)
+
+      if (canManage) {
+        spinner.succeed(`Domain ${domain} is already available in ${providerName}`)
+        cli.info('\nThe domain is ready to use. You can now:')
+        cli.info(`  • Add DNS records: cloud dns:add ${domain} A 192.168.1.1`)
+        cli.info(`  • Generate SSL: cloud domain:ssl ${domain}`)
+      }
+      else {
+        spinner.warn(`Domain ${domain} is not available in ${providerName}`)
+        cli.info('\nTo add this domain:')
+        if (providerName === 'route53') {
+          cli.info('  • Create a hosted zone in Route53 for this domain')
+          cli.info('  • Update nameservers at your registrar to point to Route53')
+        }
+        else {
+          cli.info(`  • Ensure the domain is registered with ${providerName}`)
+          cli.info('  • Enable API access for the domain in your provider dashboard')
+        }
+      }
+    }
+    catch (error) {
+      cli.error(`Failed to check domain: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 app
-  .command('domain:ssl <domain>', 'Generate SSL certificate')
-  .action(async (domain: string) => {
+  .command('domain:ssl <domain>', 'Generate SSL certificate via ACM with DNS validation')
+  .option('--provider <provider>', 'DNS provider for validation: porkbun, godaddy, or route53')
+  .option('--region <region>', 'AWS region for ACM (default: us-east-1 for CloudFront compatibility)')
+  .option('--wait', 'Wait for certificate validation to complete')
+  .action(async (domain: string, options?: { provider?: string, region?: string, wait?: boolean }) => {
     cli.header(`🔒 Generating SSL Certificate for ${domain}`)
 
-    const spinner = new cli.Spinner('Requesting certificate from ACM...')
-    spinner.start()
+    try {
+      const dnsConfig = resolveDnsProviderConfig(options?.provider)
+      if (!dnsConfig) {
+        throw new Error('No DNS provider configured')
+      }
 
-    // TODO: Implement SSL generation
-    await new Promise(resolve => setTimeout(resolve, 2000))
+      const region = options?.region || 'us-east-1'
+      const providerName = dnsConfig.provider
 
-    spinner.succeed('SSL certificate requested')
-    cli.warn('Check your email to approve the certificate request')
+      cli.info(`DNS Provider: ${providerName}`)
+      cli.info(`ACM Region: ${region}`)
+
+      // Use UnifiedDnsValidator for complete certificate workflow
+      const validator = new UnifiedDnsValidator(dnsConfig, region)
+      const spinner = new cli.Spinner('Requesting certificate and creating validation records...')
+      spinner.start()
+
+      const result = await validator.findOrCreateCertificate({
+        domainName: domain,
+        subjectAlternativeNames: [`*.${domain}`],
+        waitForValidation: options?.wait ?? true,
+        maxWaitMinutes: 10,
+      })
+
+      if (result.isNew) {
+        spinner.succeed('Certificate requested and validation records created')
+      }
+      else {
+        spinner.succeed('Found existing valid certificate')
+      }
+
+      cli.info(`Certificate ARN: ${result.certificateArn}`)
+      cli.info(`Status: ${result.status}`)
+
+      if (result.status === 'issued') {
+        cli.success('\n✓ SSL Certificate is ready!')
+        cli.info('\nYou can now use this certificate with:')
+        cli.info('  • CloudFront distributions')
+        cli.info('  • Application Load Balancers')
+        cli.info('  • API Gateway custom domains')
+      }
+      else if (result.status === 'pending') {
+        cli.info('\nDNS validation records have been created.')
+        cli.info('Certificate validation may take a few more minutes.')
+        cli.info(`\nCheck status with: cloud domain:verify ${domain}`)
+      }
+      else {
+        cli.error('\nCertificate validation failed. Check ACM console for details.')
+      }
+    }
+    catch (error) {
+      cli.error(`Failed to generate SSL: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 app
-  .command('domain:verify <domain>', 'Verify domain ownership')
-  .action(async (domain: string) => {
+  .command('domain:verify <domain>', 'Verify domain ownership and SSL status')
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+  .action(async (domain: string, options?: { provider?: string }) => {
     cli.header(`✓ Verifying Domain: ${domain}`)
 
-    const spinner = new cli.Spinner('Checking DNS records...')
-    spinner.start()
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-    // TODO: Verify domain ownership via DNS records
-    await new Promise(resolve => setTimeout(resolve, 2000))
+      // Check domain ownership
+      const spinner = new cli.Spinner('Checking domain ownership...')
+      spinner.start()
 
-    spinner.succeed('Domain verified successfully')
+      const canManage = await provider.canManageDomain(domain)
 
-    cli.info('\nVerification details:')
-    cli.info('  • DNS records found: 4')
-    cli.info('  • Nameservers configured: Yes')
-    cli.info('  • SSL certificate: Valid')
+      if (!canManage) {
+        spinner.fail('Domain not found in provider')
+        cli.error(`Domain ${domain} is not available in ${providerName}`)
+        return
+      }
+
+      spinner.succeed('Domain ownership verified')
+
+      // Get DNS records
+      spinner.text = 'Fetching DNS records...'
+      spinner.start()
+
+      const recordsResult = await provider.listRecords(domain)
+      const records = recordsResult.records || []
+      spinner.succeed(`Found ${records.length} DNS record(s)`)
+
+      // Check for SSL certificate in ACM
+      spinner.text = 'Checking SSL certificate status...'
+      spinner.start()
+
+      const acm = new ACMClient('us-east-1')
+      let sslStatus = 'Not found'
+      let certArn = ''
+
+      try {
+        const certsResult = await acm.listCertificates()
+        const domainCert = certsResult.CertificateSummaryList.find(
+          c => c.DomainName === domain || c.DomainName === `*.${domain}`,
+        )
+        if (domainCert) {
+          certArn = domainCert.CertificateArn || ''
+          const details = await acm.describeCertificate({ CertificateArn: certArn })
+          sslStatus = details.Status || 'Unknown'
+        }
+      }
+      catch {
+        // ACM not accessible or no certs
+      }
+
+      spinner.succeed('SSL check complete')
+
+      cli.info('\nVerification details:')
+      cli.info(`  • Provider: ${providerName}`)
+      cli.info(`  • DNS records found: ${records.length}`)
+      cli.info(`  • Domain managed: Yes`)
+      cli.info(`  • SSL certificate: ${sslStatus}`)
+      if (certArn) {
+        cli.info(`  • Certificate ARN: ${certArn}`)
+      }
+
+      // Show record summary by type
+      const recordTypes = new Map<string, number>()
+      for (const record of records) {
+        const count = recordTypes.get(record.type) || 0
+        recordTypes.set(record.type, count + 1)
+      }
+
+      if (recordTypes.size > 0) {
+        cli.info('\nRecord summary:')
+        for (const [type, count] of recordTypes) {
+          cli.info(`  • ${type}: ${count}`)
+        }
+      }
+    }
+    catch (error) {
+      cli.error(`Failed to verify domain: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 app
   .command('dns:records <domain>', 'List DNS records for a domain')
-  .action(async (domain: string) => {
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+  .option('--type <type>', 'Filter by record type (A, AAAA, CNAME, TXT, MX, etc.)')
+  .action(async (domain: string, options?: { provider?: string, type?: string }) => {
     cli.header(`📝 DNS Records for ${domain}`)
 
-    const spinner = new cli.Spinner('Fetching DNS records...')
-    spinner.start()
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-    // TODO: Fetch DNS records from Route53
-    await new Promise(resolve => setTimeout(resolve, 1500))
+      const spinner = new cli.Spinner(`Fetching records from ${providerName}...`)
+      spinner.start()
 
-    spinner.succeed('Records retrieved')
+      const result = await provider.listRecords(domain)
+      let records = result.records || []
+      spinner.succeed(`Found ${records.length} record(s)`)
 
-    cli.table(
-      ['Type', 'Name', 'Value', 'TTL'],
-      [
-        ['A', domain, '192.0.2.1', '300'],
-        ['AAAA', domain, '2001:0db8::1', '300'],
-        ['CNAME', `www.${domain}`, domain, '300'],
-        ['MX', domain, 'mail.example.com', '3600'],
-        ['TXT', domain, 'v=spf1 include:_spf.google.com ~all', '3600'],
-      ],
-    )
+      // Filter by type if specified
+      if (options?.type) {
+        const filterType = options.type.toUpperCase()
+        records = records.filter(r => r.type.toUpperCase() === filterType)
+        cli.info(`Filtered to ${records.length} ${filterType} record(s)`)
+      }
+
+      if (records.length === 0) {
+        cli.info('No records found')
+        return
+      }
+
+      // Format records for table display
+      const recordRows = records.map(r => [
+        r.type,
+        r.name || '@',
+        r.content.length > 50 ? `${r.content.substring(0, 47)}...` : r.content,
+        String(r.ttl || 300),
+      ])
+
+      cli.table(
+        ['Type', 'Name', 'Value', 'TTL'],
+        recordRows,
+      )
+    }
+    catch (error) {
+      cli.error(`Failed to list records: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 app
   .command('dns:add <domain> <type> <value>', 'Add DNS record')
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
   .option('--name <name>', 'Record name (subdomain)', { default: '@' })
   .option('--ttl <seconds>', 'Time to live in seconds', { default: '300' })
-  .action(async (domain: string, type: string, value: string, options?: { name?: string, ttl?: string }) => {
+  .action(async (domain: string, type: string, value: string, options?: { provider?: string, name?: string, ttl?: string }) => {
     cli.header(`📝 Adding DNS Record`)
 
-    const name = options?.name || '@'
-    const ttl = options?.ttl || '300'
-    const recordType = type.toUpperCase()
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-    cli.info(`Domain: ${domain}`)
-    cli.info(`Type: ${recordType}`)
-    cli.info(`Name: ${name}`)
-    cli.info(`Value: ${value}`)
-    cli.info(`TTL: ${ttl}`)
+      const name = options?.name || '@'
+      const ttl = Number.parseInt(options?.ttl || '300', 10)
+      const recordType = type.toUpperCase() as 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
 
-    const spinner = new cli.Spinner('Adding DNS record...')
-    spinner.start()
+      cli.info(`Provider: ${providerName}`)
+      cli.info(`Domain: ${domain}`)
+      cli.info(`Type: ${recordType}`)
+      cli.info(`Name: ${name}`)
+      cli.info(`Value: ${value}`)
+      cli.info(`TTL: ${ttl}`)
 
-    // TODO: Add record to Route53
-    await new Promise(resolve => setTimeout(resolve, 2000))
+      const spinner = new cli.Spinner(`Adding record via ${providerName}...`)
+      spinner.start()
 
-    spinner.succeed('DNS record added successfully')
+      await provider.createRecord(domain, {
+        type: recordType,
+        name: name === '@' ? '' : name,
+        content: value,
+        ttl,
+      })
 
-    cli.success('\n✓ Record created!')
-    cli.info('\nNote: DNS changes may take up to 48 hours to propagate globally')
+      spinner.succeed('DNS record added successfully')
+
+      cli.success('\n✓ Record created!')
+      cli.info('\nNote: DNS changes may take a few minutes to propagate')
+    }
+    catch (error) {
+      cli.error(`Failed to add record: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  })
+
+app
+  .command('dns:delete <domain> <type>', 'Delete DNS record')
+  .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+  .option('--name <name>', 'Record name (subdomain)', { default: '@' })
+  .option('--value <value>', 'Record value (required for multi-value records)')
+  .action(async (domain: string, type: string, options?: { provider?: string, name?: string, value?: string }) => {
+    cli.header(`🗑️ Deleting DNS Record`)
+
+    try {
+      const provider = getDnsProvider(options?.provider)
+      const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
+
+      const name = options?.name || '@'
+      const recordType = type.toUpperCase()
+
+      cli.info(`Provider: ${providerName}`)
+      cli.info(`Domain: ${domain}`)
+      cli.info(`Type: ${recordType}`)
+      cli.info(`Name: ${name}`)
+
+      // Get existing records to find the one to delete
+      const spinner = new cli.Spinner('Finding record...')
+      spinner.start()
+
+      const result = await provider.listRecords(domain)
+      const allRecords = result.records || []
+      const matchingRecords = allRecords.filter(r =>
+        r.type.toUpperCase() === recordType
+        && (r.name === name || r.name === '' && name === '@'),
+      )
+
+      if (matchingRecords.length === 0) {
+        spinner.fail('No matching record found')
+        return
+      }
+
+      // If multiple records and no value specified, show them
+      if (matchingRecords.length > 1 && !options?.value) {
+        spinner.warn('Multiple records found')
+        cli.info('\nPlease specify --value to identify which record to delete:')
+        for (const r of matchingRecords) {
+          cli.info(`  • ${r.content}`)
+        }
+        return
+      }
+
+      const recordToDelete = options?.value
+        ? matchingRecords.find(r => r.content === options.value) || matchingRecords[0]
+        : matchingRecords[0]
+
+      cli.info(`Value: ${recordToDelete.content}`)
+
+      // Confirm deletion
+      const confirm = await cli.confirm('Delete this record?', false)
+      if (!confirm) {
+        cli.info('Deletion cancelled')
+        return
+      }
+
+      spinner.text = `Deleting record via ${providerName}...`
+      spinner.start()
+
+      await provider.deleteRecord(domain, recordToDelete)
+
+      spinner.succeed('DNS record deleted successfully')
+      cli.success('\n✓ Record deleted!')
+    }
+    catch (error) {
+      cli.error(`Failed to delete record: ${error instanceof Error ? error.message : String(error)}`)
+    }
   })
 
 // ============================================

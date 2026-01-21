@@ -306,6 +306,19 @@ export class Route53Provider implements DnsProvider {
   }
 
   /**
+   * List all domains (hosted zones) managed in Route53
+   */
+  async listDomains(): Promise<string[]> {
+    try {
+      const result = await this.client.listHostedZones()
+      return result.HostedZones.map(z => z.Name.replace(/\.$/, ''))
+    }
+    catch {
+      return []
+    }
+  }
+
+  /**
    * Get the underlying Route53Client for advanced operations
    */
   getRoute53Client(): Route53Client {

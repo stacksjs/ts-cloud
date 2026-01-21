@@ -110,6 +110,11 @@ export class Spinner {
     error(message || this.message)
   }
 
+  warn(message?: string): void {
+    this.stop()
+    warning(message || this.message)
+  }
+
   stop(): void {
     if (this.interval) {
       clearInterval(this.interval)
