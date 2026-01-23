@@ -208,18 +208,29 @@ export class UnifiedDnsValidator {
     waitForValidation?: boolean
     maxWaitMinutes?: number
   }): Promise<CertificateValidationResult> {
-    const { domainName, subjectAlternativeNames, waitForValidation = true, maxWaitMinutes } = params
+    const { domainName, subjectAlternativeNames = [], waitForValidation = true, maxWaitMinutes } = params
 
     // Try to find existing certificate
     const existing = await this.acm.findCertificateByDomain(domainName)
 
     if (existing && existing.Status === 'ISSUED') {
-      return {
-        certificateArn: existing.CertificateArn,
-        validationRecords: [],
-        isNew: false,
-        status: 'issued',
+      // Check if the existing certificate covers all required SANs
+      const existingSans = existing.SubjectAlternativeNames || [existing.DomainName]
+      const hasWildcard = existingSans.some(san => san === `*.${domainName}`)
+      const allSansCovered = subjectAlternativeNames.every(san =>
+        existingSans.includes(san) || hasWildcard,
+      )
+
+      if (allSansCovered) {
+        return {
+          certificateArn: existing.CertificateArn,
+          validationRecords: [],
+          isNew: false,
+          status: 'issued',
+        }
       }
+      // Existing cert doesn't cover all SANs, request a new one
+      console.log(`Existing certificate doesn't cover all required SANs, requesting new certificate...`)
     }
 
     // Request new certificate

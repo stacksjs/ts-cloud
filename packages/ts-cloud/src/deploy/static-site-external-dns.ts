@@ -55,6 +55,7 @@ export interface ExternalDnsDeployResult {
 export function generateExternalDnsStaticSiteTemplate(config: {
   bucketName: string
   domain?: string
+  aliases?: string[]
   certificateArn?: string
   defaultRootObject?: string
   errorDocument?: string
@@ -62,6 +63,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   const {
     bucketName,
     domain,
+    aliases,
     certificateArn,
     defaultRootObject = 'index.html',
     errorDocument = '404.html',
@@ -189,7 +191,8 @@ export function generateExternalDnsStaticSiteTemplate(config: {
 
   // Add custom domain configuration if provided
   if (domain && certificateArn) {
-    distributionConfig.Aliases = [domain]
+    // Use provided aliases or default to just the domain
+    distributionConfig.Aliases = aliases && aliases.length > 0 ? aliases : [domain]
     distributionConfig.ViewerCertificate = {
       AcmCertificateArn: certificateArn,
       SslSupportMethod: 'sni-only',
@@ -303,23 +306,47 @@ export async function deployStaticSiteWithExternalDns(
 
   let certificateArn = config.certificateArn
 
+  // Determine if we're dealing with an apex domain (need www SAN)
+  const domainParts = domain.split('.')
+  const isApexDomain = domainParts.length === 2
+  const wwwDomain = isApexDomain ? `www.${domain}` : undefined
+
   // Auto-create SSL certificate if not provided
   if (!certificateArn) {
     console.log(`Checking for existing SSL certificate for ${domain}...`)
 
-    // Check for existing certificate
+    // Check for existing certificate that covers both apex and www
     const existingCert = await acm.findCertificateByDomain(domain)
+    let existingCertCoversWww = false
+
     if (existingCert && existingCert.Status === 'ISSUED') {
-      certificateArn = existingCert.CertificateArn
-      console.log(`Found existing certificate: ${certificateArn}`)
+      // Check if the existing cert also covers www
+      if (wwwDomain && existingCert.SubjectAlternativeNames) {
+        existingCertCoversWww = existingCert.SubjectAlternativeNames.includes(wwwDomain)
+          || existingCert.SubjectAlternativeNames.some(san => san === `*.${domain}`)
+      }
+      else {
+        existingCertCoversWww = true // Not apex domain, no www needed
+      }
+
+      if (existingCertCoversWww) {
+        certificateArn = existingCert.CertificateArn
+        console.log(`Found existing certificate with www coverage: ${certificateArn}`)
+      }
+      else {
+        console.log(`Existing certificate doesn't cover ${wwwDomain}, requesting new one...`)
+      }
     }
-    else {
+
+    if (!certificateArn) {
       // Request and validate new certificate using external DNS provider
-      console.log(`Requesting new SSL certificate for ${domain}...`)
+      // Always include www for apex domains
+      console.log(`Requesting new SSL certificate for ${domain}${wwwDomain ? ` (including ${wwwDomain})` : ''}...`)
       const validator = new UnifiedDnsValidator(dnsProvider, 'us-east-1')
 
       const certResult = await validator.findOrCreateCertificate({
         domainName: domain,
+        subjectAlternativeNames: wwwDomain ? [wwwDomain] : undefined,
         waitForValidation: true,
         maxWaitMinutes: 10,
       })
@@ -402,7 +429,7 @@ export async function deployStaticSiteWithExternalDns(
       // Bucket doesn't exist, good
     }
 
-    // Check for orphaned CloudFront distributions with our domain
+    // Check for existing CloudFront distributions with our domain
     if (domain) {
       try {
         console.log(`Checking for existing CloudFront distributions with alias ${domain}...`)
@@ -425,12 +452,51 @@ export async function deployStaticSiteWithExternalDns(
           }
           if (aliases.includes(domain)) {
             console.log(`Found existing CloudFront distribution ${dist.Id} with alias ${domain}`)
-            return {
-              success: false,
-              stackName,
-              bucket,
-              message: `Cannot deploy: CloudFront distribution ${dist.Id} already has the alias ${domain}. ` +
-                `Please manually delete or update this distribution to remove the alias, then run deploy again.`,
+            console.log(`Reusing existing infrastructure for updates...`)
+
+            // Get the origin bucket from the distribution
+            const distConfig = await cloudfront.getDistributionConfig(dist.Id!)
+            const originsData = distConfig.DistributionConfig?.Origins?.Items
+            let originBucket: string | undefined
+
+            if (originsData) {
+              // Handle AWS XML-to-JSON format: single item is { Origin: {...} }, multiple is { Origin: [...] } or [...]
+              let originList: any[] = []
+              if (Array.isArray(originsData)) {
+                originList = originsData
+              }
+              else if (originsData.Origin) {
+                originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
+              }
+              else {
+                originList = [originsData]
+              }
+
+              for (const origin of originList) {
+                const domainName = origin.DomainName || ''
+                // Extract bucket name from S3 domain (e.g., "bucket-name.s3.us-east-1.amazonaws.com")
+                const s3Match = domainName.match(/^([^.]+)\.s3[\.-]/)
+                if (s3Match) {
+                  originBucket = s3Match[1]
+                  break
+                }
+              }
+            }
+
+            if (originBucket) {
+              console.log(`Using existing S3 bucket: ${originBucket}`)
+              // Return success with existing infrastructure info - skip CloudFormation
+              return {
+                success: true,
+                stackName: `existing-${dist.Id}`,
+                bucket: originBucket,
+                distributionId: dist.Id,
+                distributionDomain: dist.DomainName,
+                domain,
+                certificateArn,
+                message: 'Using existing CloudFront distribution',
+                _existingInfrastructure: true, // Flag to indicate we're reusing infrastructure
+              } as ExternalDnsDeployResult & { _existingInfrastructure: boolean }
             }
           }
         }
@@ -442,9 +508,13 @@ export async function deployStaticSiteWithExternalDns(
   }
 
   // Generate CloudFormation template (without Route53)
+  // Build aliases list (include www for apex domains)
+  const aliases = wwwDomain ? [domain, wwwDomain] : [domain]
+
   const template = generateExternalDnsStaticSiteTemplate({
     bucketName: finalBucket,
     domain,
+    aliases,
     certificateArn,
     defaultRootObject: config.defaultRootObject,
     errorDocument: config.errorDocument,
@@ -526,6 +596,120 @@ export async function deployStaticSiteWithExternalDns(
     console.log('Stack operation completed successfully!')
   }
   catch (err: any) {
+    // Check for CloudFront account verification error
+    if (err.message?.includes('must be verified') || err.message?.includes('Access denied for operation')) {
+      console.log('CloudFront account verification required - checking for existing infrastructure...')
+
+      // Try to find an existing CloudFront distribution we can use
+      try {
+        const cloudfront = new CloudFrontClient()
+        const distributions = await cloudfront.listDistributions()
+
+        for (const dist of distributions) {
+          let aliases: string[] = []
+          if (dist.Aliases?.Items) {
+            if (Array.isArray(dist.Aliases.Items)) {
+              aliases = dist.Aliases.Items
+            }
+            else if (typeof dist.Aliases.Items === 'object') {
+              const cname = (dist.Aliases.Items as any).CNAME
+              if (typeof cname === 'string') {
+                aliases = [cname]
+              }
+              else if (Array.isArray(cname)) {
+                aliases = cname
+              }
+            }
+          }
+
+          if (aliases.includes(domain)) {
+            console.log(`Found existing CloudFront distribution ${dist.Id} with alias ${domain}`)
+            console.log(`Using existing infrastructure despite account verification requirement...`)
+
+            // Get the origin bucket from the distribution
+            const distConfig = await cloudfront.getDistributionConfig(dist.Id!)
+            const originsData = distConfig.DistributionConfig?.Origins?.Items
+            let originBucket: string | undefined
+
+            if (originsData) {
+              let originList: any[] = []
+              if (Array.isArray(originsData)) {
+                originList = originsData
+              }
+              else if (originsData.Origin) {
+                originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
+              }
+              else {
+                originList = [originsData]
+              }
+
+              for (const origin of originList) {
+                const domainName = origin.DomainName || ''
+                const s3Match = domainName.match(/^([^.]+)\.s3[\.-]/)
+                if (s3Match) {
+                  originBucket = s3Match[1]
+                  break
+                }
+              }
+            }
+
+            if (originBucket) {
+              console.log(`Using existing S3 bucket: ${originBucket}`)
+
+              // Also ensure DNS records exist
+              const distributionDomain = dist.DomainName
+              if (distributionDomain) {
+                await ensureDnsRecords(dnsProvider, domain, distributionDomain)
+              }
+
+              return {
+                success: true,
+                stackName: `existing-${dist.Id}`,
+                bucket: originBucket,
+                distributionId: dist.Id,
+                distributionDomain: dist.DomainName,
+                domain,
+                certificateArn,
+                message: 'Using existing CloudFront distribution (account verification pending for new distributions)',
+              }
+            }
+          }
+        }
+      }
+      catch {
+        // Couldn't find existing infrastructure
+      }
+
+      // No existing infrastructure found, show verification message
+      const verificationMessage = `
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AWS ACCOUNT VERIFICATION REQUIRED                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  Your AWS account must be verified before you can create CloudFront         │
+│  distributions. This is a one-time requirement for new AWS accounts.        │
+│                                                                             │
+│  To verify your account:                                                    │
+│                                                                             │
+│  1. Go to: https://console.aws.amazon.com/support/home#/                   │
+│  2. Click "Create case"                                                     │
+│  3. Select "Service limit increase"                                         │
+│  4. For Service: Select "CloudFront"                                        │
+│  5. For Request: "Please verify my account for CloudFront access"           │
+│  6. Submit the case                                                         │
+│                                                                             │
+│  Verification typically takes 1-2 business days.                            │
+│  After verification, re-run: bunx bunpress deploy                           │
+└─────────────────────────────────────────────────────────────────────────────┘`
+      console.log(verificationMessage)
+      return {
+        success: false,
+        stackId,
+        stackName,
+        bucket: finalBucket,
+        message: 'CloudFront account verification required. Please contact AWS Support.',
+      }
+    }
+
     return {
       success: false,
       stackId,
@@ -610,6 +794,25 @@ async function ensureDnsRecords(
     }
     else {
       console.log(`Created ALIAS record: ${domain} -> ${cloudfrontDomain}`)
+    }
+
+    // Also create CNAME for www subdomain
+    const wwwDomain = `www.${domain}`
+    console.log(`Creating CNAME record for ${wwwDomain} -> ${cloudfrontDomain}`)
+    const wwwResult = await dnsProvider.upsertRecord(domain, {
+      name: wwwDomain,
+      type: 'CNAME',
+      content: cloudfrontDomain,
+      ttl: 600,
+    })
+
+    if (!wwwResult.success) {
+      console.warn(`Warning: Could not create www DNS record: ${wwwResult.message}`)
+      console.warn(`Please manually create a CNAME record:`)
+      console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
+    }
+    else {
+      console.log(`Created CNAME record: ${wwwDomain} -> ${cloudfrontDomain}`)
     }
   }
   else {

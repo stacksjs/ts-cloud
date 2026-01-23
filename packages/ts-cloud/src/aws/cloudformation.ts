@@ -359,19 +359,26 @@ export class CloudFormationClient {
             (stack.StackStatus === 'DELETE_IN_PROGRESS' || stack.StackStatus === 'DELETE_COMPLETE')) {
           console.log(`[waitForStack] Stack is being deleted (creation/update failed)`)
           // Try to get stack events to understand the failure
+          let failedEventReason = ''
           try {
             const eventsResult = await this.describeStackEvents(stackName)
             console.log('[waitForStack] Stack events (most recent first):')
             for (const event of eventsResult.StackEvents.slice(0, 15)) {
               if (event.ResourceStatus.includes('FAILED') || event.ResourceStatusReason) {
                 console.log(`  ${event.LogicalResourceId}: ${event.ResourceStatus} - ${event.ResourceStatusReason || 'No reason provided'}`)
+                // Capture the first failed event reason for the error message
+                if (event.ResourceStatus.includes('FAILED') && event.ResourceStatusReason && !failedEventReason) {
+                  failedEventReason = event.ResourceStatusReason
+                }
               }
             }
           }
           catch {
             // Ignore errors fetching events
           }
-          throw new Error(`Stack creation/update failed - stack is being deleted. Reason: ${stack.StackStatusReason || 'Check CloudFormation console for details.'}`)
+          // Include the detailed failure reason in the error message
+          const errorReason = failedEventReason || stack.StackStatusReason || 'Check CloudFormation console for details.'
+          throw new Error(`Stack creation/update failed - stack is being deleted. Reason: ${errorReason}`)
         }
 
         // Handle DELETE_FAILED specifically - might need to retain resources

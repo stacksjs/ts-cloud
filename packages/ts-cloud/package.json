@@ -28,7 +28,7 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/src/index.js"
+      "import": "./src/index.ts"
     },
     "./aws": {
       "types": "./src/aws/index.ts",
@@ -47,10 +47,10 @@
       "import": "./src/push/index.ts"
     },
     "./*": {
-      "import": "./dist/*"
+      "import": "./src/*"
     }
   },
-  "module": "./dist/src/index.js",
+  "module": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "bin": {
     "cloud": "./dist/bin/cli.js"

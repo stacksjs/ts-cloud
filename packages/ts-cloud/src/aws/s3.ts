@@ -384,7 +384,8 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'PUT',
-      path: `/${options.bucket}/${options.key}`,
+      path: `/${options.key}`,
+      bucket: options.bucket, // Use virtual-hosted style
       headers,
       body: options.body as string,
     })

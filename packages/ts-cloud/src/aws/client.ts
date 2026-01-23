@@ -26,6 +26,8 @@ export interface AWSRequestOptions {
   cacheTTL?: number
   returnHeaders?: boolean
   rawResponse?: boolean
+  /** S3 bucket name for virtual-hosted style URLs */
+  bucket?: string
 }
 
 export interface AWSClientConfig {
@@ -314,7 +316,13 @@ export class AWSClient {
 
     let host: string
     if (service === 's3') {
-      host = `s3.${region}.amazonaws.com`
+      // Use virtual-hosted style for S3 buckets (required for newer buckets)
+      if (options.bucket) {
+        host = `${options.bucket}.s3.${region}.amazonaws.com`
+      }
+      else {
+        host = `s3.${region}.amazonaws.com`
+      }
     }
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'

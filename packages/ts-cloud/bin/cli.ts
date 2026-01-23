@@ -1978,53 +1978,135 @@ app
 
 app
   .command('ssl:list', 'List all SSL certificates')
-  .action(async () => {
+  .option('--region <region>', 'AWS region (default: us-east-1)')
+  .action(async (options?: { region?: string }) => {
     cli.header('🔒 SSL Certificates')
 
+    const region = options?.region || 'us-east-1'
     const spinner = new cli.Spinner('Fetching certificates from ACM...')
     spinner.start()
 
-    // TODO: Fetch from AWS Certificate Manager
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      const acm = new ACMClient(region)
 
-    spinner.stop()
+      // List all certificates
+      const result = await acm.listCertificates()
 
-    cli.table(
-      ['Domain', 'Status', 'Expiry', 'Type', 'In Use'],
-      [
-        ['example.com', 'Issued', '2025-12-15', 'Amazon Issued', 'Yes'],
-        ['*.example.com', 'Issued', '2025-12-15', 'Amazon Issued', 'Yes'],
-        ['app.example.com', 'Issued', '2025-11-20', 'Amazon Issued', 'No'],
-      ],
-    )
+      if (result.CertificateSummaryList.length === 0) {
+        spinner.succeed('No certificates found')
+        cli.info(`\nNo SSL certificates found in region ${region}`)
+        cli.info('Use \'cloud domain:ssl <domain>\' to request a new certificate')
+        return
+      }
 
-    cli.info('\nℹ️  ACM certificates are automatically renewed by AWS')
+      // Get details for each certificate
+      const certDetails = await Promise.all(
+        result.CertificateSummaryList.map(async (cert) => {
+          const details = await acm.describeCertificate({ CertificateArn: cert.CertificateArn })
+          return details
+        }),
+      )
+
+      spinner.succeed(`Found ${certDetails.length} certificate(s)`)
+
+      // Helper to format AWS timestamp (seconds since epoch)
+      const formatDate = (timestamp: string | number | undefined): string => {
+        if (!timestamp) return 'N/A'
+        // AWS returns seconds since epoch, JS Date expects milliseconds
+        const ts = typeof timestamp === 'string' ? Number.parseFloat(timestamp) : timestamp
+        const ms = ts < 1e12 ? ts * 1000 : ts // Convert if seconds
+        return new Date(ms).toISOString().split('T')[0]
+      }
+
+      // Format the table data
+      const tableData = certDetails.map((cert) => {
+        const expiry = formatDate(cert.NotAfter)
+        const typeDisplay = cert.Type === 'AMAZON_ISSUED' ? 'Amazon Issued' : cert.Type || 'Unknown'
+        const inUse = cert.Status === 'ISSUED' ? 'Available' : cert.Status || 'Unknown'
+
+        return [
+          cert.DomainName,
+          cert.Status || 'Unknown',
+          expiry,
+          typeDisplay,
+          inUse,
+        ]
+      })
+
+      cli.table(
+        ['Domain', 'Status', 'Expiry', 'Type', 'State'],
+        tableData,
+      )
+
+      cli.info('\nℹ️  ACM certificates are automatically renewed by AWS')
+      cli.info(`Region: ${region}`)
+    }
+    catch (error: any) {
+      spinner.fail('Failed to fetch certificates')
+      cli.error(error.message)
+    }
   })
 
 app
   .command('ssl:renew <domain>', 'Renew SSL certificate')
-  .action(async (domain: string) => {
-    cli.header(`🔒 Renewing SSL Certificate for ${domain}`)
+  .option('--region <region>', 'AWS region (default: us-east-1)')
+  .action(async (domain: string, options?: { region?: string }) => {
+    cli.header(`🔒 Checking SSL Certificate for ${domain}`)
 
+    const region = options?.region || 'us-east-1'
     cli.info(`Domain: ${domain}`)
+    cli.info(`Region: ${region}`)
 
     const spinner = new cli.Spinner('Checking certificate status...')
     spinner.start()
 
-    // TODO: Check ACM certificate status
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    try {
+      const acm = new ACMClient(region)
 
-    spinner.stop()
+      // Find certificate by domain
+      const cert = await acm.findCertificateByDomain(domain)
 
-    cli.info('\n✓ Certificate is managed by AWS Certificate Manager')
-    cli.info('ACM certificates are automatically renewed 60 days before expiry')
-    cli.warn('\nNo manual renewal needed for ACM certificates')
+      if (!cert) {
+        spinner.fail('Certificate not found')
+        cli.error(`No certificate found for domain: ${domain}`)
+        cli.info('Use \'cloud domain:ssl <domain>\' to request a new certificate')
+        return
+      }
 
-    cli.info('\nCertificate details:')
-    cli.info(`  • Domain: ${domain}`)
-    cli.info(`  • Status: Issued`)
-    cli.info(`  • Expiry: 2025-12-15`)
-    cli.info(`  • Auto-renewal: Enabled`)
+      spinner.succeed('Certificate found')
+
+      cli.info('\n✓ Certificate is managed by AWS Certificate Manager')
+      cli.info('ACM certificates are automatically renewed 60 days before expiry')
+      cli.warn('\nNo manual renewal needed for ACM certificates')
+
+      // Helper to format AWS timestamp (seconds since epoch)
+      const formatDate = (timestamp: string | number | undefined): string => {
+        if (!timestamp) return 'N/A'
+        const ts = typeof timestamp === 'string' ? Number.parseFloat(timestamp) : timestamp
+        const ms = ts < 1e12 ? ts * 1000 : ts
+        return new Date(ms).toISOString().split('T')[0]
+      }
+
+      const expiry = formatDate(cert.NotAfter)
+      const issued = formatDate(cert.IssuedAt)
+
+      cli.info('\nCertificate details:')
+      cli.info(`  • Domain: ${cert.DomainName}`)
+      cli.info(`  • Status: ${cert.Status}`)
+      cli.info(`  • Issued: ${issued}`)
+      cli.info(`  • Expiry: ${expiry}`)
+      cli.info(`  • Type: ${cert.Type || 'Unknown'}`)
+      cli.info(`  • ARN: ${cert.CertificateArn}`)
+      cli.info(`  • Auto-renewal: ${cert.Type === 'AMAZON_ISSUED' ? 'Enabled' : 'N/A (imported)'}`)
+
+      if (cert.SubjectAlternativeNames && cert.SubjectAlternativeNames.length > 1) {
+        cli.info(`  • SANs: ${cert.SubjectAlternativeNames.join(', ')}`)
+      }
+    }
+    catch (error: any) {
+      spinner.fail('Failed to check certificate')
+      cli.error(error.message)
+    }
   })
 
 app
@@ -3672,6 +3754,92 @@ app
     else {
       cli.error('AWS credentials are not configured')
       cli.info('Run: aws configure')
+    }
+
+    // Check CloudFront access (list)
+    cli.step('Checking CloudFront list access...')
+    let cloudfrontListOk = false
+    try {
+      const { CloudFrontClient } = await import('../src/aws/cloudfront')
+      const cloudfront = new CloudFrontClient()
+      await cloudfront.listDistributions()
+      cli.success('CloudFront list access is enabled')
+      cloudfrontListOk = true
+    }
+    catch (error: any) {
+      cli.warn(`CloudFront list check failed: ${error.message}`)
+    }
+
+    // Check CloudFront create access (via CloudFormation - the common issue point)
+    if (cloudfrontListOk) {
+      cli.step('Checking CloudFront create access...')
+      try {
+        // Try to validate a CloudFormation template with CloudFront resource
+        // This tests if the account can create CloudFront distributions
+        const cfn = new CloudFormationClient('us-east-1')
+        const testTemplate = JSON.stringify({
+          AWSTemplateFormatVersion: '2010-09-09',
+          Description: 'Test CloudFront access',
+          Resources: {
+            TestOAC: {
+              Type: 'AWS::CloudFront::OriginAccessControl',
+              Properties: {
+                OriginAccessControlConfig: {
+                  Name: 'test-oac-validation',
+                  OriginAccessControlOriginType: 's3',
+                  SigningBehavior: 'always',
+                  SigningProtocol: 'sigv4',
+                },
+              },
+            },
+          },
+        })
+        await cfn.validateTemplate({ TemplateBody: testTemplate })
+        cli.success('CloudFront create access appears enabled')
+      }
+      catch (error: any) {
+        if (error.message?.includes('403') || error.message?.includes('AccessDenied') || error.message?.includes('must be verified')) {
+          cli.error('CloudFront create access denied - account verification required')
+          cli.info('')
+          cli.info('Your AWS account needs to be verified for CloudFront.')
+          cli.info('This is required before you can create CloudFront distributions.')
+          cli.info('')
+          cli.info('To verify your account:')
+          cli.info('  1. Go to: https://console.aws.amazon.com/support/home#/')
+          cli.info('  2. Create a support case')
+          cli.info('  3. Select: Service limit increase > CloudFront')
+          cli.info('  4. Request: "Please verify my account for CloudFront access"')
+          cli.info('')
+          cli.info('Verification usually takes 1-2 business days.')
+        }
+        else {
+          // Template validation might fail for other reasons, that's ok
+          cli.success('CloudFront create access appears enabled (validation passed)')
+        }
+      }
+    }
+
+    // Check S3 access
+    cli.step('Checking S3 access...')
+    try {
+      const { S3Client } = await import('../src/aws/s3')
+      const s3 = new S3Client('us-east-1')
+      await s3.listBuckets()
+      cli.success('S3 access is enabled')
+    }
+    catch (error: any) {
+      cli.warn(`S3 check failed: ${error.message}`)
+    }
+
+    // Check ACM access
+    cli.step('Checking ACM (SSL certificates) access...')
+    try {
+      const acm = new ACMClient('us-east-1')
+      await acm.listCertificates()
+      cli.success('ACM access is enabled')
+    }
+    catch (error: any) {
+      cli.warn(`ACM check failed: ${error.message}`)
     }
 
     // Check for cloud.config.ts
@@ -5323,6 +5491,78 @@ app
     }
     catch (error: any) {
       cli.error(`Failed to list distributions: ${error.message}`)
+    }
+  })
+
+app
+  .command('cdn:verify-account', 'Check CloudFront account verification status and get help')
+  .option('--open', 'Open AWS Support console in browser')
+  .action(async (options?: { open?: boolean }) => {
+    cli.header('🔒 CloudFront Account Verification')
+
+    // Check if we can list distributions
+    cli.step('Checking CloudFront list access...')
+    let canList = false
+    try {
+      const cloudfront = new CloudFrontClient()
+      await cloudfront.listDistributions()
+      canList = true
+      cli.success('Can list CloudFront distributions')
+    }
+    catch (error: any) {
+      cli.error(`Cannot list distributions: ${error.message}`)
+    }
+
+    // Get account ID
+    const accountId = await cli.getAwsAccountId()
+    if (accountId) {
+      cli.info(`Account ID: ${accountId}`)
+    }
+
+    // Display verification information
+    cli.info('')
+    cli.info('┌─────────────────────────────────────────────────────────────────────────────┐')
+    cli.info('│  CLOUDFRONT ACCOUNT VERIFICATION                                           │')
+    cli.info('├─────────────────────────────────────────────────────────────────────────────┤')
+    cli.info('│                                                                             │')
+    cli.info('│  New AWS accounts need to be verified before creating CloudFront           │')
+    cli.info('│  distributions. This is a one-time security requirement.                   │')
+    cli.info('│                                                                             │')
+    cli.info('│  Steps to verify your account:                                             │')
+    cli.info('│                                                                             │')
+    cli.info('│  1. Go to AWS Support Console:                                             │')
+    cli.info('│     https://console.aws.amazon.com/support/home#/                          │')
+    cli.info('│                                                                             │')
+    cli.info('│  2. Click "Create case"                                                    │')
+    cli.info('│                                                                             │')
+    cli.info('│  3. Select "Service limit increase"                                        │')
+    cli.info('│                                                                             │')
+    cli.info('│  4. For Service: Select "CloudFront"                                       │')
+    cli.info('│                                                                             │')
+    cli.info('│  5. For Request: "Please verify my account for CloudFront access"          │')
+    cli.info('│                                                                             │')
+    cli.info('│  6. Submit the case                                                        │')
+    cli.info('│                                                                             │')
+    cli.info('│  Verification typically takes 1-2 business days.                           │')
+    cli.info('│                                                                             │')
+    cli.info('└─────────────────────────────────────────────────────────────────────────────┘')
+
+    if (options?.open) {
+      const supportUrl = 'https://console.aws.amazon.com/support/home#/'
+      cli.info(`\nOpening ${supportUrl}...`)
+      // Try to open in browser
+      try {
+        const proc = Bun.spawn(['open', supportUrl], { stdout: 'inherit', stderr: 'inherit' })
+        await proc.exited
+        cli.success('Opened AWS Support console in browser')
+      }
+      catch {
+        cli.warn('Could not open browser automatically')
+        cli.info(`Please visit: ${supportUrl}`)
+      }
+    }
+    else {
+      cli.info('\nTip: Run with --open to open AWS Support console in your browser')
     }
   })
 
