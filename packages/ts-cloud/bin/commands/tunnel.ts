@@ -7,8 +7,9 @@ export function registerTunnelCommands(app: CLI): void {
     .option('--port <number>', 'Local port to expose', { default: '3000' })
     .option('--subdomain <name>', 'Custom subdomain (if available)')
     .option('--host <hostname>', 'Local hostname', { default: 'localhost' })
-    .option('--server <url>', 'Tunnel server URL', { default: 'wss://localtunnel.dev' })
-    .action(async (options: { port: string; subdomain?: string; host: string; server: string }) => {
+    .option('--server <url>', 'Tunnel server URL', { default: 'localtunnel.dev' })
+    .option('--verbose', 'Enable verbose logging')
+    .action(async (options: { port: string; subdomain?: string; host: string; server: string; verbose?: boolean }) => {
       cli.header('Local Tunnel')
 
       const port = Number.parseInt(options.port)
@@ -40,11 +41,17 @@ export function registerTunnelCommands(app: CLI): void {
           return
         }
 
+        const serverHost = options.server.replace(/^(wss?|https?):\/\//, '')
+        const secure = options.server.startsWith('wss://') || options.server.startsWith('https://') || serverHost === 'localtunnel.dev'
+
         const client = new TunnelClient({
           localPort: port,
           localHost: options.host,
           subdomain: options.subdomain,
-          server: options.server,
+          host: serverHost,
+          port: secure ? 443 : 80,
+          secure,
+          verbose: options.verbose,
         })
 
         client.on('connected', (info: { url: string; subdomain: string }) => {
@@ -56,7 +63,19 @@ export function registerTunnelCommands(app: CLI): void {
         })
 
         client.on('request', (req: { method: string; url: string }) => {
-          cli.info(`${new Date().toISOString()} ${req.method} ${req.url}`)
+          if (options.verbose) {
+            cli.info(`→ ${req.method} ${req.url}`)
+          }
+        })
+
+        client.on('response', (res: { status: number; size: number; duration?: number }) => {
+          if (options.verbose) {
+            cli.info(`← ${res.status} (${res.size} bytes${res.duration ? `, ${res.duration}ms` : ''})`)
+          }
+        })
+
+        client.on('reconnecting', (info: { attempt: number; maxAttempts: number }) => {
+          cli.info(`Reconnecting... (attempt ${info.attempt}/${info.maxAttempts})`)
         })
 
         client.on('error', (error: Error) => {
@@ -66,6 +85,16 @@ export function registerTunnelCommands(app: CLI): void {
         client.on('close', () => {
           cli.info('\nTunnel closed')
         })
+
+        // Handle process signals for graceful shutdown
+        const cleanup = () => {
+          cli.info('\nShutting down tunnel...')
+          client.disconnect()
+          process.exit(0)
+        }
+
+        process.on('SIGINT', cleanup)
+        process.on('SIGTERM', cleanup)
 
         await client.connect()
 
@@ -89,7 +118,11 @@ export function registerTunnelCommands(app: CLI): void {
       spinner.start()
 
       try {
-        const response = await fetch(`${options.server}/status`, {
+        const serverUrl = options.server.startsWith('http')
+          ? options.server
+          : `https://${options.server}`
+
+        const response = await fetch(`${serverUrl}/status`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
         })
@@ -111,6 +144,10 @@ export function registerTunnelCommands(app: CLI): void {
 
           if (status.uptime) {
             cli.info(`Uptime: ${status.uptime}`)
+          }
+
+          if (status.activeSubdomains?.length) {
+            cli.info(`Active subdomains: ${status.activeSubdomains.join(', ')}`)
           }
         }
         else {
@@ -142,6 +179,7 @@ export function registerTunnelCommands(app: CLI): void {
       cli.info('  - Custom subdomains (when available)')
       cli.info('  - Automatic reconnection')
       cli.info('  - Request logging')
+      cli.info('  - Binary data support')
       cli.info('')
       cli.info('Self-hosted tunnel server:')
       cli.info('  You can run your own tunnel server using localtunnels.')
@@ -153,21 +191,21 @@ export function registerTunnelCommands(app: CLI): void {
     })
 
   app
-    .command('tunnel:deploy', 'Deploy the localtunnel.dev infrastructure')
+    .command('tunnel:deploy', 'Deploy tunnel infrastructure to AWS')
     .option('--region <region>', 'AWS region', { default: 'us-east-1' })
-    .option('--domain <domain>', 'Custom domain', { default: 'localtunnel.dev' })
-    .action(async (options: { region: string; domain: string }) => {
+    .option('--prefix <prefix>', 'Resource name prefix', { default: 'localtunnel' })
+    .option('--verbose', 'Enable verbose logging')
+    .action(async (options: { region: string; prefix: string; verbose?: boolean }) => {
       cli.header('Deploy Tunnel Infrastructure')
 
       cli.info(`Region: ${options.region}`)
-      cli.info(`Domain: ${options.domain}`)
+      cli.info(`Prefix: ${options.prefix}`)
       cli.info('')
 
       cli.info('This will deploy:')
-      cli.info('  - API Gateway WebSocket API for tunnel connections')
-      cli.info('  - API Gateway HTTP API for proxying requests')
-      cli.info('  - Lambda functions for handling connections')
-      cli.info('  - DynamoDB table for connection tracking')
+      cli.info('  - DynamoDB tables for connection tracking')
+      cli.info('  - Lambda functions for handling requests')
+      cli.info('  - Lambda Function URLs for public access')
       cli.info('')
 
       const confirmed = await cli.confirm('Deploy tunnel infrastructure?', false)
@@ -176,43 +214,143 @@ export function registerTunnelCommands(app: CLI): void {
         return
       }
 
+      const spinner = new cli.Spinner('Deploying infrastructure...')
+      spinner.start()
+
+      try {
+        // Try to import the deploy function from localtunnels
+        let deployTunnelInfrastructure: any
+
+        try {
+          const cloudModule = await import('localtunnels/cloud')
+          deployTunnelInfrastructure = cloudModule.deployTunnelInfrastructure
+        }
+        catch {
+          spinner.fail('localtunnels package not found')
+          cli.info('\nTo deploy tunnel infrastructure, install localtunnels:')
+          cli.info('  bun add localtunnels')
+          cli.info('\nOr deploy using the localtunnels CLI directly:')
+          cli.info('  bunx localtunnels deploy --region us-east-1')
+          return
+        }
+
+        const result = await deployTunnelInfrastructure({
+          region: options.region,
+          prefix: options.prefix,
+          verbose: options.verbose,
+        })
+
+        spinner.succeed('Deployment complete!')
+
+        cli.info('')
+        cli.info('Resources created:')
+        cli.info(`  DynamoDB Tables:`)
+        cli.info(`    - ${result.connectionsTable}`)
+        cli.info(`    - ${result.responsesTable}`)
+        cli.info('')
+        cli.info(`  Lambda Functions:`)
+        cli.info(`    - ${result.functions.http}`)
+        cli.info(`    - ${result.functions.message}`)
+        cli.info('')
+
+        if (result.httpUrl || result.wsUrl) {
+          cli.info('Endpoints:')
+          if (result.httpUrl) {
+            cli.info(`  HTTP URL: ${result.httpUrl}`)
+          }
+          if (result.wsUrl) {
+            cli.info(`  WebSocket URL: ${result.wsUrl}`)
+          }
+        }
+      }
+      catch (error: any) {
+        spinner.fail('Deployment failed')
+        cli.error(`Error: ${error.message}`)
+        if (options.verbose) {
+          console.error(error.stack)
+        }
+        process.exit(1)
+      }
+    })
+
+  app
+    .command('tunnel:destroy', 'Destroy tunnel infrastructure from AWS')
+    .option('--region <region>', 'AWS region', { default: 'us-east-1' })
+    .option('--prefix <prefix>', 'Resource name prefix', { default: 'localtunnel' })
+    .option('--verbose', 'Enable verbose logging')
+    .action(async (options: { region: string; prefix: string; verbose?: boolean }) => {
+      cli.header('Destroy Tunnel Infrastructure')
+
+      cli.info(`Region: ${options.region}`)
+      cli.info(`Prefix: ${options.prefix}`)
       cli.info('')
-      cli.info('To deploy the tunnel server infrastructure:')
+
+      cli.warn('This will permanently delete:')
+      cli.warn('  - All DynamoDB tables and data')
+      cli.warn('  - All Lambda functions')
+      cli.warn('  - All IAM roles and policies')
       cli.info('')
-      cli.info('1. Clone the localtunnels repository:')
-      cli.info('   git clone https://github.com/stacksjs/localtunnels')
-      cli.info('')
-      cli.info('2. Navigate to the project:')
-      cli.info('   cd localtunnels')
-      cli.info('')
-      cli.info('3. Install dependencies:')
-      cli.info('   bun install')
-      cli.info('')
-      cli.info('4. Deploy using CDK:')
-      cli.info('   cd src/cloud && cdk deploy')
-      cli.info('')
-      cli.info('5. Configure your domain DNS:')
-      cli.info(`   Point ${options.domain} to the API Gateway endpoint`)
-      cli.info('')
-      cli.info('For the localtunnel.dev deployment, use bunpress:')
-      cli.info('   bunx bunpress deploy')
+
+      const confirmed = await cli.confirm('Are you sure you want to destroy this infrastructure?', false)
+      if (!confirmed) {
+        cli.info('Operation cancelled')
+        return
+      }
+
+      const spinner = new cli.Spinner('Destroying infrastructure...')
+      spinner.start()
+
+      try {
+        let destroyTunnelInfrastructure: any
+
+        try {
+          const cloudModule = await import('localtunnels/cloud')
+          destroyTunnelInfrastructure = cloudModule.destroyTunnelInfrastructure
+        }
+        catch {
+          spinner.fail('localtunnels package not found')
+          cli.info('\nTo destroy tunnel infrastructure, install localtunnels:')
+          cli.info('  bun add localtunnels')
+          cli.info('\nOr destroy using the localtunnels CLI directly:')
+          cli.info('  bunx localtunnels destroy --region us-east-1')
+          return
+        }
+
+        await destroyTunnelInfrastructure({
+          region: options.region,
+          prefix: options.prefix,
+          verbose: options.verbose,
+        })
+
+        spinner.succeed('Infrastructure destroyed!')
+      }
+      catch (error: any) {
+        spinner.fail('Destruction failed')
+        cli.error(`Error: ${error.message}`)
+        if (options.verbose) {
+          console.error(error.stack)
+        }
+        process.exit(1)
+      }
     })
 
   app
     .command('tunnel:logs', 'View tunnel server logs')
     .option('--region <region>', 'AWS region', { default: 'us-east-1' })
+    .option('--prefix <prefix>', 'Resource name prefix', { default: 'localtunnel' })
     .option('--tail', 'Tail the logs')
-    .action(async (options: { region: string; tail?: boolean }) => {
+    .action(async (options: { region: string; prefix: string; tail?: boolean }) => {
       cli.header('Tunnel Server Logs')
 
       cli.info('Tunnel server log groups:')
-      cli.info('  - /aws/lambda/tunnel-connect')
-      cli.info('  - /aws/lambda/tunnel-disconnect')
-      cli.info('  - /aws/lambda/tunnel-https')
+      cli.info(`  - /aws/lambda/${options.prefix}-connect`)
+      cli.info(`  - /aws/lambda/${options.prefix}-disconnect`)
+      cli.info(`  - /aws/lambda/${options.prefix}-message`)
+      cli.info(`  - /aws/lambda/${options.prefix}-http`)
       cli.info('')
 
       cli.info('To view logs:')
-      cli.info(`  aws logs tail /aws/lambda/tunnel-connect --region ${options.region}${options.tail ? ' --follow' : ''}`)
+      cli.info(`  aws logs tail /aws/lambda/${options.prefix}-http --region ${options.region}${options.tail ? ' --follow' : ''}`)
       cli.info('')
 
       cli.info('Or use CloudWatch Insights:')
@@ -261,6 +399,87 @@ export function registerTunnelCommands(app: CLI): void {
       catch (error: any) {
         spinner.fail('Connection failed')
         cli.error(`Error: ${error.message}`)
+      }
+    })
+
+  app
+    .command('tunnel:server', 'Start a self-hosted tunnel server')
+    .option('--port <number>', 'Port to listen on', { default: '3000' })
+    .option('--host <hostname>', 'Host to bind to', { default: '0.0.0.0' })
+    .option('--domain <domain>', 'Domain for tunnel URLs', { default: 'localhost' })
+    .option('--verbose', 'Enable verbose logging')
+    .action(async (options: { port: string; host: string; domain: string; verbose?: boolean }) => {
+      cli.header('Local Tunnel Server')
+
+      const port = Number.parseInt(options.port)
+
+      cli.info(`Listening on: ${options.host}:${port}`)
+      cli.info(`Domain: ${options.domain}`)
+      cli.info('')
+
+      const spinner = new cli.Spinner('Starting tunnel server...')
+      spinner.start()
+
+      try {
+        let TunnelServer: any
+
+        try {
+          const localtunnels = await import('localtunnels')
+          TunnelServer = localtunnels.TunnelServer
+        }
+        catch {
+          spinner.fail('localtunnels package not found')
+          cli.info('\nTo run a tunnel server, install localtunnels:')
+          cli.info('  bun add localtunnels')
+          cli.info('\nOr use the standalone CLI:')
+          cli.info('  bunx localtunnels server --port 3000')
+          return
+        }
+
+        const server = new TunnelServer({
+          port,
+          host: options.host,
+          verbose: options.verbose,
+        })
+
+        server.on('connection', (info: { subdomain: string; totalConnections: number }) => {
+          cli.info(`+ Client connected: ${info.subdomain} (total: ${info.totalConnections})`)
+        })
+
+        server.on('disconnection', (info: { subdomain: string }) => {
+          cli.info(`- Client disconnected: ${info.subdomain}`)
+        })
+
+        // Handle process signals for graceful shutdown
+        const cleanup = () => {
+          cli.info('\nShutting down server...')
+          server.stop()
+          process.exit(0)
+        }
+
+        process.on('SIGINT', cleanup)
+        process.on('SIGTERM', cleanup)
+
+        await server.start()
+
+        spinner.succeed('Server running!')
+
+        cli.info('')
+        cli.info(`WebSocket URL: ws://${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`)
+        cli.info(`HTTP URL: http://${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`)
+        cli.info('')
+        cli.info('Clients can connect with:')
+        cli.info(`  cloud tunnel --port 3000 --server ${options.host === '0.0.0.0' ? 'localhost' : options.host}:${port}`)
+        cli.info('')
+        cli.info('Press Ctrl+C to stop the server')
+
+        // Keep the process running
+        await new Promise(() => {})
+      }
+      catch (error: any) {
+        spinner.fail('Failed to start server')
+        cli.error(`Error: ${error.message}`)
+        process.exit(1)
       }
     })
 }
