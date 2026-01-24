@@ -23,6 +23,26 @@ import {
   registerStackCommands,
   registerUtilsCommands,
   registerAnalyticsCommands,
+  // New infrastructure commands
+  registerCdnCommands,
+  registerStorageCommands,
+  registerCacheCommands,
+  registerQueueCommands,
+  registerNetworkCommands,
+  // Scheduling & Events
+  registerSchedulerCommands,
+  registerEventsCommands,
+  // Communication
+  registerEmailCommands,
+  registerNotifyCommands,
+  // Security & Access
+  registerIamCommands,
+  registerAuditCommands,
+  // Operations
+  registerStatusCommands,
+  registerBackupCommands,
+  registerApiCommands,
+  registerTunnelCommands,
 } from './commands'
 
 const app = new CLI('cloud')
@@ -40,27 +60,70 @@ app
 // ============================================
 // Register All Commands
 // ============================================
+
+// Core commands
 registerInitCommands(app)
 registerConfigCommands(app)
 registerGenerateCommands(app)
+registerDeployCommands(app)
+registerStackCommands(app)
+
+// Infrastructure Management
 registerServerCommands(app)
 registerFunctionCommands(app)
 registerContainerCommands(app)
+registerCdnCommands(app)
+registerStorageCommands(app)
+registerCacheCommands(app)
+registerQueueCommands(app)
+registerNetworkCommands(app)
+
+// Domain & DNS
 registerDomainCommands(app)
+registerSslCommands(app)
+
+// Database & Data
 registerDatabaseCommands(app)
+
+// Monitoring & Logs
 registerLogsCommands(app)
+registerStatusCommands(app)
+
+// Scheduling & Events
+registerSchedulerCommands(app)
+registerEventsCommands(app)
+
+// Communication
+registerEmailCommands(app)
+registerNotifyCommands(app)
+
+// Security & Access
 registerSecretsCommands(app)
 registerFirewallCommands(app)
-registerSslCommands(app)
+registerIamCommands(app)
+registerAuditCommands(app)
+
+// Operations & Backup
+registerBackupCommands(app)
+registerApiCommands(app)
+
+// Cost & Resources
 registerCostCommands(app)
+
+// Git & Environment
 registerGitCommands(app)
 registerEnvironmentCommands(app)
+
+// Assets & Team
 registerAssetsCommands(app)
 registerTeamCommands(app)
-registerDeployCommands(app)
-registerStackCommands(app)
-registerUtilsCommands(app, version)
+
+// Analytics & Tunnel
 registerAnalyticsCommands(app)
+registerTunnelCommands(app)
+
+// Utilities
+registerUtilsCommands(app, version)
 
 // ============================================
 // Help & Version

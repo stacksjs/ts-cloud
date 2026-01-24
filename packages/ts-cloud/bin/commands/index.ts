@@ -20,4 +20,29 @@ export { registerStackCommands } from './stack'
 export { registerUtilsCommands } from './utils'
 export { registerAnalyticsCommands } from './analytics'
 
+// New infrastructure commands
+export { registerCdnCommands } from './cdn'
+export { registerStorageCommands } from './storage'
+export { registerCacheCommands } from './cache'
+export { registerQueueCommands } from './queue'
+export { registerNetworkCommands } from './network'
+
+// Scheduling & Events
+export { registerSchedulerCommands } from './scheduler'
+export { registerEventsCommands } from './events'
+
+// Communication
+export { registerEmailCommands } from './email'
+export { registerNotifyCommands } from './notify'
+
+// Security & Access
+export { registerIamCommands } from './iam'
+export { registerAuditCommands } from './audit'
+
+// Operations
+export { registerStatusCommands } from './status'
+export { registerBackupCommands } from './backup'
+export { registerApiCommands } from './api'
+export { registerTunnelCommands } from './tunnel'
+
 export { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
