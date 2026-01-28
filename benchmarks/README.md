@@ -136,10 +136,18 @@ ts-cloud provides both sync and async APIs:
 import { signRequest } from '@ts-cloud/core'
 const signed = signRequest({ ... })
 
-// Browser - use async functions (still 2x faster than aws4fetch)
+// Browser/Cloudflare Workers/Deno - use async functions (still 2x faster than aws4fetch)
 import { signRequestAsync } from '@ts-cloud/core'
 const signed = await signRequestAsync({ ... })
 ```
+
+**Supported platforms:**
+- Node.js (sync + async)
+- Bun (sync + async)
+- Browsers (async via Web Crypto API)
+- Cloudflare Workers (async via Web Crypto API)
+- Deno (async via Web Crypto API)
+- Any runtime with `crypto.subtle` support
 
 ## Usage Examples
 
@@ -216,15 +224,14 @@ const response = await makeAWSRequest(
 **Use ts-cloud when:**
 - You need maximum performance (sync API in Node.js/Bun)
 - You need browser support (async API with Web Crypto)
+- You need cross-platform compatibility (works everywhere)
 - Bundle size matters (17.8 KB vs 27+ MB for AWS SDK)
 - You want zero dependencies
 - You're building infrastructure tools
 - You want both sync and async options
 
 **Use aws4fetch when:**
-- You need Cloudflare Workers support
-- You only need async signing
-- Cross-platform compatibility is critical
+- You're already using it in an existing project
 
 **Use AWS SDK v3 when:**
 - You need the full SDK ecosystem
