@@ -3,15 +3,25 @@
  * Implements request signing for direct AWS API calls without SDK
  *
  * Reference: https://docs.aws.amazon.com/general/latest/gr/signature-version-4.html
+ *
+ * Browser compatible: Use async functions (signRequestAsync, createPresignedUrlAsync)
+ * Node.js/Bun: Use sync functions for better performance (signRequest, createPresignedUrl)
  */
 
-import { createHmac, createHash } from 'node:crypto'
+// Conditional import for Node.js crypto - will be undefined in browser
+let nodeCrypto: typeof import('node:crypto') | undefined
+try {
+  nodeCrypto = await import('node:crypto')
+} catch {
+  // Running in browser - nodeCrypto stays undefined
+}
 
 /**
  * Signing key cache for improved performance on repeated requests
  * Keys are cached by: secretAccessKey + date + region + service
+ * Supports both Buffer (Node.js) and Uint8Array (browser)
  */
-const signingKeyCache = new Map<string, Buffer>()
+const signingKeyCache = new Map<string, Buffer | Uint8Array>()
 const MAX_CACHE_SIZE = 100
 
 /**
@@ -45,8 +55,9 @@ export interface SignatureOptions {
   /**
    * Optional external cache for signing keys
    * If not provided, uses internal cache
+   * Supports both Buffer (Node.js) and Uint8Array (browser)
    */
-  cache?: Map<string, Buffer>
+  cache?: Map<string, Buffer | Uint8Array>
   /**
    * Sign via query string instead of Authorization header
    * Used for presigned URLs (e.g., S3 presigned URLs)
@@ -79,7 +90,7 @@ export interface PresignedUrlOptions {
   /** Expiration time in seconds (default: 3600 = 1 hour, max: 604800 = 7 days) */
   expiresIn?: number
   /** Optional external cache for signing keys */
-  cache?: Map<string, Buffer>
+  cache?: Map<string, Buffer | Uint8Array>
 }
 
 export interface RetryOptions {
@@ -301,6 +312,139 @@ export function signRequest(options: SignatureOptions): SignedRequest {
 }
 
 /**
+ * Sign an AWS request using Signature Version 4 (async - browser compatible)
+ * Use this in browser environments where crypto.subtle is available
+ */
+export async function signRequestAsync(options: SignatureOptions): Promise<SignedRequest> {
+  const {
+    method,
+    url,
+    body = '',
+    accessKeyId,
+    secretAccessKey,
+    sessionToken,
+    signQuery = false,
+    expiresIn = 86400,
+  } = options
+
+  const urlObj = new URL(url)
+  const host = urlObj.hostname
+
+  // Auto-detect service and region if not provided
+  const detected = detectServiceRegion(urlObj)
+  const service = options.service || detected.service
+  const region = options.region || detected.region
+
+  if (!service) {
+    throw new Error('Could not detect service from URL. Please provide service explicitly.')
+  }
+  if (!region) {
+    throw new Error('Could not detect region from URL. Please provide region explicitly.')
+  }
+
+  // Step 1: Create canonical request
+  const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
+  const date = timestamp.substring(0, 8)
+  const credentialScope = [date, region, service, 'aws4_request'].join('/')
+  const algorithm = 'AWS4-HMAC-SHA256'
+
+  if (signQuery) {
+    // Query string signing (for presigned URLs)
+    return signWithQueryStringAsync({
+      urlObj,
+      method,
+      body,
+      accessKeyId,
+      secretAccessKey,
+      sessionToken,
+      service,
+      region,
+      timestamp,
+      date,
+      credentialScope,
+      algorithm,
+      expiresIn,
+      cache: options.cache,
+    })
+  }
+
+  // Header-based signing
+  const path = urlObj.pathname || '/'
+  const query = canonicalQueryString(urlObj.searchParams)
+
+  const headers: Record<string, string> = {
+    'host': host,
+    'x-amz-date': timestamp,
+    ...options.headers,
+  }
+
+  if (sessionToken) {
+    headers['x-amz-security-token'] = sessionToken
+  }
+
+  // Add content-type for requests with body
+  if (body && !headers['content-type']) {
+    headers['content-type'] = 'application/x-amz-json-1.0'
+  }
+
+  // For S3, add content hash header
+  const bodyHash = await hashAsync(body)
+  if (service === 's3' && !headers['x-amz-content-sha256']) {
+    headers['x-amz-content-sha256'] = bodyHash
+  }
+
+  const canonicalHeaders = getCanonicalHeaders(headers)
+  const signedHeaders = getSignedHeaders(headers)
+  const payloadHash = headers['x-amz-content-sha256'] || bodyHash
+
+  const canonicalRequest = [
+    method,
+    encodePath(path),
+    query,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n')
+
+  // Step 2: Create string to sign
+  const canonicalRequestHash = await hashAsync(canonicalRequest)
+
+  const stringToSign = [
+    algorithm,
+    timestamp,
+    credentialScope,
+    canonicalRequestHash,
+  ].join('\n')
+
+  // Step 3: Calculate signature (with key caching for performance)
+  const cache = options.cache ?? signingKeyCache
+  const signature = await calculateSignatureAsync(
+    secretAccessKey,
+    date,
+    region,
+    service,
+    stringToSign,
+    cache,
+  )
+
+  // Step 4: Add authorization header
+  const authorization = [
+    `${algorithm} Credential=${accessKeyId}/${credentialScope}`,
+    `SignedHeaders=${signedHeaders}`,
+    `Signature=${signature}`,
+  ].join(', ')
+
+  headers['authorization'] = authorization
+
+  return {
+    url,
+    method,
+    headers,
+    body: body || undefined,
+  }
+}
+
+/**
  * Sign request using query string parameters (for presigned URLs)
  */
 function signWithQueryString(params: {
@@ -404,6 +548,109 @@ function signWithQueryString(params: {
 }
 
 /**
+ * Sign request using query string parameters (async - browser compatible)
+ */
+async function signWithQueryStringAsync(params: {
+  urlObj: URL
+  method: string
+  body: string
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+  service: string
+  region: string
+  timestamp: string
+  date: string
+  credentialScope: string
+  algorithm: string
+  expiresIn: number
+  cache?: Map<string, Buffer | Uint8Array>
+}): Promise<SignedRequest> {
+  const {
+    urlObj,
+    method,
+    body,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken,
+    service,
+    region,
+    timestamp,
+    date,
+    credentialScope,
+    algorithm,
+    expiresIn,
+    cache,
+  } = params
+
+  // Clone URL to avoid modifying original
+  const signedUrl = new URL(urlObj.toString())
+
+  // Add required query parameters
+  signedUrl.searchParams.set('X-Amz-Algorithm', algorithm)
+  signedUrl.searchParams.set('X-Amz-Credential', `${accessKeyId}/${credentialScope}`)
+  signedUrl.searchParams.set('X-Amz-Date', timestamp)
+  signedUrl.searchParams.set('X-Amz-Expires', String(expiresIn))
+
+  // For S3, default to UNSIGNED-PAYLOAD
+  const payloadHash = service === 's3' ? 'UNSIGNED-PAYLOAD' : await hashAsync(body)
+  if (service === 's3') {
+    signedUrl.searchParams.set('X-Amz-Content-Sha256', payloadHash)
+  }
+
+  // Signed headers (only host for query string signing)
+  const signedHeaders = 'host'
+  signedUrl.searchParams.set('X-Amz-SignedHeaders', signedHeaders)
+
+  if (sessionToken) {
+    signedUrl.searchParams.set('X-Amz-Security-Token', sessionToken)
+  }
+
+  // Build canonical request
+  const path = encodePath(signedUrl.pathname || '/')
+  const canonicalHeaders = `host:${signedUrl.hostname}\n`
+  const query = canonicalQueryString(signedUrl.searchParams)
+
+  const canonicalRequest = [
+    method,
+    path,
+    query,
+    canonicalHeaders,
+    signedHeaders,
+    payloadHash,
+  ].join('\n')
+
+  // Create string to sign
+  const stringToSign = [
+    algorithm,
+    timestamp,
+    credentialScope,
+    await hashAsync(canonicalRequest),
+  ].join('\n')
+
+  // Calculate signature
+  const signingCache = cache ?? signingKeyCache
+  const signature = await calculateSignatureAsync(
+    secretAccessKey,
+    date,
+    region,
+    service,
+    stringToSign,
+    signingCache,
+  )
+
+  // Add signature to URL
+  signedUrl.searchParams.set('X-Amz-Signature', signature)
+
+  return {
+    url: signedUrl.toString(),
+    method,
+    headers: {},
+    body: body || undefined,
+  }
+}
+
+/**
  * Generate a presigned URL for AWS requests (e.g., S3 GetObject, PutObject)
  */
 export function createPresignedUrl(options: PresignedUrlOptions): string {
@@ -418,6 +665,31 @@ export function createPresignedUrl(options: PresignedUrlOptions): string {
   const clampedExpires = Math.min(expiresIn, 604800)
 
   const signed = signRequest({
+    ...rest,
+    url,
+    method,
+    signQuery: true,
+    expiresIn: clampedExpires,
+  })
+
+  return signed.url
+}
+
+/**
+ * Generate a presigned URL for AWS requests (async - browser compatible)
+ */
+export async function createPresignedUrlAsync(options: PresignedUrlOptions): Promise<string> {
+  const {
+    url,
+    method = 'GET',
+    expiresIn = 3600,
+    ...rest
+  } = options
+
+  // Max expiration is 7 days for most services
+  const clampedExpires = Math.min(expiresIn, 604800)
+
+  const signed = await signRequestAsync({
     ...rest,
     url,
     method,
@@ -487,21 +759,66 @@ function encodeRfc3986(str: string): string {
 }
 
 /**
- * Calculate SHA256 hash
+ * Calculate SHA256 hash (synchronous - Node.js/Bun only)
  */
 function hash(data: string): string {
-  return createHash('sha256').update(data, 'utf8').digest('hex')
+  if (!nodeCrypto) {
+    throw new Error('Synchronous hash not available in browser. Use signRequestAsync() instead.')
+  }
+  return nodeCrypto.createHash('sha256').update(data, 'utf8').digest('hex')
 }
 
 /**
- * Calculate HMAC SHA256
+ * Calculate HMAC SHA256 (synchronous - Node.js/Bun only)
  */
 function hmac(key: Buffer | string, data: string): Buffer {
-  return createHmac('sha256', key).update(data, 'utf8').digest()
+  if (!nodeCrypto) {
+    throw new Error('Synchronous hmac not available in browser. Use signRequestAsync() instead.')
+  }
+  return nodeCrypto.createHmac('sha256', key).update(data, 'utf8').digest()
 }
 
 /**
- * Calculate signature using AWS signing key derivation
+ * Calculate SHA256 hash (async - browser compatible)
+ */
+async function hashAsync(data: string): Promise<string> {
+  const encoder = new TextEncoder()
+  const dataBuffer = encoder.encode(data)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer)
+  return bufferToHex(new Uint8Array(hashBuffer))
+}
+
+/**
+ * Calculate HMAC SHA256 (async - browser compatible)
+ */
+async function hmacAsync(key: Uint8Array | string, data: string): Promise<Uint8Array> {
+  const encoder = new TextEncoder()
+  const keyBuffer = typeof key === 'string' ? encoder.encode(key) : key
+  const dataBuffer = encoder.encode(data)
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBuffer,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  )
+
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer)
+  return new Uint8Array(signature)
+}
+
+/**
+ * Convert Uint8Array to hex string
+ */
+function bufferToHex(buffer: Uint8Array): string {
+  return Array.from(buffer)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+}
+
+/**
+ * Calculate signature using AWS signing key derivation (sync - Node.js/Bun only)
  * Uses caching for signing keys to improve performance on repeated requests
  */
 function calculateSignature(
@@ -510,12 +827,12 @@ function calculateSignature(
   region: string,
   service: string,
   stringToSign: string,
-  cache: Map<string, Buffer>,
+  cache: Map<string, Buffer | Uint8Array>,
 ): string {
   // Create cache key from signing parameters
   const cacheKey = `${secretAccessKey}:${date}:${region}:${service}`
 
-  let kSigning = cache.get(cacheKey)
+  let kSigning = cache.get(cacheKey) as Buffer | undefined
 
   if (!kSigning) {
     // Derive signing key (expensive operation)
@@ -536,6 +853,45 @@ function calculateSignature(
   }
 
   return hmac(kSigning, stringToSign).toString('hex')
+}
+
+/**
+ * Calculate signature using AWS signing key derivation (async - browser compatible)
+ * Uses caching for signing keys to improve performance on repeated requests
+ */
+async function calculateSignatureAsync(
+  secretAccessKey: string,
+  date: string,
+  region: string,
+  service: string,
+  stringToSign: string,
+  cache: Map<string, Buffer | Uint8Array>,
+): Promise<string> {
+  // Create cache key from signing parameters
+  const cacheKey = `${secretAccessKey}:${date}:${region}:${service}`
+
+  let kSigning = cache.get(cacheKey) as Uint8Array | undefined
+
+  if (!kSigning) {
+    // Derive signing key (expensive operation)
+    const kDate = await hmacAsync(`AWS4${secretAccessKey}`, date)
+    const kRegion = await hmacAsync(kDate, region)
+    const kService = await hmacAsync(kRegion, service)
+    kSigning = await hmacAsync(kService, 'aws4_request')
+
+    // Limit cache size to prevent memory leaks
+    if (cache.size >= MAX_CACHE_SIZE) {
+      // Remove oldest entry (first key)
+      const firstKey = cache.keys().next().value
+      if (firstKey)
+        cache.delete(firstKey)
+    }
+
+    cache.set(cacheKey, kSigning)
+  }
+
+  const signature = await hmacAsync(kSigning, stringToSign)
+  return bufferToHex(signature)
 }
 
 /**
@@ -638,6 +994,72 @@ export async function makeAWSRequestOnce(
 }
 
 /**
+ * Make a signed AWS API request with automatic retry (async - browser compatible)
+ * Use this in browser environments where crypto.subtle is available
+ */
+export async function makeAWSRequestAsync(
+  options: SignatureOptions,
+  retryOptions?: RetryOptions,
+): Promise<Response> {
+  const {
+    maxRetries = 3,
+    initialDelayMs = 100,
+    maxDelayMs = 5000,
+    retryableStatusCodes = [429, 500, 502, 503, 504],
+  } = retryOptions ?? {}
+
+  let lastError: Error | undefined
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Re-sign request on each attempt (timestamp changes)
+    const signedRequest = await signRequestAsync(options)
+
+    const fetchOptions: RequestInit = {
+      method: signedRequest.method,
+      headers: signedRequest.headers,
+    }
+
+    if (signedRequest.body) {
+      fetchOptions.body = signedRequest.body
+    }
+
+    try {
+      const response = await fetch(signedRequest.url, fetchOptions)
+
+      // Success - return immediately
+      if (response.ok) {
+        return response
+      }
+
+      // Check if we should retry
+      if (attempt < maxRetries && isRetryable(response.status, retryableStatusCodes)) {
+        const delay = calculateBackoff(attempt, initialDelayMs, maxDelayMs)
+        await sleep(delay)
+        continue
+      }
+
+      // Non-retryable error or max retries reached
+      const errorText = await response.text()
+      throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
+    } catch (error) {
+      lastError = error as Error
+
+      // Network errors are retryable
+      if (attempt < maxRetries && !(error instanceof Error && error.message.includes('AWS API request failed'))) {
+        const delay = calculateBackoff(attempt, initialDelayMs, maxDelayMs)
+        await sleep(delay)
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  // Should not reach here, but just in case
+  throw lastError ?? new Error('Request failed after retries')
+}
+
+/**
  * Parse XML response from AWS
  */
 export async function parseXMLResponse<T = any>(response: Response): Promise<T> {
@@ -678,4 +1100,20 @@ export function clearSigningKeyCache(): void {
  */
 export function getSigningKeyCacheSize(): number {
   return signingKeyCache.size
+}
+
+/**
+ * Check if Node.js crypto is available (for sync operations)
+ * Returns true in Node.js/Bun, false in browser
+ */
+export function isNodeCryptoAvailable(): boolean {
+  return nodeCrypto !== undefined
+}
+
+/**
+ * Check if Web Crypto API is available (for async operations)
+ * Returns true in modern browsers and Node.js 15+
+ */
+export function isWebCryptoAvailable(): boolean {
+  return typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined'
 }

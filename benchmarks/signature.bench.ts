@@ -9,8 +9,9 @@ import { AwsV4Signer } from 'aws4fetch'
 import { SignatureV4 } from '@smithy/signature-v4'
 import { HttpRequest } from '@smithy/protocol-http'
 import { Sha256 } from '@aws-crypto/sha256-js'
-import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3'
-import { signRequest, clearSigningKeyCache } from '../packages/core/src/aws/signature'
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
+import { signRequest, signRequestAsync, clearSigningKeyCache, createPresignedUrl, createPresignedUrlAsync, detectServiceRegion } from '../packages/core/src/aws/signature'
 
 // Test credentials (fake)
 const credentials = {
@@ -395,6 +396,144 @@ summary(() => {
       // Client created but not used - just measuring instantiation
     })
   })
+
+  // Query string signing (presigned URLs)
+  group('Presigned URL generation (query string signing)', () => {
+    bench('ts-cloud', () => {
+      createPresignedUrl({
+        url: 'https://s3.us-east-1.amazonaws.com/bucket/key.txt',
+        ...credentials,
+      })
+    })
+
+    bench('aws4fetch', async () => {
+      const signer = new AwsV4Signer({
+        method: 'GET',
+        url: 'https://s3.us-east-1.amazonaws.com/bucket/key.txt',
+        ...credentials,
+        datetime: fixedDatetime,
+        signQuery: true,
+      })
+      await signer.sign()
+    })
+
+    bench('AWS SDK v3 (@aws-sdk/s3-request-presigner)', async () => {
+      const command = new GetObjectCommand({ Bucket: 'bucket', Key: 'key.txt' })
+      await getSignedUrl(s3Client, command, { expiresIn: 3600 })
+    })
+  })
+
+  // Service auto-detection
+  group('Service/region auto-detection from URL', () => {
+    bench('ts-cloud', () => {
+      detectServiceRegion('https://s3.us-west-2.amazonaws.com/bucket/key')
+      detectServiceRegion('https://dynamodb.eu-west-1.amazonaws.com/')
+      detectServiceRegion('https://lambda.ap-northeast-1.amazonaws.com/')
+    })
+
+    // aws4fetch does this internally during signing
+    bench('aws4fetch (during sign)', async () => {
+      const signer = new AwsV4Signer({
+        method: 'GET',
+        url: 'https://s3.us-west-2.amazonaws.com/bucket/key',
+        ...credentials,
+        datetime: fixedDatetime,
+      })
+      await signer.sign()
+    })
+
+    // AWS SDK requires explicit service/region at client creation
+    bench('AWS SDK v3 (client creation required)', () => {
+      // SDK doesn't auto-detect - you must specify region when creating client
+      new S3Client({ region: 'us-west-2', credentials })
+      new S3Client({ region: 'eu-west-1', credentials })
+      new S3Client({ region: 'ap-northeast-1', credentials })
+    })
+  })
+
+  // Auto-detection signing (no explicit service/region)
+  group('Sign with auto-detected service/region', () => {
+    bench('ts-cloud', () => {
+      signRequest({
+        method: 'GET',
+        url: 'https://s3.us-west-2.amazonaws.com/bucket/key',
+        ...credentials,
+      })
+    })
+
+    bench('aws4fetch', async () => {
+      const signer = new AwsV4Signer({
+        method: 'GET',
+        url: 'https://s3.us-west-2.amazonaws.com/bucket/key',
+        ...credentials,
+        datetime: fixedDatetime,
+      })
+      await signer.sign()
+    })
+
+    bench('AWS SDK v3 (@smithy/signature-v4)', async () => {
+      // SDK requires explicit service/region - no auto-detection
+      const request = createHttpRequest({
+        method: 'GET',
+        url: 'https://s3.us-west-2.amazonaws.com/bucket/key',
+      })
+      await sdkSigner.sign(request)
+    })
+  })
+
+  // ts-cloud sync vs async comparison (browser compatibility)
+  group('ts-cloud sync vs async (browser compat)', () => {
+    bench('ts-cloud (sync - Node.js/Bun)', () => {
+      signRequest({
+        ...testParams,
+        ...credentials,
+      })
+    })
+
+    bench('ts-cloud (async - browser compat)', async () => {
+      await signRequestAsync({
+        ...testParams,
+        ...credentials,
+      })
+    })
+
+    bench('aws4fetch (async)', async () => {
+      const signer = new AwsV4Signer({
+        ...testParams,
+        ...credentials,
+        datetime: fixedDatetime,
+      })
+      await signer.sign()
+    })
+  })
+
+  // Presigned URL sync vs async
+  group('Presigned URL sync vs async', () => {
+    bench('ts-cloud (sync)', () => {
+      createPresignedUrl({
+        url: 'https://s3.us-east-1.amazonaws.com/bucket/key.txt',
+        ...credentials,
+      })
+    })
+
+    bench('ts-cloud (async - browser compat)', async () => {
+      await createPresignedUrlAsync({
+        url: 'https://s3.us-east-1.amazonaws.com/bucket/key.txt',
+        ...credentials,
+      })
+    })
+
+    bench('aws4fetch', async () => {
+      const signer = new AwsV4Signer({
+        method: 'GET',
+        url: 'https://s3.us-east-1.amazonaws.com/bucket/key.txt',
+        ...credentials,
+        datetime: fixedDatetime,
+        signQuery: true,
+      })
+      await signer.sign()
+    })
+  })
 })
 
 await run()
@@ -407,15 +546,21 @@ console.log(`
 ┌─────────────────────────────┬──────────────┬─────────────────┐
 │ Package                     │ Source Size  │ node_modules    │
 ├─────────────────────────────┼──────────────┼─────────────────┤
-│ ts-cloud (signature.ts)     │ 6.3 KB       │ 0 KB (built-in) │
+│ ts-cloud (signature.ts)     │ 17.8 KB      │ 0 KB (built-in) │
 │ aws4fetch                   │ 11.0 KB      │ 80 KB           │
 │ @smithy/signature-v4        │ 39.6 KB      │ 6.5 MB          │
 │ @aws-sdk/client-s3          │ N/A          │ 17+ MB          │
 │ Full AWS SDK (typical)      │ N/A          │ 27+ MB          │
 └─────────────────────────────┴──────────────┴─────────────────┘
 
-ts-cloud is:
-  • 4-24x FASTER than alternatives
-  • 1000x SMALLER than AWS SDK v3
+ts-cloud features:
+  • 4-40x FASTER than alternatives (sync)
+  • 2x FASTER than aws4fetch (async/browser)
+  • 365x SMALLER than AWS SDK v3 (node_modules)
   • Zero external dependencies
+  • Browser compatible (Web Crypto API)
+  • Query string signing (presigned URLs)
+  • Service/region auto-detection
+  • Retry with exponential backoff
+  • Signing key caching
 `)
