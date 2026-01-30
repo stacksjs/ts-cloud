@@ -634,4 +634,153 @@ export class LambdaClient {
       FunctionUrlAuthType: 'NONE',
     })
   }
+
+  // =========================================================================
+  // Layer Operations
+  // =========================================================================
+
+  /**
+   * Publish a new Lambda layer version
+   */
+  async publishLayerVersion(params: {
+    LayerName: string
+    Description?: string
+    Content: {
+      S3Bucket?: string
+      S3Key?: string
+      ZipFile?: string // Base64 encoded zip
+    }
+    CompatibleRuntimes?: string[]
+    CompatibleArchitectures?: ('x86_64' | 'arm64')[]
+    LicenseInfo?: string
+  }): Promise<{
+    LayerArn?: string
+    LayerVersionArn?: string
+    Description?: string
+    Version?: number
+    CompatibleRuntimes?: string[]
+    CompatibleArchitectures?: string[]
+  }> {
+    const { LayerName, ...rest } = params
+    const result = await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'POST',
+      path: `/2018-10-31/layers/${encodeURIComponent(LayerName)}/versions`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rest),
+    })
+
+    return result
+  }
+
+  /**
+   * List layer versions
+   */
+  async listLayerVersions(layerName: string, params?: {
+    CompatibleRuntime?: string
+    CompatibleArchitecture?: 'x86_64' | 'arm64'
+    MaxItems?: number
+    Marker?: string
+  }): Promise<{
+    LayerVersions?: Array<{
+      LayerVersionArn?: string
+      Version?: number
+      Description?: string
+      CompatibleRuntimes?: string[]
+      CompatibleArchitectures?: string[]
+    }>
+    NextMarker?: string
+  }> {
+    const queryParams: Record<string, string> = {}
+    if (params?.CompatibleRuntime) queryParams.CompatibleRuntime = params.CompatibleRuntime
+    if (params?.CompatibleArchitecture) queryParams.CompatibleArchitecture = params.CompatibleArchitecture
+    if (params?.MaxItems) queryParams.MaxItems = String(params.MaxItems)
+    if (params?.Marker) queryParams.Marker = params.Marker
+
+    const result = await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'GET',
+      path: `/2018-10-31/layers/${encodeURIComponent(layerName)}/versions`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    return result
+  }
+
+  /**
+   * Get layer version details
+   */
+  async getLayerVersion(layerName: string, versionNumber: number): Promise<{
+    LayerArn?: string
+    LayerVersionArn?: string
+    Description?: string
+    Version?: number
+    CompatibleRuntimes?: string[]
+    CompatibleArchitectures?: string[]
+    Content?: {
+      Location?: string
+      CodeSha256?: string
+      CodeSize?: number
+    }
+  }> {
+    const result = await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'GET',
+      path: `/2018-10-31/layers/${encodeURIComponent(layerName)}/versions/${versionNumber}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    return result
+  }
+
+  /**
+   * Add permission to a layer version (e.g., make it public)
+   */
+  async addLayerVersionPermission(params: {
+    LayerName: string
+    VersionNumber: number
+    StatementId: string
+    Action: string
+    Principal: string
+    OrganizationId?: string
+  }): Promise<{ Statement?: string; RevisionId?: string }> {
+    const { LayerName, VersionNumber, ...rest } = params
+    const result = await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'POST',
+      path: `/2018-10-31/layers/${encodeURIComponent(LayerName)}/versions/${VersionNumber}/policy`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rest),
+    })
+
+    return result
+  }
+
+  /**
+   * Delete a layer version
+   */
+  async deleteLayerVersion(layerName: string, versionNumber: number): Promise<void> {
+    await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'DELETE',
+      path: `/2018-10-31/layers/${encodeURIComponent(layerName)}/versions/${versionNumber}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+  }
 }
