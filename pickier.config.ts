@@ -11,6 +11,7 @@ const config: PickierConfig = {
     '**/coverage/**',
     '**/*.min.js',
     '**/bun.lock',
+    '**/benchmarks/**',
   ],
 
   lint: {

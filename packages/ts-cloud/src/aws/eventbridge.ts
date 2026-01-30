@@ -16,6 +16,12 @@ export interface EventBridgeRule {
   EventBusName?: string
 }
 
+export interface EventBus {
+  Name?: string
+  Arn?: string
+  Policy?: string
+}
+
 export interface EventBridgeTarget {
   Id: string
   Arn: string
@@ -105,6 +111,17 @@ export class EventBridgeClient {
     Limit?: number
   }): Promise<{ Rules: EventBridgeRule[]; NextToken?: string }> {
     return this.request('ListRules', params || {})
+  }
+
+  /**
+   * List event buses
+   */
+  async listEventBuses(params?: {
+    NamePrefix?: string
+    NextToken?: string
+    Limit?: number
+  }): Promise<{ EventBuses: EventBus[]; NextToken?: string }> {
+    return this.request('ListEventBuses', params || {})
   }
 
   /**

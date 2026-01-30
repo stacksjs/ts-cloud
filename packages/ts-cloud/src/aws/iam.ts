@@ -606,6 +606,44 @@ export interface AccountSummary {
 }
 
 // ============================================================================
+// Types - Policy Simulation
+// ============================================================================
+
+export interface SimulatePrincipalPolicyParams {
+  PolicySourceArn: string
+  ActionNames: string[]
+  ResourceArns?: string[]
+  ResourcePolicy?: string
+  ResourceOwner?: string
+  CallerArn?: string
+  ContextEntries?: Array<{
+    ContextKeyName: string
+    ContextKeyValues: string[]
+    ContextKeyType: string
+  }>
+  ResourceHandlingOption?: string
+  MaxItems?: number
+  Marker?: string
+}
+
+export interface EvaluationResult {
+  EvalActionName: string
+  EvalResourceName?: string
+  EvalDecision: string
+  MatchedStatements?: Array<{
+    SourcePolicyId?: string
+    SourcePolicyType?: string
+  }>
+  MissingContextValues?: string[]
+}
+
+export interface SimulatePolicyResponse {
+  EvaluationResults: EvaluationResult[]
+  IsTruncated: boolean
+  Marker?: string
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -1610,5 +1648,42 @@ export class IAMClient {
    */
   async deleteAccountAlias(params: { AccountAlias: string }): Promise<void> {
     await this.request('DeleteAccountAlias', params)
+  }
+
+  // ==========================================================================
+  // Policy Simulation Operations
+  // ==========================================================================
+
+  /**
+   * Simulate the effect of policies attached to a principal
+   */
+  async simulatePrincipalPolicy(params: SimulatePrincipalPolicyParams): Promise<SimulatePolicyResponse> {
+    const response = await this.request('SimulatePrincipalPolicy', params)
+    return this.parseSimulationResults(response)
+  }
+
+  /**
+   * Parse simulation results from XML response
+   */
+  private parseSimulationResults(xml: string): SimulatePolicyResponse {
+    const resultXmls = parseXmlArray(xml, 'EvaluationResults', 'member')
+    const evaluationResults: EvaluationResult[] = resultXmls.map((resultXml) => {
+      const matchedStatementXmls = parseXmlArray(resultXml, 'MatchedStatements', 'member')
+      const matchedStatements = matchedStatementXmls.map((stmtXml) => ({
+        SourcePolicyId: parseXmlValue(stmtXml, 'SourcePolicyId'),
+        SourcePolicyType: parseXmlValue(stmtXml, 'SourcePolicyType'),
+      }))
+
+      return {
+        EvalActionName: parseXmlValue(resultXml, 'EvalActionName') || '',
+        EvalResourceName: parseXmlValue(resultXml, 'EvalResourceName'),
+        EvalDecision: parseXmlValue(resultXml, 'EvalDecision') || '',
+        MatchedStatements: matchedStatements.length > 0 ? matchedStatements : undefined,
+      }
+    })
+
+    const isTruncated = parseXmlValue(xml, 'IsTruncated') === 'true'
+    const marker = parseXmlValue(xml, 'Marker')
+    return { EvaluationResults: evaluationResults, IsTruncated: isTruncated, Marker: marker }
   }
 }

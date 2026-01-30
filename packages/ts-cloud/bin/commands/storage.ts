@@ -70,36 +70,23 @@ export function registerStorageCommands(app: CLI): void {
         const spinner = new cli.Spinner('Creating bucket...')
         spinner.start()
 
-        await s3.createBucket({
-          Bucket: name,
-          CreateBucketConfiguration: options.region !== 'us-east-1' ? {
-            LocationConstraint: options.region,
-          } : undefined,
-        })
+        await s3.createBucket(name)
 
         // Block public access by default
         if (!options.public) {
           spinner.text = 'Configuring public access block...'
-          await s3.putPublicAccessBlock({
-            Bucket: name,
-            PublicAccessBlockConfiguration: {
-              BlockPublicAcls: true,
-              IgnorePublicAcls: true,
-              BlockPublicPolicy: true,
-              RestrictPublicBuckets: true,
-            },
+          await s3.putPublicAccessBlock(name, {
+            BlockPublicAcls: true,
+            IgnorePublicAcls: true,
+            BlockPublicPolicy: true,
+            RestrictPublicBuckets: true,
           })
         }
 
         // Enable versioning if requested
         if (options.versioning) {
           spinner.text = 'Enabling versioning...'
-          await s3.putBucketVersioning({
-            Bucket: name,
-            VersioningConfiguration: {
-              Status: 'Enabled',
-            },
-          })
+          await s3.putBucketVersioning(name, 'Enabled')
         }
 
         spinner.succeed('Bucket created')
@@ -142,7 +129,7 @@ export function registerStorageCommands(app: CLI): void {
           await s3.emptyBucket(name)
         }
 
-        await s3.deleteBucket({ Bucket: name })
+        await s3.deleteBucket(name)
 
         spinner.succeed('Bucket deleted')
       }
@@ -232,10 +219,10 @@ export function registerStorageCommands(app: CLI): void {
           const buffer = await fileContent.arrayBuffer()
 
           await s3.putObject({
-            Bucket: bucket,
-            Key: file.key,
-            Body: buffer,
-            ContentType: getContentType(file.key),
+            bucket: bucket,
+            key: file.key,
+            body: Buffer.from(buffer),
+            contentType: getContentType(file.key),
           })
 
           uploaded++
@@ -248,21 +235,21 @@ export function registerStorageCommands(app: CLI): void {
           const deleteSpinner = new cli.Spinner('Checking for files to delete...')
           deleteSpinner.start()
 
-          const remoteObjects = await s3.listObjectsV2({
-            Bucket: bucket,
-            Prefix: options.prefix,
+          const remoteResult = await s3.listObjects({
+            bucket,
+            prefix: options.prefix,
           })
 
           const localKeys = new Set(localFiles.map(f => f.key))
-          const toDelete = (remoteObjects.Contents || [])
-            .filter(obj => obj.Key && !localKeys.has(obj.Key))
-            .map(obj => obj.Key!)
+          const toDelete = remoteResult.objects
+            .filter((obj: any) => obj.Key && !localKeys.has(obj.Key))
+            .map((obj: any) => obj.Key!)
 
           if (toDelete.length > 0) {
             deleteSpinner.text = `Deleting ${toDelete.length} remote file(s)...`
 
             for (const key of toDelete) {
-              await s3.deleteObject({ Bucket: bucket, Key: key })
+              await s3.deleteObject(bucket, key)
             }
 
             deleteSpinner.succeed(`Deleted ${toDelete.length} remote file(s)`)
@@ -303,7 +290,7 @@ export function registerStorageCommands(app: CLI): void {
           const spinner = new cli.Spinner('Deleting policy...')
           spinner.start()
 
-          await s3.deleteBucketPolicy({ Bucket: bucket })
+          await s3.deleteBucketPolicy(bucket)
 
           spinner.succeed('Policy deleted')
           return
@@ -334,10 +321,7 @@ export function registerStorageCommands(app: CLI): void {
             ],
           }
 
-          await s3.putBucketPolicy({
-            Bucket: bucket,
-            Policy: JSON.stringify(policy),
-          })
+          await s3.putBucketPolicy(bucket, policy)
 
           spinner.succeed('Public read policy set')
           return
@@ -350,10 +334,7 @@ export function registerStorageCommands(app: CLI): void {
           const policyFile = Bun.file(options.set)
           const policy = await policyFile.text()
 
-          await s3.putBucketPolicy({
-            Bucket: bucket,
-            Policy: policy,
-          })
+          await s3.putBucketPolicy(bucket, policy)
 
           spinner.succeed('Policy set')
           return
@@ -364,11 +345,11 @@ export function registerStorageCommands(app: CLI): void {
         spinner.start()
 
         try {
-          const result = await s3.getBucketPolicy({ Bucket: bucket })
+          const result = await s3.getBucketPolicy(bucket)
           spinner.succeed('Policy loaded')
 
           cli.info('\nBucket Policy:')
-          console.log(JSON.stringify(JSON.parse(result.Policy || '{}'), null, 2))
+          console.log(JSON.stringify(result || {}, null, 2))
         }
         catch (err: any) {
           if (err.message?.includes('NoSuchBucketPolicy')) {
@@ -399,15 +380,15 @@ export function registerStorageCommands(app: CLI): void {
         const spinner = new cli.Spinner('Listing objects...')
         spinner.start()
 
-        const result = await s3.listObjectsV2({
-          Bucket: bucket,
-          Prefix: options.prefix,
-          MaxKeys: Number.parseInt(options.limit || '100'),
+        const result = await s3.listObjects({
+          bucket,
+          prefix: options.prefix,
+          maxKeys: Number.parseInt(options.limit || '100'),
         })
 
-        const objects = result.Contents || []
+        const objects = result.objects
 
-        spinner.succeed(`Found ${objects.length} object(s)${result.IsTruncated ? ' (truncated)' : ''}`)
+        spinner.succeed(`Found ${objects.length} object(s)${result.nextContinuationToken ? ' (truncated)' : ''}`)
 
         if (objects.length === 0) {
           cli.info('No objects found')
@@ -423,7 +404,7 @@ export function registerStorageCommands(app: CLI): void {
           ]),
         )
 
-        if (result.IsTruncated) {
+        if (result.nextContinuationToken) {
           cli.info(`\nMore objects available. Use --limit to see more.`)
         }
       }

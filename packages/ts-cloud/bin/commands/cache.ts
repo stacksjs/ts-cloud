@@ -75,11 +75,11 @@ export function registerCacheCommands(app: CLI): void {
         spinner.start()
 
         await elasticache.createCacheCluster({
-          CacheClusterId: name,
-          Engine: options.engine,
-          CacheNodeType: options.nodeType,
-          NumCacheNodes: Number.parseInt(options.nodes),
-          EngineVersion: options.version,
+          cacheClusterId: name,
+          engine: options.engine as 'redis' | 'memcached',
+          cacheNodeType: options.nodeType,
+          numCacheNodes: Number.parseInt(options.nodes),
+          engineVersion: options.version,
         })
 
         spinner.succeed('Cluster creation initiated')
@@ -116,7 +116,7 @@ export function registerCacheCommands(app: CLI): void {
         const spinner = new cli.Spinner('Deleting cluster...')
         spinner.start()
 
-        await elasticache.deleteCacheCluster({ CacheClusterId: clusterId })
+        await elasticache.deleteCacheCluster(clusterId)
 
         spinner.succeed('Cluster deletion initiated')
 
@@ -140,10 +140,7 @@ export function registerCacheCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching cluster details...')
         spinner.start()
 
-        const result = await elasticache.describeCacheClusters({
-          CacheClusterId: clusterId,
-          ShowCacheNodeInfo: true,
-        })
+        const result = await elasticache.describeCacheClusters(clusterId)
 
         const cluster = result.CacheClusters?.[0]
 
@@ -160,11 +157,7 @@ export function registerCacheCommands(app: CLI): void {
         cli.info(`  Node Type: ${cluster.CacheNodeType}`)
         cli.info(`  Status: ${cluster.CacheClusterStatus}`)
         cli.info(`  Nodes: ${cluster.NumCacheNodes}`)
-
-        if (cluster.ConfigurationEndpoint) {
-          cli.info(`\nConfiguration Endpoint:`)
-          cli.info(`  ${cluster.ConfigurationEndpoint.Address}:${cluster.ConfigurationEndpoint.Port}`)
-        }
+        cli.info(`  Availability Zone: ${cluster.PreferredAvailabilityZone || 'Not set'}`)
 
         if (cluster.CacheNodes && cluster.CacheNodes.length > 0) {
           cli.info('\nCache Nodes:')
@@ -175,18 +168,6 @@ export function registerCacheCommands(app: CLI): void {
             }
           }
         }
-
-        if (cluster.CacheSecurityGroups && cluster.CacheSecurityGroups.length > 0) {
-          cli.info('\nSecurity Groups:')
-          for (const sg of cluster.CacheSecurityGroups) {
-            cli.info(`  - ${sg.CacheSecurityGroupName}: ${sg.Status}`)
-          }
-        }
-
-        cli.info('\nParameters:')
-        cli.info(`  Parameter Group: ${cluster.CacheParameterGroup?.CacheParameterGroupName || 'default'}`)
-        cli.info(`  Subnet Group: ${cluster.CacheSubnetGroupName || 'default'}`)
-        cli.info(`  Preferred Maintenance: ${cluster.PreferredMaintenanceWindow || 'Not set'}`)
       }
       catch (error: any) {
         cli.error(`Failed to get cluster stats: ${error.message}`)
@@ -207,10 +188,7 @@ export function registerCacheCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting cluster endpoint...')
         spinner.start()
 
-        const result = await elasticache.describeCacheClusters({
-          CacheClusterId: clusterId,
-          ShowCacheNodeInfo: true,
-        })
+        const result = await elasticache.describeCacheClusters(clusterId)
 
         const cluster = result.CacheClusters?.[0]
 
@@ -227,7 +205,7 @@ export function registerCacheCommands(app: CLI): void {
 
         spinner.stop()
 
-        const endpoint = cluster.ConfigurationEndpoint || cluster.CacheNodes?.[0]?.Endpoint
+        const endpoint = cluster.CacheNodes?.[0]?.Endpoint
 
         if (!endpoint) {
           cli.error('Could not determine cluster endpoint')
@@ -269,10 +247,7 @@ export function registerCacheCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting cluster info...')
         spinner.start()
 
-        const result = await elasticache.describeCacheClusters({
-          CacheClusterId: clusterId,
-          ShowCacheNodeInfo: true,
-        })
+        const result = await elasticache.describeCacheClusters(clusterId)
 
         const cluster = result.CacheClusters?.[0]
 
@@ -285,7 +260,7 @@ export function registerCacheCommands(app: CLI): void {
 
         const nodeIds = options.node
           ? [options.node]
-          : cluster.CacheNodes?.map(n => n.CacheNodeId!).filter(Boolean) || []
+          : cluster.CacheNodes?.map(n => n.CacheNodeId).filter(Boolean) || []
 
         if (nodeIds.length === 0) {
           cli.error('No nodes found to reboot')
@@ -304,10 +279,7 @@ export function registerCacheCommands(app: CLI): void {
         const rebootSpinner = new cli.Spinner('Rebooting nodes...')
         rebootSpinner.start()
 
-        await elasticache.rebootCacheCluster({
-          CacheClusterId: clusterId,
-          CacheNodeIdsToReboot: nodeIds,
-        })
+        await elasticache.rebootCacheCluster(clusterId, nodeIds)
 
         rebootSpinner.succeed('Reboot initiated')
 

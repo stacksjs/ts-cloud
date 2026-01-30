@@ -29,6 +29,7 @@ export function registerTunnelCommands(app: CLI): void {
         let TunnelClient: any
 
         try {
+          // @ts-expect-error -- localtunnels is an optional dependency
           const localtunnels = await import('localtunnels')
           TunnelClient = localtunnels.TunnelClient
         }
@@ -128,7 +129,7 @@ export function registerTunnelCommands(app: CLI): void {
         })
 
         if (response.ok) {
-          const status = await response.json()
+          const status = await response.json() as Record<string, any>
           spinner.succeed('Server is online')
 
           cli.info(`\nServer: ${options.server}`)
@@ -222,6 +223,7 @@ export function registerTunnelCommands(app: CLI): void {
         let deployTunnelInfrastructure: any
 
         try {
+          // @ts-expect-error -- localtunnels is an optional dependency
           const cloudModule = await import('localtunnels/cloud')
           deployTunnelInfrastructure = cloudModule.deployTunnelInfrastructure
         }
@@ -304,6 +306,7 @@ export function registerTunnelCommands(app: CLI): void {
         let destroyTunnelInfrastructure: any
 
         try {
+          // @ts-expect-error -- localtunnels is an optional dependency
           const cloudModule = await import('localtunnels/cloud')
           destroyTunnelInfrastructure = cloudModule.destroyTunnelInfrastructure
         }
@@ -424,6 +427,7 @@ export function registerTunnelCommands(app: CLI): void {
         let TunnelServer: any
 
         try {
+          // @ts-expect-error -- localtunnels is an optional dependency
           const localtunnels = await import('localtunnels')
           TunnelServer = localtunnels.TunnelServer
         }

@@ -10,6 +10,7 @@ export interface Schedule {
   Arn?: string
   State?: 'ENABLED' | 'DISABLED'
   ScheduleExpression?: string
+  ScheduleExpressionTimezone?: string
   Target?: {
     Arn: string
     RoleArn: string
@@ -20,6 +21,57 @@ export interface Schedule {
     MaximumWindowInMinutes?: number
   }
   GroupName?: string
+  Description?: string
+  StartDate?: string
+  EndDate?: string
+  CreationDate?: string
+  LastModificationDate?: string
+}
+
+export interface CreateScheduleInput {
+  Name: string
+  GroupName?: string
+  ScheduleExpression: string
+  ScheduleExpressionTimezone?: string
+  Description?: string
+  State?: 'ENABLED' | 'DISABLED'
+  FlexibleTimeWindow: {
+    Mode: 'OFF' | 'FLEXIBLE'
+    MaximumWindowInMinutes?: number
+  }
+  Target: {
+    Arn: string
+    RoleArn: string
+    Input?: string
+  }
+  StartDate?: Date
+  EndDate?: Date
+}
+
+export interface UpdateScheduleInput {
+  Name: string
+  GroupName?: string
+  ScheduleExpression?: string
+  ScheduleExpressionTimezone?: string
+  Description?: string
+  State?: 'ENABLED' | 'DISABLED'
+  FlexibleTimeWindow?: {
+    Mode: 'OFF' | 'FLEXIBLE'
+    MaximumWindowInMinutes?: number
+  }
+  Target?: {
+    Arn: string
+    RoleArn: string
+    Input?: string
+  }
+}
+
+export interface ScheduleGroup {
+  Name: string
+  Arn?: string
+  State?: string
+  CreationDate?: string
+  LastModificationDate?: string
 }
 
 export interface CreateScheduleOptions {
@@ -361,5 +413,159 @@ export class SchedulerClient {
     ])
 
     return rule
+  }
+
+  // ─── EventBridge Scheduler API methods ─────────────────────────────
+
+  /**
+   * List schedules (EventBridge Scheduler API)
+   */
+  async listSchedules(options?: { GroupName?: string; NamePrefix?: string; State?: string }): Promise<{ Schedules: Schedule[] }> {
+    const queryParams: Record<string, string> = {}
+    if (options?.NamePrefix) {
+      queryParams.NamePrefix = options.NamePrefix
+    }
+    if (options?.State) {
+      queryParams.State = options.State
+    }
+
+    const groupName = options?.GroupName || 'default'
+    const result = await this.client.request({
+      service: 'scheduler',
+      region: this.region,
+      method: 'GET',
+      path: `/schedules`,
+      queryParams: {
+        ...queryParams,
+        ScheduleGroup: groupName,
+      },
+    })
+
+    return { Schedules: result?.Schedules || [] }
+  }
+
+  /**
+   * Get a schedule by name (EventBridge Scheduler API)
+   */
+  async getSchedule(options: { Name: string; GroupName?: string }): Promise<Schedule | null> {
+    try {
+      const queryParams: Record<string, string> = {}
+      if (options.GroupName) {
+        queryParams.groupName = options.GroupName
+      }
+
+      const result = await this.client.request({
+        service: 'scheduler',
+        region: this.region,
+        method: 'GET',
+        path: `/schedules/${encodeURIComponent(options.Name)}`,
+        queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+      })
+
+      return result as Schedule
+    }
+    catch (error: any) {
+      if (error.statusCode === 404 || error.code === 'ResourceNotFoundException') {
+        return null
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Create a schedule (EventBridge Scheduler API)
+   */
+  async createSchedule(input: CreateScheduleInput): Promise<{ ScheduleArn: string }> {
+    const body: Record<string, any> = {
+      ScheduleExpression: input.ScheduleExpression,
+      FlexibleTimeWindow: input.FlexibleTimeWindow,
+      Target: input.Target,
+    }
+
+    if (input.GroupName) body.GroupName = input.GroupName
+    if (input.ScheduleExpressionTimezone) body.ScheduleExpressionTimezone = input.ScheduleExpressionTimezone
+    if (input.Description) body.Description = input.Description
+    if (input.State) body.State = input.State
+    if (input.StartDate) body.StartDate = input.StartDate.toISOString()
+    if (input.EndDate) body.EndDate = input.EndDate.toISOString()
+
+    const result = await this.client.request({
+      service: 'scheduler',
+      region: this.region,
+      method: 'POST',
+      path: `/schedules/${encodeURIComponent(input.Name)}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    return { ScheduleArn: result?.ScheduleArn || '' }
+  }
+
+  /**
+   * Update a schedule (EventBridge Scheduler API)
+   */
+  async updateSchedule(input: UpdateScheduleInput): Promise<{ ScheduleArn: string }> {
+    const body: Record<string, any> = {}
+
+    if (input.GroupName) body.GroupName = input.GroupName
+    if (input.ScheduleExpression) body.ScheduleExpression = input.ScheduleExpression
+    if (input.ScheduleExpressionTimezone) body.ScheduleExpressionTimezone = input.ScheduleExpressionTimezone
+    if (input.Description !== undefined) body.Description = input.Description
+    if (input.State) body.State = input.State
+    if (input.FlexibleTimeWindow) body.FlexibleTimeWindow = input.FlexibleTimeWindow
+    if (input.Target) body.Target = input.Target
+
+    const result = await this.client.request({
+      service: 'scheduler',
+      region: this.region,
+      method: 'PUT',
+      path: `/schedules/${encodeURIComponent(input.Name)}`,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    return { ScheduleArn: result?.ScheduleArn || '' }
+  }
+
+  /**
+   * Delete a schedule (EventBridge Scheduler API)
+   */
+  async deleteSchedule(options: { Name: string; GroupName?: string }): Promise<void> {
+    const queryParams: Record<string, string> = {}
+    if (options.GroupName) {
+      queryParams.groupName = options.GroupName
+    }
+
+    await this.client.request({
+      service: 'scheduler',
+      region: this.region,
+      method: 'DELETE',
+      path: `/schedules/${encodeURIComponent(options.Name)}`,
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+  }
+
+  /**
+   * List schedule groups (EventBridge Scheduler API)
+   */
+  async listScheduleGroups(options?: { NamePrefix?: string }): Promise<{ ScheduleGroups: ScheduleGroup[] }> {
+    const queryParams: Record<string, string> = {}
+    if (options?.NamePrefix) {
+      queryParams.NamePrefix = options.NamePrefix
+    }
+
+    const result = await this.client.request({
+      service: 'scheduler',
+      region: this.region,
+      method: 'GET',
+      path: '/schedule-groups',
+      queryParams: Object.keys(queryParams).length > 0 ? queryParams : undefined,
+    })
+
+    return { ScheduleGroups: result?.ScheduleGroups || [] }
   }
 }

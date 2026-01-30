@@ -79,7 +79,7 @@ export interface IpPermission {
   ToPort?: number
   IpRanges?: { CidrIp?: string, Description?: string }[]
   Ipv6Ranges?: { CidrIpv6?: string, Description?: string }[]
-  UserIdGroupPairs?: { GroupId?: string, UserId?: string }[]
+  UserIdGroupPairs?: { GroupId?: string, UserId?: string, Description?: string }[]
 }
 
 export interface InternetGateway {
@@ -931,6 +931,373 @@ export class EC2Client {
     return undefined
   }
 
+  /**
+   * Create a VPC
+   */
+  async createVpc(options: {
+    CidrBlock: string
+    InstanceTenancy?: string
+    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+  }): Promise<{
+    Vpc?: Vpc
+  }> {
+    const params: Record<string, string> = {
+      Action: 'CreateVpc',
+      Version: '2016-11-15',
+      CidrBlock: options.CidrBlock,
+    }
+
+    if (options.InstanceTenancy) {
+      params.InstanceTenancy = options.InstanceTenancy
+    }
+
+    if (options.TagSpecifications) {
+      options.TagSpecifications.forEach((spec, i) => {
+        params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+        spec.Tags.forEach((tag, j) => {
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.CreateVpcResponse || result
+    const vpc = response.vpc
+
+    return {
+      Vpc: vpc ? {
+        VpcId: vpc.vpcId,
+        CidrBlock: vpc.cidrBlock,
+        State: vpc.state,
+        DhcpOptionsId: vpc.dhcpOptionsId,
+        InstanceTenancy: vpc.instanceTenancy,
+        IsDefault: vpc.isDefault === 'true',
+        Tags: this.parseTags(vpc.tagSet?.item),
+      } : undefined,
+    }
+  }
+
+  /**
+   * Create a Subnet
+   */
+  async createSubnet(options: {
+    VpcId: string
+    CidrBlock: string
+    AvailabilityZone?: string
+    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+  }): Promise<{
+    Subnet?: Subnet
+  }> {
+    const params: Record<string, string> = {
+      Action: 'CreateSubnet',
+      Version: '2016-11-15',
+      VpcId: options.VpcId,
+      CidrBlock: options.CidrBlock,
+    }
+
+    if (options.AvailabilityZone) {
+      params.AvailabilityZone = options.AvailabilityZone
+    }
+
+    if (options.TagSpecifications) {
+      options.TagSpecifications.forEach((spec, i) => {
+        params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+        spec.Tags.forEach((tag, j) => {
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.CreateSubnetResponse || result
+    const subnet = response.subnet
+
+    return {
+      Subnet: subnet ? {
+        SubnetId: subnet.subnetId,
+        VpcId: subnet.vpcId,
+        CidrBlock: subnet.cidrBlock,
+        AvailabilityZone: subnet.availabilityZone,
+        AvailableIpAddressCount: subnet.availableIpAddressCount ? Number.parseInt(subnet.availableIpAddressCount) : undefined,
+        State: subnet.state,
+        MapPublicIpOnLaunch: subnet.mapPublicIpOnLaunch === 'true',
+        Tags: this.parseTags(subnet.tagSet?.item),
+      } : undefined,
+    }
+  }
+
+  /**
+   * Modify a Subnet attribute
+   */
+  async modifySubnetAttribute(options: {
+    SubnetId: string
+    MapPublicIpOnLaunch?: { Value: boolean }
+  }): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'ModifySubnetAttribute',
+      Version: '2016-11-15',
+      SubnetId: options.SubnetId,
+    }
+
+    if (options.MapPublicIpOnLaunch !== undefined) {
+      params['MapPublicIpOnLaunch.Value'] = String(options.MapPublicIpOnLaunch.Value)
+    }
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Create a Security Group
+   */
+  async createSecurityGroup(options: {
+    GroupName: string
+    Description: string
+    VpcId?: string
+    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+  }): Promise<{
+    GroupId?: string
+  }> {
+    const params: Record<string, string> = {
+      Action: 'CreateSecurityGroup',
+      Version: '2016-11-15',
+      GroupName: options.GroupName,
+      GroupDescription: options.Description,
+    }
+
+    if (options.VpcId) {
+      params.VpcId = options.VpcId
+    }
+
+    if (options.TagSpecifications) {
+      options.TagSpecifications.forEach((spec, i) => {
+        params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+        spec.Tags.forEach((tag, j) => {
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.CreateSecurityGroupResponse || result
+
+    return {
+      GroupId: response.groupId,
+    }
+  }
+
+  /**
+   * Authorize Security Group Ingress (add inbound rule)
+   */
+  async authorizeSecurityGroupIngress(options: {
+    GroupId: string
+    IpPermissions: IpPermission[]
+  }): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'AuthorizeSecurityGroupIngress',
+      Version: '2016-11-15',
+      GroupId: options.GroupId,
+    }
+
+    this.encodeIpPermissions(params, options.IpPermissions)
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Authorize Security Group Egress (add outbound rule)
+   */
+  async authorizeSecurityGroupEgress(options: {
+    GroupId: string
+    IpPermissions: IpPermission[]
+  }): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'AuthorizeSecurityGroupEgress',
+      Version: '2016-11-15',
+      GroupId: options.GroupId,
+    }
+
+    this.encodeIpPermissions(params, options.IpPermissions)
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Describe Route Tables
+   */
+  async describeRouteTables(options?: {
+    RouteTableIds?: string[]
+    Filters?: { Name: string, Values: string[] }[]
+  }): Promise<{
+    RouteTables?: RouteTable[]
+  }> {
+    const params: Record<string, string> = {
+      Action: 'DescribeRouteTables',
+      Version: '2016-11-15',
+    }
+
+    if (options?.RouteTableIds) {
+      options.RouteTableIds.forEach((id, i) => {
+        params[`RouteTableId.${i + 1}`] = id
+      })
+    }
+
+    if (options?.Filters) {
+      options.Filters.forEach((filter, i) => {
+        params[`Filter.${i + 1}.Name`] = filter.Name
+        filter.Values.forEach((val, j) => {
+          params[`Filter.${i + 1}.Value.${j + 1}`] = val
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.DescribeRouteTablesResponse || result
+
+    return {
+      RouteTables: this.parseArray(response.routeTableSet?.item).map((item: any) => ({
+        RouteTableId: item.routeTableId,
+        VpcId: item.vpcId,
+        Routes: this.parseArray(item.routeSet?.item).map((r: any) => ({
+          DestinationCidrBlock: r.destinationCidrBlock,
+          GatewayId: r.gatewayId,
+          NatGatewayId: r.natGatewayId,
+          State: r.state,
+        })),
+        Associations: this.parseArray(item.associationSet?.item).map((a: any) => ({
+          RouteTableAssociationId: a.routeTableAssociationId,
+          SubnetId: a.subnetId,
+          Main: a.main === 'true' || a.main === true,
+        })),
+        Tags: this.parseTags(item.tagSet?.item),
+      })),
+    }
+  }
+
+  /**
+   * Encode IpPermissions into query parameters for security group rules
+   */
+  private encodeIpPermissions(params: Record<string, string>, permissions: IpPermission[]): void {
+    permissions.forEach((perm, i) => {
+      const prefix = `IpPermissions.${i + 1}`
+
+      if (perm.IpProtocol !== undefined) {
+        params[`${prefix}.IpProtocol`] = perm.IpProtocol
+      }
+      if (perm.FromPort !== undefined) {
+        params[`${prefix}.FromPort`] = String(perm.FromPort)
+      }
+      if (perm.ToPort !== undefined) {
+        params[`${prefix}.ToPort`] = String(perm.ToPort)
+      }
+
+      if (perm.IpRanges) {
+        perm.IpRanges.forEach((range, j) => {
+          if (range.CidrIp) {
+            params[`${prefix}.IpRanges.${j + 1}.CidrIp`] = range.CidrIp
+          }
+          if (range.Description) {
+            params[`${prefix}.IpRanges.${j + 1}.Description`] = range.Description
+          }
+        })
+      }
+
+      if (perm.Ipv6Ranges) {
+        perm.Ipv6Ranges.forEach((range, j) => {
+          if (range.CidrIpv6) {
+            params[`${prefix}.Ipv6Ranges.${j + 1}.CidrIpv6`] = range.CidrIpv6
+          }
+          if (range.Description) {
+            params[`${prefix}.Ipv6Ranges.${j + 1}.Description`] = range.Description
+          }
+        })
+      }
+
+      if (perm.UserIdGroupPairs) {
+        perm.UserIdGroupPairs.forEach((pair, j) => {
+          if (pair.GroupId) {
+            params[`${prefix}.Groups.${j + 1}.GroupId`] = pair.GroupId
+          }
+          if (pair.UserId) {
+            params[`${prefix}.Groups.${j + 1}.UserId`] = pair.UserId
+          }
+          if (pair.Description) {
+            params[`${prefix}.Groups.${j + 1}.Description`] = pair.Description
+          }
+        })
+      }
+    })
+  }
+
   // Helper methods for parsing EC2 XML responses
 
   private parseArray(item: any): any[] {
@@ -1011,6 +1378,7 @@ export class EC2Client {
       UserIdGroupPairs: this.parseArray(p.groups?.item).map((g: any) => ({
         GroupId: g.groupId,
         UserId: g.userId,
+        Description: g.description,
       })),
     }))
   }

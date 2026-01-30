@@ -34,10 +34,7 @@ export function registerQueueCommands(app: CLI): void {
 
         for (const queueUrl of queues) {
           try {
-            const attrs = await sqs.getQueueAttributes({
-              QueueUrl: queueUrl,
-              AttributeNames: ['ApproximateNumberOfMessages', 'FifoQueue'],
-            })
+            const attrs = await sqs.getQueueAttributes(queueUrl)
 
             const name = queueUrl.split('/').pop() || queueUrl
             queueData.push({
@@ -111,26 +108,14 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Creating queue...')
         spinner.start()
 
-        const attributes: Record<string, string> = {
-          VisibilityTimeout: options.visibility,
-          MessageRetentionPeriod: (Number.parseInt(options.retention) * 24 * 60 * 60).toString(),
-        }
-
-        if (options.fifo) {
-          attributes.FifoQueue = 'true'
-          attributes.ContentBasedDeduplication = 'true'
-        }
-
-        if (options.dlq) {
-          attributes.RedrivePolicy = JSON.stringify({
-            deadLetterTargetArn: options.dlq,
-            maxReceiveCount: Number.parseInt(options.maxRetries),
-          })
-        }
-
         const result = await sqs.createQueue({
-          QueueName: queueName,
-          Attributes: attributes,
+          queueName,
+          fifo: options.fifo,
+          visibilityTimeout: Number.parseInt(options.visibility),
+          messageRetentionPeriod: Number.parseInt(options.retention) * 24 * 60 * 60,
+          contentBasedDeduplication: options.fifo ? true : undefined,
+          deadLetterTargetArn: options.dlq,
+          maxReceiveCount: options.dlq ? Number.parseInt(options.maxRetries) : undefined,
         })
 
         spinner.succeed('Queue created')
@@ -166,7 +151,7 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting queue URL...')
         spinner.start()
 
-        const urlResult = await sqs.getQueueUrl({ QueueName: name })
+        const urlResult = await sqs.getQueueUrl(name)
 
         if (!urlResult.QueueUrl) {
           spinner.fail('Queue not found')
@@ -175,7 +160,7 @@ export function registerQueueCommands(app: CLI): void {
 
         spinner.text = 'Deleting queue...'
 
-        await sqs.deleteQueue({ QueueUrl: urlResult.QueueUrl })
+        await sqs.deleteQueue(urlResult.QueueUrl)
 
         spinner.succeed('Queue deleted')
       }
@@ -228,7 +213,7 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting queue URL...')
         spinner.start()
 
-        const urlResult = await sqs.getQueueUrl({ QueueName: name })
+        const urlResult = await sqs.getQueueUrl(name)
 
         if (!urlResult.QueueUrl) {
           spinner.fail('Queue not found')
@@ -237,28 +222,17 @@ export function registerQueueCommands(app: CLI): void {
 
         spinner.text = 'Sending message...'
 
-        const params: any = {
-          QueueUrl: urlResult.QueueUrl,
-          MessageBody: messageBody,
-          DelaySeconds: Number.parseInt(options.delay),
-        }
-
-        if (options.group) {
-          params.MessageGroupId = options.group
-        }
-
-        if (options.dedup) {
-          params.MessageDeduplicationId = options.dedup
-        }
-
-        const result = await sqs.sendMessage(params)
+        const result = await sqs.sendMessage({
+          queueUrl: urlResult.QueueUrl,
+          messageBody,
+          delaySeconds: Number.parseInt(options.delay),
+          messageGroupId: options.group,
+          messageDeduplicationId: options.dedup,
+        })
 
         spinner.succeed('Message sent')
 
         cli.success(`\nMessage ID: ${result.MessageId}`)
-        if (result.SequenceNumber) {
-          cli.info(`Sequence Number: ${result.SequenceNumber}`)
-        }
       }
       catch (error: any) {
         cli.error(`Failed to send message: ${error.message}`)
@@ -286,7 +260,7 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting queue URL...')
         spinner.start()
 
-        const urlResult = await sqs.getQueueUrl({ QueueName: name })
+        const urlResult = await sqs.getQueueUrl(name)
 
         if (!urlResult.QueueUrl) {
           spinner.fail('Queue not found')
@@ -295,12 +269,10 @@ export function registerQueueCommands(app: CLI): void {
 
         spinner.text = 'Receiving messages...'
 
-        const result = await sqs.receiveMessage({
-          QueueUrl: urlResult.QueueUrl,
-          MaxNumberOfMessages: Number.parseInt(options.max),
-          WaitTimeSeconds: Number.parseInt(options.wait),
-          AttributeNames: ['All'],
-          MessageAttributeNames: ['All'],
+        const result = await sqs.receiveMessages({
+          queueUrl: urlResult.QueueUrl,
+          maxMessages: Number.parseInt(options.max),
+          waitTimeSeconds: Number.parseInt(options.wait),
         })
 
         const messages = result.Messages || []
@@ -322,10 +294,7 @@ export function registerQueueCommands(app: CLI): void {
           }
 
           if (options.delete && msg.ReceiptHandle) {
-            await sqs.deleteMessage({
-              QueueUrl: urlResult.QueueUrl!,
-              ReceiptHandle: msg.ReceiptHandle,
-            })
+            await sqs.deleteMessage(urlResult.QueueUrl, msg.ReceiptHandle)
             cli.info('(Deleted)')
           }
         }
@@ -357,7 +326,7 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Getting queue URL...')
         spinner.start()
 
-        const urlResult = await sqs.getQueueUrl({ QueueName: name })
+        const urlResult = await sqs.getQueueUrl(name)
 
         if (!urlResult.QueueUrl) {
           spinner.fail('Queue not found')
@@ -366,7 +335,7 @@ export function registerQueueCommands(app: CLI): void {
 
         spinner.text = 'Purging queue...'
 
-        await sqs.purgeQueue({ QueueUrl: urlResult.QueueUrl })
+        await sqs.purgeQueue(urlResult.QueueUrl)
 
         spinner.succeed('Queue purged')
 
@@ -390,17 +359,14 @@ export function registerQueueCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching queue stats...')
         spinner.start()
 
-        const urlResult = await sqs.getQueueUrl({ QueueName: name })
+        const urlResult = await sqs.getQueueUrl(name)
 
         if (!urlResult.QueueUrl) {
           spinner.fail('Queue not found')
           return
         }
 
-        const attrs = await sqs.getQueueAttributes({
-          QueueUrl: urlResult.QueueUrl,
-          AttributeNames: ['All'],
-        })
+        const attrs = await sqs.getQueueAttributes(urlResult.QueueUrl)
 
         spinner.succeed('Stats loaded')
 

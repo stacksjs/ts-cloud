@@ -4,6 +4,9 @@
  */
 
 import * as crypto from 'node:crypto'
+import { existsSync, readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { XMLParser } from 'fast-xml-parser'
 
 export interface AWSCredentials {
@@ -78,9 +81,10 @@ export class AWSClient {
   }
 
   /**
-   * Load AWS credentials from environment variables or EC2 instance metadata
+   * Load AWS credentials from environment variables, credentials file, or EC2 instance metadata
    */
   private loadCredentials(): AWSCredentials {
+    // 1. Check environment variables first
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
     const sessionToken = process.env.AWS_SESSION_TOKEN
@@ -93,12 +97,88 @@ export class AWSClient {
       }
     }
 
+    // 2. Try to load from ~/.aws/credentials file
+    const fileCredentials = this.loadCredentialsFromFile()
+    if (fileCredentials) {
+      return fileCredentials
+    }
+
     // Return placeholder - will be loaded async from EC2 metadata
     // The actual credentials will be fetched in getCredentials()
     return {
       accessKeyId: '',
       secretAccessKey: '',
     }
+  }
+
+  /**
+   * Load credentials from ~/.aws/credentials file
+   */
+  private loadCredentialsFromFile(): AWSCredentials | null {
+    const profile = process.env.AWS_PROFILE || 'default'
+    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
+
+    if (!existsSync(credentialsPath)) {
+      return null
+    }
+
+    try {
+      const content = readFileSync(credentialsPath, 'utf-8')
+      const credentials = this.parseCredentialsFile(content, profile)
+      if (credentials.accessKeyId && credentials.secretAccessKey) {
+        return credentials
+      }
+    }
+    catch {
+      // Failed to read or parse credentials file
+    }
+
+    return null
+  }
+
+  /**
+   * Parse AWS credentials file (INI format)
+   */
+  private parseCredentialsFile(content: string, profile: string): AWSCredentials {
+    const lines = content.split('\n')
+    let currentProfile = ''
+    let accessKeyId = ''
+    let secretAccessKey = ''
+    let sessionToken: string | undefined
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+
+      // Skip empty lines and comments
+      if (!trimmed || trimmed.startsWith('#')) {
+        continue
+      }
+
+      // Check for profile header [profile-name]
+      const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
+      if (profileMatch) {
+        currentProfile = profileMatch[1]
+        continue
+      }
+
+      // Parse key=value pairs for the target profile
+      if (currentProfile === profile) {
+        const [key, ...valueParts] = trimmed.split('=')
+        const value = valueParts.join('=').trim()
+
+        if (key.trim() === 'aws_access_key_id') {
+          accessKeyId = value
+        }
+        else if (key.trim() === 'aws_secret_access_key') {
+          secretAccessKey = value
+        }
+        else if (key.trim() === 'aws_session_token') {
+          sessionToken = value
+        }
+      }
+    }
+
+    return { accessKeyId, secretAccessKey, sessionToken }
   }
 
   /**
@@ -110,10 +190,10 @@ export class AWSClient {
   }
 
   /**
-   * Get credentials, fetching from EC2 metadata if needed
+   * Get credentials, fetching from credentials file or EC2 metadata if needed
    */
   private async getCredentials(): Promise<AWSCredentials> {
-    // Check environment variables first
+    // 1. Check environment variables first
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
     if (accessKeyId && secretAccessKey) {
@@ -124,7 +204,13 @@ export class AWSClient {
       }
     }
 
-    // Check if we have cached EC2 credentials that haven't expired
+    // 2. Try to load from ~/.aws/credentials file
+    const fileCredentials = this.loadCredentialsFromFile()
+    if (fileCredentials) {
+      return fileCredentials
+    }
+
+    // 3. Check if we have cached EC2 credentials that haven't expired
     if (this.ec2CredentialsCache) {
       const now = Date.now()
       // Refresh 5 minutes before expiration

@@ -214,17 +214,7 @@ export class CloudFrontClient {
     DistributionConfig: {
       Origins: {
         Quantity: number
-        Items: Array<{
-          Id: string
-          DomainName: string
-          OriginPath?: string
-          S3OriginConfig?: { OriginAccessIdentity: string }
-          CustomOriginConfig?: {
-            HTTPPort: number
-            HTTPSPort: number
-            OriginProtocolPolicy: string
-          }
-        }>
+        Items: any
       }
       DefaultCacheBehavior: {
         TargetOriginId: string

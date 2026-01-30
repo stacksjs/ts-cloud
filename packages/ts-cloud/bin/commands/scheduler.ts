@@ -1,6 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
-import { SchedulerClient } from '../../src/aws/scheduler'
+import { SchedulerClient, type Schedule, type ScheduleGroup } from '../../src/aws/scheduler'
 import { loadValidatedConfig } from './shared'
 
 export function registerSchedulerCommands(app: CLI): void {
@@ -32,7 +32,7 @@ export function registerSchedulerCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'State', 'Schedule Expression', 'Group'],
-          schedules.map(s => [
+          schedules.map((s: Schedule) => [
             s.Name || 'N/A',
             s.State || 'N/A',
             s.ScheduleExpression || 'N/A',
@@ -355,7 +355,7 @@ export function registerSchedulerCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'State', 'Created'],
-          groups.map(g => [
+          groups.map((g: ScheduleGroup) => [
             g.Name || 'N/A',
             g.State || 'N/A',
             g.CreationDate ? new Date(g.CreationDate).toLocaleString() : 'N/A',

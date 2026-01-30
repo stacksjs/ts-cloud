@@ -4,19 +4,37 @@ import { loadValidatedConfig } from './shared'
 
 // CloudTrail client will be created inline since it may not exist
 async function getCloudTrailClient(region: string) {
-  const { AwsClient } = await import('../../src/aws/client')
+  const { AWSClient } = await import('../../src/aws/client')
 
-  class CloudTrailClient extends AwsClient {
+  class CloudTrailClient {
+    private client: InstanceType<typeof AWSClient>
+    private region: string
+
     constructor(region: string) {
-      super(region, 'cloudtrail')
+      this.region = region
+      this.client = new AWSClient()
+    }
+
+    private async jsonRpcRequest(action: string, params: Record<string, any>): Promise<any> {
+      return this.client.request({
+        service: 'cloudtrail',
+        region: this.region,
+        method: 'POST',
+        path: '/',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': `com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101.${action}`,
+        },
+        body: JSON.stringify(params),
+      })
     }
 
     async describeTrails() {
-      return this.request('DescribeTrails', {})
+      return this.jsonRpcRequest('DescribeTrails', {})
     }
 
     async getTrailStatus(name: string) {
-      return this.request('GetTrailStatus', { Name: name })
+      return this.jsonRpcRequest('GetTrailStatus', { Name: name })
     }
 
     async lookupEvents(params: {
@@ -25,7 +43,7 @@ async function getCloudTrailClient(region: string) {
       EndTime?: Date
       MaxResults?: number
     }) {
-      return this.request('LookupEvents', {
+      return this.jsonRpcRequest('LookupEvents', {
         ...params,
         StartTime: params.StartTime?.toISOString(),
         EndTime: params.EndTime?.toISOString(),
@@ -33,7 +51,7 @@ async function getCloudTrailClient(region: string) {
     }
 
     async getEventSelectors(trailName: string) {
-      return this.request('GetEventSelectors', { TrailName: trailName })
+      return this.jsonRpcRequest('GetEventSelectors', { TrailName: trailName })
     }
 
     async createTrail(params: {
@@ -44,19 +62,19 @@ async function getCloudTrailClient(region: string) {
       IsMultiRegionTrail?: boolean
       EnableLogFileValidation?: boolean
     }) {
-      return this.request('CreateTrail', params)
+      return this.jsonRpcRequest('CreateTrail', params)
     }
 
     async startLogging(name: string) {
-      return this.request('StartLogging', { Name: name })
+      return this.jsonRpcRequest('StartLogging', { Name: name })
     }
 
     async stopLogging(name: string) {
-      return this.request('StopLogging', { Name: name })
+      return this.jsonRpcRequest('StopLogging', { Name: name })
     }
 
     async deleteTrail(name: string) {
-      return this.request('DeleteTrail', { Name: name })
+      return this.jsonRpcRequest('DeleteTrail', { Name: name })
     }
   }
 

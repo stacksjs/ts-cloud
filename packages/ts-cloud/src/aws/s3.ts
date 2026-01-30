@@ -59,18 +59,82 @@ export class S3Client {
   }
 
   /**
-   * Get AWS credentials from environment
+   * Get AWS credentials from environment or credentials file
    */
   private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
-    const sessionToken = process.env.AWS_SESSION_TOKEN
+    // 1. Check environment variables first
+    const envAccessKey = process.env.AWS_ACCESS_KEY_ID
+    const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY
+    const envSessionToken = process.env.AWS_SESSION_TOKEN
 
-    if (!accessKeyId || !secretAccessKey) {
-      throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables.')
+    if (envAccessKey && envSecretKey) {
+      return { accessKeyId: envAccessKey, secretAccessKey: envSecretKey, sessionToken: envSessionToken }
     }
 
-    return { accessKeyId, secretAccessKey, sessionToken }
+    // 2. Try to load from ~/.aws/credentials file
+    const fileCreds = this.loadCredentialsFromFile()
+    if (fileCreds) {
+      return fileCreds
+    }
+
+    throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or configure ~/.aws/credentials.')
+  }
+
+  /**
+   * Load credentials from ~/.aws/credentials file
+   */
+  private loadCredentialsFromFile(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } | null {
+    try {
+      const { existsSync, readFileSync } = require('node:fs')
+      const { homedir } = require('node:os')
+      const { join: pathJoin } = require('node:path')
+
+      const profile = process.env.AWS_PROFILE || 'default'
+      const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || pathJoin(homedir(), '.aws', 'credentials')
+
+      if (!existsSync(credentialsPath)) {
+        return null
+      }
+
+      const content = readFileSync(credentialsPath, 'utf-8')
+      const lines = content.split('\n')
+      let currentProfile = ''
+      let accessKeyId = ''
+      let secretAccessKey = ''
+      let sessionToken: string | undefined
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#')) continue
+
+        const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
+        if (profileMatch) {
+          currentProfile = profileMatch[1]
+          continue
+        }
+
+        if (currentProfile === profile) {
+          const [key, ...valueParts] = trimmed.split('=')
+          const value = valueParts.join('=').trim()
+
+          if (key.trim() === 'aws_access_key_id') {
+            accessKeyId = value
+          } else if (key.trim() === 'aws_secret_access_key') {
+            secretAccessKey = value
+          } else if (key.trim() === 'aws_session_token') {
+            sessionToken = value
+          }
+        }
+      }
+
+      if (accessKeyId && secretAccessKey) {
+        return { accessKeyId, secretAccessKey, sessionToken }
+      }
+    } catch {
+      // Failed to read credentials file
+    }
+
+    return null
   }
 
   /**

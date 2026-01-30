@@ -1,4 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
+import type { Distribution } from '../../src/aws/cloudfront'
+import type { CertificateDetail } from '../../src/aws/acm'
 import * as cli from '../../src/utils/cli'
 import { loadValidatedConfig } from './shared'
 
@@ -124,10 +126,9 @@ export function registerStatusCommands(app: CLI): void {
         try {
           const { CloudFrontClient } = await import('../../src/aws/cloudfront')
           const cloudfront = new CloudFrontClient()
-          const result = await cloudfront.listDistributions()
-          const distributions = result.DistributionList?.Items || []
+          const distributions = await cloudfront.listDistributions()
 
-          const deployed = distributions.filter(d => d.Status === 'Deployed').length
+          const deployed = distributions.filter((d: Distribution) => d.Status === 'Deployed').length
 
           cfSpinner.succeed('CloudFront checked')
           checks.push({
@@ -209,7 +210,12 @@ export function registerStatusCommands(app: CLI): void {
           const { ACMClient } = await import('../../src/aws/acm')
           const acm = new ACMClient('us-east-1')
           const result = await acm.listCertificates()
-          const certs = result.CertificateSummaryList || []
+          const certSummaries = result.CertificateSummaryList || []
+
+          // Get full details for each certificate to access Status and NotAfter
+          const certs: CertificateDetail[] = await Promise.all(
+            certSummaries.map(c => acm.describeCertificate({ CertificateArn: c.CertificateArn })),
+          )
 
           const issued = certs.filter(c => c.Status === 'ISSUED').length
           const pending = certs.filter(c => c.Status === 'PENDING_VALIDATION').length
@@ -241,16 +247,16 @@ export function registerStatusCommands(app: CLI): void {
         for (const check of checks) {
           let icon = ''
           if (check.status === 'OK') {
-            icon = cli.colors.green('[OK]')
+            icon = `${cli.colors.green}[OK]${cli.colors.reset}`
           }
           else if (check.status === 'WARN') {
-            icon = cli.colors.yellow('[WARN]')
+            icon = `${cli.colors.yellow}[WARN]${cli.colors.reset}`
           }
           else if (check.status === 'ERROR') {
-            icon = cli.colors.red('[ERROR]')
+            icon = `${cli.colors.red}[ERROR]${cli.colors.reset}`
           }
           else {
-            icon = cli.colors.blue('[INFO]')
+            icon = `${cli.colors.blue}[INFO]${cli.colors.reset}`
           }
 
           console.log(`${icon} ${check.name.padEnd(20)} ${check.details}`)
@@ -315,15 +321,28 @@ export function registerStatusCommands(app: CLI): void {
         const config = await loadValidatedConfig()
         const region = options.region || config.project.region || 'us-east-1'
 
-        const { AwsClient } = await import('../../src/aws/client')
+        const { AWSClient } = await import('../../src/aws/client')
 
-        class CloudWatchClient extends AwsClient {
+        class CloudWatchClient {
+          private client: InstanceType<typeof AWSClient>
+          private region: string
+
           constructor(region: string) {
-            super(region, 'monitoring')
+            this.region = region
+            this.client = new AWSClient()
           }
 
           async describeAlarms() {
-            return this.request('DescribeAlarms', {})
+            return this.client.request({
+              service: 'monitoring',
+              region: this.region,
+              method: 'POST',
+              path: '/',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+              },
+              body: 'Action=DescribeAlarms&Version=2010-08-01',
+            })
           }
         }
 

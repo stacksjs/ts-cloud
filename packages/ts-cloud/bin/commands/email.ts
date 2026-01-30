@@ -18,8 +18,8 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching identities...')
         spinner.start()
 
-        const result = await ses.listIdentities()
-        const identities = result.Identities || []
+        const result = await ses.listEmailIdentities()
+        const identities = result.EmailIdentities || []
 
         spinner.succeed(`Found ${identities.length} identity(s)`)
 
@@ -30,24 +30,29 @@ export function registerEmailCommands(app: CLI): void {
         }
 
         // Get verification status for each identity
-        const statusResult = await ses.getIdentityVerificationAttributes(identities)
-        const statuses = statusResult.VerificationAttributes || {}
+        const rows: string[][] = []
+        for (const identity of identities) {
+          const name = identity.IdentityName || 'Unknown'
+          let verificationStatus = 'Unknown'
+          try {
+            const detail = await ses.getEmailIdentity(name)
+            verificationStatus = detail.VerificationStatus || 'Unknown'
+          }
+          catch {
+            // If we can't fetch details, just show what we have
+          }
+          const type = identity.IdentityType === 'EMAIL_ADDRESS' ? 'Email' : identity.IdentityType === 'DOMAIN' ? 'Domain' : (identity.IdentityType || 'Unknown')
+          rows.push([name, type, verificationStatus])
+        }
 
         cli.table(
           ['Identity', 'Type', 'Verification Status'],
-          identities.map(identity => {
-            const attr = statuses[identity]
-            const type = identity.includes('@') ? 'Email' : 'Domain'
-            return [
-              identity,
-              type,
-              attr?.VerificationStatus || 'Unknown',
-            ]
-          }),
+          rows,
         )
       }
-      catch (error: any) {
-        cli.error(`Failed to list identities: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to list identities: ${message}`)
         process.exit(1)
       }
     })
@@ -76,25 +81,17 @@ export function registerEmailCommands(app: CLI): void {
         spinner.start()
 
         if (isEmail) {
-          await ses.verifyEmailIdentity(identity)
+          await ses.createEmailIdentity({ EmailIdentity: identity })
           spinner.succeed('Verification email sent')
 
           cli.info(`\nA verification email has been sent to ${identity}`)
           cli.info('Click the link in the email to complete verification.')
         }
         else {
-          const result = await ses.verifyDomainIdentity(identity)
+          const result = await ses.verifyDomain(identity)
           spinner.succeed('Domain verification initiated')
 
-          cli.info('\nDomain Verification:')
-          cli.info(`Add the following TXT record to your DNS:\n`)
-          cli.info(`  Name:  _amazonses.${identity}`)
-          cli.info(`  Type:  TXT`)
-          cli.info(`  Value: ${result.VerificationToken}`)
-
-          // Get DKIM tokens
-          const dkimResult = await ses.verifyDomainDkim(identity)
-          const dkimTokens = dkimResult.DkimTokens || []
+          const dkimTokens = result.dkimTokens || []
 
           if (dkimTokens.length > 0) {
             cli.info('\nDKIM Records (for email authentication):')
@@ -104,10 +101,13 @@ export function registerEmailCommands(app: CLI): void {
               cli.info(`  Value: ${token}.dkim.amazonses.com`)
             }
           }
+
+          cli.info(`\nVerification Status: ${result.verificationStatus || 'PENDING'}`)
         }
       }
-      catch (error: any) {
-        cli.error(`Failed to verify identity: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to verify identity: ${message}`)
         process.exit(1)
       }
     })
@@ -132,12 +132,13 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Deleting identity...')
         spinner.start()
 
-        await ses.deleteIdentity(identity)
+        await ses.deleteEmailIdentity(identity)
 
         spinner.succeed('Identity deleted')
       }
-      catch (error: any) {
-        cli.error(`Failed to delete identity: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to delete identity: ${message}`)
         process.exit(1)
       }
     })
@@ -182,23 +183,25 @@ export function registerEmailCommands(app: CLI): void {
         spinner.start()
 
         const result = await ses.sendEmail({
-          Source: from,
+          FromEmailAddress: from,
           Destination: {
             ToAddresses: [to],
           },
-          Message: {
-            Subject: {
-              Data: subject,
-            },
-            Body: {
-              Text: {
-                Data: body,
+          Content: {
+            Simple: {
+              Subject: {
+                Data: subject,
               },
-              ...(options.html && {
-                Html: {
-                  Data: options.html,
+              Body: {
+                Text: {
+                  Data: body,
                 },
-              }),
+                ...(options.html && {
+                  Html: {
+                    Data: options.html,
+                  },
+                }),
+              },
             },
           },
         })
@@ -207,8 +210,9 @@ export function registerEmailCommands(app: CLI): void {
 
         cli.success(`\nMessage ID: ${result.MessageId}`)
       }
-      catch (error: any) {
-        cli.error(`Failed to send email: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to send email: ${message}`)
         process.exit(1)
       }
     })
@@ -227,7 +231,7 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching templates...')
         spinner.start()
 
-        const result = await ses.listTemplates()
+        const result = await ses.listEmailTemplates()
         const templates = result.TemplatesMetadata || []
 
         spinner.succeed(`Found ${templates.length} template(s)`)
@@ -240,14 +244,15 @@ export function registerEmailCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'Created'],
-          templates.map(t => [
-            t.Name || 'N/A',
+          templates.map((t: { TemplateName?: string, CreatedTimestamp?: string }) => [
+            t.TemplateName || 'N/A',
             t.CreatedTimestamp ? new Date(t.CreatedTimestamp).toLocaleString() : 'N/A',
           ]),
         )
       }
-      catch (error: any) {
-        cli.error(`Failed to list templates: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to list templates: ${message}`)
         process.exit(1)
       }
     })
@@ -292,12 +297,12 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Creating template...')
         spinner.start()
 
-        await ses.createTemplate({
-          Template: {
-            TemplateName: name,
-            SubjectPart: subject,
-            TextPart: textBody,
-            HtmlPart: htmlBody,
+        await ses.createEmailTemplate({
+          TemplateName: name,
+          TemplateContent: {
+            Subject: subject,
+            Text: textBody,
+            Html: htmlBody,
           },
         })
 
@@ -306,8 +311,9 @@ export function registerEmailCommands(app: CLI): void {
         cli.info('\nTo send using this template:')
         cli.info(`  cloud email:send:template --template ${name} --to user@example.com --data '{"name":"John"}'`)
       }
-      catch (error: any) {
-        cli.error(`Failed to create template: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to create template: ${message}`)
         process.exit(1)
       }
     })
@@ -332,12 +338,13 @@ export function registerEmailCommands(app: CLI): void {
         const spinner = new cli.Spinner('Deleting template...')
         spinner.start()
 
-        await ses.deleteTemplate({ TemplateName: name })
+        await ses.deleteEmailTemplate(name)
 
         spinner.succeed('Template deleted')
       }
-      catch (error: any) {
-        cli.error(`Failed to delete template: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to delete template: ${message}`)
         process.exit(1)
       }
     })
@@ -407,43 +414,9 @@ export function registerEmailCommands(app: CLI): void {
           }
         }
       }
-      catch (error: any) {
-        cli.error(`Failed to get statistics: ${error.message}`)
-        process.exit(1)
-      }
-    })
-
-  app
-    .command('email:configuration-sets', 'List configuration sets')
-    .option('--region <region>', 'AWS region')
-    .action(async (options: { region?: string }) => {
-      cli.header('Configuration Sets')
-
-      try {
-        const config = await loadValidatedConfig()
-        const region = options.region || config.project.region || 'us-east-1'
-        const ses = new SESClient(region)
-
-        const spinner = new cli.Spinner('Fetching configuration sets...')
-        spinner.start()
-
-        const result = await ses.listConfigurationSets()
-        const sets = result.ConfigurationSets || []
-
-        spinner.succeed(`Found ${sets.length} configuration set(s)`)
-
-        if (sets.length === 0) {
-          cli.info('No configuration sets found')
-          return
-        }
-
-        cli.table(
-          ['Name'],
-          sets.map(s => [s.Name || 'N/A']),
-        )
-      }
-      catch (error: any) {
-        cli.error(`Failed to list configuration sets: ${error.message}`)
+      catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error)
+        cli.error(`Failed to get statistics: ${message}`)
         process.exit(1)
       }
     })

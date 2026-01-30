@@ -1,5 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
+import type { Distribution } from '../../src/aws/cloudfront'
 import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { loadValidatedConfig } from './shared'
 
@@ -16,8 +17,7 @@ export function registerCdnCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching distributions...')
         spinner.start()
 
-        const result = await cloudfront.listDistributions()
-        const distributions = result.DistributionList?.Items || []
+        const distributions = await cloudfront.listDistributions()
 
         spinner.succeed(`Found ${distributions.length} distribution(s)`)
 
@@ -28,13 +28,13 @@ export function registerCdnCommands(app: CLI): void {
         }
 
         cli.table(
-          ['ID', 'Domain', 'Status', 'Enabled', 'Origins'],
-          distributions.map(dist => [
+          ['ID', 'Domain', 'Status', 'Enabled', 'Aliases'],
+          distributions.map((dist: Distribution) => [
             dist.Id || 'N/A',
             dist.DomainName || 'N/A',
             dist.Status || 'N/A',
             dist.Enabled ? 'Yes' : 'No',
-            (dist.Origins?.Items?.length || 0).toString(),
+            (dist.Aliases?.Items?.length || 0).toString(),
           ]),
         )
       }
@@ -55,39 +55,37 @@ export function registerCdnCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching distribution details...')
         spinner.start()
 
-        const result = await cloudfront.getDistribution(distributionId)
-        const dist = result.Distribution
+        const dist = await cloudfront.getDistribution(distributionId)
 
         spinner.succeed('Distribution details loaded')
-
-        if (!dist) {
-          cli.error('Distribution not found')
-          return
-        }
 
         cli.info('\nDistribution Information:')
         cli.info(`  ID: ${dist.Id}`)
         cli.info(`  Domain: ${dist.DomainName}`)
         cli.info(`  Status: ${dist.Status}`)
         cli.info(`  ARN: ${dist.ARN}`)
-        cli.info(`  Enabled: ${dist.DistributionConfig?.Enabled ? 'Yes' : 'No'}`)
+        cli.info(`  Enabled: ${dist.Enabled ? 'Yes' : 'No'}`)
 
-        if (dist.DistributionConfig?.Aliases?.Items?.length) {
-          cli.info(`  Aliases: ${dist.DistributionConfig.Aliases.Items.join(', ')}`)
+        if (dist.Aliases?.Items?.length) {
+          cli.info(`  Aliases: ${dist.Aliases.Items.join(', ')}`)
         }
+
+        // Fetch full config for origin and cache behavior details
+        const config = await cloudfront.getDistributionConfig(distributionId)
 
         cli.info('\nOrigins:')
-        const origins = dist.DistributionConfig?.Origins?.Items || []
-        for (const origin of origins) {
-          cli.info(`  - ${origin.Id}: ${origin.DomainName}`)
+        const origins = config.DistributionConfig?.Origins?.Items || []
+        if (Array.isArray(origins)) {
+          for (const origin of origins) {
+            cli.info(`  - ${origin.Id}: ${origin.DomainName}`)
+          }
         }
 
-        if (dist.DistributionConfig?.DefaultCacheBehavior) {
-          const behavior = dist.DistributionConfig.DefaultCacheBehavior
+        if (config.DistributionConfig?.DefaultCacheBehavior) {
+          const behavior = config.DistributionConfig.DefaultCacheBehavior
           cli.info('\nDefault Cache Behavior:')
           cli.info(`  Target Origin: ${behavior.TargetOriginId}`)
           cli.info(`  Viewer Protocol: ${behavior.ViewerProtocolPolicy}`)
-          cli.info(`  Compress: ${behavior.Compress ? 'Yes' : 'No'}`)
         }
       }
       catch (error: any) {
@@ -97,24 +95,26 @@ export function registerCdnCommands(app: CLI): void {
     })
 
   app
-    .command('cdn:create', 'Create a new CloudFront distribution')
-    .option('--origin <domain>', 'Origin domain (S3 bucket or custom origin)')
+    .command('cdn:create', 'Create a new CloudFront distribution for an S3 bucket')
+    .option('--bucket <name>', 'S3 bucket name')
+    .option('--region <region>', 'S3 bucket region', { default: 'us-east-1' })
     .option('--alias <domain>', 'Custom domain alias (CNAME)')
     .option('--certificate <arn>', 'ACM certificate ARN for custom domain')
     .option('--comment <text>', 'Distribution comment/description')
-    .action(async (options: { origin?: string; alias?: string; certificate?: string; comment?: string }) => {
+    .action(async (options: { bucket?: string; region: string; alias?: string; certificate?: string; comment?: string }) => {
       cli.header('Create CloudFront Distribution')
 
       try {
-        if (!options.origin) {
-          cli.error('--origin is required')
-          cli.info('Example: cloud cdn:create --origin my-bucket.s3.amazonaws.com')
+        if (!options.bucket) {
+          cli.error('--bucket is required')
+          cli.info('Example: cloud cdn:create --bucket my-bucket --region us-east-1')
           process.exit(1)
         }
 
         const cloudfront = new CloudFrontClient()
 
-        cli.info(`Origin: ${options.origin}`)
+        cli.info(`Bucket: ${options.bucket}`)
+        cli.info(`Region: ${options.region}`)
         if (options.alias) {
           cli.info(`Alias: ${options.alias}`)
         }
@@ -125,85 +125,39 @@ export function registerCdnCommands(app: CLI): void {
           return
         }
 
-        const spinner = new cli.Spinner('Creating distribution...')
+        const spinner = new cli.Spinner('Setting up Origin Access Control...')
         spinner.start()
 
-        // Determine if this is an S3 origin
-        const isS3Origin = options.origin.includes('.s3.') || options.origin.endsWith('.s3.amazonaws.com')
-
-        const distributionConfig: any = {
-          CallerReference: `cli-${Date.now()}`,
-          Comment: options.comment || `Created by ts-cloud CLI`,
-          Enabled: true,
-          Origins: {
-            Quantity: 1,
-            Items: [
-              {
-                Id: 'primary-origin',
-                DomainName: options.origin,
-                ...(isS3Origin
-                  ? {
-                      S3OriginConfig: {
-                        OriginAccessIdentity: '',
-                      },
-                    }
-                  : {
-                      CustomOriginConfig: {
-                        HTTPPort: 80,
-                        HTTPSPort: 443,
-                        OriginProtocolPolicy: 'https-only',
-                        OriginSslProtocols: {
-                          Quantity: 1,
-                          Items: ['TLSv1.2'],
-                        },
-                      },
-                    }),
-              },
-            ],
-          },
-          DefaultCacheBehavior: {
-            TargetOriginId: 'primary-origin',
-            ViewerProtocolPolicy: 'redirect-to-https',
-            AllowedMethods: {
-              Quantity: 2,
-              Items: ['GET', 'HEAD'],
-              CachedMethods: {
-                Quantity: 2,
-                Items: ['GET', 'HEAD'],
-              },
-            },
-            Compress: true,
-            CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // CachingOptimized
-            OriginRequestPolicyId: '88a5eaf4-2fd4-4709-b370-b4c650ea3fcf', // CORS-S3Origin
-          },
-          PriceClass: 'PriceClass_100', // US, Canada, Europe
+        // Find or create an OAC for S3
+        const oac = await cloudfront.findOrCreateOriginAccessControl(`OAC-${options.bucket}`)
+        if (oac.isNew) {
+          spinner.text = 'Created new Origin Access Control'
         }
 
-        if (options.alias && options.certificate) {
-          distributionConfig.Aliases = {
-            Quantity: 1,
-            Items: [options.alias],
-          }
-          distributionConfig.ViewerCertificate = {
-            ACMCertificateArn: options.certificate,
-            SSLSupportMethod: 'sni-only',
-            MinimumProtocolVersion: 'TLSv1.2_2021',
-          }
-        }
-        else {
-          distributionConfig.ViewerCertificate = {
-            CloudFrontDefaultCertificate: true,
-          }
-        }
+        spinner.text = 'Creating distribution...'
 
-        const result = await cloudfront.createDistribution({ DistributionConfig: distributionConfig })
+        const aliases = options.alias ? [options.alias] : []
+
+        const result = await cloudfront.createDistributionForS3({
+          bucketName: options.bucket,
+          bucketRegion: options.region,
+          originAccessControlId: oac.Id,
+          aliases,
+          certificateArn: options.certificate,
+          comment: options.comment || `Created by ts-cloud CLI`,
+        })
 
         spinner.succeed('Distribution created')
 
-        cli.success(`\nDistribution ID: ${result.Distribution?.Id}`)
-        cli.info(`Domain: ${result.Distribution?.DomainName}`)
-        cli.info(`Status: ${result.Distribution?.Status}`)
+        cli.success(`\nDistribution ID: ${result.Id}`)
+        cli.info(`Domain: ${result.DomainName}`)
+        cli.info(`Status: ${result.Status}`)
         cli.info('\nNote: Distribution deployment may take 15-30 minutes.')
+
+        // Show the S3 bucket policy that needs to be applied
+        cli.info('\nIMPORTANT: Update your S3 bucket policy to allow CloudFront access:')
+        const policy = CloudFrontClient.getS3BucketPolicyForCloudFront(options.bucket, result.ARN)
+        cli.info(JSON.stringify(policy, null, 2))
       }
       catch (error: any) {
         cli.error(`Failed to create distribution: ${error.message}`)
@@ -235,20 +189,15 @@ export function registerCdnCommands(app: CLI): void {
         spinner.start()
 
         const result = await cloudfront.createInvalidation({
-          DistributionId: distributionId,
-          InvalidationBatch: {
-            CallerReference: `cli-${Date.now()}`,
-            Paths: {
-              Quantity: paths.length,
-              Items: paths,
-            },
-          },
+          distributionId,
+          paths,
+          callerReference: `cli-${Date.now()}`,
         })
 
         spinner.succeed('Invalidation created')
 
-        cli.success(`\nInvalidation ID: ${result.Invalidation?.Id}`)
-        cli.info(`Status: ${result.Invalidation?.Status}`)
+        cli.success(`\nInvalidation ID: ${result.Id}`)
+        cli.info(`Status: ${result.Status}`)
         cli.info('\nNote: Invalidation typically completes in 5-10 minutes.')
       }
       catch (error: any) {
@@ -277,21 +226,7 @@ export function registerCdnCommands(app: CLI): void {
         const spinner = new cli.Spinner('Disabling distribution...')
         spinner.start()
 
-        // Get current config
-        const current = await cloudfront.getDistributionConfig(distributionId)
-        if (!current.DistributionConfig || !current.ETag) {
-          spinner.fail('Could not get distribution config')
-          return
-        }
-
-        // Update with Enabled = false
-        current.DistributionConfig.Enabled = false
-
-        await cloudfront.updateDistribution({
-          Id: distributionId,
-          DistributionConfig: current.DistributionConfig,
-          IfMatch: current.ETag,
-        })
+        await cloudfront.disableDistribution(distributionId)
 
         spinner.succeed('Distribution disabled')
 
@@ -324,9 +259,9 @@ export function registerCdnCommands(app: CLI): void {
         const spinner = new cli.Spinner('Checking distribution status...')
         spinner.start()
 
-        // Get current config to check status and get ETag
-        const current = await cloudfront.getDistribution(distributionId)
-        if (current.Distribution?.Status !== 'Deployed' || current.Distribution?.DistributionConfig?.Enabled) {
+        // Get distribution to check status
+        const dist = await cloudfront.getDistribution(distributionId)
+        if (dist.Status !== 'Deployed' || dist.Enabled) {
           spinner.fail('Distribution must be disabled and deployed before deletion')
           cli.info('\nRun `cloud cdn:disable` first and wait for status to be "Deployed"')
           return
@@ -334,10 +269,7 @@ export function registerCdnCommands(app: CLI): void {
 
         spinner.text = 'Deleting distribution...'
 
-        await cloudfront.deleteDistribution({
-          Id: distributionId,
-          IfMatch: current.ETag,
-        })
+        await cloudfront.deleteDistribution(distributionId)
 
         spinner.succeed('Distribution deleted')
       }

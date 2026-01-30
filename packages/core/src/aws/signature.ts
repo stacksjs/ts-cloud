@@ -461,7 +461,7 @@ function signWithQueryString(params: {
   credentialScope: string
   algorithm: string
   expiresIn: number
-  cache?: Map<string, Buffer>
+  cache?: Map<string, Buffer | Uint8Array>
 }): SignedRequest {
   const {
     urlObj,
@@ -798,13 +798,13 @@ async function hmacAsync(key: Uint8Array | string, data: string): Promise<Uint8A
 
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
-    keyBuffer,
+    keyBuffer.buffer as ArrayBuffer,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
     ['sign'],
   )
 
-  const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer)
+  const signature = await crypto.subtle.sign('HMAC', cryptoKey, dataBuffer.buffer)
   return new Uint8Array(signature)
 }
 

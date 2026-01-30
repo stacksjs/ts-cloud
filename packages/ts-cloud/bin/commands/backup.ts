@@ -4,53 +4,71 @@ import { loadValidatedConfig } from './shared'
 
 // AWS Backup client
 async function getBackupClient(region: string) {
-  const { AwsClient } = await import('../../src/aws/client')
+  const { AWSClient } = await import('../../src/aws/client')
 
-  class BackupClient extends AwsClient {
+  class BackupClient {
+    private client: InstanceType<typeof AWSClient>
+    private region: string
+
     constructor(region: string) {
-      super(region, 'backup')
+      this.region = region
+      this.client = new AWSClient()
+    }
+
+    private async jsonRpcRequest(action: string, params: Record<string, any>): Promise<any> {
+      return this.client.request({
+        service: 'backup',
+        region: this.region,
+        method: 'POST',
+        path: '/',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': `CryoControllerFrontendService.${action}`,
+        },
+        body: JSON.stringify(params),
+      })
     }
 
     async listBackupVaults() {
-      return this.request('ListBackupVaults', {})
+      return this.jsonRpcRequest('ListBackupVaults', {})
     }
 
     async listBackupPlans() {
-      return this.request('ListBackupPlans', {})
+      return this.jsonRpcRequest('ListBackupPlans', {})
     }
 
     async listRecoveryPointsByBackupVault(vaultName: string, params?: { MaxResults?: number }) {
-      return this.request('ListRecoveryPointsByBackupVault', {
+      return this.jsonRpcRequest('ListRecoveryPointsByBackupVault', {
         BackupVaultName: vaultName,
         ...params,
       })
     }
 
     async describeBackupVault(vaultName: string) {
-      return this.request('DescribeBackupVault', { BackupVaultName: vaultName })
+      return this.jsonRpcRequest('DescribeBackupVault', { BackupVaultName: vaultName })
     }
 
     async getBackupPlan(planId: string) {
-      return this.request('GetBackupPlan', { BackupPlanId: planId })
+      return this.jsonRpcRequest('GetBackupPlan', { BackupPlanId: planId })
     }
 
     async createBackupVault(vaultName: string, params?: { EncryptionKeyArn?: string }) {
-      return this.request('CreateBackupVault', {
+      return this.jsonRpcRequest('CreateBackupVault', {
         BackupVaultName: vaultName,
         ...params,
       })
     }
 
     async deleteBackupVault(vaultName: string) {
-      return this.request('DeleteBackupVault', { BackupVaultName: vaultName })
+      return this.jsonRpcRequest('DeleteBackupVault', { BackupVaultName: vaultName })
     }
 
     async createBackupPlan(plan: any) {
-      return this.request('CreateBackupPlan', { BackupPlan: plan })
+      return this.jsonRpcRequest('CreateBackupPlan', { BackupPlan: plan })
     }
 
     async deleteBackupPlan(planId: string) {
-      return this.request('DeleteBackupPlan', { BackupPlanId: planId })
+      return this.jsonRpcRequest('DeleteBackupPlan', { BackupPlanId: planId })
     }
 
     async startBackupJob(params: {
@@ -59,7 +77,7 @@ async function getBackupClient(region: string) {
       IamRoleArn: string
       IdempotencyToken?: string
     }) {
-      return this.request('StartBackupJob', params)
+      return this.jsonRpcRequest('StartBackupJob', params)
     }
 
     async startRestoreJob(params: {
@@ -68,34 +86,34 @@ async function getBackupClient(region: string) {
       Metadata: Record<string, string>
       IdempotencyToken?: string
     }) {
-      return this.request('StartRestoreJob', params)
+      return this.jsonRpcRequest('StartRestoreJob', params)
     }
 
     async describeBackupJob(jobId: string) {
-      return this.request('DescribeBackupJob', { BackupJobId: jobId })
+      return this.jsonRpcRequest('DescribeBackupJob', { BackupJobId: jobId })
     }
 
     async describeRestoreJob(jobId: string) {
-      return this.request('DescribeRestoreJob', { RestoreJobId: jobId })
+      return this.jsonRpcRequest('DescribeRestoreJob', { RestoreJobId: jobId })
     }
 
     async listBackupJobs(params?: { ByState?: string; MaxResults?: number }) {
-      return this.request('ListBackupJobs', params || {})
+      return this.jsonRpcRequest('ListBackupJobs', params || {})
     }
 
     async listRestoreJobs(params?: { ByStatus?: string; MaxResults?: number }) {
-      return this.request('ListRestoreJobs', params || {})
+      return this.jsonRpcRequest('ListRestoreJobs', params || {})
     }
 
     async createBackupSelection(planId: string, selection: any) {
-      return this.request('CreateBackupSelection', {
+      return this.jsonRpcRequest('CreateBackupSelection', {
         BackupPlanId: planId,
         BackupSelection: selection,
       })
     }
 
     async listBackupSelections(planId: string) {
-      return this.request('ListBackupSelections', { BackupPlanId: planId })
+      return this.jsonRpcRequest('ListBackupSelections', { BackupPlanId: planId })
     }
   }
 

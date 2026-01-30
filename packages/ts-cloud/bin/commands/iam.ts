@@ -58,13 +58,7 @@ export function registerIamCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching role details...')
         spinner.start()
 
-        const result = await iam.getRole({ RoleName: roleName })
-        const role = result.Role
-
-        if (!role) {
-          spinner.fail('Role not found')
-          return
-        }
+        const role = await iam.getRole({ RoleName: roleName })
 
         // Get attached policies
         const attachedPolicies = await iam.listAttachedRolePolicies({ RoleName: roleName })
@@ -124,7 +118,7 @@ export function registerIamCommands(app: CLI): void {
     .option('--scope <scope>', 'Filter by scope (All, AWS, Local)', { default: 'Local' })
     .option('--prefix <prefix>', 'Filter by policy name prefix')
     .option('--path <path>', 'Filter by path prefix', { default: '/' })
-    .action(async (options: { scope: string; prefix?: string; path: string }) => {
+    .action(async (options: { scope: 'All' | 'AWS' | 'Local'; prefix?: string; path: string }) => {
       cli.header('IAM Policies')
 
       try {
@@ -184,16 +178,10 @@ export function registerIamCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching policy...')
         spinner.start()
 
-        const result = await iam.getPolicy({ PolicyArn: policyArn })
-        const policy = result.Policy
-
-        if (!policy) {
-          spinner.fail('Policy not found')
-          return
-        }
+        const policy = await iam.getPolicy({ PolicyArn: policyArn })
 
         // Get the policy document
-        const versionId = options.version || policy.DefaultVersionId
+        const versionId = options.version || policy.DefaultVersionId || 'v1'
         const versionResult = await iam.getPolicyVersion({
           PolicyArn: policyArn,
           VersionId: versionId,
@@ -214,9 +202,9 @@ export function registerIamCommands(app: CLI): void {
           cli.info(`  Description: ${policy.Description}`)
         }
 
-        if (versionResult.PolicyVersion?.Document) {
+        if (versionResult.Document) {
           cli.info('\nPolicy Document:')
-          const document = JSON.parse(decodeURIComponent(versionResult.PolicyVersion.Document))
+          const document = JSON.parse(decodeURIComponent(versionResult.Document))
           console.log(JSON.stringify(document, null, 2))
         }
       }
@@ -276,13 +264,7 @@ export function registerIamCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching user details...')
         spinner.start()
 
-        const result = await iam.getUser({ UserName: userName })
-        const user = result.User
-
-        if (!user) {
-          spinner.fail('User not found')
-          return
-        }
+        const user = await iam.getUser({ UserName: userName })
 
         // Get additional info
         const [groups, policies, accessKeys] = await Promise.all([

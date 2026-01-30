@@ -118,7 +118,7 @@ export function registerNotifyCommands(app: CLI): void {
         const spinner = new cli.Spinner('Deleting topic...')
         spinner.start()
 
-        await sns.deleteTopic({ TopicArn: topicArn })
+        await sns.deleteTopic(topicArn)
 
         spinner.succeed('Topic deleted')
       }
@@ -242,7 +242,7 @@ export function registerNotifyCommands(app: CLI): void {
         const spinner = new cli.Spinner('Unsubscribing...')
         spinner.start()
 
-        await sns.unsubscribe({ SubscriptionArn: subscriptionArn })
+        await sns.unsubscribe(subscriptionArn)
 
         spinner.succeed('Unsubscribed')
       }
@@ -264,7 +264,7 @@ export function registerNotifyCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching subscriptions...')
         spinner.start()
 
-        const result = await sns.listSubscriptionsByTopic({ TopicArn: topicArn })
+        const result = await sns.listSubscriptionsByTopic(topicArn)
         const subscriptions = result.Subscriptions || []
 
         spinner.succeed(`Found ${subscriptions.length} subscription(s)`)
@@ -369,9 +369,6 @@ export function registerNotifyCommands(app: CLI): void {
         spinner.succeed('Message published')
 
         cli.success(`\nMessage ID: ${result.MessageId}`)
-        if (result.SequenceNumber) {
-          cli.info(`Sequence Number: ${result.SequenceNumber}`)
-        }
       }
       catch (error: any) {
         cli.error(`Failed to publish message: ${error.message}`)
@@ -458,8 +455,7 @@ export function registerNotifyCommands(app: CLI): void {
         const spinner = new cli.Spinner('Fetching attributes...')
         spinner.start()
 
-        const result = await sns.getTopicAttributes({ TopicArn: topicArn })
-        const attrs = result.Attributes || {}
+        const attrs = await sns.getTopicAttributes(topicArn)
 
         spinner.succeed('Attributes loaded')
 
@@ -474,8 +470,8 @@ export function registerNotifyCommands(app: CLI): void {
         cli.info(`  Deleted: ${attrs.SubscriptionsDeleted || 0}`)
 
         cli.info('\nSettings:')
-        cli.info(`  FIFO: ${attrs.FifoTopic === 'true' ? 'Yes' : 'No'}`)
-        cli.info(`  Content Deduplication: ${attrs.ContentBasedDeduplication === 'true' ? 'Yes' : 'No'}`)
+        cli.info(`  FIFO: ${(attrs as any).FifoTopic === 'true' ? 'Yes' : 'No'}`)
+        cli.info(`  Content Deduplication: ${(attrs as any).ContentBasedDeduplication === 'true' ? 'Yes' : 'No'}`)
 
         if (attrs.EffectiveDeliveryPolicy) {
           cli.info('\nDelivery Policy: Configured')

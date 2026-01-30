@@ -40,7 +40,7 @@ export class SmsChatbot {
    * Lambda code for chatbot processing
    */
   static ChatbotProcessorCode: string = [
-    "const { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');",
+    `const { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');`,
     "const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');",
     "const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');",
     "",

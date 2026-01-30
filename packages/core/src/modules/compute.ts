@@ -833,7 +833,7 @@ cd /var/www
 git clone ${appRepo} app
 cd app
 npm install
-pm2 start npm --name "app" -- start
+pm2 start npm --name 'app' -- start
 pm2 save
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
 ` : '# No repository specified'}
