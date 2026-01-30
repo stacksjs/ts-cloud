@@ -459,7 +459,11 @@ export class AWSClient {
 
     let host: string
     if (service === 's3') {
-      host = `s3.${region}.amazonaws.com`
+      if (options.bucket) {
+        host = `${options.bucket}.s3.${region}.amazonaws.com`
+      } else {
+        host = `s3.${region}.amazonaws.com`
+      }
     }
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
