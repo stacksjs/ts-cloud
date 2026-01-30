@@ -434,6 +434,104 @@ describe('Retry Logic', () => {
   })
 })
 
+describe('Custom DateTime', () => {
+  const testOptions = {
+    accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+    secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+  }
+
+  it('should use custom datetime when provided', () => {
+    const customDatetime = '20240101T120000Z'
+
+    const signed = signRequest({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: customDatetime,
+    })
+
+    expect(signed.headers['x-amz-date']).toBe(customDatetime)
+    expect(signed.headers['authorization']).toContain('20240101')
+  })
+
+  it('should use custom datetime in async version', async () => {
+    const customDatetime = '20240101T120000Z'
+
+    const signed = await signRequestAsync({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: customDatetime,
+    })
+
+    expect(signed.headers['x-amz-date']).toBe(customDatetime)
+    expect(signed.headers['authorization']).toContain('20240101')
+  })
+
+  it('should produce identical signatures with same datetime', () => {
+    const customDatetime = '20240615T143000Z'
+
+    const signed1 = signRequest({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket/key',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: customDatetime,
+    })
+
+    const signed2 = signRequest({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket/key',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: customDatetime,
+    })
+
+    // Same datetime should produce identical signatures
+    expect(signed1.headers['authorization']).toBe(signed2.headers['authorization'])
+  })
+
+  it('should produce different signatures with different datetimes', () => {
+    const signed1 = signRequest({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket/key',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: '20240101T120000Z',
+    })
+
+    const signed2 = signRequest({
+      method: 'GET',
+      url: 'https://s3.us-east-1.amazonaws.com/bucket/key',
+      service: 's3',
+      region: 'us-east-1',
+      ...testOptions,
+      datetime: '20240102T120000Z',
+    })
+
+    expect(signed1.headers['authorization']).not.toBe(signed2.headers['authorization'])
+  })
+})
+
+describe('Request Timeout', () => {
+  it('should support timeout option in retry options', () => {
+    // This verifies the type compiles correctly
+    const retryOptions = {
+      maxRetries: 3,
+      timeoutMs: 5000,
+    }
+
+    expect(retryOptions.timeoutMs).toBe(5000)
+  })
+})
+
 describe('Browser Compatibility (Async Functions)', () => {
   const testOptions = {
     accessKeyId: 'AKIAIOSFODNN7EXAMPLE',

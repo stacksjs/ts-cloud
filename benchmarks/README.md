@@ -113,6 +113,12 @@ AWS SDK v3 with presigned URLs:
 | Zero dependencies | ✅ | ✅ | ❌ |
 | Session tokens | ✅ | ✅ | ✅ |
 | Presigned URLs | ✅ | ✅ | ✅ |
+| Credential Providers | ✅ | ❌ | ✅ |
+| S3 High-Level API | ✅ | ❌ | ✅ |
+| Streaming Uploads | ✅ | ❌ | ✅ |
+| Multipart Uploads | ✅ | ❌ | ✅ |
+| Custom DateTime | ✅ | ✅ | ❌ |
+| Request Timeout | ✅ | ❌ | ✅ |
 | Middleware support | ❌ | ❌ | ✅ |
 
 *AWS SDK requires explicit region at client creation time
@@ -198,7 +204,7 @@ const url = createPresignedUrl({
 console.log(url)
 ```
 
-### With Retry Logic
+### With Retry Logic & Timeout
 
 ```typescript
 import { makeAWSRequest } from '@ts-cloud/core'
@@ -214,9 +220,94 @@ const response = await makeAWSRequest(
     maxRetries: 3,
     initialDelayMs: 100,
     maxDelayMs: 5000,
+    timeoutMs: 30000, // 30 second timeout
     retryableStatusCodes: [429, 500, 502, 503, 504],
   }
 )
+```
+
+### Credential Providers
+
+```typescript
+import { getCredentials, createCredentialProvider } from '@ts-cloud/core'
+
+// Auto-detect credentials from environment, ~/.aws/credentials, EC2, ECS, etc.
+const credentials = await getCredentials()
+
+// Create a cached provider that auto-refreshes expiring credentials
+const provider = createCredentialProvider()
+const creds = await provider()
+```
+
+### S3 High-Level API
+
+```typescript
+import { S3Client } from '@ts-cloud/core'
+
+const s3 = new S3Client({ region: 'us-east-1' })
+
+// Simple operations
+const response = await s3.get('my-bucket', 'file.txt')
+const text = await s3.getText('my-bucket', 'file.txt')
+const json = await s3.getJSON('my-bucket', 'data.json')
+
+// Upload (auto-uses multipart for files >5MB)
+await s3.put('my-bucket', 'file.txt', 'Hello World')
+await s3.put('my-bucket', 'data.json', JSON.stringify({ key: 'value' }))
+
+// Delete
+await s3.delete('my-bucket', 'file.txt')
+await s3.deleteMany('my-bucket', ['file1.txt', 'file2.txt'])
+
+// List with pagination
+for await (const obj of s3.listAll('my-bucket', { prefix: 'folder/' })) {
+  console.log(obj.key, obj.size)
+}
+
+// Check existence
+const exists = await s3.exists('my-bucket', 'file.txt')
+
+// Get metadata
+const head = await s3.head('my-bucket', 'file.txt')
+
+// Copy
+await s3.copy('source-bucket', 'source.txt', 'dest-bucket', 'dest.txt')
+
+// Generate presigned URL
+const url = await s3.getPresignedUrl('my-bucket', 'file.txt', { expiresIn: 3600 })
+```
+
+### Streaming & Multipart Uploads
+
+```typescript
+import { S3Client } from '@ts-cloud/core'
+
+const s3 = new S3Client({ region: 'us-east-1' })
+
+// Upload a stream with progress tracking
+const stream = fs.createReadStream('large-file.zip')
+await s3.uploadMultipart('my-bucket', 'large-file.zip', stream, {
+  partSize: 10 * 1024 * 1024, // 10MB parts
+  concurrency: 4,
+  onProgress: ({ loaded, total, part, totalParts }) => {
+    console.log(`Part ${part}/${totalParts}: ${loaded}/${total} bytes`)
+  },
+})
+```
+
+### Custom DateTime (for testing)
+
+```typescript
+import { signRequest } from '@ts-cloud/core'
+
+// Use fixed datetime for reproducible signatures
+const signed = signRequest({
+  method: 'GET',
+  url: 'https://s3.us-east-1.amazonaws.com/bucket/key',
+  accessKeyId: 'AKIA...',
+  secretAccessKey: '...',
+  datetime: '20240101T120000Z', // Fixed timestamp
+})
 ```
 
 ## When to Use Each

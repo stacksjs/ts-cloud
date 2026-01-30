@@ -68,6 +68,12 @@ export interface SignatureOptions {
    * Only used when signQuery is true
    */
   expiresIn?: number
+  /**
+   * Custom datetime for signing (format: YYYYMMDDTHHMMSSZ)
+   * If not provided, uses current time
+   * Useful for testing and reproducibility
+   */
+  datetime?: string
 }
 
 export interface SignedRequest {
@@ -102,6 +108,8 @@ export interface RetryOptions {
   maxDelayMs?: number
   /** HTTP status codes that should trigger a retry (default: [429, 500, 502, 503, 504]) */
   retryableStatusCodes?: number[]
+  /** Request timeout in milliseconds (default: 30000 = 30 seconds) */
+  timeoutMs?: number
 }
 
 /**
@@ -193,6 +201,7 @@ export function signRequest(options: SignatureOptions): SignedRequest {
     sessionToken,
     signQuery = false,
     expiresIn = 86400,
+    datetime,
   } = options
 
   const urlObj = new URL(url)
@@ -211,7 +220,7 @@ export function signRequest(options: SignatureOptions): SignedRequest {
   }
 
   // Step 1: Create canonical request
-  const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
+  const timestamp = datetime || new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
   const date = timestamp.substring(0, 8)
   const credentialScope = [date, region, service, 'aws4_request'].join('/')
   const algorithm = 'AWS4-HMAC-SHA256'
@@ -325,6 +334,7 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
     sessionToken,
     signQuery = false,
     expiresIn = 86400,
+    datetime,
   } = options
 
   const urlObj = new URL(url)
@@ -343,7 +353,7 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
   }
 
   // Step 1: Create canonical request
-  const timestamp = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
+  const timestamp = datetime || new Date().toISOString().replace(/[:-]|\.\d{3}/g, '')
   const date = timestamp.substring(0, 8)
   const credentialScope = [date, region, service, 'aws4_request'].join('/')
   const algorithm = 'AWS4-HMAC-SHA256'
@@ -929,6 +939,7 @@ export async function makeAWSRequest(
     initialDelayMs = 100,
     maxDelayMs = 5000,
     retryableStatusCodes = [429, 500, 502, 503, 504],
+    timeoutMs = 30000,
   } = retryOptions ?? {}
 
   let lastError: Error | undefined
@@ -947,8 +958,14 @@ export async function makeAWSRequest(
       fetchOptions.body = signedRequest.body
     }
 
+    // Add timeout support via AbortController
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    fetchOptions.signal = controller.signal
+
     try {
       const response = await fetch(signedRequest.url, fetchOptions)
+      clearTimeout(timeoutId)
       lastResponse = response
 
       // Success - return immediately
@@ -967,16 +984,22 @@ export async function makeAWSRequest(
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
     } catch (error) {
+      clearTimeout(timeoutId)
       lastError = error as Error
 
-      // Network errors are retryable
+      // Handle timeout errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        lastError = new Error(`Request timed out after ${timeoutMs}ms`)
+      }
+
+      // Network errors and timeouts are retryable
       if (attempt < maxRetries && !(error instanceof Error && error.message.includes('AWS API request failed'))) {
         const delay = calculateBackoff(attempt, initialDelayMs, maxDelayMs)
         await sleep(delay)
         continue
       }
 
-      throw error
+      throw lastError
     }
   }
 
@@ -1006,6 +1029,7 @@ export async function makeAWSRequestAsync(
     initialDelayMs = 100,
     maxDelayMs = 5000,
     retryableStatusCodes = [429, 500, 502, 503, 504],
+    timeoutMs = 30000,
   } = retryOptions ?? {}
 
   let lastError: Error | undefined
@@ -1023,8 +1047,14 @@ export async function makeAWSRequestAsync(
       fetchOptions.body = signedRequest.body
     }
 
+    // Add timeout support via AbortController
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+    fetchOptions.signal = controller.signal
+
     try {
       const response = await fetch(signedRequest.url, fetchOptions)
+      clearTimeout(timeoutId)
 
       // Success - return immediately
       if (response.ok) {
@@ -1042,16 +1072,22 @@ export async function makeAWSRequestAsync(
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
     } catch (error) {
+      clearTimeout(timeoutId)
       lastError = error as Error
 
-      // Network errors are retryable
+      // Handle timeout errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        lastError = new Error(`Request timed out after ${timeoutMs}ms`)
+      }
+
+      // Network errors and timeouts are retryable
       if (attempt < maxRetries && !(error instanceof Error && error.message.includes('AWS API request failed'))) {
         const delay = calculateBackoff(attempt, initialDelayMs, maxDelayMs)
         await sleep(delay)
         continue
       }
 
-      throw error
+      throw lastError
     }
   }
 

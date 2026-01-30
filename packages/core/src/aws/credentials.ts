@@ -1,174 +1,176 @@
 /**
- * AWS Credentials Resolution
- * Load credentials from environment variables, ~/.aws/credentials, or IAM roles
+ * AWS Credential Providers
+ *
+ * Automatically load AWS credentials from various sources:
+ * - Environment variables
+ * - Shared credentials file (~/.aws/credentials)
+ * - EC2 instance metadata
+ * - ECS task metadata
+ * - Web identity token (for Kubernetes/IRSA)
  */
 
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 export interface AWSCredentials {
   accessKeyId: string
   secretAccessKey: string
   sessionToken?: string
-  region?: string
+  expiration?: Date
 }
 
-export interface AWSProfile {
-  name: string
-  accessKeyId?: string
-  secretAccessKey?: string
-  sessionToken?: string
-  region?: string
-  roleArn?: string
-  sourceProfile?: string
-}
-
-/**
- * Resolve AWS credentials from various sources
- * Priority:
- * 1. Explicit credentials passed in
- * 2. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
- * 3. AWS credentials file (~/.aws/credentials)
- * 4. IAM role (EC2 instance metadata)
- */
-export async function resolveCredentials(
-  profile: string = 'default',
-  providedCredentials?: Partial<AWSCredentials>,
-): Promise<AWSCredentials> {
-  // 1. Use provided credentials if available
-  if (providedCredentials?.accessKeyId && providedCredentials?.secretAccessKey) {
-    return {
-      accessKeyId: providedCredentials.accessKeyId,
-      secretAccessKey: providedCredentials.secretAccessKey,
-      sessionToken: providedCredentials.sessionToken,
-      region: providedCredentials.region || await resolveRegion(),
-    }
-  }
-
-  // 2. Try environment variables
-  const envCredentials = getCredentialsFromEnv()
-  if (envCredentials) {
-    return {
-      ...envCredentials,
-      region: envCredentials.region || await resolveRegion(),
-    }
-  }
-
-  // 3. Try AWS credentials file
-  const fileCredentials = getCredentialsFromFile(profile)
-  if (fileCredentials) {
-    return {
-      ...fileCredentials,
-      region: fileCredentials.region || await resolveRegion(),
-    }
-  }
-
-  // 4. Try IAM role from EC2 instance metadata
-  const iamCredentials = await getCredentialsFromIAM()
-  if (iamCredentials) {
-    return {
-      ...iamCredentials,
-      region: iamCredentials.region || await resolveRegion(),
-    }
-  }
-
-  throw new Error(
-    'Unable to resolve AWS credentials. Please configure credentials via:\n'
-    + '  1. Environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)\n'
-    + '  2. AWS credentials file (~/.aws/credentials)\n'
-    + '  3. IAM role (for EC2 instances)',
-  )
+export interface CredentialProviderOptions {
+  /** Profile name for shared credentials file (default: 'default' or AWS_PROFILE env var) */
+  profile?: string
+  /** Path to credentials file (default: ~/.aws/credentials) */
+  credentialsFile?: string
+  /** Path to config file (default: ~/.aws/config) */
+  configFile?: string
+  /** Timeout for metadata requests in ms (default: 1000) */
+  timeout?: number
 }
 
 /**
  * Get credentials from environment variables
+ * Checks: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
  */
-function getCredentialsFromEnv(): AWSCredentials | null {
+export function fromEnvironment(): AWSCredentials | null {
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID
   const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
-  const sessionToken = process.env.AWS_SESSION_TOKEN
-  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
 
-  if (accessKeyId && secretAccessKey) {
-    return {
-      accessKeyId,
-      secretAccessKey,
-      sessionToken,
-      region,
-    }
+  if (!accessKeyId || !secretAccessKey) {
+    return null
   }
 
-  return null
+  return {
+    accessKeyId,
+    secretAccessKey,
+    sessionToken: process.env.AWS_SESSION_TOKEN,
+  }
 }
 
 /**
- * Get credentials from ~/.aws/credentials file
+ * Get credentials from shared credentials file (~/.aws/credentials)
  */
-function getCredentialsFromFile(profile: string): AWSCredentials | null {
-  const credentialsPath = join(homedir(), '.aws', 'credentials')
-  const configPath = join(homedir(), '.aws', 'config')
+export function fromSharedCredentials(options?: CredentialProviderOptions): AWSCredentials | null {
+  const profile = options?.profile || process.env.AWS_PROFILE || 'default'
+  const credentialsPath = options?.credentialsFile || join(homedir(), '.aws', 'credentials')
 
   if (!existsSync(credentialsPath)) {
     return null
   }
 
   try {
-    const credentials = parseIniFile(readFileSync(credentialsPath, 'utf-8'))
-    const profileData = credentials[profile]
+    const content = readFileSync(credentialsPath, 'utf-8')
+    return parseCredentialsFile(content, profile)
+  } catch {
+    return null
+  }
+}
 
-    if (!profileData) {
-      return null
+/**
+ * Parse INI-style credentials file
+ */
+function parseCredentialsFile(content: string, profile: string): AWSCredentials | null {
+  const lines = content.split('\n')
+  let currentProfile: string | null = null
+  let accessKeyId: string | undefined
+  let secretAccessKey: string | undefined
+  let sessionToken: string | undefined
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Skip comments and empty lines
+    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) {
+      continue
     }
 
-    let region = profileData.region
-
-    // Also check config file for region
-    if (!region && existsSync(configPath)) {
-      const config = parseIniFile(readFileSync(configPath, 'utf-8'))
-      const configProfile = config[`profile ${profile}`] || config[profile]
-      region = configProfile?.region
+    // Check for profile header
+    const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
+    if (profileMatch) {
+      // If we were processing the target profile, we're done
+      if (currentProfile === profile && accessKeyId && secretAccessKey) {
+        return { accessKeyId, secretAccessKey, sessionToken }
+      }
+      currentProfile = profileMatch[1]
+      accessKeyId = undefined
+      secretAccessKey = undefined
+      sessionToken = undefined
+      continue
     }
 
-    if (profileData.aws_access_key_id && profileData.aws_secret_access_key) {
-      return {
-        accessKeyId: profileData.aws_access_key_id,
-        secretAccessKey: profileData.aws_secret_access_key,
-        sessionToken: profileData.aws_session_token,
-        region,
+    // Parse key-value pairs
+    if (currentProfile === profile) {
+      const [key, ...valueParts] = trimmed.split('=')
+      const value = valueParts.join('=').trim()
+
+      switch (key.trim().toLowerCase()) {
+        case 'aws_access_key_id':
+          accessKeyId = value
+          break
+        case 'aws_secret_access_key':
+          secretAccessKey = value
+          break
+        case 'aws_session_token':
+          sessionToken = value
+          break
       }
     }
   }
-  catch (error) {
-    console.error('Error reading AWS credentials file:', error)
+
+  // Check if we found credentials for the target profile
+  if (currentProfile === profile && accessKeyId && secretAccessKey) {
+    return { accessKeyId, secretAccessKey, sessionToken }
   }
 
   return null
 }
 
 /**
- * Get credentials from EC2 instance metadata (IAM role)
+ * Get credentials from EC2 instance metadata service (IMDSv2)
  */
-async function getCredentialsFromIAM(): Promise<AWSCredentials | null> {
-  try {
-    // EC2 metadata endpoint
-    const metadataEndpoint = 'http://169.254.169.254/latest/meta-data/iam/security-credentials/'
+export async function fromEC2Metadata(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
+  const timeout = options?.timeout ?? 1000
+  const metadataUrl = 'http://169.254.169.254'
 
-    // Get role name
-    const roleResponse = await fetch(metadataEndpoint, {
-      signal: AbortSignal.timeout(1000), // 1 second timeout
-    })
+  try {
+    // Step 1: Get IMDSv2 token
+    const tokenResponse = await fetchWithTimeout(
+      `${metadataUrl}/latest/api/token`,
+      {
+        method: 'PUT',
+        headers: { 'X-aws-ec2-metadata-token-ttl-seconds': '21600' },
+      },
+      timeout,
+    )
+
+    if (!tokenResponse.ok) {
+      return null
+    }
+
+    const token = await tokenResponse.text()
+
+    // Step 2: Get IAM role name
+    const roleResponse = await fetchWithTimeout(
+      `${metadataUrl}/latest/meta-data/iam/security-credentials/`,
+      { headers: { 'X-aws-ec2-metadata-token': token } },
+      timeout,
+    )
 
     if (!roleResponse.ok) {
       return null
     }
 
-    const roleName = await roleResponse.text()
+    const roleName = (await roleResponse.text()).trim()
 
-    // Get credentials for role
-    const credentialsResponse = await fetch(`${metadataEndpoint}${roleName}`, {
-      signal: AbortSignal.timeout(1000),
-    })
+    // Step 3: Get credentials for the role
+    const credentialsResponse = await fetchWithTimeout(
+      `${metadataUrl}/latest/meta-data/iam/security-credentials/${roleName}`,
+      { headers: { 'X-aws-ec2-metadata-token': token } },
+      timeout,
+    )
 
     if (!credentialsResponse.ok) {
       return null
@@ -178,58 +180,313 @@ async function getCredentialsFromIAM(): Promise<AWSCredentials | null> {
       AccessKeyId: string
       SecretAccessKey: string
       Token: string
+      Expiration: string
     }
 
     return {
       accessKeyId: data.AccessKeyId,
       secretAccessKey: data.SecretAccessKey,
       sessionToken: data.Token,
+      expiration: new Date(data.Expiration),
     }
-  }
-  catch {
-    // Not running on EC2 or metadata service unavailable
+  } catch {
     return null
   }
 }
 
 /**
- * Resolve AWS region from various sources
+ * Get credentials from ECS task metadata
  */
-export async function resolveRegion(): Promise<string> {
-  // 1. Environment variable
+export async function fromECSMetadata(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
+  const timeout = options?.timeout ?? 1000
+
+  // Check for ECS metadata URI
+  const relativeUri = process.env.AWS_CONTAINER_CREDENTIALS_RELATIVE_URI
+  const fullUri = process.env.AWS_CONTAINER_CREDENTIALS_FULL_URI
+
+  let credentialsUrl: string | null = null
+
+  if (relativeUri) {
+    credentialsUrl = `http://169.254.170.2${relativeUri}`
+  } else if (fullUri) {
+    credentialsUrl = fullUri
+  }
+
+  if (!credentialsUrl) {
+    return null
+  }
+
+  try {
+    const headers: Record<string, string> = {}
+
+    // Add authorization token if present
+    const authToken = process.env.AWS_CONTAINER_AUTHORIZATION_TOKEN
+    if (authToken) {
+      headers['Authorization'] = authToken
+    }
+
+    const response = await fetchWithTimeout(credentialsUrl, { headers }, timeout)
+
+    if (!response.ok) {
+      return null
+    }
+
+    const data = await response.json() as {
+      AccessKeyId: string
+      SecretAccessKey: string
+      Token: string
+      Expiration: string
+    }
+
+    return {
+      accessKeyId: data.AccessKeyId,
+      secretAccessKey: data.SecretAccessKey,
+      sessionToken: data.Token,
+      expiration: new Date(data.Expiration),
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get credentials from web identity token (for Kubernetes/IRSA)
+ */
+export async function fromWebIdentity(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
+  const timeout = options?.timeout ?? 5000
+
+  const tokenFile = process.env.AWS_WEB_IDENTITY_TOKEN_FILE
+  const roleArn = process.env.AWS_ROLE_ARN
+  const sessionName = process.env.AWS_ROLE_SESSION_NAME || 'ts-cloud-session'
+
+  if (!tokenFile || !roleArn) {
+    return null
+  }
+
+  try {
+    // Read the web identity token
+    const token = readFileSync(tokenFile, 'utf-8').trim()
+
+    // Determine region for STS endpoint
+    const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+    const stsEndpoint = region.startsWith('us-gov')
+      ? `https://sts.${region}.amazonaws.com`
+      : region === 'us-east-1'
+        ? 'https://sts.amazonaws.com'
+        : `https://sts.${region}.amazonaws.com`
+
+    // Call STS AssumeRoleWithWebIdentity
+    const params = new URLSearchParams({
+      Action: 'AssumeRoleWithWebIdentity',
+      Version: '2011-06-15',
+      RoleArn: roleArn,
+      RoleSessionName: sessionName,
+      WebIdentityToken: token,
+    })
+
+    const response = await fetchWithTimeout(
+      `${stsEndpoint}/?${params.toString()}`,
+      { method: 'POST' },
+      timeout,
+    )
+
+    if (!response.ok) {
+      return null
+    }
+
+    const text = await response.text()
+
+    // Parse XML response
+    const accessKeyId = extractXmlValue(text, 'AccessKeyId')
+    const secretAccessKey = extractXmlValue(text, 'SecretAccessKey')
+    const sessionToken = extractXmlValue(text, 'SessionToken')
+    const expiration = extractXmlValue(text, 'Expiration')
+
+    if (!accessKeyId || !secretAccessKey) {
+      return null
+    }
+
+    return {
+      accessKeyId,
+      secretAccessKey,
+      sessionToken,
+      expiration: expiration ? new Date(expiration) : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get credentials using the default credential chain
+ * Tries providers in order: Environment -> Shared Credentials -> Web Identity -> ECS -> EC2
+ */
+export async function getCredentials(options?: CredentialProviderOptions): Promise<AWSCredentials> {
+  // 1. Environment variables (fastest, most common in containers)
+  const envCreds = fromEnvironment()
+  if (envCreds) {
+    return envCreds
+  }
+
+  // 2. Shared credentials file (common for local development)
+  const sharedCreds = fromSharedCredentials(options)
+  if (sharedCreds) {
+    return sharedCreds
+  }
+
+  // 3. Web identity token (Kubernetes/IRSA)
+  const webIdentityCreds = await fromWebIdentity(options)
+  if (webIdentityCreds) {
+    return webIdentityCreds
+  }
+
+  // 4. ECS task metadata
+  const ecsCreds = await fromECSMetadata(options)
+  if (ecsCreds) {
+    return ecsCreds
+  }
+
+  // 5. EC2 instance metadata
+  const ec2Creds = await fromEC2Metadata(options)
+  if (ec2Creds) {
+    return ec2Creds
+  }
+
+  throw new Error(
+    'Could not find AWS credentials. ' +
+    'Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, ' +
+    'or configure ~/.aws/credentials, or run on an EC2 instance with an IAM role.',
+  )
+}
+
+/**
+ * Create a credential provider that caches and auto-refreshes credentials
+ */
+export function createCredentialProvider(options?: CredentialProviderOptions): () => Promise<AWSCredentials> {
+  let cachedCredentials: AWSCredentials | null = null
+  let refreshPromise: Promise<AWSCredentials> | null = null
+
+  return async () => {
+    // Check if credentials are still valid (with 5 minute buffer)
+    if (cachedCredentials) {
+      if (!cachedCredentials.expiration) {
+        return cachedCredentials
+      }
+      const bufferMs = 5 * 60 * 1000 // 5 minutes
+      if (cachedCredentials.expiration.getTime() - Date.now() > bufferMs) {
+        return cachedCredentials
+      }
+    }
+
+    // Avoid multiple concurrent refresh calls
+    if (refreshPromise) {
+      return refreshPromise
+    }
+
+    refreshPromise = getCredentials(options)
+      .then((creds) => {
+        cachedCredentials = creds
+        refreshPromise = null
+        return creds
+      })
+      .catch((err) => {
+        refreshPromise = null
+        throw err
+      })
+
+    return refreshPromise
+  }
+}
+
+/**
+ * Helper to fetch with timeout
+ */
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal })
+    clearTimeout(timeoutId)
+    return response
+  } catch (error) {
+    clearTimeout(timeoutId)
+    throw error
+  }
+}
+
+/**
+ * Extract value from XML element
+ */
+function extractXmlValue(xml: string, tagName: string): string | null {
+  const regex = new RegExp(`<${tagName}>([^<]+)</${tagName}>`)
+  const match = xml.match(regex)
+  return match ? match[1] : null
+}
+
+// ============================================================================
+// Backwards Compatibility Exports
+// ============================================================================
+
+export interface AWSProfile {
+  name: string
+  accessKeyId: string
+  secretAccessKey: string
+  sessionToken?: string
+  region?: string
+}
+
+/**
+ * Resolve AWS credentials from various sources
+ * @deprecated Use getCredentials() instead
+ */
+export async function resolveCredentials(profile?: string): Promise<AWSCredentials> {
+  return getCredentials({ profile })
+}
+
+/**
+ * Resolve AWS region from environment or config
+ */
+export function resolveRegion(profile?: string): string {
+  // Check environment variables first
   const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
   if (envRegion) {
     return envRegion
   }
 
-  // 2. AWS config file
+  // Try to read from config file
   const configPath = join(homedir(), '.aws', 'config')
   if (existsSync(configPath)) {
     try {
-      const config = parseIniFile(readFileSync(configPath, 'utf-8'))
-      const defaultProfile = config.default || config['profile default']
-      if (defaultProfile?.region) {
-        return defaultProfile.region
+      const content = readFileSync(configPath, 'utf-8')
+      const targetProfile = profile || process.env.AWS_PROFILE || 'default'
+      const profileHeader = targetProfile === 'default' ? '[default]' : `[profile ${targetProfile}]`
+
+      const lines = content.split('\n')
+      let inProfile = false
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+
+        if (trimmed.startsWith('[')) {
+          inProfile = trimmed === profileHeader
+          continue
+        }
+
+        if (inProfile && trimmed.startsWith('region')) {
+          const [, value] = trimmed.split('=')
+          if (value) {
+            return value.trim()
+          }
+        }
       }
+    } catch {
+      // Ignore errors
     }
-    catch {
-      // Ignore parse errors
-    }
-  }
-
-  // 3. EC2 instance metadata
-  try {
-    const response = await fetch(
-      'http://169.254.169.254/latest/meta-data/placement/region',
-      { signal: AbortSignal.timeout(1000) },
-    )
-
-    if (response.ok) {
-      return await response.text()
-    }
-  }
-  catch {
-    // Not on EC2
   }
 
   // Default to us-east-1
@@ -237,76 +494,51 @@ export async function resolveRegion(): Promise<string> {
 }
 
 /**
- * Parse INI file format (used by AWS credentials and config files)
+ * Get AWS account ID using STS GetCallerIdentity
  */
-function parseIniFile(content: string): Record<string, Record<string, string>> {
-  const result: Record<string, Record<string, string>> = {}
-  let currentSection = ''
+export async function getAccountId(credentials?: AWSCredentials): Promise<string> {
+  const creds = credentials || await getCredentials()
+  const region = resolveRegion()
 
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim()
-
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) {
-      continue
-    }
-
-    // Section header
-    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
-      currentSection = trimmed.slice(1, -1)
-      result[currentSection] = {}
-      continue
-    }
-
-    // Key-value pair
-    const equalIndex = trimmed.indexOf('=')
-    if (equalIndex > 0 && currentSection) {
-      const key = trimmed.slice(0, equalIndex).trim()
-      const value = trimmed.slice(equalIndex + 1).trim()
-      result[currentSection][key] = value
-    }
-  }
-
-  return result
-}
-
-/**
- * Get account ID from STS GetCallerIdentity
- */
-export async function getAccountId(credentials: AWSCredentials): Promise<string> {
+  // Import signRequest dynamically to avoid circular dependency
   const { signRequest } = await import('./signature')
 
-  const signedRequest = signRequest({
+  const stsEndpoint = region.startsWith('us-gov')
+    ? `https://sts.${region}.amazonaws.com`
+    : region === 'us-east-1'
+      ? 'https://sts.amazonaws.com'
+      : `https://sts.${region}.amazonaws.com`
+
+  const body = 'Action=GetCallerIdentity&Version=2011-06-15'
+
+  const signed = signRequest({
     method: 'POST',
-    url: 'https://sts.amazonaws.com/',
-    service: 'sts',
-    region: credentials.region || 'us-east-1',
+    url: stsEndpoint,
+    body,
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: 'Action=GetCallerIdentity&Version=2011-06-15',
-    accessKeyId: credentials.accessKeyId,
-    secretAccessKey: credentials.secretAccessKey,
-    sessionToken: credentials.sessionToken,
+    ...creds,
+    service: 'sts',
+    region,
   })
 
-  const response = await fetch(signedRequest.url, {
-    method: signedRequest.method,
-    headers: signedRequest.headers,
-    body: signedRequest.body,
+  const response = await fetch(signed.url, {
+    method: signed.method,
+    headers: signed.headers,
+    body: signed.body,
   })
 
   if (!response.ok) {
     throw new Error(`Failed to get account ID: ${await response.text()}`)
   }
 
-  const text = await response.text()
+  const xml = await response.text()
+  const accountId = extractXmlValue(xml, 'Account')
 
-  // Parse account ID from XML response
-  const match = text.match(/<Account>(\d+)<\/Account>/)
-  if (match) {
-    return match[1]
+  if (!accountId) {
+    throw new Error('Failed to parse account ID from response')
   }
 
-  throw new Error('Failed to extract account ID from response')
+  return accountId
 }
