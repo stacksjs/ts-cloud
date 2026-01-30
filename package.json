@@ -1,7 +1,7 @@
 {
   "name": "ts-cloud",
   "type": "module",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A simple TypeScript starter kit using Bun.",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
@@ -13,7 +13,13 @@
   "bugs": {
     "url": "https://github.com/stacksjs/ts-cloud/issues"
   },
-  "keywords": ["typescript", "starter", "kit", "bun", "package"],
+  "keywords": [
+    "typescript",
+    "starter",
+    "kit",
+    "bun",
+    "package"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -28,7 +34,10 @@
   "bin": {
     "cloud": "./dist/bin/cli.js"
   },
-  "files": ["README.md", "dist"],
+  "files": [
+    "README.md",
+    "dist"
+  ],
   "scripts": {
     "build": "bun --bun build.ts && bun run compile",
     "compile": "bun build ./bin/cli.ts --compile --minify --outfile bin/cloud",
