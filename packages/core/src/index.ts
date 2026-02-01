@@ -51,7 +51,22 @@ export * from './presets/extend'
 export * from './aws/signature'
 export * from './aws/credentials'
 export * from './aws/cloudformation'
-export * from './aws/s3'
+export {
+  S3Client,
+  S3Error,
+  createS3Client,
+  type S3ClientOptions,
+  type GetObjectOptions,
+  type PutObjectOptions,
+  type ListObjectsOptions,
+  type ListObjectsResult,
+  type S3Object,
+  type HeadObjectResult,
+  type CopyObjectOptions,
+  type MultipartUploadOptions,
+  type MultipartProgress,
+  type PresignedUrlOptions as S3PresignedUrlOptions,
+} from './aws/s3'
 export * from './aws/cloudfront'
 
 // Error handling (Phase 6)

@@ -18,6 +18,7 @@ export interface AWSCredentials {
   secretAccessKey: string
   sessionToken?: string
   expiration?: Date
+  region?: string
 }
 
 export interface CredentialProviderOptions {
@@ -309,7 +310,7 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
     return {
       accessKeyId,
       secretAccessKey,
-      sessionToken,
+      sessionToken: sessionToken ?? undefined,
       expiration: expiration ? new Date(expiration) : undefined,
     }
   } catch {
