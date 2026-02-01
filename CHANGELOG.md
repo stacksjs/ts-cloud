@@ -1,3 +1,42 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.0...v0.1.1)
+
+### 🧹 Chores
+
+- release v0.1.1 ([eb0da80](https://github.com/stacksjs/ts-cloud/commit/eb0da80)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([35385cd](https://github.com/stacksjs/ts-cloud/commit/35385cd)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([d13f771](https://github.com/stacksjs/ts-cloud/commit/d13f771)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([dc90d49](https://github.com/stacksjs/ts-cloud/commit/dc90d49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: update actions/checkout action to v6 (#25) ([6b7e021](https://github.com/stacksjs/ts-cloud/commit/6b7e021)) _(by [renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot]))_ ([#25](https://github.com/stacksjs/ts-cloud/issues/25), [#25](https://github.com/stacksjs/ts-cloud/issues/25))
+- **deps**: update all non-major dependencies (#24) ([1f39b55](https://github.com/stacksjs/ts-cloud/commit/1f39b55)) _(by [renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot]))_ ([#24](https://github.com/stacksjs/ts-cloud/issues/24), [#24](https://github.com/stacksjs/ts-cloud/issues/24))
+- **deps**: update dependency actions/setup-node to v6.2.0 (#28) ([fadbdb4](https://github.com/stacksjs/ts-cloud/commit/fadbdb4)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#28](https://github.com/stacksjs/ts-cloud/issues/28), [#28](https://github.com/stacksjs/ts-cloud/issues/28))
+- wip ([7624f04](https://github.com/stacksjs/ts-cloud/commit/7624f04)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([e8c552b](https://github.com/stacksjs/ts-cloud/commit/e8c552b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _[renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot])_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.0...HEAD)
+
+### 🧹 Chores
+
+- wip ([35385cd](https://github.com/stacksjs/ts-cloud/commit/35385cd)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([d13f771](https://github.com/stacksjs/ts-cloud/commit/d13f771)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([dc90d49](https://github.com/stacksjs/ts-cloud/commit/dc90d49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: update actions/checkout action to v6 (#25) ([6b7e021](https://github.com/stacksjs/ts-cloud/commit/6b7e021)) _(by [renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot]))_ ([#25](https://github.com/stacksjs/ts-cloud/issues/25), [#25](https://github.com/stacksjs/ts-cloud/issues/25))
+- **deps**: update all non-major dependencies (#24) ([1f39b55](https://github.com/stacksjs/ts-cloud/commit/1f39b55)) _(by [renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot]))_ ([#24](https://github.com/stacksjs/ts-cloud/issues/24), [#24](https://github.com/stacksjs/ts-cloud/issues/24))
+- **deps**: update dependency actions/setup-node to v6.2.0 (#28) ([fadbdb4](https://github.com/stacksjs/ts-cloud/commit/fadbdb4)) _(by Chris <chrisbreuer93@gmail.com>)_ ([#28](https://github.com/stacksjs/ts-cloud/issues/28), [#28](https://github.com/stacksjs/ts-cloud/issues/28))
+- wip ([7624f04](https://github.com/stacksjs/ts-cloud/commit/7624f04)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([e8c552b](https://github.com/stacksjs/ts-cloud/commit/e8c552b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _[renovate[bot] <29139614+renovate[bot]@users.noreply.github.com>](https://github.com/renovate[bot])_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 ### 🧹 Chores
 
 - wip ([4009e11](https://github.com/stacksjs/ts-cloud/commit/4009e11)) _(by glennmichael123 <gtorregosa@gmail.com>)_
