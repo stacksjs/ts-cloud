@@ -28,12 +28,12 @@ jobs:
       - name: Setup Pantry
         uses: home-lang/pantry-setup@v1
 
-      - name: Create GitHub Release
-        uses: stacksjs/action-releaser@v1.2.6
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Publish
         run: pantry npm:publish
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: stacksjs/action-releaser@v1.2.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
