@@ -3,7 +3,7 @@
  * Deploys infrastructure across multiple AWS regions
  */
 
-import type { CloudConfig } from '@ts-cloud/types'
+import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 
 export interface Region {
   code: string

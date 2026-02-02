@@ -1,5 +1,5 @@
 export * from './config'
-// Note: ./types re-exports @ts-cloud/types, which we export below
+// Note: ./types re-exports @stacksjs/ts-cloud-types, which we export below
 // export * from './types'
 export * from './generators'
 
@@ -10,7 +10,7 @@ export {
   validateResourceLimits,
 } from './validation'
 
-// Validation exports - types with prefixed names for conflicts with @ts-cloud/core
+// Validation exports - types with prefixed names for conflicts with @stacksjs/ts-cloud-core
 export type {
   ValidationError as TemplateValidationError,
   ValidationResult as TemplateValidationResult,
@@ -143,14 +143,14 @@ export type {
 } from './dns'
 
 // Re-export core functionality (these take precedence for common types)
-export * from '@ts-cloud/core'
+export * from '@stacksjs/ts-cloud-core'
 
-// Re-export @ts-cloud/types (includes VpcConfig, etc.)
-export * from '@ts-cloud/types'
+// Re-export @stacksjs/ts-cloud-types (includes VpcConfig, etc.)
+export * from '@stacksjs/ts-cloud-types'
 
-// Re-export @ts-cloud/aws-types with explicit handling for duplicates
-// Note: @ts-cloud/core also exports CloudFormation* types, so we skip re-exporting them here
-// to avoid duplicates. Users can import directly from @ts-cloud/aws-types if needed.
+// Re-export @stacksjs/ts-cloud-aws-types with explicit handling for duplicates
+// Note: @stacksjs/ts-cloud-core also exports CloudFormation* types, so we skip re-exporting them here
+// to avoid duplicates. Users can import directly from @stacksjs/ts-cloud-aws-types if needed.
 export type {
   // S3 types
   S3Bucket,
@@ -160,4 +160,4 @@ export type {
   CloudFrontOriginAccessControl,
   CloudFrontCacheBehavior,
   CloudFrontOrigin,
-} from '@ts-cloud/aws-types'
+} from '@stacksjs/ts-cloud-aws-types'

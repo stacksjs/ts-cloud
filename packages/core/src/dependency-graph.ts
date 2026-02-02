@@ -1,4 +1,4 @@
-import type { CloudFormationResource } from '@ts-cloud/aws-types'
+import type { CloudFormationResource } from '@stacksjs/ts-cloud-aws-types'
 
 export interface ResourceNode {
   logicalId: string

@@ -1,4 +1,4 @@
-import type { EnvironmentType } from '@ts-cloud/types'
+import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
 
 export interface NamingOptions {
   slug: string

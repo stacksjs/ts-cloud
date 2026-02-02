@@ -22,12 +22,12 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@ts-cloud/core": ["./packages/core/src"],
-      "@ts-cloud/core/*": ["./packages/core/src/*"],
-      "@ts-cloud/types": ["./packages/types/src"],
-      "@ts-cloud/types/*": ["./packages/types/src/*"],
-      "@ts-cloud/aws-types": ["./packages/aws-types/src"],
-      "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"]
+      "@stacksjs/ts-cloud-core": ["./packages/core/src"],
+      "@stacksjs/ts-cloud-core/*": ["./packages/core/src/*"],
+      "@stacksjs/ts-cloud-types": ["./packages/types/src"],
+      "@stacksjs/ts-cloud-types/*": ["./packages/types/src/*"],
+      "@stacksjs/ts-cloud-aws-types": ["./packages/aws-types/src"],
+      "@stacksjs/ts-cloud-aws-types/*": ["./packages/aws-types/src/*"]
     }
   },
   "exclude": ["docs", "dist", "node_modules", "benchmarks", "bunpress.config.ts"]

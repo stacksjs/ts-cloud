@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import type { CloudConfig } from '@ts-cloud/types'
+import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 import { loadCloudConfig } from '../../src/config'
 import { createDnsProvider, DnsProviderFactory } from '../../src/dns'
 import type { DnsProviderConfig, DnsProvider } from '../../src/dns/types'

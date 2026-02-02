@@ -3,7 +3,7 @@
  * Validates CloudFormation templates for correctness and best practices
  */
 
-import type { CloudFormationTemplate, CloudFormationResource } from '@ts-cloud/aws-types'
+import type { CloudFormationTemplate, CloudFormationResource } from '@stacksjs/ts-cloud-aws-types'
 
 export interface ValidationError {
   path: string

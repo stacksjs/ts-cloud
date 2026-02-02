@@ -3,8 +3,8 @@
  * Clean API for AWS OpenSearch Service
  */
 
-import type { OpenSearchDomain } from '@ts-cloud/aws-types'
-import type { EnvironmentType } from '@ts-cloud/types'
+import type { OpenSearchDomain } from '@stacksjs/ts-cloud-aws-types'
+import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface SearchDomainOptions {

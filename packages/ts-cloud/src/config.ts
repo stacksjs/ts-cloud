@@ -1,4 +1,4 @@
-import type { CloudOptions } from '@ts-cloud/types'
+import type { CloudOptions } from '@stacksjs/ts-cloud-types'
 import { loadConfig } from 'bunfig'
 
 export const defaultConfig: CloudOptions = {

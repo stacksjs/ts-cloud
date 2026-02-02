@@ -13,7 +13,7 @@ import {
   withCDN,
   withQueue,
 } from './extend'
-import type { CloudConfig } from '@ts-cloud/types'
+import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 
 describe('extendPreset', () => {
   it('should extend base preset with new properties', () => {

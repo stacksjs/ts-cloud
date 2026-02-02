@@ -1,7 +1,7 @@
-import type { CloudFrontDistribution, CloudFrontOriginAccessControl, LambdaFunction, IAMRole } from '@ts-cloud/aws-types'
+import type { CloudFrontDistribution, CloudFrontOriginAccessControl, LambdaFunction, IAMRole } from '@stacksjs/ts-cloud-aws-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '@ts-cloud/types'
+import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
 
 export interface DistributionOptions {
   slug: string

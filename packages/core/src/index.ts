@@ -3,7 +3,7 @@
  */
 
 // Core types
-export * from '@ts-cloud/types'
+export * from '@stacksjs/ts-cloud-types'
 
 // Legacy exports (Phase 1)
 export * from './template-builder'

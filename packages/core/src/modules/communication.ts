@@ -7,7 +7,7 @@
  * This module is the main entry point for `buddy deploy` communication services.
  */
 
-import type { EnvironmentType } from '@ts-cloud/types'
+import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 

@@ -3,7 +3,7 @@
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
 
-import type { CloudConfig } from '@ts-cloud/types'
+import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 import {
   Storage,
   CDN,
@@ -25,7 +25,7 @@ import {
   Auth,
   Deployment,
   TemplateBuilder,
-} from '@ts-cloud/core'
+} from '@stacksjs/ts-cloud-core'
 
 export interface GenerationOptions {
   config: CloudConfig
