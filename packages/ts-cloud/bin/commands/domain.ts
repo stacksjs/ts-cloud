@@ -7,7 +7,7 @@ import { getDnsProvider, resolveDnsProviderConfig } from './shared'
 export function registerDomainCommands(app: CLI): void {
   app
     .command('domain:list', 'List all domains')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .action(async (options?: { provider?: string }) => {
       cli.header('Domains')
 
@@ -46,7 +46,7 @@ export function registerDomainCommands(app: CLI): void {
 
   app
     .command('domain:add <domain>', 'Add a new domain')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .action(async (domain: string, options?: { provider?: string }) => {
       cli.header(`Adding Domain: ${domain}`)
 
@@ -149,7 +149,7 @@ export function registerDomainCommands(app: CLI): void {
 
   app
     .command('domain:verify <domain>', 'Verify domain ownership and SSL status')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .action(async (domain: string, options?: { provider?: string }) => {
       cli.header(`Verifying Domain: ${domain}`)
 
@@ -234,7 +234,7 @@ export function registerDomainCommands(app: CLI): void {
 
   app
     .command('dns:records <domain>', 'List DNS records for a domain')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--type <type>', 'Filter by record type (A, AAAA, CNAME, TXT, MX, etc.)')
     .action(async (domain: string, options?: { provider?: string, type?: string }) => {
       cli.header(`DNS Records for ${domain}`)
@@ -282,7 +282,7 @@ export function registerDomainCommands(app: CLI): void {
 
   app
     .command('dns:add <domain> <type> <value>', 'Add DNS record')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--name <name>', 'Record name (subdomain)', { default: '@' })
     .option('--ttl <seconds>', 'Time to live in seconds', { default: '300' })
     .action(async (domain: string, type: string, value: string, options?: { provider?: string, name?: string, ttl?: string }) => {
@@ -325,7 +325,7 @@ export function registerDomainCommands(app: CLI): void {
 
   app
     .command('dns:delete <domain> <type>', 'Delete DNS record')
-    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, or route53')
+    .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--name <name>', 'Record name (subdomain)', { default: '@' })
     .option('--value <value>', 'Record value (required for multi-value records)')
     .action(async (domain: string, type: string, options?: { provider?: string, name?: string, value?: string }) => {

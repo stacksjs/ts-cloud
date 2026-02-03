@@ -102,7 +102,12 @@ export interface GoDaddyProviderConfig {
   environment?: 'production' | 'ote' // OTE = test environment
 }
 
-export type DnsProviderConfig = Route53ProviderConfig | PorkbunProviderConfig | GoDaddyProviderConfig
+export interface CloudflareProviderConfig {
+  provider: 'cloudflare'
+  apiToken: string // API Token (recommended) - create at https://dash.cloudflare.com/profile/api-tokens
+}
+
+export type DnsProviderConfig = Route53ProviderConfig | PorkbunProviderConfig | GoDaddyProviderConfig | CloudflareProviderConfig
 
 /**
  * Extended configuration for certificate validation

@@ -6,6 +6,7 @@
 export * from './types'
 export { PorkbunProvider } from './porkbun'
 export { GoDaddyProvider } from './godaddy'
+export { CloudflareProvider } from './cloudflare'
 export { Route53Provider } from './route53-adapter'
 export {
   UnifiedDnsValidator,
@@ -15,6 +16,7 @@ export {
 } from './validator'
 
 import type { DnsProvider, DnsProviderConfig } from './types'
+import { CloudflareProvider } from './cloudflare'
 import { GoDaddyProvider } from './godaddy'
 import { PorkbunProvider } from './porkbun'
 import { Route53Provider } from './route53-adapter'
@@ -32,6 +34,9 @@ export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
 
     case 'godaddy':
       return new GoDaddyProvider(config.apiKey, config.apiSecret, config.environment)
+
+    case 'cloudflare':
+      return new CloudflareProvider(config.apiToken)
 
     default:
       throw new Error(`Unknown DNS provider: ${(config as any).provider}`)
@@ -108,6 +113,17 @@ export class DnsProviderFactory {
   }
 
   /**
+   * Add Cloudflare provider
+   */
+  addCloudflare(apiToken: string): this {
+    this.configs.push({
+      provider: 'cloudflare',
+      apiToken,
+    })
+    return this
+  }
+
+  /**
    * Load providers from environment variables
    */
   loadFromEnv(): this {
@@ -131,13 +147,19 @@ export class DnsProviderFactory {
       this.addGoDaddy(godaddyApiKey, godaddyApiSecret, env)
     }
 
+    // Cloudflare
+    const cloudflareApiToken = process.env.CLOUDFLARE_API_TOKEN
+    if (cloudflareApiToken) {
+      this.addCloudflare(cloudflareApiToken)
+    }
+
     return this
   }
 
   /**
    * Get a provider by name
    */
-  getProvider(name: 'route53' | 'porkbun' | 'godaddy'): DnsProvider | null {
+  getProvider(name: 'route53' | 'porkbun' | 'godaddy' | 'cloudflare'): DnsProvider | null {
     // Check cache
     const cached = this.providers.get(name)
     if (cached) {

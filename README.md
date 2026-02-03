@@ -236,6 +236,74 @@ await cloudfront.createInvalidation({
 })
 ```
 
+## DNS Providers
+
+ts-cloud supports multiple DNS providers for domain management and SSL certificate validation:
+
+### Cloudflare
+
+1. Log in to your [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. Go to **My Profile** → **API Tokens** (or visit https://dash.cloudflare.com/profile/api-tokens)
+3. Click **Create Token**
+4. Use the **Edit zone DNS** template, or create a custom token with:
+   - **Permissions**: Zone → DNS → Edit
+   - **Zone Resources**: Include → All zones (or specific zones)
+5. Copy the generated token
+
+```bash
+export CLOUDFLARE_API_TOKEN="your-api-token-here"
+```
+
+### Porkbun
+
+1. Log in to your [Porkbun Dashboard](https://porkbun.com/account/api)
+2. Enable API access for your domain(s)
+3. Generate an API key pair
+
+```bash
+export PORKBUN_API_KEY="your-api-key"
+export PORKBUN_SECRET_KEY="your-secret-key"
+```
+
+### GoDaddy
+
+1. Log in to [GoDaddy Developer Portal](https://developer.godaddy.com/)
+2. Create a new API key
+3. Note both the key and secret
+
+```bash
+export GODADDY_API_KEY="your-api-key"
+export GODADDY_API_SECRET="your-api-secret"
+export GODADDY_ENVIRONMENT="production"  # or "ote" for testing
+```
+
+### Route53
+
+Uses AWS credentials from environment or ~/.aws/credentials:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_REGION="us-east-1"
+export AWS_HOSTED_ZONE_ID="Z1234567890"  # Optional
+```
+
+### CLI Usage
+
+```bash
+# List domains
+cloud domain:list --provider cloudflare
+
+# List DNS records
+cloud dns:records example.com --provider cloudflare
+
+# Add a DNS record
+cloud dns:add example.com A 192.168.1.1 --name api --provider cloudflare
+
+# Generate SSL certificate with DNS validation
+cloud domain:ssl example.com --provider cloudflare
+```
+
 ## Development
 
 ```bash

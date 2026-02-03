@@ -378,9 +378,14 @@ export interface ResourceConditions {
 }
 
 export interface SiteConfig {
+  /** Root directory containing the built static files (e.g., '.output/public', 'dist') */
   root: string
-  path: string
+  /** Path prefix for deployment (usually '/') */
+  path?: string
+  /** Custom domain for the site (e.g., 'stage.easyotc.com') */
   domain?: string
+  /** SSL certificate ARN (auto-created if not provided) */
+  certificateArn?: string
 }
 
 export interface VpcConfig {
@@ -446,6 +451,12 @@ export interface CdnConfig {
 export interface DnsConfig {
   domain?: string
   hostedZoneId?: string
+  /**
+   * External DNS provider configuration
+   * When set, DNS records will be managed via the external provider API
+   * instead of Route53
+   */
+  provider?: 'route53' | 'cloudflare' | 'porkbun' | 'godaddy'
 }
 
 export interface SecurityConfig {

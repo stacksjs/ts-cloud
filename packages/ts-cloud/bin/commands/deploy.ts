@@ -8,22 +8,36 @@ import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { ECRClient } from '../../src/aws/ecr'
 import { ECSClient } from '../../src/aws/ecs'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
-import { loadValidatedConfig } from './shared'
+import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
+import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
+import type { DnsProviderConfig } from '../../src/dns/types'
 
 export function registerDeployCommands(app: CLI): void {
   app
     .command('deploy', 'Deploy infrastructure')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment to deploy to')
-    .action(async (options?: { stack?: string, env?: string }) => {
+    .option('--site <name>', 'Deploy specific site only')
+    .action(async (options?: { stack?: string, env?: string, site?: string }) => {
       cli.header('Deploying Infrastructure')
 
       try {
         // Load configuration
         const config = await loadValidatedConfig()
-        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
+
+        // Check if this is a static site deployment
+        if (config.sites && Object.keys(config.sites).length > 0) {
+          const dnsProvider = config.infrastructure?.dns?.provider
+
+          if (dnsProvider && dnsProvider !== 'route53') {
+            // Deploy static sites with external DNS
+            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region)
+            return
+          }
+        }
 
         cli.info(`Stack: ${stackName}`)
         cli.info(`Region: ${region}`)
@@ -671,4 +685,166 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         cli.error(`Deployment failed: ${error.message}`)
       }
     })
+}
+
+/**
+ * Deploy static sites with external DNS provider (Cloudflare, Porkbun, GoDaddy)
+ * Handles detection of existing DNS records (like Netlify) and prompts for migration
+ */
+async function deployStaticSitesWithExternalDns(
+  config: any,
+  specificSite: string | undefined,
+  dnsProviderName: string,
+  region: string,
+): Promise<void> {
+  const sites = config.sites || {}
+  const siteNames = specificSite ? [specificSite] : Object.keys(sites)
+
+  if (siteNames.length === 0) {
+    cli.warn('No sites configured in cloud.config.ts')
+    return
+  }
+
+  // Get DNS provider config from environment
+  const dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+  if (!dnsConfig) {
+    cli.error(`DNS provider '${dnsProviderName}' is not configured. Please set the required environment variables.`)
+    cli.info('\nFor Cloudflare: CLOUDFLARE_API_TOKEN')
+    cli.info('For Porkbun: PORKBUN_API_KEY, PORKBUN_SECRET_KEY')
+    cli.info('For GoDaddy: GODADDY_API_KEY, GODADDY_API_SECRET')
+    return
+  }
+
+  const dnsProvider = getDnsProvider(dnsProviderName)
+
+  for (const siteName of siteNames) {
+    const siteConfig = sites[siteName]
+    if (!siteConfig) {
+      cli.error(`Site '${siteName}' not found in configuration`)
+      continue
+    }
+
+    const domain = siteConfig.domain
+    if (!domain) {
+      cli.error(`Site '${siteName}' has no domain configured`)
+      continue
+    }
+
+    cli.header(`Deploying Site: ${siteName}`)
+    cli.info(`Domain: ${domain}`)
+    cli.info(`Source: ${siteConfig.root}`)
+    cli.info(`DNS Provider: ${dnsProviderName}`)
+
+    // Check if source directory exists
+    if (!existsSync(siteConfig.root)) {
+      cli.error(`Source directory not found: ${siteConfig.root}`)
+      cli.info('Run your build command first (e.g., bun run generate)')
+      continue
+    }
+
+    // Check for existing DNS records
+    cli.step('Checking existing DNS records...')
+    const existingRecords = await dnsProvider.listRecords(domain)
+
+    if (existingRecords.success && existingRecords.records.length > 0) {
+      // Look for existing CNAME records that might be pointing to Netlify or other providers
+      const domainParts = domain.split('.')
+      const subdomain = domainParts.length > 2 ? domainParts[0] : '@'
+      const rootDomain = domainParts.slice(-2).join('.')
+
+      const existingCname = existingRecords.records.find(r =>
+        r.type === 'CNAME' &&
+        (r.name === domain || r.name === subdomain || r.name === `${subdomain}.${rootDomain}`)
+      )
+
+      if (existingCname) {
+        const isNetlify = existingCname.content.includes('netlify')
+        const isVercel = existingCname.content.includes('vercel')
+        const isCloudFront = existingCname.content.includes('cloudfront.net')
+
+        // Skip if already pointing to CloudFront (our infrastructure)
+        if (isCloudFront) {
+          cli.info(`Domain already points to CloudFront: ${existingCname.content}`)
+          cli.info('Proceeding with file upload...')
+        } else {
+          const providerName = isNetlify ? 'Netlify' : isVercel ? 'Vercel' : 'another provider'
+
+          cli.warn(`\nExisting CNAME record detected:`)
+          cli.info(`  ${existingCname.name} -> ${existingCname.content}`)
+
+          if (isNetlify || isVercel) {
+            cli.info(`\nThis domain is currently pointing to ${providerName}.`)
+            cli.info('Deploying will update this record to point to AWS CloudFront.')
+          }
+
+          const proceed = await cli.confirm(`\nUpdate DNS record to point to AWS CloudFront?`, true)
+          if (!proceed) {
+            cli.info('Deployment cancelled')
+            continue
+          }
+
+          // Delete the old CNAME record before deploying
+          cli.step(`Removing old ${providerName} CNAME record...`)
+          const deleteResult = await dnsProvider.deleteRecord(domain, {
+            name: existingCname.name,
+            type: 'CNAME',
+            content: existingCname.content,
+          })
+
+          if (deleteResult.success) {
+            cli.success(`Removed CNAME: ${existingCname.name} -> ${existingCname.content}`)
+          } else {
+            cli.warn(`Could not remove old record: ${deleteResult.message}`)
+            cli.info('The deployment will attempt to update it instead.')
+          }
+        }
+      }
+    }
+
+    // Deploy the static site
+    cli.step('Deploying to AWS (S3 + CloudFront)...')
+
+    const result = await deployStaticSiteWithExternalDnsFull({
+      siteName: `${config.project.slug}-${siteName}`,
+      domain,
+      region,
+      sourceDir: siteConfig.root,
+      certificateArn: siteConfig.certificateArn,
+      dnsProvider: dnsConfig,
+      onProgress: (stage, detail) => {
+        if (stage === 'infrastructure') {
+          cli.step(detail || 'Setting up infrastructure...')
+        } else if (stage === 'upload') {
+          // Show upload progress without spamming
+          if (detail?.includes('/') && !detail.includes('1/')) {
+            const match = detail.match(/(\d+)\/(\d+)/)
+            if (match) {
+              const [, current, total] = match
+              if (Number(current) % 10 === 0 || current === total) {
+                cli.info(`  Uploaded ${current}/${total} files`)
+              }
+            }
+          }
+        } else if (stage === 'invalidate') {
+          cli.step('Invalidating CDN cache...')
+        } else if (stage === 'complete') {
+          // Handled below
+        }
+      },
+    })
+
+    if (result.success) {
+      cli.success('\nDeployment successful!')
+      cli.box(`Site Deployed!
+
+Domain: https://${result.domain}
+CloudFront: ${result.distributionDomain}
+Bucket: ${result.bucket}
+Files: ${result.filesUploaded}
+
+Your site is now live at https://${result.domain}`, 'green')
+    } else {
+      cli.error(`\nDeployment failed: ${result.message}`)
+    }
+  }
 }
