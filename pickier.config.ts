@@ -12,6 +12,8 @@ const config: PickierConfig = {
     '**/*.min.js',
     '**/bun.lock',
     '**/benchmarks/**',
+    '**/.claude/**',
+    '**/.zed/**',
   ],
 
   lint: {
@@ -41,17 +43,23 @@ const config: PickierConfig = {
     'ts/no-explicit-any': 'off',
     'ts/no-unused-vars': 'warn',
 
-    // Disable buggy rules (false positives on TypeScript syntax)
+    // Disable rules with false positives
     'regexp/no-unused-capturing-group': 'off',
-    'no-super-linear-backtracking': 'off',
+    'regexp/no-super-linear-backtracking': 'off',
     'style/brace-style': 'off',
-    'max-statements-per-line': 'off',
-    'quotes': 'off',
+    'style/max-statements-per-line': 'off',
 
     // Markdown rules
     'markdown/heading-increment': 'error',
     'markdown/no-trailing-spaces': 'error',
     'markdown/fenced-code-language': 'warn',
+    'markdown/no-inline-html': 'off',
+    'markdown/reference-links-images': 'off',
+    'markdown/single-title': 'off',
+    'markdown/blanks-around-fences': 'off',
+    'markdown/no-duplicate-heading': 'off',
+    'markdown/single-trailing-newline': 'off',
+    'markdown/link-image-style': 'off',
   },
 }
 
