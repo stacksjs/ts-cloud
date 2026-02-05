@@ -2,6 +2,66 @@
 
 Deploy your infrastructure to AWS using ts-cloud.
 
+## Pre-Deployment Security Scanning
+
+ts-cloud automatically scans your code for leaked secrets before every deployment. This prevents accidental exposure of API keys, credentials, and other sensitive data.
+
+### Automatic Scanning
+
+Security scans run automatically with all deploy commands:
+
+```bash
+# Scans project root before infrastructure deployment
+cloud deploy
+
+# Scans source directory before S3 upload
+cloud deploy:static --source ./dist --bucket my-bucket
+
+# Scans build context before Docker build
+cloud deploy:container --cluster my-cluster --service my-service
+```
+
+### Standalone Security Scan
+
+Run a security scan without deploying:
+
+```bash
+# Scan current directory
+cloud deploy:security-scan
+
+# Scan specific directory
+cloud deploy:security-scan --source ./dist
+
+# Set severity threshold
+cloud deploy:security-scan --fail-on high
+```
+
+### Scan Output
+
+```
+→ Running pre-deployment security scan...
+ℹ Scanned 127 files in 245ms
+ℹ   Critical: 0
+ℹ   High: 0
+ℹ   Medium: 0
+ℹ   Low: 0
+✓ Security scan passed
+```
+
+### Bypassing Security Scans
+
+For development or testing (not recommended for production):
+
+```bash
+# Skip security scan entirely
+cloud deploy --skip-security-scan
+
+# Lower the severity threshold
+cloud deploy --security-fail-on high
+```
+
+See the [Security Guide](/features/security) for more details on detected patterns and best practices.
+
 ## AWS Credentials
 
 ### Environment Variables

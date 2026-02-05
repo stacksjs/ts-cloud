@@ -55,6 +55,23 @@ Complete CloudFormation template builders for:
 - **Monitoring** - CloudWatch dashboards, alarms, and log groups
 - **Security** - ACM certificates, WAF rules, security groups
 
+### 🔒 Pre-Deployment Security Scanning
+
+Built-in secret detection to prevent accidental credential exposure:
+
+- **35+ Secret Patterns** - AWS keys, API tokens, private keys, database credentials
+- **Automatic Scanning** - Runs before every deployment
+- **Configurable Severity** - Block on critical, high, medium, or low findings
+- **CI/CD Ready** - Integrate security checks into your pipeline
+
+```bash
+# Scan for secrets before deploying
+cloud deploy:security-scan --source ./dist
+
+# Deploy with automatic security scanning
+cloud deploy  # Scans automatically before deployment
+```
+
 ### ☁️ Direct AWS Integration
 
 No SDK, no CLI - pure AWS Signature V4 API calls:

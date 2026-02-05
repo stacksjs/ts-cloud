@@ -211,6 +211,8 @@ console.log('Deployed to:', result.domain)
 
 ## CLI Commands
 
+### Project Management
+
 ```bash
 # Initialize project
 cloud init my-project
@@ -223,12 +225,41 @@ cloud validate
 
 # Preview changes
 cloud diff --stack my-stack
+```
 
-# Deploy a stack
+### Security Scanning
+
+```bash
+# Run security scan on current directory
+cloud deploy:security-scan
+
+# Scan specific directory (e.g., frontend build)
+cloud deploy:security-scan --source ./dist
+
+# Set severity threshold (critical, high, medium, low)
+cloud deploy:security-scan --fail-on high
+
+# Skip specific patterns (false positives)
+cloud deploy:security-scan --skip-patterns "JWT Token,Generic API Key"
+```
+
+### Deployment
+
+```bash
+# Deploy a stack (includes automatic security scan)
 cloud deploy --stack my-stack
 
 # Deploy all stacks
 cloud deploy --all
+
+# Deploy static site to S3 + CloudFront
+cloud deploy:static --source ./dist --bucket my-bucket
+
+# Deploy container to ECS
+cloud deploy:container --cluster my-cluster --service my-service
+
+# Skip security scan (not recommended for production)
+cloud deploy --skip-security-scan
 
 # Destroy a stack
 cloud destroy --stack my-stack

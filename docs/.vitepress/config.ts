@@ -60,6 +60,33 @@ const sidebar = [
       { text: 'Config', link: '/config' },
     ],
   },
+  {
+    text: 'Guide',
+    items: [
+      { text: 'Getting Started', link: '/guide/getting-started' },
+      { text: 'Deployment', link: '/guide/deployment' },
+      { text: 'Providers', link: '/guide/providers' },
+    ],
+  },
+  {
+    text: 'Features',
+    items: [
+      { text: 'Security', link: '/features/security' },
+      { text: 'AWS', link: '/features/aws' },
+      { text: 'Multi-Region', link: '/features/multi-region' },
+      { text: 'Environments', link: '/features/environments' },
+      { text: 'State Management', link: '/features/state' },
+    ],
+  },
+  {
+    text: 'Advanced',
+    items: [
+      { text: 'CI/CD Integration', link: '/advanced/cicd' },
+      { text: 'Rollback', link: '/advanced/rollback' },
+      { text: 'Custom Providers', link: '/advanced/providers' },
+      { text: 'Dependencies', link: '/advanced/dependencies' },
+    ],
+  },
   { text: 'Showcase', link: '/Showcase' },
 ]
 const description = 'A TypeScript Starter Kit. For a better Development Experience.'
