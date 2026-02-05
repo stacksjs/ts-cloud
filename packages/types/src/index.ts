@@ -386,6 +386,8 @@ export interface SiteConfig {
   domain?: string
   /** SSL certificate ARN (auto-created if not provided) */
   certificateArn?: string
+  /** Build command to run before deployment (e.g., 'bun run generate', 'npm run build') */
+  build?: string
 }
 
 export interface VpcConfig {

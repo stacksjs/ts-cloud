@@ -961,10 +961,29 @@ async function deployStaticSitesWithExternalDns(
     cli.info(`Source: ${siteConfig.root}`)
     cli.info(`DNS Provider: ${dnsProviderName}`)
 
+    // Run build command if configured
+    if (siteConfig.build) {
+      cli.step(`Running build command: ${siteConfig.build}`)
+      try {
+        const { execSync } = await import('node:child_process')
+        execSync(siteConfig.build, {
+          stdio: 'inherit',
+          cwd: process.cwd(),
+        })
+        cli.success('Build completed successfully')
+      }
+      catch (err: any) {
+        cli.error(`Build failed: ${err.message}`)
+        continue
+      }
+    }
+
     // Check if source directory exists
     if (!existsSync(siteConfig.root)) {
       cli.error(`Source directory not found: ${siteConfig.root}`)
-      cli.info('Run your build command first (e.g., bun run generate)')
+      if (!siteConfig.build) {
+        cli.info('Run your build command first (e.g., bun run generate) or add a "build" option to your site config')
+      }
       continue
     }
 
