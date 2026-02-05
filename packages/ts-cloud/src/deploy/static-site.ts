@@ -933,14 +933,15 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 }
 
 /**
- * Upload files to S3 bucket
+ * Upload files to S3 bucket (only uploads changed files)
  */
-export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploaded: number; errors: string[] }> {
+export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploaded: number; skipped: number; errors: string[] }> {
   const { sourceDir, bucket, region, cacheControl = 'max-age=31536000, public', onProgress } = options
   const s3 = new S3Client(region)
 
-  const { readdir, stat } = await import('node:fs/promises')
+  const { readdir } = await import('node:fs/promises')
   const { join, relative } = await import('node:path')
+  const { createHash } = await import('node:crypto')
 
   // Recursively list files
   async function listFiles(dir: string): Promise<string[]> {
@@ -984,9 +985,42 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
     return types[ext || ''] || 'application/octet-stream'
   }
 
+  // Compute MD5 hash of content (matches S3 ETag format)
+  function computeMD5(content: Buffer): string {
+    return createHash('md5').update(content).digest('hex')
+  }
+
+  // Fetch all existing S3 objects to build ETag map
+  async function getExistingETags(): Promise<Map<string, string>> {
+    const etagMap = new Map<string, string>()
+    let continuationToken: string | undefined
+
+    do {
+      const result = await s3.listObjects({
+        bucket,
+        maxKeys: 1000,
+        continuationToken,
+      })
+
+      for (const obj of result.objects) {
+        // S3 ETags are quoted, remove quotes for comparison
+        const etag = obj.ETag?.replace(/"/g, '') || ''
+        etagMap.set(obj.Key, etag)
+      }
+
+      continuationToken = result.nextContinuationToken
+    } while (continuationToken)
+
+    return etagMap
+  }
+
   const files = await listFiles(sourceDir)
   const errors: string[] = []
   let uploaded = 0
+  let skipped = 0
+
+  // Get existing ETags from S3
+  const existingETags = await getExistingETags()
 
   for (const file of files) {
     const key = relative(sourceDir, file)
@@ -994,25 +1028,34 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
     const fileCacheControl = file.endsWith('.html') ? 'max-age=3600, public' : cacheControl
 
     try {
-      const content = await Bun.file(file).arrayBuffer()
+      const content = Buffer.from(await Bun.file(file).arrayBuffer())
+      const localMD5 = computeMD5(content)
+      const existingETag = existingETags.get(key)
+
+      // Skip upload if file hasn't changed
+      if (existingETag && existingETag === localMD5) {
+        skipped++
+        onProgress?.(uploaded + skipped, files.length, key)
+        continue
+      }
 
       await s3.putObject({
         bucket,
         key,
-        body: Buffer.from(content),
+        body: content,
         contentType,
         cacheControl: fileCacheControl,
       })
 
       uploaded++
-      onProgress?.(uploaded, files.length, key)
+      onProgress?.(uploaded + skipped, files.length, key)
     }
     catch (err: any) {
       errors.push(`Failed to upload ${key}: ${err.message}`)
     }
   }
 
-  return { uploaded, errors }
+  return { uploaded, skipped, errors }
 }
 
 /**
@@ -1064,7 +1107,7 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
   sourceDir: string
   cleanBucket?: boolean
   onProgress?: (stage: string, detail?: string) => void
-}): Promise<DeployResult & { filesUploaded?: number }> {
+}): Promise<DeployResult & { filesUploaded?: number; filesSkipped?: number }> {
   const { sourceDir, cleanBucket = true, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
@@ -1109,17 +1152,22 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
     }
   }
 
-  // Step 3: Invalidate cache
-  if (infraResult.distributionId) {
+  // Step 4: Invalidate cache (only if files were uploaded)
+  if (infraResult.distributionId && uploadResult.uploaded > 0) {
     onProgress?.('invalidate', 'Invalidating CloudFront cache...')
     await invalidateCache(infraResult.distributionId)
   }
 
   onProgress?.('complete', 'Deployment complete!')
 
+  const message = uploadResult.skipped > 0
+    ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
+    : `Deployed ${uploadResult.uploaded} files successfully`
+
   return {
     ...infraResult,
     filesUploaded: uploadResult.uploaded,
-    message: `Deployed ${uploadResult.uploaded} files successfully`,
+    filesSkipped: uploadResult.skipped,
+    message,
   }
 }

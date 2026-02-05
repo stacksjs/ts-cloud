@@ -47,6 +47,7 @@ export interface ExternalDnsDeployResult {
   certificateArn?: string
   message: string
   filesUploaded?: number
+  filesSkipped?: number
 }
 
 /**
@@ -889,8 +890,8 @@ export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsSta
     }
   }
 
-  // Step 4: Invalidate cache
-  if (infraResult.distributionId) {
+  // Step 4: Invalidate cache (only if files were uploaded)
+  if (infraResult.distributionId && uploadResult.uploaded > 0) {
     onProgress?.('invalidate', 'Invalidating CloudFront cache...')
     const { invalidateCache } = await import('./static-site')
     await invalidateCache(infraResult.distributionId)
@@ -898,9 +899,14 @@ export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsSta
 
   onProgress?.('complete', 'Deployment complete!')
 
+  const message = uploadResult.skipped > 0
+    ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged) with external DNS`
+    : `Deployed ${uploadResult.uploaded} files successfully with external DNS`
+
   return {
     ...infraResult,
     filesUploaded: uploadResult.uploaded,
-    message: `Deployed ${uploadResult.uploaded} files successfully with external DNS`,
+    filesSkipped: uploadResult.skipped,
+    message,
   }
 }

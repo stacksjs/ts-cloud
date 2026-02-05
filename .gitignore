@@ -13,3 +13,4 @@ docs/.vitepress/cache
 packages/ts-cloud/bin/cloud
 /docs/.bunpress
 .env
+bin/cloud

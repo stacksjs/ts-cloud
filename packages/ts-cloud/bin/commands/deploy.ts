@@ -1058,12 +1058,15 @@ async function deployStaticSitesWithExternalDns(
 
     if (result.success) {
       cli.success('\nDeployment successful!')
+      const filesInfo = (result as any).filesSkipped > 0
+        ? `${result.filesUploaded} uploaded, ${(result as any).filesSkipped} unchanged`
+        : `${result.filesUploaded}`
       cli.box(`Site Deployed!
 
 Domain: https://${result.domain}
 CloudFront: ${result.distributionDomain}
 Bucket: ${result.bucket}
-Files: ${result.filesUploaded}
+Files: ${filesInfo}
 
 Your site is now live at https://${result.domain}`, 'green')
     } else {
