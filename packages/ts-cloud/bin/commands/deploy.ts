@@ -11,19 +11,182 @@ import { validateTemplate, validateTemplateSize, validateResourceLimits } from '
 import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
+import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
+
+/**
+ * Run pre-deployment security scan
+ */
+async function runSecurityScan(options: {
+  sourceDir: string
+  failOnSeverity?: 'critical' | 'high' | 'medium' | 'low'
+  skipPatterns?: string[]
+}): Promise<{ passed: boolean, result: ScanResult }> {
+  const scanner = new PreDeployScanner()
+
+  cli.step('Running pre-deployment security scan...')
+
+  const result = await scanner.scan({
+    directory: options.sourceDir,
+    failOnSeverity: options.failOnSeverity || 'critical',
+    skipPatterns: options.skipPatterns,
+  })
+
+  return { passed: result.passed, result }
+}
+
+/**
+ * Display security scan results in CLI
+ */
+function displaySecurityResults(result: ScanResult): void {
+  const { summary, findings, scannedFiles, duration } = result
+
+  cli.info(`\nScanned ${scannedFiles} files in ${duration}ms`)
+
+  // Display summary
+  if (summary.critical > 0) {
+    cli.error(`  Critical: ${summary.critical}`)
+  }
+  else {
+    cli.info(`  Critical: ${summary.critical}`)
+  }
+
+  if (summary.high > 0) {
+    cli.warn(`  High: ${summary.high}`)
+  }
+  else {
+    cli.info(`  High: ${summary.high}`)
+  }
+
+  cli.info(`  Medium: ${summary.medium}`)
+  cli.info(`  Low: ${summary.low}`)
+
+  // Display findings
+  if (findings.length > 0) {
+    cli.info('\nFindings:')
+
+    // Group by severity
+    const criticalFindings = findings.filter(f => f.pattern.severity === 'critical')
+    const highFindings = findings.filter(f => f.pattern.severity === 'high')
+    const mediumFindings = findings.filter(f => f.pattern.severity === 'medium')
+    const lowFindings = findings.filter(f => f.pattern.severity === 'low')
+
+    const displayFindings = (list: SecurityFinding[], label: string, color: 'red' | 'yellow' | 'blue' | 'gray') => {
+      if (list.length > 0) {
+        console.log(`\n${cli.colorize(`[${label}]`, color)}`)
+        for (const finding of list.slice(0, 10)) { // Limit to first 10 per severity
+          cli.info(`  ${finding.pattern.name}`)
+          cli.info(`    File: ${finding.file}:${finding.line}`)
+          cli.info(`    Match: ${finding.match}`)
+        }
+        if (list.length > 10) {
+          cli.info(`  ... and ${list.length - 10} more ${label.toLowerCase()} findings`)
+        }
+      }
+    }
+
+    displayFindings(criticalFindings, 'CRITICAL', 'red')
+    displayFindings(highFindings, 'HIGH', 'yellow')
+    displayFindings(mediumFindings, 'MEDIUM', 'blue')
+    displayFindings(lowFindings, 'LOW', 'gray')
+  }
+}
 
 export function registerDeployCommands(app: CLI): void {
+  // Security scan command
+  app
+    .command('deploy:security-scan', 'Run pre-deployment security scan')
+    .option('--source <path>', 'Source directory to scan', { default: '.' })
+    .option('--fail-on <severity>', 'Fail on severity level (critical, high, medium, low)', { default: 'critical' })
+    .option('--skip-patterns <patterns>', 'Comma-separated list of pattern names to skip')
+    .action(async (options?: {
+      source?: string
+      failOn?: 'critical' | 'high' | 'medium' | 'low'
+      skipPatterns?: string
+    }) => {
+      cli.header('Pre-Deployment Security Scan')
+
+      try {
+        const sourceDir = options?.source || '.'
+        const failOnSeverity = options?.failOn || 'critical'
+        const skipPatterns = options?.skipPatterns?.split(',').map(p => p.trim()) || []
+
+        if (!existsSync(sourceDir)) {
+          cli.error(`Source directory not found: ${sourceDir}`)
+          return
+        }
+
+        cli.info(`Source: ${sourceDir}`)
+        cli.info(`Fail on: ${failOnSeverity} or higher severity`)
+
+        const { passed, result } = await runSecurityScan({
+          sourceDir,
+          failOnSeverity,
+          skipPatterns,
+        })
+
+        displaySecurityResults(result)
+
+        if (passed) {
+          cli.success('\n✓ Security scan passed - no blocking issues found')
+        }
+        else {
+          cli.error('\n✗ Security scan failed - blocking issues detected')
+          cli.info('\nRecommendations:')
+          cli.info('  1. Remove any hardcoded credentials from your code')
+          cli.info('  2. Use environment variables or AWS Secrets Manager')
+          cli.info('  3. Add sensitive files to .gitignore')
+          cli.info('  4. Use --skip-patterns to ignore false positives')
+          process.exit(1)
+        }
+      }
+      catch (error: any) {
+        cli.error(`Security scan failed: ${error.message}`)
+        process.exit(1)
+      }
+    })
+
   app
     .command('deploy', 'Deploy infrastructure')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment to deploy to')
     .option('--site <name>', 'Deploy specific site only')
-    .action(async (options?: { stack?: string, env?: string, site?: string }) => {
+    .option('--skip-security-scan', 'Skip pre-deployment security scan')
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
+    .action(async (options?: {
+      stack?: string
+      env?: string
+      site?: string
+      skipSecurityScan?: boolean
+      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+    }) => {
       cli.header('Deploying Infrastructure')
 
       try {
-        // Load configuration
+        // Load configuration first to get project info
         const config = await loadValidatedConfig()
+
+        // Run security scan before deployment (unless skipped)
+        if (!options?.skipSecurityScan) {
+          const projectRoot = process.cwd()
+          const { passed, result } = await runSecurityScan({
+            sourceDir: projectRoot,
+            failOnSeverity: options?.securityFailOn || 'critical',
+          })
+
+          displaySecurityResults(result)
+
+          if (!passed) {
+            cli.error('\n✗ Security scan failed - deployment blocked')
+            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
+            cli.info('To change sensitivity, use --security-fail-on <severity>')
+            return
+          }
+
+          cli.success('✓ Security scan passed\n')
+        }
+        else {
+          cli.warn('Security scan skipped (--skip-security-scan)\n')
+        }
         const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
@@ -397,6 +560,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--cache-control <value>', 'Cache-Control header', { default: 'public, max-age=31536000' })
     .option('--no-invalidate', 'Skip CloudFront invalidation')
     .option('--wait', 'Wait for invalidation to complete')
+    .option('--skip-security-scan', 'Skip pre-deployment security scan')
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
     .action(async (options?: {
       source?: string
       bucket?: string
@@ -406,6 +571,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       cacheControl?: string
       invalidate?: boolean
       wait?: boolean
+      skipSecurityScan?: boolean
+      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
     }) => {
       cli.header('Deploying Static Site')
 
@@ -414,6 +581,32 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const region = config.project.region || 'us-east-1'
 
         const source = options?.source || 'dist'
+
+        // Run security scan on the source directory before deployment
+        if (!options?.skipSecurityScan) {
+          cli.step('Scanning source directory for leaked secrets...')
+
+          const { passed, result } = await runSecurityScan({
+            sourceDir: source,
+            failOnSeverity: options?.securityFailOn || 'critical',
+          })
+
+          displaySecurityResults(result)
+
+          if (!passed) {
+            cli.error('\n✗ Security scan failed - deployment blocked')
+            cli.info('\nPotential secrets detected in frontend build:')
+            cli.info('  - API keys, tokens, or credentials may be bundled in your code')
+            cli.info('  - These would be publicly accessible once deployed')
+            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
+            return
+          }
+
+          cli.success('✓ Security scan passed\n')
+        }
+        else {
+          cli.warn('Security scan skipped (--skip-security-scan)\n')
+        }
         const bucket = options?.bucket
         const distributionId = options?.distribution
         const prefix = options?.prefix
@@ -515,6 +708,8 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
     .option('--task-definition <name>', 'Task definition family name')
     .option('--force', 'Force new deployment even if no changes')
     .option('--wait', 'Wait for deployment to stabilize')
+    .option('--skip-security-scan', 'Skip pre-deployment security scan')
+    .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
     .action(async (options?: {
       cluster?: string
       service?: string
@@ -525,6 +720,8 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
       taskDefinition?: string
       force?: boolean
       wait?: boolean
+      skipSecurityScan?: boolean
+      securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
     }) => {
       cli.header('Deploying Container')
 
@@ -555,6 +752,32 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         if (!existsSync(dockerfile)) {
           cli.error(`Dockerfile not found: ${dockerfile}`)
           return
+        }
+
+        // Run security scan on the build context before deployment
+        if (!options?.skipSecurityScan) {
+          cli.step('Scanning build context for leaked secrets...')
+
+          const { passed, result } = await runSecurityScan({
+            sourceDir: context,
+            failOnSeverity: options?.securityFailOn || 'critical',
+          })
+
+          displaySecurityResults(result)
+
+          if (!passed) {
+            cli.error('\n✗ Security scan failed - deployment blocked')
+            cli.info('\nPotential secrets detected in container build context:')
+            cli.info('  - Credentials may be baked into the Docker image')
+            cli.info('  - Use Docker secrets or environment variables instead')
+            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
+            return
+          }
+
+          cli.success('✓ Security scan passed\n')
+        }
+        else {
+          cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
 
         cli.info(`Cluster: ${cluster}`)
