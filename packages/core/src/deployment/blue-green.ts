@@ -1,7 +1,7 @@
 /**
  * Blue/Green Deployment Strategy
  * Zero-downtime deployments with instant rollback capability
- */
+*/
 
 export interface BlueGreenDeployment {
   id: string
@@ -56,7 +56,7 @@ export interface DeploymentResult {
 
 /**
  * Blue/Green deployment manager
- */
+*/
 export class BlueGreenManager {
   private deployments: Map<string, BlueGreenDeployment> = new Map()
   private deploymentHistory: Map<string, DeploymentResult[]> = new Map()
@@ -65,7 +65,7 @@ export class BlueGreenManager {
 
   /**
    * Create blue/green deployment configuration
-   */
+  */
   createDeployment(deployment: Omit<BlueGreenDeployment, 'id'>): BlueGreenDeployment {
     const id = `bg-deployment-${Date.now()}-${this.deploymentCounter++}`
 
@@ -81,7 +81,7 @@ export class BlueGreenManager {
 
   /**
    * Create ALB-based blue/green deployment
-   */
+  */
   createALBDeployment(options: {
     name: string
     listenerArn: string
@@ -115,7 +115,7 @@ export class BlueGreenManager {
 
   /**
    * Create Route53-based blue/green deployment
-   */
+  */
   createRoute53Deployment(options: {
     name: string
     hostedZoneId: string
@@ -146,7 +146,7 @@ export class BlueGreenManager {
 
   /**
    * Create ECS blue/green deployment
-   */
+  */
   createECSDeployment(options: {
     name: string
     listenerArn: string
@@ -181,7 +181,7 @@ export class BlueGreenManager {
 
   /**
    * Execute blue/green deployment
-   */
+  */
   async executeDeployment(deploymentId: string, dryRun: boolean = false): Promise<DeploymentResult> {
     const deployment = this.deployments.get(deploymentId)
 
@@ -260,7 +260,7 @@ export class BlueGreenManager {
 
   /**
    * Rollback deployment
-   */
+  */
   async rollback(deploymentId: string): Promise<DeploymentResult> {
     const deployment = this.deployments.get(deploymentId)
 
@@ -294,7 +294,7 @@ export class BlueGreenManager {
 
   /**
    * Run health checks
-   */
+  */
   private async runHealthChecks(
     deployment: BlueGreenDeployment,
     environment: 'blue' | 'green',
@@ -339,7 +339,7 @@ export class BlueGreenManager {
 
   /**
    * Record deployment result
-   */
+  */
   private recordDeployment(deploymentId: string, result: DeploymentResult): void {
     if (!this.deploymentHistory.has(deploymentId)) {
       this.deploymentHistory.set(deploymentId, [])
@@ -350,28 +350,28 @@ export class BlueGreenManager {
 
   /**
    * Get deployment
-   */
+  */
   getDeployment(id: string): BlueGreenDeployment | undefined {
     return this.deployments.get(id)
   }
 
   /**
    * List deployments
-   */
+  */
   listDeployments(): BlueGreenDeployment[] {
     return Array.from(this.deployments.values())
   }
 
   /**
    * Get deployment history
-   */
+  */
   getDeploymentHistory(deploymentId: string): DeploymentResult[] {
     return this.deploymentHistory.get(deploymentId) || []
   }
 
   /**
    * Generate CloudFormation for ALB target group switching
-   */
+  */
   generateALBListenerCF(deployment: BlueGreenDeployment): any {
     const activeEnv
       = deployment.activeEnvironment === 'blue' ? deployment.blueEnvironment : deployment.greenEnvironment
@@ -399,7 +399,7 @@ export class BlueGreenManager {
 
   /**
    * Generate CloudFormation for Route53 weighted routing
-   */
+  */
   generateRoute53RecordSetCF(deployment: BlueGreenDeployment, recordName: string): any[] {
     return [
       {
@@ -437,7 +437,7 @@ export class BlueGreenManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.deployments.clear()
     this.deploymentHistory.clear()
@@ -448,5 +448,5 @@ export class BlueGreenManager {
 
 /**
  * Global blue/green manager instance
- */
+*/
 export const blueGreenManager: BlueGreenManager = new BlueGreenManager()

@@ -1,7 +1,7 @@
 /**
  * ts-cloud Resource Modules
  * Clean API abstractions for AWS CloudFormation resources
- */
+*/
 
 export * from './storage'
 export * from './registry'

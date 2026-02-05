@@ -1,7 +1,7 @@
 /**
  * SQS Dead Letter Queue Monitoring
  * DLQ monitoring, alerts, and automated reprocessing
- */
+*/
 
 export interface DLQMonitor {
   id: string
@@ -49,7 +49,7 @@ export interface ReprocessJob {
 
 /**
  * DLQ monitoring manager
- */
+*/
 export class DLQMonitoringManager {
   private monitors: Map<string, DLQMonitor> = new Map()
   private metrics: Map<string, DLQMetrics[]> = new Map()
@@ -62,7 +62,7 @@ export class DLQMonitoringManager {
 
   /**
    * Create DLQ monitor
-   */
+  */
   createDLQMonitor(monitor: Omit<DLQMonitor, 'id'>): DLQMonitor {
     const id = `dlq-monitor-${Date.now()}-${this.monitorCounter++}`
 
@@ -78,7 +78,7 @@ export class DLQMonitoringManager {
 
   /**
    * Create automated DLQ monitor
-   */
+  */
   createAutomatedMonitor(options: {
     name: string
     queueUrl: string
@@ -99,7 +99,7 @@ export class DLQMonitoringManager {
 
   /**
    * Collect DLQ metrics
-   */
+  */
   collectMetrics(queueUrl: string): DLQMetrics {
     const id = `metrics-${Date.now()}-${this.metricsCounter++}`
 
@@ -127,7 +127,7 @@ export class DLQMonitoringManager {
 
   /**
    * Check for alerts
-   */
+  */
   private checkForAlerts(queueUrl: string, metrics: DLQMetrics): void {
     const monitor = Array.from(this.monitors.values()).find(m => m.queueUrl === queueUrl)
 
@@ -159,7 +159,7 @@ export class DLQMonitoringManager {
 
   /**
    * Create alert
-   */
+  */
   private createAlert(alert: Omit<DLQAlert, 'id' | 'timestamp' | 'acknowledged'>): DLQAlert {
     const id = `alert-${Date.now()}-${this.alertCounter++}`
 
@@ -177,7 +177,7 @@ export class DLQMonitoringManager {
 
   /**
    * Acknowledge alert
-   */
+  */
   acknowledgeAlert(alertId: string): DLQAlert {
     const alert = this.alerts.get(alertId)
 
@@ -192,7 +192,7 @@ export class DLQMonitoringManager {
 
   /**
    * Create reprocess job
-   */
+  */
   createReprocessJob(options: {
     queueUrl: string
     messageId: string
@@ -214,7 +214,7 @@ export class DLQMonitoringManager {
 
   /**
    * Execute reprocess job
-   */
+  */
   async executeReprocessJob(jobId: string): Promise<ReprocessJob> {
     const job = this.reprocessJobs.get(jobId)
 
@@ -244,7 +244,7 @@ export class DLQMonitoringManager {
 
   /**
    * Batch reprocess DLQ messages
-   */
+  */
   async batchReprocess(options: {
     queueUrl: string
     maxMessages: number
@@ -266,7 +266,7 @@ export class DLQMonitoringManager {
 
   /**
    * Get DLQ statistics
-   */
+  */
   getDLQStatistics(queueUrl: string, hours: number = 24): {
     totalMessages: number
     avgAge: number
@@ -310,21 +310,21 @@ export class DLQMonitoringManager {
 
   /**
    * Get monitor
-   */
+  */
   getMonitor(id: string): DLQMonitor | undefined {
     return this.monitors.get(id)
   }
 
   /**
    * List monitors
-   */
+  */
   listMonitors(): DLQMonitor[] {
     return Array.from(this.monitors.values())
   }
 
   /**
    * Get alerts
-   */
+  */
   getAlerts(monitorId?: string, acknowledged?: boolean): DLQAlert[] {
     let alerts = Array.from(this.alerts.values())
 
@@ -341,7 +341,7 @@ export class DLQMonitoringManager {
 
   /**
    * Get reprocess jobs
-   */
+  */
   getReprocessJobs(queueUrl?: string): ReprocessJob[] {
     let jobs = Array.from(this.reprocessJobs.values())
 
@@ -354,7 +354,7 @@ export class DLQMonitoringManager {
 
   /**
    * Generate CloudFormation for DLQ alarm
-   */
+  */
   generateDLQAlarmCF(monitor: DLQMonitor): any {
     return {
       Type: 'AWS::CloudWatch::Alarm',
@@ -383,7 +383,7 @@ export class DLQMonitoringManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.monitors.clear()
     this.metrics.clear()
@@ -398,5 +398,5 @@ export class DLQMonitoringManager {
 
 /**
  * Global DLQ monitoring manager instance
- */
+*/
 export const dlqMonitoringManager: DLQMonitoringManager = new DLQMonitoringManager()

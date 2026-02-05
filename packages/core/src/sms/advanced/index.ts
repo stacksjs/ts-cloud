@@ -1,6 +1,6 @@
 /**
  * SMS Advanced Features
- */
+*/
 
 export * from './campaigns'
 export * from './analytics'

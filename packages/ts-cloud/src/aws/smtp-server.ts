@@ -8,7 +8,7 @@
  * - Password: your-password
  *
  * Instead of the unfriendly AWS SES SMTP credentials.
- */
+*/
 
 import * as net from 'node:net'
 import * as tls from 'node:tls'
@@ -49,7 +49,7 @@ interface SmtpSession {
 
 /**
  * SMTP Server that relays emails through AWS SES
- */
+*/
 export class SmtpServer {
   private config: SmtpServerConfig
   private ses: SESClient
@@ -73,7 +73,7 @@ export class SmtpServer {
 
   /**
    * Start the SMTP server
-   */
+  */
   async start(): Promise<void> {
     // Start STARTTLS SMTP server on port 587
     this.server = net.createServer((socket) => {
@@ -103,7 +103,7 @@ export class SmtpServer {
 
   /**
    * Stop the SMTP server
-   */
+  */
   async stop(): Promise<void> {
     if (this.server) {
       this.server.close()
@@ -119,7 +119,7 @@ export class SmtpServer {
 
   /**
    * Handle a new connection
-   */
+  */
   private handleConnection(socket: net.Socket, secure: boolean): void {
     const sessionId = crypto.randomUUID()
     const session: SmtpSession = {
@@ -172,7 +172,7 @@ export class SmtpServer {
 
   /**
    * Send a response to the client
-   */
+  */
   private send(session: SmtpSession, message: string): void {
     if (!session.socket.destroyed) {
       session.socket.write(message + '\r\n')
@@ -181,7 +181,7 @@ export class SmtpServer {
 
   /**
    * Handle an SMTP command
-   */
+  */
   private async handleCommand(session: SmtpSession, line: string): Promise<void> {
     const command = line.split(' ')[0].toUpperCase()
     const args = line.slice(command.length).trim()
@@ -235,7 +235,7 @@ export class SmtpServer {
 
   /**
    * Handle EHLO/HELO command
-   */
+  */
   private async handleEhlo(session: SmtpSession, clientDomain: string): Promise<void> {
     const capabilities = [
       `250-${this.config.domain} Hello ${clientDomain}`,
@@ -260,7 +260,7 @@ export class SmtpServer {
 
   /**
    * Handle STARTTLS command
-   */
+  */
   private async handleStartTls(session: SmtpSession): Promise<void> {
     if (session.secure || session.tlsUpgraded) {
       this.send(session, '503 TLS already active')
@@ -294,7 +294,7 @@ export class SmtpServer {
 
   /**
    * Handle AUTH command
-   */
+  */
   private async handleAuth(session: SmtpSession, args: string): Promise<void> {
     const parts = args.split(' ')
     const mechanism = parts[0].toUpperCase()
@@ -340,7 +340,7 @@ export class SmtpServer {
 
   /**
    * Handle AUTH PLAIN credentials
-   */
+  */
   private async handleAuthPlain(session: SmtpSession, credentials: string): Promise<void> {
     try {
       // AUTH PLAIN credentials are: \0username\0password in base64
@@ -359,7 +359,7 @@ export class SmtpServer {
 
   /**
    * Authenticate a user
-   */
+  */
   private async authenticateUser(session: SmtpSession, username: string, password: string): Promise<void> {
     // Strip domain from username if present (chris@stacksjs.com -> chris)
     const cleanUsername = username.includes('@') ? username.split('@')[0] : username
@@ -380,7 +380,7 @@ export class SmtpServer {
 
   /**
    * Handle MAIL FROM command
-   */
+  */
   private async handleMailFrom(session: SmtpSession, args: string): Promise<void> {
     if (!session.authenticated) {
       this.send(session, '530 Authentication required')
@@ -409,7 +409,7 @@ export class SmtpServer {
 
   /**
    * Handle RCPT TO command
-   */
+  */
   private async handleRcptTo(session: SmtpSession, args: string): Promise<void> {
     if (!session.authenticated) {
       this.send(session, '530 Authentication required')
@@ -435,7 +435,7 @@ export class SmtpServer {
 
   /**
    * Handle DATA command
-   */
+  */
   private async handleData(session: SmtpSession): Promise<void> {
     if (!session.authenticated) {
       this.send(session, '530 Authentication required')
@@ -454,7 +454,7 @@ export class SmtpServer {
 
   /**
    * Handle a line during DATA phase
-   */
+  */
   private async handleDataLine(session: SmtpSession, line: string): Promise<void> {
     if (line === '.') {
       // End of data
@@ -468,7 +468,7 @@ export class SmtpServer {
 
   /**
    * Send the email via SES
-   */
+  */
   private async sendEmail(session: SmtpSession): Promise<void> {
     try {
       const rawEmail = session.dataBuffer
@@ -512,7 +512,7 @@ export class SmtpServer {
 
   /**
    * Reset session state for next message
-   */
+  */
   private resetSession(session: SmtpSession): void {
     session.state = 'ready'
     session.mailFrom = undefined
@@ -523,7 +523,7 @@ export class SmtpServer {
 
 /**
  * Start an SMTP server with the given configuration
- */
+*/
 export async function startSmtpServer(config: SmtpServerConfig): Promise<SmtpServer> {
   const server = new SmtpServer(config)
   await server.start()

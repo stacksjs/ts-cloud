@@ -1,7 +1,7 @@
 /**
  * AWS API Client - Direct API calls without AWS CLI
  * Implements AWS Signature Version 4 for authentication
- */
+*/
 
 import * as crypto from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
@@ -54,7 +54,7 @@ interface CacheEntry {
 
 /**
  * AWS API Client - Makes authenticated requests to AWS services
- */
+*/
 export class AWSClient {
   private credentials?: AWSCredentials
   private config: AWSClientConfig
@@ -82,7 +82,7 @@ export class AWSClient {
 
   /**
    * Load AWS credentials from environment variables, credentials file, or EC2 instance metadata
-   */
+  */
   private loadCredentials(): AWSCredentials {
     // 1. Check environment variables first
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
@@ -113,7 +113,7 @@ export class AWSClient {
 
   /**
    * Load credentials from ~/.aws/credentials file
-   */
+  */
   private loadCredentialsFromFile(): AWSCredentials | null {
     const profile = process.env.AWS_PROFILE || 'default'
     const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
@@ -138,7 +138,7 @@ export class AWSClient {
 
   /**
    * Parse AWS credentials file (INI format)
-   */
+  */
   private parseCredentialsFile(content: string, profile: string): AWSCredentials {
     const lines = content.split('\n')
     let currentProfile = ''
@@ -183,7 +183,7 @@ export class AWSClient {
 
   /**
    * Cache for EC2 instance metadata credentials
-   */
+  */
   private ec2CredentialsCache?: {
     credentials: AWSCredentials
     expiration: number
@@ -191,7 +191,7 @@ export class AWSClient {
 
   /**
    * Get credentials, fetching from credentials file or EC2 metadata if needed
-   */
+  */
   private async getCredentials(): Promise<AWSCredentials> {
     // 1. Check environment variables first
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
@@ -268,7 +268,7 @@ export class AWSClient {
 
   /**
    * Make a signed AWS API request with retry logic and caching
-   */
+  */
   async request(options: AWSRequestOptions): Promise<any> {
     // Check cache first for GET requests
     if (options.method === 'GET' && this.config.cacheEnabled && options.cacheKey) {
@@ -323,7 +323,7 @@ export class AWSClient {
 
   /**
    * Make the actual HTTP request
-   */
+  */
   private async makeRequest(options: AWSRequestOptions): Promise<any> {
     const credentials = options.credentials || await this.getCredentials()
     if (!credentials || !credentials.accessKeyId || !credentials.secretAccessKey) {
@@ -385,7 +385,7 @@ export class AWSClient {
 
   /**
    * Convert Headers object to plain object
-   */
+  */
   private headersToObject(headers: Headers): Record<string, string> {
     const result: Record<string, string> = {}
     headers.forEach((value, key) => {
@@ -396,7 +396,7 @@ export class AWSClient {
 
   /**
    * Build the full URL for the request
-   */
+  */
   private buildUrl(options: AWSRequestOptions): string {
     const { service, region, path, queryParams } = options
 
@@ -449,7 +449,7 @@ export class AWSClient {
 
   /**
    * Sign the request using AWS Signature Version 4
-   */
+  */
   private signRequest(options: AWSRequestOptions, credentials: AWSCredentials): Record<string, string> {
     const { service, region, method, path, queryParams, body } = options
 
@@ -574,35 +574,35 @@ export class AWSClient {
 
   /**
    * Get AMZ date format (YYYYMMDDTHHMMSSZ)
-   */
+  */
   private getAmzDate(date: Date): string {
     return date.toISOString().replace(/[:-]|\.\d{3}/g, '')
   }
 
   /**
    * Get date stamp (YYYYMMDD)
-   */
+  */
   private getDateStamp(date: Date): string {
     return date.toISOString().slice(0, 10).replace(/-/g, '')
   }
 
   /**
    * SHA256 hash
-   */
+  */
   private sha256(data: string): string {
     return crypto.createHash('sha256').update(data, 'utf8').digest('hex')
   }
 
   /**
    * HMAC SHA256
-   */
+  */
   private hmac(key: Buffer | string, data: string): string {
     return crypto.createHmac('sha256', key).update(data, 'utf8').digest('hex')
   }
 
   /**
    * Get signature key
-   */
+  */
   private getSignatureKey(key: string, dateStamp: string, region: string, service: string): Buffer {
     const kDate = crypto.createHmac('sha256', `AWS4${key}`).update(dateStamp).digest()
     const kRegion = crypto.createHmac('sha256', kDate).update(region).digest()
@@ -613,7 +613,7 @@ export class AWSClient {
 
   /**
    * Parse XML response using fast-xml-parser
-   */
+  */
   private parseXmlResponse(xml: string): any {
     try {
       const parsed = this.xmlParser.parse(xml)
@@ -642,7 +642,7 @@ export class AWSClient {
 
   /**
    * Parse error response and create detailed error object
-   */
+  */
   private parseError(responseText: string, statusCode: number, headers: Headers): AWSError {
     const error: AWSError = new Error() as AWSError
     error.statusCode = statusCode
@@ -692,7 +692,7 @@ export class AWSClient {
 
   /**
    * Create error from XML error object
-   */
+  */
   private createErrorFromXml(errorData: any): AWSError {
     const error: AWSError = new Error() as AWSError
     error.code = errorData.Code
@@ -703,7 +703,7 @@ export class AWSClient {
 
   /**
    * Check if error code is retryable
-   */
+  */
   private isRetryableError(code: string): boolean {
     const retryableCodes = [
       // Timeout errors
@@ -743,14 +743,14 @@ export class AWSClient {
 
   /**
    * Check if HTTP status code is retryable
-   */
+  */
   private isRetryableStatusCode(statusCode: number): boolean {
     return statusCode >= 500 || statusCode === 429 // Server errors or Too Many Requests
   }
 
   /**
    * Determine if an error should be retried
-   */
+  */
   private shouldRetry(error: any): boolean {
     // Network/fetch errors should be retried
     if (error.name === 'FetchError' || error.name === 'TypeError' || error.code === 'ECONNRESET') {
@@ -783,7 +783,7 @@ export class AWSClient {
 
   /**
    * Calculate retry delay with exponential backoff
-   */
+  */
   private calculateRetryDelay(attempt: number): number {
     const baseDelay = this.config.retryDelay ?? 1000
     const maxDelay = 30000 // 30 seconds max
@@ -795,14 +795,14 @@ export class AWSClient {
 
   /**
    * Sleep for specified milliseconds
-   */
+  */
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   /**
    * Get value from cache
-   */
+  */
   private getFromCache(key: string): any | null {
     const entry = this.cache.get(key)
     if (!entry) {
@@ -820,7 +820,7 @@ export class AWSClient {
 
   /**
    * Set value in cache
-   */
+  */
   private setInCache(key: string, data: any, ttl: number): void {
     this.cache.set(key, {
       data,
@@ -830,14 +830,14 @@ export class AWSClient {
 
   /**
    * Clear cache
-   */
+  */
   clearCache(): void {
     this.cache.clear()
   }
 
   /**
    * Clear expired cache entries
-   */
+  */
   clearExpiredCache(): void {
     const now = Date.now()
     for (const [key, entry] of this.cache.entries()) {
@@ -850,7 +850,7 @@ export class AWSClient {
 
 /**
  * Build query string for AWS API calls
- */
+*/
 export function buildQueryParams(params: Record<string, any>): Record<string, string> {
   const result: Record<string, string> = {}
 

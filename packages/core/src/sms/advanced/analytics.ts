@@ -2,7 +2,7 @@
  * SMS Analytics
  *
  * Provides delivery rates, engagement metrics, and reporting
- */
+*/
 
 export interface SmsMetrics {
   period: string
@@ -44,11 +44,11 @@ export interface DeliveryReport {
 
 /**
  * SMS Analytics Module
- */
+*/
 export class SmsAnalytics {
   /**
    * Lambda code for analytics aggregation
-   */
+  */
   static AnalyticsAggregatorCode = `
 const { DynamoDBClient, ScanCommand, PutItemCommand, QueryCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -180,7 +180,7 @@ function calculateMetrics(messages) {
 
   /**
    * Lambda code for real-time delivery tracking
-   */
+  */
   static DeliveryTrackerCode = `
 const { DynamoDBClient, UpdateItemCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -251,7 +251,7 @@ exports.handler = async (event) => {
 
   /**
    * Create analytics DynamoDB table
-   */
+  */
   static createAnalyticsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsAnalyticsTable`]: {
@@ -276,7 +276,7 @@ exports.handler = async (event) => {
 
   /**
    * Create delivery reports table
-   */
+  */
   static createDeliveryReportsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsDeliveryReportsTable`]: {
@@ -301,7 +301,7 @@ exports.handler = async (event) => {
 
   /**
    * Create analytics aggregator Lambda
-   */
+  */
   static createAnalyticsAggregatorLambda(config: {
     slug: string
     roleArn: string

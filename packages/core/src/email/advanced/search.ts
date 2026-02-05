@@ -2,7 +2,7 @@
  * Email Search and Indexing
  *
  * Provides OpenSearch integration for email search functionality
- */
+*/
 
 export interface EmailSearchConfig {
   slug: string
@@ -65,11 +65,11 @@ export interface SearchResult {
 
 /**
  * Email Search Module
- */
+*/
 export class EmailSearch {
   /**
    * Create OpenSearch domain for email indexing
-   */
+  */
   static createSearchDomain(config: EmailSearchConfig): Record<string, any> {
     const {
       slug,
@@ -136,7 +136,7 @@ export class EmailSearch {
 
   /**
    * Create Lambda for indexing emails
-   */
+  */
   static createIndexerLambda(config: {
     slug: string
     roleArn: string
@@ -169,7 +169,7 @@ export class EmailSearch {
 
   /**
    * Lambda code for email indexing
-   */
+  */
   static IndexerLambdaCode = `
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const https = require('https');
@@ -271,7 +271,7 @@ async function indexDocument(doc) {
 
   /**
    * Create email index mapping
-   */
+  */
   static getIndexMapping(): Record<string, any> {
     return {
       mappings: {
@@ -315,7 +315,7 @@ async function indexDocument(doc) {
 
   /**
    * Build OpenSearch query from search parameters
-   */
+  */
   static buildSearchQuery(params: SearchQuery): Record<string, any> {
     const must: any[] = []
     const filter: any[] = []

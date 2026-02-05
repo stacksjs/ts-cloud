@@ -1,7 +1,7 @@
 /**
  * AWS SQS Operations
  * Direct API calls without AWS CLI dependency
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -46,7 +46,7 @@ export interface Message {
 
 /**
  * SQS queue management using direct API calls
- */
+*/
 export class SQSClient {
   private client: AWSClient
   private region: string
@@ -58,7 +58,7 @@ export class SQSClient {
 
   /**
    * Create a new SQS queue
-   */
+  */
   async createQueue(options: CreateQueueOptions): Promise<{ QueueUrl: string }> {
     const queueName = options.fifo && !options.queueName.endsWith('.fifo')
       ? `${options.queueName}.fifo`
@@ -145,7 +145,7 @@ export class SQSClient {
 
   /**
    * List all queues
-   */
+  */
   async listQueues(prefix?: string): Promise<{ QueueUrls: string[] }> {
     const params: Record<string, any> = {
       Action: 'ListQueues',
@@ -183,7 +183,7 @@ export class SQSClient {
 
   /**
    * Get queue attributes
-   */
+  */
   async getQueueAttributes(queueUrl: string): Promise<{ Attributes: Record<string, string> }> {
     const params: Record<string, any> = {
       Action: 'GetQueueAttributes',
@@ -205,7 +205,7 @@ export class SQSClient {
 
   /**
    * Get queue URL by name
-   */
+  */
   async getQueueUrl(queueName: string): Promise<{ QueueUrl: string }> {
     const params: Record<string, any> = {
       Action: 'GetQueueUrl',
@@ -226,7 +226,7 @@ export class SQSClient {
 
   /**
    * Delete a queue
-   */
+  */
   async deleteQueue(queueUrl: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteQueue',
@@ -245,7 +245,7 @@ export class SQSClient {
 
   /**
    * Purge queue (delete all messages)
-   */
+  */
   async purgeQueue(queueUrl: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'PurgeQueue',
@@ -264,7 +264,7 @@ export class SQSClient {
 
   /**
    * Send message to queue
-   */
+  */
   async sendMessage(options: {
     queueUrl: string
     messageBody: string
@@ -304,7 +304,7 @@ export class SQSClient {
 
   /**
    * Receive messages from queue
-   */
+  */
   async receiveMessages(options: {
     queueUrl: string
     maxMessages?: number
@@ -362,7 +362,7 @@ export class SQSClient {
 
   /**
    * Delete message from queue
-   */
+  */
   async deleteMessage(queueUrl: string, receiptHandle: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteMessage',

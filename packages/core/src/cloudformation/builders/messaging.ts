@@ -17,7 +17,7 @@ export interface MessagingConfig {
 
 /**
  * Add SNS topic resources to CloudFormation template
- */
+*/
 export function addMessagingResources(
   builder: CloudFormationBuilder,
   config: MessagingConfig,
@@ -31,7 +31,7 @@ export function addMessagingResources(
 
 /**
  * Add SNS topic with subscriptions
- */
+*/
 function addTopic(
   builder: CloudFormationBuilder,
   config: TopicConfig,

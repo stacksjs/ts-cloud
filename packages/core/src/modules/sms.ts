@@ -2,7 +2,7 @@
  * SMS Module for CloudFormation
  *
  * Provides CloudFormation resources for AWS Pinpoint SMS infrastructure
- */
+*/
 
 import { handler as sendHandler } from '../sms/handlers/send'
 import { handler as receiveHandler } from '../sms/handlers/receive'
@@ -21,7 +21,7 @@ export interface SmsConfig {
 export class SMS {
   /**
    * Lambda code for SMS handlers
-   */
+  */
   static LambdaCode: { send: typeof sendHandler; receive: typeof receiveHandler; deliveryStatus: typeof deliveryStatusHandler } = {
     send: sendHandler,
     receive: receiveHandler,
@@ -30,7 +30,7 @@ export class SMS {
 
   /**
    * Create Pinpoint application
-   */
+  */
   static createPinpointApp(config: { slug: string; name?: string }): Record<string, any> {
     return {
       [`${config.slug}PinpointApp`]: {
@@ -44,7 +44,7 @@ export class SMS {
 
   /**
    * Create SMS channel for Pinpoint app
-   */
+  */
   static createSmsChannel(config: {
     slug: string
     applicationId: string | { Ref: string }
@@ -75,7 +75,7 @@ export class SMS {
 
   /**
    * Create SMS Lambda role
-   */
+  */
   static createSmsLambdaRole(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsLambdaRole`]: {
@@ -125,7 +125,7 @@ export class SMS {
 
   /**
    * Create SMS send Lambda function
-   */
+  */
   static createSendLambda(config: {
     slug: string
     roleArn: string | { 'Fn::GetAtt': string[] }
@@ -162,7 +162,7 @@ export class SMS {
 
   /**
    * Create SMS receive Lambda function
-   */
+  */
   static createReceiveLambda(config: {
     slug: string
     roleArn: string | { 'Fn::GetAtt': string[] }
@@ -199,7 +199,7 @@ export class SMS {
 
   /**
    * Create delivery status Lambda function
-   */
+  */
   static createDeliveryStatusLambda(config: {
     slug: string
     roleArn: string | { 'Fn::GetAtt': string[] }
@@ -234,7 +234,7 @@ export class SMS {
 
   /**
    * Create message log DynamoDB table
-   */
+  */
   static createMessageLogTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsMessageLogTable`]: {
@@ -255,7 +255,7 @@ export class SMS {
 
   /**
    * Create opt-out DynamoDB table
-   */
+  */
   static createOptOutTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsOptOutTable`]: {
@@ -272,7 +272,7 @@ export class SMS {
 
   /**
    * Create notification topic for SMS events
-   */
+  */
   static createNotificationTopic(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsNotificationTopic`]: {
@@ -286,7 +286,7 @@ export class SMS {
 
   /**
    * Create complete SMS setup
-   */
+  */
   static createCompleteSetup(config: SmsConfig): {
     resources: Record<string, any>
     outputs: Record<string, any>

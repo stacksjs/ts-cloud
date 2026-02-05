@@ -2,7 +2,7 @@
  * Email Scheduling (Send Later)
  *
  * Provides scheduled email sending functionality
- */
+*/
 
 export interface ScheduledEmail {
   id: string
@@ -31,11 +31,11 @@ export interface ScheduledEmail {
 
 /**
  * Email Scheduling Module
- */
+*/
 export class EmailScheduling {
   /**
    * Lambda code for processing scheduled emails
-   */
+  */
   static SchedulerLambdaCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
@@ -165,7 +165,7 @@ function buildRawEmail(email) {
 
   /**
    * Create scheduler Lambda function
-   */
+  */
   static createSchedulerLambda(config: {
     slug: string
     roleArn: string
@@ -196,7 +196,7 @@ function buildRawEmail(email) {
 
   /**
    * Create EventBridge rule to trigger scheduler
-   */
+  */
   static createSchedulerRule(config: {
     slug: string
     lambdaArn: string
@@ -232,7 +232,7 @@ function buildRawEmail(email) {
 
   /**
    * Schedule an email (SDK helper)
-   */
+  */
   static async scheduleEmail(params: {
     s3Client: any
     bucket: string
@@ -265,7 +265,7 @@ function buildRawEmail(email) {
 
   /**
    * Cancel a scheduled email
-   */
+  */
   static async cancelScheduledEmail(params: {
     s3Client: any
     bucket: string
@@ -305,7 +305,7 @@ function buildRawEmail(email) {
 
   /**
    * List scheduled emails
-   */
+  */
   static async listScheduledEmails(params: {
     s3Client: any
     bucket: string

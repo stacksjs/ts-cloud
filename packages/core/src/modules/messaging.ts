@@ -36,11 +36,11 @@ export interface TopicPolicyOptions {
 /**
  * Messaging Module - SNS (Simple Notification Service)
  * Provides clean API for pub/sub messaging, notifications, and event routing
- */
+*/
 export class Messaging {
   /**
    * Create an SNS topic
-   */
+  */
   static createTopic(options: TopicOptions): {
     topic: SNSTopic
     logicalId: string
@@ -83,7 +83,7 @@ export class Messaging {
 
   /**
    * Subscribe to a topic
-   */
+  */
   static subscribe(
     topicLogicalId: string,
     options: SubscriptionOptions,
@@ -131,7 +131,7 @@ export class Messaging {
 
   /**
    * Subscribe email to topic
-   */
+  */
   static subscribeEmail(
     topicLogicalId: string,
     email: string,
@@ -153,7 +153,7 @@ export class Messaging {
 
   /**
    * Subscribe Lambda function to topic
-   */
+  */
   static subscribeLambda(
     topicLogicalId: string,
     functionArn: string,
@@ -176,7 +176,7 @@ export class Messaging {
 
   /**
    * Subscribe SQS queue to topic
-   */
+  */
   static subscribeSqs(
     topicLogicalId: string,
     queueArn: string,
@@ -199,7 +199,7 @@ export class Messaging {
 
   /**
    * Subscribe HTTP/HTTPS endpoint to topic
-   */
+  */
   static subscribeHttp(
     topicLogicalId: string,
     url: string,
@@ -223,7 +223,7 @@ export class Messaging {
 
   /**
    * Subscribe SMS to topic
-   */
+  */
   static subscribeSms(
     topicLogicalId: string,
     phoneNumber: string,
@@ -244,7 +244,7 @@ export class Messaging {
 
   /**
    * Create a topic policy
-   */
+  */
   static setTopicPolicy(
     topicLogicalId: string,
     options: TopicPolicyOptions,
@@ -301,7 +301,7 @@ export class Messaging {
 
   /**
    * Allow CloudWatch Alarms to publish to topic
-   */
+  */
   static allowCloudWatchAlarms(
     topicLogicalId: string,
     options: {
@@ -321,7 +321,7 @@ export class Messaging {
 
   /**
    * Allow EventBridge to publish to topic
-   */
+  */
   static allowEventBridge(
     topicLogicalId: string,
     options: {
@@ -341,7 +341,7 @@ export class Messaging {
 
   /**
    * Allow S3 to publish to topic
-   */
+  */
   static allowS3(
     topicLogicalId: string,
     options: {
@@ -361,7 +361,7 @@ export class Messaging {
 
   /**
    * Enable encryption on topic
-   */
+  */
   static enableEncryption(
     topic: SNSTopic,
     kmsKeyId: string,
@@ -377,7 +377,7 @@ export class Messaging {
 
   /**
    * Add inline subscription to topic
-   */
+  */
   static addInlineSubscription(
     topic: SNSTopic,
     protocol: SubscriptionOptions['protocol'],
@@ -401,46 +401,46 @@ export class Messaging {
 
   /**
    * Common filter policy patterns
-   */
+  */
   static readonly FilterPolicies = {
     /**
      * Filter by event type
-     */
+    */
     eventType: (types: string[]): { eventType: string[] } => ({
       eventType: types,
     }),
 
     /**
      * Filter by status
-     */
+    */
     status: (statuses: string[]): { status: string[] } => ({
       status: statuses,
     }),
 
     /**
      * Filter by numeric range
-     */
+    */
     numericRange: (attribute: string, min: number, max: number): Record<string, Array<{ numeric: (string | number)[] }>> => ({
       [attribute]: [{ numeric: ['>=', min, '<=', max] }],
     }),
 
     /**
      * Filter by string prefix
-     */
+    */
     prefix: (attribute: string, prefixValue: string): Record<string, Array<{ prefix: string }>> => ({
       [attribute]: [{ prefix: prefixValue }],
     }),
 
     /**
      * Filter by multiple attributes (AND logic)
-     */
+    */
     and: (...policies: Record<string, unknown>[]): Record<string, unknown> => {
       return Object.assign({}, ...policies)
     },
 
     /**
      * Filter by exists/not exists
-     */
+    */
     exists: (attribute: string, existsValue: boolean): Record<string, Array<{ exists: boolean }>> => ({
       [attribute]: [{ exists: existsValue }],
     }),
@@ -448,11 +448,11 @@ export class Messaging {
 
   /**
    * Common use cases for SNS topics
-   */
+  */
   static readonly UseCases = {
     /**
      * Create alert topic for CloudWatch alarms
-     */
+    */
     createAlertTopic: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,
@@ -463,7 +463,7 @@ export class Messaging {
 
     /**
      * Create event fanout topic for distributing events
-     */
+    */
     createEventFanout: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,
@@ -474,7 +474,7 @@ export class Messaging {
 
     /**
      * Create notification topic for user notifications
-     */
+    */
     createNotificationTopic: (options: TopicOptions): { topic: SNSTopic; logicalId: string } => {
       return Messaging.createTopic({
         ...options,

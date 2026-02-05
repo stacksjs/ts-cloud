@@ -1,7 +1,7 @@
 /**
  * SES Sender Reputation Monitoring
  * Reputation tracking, sending limits, and deliverability monitoring
- */
+*/
 
 export interface ReputationDashboard {
   id: string
@@ -59,7 +59,7 @@ export interface DomainReputation {
 
 /**
  * Sender reputation manager
- */
+*/
 export class SenderReputationManager {
   private dashboards: Map<string, ReputationDashboard> = new Map()
   private warmupPlans: Map<string, WarmupPlan> = new Map()
@@ -70,7 +70,7 @@ export class SenderReputationManager {
 
   /**
    * Get reputation dashboard
-   */
+  */
   getReputationDashboard(): ReputationDashboard {
     const id = `dashboard-${Date.now()}-${this.dashboardCounter++}`
 
@@ -114,7 +114,7 @@ export class SenderReputationManager {
 
   /**
    * Check blacklists
-   */
+  */
   private checkBlacklists(): BlacklistStatus[] {
     const blacklists = [
       'Spamhaus ZEN',
@@ -133,7 +133,7 @@ export class SenderReputationManager {
 
   /**
    * Create warmup plan
-   */
+  */
   createWarmupPlan(options: {
     name: string
     initialDailyLimit: number
@@ -167,7 +167,7 @@ export class SenderReputationManager {
 
   /**
    * Create aggressive warmup plan
-   */
+  */
   createAggressiveWarmupPlan(options: {
     name: string
   }): WarmupPlan {
@@ -181,7 +181,7 @@ export class SenderReputationManager {
 
   /**
    * Create conservative warmup plan
-   */
+  */
   createConservativeWarmupPlan(options: {
     name: string
   }): WarmupPlan {
@@ -195,7 +195,7 @@ export class SenderReputationManager {
 
   /**
    * Advance warmup plan
-   */
+  */
   advanceWarmupPlan(warmupId: string): WarmupPlan {
     const warmup = this.warmupPlans.get(warmupId)
 
@@ -217,7 +217,7 @@ export class SenderReputationManager {
 
   /**
    * Track domain reputation
-   */
+  */
   trackDomainReputation(options: {
     domain: string
     totalSent: number
@@ -258,35 +258,35 @@ export class SenderReputationManager {
 
   /**
    * Get domain reputation
-   */
+  */
   getDomainReputation(domain: string): DomainReputation | undefined {
     return this.domainReputations.get(domain)
   }
 
   /**
    * List all domain reputations
-   */
+  */
   listDomainReputations(): DomainReputation[] {
     return Array.from(this.domainReputations.values())
   }
 
   /**
    * Get warmup plan
-   */
+  */
   getWarmupPlan(id: string): WarmupPlan | undefined {
     return this.warmupPlans.get(id)
   }
 
   /**
    * List warmup plans
-   */
+  */
   listWarmupPlans(): WarmupPlan[] {
     return Array.from(this.warmupPlans.values())
   }
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.dashboards.clear()
     this.warmupPlans.clear()
@@ -299,5 +299,5 @@ export class SenderReputationManager {
 
 /**
  * Global sender reputation manager instance
- */
+*/
 export const senderReputationManager: SenderReputationManager = new SenderReputationManager()

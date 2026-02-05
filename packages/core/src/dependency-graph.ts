@@ -9,13 +9,13 @@ export interface ResourceNode {
 /**
  * Dependency Graph for CloudFormation resources
  * Ensures resources are created in the correct order
- */
+*/
 export class DependencyGraph {
   private nodes: Map<string, ResourceNode> = new Map()
 
   /**
    * Add a resource to the dependency graph
-   */
+  */
   addResource(logicalId: string, resource: CloudFormationResource): void {
     const dependencies = this.extractDependencies(resource)
 
@@ -28,7 +28,7 @@ export class DependencyGraph {
 
   /**
    * Extract dependencies from a resource
-   */
+  */
   private extractDependencies(resource: CloudFormationResource): Set<string> {
     const dependencies = new Set<string>()
 
@@ -50,7 +50,7 @@ export class DependencyGraph {
 
   /**
    * Find all Ref references in an object
-   */
+  */
   private findReferences(obj: any, dependencies: Set<string>): void {
     if (!obj || typeof obj !== 'object')
       return
@@ -76,7 +76,7 @@ export class DependencyGraph {
 
   /**
    * Perform topological sort to determine resource creation order
-   */
+  */
   topologicalSort(): string[] {
     const sorted: string[] = []
     const visited = new Set<string>()
@@ -113,7 +113,7 @@ export class DependencyGraph {
 
   /**
    * Validate that all dependencies exist
-   */
+  */
   validate(): void {
     for (const [nodeId, node] of this.nodes.entries()) {
       for (const dep of node.dependencies) {
@@ -128,7 +128,7 @@ export class DependencyGraph {
 
   /**
    * Get resources that depend on a given resource
-   */
+  */
   getDependents(logicalId: string): string[] {
     const dependents: string[] = []
 

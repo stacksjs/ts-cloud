@@ -1,7 +1,7 @@
 /**
  * AWS ElastiCache Operations
  * Direct API calls without AWS CLI dependency
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -47,7 +47,7 @@ export interface CacheEngineVersion {
 
 /**
  * ElastiCache management using direct API calls
- */
+*/
 export class ElastiCacheClient {
   private client: AWSClient
   private region: string
@@ -59,7 +59,7 @@ export class ElastiCacheClient {
 
   /**
    * List all cache clusters
-   */
+  */
   async describeCacheClusters(cacheClusterId?: string): Promise<{ CacheClusters: CacheCluster[] }> {
     const params: Record<string, any> = {
       Action: 'DescribeCacheClusters',
@@ -84,7 +84,7 @@ export class ElastiCacheClient {
 
   /**
    * List all replication groups (Redis clusters)
-   */
+  */
   async describeReplicationGroups(replicationGroupId?: string): Promise<{ ReplicationGroups: ReplicationGroup[] }> {
     const params: Record<string, any> = {
       Action: 'DescribeReplicationGroups',
@@ -108,7 +108,7 @@ export class ElastiCacheClient {
 
   /**
    * Create a cache cluster
-   */
+  */
   async createCacheCluster(options: {
     cacheClusterId: string
     engine: 'memcached' | 'redis'
@@ -170,7 +170,7 @@ export class ElastiCacheClient {
 
   /**
    * Delete a cache cluster
-   */
+  */
   async deleteCacheCluster(cacheClusterId: string, finalSnapshotId?: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteCacheCluster',
@@ -193,7 +193,7 @@ export class ElastiCacheClient {
 
   /**
    * Reboot cache cluster nodes
-   */
+  */
   async rebootCacheCluster(cacheClusterId: string, nodeIds: string[]): Promise<void> {
     const params: Record<string, any> = {
       Action: 'RebootCacheCluster',
@@ -216,7 +216,7 @@ export class ElastiCacheClient {
 
   /**
    * List available cache engine versions
-   */
+  */
   async describeCacheEngineVersions(engine?: string): Promise<{ CacheEngineVersions: CacheEngineVersion[] }> {
     const params: Record<string, any> = {
       Action: 'DescribeCacheEngineVersions',
@@ -240,7 +240,7 @@ export class ElastiCacheClient {
 
   /**
    * Get cache cluster statistics (mock for now)
-   */
+  */
   async getCacheStatistics(cacheClusterId: string): Promise<{
     cpuUtilization?: number
     evictions?: number
@@ -266,7 +266,7 @@ export class ElastiCacheClient {
 
   /**
    * Parse cache clusters from response
-   */
+  */
   private parseCacheClusters(result: any): CacheCluster[] {
     // Simplified parser - would need proper XML parsing in production
     if (result.CacheClusterId) {
@@ -286,7 +286,7 @@ export class ElastiCacheClient {
 
   /**
    * Parse single cache cluster from response
-   */
+  */
   private parseCacheCluster(result: any): CacheCluster {
     return {
       CacheClusterId: result.CacheClusterId,

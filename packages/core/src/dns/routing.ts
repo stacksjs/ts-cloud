@@ -1,7 +1,7 @@
 /**
  * Route53 Advanced Routing
  * Health-based, geolocation, weighted, failover, and latency-based routing
- */
+*/
 
 export interface RoutingPolicy {
   id: string
@@ -112,7 +112,7 @@ export interface TrafficPolicyRule {
 
 /**
  * Route53 routing policy manager
- */
+*/
 export class Route53RoutingManager {
   private policies: Map<string, RoutingPolicy> = new Map()
   private healthChecks: Map<string, HealthCheck> = new Map()
@@ -123,7 +123,7 @@ export class Route53RoutingManager {
 
   /**
    * Create weighted routing policy
-   */
+  */
   createWeightedPolicy(options: {
     name: string
     weight: number
@@ -145,7 +145,7 @@ export class Route53RoutingManager {
 
   /**
    * Create latency routing policy
-   */
+  */
   createLatencyPolicy(options: {
     name: string
     region: string
@@ -167,7 +167,7 @@ export class Route53RoutingManager {
 
   /**
    * Create failover routing policy
-   */
+  */
   createFailoverPolicy(options: {
     name: string
     failoverType: 'PRIMARY' | 'SECONDARY'
@@ -189,7 +189,7 @@ export class Route53RoutingManager {
 
   /**
    * Create geolocation routing policy
-   */
+  */
   createGeolocationPolicy(options: {
     name: string
     continent?: string
@@ -213,7 +213,7 @@ export class Route53RoutingManager {
 
   /**
    * Create geoproximity routing policy
-   */
+  */
   createGeoproximityPolicy(options: {
     name: string
     coordinates?: {
@@ -240,7 +240,7 @@ export class Route53RoutingManager {
 
   /**
    * Create HTTP health check
-   */
+  */
   createHTTPHealthCheck(options: {
     name: string
     resourcePath: string
@@ -275,7 +275,7 @@ export class Route53RoutingManager {
 
   /**
    * Create TCP health check
-   */
+  */
   createTCPHealthCheck(options: {
     name: string
     ipAddress: string
@@ -306,7 +306,7 @@ export class Route53RoutingManager {
 
   /**
    * Create calculated health check
-   */
+  */
   createCalculatedHealthCheck(options: {
     name: string
     childHealthChecks: string[]
@@ -342,7 +342,7 @@ export class Route53RoutingManager {
 
   /**
    * Create traffic policy
-   */
+  */
   createTrafficPolicy(policy: Omit<TrafficPolicy, 'id' | 'version'>): TrafficPolicy {
     const id = `traffic-policy-${Date.now()}-${this.trafficPolicyCounter++}`
 
@@ -359,7 +359,7 @@ export class Route53RoutingManager {
 
   /**
    * Create failover traffic policy
-   */
+  */
   createFailoverTrafficPolicy(options: {
     name: string
     primaryEndpoint: string
@@ -388,7 +388,7 @@ export class Route53RoutingManager {
 
   /**
    * Create geoproximity traffic policy
-   */
+  */
   createGeoproximityTrafficPolicy(options: {
     name: string
     locations: Array<{
@@ -438,42 +438,42 @@ export class Route53RoutingManager {
 
   /**
    * Get routing policy
-   */
+  */
   getPolicy(id: string): RoutingPolicy | undefined {
     return this.policies.get(id)
   }
 
   /**
    * List routing policies
-   */
+  */
   listPolicies(): RoutingPolicy[] {
     return Array.from(this.policies.values())
   }
 
   /**
    * Get health check
-   */
+  */
   getHealthCheck(id: string): HealthCheck | undefined {
     return this.healthChecks.get(id)
   }
 
   /**
    * List health checks
-   */
+  */
   listHealthChecks(): HealthCheck[] {
     return Array.from(this.healthChecks.values())
   }
 
   /**
    * Get health check status
-   */
+  */
   getHealthCheckStatus(id: string): 'Healthy' | 'Unhealthy' | 'Unknown' {
     return this.healthChecks.get(id)?.healthCheckStatus || 'Unknown'
   }
 
   /**
    * Generate CloudFormation for health check
-   */
+  */
   generateHealthCheckCF(healthCheck: HealthCheck): any {
     const config: any = {
       Type: 'AWS::Route53::HealthCheck',
@@ -520,7 +520,7 @@ export class Route53RoutingManager {
 
   /**
    * Generate CloudFormation for weighted record set
-   */
+  */
   generateWeightedRecordSetCF(options: {
     hostedZoneId: string
     name: string
@@ -548,7 +548,7 @@ export class Route53RoutingManager {
 
   /**
    * Generate CloudFormation for failover record set
-   */
+  */
   generateFailoverRecordSetCF(options: {
     hostedZoneId: string
     name: string
@@ -576,7 +576,7 @@ export class Route53RoutingManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.policies.clear()
     this.healthChecks.clear()
@@ -589,5 +589,5 @@ export class Route53RoutingManager {
 
 /**
  * Global Route53 routing manager instance
- */
+*/
 export const route53RoutingManager: Route53RoutingManager = new Route53RoutingManager()

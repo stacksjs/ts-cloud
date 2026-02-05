@@ -26,11 +26,11 @@ export interface BedrockPolicyOptions {
 /**
  * AI Module - Amazon Bedrock
  * Provides clean API for setting up Bedrock permissions and roles
- */
+*/
 export class AI {
   /**
    * Create an IAM role for Bedrock access
-   */
+  */
   static createBedrockRole(
     servicePrincipal: string,
     options: BedrockRoleOptions,
@@ -110,7 +110,7 @@ export class AI {
 
   /**
    * Create an IAM policy for Bedrock model invocation
-   */
+  */
   static createBedrockPolicy(options: BedrockPolicyOptions): {
     policy: IAMManagedPolicy
     logicalId: string
@@ -176,7 +176,7 @@ export class AI {
   /**
    * Enable Bedrock for Lambda function
    * Returns a role with Bedrock permissions
-   */
+  */
   static enableBedrockForLambda(options: BedrockRoleOptions): {
     role: IAMRole
     logicalId: string
@@ -187,7 +187,7 @@ export class AI {
   /**
    * Enable Bedrock for ECS task
    * Returns a role with Bedrock permissions
-   */
+  */
   static enableBedrockForEcs(options: BedrockRoleOptions): {
     role: IAMRole
     logicalId: string
@@ -198,7 +198,7 @@ export class AI {
   /**
    * Enable Bedrock for EC2 instance
    * Returns a role with Bedrock permissions
-   */
+  */
   static enableBedrockForEc2(options: BedrockRoleOptions): {
     role: IAMRole
     logicalId: string
@@ -208,7 +208,7 @@ export class AI {
 
   /**
    * Add Bedrock permissions to an existing role
-   */
+  */
   static addBedrockPermissions(
     role: IAMRole,
     models: string[] = ['*'],
@@ -251,7 +251,7 @@ export class AI {
 
   /**
    * Common Bedrock model IDs
-   */
+  */
   static readonly Models = {
     // Anthropic Claude Models
     Claude3_5_Sonnet: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
@@ -296,7 +296,7 @@ export class AI {
 
   /**
    * Common model groups for easier permission management
-   */
+  */
   static readonly ModelGroups = {
     AllClaude: [
       'anthropic.claude-3-5-sonnet-20241022-v2:0',

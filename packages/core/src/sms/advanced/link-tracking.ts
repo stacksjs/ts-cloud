@@ -2,7 +2,7 @@
  * Link Shortening and Tracking
  *
  * Provides URL shortening and click tracking for SMS
- */
+*/
 
 export interface ShortenedLink {
   id: string
@@ -27,11 +27,11 @@ export interface LinkClick {
 
 /**
  * Link Tracking Module
- */
+*/
 export class LinkTracking {
   /**
    * Lambda code for link shortening
-   */
+  */
   static LinkShortenerCode = `
 const { DynamoDBClient, PutItemCommand, GetItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const crypto = require('crypto');
@@ -167,7 +167,7 @@ function generateShortId() {
 
   /**
    * Create links DynamoDB table
-   */
+  */
   static createLinksTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}ShortLinksTable`]: {
@@ -192,7 +192,7 @@ function generateShortId() {
 
   /**
    * Create link shortener Lambda
-   */
+  */
   static createLinkShortenerLambda(config: {
     slug: string
     roleArn: string
@@ -225,7 +225,7 @@ function generateShortId() {
 
   /**
    * Shorten URLs in message text
-   */
+  */
   static shortenUrlsInMessage(message: string, shortDomain: string, linkIdPrefix: string): {
     message: string
     links: Array<{ original: string; short: string; id: string }>

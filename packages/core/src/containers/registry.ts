@@ -1,7 +1,7 @@
 /**
  * Private Container Registry
  * ECR repository management and access control
- */
+*/
 
 export interface ContainerRegistry {
   id: string
@@ -76,7 +76,7 @@ export interface RegistryCredentials {
 
 /**
  * Container registry manager
- */
+*/
 export class ContainerRegistryManager {
   private registries: Map<string, ContainerRegistry> = new Map()
   private credentials: Map<string, RegistryCredentials> = new Map()
@@ -85,7 +85,7 @@ export class ContainerRegistryManager {
 
   /**
    * Create registry
-   */
+  */
   createRegistry(registry: Omit<ContainerRegistry, 'id'>): ContainerRegistry {
     const id = `registry-${Date.now()}-${this.registryCounter++}`
 
@@ -101,7 +101,7 @@ export class ContainerRegistryManager {
 
   /**
    * Create ECR repository
-   */
+  */
   createECRRepository(options: {
     name: string
     region?: string
@@ -126,7 +126,7 @@ export class ContainerRegistryManager {
 
   /**
    * Create private registry with lifecycle policy
-   */
+  */
   createManagedRepository(options: {
     name: string
     region?: string
@@ -177,7 +177,7 @@ export class ContainerRegistryManager {
 
   /**
    * Enable cross-region replication
-   */
+  */
   enableReplication(
     registryId: string,
     destinations: ReplicationDestination[]
@@ -198,7 +198,7 @@ export class ContainerRegistryManager {
 
   /**
    * Create registry credentials
-   */
+  */
   createCredentials(credentials: Omit<RegistryCredentials, 'id'>): RegistryCredentials {
     const id = `creds-${Date.now()}-${this.credentialsCounter++}`
 
@@ -214,21 +214,21 @@ export class ContainerRegistryManager {
 
   /**
    * Get registry
-   */
+  */
   getRegistry(id: string): ContainerRegistry | undefined {
     return this.registries.get(id)
   }
 
   /**
    * List registries
-   */
+  */
   listRegistries(): ContainerRegistry[] {
     return Array.from(this.registries.values())
   }
 
   /**
    * Generate CloudFormation for ECR repository
-   */
+  */
   generateECRRepositoryCF(registry: ContainerRegistry): any {
     return {
       Type: 'AWS::ECR::Repository',
@@ -257,7 +257,7 @@ export class ContainerRegistryManager {
 
   /**
    * Generate CloudFormation for replication configuration
-   */
+  */
   generateReplicationConfigCF(replication: ReplicationConfig): any {
     return {
       Type: 'AWS::ECR::ReplicationConfiguration',
@@ -278,7 +278,7 @@ export class ContainerRegistryManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.registries.clear()
     this.credentials.clear()
@@ -289,5 +289,5 @@ export class ContainerRegistryManager {
 
 /**
  * Global container registry manager instance
- */
+*/
 export const containerRegistryManager: ContainerRegistryManager = new ContainerRegistryManager()

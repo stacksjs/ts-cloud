@@ -1,7 +1,7 @@
 /**
  * Disaster Recovery Module
  * Automated failover, recovery runbooks, and DR testing
- */
+*/
 
 export interface DisasterRecoveryPlan {
   id: string
@@ -57,7 +57,7 @@ export interface FailoverTestResult {
 
 /**
  * Disaster recovery manager
- */
+*/
 export class DisasterRecoveryManager {
   private drPlans: Map<string, DisasterRecoveryPlan> = new Map()
   private failoverTests: Map<string, FailoverTest> = new Map()
@@ -66,7 +66,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Create disaster recovery plan
-   */
+  */
   createDRPlan(plan: Omit<DisasterRecoveryPlan, 'id'>): DisasterRecoveryPlan {
     const id = `dr-plan-${Date.now()}-${this.planCounter++}`
 
@@ -82,7 +82,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Create standard RDS DR plan
-   */
+  */
   createRDSDRPlan(options: {
     primaryDbArn: string
     secondaryDbArn: string
@@ -122,7 +122,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Create DynamoDB DR plan
-   */
+  */
   createDynamoDBDRPlan(options: {
     tableArn: string
     regions: string[]
@@ -156,7 +156,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Generate RDS disaster recovery runbook
-   */
+  */
   private generateRDSRunbook(primaryRegion: string, secondaryRegion: string): RecoveryRunbook {
     return {
       estimatedDuration: 60,
@@ -231,7 +231,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Generate DynamoDB disaster recovery runbook
-   */
+  */
   private generateDynamoDBRunbook(regions: string[]): RecoveryRunbook {
     return {
       estimatedDuration: 15,
@@ -278,7 +278,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Execute failover
-   */
+  */
   async executeFailover(planId: string, dryRun: boolean = false): Promise<{
     success: boolean
     duration: number
@@ -333,7 +333,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Schedule automated failover test
-   */
+  */
   scheduleFailoverTest(planId: string, testDate: Date): FailoverTest {
     const test: FailoverTest = {
       id: `failover-test-${Date.now()}-${this.testCounter++}`,
@@ -349,7 +349,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Run failover test
-   */
+  */
   async runFailoverTest(planId: string): Promise<FailoverTest> {
     const plan = this.drPlans.get(planId)
 
@@ -395,35 +395,35 @@ export class DisasterRecoveryManager {
 
   /**
    * Get DR plan
-   */
+  */
   getDRPlan(id: string): DisasterRecoveryPlan | undefined {
     return this.drPlans.get(id)
   }
 
   /**
    * List DR plans
-   */
+  */
   listDRPlans(): DisasterRecoveryPlan[] {
     return Array.from(this.drPlans.values())
   }
 
   /**
    * Get failover test
-   */
+  */
   getFailoverTest(id: string): FailoverTest | undefined {
     return this.failoverTests.get(id)
   }
 
   /**
    * List failover tests
-   */
+  */
   listFailoverTests(): FailoverTest[] {
     return Array.from(this.failoverTests.values())
   }
 
   /**
    * Validate DR plan
-   */
+  */
   validateDRPlan(plan: DisasterRecoveryPlan): {
     valid: boolean
     warnings: string[]
@@ -485,7 +485,7 @@ export class DisasterRecoveryManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.drPlans.clear()
     this.failoverTests.clear()
@@ -496,5 +496,5 @@ export class DisasterRecoveryManager {
 
 /**
  * Global disaster recovery manager instance
- */
+*/
 export const drManager: DisasterRecoveryManager = new DisasterRecoveryManager()

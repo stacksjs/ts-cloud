@@ -1,7 +1,7 @@
 /**
  * Log Aggregation
  * Centralized logging across services with CloudWatch Logs
- */
+*/
 
 export interface LogGroup {
   id: string
@@ -67,7 +67,7 @@ export interface LogInsightsQuery {
 
 /**
  * Logs manager
- */
+*/
 export class LogsManager {
   private logGroups: Map<string, LogGroup> = new Map()
   private queries: Map<string, LogQuery> = new Map()
@@ -78,7 +78,7 @@ export class LogsManager {
 
   /**
    * Create log group
-   */
+  */
   createLogGroup(group: Omit<LogGroup, 'id'>): LogGroup {
     const id = `log-group-${Date.now()}-${this.logGroupCounter++}`
 
@@ -94,7 +94,7 @@ export class LogsManager {
 
   /**
    * Create Lambda log group
-   */
+  */
   createLambdaLogGroup(functionName: string, retentionDays: number = 7): LogGroup {
     return this.createLogGroup({
       name: `/aws/lambda/${functionName}`,
@@ -104,7 +104,7 @@ export class LogsManager {
 
   /**
    * Create ECS log group
-   */
+  */
   createECSLogGroup(options: {
     clusterName: string
     serviceName: string
@@ -118,7 +118,7 @@ export class LogsManager {
 
   /**
    * Create API Gateway log group
-   */
+  */
   createAPIGatewayLogGroup(apiName: string, stage: string, retentionDays: number = 30): LogGroup {
     return this.createLogGroup({
       name: `/aws/apigateway/${apiName}/${stage}`,
@@ -128,7 +128,7 @@ export class LogsManager {
 
   /**
    * Create application log group
-   */
+  */
   createApplicationLogGroup(options: {
     appName: string
     environment: string
@@ -144,7 +144,7 @@ export class LogsManager {
 
   /**
    * Create metric filter
-   */
+  */
   createMetricFilter(logGroupId: string, filter: Omit<MetricFilter, 'id'>): MetricFilter {
     const logGroup = this.logGroups.get(logGroupId)
 
@@ -170,7 +170,7 @@ export class LogsManager {
 
   /**
    * Create error count metric filter
-   */
+  */
   createErrorCountFilter(logGroupId: string, namespace: string): MetricFilter {
     return this.createMetricFilter(logGroupId, {
       name: 'ErrorCount',
@@ -189,7 +189,7 @@ export class LogsManager {
 
   /**
    * Create latency metric filter
-   */
+  */
   createLatencyFilter(logGroupId: string, namespace: string): MetricFilter {
     return this.createMetricFilter(logGroupId, {
       name: 'Latency',
@@ -207,7 +207,7 @@ export class LogsManager {
 
   /**
    * Create custom pattern filter
-   */
+  */
   createCustomPatternFilter(options: {
     logGroupId: string
     name: string
@@ -232,7 +232,7 @@ export class LogsManager {
 
   /**
    * Create subscription filter
-   */
+  */
   createSubscriptionFilter(logGroupId: string, filter: Omit<SubscriptionFilter, 'id'>): SubscriptionFilter {
     const logGroup = this.logGroups.get(logGroupId)
 
@@ -258,7 +258,7 @@ export class LogsManager {
 
   /**
    * Create Kinesis subscription (for real-time log processing)
-   */
+  */
   createKinesisSubscription(options: {
     logGroupId: string
     kinesisStreamArn: string
@@ -281,7 +281,7 @@ export class LogsManager {
 
   /**
    * Create Lambda subscription (for log processing)
-   */
+  */
   createLambdaSubscription(options: {
     logGroupId: string
     lambdaFunctionArn: string
@@ -302,7 +302,7 @@ export class LogsManager {
 
   /**
    * Create Log Insights query
-   */
+  */
   createInsightsQuery(query: Omit<LogInsightsQuery, 'id'>): LogInsightsQuery {
     const id = `query-${Date.now()}-${this.queryCounter++}`
 
@@ -318,7 +318,7 @@ export class LogsManager {
 
   /**
    * Create error analysis query
-   */
+  */
   createErrorAnalysisQuery(logGroupNames: string[]): LogInsightsQuery {
     return this.createInsightsQuery({
       name: 'Error Analysis',
@@ -333,7 +333,7 @@ export class LogsManager {
 
   /**
    * Create latency analysis query
-   */
+  */
   createLatencyAnalysisQuery(logGroupNames: string[]): LogInsightsQuery {
     return this.createInsightsQuery({
       name: 'Latency Analysis',
@@ -348,7 +348,7 @@ export class LogsManager {
 
   /**
    * Create top errors query
-   */
+  */
   createTopErrorsQuery(logGroupNames: string[]): LogInsightsQuery {
     return this.createInsightsQuery({
       name: 'Top Errors',
@@ -364,35 +364,35 @@ export class LogsManager {
 
   /**
    * Get log group
-   */
+  */
   getLogGroup(id: string): LogGroup | undefined {
     return this.logGroups.get(id)
   }
 
   /**
    * List log groups
-   */
+  */
   listLogGroups(): LogGroup[] {
     return Array.from(this.logGroups.values())
   }
 
   /**
    * Get insights query
-   */
+  */
   getInsightsQuery(id: string): LogInsightsQuery | undefined {
     return this.insightsQueries.get(id)
   }
 
   /**
    * List insights queries
-   */
+  */
   listInsightsQueries(): LogInsightsQuery[] {
     return Array.from(this.insightsQueries.values())
   }
 
   /**
    * Generate CloudFormation for log group
-   */
+  */
   generateLogGroupCF(group: LogGroup): any {
     return {
       Type: 'AWS::Logs::LogGroup',
@@ -406,7 +406,7 @@ export class LogsManager {
 
   /**
    * Generate CloudFormation for metric filter
-   */
+  */
   generateMetricFilterCF(logGroup: LogGroup, filter: MetricFilter): any {
     return {
       Type: 'AWS::Logs::MetricFilter',
@@ -428,7 +428,7 @@ export class LogsManager {
 
   /**
    * Generate CloudFormation for subscription filter
-   */
+  */
   generateSubscriptionFilterCF(filter: SubscriptionFilter): any {
     return {
       Type: 'AWS::Logs::SubscriptionFilter',
@@ -445,7 +445,7 @@ export class LogsManager {
 
   /**
    * Generate CloudFormation for Log Insights query definition
-   */
+  */
   generateQueryDefinitionCF(query: LogInsightsQuery): any {
     return {
       Type: 'AWS::Logs::QueryDefinition',
@@ -459,7 +459,7 @@ export class LogsManager {
 
   /**
    * Create log aggregation with multiple filters
-   */
+  */
   createLogAggregation(
     logGroup: string,
     filters: Array<{ pattern: string; metric: string }>,
@@ -505,7 +505,7 @@ export class LogsManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.logGroups.clear()
     this.queries.clear()
@@ -518,5 +518,5 @@ export class LogsManager {
 
 /**
  * Global logs manager instance
- */
+*/
 export const logsManager: LogsManager = new LogsManager()

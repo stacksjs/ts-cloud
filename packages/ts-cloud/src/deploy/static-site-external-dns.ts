@@ -1,7 +1,7 @@
 /**
  * Static Site Deployment with External DNS Provider Support
  * Deploys static sites to AWS (S3 + CloudFront + ACM) with DNS managed by external providers (Porkbun, GoDaddy, etc.)
- */
+*/
 
 import { CloudFormationClient } from '../aws/cloudformation'
 import { S3Client } from '../aws/s3'
@@ -54,7 +54,7 @@ export interface ExternalDnsDeployResult {
 
 /**
  * Generate CloudFormation template for static site infrastructure (without Route53)
- */
+*/
 export function generateExternalDnsStaticSiteTemplate(config: {
   bucketName: string
   domain?: string
@@ -273,7 +273,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
 
 /**
  * Deploy a static site to AWS with external DNS provider
- */
+*/
 export async function deployStaticSiteWithExternalDns(
   config: ExternalDnsStaticSiteConfig,
 ): Promise<ExternalDnsDeployResult> {
@@ -771,7 +771,7 @@ export async function deployStaticSiteWithExternalDns(
 
 /**
  * Create or update DNS records pointing to CloudFront
- */
+*/
 async function ensureDnsRecords(
   dnsProvider: DnsProvider | null,
   domain: string,
@@ -868,7 +868,7 @@ async function ensureDnsRecords(
 
 /**
  * Full deployment with external DNS: infrastructure + files + cache invalidation
- */
+*/
 export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsStaticSiteConfig & {
   sourceDir: string
   cleanBucket?: boolean

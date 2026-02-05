@@ -61,7 +61,7 @@ export interface DynamoDBTableConfig {
 
 /**
  * Add database resources (RDS, DynamoDB) to CloudFormation template
- */
+*/
 export function addDatabaseResources(
   builder: CloudFormationBuilder,
   config: DatabaseConfig,
@@ -83,7 +83,7 @@ export function addDatabaseResources(
 
 /**
  * Add RDS instance (PostgreSQL or MySQL)
- */
+*/
 function addRDSInstance(
   builder: CloudFormationBuilder,
   engine: 'postgres' | 'mysql',
@@ -229,8 +229,8 @@ function addRDSInstance(
 }
 
 /**
- * Add DynamoDB table
- */
+* Add DynamoDB table
+*/
 function addDynamoDBTable(
   builder: CloudFormationBuilder,
   config: DynamoDBTableConfig,

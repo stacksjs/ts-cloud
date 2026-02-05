@@ -1,7 +1,7 @@
 /**
  * DNS Provider Module
  * Unified DNS management for Route53, Porkbun, and GoDaddy
- */
+*/
 
 export * from './types'
 export { PorkbunProvider } from './porkbun'
@@ -23,7 +23,7 @@ import { Route53Provider } from './route53-adapter'
 
 /**
  * Create a DNS provider from configuration
- */
+*/
 export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
   switch (config.provider) {
     case 'route53':
@@ -46,7 +46,7 @@ export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
 /**
  * Auto-detect DNS provider for a domain
  * Tries each provider to see which one can manage the domain
- */
+*/
 export async function detectDnsProvider(
   domain: string,
   configs: DnsProviderConfig[],
@@ -62,14 +62,14 @@ export async function detectDnsProvider(
 
 /**
  * DNS Provider factory with environment variable support
- */
+*/
 export class DnsProviderFactory {
   private providers: Map<string, DnsProvider> = new Map()
   private configs: DnsProviderConfig[] = []
 
   /**
    * Add provider configuration
-   */
+  */
   addConfig(config: DnsProviderConfig): this {
     this.configs.push(config)
     return this
@@ -77,7 +77,7 @@ export class DnsProviderFactory {
 
   /**
    * Add Route53 provider
-   */
+  */
   addRoute53(region?: string, hostedZoneId?: string): this {
     this.configs.push({
       provider: 'route53',
@@ -89,7 +89,7 @@ export class DnsProviderFactory {
 
   /**
    * Add Porkbun provider
-   */
+  */
   addPorkbun(apiKey: string, secretKey: string): this {
     this.configs.push({
       provider: 'porkbun',
@@ -101,7 +101,7 @@ export class DnsProviderFactory {
 
   /**
    * Add GoDaddy provider
-   */
+  */
   addGoDaddy(apiKey: string, apiSecret: string, environment?: 'production' | 'ote'): this {
     this.configs.push({
       provider: 'godaddy',
@@ -114,7 +114,7 @@ export class DnsProviderFactory {
 
   /**
    * Add Cloudflare provider
-   */
+  */
   addCloudflare(apiToken: string): this {
     this.configs.push({
       provider: 'cloudflare',
@@ -125,7 +125,7 @@ export class DnsProviderFactory {
 
   /**
    * Load providers from environment variables
-   */
+  */
   loadFromEnv(): this {
     // Route53 (uses AWS credentials from environment)
     if (process.env.AWS_ACCESS_KEY_ID || process.env.AWS_REGION) {
@@ -158,7 +158,7 @@ export class DnsProviderFactory {
 
   /**
    * Get a provider by name
-   */
+  */
   getProvider(name: 'route53' | 'porkbun' | 'godaddy' | 'cloudflare'): DnsProvider | null {
     // Check cache
     const cached = this.providers.get(name)
@@ -180,7 +180,7 @@ export class DnsProviderFactory {
 
   /**
    * Auto-detect provider for a domain
-   */
+  */
   async getProviderForDomain(domain: string): Promise<DnsProvider | null> {
     for (const config of this.configs) {
       const provider = createDnsProvider(config)
@@ -193,7 +193,7 @@ export class DnsProviderFactory {
 
   /**
    * Get all configured providers
-   */
+  */
   getAllProviders(): DnsProvider[] {
     return this.configs.map(config => createDnsProvider(config))
   }
@@ -201,5 +201,5 @@ export class DnsProviderFactory {
 
 /**
  * Default factory instance (can be configured globally)
- */
+*/
 export const dnsProviders: DnsProviderFactory = new DnsProviderFactory()

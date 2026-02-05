@@ -11,7 +11,7 @@
  *
  * Note: Phone number provisioning requires AWS End User Messaging console.
  * SNS uses a shared pool for sending unless you configure an origination number.
- */
+*/
 
 import { SNSClient } from './sns'
 import { S3Client } from './s3'
@@ -94,7 +94,7 @@ export interface SmsSetupResult {
 /**
  * Set up complete SMS infrastructure
  * Called automatically during `buddy deploy` when SMS is enabled
- */
+*/
 export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<SmsSetupResult> {
   const region = config.region || 'us-east-1'
   const result: SmsSetupResult = {
@@ -245,7 +245,7 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
 
 /**
  * Check SMS account status (sandbox, spending limits)
- */
+*/
 async function checkSmsAccountStatus(sns: SNSClient): Promise<{
   inSandbox: boolean
   spendingLimit: number
@@ -279,7 +279,7 @@ async function checkSmsAccountStatus(sns: SNSClient): Promise<{
 
 /**
  * Set SNS SMS spending limit
- */
+*/
 async function setSnsSpendingLimit(awsClient: AWSClient, region: string, limit: number): Promise<void> {
   const params = new URLSearchParams({
     Action: 'SetSMSAttributes',
@@ -302,7 +302,7 @@ async function setSnsSpendingLimit(awsClient: AWSClient, region: string, limit: 
 
 /**
  * Set up S3 bucket for SMS inbox
- */
+*/
 async function setupS3Inbox(
   s3: S3Client,
   config: {
@@ -373,7 +373,7 @@ async function setupS3Inbox(
 
 /**
  * Set up SNS topic for two-way SMS
- */
+*/
 async function setupTwoWayTopic(
   sns: SNSClient,
   awsClient: AWSClient,
@@ -450,7 +450,7 @@ async function setupTwoWayTopic(
 
 /**
  * Set up SNS topic for delivery receipts
- */
+*/
 async function setupDeliveryReceiptsTopic(
   sns: SNSClient,
   awsClient: AWSClient,
@@ -464,7 +464,7 @@ async function setupDeliveryReceiptsTopic(
 
 /**
  * Get complete SMS infrastructure status
- */
+*/
 export async function getSmsInfrastructureStatus(config: {
   region?: string
   accountName?: string
@@ -501,7 +501,7 @@ export async function getSmsInfrastructureStatus(config: {
 /**
  * Create SMS infrastructure for Stacks deploy
  * This is the main entry point called by the deploy command
- */
+*/
 export async function createSmsInfrastructure(smsConfig: {
   enabled: boolean
   provider: 'sns'

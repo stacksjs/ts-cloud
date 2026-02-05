@@ -1,7 +1,7 @@
 /**
  * AWS RDS Operations
  * Direct API calls without AWS CLI dependency
- */
+*/
 
 import { AWSClient, buildQueryParams } from './client'
 
@@ -137,7 +137,7 @@ export interface DBSubnetGroup {
 
 /**
  * RDS service management using direct API calls
- */
+*/
 export class RDSClient {
   private client: AWSClient
   private region: string
@@ -149,7 +149,7 @@ export class RDSClient {
 
   /**
    * Describe all RDS DB instances
-   */
+  */
   async describeDBInstances(options?: {
     DBInstanceIdentifier?: string
     Filters?: Array<{ Name: string; Values: string[] }>
@@ -212,7 +212,7 @@ export class RDSClient {
 
   /**
    * Describe a specific DB instance
-   */
+  */
   async describeDBInstance(dbInstanceIdentifier: string): Promise<DBInstance | undefined> {
     const result = await this.describeDBInstances({ DBInstanceIdentifier: dbInstanceIdentifier })
     return result.DBInstances?.[0]
@@ -220,7 +220,7 @@ export class RDSClient {
 
   /**
    * Describe all RDS DB clusters (Aurora)
-   */
+  */
   async describeDBClusters(options?: {
     DBClusterIdentifier?: string
     Filters?: Array<{ Name: string; Values: string[] }>
@@ -281,7 +281,7 @@ export class RDSClient {
 
   /**
    * Describe DB snapshots
-   */
+  */
   async describeDBSnapshots(options?: {
     DBInstanceIdentifier?: string
     DBSnapshotIdentifier?: string
@@ -342,7 +342,7 @@ export class RDSClient {
 
   /**
    * Describe DB subnet groups
-   */
+  */
   async describeDBSubnetGroups(options?: {
     DBSubnetGroupName?: string
     MaxRecords?: number
@@ -393,7 +393,7 @@ export class RDSClient {
 
   /**
    * Create a new DB instance
-   */
+  */
   async createDBInstance(options: {
     DBInstanceIdentifier: string
     DBInstanceClass: string
@@ -480,7 +480,7 @@ export class RDSClient {
 
   /**
    * Delete a DB instance
-   */
+  */
   async deleteDBInstance(options: {
     DBInstanceIdentifier: string
     SkipFinalSnapshot?: boolean
@@ -526,7 +526,7 @@ export class RDSClient {
 
   /**
    * Modify a DB instance
-   */
+  */
   async modifyDBInstance(options: {
     DBInstanceIdentifier: string
     DBInstanceClass?: string
@@ -591,7 +591,7 @@ export class RDSClient {
 
   /**
    * Start a DB instance
-   */
+  */
   async startDBInstance(dbInstanceIdentifier: string): Promise<{ DBInstance?: DBInstance }> {
     const params: Record<string, any> = {
       Action: 'StartDBInstance',
@@ -620,7 +620,7 @@ export class RDSClient {
 
   /**
    * Stop a DB instance
-   */
+  */
   async stopDBInstance(options: {
     DBInstanceIdentifier: string
     DBSnapshotIdentifier?: string
@@ -656,7 +656,7 @@ export class RDSClient {
 
   /**
    * Reboot a DB instance
-   */
+  */
   async rebootDBInstance(options: {
     DBInstanceIdentifier: string
     ForceFailover?: boolean
@@ -692,7 +692,7 @@ export class RDSClient {
 
   /**
    * Create a DB snapshot
-   */
+  */
   async createDBSnapshot(options: {
     DBInstanceIdentifier: string
     DBSnapshotIdentifier: string
@@ -733,7 +733,7 @@ export class RDSClient {
 
   /**
    * Delete a DB snapshot
-   */
+  */
   async deleteDBSnapshot(dbSnapshotIdentifier: string): Promise<{ DBSnapshot?: DBSnapshot }> {
     const params: Record<string, any> = {
       Action: 'DeleteDBSnapshot',
@@ -762,7 +762,7 @@ export class RDSClient {
 
   /**
    * Restore DB instance from snapshot
-   */
+  */
   async restoreDBInstanceFromDBSnapshot(options: {
     DBInstanceIdentifier: string
     DBSnapshotIdentifier: string
@@ -829,7 +829,7 @@ export class RDSClient {
 
   /**
    * Wait for DB instance to become available
-   */
+  */
   async waitForDBInstanceAvailable(
     dbInstanceIdentifier: string,
     maxAttempts = 60,
@@ -855,7 +855,7 @@ export class RDSClient {
 
   /**
    * Wait for DB instance to be deleted
-   */
+  */
   async waitForDBInstanceDeleted(
     dbInstanceIdentifier: string,
     maxAttempts = 60,

@@ -4,7 +4,7 @@
  *
  * This allows email clients like Mail.app to access emails that are
  * stored in S3 buckets through SES inbound email processing.
- */
+*/
 
 import * as net from 'node:net'
 import * as tls from 'node:tls'
@@ -53,7 +53,7 @@ interface EmailMessage {
 
 /**
  * IMAP Server that reads emails from S3
- */
+*/
 export class ImapServer {
   private config: ImapServerConfig
   private s3: S3Client
@@ -81,7 +81,7 @@ export class ImapServer {
 
   /**
    * Start the IMAP server
-   */
+  */
   async start(): Promise<void> {
     // Start plain IMAP server
     this.server = net.createServer((socket) => {
@@ -111,7 +111,7 @@ export class ImapServer {
 
   /**
    * Stop the IMAP server
-   */
+  */
   async stop(): Promise<void> {
     if (this.server) {
       this.server.close()
@@ -127,7 +127,7 @@ export class ImapServer {
 
   /**
    * Handle new connection
-   */
+  */
   private handleConnection(socket: net.Socket): void {
     const sessionId = crypto.randomUUID()
     const session: ImapSession = {
@@ -174,14 +174,14 @@ export class ImapServer {
 
   /**
    * Send response to client
-   */
+  */
   private send(session: ImapSession, message: string): void {
     session.socket.write(`${message}\r\n`)
   }
 
   /**
    * Process IMAP command
-   */
+  */
   private async processCommand(session: ImapSession, line: string): Promise<void> {
     // Log command for debugging
     console.log(`IMAP CMD [${session.username || 'unauth'}]: ${line}`)
@@ -302,7 +302,7 @@ export class ImapServer {
 
   /**
    * Handle CAPABILITY command
-   */
+  */
   private async handleCapability(session: ImapSession, tag: string): Promise<void> {
     const capabilities = [
       'IMAP4rev1',
@@ -323,7 +323,7 @@ export class ImapServer {
 
   /**
    * Handle LOGOUT command
-   */
+  */
   private async handleLogout(session: ImapSession, tag: string): Promise<void> {
     this.send(session, `* BYE ${this.config.domain} IMAP4rev1 server logging out`)
     this.send(session, `${tag} OK LOGOUT completed`)
@@ -333,7 +333,7 @@ export class ImapServer {
 
   /**
    * Handle LOGIN command
-   */
+  */
   private async handleLogin(session: ImapSession, tag: string, args: string): Promise<void> {
     // Parse LOGIN username password
     const match = args.match(/^"?([^"\s]+)"?\s+"?([^"\s]+)"?$/)
@@ -358,7 +358,7 @@ export class ImapServer {
 
   /**
    * Handle AUTHENTICATE command
-   */
+  */
   private async handleAuthenticate(session: ImapSession, tag: string, args: string): Promise<void> {
     // For simplicity, reject AUTHENTICATE and require LOGIN
     this.send(session, `${tag} NO Use LOGIN command`)
@@ -366,7 +366,7 @@ export class ImapServer {
 
   /**
    * Handle SELECT command
-   */
+  */
   private async handleSelect(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -403,7 +403,7 @@ export class ImapServer {
 
   /**
    * Handle EXAMINE command (read-only SELECT)
-   */
+  */
   private async handleExamine(session: ImapSession, tag: string, args: string): Promise<void> {
     // Same as SELECT but read-only
     await this.handleSelect(session, tag, args)
@@ -411,7 +411,7 @@ export class ImapServer {
 
   /**
    * Handle NOOP command - check for new messages
-   */
+  */
   private async handleNoop(session: ImapSession, tag: string): Promise<void> {
     if (session.state === 'selected' && session.selectedMailbox === 'INBOX') {
       // Get old message count
@@ -435,7 +435,7 @@ export class ImapServer {
 
   /**
    * Handle CHECK command - request a checkpoint/sync
-   */
+  */
   private async handleCheck(session: ImapSession, tag: string): Promise<void> {
     // CHECK requests a checkpoint, we use it to refresh the cache
     if (session.state === 'selected') {
@@ -448,7 +448,7 @@ export class ImapServer {
 
   /**
    * Handle LIST command
-   */
+  */
   private async handleList(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -510,7 +510,7 @@ export class ImapServer {
 
   /**
    * Handle LSUB command (subscribed folders)
-   */
+  */
   private async handleLsub(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -545,7 +545,7 @@ export class ImapServer {
 
   /**
    * Handle STATUS command
-   */
+  */
   private async handleStatus(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -591,8 +591,8 @@ export class ImapServer {
   }
 
   /**
-   * Handle FETCH command
-   */
+  * Handle FETCH command
+  */
   private async handleFetch(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -624,8 +624,8 @@ export class ImapServer {
   }
 
   /**
-   * Handle UID command (UID FETCH, UID SEARCH, etc.)
-   */
+  * Handle UID command (UID FETCH, UID SEARCH, etc.)
+  */
   private async handleUid(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -665,8 +665,8 @@ export class ImapServer {
   }
 
   /**
-   * Handle UID FETCH
-   */
+  * Handle UID FETCH
+  */
   private async handleUidFetch(session: ImapSession, tag: string, args: string): Promise<void> {
     const match = args.match(/^(\S+)\s+(.+)$/i)
     if (!match) {
@@ -696,8 +696,8 @@ export class ImapServer {
   }
 
   /**
-   * Handle SEARCH command
-   */
+  * Handle SEARCH command
+  */
   private async handleSearch(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -718,8 +718,8 @@ export class ImapServer {
   }
 
   /**
-   * Handle UID SEARCH
-   */
+  * Handle UID SEARCH
+  */
   private async handleUidSearch(session: ImapSession, tag: string, args: string): Promise<void> {
     const folder = session.selectedMailbox || 'INBOX'
     const messages = this.getMessagesForFolder(session.email || '', folder)
@@ -735,10 +735,10 @@ export class ImapServer {
   }
 
   /**
-   * Handle STORE command
-   * STORE sequence-set flags-operation flags
-   * Example: STORE 1 +FLAGS (\Deleted)
-   */
+  * Handle STORE command
+  * STORE sequence-set flags-operation flags
+  * Example: STORE 1 +FLAGS (\Deleted)
+  */
   private async handleStore(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -801,9 +801,9 @@ export class ImapServer {
   }
 
   /**
-   * Handle UID STORE
-   * UID STORE uid-set flags-operation flags
-   */
+  * Handle UID STORE
+  * UID STORE uid-set flags-operation flags
+  */
   private async handleUidStore(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -867,9 +867,9 @@ export class ImapServer {
   }
 
   /**
-   * Handle COPY command
-   * COPY sequence-set mailbox
-   */
+  * Handle COPY command
+  * COPY sequence-set mailbox
+  */
   private async handleCopy(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -924,7 +924,7 @@ export class ImapServer {
   /**
    * Handle UID COPY
    * UID COPY uid-set mailbox
-   */
+  */
   private async handleUidCopy(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -978,9 +978,9 @@ export class ImapServer {
   }
 
   /**
-   * Handle MOVE command (RFC 6851)
-   * MOVE sequence-set mailbox
-   */
+  * Handle MOVE command (RFC 6851)
+  * MOVE sequence-set mailbox
+  */
   private async handleMove(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -1048,7 +1048,7 @@ export class ImapServer {
   /**
    * Handle UID MOVE command (RFC 6851)
    * UID MOVE uid-set mailbox
-   */
+  */
   private async handleUidMove(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -1119,7 +1119,7 @@ export class ImapServer {
   /**
    * Handle UID EXPUNGE command (UIDPLUS extension)
    * UID EXPUNGE uid-set - expunges only specified UIDs
-   */
+  */
   private async handleUidExpunge(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -1175,7 +1175,7 @@ export class ImapServer {
 
   /**
    * Handle CLOSE command
-   */
+  */
   private async handleClose(session: ImapSession, tag: string): Promise<void> {
     session.state = 'authenticated'
     session.selectedMailbox = undefined
@@ -1185,7 +1185,7 @@ export class ImapServer {
   /**
    * Handle EXPUNGE command
    * Removes messages marked with \Deleted flag
-   */
+  */
   private async handleExpunge(session: ImapSession, tag: string): Promise<void> {
     if (session.state !== 'selected') {
       this.send(session, `${tag} NO Must select mailbox first`)
@@ -1234,7 +1234,7 @@ export class ImapServer {
 
   /**
    * Handle IDLE command
-   */
+  */
   private async handleIdle(session: ImapSession, tag: string): Promise<void> {
     session.idling = true
     session.idleTag = tag
@@ -1245,7 +1245,7 @@ export class ImapServer {
 
   /**
    * Handle STARTTLS command
-   */
+  */
   private async handleStartTls(session: ImapSession, tag: string): Promise<void> {
     if (!this.config.tls?.key || !this.config.tls?.cert) {
       this.send(session, `${tag} NO TLS not configured`)
@@ -1267,7 +1267,7 @@ export class ImapServer {
 
   /**
    * Handle NAMESPACE command
-   */
+  */
   private async handleNamespace(session: ImapSession, tag: string): Promise<void> {
     this.send(session, `* NAMESPACE (("" "/")) NIL NIL`)
     this.send(session, `${tag} OK NAMESPACE completed`)
@@ -1275,7 +1275,7 @@ export class ImapServer {
 
   /**
    * Load messages from S3 for the selected folder
-   */
+  */
   private async loadMessages(session: ImapSession, forceRefresh = false): Promise<void> {
     const email = session.email
     const folder = session.selectedMailbox || 'INBOX'
@@ -1392,7 +1392,7 @@ export class ImapServer {
   /**
    * Load all messages from all folders for the "All Mail" virtual folder
    * Uses persistent UIDs for stable message identification across sessions
-   */
+  */
   private async loadAllMailFolder(email: string, persistedFlags: Record<string, string[]>): Promise<void> {
     const folder = 'ALL MAIL'
     const cacheKey = `${email}:${folder}`
@@ -1493,7 +1493,7 @@ export class ImapServer {
   /**
    * Load messages from S3 for a specific folder (used by STATUS command)
    * Uses persistent UIDs for stable message identification across sessions
-   */
+  */
   private async loadMessagesForFolder(session: ImapSession, folder: string): Promise<void> {
     const email = session.email
     if (!email)
@@ -1601,7 +1601,7 @@ export class ImapServer {
 
   /**
    * Parse email headers
-   */
+  */
   private parseHeaders(raw: string): Record<string, string> {
     const headers: Record<string, string> = {}
     const headerSection = raw.split('\r\n\r\n')[0] || raw.split('\n\n')[0] || ''
@@ -1640,7 +1640,7 @@ export class ImapServer {
 
   /**
    * Build FETCH response
-   */
+  */
   private async buildFetchResponse(
     session: ImapSession,
     msg: EmailMessage,
@@ -1699,7 +1699,7 @@ export class ImapServer {
 
   /**
    * Build ENVELOPE response
-   */
+  */
   private buildEnvelope(msg: EmailMessage): string {
     const quote = (s?: string) => s ? `"${s.replace(/"/g, '\\"')}"` : 'NIL'
 
@@ -1713,7 +1713,7 @@ export class ImapServer {
 
   /**
    * Format date for IMAP
-   */
+  */
   private formatImapDate(date: Date): string {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
     const d = date.getDate().toString().padStart(2, '0')
@@ -1728,7 +1728,7 @@ export class ImapServer {
 
   /**
    * Parse IMAP sequence set (e.g., "1:*", "1,3,5", "1:10")
-   */
+  */
   private parseSequenceSet(set: string, max: number): number[] {
     const results: number[] = []
 
@@ -1756,7 +1756,7 @@ export class ImapServer {
 
   /**
    * Get UID validity value for a mailbox
-   */
+  */
   private getUidValidity(email: string): number {
     // Use a hash of the email to generate a stable UID validity
     let hash = 0
@@ -1769,7 +1769,7 @@ export class ImapServer {
 
   /**
    * Get the S3 prefix for a folder
-   */
+  */
   private getFolderPrefix(folder: string): string {
     const normalizedFolder = folder.toUpperCase()
     switch (normalizedFolder) {
@@ -1794,14 +1794,14 @@ export class ImapServer {
 
   /**
    * Check if a folder is the virtual "All Mail" folder
-   */
+  */
   private isAllMailFolder(folder: string): boolean {
     return folder.toUpperCase() === 'ALL MAIL'
   }
 
   /**
    * Load flags from S3
-   */
+  */
   private async loadFlags(email: string): Promise<Record<string, string[]>> {
     const cached = this.flagsCache.get(email)
     if (cached) return cached
@@ -1822,7 +1822,7 @@ export class ImapServer {
 
   /**
    * Save flags to S3
-   */
+  */
   private async saveFlags(email: string): Promise<void> {
     const flags = this.flagsCache.get(email)
     if (!flags) return
@@ -1843,7 +1843,7 @@ export class ImapServer {
 
   /**
    * Load UID mapping from S3 (maps S3 keys to persistent UIDs)
-   */
+  */
   private async loadUidMapping(email: string): Promise<{ mapping: Record<string, number>, nextUid: number }> {
     const cached = this.uidMappingCache.get(email)
     const nextUid = this.nextUidCache.get(email)
@@ -1871,7 +1871,7 @@ export class ImapServer {
 
   /**
    * Save UID mapping to S3
-   */
+  */
   private async saveUidMapping(email: string): Promise<void> {
     const mapping = this.uidMappingCache.get(email)
     const nextUid = this.nextUidCache.get(email)
@@ -1893,7 +1893,7 @@ export class ImapServer {
   /**
    * Get or assign a UID for a message (S3 key)
    * Returns existing UID if message was seen before, assigns new UID otherwise
-   */
+  */
   private getOrAssignUid(email: string, s3Key: string): number {
     let mapping = this.uidMappingCache.get(email)
     if (!mapping) {
@@ -1917,7 +1917,7 @@ export class ImapServer {
 
   /**
    * Get messages for a specific folder
-   */
+  */
   private getMessagesForFolder(email: string, folder: string): EmailMessage[] {
     const userCache = this.messageCache.get(email)
     if (!userCache) return []
@@ -1926,7 +1926,7 @@ export class ImapServer {
 
   /**
    * Set messages for a specific folder
-   */
+  */
   private setMessagesForFolder(email: string, folder: string, messages: EmailMessage[]): void {
     let userCache = this.messageCache.get(email)
     if (!userCache) {
@@ -1938,7 +1938,7 @@ export class ImapServer {
 
   /**
    * Get UID counter for a folder
-   */
+  */
   private getUidCounterForFolder(email: string, folder: string): number {
     const userCounters = this.uidCounter.get(email)
     if (!userCounters) return 0
@@ -1947,7 +1947,7 @@ export class ImapServer {
 
   /**
    * Set UID counter for a folder
-   */
+  */
   private setUidCounterForFolder(email: string, folder: string, value: number): void {
     let userCounters = this.uidCounter.get(email)
     if (!userCounters) {
@@ -1959,7 +1959,7 @@ export class ImapServer {
 
   /**
    * Handle XLIST command (deprecated Gmail extension, but some clients use it)
-   */
+  */
   private async handleXlist(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -1991,7 +1991,7 @@ export class ImapServer {
 
   /**
    * Handle CREATE command
-   */
+  */
   private async handleCreate(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2005,7 +2005,7 @@ export class ImapServer {
 
   /**
    * Handle DELETE command
-   */
+  */
   private async handleDelete(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2026,7 +2026,7 @@ export class ImapServer {
 
   /**
    * Handle SUBSCRIBE command
-   */
+  */
   private async handleSubscribe(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2038,7 +2038,7 @@ export class ImapServer {
 
   /**
    * Handle UNSUBSCRIBE command
-   */
+  */
   private async handleUnsubscribe(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2050,7 +2050,7 @@ export class ImapServer {
 
   /**
    * Handle RENAME command
-   */
+  */
   private async handleRename(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2077,7 +2077,7 @@ export class ImapServer {
 
   /**
    * Handle APPEND command
-   */
+  */
   private async handleAppend(session: ImapSession, tag: string, args: string): Promise<void> {
     if (session.state === 'not_authenticated') {
       this.send(session, `${tag} NO Must authenticate first`)
@@ -2092,7 +2092,7 @@ export class ImapServer {
 
 /**
  * Create and start an IMAP server
- */
+*/
 export async function startImapServer(config: ImapServerConfig): Promise<ImapServer> {
   const server = new ImapServer(config)
   await server.start()

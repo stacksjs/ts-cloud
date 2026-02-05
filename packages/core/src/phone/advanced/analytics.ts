@@ -2,7 +2,7 @@
  * Call Analytics and Reporting
  *
  * Provides call metrics, reporting, and insights
- */
+*/
 
 export interface CallMetrics {
   period: string
@@ -52,11 +52,11 @@ export interface CallInsight {
 
 /**
  * Call Analytics Module
- */
+*/
 export class CallAnalytics {
   /**
    * Lambda code for aggregating call metrics
-   */
+  */
   static MetricsAggregatorCode = `
 const { DynamoDBClient, QueryCommand, PutItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -180,7 +180,7 @@ function calculateMetrics(calls, period) {
 
   /**
    * Lambda code for real-time queue metrics
-   */
+  */
   static QueueMetricsCode = `
 const { ConnectClient, GetCurrentMetricDataCommand, ListQueuesCommand } = require('@aws-sdk/client-connect');
 
@@ -263,7 +263,7 @@ exports.handler = async (event) => {
 
   /**
    * Create metrics DynamoDB table
-   */
+  */
   static createMetricsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}CallMetricsTable`]: {
@@ -288,7 +288,7 @@ exports.handler = async (event) => {
 
   /**
    * Create metrics aggregator Lambda
-   */
+  */
   static createMetricsAggregatorLambda(config: {
     slug: string
     roleArn: string
@@ -321,7 +321,7 @@ exports.handler = async (event) => {
 
   /**
    * Create EventBridge rule for hourly metrics
-   */
+  */
   static createMetricsSchedule(config: {
     slug: string
     lambdaArn: string

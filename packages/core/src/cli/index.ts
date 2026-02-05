@@ -1,7 +1,7 @@
 /**
  * Advanced CLI utilities
  * Interactive features, progress tracking, and better UX
- */
+*/
 
 export * from './table'
 export * from './progress'

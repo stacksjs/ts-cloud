@@ -1,7 +1,7 @@
 /**
  * AWS Glue Types
  * CloudFormation resource types for AWS Glue (ETL jobs, data catalog)
- */
+*/
 
 import type { Tag } from './common'
 

@@ -1,6 +1,6 @@
 /**
  * Resource Management - Tagging strategies, cost allocation, resource groups
- */
+*/
 
 export interface TaggingStrategy { id: string; tags: Record<string, string>; resources: string[] }
 export interface CostAllocation { id: string; tagKey: string; allocations: Array<{ tagValue: string; cost: number }> }

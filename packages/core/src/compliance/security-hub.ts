@@ -1,7 +1,7 @@
 /**
  * AWS Security Hub
  * Centralized security and compliance view across AWS accounts
- */
+*/
 
 export interface SecurityHubConfig {
   id: string
@@ -93,7 +93,7 @@ export interface MapFilter {
 
 /**
  * Security Hub manager
- */
+*/
 export class SecurityHubManager {
   private hubs: Map<string, SecurityHubConfig> = new Map()
   private hubCounter = 0
@@ -101,7 +101,7 @@ export class SecurityHubManager {
 
   /**
    * Available security standards
-   */
+  */
   static readonly Standards = {
     AWS_FOUNDATIONAL_SECURITY: {
       arn: 'arn:aws:securityhub:::ruleset/aws-foundational-security-best-practices/v/1.0.0',
@@ -132,7 +132,7 @@ export class SecurityHubManager {
 
   /**
    * Create Security Hub
-   */
+  */
   createHub(hub: Omit<SecurityHubConfig, 'id'>): SecurityHubConfig {
     const id = `hub-${Date.now()}-${this.hubCounter++}`
 
@@ -148,7 +148,7 @@ export class SecurityHubManager {
 
   /**
    * Create comprehensive Security Hub with all standards
-   */
+  */
   createComprehensiveHub(): SecurityHubConfig {
     return this.createHub({
       enable: true,
@@ -176,7 +176,7 @@ export class SecurityHubManager {
 
   /**
    * Create basic Security Hub
-   */
+  */
   createBasicHub(): SecurityHubConfig {
     return this.createHub({
       enable: true,
@@ -194,7 +194,7 @@ export class SecurityHubManager {
 
   /**
    * Create automation rule for low severity findings
-   */
+  */
   createLowSeveritySuppressionRule(): AutomationRule {
     return {
       id: `rule-${Date.now()}-${this.ruleCounter++}`,
@@ -235,7 +235,7 @@ export class SecurityHubManager {
 
   /**
    * Create automation rule for specific resource types
-   */
+  */
   createResourceTypeNotificationRule(resourceTypes: string[]): AutomationRule {
     return {
       id: `rule-${Date.now()}-${this.ruleCounter++}`,
@@ -284,7 +284,7 @@ export class SecurityHubManager {
 
   /**
    * Create automation rule for compliance failures
-   */
+  */
   createComplianceFailureRule(): AutomationRule {
     return {
       id: `rule-${Date.now()}-${this.ruleCounter++}`,
@@ -328,7 +328,7 @@ export class SecurityHubManager {
 
   /**
    * Create automation rule for false positives
-   */
+  */
   createFalsePositiveSuppressionRule(productName: string, titlePatterns: string[]): AutomationRule {
     return {
       id: `rule-${Date.now()}-${this.ruleCounter++}`,
@@ -367,21 +367,21 @@ export class SecurityHubManager {
 
   /**
    * Get Security Hub
-   */
+  */
   getHub(id: string): SecurityHubConfig | undefined {
     return this.hubs.get(id)
   }
 
   /**
    * List Security Hubs
-   */
+  */
   listHubs(): SecurityHubConfig[] {
     return Array.from(this.hubs.values())
   }
 
   /**
    * Generate CloudFormation for Security Hub
-   */
+  */
   generateHubCF(hub: SecurityHubConfig): any {
     const cf: any = {
       Type: 'AWS::SecurityHub::Hub',
@@ -401,7 +401,7 @@ export class SecurityHubManager {
 
   /**
    * Generate CloudFormation for security standard subscription
-   */
+  */
   generateStandardCF(standard: SecurityStandard): any {
     const cf: any = {
       Type: 'AWS::SecurityHub::Standard',
@@ -422,7 +422,7 @@ export class SecurityHubManager {
 
   /**
    * Generate CloudFormation for automation rule
-   */
+  */
   generateAutomationRuleCF(rule: AutomationRule): any {
     return {
       Type: 'AWS::SecurityHub::AutomationRule',
@@ -442,7 +442,7 @@ export class SecurityHubManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.hubs.clear()
     this.hubCounter = 0
@@ -452,5 +452,5 @@ export class SecurityHubManager {
 
 /**
  * Global Security Hub manager instance
- */
+*/
 export const securityHubManager: SecurityHubManager = new SecurityHubManager()

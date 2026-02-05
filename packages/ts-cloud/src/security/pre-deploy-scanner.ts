@@ -1,7 +1,7 @@
 /**
  * Pre-Deployment Security Scanner
  * Scans source code for leaked secrets, credentials, and sensitive data before deployment
- */
+*/
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, extname } from 'node:path'
@@ -46,7 +46,7 @@ export interface ScanOptions {
 
 /**
  * Common secret patterns to detect
- */
+*/
 export const SECRET_PATTERNS: SecretPattern[] = [
   // AWS Credentials
   {
@@ -273,7 +273,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
 
 /**
  * File extensions to scan by default
- */
+*/
 const DEFAULT_SCAN_EXTENSIONS = [
   '.js',
   '.jsx',
@@ -300,7 +300,7 @@ const DEFAULT_SCAN_EXTENSIONS = [
 
 /**
  * Directories to exclude by default
- */
+*/
 const DEFAULT_EXCLUDE_DIRS = [
   'node_modules',
   '.git',
@@ -322,7 +322,7 @@ const DEFAULT_EXCLUDE_DIRS = [
 
 /**
  * Files to exclude by default
- */
+*/
 const DEFAULT_EXCLUDE_FILES = [
   'package-lock.json',
   'yarn.lock',
@@ -335,7 +335,7 @@ const DEFAULT_EXCLUDE_FILES = [
 
 /**
  * Pre-deployment security scanner
- */
+*/
 export class PreDeployScanner {
   private patterns: SecretPattern[]
   private excludeDirs: string[]
@@ -356,7 +356,7 @@ export class PreDeployScanner {
 
   /**
    * Scan a directory for secrets
-   */
+  */
   async scan(options: ScanOptions): Promise<ScanResult> {
     const startTime = Date.now()
     const findings: SecurityFinding[] = []
@@ -431,7 +431,7 @@ export class PreDeployScanner {
 
   /**
    * Scan content for secrets
-   */
+  */
   private scanContent(content: string, filePath: string, skipPatterns: string[]): SecurityFinding[] {
     const findings: SecurityFinding[] = []
     const lines = content.split('\n')
@@ -477,7 +477,7 @@ export class PreDeployScanner {
 
   /**
    * Check if a match is likely a placeholder/example
-   */
+  */
   private isLikelyPlaceholder(match: string, context: string): boolean {
     const placeholderIndicators = [
       'example',
@@ -528,7 +528,7 @@ export class PreDeployScanner {
 
   /**
    * Mask a secret for display
-   */
+  */
   private maskSecret(value: string): string {
     if (value.length <= 8) {
       return '*'.repeat(value.length)
@@ -540,7 +540,7 @@ export class PreDeployScanner {
 
   /**
    * Get all files to scan in a directory
-   */
+  */
   private getFilesToScan(dir: string, excludeDirs: string[], includeExtensions?: string[]): string[] {
     const files: string[] = []
     const extensions = includeExtensions || DEFAULT_SCAN_EXTENSIONS
@@ -573,7 +573,7 @@ export class PreDeployScanner {
 
   /**
    * Check if a file should be excluded
-   */
+  */
   private shouldExcludeFile(filePath: string): boolean {
     const fileName = filePath.split('/').pop() || ''
 
@@ -595,14 +595,14 @@ export class PreDeployScanner {
 
   /**
    * Add custom patterns
-   */
+  */
   addPattern(pattern: SecretPattern): void {
     this.patterns.push(pattern)
   }
 
   /**
    * Get all registered patterns
-   */
+  */
   getPatterns(): SecretPattern[] {
     return [...this.patterns]
   }
@@ -610,7 +610,7 @@ export class PreDeployScanner {
 
 /**
  * Convenience function to scan a directory
- */
+*/
 export async function scanForSecrets(options: ScanOptions): Promise<ScanResult> {
   const scanner = new PreDeployScanner()
   return scanner.scan(options)
@@ -618,7 +618,7 @@ export async function scanForSecrets(options: ScanOptions): Promise<ScanResult> 
 
 /**
  * Format scan results for CLI output
- */
+*/
 export function formatScanResults(result: ScanResult): string {
   const lines: string[] = []
 

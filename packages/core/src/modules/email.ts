@@ -64,11 +64,11 @@ export interface ReceiptRuleOptions {
 /**
  * Email Module - SES (Simple Email Service)
  * Provides clean API for email sending, receiving, and domain verification
- */
+*/
 export class Email {
   /**
    * Verify a domain for sending emails
-   */
+  */
   static verifyDomain(options: EmailIdentityOptions): {
     emailIdentity: SESEmailIdentity
     logicalId: string
@@ -111,7 +111,7 @@ export class Email {
   /**
    * Create DNS records for DKIM verification
    * Returns Route53 RecordSets for DKIM tokens
-   */
+  */
   static createDkimRecords(
     domain: string,
     dkimTokens: string[],
@@ -142,7 +142,7 @@ export class Email {
 
   /**
    * Create SES Configuration Set
-   */
+  */
   static createConfigurationSet(options: ConfigurationSetOptions): {
     configurationSet: SESConfigurationSet
     logicalId: string
@@ -192,7 +192,7 @@ export class Email {
 
   /**
    * Create Receipt Rule Set for inbound email
-   */
+  */
   static createReceiptRuleSet(options: ReceiptRuleSetOptions): {
     ruleSet: SESReceiptRuleSet
     logicalId: string
@@ -219,7 +219,7 @@ export class Email {
 
   /**
    * Create Receipt Rule for processing inbound emails
-   */
+  */
   static createReceiptRule(
     ruleSetLogicalId: string,
     options: ReceiptRuleOptions,
@@ -298,7 +298,7 @@ export class Email {
 
   /**
    * Create MX record for receiving emails
-   */
+  */
   static createMxRecord(
     domain: string,
     hostedZoneId: string,
@@ -325,7 +325,7 @@ export class Email {
 
   /**
    * Create verification TXT record
-   */
+  */
   static createVerificationRecord(
     domain: string,
     verificationToken: string,
@@ -352,14 +352,14 @@ export class Email {
 
   /**
    * Get SES SMTP credentials information
-   */
+  */
   static getSmtpEndpoint(region: string): string {
     return `email-smtp.${region}.amazonaws.com`
   }
 
   /**
    * Get SES SMTP port options
-   */
+  */
   static readonly SmtpPorts = {
     TLS: 587, // STARTTLS
     SSL: 465, // SSL/TLS
@@ -368,7 +368,7 @@ export class Email {
 
   /**
    * Create SPF record for email authentication
-   */
+  */
   static createSpfRecord(
     domain: string,
     hostedZoneId: string,
@@ -408,7 +408,7 @@ export class Email {
 
   /**
    * Create DMARC record for email authentication
-   */
+  */
   static createDmarcRecord(
     domain: string,
     hostedZoneId: string,
@@ -465,7 +465,7 @@ export class Email {
   /**
    * Create complete inbound email setup
    * Includes receipt rule set, rule, and S3 storage
-   */
+  */
   static createInboundEmailSetup(options: {
     slug: string
     environment: EnvironmentType
@@ -549,7 +549,7 @@ export class Email {
   /**
    * Create complete email domain setup
    * Includes domain verification, DKIM, SPF, DMARC, and optionally inbound email
-   */
+  */
   static createCompleteDomainSetup(options: {
     slug: string
     environment: EnvironmentType
@@ -637,7 +637,7 @@ export class Email {
 
   /**
    * SES inbound SMTP endpoints by region
-   */
+  */
   static readonly InboundSmtpEndpoints: Record<string, string> = {
     'us-east-1': 'inbound-smtp.us-east-1.amazonaws.com',
     'us-west-2': 'inbound-smtp.us-west-2.amazonaws.com',
@@ -646,14 +646,14 @@ export class Email {
 
   /**
    * Check if region supports SES inbound email
-   */
+  */
   static supportsInboundEmail(region: string): boolean {
     return region in Email.InboundSmtpEndpoints
   }
 
   /**
    * Create IAM role for email Lambda functions
-   */
+  */
   static createEmailLambdaRole(options: {
     slug: string
     environment: EnvironmentType
@@ -754,7 +754,7 @@ export class Email {
   /**
    * Create Lambda function for outbound email (JSON to raw email conversion)
    * Converts JSON email payloads to raw MIME format and sends via SES
-   */
+  */
   static createOutboundEmailLambda(options: {
     slug: string
     environment: EnvironmentType
@@ -817,7 +817,7 @@ export class Email {
   /**
    * Create Lambda function for inbound email processing
    * Organizes emails by From/To addresses and extracts metadata
-   */
+  */
   static createInboundEmailLambda(options: {
     slug: string
     environment: EnvironmentType
@@ -899,7 +899,7 @@ export class Email {
   /**
    * Create Lambda function for email conversion
    * Converts raw MIME emails to HTML/text format
-   */
+  */
   static createEmailConversionLambda(options: {
     slug: string
     environment: EnvironmentType
@@ -961,7 +961,7 @@ export class Email {
 
   /**
    * Create S3 bucket notification configuration for email processing
-   */
+  */
   static createEmailBucketNotification(options: {
     bucketLogicalId: string
     lambdaArn: string
@@ -1006,7 +1006,7 @@ export class Email {
 
   /**
    * Create Lambda permission for S3 to invoke email processing Lambda
-   */
+  */
   static createS3LambdaPermission(options: {
     slug: string
     environment: EnvironmentType
@@ -1042,7 +1042,7 @@ export class Email {
   /**
    * Create complete email processing stack
    * Includes all Lambda functions, IAM roles, and S3 notifications
-   */
+  */
   static createEmailProcessingStack(options: {
     slug: string
     environment: EnvironmentType
@@ -1145,11 +1145,11 @@ export class Email {
 
   /**
    * Lambda function code for email processing
-   */
+  */
   static readonly LambdaCode = {
     /**
      * Outbound email Lambda - JSON to raw email conversion
-     */
+    */
     outboundEmail: `
 const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const ses = new SESClient({});
@@ -1240,7 +1240,7 @@ exports.handler = async (event) => {
 
     /**
      * Inbound email Lambda - Email organization by From/To
-     */
+    */
     inboundEmail: `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const s3 = new S3Client({});
@@ -1368,7 +1368,7 @@ async function copyOrCreateMetadata(bucket, sourceKey, destKey, metadata) {
 
     /**
      * Email conversion Lambda - Raw to HTML/text
-     */
+    */
     emailConversion: `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const s3 = new S3Client({});

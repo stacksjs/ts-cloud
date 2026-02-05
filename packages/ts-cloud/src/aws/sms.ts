@@ -7,7 +7,7 @@
  * - Receiving SMS stored in S3
  * - Inbox management (list, read, delete)
  * - Two-way messaging support
- */
+*/
 
 import { SNSClient } from './sns'
 import { S3Client } from './s3'
@@ -132,7 +132,7 @@ export interface DeliveryReceiptWebhookConfig {
 
 /**
  * SMS Client with S3 inbox storage
- */
+*/
 export class SmsClient {
   private config: SmsClientConfig
   private sns: SNSClient
@@ -165,7 +165,7 @@ export class SmsClient {
 
   /**
    * Send an SMS message (optionally scheduled)
-   */
+  */
   async send(options: SendSmsOptions): Promise<{ messageId: string; scheduledId?: string }> {
     const { to, from, type, scheduledAt, templateId, templateVariables } = options
     const sender = from || this.config.defaultSender
@@ -215,7 +215,7 @@ export class SmsClient {
 
   /**
    * Send a text message (alias for send)
-   */
+  */
   async sendText(to: string, message: string, from?: string): Promise<{ messageId: string }> {
     return this.send({ to, body: message, from })
   }
@@ -226,7 +226,7 @@ export class SmsClient {
 
   /**
    * Get incoming SMS messages from S3 inbox
-   */
+  */
   async getInbox(options: InboxOptions = {}): Promise<SmsMessage[]> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -261,7 +261,7 @@ export class SmsClient {
 
   /**
    * Get a specific SMS message by key
-   */
+  */
   async getMessage(key: string): Promise<SmsMessage | null> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -277,7 +277,7 @@ export class SmsClient {
 
   /**
    * Delete an SMS message from inbox
-   */
+  */
   async deleteMessage(key: string): Promise<void> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -288,7 +288,7 @@ export class SmsClient {
 
   /**
    * Move an SMS to a different folder (e.g., archive)
-   */
+  */
   async moveMessage(key: string, destinationPrefix: string): Promise<string> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -312,14 +312,14 @@ export class SmsClient {
 
   /**
    * Archive an SMS message
-   */
+  */
   async archiveMessage(key: string): Promise<string> {
     return this.moveMessage(key, 'sms/archive/')
   }
 
   /**
    * Mark a message as read
-   */
+  */
   async markAsRead(key: string): Promise<void> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -340,7 +340,7 @@ export class SmsClient {
 
   /**
    * Mark a message as unread
-   */
+  */
   async markAsUnread(key: string): Promise<void> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -361,7 +361,7 @@ export class SmsClient {
 
   /**
    * Get unread message count
-   */
+  */
   async getUnreadCount(): Promise<number> {
     const messages = await this.getInbox({ maxResults: 1000 })
     return messages.filter(m => !m.read).length
@@ -369,21 +369,21 @@ export class SmsClient {
 
   /**
    * Batch mark messages as read
-   */
+  */
   async markManyAsRead(keys: string[]): Promise<void> {
     await Promise.all(keys.map(key => this.markAsRead(key)))
   }
 
   /**
    * Batch delete messages
-   */
+  */
   async deleteMany(keys: string[]): Promise<void> {
     await Promise.all(keys.map(key => this.deleteMessage(key)))
   }
 
   /**
    * Get inbox count
-   */
+  */
   async getInboxCount(): Promise<number> {
     if (!this.s3 || !this.config.inboxBucket) {
       throw new Error('Inbox bucket not configured')
@@ -405,7 +405,7 @@ export class SmsClient {
   /**
    * Get conversation ID for a phone number pair
    * Normalizes phone numbers and creates a consistent ID
-   */
+  */
   getConversationId(phone1: string, phone2: string): string {
     const normalized = [normalizePhoneNumber(phone1), normalizePhoneNumber(phone2)].sort()
     return `${normalized[0]}_${normalized[1]}`
@@ -413,7 +413,7 @@ export class SmsClient {
 
   /**
    * Get all messages in a conversation with a specific phone number
-   */
+  */
   async getConversation(phoneNumber: string, myNumber?: string): Promise<SmsMessage[]> {
     const messages = await this.getInbox({ maxResults: 1000 })
     const normalizedTarget = normalizePhoneNumber(phoneNumber)
@@ -427,7 +427,7 @@ export class SmsClient {
 
   /**
    * Get unique conversations (grouped by contact)
-   */
+  */
   async getConversations(): Promise<Array<{
     phoneNumber: string
     lastMessage: SmsMessage
@@ -464,7 +464,7 @@ export class SmsClient {
   /**
    * Store an incoming SMS to S3
    * This is typically called from a Lambda handler that receives SNS webhooks
-   */
+  */
   async storeIncomingSms(message: {
     from: string
     to: string
@@ -506,14 +506,14 @@ export class SmsClient {
 
   /**
    * Check if a phone number is opted out
-   */
+  */
   async isOptedOut(phoneNumber: string): Promise<boolean> {
     return this.sns.checkIfPhoneNumberIsOptedOut(phoneNumber)
   }
 
   /**
    * Get list of opted-out phone numbers
-   */
+  */
   async getOptedOutNumbers(): Promise<string[]> {
     const result = await this.sns.listPhoneNumbersOptedOut()
     return result.phoneNumbers || []
@@ -521,7 +521,7 @@ export class SmsClient {
 
   /**
    * Opt a phone number back in (requires user consent)
-   */
+  */
   async optIn(phoneNumber: string): Promise<void> {
     await this.sns.optInPhoneNumber(phoneNumber)
   }
@@ -532,7 +532,7 @@ export class SmsClient {
 
   /**
    * Check if account is in SMS sandbox
-   */
+  */
   async isInSandbox(): Promise<boolean> {
     const status = await this.sns.getSMSSandboxAccountStatus()
     return status.IsInSandbox
@@ -540,21 +540,21 @@ export class SmsClient {
 
   /**
    * Add a phone number to SMS sandbox for testing
-   */
+  */
   async addSandboxNumber(phoneNumber: string): Promise<void> {
     await this.sns.createSMSSandboxPhoneNumber(phoneNumber)
   }
 
   /**
    * Verify a sandbox phone number with OTP
-   */
+  */
   async verifySandboxNumber(phoneNumber: string, otp: string): Promise<void> {
     await this.sns.verifySMSSandboxPhoneNumber(phoneNumber, otp)
   }
 
   /**
    * List sandbox phone numbers
-   */
+  */
   async listSandboxNumbers(): Promise<Array<{ PhoneNumber: string; Status: string }>> {
     const result = await this.sns.listSMSSandboxPhoneNumbers()
     return (result?.PhoneNumbers || []) as { PhoneNumber: string; Status: string }[]
@@ -566,7 +566,7 @@ export class SmsClient {
 
   /**
    * Schedule an SMS message for later delivery
-   */
+  */
   async scheduleMessage(options: {
     to: string
     body: string
@@ -618,7 +618,7 @@ export class SmsClient {
 
   /**
    * Get all scheduled SMS messages
-   */
+  */
   async getScheduledMessages(): Promise<ScheduledSms[]> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -651,7 +651,7 @@ export class SmsClient {
 
   /**
    * Get a scheduled SMS by ID
-   */
+  */
   async getScheduledMessage(id: string): Promise<ScheduledSms | null> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -673,7 +673,7 @@ export class SmsClient {
 
   /**
    * Cancel a scheduled SMS
-   */
+  */
   async cancelScheduledMessage(id: string): Promise<void> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -704,7 +704,7 @@ export class SmsClient {
 
   /**
    * Send a scheduled SMS immediately (called by Lambda handler)
-   */
+  */
   async sendScheduledMessage(id: string): Promise<{ messageId: string }> {
     const sms = await this.getScheduledMessage(id)
     if (!sms) throw new Error(`Scheduled SMS ${id} not found`)
@@ -754,14 +754,14 @@ export class SmsClient {
 
   /**
    * Schedule SMS to send at a specific time (convenience method)
-   */
+  */
   async sendAt(to: string, body: string, scheduledAt: Date, from?: string): Promise<ScheduledSms> {
     return this.scheduleMessage({ to, body, scheduledAt, from })
   }
 
   /**
    * Schedule SMS to send after a delay (convenience method)
-   */
+  */
   async sendAfter(
     to: string,
     body: string,
@@ -778,7 +778,7 @@ export class SmsClient {
 
   /**
    * Create an SMS template
-   */
+  */
   async createTemplate(template: {
     name: string
     body: string
@@ -817,7 +817,7 @@ export class SmsClient {
 
   /**
    * Get all SMS templates
-   */
+  */
   async getTemplates(): Promise<SmsTemplate[]> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -849,7 +849,7 @@ export class SmsClient {
 
   /**
    * Get a template by ID
-   */
+  */
   async getTemplate(id: string): Promise<SmsTemplate | null> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -870,7 +870,7 @@ export class SmsClient {
 
   /**
    * Get a template by name
-   */
+  */
   async getTemplateByName(name: string): Promise<SmsTemplate | null> {
     const templates = await this.getTemplates()
     return templates.find(t => t.name === name) || null
@@ -878,7 +878,7 @@ export class SmsClient {
 
   /**
    * Update a template
-   */
+  */
   async updateTemplate(
     id: string,
     updates: { name?: string; body?: string; description?: string },
@@ -914,7 +914,7 @@ export class SmsClient {
 
   /**
    * Delete a template
-   */
+  */
   async deleteTemplate(id: string): Promise<void> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -926,7 +926,7 @@ export class SmsClient {
 
   /**
    * Send using a template
-   */
+  */
   async sendTemplate(
     to: string,
     templateId: string,
@@ -942,7 +942,7 @@ export class SmsClient {
 
   /**
    * Apply variables to a template string
-   */
+  */
   private applyTemplate(template: string, variables: Record<string, string>): string {
     return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
       return variables[key] !== undefined ? variables[key] : match
@@ -956,7 +956,7 @@ export class SmsClient {
   /**
    * Store a delivery receipt
    * Called by the Lambda handler when a delivery status notification is received
-   */
+  */
   async storeDeliveryReceipt(receipt: {
     messageId: string
     status: DeliveryReceipt['status']
@@ -1004,7 +1004,7 @@ export class SmsClient {
 
   /**
    * Get delivery receipt for a message
-   */
+  */
   async getDeliveryReceipt(messageId: string): Promise<DeliveryReceipt | null> {
     const bucket = this.config.receiptBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
@@ -1034,7 +1034,7 @@ export class SmsClient {
 
   /**
    * Get all delivery receipts (recent)
-   */
+  */
   async getDeliveryReceipts(options: {
     maxResults?: number
     status?: DeliveryReceipt['status']
@@ -1072,7 +1072,7 @@ export class SmsClient {
 
   /**
    * Get delivery status for a message
-   */
+  */
   async getDeliveryStatus(messageId: string): Promise<DeliveryReceipt['status']> {
     const receipt = await this.getDeliveryReceipt(messageId)
     return receipt?.status || 'unknown'
@@ -1080,7 +1080,7 @@ export class SmsClient {
 
   /**
    * Wait for delivery confirmation (polling)
-   */
+  */
   async waitForDelivery(
     messageId: string,
     options: {
@@ -1105,14 +1105,14 @@ export class SmsClient {
 
   /**
    * Get failed message receipts
-   */
+  */
   async getFailedMessages(maxResults: number = 100): Promise<DeliveryReceipt[]> {
     return this.getDeliveryReceipts({ maxResults, status: 'failed' })
   }
 
   /**
    * Get delivery statistics
-   */
+  */
   async getDeliveryStats(options: {
     since?: Date
     maxMessages?: number
@@ -1151,7 +1151,7 @@ export class SmsClient {
   /**
    * Send SMS and track delivery
    * Combines send() with delivery tracking
-   */
+  */
   async sendAndTrack(options: SendSmsOptions): Promise<{
     messageId: string
     trackDelivery: () => Promise<DeliveryReceipt | null>
@@ -1173,7 +1173,7 @@ export class SmsClient {
 
   /**
    * Parse incoming SMS from various formats (SNS notification, raw JSON)
-   */
+  */
   private parseIncomingSms(content: string, key: string): SmsMessage | null {
     try {
       const data = JSON.parse(content)
@@ -1200,7 +1200,7 @@ export class SmsClient {
 
   /**
    * Extract SMS fields from various data formats
-   */
+  */
   private extractSmsFields(data: any, key: string, timestamp?: string): SmsMessage {
     return {
       key,
@@ -1235,7 +1235,7 @@ export class SmsClient {
  *   region: 'us-east-1',
  * })
  * ```
- */
+*/
 export function createSmsInboxHandler(config: {
   bucket: string
   prefix?: string
@@ -1309,7 +1309,7 @@ export function createSmsInboxHandler(config: {
  *   region: 'us-east-1',
  * })
  * ```
- */
+*/
 export function createScheduledSmsHandler(config: {
   bucket: string
   scheduledPrefix?: string
@@ -1367,7 +1367,7 @@ export function createScheduledSmsHandler(config: {
 
 /**
  * Convenience function to create an SMS client
- */
+*/
 export function createSmsClient(config?: SmsClientConfig): SmsClient {
   return new SmsClient(config)
 }
@@ -1392,7 +1392,7 @@ export function createSmsClient(config?: SmsClientConfig): SmsClient {
  *   },
  * })
  * ```
- */
+*/
 export function createDeliveryReceiptHandler(config: {
   bucket: string
   receiptPrefix?: string
@@ -1479,7 +1479,7 @@ export function createDeliveryReceiptHandler(config: {
 
 /**
  * Parse delivery status from various event formats
- */
+*/
 function parseDeliveryStatus(data: any, snsMessage: any): DeliveryReceipt | null {
   // SNS SMS delivery status format
   if (data.status !== undefined && data.PhoneNumber) {
@@ -1522,7 +1522,7 @@ function parseDeliveryStatus(data: any, snsMessage: any): DeliveryReceipt | null
 
 /**
  * Parse SNS SMS delivery status notification
- */
+*/
 function parseSnsDeliveryStatus(event: any): DeliveryReceipt | null {
   const notification = event.notification
 
@@ -1543,7 +1543,7 @@ function parseSnsDeliveryStatus(event: any): DeliveryReceipt | null {
 
 /**
  * Normalize status strings to DeliveryReceipt status
- */
+*/
 function normalizeStatus(status: string): DeliveryReceipt['status'] {
   const s = (status || '').toUpperCase()
   if (s === 'DELIVERED' || s === 'SUCCESS' || s === 'TEXT_DELIVERED') return 'delivered'
@@ -1555,7 +1555,7 @@ function normalizeStatus(status: string): DeliveryReceipt['status'] {
 
 /**
  * Forward delivery receipt to a webhook URL
- */
+*/
 async function forwardToWebhook(
   url: string,
   receipt: DeliveryReceipt,
@@ -1596,7 +1596,7 @@ async function forwardToWebhook(
 /**
  * Normalize a phone number to E.164 format
  * Removes all non-numeric characters except leading +
- */
+*/
 export function normalizePhoneNumber(phone: string): string {
   if (!phone) return ''
 
@@ -1620,7 +1620,7 @@ export function normalizePhoneNumber(phone: string): string {
 
 /**
  * Format a phone number for display
- */
+*/
 export function formatPhoneNumber(phone: string, format: 'national' | 'international' | 'e164' = 'national'): string {
   const normalized = normalizePhoneNumber(phone)
 
@@ -1647,7 +1647,7 @@ export function formatPhoneNumber(phone: string, format: 'national' | 'internati
 
 /**
  * Validate a phone number
- */
+*/
 export function isValidPhoneNumber(phone: string): boolean {
   const normalized = normalizePhoneNumber(phone)
 
@@ -1663,7 +1663,7 @@ export function isValidPhoneNumber(phone: string): boolean {
 
 /**
  * Get the country code from a phone number
- */
+*/
 export function getCountryCode(phone: string): string | null {
   const normalized = normalizePhoneNumber(phone)
   if (!normalized.startsWith('+')) return null
@@ -1729,7 +1729,7 @@ export function getCountryCode(phone: string): string | null {
 
 /**
  * Check if two phone numbers are the same (ignoring formatting)
- */
+*/
 export function isSamePhoneNumber(phone1: string, phone2: string): boolean {
   return normalizePhoneNumber(phone1) === normalizePhoneNumber(phone2)
 }

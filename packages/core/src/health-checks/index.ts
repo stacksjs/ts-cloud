@@ -1,6 +1,6 @@
 /**
  * Health Checks & Monitoring - Endpoint monitoring, synthetic monitoring, uptime tracking
- */
+*/
 
 export interface HealthCheck { id: string; url: string; interval: number; timeout: number; status: 'healthy' | 'unhealthy' }
 export interface SyntheticMonitor { id: string; name: string; script: string; frequency: number; locations: string[] }

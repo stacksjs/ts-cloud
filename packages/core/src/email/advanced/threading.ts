@@ -2,7 +2,7 @@
  * Email Threading and Conversation View
  *
  * Groups emails into conversations based on subject and references
- */
+*/
 
 export interface EmailThread {
   threadId: string
@@ -31,11 +31,11 @@ export interface ThreadMessage {
 
 /**
  * Email Threading Module
- */
+*/
 export class EmailThreading {
   /**
    * Lambda code for threading emails
-   */
+  */
   static ThreadingLambdaCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const crypto = require('crypto');
@@ -178,7 +178,7 @@ async function updateThreadIndex(bucket, mailboxPath, threadId, metadata) {
 
   /**
    * Create threading Lambda function
-   */
+  */
   static createThreadingLambda(config: {
     slug: string
     roleArn: string
@@ -209,7 +209,7 @@ async function updateThreadIndex(bucket, mailboxPath, threadId, metadata) {
 
   /**
    * Get threads for a mailbox (SDK helper)
-   */
+  */
   static async getThreads(params: {
     s3Client: any
     bucket: string
@@ -248,7 +248,7 @@ async function updateThreadIndex(bucket, mailboxPath, threadId, metadata) {
 
   /**
    * Get a specific thread
-   */
+  */
   static async getThread(params: {
     s3Client: any
     bucket: string

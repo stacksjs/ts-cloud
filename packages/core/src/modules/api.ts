@@ -68,11 +68,11 @@ export interface AuthorizerOptions {
 /**
  * API Gateway Module - REST, HTTP, and WebSocket APIs
  * Provides clean API for creating and configuring API Gateway resources
- */
+*/
 export class ApiGateway {
   /**
    * Create a REST API
-   */
+  */
   static createRestApi(options: RestApiOptions): {
     restApi: ApiGatewayRestApi
     logicalId: string
@@ -123,7 +123,7 @@ export class ApiGateway {
 
   /**
    * Create an HTTP API (cheaper and simpler than REST API)
-   */
+  */
   static createHttpApi(options: HttpApiOptions): {
     httpApi: ApiGatewayHttpApi
     logicalId: string
@@ -177,7 +177,7 @@ export class ApiGateway {
 
   /**
    * Create a WebSocket API
-   */
+  */
   static createWebSocketApi(options: WebSocketApiOptions): {
     webSocketApi: ApiGatewayHttpApi
     logicalId: string
@@ -215,7 +215,7 @@ export class ApiGateway {
 
   /**
    * Create a deployment for REST API
-   */
+  */
   static createDeployment(
     restApiLogicalId: string,
     options: {
@@ -250,7 +250,7 @@ export class ApiGateway {
 
   /**
    * Create a stage for REST API
-   */
+  */
   static createStage(
     restApiLogicalId: string,
     deploymentLogicalId: string,
@@ -317,7 +317,7 @@ export class ApiGateway {
 
   /**
    * Create an authorizer for REST API
-   */
+  */
   static createAuthorizer(
     restApiLogicalId: string,
     options: AuthorizerOptions,
@@ -375,7 +375,7 @@ export class ApiGateway {
 
   /**
    * Enable CORS on HTTP API
-   */
+  */
   static setCors(
     httpApi: ApiGatewayHttpApi,
     options: {
@@ -407,7 +407,7 @@ export class ApiGateway {
 
   /**
    * Add throttling to stage
-   */
+  */
   static addThrottling(
     stage: ApiGatewayStage,
     burstLimit: number = 5000,
@@ -429,7 +429,7 @@ export class ApiGateway {
 
   /**
    * Enable caching on stage
-   */
+  */
   static enableCaching(
     stage: ApiGatewayStage,
     cacheSize: '0.5' | '1.6' | '6.1' | '13.5' | '28.4' | '58.2' | '118' | '237' = '0.5',
@@ -454,7 +454,7 @@ export class ApiGateway {
 
   /**
    * Common cache sizes (in GB)
-   */
+  */
   static readonly CacheSizes = {
     Small: '0.5',
     Medium: '1.6',
@@ -468,7 +468,7 @@ export class ApiGateway {
 
   /**
    * Common throttling presets
-   */
+  */
   static readonly ThrottlingPresets = {
     Light: { burstLimit: 100, rateLimit: 50 },
     Medium: { burstLimit: 500, rateLimit: 250 },

@@ -1,7 +1,7 @@
 /**
  * Search Module (OpenSearch/Elasticsearch)
  * Clean API for AWS OpenSearch Service
- */
+*/
 
 import type { OpenSearchDomain } from '@stacksjs/ts-cloud-aws-types'
 import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
@@ -53,11 +53,11 @@ export interface AccessPolicyOptions {
 
 /**
  * Search class for OpenSearch/Elasticsearch operations
- */
+*/
 export class Search {
   /**
    * Create an OpenSearch domain
-   */
+  */
   static createDomain(options: SearchDomainOptions): {
     domain: OpenSearchDomain
     logicalId: string
@@ -184,7 +184,7 @@ export class Search {
 
   /**
    * Create access policy for OpenSearch domain
-   */
+  */
   static createAccessPolicy(
     domainArn: string | { 'Fn::GetAtt': [string, string] },
     options: AccessPolicyOptions,
@@ -261,11 +261,11 @@ export class Search {
 
   /**
    * Common domain configurations
-   */
+  */
   static readonly DomainPresets = {
     /**
      * Development domain (small, single node)
-     */
+    */
     development: (slug: string, environment: string): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
@@ -285,7 +285,7 @@ export class Search {
 
     /**
      * Production domain (HA, multi-AZ)
-     */
+    */
     production: (slug: string, environment: string, vpc?: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
@@ -314,7 +314,7 @@ export class Search {
 
     /**
      * Cost-optimized domain (bursting workloads)
-     */
+    */
     costOptimized: (slug: string, environment: string): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
@@ -335,7 +335,7 @@ export class Search {
 
     /**
      * High-performance domain (analytics, large datasets)
-     */
+    */
     highPerformance: (slug: string, environment: string, vpc: SearchDomainOptions['vpc']): { domain: OpenSearchDomain; logicalId: string } => {
       return Search.createDomain({
         slug,
@@ -365,7 +365,7 @@ export class Search {
 
   /**
    * Common instance types
-   */
+  */
   static readonly InstanceTypes = {
     // T3 - Burstable performance (cost-effective for development/testing)
     't3.small.search': 't3.small.search', // 2 vCPU, 2 GiB
@@ -390,7 +390,7 @@ export class Search {
 
   /**
    * Common engine versions
-   */
+  */
   static readonly EngineVersions = {
     'OpenSearch_2.11': 'OpenSearch_2.11',
     'OpenSearch_2.9': 'OpenSearch_2.9',

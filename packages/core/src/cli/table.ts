@@ -1,7 +1,7 @@
 /**
  * Table formatting utilities for CLI output
  * Better table rendering with borders, alignment, colors
- */
+*/
 
 export interface TableColumn {
   key: string
@@ -22,7 +22,7 @@ export interface TableOptions {
 
 /**
  * Format data as a table
- */
+*/
 export function formatTable(options: TableOptions): string {
   const { columns, data, border = true, header = true, compact = false, maxWidth } = options
 
@@ -87,7 +87,7 @@ export function formatTable(options: TableOptions): string {
 
 /**
  * Create a table row
- */
+*/
 function createRow(
   values: string[],
   widths: number[],
@@ -110,7 +110,7 @@ function createRow(
 
 /**
  * Create a table border
- */
+*/
 function createBorder(widths: number[], position: 'top' | 'middle' | 'bottom', compact: boolean): string {
   const left = position === 'top' ? '┌' : position === 'middle' ? '├' : '└'
   const right = position === 'top' ? '┐' : position === 'middle' ? '┤' : '┘'
@@ -126,7 +126,7 @@ function createBorder(widths: number[], position: 'top' | 'middle' | 'bottom', c
 
 /**
  * Align text within a fixed width
- */
+*/
 function alignText(text: string, width: number, align: 'left' | 'right' | 'center'): string {
   const textWidth = stripAnsi(text).length
 
@@ -151,7 +151,7 @@ function alignText(text: string, width: number, align: 'left' | 'right' | 'cente
 
 /**
  * Truncate text to fit width
- */
+*/
 function truncate(text: string, width: number): string {
   const textWidth = stripAnsi(text).length
 
@@ -165,7 +165,7 @@ function truncate(text: string, width: number): string {
 
 /**
  * Strip ANSI color codes from string
- */
+*/
 function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex
   return text.replace(/\x1B\[[0-9;]*m/g, '')
@@ -173,7 +173,7 @@ function stripAnsi(text: string): string {
 
 /**
  * Format data as a tree structure
- */
+*/
 export interface TreeNode {
   label: string
   children?: TreeNode[]
@@ -187,7 +187,7 @@ export interface TreeOptions {
 
 /**
  * Format data as a tree
- */
+*/
 export function formatTree(nodes: TreeNode[], options: TreeOptions = {}): string {
   const { indent = '  ', showMetadata = false } = options
 
@@ -225,7 +225,7 @@ export function formatTree(nodes: TreeNode[], options: TreeOptions = {}): string
 
 /**
  * Create a simple progress bar
- */
+*/
 export interface ProgressBarOptions {
   total: number
   current: number
@@ -237,7 +237,7 @@ export interface ProgressBarOptions {
 
 /**
  * Format a progress bar
- */
+*/
 export function formatProgressBar(options: ProgressBarOptions): string {
   const {
     total,
@@ -263,7 +263,7 @@ export function formatProgressBar(options: ProgressBarOptions): string {
 
 /**
  * Format bytes as human-readable size
- */
+*/
 export function formatBytes(bytes: number, decimals = 2): string {
   if (bytes === 0) return '0 Bytes'
 
@@ -278,7 +278,7 @@ export function formatBytes(bytes: number, decimals = 2): string {
 
 /**
  * Format duration as human-readable time
- */
+*/
 export function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
 
@@ -307,14 +307,14 @@ export function formatDuration(ms: number): string {
 
 /**
  * Format list with bullets
- */
+*/
 export function formatList(items: string[], bullet = '•'): string {
   return items.map(item => `${bullet} ${item}`).join('\n')
 }
 
 /**
  * Format key-value pairs
- */
+*/
 export function formatKeyValue(
   data: Record<string, any>,
   options: { indent?: string; separator?: string } = {},

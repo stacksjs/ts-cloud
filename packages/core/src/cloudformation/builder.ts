@@ -17,7 +17,7 @@ import { addSecurityResources } from './builders/security'
 /**
  * CloudFormation Template Builder
  * Converts-cloudConfig to CloudFormation templates
- */
+*/
 export class CloudFormationBuilder {
   protected template: CloudFormationTemplate
   private config: CloudConfig
@@ -35,7 +35,7 @@ export class CloudFormationBuilder {
 
   /**
    * Build the complete CloudFormation template
-   */
+  */
   build(): CloudFormationTemplate {
     this.addParameters()
     this.addMappings()
@@ -49,7 +49,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add parameters to the template
-   */
+  */
   private addParameters(): void {
     this.template.Parameters = {
       Environment: {
@@ -63,7 +63,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add mappings to the template
-   */
+  */
   private addMappings(): void {
     // Region-specific AMI mappings
     this.template.Mappings = {
@@ -78,7 +78,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add conditions to the template
-   */
+  */
   private addConditions(): void {
     this.template.Conditions = {
       IsProduction: Fn.equals(Fn.ref('Environment'), 'production'),
@@ -88,7 +88,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add all resources to the template
-   */
+  */
   private addResources(): void {
     const { infrastructure } = this.config
 
@@ -159,7 +159,7 @@ export class CloudFormationBuilder {
 
   /**
    * Initialize default outputs in the template
-   */
+  */
   private initializeOutputs(): void {
     this.template.Outputs = {
       StackName: {
@@ -190,7 +190,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add a resource to the template
-   */
+  */
   addResource(
     logicalId: string,
     type: string,
@@ -229,7 +229,7 @@ export class CloudFormationBuilder {
 
   /**
    * Add or merge outputs to the template
-   */
+  */
   addOutputs(outputs: Record<string, any>): void {
     this.template.Outputs = {
       ...this.template.Outputs,
@@ -239,28 +239,28 @@ export class CloudFormationBuilder {
 
   /**
    * Get the current outputs
-   */
+  */
   getOutputs(): Record<string, any> {
     return this.template.Outputs || {}
   }
 
   /**
    * Check if a resource exists in the template
-   */
+  */
   hasResource(logicalId: string): boolean {
     return logicalId in this.template.Resources
   }
 
   /**
    * Get a resource from the template
-   */
+  */
   getResource(logicalId: string): CloudFormationResource | undefined {
     return this.template.Resources[logicalId]
   }
 
   /**
    * Track resource dependencies for cycle detection
-   */
+  */
   private trackDependency(resource: string, dependencies: string | string[]): void {
     if (!this.resourceDependencies.has(resource)) {
       this.resourceDependencies.set(resource, new Set())
@@ -273,7 +273,7 @@ export class CloudFormationBuilder {
   /**
    * Resolve and validate resource dependencies
    * Detects circular dependencies and reorders if needed
-   */
+  */
   private resolveDependencies(): void {
     // Topological sort to detect cycles
     const visited = new Set<string>()
@@ -309,7 +309,7 @@ export class CloudFormationBuilder {
 
   /**
    * Generate a logical ID from a name
-   */
+  */
   toLogicalId(name: string): string {
     return name
       .split(/[-_\s]/)
@@ -319,7 +319,7 @@ export class CloudFormationBuilder {
 
   /**
    * Call resource builder functions
-   */
+  */
   private addNetworkResources(network: any): void {
     addNetworkResources(this as any, network)
   }
@@ -371,7 +371,7 @@ export class CloudFormationBuilder {
 
 /**
  * Main function to convert CloudConfig to CloudFormation template
- */
+*/
 export function buildCloudFormationTemplate(config: CloudConfig): CloudFormationTemplate {
   const builder = new CloudFormationBuilder(config)
   return builder.build()

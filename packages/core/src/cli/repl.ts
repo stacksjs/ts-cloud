@@ -1,7 +1,7 @@
 /**
  * Interactive REPL mode for ts-cloud CLI
  * Provides a shell-like experience for running commands
- */
+*/
 
 export interface REPLOptions {
   prompt?: string
@@ -26,7 +26,7 @@ export interface REPLHistory {
 
 /**
  * REPL session manager
- */
+*/
 export class REPL {
   private options: REPLOptions
   private running: boolean = false
@@ -46,7 +46,7 @@ export class REPL {
 
   /**
    * Start REPL session
-   */
+  */
   async start(): Promise<void> {
     this.running = true
 
@@ -89,14 +89,14 @@ export class REPL {
 
   /**
    * Stop REPL session
-   */
+  */
   stop(): void {
     this.running = false
   }
 
   /**
    * Read input from user
-   */
+  */
   private async readInput(): Promise<string> {
     // In a real implementation, this would use readline or similar
     // For now, we'll return a mock implementation
@@ -115,7 +115,7 @@ export class REPL {
 
   /**
    * Execute command
-   */
+  */
   private async executeCommand(input: string): Promise<void> {
     const [commandName, ...args] = this.parseCommand(input)
 
@@ -162,7 +162,7 @@ export class REPL {
 
   /**
    * Parse command input
-   */
+  */
   private parseCommand(input: string): string[] {
     // Simple parser - could be enhanced to handle:
     // - Quoted strings
@@ -173,7 +173,7 @@ export class REPL {
 
   /**
    * Find command by name or alias
-   */
+  */
   private findCommand(name: string): REPLCommand | undefined {
     for (const [_key, command] of this.options.commands) {
       if (command.name === name || command.aliases?.includes(name)) {
@@ -185,7 +185,7 @@ export class REPL {
 
   /**
    * Show help message
-   */
+  */
   private showHelp(): void {
     console.log('Available commands:')
     console.log('')
@@ -213,7 +213,7 @@ export class REPL {
 
   /**
    * Show command history
-   */
+  */
   private showHistory(): void {
     if (this.history.commands.length === 0) {
       console.log('No command history')
@@ -228,7 +228,7 @@ export class REPL {
 
   /**
    * Add command to history
-   */
+  */
   private addToHistory(command: string): void {
     // Don't add duplicates of the last command
     if (this.history.commands[this.history.commands.length - 1] === command) {
@@ -247,7 +247,7 @@ export class REPL {
 
   /**
    * Navigate history (up arrow)
-   */
+  */
   private historyBack(): string | undefined {
     if (this.historyIndex > 0) {
       this.historyIndex--
@@ -258,7 +258,7 @@ export class REPL {
 
   /**
    * Navigate history (down arrow)
-   */
+  */
   private historyForward(): string | undefined {
     if (this.historyIndex < this.history.commands.length - 1) {
       this.historyIndex++
@@ -270,7 +270,7 @@ export class REPL {
 
   /**
    * Autocomplete command
-   */
+  */
   private autocomplete(partial: string): string[] {
     const suggestions: string[] = []
 
@@ -302,7 +302,7 @@ export class REPL {
 
   /**
    * Load history from file
-   */
+  */
   private async loadHistory(): Promise<void> {
     if (!this.options.historyFile) return
 
@@ -319,7 +319,7 @@ export class REPL {
 
   /**
    * Save history to file
-   */
+  */
   private async saveHistory(): Promise<void> {
     if (!this.options.historyFile) return
 
@@ -334,14 +334,14 @@ export class REPL {
 
   /**
    * Search history
-   */
+  */
   searchHistory(query: string): string[] {
     return this.history.commands.filter(cmd => cmd.includes(query))
   }
 
   /**
    * Clear history
-   */
+  */
   clearHistory(): void {
     this.history.commands = []
     this.historyIndex = 0
@@ -351,63 +351,63 @@ export class REPL {
 /**
  * Context manager for REPL sessions
  * Maintains state across commands
- */
+*/
 export class REPLContext {
   private variables: Map<string, any> = new Map()
   private workingDirectory: string = process.cwd()
 
   /**
    * Set variable
-   */
+  */
   set(key: string, value: any): void {
     this.variables.set(key, value)
   }
 
   /**
    * Get variable
-   */
+  */
   get(key: string): any {
     return this.variables.get(key)
   }
 
   /**
    * Check if variable exists
-   */
+  */
   has(key: string): boolean {
     return this.variables.has(key)
   }
 
   /**
    * Delete variable
-   */
+  */
   delete(key: string): void {
     this.variables.delete(key)
   }
 
   /**
    * Get all variables
-   */
+  */
   getAll(): Record<string, any> {
     return Object.fromEntries(this.variables)
   }
 
   /**
    * Clear all variables
-   */
+  */
   clear(): void {
     this.variables.clear()
   }
 
   /**
    * Set working directory
-   */
+  */
   setWorkingDirectory(path: string): void {
     this.workingDirectory = path
   }
 
   /**
    * Get working directory
-   */
+  */
   getWorkingDirectory(): string {
     return this.workingDirectory
   }
@@ -415,7 +415,7 @@ export class REPLContext {
 
 /**
  * Command builder for creating REPL commands
- */
+*/
 export class REPLCommandBuilder {
   private command: Partial<REPLCommand> = {}
 

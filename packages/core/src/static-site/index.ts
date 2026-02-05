@@ -1,7 +1,7 @@
 /**
  * Static Site Advanced Features
  * Asset optimization, image optimization, SSG support, and prerendering
- */
+*/
 
 export interface AssetOptimization {
   id: string

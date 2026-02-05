@@ -33,7 +33,7 @@ export interface FunctionsConfig {
 
 /**
  * Add Lambda function resources to CloudFormation template
- */
+*/
 export function addFunctionResources(
   builder: CloudFormationBuilder,
   config: FunctionsConfig,
@@ -47,7 +47,7 @@ export function addFunctionResources(
 
 /**
  * Add a single Lambda function
- */
+*/
 function addLambdaFunction(
   builder: CloudFormationBuilder,
   config: FunctionItem,
@@ -150,7 +150,7 @@ function addLambdaFunction(
 
 /**
  * Add event source mapping for Lambda function
- */
+*/
 function addEventSource(
   builder: CloudFormationBuilder,
   functionLogicalId: string,
@@ -257,7 +257,7 @@ function addEventSource(
 
 /**
  * Generate IAM policy statements based on function events
- */
+*/
 function generateEventPermissions(
   events: FunctionEvent[] | undefined,
 ): any[] {

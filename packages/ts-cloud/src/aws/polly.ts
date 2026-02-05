@@ -2,7 +2,7 @@
  * AWS Polly Client
  * Text-to-Speech service
  * No external SDK dependencies - implements AWS Signature V4 directly
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -209,7 +209,7 @@ export class PollyClient {
 
   /**
    * Synthesize speech from text (synchronous)
-   */
+  */
   async synthesizeSpeech(params: SynthesizeSpeechCommandInput): Promise<SynthesizeSpeechCommandOutput> {
     const result = await this.client.request({
       service: 'polly',
@@ -245,7 +245,7 @@ export class PollyClient {
 
   /**
    * Start async speech synthesis task
-   */
+  */
   async startSpeechSynthesisTask(params: StartSpeechSynthesisTaskCommandInput): Promise<StartSpeechSynthesisTaskCommandOutput> {
     return this.client.request({
       service: 'polly',
@@ -261,7 +261,7 @@ export class PollyClient {
 
   /**
    * Get speech synthesis task status
-   */
+  */
   async getSpeechSynthesisTask(params: GetSpeechSynthesisTaskCommandInput): Promise<GetSpeechSynthesisTaskCommandOutput> {
     return this.client.request({
       service: 'polly',
@@ -273,7 +273,7 @@ export class PollyClient {
 
   /**
    * List speech synthesis tasks
-   */
+  */
   async listSpeechSynthesisTasks(params?: ListSpeechSynthesisTasksCommandInput): Promise<ListSpeechSynthesisTasksCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.MaxResults) queryParams.MaxResults = params.MaxResults.toString()
@@ -295,7 +295,7 @@ export class PollyClient {
 
   /**
    * List available voices
-   */
+  */
   async describeVoices(params?: DescribeVoicesCommandInput): Promise<DescribeVoicesCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.Engine) queryParams.Engine = params.Engine
@@ -320,7 +320,7 @@ export class PollyClient {
 
   /**
    * Store a pronunciation lexicon
-   */
+  */
   async putLexicon(params: PutLexiconCommandInput): Promise<PutLexiconCommandOutput> {
     return this.client.request({
       service: 'polly',
@@ -336,7 +336,7 @@ export class PollyClient {
 
   /**
    * Get a lexicon
-   */
+  */
   async getLexicon(params: GetLexiconCommandInput): Promise<GetLexiconCommandOutput> {
     return this.client.request({
       service: 'polly',
@@ -348,7 +348,7 @@ export class PollyClient {
 
   /**
    * Delete a lexicon
-   */
+  */
   async deleteLexicon(params: DeleteLexiconCommandInput): Promise<DeleteLexiconCommandOutput> {
     return this.client.request({
       service: 'polly',
@@ -360,7 +360,7 @@ export class PollyClient {
 
   /**
    * List lexicons
-   */
+  */
   async listLexicons(params?: ListLexiconsCommandInput): Promise<ListLexiconsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.NextToken) queryParams.NextToken = params.NextToken
@@ -380,7 +380,7 @@ export class PollyClient {
 
   /**
    * Simple text to speech - returns MP3 audio bytes
-   */
+  */
   async textToSpeech(
     text: string,
     options?: {
@@ -401,7 +401,7 @@ export class PollyClient {
 
   /**
    * Text to speech with SSML support
-   */
+  */
   async ssmlToSpeech(
     ssml: string,
     options?: {
@@ -423,7 +423,7 @@ export class PollyClient {
 
   /**
    * Save speech to S3 (for longer texts)
-   */
+  */
   async saveToS3(
     text: string,
     bucket: string,
@@ -454,7 +454,7 @@ export class PollyClient {
 
   /**
    * List voices for a specific language
-   */
+  */
   async listVoicesForLanguage(languageCode: LanguageCode): Promise<Voice[]> {
     const result = await this.describeVoices({ LanguageCode: languageCode })
     return result.Voices || []
@@ -462,7 +462,7 @@ export class PollyClient {
 
   /**
    * List neural voices
-   */
+  */
   async listNeuralVoices(): Promise<Voice[]> {
     const result = await this.describeVoices({ Engine: 'neural' })
     return result.Voices || []
@@ -470,7 +470,7 @@ export class PollyClient {
 
   /**
    * Wait for synthesis task to complete
-   */
+  */
   async waitForTask(
     taskId: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -503,7 +503,7 @@ export class PollyClient {
 
 /**
  * Quick text to speech
- */
+*/
 export async function textToSpeech(
   text: string,
   options?: {
@@ -518,7 +518,7 @@ export async function textToSpeech(
 
 /**
  * List available voices
- */
+*/
 export async function listVoices(
   options?: {
     languageCode?: LanguageCode
@@ -536,7 +536,7 @@ export async function listVoices(
 
 /**
  * Create SSML with speech marks (pauses, emphasis, etc.)
- */
+*/
 export function createSSML(text: string, options?: {
   rate?: 'x-slow' | 'slow' | 'medium' | 'fast' | 'x-fast'
   pitch?: 'x-low' | 'low' | 'medium' | 'high' | 'x-high'

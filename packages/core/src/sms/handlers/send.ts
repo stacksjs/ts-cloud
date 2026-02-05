@@ -5,7 +5,7 @@
  * - Send SMS via Pinpoint/SNS
  * - Handle templated messages
  * - Track delivery status
- */
+*/
 
 export const handler = `
 const { PinpointClient, SendMessagesCommand } = require('@aws-sdk/client-pinpoint');

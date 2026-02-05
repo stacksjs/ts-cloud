@@ -1,7 +1,7 @@
 /**
  * AWS OpenSearch Service Client
  * Direct API calls for OpenSearch operations
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -32,7 +32,7 @@ export interface DomainStatus {
 
 /**
  * OpenSearch client for direct API calls
- */
+*/
 export class OpenSearchClient {
   private client: AWSClient
   private region: string
@@ -44,7 +44,7 @@ export class OpenSearchClient {
 
   /**
    * Create an OpenSearch domain
-   */
+  */
   async createDomain(params: {
     DomainName: string
     EngineVersion?: string
@@ -95,7 +95,7 @@ export class OpenSearchClient {
 
   /**
    * Delete an OpenSearch domain
-   */
+  */
   async deleteDomain(domainName: string): Promise<{ DomainStatus: DomainStatus }> {
     return this.client.request({
       service: 'es',
@@ -107,7 +107,7 @@ export class OpenSearchClient {
 
   /**
    * Describe an OpenSearch domain
-   */
+  */
   async describeDomain(domainName: string): Promise<{ DomainStatus: DomainStatus }> {
     return this.client.request({
       service: 'es',
@@ -119,7 +119,7 @@ export class OpenSearchClient {
 
   /**
    * List all OpenSearch domains
-   */
+  */
   async listDomainNames(): Promise<{ DomainNames: Array<{ DomainName: string; EngineType: string }> }> {
     return this.client.request({
       service: 'es',
@@ -131,7 +131,7 @@ export class OpenSearchClient {
 
   /**
    * Update domain config
-   */
+  */
   async updateDomainConfig(params: {
     DomainName: string
     ClusterConfig?: {

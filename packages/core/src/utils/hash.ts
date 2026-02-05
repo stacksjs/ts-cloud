@@ -1,7 +1,7 @@
 /**
  * File hashing utilities for deployment optimization
  * Fast hashing for detecting changed files
- */
+*/
 
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -22,7 +22,7 @@ export interface HashOptions {
 
 /**
  * Hash a file using streaming for large files
- */
+*/
 export async function hashFile(
   filePath: string,
   options: HashOptions = {},
@@ -42,21 +42,21 @@ export async function hashFile(
 
 /**
  * Hash a string
- */
+*/
 export function hashString(content: string, algorithm: 'md5' | 'sha1' | 'sha256' = 'sha256'): string {
   return createHash(algorithm).update(content).digest('hex')
 }
 
 /**
  * Hash a buffer
- */
+*/
 export function hashBuffer(buffer: Buffer, algorithm: 'md5' | 'sha1' | 'sha256' = 'sha256'): string {
   return createHash(algorithm).update(buffer).digest('hex')
 }
 
 /**
  * Hash all files in a directory
- */
+*/
 export async function hashDirectory(
   dirPath: string,
   options: HashOptions = {},
@@ -108,7 +108,7 @@ export async function hashDirectory(
 /**
  * Create a manifest hash from multiple file hashes
  * Useful for detecting if any file in a directory has changed
- */
+*/
 export function hashManifest(fileHashes: FileHash[]): string {
   const sorted = [...fileHashes].sort((a, b) => a.path.localeCompare(b.path))
   const content = sorted.map(f => `${f.path}:${f.hash}`).join('\n')
@@ -119,7 +119,7 @@ export function hashManifest(fileHashes: FileHash[]): string {
  * Fast hash using file metadata (size + mtime)
  * Much faster than content hash, but less reliable
  * Use for quick change detection
- */
+*/
 export function quickHash(filePath: string): string {
   const stats = fs.statSync(filePath)
   return hashString(`${filePath}:${stats.size}:${stats.mtimeMs}`)
@@ -127,7 +127,7 @@ export function quickHash(filePath: string): string {
 
 /**
  * Compare two sets of file hashes to find changes
- */
+*/
 export function findChangedFiles(
   oldHashes: FileHash[],
   newHashes: FileHash[],
@@ -167,7 +167,7 @@ export function findChangedFiles(
 
 /**
  * Cache for file hashes
- */
+*/
 export class HashCache {
   private cache: Map<string, { hash: string, mtime: number, size: number }>
 
@@ -177,7 +177,7 @@ export class HashCache {
 
   /**
    * Get cached hash if file hasn't changed
-   */
+  */
   get(filePath: string): string | undefined {
     const stats = fs.statSync(filePath)
     const cached = this.cache.get(filePath)
@@ -191,7 +191,7 @@ export class HashCache {
 
   /**
    * Cache a file hash
-   */
+  */
   set(filePath: string, hash: string): void {
     const stats = fs.statSync(filePath)
 
@@ -204,7 +204,7 @@ export class HashCache {
 
   /**
    * Get or compute hash
-   */
+  */
   async getOrCompute(filePath: string, options: HashOptions = {}): Promise<string> {
     const cached = this.get(filePath)
 
@@ -220,7 +220,7 @@ export class HashCache {
 
   /**
    * Clear cache
-   */
+  */
   clear(): void {
     this.cache.clear()
   }

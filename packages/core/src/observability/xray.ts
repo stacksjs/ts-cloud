@@ -1,7 +1,7 @@
 /**
  * AWS X-Ray Integration
  * Distributed tracing for microservices and serverless applications
- */
+*/
 
 export interface XRayConfig {
   id: string
@@ -87,7 +87,7 @@ export interface SamplingRule {
 
 /**
  * X-Ray manager
- */
+*/
 export class XRayManager {
   private configs: Map<string, XRayConfig> = new Map()
   private samplingRules: Map<string, SamplingRule> = new Map()
@@ -96,7 +96,7 @@ export class XRayManager {
 
   /**
    * Create X-Ray configuration
-   */
+  */
   createConfig(config: Omit<XRayConfig, 'id'>): XRayConfig {
     const id = `xray-config-${Date.now()}-${this.configCounter++}`
 
@@ -112,7 +112,7 @@ export class XRayManager {
 
   /**
    * Create Lambda X-Ray configuration
-   */
+  */
   createLambdaConfig(options: {
     functionName: string
     samplingRate?: number
@@ -127,7 +127,7 @@ export class XRayManager {
 
   /**
    * Create ECS X-Ray configuration
-   */
+  */
   createECSConfig(options: {
     serviceName: string
     clusterName: string
@@ -143,7 +143,7 @@ export class XRayManager {
 
   /**
    * Create API Gateway X-Ray configuration
-   */
+  */
   createAPIGatewayConfig(options: {
     apiName: string
     stage: string
@@ -159,7 +159,7 @@ export class XRayManager {
 
   /**
    * Create sampling rule
-   */
+  */
   createSamplingRule(rule: Omit<SamplingRule, 'id'>): SamplingRule {
     const id = `sampling-rule-${Date.now()}-${this.ruleCounter++}`
 
@@ -175,7 +175,7 @@ export class XRayManager {
 
   /**
    * Create high-priority sampling rule (always trace)
-   */
+  */
   createHighPrioritySamplingRule(options: {
     ruleName: string
     serviceName: string
@@ -197,7 +197,7 @@ export class XRayManager {
 
   /**
    * Create error sampling rule (trace all errors)
-   */
+  */
   createErrorSamplingRule(serviceName: string): SamplingRule {
     return this.createSamplingRule({
       ruleName: `${serviceName}-errors`,
@@ -215,7 +215,7 @@ export class XRayManager {
 
   /**
    * Create default sampling rule
-   */
+  */
   createDefaultSamplingRule(serviceName: string, samplingRate: number = 0.05): SamplingRule {
     return this.createSamplingRule({
       ruleName: `${serviceName}-default`,
@@ -233,35 +233,35 @@ export class XRayManager {
 
   /**
    * Get config
-   */
+  */
   getConfig(id: string): XRayConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List configs
-   */
+  */
   listConfigs(): XRayConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get sampling rule
-   */
+  */
   getSamplingRule(id: string): SamplingRule | undefined {
     return this.samplingRules.get(id)
   }
 
   /**
    * List sampling rules
-   */
+  */
   listSamplingRules(): SamplingRule[] {
     return Array.from(this.samplingRules.values())
   }
 
   /**
    * Generate CloudFormation for Lambda X-Ray
-   */
+  */
   generateLambdaXRayCF(config: XRayConfig): any {
     return {
       TracingConfig: {
@@ -272,7 +272,7 @@ export class XRayManager {
 
   /**
    * Generate CloudFormation for API Gateway X-Ray
-   */
+  */
   generateAPIGatewayXRayCF(config: XRayConfig): any {
     return {
       TracingEnabled: config.enableActiveTracing,
@@ -281,7 +281,7 @@ export class XRayManager {
 
   /**
    * Generate ECS task definition with X-Ray sidecar
-   */
+  */
   generateECSXRaySidecarCF(): any {
     return {
       Name: 'xray-daemon',
@@ -299,7 +299,7 @@ export class XRayManager {
 
   /**
    * Generate sampling rules CloudFormation
-   */
+  */
   generateSamplingRuleCF(rule: SamplingRule): any {
     return {
       Type: 'AWS::XRay::SamplingRule',
@@ -323,7 +323,7 @@ export class XRayManager {
 
   /**
    * Create a distributed trace
-   */
+  */
   createTrace(
     traceId: string,
     spans: Array<{ spanId: string; name: string; duration: number; tags: Record<string, any> }>
@@ -343,7 +343,7 @@ export class XRayManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.configs.clear()
     this.samplingRules.clear()
@@ -354,5 +354,5 @@ export class XRayManager {
 
 /**
  * Global X-Ray manager instance
- */
+*/
 export const xrayManager: XRayManager = new XRayManager()

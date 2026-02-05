@@ -6,7 +6,7 @@
  * - Processes complaint notifications
  * - Updates suppression list
  * - Sends admin notifications
- */
+*/
 
 export const handler = `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');

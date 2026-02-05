@@ -1,7 +1,7 @@
 /**
  * SQS Queue Management
  * Retention policies, delay queues, and queue operations
- */
+*/
 
 export interface QueueManagement {
   id: string
@@ -53,7 +53,7 @@ export interface QueueMetrics {
 
 /**
  * Queue management manager
- */
+*/
 export class QueueManagementManager {
   private queues: Map<string, QueueManagement> = new Map()
   private retentionPolicies: Map<string, RetentionPolicy> = new Map()
@@ -68,7 +68,7 @@ export class QueueManagementManager {
 
   /**
    * Create queue
-   */
+  */
   createQueue(queue: Omit<QueueManagement, 'id' | 'purgeInProgress'>): QueueManagement {
     const id = `queue-${Date.now()}-${this.queueCounter++}`
 
@@ -85,7 +85,7 @@ export class QueueManagementManager {
 
   /**
    * Create standard queue
-   */
+  */
   createStandardQueue(options: {
     queueName: string
     messageRetentionDays?: number
@@ -102,7 +102,7 @@ export class QueueManagementManager {
 
   /**
    * Create long polling queue
-   */
+  */
   createLongPollingQueue(options: {
     queueName: string
     waitTimeSeconds?: number
@@ -119,7 +119,7 @@ export class QueueManagementManager {
 
   /**
    * Create retention policy
-   */
+  */
   createRetentionPolicy(policy: Omit<RetentionPolicy, 'id'>): RetentionPolicy {
     const id = `retention-${Date.now()}-${this.retentionCounter++}`
 
@@ -141,7 +141,7 @@ export class QueueManagementManager {
 
   /**
    * Create short retention policy
-   */
+  */
   createShortRetentionPolicy(options: {
     queueId: string
     retentionHours: number
@@ -156,7 +156,7 @@ export class QueueManagementManager {
 
   /**
    * Create archival retention policy
-   */
+  */
   createArchivalRetentionPolicy(options: {
     queueId: string
     retentionDays: number
@@ -174,7 +174,7 @@ export class QueueManagementManager {
 
   /**
    * Create delay queue
-   */
+  */
   createDelayQueue(delay: Omit<DelayQueue, 'id'>): DelayQueue {
     const id = `delay-${Date.now()}-${this.delayCounter++}`
 
@@ -196,7 +196,7 @@ export class QueueManagementManager {
 
   /**
    * Create scheduled delay queue
-   */
+  */
   createScheduledDelayQueue(options: {
     queueUrl: string
     delayMinutes: number
@@ -211,7 +211,7 @@ export class QueueManagementManager {
 
   /**
    * Purge queue
-   */
+  */
   async purgeQueue(queueId: string): Promise<PurgeOperation> {
     const queue = this.queues.get(queueId)
 
@@ -248,7 +248,7 @@ export class QueueManagementManager {
 
   /**
    * Collect queue metrics
-   */
+  */
   collectQueueMetrics(queueUrl: string): QueueMetrics {
     const id = `metrics-${Date.now()}-${this.metricsCounter++}`
 
@@ -271,7 +271,7 @@ export class QueueManagementManager {
 
   /**
    * Get queue health
-   */
+  */
   getQueueHealth(queueUrl: string): {
     status: 'healthy' | 'warning' | 'critical'
     issues: string[]
@@ -325,35 +325,35 @@ export class QueueManagementManager {
 
   /**
    * Get queue
-   */
+  */
   getQueue(id: string): QueueManagement | undefined {
     return this.queues.get(id)
   }
 
   /**
    * List queues
-   */
+  */
   listQueues(): QueueManagement[] {
     return Array.from(this.queues.values())
   }
 
   /**
    * Get retention policy
-   */
+  */
   getRetentionPolicy(id: string): RetentionPolicy | undefined {
     return this.retentionPolicies.get(id)
   }
 
   /**
    * List retention policies
-   */
+  */
   listRetentionPolicies(): RetentionPolicy[] {
     return Array.from(this.retentionPolicies.values())
   }
 
   /**
    * Get purge operations
-   */
+  */
   getPurgeOperations(queueUrl?: string): PurgeOperation[] {
     let operations = Array.from(this.purgeOperations.values())
 
@@ -366,7 +366,7 @@ export class QueueManagementManager {
 
   /**
    * Generate CloudFormation for queue
-   */
+  */
   generateQueueCF(queue: QueueManagement): any {
     return {
       Type: 'AWS::SQS::Queue',
@@ -382,7 +382,7 @@ export class QueueManagementManager {
 
   /**
    * Generate CloudFormation for EventBridge rule for cleanup
-   */
+  */
   generateCleanupRuleCF(policy: RetentionPolicy): any {
     return {
       Type: 'AWS::Events::Rule',
@@ -407,7 +407,7 @@ export class QueueManagementManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.queues.clear()
     this.retentionPolicies.clear()
@@ -424,5 +424,5 @@ export class QueueManagementManager {
 
 /**
  * Global queue management manager instance
- */
+*/
 export const queueManagementManager: QueueManagementManager = new QueueManagementManager()

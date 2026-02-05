@@ -1,13 +1,13 @@
 /**
  * AWS Systems Manager (SSM) Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_SSM.html
- */
+*/
 
 import type { Tag } from './common'
 
 /**
  * AWS::SSM::Parameter
- */
+*/
 export interface SSMParameter {
   Type: 'AWS::SSM::Parameter'
   Properties: {
@@ -25,7 +25,7 @@ export interface SSMParameter {
 
 /**
  * AWS::SSM::Association
- */
+*/
 export interface SSMAssociation {
   Type: 'AWS::SSM::Association'
   Properties: {
@@ -60,7 +60,7 @@ export interface SSMAssociation {
 
 /**
  * AWS::SSM::Document
- */
+*/
 export interface SSMDocument {
   Type: 'AWS::SSM::Document'
   Properties: {
@@ -86,7 +86,7 @@ export interface SSMDocument {
 
 /**
  * AWS::SSM::MaintenanceWindow
- */
+*/
 export interface SSMMaintenanceWindow {
   Type: 'AWS::SSM::MaintenanceWindow'
   Properties: {
@@ -106,7 +106,7 @@ export interface SSMMaintenanceWindow {
 
 /**
  * AWS::SSM::MaintenanceWindowTarget
- */
+*/
 export interface SSMMaintenanceWindowTarget {
   Type: 'AWS::SSM::MaintenanceWindowTarget'
   Properties: {
@@ -124,7 +124,7 @@ export interface SSMMaintenanceWindowTarget {
 
 /**
  * AWS::SSM::MaintenanceWindowTask
- */
+*/
 export interface SSMMaintenanceWindowTask {
   Type: 'AWS::SSM::MaintenanceWindowTask'
   Properties: {
@@ -181,7 +181,7 @@ export interface SSMMaintenanceWindowTask {
 
 /**
  * AWS::SSM::PatchBaseline
- */
+*/
 export interface SSMPatchBaseline {
   Type: 'AWS::SSM::PatchBaseline'
   Properties: {
@@ -224,7 +224,7 @@ export interface SSMPatchBaseline {
 
 /**
  * AWS::SSM::ResourceDataSync
- */
+*/
 export interface SSMResourceDataSync {
   Type: 'AWS::SSM::ResourceDataSync'
   Properties: {

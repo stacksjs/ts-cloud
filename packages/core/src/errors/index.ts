@@ -1,7 +1,7 @@
 /**
  * Error Handling & Debugging
  * Clear error messages with solutions and debugging support
- */
+*/
 
 export class CloudError extends Error {
   constructor(
@@ -35,7 +35,7 @@ export class CloudError extends Error {
 
 /**
  * Configuration errors
- */
+*/
 export class ConfigurationError extends CloudError {
   constructor(message: string, solution?: string, details?: Record<string, any>) {
     super(message, 'CONFIG_ERROR', solution, details)
@@ -45,7 +45,7 @@ export class ConfigurationError extends CloudError {
 
 /**
  * AWS credential errors
- */
+*/
 export class CredentialError extends CloudError {
   constructor(message: string, solution?: string, details?: Record<string, any>) {
     super(message, 'CREDENTIAL_ERROR', solution, details)
@@ -55,7 +55,7 @@ export class CredentialError extends CloudError {
 
 /**
  * Deployment errors
- */
+*/
 export class DeploymentError extends CloudError {
   constructor(message: string, solution?: string, details?: Record<string, any>) {
     super(message, 'DEPLOYMENT_ERROR', solution, details)
@@ -65,7 +65,7 @@ export class DeploymentError extends CloudError {
 
 /**
  * Validation errors
- */
+*/
 export class ValidationError extends CloudError {
   constructor(message: string, solution?: string, details?: Record<string, any>) {
     super(message, 'VALIDATION_ERROR', solution, details)
@@ -75,7 +75,7 @@ export class ValidationError extends CloudError {
 
 /**
  * AWS API errors
- */
+*/
 export class AWSAPIError extends CloudError {
   constructor(
     message: string,
@@ -90,7 +90,7 @@ export class AWSAPIError extends CloudError {
 
 /**
  * Common error scenarios with solutions
- */
+*/
 export const ErrorCodes = {
   // Credential errors
   NO_CREDENTIALS: {
@@ -227,14 +227,14 @@ export const ErrorCodes = {
 
 /**
  * Get error details by code
- */
+*/
 export function getErrorDetails(code: keyof typeof ErrorCodes): { message: string; solution: string } {
   return ErrorCodes[code]
 }
 
 /**
  * Create error from code
- */
+*/
 export function createError(
   code: keyof typeof ErrorCodes,
   additionalDetails?: Record<string, any>,
@@ -250,7 +250,7 @@ export function createError(
 
 /**
  * Debug logger
- */
+*/
 export class DebugLogger {
   private static verboseMode = false
   private static debugMode = false
@@ -308,7 +308,7 @@ export class DebugLogger {
 
 /**
  * Validate configuration
- */
+*/
 export function validateConfiguration(config: any): void {
   if (!config) {
     throw createError('MISSING_CONFIG')
@@ -366,7 +366,7 @@ export function validateConfiguration(config: any): void {
 
 /**
  * Detect common misconfigurations
- */
+*/
 export function detectMisconfigurations(config: any): string[] {
   const warnings: string[] = []
 

@@ -1,7 +1,7 @@
 /**
  * Stack Diff Analyzer
  * Analyzes differences between CloudFormation templates for stack updates
- */
+*/
 
 import type { CloudFormationResource, CloudFormationTemplate } from '@stacksjs/ts-cloud-aws-types'
 
@@ -35,7 +35,7 @@ export interface StackDiff {
 
 /**
  * Analyze differences between two CloudFormation templates
- */
+*/
 export function analyzeStackDiff(
   oldTemplate: CloudFormationTemplate,
   newTemplate: CloudFormationTemplate,
@@ -144,7 +144,7 @@ export function analyzeStackDiff(
 
 /**
  * Compare properties of two resources
- */
+*/
 function compareProperties(
   oldProps: Record<string, any>,
   newProps: Record<string, any>,
@@ -216,7 +216,7 @@ function compareProperties(
 /**
  * Check if property changes require resource replacement
  * Based on CloudFormation resource specifications
- */
+*/
 function checkIfReplacementRequired(
   resourceType: string,
   changes: PropertyChange[],
@@ -256,7 +256,7 @@ function checkIfReplacementRequired(
 
 /**
  * Identify potentially dangerous changes
- */
+*/
 function identifyDangerousChanges(diffs: ResourceDiff[]): string[] {
   const dangerous: string[] = []
 
@@ -308,7 +308,7 @@ function identifyDangerousChanges(diffs: ResourceDiff[]): string[] {
 
 /**
  * Format diff for display
- */
+*/
 export function formatDiff(diff: StackDiff): string {
   const lines: string[] = []
 

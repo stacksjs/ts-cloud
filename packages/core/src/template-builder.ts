@@ -13,7 +13,7 @@ export class TemplateBuilder {
 
   /**
    * Add a resource to the template
-   */
+  */
   addResource(logicalId: string, resource: CloudFormationResource): this {
     this.template.Resources[logicalId] = resource
     return this
@@ -21,7 +21,7 @@ export class TemplateBuilder {
 
   /**
    * Add multiple resources to the template
-   */
+  */
   addResources(resources: Record<string, CloudFormationResource>): this {
     Object.assign(this.template.Resources, resources)
     return this
@@ -29,7 +29,7 @@ export class TemplateBuilder {
 
   /**
    * Add a parameter to the template
-   */
+  */
   addParameter(name: string, parameter: NonNullable<CloudFormationTemplate['Parameters']>[string]): this {
     if (!this.template.Parameters) {
       this.template.Parameters = {}
@@ -40,7 +40,7 @@ export class TemplateBuilder {
 
   /**
    * Add an output to the template
-   */
+  */
   addOutput(name: string, output: NonNullable<CloudFormationTemplate['Outputs']>[string]): this {
     if (!this.template.Outputs) {
       this.template.Outputs = {}
@@ -51,28 +51,28 @@ export class TemplateBuilder {
 
   /**
    * Get resources from the template
-   */
+  */
   getResources(): Record<string, CloudFormationResource> {
     return this.template.Resources
   }
 
   /**
    * Build and return the CloudFormation template
-   */
+  */
   build(): CloudFormationTemplate {
     return this.template
   }
 
   /**
    * Convert template to JSON string
-   */
+  */
   toJSON(pretty = true): string {
     return JSON.stringify(this.template, null, pretty ? 2 : 0)
   }
 
   /**
    * Convert template to YAML string (simple implementation)
-   */
+  */
   toYAML(): string {
     // Simple YAML conversion - for production, use a proper YAML library
     return this.convertToYAML(this.template)

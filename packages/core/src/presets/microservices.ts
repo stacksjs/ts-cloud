@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Microservices Preset
  * Perfect for: Service-oriented architectures, distributed systems
  * Includes: Multiple ECS services + API Gateway + Service Discovery + DynamoDB
- */
+*/
 export function createMicroservicesPreset(options: {
   name: string
   slug: string

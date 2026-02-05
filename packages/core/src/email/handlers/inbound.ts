@@ -8,7 +8,7 @@
  * - Supports + addressing (user+tag@domain.com)
  * - Stores in S3 with proper structure
  * - Triggers SNS notifications
- */
+*/
 
 export const handler = `
 const { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');

@@ -2,7 +2,7 @@
  * SMS Chatbot Integration
  *
  * Provides conversational SMS with AI/rule-based responses
- */
+*/
 
 export interface ChatbotConfig {
   enabled: boolean
@@ -34,11 +34,11 @@ export interface ChatRule {
 
 /**
  * SMS Chatbot Module
- */
+*/
 export class SmsChatbot {
   /**
    * Lambda code for chatbot processing
-   */
+  */
   static ChatbotProcessorCode: string = [
     `const { DynamoDBClient, GetItemCommand, PutItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');`,
     "const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');",
@@ -102,7 +102,7 @@ export class SmsChatbot {
 
   /**
    * Create sessions DynamoDB table
-   */
+  */
   static createSessionsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}ChatbotSessionsTable`]: {
@@ -127,7 +127,7 @@ export class SmsChatbot {
 
   /**
    * Create chatbot rules table
-   */
+  */
   static createRulesTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}ChatbotRulesTable`]: {
@@ -148,7 +148,7 @@ export class SmsChatbot {
 
   /**
    * Create chatbot processor Lambda
-   */
+  */
   static createChatbotProcessorLambda(config: {
     slug: string
     roleArn: string
@@ -185,7 +185,7 @@ export class SmsChatbot {
 
   /**
    * Built-in chatbot rules
-   */
+  */
   static readonly DefaultRules: ChatRule[] = [
     {
       id: 'greeting',

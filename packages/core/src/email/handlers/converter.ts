@@ -6,7 +6,7 @@
  * - Extracts and saves attachments separately
  * - Generates email previews
  * - Creates searchable metadata JSON
- */
+*/
 
 export const handler = `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');

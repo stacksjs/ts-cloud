@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Node.js Serverless Preset
  * Perfect for: Serverless APIs, microservices
  * Includes: ECS Fargate + ALB + DynamoDB + Lambda functions
- */
+*/
 export function createNodeJsServerlessPreset(options: {
   name: string
   slug: string

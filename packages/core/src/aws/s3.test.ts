@@ -1,6 +1,6 @@
 /**
  * S3 Client Tests
- */
+*/
 
 import { describe, expect, it } from 'bun:test'
 import { S3Client, S3Error, createS3Client } from './s3'

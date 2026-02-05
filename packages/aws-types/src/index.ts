@@ -1,7 +1,7 @@
 /**
  * AWS CloudFormation Resource Type Definitions
  * These types are lightweight definitions without AWS SDK dependencies
- */
+*/
 
 // CloudFormation Template Structure
 export interface CloudFormationTemplate {

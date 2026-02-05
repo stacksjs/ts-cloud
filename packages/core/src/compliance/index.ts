@@ -1,7 +1,7 @@
 /**
  * Compliance & Governance
  * AWS Config, CloudTrail, GuardDuty, and Security Hub integrations
- */
+*/
 
 // AWS Config
 export {

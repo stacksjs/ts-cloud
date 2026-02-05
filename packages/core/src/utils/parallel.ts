@@ -1,7 +1,7 @@
 /**
  * Parallel execution utilities
  * Optimize deployment performance with parallel operations
- */
+*/
 
 export interface ParallelOptions {
   concurrency?: number
@@ -16,7 +16,7 @@ export interface ParallelResult<T> {
 
 /**
  * Execute tasks in parallel with configurable concurrency
- */
+*/
 export async function parallel<T>(
   tasks: (() => Promise<T>)[],
   options: ParallelOptions = {},
@@ -91,7 +91,7 @@ export async function parallel<T>(
 
 /**
  * Execute tasks in batches with controlled concurrency
- */
+*/
 export async function batch<T, R>(
   items: T[],
   processor: (item: T) => Promise<R>,
@@ -103,7 +103,7 @@ export async function batch<T, R>(
 
 /**
  * Map over array with parallel execution
- */
+*/
 export async function parallelMap<T, R>(
   items: T[],
   mapper: (item: T, index: number) => Promise<R>,
@@ -121,7 +121,7 @@ export async function parallelMap<T, R>(
 
 /**
  * Execute tasks with retry logic
- */
+*/
 export async function parallelWithRetry<T>(
   tasks: (() => Promise<T>)[],
   options: ParallelOptions & { retries?: number, retryDelay?: number } = {},
@@ -154,7 +154,7 @@ export async function parallelWithRetry<T>(
 
 /**
  * Execute tasks in sequence (one after another)
- */
+*/
 export async function sequence<T>(
   tasks: (() => Promise<T>)[],
 ): Promise<T[]> {
@@ -170,14 +170,14 @@ export async function sequence<T>(
 
 /**
  * Sleep for specified milliseconds
- */
+*/
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
  * Execute tasks with timeout
- */
+*/
 export async function withTimeout<T>(
   task: () => Promise<T>,
   timeoutMs: number,
@@ -193,7 +193,7 @@ export async function withTimeout<T>(
 
 /**
  * Rate limiter for API calls
- */
+*/
 export class RateLimiter {
   private queue: (() => void)[] = []
   private running = 0
@@ -206,7 +206,7 @@ export class RateLimiter {
 
   /**
    * Execute task with rate limiting
-   */
+  */
   async execute<T>(task: () => Promise<T>): Promise<T> {
     // Wait for available slot
     await this.waitForSlot()
@@ -225,7 +225,7 @@ export class RateLimiter {
 
   /**
    * Wait for available execution slot
-   */
+  */
   private waitForSlot(): Promise<void> {
     if (this.running < this.maxConcurrent) {
       const timeSinceLastExecution = Date.now() - this.lastExecution
@@ -242,7 +242,7 @@ export class RateLimiter {
 
   /**
    * Process queued tasks
-   */
+  */
   private processQueue(): void {
     if (this.queue.length > 0 && this.running < this.maxConcurrent) {
       const resolve = this.queue.shift()!
@@ -252,7 +252,7 @@ export class RateLimiter {
 
   /**
    * Get stats
-   */
+  */
   stats(): { running: number, queued: number } {
     return {
       running: this.running,
@@ -263,7 +263,7 @@ export class RateLimiter {
 
 /**
  * Chunk array into smaller batches
- */
+*/
 export function chunk<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = []
 
@@ -276,7 +276,7 @@ export function chunk<T>(array: T[], size: number): T[][] {
 
 /**
  * Process array in chunks with parallel execution
- */
+*/
 export async function processInChunks<T, R>(
   items: T[],
   chunkSize: number,

@@ -1,7 +1,7 @@
 /**
  * Lambda Destinations
  * Asynchronous invocation destinations for success and failure
- */
+*/
 
 export interface LambdaDestination {
   id: string
@@ -40,7 +40,7 @@ export interface EventBridgeDestination {
 
 /**
  * Lambda destinations manager
- */
+*/
 export class LambdaDestinationsManager {
   private destinations: Map<string, LambdaDestination> = new Map()
   private records: Map<string, DestinationRecord> = new Map()
@@ -51,7 +51,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure destinations
-   */
+  */
   configureDestinations(destination: Omit<LambdaDestination, 'id'>): LambdaDestination {
     const id = `destination-${Date.now()}-${this.destinationCounter++}`
 
@@ -67,7 +67,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure SQS destination
-   */
+  */
   configureSQSDestination(options: {
     functionName: string
     queueArn: string
@@ -90,7 +90,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure SNS destination
-   */
+  */
   configureSNSDestination(options: {
     functionName: string
     topicArn: string
@@ -113,7 +113,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure EventBridge destination
-   */
+  */
   configureEventBridgeDestination(options: {
     functionName: string
     eventBusArn: string
@@ -136,7 +136,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure Lambda destination
-   */
+  */
   configureLambdaDestination(options: {
     functionName: string
     destinationFunctionArn: string
@@ -159,7 +159,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Configure DLQ with SNS destination
-   */
+  */
   configureDLQWithNotification(options: {
     functionName: string
     dlqArn: string
@@ -178,7 +178,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Create EventBridge integration
-   */
+  */
   createEventBridgeIntegration(options: {
     functionName: string
     eventBusArn: string
@@ -202,7 +202,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Simulate sending to destination
-   */
+  */
   sendToDestination(options: {
     functionName: string
     requestId: string
@@ -249,14 +249,14 @@ export class LambdaDestinationsManager {
 
   /**
    * Get destination
-   */
+  */
   getDestination(id: string): LambdaDestination | undefined {
     return this.destinations.get(id)
   }
 
   /**
    * List destinations
-   */
+  */
   listDestinations(functionName?: string): LambdaDestination[] {
     const destinations = Array.from(this.destinations.values())
     return functionName
@@ -266,7 +266,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Get destination records
-   */
+  */
   getDestinationRecords(functionName?: string): DestinationRecord[] {
     const records = Array.from(this.records.values())
     return functionName
@@ -276,7 +276,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Generate CloudFormation for EventSourceMapping with destination
-   */
+  */
   generateEventInvokeConfigCF(destination: LambdaDestination): any {
     return {
       Type: 'AWS::Lambda::EventInvokeConfig',
@@ -305,7 +305,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Generate CloudFormation for EventBridge rule
-   */
+  */
   generateEventBridgeRuleCF(destination: EventBridgeDestination): any {
     return {
       Type: 'AWS::Events::Rule',
@@ -328,7 +328,7 @@ export class LambdaDestinationsManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.destinations.clear()
     this.records.clear()
@@ -341,5 +341,5 @@ export class LambdaDestinationsManager {
 
 /**
  * Global Lambda destinations manager instance
- */
+*/
 export const lambdaDestinationsManager: LambdaDestinationsManager = new LambdaDestinationsManager()

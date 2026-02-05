@@ -1,7 +1,7 @@
 /**
  * AWS SES (Simple Email Service) Operations
  * Direct API calls without AWS SDK dependency
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -29,7 +29,7 @@ export interface SendEmailResult {
 
 /**
  * SES email service management using direct API calls
- */
+*/
 export class SESClient {
   private client: AWSClient
   private region: string
@@ -42,7 +42,7 @@ export class SESClient {
   /**
    * Create email identity (domain or email address)
    * Uses SES v2 API
-   */
+  */
   async createEmailIdentity(params: {
     EmailIdentity: string
     DkimSigningAttributes?: {
@@ -76,7 +76,7 @@ export class SESClient {
 
   /**
    * Get email identity details
-   */
+  */
   async getEmailIdentity(emailIdentity: string): Promise<EmailIdentity> {
     const result = await this.client.request({
       service: 'email',
@@ -100,7 +100,7 @@ export class SESClient {
 
   /**
    * Configure MAIL FROM domain for an email identity
-   */
+  */
   async putEmailIdentityMailFromAttributes(emailIdentity: string, params: {
     MailFromDomain?: string
     BehaviorOnMxFailure?: 'USE_DEFAULT_VALUE' | 'REJECT_MESSAGE'
@@ -119,7 +119,7 @@ export class SESClient {
 
   /**
    * List email identities
-   */
+  */
   async listEmailIdentities(params?: {
     PageSize?: number
     NextToken?: string
@@ -163,7 +163,7 @@ export class SESClient {
 
   /**
    * Delete email identity
-   */
+  */
   async deleteEmailIdentity(emailIdentity: string): Promise<void> {
     await this.client.request({
       service: 'email',
@@ -178,7 +178,7 @@ export class SESClient {
 
   /**
    * Enable/disable DKIM signing for identity
-   */
+  */
   async putEmailIdentityDkimAttributes(params: {
     EmailIdentity: string
     SigningEnabled: boolean
@@ -197,7 +197,7 @@ export class SESClient {
 
   /**
    * Send email
-   */
+  */
   async sendEmail(params: {
     FromEmailAddress: string
     Destination: {
@@ -242,7 +242,7 @@ export class SESClient {
 
   /**
    * Send bulk email
-   */
+  */
   async sendBulkEmail(params: {
     FromEmailAddress: string
     BulkEmailEntries: Array<{
@@ -289,7 +289,7 @@ export class SESClient {
 
   /**
    * Create email template
-   */
+  */
   async createEmailTemplate(params: {
     TemplateName: string
     TemplateContent: {
@@ -312,7 +312,7 @@ export class SESClient {
 
   /**
    * Get email template
-   */
+  */
   async getEmailTemplate(templateName: string): Promise<{
     TemplateName?: string
     TemplateContent?: {
@@ -336,7 +336,7 @@ export class SESClient {
 
   /**
    * Delete email template
-   */
+  */
   async deleteEmailTemplate(templateName: string): Promise<void> {
     await this.client.request({
       service: 'email',
@@ -351,7 +351,7 @@ export class SESClient {
 
   /**
    * List email templates
-   */
+  */
   async listEmailTemplates(params?: {
     PageSize?: number
     NextToken?: string
@@ -391,7 +391,7 @@ export class SESClient {
 
   /**
    * Get sending statistics
-   */
+  */
   async getSendStatistics(): Promise<{
     SendDataPoints?: Array<{
       Timestamp?: string
@@ -420,7 +420,7 @@ export class SESClient {
 
   /**
    * Get sending quota
-   */
+  */
   async getSendQuota(): Promise<{
     Max24HourSend?: number
     MaxSendRate?: number
@@ -450,7 +450,7 @@ export class SESClient {
 
   /**
    * Verify a domain identity
-   */
+  */
   async verifyDomain(domain: string): Promise<{
     dkimTokens?: string[]
     verificationStatus?: string
@@ -467,7 +467,7 @@ export class SESClient {
 
   /**
    * Send a simple text email
-   */
+  */
   async sendSimpleEmail(params: {
     from: string
     to: string | string[]
@@ -506,7 +506,7 @@ export class SESClient {
 
   /**
    * Send a templated email
-   */
+  */
   async sendTemplatedEmail(params: {
     from: string
     to: string | string[]
@@ -536,7 +536,7 @@ export class SESClient {
 
   /**
    * Get DKIM DNS records for a domain
-   */
+  */
   async getDkimRecords(domain: string): Promise<Array<{
     name: string
     type: string
@@ -557,7 +557,7 @@ export class SESClient {
 
   /**
    * Check if domain is verified
-   */
+  */
   async isDomainVerified(domain: string): Promise<boolean> {
     try {
       const identity = await this.getEmailIdentity(domain)
@@ -570,7 +570,7 @@ export class SESClient {
 
   /**
    * Wait for domain verification
-   */
+  */
   async waitForDomainVerification(
     domain: string,
     maxAttempts = 60,
@@ -596,7 +596,7 @@ export class SESClient {
 
   /**
    * Build form-encoded body for SES v1 API
-   */
+  */
   private buildFormBody(params: Record<string, string | undefined>): string {
     const entries = Object.entries(params)
       .filter(([, value]) => value !== undefined)
@@ -607,7 +607,7 @@ export class SESClient {
   /**
    * Create a receipt rule set
    * Uses SES v1 API
-   */
+  */
   async createReceiptRuleSet(ruleSetName: string): Promise<void> {
     await this.client.request({
       service: 'ses',
@@ -627,7 +627,7 @@ export class SESClient {
 
   /**
    * Delete a receipt rule set
-   */
+  */
   async deleteReceiptRuleSet(ruleSetName: string): Promise<void> {
     await this.client.request({
       service: 'ses',
@@ -647,7 +647,7 @@ export class SESClient {
 
   /**
    * Set the active receipt rule set
-   */
+  */
   async setActiveReceiptRuleSet(ruleSetName: string): Promise<void> {
     await this.client.request({
       service: 'ses',
@@ -667,7 +667,7 @@ export class SESClient {
 
   /**
    * List receipt rule sets
-   */
+  */
   async listReceiptRuleSets(nextToken?: string): Promise<{
     RuleSets?: Array<{ Name?: string, CreatedTimestamp?: string }>
     NextToken?: string
@@ -704,7 +704,7 @@ export class SESClient {
 
   /**
    * Describe a receipt rule set
-   */
+  */
   async describeReceiptRuleSet(ruleSetName: string): Promise<{
     Metadata?: { Name?: string, CreatedTimestamp?: string }
     Rules?: Array<{
@@ -745,7 +745,7 @@ export class SESClient {
 
   /**
    * Create a receipt rule
-   */
+  */
   async createReceiptRule(params: {
     RuleSetName: string
     Rule: {
@@ -851,7 +851,7 @@ export class SESClient {
 
   /**
    * Delete a receipt rule
-   */
+  */
   async deleteReceiptRule(ruleSetName: string, ruleName: string): Promise<void> {
     await this.client.request({
       service: 'ses',
@@ -872,7 +872,7 @@ export class SESClient {
 
   /**
    * Check if receipt rule set exists
-   */
+  */
   async receiptRuleSetExists(ruleSetName: string): Promise<boolean> {
     try {
       await this.describeReceiptRuleSet(ruleSetName)
@@ -888,7 +888,7 @@ export class SESClient {
 
   /**
    * Get the active receipt rule set
-   */
+  */
   async getActiveReceiptRuleSet(): Promise<{
     Metadata?: { Name?: string, CreatedTimestamp?: string }
     Rules?: Array<{
@@ -933,7 +933,7 @@ export class SESClient {
 
   /**
    * Update a receipt rule
-   */
+  */
   async updateReceiptRule(params: {
     RuleSetName: string
     Rule: {
@@ -1038,7 +1038,7 @@ export class SESClient {
   /**
    * Send raw email (for SMTP relay)
    * Uses SES v1 API SendRawEmail action
-   */
+  */
   async sendRawEmail(params: {
     source: string
     destinations: string[]

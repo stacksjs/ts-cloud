@@ -1,7 +1,7 @@
 /**
  * AWS CloudFormation Operations
  * Direct API calls without AWS CLI dependency
- */
+*/
 
 import { AWSClient, buildQueryParams } from './client'
 
@@ -69,7 +69,7 @@ export interface Stack {
 
 /**
  * CloudFormation stack management using direct API calls
- */
+*/
 export class CloudFormationClient {
   private client: AWSClient
   private region: string
@@ -81,7 +81,7 @@ export class CloudFormationClient {
 
   /**
    * Create a new CloudFormation stack
-   */
+  */
   async createStack(options: CreateStackOptions): Promise<{ StackId: string }> {
     const params: Record<string, any> = {
       Action: 'CreateStack',
@@ -144,7 +144,7 @@ export class CloudFormationClient {
 
   /**
    * Update an existing CloudFormation stack
-   */
+  */
   async updateStack(options: UpdateStackOptions): Promise<{ StackId: string }> {
     const params: Record<string, any> = {
       Action: 'UpdateStack',
@@ -201,7 +201,7 @@ export class CloudFormationClient {
 
   /**
    * Delete a CloudFormation stack
-   */
+  */
   async deleteStack(stackName: string, roleArn?: string, retainResources?: string[]): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteStack',
@@ -231,7 +231,7 @@ export class CloudFormationClient {
 
   /**
    * Describe CloudFormation stacks
-   */
+  */
   async describeStacks(options: DescribeStacksOptions = {}): Promise<{ Stacks: Stack[] }> {
     const params: Record<string, any> = {
       Action: 'DescribeStacks',
@@ -257,7 +257,7 @@ export class CloudFormationClient {
 
   /**
    * Get stack events
-   */
+  */
   async describeStackEvents(stackName: string): Promise<{ StackEvents: StackEvent[] }> {
     const params: Record<string, any> = {
       Action: 'DescribeStackEvents',
@@ -278,7 +278,7 @@ export class CloudFormationClient {
 
   /**
    * List stack resources
-   */
+  */
   async listStackResources(stackName: string): Promise<{ StackResourceSummaries: any[] }> {
     const params: Record<string, any> = {
       Action: 'ListStackResources',
@@ -307,7 +307,7 @@ export class CloudFormationClient {
 
   /**
    * Wait for stack to reach a specific status
-   */
+  */
   async waitForStack(stackName: string, waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete'): Promise<void> {
     const targetStatuses = {
       'stack-create-complete': ['CREATE_COMPLETE'],
@@ -422,7 +422,7 @@ export class CloudFormationClient {
 
   /**
    * Validate CloudFormation template
-   */
+  */
   async validateTemplate(templateBody: string): Promise<any> {
     const params: Record<string, any> = {
       Action: 'ValidateTemplate',
@@ -441,7 +441,7 @@ export class CloudFormationClient {
 
   /**
    * List all stacks
-   */
+  */
   async listStacks(statusFilter?: string[]): Promise<{ StackSummaries: Array<{
     StackId: string
     StackName: string
@@ -476,7 +476,7 @@ export class CloudFormationClient {
 
   /**
    * Create change set (for preview before updating)
-   */
+  */
   async createChangeSet(options: {
     stackName: string
     changeSetName: string
@@ -530,7 +530,7 @@ export class CloudFormationClient {
 
   /**
    * Describe change set
-   */
+  */
   async describeChangeSet(stackName: string, changeSetName: string): Promise<any> {
     const params: Record<string, any> = {
       Action: 'DescribeChangeSet',
@@ -550,7 +550,7 @@ export class CloudFormationClient {
 
   /**
    * Execute change set
-   */
+  */
   async executeChangeSet(stackName: string, changeSetName: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'ExecuteChangeSet',
@@ -570,7 +570,7 @@ export class CloudFormationClient {
 
   /**
    * Delete change set
-   */
+  */
   async deleteChangeSet(stackName: string, changeSetName: string): Promise<void> {
     const params: Record<string, any> = {
       Action: 'DeleteChangeSet',
@@ -590,7 +590,7 @@ export class CloudFormationClient {
 
   /**
    * Get stack outputs as key-value pairs
-   */
+  */
   async getStackOutputs(stackName: string): Promise<Record<string, string>> {
     const result = await this.describeStacks({ stackName })
 
@@ -612,7 +612,7 @@ export class CloudFormationClient {
 
   /**
    * Get stack template
-   */
+  */
   async getTemplate(stackName: string): Promise<{ TemplateBody: string }> {
     const params: Record<string, any> = {
       Action: 'GetTemplate',
@@ -635,7 +635,7 @@ export class CloudFormationClient {
 
   /**
    * Parse stacks response
-   */
+  */
   private parseStacksResponse(result: any): Stack[] {
     const stacks: Stack[] = []
 
@@ -694,7 +694,7 @@ export class CloudFormationClient {
 
   /**
    * Parse stack events response
-   */
+  */
   private parseStackEvents(result: any): StackEvent[] {
     const events: StackEvent[] = []
 
@@ -726,7 +726,7 @@ export class CloudFormationClient {
 
   /**
    * Wait for stack with real-time progress output (CDK-style)
-   */
+  */
   async waitForStackWithProgress(
     stackName: string,
     waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete',
@@ -839,7 +839,7 @@ export class CloudFormationClient {
   /**
    * Wait for stack operation to complete (create, update, or delete)
    * Returns a result object with success status
-   */
+  */
   async waitForStackComplete(
     stackName: string,
     maxAttempts: number = 120,

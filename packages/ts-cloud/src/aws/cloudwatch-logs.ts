@@ -1,7 +1,7 @@
 /**
  * AWS CloudWatch Logs Operations
  * Direct API calls without AWS CLI dependency
- */
+*/
 
 import { AWSClient } from './client'
 

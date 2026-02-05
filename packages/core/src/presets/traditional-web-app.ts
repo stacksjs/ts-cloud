@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Traditional Web App Preset
  * Perfect for: Server-rendered web apps, CMS platforms, admin panels
  * Includes: EC2 + ALB + RDS + Redis + EFS (for session storage and uploads)
- */
+*/
 export function createTraditionalWebAppPreset(options: {
   name: string
   slug: string

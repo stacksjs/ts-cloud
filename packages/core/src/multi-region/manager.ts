@@ -1,7 +1,7 @@
 /**
  * Multi-Region Deployment Manager
  * Deploys infrastructure across multiple AWS regions
- */
+*/
 
 import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 
@@ -52,13 +52,13 @@ export interface MultiRegionDeployment {
 
 /**
  * Multi-region deployment manager
- */
+*/
 export class MultiRegionManager {
   private deployments: Map<string, MultiRegionDeployment> = new Map()
 
   /**
    * Deploy to multiple regions
-   */
+  */
   async deploy(
     config: CloudConfig,
     multiRegionConfig: MultiRegionConfig,
@@ -123,7 +123,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy to a single region
-   */
+  */
   private async deployToRegion(
     config: CloudConfig,
     region: Region,
@@ -164,7 +164,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy global resources (Route53, CloudFront, WAF)
-   */
+  */
   private async deployGlobalResources(
     deployment: MultiRegionDeployment,
     config: MultiRegionConfig,
@@ -191,7 +191,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy Route53 for multi-region routing
-   */
+  */
   private async deployRoute53(
     deployment: MultiRegionDeployment,
     config: MultiRegionConfig,
@@ -232,7 +232,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy CloudFront distribution
-   */
+  */
   private async deployCloudFront(
     deployment: MultiRegionDeployment,
     config: MultiRegionConfig,
@@ -258,7 +258,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy WAF
-   */
+  */
   private async deployWAF(deployment: MultiRegionDeployment): Promise<any> {
     return {
       webAclId: 'arn:aws:wafv2:us-east-1:123456789012:global/webacl/test/a1234567-b890-c123-d456-e789012345f6',
@@ -268,7 +268,7 @@ export class MultiRegionManager {
 
   /**
    * Set up cross-region replication
-   */
+  */
   private async setupReplication(
     deployment: MultiRegionDeployment,
     config: MultiRegionConfig,
@@ -291,7 +291,7 @@ export class MultiRegionManager {
 
   /**
    * Set up S3 bucket replication
-   */
+  */
   private async setupS3Replication(deployment: MultiRegionDeployment): Promise<void> {
     // Create replication rules between regions
     const regions = deployment.regions.filter(r => r.status === 'deployed')
@@ -308,7 +308,7 @@ export class MultiRegionManager {
 
   /**
    * Set up DynamoDB global tables
-   */
+  */
   private async setupDynamoDBReplication(deployment: MultiRegionDeployment): Promise<void> {
     const regions = deployment.regions
       .filter(r => r.status === 'deployed')
@@ -321,7 +321,7 @@ export class MultiRegionManager {
 
   /**
    * Set up Secrets Manager replication
-   */
+  */
   private async setupSecretsReplication(deployment: MultiRegionDeployment): Promise<void> {
     const regions = deployment.regions
       .filter(r => r.status === 'deployed')
@@ -334,7 +334,7 @@ export class MultiRegionManager {
 
   /**
    * Set up failover configuration
-   */
+  */
   private async setupFailover(
     deployment: MultiRegionDeployment,
     config: MultiRegionConfig,
@@ -350,7 +350,7 @@ export class MultiRegionManager {
 
   /**
    * Destroy multi-region deployment
-   */
+  */
   async destroy(deploymentId: string): Promise<void> {
     const deployment = this.deployments.get(deploymentId)
 
@@ -381,7 +381,7 @@ export class MultiRegionManager {
 
   /**
    * Destroy global resources
-   */
+  */
   private async destroyGlobalResources(globalResources: Record<string, any>): Promise<void> {
     // Destroy in reverse order: WAF -> CloudFront -> Route53
     if (globalResources.waf) {
@@ -399,7 +399,7 @@ export class MultiRegionManager {
 
   /**
    * Destroy stack in a single region
-   */
+  */
   private async destroyRegionStack(region: RegionDeployment): Promise<void> {
     if (region.status !== 'deployed') return
 
@@ -420,28 +420,28 @@ export class MultiRegionManager {
 
   /**
    * Get deployment status
-   */
+  */
   getDeployment(deploymentId: string): MultiRegionDeployment | undefined {
     return this.deployments.get(deploymentId)
   }
 
   /**
    * List all deployments
-   */
+  */
   listDeployments(): MultiRegionDeployment[] {
     return Array.from(this.deployments.values())
   }
 
   /**
    * Get stack name for a region
-   */
+  */
   private getStackName(config: CloudConfig, region: string): string {
     return `${config.project.slug}-${region}`
   }
 
   /**
    * Create region-specific config
-   */
+  */
   private createRegionConfig(config: CloudConfig, region: Region): CloudConfig {
     return {
       ...config,
@@ -455,7 +455,7 @@ export class MultiRegionManager {
 
   /**
    * Deploy stack (placeholder)
-   */
+  */
   private async deployStack(
     stackName: string,
     config: CloudConfig,
@@ -471,7 +471,7 @@ export class MultiRegionManager {
 
   /**
    * Generate deployment ID
-   */
+  */
   private generateDeploymentId(): string {
     return `deploy-${Date.now()}-${Math.random().toString(36).substring(7)}`
   }
@@ -479,5 +479,5 @@ export class MultiRegionManager {
 
 /**
  * Global multi-region manager instance
- */
+*/
 export const multiRegionManager: MultiRegionManager = new MultiRegionManager()

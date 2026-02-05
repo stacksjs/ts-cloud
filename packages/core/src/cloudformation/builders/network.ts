@@ -13,7 +13,7 @@ export interface NetworkConfig {
 
 /**
  * Add VPC and networking resources to CloudFormation template
- */
+*/
 export function addNetworkResources(
   builder: CloudFormationBuilder,
   config: NetworkConfig,

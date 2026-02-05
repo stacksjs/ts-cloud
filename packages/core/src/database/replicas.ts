@@ -1,7 +1,7 @@
 /**
  * Database Replicas & Connection Pooling
  * Read replica management and RDS Proxy for connection pooling
- */
+*/
 
 export interface ReadReplica {
   id: string
@@ -82,7 +82,7 @@ export interface ConnectionPoolConfig {
 
 /**
  * Replica manager
- */
+*/
 export class ReplicaManager {
   private replicas: Map<string, ReadReplica> = new Map()
   private replicationGroups: Map<string, ReplicationGroup> = new Map()
@@ -95,7 +95,7 @@ export class ReplicaManager {
 
   /**
    * Create read replica
-   */
+  */
   createReplica(replica: Omit<ReadReplica, 'id'>): ReadReplica {
     const id = `replica-${Date.now()}-${this.replicaCounter++}`
 
@@ -112,7 +112,7 @@ export class ReplicaManager {
 
   /**
    * Create read replica for RDS instance
-   */
+  */
   createRDSReplica(options: {
     sourceDatabase: string
     name: string
@@ -133,7 +133,7 @@ export class ReplicaManager {
 
   /**
    * Create cross-region replica
-   */
+  */
   createCrossRegionReplica(options: {
     sourceDatabase: string
     name: string
@@ -154,7 +154,7 @@ export class ReplicaManager {
 
   /**
    * Create replication group
-   */
+  */
   createReplicationGroup(group: Omit<ReplicationGroup, 'id'>): ReplicationGroup {
     const id = `replication-group-${Date.now()}-${this.groupCounter++}`
 
@@ -170,7 +170,7 @@ export class ReplicaManager {
 
   /**
    * Create replication group with auto-scaling
-   */
+  */
   createAutoScalingReplicationGroup(options: {
     name: string
     primaryDatabase: string
@@ -198,7 +198,7 @@ export class ReplicaManager {
 
   /**
    * Add replica to group
-   */
+  */
   addReplicaToGroup(groupId: string, replica: ReadReplica): void {
     const group = this.replicationGroups.get(groupId)
 
@@ -211,7 +211,7 @@ export class ReplicaManager {
 
   /**
    * Create RDS Proxy
-   */
+  */
   createProxy(proxy: Omit<RDSProxy, 'id'>): RDSProxy {
     const id = `rds-proxy-${Date.now()}-${this.proxyCounter++}`
 
@@ -227,7 +227,7 @@ export class ReplicaManager {
 
   /**
    * Create RDS Proxy for connection pooling
-   */
+  */
   createConnectionPoolProxy(options: {
     name: string
     engineFamily: 'MYSQL' | 'POSTGRESQL' | 'SQLSERVER'
@@ -255,7 +255,7 @@ export class ReplicaManager {
 
   /**
    * Create serverless proxy (optimized for Lambda)
-   */
+  */
   createServerlessProxy(options: {
     name: string
     engineFamily: 'MYSQL' | 'POSTGRESQL' | 'SQLSERVER'
@@ -282,7 +282,7 @@ export class ReplicaManager {
 
   /**
    * Add proxy target
-   */
+  */
   addProxyTarget(target: Omit<ProxyTarget, 'id'>): ProxyTarget {
     const id = `proxy-target-${Date.now()}-${this.targetCounter++}`
 
@@ -298,7 +298,7 @@ export class ReplicaManager {
 
   /**
    * Promote replica to primary
-   */
+  */
   promoteReplica(replicaId: string): { success: boolean; message: string } {
     const replica = this.replicas.get(replicaId)
 
@@ -330,7 +330,7 @@ export class ReplicaManager {
 
   /**
    * Get replication lag for replica
-   */
+  */
   getReplicationLag(replicaId: string): number {
     const replica = this.replicas.get(replicaId)
 
@@ -344,49 +344,49 @@ export class ReplicaManager {
 
   /**
    * Get replica
-   */
+  */
   getReplica(id: string): ReadReplica | undefined {
     return this.replicas.get(id)
   }
 
   /**
    * List replicas
-   */
+  */
   listReplicas(): ReadReplica[] {
     return Array.from(this.replicas.values())
   }
 
   /**
    * Get replication group
-   */
+  */
   getReplicationGroup(id: string): ReplicationGroup | undefined {
     return this.replicationGroups.get(id)
   }
 
   /**
    * List replication groups
-   */
+  */
   listReplicationGroups(): ReplicationGroup[] {
     return Array.from(this.replicationGroups.values())
   }
 
   /**
    * Get proxy
-   */
+  */
   getProxy(id: string): RDSProxy | undefined {
     return this.proxies.get(id)
   }
 
   /**
    * List proxies
-   */
+  */
   listProxies(): RDSProxy[] {
     return Array.from(this.proxies.values())
   }
 
   /**
    * Generate CloudFormation for read replica
-   */
+  */
   generateReplicaCF(replica: ReadReplica): any {
     return {
       Type: 'AWS::RDS::DBInstance',
@@ -411,7 +411,7 @@ export class ReplicaManager {
 
   /**
    * Generate CloudFormation for RDS Proxy
-   */
+  */
   generateProxyCF(proxy: RDSProxy): any {
     return {
       Type: 'AWS::RDS::DBProxy',
@@ -445,7 +445,7 @@ export class ReplicaManager {
 
   /**
    * Generate CloudFormation for proxy target
-   */
+  */
   generateProxyTargetCF(target: ProxyTarget, proxy: RDSProxy): any {
     return {
       Type: 'AWS::RDS::DBProxyTargetGroup',
@@ -464,7 +464,7 @@ export class ReplicaManager {
 
   /**
    * Generate CloudFormation for proxy IAM role
-   */
+  */
   generateProxyRoleCF(): any {
     return {
       Type: 'AWS::IAM::Role',
@@ -515,7 +515,7 @@ export class ReplicaManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.replicas.clear()
     this.replicationGroups.clear()
@@ -530,5 +530,5 @@ export class ReplicaManager {
 
 /**
  * Global replica manager instance
- */
+*/
 export const replicaManager: ReplicaManager = new ReplicaManager()

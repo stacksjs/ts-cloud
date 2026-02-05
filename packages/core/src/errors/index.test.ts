@@ -1,6 +1,6 @@
 /**
  * Error Handling Tests
- */
+*/
 
 import { describe, expect, it, beforeEach, afterEach } from 'bun:test'
 import {

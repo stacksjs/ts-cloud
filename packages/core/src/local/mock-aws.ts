@@ -1,7 +1,7 @@
 /**
  * Mock AWS services for unit testing
  * Provides in-memory implementations of AWS services without external dependencies
- */
+*/
 
 export interface MockAWSConfig {
   region?: string
@@ -13,7 +13,7 @@ export interface MockAWSConfig {
 
 /**
  * Mock CloudFormation service
- */
+*/
 export class MockCloudFormation {
   private stacks: Map<string, any> = new Map()
   private stackEvents: Map<string, any[]> = new Map()
@@ -159,7 +159,7 @@ export class MockCloudFormation {
 
   /**
    * Reset mock state (useful for testing)
-   */
+  */
   reset(): void {
     this.stacks.clear()
     this.stackEvents.clear()
@@ -168,7 +168,7 @@ export class MockCloudFormation {
 
 /**
  * Mock S3 service
- */
+*/
 export class MockS3 {
   private buckets: Map<string, Map<string, Buffer>> = new Map()
 
@@ -246,7 +246,7 @@ export class MockS3 {
 
   /**
    * Reset mock state
-   */
+  */
   reset(): void {
     this.buckets.clear()
   }
@@ -254,7 +254,7 @@ export class MockS3 {
 
 /**
  * Mock DynamoDB service
- */
+*/
 export class MockDynamoDB {
   private tables: Map<string, any> = new Map()
   private data: Map<string, Map<string, any>> = new Map()
@@ -328,7 +328,7 @@ export class MockDynamoDB {
 
   /**
    * Reset mock state
-   */
+  */
   reset(): void {
     this.tables.clear()
     this.data.clear()
@@ -337,7 +337,7 @@ export class MockDynamoDB {
 
 /**
  * Create mock AWS services
- */
+*/
 export function createMockAWS(config?: MockAWSConfig): {
   cloudformation: MockCloudFormation
   s3: MockS3

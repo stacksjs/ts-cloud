@@ -164,11 +164,11 @@ export interface ScalingPolicyOptions {
 /**
  * Compute Module - EC2, ECS, Lambda Management
  * Provides clean API for both server (Forge-style) and serverless (Vapor-style) deployments
- */
+*/
 export class Compute {
   /**
    * Create an EC2 server instance (Server Mode - Forge-style)
-   */
+  */
   static createServer(options: ServerOptions): {
     instance: EC2Instance
     logicalId: string
@@ -242,7 +242,7 @@ export class Compute {
 
   /**
    * Create a security group
-   */
+  */
   static createSecurityGroup(options: SecurityGroupOptions): {
     securityGroup: EC2SecurityGroup
     logicalId: string
@@ -304,7 +304,7 @@ export class Compute {
 
   /**
    * Create common security group rules for web servers
-   */
+  */
   static createWebServerSecurityGroup(
     slug: string,
     environment: EnvironmentType,
@@ -331,7 +331,7 @@ export class Compute {
 
   /**
    * Create an Application Load Balancer
-   */
+  */
   static createLoadBalancer(options: LoadBalancerOptions): {
     loadBalancer: ApplicationLoadBalancer
     logicalId: string
@@ -376,7 +376,7 @@ export class Compute {
 
   /**
    * Create a target group
-   */
+  */
   static createTargetGroup(options: TargetGroupOptions): {
     targetGroup: TargetGroup
     logicalId: string
@@ -430,7 +430,7 @@ export class Compute {
 
   /**
    * Create an ALB listener
-   */
+  */
   static createListener(
     loadBalancerLogicalId: string,
     options: ListenerOptions,
@@ -472,7 +472,7 @@ export class Compute {
 
   /**
    * Create ECS cluster for Fargate (Serverless Mode - Vapor-style)
-   */
+  */
   static createEcsCluster(
     slug: string,
     environment: EnvironmentType,
@@ -504,7 +504,7 @@ export class Compute {
 
   /**
    * Create ECS Fargate task definition and service
-   */
+  */
   static createFargateService(options: FargateServiceOptions): {
     cluster: ECSCluster
     taskDefinition: ECSTaskDefinition
@@ -700,7 +700,7 @@ export class Compute {
 
   /**
    * Create a Lambda function
-   */
+  */
   static createLambdaFunction(options: LambdaFunctionOptions): {
     lambdaFunction: LambdaFunction
     role: IAMRole
@@ -796,7 +796,7 @@ export class Compute {
 
   /**
    * Generate Node.js server user data script
-   */
+  */
   static generateNodeServerUserData(options: {
     nodeVersion?: string
     appRepo?: string
@@ -855,7 +855,7 @@ echo "Server setup complete!"
 
   /**
    * Generate Bun server user data script
-   */
+  */
   static generateBunServerUserData(options: {
     appRepo?: string
     environment?: Record<string, string>
@@ -928,7 +928,7 @@ echo "Bun server setup complete!"
 
   /**
    * Create a Launch Configuration for Auto Scaling
-   */
+  */
   static createLaunchConfiguration(options: LaunchConfigurationOptions): {
     launchConfiguration: AutoScalingLaunchConfiguration
     logicalId: string
@@ -995,7 +995,7 @@ echo "Bun server setup complete!"
 
   /**
    * Create an Auto Scaling Group
-   */
+  */
   static createAutoScalingGroup(options: AutoScalingGroupOptions): {
     autoScalingGroup: AutoScalingGroup
     logicalId: string
@@ -1072,7 +1072,7 @@ echo "Bun server setup complete!"
 
   /**
    * Create a Target Tracking Scaling Policy (CPU-based by default)
-   */
+  */
   static createScalingPolicy(options: ScalingPolicyOptions): {
     scalingPolicy: AutoScalingScalingPolicy
     logicalId: string
@@ -1116,11 +1116,11 @@ echo "Bun server setup complete!"
 
   /**
    * Common Auto Scaling configurations
-   */
+  */
   static readonly AutoScaling = {
     /**
      * Small web server auto scaling (2-4 instances)
-     */
+    */
     smallWebServer: (
       slug: string,
       environment: EnvironmentType,
@@ -1144,7 +1144,7 @@ echo "Bun server setup complete!"
 
     /**
      * Medium web server auto scaling (3-10 instances)
-     */
+    */
     mediumWebServer: (
       slug: string,
       environment: EnvironmentType,
@@ -1168,7 +1168,7 @@ echo "Bun server setup complete!"
 
     /**
      * Large web server auto scaling (5-20 instances)
-     */
+    */
     largeWebServer: (
       slug: string,
       environment: EnvironmentType,
@@ -1192,7 +1192,7 @@ echo "Bun server setup complete!"
 
     /**
      * CPU-based scaling policy (default 70%)
-     */
+    */
     cpuScaling: (
       slug: string,
       environment: EnvironmentType,
@@ -1211,7 +1211,7 @@ echo "Bun server setup complete!"
 
     /**
      * Request count scaling policy (ALB)
-     */
+    */
     requestCountScaling: (
       slug: string,
       environment: EnvironmentType,
@@ -1231,12 +1231,12 @@ echo "Bun server setup complete!"
 
   /**
    * Secrets Manager integration utilities
-   */
+  */
   static readonly Secrets = {
     /**
      * Convert environment variables to ECS secrets configuration
      * This takes environment variable names and their corresponding Secrets Manager ARNs
-     */
+    */
     fromSecretsManager: (secrets: Record<string, string>): Array<{ name: string, valueFrom: string }> => {
       return Object.entries(secrets).map(([name, secretArn]) => ({
         name,
@@ -1247,7 +1247,7 @@ echo "Bun server setup complete!"
     /**
      * Reference a specific key from a JSON secret
      * Format: arn:aws:secretsmanager:region:account:secret:name:json-key::
-     */
+    */
     fromJsonSecret: (secretArn: string, jsonKey: string): string => {
       return `${secretArn}:${jsonKey}::`
     },
@@ -1255,7 +1255,7 @@ echo "Bun server setup complete!"
     /**
      * Reference a specific version of a secret
      * Format: arn:aws:secretsmanager:region:account:secret:name::version-id:
-     */
+    */
     fromSecretVersion: (secretArn: string, versionId: string): string => {
       return `${secretArn}::${versionId}:`
     },
@@ -1263,14 +1263,14 @@ echo "Bun server setup complete!"
     /**
      * Reference a specific version stage of a secret
      * Format: arn:aws:secretsmanager:region:account:secret:name:::version-stage
-     */
+    */
     fromSecretVersionStage: (secretArn: string, versionStage: string): string => {
       return `${secretArn}:::${versionStage}`
     },
 
     /**
      * Create IAM policy for Secrets Manager access
-     */
+    */
     createAccessPolicy: (secretArns: string[]): {
       PolicyName: string
       PolicyDocument: {
@@ -1298,7 +1298,7 @@ echo "Bun server setup complete!"
 
     /**
      * Create IAM policy for KMS decryption (when secrets are encrypted with KMS)
-     */
+    */
     createKmsPolicy: (kmsKeyArns: string[]): {
       PolicyName: string
       PolicyDocument: {
@@ -1323,7 +1323,7 @@ echo "Bun server setup complete!"
 
     /**
      * Build secret ARN from components
-     */
+    */
     buildSecretArn: (params: {
       region: string
       accountId: string
@@ -1335,7 +1335,7 @@ echo "Bun server setup complete!"
     /**
      * Build secret ARN pattern for wildcard matching
      * Useful for IAM policies
-     */
+    */
     buildSecretArnPattern: (params: {
       region?: string
       accountId?: string
@@ -1349,7 +1349,7 @@ echo "Bun server setup complete!"
     /**
      * Common environment secrets mapping
      * Maps common application environment variable names to secrets
-     */
+    */
     commonAppSecrets: (secretPrefix: string): Record<string, string> => ({
       DATABASE_URL: `${secretPrefix}/database-url`,
       DATABASE_PASSWORD: `${secretPrefix}/database-password`,
@@ -1368,7 +1368,7 @@ echo "Bun server setup complete!"
 
   /**
    * Create ECS Fargate service with full Secrets Manager integration
-   */
+  */
   static createFargateServiceWithSecrets(options: FargateServiceOptions & {
     secretArns?: string[]
     kmsKeyArns?: string[]
@@ -1417,7 +1417,7 @@ echo "Bun server setup complete!"
   /**
    * Generate secret references for container environment
    * This is a helper to convert secret names to full ARN references
-   */
+  */
   static generateSecretReferences(params: {
     region: string
     accountId: string
@@ -1435,11 +1435,11 @@ echo "Bun server setup complete!"
 
   /**
    * Create environment secrets configuration for common patterns
-   */
+  */
   static readonly EnvSecrets = {
     /**
      * Database credentials as secrets
-     */
+    */
     database: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
       { name: 'DB_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'DB_PORT', valueFrom: `${secretArn}:port::` },
@@ -1450,7 +1450,7 @@ echo "Bun server setup complete!"
 
     /**
      * Redis credentials as secrets
-     */
+    */
     redis: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
       { name: 'REDIS_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'REDIS_PORT', valueFrom: `${secretArn}:port::` },
@@ -1459,7 +1459,7 @@ echo "Bun server setup complete!"
 
     /**
      * API credentials as secrets
-     */
+    */
     apiCredentials: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
       { name: 'API_KEY', valueFrom: `${secretArn}:apiKey::` },
       { name: 'API_SECRET', valueFrom: `${secretArn}:apiSecret::` },
@@ -1467,7 +1467,7 @@ echo "Bun server setup complete!"
 
     /**
      * Mail credentials as secrets
-     */
+    */
     mail: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
       { name: 'MAIL_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'MAIL_PORT', valueFrom: `${secretArn}:port::` },
@@ -1477,7 +1477,7 @@ echo "Bun server setup complete!"
 
     /**
      * AWS credentials as secrets (for cross-account access)
-     */
+    */
     awsCredentials: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
       { name: 'AWS_ACCESS_KEY_ID', valueFrom: `${secretArn}:accessKeyId::` },
       { name: 'AWS_SECRET_ACCESS_KEY', valueFrom: `${secretArn}:secretAccessKey::` },
@@ -1486,7 +1486,7 @@ echo "Bun server setup complete!"
 
   /**
    * Create a JumpBox (Bastion Host) for SSH access to private resources
-   */
+  */
   static createJumpBox(options: {
     slug: string
     environment: EnvironmentType
@@ -1674,11 +1674,11 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
 
   /**
    * JumpBox helper configurations
-   */
+  */
   static readonly JumpBox = {
     /**
      * Create JumpBox with EFS mount for file access
-     */
+    */
     withEfsMount: (params: {
       slug: string
       environment: EnvironmentType
@@ -1715,7 +1715,7 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
 
     /**
      * Create minimal JumpBox (SSH only)
-     */
+    */
     minimal: (params: {
       slug: string
       environment: EnvironmentType
@@ -1747,7 +1747,7 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
 
     /**
      * Create JumpBox with database tools
-     */
+    */
     withDatabaseTools: (params: {
       slug: string
       environment: EnvironmentType
@@ -1799,7 +1799,7 @@ echo "Database tools installed!"
 
     /**
      * Allowed CIDRs for corporate VPNs (common patterns)
-     */
+    */
     commonCidrs: {
       any: ['0.0.0.0/0'] as const,
       privateOnly: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'] as const,
@@ -1809,11 +1809,11 @@ echo "Database tools installed!"
   /**
    * Instance size mapping - human-readable sizes to AWS instance types
    * Provides Stacks configuration parity for "size" configuration option
-   */
+  */
   static readonly InstanceSize = {
     /**
      * Map human-readable size to EC2 instance type
-     */
+    */
     toInstanceType: (
       size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge' | '4xlarge' | '8xlarge',
       family: 't3' | 't3a' | 'm6i' | 'c6i' | 'r6i' = 't3',
@@ -1823,7 +1823,7 @@ echo "Database tools installed!"
 
     /**
      * Size configurations with CPU and memory specs
-     */
+    */
     specs: {
       nano: { vcpu: 2, memory: 0.5, instanceType: 't3.nano' },
       micro: { vcpu: 2, memory: 1, instanceType: 't3.micro' },
@@ -1836,7 +1836,7 @@ echo "Database tools installed!"
 
     /**
      * Get Fargate CPU/memory from size
-     */
+    */
     toFargateSpecs: (
       size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
     ): { cpu: string, memory: string } => {
@@ -1854,7 +1854,7 @@ echo "Database tools installed!"
 
     /**
      * Get Lambda memory from size
-     */
+    */
     toLambdaMemory: (
       size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
     ): number => {
@@ -1872,7 +1872,7 @@ echo "Database tools installed!"
 
     /**
      * Presets for common workloads
-     */
+    */
     presets: {
       webServer: 't3.small',
       apiServer: 't3.medium',
@@ -1887,11 +1887,11 @@ echo "Database tools installed!"
   /**
    * Disk configuration helpers
    * Provides Stacks configuration parity for disk options
-   */
+  */
   static readonly DiskConfig = {
     /**
      * Create EBS volume configuration
-     */
+    */
     create: (options: {
       size: number
       type?: 'standard' | 'ssd' | 'premium' | 'gp2' | 'gp3' | 'io1' | 'io2'
@@ -1944,11 +1944,11 @@ echo "Database tools installed!"
 
     /**
      * Common disk configurations
-     */
+    */
     presets: {
       /**
        * Standard SSD (20GB gp3)
-       */
+      */
       standard: {
         VolumeSize: 20,
         VolumeType: 'gp3',
@@ -1958,7 +1958,7 @@ echo "Database tools installed!"
 
       /**
        * Large storage (100GB gp3)
-       */
+      */
       large: {
         VolumeSize: 100,
         VolumeType: 'gp3',
@@ -1968,7 +1968,7 @@ echo "Database tools installed!"
 
       /**
        * High performance (50GB io2)
-       */
+      */
       highPerformance: {
         VolumeSize: 50,
         VolumeType: 'io2',
@@ -1979,7 +1979,7 @@ echo "Database tools installed!"
 
       /**
        * Database optimized (100GB io2 with high IOPS)
-       */
+      */
       database: {
         VolumeSize: 100,
         VolumeType: 'io2',
@@ -1993,11 +1993,11 @@ echo "Database tools installed!"
   /**
    * Spot instance configuration
    * Provides Stacks configuration parity for spot instances
-   */
+  */
   static readonly SpotConfig = {
     /**
      * Create spot instance specification for Launch Template
-     */
+    */
     create: (options: {
       maxPrice?: string
       spotInstanceType?: 'one-time' | 'persistent'
@@ -2036,11 +2036,11 @@ echo "Database tools installed!"
 
     /**
      * Common spot instance configurations
-     */
+    */
     presets: {
       /**
        * Standard spot (80% on-demand price)
-       */
+      */
       standard: {
         spotInstanceType: 'one-time',
         interruptionBehavior: 'terminate',
@@ -2048,7 +2048,7 @@ echo "Database tools installed!"
 
       /**
        * Persistent spot (for long-running workloads)
-       */
+      */
       persistent: {
         spotInstanceType: 'persistent',
         interruptionBehavior: 'stop',
@@ -2056,7 +2056,7 @@ echo "Database tools installed!"
 
       /**
        * Cost-optimized (lower max price)
-       */
+      */
       costOptimized: {
         maxPrice: '0.05',
         spotInstanceType: 'one-time',
@@ -2068,11 +2068,11 @@ echo "Database tools installed!"
   /**
    * Mixed instances configuration for Auto Scaling Groups
    * Provides Stacks configuration parity for mixed instance fleets
-   */
+  */
   static readonly MixedInstances = {
     /**
      * Create mixed instances policy for ASG
-     */
+    */
     create: (options: {
       instanceTypes: Array<{ size: string, weight?: number }>
       baseCapacity?: number
@@ -2133,11 +2133,11 @@ echo "Database tools installed!"
 
     /**
      * Common mixed instance configurations
-     */
+    */
     presets: {
       /**
        * Cost-optimized (80% spot)
-       */
+      */
       costOptimized: {
         baseCapacity: 0,
         onDemandPercentage: 20,
@@ -2150,7 +2150,7 @@ echo "Database tools installed!"
 
       /**
        * Balanced (50% spot)
-       */
+      */
       balanced: {
         baseCapacity: 1,
         onDemandPercentage: 50,
@@ -2163,7 +2163,7 @@ echo "Database tools installed!"
 
       /**
        * High availability (20% spot)
-       */
+      */
       highAvailability: {
         baseCapacity: 2,
         onDemandPercentage: 80,
@@ -2178,11 +2178,11 @@ echo "Database tools installed!"
   /**
    * Auto-scaling configuration helpers
    * Provides Stacks configuration parity for auto-scaling options
-   */
+  */
   static readonly AutoScalingConfig = {
     /**
      * Create auto-scaling configuration
-     */
+    */
     create: (options: {
       min: number
       max: number
@@ -2237,7 +2237,7 @@ echo "Database tools installed!"
 
     /**
      * ECS auto-scaling configuration
-     */
+    */
     forEcs: (options: {
       min: number
       max: number
@@ -2276,11 +2276,11 @@ echo "Database tools installed!"
 
     /**
      * Common auto-scaling configurations
-     */
+    */
     presets: {
       /**
        * Small service (1-3 instances)
-       */
+      */
       small: {
         min: 1,
         max: 3,
@@ -2290,7 +2290,7 @@ echo "Database tools installed!"
 
       /**
        * Medium service (2-10 instances)
-       */
+      */
       medium: {
         min: 2,
         max: 10,
@@ -2300,7 +2300,7 @@ echo "Database tools installed!"
 
       /**
        * Large service (3-50 instances)
-       */
+      */
       large: {
         min: 3,
         max: 50,
@@ -2310,7 +2310,7 @@ echo "Database tools installed!"
 
       /**
        * High availability (always 2+ instances)
-       */
+      */
       highAvailability: {
         min: 2,
         max: 20,
@@ -2323,11 +2323,11 @@ echo "Database tools installed!"
   /**
    * Load balancer configuration helpers
    * Provides Stacks configuration parity for load balancer options
-   */
+  */
   static readonly LoadBalancerConfig = {
     /**
      * Create load balancer health check configuration
-     */
+    */
     healthCheck: (options: {
       path?: string
       interval?: number
@@ -2369,11 +2369,11 @@ echo "Database tools installed!"
 
     /**
      * Common health check configurations
-     */
+    */
     presets: {
       /**
        * Standard HTTP health check
-       */
+      */
       standard: {
         path: '/health',
         interval: 30,
@@ -2384,7 +2384,7 @@ echo "Database tools installed!"
 
       /**
        * Fast health check (for quick failover)
-       */
+      */
       fast: {
         path: '/health',
         interval: 10,
@@ -2395,7 +2395,7 @@ echo "Database tools installed!"
 
       /**
        * Relaxed health check (for slow-starting apps)
-       */
+      */
       relaxed: {
         path: '/health',
         interval: 60,
@@ -2409,11 +2409,11 @@ echo "Database tools installed!"
   /**
    * SSL configuration helpers
    * Provides Stacks configuration parity for SSL options
-   */
+  */
   static readonly SslConfig = {
     /**
      * Create SSL listener configuration
-     */
+    */
     httpsListener: (options: {
       certificateArn: string
       targetGroupArn: string
@@ -2447,7 +2447,7 @@ echo "Database tools installed!"
 
     /**
      * Create HTTP to HTTPS redirect listener
-     */
+    */
     httpRedirectListener: (port: number = 80): {
       Port: number
       Protocol: string
@@ -2474,7 +2474,7 @@ echo "Database tools installed!"
 
     /**
      * SSL policies (TLS versions)
-     */
+    */
     policies: {
       tls13: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
       tls12: 'ELBSecurityPolicy-TLS-1-2-Ext-2018-06',
@@ -2486,11 +2486,11 @@ echo "Database tools installed!"
   /**
    * Functions configuration helpers (Lambda)
    * Provides Stacks configuration parity for functions configuration
-   */
+  */
   static readonly FunctionConfig = {
     /**
      * Create Lambda function configuration
-     */
+    */
     create: (options: {
       handler: string
       runtime?: string
@@ -2535,7 +2535,7 @@ echo "Database tools installed!"
 
     /**
      * Runtime options
-     */
+    */
     runtimes: {
       nodejs20: 'nodejs20.x',
       nodejs18: 'nodejs18.x',
@@ -2549,11 +2549,11 @@ echo "Database tools installed!"
 
     /**
      * Common function configurations
-     */
+    */
     presets: {
       /**
        * API handler (fast response)
-       */
+      */
       api: {
         runtime: 'nodejs20.x',
         timeout: 30,
@@ -2562,7 +2562,7 @@ echo "Database tools installed!"
 
       /**
        * Worker (background processing)
-       */
+      */
       worker: {
         runtime: 'nodejs20.x',
         timeout: 300,
@@ -2571,7 +2571,7 @@ echo "Database tools installed!"
 
       /**
        * Cron job (scheduled task)
-       */
+      */
       cron: {
         runtime: 'nodejs20.x',
         timeout: 900,
@@ -2580,7 +2580,7 @@ echo "Database tools installed!"
 
       /**
        * Data processing (high memory)
-       */
+      */
       dataProcessing: {
         runtime: 'nodejs20.x',
         timeout: 900,
@@ -2592,11 +2592,11 @@ echo "Database tools installed!"
   /**
    * User data scripts for EC2 Server Mode (Forge-style)
    * Provides installation scripts for Bun, Node.js, Nginx, Caddy, PM2, etc.
-   */
+  */
   static readonly UserData = {
     /**
      * Generate complete user data script for app server
-     */
+    */
     generateAppServerScript: (options: {
       runtime?: 'bun' | 'node'
       runtimeVersion?: string
@@ -2690,11 +2690,11 @@ apt-get install -y curl wget git jq htop unzip
 
     /**
      * Individual installation scripts
-     */
+    */
     Scripts: {
       /**
        * Install Bun
-       */
+      */
       bun: (version: string = 'latest'): string => `
 # Install Bun
 curl -fsSL https://bun.sh/install | bash
@@ -2708,7 +2708,7 @@ bun --version
 
       /**
        * Install Node.js via nvm
-       */
+      */
       nodeJs: (version: string = '20'): string => `
 # Install Node.js via nvm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -2725,7 +2725,7 @@ npm --version
 
       /**
        * Install Nginx
-       */
+      */
       nginx: (): string => `
 # Install Nginx
 apt-get install -y nginx
@@ -2735,7 +2735,7 @@ systemctl start nginx
 
       /**
        * Configure Nginx as reverse proxy
-       */
+      */
       nginxProxy: (domain: string, port: number = 3000): string => `
 # Configure Nginx reverse proxy
 cat > /etc/nginx/sites-available/${domain} << 'NGINX_CONFIG'
@@ -2764,7 +2764,7 @@ nginx -t && systemctl reload nginx
 
       /**
        * Install Caddy
-       */
+      */
       caddy: (): string => `
 # Install Caddy
 apt-get install -y debian-keyring debian-archive-keyring apt-transport-https
@@ -2777,7 +2777,7 @@ systemctl enable caddy
 
       /**
        * Configure Caddy as reverse proxy
-       */
+      */
       caddyProxy: (domain: string, port: number = 3000): string => `
 # Configure Caddy reverse proxy
 cat > /etc/caddy/Caddyfile << 'CADDY_CONFIG'
@@ -2791,7 +2791,7 @@ systemctl restart caddy
 
       /**
        * Install PM2
-       */
+      */
       pm2: (): string => `
 # Install PM2
 npm install -g pm2
@@ -2800,7 +2800,7 @@ pm2 startup systemd -u root --hp /root
 
       /**
        * Install Let's Encrypt (certbot)
-       */
+      */
       letsEncrypt: (domain: string, email: string, staging: boolean = false): string => `
 # Install Certbot
 apt-get install -y certbot python3-certbot-nginx
@@ -2812,7 +2812,7 @@ echo "0 0 * * * root certbot renew --quiet" > /etc/cron.d/certbot-renew
 
       /**
        * Install database clients
-       */
+      */
       databaseClients: (): string => `
 # Install database clients
 apt-get install -y postgresql-client mysql-client
@@ -2820,7 +2820,7 @@ apt-get install -y postgresql-client mysql-client
 
       /**
        * Install Redis (server and cli)
-       */
+      */
       redis: (): string => `
 # Install Redis
 apt-get install -y redis-server redis-tools
@@ -2830,7 +2830,7 @@ systemctl start redis-server
 
       /**
        * Create systemd service for app
-       */
+      */
       systemdService: (options: {
         serviceName: string
         description: string
@@ -2883,7 +2883,7 @@ systemctl start ${serviceName}
 
       /**
        * Setup swap file
-       */
+      */
       swapFile: (sizeGb: number = 2): string => `
 # Setup swap file
 fallocate -l ${sizeGb}G /swapfile
@@ -2895,7 +2895,7 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 
       /**
        * Setup firewall (ufw)
-       */
+      */
       firewall: (allowPorts: number[] = [22, 80, 443]): string => `
 # Setup firewall
 apt-get install -y ufw
@@ -2908,11 +2908,11 @@ ufw --force enable
 
     /**
      * Preset user data configurations
-     */
+    */
     Presets: {
       /**
        * Bun app server with Nginx
-       */
+      */
       bunWithNginx: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'bun',
@@ -2925,7 +2925,7 @@ ufw --force enable
 
       /**
        * Bun app server with Caddy (auto SSL)
-       */
+      */
       bunWithCaddy: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'bun',
@@ -2938,7 +2938,7 @@ ufw --force enable
 
       /**
        * Node.js app server with PM2 and Nginx
-       */
+      */
       nodeWithPm2: (domain: string, appPort: number = 3000): string =>
         Compute.UserData.generateAppServerScript({
           runtime: 'node',
@@ -2951,7 +2951,7 @@ ufw --force enable
 
       /**
        * Minimal worker server (no web server)
-       */
+      */
       worker: (runtime: 'bun' | 'node' = 'bun'): string =>
         Compute.UserData.generateAppServerScript({
           runtime,
@@ -2964,7 +2964,7 @@ ufw --force enable
 
   /**
    * Create Elastic IP allocation
-   */
+  */
   static createElasticIp(options: {
     slug: string
     environment: EnvironmentType
@@ -3030,7 +3030,7 @@ ufw --force enable
   /**
    * Create complete Server Mode stack (Forge-style)
    * Creates EC2 instance with Elastic IP, security group, and IAM role
-   */
+  */
   static createServerModeStack(options: {
     slug: string
     environment: EnvironmentType
@@ -3213,11 +3213,11 @@ ufw --force enable
 
   /**
    * Server Mode presets for common server types
-   */
+  */
   static readonly ServerMode = {
     /**
      * Create web/app server
-     */
+    */
     webServer: (options: {
       slug: string
       environment: EnvironmentType
@@ -3261,7 +3261,7 @@ ufw --force enable
 
     /**
      * Create worker server (no web server)
-     */
+    */
     workerServer: (options: {
       slug: string
       environment: EnvironmentType
@@ -3303,7 +3303,7 @@ ufw --force enable
 
     /**
      * Create cache server (Redis)
-     */
+    */
     cacheServer: (options: {
       slug: string
       environment: EnvironmentType

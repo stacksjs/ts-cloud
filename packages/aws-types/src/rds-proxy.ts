@@ -1,7 +1,7 @@
 /**
  * AWS RDS Proxy Types
  * CloudFormation resource types for RDS Proxy (connection pooling)
- */
+*/
 
 import type { Tag } from './common'
 

@@ -2,7 +2,7 @@
  * Shared Mailboxes for Teams
  *
  * Provides shared mailbox functionality with team access
- */
+*/
 
 export interface SharedMailbox {
   id: string
@@ -57,11 +57,11 @@ export interface MailboxAssignment {
 
 /**
  * Shared Mailboxes Module
- */
+*/
 export class SharedMailboxes {
   /**
    * Lambda code for shared mailbox management
-   */
+  */
   static SharedMailboxLambdaCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
 const { DynamoDBClient, GetItemCommand, PutItemCommand, QueryCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
@@ -295,7 +295,7 @@ function unmarshallMailbox(item) {
 
   /**
    * Create shared mailbox DynamoDB table
-   */
+  */
   static createMailboxTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SharedMailboxTable`]: {
@@ -335,7 +335,7 @@ function unmarshallMailbox(item) {
 
   /**
    * Create shared mailbox Lambda
-   */
+  */
   static createSharedMailboxLambda(config: {
     slug: string
     roleArn: string
@@ -368,7 +368,7 @@ function unmarshallMailbox(item) {
 
   /**
    * Default permission sets
-   */
+  */
   static readonly PermissionSets = {
     owner: {
       read: true,

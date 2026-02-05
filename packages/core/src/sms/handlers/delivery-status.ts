@@ -5,7 +5,7 @@
  * - Process delivery receipts
  * - Update message status
  * - Handle failures
- */
+*/
 
 export const handler = `
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');

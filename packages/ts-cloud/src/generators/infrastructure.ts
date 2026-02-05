@@ -1,7 +1,7 @@
 /**
  * Infrastructure Generator
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
- */
+*/
 
 import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 import {
@@ -52,7 +52,7 @@ export class InfrastructureGenerator {
 
   /**
    * Merge base config with environment-specific overrides
-   */
+  */
   private mergeEnvironmentConfig(): CloudConfig {
     const envConfig = this.config.environments[this.environment]
     const envInfra = envConfig?.infrastructure
@@ -80,7 +80,7 @@ export class InfrastructureGenerator {
 
   /**
    * Check if a resource should be deployed based on conditions
-   */
+  */
   private shouldDeploy(resource: any): boolean {
     // Check environment conditions
     if (resource.environments && !resource.environments.includes(this.environment)) {
@@ -117,7 +117,7 @@ export class InfrastructureGenerator {
   /**
    * Generate complete infrastructure
    * Auto-detects what to generate based on configuration
-   */
+  */
   generate(): this {
     const slug = this.mergedConfig.project.slug
     const env = this.environment
@@ -155,7 +155,7 @@ export class InfrastructureGenerator {
 
   /**
    * Apply global tags to all resources
-   */
+  */
   private applyGlobalTags(tags: Record<string, string>): void {
     // This would iterate through all resources in the builder and add tags
     // Implementation depends on TemplateBuilder structure
@@ -163,7 +163,7 @@ export class InfrastructureGenerator {
 
   /**
    * Generate serverless infrastructure (Lambda, ECS Fargate)
-   */
+  */
   private generateServerless(slug: string, env: typeof this.environment): void {
     // Example: Lambda function
     if (this.mergedConfig.infrastructure?.functions) {
@@ -217,7 +217,7 @@ export class InfrastructureGenerator {
 
   /**
    * Generate server infrastructure (EC2)
-   */
+  */
   private generateServer(slug: string, env: typeof this.environment): void {
     // Example: EC2 instance
     if (this.config.infrastructure?.servers) {
@@ -237,7 +237,7 @@ export class InfrastructureGenerator {
 
   /**
    * Generate shared infrastructure (storage, database, etc.)
-   */
+  */
   private generateSharedInfrastructure(slug: string, env: typeof this.environment): void {
     // Storage buckets
     if (this.config.infrastructure?.storage) {
@@ -584,7 +584,7 @@ export class InfrastructureGenerator {
   /**
    * Generate Realtime (WebSocket) infrastructure
    * Creates API Gateway WebSocket API, Lambda handlers, DynamoDB tables
-   */
+  */
   private generateRealtimeResources(slug: string, env: typeof this.environment): void {
     const config = this.mergedConfig.infrastructure?.realtime
     if (!config) return
@@ -1052,7 +1052,7 @@ export class InfrastructureGenerator {
 
   /**
    * Generate $connect Lambda handler code
-   */
+  */
   private generateConnectHandlerCode(): string {
     return `
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -1088,7 +1088,7 @@ exports.handler = async (event) => {
 
   /**
    * Generate $disconnect Lambda handler code
-   */
+  */
   private generateDisconnectHandlerCode(): string {
     return `
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -1135,7 +1135,7 @@ exports.handler = async (event) => {
 
   /**
    * Generate $default (message) Lambda handler code
-   */
+  */
   private generateMessageHandlerCode(): string {
     return `
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
@@ -1228,7 +1228,7 @@ exports.handler = async (event) => {
   /**
    * Generate Realtime Server Mode infrastructure (ts-broadcasting)
    * Creates ECS/EC2 resources for running the Bun WebSocket server
-   */
+  */
   private generateRealtimeServerResources(slug: string, env: typeof this.environment): void {
     const config = this.mergedConfig.infrastructure?.realtime
     if (!config) return
@@ -1578,7 +1578,7 @@ exports.handler = async (event) => {
 
   /**
    * Generate broadcast.config.ts content for ts-broadcasting
-   */
+  */
   generateBroadcastConfig(): string {
     const config = this.mergedConfig.infrastructure?.realtime
     if (!config || config.mode !== 'server') return ''
@@ -1639,21 +1639,21 @@ ${serverConfig.loadManagement?.enabled ? `
 
   /**
    * Generate YAML output
-   */
+  */
   toYAML(): string {
     return this.builder.toYAML()
   }
 
   /**
    * Generate JSON output
-   */
+  */
   toJSON(): string {
     return this.builder.toJSON()
   }
 
   /**
    * Get the template builder
-   */
+  */
   getBuilder(): TemplateBuilder {
     return this.builder
   }

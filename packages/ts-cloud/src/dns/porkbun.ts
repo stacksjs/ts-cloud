@@ -1,7 +1,7 @@
 /**
  * Porkbun DNS Provider
  * API documentation: https://porkbun.com/api/json/v3/documentation
- */
+*/
 
 import type {
   CreateRecordResult,
@@ -50,7 +50,7 @@ export class PorkbunProvider implements DnsProvider {
 
   /**
    * Make an authenticated API request to Porkbun
-   */
+  */
   private async request<T extends PorkbunApiResponse>(
     endpoint: string,
     additionalBody: Record<string, any> = {},
@@ -83,7 +83,7 @@ export class PorkbunProvider implements DnsProvider {
   /**
    * Extract the subdomain from a full record name
    * e.g., "_acme-challenge.example.com" -> "_acme-challenge"
-   */
+  */
   private getSubdomain(recordName: string, domain: string): string {
     // Remove trailing dots
     const cleanName = recordName.replace(/\.$/, '')
@@ -106,7 +106,7 @@ export class PorkbunProvider implements DnsProvider {
   /**
    * Get the root domain from a full domain name
    * e.g., "api.example.com" -> "example.com"
-   */
+  */
   private getRootDomain(domain: string): string {
     const parts = domain.replace(/\.$/, '').split('.')
     // Handle common TLDs
@@ -314,7 +314,7 @@ export class PorkbunProvider implements DnsProvider {
   /**
    * List all domains managed by this Porkbun account
    * Uses the domain list API endpoint
-   */
+  */
   async listDomains(): Promise<string[]> {
     try {
       // Porkbun's /domain/listAll endpoint returns domains with API access enabled
@@ -330,7 +330,7 @@ export class PorkbunProvider implements DnsProvider {
 
   /**
    * Get nameservers for a domain (Porkbun-specific)
-   */
+  */
   async getNameServers(domain: string): Promise<string[]> {
     try {
       const rootDomain = this.getRootDomain(domain)
@@ -346,7 +346,7 @@ export class PorkbunProvider implements DnsProvider {
 
   /**
    * Update nameservers for a domain (Porkbun-specific)
-   */
+  */
   async updateNameServers(domain: string, nameservers: string[]): Promise<boolean> {
     try {
       const rootDomain = this.getRootDomain(domain)

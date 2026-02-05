@@ -44,11 +44,11 @@ export interface LifecyclePolicyOptions {
 /**
  * FileSystem Module - EFS (Elastic File System)
  * Provides clean API for creating and configuring shared file systems
- */
+*/
 export class FileSystem {
   /**
    * Create an EFS file system
-   */
+  */
   static createFileSystem(options: FileSystemOptions): {
     fileSystem: EFSFileSystem
     logicalId: string
@@ -104,7 +104,7 @@ export class FileSystem {
 
   /**
    * Create a mount target for multi-AZ access
-   */
+  */
   static createMountTarget(
     fileSystemLogicalId: string,
     options: MountTargetOptions,
@@ -146,7 +146,7 @@ export class FileSystem {
 
   /**
    * Create an access point with POSIX permissions
-   */
+  */
   static createAccessPoint(
     fileSystemLogicalId: string,
     options: AccessPointOptions,
@@ -199,7 +199,7 @@ export class FileSystem {
 
   /**
    * Set lifecycle policy for cost optimization
-   */
+  */
   static setLifecyclePolicy(
     fileSystem: EFSFileSystem,
     options: LifecyclePolicyOptions,
@@ -230,7 +230,7 @@ export class FileSystem {
 
   /**
    * Enable automatic backups
-   */
+  */
   static enableBackup(fileSystem: EFSFileSystem): EFSFileSystem {
     if (!fileSystem.Properties) {
       fileSystem.Properties = {}
@@ -245,7 +245,7 @@ export class FileSystem {
 
   /**
    * Disable automatic backups
-   */
+  */
   static disableBackup(fileSystem: EFSFileSystem): EFSFileSystem {
     if (!fileSystem.Properties) {
       fileSystem.Properties = {}
@@ -260,7 +260,7 @@ export class FileSystem {
 
   /**
    * Set provisioned throughput mode
-   */
+  */
   static setProvisionedThroughput(
     fileSystem: EFSFileSystem,
     throughputInMibps: number,
@@ -277,7 +277,7 @@ export class FileSystem {
 
   /**
    * Set elastic throughput mode (recommended for most workloads)
-   */
+  */
   static setElasticThroughput(fileSystem: EFSFileSystem): EFSFileSystem {
     if (!fileSystem.Properties) {
       fileSystem.Properties = {}
@@ -290,7 +290,7 @@ export class FileSystem {
 
   /**
    * Enable max I/O performance mode (for highly parallelized workloads)
-   */
+  */
   static enableMaxIO(fileSystem: EFSFileSystem): EFSFileSystem {
     if (!fileSystem.Properties) {
       fileSystem.Properties = {}
@@ -304,7 +304,7 @@ export class FileSystem {
   /**
    * Create a security group for EFS mount targets
    * Allows NFS traffic (port 2049) from specified sources
-   */
+  */
   static createEfsSecurityGroup(options: {
     slug: string
     environment: EnvironmentType
@@ -378,7 +378,7 @@ export class FileSystem {
   /**
    * Create mount targets across multiple subnets (multi-AZ)
    * Returns all mount targets and their logical IDs
-   */
+  */
   static createMultiAzMountTargets(
     fileSystemLogicalId: string,
     options: {
@@ -424,7 +424,7 @@ export class FileSystem {
 
   /**
    * Create a complete EFS setup with security group and mount targets
-   */
+  */
   static createCompleteFileSystem(options: {
     slug: string
     environment: EnvironmentType

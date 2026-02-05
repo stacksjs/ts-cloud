@@ -34,7 +34,7 @@ export interface CacheConfig {
 
 /**
  * Add ElastiCache resources to CloudFormation template
- */
+*/
 export function addCacheResources(
   builder: CloudFormationBuilder,
   config: CacheConfig,
@@ -54,7 +54,7 @@ export function addCacheResources(
 
 /**
  * Add Redis cluster
- */
+*/
 function addRedisCluster(
   builder: CloudFormationBuilder,
   config: CacheConfig['redis'],
@@ -198,7 +198,7 @@ function addRedisCluster(
 
 /**
  * Add Memcached cluster
- */
+*/
 function addMemcachedCluster(
   builder: CloudFormationBuilder,
   config: CacheConfig['memcached'],
@@ -276,7 +276,7 @@ function addMemcachedCluster(
 
 /**
  * Add generic ElastiCache cluster
- */
+*/
 function addElastiCacheCluster(
   builder: CloudFormationBuilder,
   config: CacheConfig['elasticache'],

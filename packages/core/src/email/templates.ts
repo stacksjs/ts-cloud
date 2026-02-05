@@ -1,7 +1,7 @@
 /**
  * SES Email Template Management
  * Template versioning, personalization, and testing
- */
+*/
 
 export interface EmailTemplate {
   id: string
@@ -39,7 +39,7 @@ export interface TemplateTest {
 
 /**
  * Email template manager
- */
+*/
 export class EmailTemplateManager {
   private templates: Map<string, EmailTemplate> = new Map()
   private versions: Map<string, TemplateVersion[]> = new Map()
@@ -49,7 +49,7 @@ export class EmailTemplateManager {
 
   /**
    * Create template
-   */
+  */
   createTemplate(template: {
     name: string
     subject: string
@@ -86,7 +86,7 @@ export class EmailTemplateManager {
 
   /**
    * Create welcome email template
-   */
+  */
   createWelcomeTemplate(options: {
     name: string
     companyName: string
@@ -110,7 +110,7 @@ export class EmailTemplateManager {
 
   /**
    * Create password reset template
-   */
+  */
   createPasswordResetTemplate(options: {
     name: string
     companyName: string
@@ -136,7 +136,7 @@ export class EmailTemplateManager {
 
   /**
    * Update template
-   */
+  */
   updateTemplate(
     templateId: string,
     updates: {
@@ -176,7 +176,7 @@ export class EmailTemplateManager {
 
   /**
    * Add template version
-   */
+  */
   private addVersion(version: Omit<TemplateVersion, 'id' | 'createdAt'>): TemplateVersion {
     const id = `version-${version.templateId}-${version.version}`
 
@@ -195,7 +195,7 @@ export class EmailTemplateManager {
 
   /**
    * Extract variables from template
-   */
+  */
   private extractVariables(text: string): string[] {
     const regex = /\{\{([^}]+)\}\}/g
     const variables = new Set<string>()
@@ -210,7 +210,7 @@ export class EmailTemplateManager {
 
   /**
    * Render template
-   */
+  */
   renderTemplate(templateId: string, data: Record<string, any>): {
     subject: string
     html: string
@@ -238,7 +238,7 @@ export class EmailTemplateManager {
 
   /**
    * Test template
-   */
+  */
   testTemplate(templateId: string, testData: Record<string, any>): TemplateTest {
     const id = `test-${Date.now()}-${this.testCounter++}`
 
@@ -261,28 +261,28 @@ export class EmailTemplateManager {
 
   /**
    * Get template
-   */
+  */
   getTemplate(id: string): EmailTemplate | undefined {
     return this.templates.get(id)
   }
 
   /**
    * List templates
-   */
+  */
   listTemplates(): EmailTemplate[] {
     return Array.from(this.templates.values())
   }
 
   /**
    * Get template versions
-   */
+  */
   getTemplateVersions(templateId: string): TemplateVersion[] {
     return this.versions.get(templateId) || []
   }
 
   /**
    * Revert to version
-   */
+  */
   revertToVersion(templateId: string, versionNumber: number): EmailTemplate {
     const template = this.templates.get(templateId)
 
@@ -319,7 +319,7 @@ export class EmailTemplateManager {
 
   /**
    * Generate CloudFormation for SES template
-   */
+  */
   generateTemplateCF(template: EmailTemplate): any {
     return {
       Type: 'AWS::SES::Template',
@@ -336,7 +336,7 @@ export class EmailTemplateManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.templates.clear()
     this.versions.clear()
@@ -348,5 +348,5 @@ export class EmailTemplateManager {
 
 /**
  * Global email template manager instance
- */
+*/
 export const emailTemplateManager: EmailTemplateManager = new EmailTemplateManager()

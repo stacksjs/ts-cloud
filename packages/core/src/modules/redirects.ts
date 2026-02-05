@@ -1,7 +1,7 @@
 /**
  * Redirects Module - URL Redirect Management
  * Provides clean API for creating domain and path-based redirects
- */
+*/
 
 import type { CloudFrontFunction, S3Bucket, S3BucketPolicy } from '@stacksjs/ts-cloud-aws-types'
 import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
@@ -33,12 +33,12 @@ export interface PathRedirectOptions {
 /**
  * Redirects Module - Domain and Path-based Redirects
  * Provides clean API for URL redirects using S3 and CloudFront Functions
- */
+*/
 export class Redirects {
   /**
    * Create an S3 bucket configured for domain redirect
    * Redirects all requests from one domain to another
-   */
+  */
   static createDomainRedirectBucket(options: DomainRedirectOptions): {
     bucket: S3Bucket
     bucketPolicy: S3BucketPolicy
@@ -114,7 +114,7 @@ export class Redirects {
 
   /**
    * Create a CloudFront Function for path-based redirects
-   */
+  */
   static createPathRedirectFunction(options: PathRedirectOptions): {
     function: CloudFrontFunction
     logicalId: string
@@ -155,7 +155,7 @@ export class Redirects {
 
   /**
    * Generate CloudFront Function code for path redirects
-   */
+  */
   static generateRedirectFunctionCode(rules: RedirectRule[]): string {
     const redirectMap = rules.map((rule) => {
       const preserveQs = rule.preserveQueryString !== false
@@ -221,11 +221,11 @@ ${redirectMap}
 
   /**
    * Create common redirect patterns
-   */
+  */
   static readonly CommonRedirects = {
     /**
      * www to non-www redirect
-     */
+    */
     wwwToApex: (domain: string, protocol: 'http' | 'https' = 'https'): DomainRedirectOptions => ({
       slug: domain.replace(/\./g, '-'),
       environment: 'production',
@@ -237,7 +237,7 @@ ${redirectMap}
 
     /**
      * non-www to www redirect
-     */
+    */
     apexToWww: (domain: string, protocol: 'http' | 'https' = 'https'): DomainRedirectOptions => ({
       slug: domain.replace(/\./g, '-'),
       environment: 'production',
@@ -249,7 +249,7 @@ ${redirectMap}
 
     /**
      * HTTP to HTTPS redirect (handled at CloudFront/ALB level typically)
-     */
+    */
     httpToHttps: (path: string = '/'): RedirectRule => ({
       source: path,
       target: path,
@@ -258,7 +258,7 @@ ${redirectMap}
 
     /**
      * Trailing slash normalization (add trailing slash)
-     */
+    */
     addTrailingSlash: (paths: string[]): RedirectRule[] =>
       paths.map(path => ({
         source: path.endsWith('/') ? path.slice(0, -1) : path,
@@ -268,7 +268,7 @@ ${redirectMap}
 
     /**
      * Trailing slash normalization (remove trailing slash)
-     */
+    */
     removeTrailingSlash: (paths: string[]): RedirectRule[] =>
       paths.map(path => ({
         source: path.endsWith('/') && path !== '/' ? path : `${path}/`,
@@ -279,12 +279,12 @@ ${redirectMap}
 
   /**
    * Create redirect rules for common URL patterns
-   */
+  */
   static readonly Patterns = {
     /**
      * Old blog URL pattern to new pattern
      * /blog/2023/01/my-post -> /blog/my-post
-     */
+    */
     flattenBlogUrls: (posts: Array<{ oldPath: string, newPath: string }>): RedirectRule[] =>
       posts.map(({ oldPath, newPath }) => ({
         source: oldPath,
@@ -295,7 +295,7 @@ ${redirectMap}
 
     /**
      * Category URL changes
-     */
+    */
     categoryRename: (oldCategory: string, newCategory: string): RedirectRule[] => [
       {
         source: `/${oldCategory}`,
@@ -311,7 +311,7 @@ ${redirectMap}
 
     /**
      * Product page URL pattern
-     */
+    */
     productSlugChange: (products: Array<{ oldSlug: string, newSlug: string }>): RedirectRule[] =>
       products.map(({ oldSlug, newSlug }) => ({
         source: `/products/${oldSlug}`,
@@ -321,7 +321,7 @@ ${redirectMap}
 
     /**
      * Deprecated API version redirects
-     */
+    */
     apiVersionRedirect: (oldVersion: string, newVersion: string, endpoints: string[]): RedirectRule[] =>
       endpoints.map(endpoint => ({
         source: `/api/${oldVersion}/${endpoint}`,
@@ -332,7 +332,7 @@ ${redirectMap}
 
     /**
      * Gone (410) redirects for deleted content
-     */
+    */
     gonePages: (paths: string[]): RedirectRule[] =>
       paths.map(path => ({
         source: path,
@@ -343,7 +343,7 @@ ${redirectMap}
 
   /**
    * Create a complete redirect setup with multiple rules
-   */
+  */
   static createRedirectSetup(options: {
     slug: string
     environment: EnvironmentType
@@ -395,7 +395,7 @@ ${redirectMap}
 
   /**
    * Generate redirect rules from a simple mapping object
-   */
+  */
   static fromMapping(
     mapping: Record<string, string>,
     options?: { statusCode?: 301 | 302 | 307 | 308, preserveQueryString?: boolean },
@@ -410,7 +410,7 @@ ${redirectMap}
 
   /**
    * Validate redirect rules for common issues
-   */
+  */
   static validateRules(rules: RedirectRule[]): {
     valid: boolean
     errors: string[]

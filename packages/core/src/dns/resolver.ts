@@ -1,7 +1,7 @@
 /**
  * Route53 Resolver
  * DNS firewall, resolver rules, and endpoints
- */
+*/
 
 export interface ResolverEndpoint {
   id: string
@@ -75,7 +75,7 @@ export interface FirewallDomainList {
 
 /**
  * Route53 Resolver manager
- */
+*/
 export class Route53ResolverManager {
   private endpoints: Map<string, ResolverEndpoint> = new Map()
   private rules: Map<string, ResolverRule> = new Map()
@@ -90,7 +90,7 @@ export class Route53ResolverManager {
 
   /**
    * Create resolver endpoint
-   */
+  */
   createResolverEndpoint(endpoint: Omit<ResolverEndpoint, 'id' | 'status'>): ResolverEndpoint {
     const id = `endpoint-${Date.now()}-${this.endpointCounter++}`
 
@@ -119,7 +119,7 @@ export class Route53ResolverManager {
 
   /**
    * Create inbound endpoint
-   */
+  */
   createInboundEndpoint(options: {
     name: string
     subnetIds: string[]
@@ -135,7 +135,7 @@ export class Route53ResolverManager {
 
   /**
    * Create outbound endpoint
-   */
+  */
   createOutboundEndpoint(options: {
     name: string
     subnetIds: string[]
@@ -151,7 +151,7 @@ export class Route53ResolverManager {
 
   /**
    * Create resolver rule
-   */
+  */
   createResolverRule(rule: Omit<ResolverRule, 'id' | 'status'>): ResolverRule {
     const id = `rule-${Date.now()}-${this.ruleCounter++}`
 
@@ -172,7 +172,7 @@ export class Route53ResolverManager {
 
   /**
    * Create forward rule
-   */
+  */
   createForwardRule(options: {
     name: string
     domainName: string
@@ -190,7 +190,7 @@ export class Route53ResolverManager {
 
   /**
    * Create system rule
-   */
+  */
   createSystemRule(options: {
     name: string
     domainName: string
@@ -204,7 +204,7 @@ export class Route53ResolverManager {
 
   /**
    * Create firewall domain list
-   */
+  */
   createFirewallDomainList(options: {
     name: string
     domains: string[]
@@ -228,7 +228,7 @@ export class Route53ResolverManager {
 
   /**
    * Create firewall rule group
-   */
+  */
   createFirewallRuleGroup(options: {
     name: string
     rules: Omit<FirewallRule, 'id'>[]
@@ -252,7 +252,7 @@ export class Route53ResolverManager {
 
   /**
    * Create block rule
-   */
+  */
   createBlockRule(options: {
     name: string
     priority: number
@@ -277,7 +277,7 @@ export class Route53ResolverManager {
 
   /**
    * Create allow rule
-   */
+  */
   createAllowRule(options: {
     name: string
     priority: number
@@ -298,7 +298,7 @@ export class Route53ResolverManager {
 
   /**
    * Create DNS firewall
-   */
+  */
   createDNSFirewall(options: {
     name: string
     vpcId: string
@@ -330,7 +330,7 @@ export class Route53ResolverManager {
 
   /**
    * Create malware protection firewall
-   */
+  */
   createMalwareProtectionFirewall(options: {
     name: string
     vpcId: string
@@ -366,14 +366,14 @@ export class Route53ResolverManager {
 
   /**
    * Get resolver endpoint
-   */
+  */
   getEndpoint(id: string): ResolverEndpoint | undefined {
     return this.endpoints.get(id)
   }
 
   /**
    * List resolver endpoints
-   */
+  */
   listEndpoints(direction?: 'INBOUND' | 'OUTBOUND'): ResolverEndpoint[] {
     const endpoints = Array.from(this.endpoints.values())
     return direction ? endpoints.filter(e => e.direction === direction) : endpoints
@@ -381,35 +381,35 @@ export class Route53ResolverManager {
 
   /**
    * Get resolver rule
-   */
+  */
   getRule(id: string): ResolverRule | undefined {
     return this.rules.get(id)
   }
 
   /**
    * List resolver rules
-   */
+  */
   listRules(): ResolverRule[] {
     return Array.from(this.rules.values())
   }
 
   /**
    * Get firewall
-   */
+  */
   getFirewall(id: string): DNSFirewall | undefined {
     return this.firewalls.get(id)
   }
 
   /**
    * List firewalls
-   */
+  */
   listFirewalls(): DNSFirewall[] {
     return Array.from(this.firewalls.values())
   }
 
   /**
    * Generate CloudFormation for resolver endpoint
-   */
+  */
   generateResolverEndpointCF(endpoint: ResolverEndpoint): any {
     return {
       Type: 'AWS::Route53Resolver::ResolverEndpoint',
@@ -427,7 +427,7 @@ export class Route53ResolverManager {
 
   /**
    * Generate CloudFormation for resolver rule
-   */
+  */
   generateResolverRuleCF(rule: ResolverRule): any {
     return {
       Type: 'AWS::Route53Resolver::ResolverRule',
@@ -450,7 +450,7 @@ export class Route53ResolverManager {
 
   /**
    * Generate CloudFormation for firewall rule group
-   */
+  */
   generateFirewallRuleGroupCF(ruleGroup: FirewallRuleGroup): any {
     return {
       Type: 'AWS::Route53Resolver::FirewallRuleGroup',
@@ -475,7 +475,7 @@ export class Route53ResolverManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.endpoints.clear()
     this.rules.clear()
@@ -492,5 +492,5 @@ export class Route53ResolverManager {
 
 /**
  * Global Route53 Resolver manager instance
- */
+*/
 export const route53ResolverManager: Route53ResolverManager = new Route53ResolverManager()

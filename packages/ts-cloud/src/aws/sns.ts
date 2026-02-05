@@ -1,7 +1,7 @@
 /**
  * AWS SNS (Simple Notification Service) Operations
  * Direct API calls without AWS SDK dependency
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -33,7 +33,7 @@ export type SNSProtocol = 'http' | 'https' | 'email' | 'email-json' | 'sms' | 's
 
 /**
  * SNS service management using direct API calls
- */
+*/
 export class SNSClient {
   private client: AWSClient
   private region: string
@@ -45,7 +45,7 @@ export class SNSClient {
 
   /**
    * Build form-encoded body for SNS API
-   */
+  */
   private buildFormBody(params: Record<string, string | undefined>): string {
     const entries = Object.entries(params)
       .filter(([, value]) => value !== undefined)
@@ -55,7 +55,7 @@ export class SNSClient {
 
   /**
    * Create a new SNS topic
-   */
+  */
   async createTopic(params: {
     Name: string
     DisplayName?: string
@@ -108,7 +108,7 @@ export class SNSClient {
 
   /**
    * Delete an SNS topic
-   */
+  */
   async deleteTopic(topicArn: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -128,7 +128,7 @@ export class SNSClient {
 
   /**
    * List all SNS topics
-   */
+  */
   async listTopics(nextToken?: string): Promise<{
     Topics?: Array<{ TopicArn?: string }>
     NextToken?: string
@@ -164,7 +164,7 @@ export class SNSClient {
 
   /**
    * Get topic attributes
-   */
+  */
   async getTopicAttributes(topicArn: string): Promise<SNSTopicAttributes> {
     const result = await this.client.request({
       service: 'sns',
@@ -195,7 +195,7 @@ export class SNSClient {
 
   /**
    * Set topic attributes
-   */
+  */
   async setTopicAttributes(params: {
     TopicArn: string
     AttributeName: string
@@ -221,7 +221,7 @@ export class SNSClient {
 
   /**
    * Subscribe to a topic
-   */
+  */
   async subscribe(params: {
     TopicArn: string
     Protocol: SNSProtocol
@@ -269,7 +269,7 @@ export class SNSClient {
 
   /**
    * Unsubscribe from a topic
-   */
+  */
   async unsubscribe(subscriptionArn: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -289,7 +289,7 @@ export class SNSClient {
 
   /**
    * List subscriptions for a topic
-   */
+  */
   async listSubscriptionsByTopic(topicArn: string, nextToken?: string): Promise<{
     Subscriptions?: SNSSubscriptionAttributes[]
     NextToken?: string
@@ -324,7 +324,7 @@ export class SNSClient {
 
   /**
    * Publish a message to a topic
-   */
+  */
   async publish(params: {
     TopicArn?: string
     TargetArn?: string
@@ -384,7 +384,7 @@ export class SNSClient {
 
   /**
    * Publish SMS message directly (without topic)
-   */
+  */
   async publishSMS(phoneNumber: string, message: string, senderId?: string): Promise<{ MessageId?: string }> {
     const messageAttributes: Record<string, { DataType: 'String', StringValue: string }> = {}
 
@@ -404,7 +404,7 @@ export class SNSClient {
 
   /**
    * Subscribe an email address to a topic
-   */
+  */
   async subscribeEmail(topicArn: string, email: string): Promise<{ SubscriptionArn?: string }> {
     return this.subscribe({
       TopicArn: topicArn,
@@ -415,7 +415,7 @@ export class SNSClient {
 
   /**
    * Subscribe a Lambda function to a topic
-   */
+  */
   async subscribeLambda(topicArn: string, lambdaArn: string): Promise<{ SubscriptionArn?: string }> {
     return this.subscribe({
       TopicArn: topicArn,
@@ -426,7 +426,7 @@ export class SNSClient {
 
   /**
    * Subscribe an SQS queue to a topic
-   */
+  */
   async subscribeSqs(topicArn: string, queueArn: string, rawMessageDelivery?: boolean): Promise<{ SubscriptionArn?: string }> {
     const attributes: Record<string, string> = {}
     if (rawMessageDelivery) {
@@ -443,7 +443,7 @@ export class SNSClient {
 
   /**
    * Subscribe an HTTP/HTTPS endpoint to a topic
-   */
+  */
   async subscribeHttp(topicArn: string, url: string, rawMessageDelivery?: boolean): Promise<{ SubscriptionArn?: string }> {
     const protocol: SNSProtocol = url.startsWith('https') ? 'https' : 'http'
     const attributes: Record<string, string> = {}
@@ -461,7 +461,7 @@ export class SNSClient {
 
   /**
    * Subscribe an SMS number to a topic
-   */
+  */
   async subscribeSms(topicArn: string, phoneNumber: string): Promise<{ SubscriptionArn?: string }> {
     return this.subscribe({
       TopicArn: topicArn,
@@ -472,7 +472,7 @@ export class SNSClient {
 
   /**
    * Check if topic exists
-   */
+  */
   async topicExists(topicArn: string): Promise<boolean> {
     try {
       await this.getTopicAttributes(topicArn)
@@ -488,7 +488,7 @@ export class SNSClient {
 
   /**
    * Get SMS attributes (sandbox status, spending limits, etc.)
-   */
+  */
   async getSMSAttributes(): Promise<{
     MonthlySpendLimit?: string
     DeliveryStatusIAMRole?: string
@@ -527,7 +527,7 @@ export class SNSClient {
 
   /**
    * Set SMS attributes (sender ID, message type, etc.)
-   */
+  */
   async setSMSAttributes(attributes: {
     MonthlySpendLimit?: string
     DeliveryStatusIAMRole?: string
@@ -564,7 +564,7 @@ export class SNSClient {
 
   /**
    * Check if phone number is opted out
-   */
+  */
   async checkIfPhoneNumberIsOptedOut(phoneNumber: string): Promise<boolean> {
     const result = await this.client.request({
       service: 'sns',
@@ -586,7 +586,7 @@ export class SNSClient {
 
   /**
    * List phone numbers that have opted out of receiving SMS
-   */
+  */
   async listPhoneNumbersOptedOut(nextToken?: string): Promise<{
     phoneNumbers?: string[]
     nextToken?: string
@@ -617,7 +617,7 @@ export class SNSClient {
 
   /**
    * Opt a phone number back in to receive SMS (requires user consent)
-   */
+  */
   async optInPhoneNumber(phoneNumber: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -637,7 +637,7 @@ export class SNSClient {
 
   /**
    * List sandbox phone numbers (for SMS sandbox mode)
-   */
+  */
   async listSMSSandboxPhoneNumbers(nextToken?: string): Promise<{
     PhoneNumbers?: Array<{
       PhoneNumber?: string
@@ -671,7 +671,7 @@ export class SNSClient {
 
   /**
    * Create a sandbox phone number for testing
-   */
+  */
   async createSMSSandboxPhoneNumber(phoneNumber: string, languageCode?: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -692,7 +692,7 @@ export class SNSClient {
 
   /**
    * Verify a sandbox phone number with OTP
-   */
+  */
   async verifySMSSandboxPhoneNumber(phoneNumber: string, oneTimePassword: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -713,7 +713,7 @@ export class SNSClient {
 
   /**
    * Delete a sandbox phone number
-   */
+  */
   async deleteSMSSandboxPhoneNumber(phoneNumber: string): Promise<void> {
     await this.client.request({
       service: 'sns',
@@ -733,7 +733,7 @@ export class SNSClient {
 
   /**
    * Get SMS sandbox account status
-   */
+  */
   async getSMSSandboxAccountStatus(): Promise<{
     IsInSandbox: boolean
   }> {

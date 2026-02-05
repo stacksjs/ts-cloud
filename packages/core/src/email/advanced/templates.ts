@@ -2,7 +2,7 @@
  * Email Templates with Stacks Views
  *
  * Provides template management and rendering
- */
+*/
 
 export interface EmailTemplate {
   id: string
@@ -25,11 +25,11 @@ export interface TemplateRenderOptions {
 
 /**
  * Email Templates Module
- */
+*/
 export class EmailTemplates {
   /**
    * Lambda code for template rendering
-   */
+  */
   static TemplateRendererCode = `
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
@@ -129,7 +129,7 @@ function getNestedValue(obj, path) {
 
   /**
    * Built-in email templates
-   */
+  */
   static BuiltInTemplates = {
     welcome: {
       id: 'welcome',
@@ -332,7 +332,7 @@ The {{appName}} Team`,
 
   /**
    * Create template storage bucket
-   */
+  */
   static createTemplateBucket(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}EmailTemplateBucket`]: {
@@ -349,7 +349,7 @@ The {{appName}} Team`,
 
   /**
    * Create template renderer Lambda
-   */
+  */
   static createTemplateRendererLambda(config: {
     slug: string
     roleArn: string
@@ -380,7 +380,7 @@ The {{appName}} Team`,
 
   /**
    * Render a template with data (SDK helper)
-   */
+  */
   static render(template: string, data: Record<string, any>): string {
     if (!template || !data) return template
 
@@ -430,7 +430,7 @@ The {{appName}} Team`,
 
   /**
    * Extract variables from template
-   */
+  */
   static extractVariables(template: string): string[] {
     const variables = new Set<string>()
 

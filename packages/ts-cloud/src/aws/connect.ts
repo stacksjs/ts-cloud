@@ -1,7 +1,7 @@
 /**
  * AWS Amazon Connect Operations
  * Direct API calls without AWS SDK dependency
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -59,7 +59,7 @@ export interface AvailablePhoneNumber {
 
 /**
  * Amazon Connect client for phone/voice operations
- */
+*/
 export class ConnectClient {
   private client: AWSClient
   private region: string
@@ -71,7 +71,7 @@ export class ConnectClient {
 
   /**
    * Create a new Amazon Connect instance
-   */
+  */
   async createInstance(params: {
     InstanceAlias: string
     IdentityManagementType?: 'SAML' | 'CONNECT_MANAGED' | 'EXISTING_DIRECTORY'
@@ -108,7 +108,7 @@ export class ConnectClient {
 
   /**
    * Delete an Amazon Connect instance
-   */
+  */
   async deleteInstance(instanceId: string): Promise<void> {
     await this.client.request({
       service: 'connect',
@@ -120,7 +120,7 @@ export class ConnectClient {
 
   /**
    * Get instance details
-   */
+  */
   async describeInstance(instanceId: string): Promise<ConnectInstance> {
     const result = await this.client.request({
       service: 'connect',
@@ -134,7 +134,7 @@ export class ConnectClient {
 
   /**
    * List all Connect instances
-   */
+  */
   async listInstances(params?: {
     MaxResults?: number
     NextToken?: string
@@ -156,7 +156,7 @@ export class ConnectClient {
 
   /**
    * Search for available phone numbers
-   */
+  */
   async searchAvailablePhoneNumbers(params: {
     TargetArn: string
     PhoneNumberCountryCode: string
@@ -191,7 +191,7 @@ export class ConnectClient {
 
   /**
    * Claim a phone number
-   */
+  */
   async claimPhoneNumber(params: {
     TargetArn: string
     PhoneNumber: string
@@ -224,7 +224,7 @@ export class ConnectClient {
 
   /**
    * Release a phone number
-   */
+  */
   async releasePhoneNumber(phoneNumberId: string, clientToken?: string): Promise<void> {
     const queryParams: Record<string, string> = {}
     if (clientToken) queryParams.clientToken = clientToken
@@ -240,7 +240,7 @@ export class ConnectClient {
 
   /**
    * List phone numbers for an instance
-   */
+  */
   async listPhoneNumbers(params: {
     TargetArn?: string
     InstanceId?: string
@@ -274,7 +274,7 @@ export class ConnectClient {
 
   /**
    * Create a contact flow
-   */
+  */
   async createContactFlow(params: {
     InstanceId: string
     Name: string
@@ -308,7 +308,7 @@ export class ConnectClient {
 
   /**
    * Update contact flow content
-   */
+  */
   async updateContactFlowContent(params: {
     InstanceId: string
     ContactFlowId: string
@@ -328,7 +328,7 @@ export class ConnectClient {
 
   /**
    * List contact flows
-   */
+  */
   async listContactFlows(params: {
     InstanceId: string
     ContactFlowTypes?: string[]
@@ -353,7 +353,7 @@ export class ConnectClient {
 
   /**
    * Create a queue
-   */
+  */
   async createQueue(params: {
     InstanceId: string
     Name: string
@@ -393,7 +393,7 @@ export class ConnectClient {
 
   /**
    * Create hours of operation
-   */
+  */
   async createHoursOfOperation(params: {
     InstanceId: string
     Name: string
@@ -431,7 +431,7 @@ export class ConnectClient {
 
   /**
    * Associate phone number with contact flow
-   */
+  */
   async associatePhoneNumberContactFlow(params: {
     PhoneNumberId: string
     InstanceId: string
@@ -454,7 +454,7 @@ export class ConnectClient {
 
   /**
    * Create a routing profile
-   */
+  */
   async createRoutingProfile(params: {
     InstanceId: string
     Name: string
@@ -503,7 +503,7 @@ export class ConnectClient {
 
   /**
    * Check if an instance exists by alias
-   */
+  */
   async instanceExists(instanceAlias: string): Promise<boolean> {
     try {
       const result = await this.listInstances({ MaxResults: 100 })
@@ -520,7 +520,7 @@ export class ConnectClient {
 
   /**
    * Start an outbound voice contact (make a call)
-   */
+  */
   async startOutboundVoiceContact(params: {
     InstanceId: string
     ContactFlowId: string
@@ -565,7 +565,7 @@ export class ConnectClient {
 
   /**
    * Make a simple outbound call (convenience method)
-   */
+  */
   async makeCall(params: {
     instanceId: string
     contactFlowId: string
@@ -584,7 +584,7 @@ export class ConnectClient {
 
   /**
    * Stop a contact (end a call)
-   */
+  */
   async stopContact(params: {
     InstanceId: string
     ContactId: string
@@ -599,7 +599,7 @@ export class ConnectClient {
 
   /**
    * Get contact details
-   */
+  */
   async describeContact(params: {
     InstanceId: string
     ContactId: string
@@ -636,7 +636,7 @@ export class ConnectClient {
 
   /**
    * Update contact attributes
-   */
+  */
   async updateContactAttributes(params: {
     InstanceId: string
     InitialContactId: string
@@ -661,7 +661,7 @@ export class ConnectClient {
 
   /**
    * Create a user (agent)
-   */
+  */
   async createUser(params: {
     InstanceId: string
     Username: string
@@ -712,7 +712,7 @@ export class ConnectClient {
 
   /**
    * Delete a user
-   */
+  */
   async deleteUser(params: {
     InstanceId: string
     UserId: string
@@ -727,7 +727,7 @@ export class ConnectClient {
 
   /**
    * List users
-   */
+  */
   async listUsers(params: {
     InstanceId: string
     NextToken?: string
@@ -757,7 +757,7 @@ export class ConnectClient {
 
   /**
    * Create a prompt (audio file for IVR)
-   */
+  */
   async createPrompt(params: {
     InstanceId: string
     Name: string
@@ -787,7 +787,7 @@ export class ConnectClient {
 
   /**
    * List prompts
-   */
+  */
   async listPrompts(params: {
     InstanceId: string
     NextToken?: string
@@ -817,7 +817,7 @@ export class ConnectClient {
 
   /**
    * Create a quick connect (for transfers)
-   */
+  */
   async createQuickConnect(params: {
     InstanceId: string
     Name: string
@@ -862,7 +862,7 @@ export class ConnectClient {
 
   /**
    * Start a chat contact
-   */
+  */
   async startChatContact(params: {
     InstanceId: string
     ContactFlowId: string
@@ -896,7 +896,7 @@ export class ConnectClient {
 
   /**
    * Start a task contact
-   */
+  */
   async startTaskContact(params: {
     InstanceId: string
     ContactFlowId?: string
@@ -930,7 +930,7 @@ export class ConnectClient {
 
   /**
    * Create a simple IVR contact flow for outbound calls
-   */
+  */
   createOutboundIvrFlow(params: {
     message: string
     voiceId?: string
@@ -965,7 +965,7 @@ export class ConnectClient {
 
   /**
    * Create a contact flow with input collection
-   */
+  */
   createInputCollectionFlow(params: {
     promptMessage: string
     inputTimeout?: number
@@ -1013,7 +1013,7 @@ export class ConnectClient {
 
   /**
    * Get current metric data
-   */
+  */
   async getCurrentMetricData(params: {
     InstanceId: string
     Filters: {

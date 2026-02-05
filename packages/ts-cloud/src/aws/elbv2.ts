@@ -4,7 +4,7 @@
  *
  * Supports Application Load Balancers (ALB), Network Load Balancers (NLB),
  * and Gateway Load Balancers (GWLB)
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -144,7 +144,7 @@ export interface TargetHealthDescription {
 
 /**
  * ELBv2 client for managing Application, Network, and Gateway Load Balancers
- */
+*/
 export class ELBv2Client {
   private client: AWSClient
   private region: string
@@ -156,7 +156,7 @@ export class ELBv2Client {
 
   /**
    * Describe load balancers
-   */
+  */
   async describeLoadBalancers(options?: {
     LoadBalancerArns?: string[]
     Names?: string[]
@@ -201,7 +201,7 @@ export class ELBv2Client {
 
   /**
    * Describe target groups
-   */
+  */
   async describeTargetGroups(options?: {
     LoadBalancerArn?: string
     TargetGroupArns?: string[]
@@ -251,7 +251,7 @@ export class ELBv2Client {
 
   /**
    * Describe target health
-   */
+  */
   async describeTargetHealth(options: {
     TargetGroupArn: string
     Targets?: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
@@ -288,7 +288,7 @@ export class ELBv2Client {
 
   /**
    * Describe listeners
-   */
+  */
   async describeListeners(options?: {
     LoadBalancerArn?: string
     ListenerArns?: string[]
@@ -331,7 +331,7 @@ export class ELBv2Client {
 
   /**
    * Describe rules for a listener
-   */
+  */
   async describeRules(options?: {
     ListenerArn?: string
     RuleArns?: string[]
@@ -374,7 +374,7 @@ export class ELBv2Client {
 
   /**
    * Describe load balancer attributes
-   */
+  */
   async describeLoadBalancerAttributes(loadBalancerArn: string): Promise<{ Attributes?: Array<{ Key: string, Value: string }> }> {
     const params = {
       LoadBalancerArn: loadBalancerArn,
@@ -396,7 +396,7 @@ export class ELBv2Client {
 
   /**
    * Describe target group attributes
-   */
+  */
   async describeTargetGroupAttributes(targetGroupArn: string): Promise<{ Attributes?: Array<{ Key: string, Value: string }> }> {
     const params = {
       TargetGroupArn: targetGroupArn,
@@ -418,7 +418,7 @@ export class ELBv2Client {
 
   /**
    * Create a load balancer
-   */
+  */
   async createLoadBalancer(options: {
     Name: string
     Subnets?: string[]
@@ -500,7 +500,7 @@ export class ELBv2Client {
 
   /**
    * Delete a load balancer
-   */
+  */
   async deleteLoadBalancer(loadBalancerArn: string): Promise<void> {
     const params = {
       LoadBalancerArn: loadBalancerArn,
@@ -520,7 +520,7 @@ export class ELBv2Client {
 
   /**
    * Create a target group
-   */
+  */
   async createTargetGroup(options: {
     Name: string
     Protocol?: string
@@ -587,7 +587,7 @@ export class ELBv2Client {
 
   /**
    * Delete a target group
-   */
+  */
   async deleteTargetGroup(targetGroupArn: string): Promise<void> {
     const params = {
       TargetGroupArn: targetGroupArn,
@@ -607,7 +607,7 @@ export class ELBv2Client {
 
   /**
    * Register targets with a target group
-   */
+  */
   async registerTargets(options: {
     TargetGroupArn: string
     Targets: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
@@ -640,7 +640,7 @@ export class ELBv2Client {
 
   /**
    * Deregister targets from a target group
-   */
+  */
   async deregisterTargets(options: {
     TargetGroupArn: string
     Targets: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
@@ -673,7 +673,7 @@ export class ELBv2Client {
 
   /**
    * Create a listener
-   */
+  */
   async createListener(options: {
     LoadBalancerArn: string
     Protocol?: string
@@ -769,7 +769,7 @@ export class ELBv2Client {
 
   /**
    * Delete a listener
-   */
+  */
   async deleteListener(listenerArn: string): Promise<void> {
     const params = {
       ListenerArn: listenerArn,
@@ -789,7 +789,7 @@ export class ELBv2Client {
 
   /**
    * Modify listener
-   */
+  */
   async modifyListener(options: {
     ListenerArn: string
     Port?: number
@@ -843,7 +843,7 @@ export class ELBv2Client {
 
   /**
    * Build form URL encoded body for ELBv2 API
-   */
+  */
   private buildFormBody(action: string, params: Record<string, any>): string {
     const formParams: Record<string, string> = {
       Action: action,
@@ -865,7 +865,7 @@ export class ELBv2Client {
   /**
    * Normalize the parsed XML result from AWS API
    * The client parses XML to JSON, so we need to extract the result
-   */
+  */
   private normalizeResult(parsed: any, resultKey: string): any {
     // The AWS response is wrapped like: { DescribeLoadBalancersResponse: { DescribeLoadBalancersResult: {...} } }
     // fast-xml-parser returns: { DescribeLoadBalancersResult: {...}, ResponseMetadata: {...} }
@@ -888,7 +888,7 @@ export class ELBv2Client {
   /**
    * Normalize arrays in the response
    * AWS XML parsing sometimes returns single items as objects instead of arrays
-   */
+  */
   private normalizeArrays(obj: any): any {
     if (!obj || typeof obj !== 'object') {
       return obj

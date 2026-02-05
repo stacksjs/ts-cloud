@@ -1,6 +1,6 @@
 /**
  * JSON Schema export for IDE integration
- */
+*/
 
 import schema from './cloud-config.schema.json'
 
@@ -8,7 +8,7 @@ export { schema as cloudConfigSchema }
 
 /**
  * Validate configuration against JSON schema
- */
+*/
 export function validateAgainstSchema(config: any): {
   valid: boolean
   errors: string[]

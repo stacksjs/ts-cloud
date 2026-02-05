@@ -3,7 +3,7 @@
  *
  * Provides utilities for obtaining and managing Let's Encrypt certificates.
  * Supports both HTTP-01 and DNS-01 challenges with multiple DNS providers.
- */
+*/
 
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
 import { createDnsProvider } from '../dns'
@@ -12,18 +12,18 @@ import { Route53Client } from '../aws/route53'
 export interface LetsEncryptConfig {
   /**
    * Domain names to obtain certificate for
-   */
+  */
   domains: string[]
 
   /**
    * Email for Let's Encrypt notifications
-   */
+  */
   email: string
 
   /**
    * Use staging server for testing
    * @default false
-   */
+  */
   staging?: boolean
 
   /**
@@ -31,59 +31,59 @@ export interface LetsEncryptConfig {
    * - 'http-01': Serve challenge file via HTTP (requires port 80)
    * - 'dns-01': Add TXT record to DNS (works behind load balancers)
    * @default 'http-01'
-   */
+  */
   challengeType?: 'http-01' | 'dns-01'
 
   /**
    * Route53 hosted zone ID (required for dns-01 challenge with Route53)
    * @deprecated Use dnsProvider config instead
-   */
+  */
   hostedZoneId?: string
 
   /**
    * DNS provider configuration for dns-01 challenge
    * Supports: route53, porkbun, godaddy
-   */
+  */
   dnsProvider?: DnsProviderConfig
 
   /**
    * Certificate storage path
    * @default '/etc/letsencrypt/live'
-   */
+  */
   certPath?: string
 
   /**
    * Auto-renew certificates
    * @default true
-   */
+  */
   autoRenew?: boolean
 }
 
 /**
  * DNS-01 challenge configuration for programmatic use
- */
+*/
 export interface Dns01ChallengeConfig {
   domain: string
   challengeValue: string
   /**
    * Route53 hosted zone ID (legacy, use dnsProvider instead)
    * @deprecated Use dnsProvider config instead
-   */
+  */
   hostedZoneId?: string
   /**
    * DNS provider configuration
-   */
+  */
   dnsProvider?: DnsProviderConfig
   /**
    * AWS region (only for Route53)
-   */
+  */
   region?: string
 }
 
 /**
  * Generate UserData script for Let's Encrypt certificate setup on EC2
  * This creates a complete setup that handles certificate acquisition and renewal
- */
+*/
 export function generateLetsEncryptUserData(config: LetsEncryptConfig): string {
   const {
     domains,
@@ -146,7 +146,7 @@ interface UserDataParams {
 
 /**
  * Generate UserData for HTTP-01 challenge
- */
+*/
 function generateHttp01UserData(params: UserDataParams): string {
   const { email, certPath, autoRenew, domainFlags, stagingFlag, primaryDomain } = params
 
@@ -194,7 +194,7 @@ systemctl start stacks
 /**
  * Generate UserData for DNS-01 challenge
  * Supports Route53 (via certbot plugin) and manual mode for external DNS providers
- */
+*/
 function generateDns01UserData(params: UserDataParams): string {
   const {
     email,
@@ -337,7 +337,7 @@ ${autoRenew ? generateRenewalSetup(primaryDomain) : '# Auto-renewal disabled'}
 
 /**
  * Generate environment variables for DNS provider
- */
+*/
 function generateDnsProviderEnvVars(config: DnsProviderConfig): string {
   switch (config.provider) {
     case 'porkbun':
@@ -364,7 +364,7 @@ export GODADDY_ENV="${config.environment || 'production'}"
 
 /**
  * Generate DNS record creation script for the provider
- */
+*/
 function generateDnsCreateRecordScript(config: DnsProviderConfig): string {
   switch (config.provider) {
     case 'porkbun':
@@ -422,7 +422,7 @@ curl -s -X PATCH "$API_URL/v1/domains/$ROOT_DOMAIN/records" \\
 
 /**
  * Generate DNS record deletion script for the provider
- */
+*/
 function generateDnsDeleteRecordScript(config: DnsProviderConfig): string {
   switch (config.provider) {
     case 'porkbun':
@@ -479,7 +479,7 @@ curl -s -X DELETE "$API_URL/v1/domains/$ROOT_DOMAIN/records/TXT/$RECORD_NAME" \\
 
 /**
  * Generate certificate renewal setup
- */
+*/
 function generateRenewalSetup(primaryDomain: string): string {
   return `
 # ==========================================
@@ -531,7 +531,7 @@ echo "Certificate auto-renewal configured"
 
 /**
  * Generate server configuration for HTTPS with Let's Encrypt
- */
+*/
 export function generateHttpsServerCode(options: {
   httpPort?: number
   httpsPort?: number
@@ -638,7 +638,7 @@ async function handleRequest(request: Request): Promise<Response> {
 /**
  * Setup DNS-01 challenge programmatically using any DNS provider
  * This is the unified API that works with Route53, Porkbun, GoDaddy, etc.
- */
+*/
 export async function setupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
   const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
 
@@ -685,7 +685,7 @@ export async function setupDns01Challenge(options: Dns01ChallengeConfig): Promis
 
 /**
  * Clean up DNS-01 challenge record using any DNS provider
- */
+*/
 export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Promise<void> {
   const { domain, challengeValue, hostedZoneId, dnsProvider, region = 'us-east-1' } = options
 
@@ -731,7 +731,7 @@ export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Prom
 
 /**
  * Check if certificates need renewal (< 30 days until expiry)
- */
+*/
 export function needsRenewal(certPath: string): boolean {
   try {
     const { execSync } = require('node:child_process')

@@ -5,7 +5,7 @@
  * including advanced features like analytics, scheduling, and campaigns.
  *
  * This module is the main entry point for `buddy deploy` communication services.
- */
+*/
 
 import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
 import { Fn } from '../intrinsic-functions'
@@ -100,11 +100,11 @@ export interface SmsServiceConfig {
  * Communication Module
  *
  * Generates complete CloudFormation stack for communication services
- */
+*/
 export class Communication {
   /**
    * Generate all communication resources
-   */
+  */
   static generate(config: CommunicationConfig): Record<string, any> {
     const resources: Record<string, any> = {}
     const { slug, environment, region = 'us-east-1' } = config
@@ -136,7 +136,7 @@ export class Communication {
 
   /**
    * Create Lambda execution role with all necessary permissions
-   */
+  */
   private static createLambdaExecutionRole(slug: string, environment: EnvironmentType): {
     resources: Record<string, any>
     roleArn: any
@@ -264,7 +264,7 @@ export class Communication {
 
   /**
    * Generate Email service resources
-   */
+  */
   private static generateEmailResources(config: CommunicationConfig, roleArn: any): Record<string, any> {
     const { slug, environment, email } = config
     if (!email) return {}
@@ -538,7 +538,7 @@ export class Communication {
 
   /**
    * Generate Phone service resources
-   */
+  */
   private static generatePhoneResources(config: CommunicationConfig, roleArn: any): Record<string, any> {
     const { slug, environment, phone } = config
     if (!phone) return {}
@@ -713,7 +713,7 @@ export class Communication {
 
   /**
    * Generate SMS service resources
-   */
+  */
   private static generateSmsResources(config: CommunicationConfig, roleArn: any): Record<string, any> {
     const { slug, environment, sms } = config
     if (!sms) return {}

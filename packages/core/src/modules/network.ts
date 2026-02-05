@@ -51,11 +51,11 @@ export interface FlowLogOptions {
 /**
  * Network Module - VPC, Subnets, NAT, Internet Gateway
  * Provides clean API for creating and configuring networking resources
- */
+*/
 export class Network {
   /**
    * Create a VPC with optional multi-AZ configuration
-   */
+  */
   static createVpc(options: VpcOptions): {
     vpc: EC2VPC
     logicalId: string
@@ -94,7 +94,7 @@ export class Network {
 
   /**
    * Create a subnet in a VPC
-   */
+  */
   static createSubnet(options: SubnetOptions): {
     subnet: EC2Subnet
     logicalId: string
@@ -137,7 +137,7 @@ export class Network {
 
   /**
    * Create Internet Gateway
-   */
+  */
   static createInternetGateway(
     slug: string,
     environment: EnvironmentType,
@@ -168,7 +168,7 @@ export class Network {
 
   /**
    * Attach Internet Gateway to VPC
-   */
+  */
   static attachInternetGateway(
     vpcLogicalId: string,
     igwLogicalId: string,
@@ -191,7 +191,7 @@ export class Network {
 
   /**
    * Create Elastic IP for NAT Gateway
-   */
+  */
   static createEip(
     slug: string,
     environment: EnvironmentType,
@@ -223,7 +223,7 @@ export class Network {
 
   /**
    * Create NAT Gateway (with cost warning in comments)
-   */
+  */
   static createNatGateway(
     options: NatGatewayOptions,
     eipLogicalId: string,
@@ -259,7 +259,7 @@ export class Network {
 
   /**
    * Create Route Table
-   */
+  */
   static createRouteTable(
     slug: string,
     environment: EnvironmentType,
@@ -294,7 +294,7 @@ export class Network {
 
   /**
    * Create Route (e.g., for Internet Gateway or NAT Gateway)
-   */
+  */
   static createRoute(
     routeTableLogicalId: string,
     destination: string,
@@ -332,7 +332,7 @@ export class Network {
 
   /**
    * Associate Subnet with Route Table
-   */
+  */
   static associateSubnetWithRouteTable(
     subnetLogicalId: string,
     routeTableLogicalId: string,
@@ -355,7 +355,7 @@ export class Network {
 
   /**
    * Enable VPC Flow Logs
-   */
+  */
   static enableFlowLogs(options: FlowLogOptions): {
     flowLog: EC2FlowLog
     logicalId: string
@@ -398,7 +398,7 @@ export class Network {
   /**
    * Calculate subnet CIDRs for a VPC
    * Splits a VPC CIDR into smaller subnets
-   */
+  */
   static calculateSubnetCidrs(
     vpcCidr: string,
     zones: number,
@@ -438,7 +438,7 @@ export class Network {
   /**
    * Get available availability zones for a region
    * Returns zone suffixes (a, b, c, etc.)
-   */
+  */
   static getAvailabilityZones(region: string, count: number): string[] {
     const zoneSuffixes = ['a', 'b', 'c', 'd', 'e', 'f']
     return zoneSuffixes.slice(0, count).map(suffix => `${region}${suffix}`)
@@ -447,7 +447,7 @@ export class Network {
   /**
    * Create a complete multi-AZ network setup with optional NAT Gateway
    * This creates VPC, public/private subnets, IGW, and optionally NAT
-   */
+  */
   static createMultiAzNetwork(options: {
     slug: string
     environment: EnvironmentType
@@ -651,7 +651,7 @@ export class Network {
   /**
    * NAT Gateway cost warning
    * NAT Gateways cost ~$32/month plus data transfer charges
-   */
+  */
   static readonly NatGatewayCostWarning = `
 ⚠️ NAT Gateway Cost Warning:
 - Each NAT Gateway costs approximately $32-45/month (hourly charges)

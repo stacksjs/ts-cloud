@@ -36,7 +36,7 @@ export interface MonitoringConfig {
 
 /**
  * Add CloudWatch monitoring resources to CloudFormation template
- */
+*/
 export function addMonitoringResources(
   builder: CloudFormationBuilder,
   config: MonitoringConfig,
@@ -72,7 +72,7 @@ export function addMonitoringResources(
 
 /**
  * Add CloudWatch alarm
- */
+*/
 function addCloudWatchAlarm(
   builder: CloudFormationBuilder,
   config: AlarmConfig,
@@ -114,7 +114,7 @@ function addCloudWatchAlarm(
 
 /**
  * Add CloudWatch Dashboard
- */
+*/
 function addCloudWatchDashboard(
   builder: CloudFormationBuilder,
   config: MonitoringConfig['dashboard'],
@@ -216,7 +216,7 @@ function addCloudWatchDashboard(
 
 /**
  * Add CloudWatch Log Group
- */
+*/
 function addLogGroup(
   builder: CloudFormationBuilder,
   groupName: string,
@@ -235,7 +235,7 @@ function addLogGroup(
 
 /**
  * Get AWS namespace for a metric
- */
+*/
 function getNamespaceForMetric(metric: string, service?: string): string {
   if (service) {
     const namespaceMap: Record<string, string> = {
@@ -281,7 +281,7 @@ function getNamespaceForMetric(metric: string, service?: string): string {
 
 /**
  * Generate dimensions for a service
- */
+*/
 function generateDimensionsForService(service: string): any[] {
   const dimensionMap: Record<string, any[]> = {
     'ec2': [{ Name: 'InstanceId', Value: Fn.ref('EC2Instance') }],

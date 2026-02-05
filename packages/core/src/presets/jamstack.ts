@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Jamstack Site Preset
  * Perfect for: Modern static sites with API routes, Next.js, Astro, SvelteKit
  * Includes: S3 + CloudFront + Lambda@Edge for SSR/ISR
- */
+*/
 export function createJamstackPreset(options: {
   name: string
   slug: string

@@ -1,7 +1,7 @@
 /**
  * AWS Cognito Types
  * CloudFormation resource types for Amazon Cognito
- */
+*/
 
 import type { CloudFormationResource } from './index'
 

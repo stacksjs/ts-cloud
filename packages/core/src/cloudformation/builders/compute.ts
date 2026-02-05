@@ -67,7 +67,7 @@ export interface ComputeConfig {
 
 /**
  * Add compute resources (EC2, ECS, ALB) to CloudFormation template
- */
+*/
 export function addComputeResources(
   builder: CloudFormationBuilder,
   config: ComputeConfig,
@@ -94,7 +94,7 @@ export function addComputeResources(
 
 /**
  * Add EC2 Auto Scaling Group with Load Balancer
- */
+*/
 function addEC2Resources(
   builder: CloudFormationBuilder,
   config: ComputeConfig['server'],
@@ -286,7 +286,7 @@ rpm -U ./amazon-cloudwatch-agent.rpm || true
 
 /**
  * Add Application/Network Load Balancer
- */
+*/
 function addLoadBalancer(
   builder: CloudFormationBuilder,
   config: LoadBalancerConfig | undefined,
@@ -385,7 +385,7 @@ function addLoadBalancer(
 
 /**
  * Add ECS Fargate resources
- */
+*/
 function addFargateResources(
   builder: CloudFormationBuilder,
   serviceName: string,

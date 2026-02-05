@@ -29,7 +29,7 @@ export interface ApiGatewayConfig {
 
 /**
  * Add API Gateway resources to CloudFormation template
- */
+*/
 export function addApiGatewayResources(
   builder: CloudFormationBuilder,
   config: ApiGatewayConfig,
@@ -47,7 +47,7 @@ export function addApiGatewayResources(
 
 /**
  * Add HTTP API (API Gateway v2)
- */
+*/
 function addHttpApi(
   builder: CloudFormationBuilder,
   config: ApiGatewayConfig,
@@ -124,7 +124,7 @@ function addHttpApi(
 
 /**
  * Add REST API (API Gateway v1)
- */
+*/
 function addRestApi(
   builder: CloudFormationBuilder,
   config: ApiGatewayConfig,
@@ -218,7 +218,7 @@ function addRestApi(
 
 /**
  * Add WebSocket API
- */
+*/
 function addWebSocketApi(
   builder: CloudFormationBuilder,
   config: ApiGatewayConfig,
@@ -294,7 +294,7 @@ function addWebSocketApi(
 
 /**
  * Add WebSocket route
- */
+*/
 function addWebSocketRoute(
   builder: CloudFormationBuilder,
   routeKey: string,
@@ -337,7 +337,7 @@ function addWebSocketRoute(
 
 /**
  * Add API Gateway custom domain
- */
+*/
 function addApiCustomDomain(
   builder: CloudFormationBuilder,
   apiLogicalId: string,
@@ -402,7 +402,7 @@ function addApiCustomDomain(
 
 /**
  * Add API Gateway authorizer
- */
+*/
 function addAuthorizer(
   builder: CloudFormationBuilder,
   apiLogicalId: string,
@@ -439,7 +439,7 @@ function addAuthorizer(
 
 /**
  * Extract root domain from subdomain
- */
+*/
 function extractRootDomain(domain: string): string {
   const parts = domain.split('.')
   if (parts.length >= 2) {

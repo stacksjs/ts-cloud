@@ -1,7 +1,7 @@
 /**
  * AWS EventBridge Client
  * Direct API calls for EventBridge operations
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -40,7 +40,7 @@ export interface EventBridgeTarget {
 
 /**
  * EventBridge client for direct API calls
- */
+*/
 export class EventBridgeClient {
   private client: AWSClient
   private region: string
@@ -66,7 +66,7 @@ export class EventBridgeClient {
 
   /**
    * Create or update a rule
-   */
+  */
   async putRule(params: {
     Name: string
     ScheduleExpression?: string
@@ -82,7 +82,7 @@ export class EventBridgeClient {
 
   /**
    * Delete a rule
-   */
+  */
   async deleteRule(params: {
     Name: string
     EventBusName?: string
@@ -93,7 +93,7 @@ export class EventBridgeClient {
 
   /**
    * Describe a rule
-   */
+  */
   async describeRule(params: {
     Name: string
     EventBusName?: string
@@ -103,7 +103,7 @@ export class EventBridgeClient {
 
   /**
    * List rules
-   */
+  */
   async listRules(params?: {
     NamePrefix?: string
     EventBusName?: string
@@ -115,7 +115,7 @@ export class EventBridgeClient {
 
   /**
    * List event buses
-   */
+  */
   async listEventBuses(params?: {
     NamePrefix?: string
     NextToken?: string
@@ -126,7 +126,7 @@ export class EventBridgeClient {
 
   /**
    * Enable a rule
-   */
+  */
   async enableRule(params: {
     Name: string
     EventBusName?: string
@@ -136,7 +136,7 @@ export class EventBridgeClient {
 
   /**
    * Disable a rule
-   */
+  */
   async disableRule(params: {
     Name: string
     EventBusName?: string
@@ -146,7 +146,7 @@ export class EventBridgeClient {
 
   /**
    * Add targets to a rule
-   */
+  */
   async putTargets(params: {
     Rule: string
     EventBusName?: string
@@ -164,7 +164,7 @@ export class EventBridgeClient {
 
   /**
    * Remove targets from a rule
-   */
+  */
   async removeTargets(params: {
     Rule: string
     EventBusName?: string
@@ -183,7 +183,7 @@ export class EventBridgeClient {
 
   /**
    * List targets for a rule
-   */
+  */
   async listTargetsByRule(params: {
     Rule: string
     EventBusName?: string
@@ -195,7 +195,7 @@ export class EventBridgeClient {
 
   /**
    * Put events to EventBridge
-   */
+  */
   async putEvents(params: {
     Entries: Array<{
       Time?: string
@@ -218,7 +218,7 @@ export class EventBridgeClient {
 
   /**
    * Create a scheduler schedule (EventBridge Scheduler)
-   */
+  */
   async createSchedule(params: {
     Name: string
     ScheduleExpression: string

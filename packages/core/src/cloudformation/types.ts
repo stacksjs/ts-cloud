@@ -1,7 +1,7 @@
 /**
  * CloudFormation Template Types
  * Based on AWS CloudFormation Resource Specification
- */
+*/
 
 export interface CloudFormationTemplate {
   AWSTemplateFormatVersion: '2010-09-09'
@@ -55,7 +55,7 @@ export type CloudFormationCondition =
 
 /**
  * CloudFormation Intrinsic Functions
- */
+*/
 export type CloudFormationIntrinsicFunction =
   | { Ref: string }
   | { 'Fn::GetAtt': [string, string] }
@@ -76,7 +76,7 @@ export type CloudFormationIntrinsicFunction =
 
 /**
  * Helper functions for creating CloudFormation intrinsic functions
- */
+*/
 export const Fn = {
   ref: (logicalId: string): { Ref: string } => ({ Ref: logicalId }),
 
@@ -122,7 +122,7 @@ export const Fn = {
 
 /**
  * Common AWS resource ARN patterns
- */
+*/
 export const Arn = {
   s3Bucket: (bucketName: any): { 'Fn::Sub': string | [string, Record<string, any>] } =>
     Fn.sub(`arn:aws:s3:::${bucketName}`),
@@ -160,7 +160,7 @@ export const Arn = {
 
 /**
  * Common CloudFormation pseudo parameters
- */
+*/
 export const AWS_PSEUDO_PARAMETERS = {
   ACCOUNT_ID: { Ref: 'AWS::AccountId' },
   NOTIFICATION_ARNS: { Ref: 'AWS::NotificationARNs' },

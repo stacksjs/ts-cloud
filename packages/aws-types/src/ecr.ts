@@ -3,7 +3,7 @@ import type { CloudFormationResource } from './index'
 /**
  * IAM Principal type for ECR policies
  * Supports AWS accounts, services, or wildcard
- */
+*/
 export interface ECRPrincipal {
   AWS?: string | string[]
   Service?: string | string[]

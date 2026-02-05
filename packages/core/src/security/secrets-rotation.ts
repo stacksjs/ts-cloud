@@ -1,7 +1,7 @@
 /**
  * Automated Secrets Rotation
  * Automatic rotation for RDS credentials, API keys, and other secrets
- */
+*/
 
 export interface SecretRotation {
   id: string
@@ -67,7 +67,7 @@ export interface RDSRotationConfig {
 
 /**
  * Secrets rotation manager
- */
+*/
 export class SecretsRotationManager {
   private rotations: Map<string, SecretRotation> = new Map()
   private schedules: Map<string, RotationSchedule> = new Map()
@@ -76,7 +76,7 @@ export class SecretsRotationManager {
 
   /**
    * Create secret rotation
-   */
+  */
   createRotation(rotation: Omit<SecretRotation, 'id'>): SecretRotation {
     const id = `rotation-${Date.now()}-${this.rotationCounter++}`
 
@@ -92,7 +92,7 @@ export class SecretsRotationManager {
 
   /**
    * Enable RDS credentials rotation
-   */
+  */
   enableRDSRotation(options: {
     secretId: string
     databaseIdentifier: string
@@ -116,7 +116,7 @@ export class SecretsRotationManager {
 
   /**
    * Enable API key rotation
-   */
+  */
   enableAPIKeyRotation(options: {
     secretId: string
     rotationDays?: number
@@ -133,7 +133,7 @@ export class SecretsRotationManager {
 
   /**
    * Enable OAuth token rotation
-   */
+  */
   enableOAuthRotation(options: {
     secretId: string
     rotationDays?: number
@@ -150,7 +150,7 @@ export class SecretsRotationManager {
 
   /**
    * Enable SSH key rotation
-   */
+  */
   enableSSHKeyRotation(options: {
     secretId: string
     rotationDays?: number
@@ -167,7 +167,7 @@ export class SecretsRotationManager {
 
   /**
    * Create rotation schedule
-   */
+  */
   createSchedule(schedule: Omit<RotationSchedule, 'id'>): RotationSchedule {
     const id = `schedule-${Date.now()}-${this.scheduleCounter++}`
 
@@ -183,7 +183,7 @@ export class SecretsRotationManager {
 
   /**
    * Execute rotation
-   */
+  */
   async executeRotation(rotationId: string): Promise<RotationResult> {
     const rotation = this.rotations.get(rotationId)
 
@@ -243,7 +243,7 @@ export class SecretsRotationManager {
 
   /**
    * Check if rotation needed
-   */
+  */
   needsRotation(rotationId: string): boolean {
     const rotation = this.rotations.get(rotationId)
 
@@ -263,7 +263,7 @@ export class SecretsRotationManager {
 
   /**
    * Get secrets needing rotation
-   */
+  */
   getSecretsNeedingRotation(): SecretRotation[] {
     return Array.from(this.rotations.values()).filter(rotation =>
       this.needsRotation(rotation.id)
@@ -272,7 +272,7 @@ export class SecretsRotationManager {
 
   /**
    * Generate RDS rotation Lambda ARN
-   */
+  */
   private generateRDSRotationLambdaArn(engine: string): string {
     const functionMap: Record<string, string> = {
       postgres: 'SecretsManagerRDSPostgreSQLRotationSingleUser',
@@ -288,35 +288,35 @@ export class SecretsRotationManager {
 
   /**
    * Get rotation
-   */
+  */
   getRotation(id: string): SecretRotation | undefined {
     return this.rotations.get(id)
   }
 
   /**
    * List rotations
-   */
+  */
   listRotations(): SecretRotation[] {
     return Array.from(this.rotations.values())
   }
 
   /**
    * Get schedule
-   */
+  */
   getSchedule(id: string): RotationSchedule | undefined {
     return this.schedules.get(id)
   }
 
   /**
    * List schedules
-   */
+  */
   listSchedules(): RotationSchedule[] {
     return Array.from(this.schedules.values())
   }
 
   /**
    * Generate CloudFormation for rotation
-   */
+  */
   generateRotationCF(rotation: SecretRotation): any {
     return {
       RotationEnabled: rotation.rotationEnabled,
@@ -331,7 +331,7 @@ export class SecretsRotationManager {
 
   /**
    * Generate CloudFormation for rotation Lambda
-   */
+  */
   generateRotationLambdaCF(options: {
     functionName: string
     secretType: SecretType
@@ -365,7 +365,7 @@ export class SecretsRotationManager {
 
   /**
    * Generate CloudFormation for rotation Lambda role
-   */
+  */
   generateRotationLambdaRoleCF(): any {
     return {
       Type: 'AWS::IAM::Role',
@@ -417,7 +417,7 @@ export class SecretsRotationManager {
 
   /**
    * Generate EventBridge rule for rotation schedule
-   */
+  */
   generateRotationScheduleCF(schedule: RotationSchedule): any {
     return {
       Type: 'AWS::Events::Rule',
@@ -441,7 +441,7 @@ export class SecretsRotationManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.rotations.clear()
     this.schedules.clear()
@@ -452,5 +452,5 @@ export class SecretsRotationManager {
 
 /**
  * Global secrets rotation manager instance
- */
+*/
 export const secretsRotationManager: SecretsRotationManager = new SecretsRotationManager()

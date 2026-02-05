@@ -1,6 +1,6 @@
 /**
  * Network Security - WAF, Shield, security groups, NACLs
- */
+*/
 
 export interface WAFRule { id: string; name: string; priority: number; action: 'allow' | 'block' | 'count'; conditions: string[] }
 export interface ShieldProtection { id: string; resourceArn: string; protectionType: 'standard' | 'advanced' }

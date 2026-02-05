@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Node.js Server Preset
  * Perfect for: Traditional Node.js applications, API servers
  * Includes: EC2 instances + ALB + Auto Scaling + RDS + Redis
- */
+*/
 export function createNodeJsServerPreset(options: {
   name: string
   slug: string

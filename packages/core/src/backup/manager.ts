@@ -1,7 +1,7 @@
 /**
  * Backup & Disaster Recovery Manager
  * Automated backup schedules and disaster recovery
- */
+*/
 
 export interface BackupPlan {
   id: string
@@ -52,7 +52,7 @@ export interface ContinuousBackup {
 
 /**
  * Backup manager for automated backup and recovery
- */
+*/
 export class BackupManager {
   private backupPlans: Map<string, BackupPlan> = new Map()
   private backupVaults: Map<string, BackupVault> = new Map()
@@ -64,21 +64,21 @@ export class BackupManager {
 
   /**
    * Create backup vault
-   */
+  */
   createVault(vault: BackupVault): void {
     this.backupVaults.set(vault.name, vault)
   }
 
   /**
    * Get backup vault
-   */
+  */
   getVault(name: string): BackupVault | undefined {
     return this.backupVaults.get(name)
   }
 
   /**
    * Create backup plan
-   */
+  */
   createBackupPlan(plan: Omit<BackupPlan, 'id'>): BackupPlan {
     const id = `backup-plan-${Date.now()}-${this.planCounter++}`
 
@@ -94,21 +94,21 @@ export class BackupManager {
 
   /**
    * Get backup plan
-   */
+  */
   getBackupPlan(id: string): BackupPlan | undefined {
     return this.backupPlans.get(id)
   }
 
   /**
    * List all backup plans
-   */
+  */
   listBackupPlans(): BackupPlan[] {
     return Array.from(this.backupPlans.values())
   }
 
   /**
    * Create automated backup schedule for RDS
-   */
+  */
   createRDSBackupPlan(options: {
     dbInstanceArn: string
     schedule?: string
@@ -143,7 +143,7 @@ export class BackupManager {
 
   /**
    * Create automated backup schedule for DynamoDB
-   */
+  */
   createDynamoDBBackupPlan(options: {
     tableArn: string
     schedule?: string
@@ -178,7 +178,7 @@ export class BackupManager {
 
   /**
    * Create automated backup schedule for EFS
-   */
+  */
   createEFSBackupPlan(options: {
     fileSystemArn: string
     schedule?: string
@@ -210,7 +210,7 @@ export class BackupManager {
 
   /**
    * Enable continuous backup for a resource
-   */
+  */
   enableContinuousBackup(resourceId: string, retentionDays = 35): ContinuousBackup {
     const id = `continuous-backup-${Date.now()}-${this.continuousBackupCounter++}`
     const backup: ContinuousBackup = {
@@ -225,14 +225,14 @@ export class BackupManager {
 
   /**
    * Get continuous backup configuration
-   */
+  */
   getContinuousBackup(id: string): ContinuousBackup | undefined {
     return this.continuousBackups.get(id)
   }
 
   /**
    * Create point-in-time recovery configuration
-   */
+  */
   enablePointInTimeRecovery(resourceArn: string, resourceType: 'rds' | 'dynamodb'): {
     enabled: boolean
     earliestRestorableTime: Date
@@ -248,7 +248,7 @@ export class BackupManager {
 
   /**
    * Restore from backup
-   */
+  */
   async restoreFromBackup(options: {
     backupId: string
     resourceType: string
@@ -282,7 +282,7 @@ export class BackupManager {
 
   /**
    * Restore to point in time
-   */
+  */
   async restoreToPointInTime(options: {
     sourceResourceArn: string
     targetResourceName: string
@@ -314,21 +314,21 @@ export class BackupManager {
 
   /**
    * Get restore job status
-   */
+  */
   getRestoreJob(id: string): RestoreJob | undefined {
     return this.restoreJobs.get(id)
   }
 
   /**
    * List restore jobs
-   */
+  */
   listRestoreJobs(): RestoreJob[] {
     return Array.from(this.restoreJobs.values())
   }
 
   /**
    * Cross-region backup replication
-   */
+  */
   setupCrossRegionReplication(options: {
     sourceVault: string
     sourceRegion: string
@@ -345,7 +345,7 @@ export class BackupManager {
 
   /**
    * Generate CloudFormation for backup vault
-   */
+  */
   generateBackupVaultCF(vault: BackupVault): any {
     return {
       Type: 'AWS::Backup::BackupVault',
@@ -363,7 +363,7 @@ export class BackupManager {
 
   /**
    * Generate CloudFormation for backup plan
-   */
+  */
   generateBackupPlanCF(plan: BackupPlan): any {
     return {
       Type: 'AWS::Backup::BackupPlan',
@@ -397,7 +397,7 @@ export class BackupManager {
 
   /**
    * Generate CloudFormation for backup selection
-   */
+  */
   generateBackupSelectionCF(plan: BackupPlan): any {
     return {
       Type: 'AWS::Backup::BackupSelection',
@@ -414,7 +414,7 @@ export class BackupManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.backupPlans.clear()
     this.backupVaults.clear()
@@ -428,5 +428,5 @@ export class BackupManager {
 
 /**
  * Global backup manager instance
- */
+*/
 export const backupManager: BackupManager = new BackupManager()

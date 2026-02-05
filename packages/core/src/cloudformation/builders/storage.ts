@@ -35,7 +35,7 @@ export interface StorageConfig {
 
 /**
  * Add S3 and EFS storage resources to CloudFormation template
- */
+*/
 export function addStorageResources(
   builder: CloudFormationBuilder,
   config: StorageConfig,
@@ -54,7 +54,7 @@ export function addStorageResources(
 
 /**
  * Add S3 bucket resource
- */
+*/
 function addS3Bucket(
   builder: CloudFormationBuilder,
   bucketName: string,
@@ -202,7 +202,7 @@ function addS3Bucket(
 
 /**
  * Add EFS file system resource
- */
+*/
 function addEFSResource(
   builder: CloudFormationBuilder,
   name: string,

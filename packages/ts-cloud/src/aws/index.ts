@@ -1,7 +1,7 @@
 /**
  * AWS Integration Layer
  * Direct API calls for AWS services (no SDK dependencies)
- */
+*/
 
 export * from './client'
 export * from './cloudformation'

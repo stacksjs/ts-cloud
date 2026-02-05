@@ -150,11 +150,11 @@ export interface CatchConfig {
 /**
  * Workflow Module - Step Functions
  * Provides clean API for orchestrating distributed applications and microservices
- */
+*/
 export class Workflow {
   /**
    * Create a Step Functions state machine
-   */
+  */
   static createStateMachine(options: StateMachineOptions): {
     stateMachine: StepFunctionsStateMachine
     logicalId: string
@@ -258,7 +258,7 @@ export class Workflow {
 
   /**
    * Create a Lambda task state
-   */
+  */
   static createLambdaTask(
     functionArn: string,
     options?: {
@@ -287,7 +287,7 @@ export class Workflow {
 
   /**
    * Create a DynamoDB task state
-   */
+  */
   static createDynamoDBTask(
     action: 'GetItem' | 'PutItem' | 'UpdateItem' | 'DeleteItem',
     tableName: string,
@@ -324,7 +324,7 @@ export class Workflow {
 
   /**
    * Create an SNS publish task state
-   */
+  */
   static createSNSPublishTask(
     topicArn: string,
     message: Record<string, unknown>,
@@ -353,7 +353,7 @@ export class Workflow {
 
   /**
    * Create an SQS send message task state
-   */
+  */
   static createSQSSendMessageTask(
     queueUrl: string,
     messageBody: Record<string, unknown>,
@@ -382,7 +382,7 @@ export class Workflow {
 
   /**
    * Create a Pass state
-   */
+  */
   static createPassState(options?: {
     result?: unknown
     resultPath?: string | null
@@ -402,7 +402,7 @@ export class Workflow {
 
   /**
    * Create a Wait state
-   */
+  */
   static createWaitState(options: {
     seconds?: number
     timestamp?: string
@@ -424,7 +424,7 @@ export class Workflow {
 
   /**
    * Create a Choice state
-   */
+  */
   static createChoiceState(
     choices: ChoiceRule[],
     defaultState?: string,
@@ -438,7 +438,7 @@ export class Workflow {
 
   /**
    * Create a Parallel state
-   */
+  */
   static createParallelState(
     branches: StateMachineDefinition[],
     options?: {
@@ -462,7 +462,7 @@ export class Workflow {
 
   /**
    * Create a Map state
-   */
+  */
   static createMapState(
     iterator: StateMachineDefinition,
     options?: {
@@ -490,7 +490,7 @@ export class Workflow {
 
   /**
    * Create a Succeed state
-   */
+  */
   static createSucceedState(): SucceedState {
     return {
       Type: 'Succeed',
@@ -499,7 +499,7 @@ export class Workflow {
 
   /**
    * Create a Fail state
-   */
+  */
   static createFailState(error?: string, cause?: string): FailState {
     return {
       Type: 'Fail',
@@ -510,11 +510,11 @@ export class Workflow {
 
   /**
    * Common retry configurations
-   */
+  */
   static readonly RetryPolicies = {
     /**
      * Standard retry with exponential backoff
-     */
+    */
     standard: (): RetryConfig => ({
       ErrorEquals: ['States.ALL'],
       IntervalSeconds: 2,
@@ -524,7 +524,7 @@ export class Workflow {
 
     /**
      * Aggressive retry for transient errors
-     */
+    */
     aggressive: (): RetryConfig => ({
       ErrorEquals: ['States.TaskFailed', 'States.Timeout'],
       IntervalSeconds: 1,
@@ -534,7 +534,7 @@ export class Workflow {
 
     /**
      * Custom retry configuration
-     */
+    */
     custom: (
       errorEquals: string[],
       intervalSeconds: number,
@@ -550,11 +550,11 @@ export class Workflow {
 
   /**
    * Common catch configurations
-   */
+  */
   static readonly CatchPolicies = {
     /**
      * Catch all errors
-     */
+    */
     all: (nextState: string, resultPath?: string): CatchConfig => ({
       ErrorEquals: ['States.ALL'],
       Next: nextState,
@@ -563,7 +563,7 @@ export class Workflow {
 
     /**
      * Catch specific errors
-     */
+    */
     specific: (errors: string[], nextState: string, resultPath?: string): CatchConfig => ({
       ErrorEquals: errors,
       Next: nextState,
@@ -573,11 +573,11 @@ export class Workflow {
 
   /**
    * Common workflow patterns
-   */
+  */
   static readonly Patterns = {
     /**
      * Simple sequential workflow
-     */
+    */
     sequential: (
       slug: string,
       environment: EnvironmentType,
@@ -603,7 +603,7 @@ export class Workflow {
 
     /**
      * Fan-out workflow (parallel execution)
-     */
+    */
     fanout: (
       slug: string,
       environment: EnvironmentType,
@@ -624,7 +624,7 @@ export class Workflow {
 
     /**
      * Map workflow (process array of items)
-     */
+    */
     map: (
       slug: string,
       environment: EnvironmentType,
@@ -648,7 +648,7 @@ export class Workflow {
 
     /**
      * Error handling workflow
-     */
+    */
     withErrorHandling: (
       slug: string,
       environment: EnvironmentType,

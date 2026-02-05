@@ -1,7 +1,7 @@
 /**
  * SQS Batch Processing
  * Batch operations, parallel processing, and throughput optimization
- */
+*/
 
 export interface BatchConfig {
   id: string
@@ -47,7 +47,7 @@ export interface ProcessorMetrics {
 
 /**
  * Batch processing manager
- */
+*/
 export class BatchProcessingManager {
   private configs: Map<string, BatchConfig> = new Map()
   private jobs: Map<string, BatchJob> = new Map()
@@ -58,7 +58,7 @@ export class BatchProcessingManager {
 
   /**
    * Create batch config
-   */
+  */
   createBatchConfig(config: Omit<BatchConfig, 'id'>): BatchConfig {
     const id = `batch-config-${Date.now()}-${this.configCounter++}`
 
@@ -74,7 +74,7 @@ export class BatchProcessingManager {
 
   /**
    * Create high-throughput batch config
-   */
+  */
   createHighThroughputConfig(options: {
     queueUrl: string
   }): BatchConfig {
@@ -90,7 +90,7 @@ export class BatchProcessingManager {
 
   /**
    * Create low-latency batch config
-   */
+  */
   createLowLatencyConfig(options: {
     queueUrl: string
   }): BatchConfig {
@@ -106,7 +106,7 @@ export class BatchProcessingManager {
 
   /**
    * Create batch job
-   */
+  */
   createBatchJob(options: {
     configId: string
     messageCount: number
@@ -147,7 +147,7 @@ export class BatchProcessingManager {
 
   /**
    * Process batch job
-   */
+  */
   async processBatchJob(jobId: string): Promise<BatchJob> {
     const job = this.jobs.get(jobId)
 
@@ -185,7 +185,7 @@ export class BatchProcessingManager {
 
   /**
    * Process single batch
-   */
+  */
   private async processBatch(messages: BatchMessage[], config: BatchConfig): Promise<void> {
     const promises = messages.map(msg => this.processMessage(msg, config))
     await Promise.all(promises)
@@ -193,7 +193,7 @@ export class BatchProcessingManager {
 
   /**
    * Process single message
-   */
+  */
   private async processMessage(message: BatchMessage, config: BatchConfig): Promise<void> {
     message.status = 'processing'
 
@@ -218,7 +218,7 @@ export class BatchProcessingManager {
 
   /**
    * Chunk array into batches
-   */
+  */
   private chunkArray<T>(array: T[], chunkSize: number): T[][] {
     const chunks: T[][] = []
     for (let i = 0; i < array.length; i += chunkSize) {
@@ -229,7 +229,7 @@ export class BatchProcessingManager {
 
   /**
    * Collect processor metrics
-   */
+  */
   private collectProcessorMetrics(configId: string, job: BatchJob): void {
     const id = `metrics-${Date.now()}-${this.metricsCounter++}`
 
@@ -269,7 +269,7 @@ export class BatchProcessingManager {
 
   /**
    * Get batch statistics
-   */
+  */
   getBatchStatistics(configId: string): {
     totalJobsProcessed: number
     totalMessagesProcessed: number
@@ -305,7 +305,7 @@ export class BatchProcessingManager {
 
   /**
    * Optimize batch config
-   */
+  */
   optimizeBatchConfig(configId: string): BatchConfig {
     const config = this.configs.get(configId)
 
@@ -335,28 +335,28 @@ export class BatchProcessingManager {
 
   /**
    * Get config
-   */
+  */
   getConfig(id: string): BatchConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List configs
-   */
+  */
   listConfigs(): BatchConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get job
-   */
+  */
   getJob(id: string): BatchJob | undefined {
     return this.jobs.get(id)
   }
 
   /**
    * List jobs
-   */
+  */
   listJobs(configId?: string): BatchJob[] {
     let jobs = Array.from(this.jobs.values())
 
@@ -369,7 +369,7 @@ export class BatchProcessingManager {
 
   /**
    * Generate CloudFormation for Lambda batch processor
-   */
+  */
   generateBatchProcessorCF(config: BatchConfig): any {
     return {
       Type: 'AWS::Lambda::EventSourceMapping',
@@ -385,7 +385,7 @@ export class BatchProcessingManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.configs.clear()
     this.jobs.clear()
@@ -398,5 +398,5 @@ export class BatchProcessingManager {
 
 /**
  * Global batch processing manager instance
- */
+*/
 export const batchProcessingManager: BatchProcessingManager = new BatchProcessingManager()

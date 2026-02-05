@@ -1,13 +1,13 @@
 /**
  * AWS Auto Scaling Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_AutoScaling.html
- */
+*/
 
 import type { Tag } from './common'
 
 /**
  * AWS::AutoScaling::AutoScalingGroup
- */
+*/
 export interface AutoScalingGroup {
   Type: 'AWS::AutoScaling::AutoScalingGroup'
   Properties: {
@@ -68,7 +68,7 @@ export interface AutoScalingGroup {
 
 /**
  * AWS::AutoScaling::LaunchConfiguration
- */
+*/
 export interface AutoScalingLaunchConfiguration {
   Type: 'AWS::AutoScaling::LaunchConfiguration'
   Properties: {
@@ -103,7 +103,7 @@ export interface AutoScalingLaunchConfiguration {
 
 /**
  * AWS::AutoScaling::ScalingPolicy
- */
+*/
 export interface AutoScalingScalingPolicy {
   Type: 'AWS::AutoScaling::ScalingPolicy'
   Properties: {
@@ -144,7 +144,7 @@ export interface AutoScalingScalingPolicy {
 
 /**
  * AWS::AutoScaling::ScheduledAction
- */
+*/
 export interface AutoScalingScheduledAction {
   Type: 'AWS::AutoScaling::ScheduledAction'
   Properties: {
@@ -161,7 +161,7 @@ export interface AutoScalingScheduledAction {
 
 /**
  * AWS::AutoScaling::LifecycleHook
- */
+*/
 export interface AutoScalingLifecycleHook {
   Type: 'AWS::AutoScaling::LifecycleHook'
   Properties: {
@@ -178,7 +178,7 @@ export interface AutoScalingLifecycleHook {
 
 /**
  * AWS::AutoScaling::WarmPool
- */
+*/
 export interface AutoScalingWarmPool {
   Type: 'AWS::AutoScaling::WarmPool'
   Properties: {

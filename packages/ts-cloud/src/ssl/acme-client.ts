@@ -3,7 +3,7 @@
  * Implements RFC 8555 (ACME Protocol) for certificate issuance
  *
  * This is a pure TypeScript/Bun implementation without external dependencies.
- */
+*/
 
 import { createHash, createSign, generateKeyPairSync, randomBytes } from 'node:crypto'
 
@@ -17,17 +17,17 @@ export interface AcmeClientOptions {
   /**
    * Use staging server for testing
    * @default false
-   */
+  */
   staging?: boolean
 
   /**
    * Account email for Let's Encrypt notifications
-   */
+  */
   email: string
 
   /**
    * Account key in PEM format (optional, will be generated if not provided)
-   */
+  */
   accountKey?: string
 }
 
@@ -38,11 +38,11 @@ export interface AcmeChallenge {
   /**
    * For HTTP-01: URL path to serve the challenge
    * For DNS-01: TXT record name
-   */
+  */
   identifier: string
   /**
    * For DNS-01: The value to put in the TXT record
-   */
+  */
   dnsValue?: string
 }
 
@@ -64,7 +64,7 @@ interface AcmeDirectory {
 
 /**
  * ACME Client for Let's Encrypt certificate management
- */
+*/
 export class AcmeClient {
   private directoryUrl: string
   private email: string
@@ -83,7 +83,7 @@ export class AcmeClient {
 
   /**
    * Generate a new account key pair
-   */
+  */
   private generateAccountKey(): string {
     const { privateKey } = generateKeyPairSync('ec', {
       namedCurve: 'P-256',
@@ -93,7 +93,7 @@ export class AcmeClient {
 
   /**
    * Get the ACME directory
-   */
+  */
   private async getDirectory(): Promise<AcmeDirectory> {
     if (this.directory) return this.directory
 
@@ -108,7 +108,7 @@ export class AcmeClient {
 
   /**
    * Get a fresh nonce for requests
-   */
+  */
   private async getNonce(): Promise<string> {
     if (this.nonce) {
       const nonce = this.nonce
@@ -129,7 +129,7 @@ export class AcmeClient {
 
   /**
    * Create JWK from account key
-   */
+  */
   private getJwk(): Record<string, string> {
     // Parse the EC private key to extract public key components
     const keyLines = this.accountKey.split('\n')
@@ -156,7 +156,7 @@ export class AcmeClient {
 
   /**
    * Calculate JWK thumbprint
-   */
+  */
   private getJwkThumbprint(): string {
     const jwk = this.getJwk()
     // Canonical JSON for EC key
@@ -173,7 +173,7 @@ export class AcmeClient {
 
   /**
    * Base64URL encode
-   */
+  */
   private base64UrlEncode(data: Buffer | string): string {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data
     return buffer.toString('base64')
@@ -184,7 +184,7 @@ export class AcmeClient {
 
   /**
    * Sign a payload for ACME request
-   */
+  */
   private async signPayload(url: string, payload: any): Promise<string> {
     const nonce = await this.getNonce()
     const jwk = this.getJwk()
@@ -235,7 +235,7 @@ export class AcmeClient {
 
   /**
    * Make a signed ACME request
-   */
+  */
   private async acmeRequest(url: string, payload: any): Promise<{ body: any; headers: Headers }> {
     const body = await this.signPayload(url, payload)
 
@@ -270,7 +270,7 @@ export class AcmeClient {
 
   /**
    * Register or get existing account
-   */
+  */
   async registerAccount(): Promise<string> {
     const directory = await this.getDirectory()
 
@@ -290,7 +290,7 @@ export class AcmeClient {
 
   /**
    * Create a new certificate order
-   */
+  */
   async createOrder(domains: string[]): Promise<{
     orderUrl: string
     authorizations: string[]
@@ -323,7 +323,7 @@ export class AcmeClient {
 
   /**
    * Get authorization challenges
-   */
+  */
   async getAuthorization(authUrl: string): Promise<{
     domain: string
     challenges: AcmeChallenge[]
@@ -365,14 +365,14 @@ export class AcmeClient {
 
   /**
    * Respond to a challenge (tell ACME server we're ready)
-   */
+  */
   async respondToChallenge(challengeUrl: string): Promise<void> {
     await this.acmeRequest(challengeUrl, {})
   }
 
   /**
    * Poll for authorization status
-   */
+  */
   async waitForAuthorization(authUrl: string, maxAttempts = 30): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       const { body } = await this.acmeRequest(authUrl, '')
@@ -393,7 +393,7 @@ export class AcmeClient {
 
   /**
    * Generate a CSR (Certificate Signing Request)
-   */
+  */
   private generateCsr(domains: string[]): { csr: string; privateKey: string } {
     // Generate a new key pair for the certificate
     const { privateKey, publicKey } = generateKeyPairSync('rsa', {
@@ -420,7 +420,7 @@ export class AcmeClient {
 
   /**
    * Create a simple CSR (placeholder - would need proper implementation)
-   */
+  */
   private createSimpleCsr(domains: string[], privateKey: any): string {
     // This is a placeholder. A real implementation would:
     // 1. Create proper ASN.1 structure for CSR
@@ -436,7 +436,7 @@ export class AcmeClient {
 
   /**
    * Finalize the order and get the certificate
-   */
+  */
   async finalizeOrder(finalizeUrl: string, domains: string[]): Promise<AcmeCertificate> {
     const { csr, privateKey } = this.generateCsr(domains)
 
@@ -471,7 +471,7 @@ export class AcmeClient {
 
   /**
    * Get the account key (for storage/reuse)
-   */
+  */
   getAccountKey(): string {
     return this.accountKey
   }

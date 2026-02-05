@@ -1,7 +1,7 @@
 /**
  * AWS GuardDuty
  * Intelligent threat detection and continuous monitoring
- */
+*/
 
 export interface GuardDutyDetector {
   id: string
@@ -79,7 +79,7 @@ export interface FindingCriteria {
 
 /**
  * GuardDuty manager
- */
+*/
 export class GuardDutyManager {
   private detectors: Map<string, GuardDutyDetector> = new Map()
   private threatIntelSets: Map<string, ThreatIntelSet> = new Map()
@@ -92,7 +92,7 @@ export class GuardDutyManager {
 
   /**
    * Create GuardDuty detector
-   */
+  */
   createDetector(detector: Omit<GuardDutyDetector, 'id'>): GuardDutyDetector {
     const id = `detector-${Date.now()}-${this.detectorCounter++}`
 
@@ -108,7 +108,7 @@ export class GuardDutyManager {
 
   /**
    * Create comprehensive detector with all features
-   */
+  */
   createComprehensiveDetector(): GuardDutyDetector {
     return this.createDetector({
       enable: true,
@@ -142,7 +142,7 @@ export class GuardDutyManager {
 
   /**
    * Create basic detector
-   */
+  */
   createBasicDetector(): GuardDutyDetector {
     return this.createDetector({
       enable: true,
@@ -152,7 +152,7 @@ export class GuardDutyManager {
 
   /**
    * Create threat intel set
-   */
+  */
   createThreatIntelSet(set: Omit<ThreatIntelSet, 'id'>): ThreatIntelSet {
     const id = `threat-intel-${Date.now()}-${this.threatIntelCounter++}`
 
@@ -168,7 +168,7 @@ export class GuardDutyManager {
 
   /**
    * Create IP set
-   */
+  */
   createIPSet(set: Omit<IPSet, 'id'>): IPSet {
     const id = `ip-set-${Date.now()}-${this.ipSetCounter++}`
 
@@ -184,7 +184,7 @@ export class GuardDutyManager {
 
   /**
    * Create finding filter
-   */
+  */
   createFindingFilter(filter: Omit<FindingFilter, 'id'>): FindingFilter {
     const id = `filter-${Date.now()}-${this.filterCounter++}`
 
@@ -200,7 +200,7 @@ export class GuardDutyManager {
 
   /**
    * Create auto-archive filter for low severity findings
-   */
+  */
   createLowSeverityArchiveFilter(detectorId: string): FindingFilter {
     return this.createFindingFilter({
       detectorId,
@@ -220,7 +220,7 @@ export class GuardDutyManager {
 
   /**
    * Create filter for specific finding types
-   */
+  */
   createFindingTypeFilter(
     detectorId: string,
     findingTypes: string[],
@@ -244,7 +244,7 @@ export class GuardDutyManager {
 
   /**
    * Create filter for trusted IP addresses
-   */
+  */
   createTrustedIPFilter(detectorId: string, ipAddresses: string[]): FindingFilter {
     return this.createFindingFilter({
       detectorId,
@@ -264,63 +264,63 @@ export class GuardDutyManager {
 
   /**
    * Get detector
-   */
+  */
   getDetector(id: string): GuardDutyDetector | undefined {
     return this.detectors.get(id)
   }
 
   /**
    * List detectors
-   */
+  */
   listDetectors(): GuardDutyDetector[] {
     return Array.from(this.detectors.values())
   }
 
   /**
    * Get threat intel set
-   */
+  */
   getThreatIntelSet(id: string): ThreatIntelSet | undefined {
     return this.threatIntelSets.get(id)
   }
 
   /**
    * List threat intel sets
-   */
+  */
   listThreatIntelSets(): ThreatIntelSet[] {
     return Array.from(this.threatIntelSets.values())
   }
 
   /**
    * Get IP set
-   */
+  */
   getIPSet(id: string): IPSet | undefined {
     return this.ipSets.get(id)
   }
 
   /**
    * List IP sets
-   */
+  */
   listIPSets(): IPSet[] {
     return Array.from(this.ipSets.values())
   }
 
   /**
    * Get finding filter
-   */
+  */
   getFindingFilter(id: string): FindingFilter | undefined {
     return this.filters.get(id)
   }
 
   /**
    * List finding filters
-   */
+  */
   listFindingFilters(): FindingFilter[] {
     return Array.from(this.filters.values())
   }
 
   /**
    * Generate CloudFormation for detector
-   */
+  */
   generateDetectorCF(detector: GuardDutyDetector): any {
     const cf: any = {
       Type: 'AWS::GuardDuty::Detector',
@@ -376,7 +376,7 @@ export class GuardDutyManager {
 
   /**
    * Generate CloudFormation for threat intel set
-   */
+  */
   generateThreatIntelSetCF(set: ThreatIntelSet): any {
     return {
       Type: 'AWS::GuardDuty::ThreatIntelSet',
@@ -392,7 +392,7 @@ export class GuardDutyManager {
 
   /**
    * Generate CloudFormation for IP set
-   */
+  */
   generateIPSetCF(set: IPSet): any {
     return {
       Type: 'AWS::GuardDuty::IPSet',
@@ -408,7 +408,7 @@ export class GuardDutyManager {
 
   /**
    * Generate CloudFormation for finding filter
-   */
+  */
   generateFilterCF(filter: FindingFilter): any {
     return {
       Type: 'AWS::GuardDuty::Filter',
@@ -427,7 +427,7 @@ export class GuardDutyManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.detectors.clear()
     this.threatIntelSets.clear()
@@ -442,5 +442,5 @@ export class GuardDutyManager {
 
 /**
  * Global GuardDuty manager instance
- */
+*/
 export const guardDutyManager: GuardDutyManager = new GuardDutyManager()

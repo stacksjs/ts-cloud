@@ -1,7 +1,7 @@
 /**
  * ACM (AWS Certificate Manager) Client
  * For requesting and managing SSL/TLS certificates
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -39,7 +39,7 @@ export class ACMClient {
 
   /**
    * Request a new certificate
-   */
+  */
   async requestCertificate(params: {
     DomainName: string
     SubjectAlternativeNames?: string[]
@@ -75,7 +75,7 @@ export class ACMClient {
 
   /**
    * Describe a certificate to get its details and validation options
-   */
+  */
   async describeCertificate(params: {
     CertificateArn: string
   }): Promise<CertificateDetail> {
@@ -120,7 +120,7 @@ export class ACMClient {
 
   /**
    * List certificates
-   */
+  */
   async listCertificates(params?: {
     CertificateStatuses?: ('PENDING_VALIDATION' | 'ISSUED' | 'INACTIVE' | 'EXPIRED' | 'VALIDATION_TIMED_OUT' | 'REVOKED' | 'FAILED')[]
     MaxItems?: number
@@ -164,7 +164,7 @@ export class ACMClient {
 
   /**
    * Delete a certificate
-   */
+  */
   async deleteCertificate(params: {
     CertificateArn: string
   }): Promise<void> {
@@ -185,7 +185,7 @@ export class ACMClient {
 
   /**
    * Get certificate tags
-   */
+  */
   async listTagsForCertificate(params: {
     CertificateArn: string
   }): Promise<{ Tags: Array<{ Key: string, Value?: string }> }> {
@@ -210,7 +210,7 @@ export class ACMClient {
 
   /**
    * Add tags to a certificate
-   */
+  */
   async addTagsToCertificate(params: {
     CertificateArn: string
     Tags: Array<{ Key: string, Value?: string }>
@@ -233,7 +233,7 @@ export class ACMClient {
 
   /**
    * Resend validation email
-   */
+  */
   async resendValidationEmail(params: {
     CertificateArn: string
     Domain: string
@@ -260,7 +260,7 @@ export class ACMClient {
 
   /**
    * Find certificate by domain name
-   */
+  */
   async findCertificateByDomain(domainName: string): Promise<CertificateDetail | null> {
     // List all issued certificates
     const result = await this.listCertificates({
@@ -283,7 +283,7 @@ export class ACMClient {
 
   /**
    * Wait for certificate to be issued
-   */
+  */
   async waitForCertificateValidation(
     certificateArn: string,
     maxAttempts = 60,
@@ -308,7 +308,7 @@ export class ACMClient {
 
   /**
    * Get DNS validation records for a certificate
-   */
+  */
   async getDnsValidationRecords(certificateArn: string): Promise<Array<{
     domainName: string
     recordName: string
@@ -334,7 +334,7 @@ export class ACMClient {
   /**
    * Request certificate for a domain with common SANs
    * Automatically includes www and wildcard
-   */
+  */
   async requestCertificateWithSans(params: {
     DomainName: string
     IncludeWww?: boolean
@@ -372,7 +372,7 @@ export class ACMClient {
 
   /**
    * Check if certificate is valid for a given domain
-   */
+  */
   async isCertificateValidForDomain(
     certificateArn: string,
     domainName: string,
@@ -429,7 +429,7 @@ import { createDnsProvider } from '../dns'
 /**
  * Helper class for ACM DNS validation with Route53 integration
  * @deprecated Use UnifiedDnsValidator from 'ts-cloud/dns' for multi-provider support (Route53, Porkbun, GoDaddy)
- */
+*/
 export class ACMDnsValidator {
   private acm: ACMClient
   private route53: Route53Client
@@ -439,7 +439,7 @@ export class ACMDnsValidator {
    * Create ACM DNS validator
    * @param region - AWS region for ACM (default: us-east-1)
    * @param dnsProviderConfig - Optional external DNS provider config (Porkbun, GoDaddy)
-   */
+  */
   constructor(region: string = 'us-east-1', dnsProviderConfig?: DnsProviderConfig) {
     this.acm = new ACMClient(region)
     this.route53 = new Route53Client()
@@ -457,7 +457,7 @@ export class ACMDnsValidator {
    * @param params.subjectAlternativeNames - Additional domain names (SANs)
    * @param params.waitForValidation - Wait for certificate to be issued
    * @param params.maxWaitMinutes - Maximum wait time in minutes
-   */
+  */
   async requestAndValidate(params: {
     domainName: string
     hostedZoneId?: string
@@ -558,7 +558,7 @@ export class ACMDnsValidator {
 
   /**
    * Wait for validation options to become available
-   */
+  */
   private async waitForValidationOptions(certificateArn: string, maxAttempts = 30): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       const cert = await this.acm.describeCertificate({ CertificateArn: certificateArn })
@@ -578,7 +578,7 @@ export class ACMDnsValidator {
   /**
    * Create validation records for an existing certificate
    * Uses external DNS provider if configured, otherwise Route53
-   */
+  */
   async createValidationRecords(params: {
     certificateArn: string
     hostedZoneId?: string
@@ -654,7 +654,7 @@ export class ACMDnsValidator {
   /**
    * Delete validation records after certificate is issued
    * Uses external DNS provider if configured, otherwise Route53
-   */
+  */
   async deleteValidationRecords(params: {
     certificateArn: string
     hostedZoneId?: string
@@ -711,7 +711,7 @@ export class ACMDnsValidator {
   /**
    * Find or create a certificate for a domain
    * Uses external DNS provider if configured, otherwise Route53
-   */
+  */
   async findOrCreateCertificate(params: {
     domainName: string
     hostedZoneId?: string
@@ -754,14 +754,14 @@ export class ACMDnsValidator {
 
   /**
    * Check if using external DNS provider
-   */
+  */
   hasExternalDnsProvider(): boolean {
     return this.dnsProvider !== undefined
   }
 
   /**
    * Get the DNS provider name if using external provider
-   */
+  */
   getDnsProviderName(): string {
     return this.dnsProvider?.name || 'route53'
   }

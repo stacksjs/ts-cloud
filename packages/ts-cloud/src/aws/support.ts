@@ -1,7 +1,7 @@
 /**
  * AWS Support API Operations
  * Automates support ticket creation for service limit increases and sandbox exits
- */
+*/
 
 import { AWSClient } from './client'
 
@@ -47,7 +47,7 @@ export interface SupportService {
 
 /**
  * AWS Support client for creating and managing support cases
- */
+*/
 export class SupportClient {
   private client: AWSClient
   private region: string
@@ -59,7 +59,7 @@ export class SupportClient {
 
   /**
    * Create a new support case
-   */
+  */
   async createCase(params: CreateCaseParams): Promise<{ caseId?: string }> {
     const result = await this.client.request({
       service: 'support',
@@ -88,7 +88,7 @@ export class SupportClient {
 
   /**
    * Get details of a support case
-   */
+  */
   async describeCase(caseId: string): Promise<SupportCase | null> {
     const result = await this.client.request({
       service: 'support',
@@ -112,7 +112,7 @@ export class SupportClient {
 
   /**
    * List all support cases
-   */
+  */
   async listCases(options?: {
     includeResolved?: boolean
     maxResults?: number
@@ -140,7 +140,7 @@ export class SupportClient {
 
   /**
    * Add a communication to an existing case
-   */
+  */
   async addCommunication(caseId: string, message: string, ccEmailAddresses?: string[]): Promise<boolean> {
     const result = await this.client.request({
       service: 'support',
@@ -163,7 +163,7 @@ export class SupportClient {
 
   /**
    * Resolve a support case
-   */
+  */
   async resolveCase(caseId: string): Promise<{ initialCaseStatus?: string, finalCaseStatus?: string }> {
     const result = await this.client.request({
       service: 'support',
@@ -184,7 +184,7 @@ export class SupportClient {
 
   /**
    * Get available services and categories for support cases
-   */
+  */
   async describeServices(serviceCodeList?: string[]): Promise<SupportService[]> {
     const result = await this.client.request({
       service: 'support',
@@ -206,7 +206,7 @@ export class SupportClient {
 
   /**
    * Get available severity levels
-   */
+  */
   async describeSeverityLevels(): Promise<Array<{ code: string, name: string }>> {
     const result = await this.client.request({
       service: 'support',
@@ -257,11 +257,11 @@ export interface ConnectPhoneNumberIncreaseParams {
 
 /**
  * Pre-built support case templates for common requests
- */
+*/
 export const SupportTemplates = {
   /**
    * Request to exit SMS sandbox
-   */
+  */
   smsSandboxExit: (params: SmsSandboxExitParams): CreateCaseParams => ({
     subject: 'Request to exit SMS sandbox for production use',
     serviceCode: 'service-limit-increase',
@@ -296,7 +296,7 @@ Thank you for reviewing this request.`,
 
   /**
    * Request to increase SMS spending limit
-   */
+  */
   smsSpendLimitIncrease: (params: SmsSpendLimitIncreaseParams): CreateCaseParams => ({
     subject: `Request to increase SMS spending limit from $${params.currentLimit} to $${params.requestedLimit}`,
     serviceCode: 'service-limit-increase',
@@ -326,7 +326,7 @@ Thank you for reviewing this request.`,
 
   /**
    * Request SES production access (exit sandbox)
-   */
+  */
   sesSandboxExit: (params: SesSandboxExitParams): CreateCaseParams => ({
     subject: 'Request to move out of Amazon SES sandbox',
     serviceCode: 'service-limit-increase',
@@ -365,7 +365,7 @@ Thank you for reviewing this request.`,
 
   /**
    * Request Connect phone number limit increase
-   */
+  */
   connectPhoneNumberIncrease: (params: ConnectPhoneNumberIncreaseParams): CreateCaseParams => ({
     subject: `Request to increase Amazon Connect phone number limit from ${params.currentLimit} to ${params.requestedLimit}`,
     serviceCode: 'service-limit-increase',

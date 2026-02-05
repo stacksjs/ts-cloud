@@ -1,7 +1,7 @@
 /**
  * Certificate Lifecycle Management
  * Automated certificate provisioning, renewal, and monitoring
- */
+*/
 
 export interface Certificate {
   id: string
@@ -71,7 +71,7 @@ export interface CertificateAlert {
 
 /**
  * Certificate manager
- */
+*/
 export class CertificateManager {
   private certificates: Map<string, Certificate> = new Map()
   private renewals: Map<string, CertificateRenewal> = new Map()
@@ -86,7 +86,7 @@ export class CertificateManager {
 
   /**
    * Request certificate
-   */
+  */
   requestCertificate(options: {
     domainName: string
     subjectAlternativeNames?: string[]
@@ -114,7 +114,7 @@ export class CertificateManager {
 
   /**
    * Request wildcard certificate
-   */
+  */
   requestWildcardCertificate(options: {
     domainName: string
     includeApex?: boolean
@@ -134,7 +134,7 @@ export class CertificateManager {
 
   /**
    * Request multi-domain certificate
-   */
+  */
   requestMultiDomainCertificate(options: {
     primaryDomain: string
     additionalDomains: string[]
@@ -149,7 +149,7 @@ export class CertificateManager {
 
   /**
    * Create certificate validation
-   */
+  */
   private createValidation(certificate: Certificate): CertificateValidation {
     const validation: CertificateValidation = {
       domainName: certificate.domainName,
@@ -180,7 +180,7 @@ export class CertificateManager {
 
   /**
    * Validate certificate
-   */
+  */
   validateCertificate(certificateId: string): { success: boolean; message: string } {
     const certificate = this.certificates.get(certificateId)
     const validation = this.validations.get(certificateId)
@@ -202,7 +202,7 @@ export class CertificateManager {
 
   /**
    * Enable auto-renewal
-   */
+  */
   enableAutoRenewal(options: {
     certificateArn: string
     renewBeforeDays?: number
@@ -223,7 +223,7 @@ export class CertificateManager {
 
   /**
    * Renew certificate
-   */
+  */
   async renewCertificate(renewalId: string): Promise<{ success: boolean; message: string }> {
     const renewal = this.renewals.get(renewalId)
 
@@ -282,7 +282,7 @@ export class CertificateManager {
 
   /**
    * Create certificate monitor
-   */
+  */
   createMonitor(monitor: Omit<CertificateMonitor, 'id'>): CertificateMonitor {
     const id = `monitor-${Date.now()}-${this.monitorCounter++}`
 
@@ -298,7 +298,7 @@ export class CertificateManager {
 
   /**
    * Check certificate expiration
-   */
+  */
   checkExpiration(): CertificateAlert[] {
     const alerts: CertificateAlert[] = []
     const now = Date.now()
@@ -338,7 +338,7 @@ export class CertificateManager {
 
   /**
    * Create alert
-   */
+  */
   createAlert(alert: Omit<CertificateAlert, 'id' | 'timestamp' | 'acknowledged'>): CertificateAlert {
     const id = `alert-${Date.now()}-${this.alertCounter++}`
 
@@ -356,7 +356,7 @@ export class CertificateManager {
 
   /**
    * Acknowledge alert
-   */
+  */
   acknowledgeAlert(alertId: string): void {
     const alert = this.alerts.get(alertId)
     if (alert) {
@@ -366,21 +366,21 @@ export class CertificateManager {
 
   /**
    * Get certificate
-   */
+  */
   getCertificate(id: string): Certificate | undefined {
     return this.certificates.get(id)
   }
 
   /**
    * List certificates
-   */
+  */
   listCertificates(): Certificate[] {
     return Array.from(this.certificates.values())
   }
 
   /**
    * Get expiring certificates
-   */
+  */
   getExpiringCertificates(days: number = 30): Certificate[] {
     const cutoffTime = Date.now() + days * 24 * 60 * 60 * 1000
 
@@ -391,28 +391,28 @@ export class CertificateManager {
 
   /**
    * Get validation
-   */
+  */
   getValidation(certificateId: string): CertificateValidation | undefined {
     return this.validations.get(certificateId)
   }
 
   /**
    * Get renewal
-   */
+  */
   getRenewal(id: string): CertificateRenewal | undefined {
     return this.renewals.get(id)
   }
 
   /**
    * List renewals
-   */
+  */
   listRenewals(): CertificateRenewal[] {
     return Array.from(this.renewals.values())
   }
 
   /**
    * List alerts
-   */
+  */
   listAlerts(acknowledged: boolean = false): CertificateAlert[] {
     return Array.from(this.alerts.values()).filter(
       alert => alert.acknowledged === acknowledged
@@ -421,7 +421,7 @@ export class CertificateManager {
 
   /**
    * Generate CloudFormation for certificate
-   */
+  */
   generateCertificateCF(certificate: Certificate): any {
     return {
       Type: 'AWS::CertificateManager::Certificate',
@@ -437,7 +437,7 @@ export class CertificateManager {
 
   /**
    * Generate CloudWatch alarm for expiration
-   */
+  */
   generateExpirationAlarmCF(options: {
     alarmName: string
     certificateArn: string
@@ -471,7 +471,7 @@ export class CertificateManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.certificates.clear()
     this.renewals.clear()
@@ -488,5 +488,5 @@ export class CertificateManager {
 
 /**
  * Global certificate manager instance
- */
+*/
 export const certificateManager: CertificateManager = new CertificateManager()

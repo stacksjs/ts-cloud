@@ -1,7 +1,7 @@
 /**
  * Container Image Scanning
  * Vulnerability scanning with Trivy, Snyk, and other tools
- */
+*/
 
 export interface ImageScanConfig {
   id: string
@@ -60,7 +60,7 @@ export interface ScanPolicy {
 
 /**
  * Image scanning manager
- */
+*/
 export class ImageScanningManager {
   private configs: Map<string, ImageScanConfig> = new Map()
   private results: Map<string, ImageScanResult> = new Map()
@@ -71,7 +71,7 @@ export class ImageScanningManager {
 
   /**
    * Configure image scanning
-   */
+  */
   configureScan(config: Omit<ImageScanConfig, 'id'>): ImageScanConfig {
     const id = `scan-config-${Date.now()}-${this.configCounter++}`
 
@@ -87,7 +87,7 @@ export class ImageScanningManager {
 
   /**
    * Configure Trivy scanning
-   */
+  */
   configureTrivyScan(options: {
     repository: string
     imageTag: string
@@ -106,7 +106,7 @@ export class ImageScanningManager {
 
   /**
    * Configure Snyk scanning
-   */
+  */
   configureSnykScan(options: {
     repository: string
     imageTag: string
@@ -123,7 +123,7 @@ export class ImageScanningManager {
 
   /**
    * Configure ECR scanning
-   */
+  */
   configureECRScan(options: {
     repository: string
     scanOnPush?: boolean
@@ -139,7 +139,7 @@ export class ImageScanningManager {
 
   /**
    * Scan image
-   */
+  */
   async scanImage(configId: string): Promise<ImageScanResult> {
     const config = this.configs.get(configId)
 
@@ -193,7 +193,7 @@ export class ImageScanningManager {
 
   /**
    * Simulate vulnerabilities (in production, call actual scanner)
-   */
+  */
   private simulateVulnerabilities(config: ImageScanConfig): ImageVulnerability[] {
     const vulnerabilities: ImageVulnerability[] = []
 
@@ -230,7 +230,7 @@ export class ImageScanningManager {
 
   /**
    * Evaluate scan result
-   */
+  */
   private evaluateScanResult(config: ImageScanConfig, summary: VulnerabilitySummary): boolean {
     if (!config.failOnSeverity) {
       return true
@@ -252,7 +252,7 @@ export class ImageScanningManager {
 
   /**
    * Create scan policy
-   */
+  */
   createPolicy(policy: Omit<ScanPolicy, 'id'>): ScanPolicy {
     const id = `policy-${Date.now()}-${this.policyCounter++}`
 
@@ -268,7 +268,7 @@ export class ImageScanningManager {
 
   /**
    * Create strict policy
-   */
+  */
   createStrictPolicy(name: string): ScanPolicy {
     return this.createPolicy({
       name,
@@ -282,7 +282,7 @@ export class ImageScanningManager {
 
   /**
    * Create permissive policy
-   */
+  */
   createPermissivePolicy(name: string): ScanPolicy {
     return this.createPolicy({
       name,
@@ -296,35 +296,35 @@ export class ImageScanningManager {
 
   /**
    * Get config
-   */
+  */
   getConfig(id: string): ImageScanConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List configs
-   */
+  */
   listConfigs(): ImageScanConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get result
-   */
+  */
   getResult(id: string): ImageScanResult | undefined {
     return this.results.get(id)
   }
 
   /**
    * List results
-   */
+  */
   listResults(): ImageScanResult[] {
     return Array.from(this.results.values())
   }
 
   /**
    * Generate CloudFormation for ECR scanning
-   */
+  */
   generateECRScanCF(config: ImageScanConfig): any {
     return {
       Type: 'AWS::ECR::Repository',
@@ -343,7 +343,7 @@ export class ImageScanningManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.configs.clear()
     this.results.clear()
@@ -356,5 +356,5 @@ export class ImageScanningManager {
 
 /**
  * Global image scanning manager instance
- */
+*/
 export const imageScanningManager: ImageScanningManager = new ImageScanningManager()

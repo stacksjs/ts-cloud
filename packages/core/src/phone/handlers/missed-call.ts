@@ -4,7 +4,7 @@
  * Processes missed call events:
  * - Logs missed call
  * - Sends notification
- */
+*/
 
 export const handler = `
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');

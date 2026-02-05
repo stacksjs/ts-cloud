@@ -5,7 +5,7 @@
  * - Processes voicemail recordings from S3
  * - Transcribes using Amazon Transcribe
  * - Sends notification with transcription
- */
+*/
 
 export const handler = `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');

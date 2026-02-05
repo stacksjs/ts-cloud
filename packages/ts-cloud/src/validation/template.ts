@@ -1,7 +1,7 @@
 /**
  * CloudFormation Template Validation
  * Validates templates before deployment
- */
+*/
 
 import type { CloudFormationTemplate } from '@stacksjs/ts-cloud-aws-types'
 
@@ -19,7 +19,7 @@ export interface ValidationResult {
 
 /**
  * Validate a CloudFormation template
- */
+*/
 export function validateTemplate(template: CloudFormationTemplate): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []
@@ -90,7 +90,7 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
 
 /**
  * Validate a single resource
- */
+*/
 function validateResource(
   logicalId: string,
   resource: any,
@@ -163,7 +163,7 @@ function validateResource(
 
 /**
  * Validate a parameter
- */
+*/
 function validateParameter(
   paramName: string,
   param: any,
@@ -199,7 +199,7 @@ function validateParameter(
 
 /**
  * Validate an output
- */
+*/
 function validateOutput(
   outputName: string,
   output: any,
@@ -217,7 +217,7 @@ function validateOutput(
 
 /**
  * Find circular dependencies in resources
- */
+*/
 function findCircularDependencies(resources: Record<string, any>): string[] {
   const graph: Record<string, string[]> = {}
 
@@ -283,7 +283,7 @@ function findCircularDependencies(resources: Record<string, any>): string[] {
 
 /**
  * Extract dependencies from a resource (Ref, GetAtt, etc.)
- */
+*/
 function extractDependencies(obj: any, deps: string[] = []): string[] {
   if (typeof obj !== 'object' || obj === null) {
     return deps
@@ -319,7 +319,7 @@ function extractDependencies(obj: any, deps: string[] = []): string[] {
 
 /**
  * Validate template size
- */
+*/
 export function validateTemplateSize(templateBody: string): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []
@@ -356,7 +356,7 @@ export function validateTemplateSize(templateBody: string): ValidationResult {
 
 /**
  * Validate template resource limits
- */
+*/
 export function validateResourceLimits(template: CloudFormationTemplate): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []

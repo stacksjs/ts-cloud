@@ -23,7 +23,7 @@
  *   body: 'World',
  * })
  * ```
- */
+*/
 
 import { createSign } from 'node:crypto'
 import * as http2 from 'node:http2'
@@ -98,7 +98,7 @@ const TOKEN_EXPIRY_MS = 45 * 60 * 1000 // 45 minutes (tokens valid for 1 hour)
 
 /**
  * Apple Push Notification Service client
- */
+*/
 export class APNsClient {
   private config: APNsConfig
   private token: string | null = null
@@ -113,7 +113,7 @@ export class APNsClient {
 
   /**
    * Generate a new JWT token for APNs authentication
-   */
+  */
   private generateToken(): string {
     const now = Math.floor(Date.now() / 1000)
 
@@ -156,7 +156,7 @@ export class APNsClient {
 
   /**
    * Convert DER encoded ECDSA signature to raw format
-   */
+  */
   private derToRaw(derSignature: Buffer): Buffer {
     // DER format: 0x30 [total-length] 0x02 [r-length] [r] 0x02 [s-length] [s]
     let offset = 2 // Skip 0x30 and total length
@@ -198,7 +198,7 @@ export class APNsClient {
 
   /**
    * Get or create HTTP/2 client connection
-   */
+  */
   private async getClient(): Promise<http2.ClientHttp2Session> {
     if (this.client && !this.client.destroyed) {
       return this.client
@@ -224,7 +224,7 @@ export class APNsClient {
 
   /**
    * Build APNs payload from notification options
-   */
+  */
   private buildPayload(notification: APNsNotification): object {
     const aps: Record<string, any> = {}
 
@@ -283,7 +283,7 @@ export class APNsClient {
 
   /**
    * Send a push notification to a single device
-   */
+  */
   async send(notification: APNsNotification): Promise<APNsSendResult> {
     try {
       const client = await this.getClient()
@@ -381,7 +381,7 @@ export class APNsClient {
 
   /**
    * Send push notifications to multiple devices
-   */
+  */
   async sendBatch(
     notifications: APNsNotification[],
     options?: { concurrency?: number }
@@ -405,7 +405,7 @@ export class APNsClient {
 
   /**
    * Send a simple notification (convenience method)
-   */
+  */
   async sendSimple(
     deviceToken: string,
     title: string,
@@ -422,7 +422,7 @@ export class APNsClient {
 
   /**
    * Send a silent/background notification
-   */
+  */
   async sendSilent(
     deviceToken: string,
     data?: Record<string, any>
@@ -438,7 +438,7 @@ export class APNsClient {
 
   /**
    * Close the HTTP/2 connection
-   */
+  */
   close(): void {
     if (this.client) {
       this.client.close()

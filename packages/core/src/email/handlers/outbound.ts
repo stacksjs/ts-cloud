@@ -8,7 +8,7 @@
  * - Handles attachments (base64 encoded)
  * - Tracks via configuration set
  * - Stores sent emails in S3
- */
+*/
 
 export const handler = `
 const { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');

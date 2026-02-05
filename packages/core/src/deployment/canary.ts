@@ -1,7 +1,7 @@
 /**
  * Canary Deployment Strategy
  * Gradual rollout with automatic rollback based on metrics
- */
+*/
 
 export interface CanaryDeployment {
   id: string
@@ -68,7 +68,7 @@ export interface CanaryResult {
 
 /**
  * Canary deployment manager
- */
+*/
 export class CanaryManager {
   private deployments: Map<string, CanaryDeployment> = new Map()
   private deploymentHistory: Map<string, CanaryResult[]> = new Map()
@@ -77,11 +77,11 @@ export class CanaryManager {
 
   /**
    * Predefined canary strategies
-   */
+  */
   static readonly Strategies = {
     /**
      * Conservative: 10% -> 25% -> 50% -> 100%
-     */
+    */
     CONSERVATIVE: [
       { name: 'Initial Canary', trafficPercentage: 10, durationMinutes: 10 },
       { name: 'Quarter Traffic', trafficPercentage: 25, durationMinutes: 10 },
@@ -91,7 +91,7 @@ export class CanaryManager {
 
     /**
      * Balanced: 20% -> 50% -> 100%
-     */
+    */
     BALANCED: [
       { name: 'Initial Canary', trafficPercentage: 20, durationMinutes: 5 },
       { name: 'Half Traffic', trafficPercentage: 50, durationMinutes: 10 },
@@ -100,7 +100,7 @@ export class CanaryManager {
 
     /**
      * Aggressive: 50% -> 100%
-     */
+    */
     AGGRESSIVE: [
       { name: 'Half Traffic', trafficPercentage: 50, durationMinutes: 5 },
       { name: 'Full Traffic', trafficPercentage: 100, durationMinutes: 5 },
@@ -108,7 +108,7 @@ export class CanaryManager {
 
     /**
      * Linear 10%: Incremental 10% steps
-     */
+    */
     LINEAR_10: [
       { name: 'Canary 10%', trafficPercentage: 10, durationMinutes: 5 },
       { name: 'Canary 20%', trafficPercentage: 20, durationMinutes: 5 },
@@ -125,7 +125,7 @@ export class CanaryManager {
 
   /**
    * Create canary deployment
-   */
+  */
   createDeployment(deployment: Omit<CanaryDeployment, 'id'>): CanaryDeployment {
     const id = `canary-${Date.now()}-${this.deploymentCounter++}`
 
@@ -141,7 +141,7 @@ export class CanaryManager {
 
   /**
    * Create Lambda canary deployment
-   */
+  */
   createLambdaCanaryDeployment(options: {
     name: string
     baselineVersionArn: string
@@ -182,7 +182,7 @@ export class CanaryManager {
 
   /**
    * Create ECS canary deployment
-   */
+  */
   createECSCanaryDeployment(options: {
     name: string
     baselineTaskDefinitionArn: string
@@ -217,7 +217,7 @@ export class CanaryManager {
 
   /**
    * Execute canary deployment
-   */
+  */
   async executeDeployment(deploymentId: string, dryRun: boolean = false): Promise<CanaryResult> {
     const deployment = this.deployments.get(deploymentId)
 
@@ -296,7 +296,7 @@ export class CanaryManager {
 
   /**
    * Monitor canary stage
-   */
+  */
   private async monitorStage(
     deployment: CanaryDeployment,
     stage: CanaryStage,
@@ -347,7 +347,7 @@ export class CanaryManager {
 
   /**
    * Rollback canary deployment
-   */
+  */
   async rollback(deploymentId: string, dryRun: boolean = false): Promise<void> {
     const deployment = this.deployments.get(deploymentId)
 
@@ -368,7 +368,7 @@ export class CanaryManager {
 
   /**
    * Promote canary to baseline
-   */
+  */
   promoteCanary(deploymentId: string): void {
     const deployment = this.deployments.get(deploymentId)
 
@@ -392,7 +392,7 @@ export class CanaryManager {
 
   /**
    * Record deployment result
-   */
+  */
   private recordDeployment(deploymentId: string, result: CanaryResult): void {
     if (!this.deploymentHistory.has(deploymentId)) {
       this.deploymentHistory.set(deploymentId, [])
@@ -403,28 +403,28 @@ export class CanaryManager {
 
   /**
    * Get deployment
-   */
+  */
   getDeployment(id: string): CanaryDeployment | undefined {
     return this.deployments.get(id)
   }
 
   /**
    * List deployments
-   */
+  */
   listDeployments(): CanaryDeployment[] {
     return Array.from(this.deployments.values())
   }
 
   /**
    * Get deployment history
-   */
+  */
   getDeploymentHistory(deploymentId: string): CanaryResult[] {
     return this.deploymentHistory.get(deploymentId) || []
   }
 
   /**
    * Generate CloudFormation for Lambda canary
-   */
+  */
   generateLambdaAliasCF(deployment: CanaryDeployment, aliasName: string): any {
     return {
       Type: 'AWS::Lambda::Alias',
@@ -446,7 +446,7 @@ export class CanaryManager {
 
   /**
    * Generate CloudFormation for ALB weighted target groups
-   */
+  */
   generateALBListenerRuleCF(deployment: CanaryDeployment): any {
     return {
       Type: 'AWS::ElasticLoadBalancingV2::ListenerRule',
@@ -485,7 +485,7 @@ export class CanaryManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.deployments.clear()
     this.deploymentHistory.clear()
@@ -496,5 +496,5 @@ export class CanaryManager {
 
 /**
  * Global canary manager instance
- */
+*/
 export const canaryManager: CanaryManager = new CanaryManager()

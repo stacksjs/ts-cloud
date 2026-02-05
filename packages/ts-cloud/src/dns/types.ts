@@ -1,7 +1,7 @@
 /**
  * DNS Provider Types
  * Common interfaces for DNS provider abstraction
- */
+*/
 
 export type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
 
@@ -41,48 +41,48 @@ export interface ListRecordsResult {
 /**
  * Common DNS Provider interface
  * All DNS providers (Route53, Porkbun, GoDaddy, etc.) implement this
- */
+*/
 export interface DnsProvider {
   /**
    * Provider name for logging/identification
-   */
+  */
   readonly name: string
 
   /**
    * Create a DNS record
-   */
+  */
   createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult>
 
   /**
    * Update an existing DNS record (upsert behavior)
-   */
+  */
   upsertRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult>
 
   /**
    * Delete a DNS record
-   */
+  */
   deleteRecord(domain: string, record: DnsRecord): Promise<DeleteRecordResult>
 
   /**
    * List all DNS records for a domain
-   */
+  */
   listRecords(domain: string, type?: DnsRecordType): Promise<ListRecordsResult>
 
   /**
    * Check if the provider can manage this domain
-   */
+  */
   canManageDomain(domain: string): Promise<boolean>
 
   /**
    * List all domains managed by this provider
    * Returns an array of domain names (e.g., ['example.com', 'mysite.org'])
-   */
+  */
   listDomains(): Promise<string[]>
 }
 
 /**
  * DNS Provider configuration types
- */
+*/
 export interface Route53ProviderConfig {
   provider: 'route53'
   region?: string
@@ -111,7 +111,7 @@ export type DnsProviderConfig = Route53ProviderConfig | PorkbunProviderConfig | 
 
 /**
  * Extended configuration for certificate validation
- */
+*/
 export interface CertificateValidationConfig {
   provider: DnsProviderConfig
   waitForValidation?: boolean

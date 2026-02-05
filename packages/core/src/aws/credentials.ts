@@ -7,7 +7,7 @@
  * - EC2 instance metadata
  * - ECS task metadata
  * - Web identity token (for Kubernetes/IRSA)
- */
+*/
 
 import { readFileSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -35,7 +35,7 @@ export interface CredentialProviderOptions {
 /**
  * Get credentials from environment variables
  * Checks: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
- */
+*/
 export function fromEnvironment(): AWSCredentials | null {
   const accessKeyId = process.env.AWS_ACCESS_KEY_ID
   const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
@@ -53,7 +53,7 @@ export function fromEnvironment(): AWSCredentials | null {
 
 /**
  * Get credentials from shared credentials file (~/.aws/credentials)
- */
+*/
 export function fromSharedCredentials(options?: CredentialProviderOptions): AWSCredentials | null {
   const profile = options?.profile || process.env.AWS_PROFILE || 'default'
   const credentialsPath = options?.credentialsFile || join(homedir(), '.aws', 'credentials')
@@ -72,7 +72,7 @@ export function fromSharedCredentials(options?: CredentialProviderOptions): AWSC
 
 /**
  * Parse INI-style credentials file
- */
+*/
 function parseCredentialsFile(content: string, profile: string): AWSCredentials | null {
   const lines = content.split('\n')
   let currentProfile: string | null = null
@@ -131,7 +131,7 @@ function parseCredentialsFile(content: string, profile: string): AWSCredentials 
 
 /**
  * Get credentials from EC2 instance metadata service (IMDSv2)
- */
+*/
 export async function fromEC2Metadata(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
   const timeout = options?.timeout ?? 1000
   const metadataUrl = 'http://169.254.169.254'
@@ -197,7 +197,7 @@ export async function fromEC2Metadata(options?: CredentialProviderOptions): Prom
 
 /**
  * Get credentials from ECS task metadata
- */
+*/
 export async function fromECSMetadata(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
   const timeout = options?.timeout ?? 1000
 
@@ -252,7 +252,7 @@ export async function fromECSMetadata(options?: CredentialProviderOptions): Prom
 
 /**
  * Get credentials from web identity token (for Kubernetes/IRSA)
- */
+*/
 export async function fromWebIdentity(options?: CredentialProviderOptions): Promise<AWSCredentials | null> {
   const timeout = options?.timeout ?? 5000
 
@@ -321,7 +321,7 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
 /**
  * Get credentials using the default credential chain
  * Tries providers in order: Environment -> Shared Credentials -> Web Identity -> ECS -> EC2
- */
+*/
 export async function getCredentials(options?: CredentialProviderOptions): Promise<AWSCredentials> {
   // 1. Environment variables (fastest, most common in containers)
   const envCreds = fromEnvironment()
@@ -362,7 +362,7 @@ export async function getCredentials(options?: CredentialProviderOptions): Promi
 
 /**
  * Create a credential provider that caches and auto-refreshes credentials
- */
+*/
 export function createCredentialProvider(options?: CredentialProviderOptions): () => Promise<AWSCredentials> {
   let cachedCredentials: AWSCredentials | null = null
   let refreshPromise: Promise<AWSCredentials> | null = null
@@ -401,7 +401,7 @@ export function createCredentialProvider(options?: CredentialProviderOptions): (
 
 /**
  * Helper to fetch with timeout
- */
+*/
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
@@ -422,7 +422,7 @@ async function fetchWithTimeout(
 
 /**
  * Extract value from XML element
- */
+*/
 function extractXmlValue(xml: string, tagName: string): string | null {
   const regex = new RegExp(`<${tagName}>([^<]+)</${tagName}>`)
   const match = xml.match(regex)
@@ -444,14 +444,14 @@ export interface AWSProfile {
 /**
  * Resolve AWS credentials from various sources
  * @deprecated Use getCredentials() instead
- */
+*/
 export async function resolveCredentials(profile?: string): Promise<AWSCredentials> {
   return getCredentials({ profile })
 }
 
 /**
  * Resolve AWS region from environment or config
- */
+*/
 export function resolveRegion(profile?: string): string {
   // Check environment variables first
   const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION
@@ -496,7 +496,7 @@ export function resolveRegion(profile?: string): string {
 
 /**
  * Get AWS account ID using STS GetCallerIdentity
- */
+*/
 export async function getAccountId(credentials?: AWSCredentials): Promise<string> {
   const creds = credentials || await getCredentials()
   const region = resolveRegion()

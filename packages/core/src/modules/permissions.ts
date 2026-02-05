@@ -53,11 +53,11 @@ export interface ManagedPolicyOptions {
 /**
  * Permissions Module - IAM (Identity and Access Management)
  * Provides clean API for creating users, roles, policies, and groups
- */
+*/
 export class Permissions {
   /**
    * Create an IAM user
-   */
+  */
   static createUser(options: UserOptions): {
     user: IAMUser
     logicalId: string
@@ -102,7 +102,7 @@ export class Permissions {
 
   /**
    * Create an IAM role
-   */
+  */
   static createRole(options: RoleOptions): {
     role: IAMRole
     logicalId: string
@@ -164,7 +164,7 @@ export class Permissions {
 
   /**
    * Create an IAM group
-   */
+  */
   static createGroup(options: GroupOptions): {
     group: IAMGroup
     logicalId: string
@@ -200,7 +200,7 @@ export class Permissions {
 
   /**
    * Create a managed policy
-   */
+  */
   static createPolicy(options: ManagedPolicyOptions): {
     policy: IAMManagedPolicy
     logicalId: string
@@ -246,7 +246,7 @@ export class Permissions {
 
   /**
    * Attach a policy to a role
-   */
+  */
   static attachPolicyToRole(
     role: IAMRole,
     policyArn: string,
@@ -264,7 +264,7 @@ export class Permissions {
 
   /**
    * Attach a policy to a user
-   */
+  */
   static attachPolicyToUser(
     user: IAMUser,
     policyArn: string,
@@ -282,7 +282,7 @@ export class Permissions {
 
   /**
    * Attach a policy to a group
-   */
+  */
   static attachPolicyToGroup(
     group: IAMGroup,
     policyArn: string,
@@ -300,7 +300,7 @@ export class Permissions {
 
   /**
    * Add inline policy to a role
-   */
+  */
   static addInlinePolicyToRole(
     role: IAMRole,
     policyName: string,
@@ -329,7 +329,7 @@ export class Permissions {
 
   /**
    * Add inline policy to a user
-   */
+  */
   static addInlinePolicyToUser(
     user: IAMUser,
     policyName: string,
@@ -358,7 +358,7 @@ export class Permissions {
 
   /**
    * Create an access key for programmatic access
-   */
+  */
   static createAccessKey(
     userLogicalId: string,
     options: {
@@ -393,7 +393,7 @@ export class Permissions {
 
   /**
    * Create an instance profile for EC2
-   */
+  */
   static createInstanceProfile(
     roleLogicalId: string,
     options: {
@@ -428,7 +428,7 @@ export class Permissions {
 
   /**
    * AWS Managed Policies (common)
-   */
+  */
   static readonly ManagedPolicies = {
     // Administrator Access
     AdministratorAccess: 'arn:aws:iam::aws:policy/AdministratorAccess',
@@ -486,7 +486,7 @@ export class Permissions {
 
   /**
    * Common service principals
-   */
+  */
   static readonly ServicePrincipals = {
     Lambda: 'lambda.amazonaws.com',
     EC2: 'ec2.amazonaws.com',
@@ -502,7 +502,7 @@ export class Permissions {
 
   /**
    * Create a CI/CD user with deployment permissions
-   */
+  */
   static createCiCdUser(options: {
     slug: string
     environment: EnvironmentType
@@ -738,7 +738,7 @@ export class Permissions {
 
   /**
    * Create a cross-account access role
-   */
+  */
   static createCrossAccountRole(options: {
     slug: string
     environment: EnvironmentType
@@ -831,7 +831,7 @@ export class Permissions {
 
   /**
    * Create a CLI access user with minimal permissions
-   */
+  */
   static createCliUser(options: {
     slug: string
     environment: EnvironmentType
@@ -962,11 +962,11 @@ export class Permissions {
 
   /**
    * Common CI/CD policy templates
-   */
+  */
   static readonly CiCdPolicies = {
     /**
      * S3 static site deployment policy
-     */
+    */
     s3Deployment: (bucketArns: string[]): PolicyStatement[] => [
       {
         sid: 'S3ListBuckets',
@@ -982,7 +982,7 @@ export class Permissions {
 
     /**
      * CloudFront invalidation policy
-     */
+    */
     cloudFrontInvalidation: (distributionArns: string[]): PolicyStatement[] => [
       {
         sid: 'CloudFrontInvalidation',
@@ -997,7 +997,7 @@ export class Permissions {
 
     /**
      * ECS deployment policy
-     */
+    */
     ecsDeployment: (): PolicyStatement[] => [
       {
         sid: 'ECSServices',
@@ -1023,7 +1023,7 @@ export class Permissions {
 
     /**
      * ECR push policy
-     */
+    */
     ecrPush: (repositoryArns: string[]): PolicyStatement[] => [
       {
         sid: 'ECRAuth',
@@ -1047,7 +1047,7 @@ export class Permissions {
 
     /**
      * Lambda deployment policy
-     */
+    */
     lambdaDeployment: (functionArns: string[]): PolicyStatement[] => [
       {
         sid: 'LambdaDeploy',
@@ -1063,7 +1063,7 @@ export class Permissions {
 
     /**
      * CloudFormation deployment policy
-     */
+    */
     cloudFormationDeployment: (stackArns: string[]): PolicyStatement[] => [
       {
         sid: 'CloudFormationDeploy',

@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * WordPress Preset
  * Perfect for: WordPress sites, blogs, CMS-based sites
  * Includes: EC2 + RDS MySQL + EFS + CloudFront
- */
+*/
 export function createWordPressPreset(options: {
   name: string
   slug: string

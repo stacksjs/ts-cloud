@@ -1,7 +1,7 @@
 /**
  * Lambda Advanced Features
  * Layers, versions, concurrency, destinations, VPC, and DLQ
- */
+*/
 
 export * from './layers'
 export * from './versions'

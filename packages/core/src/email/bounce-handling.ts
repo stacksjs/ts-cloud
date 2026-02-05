@@ -1,7 +1,7 @@
 /**
  * SES Bounce and Complaint Handling
  * Automated bounce processing and reputation management
- */
+*/
 
 export interface BounceEvent {
   id: string
@@ -58,7 +58,7 @@ export interface ReputationMetrics {
 
 /**
  * Bounce and complaint handler
- */
+*/
 export class BounceComplaintHandler {
   private bounces: Map<string, BounceEvent> = new Map()
   private complaints: Map<string, ComplaintEvent> = new Map()
@@ -73,7 +73,7 @@ export class BounceComplaintHandler {
 
   /**
    * Record bounce event
-   */
+  */
   recordBounce(bounce: Omit<BounceEvent, 'id'>): BounceEvent {
     const id = `bounce-${Date.now()}-${this.bounceCounter++}`
 
@@ -97,7 +97,7 @@ export class BounceComplaintHandler {
 
   /**
    * Record complaint event
-   */
+  */
   recordComplaint(complaint: Omit<ComplaintEvent, 'id'>): ComplaintEvent {
     const id = `complaint-${Date.now()}-${this.complaintCounter++}`
 
@@ -121,7 +121,7 @@ export class BounceComplaintHandler {
 
   /**
    * Create bounce handler
-   */
+  */
   createBounceHandler(handler: Omit<BounceHandler, 'id'>): BounceHandler {
     const id = `handler-${Date.now()}-${this.handlerCounter++}`
 
@@ -137,7 +137,7 @@ export class BounceComplaintHandler {
 
   /**
    * Create automatic bounce handler
-   */
+  */
   createAutomaticBounceHandler(options: {
     name: string
     notificationTopicArn: string
@@ -154,7 +154,7 @@ export class BounceComplaintHandler {
 
   /**
    * Add to suppression list
-   */
+  */
   addToSuppressionList(entry: {
     emailAddress: string
     reason: 'BOUNCE' | 'COMPLAINT'
@@ -183,14 +183,14 @@ export class BounceComplaintHandler {
 
   /**
    * Remove from suppression list
-   */
+  */
   removeFromSuppressionList(emailAddress: string): boolean {
     return this.suppressionList.delete(emailAddress)
   }
 
   /**
    * Check if email is suppressed
-   */
+  */
   isSuppressed(emailAddress: string): boolean {
     const entry = this.suppressionList.get(emailAddress)
 
@@ -209,7 +209,7 @@ export class BounceComplaintHandler {
 
   /**
    * Get bounce statistics
-   */
+  */
   getBounceStatistics(startDate: Date, endDate: Date): {
     totalBounces: number
     permanentBounces: number
@@ -251,7 +251,7 @@ export class BounceComplaintHandler {
 
   /**
    * Get complaint statistics
-   */
+  */
   getComplaintStatistics(startDate: Date, endDate: Date): {
     totalComplaints: number
     uniqueComplainters: number
@@ -285,7 +285,7 @@ export class BounceComplaintHandler {
 
   /**
    * Calculate reputation metrics
-   */
+  */
   calculateReputationMetrics(): ReputationMetrics {
     const id = `metrics-${Date.now()}-${this.metricsCounter++}`
 
@@ -325,7 +325,7 @@ export class BounceComplaintHandler {
 
   /**
    * Get bounce events
-   */
+  */
   getBounces(messageId?: string): BounceEvent[] {
     const bounces = Array.from(this.bounces.values())
     return messageId ? bounces.filter(b => b.messageId === messageId) : bounces
@@ -333,7 +333,7 @@ export class BounceComplaintHandler {
 
   /**
    * Get complaint events
-   */
+  */
   getComplaints(messageId?: string): ComplaintEvent[] {
     const complaints = Array.from(this.complaints.values())
     return messageId ? complaints.filter(c => c.messageId === messageId) : complaints
@@ -341,7 +341,7 @@ export class BounceComplaintHandler {
 
   /**
    * List suppression list
-   */
+  */
   listSuppressionList(reason?: 'BOUNCE' | 'COMPLAINT'): SuppressionListEntry[] {
     const entries = Array.from(this.suppressionList.values())
     return reason ? entries.filter(e => e.reason === reason) : entries
@@ -349,7 +349,7 @@ export class BounceComplaintHandler {
 
   /**
    * Generate CloudFormation for SNS topic subscription
-   */
+  */
   generateSNSSubscriptionCF(options: {
     topicArn: string
     endpoint: string
@@ -367,7 +367,7 @@ export class BounceComplaintHandler {
 
   /**
    * Generate CloudFormation for SES configuration set event destination
-   */
+  */
   generateEventDestinationCF(options: {
     configurationSetName: string
     eventDestinationName: string
@@ -404,7 +404,7 @@ export class BounceComplaintHandler {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.bounces.clear()
     this.complaints.clear()
@@ -421,5 +421,5 @@ export class BounceComplaintHandler {
 
 /**
  * Global bounce and complaint handler instance
- */
+*/
 export const bounceComplaintHandler: BounceComplaintHandler = new BounceComplaintHandler()

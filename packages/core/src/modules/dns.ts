@@ -29,11 +29,11 @@ export interface AliasTarget {
 /**
  * DNS Module - Route53 Management
  * Provides clean API for creating and configuring Route53 resources
- */
+*/
 export class DNS {
   /**
    * Create a Route53 hosted zone
-   */
+  */
   static createHostedZone(options: HostedZoneOptions): { zone: Route53HostedZone, logicalId: string } {
     const { domain, slug, environment, comment } = options
 
@@ -60,7 +60,7 @@ export class DNS {
 
   /**
    * Create a DNS record
-   */
+  */
   static createRecord(options: RecordOptions): { record: Route53RecordSet, logicalId: string } {
     const { hostedZoneId, hostedZoneName, name, type, ttl, values, aliasTarget } = options
 
@@ -102,7 +102,7 @@ export class DNS {
 
   /**
    * Create an A record that points to a CloudFront distribution
-   */
+  */
   static createCloudFrontAlias(
     domain: string,
     distributionDomainName: string,
@@ -122,7 +122,7 @@ export class DNS {
 
   /**
    * Create an A record that points to an Application Load Balancer
-   */
+  */
   static createAlbAlias(
     domain: string,
     albDomainName: string,
@@ -143,7 +143,7 @@ export class DNS {
 
   /**
    * Create a CNAME record
-   */
+  */
   static createCname(
     name: string,
     target: string,
@@ -161,7 +161,7 @@ export class DNS {
 
   /**
    * Create www → non-www redirect using S3 and Route53
-   */
+  */
   static createWwwRedirect(
     domain: string,
     hostedZoneId: string,
@@ -177,7 +177,7 @@ export class DNS {
 
   /**
    * Create MX records for email
-   */
+  */
   static createMxRecords(
     domain: string,
     mailServers: Array<{ priority: number, server: string }>,
@@ -195,7 +195,7 @@ export class DNS {
 
   /**
    * Create TXT record (useful for domain verification, SPF, DKIM, etc.)
-   */
+  */
   static createTxtRecord(
     name: string,
     value: string,
@@ -213,7 +213,7 @@ export class DNS {
 
   /**
    * Create SPF record for email sending
-   */
+  */
   static createSpfRecord(
     domain: string,
     spfValue: string,
@@ -224,7 +224,7 @@ export class DNS {
 
   /**
    * Create DMARC record for email authentication
-   */
+  */
   static createDmarcRecord(
     domain: string,
     policy: 'none' | 'quarantine' | 'reject',
@@ -238,7 +238,7 @@ export class DNS {
   /**
    * Create an A record pointing to an S3 website redirect bucket
    * Used for www to non-www redirect (or vice versa)
-   */
+  */
   static createS3WebsiteAlias(
     domain: string,
     s3WebsiteEndpoint: string,
@@ -260,7 +260,7 @@ export class DNS {
   /**
    * S3 Website Hosted Zone IDs by region
    * These are required for alias records pointing to S3 website endpoints
-   */
+  */
   static readonly S3WebsiteHostedZoneIds: Record<string, string> = {
     'us-east-1': 'Z3AQBSTGFYJSTF',
     'us-east-2': 'Z2O1EMRO9K5GLX',
@@ -292,14 +292,14 @@ export class DNS {
 
   /**
    * Get S3 website endpoint for a bucket in a specific region
-   */
+  */
   static getS3WebsiteEndpoint(bucketName: string, region: string): string {
     return `${bucketName}.s3-website-${region}.amazonaws.com`
   }
 
   /**
    * Create a store subdomain record (e.g., for Lemon Squeezy integration)
-   */
+  */
   static createStoreRecord(
     domain: string,
     storeUrl: string,
@@ -310,7 +310,7 @@ export class DNS {
 
   /**
    * Create API subdomain record
-   */
+  */
   static createApiRecord(
     domain: string,
     apiUrl: string,
@@ -321,7 +321,7 @@ export class DNS {
 
   /**
    * Create docs subdomain record
-   */
+  */
   static createDocsRecord(
     domain: string,
     docsUrl: string,
@@ -332,6 +332,6 @@ export class DNS {
 
   /**
    * CloudFront Hosted Zone ID (constant for all CloudFront distributions)
-   */
+  */
   static readonly CloudFrontHostedZoneId = 'Z2FDTNDATAQYW2'
 }

@@ -1,7 +1,7 @@
 /**
  * Security Scanning & Vulnerability Assessment
  * Automated security scanning, vulnerability detection, and compliance checking
- */
+*/
 
 export interface SecurityScan {
   id: string
@@ -98,7 +98,7 @@ export interface SecurityPosture {
 
 /**
  * Security scanning manager
- */
+*/
 export class SecurityScanningManager {
   private scans: Map<string, SecurityScan> = new Map()
   private findings: Map<string, SecurityFinding> = new Map()
@@ -113,7 +113,7 @@ export class SecurityScanningManager {
 
   /**
    * Create security scan
-   */
+  */
   createScan(scan: Omit<SecurityScan, 'id' | 'status' | 'findings'>): SecurityScan {
     const id = `scan-${Date.now()}-${this.scanCounter++}`
 
@@ -131,7 +131,7 @@ export class SecurityScanningManager {
 
   /**
    * Create container image scan
-   */
+  */
   createContainerScan(options: {
     name: string
     imageUri: string
@@ -150,7 +150,7 @@ export class SecurityScanningManager {
 
   /**
    * Create Lambda function scan
-   */
+  */
   createLambdaScan(options: {
     name: string
     functionName: string
@@ -169,7 +169,7 @@ export class SecurityScanningManager {
 
   /**
    * Create secrets detection scan
-   */
+  */
   createSecretsDetectionScan(options: {
     name: string
     repositoryUrl: string
@@ -186,7 +186,7 @@ export class SecurityScanningManager {
 
   /**
    * Execute scan
-   */
+  */
   async executeScan(scanId: string): Promise<SecurityScan> {
     const scan = this.scans.get(scanId)
 
@@ -239,7 +239,7 @@ export class SecurityScanningManager {
 
   /**
    * Simulate findings (in production, this would call actual scanning tools)
-   */
+  */
   private simulateFindings(scan: SecurityScan): SecurityFinding[] {
     const findings: SecurityFinding[] = []
     const now = new Date()
@@ -294,7 +294,7 @@ export class SecurityScanningManager {
 
   /**
    * Create finding
-   */
+  */
   createFinding(finding: Omit<SecurityFinding, 'id'>): SecurityFinding {
     const id = `finding-${Date.now()}-${this.findingCounter++}`
 
@@ -310,7 +310,7 @@ export class SecurityScanningManager {
 
   /**
    * Suppress finding
-   */
+  */
   suppressFinding(findingId: string, reason?: string): void {
     const finding = this.findings.get(findingId)
     if (finding) {
@@ -324,7 +324,7 @@ export class SecurityScanningManager {
 
   /**
    * Resolve finding
-   */
+  */
   resolveFinding(findingId: string): void {
     const finding = this.findings.get(findingId)
     if (finding) {
@@ -335,7 +335,7 @@ export class SecurityScanningManager {
 
   /**
    * Generate vulnerability report
-   */
+  */
   generateReport(options: {
     scanId: string
     reportType: 'summary' | 'detailed' | 'executive'
@@ -359,7 +359,7 @@ export class SecurityScanningManager {
 
   /**
    * Run compliance check
-   */
+  */
   runComplianceCheck(options: {
     framework: ComplianceFramework
     resourceType: string
@@ -402,7 +402,7 @@ export class SecurityScanningManager {
 
   /**
    * Create compliance check
-   */
+  */
   createComplianceCheck(check: Omit<ComplianceCheck, 'id'>): ComplianceCheck {
     const id = `check-${Date.now()}-${this.checkCounter++}`
 
@@ -418,7 +418,7 @@ export class SecurityScanningManager {
 
   /**
    * Assess security posture
-   */
+  */
   assessSecurityPosture(options: {
     accountId: string
     region: string
@@ -471,21 +471,21 @@ export class SecurityScanningManager {
 
   /**
    * Get scan
-   */
+  */
   getScan(id: string): SecurityScan | undefined {
     return this.scans.get(id)
   }
 
   /**
    * List scans
-   */
+  */
   listScans(): SecurityScan[] {
     return Array.from(this.scans.values())
   }
 
   /**
    * Get open findings by severity
-   */
+  */
   getOpenFindings(severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'): SecurityFinding[] {
     return Array.from(this.findings.values()).filter(
       f => f.status === 'OPEN' && (!severity || f.severity === severity)
@@ -494,21 +494,21 @@ export class SecurityScanningManager {
 
   /**
    * Get compliance checks by status
-   */
+  */
   getComplianceChecksByStatus(status: 'PASS' | 'FAIL' | 'WARNING' | 'NOT_APPLICABLE'): ComplianceCheck[] {
     return Array.from(this.complianceChecks.values()).filter(c => c.status === status)
   }
 
   /**
    * List postures
-   */
+  */
   listPostures(): SecurityPosture[] {
     return Array.from(this.postures.values())
   }
 
   /**
    * Generate CloudFormation for ECR image scanning
-   */
+  */
   generateECRScanCF(repositoryName: string): any {
     return {
       Type: 'AWS::ECR::Repository',
@@ -524,7 +524,7 @@ export class SecurityScanningManager {
 
   /**
    * Clear all data
-   */
+  */
   clear(): void {
     this.scans.clear()
     this.findings.clear()
@@ -541,5 +541,5 @@ export class SecurityScanningManager {
 
 /**
  * Global security scanning manager instance
- */
+*/
 export const securityScanningManager: SecurityScanningManager = new SecurityScanningManager()

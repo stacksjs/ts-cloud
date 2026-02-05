@@ -8,7 +8,7 @@
  * - Voicemail management (list, read, delete)
  * - Call recording storage
  * - Text-to-speech for voice messages
- */
+*/
 
 import { ConnectClient } from './connect'
 import { S3Client } from './s3'
@@ -127,7 +127,7 @@ export interface CallForwardingRule {
 
 /**
  * Voice Client with S3 voicemail storage
- */
+*/
 export class VoiceClient {
   private config: VoiceClientConfig
   private connect?: ConnectClient
@@ -162,7 +162,7 @@ export class VoiceClient {
 
   /**
    * Make an outbound voice call via Connect
-   */
+  */
   async call(options: MakeCallOptions): Promise<{ callId: string }> {
     if (!this.connect || !this.config.connectInstanceId) {
       throw new Error('Connect instance ID required for voice calls. Set connectInstanceId in config.')
@@ -191,7 +191,7 @@ export class VoiceClient {
    *
    * Note: This requires a Contact Flow configured for TTS playback.
    * The message is passed as an attribute that the Contact Flow can use.
-   */
+  */
   async sendVoiceMessage(options: SendVoiceMessageOptions): Promise<{ messageId: string }> {
     const result = await this.call({
       to: options.to,
@@ -208,7 +208,7 @@ export class VoiceClient {
 
   /**
    * Send a TTS voice message (alias for sendVoiceMessage)
-   */
+  */
   async speak(to: string, message: string, voiceId?: string): Promise<{ messageId: string }> {
     return this.sendVoiceMessage({ to, message, voiceId })
   }
@@ -219,7 +219,7 @@ export class VoiceClient {
 
   /**
    * Get voicemails from S3
-   */
+  */
   async getVoicemails(options: {
     prefix?: string
     maxResults?: number
@@ -264,7 +264,7 @@ export class VoiceClient {
 
   /**
    * Get a specific voicemail
-   */
+  */
   async getVoicemail(key: string): Promise<Voicemail | null> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -275,7 +275,7 @@ export class VoiceClient {
 
   /**
    * Get voicemail audio as a signed URL
-   */
+  */
   async getVoicemailAudioUrl(key: string, expiresIn: number = 3600): Promise<string> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -291,7 +291,7 @@ export class VoiceClient {
 
   /**
    * Delete a voicemail
-   */
+  */
   async deleteVoicemail(key: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -311,7 +311,7 @@ export class VoiceClient {
 
   /**
    * Archive a voicemail
-   */
+  */
   async archiveVoicemail(key: string): Promise<string> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -336,7 +336,7 @@ export class VoiceClient {
 
   /**
    * Get voicemail count
-   */
+  */
   async getVoicemailCount(): Promise<number> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -356,7 +356,7 @@ export class VoiceClient {
 
   /**
    * Get unread voicemail count
-   */
+  */
   async getUnreadCount(): Promise<number> {
     const voicemails = await this.getVoicemails({ maxResults: 1000 })
     return voicemails.filter(v => !v.read).length
@@ -364,7 +364,7 @@ export class VoiceClient {
 
   /**
    * Mark a voicemail as read
-   */
+  */
   async markAsRead(key: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -396,7 +396,7 @@ export class VoiceClient {
 
   /**
    * Mark a voicemail as unread
-   */
+  */
   async markAsUnread(key: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -422,14 +422,14 @@ export class VoiceClient {
 
   /**
    * Batch mark voicemails as read
-   */
+  */
   async markManyAsRead(keys: string[]): Promise<void> {
     await Promise.all(keys.map(key => this.markAsRead(key)))
   }
 
   /**
    * Batch delete voicemails
-   */
+  */
   async deleteMany(keys: string[]): Promise<void> {
     await Promise.all(keys.map(key => this.deleteVoicemail(key)))
   }
@@ -440,7 +440,7 @@ export class VoiceClient {
 
   /**
    * Start transcription for a voicemail
-   */
+  */
   async transcribeVoicemail(key: string): Promise<{ jobName: string }> {
     if (!this.transcribe) {
       throw new Error('Transcription not enabled. Set enableTranscription: true in config')
@@ -497,7 +497,7 @@ export class VoiceClient {
 
   /**
    * Get transcription status for a voicemail
-   */
+  */
   async getTranscriptionStatus(jobName: string): Promise<{
     status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
     transcription?: string
@@ -536,7 +536,7 @@ export class VoiceClient {
 
   /**
    * Update voicemail metadata with completed transcription
-   */
+  */
   async updateTranscription(key: string, transcription: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -574,7 +574,7 @@ export class VoiceClient {
 
   /**
    * Create a voicemail greeting
-   */
+  */
   async createGreeting(greeting: {
     name: string
     type: 'default' | 'busy' | 'unavailable' | 'custom'
@@ -633,7 +633,7 @@ export class VoiceClient {
 
   /**
    * Get all voicemail greetings
-   */
+  */
   async getGreetings(): Promise<VoicemailGreeting[]> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -664,7 +664,7 @@ export class VoiceClient {
 
   /**
    * Get a specific greeting
-   */
+  */
   async getGreeting(id: string): Promise<VoicemailGreeting | null> {
     if (!this.s3 || !this.config.voicemailBucket) {
       return null
@@ -683,7 +683,7 @@ export class VoiceClient {
 
   /**
    * Get the active greeting of a specific type
-   */
+  */
   async getActiveGreeting(type: 'default' | 'busy' | 'unavailable' | 'custom'): Promise<VoicemailGreeting | null> {
     const greetings = await this.getGreetings()
     return greetings.find(g => g.type === type && g.isActive) || null
@@ -691,7 +691,7 @@ export class VoiceClient {
 
   /**
    * Set a greeting as active
-   */
+  */
   async setActiveGreeting(id: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -717,7 +717,7 @@ export class VoiceClient {
 
   /**
    * Deactivate all greetings of a type
-   */
+  */
   private async deactivateGreetingsOfType(type: string): Promise<void> {
     const greetings = await this.getGreetings()
     for (const g of greetings) {
@@ -736,7 +736,7 @@ export class VoiceClient {
 
   /**
    * Update a greeting
-   */
+  */
   async updateGreeting(
     id: string,
     updates: { name?: string; text?: string; audioData?: Buffer | string },
@@ -774,7 +774,7 @@ export class VoiceClient {
 
   /**
    * Delete a greeting
-   */
+  */
   async deleteGreeting(id: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -794,7 +794,7 @@ export class VoiceClient {
 
   /**
    * Get a signed URL for a greeting audio
-   */
+  */
   async getGreetingAudioUrl(id: string, expiresIn: number = 3600): Promise<string | null> {
     const greeting = await this.getGreeting(id)
     if (!greeting?.audioKey || !this.s3 || !this.config.voicemailBucket) {
@@ -814,7 +814,7 @@ export class VoiceClient {
 
   /**
    * Create a call forwarding rule
-   */
+  */
   async createForwardingRule(rule: {
     name: string
     condition: 'always' | 'busy' | 'no_answer' | 'unreachable' | 'after_hours'
@@ -854,7 +854,7 @@ export class VoiceClient {
 
   /**
    * Get all forwarding rules
-   */
+  */
   async getForwardingRules(): Promise<CallForwardingRule[]> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -885,7 +885,7 @@ export class VoiceClient {
 
   /**
    * Get a specific forwarding rule
-   */
+  */
   async getForwardingRule(id: string): Promise<CallForwardingRule | null> {
     if (!this.s3 || !this.config.voicemailBucket) {
       return null
@@ -904,7 +904,7 @@ export class VoiceClient {
 
   /**
    * Update a forwarding rule
-   */
+  */
   async updateForwardingRule(
     id: string,
     updates: Partial<Omit<CallForwardingRule, 'id' | 'createdAt' | 'updatedAt'>>,
@@ -937,14 +937,14 @@ export class VoiceClient {
 
   /**
    * Enable/disable a forwarding rule
-   */
+  */
   async setForwardingRuleEnabled(id: string, enabled: boolean): Promise<void> {
     await this.updateForwardingRule(id, { enabled })
   }
 
   /**
    * Delete a forwarding rule
-   */
+  */
   async deleteForwardingRule(id: string): Promise<void> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Voicemail bucket not configured')
@@ -956,7 +956,7 @@ export class VoiceClient {
   /**
    * Get the applicable forwarding rule for current conditions
    * Returns the highest priority enabled rule that matches current conditions
-   */
+  */
   async getApplicableForwardingRule(
     currentConditions: {
       isBusy?: boolean
@@ -995,7 +995,7 @@ export class VoiceClient {
 
   /**
    * Check if a time is within business hours
-   */
+  */
   private isWithinBusinessHours(
     date: Date,
     businessHours: NonNullable<CallForwardingRule['businessHours']>,
@@ -1023,7 +1023,7 @@ export class VoiceClient {
 
   /**
    * Get call recordings from S3
-   */
+  */
   async getRecordings(options: {
     prefix?: string
     maxResults?: number
@@ -1076,7 +1076,7 @@ export class VoiceClient {
 
   /**
    * Get a recording audio URL
-   */
+  */
   async getRecordingUrl(key: string, expiresIn: number = 3600): Promise<string> {
     if (!this.s3 || !this.config.voicemailBucket) {
       throw new Error('Recordings bucket not configured')
@@ -1096,7 +1096,7 @@ export class VoiceClient {
   /**
    * Store an incoming voicemail to S3
    * This is typically called from a Lambda handler
-   */
+  */
   async storeVoicemail(voicemail: {
     from: string
     to: string
@@ -1146,7 +1146,7 @@ export class VoiceClient {
 
   /**
    * Store a call recording to S3
-   */
+  */
   async storeRecording(recording: {
     contactId: string
     from?: string
@@ -1199,7 +1199,7 @@ export class VoiceClient {
 
   /**
    * Get voicemail metadata from S3
-   */
+  */
   private async getVoicemailMetadata(audioKey: string): Promise<Voicemail | null> {
     if (!this.s3 || !this.config.voicemailBucket) {
       return null
@@ -1255,7 +1255,7 @@ export class VoiceClient {
  *   region: 'us-east-1',
  * })
  * ```
- */
+*/
 export function createVoicemailHandler(config: {
   bucket: string
   prefix?: string
@@ -1327,7 +1327,7 @@ export function createVoicemailHandler(config: {
 /**
  * Create a Lambda handler for Connect recording events
  * This processes call recordings uploaded to S3 by Connect
- */
+*/
 export function createRecordingHandler(config: {
   bucket: string
   prefix?: string
@@ -1373,7 +1373,7 @@ export function createRecordingHandler(config: {
 
 /**
  * Convenience function to create a voice client
- */
+*/
 export function createVoiceClient(config?: VoiceClientConfig): VoiceClient {
   return new VoiceClient(config)
 }

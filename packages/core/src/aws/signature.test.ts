@@ -1,6 +1,6 @@
 /**
  * AWS Signature V4 Tests
- */
+*/
 
 import { describe, expect, it } from 'bun:test'
 import {
