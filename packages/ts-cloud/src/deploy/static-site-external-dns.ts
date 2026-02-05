@@ -846,7 +846,7 @@ export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsSta
   cleanBucket?: boolean
   onProgress?: (stage: string, detail?: string) => void
 }): Promise<ExternalDnsDeployResult> {
-  const { sourceDir, cleanBucket = true, onProgress, ...siteConfig } = config
+  const { sourceDir, cleanBucket = false, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
   onProgress?.('infrastructure', 'Deploying CloudFormation stack...')

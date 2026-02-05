@@ -1108,7 +1108,7 @@ export async function deployStaticSiteFull(config: StaticSiteConfig & {
   cleanBucket?: boolean
   onProgress?: (stage: string, detail?: string) => void
 }): Promise<DeployResult & { filesUploaded?: number; filesSkipped?: number }> {
-  const { sourceDir, cleanBucket = true, onProgress, ...siteConfig } = config
+  const { sourceDir, cleanBucket = false, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
   onProgress?.('infrastructure', 'Deploying CloudFormation stack...')
