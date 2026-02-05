@@ -151,12 +151,14 @@ export function registerDeployCommands(app: CLI): void {
     .option('--env <environment>', 'Environment to deploy to')
     .option('--site <name>', 'Deploy specific site only')
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
+    .option('--skip-dns-verification', 'Skip DNS provider verification and record creation (use when DNS is already configured)')
     .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
     .action(async (options?: {
       stack?: string
       env?: string
       site?: string
       skipSecurityScan?: boolean
+      skipDnsVerification?: boolean
       securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
     }) => {
       cli.header('Deploying Infrastructure')
@@ -197,7 +199,7 @@ export function registerDeployCommands(app: CLI): void {
 
           if (dnsProvider && dnsProvider !== 'route53') {
             // Deploy static sites with external DNS
-            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region)
+            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification)
             return
           }
         }
@@ -919,6 +921,7 @@ async function deployStaticSitesWithExternalDns(
   specificSite: string | undefined,
   dnsProviderName: string,
   region: string,
+  skipDnsVerification?: boolean,
 ): Promise<void> {
   const sites = config.sites || {}
   const siteNames = specificSite ? [specificSite] : Object.keys(sites)
@@ -1034,6 +1037,7 @@ async function deployStaticSitesWithExternalDns(
       sourceDir: siteConfig.root,
       certificateArn: siteConfig.certificateArn,
       dnsProvider: dnsConfig,
+      skipDnsVerification,
       onProgress: (stage, detail) => {
         if (stage === 'infrastructure') {
           cli.step(detail || 'Setting up infrastructure...')

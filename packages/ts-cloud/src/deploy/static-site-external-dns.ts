@@ -34,6 +34,8 @@ export interface ExternalDnsStaticSiteConfig {
   tags?: Record<string, string>
   /** DNS provider configuration */
   dnsProvider: DnsProviderConfig
+  /** Skip DNS verification and record creation (use when DNS is already configured) */
+  skipDnsVerification?: boolean
 }
 
 export interface ExternalDnsDeployResult {
@@ -289,21 +291,28 @@ export async function deployStaticSiteWithExternalDns(
   const cf = new CloudFormationClient(cfRegion)
   const acm = new ACMClient('us-east-1') // ACM certs for CloudFront must be in us-east-1
 
-  // Create DNS provider
-  const dnsProvider: DnsProvider = createDnsProvider(config.dnsProvider)
+  // Create DNS provider (only if not skipping DNS verification)
+  let dnsProvider: DnsProvider | null = null
 
-  // Verify DNS provider can manage this domain
-  console.log(`Verifying DNS provider can manage ${domain}...`)
-  const canManage = await dnsProvider.canManageDomain(domain)
-  if (!canManage) {
-    return {
-      success: false,
-      stackName,
-      bucket,
-      message: `DNS provider '${dnsProvider.name}' cannot manage domain ${domain}. Please check your API credentials and domain ownership.`,
+  if (!config.skipDnsVerification) {
+    dnsProvider = createDnsProvider(config.dnsProvider)
+
+    // Verify DNS provider can manage this domain
+    console.log(`Verifying DNS provider can manage ${domain}...`)
+    const canManage = await dnsProvider.canManageDomain(domain)
+    if (!canManage) {
+      return {
+        success: false,
+        stackName,
+        bucket,
+        message: `DNS provider '${dnsProvider.name}' cannot manage domain ${domain}. Please check your API credentials and domain ownership.`,
+      }
     }
+    console.log(`DNS provider '${dnsProvider.name}' verified for ${domain}`)
   }
-  console.log(`DNS provider '${dnsProvider.name}' verified for ${domain}`)
+  else {
+    console.log(`Skipping DNS verification for ${domain}`)
+  }
 
   let certificateArn = config.certificateArn
 
@@ -525,7 +534,9 @@ export async function deployStaticSiteWithExternalDns(
   const tags = Object.entries(config.tags || {}).map(([Key, Value]) => ({ Key, Value }))
   tags.push({ Key: 'ManagedBy', Value: 'ts-cloud' })
   tags.push({ Key: 'Application', Value: config.siteName })
-  tags.push({ Key: 'DnsProvider', Value: dnsProvider.name })
+  if (dnsProvider) {
+    tags.push({ Key: 'DnsProvider', Value: dnsProvider.name })
+  }
 
   // Create or update stack
   let stackId: string
@@ -728,9 +739,12 @@ export async function deployStaticSiteWithExternalDns(
   const distributionDomain = getOutput('DistributionDomain')
 
   // Create DNS records using external DNS provider
-  if (distributionDomain) {
+  if (distributionDomain && dnsProvider) {
     console.log(`Creating DNS records via ${dnsProvider.name}...`)
     await ensureDnsRecords(dnsProvider, domain, distributionDomain)
+  }
+  else if (distributionDomain && !dnsProvider) {
+    console.log(`Skipping DNS record creation (DNS verification was skipped)`)
   }
 
   return {
@@ -750,10 +764,15 @@ export async function deployStaticSiteWithExternalDns(
  * Create or update DNS records pointing to CloudFront
  */
 async function ensureDnsRecords(
-  dnsProvider: DnsProvider,
+  dnsProvider: DnsProvider | null,
   domain: string,
   cloudfrontDomain: string,
 ): Promise<void> {
+  // Skip DNS record creation if no provider (DNS verification was skipped)
+  if (!dnsProvider) {
+    console.log(`Skipping DNS record creation (DNS verification was skipped)`)
+    return
+  }
   // Create CNAME record pointing to CloudFront
   // Note: For apex domains (e.g., bunpress.org), some DNS providers support ALIAS/ANAME records
   // Porkbun supports ALIAS records for apex domains
