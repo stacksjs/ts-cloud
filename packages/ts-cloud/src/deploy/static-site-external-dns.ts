@@ -349,6 +349,15 @@ export async function deployStaticSiteWithExternalDns(
     }
 
     if (!certificateArn) {
+      if (!dnsProvider) {
+        return {
+          success: false,
+          stackName,
+          bucket,
+          message: `No DNS provider available to validate SSL certificate for ${domain}. Provide a certificateArn or enable DNS verification.`,
+        }
+      }
+
       // Request and validate new certificate using external DNS provider
       // Always include www for apex domains
       console.log(`Requesting new SSL certificate for ${domain}${wwwDomain ? ` (including ${wwwDomain})` : ''}...`)
