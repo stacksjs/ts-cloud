@@ -2,7 +2,7 @@
  * Email Rules and Automation
  *
  * Provides email filtering, routing, and automation
-*/
+ */
 
 export interface EmailRule {
   id: string
@@ -52,11 +52,11 @@ export interface WorkflowStep {
 
 /**
  * Email Rules Module
-*/
+ */
 export class EmailRules {
   /**
    * Lambda code for rule processing
-  */
+   */
   static RuleProcessorCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 const { DynamoDBClient, QueryCommand } = require('@aws-sdk/client-dynamodb');
@@ -369,7 +369,7 @@ async function invokeLambda(functionName, metadata) {
 
   /**
    * Create rules DynamoDB table
-  */
+   */
   static createRulesTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}EmailRulesTable`]: {
@@ -392,7 +392,7 @@ async function invokeLambda(functionName, metadata) {
 
   /**
    * Create rule processor Lambda
-  */
+   */
   static createRuleProcessorLambda(config: {
     slug: string
     roleArn: string
@@ -425,7 +425,7 @@ async function invokeLambda(functionName, metadata) {
 
   /**
    * Built-in rule templates
-  */
+   */
   static readonly RuleTemplates = {
     spamFilter: {
       name: 'Spam Filter',

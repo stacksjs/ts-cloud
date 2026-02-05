@@ -7,7 +7,7 @@
  * - Email receiving setup (receipt rules, S3 storage)
  * - Domain verification and DKIM setup
  * - SMTP credential management for client email apps
-*/
+ */
 
 import { SESClient } from './ses'
 import { S3Client } from './s3'
@@ -81,7 +81,7 @@ export interface EmailDeploymentConfig {
 
 /**
  * High-level Email client for serverless and server deployments
-*/
+ */
 export class EmailClient {
   private ses: SESClient
   private s3: S3Client
@@ -111,7 +111,7 @@ export class EmailClient {
 
   /**
    * Send an email
-  */
+   */
   async send(options: SendEmailOptions): Promise<{ messageId: string }> {
     const from = options.from || this.defaultFrom
     if (!from) {
@@ -157,7 +157,7 @@ export class EmailClient {
 
   /**
    * Send a templated email
-  */
+   */
   async sendTemplate(options: {
     from?: string
     fromName?: string
@@ -187,7 +187,7 @@ export class EmailClient {
 
   /**
    * Send bulk emails using a template
-  */
+   */
   async sendBulk(options: {
     from?: string
     templateName: string
@@ -239,7 +239,7 @@ export class EmailClient {
 
   /**
    * Set up email for a domain (creates identity, DKIM, etc.)
-  */
+   */
   async setupDomain(domain: string): Promise<EmailSetupResult> {
     // Create or get the email identity
     let identity
@@ -291,7 +291,7 @@ export class EmailClient {
 
   /**
    * Get DNS records needed for email verification
-  */
+   */
   async getDnsRecords(domain: string): Promise<Array<{
     type: string
     name: string
@@ -357,7 +357,7 @@ export class EmailClient {
 
   /**
    * Check if domain is fully verified and ready to send
-  */
+   */
   async isDomainReady(domain: string): Promise<boolean> {
     try {
       const identity = await this.ses.getEmailIdentity(domain)
@@ -375,7 +375,7 @@ export class EmailClient {
 
   /**
    * Set up email receiving for a domain
-  */
+   */
   async setupReceiving(config: {
     domain: string
     ruleSetName: string
@@ -481,7 +481,7 @@ export class EmailClient {
 
   /**
    * Get incoming emails from S3 bucket
-  */
+   */
   async getIncomingEmails(options: {
     bucket: string
     prefix?: string
@@ -502,7 +502,7 @@ export class EmailClient {
 
   /**
    * Read an email from S3
-  */
+   */
   async readEmail(options: {
     bucket: string
     key: string
@@ -517,7 +517,7 @@ export class EmailClient {
   /**
    * Create SMTP credentials for sending via email clients
    * Note: These use IAM users and SES SMTP interface
-  */
+   */
   async createSmtpCredentials(options: {
     username: string
     domain: string
@@ -624,7 +624,7 @@ export class EmailClient {
   /**
    * Derive SMTP password from AWS secret access key
    * Based on AWS documentation for SES SMTP credentials
-  */
+   */
   private deriveSmtpPassword(secretAccessKey: string): string {
     const crypto = require('node:crypto')
 
@@ -669,7 +669,7 @@ export class EmailClient {
 
   /**
    * Create an email template
-  */
+   */
   async createTemplate(options: {
     name: string
     subject: string
@@ -688,7 +688,7 @@ export class EmailClient {
 
   /**
    * Get an email template
-  */
+   */
   async getTemplate(name: string): Promise<{
     name: string
     subject?: string
@@ -711,14 +711,14 @@ export class EmailClient {
 
   /**
    * Delete an email template
-  */
+   */
   async deleteTemplate(name: string): Promise<void> {
     await this.ses.deleteEmailTemplate(name)
   }
 
   /**
    * List all email templates
-  */
+   */
   async listTemplates(): Promise<Array<{ name: string; createdAt?: string }>> {
     const result = await this.ses.listEmailTemplates()
     return result.TemplatesMetadata?.map(t => ({
@@ -733,7 +733,7 @@ export class EmailClient {
 
   /**
    * Deploy full email infrastructure for an application
-  */
+   */
   async deploy(config: EmailDeploymentConfig): Promise<{
     success: boolean
     domainVerified: boolean
@@ -783,7 +783,7 @@ export class EmailClient {
 
   /**
    * Undeploy email infrastructure
-  */
+   */
   async undeploy(config: {
     appName: string
     environment: string
@@ -831,7 +831,7 @@ export class EmailClient {
 
   /**
    * Get sending statistics
-  */
+   */
   async getSendingStats(): Promise<{
     sentLast24Hours: number
     maxSendRate: number
@@ -851,7 +851,7 @@ export class EmailClient {
 
   /**
    * Build a raw MIME email with attachments
-  */
+   */
   private buildRawEmail(
     options: SendEmailOptions,
     from: string,

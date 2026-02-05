@@ -1,7 +1,7 @@
 /**
  * GitHub integration for preview environments
  * Generates GitHub Actions workflows for automated preview deployments
-*/
+ */
 
 export interface GitHubWorkflowOptions {
   workflowName?: string
@@ -15,7 +15,7 @@ export interface GitHubWorkflowOptions {
 
 /**
  * Generate GitHub Actions workflow for preview environments
-*/
+ */
 export function generatePreviewWorkflow(options: GitHubWorkflowOptions = {}): string {
   const {
     workflowName = 'Preview Environment',
@@ -169,7 +169,7 @@ jobs:
 
 /**
  * Generate scheduled cleanup workflow
-*/
+ */
 export function generateCleanupWorkflow(options: {
   schedule?: string
   maxAge?: number
@@ -231,7 +231,7 @@ jobs:
 
 /**
  * Generate cost report workflow
-*/
+ */
 export function generateCostReportWorkflow(options: {
   schedule?: string
   webhookUrl?: string

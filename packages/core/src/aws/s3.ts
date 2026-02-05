@@ -6,7 +6,7 @@
  * - Streaming uploads/downloads
  * - Multipart uploads for large files
  * - Automatic content type detection
-*/
+ */
 
 import { signRequest, signRequestAsync, createPresignedUrl, createPresignedUrlAsync, type RetryOptions } from './signature'
 import { getCredentials, type AWSCredentials, type CredentialProviderOptions } from './credentials'
@@ -152,7 +152,7 @@ const MULTIPART_THRESHOLD = 5 * 1024 * 1024
 
 /**
  * S3 Client for high-level S3 operations
-*/
+ */
 export class S3Client {
   private region: string
   private endpoint: string
@@ -172,7 +172,7 @@ export class S3Client {
 
   /**
    * Get credentials (cached or from provider chain)
-  */
+   */
   private async getCredentials(): Promise<AWSCredentials> {
     if (this.credentials) {
       return this.credentials
@@ -182,7 +182,7 @@ export class S3Client {
 
   /**
    * Build S3 URL for a bucket/key
-  */
+   */
   private buildUrl(bucket: string, key?: string): string {
     const encodedKey = key ? encodeURIComponent(key).replace(/%2F/g, '/') : ''
 
@@ -200,7 +200,7 @@ export class S3Client {
 
   /**
    * Get an object from S3
-  */
+   */
   async get(bucket: string, key: string, options: GetObjectOptions = {}): Promise<Response> {
     const credentials = await this.getCredentials()
     const url = this.buildUrl(bucket, key)
@@ -240,7 +240,7 @@ export class S3Client {
 
   /**
    * Get object as text
-  */
+   */
   async getText(bucket: string, key: string, options: GetObjectOptions = {}): Promise<string> {
     const response = await this.get(bucket, key, options)
     return response.text()
@@ -248,7 +248,7 @@ export class S3Client {
 
   /**
    * Get object as JSON
-  */
+   */
   async getJSON<T = unknown>(bucket: string, key: string, options: GetObjectOptions = {}): Promise<T> {
     const response = await this.get(bucket, key, options)
     return response.json() as Promise<T>
@@ -256,7 +256,7 @@ export class S3Client {
 
   /**
    * Get object as ArrayBuffer
-  */
+   */
   async getBuffer(bucket: string, key: string, options: GetObjectOptions = {}): Promise<ArrayBuffer> {
     const response = await this.get(bucket, key, options)
     return response.arrayBuffer()
@@ -265,7 +265,7 @@ export class S3Client {
   /**
    * Put an object to S3
    * Automatically uses multipart upload for large files (>5MB)
-  */
+   */
   async put(
     bucket: string,
     key: string,
@@ -311,7 +311,7 @@ export class S3Client {
 
   /**
    * Simple PUT for small files
-  */
+   */
   private async putSimple(
     bucket: string,
     key: string,
@@ -378,8 +378,8 @@ export class S3Client {
   }
 
   /**
-  * Delete an object from S3
-  */
+   * Delete an object from S3
+   */
   async delete(bucket: string, key: string): Promise<void> {
     const credentials = await this.getCredentials()
     const url = this.buildUrl(bucket, key)
@@ -404,8 +404,8 @@ export class S3Client {
   }
 
   /**
-  * Delete multiple objects from S3
-  */
+   * Delete multiple objects from S3
+   */
   async deleteMany(bucket: string, keys: string[]): Promise<{ deleted: string[], errors: Array<{ key: string, error: string }> }> {
     const credentials = await this.getCredentials()
     const url = `${this.buildUrl(bucket)}?delete`
@@ -458,8 +458,8 @@ export class S3Client {
   }
 
   /**
-  * List objects in a bucket
-  */
+   * List objects in a bucket
+   */
   async list(bucket: string, options: ListObjectsOptions = {}): Promise<ListObjectsResult> {
     const credentials = await this.getCredentials()
     const urlObj = new URL(this.buildUrl(bucket))
@@ -494,8 +494,8 @@ export class S3Client {
   }
 
   /**
-  * List all objects with automatic pagination
-  */
+   * List all objects with automatic pagination
+   */
   async *listAll(bucket: string, options: Omit<ListObjectsOptions, 'continuationToken'> = {}): AsyncGenerator<S3Object> {
     let continuationToken: string | undefined
 
@@ -511,8 +511,8 @@ export class S3Client {
   }
 
   /**
-  * Check if an object exists and get its metadata
-  */
+   * Check if an object exists and get its metadata
+   */
   async head(bucket: string, key: string): Promise<HeadObjectResult | null> {
     const credentials = await this.getCredentials()
     const url = this.buildUrl(bucket, key)
@@ -560,7 +560,7 @@ export class S3Client {
 
   /**
    * Check if an object exists
-  */
+   */
   async exists(bucket: string, key: string): Promise<boolean> {
     const result = await this.head(bucket, key)
     return result !== null
@@ -568,7 +568,7 @@ export class S3Client {
 
   /**
    * Copy an object
-  */
+   */
   async copy(
     sourceBucket: string,
     sourceKey: string,
@@ -621,8 +621,8 @@ export class S3Client {
   }
 
   /**
-  * Generate a presigned URL for an object
-  */
+   * Generate a presigned URL for an object
+   */
   async getPresignedUrl(
     bucket: string,
     key: string,
@@ -642,8 +642,8 @@ export class S3Client {
   }
 
   /**
-  * Multipart upload for large files or streams
-  */
+   * Multipart upload for large files or streams
+   */
   async uploadMultipart(
     bucket: string,
     key: string,
@@ -695,8 +695,8 @@ export class S3Client {
   }
 
   /**
-  * Initiate a multipart upload
-  */
+   * Initiate a multipart upload
+   */
   private async initiateMultipartUpload(
     bucket: string,
     key: string,
@@ -749,8 +749,8 @@ export class S3Client {
   }
 
   /**
-  * Upload parts of a multipart upload
-  */
+   * Upload parts of a multipart upload
+   */
   private async uploadParts(
     bucket: string,
     key: string,
@@ -859,7 +859,7 @@ export class S3Client {
 
   /**
    * Complete a multipart upload
-  */
+   */
   private async completeMultipartUpload(
     bucket: string,
     key: string,
@@ -904,8 +904,8 @@ export class S3Client {
   }
 
   /**
-  * Abort a multipart upload
-  */
+   * Abort a multipart upload
+   */
   async abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void> {
     const credentials = await this.getCredentials()
     const url = `${this.buildUrl(bucket, key)}?uploadId=${encodeURIComponent(uploadId)}`
@@ -926,8 +926,8 @@ export class S3Client {
 }
 
 /**
-* S3 Error class
-*/
+ * S3 Error class
+ */
 export class S3Error extends Error {
   constructor(
     message: string,
@@ -941,8 +941,8 @@ export class S3Error extends Error {
 }
 
 /**
-* Parse ListObjectsV2 XML response
-*/
+ * Parse ListObjectsV2 XML response
+ */
 function parseListObjectsResponse(xml: string): ListObjectsResult {
   const contents: S3Object[] = []
   const commonPrefixes: string[] = []
@@ -982,7 +982,7 @@ function parseListObjectsResponse(xml: string): ListObjectsResult {
 
 /**
  * Extract value from XML element
-*/
+ */
 function extractXmlValue(xml: string, tagName: string): string | null {
   const regex = new RegExp(`<${tagName}>([^<]*)</${tagName}>`)
   const match = xml.match(regex)
@@ -991,7 +991,7 @@ function extractXmlValue(xml: string, tagName: string): string | null {
 
 /**
  * Escape XML special characters
-*/
+ */
 function escapeXml(str: string): string {
   return str
     .replace(/&/g, '&amp;')
@@ -1003,7 +1003,7 @@ function escapeXml(str: string): string {
 
 /**
  * Detect content type from file extension
-*/
+ */
 function detectContentType(key: string): string {
   const ext = key.split('.').pop()?.toLowerCase()
 
@@ -1073,7 +1073,7 @@ function detectContentType(key: string): string {
 
 /**
  * Convert various body types to Blob
-*/
+ */
 function bodyToBlob(body: string | ArrayBuffer | Uint8Array | Blob): Blob {
   if (body instanceof Blob) return body
   if (typeof body === 'string') return new Blob([body], { type: 'text/plain' })
@@ -1082,7 +1082,7 @@ function bodyToBlob(body: string | ArrayBuffer | Uint8Array | Blob): Blob {
 
 /**
  * Convenience function to create an S3 client
-*/
+ */
 export function createS3Client(options?: S3ClientOptions): S3Client {
   return new S3Client(options)
 }

@@ -1,12 +1,12 @@
 /**
  * AWS Amazon Connect CloudFormation Types
-*/
+ */
 
 import type { ResourceBase, Tags } from './common'
 
 /**
  * Amazon Connect Instance
-*/
+ */
 export interface ConnectInstance extends ResourceBase {
   Type: 'AWS::Connect::Instance'
   Properties: {
@@ -28,7 +28,7 @@ export interface ConnectInstance extends ResourceBase {
 
 /**
  * Amazon Connect Hours of Operation
-*/
+ */
 export interface ConnectHoursOfOperation extends ResourceBase {
   Type: 'AWS::Connect::HoursOfOperation'
   Properties: {
@@ -47,7 +47,7 @@ export interface ConnectHoursOfOperation extends ResourceBase {
 
 /**
  * Amazon Connect Queue
-*/
+ */
 export interface ConnectQueue extends ResourceBase {
   Type: 'AWS::Connect::Queue'
   Properties: {
@@ -69,7 +69,7 @@ export interface ConnectQueue extends ResourceBase {
 
 /**
  * Amazon Connect Contact Flow
-*/
+ */
 export interface ConnectContactFlow extends ResourceBase {
   Type: 'AWS::Connect::ContactFlow'
   Properties: {
@@ -85,7 +85,7 @@ export interface ConnectContactFlow extends ResourceBase {
 
 /**
  * Amazon Connect Contact Flow Module
-*/
+ */
 export interface ConnectContactFlowModule extends ResourceBase {
   Type: 'AWS::Connect::ContactFlowModule'
   Properties: {
@@ -100,7 +100,7 @@ export interface ConnectContactFlowModule extends ResourceBase {
 
 /**
  * Amazon Connect Phone Number
-*/
+ */
 export interface ConnectPhoneNumber extends ResourceBase {
   Type: 'AWS::Connect::PhoneNumber'
   Properties: {
@@ -115,7 +115,7 @@ export interface ConnectPhoneNumber extends ResourceBase {
 
 /**
  * Amazon Connect Routing Profile
-*/
+ */
 export interface ConnectRoutingProfile extends ResourceBase {
   Type: 'AWS::Connect::RoutingProfile'
   Properties: {
@@ -144,7 +144,7 @@ export interface ConnectRoutingProfile extends ResourceBase {
 
 /**
  * Amazon Connect User
-*/
+ */
 export interface ConnectUser extends ResourceBase {
   Type: 'AWS::Connect::User'
   Properties: {
@@ -174,7 +174,7 @@ export interface ConnectUser extends ResourceBase {
 
 /**
  * Amazon Connect Quick Connect
-*/
+ */
 export interface ConnectQuickConnect extends ResourceBase {
   Type: 'AWS::Connect::QuickConnect'
   Properties: {
@@ -201,7 +201,7 @@ export interface ConnectQuickConnect extends ResourceBase {
 
 /**
  * Amazon Connect Integration Association
-*/
+ */
 export interface ConnectIntegrationAssociation extends ResourceBase {
   Type: 'AWS::Connect::IntegrationAssociation'
   Properties: {
@@ -213,7 +213,7 @@ export interface ConnectIntegrationAssociation extends ResourceBase {
 
 /**
  * Amazon Connect Task Template
-*/
+ */
 export interface ConnectTaskTemplate extends ResourceBase {
   Type: 'AWS::Connect::TaskTemplate'
   Properties: {

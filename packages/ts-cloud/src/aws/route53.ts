@@ -1,7 +1,7 @@
 /**
  * Route53 Client - DNS management without AWS SDK
  * Uses direct AWS API calls with Signature V4
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -99,7 +99,7 @@ export interface ChangeBatch {
 
 /**
  * Route53 Client for DNS management
-*/
+ */
 export class Route53Client {
   private client: AWSClient
   private region: string
@@ -111,7 +111,7 @@ export class Route53Client {
 
   /**
    * Create a new hosted zone
-  */
+   */
   async createHostedZone(params: {
     Name: string
     CallerReference?: string
@@ -180,7 +180,7 @@ export class Route53Client {
 
   /**
    * List hosted zones
-  */
+   */
   async listHostedZones(params?: {
     Marker?: string
     MaxItems?: string
@@ -203,7 +203,7 @@ export class Route53Client {
 
   /**
    * List hosted zones by name (more efficient for finding specific zone)
-  */
+   */
   async listHostedZonesByName(params?: {
     DNSName?: string
     HostedZoneId?: string
@@ -228,7 +228,7 @@ export class Route53Client {
 
   /**
    * Get a hosted zone
-  */
+   */
   async getHostedZone(params: {
     Id: string
   }): Promise<GetHostedZoneResult> {
@@ -247,7 +247,7 @@ export class Route53Client {
 
   /**
    * Delete a hosted zone
-  */
+   */
   async deleteHostedZone(params: {
     Id: string
   }): Promise<void> {
@@ -264,7 +264,7 @@ export class Route53Client {
 
   /**
    * List resource record sets in a hosted zone
-  */
+   */
   async listResourceRecordSets(params: {
     HostedZoneId: string
     StartRecordName?: string
@@ -295,7 +295,7 @@ export class Route53Client {
 
   /**
    * Change resource record sets (create, delete, or upsert)
-  */
+   */
   async changeResourceRecordSets(params: {
     HostedZoneId: string
     ChangeBatch: ChangeBatch
@@ -421,7 +421,7 @@ export class Route53Client {
 
   /**
    * Escape XML special characters
-  */
+   */
   private escapeXml(str: string): string {
     return str
       .replace(/&/g, '&amp;')
@@ -432,8 +432,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse CreateHostedZone response
-  */
+   * Parse CreateHostedZone response
+   */
   private parseCreateHostedZoneResponse(result: any): CreateHostedZoneResult {
     const response = result.CreateHostedZoneResponse || result
 
@@ -450,8 +450,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse ListHostedZones response
-  */
+   * Parse ListHostedZones response
+   */
   private parseListHostedZonesResponse(result: any): ListHostedZonesResult {
     const response = result.ListHostedZonesResponse || result.ListHostedZonesByNameResponse || result
 
@@ -472,8 +472,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse GetHostedZone response
-  */
+   * Parse GetHostedZone response
+   */
   private parseGetHostedZoneResponse(result: any): GetHostedZoneResult {
     const response = result.GetHostedZoneResponse || result
 
@@ -485,8 +485,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse ListResourceRecordSets response
-  */
+   * Parse ListResourceRecordSets response
+   */
   private parseListResourceRecordSetsResponse(result: any): ListResourceRecordSetsResult {
     const response = result.ListResourceRecordSetsResponse || result
 
@@ -508,8 +508,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse ChangeResourceRecordSets response
-  */
+   * Parse ChangeResourceRecordSets response
+   */
   private parseChangeResourceRecordSetsResponse(result: any): ChangeResourceRecordSetsResult {
     const response = result.ChangeResourceRecordSetsResponse || result
 
@@ -524,8 +524,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse a hosted zone object
-  */
+   * Parse a hosted zone object
+   */
   private parseHostedZone(hz: any): HostedZone {
     if (!hz) return { Id: '', Name: '' }
 
@@ -542,8 +542,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse a delegation set object
-  */
+   * Parse a delegation set object
+   */
   private parseDelegationSet(ds: any): DelegationSet {
     if (!ds) return { NameServers: [] }
 
@@ -562,8 +562,8 @@ export class Route53Client {
   }
 
   /**
-  * Parse a resource record set object
-  */
+   * Parse a resource record set object
+   */
   private parseResourceRecordSet(rs: any): ResourceRecordSet {
     if (!rs) return { Name: '', Type: '' }
 
@@ -598,8 +598,8 @@ export class Route53Client {
   // Helper methods for common operations
 
   /**
-  * Find hosted zone by domain name
-  */
+   * Find hosted zone by domain name
+   */
   async findHostedZoneByName(domainName: string): Promise<HostedZone | null> {
     // Ensure domain ends with a dot
     const normalizedDomain = domainName.endsWith('.') ? domainName : `${domainName}.`
@@ -611,8 +611,8 @@ export class Route53Client {
   }
 
   /**
-  * Create an A record
-  */
+   * Create an A record
+   */
   async createARecord(params: {
     HostedZoneId: string
     Name: string
@@ -638,8 +638,8 @@ export class Route53Client {
   }
 
   /**
-  * Create a CNAME record
-  */
+   * Create a CNAME record
+   */
   async createCnameRecord(params: {
     HostedZoneId: string
     Name: string
@@ -663,8 +663,8 @@ export class Route53Client {
   }
 
   /**
-  * Create an alias record (for CloudFront, ALB, etc.)
-  */
+   * Create an alias record (for CloudFront, ALB, etc.)
+   */
   async createAliasRecord(params: {
     HostedZoneId: string
     Name: string
@@ -693,8 +693,8 @@ export class Route53Client {
   }
 
   /**
-  * Create a TXT record
-  */
+   * Create a TXT record
+   */
   async createTxtRecord(params: {
     HostedZoneId: string
     Name: string
@@ -727,8 +727,8 @@ export class Route53Client {
   }
 
   /**
-  * Create an MX record
-  */
+   * Create an MX record
+   */
   async createMxRecord(params: {
     HostedZoneId: string
     Name: string
@@ -754,8 +754,8 @@ export class Route53Client {
   }
 
   /**
-  * Delete a record
-  */
+   * Delete a record
+   */
   async deleteRecord(params: {
     HostedZoneId: string
     RecordSet: ResourceRecordSet
@@ -772,8 +772,8 @@ export class Route53Client {
   }
 
   /**
-  * Wait for a change to become INSYNC
-  */
+   * Wait for a change to become INSYNC
+   */
   async waitForChange(changeId: string, maxAttempts = 60, delayMs = 5000): Promise<boolean> {
     const id = changeId.replace('/change/', '')
 
@@ -797,9 +797,9 @@ export class Route53Client {
   }
 
   /**
-  * Find or create a hosted zone for a domain
-  * Automatically creates the zone if it doesn't exist
-  */
+   * Find or create a hosted zone for a domain
+   * Automatically creates the zone if it doesn't exist
+   */
   async findOrCreateHostedZone(params: {
     domainName: string
     comment?: string
@@ -851,7 +851,7 @@ export class Route53Client {
   /**
    * Get the root domain from a subdomain
    * e.g., "api.example.com" -> "example.com"
-  */
+   */
   static getRootDomain(domain: string): string {
     const parts = domain.replace(/\.$/, '').split('.')
     if (parts.length <= 2) {
@@ -864,7 +864,7 @@ export class Route53Client {
   /**
    * Find the hosted zone for a domain or its parent domain
    * Useful when you have a subdomain and need to find the zone
-  */
+   */
   async findHostedZoneForDomain(domain: string): Promise<HostedZone | null> {
     const normalizedDomain = domain.replace(/\.$/, '')
     const parts = normalizedDomain.split('.')
@@ -884,7 +884,7 @@ export class Route53Client {
   /**
    * Ensure a hosted zone exists for a domain, creating it if necessary
    * Returns the hosted zone ID suitable for use in CloudFormation
-  */
+   */
   async ensureHostedZone(params: {
     domainName: string
     comment?: string
@@ -913,7 +913,7 @@ export class Route53Client {
   /**
    * Setup DNS for a domain with automatic hosted zone creation
    * Creates the hosted zone if needed and returns setup information
-  */
+   */
   async setupDomainDns(params: {
     domain: string
     createIfNotExists?: boolean
@@ -969,12 +969,12 @@ export class Route53Client {
 
   /**
    * CloudFront hosted zone ID (global)
-  */
+   */
   static readonly CloudFrontHostedZoneId = 'Z2FDTNDATAQYW2'
 
   /**
    * S3 website hosting hosted zone IDs by region
-  */
+   */
   static readonly S3WebsiteHostedZoneIds: Record<string, string> = {
     'us-east-1': 'Z3AQBSTGFYJSTF',
     'us-east-2': 'Z2O1EMRO9K5GLX',
@@ -998,7 +998,7 @@ export class Route53Client {
 
   /**
    * ALB hosted zone IDs by region
-  */
+   */
   static readonly ALBHostedZoneIds: Record<string, string> = {
     'us-east-1': 'Z35SXDOTRQ7X7K',
     'us-east-2': 'Z3AADJGX6KTTL2',
@@ -1022,7 +1022,7 @@ export class Route53Client {
 
   /**
    * API Gateway hosted zone IDs by region
-  */
+   */
   static readonly APIGatewayHostedZoneIds: Record<string, string> = {
     'us-east-1': 'Z1UJRXOUMOOFQ8',
     'us-east-2': 'ZOJJZC49E0EPZ',

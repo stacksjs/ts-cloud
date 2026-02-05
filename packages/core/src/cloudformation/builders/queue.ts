@@ -15,7 +15,7 @@ export interface QueueConfig {
 
 /**
  * Add SQS queue resources to CloudFormation template
-*/
+ */
 export function addQueueResources(
   builder: CloudFormationBuilder,
   config: QueueConfig,
@@ -27,7 +27,7 @@ export function addQueueResources(
 
 /**
  * Add SQS queue
-*/
+ */
 function addQueue(
   builder: CloudFormationBuilder,
   name: string,

@@ -1,7 +1,7 @@
 /**
  * AWS DynamoDB Client
  * Direct API calls for DynamoDB operations
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -55,7 +55,7 @@ export interface TableDescription {
 
 /**
  * DynamoDB client for direct API calls
-*/
+ */
 export class DynamoDBClient {
   private client: AWSClient
   private region: string
@@ -81,7 +81,7 @@ export class DynamoDBClient {
 
   /**
    * Create a new DynamoDB table
-  */
+   */
   async createTable(params: {
     TableName: string
     KeySchema: KeySchemaElement[]
@@ -103,21 +103,21 @@ export class DynamoDBClient {
 
   /**
    * Delete a DynamoDB table
-  */
+   */
   async deleteTable(params: { TableName: string }): Promise<{ TableDescription: TableDescription }> {
     return this.request('DeleteTable', params)
   }
 
   /**
    * Describe a DynamoDB table
-  */
+   */
   async describeTable(params: { TableName: string }): Promise<{ Table: TableDescription }> {
     return this.request('DescribeTable', params)
   }
 
   /**
    * List all DynamoDB tables
-  */
+   */
   async listTables(params?: {
     ExclusiveStartTableName?: string
     Limit?: number
@@ -127,7 +127,7 @@ export class DynamoDBClient {
 
   /**
    * Put an item into a table
-  */
+   */
   async putItem(params: {
     TableName: string
     Item: Record<string, AttributeValue>
@@ -141,7 +141,7 @@ export class DynamoDBClient {
 
   /**
    * Get an item from a table
-  */
+   */
   async getItem(params: {
     TableName: string
     Key: Record<string, AttributeValue>
@@ -154,7 +154,7 @@ export class DynamoDBClient {
 
   /**
    * Update an item in a table
-  */
+   */
   async updateItem(params: {
     TableName: string
     Key: Record<string, AttributeValue>
@@ -169,7 +169,7 @@ export class DynamoDBClient {
 
   /**
    * Delete an item from a table
-  */
+   */
   async deleteItem(params: {
     TableName: string
     Key: Record<string, AttributeValue>
@@ -183,7 +183,7 @@ export class DynamoDBClient {
 
   /**
    * Query items from a table
-  */
+   */
   async query(params: {
     TableName: string
     IndexName?: string
@@ -207,7 +207,7 @@ export class DynamoDBClient {
 
   /**
    * Scan items from a table
-  */
+   */
   async scan(params: {
     TableName: string
     IndexName?: string
@@ -229,7 +229,7 @@ export class DynamoDBClient {
 
   /**
    * Batch write items
-  */
+   */
   async batchWriteItem(params: {
     RequestItems: Record<string, Array<{
       PutRequest?: { Item: Record<string, AttributeValue> }
@@ -246,7 +246,7 @@ export class DynamoDBClient {
 
   /**
    * Batch get items
-  */
+   */
   async batchGetItem(params: {
     RequestItems: Record<string, {
       Keys: Array<Record<string, AttributeValue>>
@@ -265,7 +265,7 @@ export class DynamoDBClient {
 
   /**
    * Update time to live settings
-  */
+   */
   async updateTimeToLive(params: {
     TableName: string
     TimeToLiveSpecification: {
@@ -278,7 +278,7 @@ export class DynamoDBClient {
 
   /**
    * Helper: Marshal a JavaScript object to DynamoDB format
-  */
+   */
   static marshal(obj: Record<string, any>): Record<string, AttributeValue> {
     const result: Record<string, AttributeValue> = {}
     for (const [key, value] of Object.entries(obj)) {
@@ -289,7 +289,7 @@ export class DynamoDBClient {
 
   /**
    * Helper: Marshal a single value to DynamoDB format
-  */
+   */
   static marshalValue(value: any): AttributeValue {
     if (value === null || value === undefined) {
       return { NULL: true }
@@ -314,7 +314,7 @@ export class DynamoDBClient {
 
   /**
    * Helper: Unmarshal DynamoDB format to JavaScript object
-  */
+   */
   static unmarshal(item: Record<string, AttributeValue>): Record<string, any> {
     const result: Record<string, any> = {}
     for (const [key, value] of Object.entries(item)) {
@@ -325,7 +325,7 @@ export class DynamoDBClient {
 
   /**
    * Helper: Unmarshal a single DynamoDB value
-  */
+   */
   static unmarshalValue(value: AttributeValue): any {
     if (value.S !== undefined) return value.S
     if (value.N !== undefined) return Number(value.N)

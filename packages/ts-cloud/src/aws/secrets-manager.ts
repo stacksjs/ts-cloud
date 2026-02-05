@@ -1,7 +1,7 @@
 /**
  * AWS Secrets Manager Client
  * Manages secrets using direct API calls
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -80,7 +80,7 @@ export interface RotationRules {
 
 /**
  * Secrets Manager client using direct API calls
-*/
+ */
 export class SecretsManagerClient {
   private client: AWSClient
   private region: string
@@ -92,7 +92,7 @@ export class SecretsManagerClient {
 
   /**
    * Create a new secret
-  */
+   */
   async createSecret(options: CreateSecretOptions): Promise<{
     ARN?: string
     Name?: string
@@ -156,7 +156,7 @@ export class SecretsManagerClient {
 
   /**
    * Update an existing secret's metadata
-  */
+   */
   async updateSecret(options: UpdateSecretOptions): Promise<{
     ARN?: string
     Name?: string
@@ -203,7 +203,7 @@ export class SecretsManagerClient {
 
   /**
    * Put a new version of a secret value
-  */
+   */
   async putSecretValue(options: PutSecretValueOptions): Promise<{
     ARN?: string
     Name?: string
@@ -252,7 +252,7 @@ export class SecretsManagerClient {
 
   /**
    * Get the value of a secret
-  */
+   */
   async getSecretValue(options: GetSecretValueOptions): Promise<SecretValue> {
     const params: Record<string, any> = {
       SecretId: options.SecretId,
@@ -291,7 +291,7 @@ export class SecretsManagerClient {
 
   /**
    * Describe a secret (metadata only)
-  */
+   */
   async describeSecret(secretId: string): Promise<Secret> {
     const params: Record<string, any> = {
       SecretId: secretId,
@@ -314,7 +314,7 @@ export class SecretsManagerClient {
 
   /**
    * List secrets
-  */
+   */
   async listSecrets(options?: {
     MaxResults?: number
     NextToken?: string
@@ -362,7 +362,7 @@ export class SecretsManagerClient {
 
   /**
    * Delete a secret
-  */
+   */
   async deleteSecret(options: {
     SecretId: string
     RecoveryWindowInDays?: number
@@ -405,7 +405,7 @@ export class SecretsManagerClient {
 
   /**
    * Restore a deleted secret
-  */
+   */
   async restoreSecret(secretId: string): Promise<{
     ARN?: string
     Name?: string
@@ -434,7 +434,7 @@ export class SecretsManagerClient {
 
   /**
    * Configure automatic rotation for a secret
-  */
+   */
   async rotateSecret(options: {
     SecretId: string
     ClientRequestToken?: string
@@ -487,7 +487,7 @@ export class SecretsManagerClient {
 
   /**
    * Cancel rotation for a secret
-  */
+   */
   async cancelRotateSecret(secretId: string): Promise<{
     ARN?: string
     Name?: string
@@ -516,7 +516,7 @@ export class SecretsManagerClient {
 
   /**
    * Get resource policy for a secret
-  */
+   */
   async getResourcePolicy(secretId: string): Promise<{
     ARN?: string
     Name?: string
@@ -547,7 +547,7 @@ export class SecretsManagerClient {
 
   /**
    * Put resource policy for a secret
-  */
+   */
   async putResourcePolicy(options: {
     SecretId: string
     ResourcePolicy: string
@@ -585,7 +585,7 @@ export class SecretsManagerClient {
 
   /**
    * Delete resource policy for a secret
-  */
+   */
   async deleteResourcePolicy(secretId: string): Promise<{
     ARN?: string
     Name?: string
@@ -614,7 +614,7 @@ export class SecretsManagerClient {
 
   /**
    * Tag a secret
-  */
+   */
   async tagResource(options: {
     SecretId: string
     Tags: { Key: string, Value: string }[]
@@ -639,7 +639,7 @@ export class SecretsManagerClient {
 
   /**
    * Remove tags from a secret
-  */
+   */
   async untagResource(options: {
     SecretId: string
     TagKeys: string[]
@@ -664,7 +664,7 @@ export class SecretsManagerClient {
 
   /**
    * Helper: Set a string secret
-  */
+   */
   async setString(name: string, value: string, options?: {
     description?: string
     kmsKeyId?: string
@@ -695,7 +695,7 @@ export class SecretsManagerClient {
 
   /**
    * Helper: Set a JSON secret
-  */
+   */
   async setJson(name: string, value: Record<string, any>, options?: {
     description?: string
     kmsKeyId?: string
@@ -706,7 +706,7 @@ export class SecretsManagerClient {
 
   /**
    * Helper: Get a string secret value
-  */
+   */
   async getString(secretId: string): Promise<string | undefined> {
     const result = await this.getSecretValue({ SecretId: secretId })
     return result.SecretString
@@ -714,7 +714,7 @@ export class SecretsManagerClient {
 
   /**
    * Helper: Get a JSON secret value
-  */
+   */
   async getJson<T = Record<string, any>>(secretId: string): Promise<T | undefined> {
     const str = await this.getString(secretId)
     if (str) {
@@ -725,7 +725,7 @@ export class SecretsManagerClient {
 
   /**
    * Helper: List all secrets
-  */
+   */
   async listAll(): Promise<Secret[]> {
     const allSecrets: Secret[] = []
     let nextToken: string | undefined
@@ -745,7 +745,7 @@ export class SecretsManagerClient {
 
   /**
    * Parse secret response
-  */
+   */
   private parseSecret(s: any): Secret {
     return {
       ARN: s.ARN,

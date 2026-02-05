@@ -11,7 +11,7 @@
  *   Port: 1143 (or 143 if running as root)
  *   Username: chris
  *   Password: test123
-*/
+ */
 
 import { startImapServer } from './imap-server'
 

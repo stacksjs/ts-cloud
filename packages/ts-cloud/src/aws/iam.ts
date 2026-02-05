@@ -1,7 +1,7 @@
 /**
  * AWS IAM (Identity and Access Management) Operations
  * Direct API calls without AWS SDK dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -649,7 +649,7 @@ export interface SimulatePolicyResponse {
 
 /**
  * Build query string from parameters for IAM API
-*/
+ */
 function buildQueryParams(action: string, params: Record<string, unknown>): string {
   const queryParams: string[] = [`Action=${action}`, 'Version=2010-05-08']
 
@@ -685,7 +685,7 @@ function buildQueryParams(action: string, params: Record<string, unknown>): stri
 
 /**
  * Parse XML response from IAM API
-*/
+ */
 function parseXmlValue(xml: string, tag: string): string | undefined {
   const regex = new RegExp(`<${tag}>([^<]*)</${tag}>`)
   const match = xml.match(regex)
@@ -694,7 +694,7 @@ function parseXmlValue(xml: string, tag: string): string | undefined {
 
 /**
  * Parse XML array from IAM API
-*/
+ */
 function parseXmlArray(xml: string, containerTag: string, itemTag: string): string[] {
   const containerRegex = new RegExp(`<${containerTag}>([\\s\\S]*?)</${containerTag}>`)
   const containerMatch = xml.match(containerRegex)
@@ -724,7 +724,7 @@ export class IAMClient {
 
   /**
    * Make IAM API request
-  */
+   */
   private async request(action: string, params: object = {}): Promise<any> {
     const body = buildQueryParams(action, params as Record<string, unknown>)
 
@@ -748,7 +748,7 @@ export class IAMClient {
 
   /**
    * Create a new IAM user
-  */
+   */
   async createUser(params: CreateUserParams): Promise<IAMUser> {
     const response = await this.request('CreateUser', params)
     return this.parseUser(response)
@@ -756,7 +756,7 @@ export class IAMClient {
 
   /**
    * Get information about an IAM user
-  */
+   */
   async getUser(params: GetUserParams = {}): Promise<IAMUser> {
     const response = await this.request('GetUser', params)
     return this.parseUser(response)
@@ -764,7 +764,7 @@ export class IAMClient {
 
   /**
    * List IAM users
-  */
+   */
   async listUsers(params: ListUsersParams = {}): Promise<{ Users: IAMUser[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListUsers', params)
     const users = this.parseUsers(response)
@@ -775,21 +775,21 @@ export class IAMClient {
 
   /**
    * Update an IAM user
-  */
+   */
   async updateUser(params: UpdateUserParams): Promise<void> {
     await this.request('UpdateUser', params)
   }
 
   /**
    * Delete an IAM user
-  */
+   */
   async deleteUser(params: DeleteUserParams): Promise<void> {
     await this.request('DeleteUser', params)
   }
 
   /**
    * Parse user from XML response
-  */
+   */
   private parseUser(xml: string): IAMUser {
     return {
       UserName: parseXmlValue(xml, 'UserName') || '',
@@ -803,7 +803,7 @@ export class IAMClient {
 
   /**
    * Parse users array from XML response
-  */
+   */
   private parseUsers(xml: string): IAMUser[] {
     const memberXmls = parseXmlArray(xml, 'Users', 'member')
     return memberXmls.map((memberXml) => ({
@@ -822,7 +822,7 @@ export class IAMClient {
 
   /**
    * Create a new IAM group
-  */
+   */
   async createGroup(params: CreateGroupParams): Promise<IAMGroup> {
     const response = await this.request('CreateGroup', params)
     return this.parseGroup(response)
@@ -830,7 +830,7 @@ export class IAMClient {
 
   /**
    * Get information about an IAM group
-  */
+   */
   async getGroup(params: GetGroupParams): Promise<{ Group: IAMGroup; Users: IAMUser[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('GetGroup', params)
     const group = this.parseGroup(response)
@@ -842,7 +842,7 @@ export class IAMClient {
 
   /**
    * List IAM groups
-  */
+   */
   async listGroups(params: ListGroupsParams = {}): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroups', params)
     const groups = this.parseGroups(response)
@@ -853,35 +853,35 @@ export class IAMClient {
 
   /**
    * Update an IAM group
-  */
+   */
   async updateGroup(params: UpdateGroupParams): Promise<void> {
     await this.request('UpdateGroup', params)
   }
 
   /**
    * Delete an IAM group
-  */
+   */
   async deleteGroup(params: DeleteGroupParams): Promise<void> {
     await this.request('DeleteGroup', params)
   }
 
   /**
    * Add a user to a group
-  */
+   */
   async addUserToGroup(params: AddUserToGroupParams): Promise<void> {
     await this.request('AddUserToGroup', params)
   }
 
   /**
    * Remove a user from a group
-  */
+   */
   async removeUserFromGroup(params: RemoveUserFromGroupParams): Promise<void> {
     await this.request('RemoveUserFromGroup', params)
   }
 
   /**
    * List groups for a user
-  */
+   */
   async listGroupsForUser(params: ListGroupsForUserParams): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroupsForUser', params)
     const groups = this.parseGroups(response)
@@ -892,7 +892,7 @@ export class IAMClient {
 
   /**
    * Parse group from XML response
-  */
+   */
   private parseGroup(xml: string): IAMGroup {
     return {
       GroupName: parseXmlValue(xml, 'GroupName') || '',
@@ -905,7 +905,7 @@ export class IAMClient {
 
   /**
    * Parse groups array from XML response
-  */
+   */
   private parseGroups(xml: string): IAMGroup[] {
     const memberXmls = parseXmlArray(xml, 'Groups', 'member')
     return memberXmls.map((memberXml) => ({
@@ -923,7 +923,7 @@ export class IAMClient {
 
   /**
    * Create a new IAM role
-  */
+   */
   async createRole(params: CreateRoleParams): Promise<IAMRole> {
     const response = await this.request('CreateRole', params)
     return this.parseRole(response)
@@ -931,7 +931,7 @@ export class IAMClient {
 
   /**
    * Get information about an IAM role
-  */
+   */
   async getRole(params: GetRoleParams): Promise<IAMRole> {
     const response = await this.request('GetRole', params)
     return this.parseRole(response)
@@ -939,7 +939,7 @@ export class IAMClient {
 
   /**
    * List IAM roles
-  */
+   */
   async listRoles(params: ListRolesParams = {}): Promise<{ Roles: IAMRole[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListRoles', params)
     const roles = this.parseRoles(response)
@@ -950,14 +950,14 @@ export class IAMClient {
 
   /**
    * Update an IAM role
-  */
+   */
   async updateRole(params: UpdateRoleParams): Promise<void> {
     await this.request('UpdateRole', params)
   }
 
   /**
    * Update an IAM role description
-  */
+   */
   async updateRoleDescription(params: UpdateRoleDescriptionParams): Promise<IAMRole> {
     const response = await this.request('UpdateRoleDescription', params)
     return this.parseRole(response)
@@ -965,35 +965,35 @@ export class IAMClient {
 
   /**
    * Update the assume role policy for a role
-  */
+   */
   async updateAssumeRolePolicy(params: UpdateAssumeRolePolicyParams): Promise<void> {
     await this.request('UpdateAssumeRolePolicy', params)
   }
 
   /**
    * Delete an IAM role
-  */
+   */
   async deleteRole(params: DeleteRoleParams): Promise<void> {
     await this.request('DeleteRole', params)
   }
 
   /**
    * Tag an IAM role
-  */
+   */
   async tagRole(params: TagRoleParams): Promise<void> {
     await this.request('TagRole', params)
   }
 
   /**
    * Untag an IAM role
-  */
+   */
   async untagRole(params: UntagRoleParams): Promise<void> {
     await this.request('UntagRole', params)
   }
 
   /**
    * List tags for an IAM role
-  */
+   */
   async listRoleTags(params: ListRoleTagsParams): Promise<{ Tags: Array<{ Key: string; Value: string }>; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListRoleTags', params)
     const tags = this.parseTags(response)
@@ -1004,7 +1004,7 @@ export class IAMClient {
 
   /**
    * Parse role from XML response
-  */
+   */
   private parseRole(xml: string): IAMRole {
     return {
       RoleName: parseXmlValue(xml, 'RoleName') || '',
@@ -1020,7 +1020,7 @@ export class IAMClient {
 
   /**
    * Parse roles array from XML response
-  */
+   */
   private parseRoles(xml: string): IAMRole[] {
     const memberXmls = parseXmlArray(xml, 'Roles', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1037,7 +1037,7 @@ export class IAMClient {
 
   /**
    * Parse tags from XML response
-  */
+   */
   private parseTags(xml: string): Array<{ Key: string; Value: string }> {
     const memberXmls = parseXmlArray(xml, 'Tags', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1052,7 +1052,7 @@ export class IAMClient {
 
   /**
    * Create a new managed policy
-  */
+   */
   async createPolicy(params: CreatePolicyParams): Promise<IAMPolicy> {
     const response = await this.request('CreatePolicy', params)
     return this.parsePolicy(response)
@@ -1060,7 +1060,7 @@ export class IAMClient {
 
   /**
    * Get information about a managed policy
-  */
+   */
   async getPolicy(params: GetPolicyParams): Promise<IAMPolicy> {
     const response = await this.request('GetPolicy', params)
     return this.parsePolicy(response)
@@ -1068,7 +1068,7 @@ export class IAMClient {
 
   /**
    * Get a specific version of a managed policy
-  */
+   */
   async getPolicyVersion(params: GetPolicyVersionParams): Promise<PolicyVersion> {
     const response = await this.request('GetPolicyVersion', params)
     return {
@@ -1081,7 +1081,7 @@ export class IAMClient {
 
   /**
    * List managed policies
-  */
+   */
   async listPolicies(params: ListPoliciesParams = {}): Promise<{ Policies: IAMPolicy[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListPolicies', params)
     const policies = this.parsePolicies(response)
@@ -1092,7 +1092,7 @@ export class IAMClient {
 
   /**
    * List versions of a managed policy
-  */
+   */
   async listPolicyVersions(params: ListPolicyVersionsParams): Promise<{ Versions: PolicyVersion[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListPolicyVersions', params)
     const versions = this.parsePolicyVersions(response)
@@ -1103,7 +1103,7 @@ export class IAMClient {
 
   /**
    * Create a new version of a managed policy
-  */
+   */
   async createPolicyVersion(params: CreatePolicyVersionParams): Promise<PolicyVersion> {
     const response = await this.request('CreatePolicyVersion', params)
     return {
@@ -1115,70 +1115,70 @@ export class IAMClient {
 
   /**
    * Delete a version of a managed policy
-  */
+   */
   async deletePolicyVersion(params: DeletePolicyVersionParams): Promise<void> {
     await this.request('DeletePolicyVersion', params)
   }
 
   /**
    * Set the default version of a managed policy
-  */
+   */
   async setDefaultPolicyVersion(params: SetDefaultPolicyVersionParams): Promise<void> {
     await this.request('SetDefaultPolicyVersion', params)
   }
 
   /**
    * Delete a managed policy
-  */
+   */
   async deletePolicy(params: DeletePolicyParams): Promise<void> {
     await this.request('DeletePolicy', params)
   }
 
   /**
    * Attach a managed policy to a user
-  */
+   */
   async attachUserPolicy(params: AttachUserPolicyParams): Promise<void> {
     await this.request('AttachUserPolicy', params)
   }
 
   /**
    * Detach a managed policy from a user
-  */
+   */
   async detachUserPolicy(params: DetachUserPolicyParams): Promise<void> {
     await this.request('DetachUserPolicy', params)
   }
 
   /**
    * Attach a managed policy to a group
-  */
+   */
   async attachGroupPolicy(params: AttachGroupPolicyParams): Promise<void> {
     await this.request('AttachGroupPolicy', params)
   }
 
   /**
    * Detach a managed policy from a group
-  */
+   */
   async detachGroupPolicy(params: DetachGroupPolicyParams): Promise<void> {
     await this.request('DetachGroupPolicy', params)
   }
 
   /**
    * Attach a managed policy to a role
-  */
+   */
   async attachRolePolicy(params: AttachRolePolicyParams): Promise<void> {
     await this.request('AttachRolePolicy', params)
   }
 
   /**
    * Detach a managed policy from a role
-  */
+   */
   async detachRolePolicy(params: DetachRolePolicyParams): Promise<void> {
     await this.request('DetachRolePolicy', params)
   }
 
   /**
    * List managed policies attached to a user
-  */
+   */
   async listAttachedUserPolicies(params: ListAttachedUserPoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAttachedUserPolicies', params)
     const policies = this.parseAttachedPolicies(response)
@@ -1189,7 +1189,7 @@ export class IAMClient {
 
   /**
    * List managed policies attached to a group
-  */
+   */
   async listAttachedGroupPolicies(params: ListAttachedGroupPoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAttachedGroupPolicies', params)
     const policies = this.parseAttachedPolicies(response)
@@ -1200,7 +1200,7 @@ export class IAMClient {
 
   /**
    * List managed policies attached to a role
-  */
+   */
   async listAttachedRolePolicies(params: ListAttachedRolePoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAttachedRolePolicies', params)
     const policies = this.parseAttachedPolicies(response)
@@ -1211,7 +1211,7 @@ export class IAMClient {
 
   /**
    * Parse policy from XML response
-  */
+   */
   private parsePolicy(xml: string): IAMPolicy {
     return {
       PolicyName: parseXmlValue(xml, 'PolicyName') || '',
@@ -1230,7 +1230,7 @@ export class IAMClient {
 
   /**
    * Parse policies array from XML response
-  */
+   */
   private parsePolicies(xml: string): IAMPolicy[] {
     const memberXmls = parseXmlArray(xml, 'Policies', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1250,7 +1250,7 @@ export class IAMClient {
 
   /**
    * Parse policy versions from XML response
-  */
+   */
   private parsePolicyVersions(xml: string): PolicyVersion[] {
     const memberXmls = parseXmlArray(xml, 'Versions', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1262,7 +1262,7 @@ export class IAMClient {
 
   /**
    * Parse attached policies from XML response
-  */
+   */
   private parseAttachedPolicies(xml: string): Array<{ PolicyName: string; PolicyArn: string }> {
     const memberXmls = parseXmlArray(xml, 'AttachedPolicies', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1277,14 +1277,14 @@ export class IAMClient {
 
   /**
    * Add or update an inline policy for a user
-  */
+   */
   async putUserPolicy(params: PutUserPolicyParams): Promise<void> {
     await this.request('PutUserPolicy', params)
   }
 
   /**
    * Get an inline policy for a user
-  */
+   */
   async getUserPolicy(params: GetUserPolicyParams): Promise<{ UserName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetUserPolicy', params)
     return {
@@ -1296,14 +1296,14 @@ export class IAMClient {
 
   /**
    * Delete an inline policy from a user
-  */
+   */
   async deleteUserPolicy(params: DeleteUserPolicyParams): Promise<void> {
     await this.request('DeleteUserPolicy', params)
   }
 
   /**
    * List inline policies for a user
-  */
+   */
   async listUserPolicies(params: ListUserPoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListUserPolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
@@ -1314,14 +1314,14 @@ export class IAMClient {
 
   /**
    * Add or update an inline policy for a group
-  */
+   */
   async putGroupPolicy(params: PutGroupPolicyParams): Promise<void> {
     await this.request('PutGroupPolicy', params)
   }
 
   /**
    * Get an inline policy for a group
-  */
+   */
   async getGroupPolicy(params: GetGroupPolicyParams): Promise<{ GroupName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetGroupPolicy', params)
     return {
@@ -1333,14 +1333,14 @@ export class IAMClient {
 
   /**
    * Delete an inline policy from a group
-  */
+   */
   async deleteGroupPolicy(params: DeleteGroupPolicyParams): Promise<void> {
     await this.request('DeleteGroupPolicy', params)
   }
 
   /**
    * List inline policies for a group
-  */
+   */
   async listGroupPolicies(params: ListGroupPoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroupPolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
@@ -1351,14 +1351,14 @@ export class IAMClient {
 
   /**
    * Add or update an inline policy for a role
-  */
+   */
   async putRolePolicy(params: PutRolePolicyParams): Promise<void> {
     await this.request('PutRolePolicy', params)
   }
 
   /**
    * Get an inline policy for a role
-  */
+   */
   async getRolePolicy(params: GetRolePolicyParams): Promise<{ RoleName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetRolePolicy', params)
     return {
@@ -1370,14 +1370,14 @@ export class IAMClient {
 
   /**
    * Delete an inline policy from a role
-  */
+   */
   async deleteRolePolicy(params: DeleteRolePolicyParams): Promise<void> {
     await this.request('DeleteRolePolicy', params)
   }
 
   /**
    * List inline policies for a role
-  */
+   */
   async listRolePolicies(params: ListRolePoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListRolePolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
@@ -1392,7 +1392,7 @@ export class IAMClient {
 
   /**
    * Create an access key for a user
-  */
+   */
   async createAccessKey(params: CreateAccessKeyParams = {}): Promise<CreateAccessKeyResult> {
     const response = await this.request('CreateAccessKey', params)
 
@@ -1427,7 +1427,7 @@ export class IAMClient {
 
   /**
    * List access keys for a user
-  */
+   */
   async listAccessKeys(params: ListAccessKeysParams = {}): Promise<{ AccessKeyMetadata: AccessKeyMetadata[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAccessKeys', params)
     const keys = this.parseAccessKeys(response)
@@ -1438,21 +1438,21 @@ export class IAMClient {
 
   /**
    * Update an access key status
-  */
+   */
   async updateAccessKey(params: UpdateAccessKeyParams): Promise<void> {
     await this.request('UpdateAccessKey', params)
   }
 
   /**
    * Delete an access key
-  */
+   */
   async deleteAccessKey(params: DeleteAccessKeyParams): Promise<void> {
     await this.request('DeleteAccessKey', params)
   }
 
   /**
    * Get information about when an access key was last used
-  */
+   */
   async getAccessKeyLastUsed(params: GetAccessKeyLastUsedParams): Promise<{ UserName: string; AccessKeyLastUsed: { LastUsedDate?: string; ServiceName?: string; Region?: string } }> {
     const response = await this.request('GetAccessKeyLastUsed', params)
     return {
@@ -1467,7 +1467,7 @@ export class IAMClient {
 
   /**
    * Parse access keys from XML response
-  */
+   */
   private parseAccessKeys(xml: string): AccessKeyMetadata[] {
     const memberXmls = parseXmlArray(xml, 'AccessKeyMetadata', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1484,7 +1484,7 @@ export class IAMClient {
 
   /**
    * Create an instance profile
-  */
+   */
   async createInstanceProfile(params: CreateInstanceProfileParams): Promise<InstanceProfile> {
     const response = await this.request('CreateInstanceProfile', params)
     return this.parseInstanceProfile(response)
@@ -1492,7 +1492,7 @@ export class IAMClient {
 
   /**
    * Get information about an instance profile
-  */
+   */
   async getInstanceProfile(params: GetInstanceProfileParams): Promise<InstanceProfile> {
     const response = await this.request('GetInstanceProfile', params)
     return this.parseInstanceProfile(response)
@@ -1500,7 +1500,7 @@ export class IAMClient {
 
   /**
    * List instance profiles
-  */
+   */
   async listInstanceProfiles(params: ListInstanceProfilesParams = {}): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListInstanceProfiles', params)
     const profiles = this.parseInstanceProfiles(response)
@@ -1511,7 +1511,7 @@ export class IAMClient {
 
   /**
    * List instance profiles for a role
-  */
+   */
   async listInstanceProfilesForRole(params: ListInstanceProfilesForRoleParams): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListInstanceProfilesForRole', params)
     const profiles = this.parseInstanceProfiles(response)
@@ -1522,28 +1522,28 @@ export class IAMClient {
 
   /**
    * Add a role to an instance profile
-  */
+   */
   async addRoleToInstanceProfile(params: AddRoleToInstanceProfileParams): Promise<void> {
     await this.request('AddRoleToInstanceProfile', params)
   }
 
   /**
    * Remove a role from an instance profile
-  */
+   */
   async removeRoleFromInstanceProfile(params: RemoveRoleFromInstanceProfileParams): Promise<void> {
     await this.request('RemoveRoleFromInstanceProfile', params)
   }
 
   /**
    * Delete an instance profile
-  */
+   */
   async deleteInstanceProfile(params: DeleteInstanceProfileParams): Promise<void> {
     await this.request('DeleteInstanceProfile', params)
   }
 
   /**
    * Parse instance profile from XML response
-  */
+   */
   private parseInstanceProfile(xml: string): InstanceProfile {
     return {
       InstanceProfileName: parseXmlValue(xml, 'InstanceProfileName') || '',
@@ -1556,7 +1556,7 @@ export class IAMClient {
 
   /**
    * Parse instance profiles from XML response
-  */
+   */
   private parseInstanceProfiles(xml: string): InstanceProfile[] {
     const memberXmls = parseXmlArray(xml, 'InstanceProfiles', 'member')
     return memberXmls.map((memberXml) => ({
@@ -1574,7 +1574,7 @@ export class IAMClient {
 
   /**
    * Get account password policy
-  */
+   */
   async getAccountPasswordPolicy(): Promise<PasswordPolicy> {
     const response = await this.request('GetAccountPasswordPolicy')
     return {
@@ -1593,21 +1593,21 @@ export class IAMClient {
 
   /**
    * Update account password policy
-  */
+   */
   async updateAccountPasswordPolicy(params: UpdateAccountPasswordPolicyParams): Promise<void> {
     await this.request('UpdateAccountPasswordPolicy', params)
   }
 
   /**
    * Delete account password policy
-  */
+   */
   async deleteAccountPasswordPolicy(): Promise<void> {
     await this.request('DeleteAccountPasswordPolicy')
   }
 
   /**
    * Get account summary
-  */
+   */
   async getAccountSummary(): Promise<AccountSummary> {
     const response = await this.request('GetAccountSummary')
     const summary: AccountSummary = {}
@@ -1627,7 +1627,7 @@ export class IAMClient {
 
   /**
    * Get the account alias
-  */
+   */
   async listAccountAliases(): Promise<{ AccountAliases: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAccountAliases')
     const aliases = parseXmlArray(response, 'AccountAliases', 'member')
@@ -1638,14 +1638,14 @@ export class IAMClient {
 
   /**
    * Create an account alias
-  */
+   */
   async createAccountAlias(params: { AccountAlias: string }): Promise<void> {
     await this.request('CreateAccountAlias', params)
   }
 
   /**
    * Delete an account alias
-  */
+   */
   async deleteAccountAlias(params: { AccountAlias: string }): Promise<void> {
     await this.request('DeleteAccountAlias', params)
   }
@@ -1656,7 +1656,7 @@ export class IAMClient {
 
   /**
    * Simulate the effect of policies attached to a principal
-  */
+   */
   async simulatePrincipalPolicy(params: SimulatePrincipalPolicyParams): Promise<SimulatePolicyResponse> {
     const response = await this.request('SimulatePrincipalPolicy', params)
     return this.parseSimulationResults(response)
@@ -1664,7 +1664,7 @@ export class IAMClient {
 
   /**
    * Parse simulation results from XML response
-  */
+   */
   private parseSimulationResults(xml: string): SimulatePolicyResponse {
     const resultXmls = parseXmlArray(xml, 'EvaluationResults', 'member')
     const evaluationResults: EvaluationResult[] = resultXmls.map((resultXml) => {

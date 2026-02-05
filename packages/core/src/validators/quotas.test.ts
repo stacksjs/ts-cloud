@@ -1,6 +1,6 @@
 /**
  * Service Quota Validation Tests
-*/
+ */
 
 import { describe, expect, it } from 'bun:test'
 import {

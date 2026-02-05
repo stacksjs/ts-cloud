@@ -58,11 +58,11 @@ export interface ManagedRuleGroup {
 /**
  * Security Module - ACM, KMS, WAF Management
  * Provides clean API for creating and configuring security resources
-*/
+ */
 export class Security {
   /**
    * Create an SSL/TLS certificate with ACM
-  */
+   */
   static createCertificate(options: CertificateOptions): {
     certificate: ACMCertificate
     logicalId: string
@@ -118,7 +118,7 @@ export class Security {
 
   /**
    * Create a KMS encryption key
-  */
+   */
   static createKmsKey(options: KmsKeyOptions): {
     key: KMSKey
     alias?: KMSAlias
@@ -202,7 +202,7 @@ export class Security {
 
   /**
    * Create a WAF Web ACL
-  */
+   */
   static createFirewall(options: FirewallOptions): {
     webAcl: WAFv2WebACL
     logicalId: string
@@ -243,7 +243,7 @@ export class Security {
 
   /**
    * Add rate limiting to a Web ACL
-  */
+   */
   static setRateLimit(
     webAcl: WAFv2WebACL,
     rule: RateLimitRule,
@@ -276,7 +276,7 @@ export class Security {
 
   /**
    * Block specific countries
-  */
+   */
   static blockCountries(
     webAcl: WAFv2WebACL,
     rule: GeoBlockRule,
@@ -308,7 +308,7 @@ export class Security {
 
   /**
    * Block specific IP addresses
-  */
+   */
   static blockIpAddresses(
     webAcl: WAFv2WebACL,
     rule: IpBlockRule,
@@ -367,7 +367,7 @@ export class Security {
 
   /**
    * Add AWS Managed Rules
-  */
+   */
   static addManagedRules(
     webAcl: WAFv2WebACL,
     rule: ManagedRuleGroup,
@@ -403,60 +403,60 @@ export class Security {
 
   /**
    * Common managed rule groups from AWS
-  */
+   */
   static readonly ManagedRuleGroups = {
     /**
      * AWS Core Rule Set - protects against common threats
-    */
+     */
     CoreRuleSet: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesCommonRuleSet',
     },
     /**
      * Known Bad Inputs - blocks patterns known to be invalid
-    */
+     */
     KnownBadInputs: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesKnownBadInputsRuleSet',
     },
     /**
      * SQL Database - protects against SQL injection
-    */
+     */
     SqlDatabase: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesSQLiRuleSet',
     },
     /**
      * Linux Operating System - protects against Linux-specific exploits
-    */
+     */
     LinuxOS: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesLinuxRuleSet',
     },
     /**
      * POSIX Operating System - protects against POSIX-specific exploits
-    */
+     */
     PosixOS: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesUnixRuleSet',
     },
     /**
      * Amazon IP Reputation List - blocks IPs with poor reputation
-    */
+     */
     AmazonIpReputation: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesAmazonIpReputationList',
     },
     /**
      * Anonymous IP List - blocks requests from anonymizing services
-    */
+     */
     AnonymousIpList: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesAnonymousIpList',
     },
     /**
      * Bot Control - protects against bots and scrapers
-    */
+     */
     BotControl: {
       vendorName: 'AWS',
       ruleName: 'AWSManagedRulesBotControlRuleSet',
@@ -466,7 +466,7 @@ export class Security {
   /**
    * Add path-based rate limiting
    * Rate limit specific URL paths (e.g., login, API endpoints)
-  */
+   */
   static setPathRateLimit(
     webAcl: WAFv2WebACL,
     rule: RateLimitRule & { paths: string[] },
@@ -520,7 +520,7 @@ export class Security {
   /**
    * Add header-based rate limiting
    * Useful for API key or user-based rate limiting
-  */
+   */
   static setHeaderRateLimit(
     webAcl: WAFv2WebACL,
     rule: RateLimitRule & { headerName: string, headerValue?: string },
@@ -578,7 +578,7 @@ export class Security {
   /**
    * Add login endpoint protection
    * Combines rate limiting with common attack patterns
-  */
+   */
   static protectLoginEndpoint(
     webAcl: WAFv2WebACL,
     options: {
@@ -603,7 +603,7 @@ export class Security {
   /**
    * Add API rate limiting
    * Apply stricter limits on API endpoints
-  */
+   */
   static protectApiEndpoints(
     webAcl: WAFv2WebACL,
     options: {
@@ -626,7 +626,7 @@ export class Security {
 
   /**
    * Create a comprehensive WAF with common protections
-  */
+   */
   static createProtectedFirewall(options: {
     slug: string
     environment: EnvironmentType
@@ -715,7 +715,7 @@ export class Security {
 
   /**
    * Common rate limit presets
-  */
+   */
   static readonly RateLimitPresets = {
     /** Standard website: 2000 requests per minute per IP */
     STANDARD: 2000,

@@ -1,7 +1,7 @@
 /**
  * AWS Credentials Validation
  * Validate credentials before deployment
-*/
+ */
 
 import type { AWSCredentials } from '../aws/credentials'
 import { resolveCredentials, getAccountId } from '../aws/credentials'
@@ -16,7 +16,7 @@ export interface CredentialValidationResult {
 
 /**
  * Validate AWS credentials
-*/
+ */
 export async function validateCredentials(
   profile: string = 'default',
 ): Promise<CredentialValidationResult> {
@@ -95,7 +95,7 @@ export async function validateCredentials(
 
 /**
  * Check IAM permissions
-*/
+ */
 export async function checkIAMPermissions(
   credentials: AWSCredentials,
   requiredActions: string[],
@@ -110,7 +110,7 @@ export async function checkIAMPermissions(
 
 /**
  * Get required IAM permissions for deployment
-*/
+ */
 export function getRequiredPermissions(config: any): string[] {
   const permissions = new Set<string>([
     // CloudFormation permissions (always required)
@@ -218,7 +218,7 @@ export function getRequiredPermissions(config: any): string[] {
 
 /**
  * Suggest IAM policy for deployment
-*/
+ */
 export function suggestIAMPolicy(config: any): string {
   const permissions = getRequiredPermissions(config)
 

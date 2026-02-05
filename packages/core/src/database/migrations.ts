@@ -1,7 +1,7 @@
 /**
  * Database Migration Management
  * Version-controlled schema changes with rollback support
-*/
+ */
 
 export interface Migration {
   id: string
@@ -54,7 +54,7 @@ export interface MigrationStatus {
 
 /**
  * Migration manager
-*/
+ */
 export class MigrationManager {
   private plans: Map<string, MigrationPlan> = new Map()
   private migrations: Map<string, Migration> = new Map()
@@ -63,7 +63,7 @@ export class MigrationManager {
 
   /**
    * Create migration plan
-  */
+   */
   createPlan(plan: Omit<MigrationPlan, 'id'>): MigrationPlan {
     const id = `migration-plan-${Date.now()}-${this.planCounter++}`
 
@@ -79,7 +79,7 @@ export class MigrationManager {
 
   /**
    * Create migration
-  */
+   */
   createMigration(migration: Omit<Migration, 'id' | 'checksum'>): Migration {
     const id = `migration-${Date.now()}-${this.migrationCounter++}`
 
@@ -99,7 +99,7 @@ export class MigrationManager {
 
   /**
    * Create schema change migration
-  */
+   */
   createSchemaMigration(options: {
     version: string
     name: string
@@ -120,7 +120,7 @@ export class MigrationManager {
 
   /**
    * Create data migration
-  */
+   */
   createDataMigration(options: {
     version: string
     name: string
@@ -139,7 +139,7 @@ export class MigrationManager {
 
   /**
    * Add migration to plan
-  */
+   */
   addMigrationToPlan(planId: string, migration: Migration): void {
     const plan = this.plans.get(planId)
 
@@ -152,7 +152,7 @@ export class MigrationManager {
 
   /**
    * Execute migration plan
-  */
+   */
   async executePlan(planId: string, dryRun: boolean = false): Promise<MigrationResult> {
     const plan = this.plans.get(planId)
 
@@ -234,7 +234,7 @@ export class MigrationManager {
 
   /**
    * Rollback migrations
-  */
+   */
   private async rollbackMigrations(versions: string[], plan: MigrationPlan): Promise<void> {
     for (const version of versions) {
       const migration = plan.migrations.find(m => m.version === version)
@@ -249,7 +249,7 @@ export class MigrationManager {
 
   /**
    * Get migration status
-  */
+   */
   getMigrationStatus(planId: string): MigrationStatus {
     const plan = this.plans.get(planId)
 
@@ -270,7 +270,7 @@ export class MigrationManager {
 
   /**
    * Generate schema SQL from changes
-  */
+   */
   private generateSchemaSQL(
     changes: SchemaChange[],
     tableName: string,
@@ -331,7 +331,7 @@ export class MigrationManager {
 
   /**
    * Generate checksum for migration
-  */
+   */
   private generateChecksum(content: string): string {
     // Simple checksum implementation (in production, use crypto hash)
     let hash = 0
@@ -345,7 +345,7 @@ export class MigrationManager {
 
   /**
    * Validate migration plan
-  */
+   */
   validatePlan(planId: string): { valid: boolean; errors: string[] } {
     const plan = this.plans.get(planId)
 
@@ -387,35 +387,35 @@ export class MigrationManager {
 
   /**
    * Get plan
-  */
+   */
   getPlan(id: string): MigrationPlan | undefined {
     return this.plans.get(id)
   }
 
   /**
    * List plans
-  */
+   */
   listPlans(): MigrationPlan[] {
     return Array.from(this.plans.values())
   }
 
   /**
    * Get migration
-  */
+   */
   getMigration(id: string): Migration | undefined {
     return this.migrations.get(id)
   }
 
   /**
    * List migrations
-  */
+   */
   listMigrations(): Migration[] {
     return Array.from(this.migrations.values())
   }
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.plans.clear()
     this.migrations.clear()
@@ -426,7 +426,7 @@ export class MigrationManager {
 
 /**
  * Schema change types
-*/
+ */
 export interface SchemaChange {
   type: 'add_column' | 'drop_column' | 'modify_column' | 'add_index' | 'drop_index'
   columnName?: string
@@ -440,5 +440,5 @@ export interface SchemaChange {
 
 /**
  * Global migration manager instance
-*/
+ */
 export const migrationManager: MigrationManager = new MigrationManager()

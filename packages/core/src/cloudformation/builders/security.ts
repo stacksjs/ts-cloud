@@ -30,7 +30,7 @@ export interface SecurityConfig {
 
 /**
  * Add security resources (ACM certificates, WAF, security groups) to CloudFormation template
-*/
+ */
 export function addSecurityResources(
   builder: CloudFormationBuilder,
   config: SecurityConfig,
@@ -55,7 +55,7 @@ export function addSecurityResources(
 
 /**
  * Add ACM SSL/TLS Certificate
-*/
+ */
 function addCertificate(
   builder: CloudFormationBuilder,
   config: SecurityConfig['certificate'],
@@ -94,7 +94,7 @@ function addCertificate(
 
 /**
  * Add AWS WAF Web ACL
-*/
+ */
 function addWAF(
   builder: CloudFormationBuilder,
   config: SecurityConfig['waf'],
@@ -346,7 +346,7 @@ function addWAF(
 
 /**
  * Add Security Group
-*/
+ */
 function addSecurityGroup(
   builder: CloudFormationBuilder,
   name: string,

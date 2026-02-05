@@ -5,7 +5,7 @@
  * - Process inbound SMS (two-way)
  * - Handle opt-out keywords
  * - Forward to webhook
-*/
+ */
 
 export const handler = `
 const { DynamoDBClient, PutItemCommand, GetItemCommand, DeleteItemCommand } = require('@aws-sdk/client-dynamodb');

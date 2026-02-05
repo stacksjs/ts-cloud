@@ -1,7 +1,7 @@
 /**
  * DNSSEC Configuration
  * DNS Security Extensions for Route53
-*/
+ */
 
 export interface DNSSECConfig {
   id: string
@@ -38,7 +38,7 @@ export interface DNSSECValidation {
 
 /**
  * DNSSEC manager
-*/
+ */
 export class DNSSECManager {
   private configs: Map<string, DNSSECConfig> = new Map()
   private ksks: Map<string, KSK> = new Map()
@@ -49,7 +49,7 @@ export class DNSSECManager {
 
   /**
    * Enable DNSSEC
-  */
+   */
   enableDNSSEC(options: {
     hostedZoneId: string
     kmsKeyArn?: string
@@ -85,7 +85,7 @@ export class DNSSECManager {
 
   /**
    * Disable DNSSEC
-  */
+   */
   disableDNSSEC(configId: string): DNSSECConfig {
     const config = this.configs.get(configId)
 
@@ -106,7 +106,7 @@ export class DNSSECManager {
 
   /**
    * Create KSK (Key-Signing Key)
-  */
+   */
   createKSK(options: {
     name: string
     hostedZoneId: string
@@ -140,7 +140,7 @@ export class DNSSECManager {
 
   /**
    * Deactivate KSK
-  */
+   */
   deactivateKSK(kskId: string): KSK {
     const ksk = this.ksks.get(kskId)
 
@@ -155,7 +155,7 @@ export class DNSSECManager {
 
   /**
    * Validate DNSSEC
-  */
+   */
   validateDNSSEC(options: {
     domain: string
     checkDNSKEY?: boolean
@@ -205,28 +205,28 @@ export class DNSSECManager {
 
   /**
    * Get DNSSEC config
-  */
+   */
   getDNSSECConfig(id: string): DNSSECConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List DNSSEC configs
-  */
+   */
   listDNSSECConfigs(): DNSSECConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get KSK
-  */
+   */
   getKSK(id: string): KSK | undefined {
     return this.ksks.get(id)
   }
 
   /**
    * List KSKs
-  */
+   */
   listKSKs(hostedZoneId?: string): KSK[] {
     const ksks = Array.from(this.ksks.values())
     return hostedZoneId ? ksks.filter(k => k.hostedZoneId === hostedZoneId) : ksks
@@ -234,7 +234,7 @@ export class DNSSECManager {
 
   /**
    * Get DS record for parent zone
-  */
+   */
   getDSRecord(kskId: string): string {
     const ksk = this.ksks.get(kskId)
 
@@ -247,7 +247,7 @@ export class DNSSECManager {
 
   /**
    * Generate public key (simulated)
-  */
+   */
   private generatePublicKey(): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
     let result = ''
@@ -259,7 +259,7 @@ export class DNSSECManager {
 
   /**
    * Generate digest (simulated)
-  */
+   */
   private generateDigest(dnskeyRecord: string): string {
     const chars = '0123456789ABCDEF'
     let result = ''
@@ -271,7 +271,7 @@ export class DNSSECManager {
 
   /**
    * Generate CloudFormation for DNSSEC
-  */
+   */
   generateDNSSECCF(config: DNSSECConfig): any {
     return {
       Type: 'AWS::Route53::DNSSEC',
@@ -283,7 +283,7 @@ export class DNSSECManager {
 
   /**
    * Generate CloudFormation for KSK
-  */
+   */
   generateKSKCF(ksk: KSK): any {
     return {
       Type: 'AWS::Route53::KeySigningKey',
@@ -298,7 +298,7 @@ export class DNSSECManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.configs.clear()
     this.ksks.clear()
@@ -311,5 +311,5 @@ export class DNSSECManager {
 
 /**
  * Global DNSSEC manager instance
-*/
+ */
 export const dnssecManager: DNSSECManager = new DNSSECManager()

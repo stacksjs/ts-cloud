@@ -1,6 +1,6 @@
 /**
  * CloudFormation Builder Tests
-*/
+ */
 
 import { describe, expect, it } from 'bun:test'
 import { CloudFormationBuilder } from './builder'

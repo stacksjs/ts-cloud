@@ -1,7 +1,7 @@
 /**
  * AWS CloudFormation API Client
  * Direct API calls without AWS SDK dependency
-*/
+ */
 
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
@@ -53,7 +53,7 @@ export interface StackEvent {
 
 /**
  * CloudFormation API Client
-*/
+ */
 export class CloudFormationClient {
   private credentials: AWSCredentials | null = null
   private region: string
@@ -67,7 +67,7 @@ export class CloudFormationClient {
 
   /**
    * Initialize client with credentials
-  */
+   */
   async init(): Promise<void> {
     this.credentials = await resolveCredentials(this.profile)
     if (this.credentials.region) {
@@ -77,7 +77,7 @@ export class CloudFormationClient {
 
   /**
    * Ensure credentials are loaded
-  */
+   */
   private async ensureCredentials(): Promise<AWSCredentials> {
     if (!this.credentials) {
       await this.init()
@@ -87,7 +87,7 @@ export class CloudFormationClient {
 
   /**
    * Make a CloudFormation API request
-  */
+   */
   private async request(action: string, params: Record<string, any>): Promise<any> {
     const credentials = await this.ensureCredentials()
 
@@ -119,7 +119,7 @@ export class CloudFormationClient {
 
   /**
    * Create a new CloudFormation stack
-  */
+   */
   async createStack(options: CreateStackOptions): Promise<string> {
     const params: Record<string, any> = {
       StackName: options.stackName,
@@ -169,7 +169,7 @@ export class CloudFormationClient {
 
   /**
    * Update an existing CloudFormation stack
-  */
+   */
   async updateStack(options: UpdateStackOptions): Promise<string> {
     const params: Record<string, any> = {
       StackName: options.stackName,
@@ -208,7 +208,7 @@ export class CloudFormationClient {
 
   /**
    * Delete a CloudFormation stack
-  */
+   */
   async deleteStack(stackName: string): Promise<void> {
     await this.request('DeleteStack', {
       StackName: stackName,
@@ -217,7 +217,7 @@ export class CloudFormationClient {
 
   /**
    * Describe a CloudFormation stack
-  */
+   */
   async describeStack(stackName: string): Promise<CloudFormationStack> {
     const result = await this.request('DescribeStacks', {
       StackName: stackName,
@@ -229,7 +229,7 @@ export class CloudFormationClient {
 
   /**
    * List all CloudFormation stacks
-  */
+   */
   async listStacks(statusFilter?: string[]): Promise<CloudFormationStack[]> {
     const params: Record<string, any> = {}
 
@@ -245,7 +245,7 @@ export class CloudFormationClient {
 
   /**
    * Get stack events
-  */
+   */
   async describeStackEvents(stackName: string): Promise<StackEvent[]> {
     const result = await this.request('DescribeStackEvents', {
       StackName: stackName,
@@ -256,7 +256,7 @@ export class CloudFormationClient {
 
   /**
    * Wait for stack to reach a terminal state
-  */
+   */
   async waitForStack(
     stackName: string,
     desiredStates: string[],
@@ -308,7 +308,7 @@ export class CloudFormationClient {
 
   /**
    * Create a change set
-  */
+   */
   async createChangeSet(options: {
     stackName: string
     changeSetName: string
@@ -349,7 +349,7 @@ export class CloudFormationClient {
 
   /**
    * Execute a change set
-  */
+   */
   async executeChangeSet(changeSetName: string, stackName: string): Promise<void> {
     await this.request('ExecuteChangeSet', {
       ChangeSetName: changeSetName,
@@ -360,7 +360,7 @@ export class CloudFormationClient {
 
 /**
  * Flatten nested parameters for AWS API query string
-*/
+ */
 function flattenParams(params: Record<string, any>, prefix: string = ''): Record<string, string> {
   const result: Record<string, string> = {}
 
@@ -390,7 +390,7 @@ function flattenParams(params: Record<string, any>, prefix: string = ''): Record
 
 /**
  * Parse stack from XML response
-*/
+ */
 function parseStack(data: any): CloudFormationStack {
   // Simplified parsing - in production, use a proper XML parser
   return {
@@ -406,7 +406,7 @@ function parseStack(data: any): CloudFormationStack {
 
 /**
  * Parse stack list from XML response
-*/
+ */
 function parseStackList(data: any): CloudFormationStack[] {
   // Simplified parsing
   return []
@@ -414,7 +414,7 @@ function parseStackList(data: any): CloudFormationStack[] {
 
 /**
  * Parse stack events from XML response
-*/
+ */
 function parseStackEvents(data: any): StackEvent[] {
   // Simplified parsing
   return []

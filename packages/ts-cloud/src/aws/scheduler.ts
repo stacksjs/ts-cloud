@@ -1,7 +1,7 @@
 /**
  * AWS EventBridge Scheduler Operations
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -108,7 +108,7 @@ export interface SchedulerTarget {
 
 /**
  * EventBridge Scheduler management using direct API calls
-*/
+ */
 export class SchedulerClient {
   private client: AWSClient
   private region: string
@@ -120,7 +120,7 @@ export class SchedulerClient {
 
   /**
    * Create a new schedule (EventBridge rule)
-  */
+   */
   async createRule(options: {
     name: string
     scheduleExpression: string
@@ -167,7 +167,7 @@ export class SchedulerClient {
 
   /**
    * Add target to a rule
-  */
+   */
   async putTargets(ruleName: string, targets: SchedulerTarget[]): Promise<void> {
     await this.client.request({
       service: 'events',
@@ -187,7 +187,7 @@ export class SchedulerClient {
 
   /**
    * List all rules
-  */
+   */
   async listRules(namePrefix?: string): Promise<{ Rules: SchedulerRule[] }> {
     const payload: any = {}
 
@@ -212,7 +212,7 @@ export class SchedulerClient {
 
   /**
    * Describe a rule
-  */
+   */
   async describeRule(name: string): Promise<SchedulerRule> {
     const result = await this.client.request({
       service: 'events',
@@ -239,7 +239,7 @@ export class SchedulerClient {
 
   /**
    * List targets for a rule
-  */
+   */
   async listTargetsByRule(ruleName: string): Promise<{ Targets: SchedulerTarget[] }> {
     const result = await this.client.request({
       service: 'events',
@@ -260,7 +260,7 @@ export class SchedulerClient {
 
   /**
    * Delete a rule
-  */
+   */
   async deleteRule(name: string, force?: boolean): Promise<void> {
     // First, remove all targets
     if (force) {
@@ -293,7 +293,7 @@ export class SchedulerClient {
 
   /**
    * Remove targets from a rule
-  */
+   */
   async removeTargets(ruleName: string, targetIds: string[]): Promise<void> {
     await this.client.request({
       service: 'events',
@@ -313,7 +313,7 @@ export class SchedulerClient {
 
   /**
    * Enable a rule
-  */
+   */
   async enableRule(name: string): Promise<void> {
     await this.client.request({
       service: 'events',
@@ -332,7 +332,7 @@ export class SchedulerClient {
 
   /**
    * Disable a rule
-  */
+   */
   async disableRule(name: string): Promise<void> {
     await this.client.request({
       service: 'events',
@@ -351,7 +351,7 @@ export class SchedulerClient {
 
   /**
    * Create a Lambda-triggered schedule
-  */
+   */
   async createLambdaSchedule(options: {
     name: string
     scheduleExpression: string
@@ -381,7 +381,7 @@ export class SchedulerClient {
 
   /**
    * Create an ECS task schedule
-  */
+   */
   async createEcsSchedule(options: {
     name: string
     scheduleExpression: string
@@ -419,7 +419,7 @@ export class SchedulerClient {
 
   /**
    * List schedules (EventBridge Scheduler API)
-  */
+   */
   async listSchedules(options?: { GroupName?: string; NamePrefix?: string; State?: string }): Promise<{ Schedules: Schedule[] }> {
     const queryParams: Record<string, string> = {}
     if (options?.NamePrefix) {
@@ -446,7 +446,7 @@ export class SchedulerClient {
 
   /**
    * Get a schedule by name (EventBridge Scheduler API)
-  */
+   */
   async getSchedule(options: { Name: string; GroupName?: string }): Promise<Schedule | null> {
     try {
       const queryParams: Record<string, string> = {}
@@ -474,7 +474,7 @@ export class SchedulerClient {
 
   /**
    * Create a schedule (EventBridge Scheduler API)
-  */
+   */
   async createSchedule(input: CreateScheduleInput): Promise<{ ScheduleArn: string }> {
     const body: Record<string, any> = {
       ScheduleExpression: input.ScheduleExpression,
@@ -505,7 +505,7 @@ export class SchedulerClient {
 
   /**
    * Update a schedule (EventBridge Scheduler API)
-  */
+   */
   async updateSchedule(input: UpdateScheduleInput): Promise<{ ScheduleArn: string }> {
     const body: Record<string, any> = {}
 
@@ -533,7 +533,7 @@ export class SchedulerClient {
 
   /**
    * Delete a schedule (EventBridge Scheduler API)
-  */
+   */
   async deleteSchedule(options: { Name: string; GroupName?: string }): Promise<void> {
     const queryParams: Record<string, string> = {}
     if (options.GroupName) {
@@ -551,7 +551,7 @@ export class SchedulerClient {
 
   /**
    * List schedule groups (EventBridge Scheduler API)
-  */
+   */
   async listScheduleGroups(options?: { NamePrefix?: string }): Promise<{ ScheduleGroups: ScheduleGroup[] }> {
     const queryParams: Record<string, string> = {}
     if (options?.NamePrefix) {

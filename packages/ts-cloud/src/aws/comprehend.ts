@@ -2,7 +2,7 @@
  * AWS Comprehend Client
  * Natural Language Processing - sentiment, entities, key phrases, language detection, PII
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -525,63 +525,63 @@ export class ComprehendClient {
 
   /**
    * Detect sentiment in text
-  */
+   */
   async detectSentiment(params: DetectSentimentCommandInput): Promise<DetectSentimentCommandOutput> {
     return this.request('DetectSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect entities in text
-  */
+   */
   async detectEntities(params: DetectEntitiesCommandInput): Promise<DetectEntitiesCommandOutput> {
     return this.request('DetectEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect key phrases in text
-  */
+   */
   async detectKeyPhrases(params: DetectKeyPhrasesCommandInput): Promise<DetectKeyPhrasesCommandOutput> {
     return this.request('DetectKeyPhrases', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect the dominant language of text
-  */
+   */
   async detectDominantLanguage(params: DetectDominantLanguageCommandInput): Promise<DetectDominantLanguageCommandOutput> {
     return this.request('DetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect PII entities in text
-  */
+   */
   async detectPiiEntities(params: DetectPiiEntitiesCommandInput): Promise<DetectPiiEntitiesCommandOutput> {
     return this.request('DetectPiiEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Check if text contains PII
-  */
+   */
   async containsPiiEntities(params: ContainsPiiEntitiesCommandInput): Promise<ContainsPiiEntitiesCommandOutput> {
     return this.request('ContainsPiiEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect syntax (parts of speech) in text
-  */
+   */
   async detectSyntax(params: DetectSyntaxCommandInput): Promise<DetectSyntaxCommandOutput> {
     return this.request('DetectSyntax', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Detect targeted sentiment (sentiment per entity)
-  */
+   */
   async detectTargetedSentiment(params: DetectTargetedSentimentCommandInput): Promise<DetectTargetedSentimentCommandOutput> {
     return this.request('DetectTargetedSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Classify a document using a custom endpoint
-  */
+   */
   async classifyDocument(params: ClassifyDocumentCommandInput): Promise<ClassifyDocumentCommandOutput> {
     return this.request('ClassifyDocument', params as unknown as Record<string, unknown>)
   }
@@ -592,35 +592,35 @@ export class ComprehendClient {
 
   /**
    * Batch detect sentiment
-  */
+   */
   async batchDetectSentiment(params: BatchDetectSentimentCommandInput): Promise<BatchDetectSentimentCommandOutput> {
     return this.request('BatchDetectSentiment', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect entities
-  */
+   */
   async batchDetectEntities(params: BatchDetectEntitiesCommandInput): Promise<BatchDetectEntitiesCommandOutput> {
     return this.request('BatchDetectEntities', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect key phrases
-  */
+   */
   async batchDetectKeyPhrases(params: BatchDetectKeyPhrasesCommandInput): Promise<BatchDetectKeyPhrasesCommandOutput> {
     return this.request('BatchDetectKeyPhrases', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect dominant language
-  */
+   */
   async batchDetectDominantLanguage(params: BatchDetectDominantLanguageCommandInput): Promise<BatchDetectDominantLanguageCommandOutput> {
     return this.request('BatchDetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Batch detect syntax
-  */
+   */
   async batchDetectSyntax(params: BatchDetectSyntaxCommandInput): Promise<BatchDetectSyntaxCommandOutput> {
     return this.request('BatchDetectSyntax', params as unknown as Record<string, unknown>)
   }
@@ -631,35 +631,35 @@ export class ComprehendClient {
 
   /**
    * Start an async sentiment detection job
-  */
+   */
   async startSentimentDetectionJob(params: StartSentimentDetectionJobCommandInput): Promise<StartSentimentDetectionJobCommandOutput> {
     return this.request('StartSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async entities detection job
-  */
+   */
   async startEntitiesDetectionJob(params: StartEntitiesDetectionJobCommandInput): Promise<StartEntitiesDetectionJobCommandOutput> {
     return this.request('StartEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async key phrases detection job
-  */
+   */
   async startKeyPhrasesDetectionJob(params: StartKeyPhrasesDetectionJobCommandInput): Promise<StartKeyPhrasesDetectionJobCommandOutput> {
     return this.request('StartKeyPhrasesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async PII entities detection job
-  */
+   */
   async startPiiEntitiesDetectionJob(params: StartPiiEntitiesDetectionJobCommandInput): Promise<StartPiiEntitiesDetectionJobCommandOutput> {
     return this.request('StartPiiEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a sentiment detection job
-  */
+   */
   async describeSentimentDetectionJob(params: DescribeSentimentDetectionJobCommandInput): Promise<DescribeSentimentDetectionJobCommandOutput> {
     return this.request('DescribeSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
@@ -670,7 +670,7 @@ export class ComprehendClient {
 
   /**
    * Simple sentiment analysis
-  */
+   */
   async analyzeSentiment(text: string, languageCode: string = 'en'): Promise<{
     sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED'
     scores: { positive: number; negative: number; neutral: number; mixed: number }
@@ -692,7 +692,7 @@ export class ComprehendClient {
 
   /**
    * Extract entities from text
-  */
+   */
   async extractEntities(text: string, languageCode: string = 'en'): Promise<Array<{
     text: string
     type: string
@@ -711,7 +711,7 @@ export class ComprehendClient {
 
   /**
    * Extract key phrases from text
-  */
+   */
   async extractKeyPhrases(text: string, languageCode: string = 'en'): Promise<string[]> {
     const result = await this.detectKeyPhrases({
       Text: text,
@@ -722,7 +722,7 @@ export class ComprehendClient {
 
   /**
    * Detect language of text
-  */
+   */
   async detectLanguage(text: string): Promise<{ languageCode: string; confidence: number }> {
     const result = await this.detectDominantLanguage({ Text: text })
     const dominant = result.Languages[0]
@@ -734,7 +734,7 @@ export class ComprehendClient {
 
   /**
    * Find PII in text
-  */
+   */
   async findPii(text: string, languageCode: string = 'en'): Promise<Array<{
     type: string
     beginOffset: number
@@ -755,7 +755,7 @@ export class ComprehendClient {
 
   /**
    * Check if text contains any PII
-  */
+   */
   async hasPii(text: string, languageCode: string = 'en'): Promise<boolean> {
     const result = await this.detectPiiEntities({
       Text: text,
@@ -766,7 +766,7 @@ export class ComprehendClient {
 
   /**
    * Redact PII from text (replaces PII with [TYPE])
-  */
+   */
   async redactPii(text: string, languageCode: string = 'en'): Promise<string> {
     const result = await this.detectPiiEntities({
       Text: text,
@@ -793,7 +793,7 @@ export class ComprehendClient {
 
 /**
  * Quick sentiment analysis
-*/
+ */
 export async function analyzeSentiment(
   text: string,
   options?: { languageCode?: string; region?: string },
@@ -806,7 +806,7 @@ export async function analyzeSentiment(
 
 /**
  * Quick entity extraction
-*/
+ */
 export async function extractEntities(
   text: string,
   options?: { languageCode?: string; region?: string },
@@ -817,7 +817,7 @@ export async function extractEntities(
 
 /**
  * Quick language detection
-*/
+ */
 export async function detectLanguage(
   text: string,
   region?: string,
@@ -829,7 +829,7 @@ export async function detectLanguage(
 
 /**
  * Quick PII check
-*/
+ */
 export async function containsPii(
   text: string,
   options?: { languageCode?: string; region?: string },

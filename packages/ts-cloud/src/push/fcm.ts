@@ -20,7 +20,7 @@
  *   body: 'World',
  * })
  * ```
-*/
+ */
 
 import { createSign } from 'node:crypto'
 
@@ -139,7 +139,7 @@ const TOKEN_EXPIRY_MS = 55 * 60 * 1000 // 55 minutes (tokens valid for 1 hour)
 
 /**
  * Firebase Cloud Messaging client
-*/
+ */
 export class FCMClient {
   private config: FCMConfig
   private accessToken: string | null = null
@@ -151,7 +151,7 @@ export class FCMClient {
 
   /**
    * Load config from service account JSON
-  */
+   */
   static fromServiceAccount(serviceAccount: {
     project_id: string
     client_email: string
@@ -166,7 +166,7 @@ export class FCMClient {
 
   /**
    * Generate a JWT for Google OAuth2
-  */
+   */
   private generateJWT(): string {
     const now = Math.floor(Date.now() / 1000)
     const exp = now + 3600 // 1 hour
@@ -198,7 +198,7 @@ export class FCMClient {
 
   /**
    * Get a valid access token, refreshing if needed
-  */
+   */
   private async getAccessToken(): Promise<string> {
     if (this.accessToken && Date.now() < this.tokenExpiresAt) {
       return this.accessToken
@@ -231,7 +231,7 @@ export class FCMClient {
 
   /**
    * Build FCM message payload
-  */
+   */
   private buildMessage(notification: FCMNotification): object {
     const message: Record<string, any> = {}
 
@@ -313,7 +313,7 @@ export class FCMClient {
 
   /**
    * Send a push notification
-  */
+   */
   async send(notification: FCMNotification): Promise<FCMSendResult> {
     try {
       const accessToken = await this.getAccessToken()
@@ -355,7 +355,7 @@ export class FCMClient {
 
   /**
    * Send to multiple device tokens
-  */
+   */
   async sendBatch(
     tokens: string[],
     notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>,
@@ -384,7 +384,7 @@ export class FCMClient {
 
   /**
    * Send to a topic
-  */
+   */
   async sendToTopic(
     topic: string,
     notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>
@@ -395,7 +395,7 @@ export class FCMClient {
   /**
    * Send to topics with a condition
    * @example sendToCondition("'TopicA' in topics && 'TopicB' in topics", {...})
-  */
+   */
   async sendToCondition(
     condition: string,
     notification: Omit<FCMNotification, 'token' | 'topic' | 'condition'>
@@ -405,7 +405,7 @@ export class FCMClient {
 
   /**
    * Send a simple notification (convenience method)
-  */
+   */
   async sendSimple(
     token: string,
     title: string,
@@ -422,7 +422,7 @@ export class FCMClient {
 
   /**
    * Send a data-only (silent) notification
-  */
+   */
   async sendSilent(
     token: string,
     data: Record<string, string>
@@ -438,7 +438,7 @@ export class FCMClient {
 
   /**
    * Subscribe a token to a topic
-  */
+   */
   async subscribeToTopic(tokens: string[], topic: string): Promise<{ success: boolean; error?: string }> {
     try {
       const accessToken = await this.getAccessToken()
@@ -471,7 +471,7 @@ export class FCMClient {
 
   /**
    * Unsubscribe a token from a topic
-  */
+   */
   async unsubscribeFromTopic(tokens: string[], topic: string): Promise<{ success: boolean; error?: string }> {
     try {
       const accessToken = await this.getAccessToken()

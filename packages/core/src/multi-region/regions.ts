@@ -1,7 +1,7 @@
 /**
  * AWS Region utilities
  * Region selection, validation, and configuration
-*/
+ */
 
 export interface RegionInfo {
   code: string
@@ -28,7 +28,7 @@ export interface RegionInfo {
 
 /**
  * AWS Region database
-*/
+ */
 export const AWS_REGIONS: RegionInfo[] = [
   {
     code: 'us-east-1',
@@ -196,21 +196,21 @@ export const AWS_REGIONS: RegionInfo[] = [
 
 /**
  * Get region by code
-*/
+ */
 export function getRegion(code: string): RegionInfo | undefined {
   return AWS_REGIONS.find(r => r.code === code)
 }
 
 /**
  * Get all regions
-*/
+ */
 export function getAllRegions(): RegionInfo[] {
   return AWS_REGIONS
 }
 
 /**
  * Get regions by location
-*/
+ */
 export function getRegionsByLocation(location: string): RegionInfo[] {
   const lowerLocation = location.toLowerCase()
   return AWS_REGIONS.filter(r => r.location.toLowerCase().includes(lowerLocation))
@@ -218,28 +218,28 @@ export function getRegionsByLocation(location: string): RegionInfo[] {
 
 /**
  * Get regions with specific compliance
-*/
+ */
 export function getRegionsByCompliance(compliance: string): RegionInfo[] {
   return AWS_REGIONS.filter(r => r.compliance.includes(compliance))
 }
 
 /**
  * Get regions by pricing tier
-*/
+ */
 export function getRegionsByPricingTier(tier: 'standard' | 'reduced' | 'premium'): RegionInfo[] {
   return AWS_REGIONS.filter(r => r.pricing.tier === tier)
 }
 
 /**
  * Validate region code
-*/
+ */
 export function isValidRegion(code: string): boolean {
   return AWS_REGIONS.some(r => r.code === code)
 }
 
 /**
  * Get closest region to user location
-*/
+ */
 export function getClosestRegion(userLocation: {
   continent?: string
   country?: string
@@ -263,7 +263,7 @@ export function getClosestRegion(userLocation: {
 
 /**
  * Suggest regions based on requirements
-*/
+ */
 export interface RegionRequirements {
   compliance?: string[]
   pricingSensitive?: boolean
@@ -299,7 +299,7 @@ export function suggestRegions(requirements: RegionRequirements): RegionInfo[] {
 
 /**
  * Calculate region pairs for failover
-*/
+ */
 export interface RegionPairSuggestion {
   primary: RegionInfo
   secondary: RegionInfo
@@ -346,7 +346,7 @@ export function suggestRegionPairs(primaryRegion: string): RegionPairSuggestion[
 
 /**
  * Calculate simplified distance between regions
-*/
+ */
 function calculateDistance(region1: RegionInfo, region2: RegionInfo): number {
   // Simplified distance calculation
   // In real implementation, would use actual lat/lon coordinates
@@ -370,14 +370,14 @@ function calculateDistance(region1: RegionInfo, region2: RegionInfo): number {
 
 /**
  * Check if regions are on the same continent
-*/
+ */
 function isSameContinent(region1: RegionInfo, region2: RegionInfo): boolean {
   return getContinentFromLocation(region1.location) === getContinentFromLocation(region2.location)
 }
 
 /**
  * Get continent from location string
-*/
+ */
 function getContinentFromLocation(location: string): string {
   if (location.includes('USA') || location.includes('Canada')) {
     return 'North America'
@@ -399,21 +399,21 @@ function getContinentFromLocation(location: string): string {
 
 /**
  * Format region for display
-*/
+ */
 export function formatRegion(region: RegionInfo): string {
   return `${region.name} (${region.code})`
 }
 
 /**
  * Format region list for display
-*/
+ */
 export function formatRegionList(regions: RegionInfo[]): string {
   return regions.map(r => formatRegion(r)).join('\n')
 }
 
 /**
  * Get region statistics
-*/
+ */
 export function getRegionStats(): {
   total: number
   byContinent: Record<string, number>

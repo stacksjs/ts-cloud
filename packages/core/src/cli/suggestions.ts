@@ -1,11 +1,11 @@
 /**
  * Command suggestions and typo corrections
  * Helps users discover commands and fix typos
-*/
+ */
 
 /**
  * Calculate Levenshtein distance between two strings
-*/
+ */
 function levenshteinDistance(a: string, b: string): number {
   const matrix: number[][] = []
 
@@ -37,7 +37,7 @@ function levenshteinDistance(a: string, b: string): number {
 
 /**
  * Calculate similarity score between 0 and 1
-*/
+ */
 function similarityScore(a: string, b: string): number {
   const distance = levenshteinDistance(a.toLowerCase(), b.toLowerCase())
   const maxLength = Math.max(a.length, b.length)
@@ -49,7 +49,7 @@ function similarityScore(a: string, b: string): number {
 
 /**
  * Suggest similar commands based on typo
-*/
+ */
 export function suggestCommand(input: string, availableCommands: string[], threshold = 0.5): string[] {
   const suggestions = availableCommands
     .map(cmd => ({
@@ -65,7 +65,7 @@ export function suggestCommand(input: string, availableCommands: string[], thres
 
 /**
  * Format suggestion message
-*/
+ */
 export function formatSuggestion(input: string, suggestions: string[]): string {
   if (suggestions.length === 0) {
     return `Unknown command: '${input}'\n\nRun 'ts-cloud --help' to see available commands.`
@@ -80,14 +80,14 @@ export function formatSuggestion(input: string, suggestions: string[]): string {
 
 /**
  * Check if input is likely a typo of any available command
-*/
+ */
 export function isLikelyTypo(input: string, availableCommands: string[]): boolean {
   return suggestCommand(input, availableCommands, 0.7).length > 0
 }
 
 /**
  * Command categories for contextual help
-*/
+ */
 export interface CommandCategory {
   name: string
   description: string
@@ -103,7 +103,7 @@ export interface CommandInfo {
 
 /**
  * Get contextual help based on current command
-*/
+ */
 export function getContextualHelp(
   currentCommand: string,
   categories: CommandCategory[],
@@ -152,7 +152,7 @@ export function getContextualHelp(
 
 /**
  * Search commands by keyword
-*/
+ */
 export function searchCommands(
   query: string,
   categories: CommandCategory[],
@@ -180,7 +180,7 @@ export function searchCommands(
 
 /**
  * Autocomplete suggestions for partial input
-*/
+ */
 export function autocomplete(
   partial: string,
   availableCommands: string[],
@@ -204,7 +204,7 @@ export function autocomplete(
 
 /**
  * Suggest flags based on partial input
-*/
+ */
 export interface FlagInfo {
   name: string
   alias?: string
@@ -226,7 +226,7 @@ export function suggestFlags(partial: string, availableFlags: FlagInfo[]): FlagI
 
 /**
  * Format flag suggestions
-*/
+ */
 export function formatFlagSuggestions(flags: FlagInfo[]): string {
   if (flags.length === 0) {
     return 'No matching flags found.'
@@ -256,7 +256,7 @@ export function formatFlagSuggestions(flags: FlagInfo[]): string {
 
 /**
  * Get command usage example
-*/
+ */
 export function getCommandUsage(command: CommandInfo): string {
   const lines: string[] = []
 
@@ -282,7 +282,7 @@ export function getCommandUsage(command: CommandInfo): string {
 
 /**
  * Validate command and suggest fixes
-*/
+ */
 export interface ValidationResult {
   valid: boolean
   errors: string[]

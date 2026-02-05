@@ -2,7 +2,7 @@
  * AWS Bedrock Client
  * Direct API calls for Bedrock AI model invocations and management
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -862,7 +862,7 @@ export interface InvokeAgentCommandOutput {
 
 /**
  * Bedrock Runtime client for AI model invocations
-*/
+ */
 export class BedrockRuntimeClient {
   private client: AWSClient
   private region: string
@@ -874,7 +874,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Invoke a Bedrock model (matches AWS SDK InvokeModelCommand)
-  */
+   */
   async invokeModel(params: InvokeModelCommandInput): Promise<InvokeModelCommandOutput> {
     const body = typeof params.body === 'string'
       ? params.body
@@ -916,7 +916,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Invoke model with streaming response (matches AWS SDK InvokeModelWithResponseStreamCommand)
-  */
+   */
   async invokeModelWithResponseStream(params: InvokeModelWithResponseStreamCommandInput): Promise<InvokeModelWithResponseStreamCommandOutput> {
     const body = typeof params.body === 'string'
       ? params.body
@@ -950,7 +950,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Internal method to make streaming request
-  */
+   */
   private async makeStreamRequest(
     modelId: string,
     headers: Record<string, string>,
@@ -989,7 +989,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Parse AWS event stream format
-  */
+   */
   private async *parseEventStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncIterable<BedrockStreamChunk> {
     const decoder = new TextDecoder()
     let buffer = ''
@@ -1017,7 +1017,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Extract JSON chunks from event stream buffer
-  */
+   */
   private extractJsonChunks(buffer: string): { parsed: unknown[]; remaining: string } {
     const parsed: unknown[] = []
     let remaining = buffer
@@ -1052,7 +1052,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Get credentials from environment
-  */
+   */
   private getCredentialsFromEnv(): { accessKeyId: string; secretAccessKey: string; sessionToken?: string } {
     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
@@ -1067,7 +1067,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Sign request for streaming (simplified SigV4)
-  */
+   */
   private signStreamRequest(
     method: string,
     path: string,
@@ -1144,7 +1144,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Invoke Claude model with messages API (convenience method)
-  */
+   */
   async invokeClaudeMessages(params: {
     modelId?: string
     messages: BedrockMessage[]
@@ -1190,7 +1190,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Converse API - unified conversation interface for all models
-  */
+   */
   async converse(params: ConverseCommandInput): Promise<ConverseCommandOutput> {
     const requestBody: Record<string, unknown> = {
       modelId: params.modelId,
@@ -1219,7 +1219,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Generate embeddings using a Bedrock model
-  */
+   */
   async generateEmbeddings(params: {
     modelId?: string
     inputText: string | string[]
@@ -1266,7 +1266,7 @@ export class BedrockRuntimeClient {
 
   /**
    * Apply guardrail to content
-  */
+   */
   async applyGuardrail(params: {
     guardrailIdentifier: string
     guardrailVersion: string
@@ -1307,7 +1307,7 @@ export class BedrockRuntimeClient {
 
 /**
  * Bedrock client for model management (not runtime)
-*/
+ */
 export class BedrockClient {
   private client: AWSClient
   private region: string
@@ -1323,7 +1323,7 @@ export class BedrockClient {
 
   /**
    * List available foundation models
-  */
+   */
   async listFoundationModels(params?: ListFoundationModelsCommandInput): Promise<ListFoundationModelsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.byProvider) queryParams.byProvider = params.byProvider
@@ -1342,7 +1342,7 @@ export class BedrockClient {
 
   /**
    * Get details about a foundation model
-  */
+   */
   async getFoundationModel(params: GetFoundationModelCommandInput): Promise<GetFoundationModelCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1358,7 +1358,7 @@ export class BedrockClient {
 
   /**
    * Create a model customization job (fine-tuning)
-  */
+   */
   async createModelCustomizationJob(params: CreateModelCustomizationJobCommandInput): Promise<CreateModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1374,7 +1374,7 @@ export class BedrockClient {
 
   /**
    * Get model customization job details
-  */
+   */
   async getModelCustomizationJob(params: GetModelCustomizationJobCommandInput): Promise<GetModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1386,7 +1386,7 @@ export class BedrockClient {
 
   /**
    * List model customization jobs
-  */
+   */
   async listModelCustomizationJobs(params?: ListModelCustomizationJobsCommandInput): Promise<ListModelCustomizationJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
@@ -1409,7 +1409,7 @@ export class BedrockClient {
 
   /**
    * Stop a model customization job
-  */
+   */
   async stopModelCustomizationJob(params: StopModelCustomizationJobCommandInput): Promise<StopModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1428,7 +1428,7 @@ export class BedrockClient {
 
   /**
    * List custom models
-  */
+   */
   async listCustomModels(params?: ListCustomModelsCommandInput): Promise<ListCustomModelsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
@@ -1452,7 +1452,7 @@ export class BedrockClient {
 
   /**
    * Get custom model details
-  */
+   */
   async getCustomModel(params: GetCustomModelCommandInput): Promise<GetCustomModelCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1464,7 +1464,7 @@ export class BedrockClient {
 
   /**
    * Delete a custom model
-  */
+   */
   async deleteCustomModel(params: DeleteCustomModelCommandInput): Promise<DeleteCustomModelCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1480,7 +1480,7 @@ export class BedrockClient {
 
   /**
    * Request access to a foundation model
-  */
+   */
   async requestModelAccess(params: CreateFoundationModelEntitlementCommandInput): Promise<CreateFoundationModelEntitlementCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1500,7 +1500,7 @@ export class BedrockClient {
 
   /**
    * Create a guardrail
-  */
+   */
   async createGuardrail(params: CreateGuardrailCommandInput): Promise<CreateGuardrailCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1516,7 +1516,7 @@ export class BedrockClient {
 
   /**
    * Get guardrail details
-  */
+   */
   async getGuardrail(params: GetGuardrailCommandInput): Promise<GetGuardrailCommandOutput> {
     let path = `/guardrails/${encodeURIComponent(params.guardrailIdentifier)}`
     if (params.guardrailVersion) {
@@ -1533,7 +1533,7 @@ export class BedrockClient {
 
   /**
    * List guardrails
-  */
+   */
   async listGuardrails(params?: ListGuardrailsCommandInput): Promise<ListGuardrailsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.guardrailIdentifier) queryParams.guardrailIdentifier = params.guardrailIdentifier
@@ -1551,7 +1551,7 @@ export class BedrockClient {
 
   /**
    * Delete a guardrail
-  */
+   */
   async deleteGuardrail(params: DeleteGuardrailCommandInput): Promise<DeleteGuardrailCommandOutput> {
     let path = `/guardrails/${encodeURIComponent(params.guardrailIdentifier)}`
     if (params.guardrailVersion) {
@@ -1572,7 +1572,7 @@ export class BedrockClient {
 
   /**
    * List model invocation jobs (batch inference)
-  */
+   */
   async listModelInvocationJobs(params?: ListModelInvocationJobsCommandInput): Promise<ListModelInvocationJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.submitTimeAfter) queryParams.submitTimeAfter = params.submitTimeAfter
@@ -1599,7 +1599,7 @@ export class BedrockClient {
 
   /**
    * Wait for a model customization job to complete
-  */
+   */
   async waitForModelCustomizationJob(
     jobIdentifier: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -1623,7 +1623,7 @@ export class BedrockClient {
 
   /**
    * Request access to multiple models
-  */
+   */
   async requestAccessToModels(modelIds: string[]): Promise<Array<{ modelId: string; status: string; error?: string }>> {
     const results: Array<{ modelId: string; status: string; error?: string }> = []
 
@@ -1642,7 +1642,7 @@ export class BedrockClient {
 
   /**
    * List all foundation models from a specific provider
-  */
+   */
   async listModelsByProvider(provider: string): Promise<FoundationModelSummary[]> {
     const result = await this.listFoundationModels({ byProvider: provider })
     return result.modelSummaries || []
@@ -1650,14 +1650,14 @@ export class BedrockClient {
 
   /**
    * List all Claude models
-  */
+   */
   async listClaudeModels(): Promise<FoundationModelSummary[]> {
     return this.listModelsByProvider('Anthropic')
   }
 
   /**
    * List all embedding models
-  */
+   */
   async listEmbeddingModels(): Promise<FoundationModelSummary[]> {
     const result = await this.listFoundationModels({ byOutputModality: 'EMBEDDING' })
     return result.modelSummaries || []
@@ -1669,7 +1669,7 @@ export class BedrockClient {
 
   /**
    * Create a batch inference job
-  */
+   */
   async createModelInvocationJob(params: CreateModelInvocationJobCommandInput): Promise<CreateModelInvocationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1685,7 +1685,7 @@ export class BedrockClient {
 
   /**
    * Get batch inference job details
-  */
+   */
   async getModelInvocationJob(params: GetModelInvocationJobCommandInput): Promise<GetModelInvocationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1697,7 +1697,7 @@ export class BedrockClient {
 
   /**
    * Stop a batch inference job
-  */
+   */
   async stopModelInvocationJob(params: StopModelInvocationJobCommandInput): Promise<StopModelInvocationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1716,7 +1716,7 @@ export class BedrockClient {
 
   /**
    * Create provisioned throughput for a model
-  */
+   */
   async createProvisionedModelThroughput(params: CreateProvisionedModelThroughputCommandInput): Promise<CreateProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1732,7 +1732,7 @@ export class BedrockClient {
 
   /**
    * Get provisioned throughput details
-  */
+   */
   async getProvisionedModelThroughput(params: GetProvisionedModelThroughputCommandInput): Promise<GetProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1744,7 +1744,7 @@ export class BedrockClient {
 
   /**
    * List provisioned throughputs
-  */
+   */
   async listProvisionedModelThroughputs(params?: ListProvisionedModelThroughputsCommandInput): Promise<ListProvisionedModelThroughputsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
@@ -1768,7 +1768,7 @@ export class BedrockClient {
 
   /**
    * Update provisioned throughput
-  */
+   */
   async updateProvisionedModelThroughput(params: UpdateProvisionedModelThroughputCommandInput): Promise<UpdateProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1787,7 +1787,7 @@ export class BedrockClient {
 
   /**
    * Delete provisioned throughput
-  */
+   */
   async deleteProvisionedModelThroughput(params: DeleteProvisionedModelThroughputCommandInput): Promise<DeleteProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1803,7 +1803,7 @@ export class BedrockClient {
 
   /**
    * Create a model evaluation job
-  */
+   */
   async createEvaluationJob(params: CreateEvaluationJobCommandInput): Promise<CreateEvaluationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1819,7 +1819,7 @@ export class BedrockClient {
 
   /**
    * Get evaluation job details
-  */
+   */
   async getEvaluationJob(params: GetEvaluationJobCommandInput): Promise<GetEvaluationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1831,7 +1831,7 @@ export class BedrockClient {
 
   /**
    * List evaluation jobs
-  */
+   */
   async listEvaluationJobs(params?: ListEvaluationJobsCommandInput): Promise<ListEvaluationJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
@@ -1854,7 +1854,7 @@ export class BedrockClient {
 
   /**
    * Stop an evaluation job
-  */
+   */
   async stopEvaluationJob(params: StopEvaluationJobCommandInput): Promise<StopEvaluationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1873,7 +1873,7 @@ export class BedrockClient {
 
   /**
    * Get inference profile details
-  */
+   */
   async getInferenceProfile(params: GetInferenceProfileCommandInput): Promise<GetInferenceProfileCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1885,7 +1885,7 @@ export class BedrockClient {
 
   /**
    * List inference profiles
-  */
+   */
   async listInferenceProfiles(params?: ListInferenceProfilesCommandInput): Promise<ListInferenceProfilesCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
@@ -1903,7 +1903,7 @@ export class BedrockClient {
 
   /**
    * Create an inference profile
-  */
+   */
   async createInferenceProfile(params: CreateInferenceProfileCommandInput): Promise<CreateInferenceProfileCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1919,7 +1919,7 @@ export class BedrockClient {
 
   /**
    * Delete an inference profile
-  */
+   */
   async deleteInferenceProfile(params: DeleteInferenceProfileCommandInput): Promise<DeleteInferenceProfileCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1935,7 +1935,7 @@ export class BedrockClient {
 
   /**
    * Create a model copy job
-  */
+   */
   async createModelCopyJob(params: CreateModelCopyJobCommandInput): Promise<CreateModelCopyJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1951,7 +1951,7 @@ export class BedrockClient {
 
   /**
    * Get model copy job details
-  */
+   */
   async getModelCopyJob(params: GetModelCopyJobCommandInput): Promise<GetModelCopyJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
@@ -1963,7 +1963,7 @@ export class BedrockClient {
 
   /**
    * List model copy jobs
-  */
+   */
   async listModelCopyJobs(params?: ListModelCopyJobsCommandInput): Promise<ListModelCopyJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
@@ -1993,7 +1993,7 @@ export class BedrockClient {
 
 /**
  * Bedrock Agent Runtime client for invoking agents
-*/
+ */
 export class BedrockAgentRuntimeClient {
   private client: AWSClient
   private region: string
@@ -2005,7 +2005,7 @@ export class BedrockAgentRuntimeClient {
 
   /**
    * Invoke a Bedrock agent
-  */
+   */
   async invokeAgent(params: InvokeAgentCommandInput): Promise<{
     completion: string
     sessionId: string
@@ -2041,7 +2041,7 @@ export class BedrockAgentRuntimeClient {
 
   /**
    * Retrieve from a knowledge base
-  */
+   */
   async retrieve(params: {
     knowledgeBaseId: string
     retrievalQuery: {
@@ -2086,7 +2086,7 @@ export class BedrockAgentRuntimeClient {
 
   /**
    * Retrieve and generate using a knowledge base
-  */
+   */
   async retrieveAndGenerate(params: {
     input: {
       text: string
@@ -2169,7 +2169,7 @@ export class BedrockAgentRuntimeClient {
 
 /**
  * Bedrock Agent client for agent management
-*/
+ */
 export class BedrockAgentClient {
   private client: AWSClient
   private region: string
@@ -2181,7 +2181,7 @@ export class BedrockAgentClient {
 
   /**
    * Create an agent
-  */
+   */
   async createAgent(params: CreateAgentCommandInput): Promise<CreateAgentCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2197,7 +2197,7 @@ export class BedrockAgentClient {
 
   /**
    * Get agent details
-  */
+   */
   async getAgent(params: { agentId: string }): Promise<{ agent: CreateAgentCommandOutput['agent'] }> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2209,7 +2209,7 @@ export class BedrockAgentClient {
 
   /**
    * List agents
-  */
+   */
   async listAgents(params?: {
     maxResults?: number
     nextToken?: string
@@ -2239,7 +2239,7 @@ export class BedrockAgentClient {
 
   /**
    * Delete an agent
-  */
+   */
   async deleteAgent(params: { agentId: string; skipResourceInUseCheck?: boolean }): Promise<{ agentId: string; agentStatus: string }> {
     const queryParams: Record<string, string> = {}
     if (params.skipResourceInUseCheck !== undefined) {
@@ -2257,7 +2257,7 @@ export class BedrockAgentClient {
 
   /**
    * Prepare an agent for invocation
-  */
+   */
   async prepareAgent(params: { agentId: string }): Promise<{
     agentId: string
     agentStatus: string
@@ -2277,7 +2277,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a knowledge base
-  */
+   */
   async createKnowledgeBase(params: CreateKnowledgeBaseCommandInput): Promise<CreateKnowledgeBaseCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2293,7 +2293,7 @@ export class BedrockAgentClient {
 
   /**
    * Get knowledge base details
-  */
+   */
   async getKnowledgeBase(params: { knowledgeBaseId: string }): Promise<{ knowledgeBase: CreateKnowledgeBaseCommandOutput['knowledgeBase'] }> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2305,7 +2305,7 @@ export class BedrockAgentClient {
 
   /**
    * List knowledge bases
-  */
+   */
   async listKnowledgeBases(params?: {
     maxResults?: number
     nextToken?: string
@@ -2334,7 +2334,7 @@ export class BedrockAgentClient {
 
   /**
    * Delete a knowledge base
-  */
+   */
   async deleteKnowledgeBase(params: { knowledgeBaseId: string }): Promise<{ knowledgeBaseId: string; status: string }> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2350,7 +2350,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a data source for a knowledge base
-  */
+   */
   async createDataSource(params: CreateDataSourceCommandInput): Promise<CreateDataSourceCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2366,7 +2366,7 @@ export class BedrockAgentClient {
 
   /**
    * Get data source details
-  */
+   */
   async getDataSource(params: GetDataSourceCommandInput): Promise<GetDataSourceCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2378,7 +2378,7 @@ export class BedrockAgentClient {
 
   /**
    * List data sources for a knowledge base
-  */
+   */
   async listDataSources(params: ListDataSourcesCommandInput): Promise<ListDataSourcesCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params.maxResults) queryParams.maxResults = params.maxResults.toString()
@@ -2395,7 +2395,7 @@ export class BedrockAgentClient {
 
   /**
    * Update a data source
-  */
+   */
   async updateDataSource(params: UpdateDataSourceCommandInput): Promise<UpdateDataSourceCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2411,7 +2411,7 @@ export class BedrockAgentClient {
 
   /**
    * Delete a data source
-  */
+   */
   async deleteDataSource(params: DeleteDataSourceCommandInput): Promise<DeleteDataSourceCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2427,7 +2427,7 @@ export class BedrockAgentClient {
 
   /**
    * Start an ingestion job to sync data source with knowledge base
-  */
+   */
   async startIngestionJob(params: StartIngestionJobCommandInput): Promise<StartIngestionJobCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2446,7 +2446,7 @@ export class BedrockAgentClient {
 
   /**
    * Get ingestion job details
-  */
+   */
   async getIngestionJob(params: GetIngestionJobCommandInput): Promise<GetIngestionJobCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2458,7 +2458,7 @@ export class BedrockAgentClient {
 
   /**
    * List ingestion jobs
-  */
+   */
   async listIngestionJobs(params: ListIngestionJobsCommandInput): Promise<ListIngestionJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params.maxResults) queryParams.maxResults = params.maxResults.toString()
@@ -2487,7 +2487,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a prompt
-  */
+   */
   async createPrompt(params: CreatePromptCommandInput): Promise<CreatePromptCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2503,7 +2503,7 @@ export class BedrockAgentClient {
 
   /**
    * Get prompt details
-  */
+   */
   async getPrompt(params: GetPromptCommandInput): Promise<GetPromptCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params.promptVersion) queryParams.promptVersion = params.promptVersion
@@ -2519,7 +2519,7 @@ export class BedrockAgentClient {
 
   /**
    * List prompts
-  */
+   */
   async listPrompts(params?: ListPromptsCommandInput): Promise<ListPromptsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.promptIdentifier) queryParams.promptIdentifier = params.promptIdentifier
@@ -2537,7 +2537,7 @@ export class BedrockAgentClient {
 
   /**
    * Delete a prompt
-  */
+   */
   async deletePrompt(params: DeletePromptCommandInput): Promise<DeletePromptCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params.promptVersion) queryParams.promptVersion = params.promptVersion
@@ -2553,7 +2553,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a new version of a prompt
-  */
+   */
   async createPromptVersion(params: CreatePromptVersionCommandInput): Promise<CreatePromptVersionCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2577,7 +2577,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a flow
-  */
+   */
   async createFlow(params: CreateFlowCommandInput): Promise<CreateFlowCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2593,7 +2593,7 @@ export class BedrockAgentClient {
 
   /**
    * Get flow details
-  */
+   */
   async getFlow(params: GetFlowCommandInput): Promise<GetFlowCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2605,7 +2605,7 @@ export class BedrockAgentClient {
 
   /**
    * List flows
-  */
+   */
   async listFlows(params?: ListFlowsCommandInput): Promise<ListFlowsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.maxResults) queryParams.maxResults = params.maxResults.toString()
@@ -2622,7 +2622,7 @@ export class BedrockAgentClient {
 
   /**
    * Update a flow
-  */
+   */
   async updateFlow(params: UpdateFlowCommandInput): Promise<UpdateFlowCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2638,7 +2638,7 @@ export class BedrockAgentClient {
 
   /**
    * Delete a flow
-  */
+   */
   async deleteFlow(params: DeleteFlowCommandInput): Promise<DeleteFlowCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params.skipResourceInUseCheck !== undefined) {
@@ -2656,7 +2656,7 @@ export class BedrockAgentClient {
 
   /**
    * Prepare a flow for execution
-  */
+   */
   async prepareFlow(params: PrepareFlowCommandInput): Promise<PrepareFlowCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2671,7 +2671,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a new version of a flow
-  */
+   */
   async createFlowVersion(params: CreateFlowVersionCommandInput): Promise<CreateFlowVersionCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -2690,7 +2690,7 @@ export class BedrockAgentClient {
 
   /**
    * Create a flow alias
-  */
+   */
   async createFlowAlias(params: CreateFlowAliasCommandInput): Promise<CreateFlowAliasCommandOutput> {
     return this.client.request({
       service: 'bedrock-agent',
@@ -4011,7 +4011,7 @@ export interface ListModelCopyJobsCommandOutput {
 /**
  * Request access to multiple Bedrock models
  * Convenience function matching the pattern from the user's example
-*/
+ */
 export async function requestModelAccess(
   models: string[],
   region: string = 'us-east-1',
@@ -4022,7 +4022,7 @@ export async function requestModelAccess(
 
 /**
  * List all available Claude models in the region
-*/
+ */
 export async function listClaudeModels(region: string = 'us-east-1'): Promise<FoundationModelSummary[]> {
   const client = new BedrockClient(region)
   return client.listClaudeModels()
@@ -4030,7 +4030,7 @@ export async function listClaudeModels(region: string = 'us-east-1'): Promise<Fo
 
 /**
  * Create a simple text completion using Claude
-*/
+ */
 export async function completeWithClaude(
   prompt: string,
   options?: {
@@ -4055,7 +4055,7 @@ export async function completeWithClaude(
 
 /**
  * Generate embeddings for text
-*/
+ */
 export async function generateEmbeddings(
   text: string | string[],
   options?: {

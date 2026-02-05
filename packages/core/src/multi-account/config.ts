@@ -1,13 +1,13 @@
 /**
  * Multi-Account Configuration
  * Best practices and configuration for multi-account setups
-*/
+ */
 
 import type { AWSAccount, CrossAccountRole } from './manager'
 
 /**
  * Account structure presets
-*/
+ */
 export interface AccountStructure {
   name: string
   description: string
@@ -32,7 +32,7 @@ export interface OUDefinition {
 /**
  * AWS best practices: Multi-account structure
  * Based on AWS Well-Architected Framework
-*/
+ */
 export const RECOMMENDED_ACCOUNT_STRUCTURES: Record<string, AccountStructure> = {
   basic: {
     name: 'Basic (3 Accounts)',
@@ -194,7 +194,7 @@ export const RECOMMENDED_ACCOUNT_STRUCTURES: Record<string, AccountStructure> = 
 
 /**
  * Service Control Policies (SCPs) - AWS best practices
-*/
+ */
 export const RECOMMENDED_SCPS = {
   denyRootAccess: {
     name: 'Deny Root User Access',
@@ -312,7 +312,7 @@ export const RECOMMENDED_SCPS = {
 
 /**
  * Common cross-account role configurations
-*/
+ */
 export const COMMON_CROSS_ACCOUNT_ROLES = {
   deploymentRole: {
     name: 'CrossAccountDeploymentRole',
@@ -374,14 +374,14 @@ export const COMMON_CROSS_ACCOUNT_ROLES = {
 
 /**
  * Get recommended account structure
-*/
+ */
 export function getRecommendedStructure(size: 'basic' | 'standard' | 'enterprise'): AccountStructure {
   return RECOMMENDED_ACCOUNT_STRUCTURES[size]
 }
 
 /**
  * Generate cross-account role CloudFormation
-*/
+ */
 export function generateCrossAccountRoleCF(
   role: CrossAccountRole,
   managedPolicies?: string[],
@@ -438,7 +438,7 @@ export function generateCrossAccountRoleCF(
 
 /**
  * Validate account structure
-*/
+ */
 export function validateAccountStructure(structure: AccountStructure): {
   valid: boolean
   errors: string[]
@@ -492,7 +492,7 @@ export function validateAccountStructure(structure: AccountStructure): {
 
 /**
  * Format account structure for display
-*/
+ */
 export function formatAccountStructure(structure: AccountStructure): string {
   const lines: string[] = []
 

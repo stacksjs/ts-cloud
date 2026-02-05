@@ -1,12 +1,12 @@
 /**
  * AWS Pinpoint CloudFormation Types
-*/
+ */
 
 import type { ResourceBase, Tags } from './common'
 
 /**
  * Pinpoint Application
-*/
+ */
 export interface PinpointApp extends ResourceBase {
   Type: 'AWS::Pinpoint::App'
   Properties: {
@@ -17,7 +17,7 @@ export interface PinpointApp extends ResourceBase {
 
 /**
  * Pinpoint SMS Channel
-*/
+ */
 export interface PinpointSMSChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::SMSChannel'
   Properties: {
@@ -30,7 +30,7 @@ export interface PinpointSMSChannel extends ResourceBase {
 
 /**
  * Pinpoint Email Channel
-*/
+ */
 export interface PinpointEmailChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::EmailChannel'
   Properties: {
@@ -45,7 +45,7 @@ export interface PinpointEmailChannel extends ResourceBase {
 
 /**
  * Pinpoint Voice Channel
-*/
+ */
 export interface PinpointVoiceChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::VoiceChannel'
   Properties: {
@@ -56,7 +56,7 @@ export interface PinpointVoiceChannel extends ResourceBase {
 
 /**
  * Pinpoint APNs Channel (Apple Push Notifications)
-*/
+ */
 export interface PinpointAPNsChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::APNsChannel'
   Properties: {
@@ -74,7 +74,7 @@ export interface PinpointAPNsChannel extends ResourceBase {
 
 /**
  * Pinpoint GCM Channel (Google Cloud Messaging / Firebase)
-*/
+ */
 export interface PinpointGCMChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::GCMChannel'
   Properties: {
@@ -88,7 +88,7 @@ export interface PinpointGCMChannel extends ResourceBase {
 
 /**
  * Pinpoint Baidu Channel
-*/
+ */
 export interface PinpointBaiduChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::BaiduChannel'
   Properties: {
@@ -101,7 +101,7 @@ export interface PinpointBaiduChannel extends ResourceBase {
 
 /**
  * Pinpoint ADM Channel (Amazon Device Messaging)
-*/
+ */
 export interface PinpointADMChannel extends ResourceBase {
   Type: 'AWS::Pinpoint::ADMChannel'
   Properties: {
@@ -114,7 +114,7 @@ export interface PinpointADMChannel extends ResourceBase {
 
 /**
  * Pinpoint Campaign
-*/
+ */
 export interface PinpointCampaign extends ResourceBase {
   Type: 'AWS::Pinpoint::Campaign'
   Properties: {
@@ -236,7 +236,7 @@ export interface PinpointCampaign extends ResourceBase {
 
 /**
  * Pinpoint Segment
-*/
+ */
 export interface PinpointSegment extends ResourceBase {
   Type: 'AWS::Pinpoint::Segment'
   Properties: {
@@ -283,7 +283,7 @@ export interface PinpointSegment extends ResourceBase {
 
 /**
  * Pinpoint Email Template
-*/
+ */
 export interface PinpointEmailTemplate extends ResourceBase {
   Type: 'AWS::Pinpoint::EmailTemplate'
   Properties: {
@@ -299,7 +299,7 @@ export interface PinpointEmailTemplate extends ResourceBase {
 
 /**
  * Pinpoint SMS Template
-*/
+ */
 export interface PinpointSmsTemplate extends ResourceBase {
   Type: 'AWS::Pinpoint::SmsTemplate'
   Properties: {
@@ -313,7 +313,7 @@ export interface PinpointSmsTemplate extends ResourceBase {
 
 /**
  * Pinpoint Push Template
-*/
+ */
 export interface PinpointPushTemplate extends ResourceBase {
   Type: 'AWS::Pinpoint::PushTemplate'
   Properties: {
@@ -371,7 +371,7 @@ export interface PinpointPushTemplate extends ResourceBase {
 
 /**
  * Pinpoint In-App Template
-*/
+ */
 export interface PinpointInAppTemplate extends ResourceBase {
   Type: 'AWS::Pinpoint::InAppTemplate'
   Properties: {
@@ -401,7 +401,7 @@ export interface PinpointInAppTemplate extends ResourceBase {
 
 /**
  * Pinpoint Event Stream
-*/
+ */
 export interface PinpointEventStream extends ResourceBase {
   Type: 'AWS::Pinpoint::EventStream'
   Properties: {
@@ -413,7 +413,7 @@ export interface PinpointEventStream extends ResourceBase {
 
 /**
  * Pinpoint Application Settings
-*/
+ */
 export interface PinpointApplicationSettings extends ResourceBase {
   Type: 'AWS::Pinpoint::ApplicationSettings'
   Properties: {

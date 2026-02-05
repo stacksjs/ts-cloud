@@ -1,7 +1,7 @@
 /**
  * AWS Athena Types
  * CloudFormation resource types for AWS Athena (log analytics, data querying)
-*/
+ */
 
 import type { Tag } from './common'
 

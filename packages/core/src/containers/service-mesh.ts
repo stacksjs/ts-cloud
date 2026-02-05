@@ -1,7 +1,7 @@
 /**
  * Service Mesh Integration
  * AWS App Mesh configuration for microservices
-*/
+ */
 
 export interface ServiceMesh {
   id: string
@@ -174,7 +174,7 @@ export interface GatewayListener {
 
 /**
  * Service mesh manager
-*/
+ */
 export class ServiceMeshManager {
   private meshes: Map<string, ServiceMesh> = new Map()
   private virtualNodes: Map<string, VirtualNode> = new Map()
@@ -187,7 +187,7 @@ export class ServiceMeshManager {
 
   /**
    * Create service mesh
-  */
+   */
   createMesh(mesh: Omit<ServiceMesh, 'id'>): ServiceMesh {
     const id = `mesh-${Date.now()}-${this.meshCounter++}`
 
@@ -203,7 +203,7 @@ export class ServiceMeshManager {
 
   /**
    * Create App Mesh
-  */
+   */
   createAppMesh(options: {
     name: string
     services: MeshService[]
@@ -220,7 +220,7 @@ export class ServiceMeshManager {
 
   /**
    * Create virtual node
-  */
+   */
   createVirtualNode(node: Omit<VirtualNode, 'id'>): VirtualNode {
     const id = `vnode-${Date.now()}-${this.nodeCounter++}`
 
@@ -236,7 +236,7 @@ export class ServiceMeshManager {
 
   /**
    * Create HTTP virtual node
-  */
+   */
   createHTTPVirtualNode(options: {
     name: string
     serviceName: string
@@ -274,7 +274,7 @@ export class ServiceMeshManager {
 
   /**
    * Create virtual router
-  */
+   */
   createVirtualRouter(router: Omit<VirtualRouter, 'id'>): VirtualRouter {
     const id = `vrouter-${Date.now()}-${this.routerCounter++}`
 
@@ -290,7 +290,7 @@ export class ServiceMeshManager {
 
   /**
    * Create canary route
-  */
+   */
   createCanaryRoute(options: {
     name: string
     port: number
@@ -338,7 +338,7 @@ export class ServiceMeshManager {
 
   /**
    * Create virtual gateway
-  */
+   */
   createVirtualGateway(gateway: Omit<VirtualGateway, 'id'>): VirtualGateway {
     const id = `vgateway-${Date.now()}-${this.gatewayCounter++}`
 
@@ -354,7 +354,7 @@ export class ServiceMeshManager {
 
   /**
    * Create ingress gateway
-  */
+   */
   createIngressGateway(options: {
     name: string
     port: number
@@ -398,35 +398,35 @@ export class ServiceMeshManager {
 
   /**
    * Get mesh
-  */
+   */
   getMesh(id: string): ServiceMesh | undefined {
     return this.meshes.get(id)
   }
 
   /**
    * List meshes
-  */
+   */
   listMeshes(): ServiceMesh[] {
     return Array.from(this.meshes.values())
   }
 
   /**
    * Get virtual node
-  */
+   */
   getVirtualNode(id: string): VirtualNode | undefined {
     return this.virtualNodes.get(id)
   }
 
   /**
    * List virtual nodes
-  */
+   */
   listVirtualNodes(): VirtualNode[] {
     return Array.from(this.virtualNodes.values())
   }
 
   /**
    * Generate CloudFormation for App Mesh
-  */
+   */
   generateMeshCF(mesh: ServiceMesh): any {
     return {
       Type: 'AWS::AppMesh::Mesh',
@@ -443,7 +443,7 @@ export class ServiceMeshManager {
 
   /**
    * Generate CloudFormation for Virtual Node
-  */
+   */
   generateVirtualNodeCF(node: VirtualNode, meshName: string): any {
     return {
       Type: 'AWS::AppMesh::VirtualNode',
@@ -480,7 +480,7 @@ export class ServiceMeshManager {
 
   /**
    * Generate CloudFormation for Virtual Router
-  */
+   */
   generateVirtualRouterCF(router: VirtualRouter, meshName: string): any {
     return {
       Type: 'AWS::AppMesh::VirtualRouter',
@@ -501,7 +501,7 @@ export class ServiceMeshManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.meshes.clear()
     this.virtualNodes.clear()
@@ -516,5 +516,5 @@ export class ServiceMeshManager {
 
 /**
  * Global service mesh manager instance
-*/
+ */
 export const serviceMeshManager: ServiceMeshManager = new ServiceMeshManager()

@@ -1,7 +1,7 @@
 /**
  * AWS Lambda Operations
  * Direct API calls without AWS SDK dependency
-*/
+ */
 
 import { AWSClient } from './client'
 import { deflateRawSync } from 'zlib'
@@ -9,7 +9,7 @@ import { deflateRawSync } from 'zlib'
 /**
  * Create a minimal ZIP file containing a single file
  * This is a pure implementation without external dependencies
-*/
+ */
 function createZipFile(filename: string, content: string | Buffer): Buffer {
   const data = typeof content === 'string' ? Buffer.from(content, 'utf-8') : content
   const compressedData = deflateRawSync(data)
@@ -78,7 +78,7 @@ function createZipFile(filename: string, content: string | Buffer): Buffer {
 
 /**
  * Calculate CRC32 checksum
-*/
+ */
 function calculateCrc32(data: Buffer): number {
   // CRC32 lookup table
   const table: number[] = []
@@ -172,7 +172,7 @@ export interface AddPermissionParams {
 
 /**
  * Lambda service management using direct API calls
-*/
+ */
 export class LambdaClient {
   private client: AWSClient
   private region: string
@@ -184,7 +184,7 @@ export class LambdaClient {
 
   /**
    * Create a new Lambda function
-  */
+   */
   async createFunction(params: CreateFunctionParams): Promise<LambdaFunctionConfiguration> {
     const result = await this.client.request({
       service: 'lambda',
@@ -202,7 +202,7 @@ export class LambdaClient {
 
   /**
    * Get function configuration
-  */
+   */
   async getFunction(functionName: string): Promise<{
     Configuration?: LambdaFunctionConfiguration
     Code?: {
@@ -226,7 +226,7 @@ export class LambdaClient {
 
   /**
    * Update function code
-  */
+   */
   async updateFunctionCode(params: UpdateFunctionCodeParams): Promise<LambdaFunctionConfiguration> {
     const { FunctionName, ...rest } = params
     const result = await this.client.request({
@@ -246,7 +246,7 @@ export class LambdaClient {
   /**
    * Update function code with inline JavaScript/TypeScript code
    * Automatically creates a zip file with the code as index.js
-  */
+   */
   async updateFunctionCodeInline(functionName: string, code: string, filename: string = 'index.js'): Promise<LambdaFunctionConfiguration> {
     const zipBuffer = createZipFile(filename, code)
     return this.updateFunctionCode({
@@ -257,7 +257,7 @@ export class LambdaClient {
 
   /**
    * Update function configuration
-  */
+   */
   async updateFunctionConfiguration(params: {
     FunctionName: string
     Runtime?: string
@@ -285,7 +285,7 @@ export class LambdaClient {
 
   /**
    * Delete a Lambda function
-  */
+   */
   async deleteFunction(functionName: string): Promise<void> {
     await this.client.request({
       service: 'lambda',
@@ -300,7 +300,7 @@ export class LambdaClient {
 
   /**
    * Invoke a Lambda function
-  */
+   */
   async invoke(params: {
     FunctionName: string
     InvocationType?: 'RequestResponse' | 'Event' | 'DryRun'
@@ -345,7 +345,7 @@ export class LambdaClient {
 
   /**
    * List Lambda functions
-  */
+   */
   async listFunctions(params?: {
     MaxItems?: number
     Marker?: string
@@ -375,7 +375,7 @@ export class LambdaClient {
 
   /**
    * Add permission to Lambda function (resource-based policy)
-  */
+   */
   async addPermission(params: AddPermissionParams): Promise<{ Statement?: string }> {
     const { FunctionName, ...rest } = params
     const result = await this.client.request({
@@ -394,7 +394,7 @@ export class LambdaClient {
 
   /**
    * Remove permission from Lambda function
-  */
+   */
   async removePermission(functionName: string, statementId: string): Promise<void> {
     await this.client.request({
       service: 'lambda',
@@ -409,7 +409,7 @@ export class LambdaClient {
 
   /**
    * Publish a version of the function
-  */
+   */
   async publishVersion(params: {
     FunctionName: string
     Description?: string
@@ -432,7 +432,7 @@ export class LambdaClient {
 
   /**
    * Create an alias for a function version
-  */
+   */
   async createAlias(params: {
     FunctionName: string
     Name: string
@@ -461,7 +461,7 @@ export class LambdaClient {
 
   /**
    * Wait for function to become active
-  */
+   */
   async waitForFunctionActive(functionName: string, maxWaitSeconds: number = 60): Promise<LambdaFunctionConfiguration> {
     const startTime = Date.now()
     const maxWaitMs = maxWaitSeconds * 1000
@@ -496,7 +496,7 @@ export class LambdaClient {
 
   /**
    * Check if function exists
-  */
+   */
   async functionExists(functionName: string): Promise<boolean> {
     try {
       await this.getFunction(functionName)
@@ -512,7 +512,7 @@ export class LambdaClient {
 
   /**
    * Create a function URL for the Lambda function
-  */
+   */
   async createFunctionUrl(params: {
     FunctionName: string
     AuthType: 'NONE' | 'AWS_IAM'
@@ -548,7 +548,7 @@ export class LambdaClient {
 
   /**
    * Get function URL configuration
-  */
+   */
   async getFunctionUrl(functionName: string): Promise<{
     FunctionUrl?: string
     FunctionArn?: string
@@ -582,7 +582,7 @@ export class LambdaClient {
 
   /**
    * Delete function URL configuration
-  */
+   */
   async deleteFunctionUrl(functionName: string): Promise<void> {
     await this.client.request({
       service: 'lambda',
@@ -597,7 +597,7 @@ export class LambdaClient {
 
   /**
    * Create function with inline code (convenience method)
-  */
+   */
   async createFunctionWithCode(params: {
     FunctionName: string
     Runtime: 'nodejs18.x' | 'nodejs20.x' | 'python3.11' | 'python3.12' | string
@@ -623,7 +623,7 @@ export class LambdaClient {
 
   /**
    * Add permission for Function URL public access
-  */
+   */
   async addFunctionUrlPermission(functionName: string): Promise<{ Statement?: string }> {
     return this.addPermission({
       FunctionName: functionName,
@@ -641,7 +641,7 @@ export class LambdaClient {
 
   /**
    * Publish a new Lambda layer version
-  */
+   */
   async publishLayerVersion(params: {
     LayerName: string
     Description?: string
@@ -678,7 +678,7 @@ export class LambdaClient {
 
   /**
    * List layer versions
-  */
+   */
   async listLayerVersions(layerName: string, params?: {
     CompatibleRuntime?: string
     CompatibleArchitecture?: 'x86_64' | 'arm64'
@@ -716,7 +716,7 @@ export class LambdaClient {
 
   /**
    * Get layer version details
-  */
+   */
   async getLayerVersion(layerName: string, versionNumber: number): Promise<{
     LayerArn?: string
     LayerVersionArn?: string
@@ -745,7 +745,7 @@ export class LambdaClient {
 
   /**
    * Add permission to a layer version (e.g., make it public)
-  */
+   */
   async addLayerVersionPermission(params: {
     LayerName: string
     VersionNumber: number
@@ -771,7 +771,7 @@ export class LambdaClient {
 
   /**
    * Delete a layer version
-  */
+   */
   async deleteLayerVersion(layerName: string, versionNumber: number): Promise<void> {
     await this.client.request({
       service: 'lambda',

@@ -1,7 +1,7 @@
 /**
  * AWS S3 Operations
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import * as crypto from 'node:crypto'
 import { AWSClient } from './client'
@@ -48,7 +48,7 @@ export interface S3Object {
 
 /**
  * S3 client using direct API calls
-*/
+ */
 export class S3Client {
   private client: AWSClient
   private region: string
@@ -60,7 +60,7 @@ export class S3Client {
 
   /**
    * Get AWS credentials from environment or credentials file
-  */
+   */
   private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
     // 1. Check environment variables first
     const envAccessKey = process.env.AWS_ACCESS_KEY_ID
@@ -82,7 +82,7 @@ export class S3Client {
 
   /**
    * Load credentials from ~/.aws/credentials file
-  */
+   */
   private loadCredentialsFromFile(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } | null {
     try {
       const { existsSync, readFileSync } = require('node:fs')
@@ -139,7 +139,7 @@ export class S3Client {
 
   /**
    * List all S3 buckets in the account
-  */
+   */
   async listBuckets(): Promise<{ Buckets: Array<{ Name: string, CreationDate?: string }> }> {
     const result = await this.client.request({
       service: 's3',
@@ -166,7 +166,7 @@ export class S3Client {
 
   /**
    * Create an S3 bucket
-  */
+   */
   async createBucket(bucket: string, options?: { acl?: string }): Promise<void> {
     const headers: Record<string, string> = {}
     if (options?.acl) {
@@ -196,7 +196,7 @@ export class S3Client {
 
   /**
    * Delete an S3 bucket (must be empty)
-  */
+   */
   async deleteBucket(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -208,7 +208,7 @@ export class S3Client {
 
   /**
    * Empty and delete an S3 bucket
-  */
+   */
   async emptyAndDeleteBucket(bucket: string): Promise<void> {
     // First list and delete all objects
     let hasMore = true
@@ -233,7 +233,7 @@ export class S3Client {
 
   /**
    * List all objects in a bucket (handles pagination)
-  */
+   */
   async listAllObjects(options: S3ListOptions): Promise<S3Object[]> {
     const allObjects: S3Object[] = []
     let continuationToken: string | undefined
@@ -286,7 +286,7 @@ export class S3Client {
 
   /**
    * List objects in S3 bucket
-  */
+   */
   async list(options: S3ListOptions): Promise<S3Object[]> {
     // Use path-style URL without query params for simpler signing
     const result = await this.client.request({
@@ -326,7 +326,7 @@ export class S3Client {
 
   /**
    * Put object to S3 bucket
-  */
+   */
   async putObject(options: {
     bucket: string
     key: string
@@ -458,7 +458,7 @@ export class S3Client {
   /**
    * Get object from S3 bucket
    * Returns raw content as string (not parsed as XML)
-  */
+   */
   async getObject(bucket: string, key: string): Promise<string> {
     const result = await this.client.request({
       service: 's3',
@@ -473,7 +473,7 @@ export class S3Client {
 
   /**
    * Copy object within S3 (server-side copy)
-  */
+   */
   async copyObject(options: {
     sourceBucket: string
     sourceKey: string
@@ -512,7 +512,7 @@ export class S3Client {
 
   /**
    * Delete object from S3
-  */
+   */
   async deleteObject(bucket: string, key: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -524,7 +524,7 @@ export class S3Client {
 
   /**
    * Delete multiple objects from S3
-  */
+   */
   async deleteObjects(bucket: string, keys: string[]): Promise<void> {
     const deleteXml = `<?xml version="1.0" encoding="UTF-8"?>
 <Delete>
@@ -550,7 +550,7 @@ export class S3Client {
 
   /**
    * Check if bucket exists
-  */
+   */
   async bucketExists(bucket: string): Promise<boolean> {
     try {
       await this.client.request({
@@ -568,7 +568,7 @@ export class S3Client {
 
   /**
    * Copy file to S3
-  */
+   */
   async copy(options: S3CopyOptions): Promise<void> {
     // Read file and upload
     const fileContent = readFileSync(options.source)
@@ -587,7 +587,7 @@ export class S3Client {
   /**
    * Sync local directory to S3 bucket
    * Note: This is a simplified version. For production use, implement proper sync logic
-  */
+   */
   async sync(options: S3SyncOptions): Promise<void> {
     const files = await this.listFilesRecursive(options.source)
 
@@ -623,14 +623,14 @@ export class S3Client {
 
   /**
    * Delete object from S3 (alias for deleteObject)
-  */
+   */
   async delete(bucket: string, key: string): Promise<void> {
     await this.deleteObject(bucket, key)
   }
 
   /**
    * Delete all objects in a prefix
-  */
+   */
   async deletePrefix(bucket: string, prefix: string): Promise<void> {
     const objects = await this.list({ bucket, prefix })
     const keys = objects.map(obj => obj.Key)
@@ -642,7 +642,7 @@ export class S3Client {
 
   /**
    * Get bucket size
-  */
+   */
   async getBucketSize(bucket: string, prefix?: string): Promise<number> {
     const objects = await this.list({ bucket, prefix })
     return objects.reduce((total, obj) => total + obj.Size, 0)
@@ -650,7 +650,7 @@ export class S3Client {
 
   /**
    * List files recursively in a directory
-  */
+   */
   private async listFilesRecursive(dir: string): Promise<string[]> {
     const files: string[] = []
     const entries = await readdir(dir, { withFileTypes: true })
@@ -673,7 +673,7 @@ export class S3Client {
   /**
    * Put bucket policy for an S3 bucket
    * Uses path-style URLs to avoid redirect issues
-  */
+   */
   async putBucketPolicy(bucket: string, policy: object | string): Promise<void> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
     const host = `s3.${this.region}.amazonaws.com`
@@ -756,7 +756,7 @@ export class S3Client {
   /**
    * Get bucket policy for an S3 bucket
    * Uses path-style URLs to avoid redirect issues
-  */
+   */
   async getBucketPolicy(bucket: string): Promise<object | null> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
     const host = `s3.${this.region}.amazonaws.com`
@@ -842,7 +842,7 @@ export class S3Client {
 
   /**
    * Delete bucket policy
-  */
+   */
   async deleteBucketPolicy(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -855,7 +855,7 @@ export class S3Client {
 
   /**
    * Head bucket - check if bucket exists and you have access
-  */
+   */
   async headBucket(bucket: string): Promise<{ exists: boolean; region?: string }> {
     try {
       const result = await this.client.request({
@@ -876,7 +876,7 @@ export class S3Client {
 
   /**
    * Head object - get object metadata without downloading
-  */
+   */
   async headObject(bucket: string, key: string): Promise<{
     ContentLength?: number
     ContentType?: string
@@ -908,7 +908,7 @@ export class S3Client {
 
   /**
    * Get object as Buffer
-  */
+   */
   async getObjectBuffer(bucket: string, key: string): Promise<Buffer> {
     const content = await this.getObject(bucket, key)
     return Buffer.from(content)
@@ -916,7 +916,7 @@ export class S3Client {
 
   /**
    * Get object as JSON
-  */
+   */
   async getObjectJson<T = any>(bucket: string, key: string): Promise<T> {
     const content = await this.getObject(bucket, key)
     return JSON.parse(content)
@@ -924,7 +924,7 @@ export class S3Client {
 
   /**
    * Put JSON object
-  */
+   */
   async putObjectJson(bucket: string, key: string, data: any, options?: {
     acl?: string
     cacheControl?: string
@@ -941,7 +941,7 @@ export class S3Client {
 
   /**
    * Get bucket versioning configuration
-  */
+   */
   async getBucketVersioning(bucket: string): Promise<{ Status?: 'Enabled' | 'Suspended' }> {
     const result = await this.client.request({
       service: 's3',
@@ -957,7 +957,7 @@ export class S3Client {
 
   /**
    * Put bucket versioning configuration
-  */
+   */
   async putBucketVersioning(bucket: string, status: 'Enabled' | 'Suspended'): Promise<void> {
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <VersioningConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -977,7 +977,7 @@ export class S3Client {
 
   /**
    * Get bucket lifecycle configuration
-  */
+   */
   async getBucketLifecycleConfiguration(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -998,7 +998,7 @@ export class S3Client {
 
   /**
    * Put bucket lifecycle configuration
-  */
+   */
   async putBucketLifecycleConfiguration(bucket: string, rules: Array<{
     ID: string
     Status: 'Enabled' | 'Disabled'
@@ -1056,7 +1056,7 @@ export class S3Client {
 
   /**
    * Delete bucket lifecycle configuration
-  */
+   */
   async deleteBucketLifecycleConfiguration(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1069,7 +1069,7 @@ export class S3Client {
 
   /**
    * Get bucket CORS configuration
-  */
+   */
   async getBucketCors(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -1090,7 +1090,7 @@ export class S3Client {
 
   /**
    * Put bucket CORS configuration
-  */
+   */
   async putBucketCors(bucket: string, rules: Array<{
     AllowedOrigins: string[]
     AllowedMethods: string[]
@@ -1141,7 +1141,7 @@ export class S3Client {
 
   /**
    * Delete bucket CORS configuration
-  */
+   */
   async deleteBucketCors(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1154,7 +1154,7 @@ export class S3Client {
 
   /**
    * Get bucket encryption configuration
-  */
+   */
   async getBucketEncryption(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -1175,7 +1175,7 @@ export class S3Client {
 
   /**
    * Put bucket encryption configuration
-  */
+   */
   async putBucketEncryption(bucket: string, sseAlgorithm: 'AES256' | 'aws:kms', kmsKeyId?: string): Promise<void> {
     let ruleXml = `<ApplyServerSideEncryptionByDefault><SSEAlgorithm>${sseAlgorithm}</SSEAlgorithm>`
     if (kmsKeyId) {
@@ -1201,7 +1201,7 @@ export class S3Client {
 
   /**
    * Delete bucket encryption configuration
-  */
+   */
   async deleteBucketEncryption(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1214,7 +1214,7 @@ export class S3Client {
 
   /**
    * Get bucket tagging
-  */
+   */
   async getBucketTagging(bucket: string): Promise<Array<{ Key: string; Value: string }>> {
     try {
       const result = await this.client.request({
@@ -1237,7 +1237,7 @@ export class S3Client {
 
   /**
    * Put bucket tagging
-  */
+   */
   async putBucketTagging(bucket: string, tags: Array<{ Key: string; Value: string }>): Promise<void> {
     const tagsXml = tags.map(t => `<Tag><Key>${t.Key}</Key><Value>${t.Value}</Value></Tag>`).join('')
 
@@ -1259,7 +1259,7 @@ export class S3Client {
 
   /**
    * Delete bucket tagging
-  */
+   */
   async deleteBucketTagging(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1272,7 +1272,7 @@ export class S3Client {
 
   /**
    * Get object tagging
-  */
+   */
   async getObjectTagging(bucket: string, key: string): Promise<Array<{ Key: string; Value: string }>> {
     try {
       const result = await this.client.request({
@@ -1295,7 +1295,7 @@ export class S3Client {
 
   /**
    * Put object tagging
-  */
+   */
   async putObjectTagging(bucket: string, key: string, tags: Array<{ Key: string; Value: string }>): Promise<void> {
     const tagsXml = tags.map(t => `<Tag><Key>${t.Key}</Key><Value>${t.Value}</Value></Tag>`).join('')
 
@@ -1317,7 +1317,7 @@ export class S3Client {
 
   /**
    * Delete object tagging
-  */
+   */
   async deleteObjectTagging(bucket: string, key: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1330,7 +1330,7 @@ export class S3Client {
 
   /**
    * Get bucket ACL
-  */
+   */
   async getBucketAcl(bucket: string): Promise<any> {
     const result = await this.client.request({
       service: 's3',
@@ -1344,7 +1344,7 @@ export class S3Client {
 
   /**
    * Put bucket ACL (canned ACL)
-  */
+   */
   async putBucketAcl(bucket: string, acl: 'private' | 'public-read' | 'public-read-write' | 'authenticated-read'): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1358,7 +1358,7 @@ export class S3Client {
 
   /**
    * Get object ACL
-  */
+   */
   async getObjectAcl(bucket: string, key: string): Promise<any> {
     const result = await this.client.request({
       service: 's3',
@@ -1372,7 +1372,7 @@ export class S3Client {
 
   /**
    * Put object ACL (canned ACL)
-  */
+   */
   async putObjectAcl(bucket: string, key: string, acl: 'private' | 'public-read' | 'public-read-write' | 'authenticated-read'): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1386,7 +1386,7 @@ export class S3Client {
 
   /**
    * Get bucket location
-  */
+   */
   async getBucketLocation(bucket: string): Promise<string> {
     const result = await this.client.request({
       service: 's3',
@@ -1401,7 +1401,7 @@ export class S3Client {
 
   /**
    * Get bucket logging configuration
-  */
+   */
   async getBucketLogging(bucket: string): Promise<any> {
     const result = await this.client.request({
       service: 's3',
@@ -1415,7 +1415,7 @@ export class S3Client {
 
   /**
    * Put bucket logging configuration
-  */
+   */
   async putBucketLogging(bucket: string, targetBucket: string, targetPrefix: string): Promise<void> {
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <BucketLoggingStatus xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
@@ -1438,7 +1438,7 @@ export class S3Client {
 
   /**
    * Get bucket notification configuration
-  */
+   */
   async getBucketNotificationConfiguration(bucket: string): Promise<any> {
     const result = await this.client.request({
       service: 's3',
@@ -1452,7 +1452,7 @@ export class S3Client {
 
   /**
    * Put bucket notification configuration
-  */
+   */
   async putBucketNotificationConfiguration(bucket: string, config: {
     LambdaFunctionConfigurations?: Array<{
       Id?: string
@@ -1536,7 +1536,7 @@ export class S3Client {
 
   /**
    * Get bucket website configuration
-  */
+   */
   async getBucketWebsite(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -1557,7 +1557,7 @@ export class S3Client {
 
   /**
    * Put bucket website configuration
-  */
+   */
   async putBucketWebsite(bucket: string, config: {
     IndexDocument: string
     ErrorDocument?: string
@@ -1595,7 +1595,7 @@ export class S3Client {
 
   /**
    * Delete bucket website configuration
-  */
+   */
   async deleteBucketWebsite(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1608,7 +1608,7 @@ export class S3Client {
 
   /**
    * Get bucket replication configuration
-  */
+   */
   async getBucketReplication(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -1629,7 +1629,7 @@ export class S3Client {
 
   /**
    * Delete bucket replication configuration
-  */
+   */
   async deleteBucketReplication(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1642,7 +1642,7 @@ export class S3Client {
 
   /**
    * Get public access block configuration
-  */
+   */
   async getPublicAccessBlock(bucket: string): Promise<any> {
     try {
       const result = await this.client.request({
@@ -1663,7 +1663,7 @@ export class S3Client {
 
   /**
    * Put public access block configuration
-  */
+   */
   async putPublicAccessBlock(bucket: string, config: {
     BlockPublicAcls?: boolean
     IgnorePublicAcls?: boolean
@@ -1691,7 +1691,7 @@ export class S3Client {
 
   /**
    * Delete public access block configuration
-  */
+   */
   async deletePublicAccessBlock(bucket: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1704,7 +1704,7 @@ export class S3Client {
 
   /**
    * Generate a presigned URL for GET
-  */
+   */
   generatePresignedGetUrl(bucket: string, key: string, expiresInSeconds: number = 3600): string {
     const { accessKeyId, secretAccessKey } = this.getCredentials()
     const host = `${bucket}.s3.${this.region}.amazonaws.com`
@@ -1751,7 +1751,7 @@ export class S3Client {
 
   /**
    * Generate a presigned URL for PUT
-  */
+   */
   generatePresignedPutUrl(bucket: string, key: string, contentType: string, expiresInSeconds: number = 3600): string {
     const { accessKeyId, secretAccessKey } = this.getCredentials()
     const host = `${bucket}.s3.${this.region}.amazonaws.com`
@@ -1798,7 +1798,7 @@ export class S3Client {
 
   /**
    * Initiate multipart upload
-  */
+   */
   async createMultipartUpload(bucket: string, key: string, options?: {
     contentType?: string
     metadata?: Record<string, string>
@@ -1827,7 +1827,7 @@ export class S3Client {
 
   /**
    * Upload a part in multipart upload
-  */
+   */
   async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Buffer): Promise<{ ETag: string }> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
     const host = `${bucket}.s3.${this.region}.amazonaws.com`
@@ -1904,7 +1904,7 @@ export class S3Client {
 
   /**
    * Complete multipart upload
-  */
+   */
   async completeMultipartUpload(bucket: string, key: string, uploadId: string, parts: Array<{ PartNumber: number; ETag: string }>): Promise<void> {
     const partsXml = parts
       .sort((a, b) => a.PartNumber - b.PartNumber)
@@ -1927,7 +1927,7 @@ export class S3Client {
 
   /**
    * Abort multipart upload
-  */
+   */
   async abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void> {
     await this.client.request({
       service: 's3',
@@ -1940,7 +1940,7 @@ export class S3Client {
 
   /**
    * List multipart uploads
-  */
+   */
   async listMultipartUploads(bucket: string): Promise<Array<{ Key: string; UploadId: string; Initiated: string }>> {
     const result = await this.client.request({
       service: 's3',
@@ -1962,7 +1962,7 @@ export class S3Client {
 
   /**
    * Restore object from Glacier
-  */
+   */
   async restoreObject(bucket: string, key: string, days: number, tier: 'Standard' | 'Bulk' | 'Expedited' = 'Standard'): Promise<void> {
     const body = `<?xml version="1.0" encoding="UTF-8"?>
 <RestoreRequest>
@@ -1985,7 +1985,7 @@ export class S3Client {
 
   /**
    * Select object content (S3 Select)
-  */
+   */
   async selectObjectContent(bucket: string, key: string, expression: string, inputFormat: 'CSV' | 'JSON' | 'Parquet', outputFormat: 'CSV' | 'JSON' = 'JSON'): Promise<string> {
     let inputSerialization = ''
     if (inputFormat === 'CSV') {
@@ -2028,7 +2028,7 @@ export class S3Client {
   /**
    * Generate a presigned URL for S3 object access
    * Allows temporary access to private objects without authentication
-  */
+   */
   async getSignedUrl(options: {
     bucket: string
     key: string
@@ -2105,7 +2105,7 @@ export class S3Client {
 
   /**
    * List objects in a bucket with pagination support
-  */
+   */
   async listObjects(options: {
     bucket: string
     prefix?: string
@@ -2158,7 +2158,7 @@ export class S3Client {
 
   /**
    * Empty a bucket by deleting all objects (required before bucket deletion)
-  */
+   */
   async emptyBucket(bucket: string): Promise<{ deletedCount: number }> {
     let deletedCount = 0
 
@@ -2220,7 +2220,7 @@ export class S3Client {
 
   /**
    * List object versions in a bucket
-  */
+   */
   async listObjectVersions(options: {
     bucket: string
     prefix?: string
@@ -2289,7 +2289,7 @@ export class S3Client {
 
   /**
    * Delete specific object versions
-  */
+   */
   async deleteObjectVersions(
     bucket: string,
     objects: Array<{ Key: string; VersionId?: string }>,

@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Real-time App Preset
  * Perfect for: Chat apps, collaborative tools, live dashboards, gaming backends
  * Includes: API Gateway WebSocket + Lambda + DynamoDB Streams
-*/
+ */
 export function createRealtimeAppPreset(options: {
   name: string
   slug: string

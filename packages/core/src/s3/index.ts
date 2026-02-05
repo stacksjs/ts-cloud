@@ -1,7 +1,7 @@
 /**
  * S3 Advanced Features
  * Object Lock, Transfer Acceleration, Access Points, Glacier, Inventory, Batch Operations, Event Notifications
-*/
+ */
 
 export interface LifecyclePolicy {
   id: string
@@ -143,7 +143,7 @@ export class StorageAdvancedManager {
 
   /**
    * Enable S3 Object Lock in compliance mode
-  */
+   */
   enableObjectLock(options: {
     bucketName: string
     mode?: 'COMPLIANCE' | 'GOVERNANCE'
@@ -166,7 +166,7 @@ export class StorageAdvancedManager {
 
   /**
    * Enable S3 Transfer Acceleration
-  */
+   */
   enableTransferAcceleration(bucketName: string): TransferAccelerationConfig {
     const id = `transfer-accel-${Date.now()}-${this.counter++}`
     const config: TransferAccelerationConfig = {
@@ -181,7 +181,7 @@ export class StorageAdvancedManager {
 
   /**
    * Create S3 Access Point
-  */
+   */
   createAccessPoint(options: {
     name: string
     bucketName: string
@@ -204,7 +204,7 @@ export class StorageAdvancedManager {
 
   /**
    * Configure Glacier Deep Archive
-  */
+   */
   createGlacierArchive(options: {
     bucketName: string
     archiveType: 'GLACIER' | 'DEEP_ARCHIVE'
@@ -229,7 +229,7 @@ export class StorageAdvancedManager {
 
   /**
    * Create S3 Inventory configuration
-  */
+   */
   createInventory(options: {
     sourceBucket: string
     destinationBucket: string
@@ -254,7 +254,7 @@ export class StorageAdvancedManager {
 
   /**
    * Create S3 Batch Operation
-  */
+   */
   createBatchOperation(options: {
     operation: 'Copy' | 'Delete' | 'RestoreObject' | 'Tagging' | 'ACL' | 'ObjectLock'
     manifestBucket: string
@@ -276,7 +276,7 @@ export class StorageAdvancedManager {
 
   /**
    * Execute batch operation
-  */
+   */
   executeBatchOperation(batchOpId: string): BatchOperation {
     const batchOp = this.batchOps.get(batchOpId)
     if (!batchOp) {
@@ -290,14 +290,14 @@ export class StorageAdvancedManager {
 
   /**
    * Get batch operation status
-  */
+   */
   getBatchOperationStatus(batchOpId: string): BatchOperation | undefined {
     return this.batchOps.get(batchOpId)
   }
 
   /**
    * Create S3 Event Notification for Lambda
-  */
+   */
   createLambdaNotification(options: {
     bucketName: string
     lambdaArn: string
@@ -325,7 +325,7 @@ export class StorageAdvancedManager {
 
   /**
    * Create S3 Event Notification for SQS
-  */
+   */
   createSQSNotification(options: {
     bucketName: string
     queueArn: string
@@ -353,7 +353,7 @@ export class StorageAdvancedManager {
 
   /**
    * Create S3 Event Notification for SNS
-  */
+   */
   createSNSNotification(options: {
     bucketName: string
     topicArn: string
@@ -381,7 +381,7 @@ export class StorageAdvancedManager {
 
   /**
    * Generate CloudFormation for Object Lock
-  */
+   */
   generateObjectLockCF(config: ObjectLockConfig): any {
     const cf: any = {
       ObjectLockEnabled: 'Enabled',
@@ -407,7 +407,7 @@ export class StorageAdvancedManager {
 
   /**
    * Generate CloudFormation for Transfer Acceleration
-  */
+   */
   generateTransferAccelerationCF(config: TransferAccelerationConfig): any {
     return {
       AccelerateConfiguration: {
@@ -418,7 +418,7 @@ export class StorageAdvancedManager {
 
   /**
    * Generate CloudFormation for Access Point
-  */
+   */
   generateAccessPointCF(accessPoint: AccessPoint): any {
     return {
       Type: 'AWS::S3::AccessPoint',
@@ -443,7 +443,7 @@ export class StorageAdvancedManager {
 
   /**
    * Generate CloudFormation for Inventory
-  */
+   */
   generateInventoryCF(inventory: InventoryConfig): any {
     return {
       Type: 'AWS::S3::Bucket',
@@ -468,7 +468,7 @@ export class StorageAdvancedManager {
 
   /**
    * Generate CloudFormation for Event Notification
-  */
+   */
   generateEventNotificationCF(notification: EventNotification): any {
     const configKey = notification.destination.type === 'Lambda'
       ? 'LambdaConfigurations'

@@ -1,7 +1,7 @@
 /**
  * Secrets Manager Module
  * Clean API for AWS Secrets Manager
-*/
+ */
 
 import type { SecretsManagerSecret, SecretsManagerSecretTargetAttachment, SecretsManagerRotationSchedule } from '@stacksjs/ts-cloud-aws-types'
 import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
@@ -55,11 +55,11 @@ export interface SecretRotationOptions {
 
 /**
  * Secrets Manager Module
-*/
+ */
 export class Secrets {
   /**
    * Create a secret with explicit value
-  */
+   */
   static createSecret(options: SecretOptions): {
     secret: SecretsManagerSecret
     logicalId: string
@@ -105,7 +105,7 @@ export class Secrets {
 
   /**
    * Create a secret with auto-generated value
-  */
+   */
   static createGeneratedSecret(options: GeneratedSecretOptions): {
     secret: SecretsManagerSecret
     logicalId: string
@@ -165,7 +165,7 @@ export class Secrets {
 
   /**
    * Create a database secret with username and password
-  */
+   */
   static createDatabaseSecret(options: {
     slug: string
     environment: string
@@ -241,8 +241,8 @@ export class Secrets {
   }
 
   /**
-  * Attach secret to RDS database for automatic rotation
-  */
+   * Attach secret to RDS database for automatic rotation
+   */
   static attachToDatabase(options: SecretTargetAttachmentOptions): {
     attachment: SecretsManagerSecretTargetAttachment
     logicalId: string
@@ -276,8 +276,8 @@ export class Secrets {
   }
 
   /**
-  * Enable automatic rotation for a secret
-  */
+   * Enable automatic rotation for a secret
+   */
   static enableRotation(options: SecretRotationOptions): {
     rotation: SecretsManagerRotationSchedule
     logicalId: string
@@ -329,12 +329,12 @@ export class Secrets {
   }
 
   /**
-  * Common secret types
-  */
+   * Common secret types
+   */
   static readonly SecretTypes = {
     /**
-    * API key secret (32 chars, alphanumeric only)
-    */
+     * API key secret (32 chars, alphanumeric only)
+     */
     apiKey: (slug: string, environment: string, serviceName: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
@@ -350,8 +350,8 @@ export class Secrets {
     },
 
     /**
-    * OAuth client secret (strong password)
-    */
+     * OAuth client secret (strong password)
+     */
     oauthClientSecret: (slug: string, environment: string, clientName: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
@@ -365,8 +365,8 @@ export class Secrets {
     },
 
     /**
-    * JWT signing secret
-    */
+     * JWT signing secret
+     */
     jwtSecret: (slug: string, environment: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
@@ -379,8 +379,8 @@ export class Secrets {
     },
 
     /**
-    * Encryption key (base64-compatible)
-    */
+     * Encryption key (base64-compatible)
+     */
     encryptionKey: (slug: string, environment: string): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
@@ -395,8 +395,8 @@ export class Secrets {
   }
 
   /**
-  * Common rotation types for hosted rotation
-  */
+   * Common rotation types for hosted rotation
+   */
   static readonly RotationTypes = {
     MySQLSingleUser: 'MySQLSingleUser',
     MySQLMultiUser: 'MySQLMultiUser',

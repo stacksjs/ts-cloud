@@ -2,7 +2,7 @@
  * A/B Testing for SMS Content
  *
  * Provides A/B testing capabilities for SMS campaigns
-*/
+ */
 
 export interface AbTest {
   id: string
@@ -40,11 +40,11 @@ export interface VariantStats {
 
 /**
  * A/B Testing Module
-*/
+ */
 export class AbTesting {
   /**
    * Lambda code for A/B test management
-  */
+   */
   static AbTestManagerCode = `
 const { DynamoDBClient, PutItemCommand, GetItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -242,7 +242,7 @@ function unmarshallTest(item) {
 
   /**
    * Create A/B tests DynamoDB table
-  */
+   */
   static createAbTestsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}AbTestsTable`]: {
@@ -263,7 +263,7 @@ function unmarshallTest(item) {
 
   /**
    * Create A/B test manager Lambda
-  */
+   */
   static createAbTestManagerLambda(config: {
     slug: string
     roleArn: string
@@ -294,7 +294,7 @@ function unmarshallTest(item) {
 
   /**
    * Select variant for a recipient
-  */
+   */
   static selectVariant(test: AbTest, recipientId: string): AbVariant {
     // Use consistent hashing for deterministic variant selection
     const hash = AbTesting.hashString(recipientId + test.id)
@@ -313,7 +313,7 @@ function unmarshallTest(item) {
 
   /**
    * Determine winner based on criteria
-  */
+   */
   static determineWinner(test: AbTest): AbVariant | null {
     if (test.variants.length === 0) return null
 
@@ -334,7 +334,7 @@ function unmarshallTest(item) {
 
   /**
    * Calculate statistical significance
-  */
+   */
   static calculateSignificance(variantA: AbVariant, variantB: AbVariant, criteria: string): number {
     const nA = variantA.stats.sent
     const nB = variantB.stats.sent

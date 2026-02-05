@@ -67,11 +67,11 @@ export interface SqsTargetOptions extends ScheduleOptions {
 /**
  * Queue & Scheduling Module - EventBridge + SQS
  * Provides clean API for creating queues, cron jobs, and scheduled tasks
-*/
+ */
 export class Queue {
   /**
    * Create an SQS queue
-  */
+   */
   static createQueue(options: QueueOptions): {
     queue: SQSQueue
     logicalId: string
@@ -135,7 +135,7 @@ export class Queue {
 
   /**
    * Create a dead letter queue and attach it to a source queue
-  */
+   */
   static createDeadLetterQueue(
     sourceQueueLogicalId: string,
     options: DeadLetterQueueOptions,
@@ -192,7 +192,7 @@ export class Queue {
 
   /**
    * Create an EventBridge rule with a cron schedule
-  */
+   */
   static createSchedule(
     cronExpression: string,
     options: ScheduleOptions,
@@ -232,7 +232,7 @@ export class Queue {
 
   /**
    * Schedule an ECS Fargate task with cron
-  */
+   */
   static scheduleEcsTask(
     cronExpression: string,
     roleArn: string,
@@ -308,7 +308,7 @@ export class Queue {
 
   /**
    * Schedule a Lambda function with cron
-  */
+   */
   static scheduleLambda(
     cronExpression: string,
     options: LambdaScheduleOptions,
@@ -359,7 +359,7 @@ export class Queue {
 
   /**
    * Schedule an SQS message with cron
-  */
+   */
   static scheduleSqsMessage(
     cronExpression: string,
     options: SqsTargetOptions,
@@ -412,7 +412,7 @@ export class Queue {
 
   /**
    * Add a target to an existing EventBridge rule
-  */
+   */
   static addTarget(
     rule: EventBridgeRule,
     target: {
@@ -447,7 +447,7 @@ export class Queue {
   /**
    * Helper: Convert cron expression to rate expression
    * EventBridge supports both cron() and rate() expressions
-  */
+   */
   static toCronExpression(expression: string): string {
     // If already in cron() or rate() format, return as-is
     if (expression.startsWith('cron(') || expression.startsWith('rate(')) {
@@ -460,14 +460,14 @@ export class Queue {
 
   /**
    * Helper: Create rate expression
-  */
+   */
   static rateExpression(value: number, unit: 'minute' | 'minutes' | 'hour' | 'hours' | 'day' | 'days'): string {
     return `rate(${value} ${unit})`
   }
 
   /**
    * Common cron expressions
-  */
+   */
   static readonly CronExpressions = {
     EveryMinute: 'cron(* * * * ? *)',
     Every5Minutes: 'cron(*/5 * * * ? *)',
@@ -483,7 +483,7 @@ export class Queue {
 
   /**
    * Common rate expressions
-  */
+   */
   static readonly RateExpressions = {
     Every1Minute: 'rate(1 minute)',
     Every5Minutes: 'rate(5 minutes)',
@@ -499,7 +499,7 @@ export class Queue {
   /**
    * Convert a human-readable rate string to a cron/rate expression
    * Supports formats like: "every 5 minutes", "every hour", "daily at 9am", etc.
-  */
+   */
   static rateStringToExpression(rateString: string): string {
     const normalized = rateString.toLowerCase().trim()
 
@@ -583,11 +583,11 @@ export class Queue {
 
   /**
    * Job configuration interface
-  */
+   */
   static readonly JobConfig = {
     /**
      * Create job configuration with retry settings
-    */
+     */
     create: (options: {
       name: string
       handler: string
@@ -623,7 +623,7 @@ export class Queue {
 
     /**
      * Calculate delay for a given retry attempt
-    */
+     */
     calculateDelay: (
       attempt: number,
       config: Pick<JobConfiguration, 'backoff' | 'backoffDelay' | 'maxDelay' | 'jitter'>,
@@ -657,11 +657,11 @@ export class Queue {
 
     /**
      * Common job configurations
-    */
+     */
     presets: {
       /**
        * Fast retry for transient failures
-      */
+       */
       fastRetry: {
         retries: 5,
         backoff: 'exponential' as const,
@@ -672,7 +672,7 @@ export class Queue {
 
       /**
        * Standard job with moderate retries
-      */
+       */
       standard: {
         retries: 3,
         backoff: 'exponential' as const,
@@ -683,7 +683,7 @@ export class Queue {
 
       /**
        * Long-running job with extended timeouts
-      */
+       */
       longRunning: {
         retries: 2,
         backoff: 'exponential' as const,
@@ -695,7 +695,7 @@ export class Queue {
 
       /**
        * Critical job with many retries
-      */
+       */
       critical: {
         retries: 10,
         backoff: 'exponential' as const,
@@ -706,7 +706,7 @@ export class Queue {
 
       /**
        * No retry (fire and forget)
-      */
+       */
       noRetry: {
         retries: 0,
         backoff: 'fixed' as const,
@@ -719,7 +719,7 @@ export class Queue {
 
   /**
    * Create ECS container override for job execution
-  */
+   */
   static createJobContainerOverride(options: {
     containerName: string
     jobClass: string
@@ -753,7 +753,7 @@ export class Queue {
 
   /**
    * Generate scheduled job resources
-  */
+   */
   static createScheduledJob(options: {
     slug: string
     environment: EnvironmentType
@@ -809,11 +809,11 @@ export class Queue {
 
   /**
    * Queue presets for common use cases
-  */
+   */
   static readonly QueuePresets = {
     /**
      * High-throughput queue with short visibility
-    */
+     */
     highThroughput: (slug: string, environment: EnvironmentType): {
       queue: SQSQueue
       logicalId: string
@@ -828,7 +828,7 @@ export class Queue {
 
     /**
      * Long-running job queue
-    */
+     */
     longRunning: (slug: string, environment: EnvironmentType): {
       queue: SQSQueue
       logicalId: string
@@ -842,7 +842,7 @@ export class Queue {
 
     /**
      * FIFO queue for ordered processing
-    */
+     */
     fifo: (slug: string, environment: EnvironmentType): {
       queue: SQSQueue
       logicalId: string
@@ -856,7 +856,7 @@ export class Queue {
 
     /**
      * Delayed queue for scheduled messages
-    */
+     */
     delayed: (slug: string, environment: EnvironmentType, delaySeconds: number = 60): {
       queue: SQSQueue
       logicalId: string
@@ -871,7 +871,7 @@ export class Queue {
 
 /**
  * Job configuration type
-*/
+ */
 export interface JobConfiguration {
   name: string
   handler: string
@@ -885,7 +885,7 @@ export interface JobConfiguration {
 
 /**
  * Discovered job definition from file scanning
-*/
+ */
 export interface DiscoveredJob {
   name: string
   path: string
@@ -900,7 +900,7 @@ export interface DiscoveredJob {
 
 /**
  * Discovered action definition from file scanning
-*/
+ */
 export interface DiscoveredAction {
   name: string
   path: string
@@ -910,12 +910,12 @@ export interface DiscoveredAction {
 
 /**
  * Dynamic job and action loader for Stacks framework integration
-*/
+ */
 export class JobLoader {
   /**
    * Discover jobs from app/Jobs directory
    * Scans *.ts files and extracts job metadata from exports
-  */
+   */
   static async discoverJobs(options: {
     projectRoot: string
     jobsPath?: string
@@ -960,7 +960,7 @@ export class JobLoader {
   /**
    * Parse job metadata from file content
    * Looks for exported schedule, handle function, and config
-  */
+   */
   static parseJobMetadata(
     content: string,
     name: string,
@@ -1015,7 +1015,7 @@ export class JobLoader {
   /**
    * Discover actions from app/Actions directory
    * Scans *.ts files and extracts action metadata
-  */
+   */
   static async discoverActions(options: {
     projectRoot: string
     actionsPath?: string
@@ -1056,7 +1056,7 @@ export class JobLoader {
 
   /**
    * Parse action metadata from file content
-  */
+   */
   static parseActionMetadata(
     content: string,
     name: string,
@@ -1085,7 +1085,7 @@ export class JobLoader {
 
   /**
    * Generate scheduled job resources from discovered jobs
-  */
+   */
   static generateScheduledJobResources(options: {
     slug: string
     environment: EnvironmentType
@@ -1143,14 +1143,14 @@ export class JobLoader {
 
   /**
    * Generate a job runner script for ECS tasks
-  */
+   */
   static generateJobRunnerScript(): string {
     return `#!/usr/bin/env bun
 /**
  * Job Runner Script
  * This script is invoked by ECS scheduled tasks to run jobs
  * Auto-generated by ts-cloud
-*/
+ */
 const jobClass = process.env.JOB_CLASS
 const jobDataRaw = process.env.JOB_DATA
 
@@ -1194,7 +1194,7 @@ run()
 
   /**
    * Generate job manifest file for CI/CD deployments
-  */
+   */
   static async generateJobManifest(options: {
     projectRoot: string
     jobsPath?: string
@@ -1217,7 +1217,7 @@ run()
 
 /**
  * Stacks framework job/action integration helpers
-*/
+ */
 export const StacksIntegration: {
   loadJobs: typeof JobLoader.discoverJobs
   loadActions: typeof JobLoader.discoverActions
@@ -1231,27 +1231,27 @@ export const StacksIntegration: {
 } = {
   /**
    * Load jobs from Stacks app/Jobs directory
-  */
+   */
   loadJobs: JobLoader.discoverJobs,
 
   /**
    * Load actions from Stacks app/Actions directory
-  */
+   */
   loadActions: JobLoader.discoverActions,
 
   /**
    * Generate all scheduled job resources
-  */
+   */
   generateScheduledJobs: JobLoader.generateScheduledJobResources,
 
   /**
    * Generate job runner script
-  */
+   */
   generateRunner: JobLoader.generateJobRunnerScript,
 
   /**
    * Default paths for Stacks framework
-  */
+   */
   paths: {
     jobs: 'app/Jobs',
     actions: 'app/Actions',

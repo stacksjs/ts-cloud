@@ -2,7 +2,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 
 /**
  * Deep merge utility for combining CloudConfig objects
-*/
+ */
 function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
   const result = { ...target }
 
@@ -64,7 +64,7 @@ function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>)
  *   }
  * )
  * ```
-*/
+ */
 export function extendPreset(
   basePreset: Partial<CloudConfig>,
   extensions: Partial<CloudConfig>,
@@ -91,7 +91,7 @@ export function extendPreset(
  *   }
  * )
  * ```
-*/
+ */
 export function composePresets(
   ...presets: Partial<CloudConfig>[]
 ): Partial<CloudConfig> {
@@ -123,7 +123,7 @@ export function composePresets(
  * // Use it
  * const myPreset = createMyCustomPreset({ name: 'App', slug: 'app' })
  * ```
-*/
+ */
 export function createPreset<TOptions extends Record<string, any>>(
   basePresetFn: (options: TOptions) => Partial<CloudConfig>,
   extensions: Partial<CloudConfig> | ((config: Partial<CloudConfig>, options: TOptions) => Partial<CloudConfig>),
@@ -159,7 +159,7 @@ export function createPreset<TOptions extends Record<string, any>>(
  *   withRedis
  * )
  * ```
-*/
+ */
 export function mergeInfrastructure(
   infrastructure: Partial<CloudConfig['infrastructure']>,
 ): Partial<CloudConfig> {
@@ -181,7 +181,7 @@ export function mergeInfrastructure(
  *   })
  * )
  * ```
-*/
+ */
 export function withMonitoring(
   monitoring: NonNullable<CloudConfig['infrastructure']>['monitoring'],
 ): Partial<CloudConfig> {
@@ -200,7 +200,7 @@ export function withMonitoring(
  *   })
  * )
  * ```
-*/
+ */
 export function withSecurity(
   security: NonNullable<CloudConfig['infrastructure']>['security'],
 ): Partial<CloudConfig> {
@@ -224,7 +224,7 @@ export function withSecurity(
  *   })
  * )
  * ```
-*/
+ */
 export function withDatabase(
   databases: NonNullable<CloudConfig['infrastructure']>['databases'],
 ): Partial<CloudConfig> {
@@ -246,7 +246,7 @@ export function withDatabase(
  *   })
  * )
  * ```
-*/
+ */
 export function withCache(
   cache: NonNullable<CloudConfig['infrastructure']>['cache'],
 ): Partial<CloudConfig> {
@@ -267,7 +267,7 @@ export function withCache(
  *   })
  * )
  * ```
-*/
+ */
 export function withCDN(
   cdn: NonNullable<CloudConfig['infrastructure']>['cdn'],
 ): Partial<CloudConfig> {
@@ -289,7 +289,7 @@ export function withCDN(
  *   })
  * )
  * ```
-*/
+ */
 export function withQueue(
   queues: NonNullable<CloudConfig['infrastructure']>['queues'],
 ): Partial<CloudConfig> {

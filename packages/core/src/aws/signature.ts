@@ -6,7 +6,7 @@
  *
  * Browser compatible: Use async functions (signRequestAsync, createPresignedUrlAsync)
  * Node.js/Bun: Use sync functions for better performance (signRequest, createPresignedUrl)
-*/
+ */
 
 // Conditional import for Node.js crypto - will be undefined in browser
 let nodeCrypto: typeof import('node:crypto') | undefined
@@ -20,13 +20,13 @@ try {
  * Signing key cache for improved performance on repeated requests
  * Keys are cached by: secretAccessKey + date + region + service
  * Supports both Buffer (Node.js) and Uint8Array (browser)
-*/
+ */
 const signingKeyCache = new Map<string, Buffer | Uint8Array>()
 const MAX_CACHE_SIZE = 100
 
 /**
  * Service name mappings for hosts that don't follow standard naming
-*/
+ */
 const HOST_SERVICES: Record<string, string> = {
   'appstream2': 'appstream',
   'cloudhsmv2': 'cloudhsm',
@@ -56,23 +56,23 @@ export interface SignatureOptions {
    * Optional external cache for signing keys
    * If not provided, uses internal cache
    * Supports both Buffer (Node.js) and Uint8Array (browser)
-  */
+   */
   cache?: Map<string, Buffer | Uint8Array>
   /**
    * Sign via query string instead of Authorization header
    * Used for presigned URLs (e.g., S3 presigned URLs)
-  */
+   */
   signQuery?: boolean
   /**
    * Expiration time in seconds for presigned URLs (default: 86400 = 24 hours)
    * Only used when signQuery is true
-  */
+   */
   expiresIn?: number
   /**
    * Custom datetime for signing (format: YYYYMMDDTHHMMSSZ)
    * If not provided, uses current time
    * Useful for testing and reproducibility
-  */
+   */
   datetime?: string
 }
 
@@ -115,7 +115,7 @@ export interface RetryOptions {
 /**
  * Detect service and region from AWS URL
  * Supports standard AWS endpoints, Lambda URLs, R2, and Backblaze B2
-*/
+ */
 export function detectServiceRegion(url: string | URL): { service: string, region: string } {
   const urlObj = typeof url === 'string' ? new URL(url) : url
   const { hostname, pathname } = urlObj
@@ -190,7 +190,7 @@ export function detectServiceRegion(url: string | URL): { service: string, regio
 
 /**
  * Sign an AWS request using Signature Version 4
-*/
+ */
 export function signRequest(options: SignatureOptions): SignedRequest {
   const {
     method,
@@ -323,7 +323,7 @@ export function signRequest(options: SignatureOptions): SignedRequest {
 /**
  * Sign an AWS request using Signature Version 4 (async - browser compatible)
  * Use this in browser environments where crypto.subtle is available
-*/
+ */
 export async function signRequestAsync(options: SignatureOptions): Promise<SignedRequest> {
   const {
     method,
@@ -456,7 +456,7 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
 
 /**
  * Sign request using query string parameters (for presigned URLs)
-*/
+ */
 function signWithQueryString(params: {
   urlObj: URL
   method: string
@@ -559,7 +559,7 @@ function signWithQueryString(params: {
 
 /**
  * Sign request using query string parameters (async - browser compatible)
-*/
+ */
 async function signWithQueryStringAsync(params: {
   urlObj: URL
   method: string
@@ -662,7 +662,7 @@ async function signWithQueryStringAsync(params: {
 
 /**
  * Generate a presigned URL for AWS requests (e.g., S3 GetObject, PutObject)
-*/
+ */
 export function createPresignedUrl(options: PresignedUrlOptions): string {
   const {
     url,
@@ -687,7 +687,7 @@ export function createPresignedUrl(options: PresignedUrlOptions): string {
 
 /**
  * Generate a presigned URL for AWS requests (async - browser compatible)
-*/
+ */
 export async function createPresignedUrlAsync(options: PresignedUrlOptions): Promise<string> {
   const {
     url,
@@ -712,7 +712,7 @@ export async function createPresignedUrlAsync(options: PresignedUrlOptions): Pro
 
 /**
  * Create canonical headers string
-*/
+ */
 function getCanonicalHeaders(headers: Record<string, string>): string {
   return Object.keys(headers)
     .sort()
@@ -722,7 +722,7 @@ function getCanonicalHeaders(headers: Record<string, string>): string {
 
 /**
  * Get signed headers string
-*/
+ */
 function getSignedHeaders(headers: Record<string, string>): string {
   return Object.keys(headers)
     .sort()
@@ -732,7 +732,7 @@ function getSignedHeaders(headers: Record<string, string>): string {
 
 /**
  * Create canonical query string (sorted and encoded)
-*/
+ */
 function canonicalQueryString(params: URLSearchParams): string {
   const sorted: Array<[string, string]> = []
 
@@ -753,7 +753,7 @@ function canonicalQueryString(params: URLSearchParams): string {
 
 /**
  * Encode path for canonical request
-*/
+ */
 function encodePath(path: string): string {
   return path
     .split('/')
@@ -763,14 +763,14 @@ function encodePath(path: string): string {
 
 /**
  * RFC 3986 URI encoding (stricter than encodeURIComponent)
-*/
+ */
 function encodeRfc3986(str: string): string {
   return encodeURIComponent(str).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
 }
 
 /**
-* Calculate SHA256 hash (synchronous - Node.js/Bun only)
-*/
+ * Calculate SHA256 hash (synchronous - Node.js/Bun only)
+ */
 function hash(data: string): string {
   if (!nodeCrypto) {
     throw new Error('Synchronous hash not available in browser. Use signRequestAsync() instead.')
@@ -779,8 +779,8 @@ function hash(data: string): string {
 }
 
 /**
-* Calculate HMAC SHA256 (synchronous - Node.js/Bun only)
-*/
+ * Calculate HMAC SHA256 (synchronous - Node.js/Bun only)
+ */
 function hmac(key: Buffer | string, data: string): Buffer {
   if (!nodeCrypto) {
     throw new Error('Synchronous hmac not available in browser. Use signRequestAsync() instead.')
@@ -789,8 +789,8 @@ function hmac(key: Buffer | string, data: string): Buffer {
 }
 
 /**
-* Calculate SHA256 hash (async - browser compatible)
-*/
+ * Calculate SHA256 hash (async - browser compatible)
+ */
 async function hashAsync(data: string): Promise<string> {
   const encoder = new TextEncoder()
   const dataBuffer = encoder.encode(data)
@@ -799,8 +799,8 @@ async function hashAsync(data: string): Promise<string> {
 }
 
 /**
-* Calculate HMAC SHA256 (async - browser compatible)
-*/
+ * Calculate HMAC SHA256 (async - browser compatible)
+ */
 async function hmacAsync(key: Uint8Array | string, data: string): Promise<Uint8Array> {
   const encoder = new TextEncoder()
   const keyBuffer = typeof key === 'string' ? encoder.encode(key) : key
@@ -819,8 +819,8 @@ async function hmacAsync(key: Uint8Array | string, data: string): Promise<Uint8A
 }
 
 /**
-* Convert Uint8Array to hex string
-*/
+ * Convert Uint8Array to hex string
+ */
 function bufferToHex(buffer: Uint8Array): string {
   return Array.from(buffer)
     .map(b => b.toString(16).padStart(2, '0'))
@@ -828,9 +828,9 @@ function bufferToHex(buffer: Uint8Array): string {
 }
 
 /**
-* Calculate signature using AWS signing key derivation (sync - Node.js/Bun only)
-* Uses caching for signing keys to improve performance on repeated requests
-*/
+ * Calculate signature using AWS signing key derivation (sync - Node.js/Bun only)
+ * Uses caching for signing keys to improve performance on repeated requests
+ */
 function calculateSignature(
   secretAccessKey: string,
   date: string,
@@ -866,9 +866,9 @@ function calculateSignature(
 }
 
 /**
-* Calculate signature using AWS signing key derivation (async - browser compatible)
-* Uses caching for signing keys to improve performance on repeated requests
-*/
+ * Calculate signature using AWS signing key derivation (async - browser compatible)
+ * Uses caching for signing keys to improve performance on repeated requests
+ */
 async function calculateSignatureAsync(
   secretAccessKey: string,
   date: string,
@@ -905,15 +905,15 @@ async function calculateSignatureAsync(
 }
 
 /**
-* Check if an error/status code is retryable
-*/
+ * Check if an error/status code is retryable
+ */
 function isRetryable(status: number, retryableCodes: number[]): boolean {
   return retryableCodes.includes(status)
 }
 
 /**
-* Calculate delay with exponential backoff and jitter
-*/
+ * Calculate delay with exponential backoff and jitter
+ */
 function calculateBackoff(attempt: number, initialDelayMs: number, maxDelayMs: number): number {
   const exponentialDelay = initialDelayMs * Math.pow(2, attempt)
   const jitter = Math.random() * 0.3 * exponentialDelay // 0-30% jitter
@@ -921,15 +921,15 @@ function calculateBackoff(attempt: number, initialDelayMs: number, maxDelayMs: n
 }
 
 /**
-* Sleep for specified milliseconds
-*/
+ * Sleep for specified milliseconds
+ */
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
-* Make a signed AWS API request with automatic retry
-*/
+ * Make a signed AWS API request with automatic retry
+ */
 export async function makeAWSRequest(
   options: SignatureOptions,
   retryOptions?: RetryOptions,
@@ -1009,7 +1009,7 @@ export async function makeAWSRequest(
 
 /**
  * Make a signed AWS API request without retry (for backwards compatibility)
-*/
+ */
 export async function makeAWSRequestOnce(
   options: SignatureOptions,
 ): Promise<Response> {
@@ -1019,7 +1019,7 @@ export async function makeAWSRequestOnce(
 /**
  * Make a signed AWS API request with automatic retry (async - browser compatible)
  * Use this in browser environments where crypto.subtle is available
-*/
+ */
 export async function makeAWSRequestAsync(
   options: SignatureOptions,
   retryOptions?: RetryOptions,
@@ -1097,7 +1097,7 @@ export async function makeAWSRequestAsync(
 
 /**
  * Parse XML response from AWS
-*/
+ */
 export async function parseXMLResponse<T = any>(response: Response): Promise<T> {
   const text = await response.text()
 
@@ -1118,7 +1118,7 @@ export async function parseXMLResponse<T = any>(response: Response): Promise<T> 
 
 /**
  * Parse JSON response from AWS
-*/
+ */
 export async function parseJSONResponse<T = any>(response: Response): Promise<T> {
   return await response.json() as T
 }
@@ -1126,14 +1126,14 @@ export async function parseJSONResponse<T = any>(response: Response): Promise<T>
 /**
  * Clear the internal signing key cache
  * Call this when credentials change or for testing
-*/
+ */
 export function clearSigningKeyCache(): void {
   signingKeyCache.clear()
 }
 
 /**
  * Get current cache size (for diagnostics)
-*/
+ */
 export function getSigningKeyCacheSize(): number {
   return signingKeyCache.size
 }
@@ -1141,7 +1141,7 @@ export function getSigningKeyCacheSize(): number {
 /**
  * Check if Node.js crypto is available (for sync operations)
  * Returns true in Node.js/Bun, false in browser
-*/
+ */
 export function isNodeCryptoAvailable(): boolean {
   return nodeCrypto !== undefined
 }
@@ -1149,7 +1149,7 @@ export function isNodeCryptoAvailable(): boolean {
 /**
  * Check if Web Crypto API is available (for async operations)
  * Returns true in modern browsers and Node.js 15+
-*/
+ */
 export function isWebCryptoAvailable(): boolean {
   return typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined'
 }

@@ -1,7 +1,7 @@
 /**
  * Caching utilities for performance optimization
  * Caches CloudFormation templates, credentials, and other data
-*/
+ */
 
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -20,7 +20,7 @@ export interface CacheEntry<T> {
 
 /**
  * Simple in-memory cache with TTL support
-*/
+ */
 export class Cache<T = any> {
   private cache: Map<string, CacheEntry<T>>
   private ttl: number
@@ -34,7 +34,7 @@ export class Cache<T = any> {
 
   /**
    * Get value from cache
-  */
+   */
   get(key: string): T | undefined {
     const entry = this.cache.get(key)
 
@@ -53,7 +53,7 @@ export class Cache<T = any> {
 
   /**
    * Set value in cache
-  */
+   */
   set(key: string, value: T, hash?: string): void {
     // If cache is full, remove oldest entry
     if (this.cache.size >= this.maxSize) {
@@ -72,21 +72,21 @@ export class Cache<T = any> {
 
   /**
    * Check if cache has key and it's not expired
-  */
+   */
   has(key: string): boolean {
     return this.get(key) !== undefined
   }
 
   /**
    * Clear cache
-  */
+   */
   clear(): void {
     this.cache.clear()
   }
 
   /**
    * Remove expired entries
-  */
+   */
   prune(): void {
     const now = Date.now()
     for (const [key, entry] of this.cache.entries()) {
@@ -98,7 +98,7 @@ export class Cache<T = any> {
 
   /**
    * Get cache stats
-  */
+   */
   stats(): { size: number, ttl: number, maxSize: number } {
     return {
       size: this.cache.size,
@@ -110,7 +110,7 @@ export class Cache<T = any> {
 
 /**
  * File-based cache for persistent caching
-*/
+ */
 export class FileCache<T = any> {
   private cacheDir: string
   private ttl: number
@@ -127,7 +127,7 @@ export class FileCache<T = any> {
 
   /**
    * Get cache file path for key
-  */
+   */
   private getCachePath(key: string): string {
     const hash = createHash('sha256').update(key).digest('hex')
     return path.join(this.cacheDir, `${hash}.json`)
@@ -135,7 +135,7 @@ export class FileCache<T = any> {
 
   /**
    * Get value from cache
-  */
+   */
   get(key: string): T | undefined {
     const cachePath = this.getCachePath(key)
 
@@ -164,7 +164,7 @@ export class FileCache<T = any> {
 
   /**
    * Set value in cache
-  */
+   */
   set(key: string, value: T, hash?: string): void {
     const cachePath = this.getCachePath(key)
 
@@ -179,14 +179,14 @@ export class FileCache<T = any> {
 
   /**
    * Check if cache has key and it's not expired
-  */
+   */
   has(key: string): boolean {
     return this.get(key) !== undefined
   }
 
   /**
    * Clear all cache files
-  */
+   */
   clear(): void {
     const files = fs.readdirSync(this.cacheDir)
     for (const file of files) {
@@ -196,7 +196,7 @@ export class FileCache<T = any> {
 
   /**
    * Remove expired entries
-  */
+   */
   prune(): void {
     const files = fs.readdirSync(this.cacheDir)
     const now = Date.now()
@@ -222,7 +222,7 @@ export class FileCache<T = any> {
 
 /**
  * Template cache for CloudFormation templates
-*/
+ */
 export class TemplateCache {
   private cache: FileCache<string>
 
@@ -234,14 +234,14 @@ export class TemplateCache {
 
   /**
    * Get template from cache
-  */
+   */
   getTemplate(stackName: string): string | undefined {
     return this.cache.get(`template:${stackName}`)
   }
 
   /**
    * Save template to cache
-  */
+   */
   setTemplate(stackName: string, template: string): void {
     const hash = this.hashTemplate(template)
     this.cache.set(`template:${stackName}`, template, hash)
@@ -249,7 +249,7 @@ export class TemplateCache {
 
   /**
    * Check if template has changed
-  */
+   */
   hasChanged(stackName: string, newTemplate: string): boolean {
     const cached = this.cache.get(`template:${stackName}`)
 
@@ -265,21 +265,21 @@ export class TemplateCache {
 
   /**
    * Hash template for comparison
-  */
+   */
   private hashTemplate(template: string): string {
     return createHash('sha256').update(template).digest('hex')
   }
 
   /**
    * Clear all templates
-  */
+   */
   clear(): void {
     this.cache.clear()
   }
 
   /**
    * Prune expired templates
-  */
+   */
   prune(): void {
     this.cache.prune()
   }
@@ -287,5 +287,5 @@ export class TemplateCache {
 
 /**
  * Global template cache instance
-*/
+ */
 export const templateCache: TemplateCache = new TemplateCache()

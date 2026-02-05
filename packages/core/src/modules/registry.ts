@@ -23,11 +23,11 @@ export interface LifecyclePolicyConfig {
 /**
  * Registry Module - ECR Container Registry Management
  * Provides clean API for creating and configuring ECR repositories
-*/
+ */
 export class Registry {
   /**
    * Create an ECR repository with the specified options
-  */
+   */
   static createRepository(options: RegistryOptions): { repository: ECRRepository, logicalId: string } {
     const {
       name,
@@ -90,7 +90,7 @@ export class Registry {
 
   /**
    * Generate lifecycle policy from config
-  */
+   */
   private static generateLifecyclePolicy(config: LifecyclePolicyConfig): ECRLifecyclePolicy {
     const rules: ECRLifecyclePolicy['rules'] = []
 
@@ -149,11 +149,11 @@ export class Registry {
 
   /**
    * Common lifecycle policy presets
-  */
+   */
   static readonly LifecyclePolicies = {
     /**
      * Keep only the 10 most recent images, delete untagged after 7 days
-    */
+     */
     production: {
       maxImageCount: 10,
       untaggedImageExpireDays: 7,
@@ -161,7 +161,7 @@ export class Registry {
 
     /**
      * Keep only the 5 most recent images, delete untagged after 3 days
-    */
+     */
     development: {
       maxImageCount: 5,
       untaggedImageExpireDays: 3,
@@ -169,7 +169,7 @@ export class Registry {
 
     /**
      * Aggressive cleanup - keep 3 images, delete untagged after 1 day
-    */
+     */
     minimal: {
       maxImageCount: 3,
       untaggedImageExpireDays: 1,
@@ -177,7 +177,7 @@ export class Registry {
 
     /**
      * Long-term storage - keep 50 images, delete untagged after 30 days
-    */
+     */
     archive: {
       maxImageCount: 50,
       untaggedImageExpireDays: 30,
@@ -186,7 +186,7 @@ export class Registry {
 
   /**
    * Enable immutable tags on an existing repository
-  */
+   */
   static enableImmutableTags(repository: ECRRepository): ECRRepository {
     if (!repository.Properties) {
       repository.Properties = {}
@@ -199,7 +199,7 @@ export class Registry {
 
   /**
    * Enable scan on push
-  */
+   */
   static enableScanOnPush(repository: ECRRepository): ECRRepository {
     if (!repository.Properties) {
       repository.Properties = {}
@@ -214,7 +214,7 @@ export class Registry {
 
   /**
    * Set lifecycle policy on an existing repository
-  */
+   */
   static setLifecyclePolicy(
     repository: ECRRepository,
     config: LifecyclePolicyConfig,
@@ -232,7 +232,7 @@ export class Registry {
 
   /**
    * Add repository policy for cross-account access
-  */
+   */
   static addCrossAccountAccess(
     repository: ECRRepository,
     accountIds: string[],
@@ -264,7 +264,7 @@ export class Registry {
 
   /**
    * Add repository policy for Lambda service access
-  */
+   */
   static addLambdaAccess(repository: ECRRepository): ECRRepository {
     if (!repository.Properties) {
       repository.Properties = {}
@@ -292,7 +292,7 @@ export class Registry {
 
   /**
    * Generate a Dockerfile for Bun-based applications
-  */
+   */
   static generateBunDockerfile(options: {
     baseImage?: string
     serverPath: string
@@ -402,7 +402,7 @@ CMD ["bun", "run", "${serverPath}"]
 
   /**
    * Generate Docker build commands
-  */
+   */
   static generateDockerBuildCommands(options: {
     repositoryUri: string
     tag?: string
@@ -469,14 +469,14 @@ CMD ["bun", "run", "${serverPath}"]
 
   /**
    * Generate ECR login command
-  */
+   */
   static generateEcrLoginCommand(region: string, accountId: string): string {
     return `aws ecr get-login-password --region ${region} | docker login --username AWS --password-stdin ${accountId}.dkr.ecr.${region}.amazonaws.com`
   }
 
   /**
    * Build ECR repository URI
-  */
+   */
   static buildRepositoryUri(options: {
     accountId: string
     region: string
@@ -487,7 +487,7 @@ CMD ["bun", "run", "${serverPath}"]
 
   /**
    * Generate image tags based on deployment info
-  */
+   */
   static generateImageTags(options: {
     version?: string
     gitSha?: string
@@ -536,11 +536,11 @@ CMD ["bun", "run", "${serverPath}"]
 
   /**
    * Docker deployment workflow steps
-  */
+   */
   static readonly DeploymentWorkflow = {
     /**
      * Generate a complete deployment script
-    */
+     */
     generateDeployScript: (options: {
       region: string
       accountId: string
@@ -586,7 +586,7 @@ echo "Image: $IMAGE_URI:${primaryTag}"
 
     /**
      * Generate GitHub Actions workflow for ECR deployment
-    */
+     */
     generateGitHubActionsWorkflow: (options: {
       region: string
       repositoryName: string
@@ -658,11 +658,11 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
 
   /**
    * Common Dockerfile templates
-  */
+   */
   static readonly DockerfileTemplates = {
     /**
      * Minimal Bun server
-    */
+     */
     bunServer: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
@@ -670,7 +670,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
 
     /**
      * Bun with build step
-    */
+     */
     bunWithBuild: (serverPath: string, buildCommand: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
@@ -679,7 +679,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
 
     /**
      * Full-stack Bun app with static files
-    */
+     */
     bunFullStack: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,
@@ -689,7 +689,7 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
 
     /**
      * API-only Bun server
-    */
+     */
     bunApi: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
       serverPath,
       port,

@@ -48,11 +48,11 @@ export interface MemcachedOptions {
 /**
  * Cache Module - ElastiCache (Redis + Memcached)
  * Provides clean API for creating Redis and Memcached clusters
-*/
+ */
 export class Cache {
   /**
    * Create a Redis cluster
-  */
+   */
   static createRedis(options: RedisOptions): {
     replicationGroup: ElastiCacheReplicationGroup
     subnetGroup?: ElastiCacheSubnetGroup
@@ -182,7 +182,7 @@ export class Cache {
 
   /**
    * Create a Memcached cluster
-  */
+   */
   static createMemcached(options: MemcachedOptions): {
     cluster: ElastiCacheCluster
     subnetGroup?: ElastiCacheSubnetGroup
@@ -282,7 +282,7 @@ export class Cache {
 
   /**
    * Enable cluster mode for Redis (returns new configuration)
-  */
+   */
   static enableClusterMode(
     replicationGroup: ElastiCacheReplicationGroup,
     numNodeGroups: number = 3,
@@ -300,7 +300,7 @@ export class Cache {
 
   /**
    * Create a parameter group for Redis
-  */
+   */
   static createRedisParameterGroup(
     version: string,
     options: {
@@ -343,7 +343,7 @@ export class Cache {
 
   /**
    * Create a parameter group for Memcached
-  */
+   */
   static createMemcachedParameterGroup(
     version: string,
     options: {
@@ -386,7 +386,7 @@ export class Cache {
 
   /**
    * Common ElastiCache node types
-  */
+   */
   static readonly NodeTypes = {
     // T3 - Burstable performance
     T3_Micro: 'cache.t3.micro',

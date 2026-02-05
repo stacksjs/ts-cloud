@@ -11,11 +11,11 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * - NODE_ENV: Fallback for CLOUD_ENV
  *
  * @see https://github.com/stacksjs/ts-cloud
-*/
+ */
 const config: CloudConfig = {
   /**
    * Project configuration
-  */
+   */
   project: {
     name: 'ts-cloud',
     slug: 'ts-cloud',
@@ -27,13 +27,13 @@ const config: CloudConfig = {
    * - 'server': Traditional EC2-based deployment (Forge-style)
    * - 'serverless': Container/Lambda-based deployment (Vapor-style)
    * - 'hybrid': Mix of both server and serverless
-  */
+   */
   mode: 'serverless',
 
   /**
    * Environment configurations
    * Each environment can have its own settings
-  */
+   */
   environments: {
     production: {
       type: 'production',
@@ -64,12 +64,12 @@ const config: CloudConfig = {
   /**
    * Infrastructure configuration
    * Define your cloud resources here
-  */
+   */
   infrastructure: {
     /**
      * VPC Configuration (optional)
      * Creates a Virtual Private Cloud for your resources
-    */
+     */
     vpc: {
       cidr: '10.0.0.0/16',
       zones: 2, // Number of availability zones
@@ -79,7 +79,7 @@ const config: CloudConfig = {
     /**
      * Storage Configuration
      * S3 buckets for files, backups, etc.
-    */
+     */
     storage: {
       'frontend': {
         public: true,
@@ -104,7 +104,7 @@ const config: CloudConfig = {
     /**
      * Compute Configuration
      * Server or serverless compute resources
-    */
+     */
     compute: {
       mode: 'serverless',
 
@@ -129,7 +129,7 @@ const config: CloudConfig = {
 
     /**
      * Database Configuration (optional for frontend-only deployments)
-    */
+     */
     databases: {
       // Uncomment to add a database
       // 'main': {
@@ -143,7 +143,7 @@ const config: CloudConfig = {
 
     /**
      * Cache Configuration
-    */
+     */
     cache: {
       type: 'redis',
       nodeType: 'cache.t3.micro',
@@ -152,7 +152,7 @@ const config: CloudConfig = {
     /**
      * CDN Configuration
      * CloudFront distribution for global content delivery
-    */
+     */
     cdn: {
       'frontend': {
         origin: 'ts-cloud-production-frontend.s3.us-east-1.amazonaws.com',
@@ -163,7 +163,7 @@ const config: CloudConfig = {
     /**
      * DNS Configuration
      * Route53 hosted zone and records
-    */
+     */
     dns: {
       domain: 'example.com',
       // hostedZoneId: 'Z1234567890ABC', // Optional: use existing hosted zone
@@ -171,7 +171,7 @@ const config: CloudConfig = {
 
     /**
      * Security Configuration
-    */
+     */
     security: {
       // Web Application Firewall
       waf: {
@@ -186,7 +186,7 @@ const config: CloudConfig = {
 
     /**
      * Monitoring Configuration
-    */
+     */
     monitoring: {
       dashboards: true,
       alarms: [
@@ -207,7 +207,7 @@ const config: CloudConfig = {
   /**
    * Sites Configuration (optional)
    * For multi-site deployments
-  */
+   */
   sites: {
     main: {
       root: '/var/www/main',

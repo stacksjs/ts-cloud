@@ -1,7 +1,7 @@
 /**
  * GitLab CI/CD Pipeline Generator
  * Generate CI/CD pipelines for GitLab
-*/
+ */
 
 export interface GitLabCIOptions {
   stages?: string[]
@@ -16,7 +16,7 @@ export interface GitLabCIOptions {
 
 /**
  * Generate deployment pipeline
-*/
+ */
 export function generateDeploymentPipeline(options: GitLabCIOptions = {}): string {
   const {
     stages = ['test', 'build', 'deploy'],
@@ -80,7 +80,7 @@ deploy:
 
 /**
  * Generate multi-environment pipeline
-*/
+ */
 export function generateMultiEnvPipeline(options: {
   environments: Array<{ name: string; branch: string; manual?: boolean }>
   awsRegion?: string
@@ -134,7 +134,7 @@ ${deployJobs}
 
 /**
  * Generate PR/MR preview pipeline
-*/
+ */
 export function generatePreviewPipeline(options: {
   awsRegion?: string
   ttl?: number
@@ -191,7 +191,7 @@ cleanup:preview:
 
 /**
  * Generate scheduled pipeline
-*/
+ */
 export function generateScheduledPipeline(options: {
   environment: string
   awsRegion?: string
@@ -222,7 +222,7 @@ deploy:scheduled:
 
 /**
  * Generate manual deployment pipeline
-*/
+ */
 export function generateManualPipeline(options: {
   environments: string[]
   awsRegion?: string

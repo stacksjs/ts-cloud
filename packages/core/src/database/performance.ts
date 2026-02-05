@@ -1,7 +1,7 @@
 /**
  * Database Performance Monitoring
  * Query performance insights, slow query detection, and optimization
-*/
+ */
 
 export interface PerformanceInsights {
   id: string
@@ -117,7 +117,7 @@ export interface Bottleneck {
 
 /**
  * Performance manager
-*/
+ */
 export class PerformanceManager {
   private insights: Map<string, PerformanceInsights> = new Map()
   private slowQueryLogs: Map<string, SlowQueryLog> = new Map()
@@ -132,7 +132,7 @@ export class PerformanceManager {
 
   /**
    * Enable performance insights
-  */
+   */
   enablePerformanceInsights(options: {
     name: string
     databaseIdentifier: string
@@ -157,7 +157,7 @@ export class PerformanceManager {
 
   /**
    * Enable slow query log
-  */
+   */
   enableSlowQueryLog(options: {
     name: string
     databaseIdentifier: string
@@ -187,7 +187,7 @@ export class PerformanceManager {
 
   /**
    * Record query metric
-  */
+   */
   recordQueryMetric(metric: Omit<QueryMetric, 'id' | 'timestamp'>): QueryMetric {
     const id = `metric-${Date.now()}-${this.metricCounter++}`
 
@@ -204,7 +204,7 @@ export class PerformanceManager {
 
   /**
    * Generate performance report
-  */
+   */
   generatePerformanceReport(options: {
     name: string
     databaseIdentifier: string
@@ -263,7 +263,7 @@ export class PerformanceManager {
 
   /**
    * Generate recommendations based on metrics
-  */
+   */
   private generateRecommendations(
     metrics: PerformanceMetrics,
     slowQueries: QueryMetric[]
@@ -335,7 +335,7 @@ export class PerformanceManager {
 
   /**
    * Analyze query
-  */
+   */
   analyzeQuery(sql: string): QueryAnalysis {
     const id = `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 
@@ -389,7 +389,7 @@ export class PerformanceManager {
 
   /**
    * Recommend index
-  */
+   */
   recommendIndex(options: {
     tableName: string
     columns: string[]
@@ -417,56 +417,56 @@ export class PerformanceManager {
 
   /**
    * Get performance insights
-  */
+   */
   getInsights(id: string): PerformanceInsights | undefined {
     return this.insights.get(id)
   }
 
   /**
    * List performance insights
-  */
+   */
   listInsights(): PerformanceInsights[] {
     return Array.from(this.insights.values())
   }
 
   /**
    * Get slow query log
-  */
+   */
   getSlowQueryLog(id: string): SlowQueryLog | undefined {
     return this.slowQueryLogs.get(id)
   }
 
   /**
    * List slow query logs
-  */
+   */
   listSlowQueryLogs(): SlowQueryLog[] {
     return Array.from(this.slowQueryLogs.values())
   }
 
   /**
    * Get report
-  */
+   */
   getReport(id: string): PerformanceReport | undefined {
     return this.reports.get(id)
   }
 
   /**
    * List reports
-  */
+   */
   listReports(): PerformanceReport[] {
     return Array.from(this.reports.values())
   }
 
   /**
    * List index recommendations
-  */
+   */
   listIndexRecommendations(): IndexRecommendation[] {
     return Array.from(this.indexRecommendations.values())
   }
 
   /**
    * Generate CloudFormation for Performance Insights
-  */
+   */
   generatePerformanceInsightsCF(insights: PerformanceInsights): any {
     return {
       EnablePerformanceInsights: insights.enabled,
@@ -479,7 +479,7 @@ export class PerformanceManager {
 
   /**
    * Generate CloudWatch alarm for slow queries
-  */
+   */
   generateSlowQueryAlarmCF(options: {
     alarmName: string
     logGroupName: string
@@ -507,7 +507,7 @@ export class PerformanceManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.insights.clear()
     this.slowQueryLogs.clear()
@@ -524,5 +524,5 @@ export class PerformanceManager {
 
 /**
  * Global performance manager instance
-*/
+ */
 export const performanceManager: PerformanceManager = new PerformanceManager()

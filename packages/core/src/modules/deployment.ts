@@ -12,7 +12,7 @@ import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 /**
  * Asset file with hash information
-*/
+ */
 export interface HashedAsset {
   originalPath: string
   hashedPath: string
@@ -23,7 +23,7 @@ export interface HashedAsset {
 
 /**
  * Asset manifest for deployment
-*/
+ */
 export interface AssetManifest {
   version: string
   timestamp: string
@@ -116,11 +116,11 @@ export interface DeploymentStrategyOptions {
 /**
  * Deployment Module - CodeDeploy and Deployment Utilities
  * Provides clean API for deployment infrastructure and strategies
-*/
+ */
 export class Deployment {
   /**
    * Create a CodeDeploy Application
-  */
+   */
   static createApplication(options: CodeDeployApplicationOptions): {
     application: CodeDeployApplication
     logicalId: string
@@ -157,7 +157,7 @@ export class Deployment {
 
   /**
    * Create a CodeDeploy Deployment Group
-  */
+   */
   static createDeploymentGroup(
     applicationLogicalId: string,
     options: CodeDeployDeploymentGroupOptions,
@@ -238,7 +238,7 @@ export class Deployment {
 
   /**
    * Create a CodeDeploy Deployment Configuration
-  */
+   */
   static createDeploymentConfig(options: CodeDeployDeploymentConfigOptions): {
     deploymentConfig: CodeDeployDeploymentConfig
     logicalId: string
@@ -286,11 +286,11 @@ export class Deployment {
 
   /**
    * Common deployment configurations
-  */
+   */
   static readonly DeploymentConfigs = {
     /**
      * All at once deployment (fastest, but downtime)
-    */
+     */
     allAtOnce: (): CodeDeployDeploymentConfigOptions['minimumHealthyHosts'] => ({
       type: 'FLEET_PERCENT',
       value: 0,
@@ -298,7 +298,7 @@ export class Deployment {
 
     /**
      * Half at a time deployment
-    */
+     */
     halfAtATime: (): CodeDeployDeploymentConfigOptions['minimumHealthyHosts'] => ({
       type: 'FLEET_PERCENT',
       value: 50,
@@ -306,7 +306,7 @@ export class Deployment {
 
     /**
      * One at a time deployment (slowest, but safest)
-    */
+     */
     oneAtATime: (): CodeDeployDeploymentConfigOptions['minimumHealthyHosts'] => ({
       type: 'HOST_COUNT',
       value: 1,
@@ -314,7 +314,7 @@ export class Deployment {
 
     /**
      * Custom deployment configuration
-    */
+     */
     custom: (
       type: 'HOST_COUNT' | 'FLEET_PERCENT',
       value: number,
@@ -326,18 +326,18 @@ export class Deployment {
 
   /**
    * Traffic routing configurations
-  */
+   */
   static readonly TrafficRouting = {
     /**
      * All traffic at once
-    */
+     */
     allAtOnce: (): CodeDeployDeploymentConfigOptions['trafficRoutingConfig'] => ({
       type: 'AllAtOnce',
     }),
 
     /**
      * Canary deployment (shift traffic in two steps)
-    */
+     */
     canary: (
       canaryPercentage: number,
       canaryInterval: number,
@@ -351,7 +351,7 @@ export class Deployment {
 
     /**
      * Linear deployment (shift traffic gradually)
-    */
+     */
     linear: (
       linearPercentage: number,
       linearInterval: number,
@@ -366,11 +366,11 @@ export class Deployment {
 
   /**
    * Rollback configurations
-  */
+   */
   static readonly RollbackConfigs = {
     /**
      * Auto rollback on deployment failure
-    */
+     */
     onFailure: (): CodeDeployDeploymentGroupOptions['autoRollbackConfiguration'] => ({
       enabled: true,
       events: ['DEPLOYMENT_FAILURE'],
@@ -378,7 +378,7 @@ export class Deployment {
 
     /**
      * Auto rollback on alarm or failure
-    */
+     */
     onAlarmOrFailure: (): CodeDeployDeploymentGroupOptions['autoRollbackConfiguration'] => ({
       enabled: true,
       events: ['DEPLOYMENT_FAILURE', 'DEPLOYMENT_STOP_ON_ALARM'],
@@ -386,7 +386,7 @@ export class Deployment {
 
     /**
      * Auto rollback on all events
-    */
+     */
     onAllEvents: (): CodeDeployDeploymentGroupOptions['autoRollbackConfiguration'] => ({
       enabled: true,
       events: ['DEPLOYMENT_FAILURE', 'DEPLOYMENT_STOP_ON_ALARM', 'DEPLOYMENT_STOP_ON_REQUEST'],
@@ -394,7 +394,7 @@ export class Deployment {
 
     /**
      * No auto rollback
-    */
+     */
     disabled: (): CodeDeployDeploymentGroupOptions['autoRollbackConfiguration'] => ({
       enabled: false,
     }),
@@ -402,11 +402,11 @@ export class Deployment {
 
   /**
    * Blue/Green deployment configurations
-  */
+   */
   static readonly BlueGreenConfigs = {
     /**
      * Standard blue/green with immediate termination
-    */
+     */
     standard: (): CodeDeployDeploymentGroupOptions['blueGreenDeploymentConfiguration'] => ({
       terminateBlueInstancesOnDeploymentSuccess: {
         action: 'TERMINATE',
@@ -423,7 +423,7 @@ export class Deployment {
 
     /**
      * Blue/green with delayed termination
-    */
+     */
     withDelay: (
       terminationWaitTimeInMinutes: number,
     ): CodeDeployDeploymentGroupOptions['blueGreenDeploymentConfiguration'] => ({
@@ -442,7 +442,7 @@ export class Deployment {
 
     /**
      * Blue/green with manual approval
-    */
+     */
     withManualApproval: (
       waitTimeInMinutes: number,
     ): CodeDeployDeploymentGroupOptions['blueGreenDeploymentConfiguration'] => ({
@@ -461,7 +461,7 @@ export class Deployment {
 
     /**
      * Blue/green keeping old instances
-    */
+     */
     keepBlue: (): CodeDeployDeploymentGroupOptions['blueGreenDeploymentConfiguration'] => ({
       terminateBlueInstancesOnDeploymentSuccess: {
         action: 'KEEP_ALIVE',
@@ -478,11 +478,11 @@ export class Deployment {
 
   /**
    * Common use cases
-  */
+   */
   static readonly UseCases = {
     /**
      * Create basic EC2 deployment
-    */
+     */
     ec2Deployment: (
       slug: string,
       environment: EnvironmentType,
@@ -514,7 +514,7 @@ export class Deployment {
 
     /**
      * Create Lambda deployment with canary
-    */
+     */
     lambdaCanaryDeployment: (
       slug: string,
       environment: EnvironmentType,
@@ -554,7 +554,7 @@ export class Deployment {
 
     /**
      * Create ECS blue/green deployment
-    */
+     */
     ecsBlueGreenDeployment: (
       slug: string,
       environment: EnvironmentType,
@@ -589,11 +589,11 @@ export class Deployment {
 
   /**
    * Deployment strategy helpers
-  */
+   */
   static readonly Strategies = {
     /**
      * Rolling deployment strategy
-    */
+     */
     rolling: (batchPercentage: number = 25): DeploymentStrategyOptions => ({
       type: 'rolling',
       batchPercentage,
@@ -601,14 +601,14 @@ export class Deployment {
 
     /**
      * Blue-green deployment strategy
-    */
+     */
     blueGreen: (): DeploymentStrategyOptions => ({
       type: 'blue-green',
     }),
 
     /**
      * Canary deployment strategy
-    */
+     */
     canary: (canaryPercentage: number = 10, canaryInterval: number = 5): DeploymentStrategyOptions => ({
       type: 'canary',
       canaryPercentage,
@@ -617,7 +617,7 @@ export class Deployment {
 
     /**
      * All at once deployment strategy
-    */
+     */
     allAtOnce: (): DeploymentStrategyOptions => ({
       type: 'all-at-once',
     }),
@@ -627,11 +627,11 @@ export class Deployment {
 /**
  * Asset Hashing Utilities
  * Provides content-based hashing for cache invalidation
-*/
+ */
 export class AssetHasher {
   /**
    * Common content types by file extension
-  */
+   */
   static readonly ContentTypes: Record<string, string> = {
     '.html': 'text/html',
     '.htm': 'text/html',
@@ -661,7 +661,7 @@ export class AssetHasher {
 
   /**
    * Files that should NOT be hashed (typically entry points)
-  */
+   */
   static readonly NoHashPatterns: RegExp[] = [
     /^index\.html$/,
     /^favicon\.ico$/,
@@ -675,7 +675,7 @@ export class AssetHasher {
 
   /**
    * Compute hash for a file's contents
-  */
+   */
   static computeFileHash(filePath: string, algorithm: 'md5' | 'sha256' | 'sha1' = 'md5'): string {
     const content = readFileSync(filePath)
     return createHash(algorithm).update(content).digest('hex')
@@ -683,14 +683,14 @@ export class AssetHasher {
 
   /**
    * Compute short hash (first 8 characters)
-  */
+   */
   static computeShortHash(filePath: string): string {
     return AssetHasher.computeFileHash(filePath).slice(0, 8)
   }
 
   /**
    * Get content type for a file
-  */
+   */
   static getContentType(filePath: string): string {
     const ext = extname(filePath).toLowerCase()
     return AssetHasher.ContentTypes[ext] || 'application/octet-stream'
@@ -698,7 +698,7 @@ export class AssetHasher {
 
   /**
    * Check if a file should be hashed
-  */
+   */
   static shouldHashFile(relativePath: string, customNoHashPatterns?: RegExp[]): boolean {
     const patterns = [...AssetHasher.NoHashPatterns, ...(customNoHashPatterns || [])]
     return !patterns.some(pattern => pattern.test(relativePath))
@@ -707,7 +707,7 @@ export class AssetHasher {
   /**
    * Generate a hashed filename
    * e.g., "styles.css" -> "styles.a1b2c3d4.css"
-  */
+   */
   static generateHashedFilename(filePath: string, hash: string): string {
     const ext = extname(filePath)
     const name = basename(filePath, ext)
@@ -721,7 +721,7 @@ export class AssetHasher {
 
   /**
    * Collect all files in a directory recursively
-  */
+   */
   static collectFiles(directory: string, relativeTo?: string): string[] {
     const files: string[] = []
     const baseDir = relativeTo || directory
@@ -748,7 +748,7 @@ export class AssetHasher {
 
   /**
    * Hash all assets in a directory
-  */
+   */
   static hashDirectory(options: {
     sourceDir: string
     outputDir?: string
@@ -824,7 +824,7 @@ export class AssetHasher {
   /**
    * Get paths that need CloudFront invalidation
    * Compares old and new manifests to find changed files
-  */
+   */
   static getInvalidationPaths(
     oldManifest: AssetManifest | null,
     newManifest: AssetManifest,
@@ -871,7 +871,7 @@ export class AssetHasher {
 
   /**
    * Update HTML files to reference hashed assets
-  */
+   */
   static updateHtmlReferences(options: {
     htmlDir: string
     manifest: AssetManifest
@@ -910,7 +910,7 @@ export class AssetHasher {
 
   /**
    * Update CSS files to reference hashed assets
-  */
+   */
   static updateCssReferences(options: {
     cssDir: string
     manifest: AssetManifest
@@ -942,14 +942,14 @@ export class AssetHasher {
 
   /**
    * Escape special regex characters
-  */
+   */
   private static escapeRegExp(string: string): string {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 
   /**
    * Generate a deployment manifest for S3
-  */
+   */
   static generateS3DeploymentManifest(options: {
     sourceDir: string
     bucketName: string
@@ -1007,7 +1007,7 @@ export class AssetHasher {
 
   /**
    * Compare two asset manifests to detect changes
-  */
+   */
   static compareManifests(oldManifest: AssetManifest, newManifest: AssetManifest): {
     added: string[]
     removed: string[]
@@ -1055,7 +1055,7 @@ export class AssetHasher {
 
   /**
    * Load an existing asset manifest from a file
-  */
+   */
   static loadManifest(manifestPath: string): AssetManifest | null {
     if (!existsSync(manifestPath)) {
       return null
@@ -1072,7 +1072,7 @@ export class AssetHasher {
 
   /**
    * Save an asset manifest to a file
-  */
+   */
   static saveManifest(manifest: AssetManifest, manifestPath: string): void {
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2))
   }

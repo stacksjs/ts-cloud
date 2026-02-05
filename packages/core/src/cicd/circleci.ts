@@ -1,7 +1,7 @@
 /**
  * CircleCI Configuration Generator
  * Generate CI/CD pipelines for CircleCI
-*/
+ */
 
 export interface CircleCIOptions {
   awsRegion?: string
@@ -15,7 +15,7 @@ export interface CircleCIOptions {
 
 /**
  * Generate deployment config
-*/
+ */
 export function generateDeploymentConfig(options: CircleCIOptions = {}): string {
   const {
     awsRegion = 'us-east-1',
@@ -114,7 +114,7 @@ ${workflows ? `workflows:
 
 /**
  * Generate multi-environment config
-*/
+ */
 export function generateMultiEnvConfig(options: {
   environments: Array<{ name: string; branch: string }>
   awsRegion?: string
@@ -205,7 +205,7 @@ ${workflowJobs}
 
 /**
  * Generate scheduled workflow config
-*/
+ */
 export function generateScheduledConfig(options: {
   schedule: string
   environment: string
@@ -255,7 +255,7 @@ workflows:
 
 /**
  * Generate approval workflow config
-*/
+ */
 export function generateApprovalConfig(options: {
   environments: string[]
   awsRegion?: string
@@ -346,7 +346,7 @@ ${workflowJobs}
 
 /**
  * Generate parallel deployment config
-*/
+ */
 export function generateParallelConfig(options: {
   regions: string[]
   environment: string

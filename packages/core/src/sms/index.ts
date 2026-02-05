@@ -1,6 +1,6 @@
 /**
  * SMS Advanced Features
-*/
+ */
 
 // Advanced features
 export * as SmsAdvanced from './advanced'

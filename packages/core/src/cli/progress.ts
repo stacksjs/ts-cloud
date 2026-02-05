@@ -1,7 +1,7 @@
 /**
  * Progress tracking with ETA and status updates
  * Provides interactive progress bars and status indicators
-*/
+ */
 
 export interface ProgressOptions {
   total: number
@@ -16,7 +16,7 @@ export interface ProgressOptions {
 
 /**
  * Progress bar with ETA calculation
-*/
+ */
 export class ProgressBar {
   private total: number
   private current: number = 0
@@ -42,7 +42,7 @@ export class ProgressBar {
 
   /**
    * Update progress
-  */
+   */
   tick(amount: number = 1): void {
     this.current = Math.min(this.total, this.current + amount)
     this.lastUpdate = Date.now()
@@ -50,7 +50,7 @@ export class ProgressBar {
 
   /**
    * Set progress to specific value
-  */
+   */
   update(current: number): void {
     this.current = Math.min(this.total, Math.max(0, current))
     this.lastUpdate = Date.now()
@@ -58,21 +58,21 @@ export class ProgressBar {
 
   /**
    * Set message
-  */
+   */
   setMessage(message: string): void {
     this.message = message
   }
 
   /**
    * Get current progress percentage
-  */
+   */
   getPercentage(): number {
     return Math.min(100, (this.current / this.total) * 100)
   }
 
   /**
    * Calculate ETA in milliseconds
-  */
+   */
   getETA(): number {
     if (this.current === 0) return 0
 
@@ -85,7 +85,7 @@ export class ProgressBar {
 
   /**
    * Format ETA as human-readable string
-  */
+   */
   getETAFormatted(): string {
     if (this.current === 0) return 'calculating...'
     if (this.current === this.total) return 'complete'
@@ -113,7 +113,7 @@ export class ProgressBar {
 
   /**
    * Render progress bar
-  */
+   */
   render(): string {
     const percentage = this.getPercentage()
     const completed = Math.floor((this.width * this.current) / this.total)
@@ -141,7 +141,7 @@ export class ProgressBar {
 
   /**
    * Check if complete
-  */
+   */
   isComplete(): boolean {
     return this.current >= this.total
   }
@@ -149,7 +149,7 @@ export class ProgressBar {
 
 /**
  * Multi-step progress tracker
-*/
+ */
 export interface Step {
   name: string
   status: 'pending' | 'active' | 'completed' | 'failed' | 'skipped'
@@ -170,7 +170,7 @@ export class MultiStepProgress {
 
   /**
    * Start a step
-  */
+   */
   startStep(index: number, message?: string): void {
     if (index >= 0 && index < this.steps.length) {
       this.steps[index].status = 'active'
@@ -181,7 +181,7 @@ export class MultiStepProgress {
 
   /**
    * Complete current step
-  */
+   */
   completeStep(message?: string): void {
     if (this.currentStepIndex >= 0 && this.currentStepIndex < this.steps.length) {
       this.steps[this.currentStepIndex].status = 'completed'
@@ -192,7 +192,7 @@ export class MultiStepProgress {
 
   /**
    * Fail current step
-  */
+   */
   failStep(error: string): void {
     if (this.currentStepIndex >= 0 && this.currentStepIndex < this.steps.length) {
       this.steps[this.currentStepIndex].status = 'failed'
@@ -202,7 +202,7 @@ export class MultiStepProgress {
 
   /**
    * Skip current step
-  */
+   */
   skipStep(message?: string): void {
     if (this.currentStepIndex >= 0 && this.currentStepIndex < this.steps.length) {
       this.steps[this.currentStepIndex].status = 'skipped'
@@ -213,21 +213,21 @@ export class MultiStepProgress {
 
   /**
    * Get step by index
-  */
+   */
   getStep(index: number): Step | undefined {
     return this.steps[index]
   }
 
   /**
    * Get all steps
-  */
+   */
   getSteps(): Step[] {
     return this.steps
   }
 
   /**
    * Render progress
-  */
+   */
   render(): string {
     const lines: string[] = []
 
@@ -251,7 +251,7 @@ export class MultiStepProgress {
 
   /**
    * Get status icon
-  */
+   */
   private getStatusIcon(status: Step['status']): string {
     switch (status) {
       case 'pending':
@@ -271,14 +271,14 @@ export class MultiStepProgress {
 
   /**
    * Check if all steps complete
-  */
+   */
   isComplete(): boolean {
     return this.steps.every(step => step.status === 'completed' || step.status === 'skipped')
   }
 
   /**
    * Check if any step failed
-  */
+   */
   hasFailed(): boolean {
     return this.steps.some(step => step.status === 'failed')
   }
@@ -286,7 +286,7 @@ export class MultiStepProgress {
 
 /**
  * Spinner for indeterminate progress
-*/
+ */
 export class Spinner {
   private frames: string[] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   private currentFrame: number = 0
@@ -299,7 +299,7 @@ export class Spinner {
 
   /**
    * Start spinner
-  */
+   */
   start(): void {
     if (this.interval) return
 
@@ -311,7 +311,7 @@ export class Spinner {
 
   /**
    * Stop spinner
-  */
+   */
   stop(): void {
     if (this.interval) {
       clearInterval(this.interval)
@@ -321,21 +321,21 @@ export class Spinner {
 
   /**
    * Set message
-  */
+   */
   setMessage(message: string): void {
     this.message = message
   }
 
   /**
    * Render current frame
-  */
+   */
   render(): string {
     return `${this.frames[this.currentFrame]} ${this.message}`
   }
 
   /**
    * Succeed with checkmark
-  */
+   */
   succeed(message?: string): string {
     this.stop()
     return `✓ ${message || this.message}`
@@ -343,7 +343,7 @@ export class Spinner {
 
   /**
    * Fail with X
-  */
+   */
   fail(message?: string): string {
     this.stop()
     return `✗ ${message || this.message}`
@@ -351,7 +351,7 @@ export class Spinner {
 
   /**
    * Warn with exclamation
-  */
+   */
   warn(message?: string): string {
     this.stop()
     return `⚠ ${message || this.message}`
@@ -359,7 +359,7 @@ export class Spinner {
 
   /**
    * Info with i
-  */
+   */
   info(message?: string): string {
     this.stop()
     return `ℹ ${message || this.message}`
@@ -368,7 +368,7 @@ export class Spinner {
 
 /**
  * Task list with status tracking
-*/
+ */
 export interface Task {
   title: string
   status: 'pending' | 'running' | 'completed' | 'failed'
@@ -380,7 +380,7 @@ export class TaskList {
 
   /**
    * Add task
-  */
+   */
   add(title: string): number {
     this.tasks.push({
       title,
@@ -391,7 +391,7 @@ export class TaskList {
 
   /**
    * Start task
-  */
+   */
   start(index: number): void {
     if (index >= 0 && index < this.tasks.length) {
       this.tasks[index].status = 'running'
@@ -400,7 +400,7 @@ export class TaskList {
 
   /**
    * Complete task
-  */
+   */
   complete(index: number, output?: string): void {
     if (index >= 0 && index < this.tasks.length) {
       this.tasks[index].status = 'completed'
@@ -410,7 +410,7 @@ export class TaskList {
 
   /**
    * Fail task
-  */
+   */
   fail(index: number, output?: string): void {
     if (index >= 0 && index < this.tasks.length) {
       this.tasks[index].status = 'failed'
@@ -420,7 +420,7 @@ export class TaskList {
 
   /**
    * Render task list
-  */
+   */
   render(): string {
     const lines: string[] = []
 
@@ -440,7 +440,7 @@ export class TaskList {
 
   /**
    * Get status icon
-  */
+   */
   private getStatusIcon(status: Task['status']): string {
     switch (status) {
       case 'pending':

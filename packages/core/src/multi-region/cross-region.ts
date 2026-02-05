@@ -1,7 +1,7 @@
 /**
  * Cross-Region Resource Management
  * Handles references and dependencies between regions
-*/
+ */
 
 export interface CrossRegionReference {
   sourceRegion: string
@@ -20,14 +20,14 @@ export interface CrossRegionExport {
 
 /**
  * Cross-region reference manager
-*/
+ */
 export class CrossRegionReferenceManager {
   private references: CrossRegionReference[] = []
   private exports: Map<string, CrossRegionExport[]> = new Map()
 
   /**
    * Register a cross-region export
-  */
+   */
   addExport(export_: CrossRegionExport): void {
     const key = `${export_.region}:${export_.exportName}`
 
@@ -40,7 +40,7 @@ export class CrossRegionReferenceManager {
 
   /**
    * Get export value from another region
-  */
+   */
   getExport(region: string, exportName: string): string | undefined {
     const regionExports = this.exports.get(region)
 
@@ -52,7 +52,7 @@ export class CrossRegionReferenceManager {
 
   /**
    * Create cross-region reference
-  */
+   */
   createReference(
     sourceRegion: string,
     targetRegion: string,
@@ -79,7 +79,7 @@ export class CrossRegionReferenceManager {
 
   /**
    * Resolve cross-region reference
-  */
+   */
   async resolveReference(
     targetRegion: string,
     parameterName: string,
@@ -103,7 +103,7 @@ export class CrossRegionReferenceManager {
 
   /**
    * Get all references for a region
-  */
+   */
   getReferencesForRegion(region: string): CrossRegionReference[] {
     return this.references.filter(
       ref => ref.sourceRegion === region || ref.targetRegion === region,
@@ -112,7 +112,7 @@ export class CrossRegionReferenceManager {
 
   /**
    * Clear all references
-  */
+   */
   clear(): void {
     this.references = []
     this.exports.clear()
@@ -121,7 +121,7 @@ export class CrossRegionReferenceManager {
 
 /**
  * Global resources that exist in one region but are accessible globally
-*/
+ */
 export interface GlobalResource {
   type: 'cloudfront' | 'route53' | 'waf' | 'iam' | 's3-website'
   id: string
@@ -132,62 +132,62 @@ export interface GlobalResource {
 
 /**
  * Global resource manager
-*/
+ */
 export class GlobalResourceManager {
   private resources: Map<string, GlobalResource> = new Map()
 
   /**
    * Register a global resource
-  */
+   */
   register(resource: GlobalResource): void {
     this.resources.set(resource.id, resource)
   }
 
   /**
    * Get global resource
-  */
+   */
   get(id: string): GlobalResource | undefined {
     return this.resources.get(id)
   }
 
   /**
    * Get global resources by type
-  */
+   */
   getByType(type: GlobalResource['type']): GlobalResource[] {
     return Array.from(this.resources.values()).filter(r => r.type === type)
   }
 
   /**
    * Get CloudFront distributions
-  */
+   */
   getCloudFrontDistributions(): GlobalResource[] {
     return this.getByType('cloudfront')
   }
 
   /**
    * Get Route53 hosted zones
-  */
+   */
   getRoute53HostedZones(): GlobalResource[] {
     return this.getByType('route53')
   }
 
   /**
    * Get WAF web ACLs
-  */
+   */
   getWAFWebACLs(): GlobalResource[] {
     return this.getByType('waf')
   }
 
   /**
    * Remove global resource
-  */
+   */
   remove(id: string): void {
     this.resources.delete(id)
   }
 
   /**
    * Clear all global resources
-  */
+   */
   clear(): void {
     this.resources.clear()
   }
@@ -195,7 +195,7 @@ export class GlobalResourceManager {
 
 /**
  * Region pairing for replication and failover
-*/
+ */
 export interface RegionPair {
   primary: string
   secondary: string
@@ -213,20 +213,20 @@ export interface RegionPair {
 
 /**
  * Region pair manager
-*/
+ */
 export class RegionPairManager {
   private pairs: RegionPair[] = []
 
   /**
    * Add region pair
-  */
+   */
   addPair(pair: RegionPair): void {
     this.pairs.push(pair)
   }
 
   /**
    * Get paired region
-  */
+   */
   getPairedRegion(region: string): string | undefined {
     const pair = this.pairs.find(p => p.primary === region || p.secondary === region)
 
@@ -237,28 +237,28 @@ export class RegionPairManager {
 
   /**
    * Get all pairs
-  */
+   */
   getAllPairs(): RegionPair[] {
     return [...this.pairs]
   }
 
   /**
    * Get pairs with replication enabled
-  */
+   */
   getReplicatedPairs(): RegionPair[] {
     return this.pairs.filter(p => p.replicationConfig)
   }
 
   /**
    * Get pairs with failover enabled
-  */
+   */
   getFailoverPairs(): RegionPair[] {
     return this.pairs.filter(p => p.failoverConfig?.automatic)
   }
 
   /**
    * Check if regions are paired
-  */
+   */
   arePaired(region1: string, region2: string): boolean {
     return this.pairs.some(
       p =>
@@ -269,7 +269,7 @@ export class RegionPairManager {
 
   /**
    * Clear all pairs
-  */
+   */
   clear(): void {
     this.pairs = []
   }
@@ -277,7 +277,7 @@ export class RegionPairManager {
 
 /**
  * Cross-region stack dependencies
-*/
+ */
 export interface StackDependency {
   dependentStack: string
   dependentRegion: string
@@ -288,20 +288,20 @@ export interface StackDependency {
 
 /**
  * Stack dependency manager
-*/
+ */
 export class StackDependencyManager {
   private dependencies: StackDependency[] = []
 
   /**
    * Add stack dependency
-  */
+   */
   addDependency(dependency: StackDependency): void {
     this.dependencies.push(dependency)
   }
 
   /**
    * Get dependencies for a stack
-  */
+   */
   getDependencies(stackName: string, region: string): StackDependency[] {
     return this.dependencies.filter(
       d => d.dependentStack === stackName && d.dependentRegion === region,
@@ -310,7 +310,7 @@ export class StackDependencyManager {
 
   /**
    * Get dependents of a stack
-  */
+   */
   getDependents(stackName: string, region: string): StackDependency[] {
     return this.dependencies.filter(
       d => d.dependsOnStack === stackName && d.dependsOnRegion === region,
@@ -319,14 +319,14 @@ export class StackDependencyManager {
 
   /**
    * Check if stack has dependencies
-  */
+   */
   hasDependencies(stackName: string, region: string): boolean {
     return this.getDependencies(stackName, region).length > 0
   }
 
   /**
    * Get deployment order
-  */
+   */
   getDeploymentOrder(stacks: Array<{ name: string; region: string }>): Array<{ name: string; region: string }> {
     const visited: Set<string> = new Set()
     const order: Array<{ name: string; region: string }> = []
@@ -359,7 +359,7 @@ export class StackDependencyManager {
 
   /**
    * Detect circular dependencies
-  */
+   */
   detectCircularDependencies(): boolean {
     const visited: Set<string> = new Set()
     const recursionStack: Set<string> = new Set()
@@ -395,7 +395,7 @@ export class StackDependencyManager {
 
   /**
    * Clear all dependencies
-  */
+   */
   clear(): void {
     this.dependencies = []
   }
@@ -403,7 +403,7 @@ export class StackDependencyManager {
 
 /**
  * Global instances
-*/
+ */
 export const crossRegionReferenceManager: CrossRegionReferenceManager = new CrossRegionReferenceManager()
 export const globalResourceManager: GlobalResourceManager = new GlobalResourceManager()
 export const regionPairManager: RegionPairManager = new RegionPairManager()

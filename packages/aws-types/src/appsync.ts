@@ -1,7 +1,7 @@
 /**
  * AWS AppSync Types
  * CloudFormation resource types for AWS AppSync (GraphQL)
-*/
+ */
 
 import type { Tag } from './common'
 

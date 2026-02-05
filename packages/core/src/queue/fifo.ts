@@ -1,7 +1,7 @@
 /**
  * SQS FIFO Queue Management
  * First-In-First-Out queues with message ordering and deduplication
-*/
+ */
 
 export interface FIFOQueue {
   id: string
@@ -46,7 +46,7 @@ export interface FIFOMessage {
 
 /**
  * FIFO queue manager
-*/
+ */
 export class FIFOQueueManager {
   private queues: Map<string, FIFOQueue> = new Map()
   private messageGroups: Map<string, MessageGroup> = new Map()
@@ -60,7 +60,7 @@ export class FIFOQueueManager {
 
   /**
    * Create FIFO queue
-  */
+   */
   createFIFOQueue(queue: Omit<FIFOQueue, 'id' | 'queueUrl'>): FIFOQueue {
     const id = `fifo-queue-${Date.now()}-${this.queueCounter++}`
 
@@ -90,7 +90,7 @@ export class FIFOQueueManager {
 
   /**
    * Create high-throughput FIFO queue
-  */
+   */
   createHighThroughputFIFO(options: {
     name: string
     contentBasedDeduplication?: boolean
@@ -108,7 +108,7 @@ export class FIFOQueueManager {
 
   /**
    * Create standard FIFO queue
-  */
+   */
   createStandardFIFO(options: {
     name: string
     contentBasedDeduplication?: boolean
@@ -126,7 +126,7 @@ export class FIFOQueueManager {
 
   /**
    * Create deduplication config
-  */
+   */
   private createDeduplicationConfig(config: {
     queueId: string
     contentBasedDeduplication: boolean
@@ -147,7 +147,7 @@ export class FIFOQueueManager {
 
   /**
    * Send message to FIFO queue
-  */
+   */
   sendMessage(options: {
     queueId: string
     messageGroupId: string
@@ -200,7 +200,7 @@ export class FIFOQueueManager {
 
   /**
    * Check if message is duplicate
-  */
+   */
   private isDuplicate(config: DeduplicationConfig, deduplicationId: string): boolean {
     const existing = config.deduplicationHashes.get(deduplicationId)
 
@@ -220,7 +220,7 @@ export class FIFOQueueManager {
 
   /**
    * Generate message hash
-  */
+   */
   private generateHash(content: string): string {
     // Simplified hash generation
     let hash = 0
@@ -234,14 +234,14 @@ export class FIFOQueueManager {
 
   /**
    * Generate sequence number
-  */
+   */
   private generateSequenceNumber(): string {
     return `${Date.now()}${this.sequenceCounter++}`.padStart(20, '0')
   }
 
   /**
    * Update message group
-  */
+   */
   private updateMessageGroup(queueId: string, messageGroupId: string): void {
     const groupKey = `${queueId}-${messageGroupId}`
     let group = this.messageGroups.get(groupKey)
@@ -263,28 +263,28 @@ export class FIFOQueueManager {
 
   /**
    * Get message groups for queue
-  */
+   */
   getMessageGroups(queueId: string): MessageGroup[] {
     return Array.from(this.messageGroups.values()).filter(g => g.queueId === queueId)
   }
 
   /**
    * Get queue
-  */
+   */
   getQueue(id: string): FIFOQueue | undefined {
     return this.queues.get(id)
   }
 
   /**
    * List queues
-  */
+   */
   listQueues(): FIFOQueue[] {
     return Array.from(this.queues.values())
   }
 
   /**
    * Get messages
-  */
+   */
   getMessages(queueId: string, messageGroupId?: string): FIFOMessage[] {
     let messages = Array.from(this.messages.values())
 
@@ -297,7 +297,7 @@ export class FIFOQueueManager {
 
   /**
    * Generate CloudFormation for FIFO queue
-  */
+   */
   generateFIFOQueueCF(queue: FIFOQueue): any {
     return {
       Type: 'AWS::SQS::Queue',
@@ -322,7 +322,7 @@ export class FIFOQueueManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.queues.clear()
     this.messageGroups.clear()
@@ -338,5 +338,5 @@ export class FIFOQueueManager {
 
 /**
  * Global FIFO queue manager instance
-*/
+ */
 export const fifoQueueManager: FIFOQueueManager = new FIFOQueueManager()

@@ -37,7 +37,7 @@
  *   body: 'World',
  * })
  * ```
-*/
+ */
 
 export * from './apns'
 export * from './fcm'

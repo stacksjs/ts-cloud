@@ -1,7 +1,7 @@
 /**
  * Database User Management
  * User creation, permissions, and access control
-*/
+ */
 
 export interface DatabaseUser {
   id: string
@@ -55,7 +55,7 @@ export interface AccessAudit {
 
 /**
  * Database user manager
-*/
+ */
 export class DatabaseUserManager {
   private users: Map<string, DatabaseUser> = new Map()
   private roles: Map<string, UserRole> = new Map()
@@ -66,7 +66,7 @@ export class DatabaseUserManager {
 
   /**
    * Create database user
-  */
+   */
   createUser(user: Omit<DatabaseUser, 'id' | 'createdAt'>): DatabaseUser {
     const id = `db-user-${Date.now()}-${this.userCounter++}`
 
@@ -83,7 +83,7 @@ export class DatabaseUserManager {
 
   /**
    * Create read-only user
-  */
+   */
   createReadOnlyUser(options: {
     username: string
     database: string
@@ -115,7 +115,7 @@ export class DatabaseUserManager {
 
   /**
    * Create read-write user
-  */
+   */
   createReadWriteUser(options: {
     username: string
     database: string
@@ -147,7 +147,7 @@ export class DatabaseUserManager {
 
   /**
    * Create admin user
-  */
+   */
   createAdminUser(options: {
     username: string
     database: string
@@ -170,7 +170,7 @@ export class DatabaseUserManager {
 
   /**
    * Create application user with specific table access
-  */
+   */
   createApplicationUser(options: {
     username: string
     database: string
@@ -195,7 +195,7 @@ export class DatabaseUserManager {
 
   /**
    * Create user role
-  */
+   */
   createRole(role: Omit<UserRole, 'id' | 'users'>): UserRole {
     const id = `role-${Date.now()}-${this.roleCounter++}`
 
@@ -212,7 +212,7 @@ export class DatabaseUserManager {
 
   /**
    * Assign user to role
-  */
+   */
   assignUserToRole(userId: string, roleId: string): void {
     const user = this.users.get(userId)
     const role = this.roles.get(roleId)
@@ -246,7 +246,7 @@ export class DatabaseUserManager {
 
   /**
    * Grant privileges to user
-  */
+   */
   grantPrivileges(
     userId: string,
     privileges: DatabasePrivilege[]
@@ -282,7 +282,7 @@ export class DatabaseUserManager {
 
   /**
    * Revoke privileges from user
-  */
+   */
   revokePrivileges(
     userId: string,
     privileges: DatabasePrivilege[]
@@ -324,7 +324,7 @@ export class DatabaseUserManager {
 
   /**
    * Rotate user password
-  */
+   */
   rotatePassword(userId: string): { success: boolean; newSecretArn?: string } {
     const user = this.users.get(userId)
 
@@ -345,7 +345,7 @@ export class DatabaseUserManager {
 
   /**
    * Check if password rotation needed
-  */
+   */
   needsPasswordRotation(userId: string): boolean {
     const user = this.users.get(userId)
 
@@ -361,7 +361,7 @@ export class DatabaseUserManager {
 
   /**
    * Audit access
-  */
+   */
   auditAccess(audit: Omit<AccessAudit, 'id' | 'timestamp'>): AccessAudit {
     const id = `audit-${Date.now()}-${this.auditCounter++}`
 
@@ -378,7 +378,7 @@ export class DatabaseUserManager {
 
   /**
    * Get user access history
-  */
+   */
   getUserAccessHistory(username: string, limit: number = 100): AccessAudit[] {
     return Array.from(this.audits.values())
       .filter(audit => audit.username === username)
@@ -388,7 +388,7 @@ export class DatabaseUserManager {
 
   /**
    * Get failed login attempts
-  */
+   */
   getFailedLoginAttempts(username: string, hours: number = 24): AccessAudit[] {
     const cutoffTime = Date.now() - hours * 60 * 60 * 1000
 
@@ -403,7 +403,7 @@ export class DatabaseUserManager {
 
   /**
    * Generate SQL for user creation
-  */
+   */
   generateCreateUserSQL(user: DatabaseUser, engine: 'postgres' | 'mysql' = 'postgres'): string {
     const statements: string[] = []
 
@@ -449,35 +449,35 @@ export class DatabaseUserManager {
 
   /**
    * Get user
-  */
+   */
   getUser(id: string): DatabaseUser | undefined {
     return this.users.get(id)
   }
 
   /**
    * List users
-  */
+   */
   listUsers(): DatabaseUser[] {
     return Array.from(this.users.values())
   }
 
   /**
    * Get role
-  */
+   */
   getRole(id: string): UserRole | undefined {
     return this.roles.get(id)
   }
 
   /**
    * List roles
-  */
+   */
   listRoles(): UserRole[] {
     return Array.from(this.roles.values())
   }
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.users.clear()
     this.roles.clear()
@@ -490,5 +490,5 @@ export class DatabaseUserManager {
 
 /**
  * Global database user manager instance
-*/
+ */
 export const databaseUserManager: DatabaseUserManager = new DatabaseUserManager()

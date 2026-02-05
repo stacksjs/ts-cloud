@@ -1,13 +1,13 @@
 /**
  * AWS Backup Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_Backup.html
-*/
+ */
 
 import type { Tag } from './common'
 
 /**
  * AWS::Backup::BackupVault
-*/
+ */
 export interface BackupVault {
   Type: 'AWS::Backup::BackupVault'
   Properties: {
@@ -39,7 +39,7 @@ export interface BackupVault {
 
 /**
  * AWS::Backup::BackupPlan
-*/
+ */
 export interface BackupPlan {
   Type: 'AWS::Backup::BackupPlan'
   Properties: {
@@ -79,7 +79,7 @@ export interface BackupPlan {
 
 /**
  * AWS::Backup::BackupSelection
-*/
+ */
 export interface BackupSelection {
   Type: 'AWS::Backup::BackupSelection'
   Properties: {
@@ -118,7 +118,7 @@ export interface BackupSelection {
 
 /**
  * AWS::Backup::Framework
-*/
+ */
 export interface BackupFramework {
   Type: 'AWS::Backup::Framework'
   Properties: {
@@ -145,7 +145,7 @@ export interface BackupFramework {
 
 /**
  * AWS::Backup::ReportPlan
-*/
+ */
 export interface BackupReportPlan {
   Type: 'AWS::Backup::ReportPlan'
   Properties: {
@@ -169,7 +169,7 @@ export interface BackupReportPlan {
 
 /**
  * AWS::Backup::BackupVaultNotifications (Legacy)
-*/
+ */
 export interface BackupVaultNotifications {
   Type: 'AWS::Backup::BackupVault'
   Properties: {

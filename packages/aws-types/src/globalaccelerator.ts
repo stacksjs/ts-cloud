@@ -1,7 +1,7 @@
 /**
  * AWS Global Accelerator Types
  * CloudFormation resource types for AWS Global Accelerator
-*/
+ */
 
 import type { Tag } from './common'
 

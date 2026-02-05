@@ -46,11 +46,11 @@ export interface EdgeFunctionConfig {
 /**
  * CDN Module - CloudFront Distribution Management
  * Provides clean API for creating and configuring CloudFront distributions
-*/
+ */
 export class CDN {
   /**
    * Create a CloudFront distribution
-  */
+   */
   static createDistribution(options: DistributionOptions): {
     distribution: CloudFrontDistribution
     originAccessControl?: CloudFrontOriginAccessControl
@@ -172,7 +172,7 @@ export class CDN {
 
   /**
    * Set custom domain on a distribution
-  */
+   */
   static setCustomDomain(
     distribution: CloudFrontDistribution,
     domain: string,
@@ -190,7 +190,7 @@ export class CDN {
 
   /**
    * Set error pages for SPA routing (404 → index.html)
-  */
+   */
   static setErrorPages(
     distribution: CloudFrontDistribution,
     mappings: ErrorPageMapping[],
@@ -206,7 +206,7 @@ export class CDN {
 
   /**
    * Enable HTTP/3 support
-  */
+   */
   static enableHttp3(distribution: CloudFrontDistribution): CloudFrontDistribution {
     distribution.Properties.DistributionConfig.HttpVersion = 'http2and3'
     return distribution
@@ -214,7 +214,7 @@ export class CDN {
 
   /**
    * Add Lambda@Edge function
-  */
+   */
   static addEdgeFunction(
     distribution: CloudFrontDistribution,
     event: EdgeFunctionConfig['event'],
@@ -234,7 +234,7 @@ export class CDN {
 
   /**
    * Set cache policy with custom TTL
-  */
+   */
   static setCachePolicy(
     distribution: CloudFrontDistribution,
     ttl: { min?: number, max?: number, default?: number },
@@ -250,7 +250,7 @@ export class CDN {
   /**
    * Create standard SPA (Single Page Application) configuration
    * Routes all 404/403 errors to index.html
-  */
+   */
   static createSpaDistribution(options: Omit<DistributionOptions, 'errorPages'>): ReturnType<typeof CDN.createDistribution> {
     return CDN.createDistribution({
       ...options,
@@ -267,7 +267,7 @@ export class CDN {
    * - Pretty URLs (e.g., /guide → /guide.html or /guide/index.html)
    * - Trailing slashes normalization
    * - Default document serving (index.html)
-  */
+   */
   static createDocsOriginRequestFunction(options: {
     slug: string
     environment: EnvironmentType
@@ -378,7 +378,7 @@ exports.handler = async (event) => {
   /**
    * Create a docs-specific CloudFront distribution
    * Includes Lambda@Edge for URL rewriting and proper cache settings
-  */
+   */
   static createDocsDistribution(options: {
     slug: string
     environment: EnvironmentType
@@ -430,7 +430,7 @@ exports.handler = async (event) => {
   /**
    * Create an API distribution with ALB origin
    * Optimized for API traffic (no caching by default, all methods allowed)
-  */
+   */
   static createApiDistribution(options: {
     slug: string
     environment: EnvironmentType
@@ -542,7 +542,7 @@ exports.handler = async (event) => {
 
   /**
    * Create a multi-origin distribution (S3 for static, ALB for API)
-  */
+   */
   static createMultiOriginDistribution(options: {
     slug: string
     environment: EnvironmentType
@@ -682,7 +682,7 @@ exports.handler = async (event) => {
 
   /**
    * Add ALB origin to an existing distribution
-  */
+   */
   static addAlbOrigin(
     distribution: CloudFrontDistribution,
     options: {
@@ -760,7 +760,7 @@ exports.handler = async (event) => {
 
   /**
    * Add a custom origin header (for origin authentication)
-  */
+   */
   static addOriginHeader(
     distribution: CloudFrontDistribution,
     originId: string,
@@ -786,11 +786,11 @@ exports.handler = async (event) => {
 
   /**
    * Lambda@Edge code templates for common use cases
-  */
+   */
   static readonly EdgeFunctionTemplates = {
     /**
      * Origin request handler for docs/VitePress routing
-    */
+     */
     docsOriginRequest: (`
 'use strict';
 exports.handler = async (event) => {
@@ -809,7 +809,7 @@ exports.handler = async (event) => {
 
     /**
      * Viewer response handler for security headers
-    */
+     */
     securityHeaders: (`
 'use strict';
 exports.handler = async (event) => {
@@ -828,7 +828,7 @@ exports.handler = async (event) => {
 
     /**
      * Viewer request handler for basic auth (staging/preview environments)
-    */
+     */
     basicAuth: (username: string, password: string): string => `
 'use strict';
 exports.handler = async (event) => {
@@ -854,7 +854,7 @@ exports.handler = async (event) => {
 
     /**
      * Origin request handler for path-based routing (e.g., /api to different origin)
-    */
+     */
     pathBasedRouting: (pathPrefix: string, targetOriginId: string): string => `
 'use strict';
 exports.handler = async (event) => {
@@ -884,11 +884,11 @@ exports.handler = async (event) => {
   /**
    * CDN Configuration helpers
    * Provides Stacks configuration parity for CDN options
-  */
+   */
   static readonly Config = {
     /**
      * Create TTL configuration
-    */
+     */
     ttl: (options: {
       min?: number
       max?: number
@@ -913,7 +913,7 @@ exports.handler = async (event) => {
 
     /**
      * Cookie behavior configuration
-    */
+     */
     cookies: (behavior: 'none' | 'all' | 'allowList', allowedCookies?: string[]): {
       Forward: string
       WhitelistedNames?: string[]
@@ -927,7 +927,7 @@ exports.handler = async (event) => {
 
     /**
      * Allowed HTTP methods configuration
-    */
+     */
     allowedMethods: (methods: 'ALL' | 'GET_HEAD' | 'GET_HEAD_OPTIONS'): string[] => {
       const mapping: Record<string, string[]> = {
         ALL: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
@@ -939,7 +939,7 @@ exports.handler = async (event) => {
 
     /**
      * Cached methods configuration
-    */
+     */
     cachedMethods: (methods: 'GET_HEAD' | 'GET_HEAD_OPTIONS'): string[] => {
       const mapping: Record<string, string[]> = {
         GET_HEAD: ['GET', 'HEAD'],
@@ -950,7 +950,7 @@ exports.handler = async (event) => {
 
     /**
      * Common TTL presets
-    */
+     */
     ttlPresets: {
       /** Static assets (1 year) */
       static: { min: 0, max: 31536000, default: 31536000 },
@@ -966,7 +966,7 @@ exports.handler = async (event) => {
 
     /**
      * Create cache behavior configuration
-    */
+     */
     cacheBehavior: (options: {
       ttl?: { min: number, max: number, default: number }
       cookies?: 'none' | 'all' | 'allowList'
@@ -1018,7 +1018,7 @@ exports.handler = async (event) => {
 
   /**
    * Apply configuration to an existing distribution
-  */
+   */
   static applyConfig(
     distribution: CloudFrontDistribution,
     config: {

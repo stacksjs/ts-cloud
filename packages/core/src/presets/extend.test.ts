@@ -1,6 +1,6 @@
 /**
  * Preset Extension and Composition Tests
-*/
+ */
 
 import { describe, expect, it } from 'bun:test'
 import {

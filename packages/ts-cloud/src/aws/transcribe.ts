@@ -1,7 +1,7 @@
 /**
  * AWS Transcribe Client
  * Direct API calls for Transcribe operations
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -25,7 +25,7 @@ export interface TranscriptionJob {
 
 /**
  * Transcribe client for direct API calls
-*/
+ */
 export class TranscribeClient {
   private client: AWSClient
   private region: string
@@ -51,7 +51,7 @@ export class TranscribeClient {
 
   /**
    * Start a transcription job
-  */
+   */
   async startTranscriptionJob(params: {
     TranscriptionJobName: string
     LanguageCode: string
@@ -74,7 +74,7 @@ export class TranscribeClient {
 
   /**
    * Get transcription job details
-  */
+   */
   async getTranscriptionJob(params: {
     TranscriptionJobName: string
   }): Promise<{ TranscriptionJob: TranscriptionJob }> {
@@ -83,7 +83,7 @@ export class TranscribeClient {
 
   /**
    * List transcription jobs
-  */
+   */
   async listTranscriptionJobs(params?: {
     Status?: 'QUEUED' | 'IN_PROGRESS' | 'FAILED' | 'COMPLETED'
     JobNameContains?: string
@@ -99,7 +99,7 @@ export class TranscribeClient {
 
   /**
    * Delete a transcription job
-  */
+   */
   async deleteTranscriptionJob(params: {
     TranscriptionJobName: string
   }): Promise<void> {

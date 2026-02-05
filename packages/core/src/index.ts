@@ -1,6 +1,6 @@
 /**
  * ts-cloud Core - CloudFormation Generator Engine
-*/
+ */
 
 // Core types
 export * from '@stacksjs/ts-cloud-types'

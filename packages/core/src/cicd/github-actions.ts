@@ -1,7 +1,7 @@
 /**
  * GitHub Actions Workflow Generator
  * Generate CI/CD workflows for GitHub Actions
-*/
+ */
 
 export interface GitHubActionsOptions {
   workflowName?: string
@@ -21,7 +21,7 @@ export interface GitHubActionsOptions {
 
 /**
  * Generate deployment workflow
-*/
+ */
 export function generateDeploymentWorkflow(options: GitHubActionsOptions = {}): string {
   const {
     workflowName = 'Deploy',
@@ -113,7 +113,7 @@ jobs:
 
 /**
  * Generate multi-environment deployment workflow
-*/
+ */
 export function generateMultiEnvWorkflow(options: {
   environments: Array<{ name: string; branch: string }>
   awsRegion?: string
@@ -183,7 +183,7 @@ ${environments.map((env, i) => `          ${i > 0 ? 'elif' : 'if'} [[ "\${{ gith
 
 /**
  * Generate PR preview workflow
-*/
+ */
 export function generatePRPreviewWorkflow(options: {
   awsRegion?: string
   awsRole?: string
@@ -306,7 +306,7 @@ jobs:
 
 /**
  * Generate scheduled deployment workflow
-*/
+ */
 export function generateScheduledWorkflow(options: {
   schedule: string
   environment: string
@@ -365,7 +365,7 @@ jobs:
 
 /**
  * Generate matrix deployment workflow (multiple regions/accounts)
-*/
+ */
 export function generateMatrixWorkflow(options: {
   matrix: Array<{ environment: string; region: string; account?: string }>
   awsRole?: string

@@ -1,7 +1,7 @@
 /**
  * CLI Utility Functions
  * Helpers for colored output, spinners, prompts, and formatting
-*/
+ */
 
 // ANSI color codes
 export const colors = {
@@ -20,61 +20,61 @@ export const colors = {
 
 /**
  * Colorize text
-*/
+ */
 export function colorize(text: string, color: keyof typeof colors): string {
   return `${colors[color]}${text}${colors.reset}`
 }
 
 /**
  * Success message
-*/
+ */
 export function success(message: string): void {
   console.log(`${colors.green}✓${colors.reset} ${message}`)
 }
 
 /**
  * Error message
-*/
+ */
 export function error(message: string): void {
   console.error(`${colors.red}✗${colors.reset} ${message}`)
 }
 
 /**
  * Warning message
-*/
+ */
 export function warn(message: string): void {
   console.warn(`${colors.yellow}⚠${colors.reset} ${message}`)
 }
 
 /**
  * Warning message (alias)
-*/
+ */
 export const warning: typeof warn = warn
 
 /**
  * Info message
-*/
+ */
 export function info(message: string): void {
   console.log(`${colors.blue}ℹ${colors.reset} ${message}`)
 }
 
 /**
  * Step message
-*/
+ */
 export function step(message: string): void {
   console.log(`${colors.cyan}→${colors.reset} ${message}`)
 }
 
 /**
  * Header message
-*/
+ */
 export function header(message: string): void {
   console.log(`\n${colors.bright}${colors.cyan}${message}${colors.reset}\n`)
 }
 
 /**
  * Simple spinner
-*/
+ */
 export class Spinner {
   private frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   private interval: Timer | null = null
@@ -125,7 +125,7 @@ export class Spinner {
 
 /**
  * Progress bar
-*/
+ */
 export class ProgressBar {
   private total: number
   private current = 0
@@ -161,7 +161,7 @@ export class ProgressBar {
 
 /**
  * Prompt for user input
-*/
+ */
 export async function prompt(message: string, defaultValue?: string): Promise<string> {
   const readline = await import('node:readline')
   const rl = readline.createInterface({
@@ -183,7 +183,7 @@ export async function prompt(message: string, defaultValue?: string): Promise<st
 
 /**
  * Prompt for confirmation (yes/no)
-*/
+ */
 export async function confirm(message: string, defaultValue = false): Promise<boolean> {
   const answer = await prompt(`${message} (y/n)`, defaultValue ? 'y' : 'n')
   return answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes'
@@ -191,7 +191,7 @@ export async function confirm(message: string, defaultValue = false): Promise<bo
 
 /**
  * Select from a list of options
-*/
+ */
 export async function select(message: string, options: string[]): Promise<string> {
   console.log(`${colors.cyan}?${colors.reset} ${message}`)
   options.forEach((option, index) => {
@@ -210,7 +210,7 @@ export async function select(message: string, options: string[]): Promise<string
 
 /**
  * Format a table
-*/
+ */
 export function table(headers: string[], rows: string[][]): void {
   // Calculate column widths
   const widths = headers.map((header, i) => {
@@ -232,7 +232,7 @@ export function table(headers: string[], rows: string[][]): void {
 
 /**
  * Format bytes to human readable
-*/
+ */
 export function formatBytes(bytes: number): string {
   if (bytes === 0)
     return '0 B'
@@ -246,7 +246,7 @@ export function formatBytes(bytes: number): string {
 
 /**
  * Format duration to human readable
-*/
+ */
 export function formatDuration(ms: number): string {
   if (ms < 1000)
     return `${ms}ms`
@@ -269,7 +269,7 @@ export function formatDuration(ms: number): string {
 
 /**
  * Box a message
-*/
+ */
 export function box(message: string, color: keyof typeof colors = 'cyan'): void {
   const lines = message.split('\n')
   const maxLength = Math.max(...lines.map(line => line.length))
@@ -285,7 +285,7 @@ export function box(message: string, color: keyof typeof colors = 'cyan'): void 
 /**
  * Check if AWS CLI is installed (deprecated - no longer required)
  * @deprecated AWS CLI is no longer required. Use checkAwsCredentials() instead.
-*/
+ */
 export async function checkAwsCli(): Promise<boolean> {
   // AWS CLI is no longer required - direct API calls are used
   return true
@@ -294,7 +294,7 @@ export async function checkAwsCli(): Promise<boolean> {
 /**
  * Check if AWS credentials are configured
  * Uses direct API call to STS GetCallerIdentity
-*/
+ */
 export async function checkAwsCredentials(): Promise<boolean> {
   try {
     const { AWSClient } = await import('../aws/client')
@@ -320,7 +320,7 @@ export async function checkAwsCredentials(): Promise<boolean> {
 
 /**
  * Get AWS account ID using direct STS API call
-*/
+ */
 export async function getAwsAccountId(): Promise<string | null> {
   try {
     const { AWSClient } = await import('../aws/client')
@@ -346,7 +346,7 @@ export async function getAwsAccountId(): Promise<string | null> {
 
 /**
  * Get AWS regions using direct EC2 API call
-*/
+ */
 export async function getAwsRegions(): Promise<string[]> {
   try {
     const { AWSClient } = await import('../aws/client')
@@ -383,7 +383,7 @@ export async function getAwsRegions(): Promise<string[]> {
 
 /**
  * Get common AWS regions as fallback
-*/
+ */
 function getCommonAwsRegions(): string[] {
   return [
     'us-east-1',

@@ -1,7 +1,7 @@
 /**
  * Synthetic Monitoring
  * CloudWatch Synthetics Canaries for proactive monitoring
-*/
+ */
 
 export interface SyntheticCanary {
   id: string
@@ -88,7 +88,7 @@ export interface ApiAssertion {
 
 /**
  * Synthetics manager
-*/
+ */
 export class SyntheticsManager {
   private canaries: Map<string, SyntheticCanary> = new Map()
   private heartbeats: Map<string, HeartbeatMonitor> = new Map()
@@ -100,7 +100,7 @@ export class SyntheticsManager {
 
   /**
    * Latest runtime versions
-  */
+   */
   static readonly RuntimeVersions = {
     NODEJS_PUPPETEER_3_9: 'syn-nodejs-puppeteer-3.9',
     NODEJS_PUPPETEER_4_0: 'syn-nodejs-puppeteer-4.0',
@@ -109,7 +109,7 @@ export class SyntheticsManager {
 
   /**
    * Create synthetic canary
-  */
+   */
   createCanary(canary: Omit<SyntheticCanary, 'id'>): SyntheticCanary {
     const id = `canary-${Date.now()}-${this.canaryCounter++}`
 
@@ -125,7 +125,7 @@ export class SyntheticsManager {
 
   /**
    * Create heartbeat canary
-  */
+   */
   createHeartbeatCanary(options: {
     name: string
     url: string
@@ -179,7 +179,7 @@ exports.handler = async () => {
 
   /**
    * Create API monitoring canary
-  */
+   */
   createAPICanary(options: {
     name: string
     baseUrl: string
@@ -248,7 +248,7 @@ exports.handler = async () => {
 
   /**
    * Create visual regression canary
-  */
+   */
   createVisualRegressionCanary(options: {
     name: string
     url: string
@@ -303,7 +303,7 @@ exports.handler = async () => {
 
   /**
    * Create workflow canary (multi-step user journey)
-  */
+   */
   createWorkflowCanary(options: {
     name: string
     description: string
@@ -364,7 +364,7 @@ exports.handler = async () => {
 
   /**
    * Generate action script for workflow steps
-  */
+   */
   private generateActionScript(action: WorkflowAction): string {
     switch (action.type) {
       case 'click':
@@ -382,7 +382,7 @@ exports.handler = async () => {
 
   /**
    * Create canary alarm
-  */
+   */
   createAlarm(canaryId: string, alarm: Omit<CanaryAlarm, 'id'>): CanaryAlarm {
     const canary = this.canaries.get(canaryId)
 
@@ -408,21 +408,21 @@ exports.handler = async () => {
 
   /**
    * Get canary
-  */
+   */
   getCanary(id: string): SyntheticCanary | undefined {
     return this.canaries.get(id)
   }
 
   /**
    * List canaries
-  */
+   */
   listCanaries(): SyntheticCanary[] {
     return Array.from(this.canaries.values())
   }
 
   /**
    * Generate CloudFormation for canary
-  */
+   */
   generateCanaryCF(canary: SyntheticCanary): any {
     const cf: any = {
       Type: 'AWS::Synthetics::Canary',
@@ -489,7 +489,7 @@ exports.handler = async () => {
 
   /**
    * Generate CloudFormation for canary execution role
-  */
+   */
   generateCanaryRoleCF(): any {
     return {
       Type: 'AWS::IAM::Role',
@@ -531,7 +531,7 @@ exports.handler = async () => {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.canaries.clear()
     this.heartbeats.clear()
@@ -545,7 +545,7 @@ exports.handler = async () => {
 
 /**
  * Workflow step interface
-*/
+ */
 export interface WorkflowStep {
   description: string
   url: string
@@ -554,7 +554,7 @@ export interface WorkflowStep {
 
 /**
  * Workflow action interface
-*/
+ */
 export interface WorkflowAction {
   type: 'click' | 'type' | 'wait' | 'waitForSelector'
   selector?: string
@@ -564,5 +564,5 @@ export interface WorkflowAction {
 
 /**
  * Global synthetics manager instance
-*/
+ */
 export const syntheticsManager: SyntheticsManager = new SyntheticsManager()

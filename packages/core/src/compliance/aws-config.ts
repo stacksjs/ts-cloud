@@ -1,7 +1,7 @@
 /**
  * AWS Config Rules
  * Automated compliance checking and configuration management
-*/
+ */
 
 export interface ConfigRule {
   id: string
@@ -45,7 +45,7 @@ export interface DeliveryChannel {
 
 /**
  * AWS Config manager
-*/
+ */
 export class AWSConfigManager {
   private configRules: Map<string, ConfigRule> = new Map()
   private configRecorders: Map<string, ConfigRecorder> = new Map()
@@ -54,7 +54,7 @@ export class AWSConfigManager {
 
   /**
    * Create config recorder
-  */
+   */
   createConfigRecorder(recorder: ConfigRecorder): ConfigRecorder {
     this.configRecorders.set(recorder.name, recorder)
     return recorder
@@ -62,7 +62,7 @@ export class AWSConfigManager {
 
   /**
    * Create delivery channel
-  */
+   */
   createDeliveryChannel(channel: DeliveryChannel): DeliveryChannel {
     this.deliveryChannels.set(channel.name, channel)
     return channel
@@ -70,7 +70,7 @@ export class AWSConfigManager {
 
   /**
    * Create config rule
-  */
+   */
   createConfigRule(rule: Omit<ConfigRule, 'id'>): ConfigRule {
     const id = `config-rule-${Date.now()}-${this.ruleCounter++}`
 
@@ -86,7 +86,7 @@ export class AWSConfigManager {
 
   /**
    * Create S3 bucket encryption rule
-  */
+   */
   createS3EncryptionRule(): ConfigRule {
     return this.createConfigRule({
       name: 's3-bucket-server-side-encryption-enabled',
@@ -101,7 +101,7 @@ export class AWSConfigManager {
 
   /**
    * Create S3 bucket public access block rule
-  */
+   */
   createS3PublicAccessBlockRule(): ConfigRule {
     return this.createConfigRule({
       name: 's3-bucket-public-read-prohibited',
@@ -116,7 +116,7 @@ export class AWSConfigManager {
 
   /**
    * Create S3 bucket versioning rule
-  */
+   */
   createS3VersioningRule(): ConfigRule {
     return this.createConfigRule({
       name: 's3-bucket-versioning-enabled',
@@ -131,7 +131,7 @@ export class AWSConfigManager {
 
   /**
    * Create RDS encryption rule
-  */
+   */
   createRdsEncryptionRule(): ConfigRule {
     return this.createConfigRule({
       name: 'rds-storage-encrypted',
@@ -146,7 +146,7 @@ export class AWSConfigManager {
 
   /**
    * Create RDS snapshot encryption rule
-  */
+   */
   createRdsSnapshotEncryptionRule(): ConfigRule {
     return this.createConfigRule({
       name: 'rds-snapshots-public-prohibited',
@@ -161,7 +161,7 @@ export class AWSConfigManager {
 
   /**
    * Create RDS backup rule
-  */
+   */
   createRdsBackupRule(retentionPeriod: number = 7): ConfigRule {
     return this.createConfigRule({
       name: 'db-backup-enabled',
@@ -179,7 +179,7 @@ export class AWSConfigManager {
 
   /**
    * Create EC2 instance profile rule
-  */
+   */
   createEc2InstanceProfileRule(): ConfigRule {
     return this.createConfigRule({
       name: 'ec2-instance-managed-by-systems-manager',
@@ -194,7 +194,7 @@ export class AWSConfigManager {
 
   /**
    * Create EBS encryption rule
-  */
+   */
   createEbsEncryptionRule(): ConfigRule {
     return this.createConfigRule({
       name: 'encrypted-volumes',
@@ -209,7 +209,7 @@ export class AWSConfigManager {
 
   /**
    * Create IAM password policy rule
-  */
+   */
   createIamPasswordPolicyRule(): ConfigRule {
     return this.createConfigRule({
       name: 'iam-password-policy',
@@ -230,7 +230,7 @@ export class AWSConfigManager {
 
   /**
    * Create IAM MFA rule
-  */
+   */
   createIamMfaRule(): ConfigRule {
     return this.createConfigRule({
       name: 'iam-user-mfa-enabled',
@@ -242,7 +242,7 @@ export class AWSConfigManager {
 
   /**
    * Create IAM root account MFA rule
-  */
+   */
   createRootAccountMfaRule(): ConfigRule {
     return this.createConfigRule({
       name: 'root-account-mfa-enabled',
@@ -254,7 +254,7 @@ export class AWSConfigManager {
 
   /**
    * Create VPC flow logs rule
-  */
+   */
   createVpcFlowLogsRule(): ConfigRule {
     return this.createConfigRule({
       name: 'vpc-flow-logs-enabled',
@@ -269,7 +269,7 @@ export class AWSConfigManager {
 
   /**
    * Create CloudTrail enabled rule
-  */
+   */
   createCloudTrailEnabledRule(): ConfigRule {
     return this.createConfigRule({
       name: 'cloudtrail-enabled',
@@ -282,7 +282,7 @@ export class AWSConfigManager {
 
   /**
    * Create CloudWatch alarm rule
-  */
+   */
   createCloudWatchAlarmRule(): ConfigRule {
     return this.createConfigRule({
       name: 'cloudwatch-alarm-action-check',
@@ -302,7 +302,7 @@ export class AWSConfigManager {
 
   /**
    * Create custom Lambda rule
-  */
+   */
   createCustomLambdaRule(options: {
     name: string
     description: string
@@ -328,7 +328,7 @@ export class AWSConfigManager {
 
   /**
    * Create compliance preset rules
-  */
+   */
   createCompliancePreset(preset: 'hipaa' | 'pci-dss' | 'sox' | 'gdpr' | 'basic'): ConfigRule[] {
     const rules: ConfigRule[] = []
 
@@ -395,49 +395,49 @@ export class AWSConfigManager {
 
   /**
    * Get config rule
-  */
+   */
   getConfigRule(id: string): ConfigRule | undefined {
     return this.configRules.get(id)
   }
 
   /**
    * List config rules
-  */
+   */
   listConfigRules(): ConfigRule[] {
     return Array.from(this.configRules.values())
   }
 
   /**
    * Get config recorder
-  */
+   */
   getConfigRecorder(name: string): ConfigRecorder | undefined {
     return this.configRecorders.get(name)
   }
 
   /**
    * List config recorders
-  */
+   */
   listConfigRecorders(): ConfigRecorder[] {
     return Array.from(this.configRecorders.values())
   }
 
   /**
    * Get delivery channel
-  */
+   */
   getDeliveryChannel(name: string): DeliveryChannel | undefined {
     return this.deliveryChannels.get(name)
   }
 
   /**
    * List delivery channels
-  */
+   */
   listDeliveryChannels(): DeliveryChannel[] {
     return Array.from(this.deliveryChannels.values())
   }
 
   /**
    * Generate CloudFormation for config rule
-  */
+   */
   generateConfigRuleCF(rule: ConfigRule): any {
     const cfRule: any = {
       Type: 'AWS::Config::ConfigRule',
@@ -493,7 +493,7 @@ export class AWSConfigManager {
 
   /**
    * Generate CloudFormation for config recorder
-  */
+   */
   generateConfigRecorderCF(recorder: ConfigRecorder): any {
     return {
       Type: 'AWS::Config::ConfigurationRecorder',
@@ -510,7 +510,7 @@ export class AWSConfigManager {
 
   /**
    * Generate CloudFormation for delivery channel
-  */
+   */
   generateDeliveryChannelCF(channel: DeliveryChannel): any {
     return {
       Type: 'AWS::Config::DeliveryChannel',
@@ -528,7 +528,7 @@ export class AWSConfigManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.configRules.clear()
     this.configRecorders.clear()
@@ -539,5 +539,5 @@ export class AWSConfigManager {
 
 /**
  * Global AWS Config manager instance
-*/
+ */
 export const awsConfigManager: AWSConfigManager = new AWSConfigManager()

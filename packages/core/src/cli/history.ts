@@ -1,7 +1,7 @@
 /**
  * Command history with search and persistence
  * Tracks executed commands and provides search/replay functionality
-*/
+ */
 
 export interface HistoryEntry {
   command: string
@@ -19,7 +19,7 @@ export interface HistoryOptions {
 
 /**
  * Command history manager
-*/
+ */
 export class CommandHistory {
   private entries: HistoryEntry[] = []
   private maxSize: number
@@ -34,7 +34,7 @@ export class CommandHistory {
 
   /**
    * Add command to history
-  */
+   */
   add(entry: Omit<HistoryEntry, 'timestamp'>): void {
     this.entries.push({
       ...entry,
@@ -49,21 +49,21 @@ export class CommandHistory {
 
   /**
    * Get all history entries
-  */
+   */
   getAll(): HistoryEntry[] {
     return [...this.entries]
   }
 
   /**
    * Get recent entries
-  */
+   */
   getRecent(count: number = 10): HistoryEntry[] {
     return this.entries.slice(-count)
   }
 
   /**
    * Search history by command text
-  */
+   */
   search(query: string): HistoryEntry[] {
     const lowerQuery = query.toLowerCase()
 
@@ -74,7 +74,7 @@ export class CommandHistory {
 
   /**
    * Search history by date range
-  */
+   */
   searchByDate(startDate: Date, endDate: Date): HistoryEntry[] {
     return this.entries.filter(
       entry => entry.timestamp >= startDate && entry.timestamp <= endDate,
@@ -83,21 +83,21 @@ export class CommandHistory {
 
   /**
    * Get successful commands
-  */
+   */
   getSuccessful(): HistoryEntry[] {
     return this.entries.filter(entry => entry.success)
   }
 
   /**
    * Get failed commands
-  */
+   */
   getFailed(): HistoryEntry[] {
     return this.entries.filter(entry => !entry.success)
   }
 
   /**
    * Get most used commands
-  */
+   */
   getMostUsed(count: number = 10): Array<{ command: string; count: number }> {
     const commandCounts: Map<string, number> = new Map()
 
@@ -114,7 +114,7 @@ export class CommandHistory {
 
   /**
    * Get statistics
-  */
+   */
   getStats(): {
     total: number
     successful: number
@@ -145,14 +145,14 @@ export class CommandHistory {
 
   /**
    * Clear history
-  */
+   */
   clear(): void {
     this.entries = []
   }
 
   /**
    * Get entry by index
-  */
+   */
   getByIndex(index: number): HistoryEntry | undefined {
     if (index < 0 || index >= this.entries.length) {
       return undefined
@@ -162,7 +162,7 @@ export class CommandHistory {
 
   /**
    * Remove entry by index
-  */
+   */
   removeByIndex(index: number): void {
     if (index >= 0 && index < this.entries.length) {
       this.entries.splice(index, 1)
@@ -171,7 +171,7 @@ export class CommandHistory {
 
   /**
    * Save history to file
-  */
+   */
   async save(): Promise<void> {
     if (!this.persistFile) return
 
@@ -187,7 +187,7 @@ export class CommandHistory {
 
   /**
    * Load history from file
-  */
+   */
   async load(): Promise<void> {
     if (!this.persistFile) return
 
@@ -209,14 +209,14 @@ export class CommandHistory {
 
   /**
    * Export history as JSON
-  */
+   */
   exportJSON(): string {
     return JSON.stringify(this.entries, null, 2)
   }
 
   /**
    * Export history as CSV
-  */
+   */
   exportCSV(): string {
     const header = 'Timestamp,Command,Success,Duration'
     const rows = this.entries.map(entry =>
@@ -233,7 +233,7 @@ export class CommandHistory {
 
   /**
    * Import history from JSON
-  */
+   */
   importJSON(json: string): void {
     const parsed = JSON.parse(json)
 
@@ -252,7 +252,7 @@ export class CommandHistory {
 
   /**
    * Get history grouped by date
-  */
+   */
   groupByDate(): Map<string, HistoryEntry[]> {
     const grouped: Map<string, HistoryEntry[]> = new Map()
 
@@ -271,7 +271,7 @@ export class CommandHistory {
 
   /**
    * Get history grouped by command
-  */
+   */
   groupByCommand(): Map<string, HistoryEntry[]> {
     const grouped: Map<string, HistoryEntry[]> = new Map()
 
@@ -290,7 +290,7 @@ export class CommandHistory {
 
   /**
    * Replay a command from history
-  */
+   */
   replay(index: number): string | undefined {
     const entry = this.getByIndex(index)
     return entry?.command
@@ -298,7 +298,7 @@ export class CommandHistory {
 
   /**
    * Get suggestions based on partial input
-  */
+   */
   getSuggestions(partial: string, limit: number = 5): string[] {
     const lowerPartial = partial.toLowerCase()
 
@@ -313,7 +313,7 @@ export class CommandHistory {
 
   /**
    * Analyze command patterns
-  */
+   */
   analyzePatterns(): {
     timeOfDay: Map<number, number> // hour -> count
     dayOfWeek: Map<number, number> // day -> count
@@ -344,7 +344,7 @@ export class CommandHistory {
 
 /**
  * Format history for display
-*/
+ */
 export function formatHistory(entries: HistoryEntry[], options: { maxWidth?: number } = {}): string {
   const { maxWidth = 100 } = options
 
@@ -379,7 +379,7 @@ export function formatHistory(entries: HistoryEntry[], options: { maxWidth?: num
 
 /**
  * Format history statistics
-*/
+ */
 export function formatHistoryStats(stats: ReturnType<CommandHistory['getStats']>): string {
   const lines: string[] = []
 

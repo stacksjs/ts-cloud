@@ -1,6 +1,6 @@
 /**
  * Credential Validation Tests
-*/
+ */
 
 import { describe, expect, it, mock } from 'bun:test'
 import type { AWSCredentials } from '../aws/credentials'

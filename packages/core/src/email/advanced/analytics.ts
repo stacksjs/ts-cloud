@@ -2,7 +2,7 @@
  * Email Analytics
  *
  * Provides open tracking, click tracking, and email metrics
-*/
+ */
 
 export interface EmailAnalytics {
   messageId: string
@@ -51,11 +51,11 @@ export interface EmailMetrics {
 
 /**
  * Email Analytics Module
-*/
+ */
 export class EmailAnalyticsModule {
   /**
    * Lambda code for tracking pixel (open tracking)
-  */
+   */
   static TrackingPixelLambdaCode = `
 const { DynamoDBClient, UpdateItemCommand, GetItemCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -109,7 +109,7 @@ exports.handler = async (event) => {
 
   /**
    * Lambda code for click tracking
-  */
+   */
   static ClickTrackingLambdaCode = `
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -181,7 +181,7 @@ exports.handler = async (event) => {
 
   /**
    * Lambda code for processing SES events
-  */
+   */
   static SesEventProcessorCode = `
 const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -270,7 +270,7 @@ exports.handler = async (event) => {
 
   /**
    * Create analytics DynamoDB table
-  */
+   */
   static createAnalyticsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}EmailAnalyticsTable`]: {
@@ -295,7 +295,7 @@ exports.handler = async (event) => {
 
   /**
    * Create tracking pixel Lambda
-  */
+   */
   static createTrackingPixelLambda(config: {
     slug: string
     roleArn: string
@@ -326,7 +326,7 @@ exports.handler = async (event) => {
 
   /**
    * Create click tracking Lambda
-  */
+   */
   static createClickTrackingLambda(config: {
     slug: string
     roleArn: string
@@ -357,7 +357,7 @@ exports.handler = async (event) => {
 
   /**
    * Create SES event processor Lambda
-  */
+   */
   static createSesEventProcessorLambda(config: {
     slug: string
     roleArn: string
@@ -388,7 +388,7 @@ exports.handler = async (event) => {
 
   /**
    * Inject tracking into email HTML
-  */
+   */
   static injectTracking(params: {
     html: string
     messageId: string
@@ -414,7 +414,7 @@ exports.handler = async (event) => {
 
   /**
    * Calculate email metrics for a period
-  */
+   */
   static calculateMetrics(analytics: EmailAnalytics[]): EmailMetrics {
     const sent = analytics.filter(a => a.sent).length
     const delivered = analytics.filter(a => a.delivered).length

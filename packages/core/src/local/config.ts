@@ -1,7 +1,7 @@
 /**
  * Local development configuration
  * Configures ts-cloud to use LocalStack and local services
-*/
+ */
 
 export interface LocalConfig {
   enabled: boolean
@@ -18,7 +18,7 @@ export interface LocalConfig {
 
 /**
  * Default local development configuration
-*/
+ */
 export const defaultLocalConfig: LocalConfig = {
   enabled: process.env.TS_CLOUD_LOCAL === 'true' || process.env.NODE_ENV === 'development',
   localstackEndpoint: process.env.LOCALSTACK_ENDPOINT || 'http://localhost:4566',
@@ -34,21 +34,21 @@ export const defaultLocalConfig: LocalConfig = {
 
 /**
  * Get local configuration
-*/
+ */
 export function getLocalConfig(): LocalConfig {
   return defaultLocalConfig
 }
 
 /**
  * Check if running in local development mode
-*/
+ */
 export function isLocalDevelopment(): boolean {
   return defaultLocalConfig.enabled
 }
 
 /**
  * Get AWS endpoint for service in local mode
-*/
+ */
 export function getLocalEndpoint(service: string): string {
   const config = getLocalConfig()
 
@@ -78,7 +78,7 @@ export function getLocalEndpoint(service: string): string {
 
 /**
  * Get local credentials
-*/
+ */
 export function getLocalCredentials(): {
   accessKeyId: string
   secretAccessKey: string
@@ -95,7 +95,7 @@ export function getLocalCredentials(): {
 
 /**
  * Create local environment variables for AWS CLI
-*/
+ */
 export function getLocalEnvVars(): Record<string, string> {
   const config = getLocalConfig()
 

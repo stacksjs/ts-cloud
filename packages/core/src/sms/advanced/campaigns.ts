@@ -2,7 +2,7 @@
  * SMS Campaigns and Scheduling
  *
  * Provides campaign management and scheduled SMS sending
-*/
+ */
 
 export interface SmsCampaign {
   id: string
@@ -75,11 +75,11 @@ export interface CampaignStats {
 
 /**
  * SMS Campaigns Module
-*/
+ */
 export class SmsCampaigns {
   /**
    * Lambda code for campaign management
-  */
+   */
   static CampaignManagerCode = `
 const { DynamoDBClient, PutItemCommand, GetItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 
@@ -258,7 +258,7 @@ function unmarshallCampaign(item) {
 
   /**
    * Lambda code for campaign execution
-  */
+   */
   static CampaignExecutorCode = `
 const { DynamoDBClient, GetItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 const { PinpointClient, SendMessagesCommand } = require('@aws-sdk/client-pinpoint');
@@ -469,7 +469,7 @@ function unmarshallCampaign(item) {
 
   /**
    * Create campaigns DynamoDB table
-  */
+   */
   static createCampaignsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}SmsCampaignsTable`]: {
@@ -490,7 +490,7 @@ function unmarshallCampaign(item) {
 
   /**
    * Create campaign manager Lambda
-  */
+   */
   static createCampaignManagerLambda(config: {
     slug: string
     roleArn: string

@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * API-Only Backend Preset
  * Perfect for: REST APIs, GraphQL APIs, mobile backends
  * Includes: API Gateway + Lambda functions + DynamoDB
-*/
+ */
 export function createApiBackendPreset(options: {
   name: string
   slug: string

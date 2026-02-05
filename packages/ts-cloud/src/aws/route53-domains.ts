@@ -1,7 +1,7 @@
 /**
  * Route53 Domains Client - Domain registration management without AWS SDK
  * Uses direct AWS API calls with Signature V4
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -60,7 +60,7 @@ export interface GetDomainDetailResult extends DomainDetail {}
 /**
  * Route53 Domains Client for domain registration management
  * Note: Route53 Domains API is only available in us-east-1
-*/
+ */
 export class Route53DomainsClient {
   private client: AWSClient
   private region: string = 'us-east-1' // Route53 Domains is always us-east-1
@@ -71,7 +71,7 @@ export class Route53DomainsClient {
 
   /**
    * Get details about a specific domain
-  */
+   */
   async getDomainDetail(params: {
     DomainName: string
   }): Promise<GetDomainDetailResult> {
@@ -96,7 +96,7 @@ export class Route53DomainsClient {
 
   /**
    * Update the nameservers for a domain
-  */
+   */
   async updateDomainNameservers(params: {
     DomainName: string
     Nameservers: { Name: string, GlueIps?: string[] }[]
@@ -128,7 +128,7 @@ export class Route53DomainsClient {
 
   /**
    * List domains registered with Route53
-  */
+   */
   async listDomains(params?: {
     Marker?: string
     MaxItems?: number
@@ -168,7 +168,7 @@ export class Route53DomainsClient {
 
   /**
    * Check domain availability
-  */
+   */
   async checkDomainAvailability(params: {
     DomainName: string
   }): Promise<{
@@ -197,7 +197,7 @@ export class Route53DomainsClient {
 
   /**
    * Get domain pricing information
-  */
+   */
   async getDomainPrice(params: {
     DomainName: string
   }): Promise<{
@@ -243,7 +243,7 @@ export class Route53DomainsClient {
 
   /**
    * Register a new domain
-  */
+   */
   async registerDomain(params: {
     DomainName: string
     DurationInYears: number
@@ -288,7 +288,7 @@ export class Route53DomainsClient {
 
   /**
    * Get operation details (for tracking domain registration status)
-  */
+   */
   async getOperationDetail(params: {
     OperationId: string
   }): Promise<{
@@ -327,7 +327,7 @@ export class Route53DomainsClient {
 
   /**
    * Parse domain detail response
-  */
+   */
   private parseDomainDetail(result: any): GetDomainDetailResult {
     return {
       DomainName: result.DomainName || '',

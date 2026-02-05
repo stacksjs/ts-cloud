@@ -2,7 +2,7 @@
  * Callback Requests and Queue Management
  *
  * Provides callback scheduling and queue management
-*/
+ */
 
 export interface CallbackRequest {
   id: string
@@ -29,11 +29,11 @@ export interface QueuePosition {
 
 /**
  * Callback Module
-*/
+ */
 export class Callbacks {
   /**
    * Lambda code for callback request handling
-  */
+   */
   static CallbackRequestCode = `
 const { DynamoDBClient, PutItemCommand, QueryCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { ConnectClient, StartOutboundVoiceContactCommand } = require('@aws-sdk/client-connect');
@@ -193,7 +193,7 @@ function unmarshallCallback(item) {
 
   /**
    * Lambda code for processing callbacks
-  */
+   */
   static CallbackProcessorCode = `
 const { DynamoDBClient, ScanCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { ConnectClient, StartOutboundVoiceContactCommand } = require('@aws-sdk/client-connect');
@@ -329,7 +329,7 @@ exports.handler = async (event) => {
 
   /**
    * Create callbacks DynamoDB table
-  */
+   */
   static createCallbacksTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}CallbacksTable`]: {
@@ -354,7 +354,7 @@ exports.handler = async (event) => {
 
   /**
    * Create callback request Lambda
-  */
+   */
   static createCallbackRequestLambda(config: {
     slug: string
     roleArn: string
@@ -387,7 +387,7 @@ exports.handler = async (event) => {
 
   /**
    * Create callback processor Lambda
-  */
+   */
   static createCallbackProcessorLambda(config: {
     slug: string
     roleArn: string

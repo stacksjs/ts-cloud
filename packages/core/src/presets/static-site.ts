@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Static Site Preset
  * Perfect for: Static websites, SPAs, documentation sites
  * Includes: S3 bucket + CloudFront CDN
-*/
+ */
 export function createStaticSitePreset(options: {
   name: string
   slug: string

@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Machine Learning API Preset
  * Perfect for: ML inference APIs, AI-powered applications
  * Includes: SageMaker + API Gateway + Lambda + S3
-*/
+ */
 export function createMLApiPreset(options: {
   name: string
   slug: string

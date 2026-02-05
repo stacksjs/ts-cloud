@@ -1,7 +1,7 @@
 /**
  * AWS SSM (Systems Manager) Parameter Store Client
  * Manages parameters and secrets using direct API calls
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -74,7 +74,7 @@ export interface DeleteParameterOptions {
 
 /**
  * SSM Parameter Store client using direct API calls
-*/
+ */
 export class SSMClient {
   private client: AWSClient
   private region: string
@@ -86,7 +86,7 @@ export class SSMClient {
 
   /**
    * Put a parameter to Parameter Store
-  */
+   */
   async putParameter(options: PutParameterOptions): Promise<{
     Version?: number
     Tier?: string
@@ -148,7 +148,7 @@ export class SSMClient {
 
   /**
    * Get a parameter from Parameter Store
-  */
+   */
   async getParameter(options: GetParameterOptions): Promise<{
     Parameter?: Parameter
   }> {
@@ -179,7 +179,7 @@ export class SSMClient {
 
   /**
    * Get multiple parameters from Parameter Store
-  */
+   */
   async getParameters(options: GetParametersOptions): Promise<{
     Parameters?: Parameter[]
     InvalidParameters?: string[]
@@ -212,7 +212,7 @@ export class SSMClient {
 
   /**
    * Get parameters by path (hierarchical)
-  */
+   */
   async getParametersByPath(options: GetParametersByPathOptions): Promise<{
     Parameters?: Parameter[]
     NextToken?: string
@@ -261,7 +261,7 @@ export class SSMClient {
 
   /**
    * Delete a parameter from Parameter Store
-  */
+   */
   async deleteParameter(options: DeleteParameterOptions): Promise<void> {
     const params: Record<string, any> = {
       Name: options.Name,
@@ -282,7 +282,7 @@ export class SSMClient {
 
   /**
    * Delete multiple parameters from Parameter Store
-  */
+   */
   async deleteParameters(names: string[]): Promise<{
     DeletedParameters?: string[]
     InvalidParameters?: string[]
@@ -311,7 +311,7 @@ export class SSMClient {
 
   /**
    * Describe parameters (metadata only, no values)
-  */
+   */
   async describeParameters(options?: {
     Filters?: { Key: string, Values: string[] }[]
     ParameterFilters?: { Key: string, Option?: string, Values?: string[] }[]
@@ -359,7 +359,7 @@ export class SSMClient {
 
   /**
    * Get parameter history
-  */
+   */
   async getParameterHistory(options: {
     Name: string
     WithDecryption?: boolean
@@ -416,7 +416,7 @@ export class SSMClient {
 
   /**
    * Label a parameter version
-  */
+   */
   async labelParameterVersion(options: {
     Name: string
     ParameterVersion?: number
@@ -454,7 +454,7 @@ export class SSMClient {
 
   /**
    * Add tags to a parameter
-  */
+   */
   async addTagsToResource(options: {
     ResourceType: 'Parameter'
     ResourceId: string
@@ -481,7 +481,7 @@ export class SSMClient {
 
   /**
    * Remove tags from a parameter
-  */
+   */
   async removeTagsFromResource(options: {
     ResourceType: 'Parameter'
     ResourceId: string
@@ -508,7 +508,7 @@ export class SSMClient {
 
   /**
    * List tags for a parameter
-  */
+   */
   async listTagsForResource(options: {
     ResourceType: 'Parameter'
     ResourceId: string
@@ -539,7 +539,7 @@ export class SSMClient {
 
   /**
    * Helper: Set a string parameter
-  */
+   */
   async setString(name: string, value: string, options?: {
     description?: string
     overwrite?: boolean
@@ -557,7 +557,7 @@ export class SSMClient {
 
   /**
    * Helper: Set a secure string parameter (encrypted)
-  */
+   */
   async setSecureString(name: string, value: string, options?: {
     description?: string
     overwrite?: boolean
@@ -577,7 +577,7 @@ export class SSMClient {
 
   /**
    * Helper: Get a parameter value (decrypted)
-  */
+   */
   async getValue(name: string): Promise<string | undefined> {
     const result = await this.getParameter({
       Name: name,
@@ -588,7 +588,7 @@ export class SSMClient {
 
   /**
    * Helper: Get all parameters under a path
-  */
+   */
   async getAllByPath(path: string, recursive: boolean = true): Promise<Parameter[]> {
     const allParams: Parameter[] = []
     let nextToken: string | undefined
@@ -613,7 +613,7 @@ export class SSMClient {
 
   /**
    * Parse parameter response
-  */
+   */
   private parseParameter(p: any): Parameter {
     return {
       Name: p.Name,
@@ -632,7 +632,7 @@ export class SSMClient {
 
   /**
    * Send a command to EC2 instances via SSM
-  */
+   */
   async sendCommand(options: {
     InstanceIds: string[]
     DocumentName: string
@@ -692,7 +692,7 @@ export class SSMClient {
 
   /**
    * Get command invocation result
-  */
+   */
   async getCommandInvocation(options: {
     CommandId: string
     InstanceId: string
@@ -731,7 +731,7 @@ export class SSMClient {
 
   /**
    * Run a shell command on an EC2 instance and wait for result
-  */
+   */
   async runShellCommand(instanceId: string, commands: string[], options?: {
     timeoutSeconds?: number
     waitForCompletion?: boolean

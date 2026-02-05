@@ -1,7 +1,7 @@
 /**
  * Preview Environment Manager
  * Manages ephemeral environments for PR previews
-*/
+ */
 
 import type { CloudConfig } from '@stacksjs/ts-cloud-types'
 
@@ -38,13 +38,13 @@ export interface PreviewCleanupOptions {
 
 /**
  * Preview Environment Manager
-*/
+ */
 export class PreviewEnvironmentManager {
   private environments: Map<string, PreviewEnvironment> = new Map()
 
   /**
    * Create a new preview environment
-  */
+   */
   async createPreviewEnvironment(options: PreviewEnvironmentOptions): Promise<PreviewEnvironment> {
     const {
       branch,
@@ -104,7 +104,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Destroy a preview environment
-  */
+   */
   async destroyPreviewEnvironment(id: string): Promise<void> {
     const environment = this.environments.get(id)
 
@@ -131,42 +131,42 @@ export class PreviewEnvironmentManager {
 
   /**
    * Get preview environment by ID
-  */
+   */
   getPreviewEnvironment(id: string): PreviewEnvironment | undefined {
     return this.environments.get(id)
   }
 
   /**
    * Get preview environment by branch
-  */
+   */
   getPreviewEnvironmentByBranch(branch: string): PreviewEnvironment | undefined {
     return Array.from(this.environments.values()).find(env => env.branch === branch)
   }
 
   /**
    * Get preview environment by PR number
-  */
+   */
   getPreviewEnvironmentByPR(pr: number): PreviewEnvironment | undefined {
     return Array.from(this.environments.values()).find(env => env.pr === pr)
   }
 
   /**
    * List all preview environments
-  */
+   */
   listPreviewEnvironments(): PreviewEnvironment[] {
     return Array.from(this.environments.values())
   }
 
   /**
    * List active preview environments
-  */
+   */
   listActivePreviewEnvironments(): PreviewEnvironment[] {
     return this.listPreviewEnvironments().filter(env => env.status === 'active')
   }
 
   /**
    * Clean up expired preview environments
-  */
+   */
   async cleanupExpiredEnvironments(options: PreviewCleanupOptions = {}): Promise<{
     destroyed: string[]
     failed: string[]
@@ -231,7 +231,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Update preview environment from new commit
-  */
+   */
   async updatePreviewEnvironment(id: string, commitSha: string): Promise<PreviewEnvironment> {
     const environment = this.environments.get(id)
 
@@ -261,7 +261,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Get cost estimate for preview environments
-  */
+   */
   async getPreviewEnvironmentsCost(): Promise<{
     total: number
     byEnvironment: Record<string, number>
@@ -285,7 +285,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Generate preview environment ID
-  */
+   */
   private generatePreviewId(branch: string, pr?: number, commitSha?: string): string {
     const sanitizedBranch = branch.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
     const shortSha = commitSha?.substring(0, 7) || Date.now().toString()
@@ -295,7 +295,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Generate preview environment name
-  */
+   */
   private generatePreviewName(branch: string, pr?: number): string {
     const sanitizedBranch = branch.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
 
@@ -304,7 +304,7 @@ export class PreviewEnvironmentManager {
 
   /**
    * Create modified config for preview environment
-  */
+   */
   private createPreviewConfig(baseConfig: CloudConfig, name: string): CloudConfig {
     return {
       ...baseConfig,
@@ -322,5 +322,5 @@ export class PreviewEnvironmentManager {
 
 /**
  * Global preview environment manager instance
-*/
+ */
 export const previewManager: PreviewEnvironmentManager = new PreviewEnvironmentManager()

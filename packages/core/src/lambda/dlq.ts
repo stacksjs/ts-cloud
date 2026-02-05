@@ -1,7 +1,7 @@
 /**
  * Lambda Dead Letter Queue (DLQ)
  * Error handling and failed event management
-*/
+ */
 
 export interface DLQConfig {
   id: string
@@ -46,7 +46,7 @@ export interface DLQReprocessing {
 
 /**
  * Lambda DLQ manager
-*/
+ */
 export class LambdaDLQManager {
   private dlqConfigs: Map<string, DLQConfig> = new Map()
   private messages: Map<string, DLQMessage> = new Map()
@@ -59,7 +59,7 @@ export class LambdaDLQManager {
 
   /**
    * Configure DLQ
-  */
+   */
   configureDLQ(config: Omit<DLQConfig, 'id'>): DLQConfig {
     const id = `dlq-${Date.now()}-${this.configCounter++}`
 
@@ -75,7 +75,7 @@ export class LambdaDLQManager {
 
   /**
    * Configure SQS DLQ
-  */
+   */
   configureSQSDLQ(options: {
     functionName: string
     queueArn: string
@@ -93,7 +93,7 @@ export class LambdaDLQManager {
 
   /**
    * Configure SNS DLQ
-  */
+   */
   configureSNSDLQ(options: {
     functionName: string
     topicArn: string
@@ -107,7 +107,7 @@ export class LambdaDLQManager {
 
   /**
    * Configure DLQ with alarm
-  */
+   */
   configureDLQWithAlarm(options: {
     functionName: string
     queueArn: string
@@ -133,7 +133,7 @@ export class LambdaDLQManager {
 
   /**
    * Send message to DLQ
-  */
+   */
   sendToDLQ(options: {
     functionName: string
     requestId: string
@@ -158,7 +158,7 @@ export class LambdaDLQManager {
 
   /**
    * Create DLQ alarm
-  */
+   */
   createDLQAlarm(alarm: Omit<DLQAlarm, 'id'>): DLQAlarm {
     const id = `alarm-${Date.now()}-${this.alarmCounter++}`
 
@@ -174,7 +174,7 @@ export class LambdaDLQManager {
 
   /**
    * Create age alarm
-  */
+   */
   createAgeAlarm(options: {
     dlqConfigId: string
     maxAgeSeconds: number
@@ -198,7 +198,7 @@ export class LambdaDLQManager {
 
   /**
    * Reprocess DLQ message
-  */
+   */
   async reprocessMessage(messageId: string): Promise<DLQReprocessing> {
     const message = this.messages.get(messageId)
 
@@ -251,7 +251,7 @@ export class LambdaDLQManager {
 
   /**
    * Batch reprocess messages
-  */
+   */
   async batchReprocess(options: {
     dlqConfigId: string
     maxMessages?: number
@@ -273,7 +273,7 @@ export class LambdaDLQManager {
 
   /**
    * Get DLQ statistics
-  */
+   */
   getDLQStats(dlqConfigId: string): {
     totalMessages: number
     oldestMessage?: Date
@@ -312,21 +312,21 @@ export class LambdaDLQManager {
 
   /**
    * Get DLQ config
-  */
+   */
   getDLQConfig(id: string): DLQConfig | undefined {
     return this.dlqConfigs.get(id)
   }
 
   /**
    * List DLQ configs
-  */
+   */
   listDLQConfigs(): DLQConfig[] {
     return Array.from(this.dlqConfigs.values())
   }
 
   /**
    * Get DLQ messages
-  */
+   */
   getDLQMessages(dlqConfigId: string): DLQMessage[] {
     const config = this.dlqConfigs.get(dlqConfigId)
 
@@ -341,7 +341,7 @@ export class LambdaDLQManager {
 
   /**
    * Generate CloudFormation for DLQ
-  */
+   */
   generateDLQCF(config: DLQConfig): any {
     return {
       DeadLetterConfig: {
@@ -352,7 +352,7 @@ export class LambdaDLQManager {
 
   /**
    * Generate CloudFormation for SQS DLQ
-  */
+   */
   generateSQSDLQCF(config: DLQConfig): any {
     return {
       Type: 'AWS::SQS::Queue',
@@ -371,7 +371,7 @@ export class LambdaDLQManager {
 
   /**
    * Generate CloudFormation for DLQ alarm
-  */
+   */
   generateDLQAlarmCF(alarm: DLQAlarm): any {
     const config = this.dlqConfigs.get(alarm.dlqConfigId)
 
@@ -406,7 +406,7 @@ export class LambdaDLQManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.dlqConfigs.clear()
     this.messages.clear()
@@ -421,5 +421,5 @@ export class LambdaDLQManager {
 
 /**
  * Global Lambda DLQ manager instance
-*/
+ */
 export const lambdaDLQManager: LambdaDLQManager = new LambdaDLQManager()

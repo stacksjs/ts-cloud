@@ -2,7 +2,7 @@
  * AWS Application Auto Scaling Client
  * Supports auto-scaling for ECS services, DynamoDB tables, and other AWS resources
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -131,7 +131,7 @@ export interface ScheduledAction {
 
 /**
  * Application Auto Scaling client for ECS, DynamoDB, and other services
-*/
+ */
 export class ApplicationAutoScalingClient {
   private client: AWSClient
   private region: string
@@ -144,7 +144,7 @@ export class ApplicationAutoScalingClient {
   /**
    * Register a scalable target
    * This must be done before creating scaling policies
-  */
+   */
   async registerScalableTarget(options: {
     serviceNamespace: ServiceNamespace
     resourceId: string
@@ -193,7 +193,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Describe scalable targets
-  */
+   */
   async describeScalableTargets(options: {
     serviceNamespace: ServiceNamespace
     resourceIds?: string[]
@@ -241,7 +241,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Deregister a scalable target
-  */
+   */
   async deregisterScalableTarget(options: {
     serviceNamespace: ServiceNamespace
     resourceId: string
@@ -268,7 +268,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Put a scaling policy (create or update)
-  */
+   */
   async putScalingPolicy(options: {
     policyName: string
     serviceNamespace: ServiceNamespace
@@ -314,7 +314,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Describe scaling policies
-  */
+   */
   async describeScalingPolicies(options: {
     serviceNamespace: ServiceNamespace
     policyNames?: string[]
@@ -367,7 +367,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Delete a scaling policy
-  */
+   */
   async deleteScalingPolicy(options: {
     policyName: string
     serviceNamespace: ServiceNamespace
@@ -396,7 +396,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Put a scheduled action
-  */
+   */
   async putScheduledAction(options: {
     scheduledActionName: string
     serviceNamespace: ServiceNamespace
@@ -450,7 +450,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Describe scheduled actions
-  */
+   */
   async describeScheduledActions(options: {
     serviceNamespace: ServiceNamespace
     scheduledActionNames?: string[]
@@ -503,7 +503,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Delete a scheduled action
-  */
+   */
   async deleteScheduledAction(options: {
     scheduledActionName: string
     serviceNamespace: ServiceNamespace
@@ -532,7 +532,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Describe scaling activities
-  */
+   */
   async describeScalingActivities(options: {
     serviceNamespace: ServiceNamespace
     resourceId?: string
@@ -610,14 +610,14 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Get the resource ID format for an ECS service
-  */
+   */
   getECSServiceResourceId(clusterName: string, serviceName: string): string {
     return `service/${clusterName}/${serviceName}`
   }
 
   /**
    * Helper: Register an ECS service for auto-scaling
-  */
+   */
   async registerECSServiceScaling(options: {
     clusterName: string
     serviceName: string
@@ -637,7 +637,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Create a CPU-based scaling policy for an ECS service
-  */
+   */
   async createECSCPUScalingPolicy(options: {
     clusterName: string
     serviceName: string
@@ -669,7 +669,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Create a memory-based scaling policy for an ECS service
-  */
+   */
   async createECSMemoryScalingPolicy(options: {
     clusterName: string
     serviceName: string
@@ -701,7 +701,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Create an ALB request count scaling policy for an ECS service
-  */
+   */
   async createECSRequestCountScalingPolicy(options: {
     clusterName: string
     serviceName: string
@@ -744,7 +744,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Get all scaling policies for an ECS service
-  */
+   */
   async getECSServiceScalingPolicies(clusterName: string, serviceName: string): Promise<ScalingPolicy[]> {
     const resourceId = this.getECSServiceResourceId(clusterName, serviceName)
 
@@ -759,7 +759,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Remove all auto-scaling from an ECS service
-  */
+   */
   async removeECSServiceScaling(clusterName: string, serviceName: string): Promise<void> {
     const resourceId = this.getECSServiceResourceId(clusterName, serviceName)
 
@@ -785,7 +785,7 @@ export class ApplicationAutoScalingClient {
   /**
    * Helper: Create a scheduled scaling action for an ECS service
    * Example schedule: "cron(0 9 * * ? *)" for 9 AM daily
-  */
+   */
   async createECSScheduledScaling(options: {
     clusterName: string
     serviceName: string
@@ -813,7 +813,7 @@ export class ApplicationAutoScalingClient {
 
   /**
    * Helper: Get scaling activity history for an ECS service
-  */
+   */
   async getECSScalingActivities(clusterName: string, serviceName: string, maxResults = 20): Promise<Array<{
     ActivityId: string
     Description: string

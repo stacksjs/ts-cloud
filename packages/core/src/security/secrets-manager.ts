@@ -1,7 +1,7 @@
 /**
  * Secrets Management
  * Versioning, audit logging, and external secret manager integration
-*/
+ */
 
 export interface SecretVersion {
   id: string
@@ -85,7 +85,7 @@ export interface PolicyStatement {
 
 /**
  * Secrets manager
-*/
+ */
 export class SecretsManager {
   private versions: Map<string, SecretVersion> = new Map()
   private audits: Map<string, SecretAudit> = new Map()
@@ -100,7 +100,7 @@ export class SecretsManager {
 
   /**
    * Create secret version
-  */
+   */
   createVersion(version: Omit<SecretVersion, 'id'>): SecretVersion {
     const id = `version-${Date.now()}-${this.versionCounter++}`
 
@@ -125,7 +125,7 @@ export class SecretsManager {
 
   /**
    * Get secret version by stage
-  */
+   */
   getVersionByStage(secretId: string, stage: string): SecretVersion | undefined {
     return Array.from(this.versions.values()).find(
       v => v.secretId === secretId && v.versionStages.includes(stage)
@@ -134,7 +134,7 @@ export class SecretsManager {
 
   /**
    * List versions for secret
-  */
+   */
   listVersions(secretId: string): SecretVersion[] {
     return Array.from(this.versions.values())
       .filter(v => v.secretId === secretId)
@@ -143,7 +143,7 @@ export class SecretsManager {
 
   /**
    * Deprecate version
-  */
+   */
   deprecateVersion(versionId: string): void {
     const version = Array.from(this.versions.values()).find(v => v.versionId === versionId)
 
@@ -163,7 +163,7 @@ export class SecretsManager {
 
   /**
    * Restore version
-  */
+   */
   restoreVersion(versionId: string): void {
     const version = Array.from(this.versions.values()).find(v => v.versionId === versionId)
 
@@ -191,7 +191,7 @@ export class SecretsManager {
 
   /**
    * Audit secret action
-  */
+   */
   auditAction(audit: Omit<SecretAudit, 'id' | 'timestamp'>): SecretAudit {
     const id = `audit-${Date.now()}-${this.auditCounter++}`
 
@@ -208,7 +208,7 @@ export class SecretsManager {
 
   /**
    * Get audit trail for secret
-  */
+   */
   getAuditTrail(secretId: string, limit: number = 100): SecretAudit[] {
     return Array.from(this.audits.values())
       .filter(audit => audit.secretId === secretId)
@@ -218,7 +218,7 @@ export class SecretsManager {
 
   /**
    * Get failed access attempts
-  */
+   */
   getFailedAccesses(secretId: string, hours: number = 24): SecretAudit[] {
     const cutoffTime = Date.now() - hours * 60 * 60 * 1000
 
@@ -232,7 +232,7 @@ export class SecretsManager {
 
   /**
    * Register external secret manager
-  */
+   */
   registerExternalManager(manager: Omit<ExternalSecretManager, 'id'>): ExternalSecretManager {
     const id = `ext-manager-${Date.now()}-${this.managerCounter++}`
 
@@ -248,7 +248,7 @@ export class SecretsManager {
 
   /**
    * Register HashiCorp Vault
-  */
+   */
   registerVault(options: {
     name: string
     endpoint: string
@@ -272,7 +272,7 @@ export class SecretsManager {
 
   /**
    * Register 1Password
-  */
+   */
   registerOnePassword(options: {
     name: string
     endpoint?: string
@@ -294,7 +294,7 @@ export class SecretsManager {
 
   /**
    * Enable secret replication
-  */
+   */
   enableReplication(options: {
     secretId: string
     sourceRegion: string
@@ -331,7 +331,7 @@ export class SecretsManager {
 
   /**
    * Create secret policy
-  */
+   */
   createPolicy(options: {
     secretId: string
     allowedPrincipals: string[]
@@ -364,7 +364,7 @@ export class SecretsManager {
 
   /**
    * Create cross-account access policy
-  */
+   */
   createCrossAccountPolicy(options: {
     secretId: string
     accountId: string
@@ -383,42 +383,42 @@ export class SecretsManager {
 
   /**
    * Get version
-  */
+   */
   getVersion(id: string): SecretVersion | undefined {
     return this.versions.get(id)
   }
 
   /**
    * Get external manager
-  */
+   */
   getExternalManager(id: string): ExternalSecretManager | undefined {
     return this.externalManagers.get(id)
   }
 
   /**
    * List external managers
-  */
+   */
   listExternalManagers(): ExternalSecretManager[] {
     return Array.from(this.externalManagers.values())
   }
 
   /**
    * Get replication
-  */
+   */
   getReplication(id: string): SecretReplication | undefined {
     return this.replications.get(id)
   }
 
   /**
    * List replications
-  */
+   */
   listReplications(): SecretReplication[] {
     return Array.from(this.replications.values())
   }
 
   /**
    * Generate CloudFormation for secret
-  */
+   */
   generateSecretCF(options: {
     name: string
     description?: string
@@ -442,7 +442,7 @@ export class SecretsManager {
 
   /**
    * Generate CloudFormation for secret policy
-  */
+   */
   generateSecretPolicyCF(policy: SecretPolicy): any {
     return {
       Type: 'AWS::SecretsManager::ResourcePolicy',
@@ -455,7 +455,7 @@ export class SecretsManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.versions.clear()
     this.audits.clear()
@@ -472,5 +472,5 @@ export class SecretsManager {
 
 /**
  * Global secrets manager instance
-*/
+ */
 export const secretsManager: SecretsManager = new SecretsManager()

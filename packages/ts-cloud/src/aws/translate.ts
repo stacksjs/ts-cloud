@@ -2,7 +2,7 @@
  * AWS Translate Client
  * Machine translation service
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -386,14 +386,14 @@ export class TranslateClient {
 
   /**
    * Translate text
-  */
+   */
   async translateText(params: TranslateTextCommandInput): Promise<TranslateTextCommandOutput> {
     return this.request('TranslateText', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Translate a document
-  */
+   */
   async translateDocument(params: TranslateDocumentCommandInput): Promise<TranslateDocumentCommandOutput> {
     return this.request('TranslateDocument', params as unknown as Record<string, unknown>)
   }
@@ -404,28 +404,28 @@ export class TranslateClient {
 
   /**
    * Start a batch translation job
-  */
+   */
   async startTextTranslationJob(params: StartTextTranslationJobCommandInput): Promise<StartTextTranslationJobCommandOutput> {
     return this.request('StartTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a batch translation job
-  */
+   */
   async describeTextTranslationJob(params: DescribeTextTranslationJobCommandInput): Promise<DescribeTextTranslationJobCommandOutput> {
     return this.request('DescribeTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List batch translation jobs
-  */
+   */
   async listTextTranslationJobs(params?: ListTextTranslationJobsCommandInput): Promise<ListTextTranslationJobsCommandOutput> {
     return this.request('ListTextTranslationJobs', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Stop a batch translation job
-  */
+   */
   async stopTextTranslationJob(params: StopTextTranslationJobCommandInput): Promise<StopTextTranslationJobCommandOutput> {
     return this.request('StopTextTranslationJob', params as unknown as Record<string, unknown>)
   }
@@ -436,7 +436,7 @@ export class TranslateClient {
 
   /**
    * List supported languages
-  */
+   */
   async listLanguages(params?: ListLanguagesCommandInput): Promise<ListLanguagesCommandOutput> {
     return this.request('ListLanguages', (params || {}) as unknown as Record<string, unknown>)
   }
@@ -447,28 +447,28 @@ export class TranslateClient {
 
   /**
    * Import a custom terminology
-  */
+   */
   async importTerminology(params: ImportTerminologyCommandInput): Promise<ImportTerminologyCommandOutput> {
     return this.request('ImportTerminology', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get a terminology
-  */
+   */
   async getTerminology(params: GetTerminologyCommandInput): Promise<GetTerminologyCommandOutput> {
     return this.request('GetTerminology', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List terminologies
-  */
+   */
   async listTerminologies(params?: ListTerminologiesCommandInput): Promise<ListTerminologiesCommandOutput> {
     return this.request('ListTerminologies', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Delete a terminology
-  */
+   */
   async deleteTerminology(params: DeleteTerminologyCommandInput): Promise<DeleteTerminologyCommandOutput> {
     return this.request('DeleteTerminology', params as unknown as Record<string, unknown>)
   }
@@ -479,28 +479,28 @@ export class TranslateClient {
 
   /**
    * Create parallel data for custom translation
-  */
+   */
   async createParallelData(params: CreateParallelDataCommandInput): Promise<CreateParallelDataCommandOutput> {
     return this.request('CreateParallelData', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get parallel data
-  */
+   */
   async getParallelData(params: GetParallelDataCommandInput): Promise<GetParallelDataCommandOutput> {
     return this.request('GetParallelData', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List parallel data
-  */
+   */
   async listParallelData(params?: ListParallelDataCommandInput): Promise<ListParallelDataCommandOutput> {
     return this.request('ListParallelData', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Delete parallel data
-  */
+   */
   async deleteParallelData(params: DeleteParallelDataCommandInput): Promise<DeleteParallelDataCommandOutput> {
     return this.request('DeleteParallelData', params as unknown as Record<string, unknown>)
   }
@@ -511,7 +511,7 @@ export class TranslateClient {
 
   /**
    * Simple translation
-  */
+   */
   async translate(
     text: string,
     targetLanguage: string,
@@ -527,7 +527,7 @@ export class TranslateClient {
 
   /**
    * Translate with formality setting
-  */
+   */
   async translateFormal(
     text: string,
     targetLanguage: string,
@@ -545,7 +545,7 @@ export class TranslateClient {
 
   /**
    * Translate to multiple languages
-  */
+   */
   async translateToMultiple(
     text: string,
     targetLanguages: string[],
@@ -562,7 +562,7 @@ export class TranslateClient {
 
   /**
    * Wait for batch translation job to complete
-  */
+   */
   async waitForJob(
     jobId: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -590,7 +590,7 @@ export class TranslateClient {
 
   /**
    * Get all supported language codes
-  */
+   */
   async getSupportedLanguages(): Promise<string[]> {
     const result = await this.listLanguages()
     return result.Languages?.map(l => l.LanguageCode || '').filter(Boolean) || []
@@ -603,7 +603,7 @@ export class TranslateClient {
 
 /**
  * Quick translation
-*/
+ */
 export async function translate(
   text: string,
   targetLanguage: string,
@@ -618,7 +618,7 @@ export async function translate(
 
 /**
  * Translate to multiple languages
-*/
+ */
 export async function translateToMultiple(
   text: string,
   targetLanguages: string[],
@@ -633,7 +633,7 @@ export async function translateToMultiple(
 
 /**
  * List supported languages
-*/
+ */
 export async function listLanguages(region?: string): Promise<Language[]> {
   const client = new TranslateClient(region || 'us-east-1')
   const result = await client.listLanguages()

@@ -2,7 +2,7 @@
  * AWS Personalize Client
  * Recommendation engine service
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -654,7 +654,7 @@ export class PersonalizeClient {
 
   /**
    * Wait for a solution version to be ready
-  */
+   */
   async waitForSolutionVersion(
     solutionVersionArn: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -682,7 +682,7 @@ export class PersonalizeClient {
 
   /**
    * Wait for a campaign to be active
-  */
+   */
   async waitForCampaign(
     campaignArn: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -710,7 +710,7 @@ export class PersonalizeClient {
 
   /**
    * Wait for a dataset import job to complete
-  */
+   */
   async waitForDatasetImportJob(
     jobArn: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -766,14 +766,14 @@ export class PersonalizeRuntimeClient {
 
   /**
    * Get recommendations for a user
-  */
+   */
   async getRecommendations(params: GetRecommendationsCommandInput): Promise<GetRecommendationsCommandOutput> {
     return this.request('GetRecommendations', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get personalized ranking of items for a user
-  */
+   */
   async getPersonalizedRanking(params: GetPersonalizedRankingCommandInput): Promise<GetPersonalizedRankingCommandOutput> {
     return this.request('GetPersonalizedRanking', params as unknown as Record<string, unknown>)
   }
@@ -784,7 +784,7 @@ export class PersonalizeRuntimeClient {
 
   /**
    * Simple recommendations for a user
-  */
+   */
   async recommendForUser(
     campaignArn: string,
     userId: string,
@@ -800,7 +800,7 @@ export class PersonalizeRuntimeClient {
 
   /**
    * Get similar items
-  */
+   */
   async getSimilarItems(
     campaignArn: string,
     itemId: string,
@@ -816,7 +816,7 @@ export class PersonalizeRuntimeClient {
 
   /**
    * Rank items for a user
-  */
+   */
   async rankItems(
     campaignArn: string,
     userId: string,
@@ -860,21 +860,21 @@ export class PersonalizeEventsClient {
 
   /**
    * Record user events
-  */
+   */
   async putEvents(params: PutEventsCommandInput): Promise<PutEventsCommandOutput> {
     return this.request('PutEvents', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Add or update items
-  */
+   */
   async putItems(params: PutItemsCommandInput): Promise<PutItemsCommandOutput> {
     return this.request('PutItems', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Add or update users
-  */
+   */
   async putUsers(params: PutUsersCommandInput): Promise<PutUsersCommandOutput> {
     return this.request('PutUsers', params as unknown as Record<string, unknown>)
   }
@@ -885,7 +885,7 @@ export class PersonalizeEventsClient {
 
   /**
    * Track a simple click/view event
-  */
+   */
   async trackEvent(
     trackingId: string,
     sessionId: string,
@@ -909,7 +909,7 @@ export class PersonalizeEventsClient {
 
   /**
    * Track a purchase event with value
-  */
+   */
   async trackPurchase(
     trackingId: string,
     sessionId: string,
@@ -939,7 +939,7 @@ export class PersonalizeEventsClient {
 
 /**
  * Get recommendations for a user
-*/
+ */
 export async function getRecommendations(
   campaignArn: string,
   userId: string,
@@ -951,7 +951,7 @@ export async function getRecommendations(
 
 /**
  * Get similar items
-*/
+ */
 export async function getSimilarItems(
   campaignArn: string,
   itemId: string,
@@ -963,7 +963,7 @@ export async function getSimilarItems(
 
 /**
  * Track user event
-*/
+ */
 export async function trackEvent(
   trackingId: string,
   sessionId: string,

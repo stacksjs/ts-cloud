@@ -1,7 +1,7 @@
 /**
  * AWS CloudFront API Client
  * Direct API calls for CloudFront invalidations without AWS SDK
-*/
+ */
 
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
@@ -15,7 +15,7 @@ export interface InvalidationOptions {
 
 /**
  * CloudFront API Client
-*/
+ */
 export class CloudFrontClient {
   private credentials: AWSCredentials | null = null
 
@@ -25,14 +25,14 @@ export class CloudFrontClient {
 
   /**
    * Initialize client with credentials
-  */
+   */
   async init(): Promise<void> {
     this.credentials = await resolveCredentials(this.profile)
   }
 
   /**
    * Ensure credentials are loaded
-  */
+   */
   private async ensureCredentials(): Promise<AWSCredentials> {
     if (!this.credentials) {
       await this.init()
@@ -42,7 +42,7 @@ export class CloudFrontClient {
 
   /**
    * Create a cache invalidation
-  */
+   */
   async createInvalidation(options: InvalidationOptions): Promise<string> {
     const credentials = await this.ensureCredentials()
 
@@ -81,7 +81,7 @@ export class CloudFrontClient {
 
   /**
    * Get invalidation status
-  */
+   */
   async getInvalidation(distributionId: string, invalidationId: string): Promise<any> {
     const credentials = await this.ensureCredentials()
 
@@ -102,7 +102,7 @@ export class CloudFrontClient {
 
   /**
    * List invalidations for a distribution
-  */
+   */
   async listInvalidations(distributionId: string): Promise<any[]> {
     const credentials = await this.ensureCredentials()
 
@@ -124,7 +124,7 @@ export class CloudFrontClient {
 
   /**
    * Wait for invalidation to complete
-  */
+   */
   async waitForInvalidation(
     distributionId: string,
     invalidationId: string,
@@ -148,7 +148,7 @@ export class CloudFrontClient {
 
   /**
    * Invalidate all files in a distribution
-  */
+   */
   async invalidateAll(distributionId: string): Promise<string> {
     return await this.createInvalidation({
       distributionId,

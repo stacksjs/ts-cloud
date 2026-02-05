@@ -2,7 +2,7 @@ import type { CloudFormationResource } from './index'
 
 /**
  * AWS SQS (Simple Queue Service) Types
-*/
+ */
 
 export interface SQSQueue extends CloudFormationResource {
   Type: 'AWS::SQS::Queue'

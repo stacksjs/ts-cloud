@@ -2,7 +2,7 @@
  * MMS Support (Images, Media)
  *
  * Provides multimedia messaging capabilities
-*/
+ */
 
 export interface MmsMessage {
   to: string
@@ -21,11 +21,11 @@ export interface MmsMedia {
 
 /**
  * MMS Module
-*/
+ */
 export class MmsSupport {
   /**
    * Lambda code for MMS sending
-  */
+   */
   static MmsSenderCode = `
 const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
@@ -220,7 +220,7 @@ async function sendFallbackSms(to, message) {
 
   /**
    * Create media storage bucket
-  */
+   */
   static createMediaBucket(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}MmsMediaBucket`]: {
@@ -253,7 +253,7 @@ async function sendFallbackSms(to, message) {
 
   /**
    * Create MMS sender Lambda
-  */
+   */
   static createMmsSenderLambda(config: {
     slug: string
     roleArn: string
@@ -288,7 +288,7 @@ async function sendFallbackSms(to, message) {
 
   /**
    * Supported media types
-  */
+   */
   static readonly SupportedMediaTypes = {
     image: ['image/jpeg', 'image/png', 'image/gif'],
     video: ['video/mp4', 'video/3gpp'],
@@ -297,7 +297,7 @@ async function sendFallbackSms(to, message) {
 
   /**
    * Media size limits (in bytes)
-  */
+   */
   static readonly MediaSizeLimits: { image: number, video: number, audio: number } = {
     image: 1024 * 1024, // 1MB
     video: 5 * 1024 * 1024, // 5MB

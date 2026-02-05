@@ -1,7 +1,7 @@
 /**
  * GoDaddy DNS Provider
  * API documentation: https://developer.godaddy.com/doc/endpoint/domains
-*/
+ */
 
 import type {
   CreateRecordResult,
@@ -42,7 +42,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Make an authenticated API request to GoDaddy
-  */
+   */
   private async request<T>(
     method: string,
     endpoint: string,
@@ -102,7 +102,7 @@ export class GoDaddyProvider implements DnsProvider {
   /**
    * Extract the subdomain from a full record name
    * GoDaddy uses @ for root domain
-  */
+   */
   private getSubdomain(recordName: string, domain: string): string {
     // Remove trailing dots
     const cleanName = recordName.replace(/\.$/, '')
@@ -124,7 +124,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Get the root domain from a full domain name
-  */
+   */
   private getRootDomain(domain: string): string {
     const parts = domain.replace(/\.$/, '').split('.')
     if (parts.length >= 2) {
@@ -135,7 +135,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Convert DnsRecord to GoDaddy record format
-  */
+   */
   private toGoDaddyRecord(record: DnsRecord, domain: string): GoDaddyRecord {
     const rootDomain = this.getRootDomain(domain)
     const subdomain = this.getSubdomain(record.name, rootDomain)
@@ -156,7 +156,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Convert GoDaddy record to DnsRecordResult format
-  */
+   */
   private fromGoDaddyRecord(record: GoDaddyRecord, domain: string): DnsRecordResult {
     const rootDomain = this.getRootDomain(domain)
     let name = record.name
@@ -326,7 +326,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * List all domains managed by this GoDaddy account
-  */
+   */
   async listDomains(): Promise<string[]> {
     try {
       const response = await this.request<Array<{ domain: string }>>('GET', '/v1/domains')
@@ -339,7 +339,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Get domain details (GoDaddy-specific)
-  */
+   */
   async getDomainDetails(domain: string): Promise<{
     domain: string
     status: string
@@ -364,7 +364,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Update nameservers for a domain (GoDaddy-specific)
-  */
+   */
   async updateNameServers(domain: string, nameservers: string[]): Promise<boolean> {
     try {
       const rootDomain = this.getRootDomain(domain)
@@ -387,7 +387,7 @@ export class GoDaddyProvider implements DnsProvider {
 
   /**
    * Check domain availability (GoDaddy-specific)
-  */
+   */
   async checkDomainAvailability(domain: string): Promise<{
     available: boolean
     price?: number

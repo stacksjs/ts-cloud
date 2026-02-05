@@ -1,13 +1,13 @@
 /**
  * AWS Secrets Manager Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_SecretsManager.html
-*/
+ */
 
 import type { Tag } from './common'
 
 /**
  * AWS::SecretsManager::Secret
-*/
+ */
 export interface SecretsManagerSecret {
   Type: 'AWS::SecretsManager::Secret'
   Properties: {
@@ -39,7 +39,7 @@ export interface SecretsManagerSecret {
 
 /**
  * AWS::SecretsManager::SecretTargetAttachment
-*/
+ */
 export interface SecretsManagerSecretTargetAttachment {
   Type: 'AWS::SecretsManager::SecretTargetAttachment'
   Properties: {
@@ -51,7 +51,7 @@ export interface SecretsManagerSecretTargetAttachment {
 
 /**
  * AWS::SecretsManager::RotationSchedule
-*/
+ */
 export interface SecretsManagerRotationSchedule {
   Type: 'AWS::SecretsManager::RotationSchedule'
   Properties: {
@@ -79,7 +79,7 @@ export interface SecretsManagerRotationSchedule {
 
 /**
  * AWS::SecretsManager::ResourcePolicy
-*/
+ */
 export interface SecretsManagerResourcePolicy {
   Type: 'AWS::SecretsManager::ResourcePolicy'
   Properties: {

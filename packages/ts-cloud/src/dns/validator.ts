@@ -1,7 +1,7 @@
 /**
  * Unified DNS Validator for ACM Certificates
  * Works with any DNS provider (Route53, Porkbun, GoDaddy, etc.)
-*/
+ */
 
 import { ACMClient } from '../aws/acm'
 import type { DnsProvider, DnsProviderConfig } from './types'
@@ -24,7 +24,7 @@ export interface CertificateValidationResult {
 /**
  * Unified DNS Validator
  * Handles ACM certificate validation with any DNS provider
-*/
+ */
 export class UnifiedDnsValidator {
   private acm: ACMClient
   private dnsProvider: DnsProvider
@@ -45,14 +45,14 @@ export class UnifiedDnsValidator {
 
   /**
    * Get the DNS provider being used
-  */
+   */
   getProvider(): DnsProvider {
     return this.dnsProvider
   }
 
   /**
    * Request a certificate and create DNS validation records
-  */
+   */
   async requestAndValidate(params: {
     domainName: string
     subjectAlternativeNames?: string[]
@@ -123,7 +123,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Create validation records for an existing certificate
-  */
+   */
   async createValidationRecords(params: {
     certificateArn: string
     domain: string
@@ -166,7 +166,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Delete validation records (cleanup after certificate is issued)
-  */
+   */
   async deleteValidationRecords(params: {
     certificateArn: string
     domain: string
@@ -201,7 +201,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Find or create a certificate for a domain
-  */
+   */
   async findOrCreateCertificate(params: {
     domainName: string
     subjectAlternativeNames?: string[]
@@ -244,7 +244,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Request certificate with common SANs (www and wildcard)
-  */
+   */
   async requestCertificateWithCommonSans(params: {
     domainName: string
     includeWww?: boolean
@@ -281,7 +281,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Wait for validation options to become available
-  */
+   */
   private async waitForValidationOptions(
     certificateArn: string,
     maxAttempts = 30,
@@ -305,7 +305,7 @@ export class UnifiedDnsValidator {
 
   /**
    * Get the status of a certificate
-  */
+   */
   async getCertificateStatus(certificateArn: string): Promise<{
     status: string
     domainValidations: Array<{
@@ -327,7 +327,7 @@ export class UnifiedDnsValidator {
 
 /**
  * Helper function to create a validator with Porkbun
-*/
+ */
 export function createPorkbunValidator(
   apiKey: string,
   secretKey: string,
@@ -341,7 +341,7 @@ export function createPorkbunValidator(
 
 /**
  * Helper function to create a validator with GoDaddy
-*/
+ */
 export function createGoDaddyValidator(
   apiKey: string,
   apiSecret: string,
@@ -356,7 +356,7 @@ export function createGoDaddyValidator(
 
 /**
  * Helper function to create a validator with Route53
-*/
+ */
 export function createRoute53Validator(
   region?: string,
   hostedZoneId?: string,

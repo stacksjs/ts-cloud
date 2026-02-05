@@ -2,7 +2,7 @@ import type { CloudFormationResource } from './index'
 
 /**
  * AWS ElastiCache Types
-*/
+ */
 
 export interface ElastiCacheCluster extends CloudFormationResource {
   Type: 'AWS::ElastiCache::CacheCluster'

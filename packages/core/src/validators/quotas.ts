@@ -1,7 +1,7 @@
 /**
  * AWS Service Quota Checking
  * Check if deployment will exceed service limits
-*/
+ */
 
 import { DebugLogger } from '../errors'
 
@@ -16,7 +16,7 @@ export interface ServiceQuota {
 
 /**
  * Common AWS service limits by region
-*/
+ */
 export const DEFAULT_SERVICE_LIMITS = {
   ec2: {
     'Running On-Demand Instances': 20,
@@ -57,7 +57,7 @@ export const DEFAULT_SERVICE_LIMITS = {
 
 /**
  * Check service quotas for deployment
-*/
+ */
 export async function checkServiceQuotas(config: any): Promise<ServiceQuota[]> {
   const quotas: ServiceQuota[] = []
 
@@ -166,7 +166,7 @@ export async function checkServiceQuotas(config: any): Promise<ServiceQuota[]> {
 
 /**
  * Get quota usage summary
-*/
+ */
 export function getQuotaUsageSummary(quotas: ServiceQuota[]): string {
   if (quotas.length === 0) {
     return 'No quotas to check'
@@ -196,7 +196,7 @@ export function getQuotaUsageSummary(quotas: ServiceQuota[]): string {
 
 /**
  * Suggest quota increase if needed
-*/
+ */
 export function suggestQuotaIncrease(quotas: ServiceQuota[]): string[] {
   const suggestions: string[] = []
 

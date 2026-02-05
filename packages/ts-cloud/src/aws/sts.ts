@@ -1,7 +1,7 @@
 /**
  * AWS STS Operations
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -13,7 +13,7 @@ export interface CallerIdentity {
 
 /**
  * STS (Security Token Service) management using direct API calls
-*/
+ */
 export class STSClient {
   private client: AWSClient
   private region: string
@@ -25,7 +25,7 @@ export class STSClient {
 
   /**
    * Get information about the IAM identity whose credentials are used to call the operation
-  */
+   */
   async getCallerIdentity(): Promise<CallerIdentity> {
     const result = await this.client.request({
       service: 'sts',

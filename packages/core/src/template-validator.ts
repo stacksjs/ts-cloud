@@ -1,7 +1,7 @@
 /**
  * CloudFormation Template Validator
  * Validates CloudFormation templates for correctness and best practices
-*/
+ */
 
 import type { CloudFormationTemplate, CloudFormationResource } from '@stacksjs/ts-cloud-aws-types'
 
@@ -20,7 +20,7 @@ export interface ValidationResult {
 
 /**
  * Validate a CloudFormation template
-*/
+ */
 export function validateTemplate(template: CloudFormationTemplate): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []
@@ -79,7 +79,7 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
 
 /**
  * Validate template structure
-*/
+ */
 function validateTemplateStructure(
   template: CloudFormationTemplate,
   errors: ValidationError[],
@@ -102,7 +102,7 @@ function validateTemplateStructure(
 
 /**
  * Validate resources
-*/
+ */
 function validateResources(
   resources: Record<string, CloudFormationResource>,
   errors: ValidationError[],
@@ -178,7 +178,7 @@ function validateResources(
 
 /**
  * Validate parameters
-*/
+ */
 function validateParameters(
   parameters: Record<string, any>,
   errors: ValidationError[],
@@ -232,7 +232,7 @@ function validateParameters(
 
 /**
  * Validate outputs
-*/
+ */
 function validateOutputs(
   outputs: Record<string, any>,
   errors: ValidationError[],
@@ -254,7 +254,7 @@ function validateOutputs(
 
 /**
  * Validate references between resources
-*/
+ */
 function validateReferences(
   template: CloudFormationTemplate,
   errors: ValidationError[],
@@ -314,7 +314,7 @@ function validateReferences(
 
 /**
  * Detect circular dependencies in the template
-*/
+ */
 function detectCircularDependencies(template: CloudFormationTemplate): string[][] {
   const resources = template.Resources || {}
   const graph = new Map<string, Set<string>>()
@@ -378,7 +378,7 @@ function detectCircularDependencies(template: CloudFormationTemplate): string[][
 
 /**
  * Extract dependencies from a resource
-*/
+ */
 function extractDependencies(obj: any): Set<string> {
   const deps = new Set<string>()
 
@@ -409,7 +409,7 @@ function extractDependencies(obj: any): Set<string> {
 
 /**
  * Check if a resource type stores data
-*/
+ */
 function isDataResource(type: string): boolean {
   const dataResourceTypes = [
     'AWS::S3::Bucket',
@@ -426,7 +426,7 @@ function isDataResource(type: string): boolean {
 
 /**
  * Check for best practices
-*/
+ */
 function checkBestPractices(
   template: CloudFormationTemplate,
   warnings: ValidationError[],
@@ -479,7 +479,7 @@ function checkBestPractices(
 
 /**
  * Check if resource type supports tagging
-*/
+ */
 function supportsTagging(type: string): boolean {
   // Most AWS resources support tagging
   const noTagSupport = [
@@ -492,7 +492,7 @@ function supportsTagging(type: string): boolean {
 
 /**
  * Validate template size
-*/
+ */
 export function validateTemplateSize(templateJson: string): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []
@@ -530,7 +530,7 @@ export function validateTemplateSize(templateJson: string): ValidationResult {
 
 /**
  * Validate resource limits
-*/
+ */
 export function validateResourceLimits(template: CloudFormationTemplate): ValidationResult {
   const errors: ValidationError[] = []
   const warnings: ValidationError[] = []

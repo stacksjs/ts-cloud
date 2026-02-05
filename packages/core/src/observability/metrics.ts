@@ -1,7 +1,7 @@
 /**
  * Custom CloudWatch Metrics
  * Application and business metrics collection
-*/
+ */
 
 export interface MetricNamespace {
   id: string
@@ -80,7 +80,7 @@ export interface MetricAlarm {
 
 /**
  * Metrics manager
-*/
+ */
 export class MetricsManager {
   private namespaces: Map<string, MetricNamespace> = new Map()
   private metrics: Map<string, CustomMetric> = new Map()
@@ -90,7 +90,7 @@ export class MetricsManager {
 
   /**
    * Create metric namespace
-  */
+   */
   createNamespace(namespace: Omit<MetricNamespace, 'id'>): MetricNamespace {
     const id = `namespace-${Date.now()}-${this.namespaceCounter++}`
 
@@ -106,7 +106,7 @@ export class MetricsManager {
 
   /**
    * Create custom metric
-  */
+   */
   createMetric(metric: Omit<CustomMetric, 'id'>): CustomMetric {
     const id = `metric-${Date.now()}-${this.metricCounter++}`
 
@@ -122,7 +122,7 @@ export class MetricsManager {
 
   /**
    * Create business metric (e.g., orders, signups, revenue)
-  */
+   */
   createBusinessMetric(options: {
     name: string
     namespace: string
@@ -142,7 +142,7 @@ export class MetricsManager {
 
   /**
    * Create application metric (e.g., cache hits, queue depth)
-  */
+   */
   createApplicationMetric(options: {
     name: string
     namespace: string
@@ -162,7 +162,7 @@ export class MetricsManager {
 
   /**
    * Create performance metric
-  */
+   */
   createPerformanceMetric(options: {
     name: string
     namespace: string
@@ -181,7 +181,7 @@ export class MetricsManager {
 
   /**
    * Create error metric
-  */
+   */
   createErrorMetric(options: {
     name: string
     namespace: string
@@ -200,7 +200,7 @@ export class MetricsManager {
 
   /**
    * Create metric alarm
-  */
+   */
   createAlarm(metricId: string, alarm: Omit<MetricAlarm, 'id'>): MetricAlarm {
     const metric = this.metrics.get(metricId)
 
@@ -226,7 +226,7 @@ export class MetricsManager {
 
   /**
    * Create high error rate alarm
-  */
+   */
   createErrorRateAlarm(options: {
     metricId: string
     name: string
@@ -249,7 +249,7 @@ export class MetricsManager {
 
   /**
    * Create latency alarm
-  */
+   */
   createLatencyAlarm(options: {
     metricId: string
     name: string
@@ -272,7 +272,7 @@ export class MetricsManager {
 
   /**
    * Create throughput alarm
-  */
+   */
   createThroughputAlarm(options: {
     metricId: string
     name: string
@@ -295,7 +295,7 @@ export class MetricsManager {
 
   /**
    * Create composite alarm (multiple conditions)
-  */
+   */
   createCompositeAlarm(options: {
     name: string
     description?: string
@@ -314,35 +314,35 @@ export class MetricsManager {
 
   /**
    * Get namespace
-  */
+   */
   getNamespace(id: string): MetricNamespace | undefined {
     return this.namespaces.get(id)
   }
 
   /**
    * List namespaces
-  */
+   */
   listNamespaces(): MetricNamespace[] {
     return Array.from(this.namespaces.values())
   }
 
   /**
    * Get metric
-  */
+   */
   getMetric(id: string): CustomMetric | undefined {
     return this.metrics.get(id)
   }
 
   /**
    * List metrics
-  */
+   */
   listMetrics(): CustomMetric[] {
     return Array.from(this.metrics.values())
   }
 
   /**
    * Generate CloudFormation for metric alarm
-  */
+   */
   generateAlarmCF(metric: CustomMetric, alarm: MetricAlarm): any {
     return {
       Type: 'AWS::CloudWatch::Alarm',
@@ -375,7 +375,7 @@ export class MetricsManager {
 
   /**
    * Generate CloudFormation for composite alarm
-  */
+   */
   generateCompositeAlarmCF(alarm: any): any {
     return {
       Type: 'AWS::CloudWatch::CompositeAlarm',
@@ -391,7 +391,7 @@ export class MetricsManager {
 
   /**
    * Generate dashboard widget for metric
-  */
+   */
   generateDashboardWidget(metric: CustomMetric): any {
     return {
       type: 'metric',
@@ -413,7 +413,7 @@ export class MetricsManager {
 
   /**
    * Publish a custom metric value directly
-  */
+   */
   publishCustomMetric(
     namespace: string,
     name: string,
@@ -444,7 +444,7 @@ export class MetricsManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.namespaces.clear()
     this.metrics.clear()
@@ -456,5 +456,5 @@ export class MetricsManager {
 
 /**
  * Global metrics manager instance
-*/
+ */
 export const metricsManager: MetricsManager = new MetricsManager()

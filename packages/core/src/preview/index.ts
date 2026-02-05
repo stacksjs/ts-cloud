@@ -1,7 +1,7 @@
 /**
  * Preview Environments
  * Ephemeral environments for PR/branch previews
-*/
+ */
 
 export {
   PreviewEnvironmentManager,

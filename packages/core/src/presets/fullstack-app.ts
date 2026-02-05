@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Full Stack App Preset
  * Perfect for: Complete web applications with frontend and API
  * Includes: S3 + CloudFront (frontend) + ECS Fargate (API) + RDS + Redis
-*/
+ */
 export function createFullStackAppPreset(options: {
   name: string
   slug: string

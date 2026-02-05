@@ -1,7 +1,7 @@
 /**
  * AWS EC2 Client
  * Manages EC2 instances, VPCs, security groups, and related resources using direct API calls
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -140,7 +140,7 @@ export interface InstanceStatus {
 
 /**
  * EC2 client using direct API calls
-*/
+ */
 export class EC2Client {
   private client: AWSClient
   private region: string
@@ -152,7 +152,7 @@ export class EC2Client {
 
   /**
    * Describe EC2 instances
-  */
+   */
   async describeInstances(options?: {
     InstanceIds?: string[]
     Filters?: { Name: string, Values: string[] }[]
@@ -215,7 +215,7 @@ export class EC2Client {
 
   /**
    * Get a single instance by ID
-  */
+   */
   async getInstance(instanceId: string): Promise<Instance | undefined> {
     const result = await this.describeInstances({ InstanceIds: [instanceId] })
     return result.Reservations?.[0]?.Instances?.[0]
@@ -223,7 +223,7 @@ export class EC2Client {
 
   /**
    * Get console output from an EC2 instance
-  */
+   */
   async getConsoleOutput(instanceId: string, latest?: boolean): Promise<ConsoleOutput> {
     const params: Record<string, string> = {
       Action: 'GetConsoleOutput',
@@ -258,7 +258,7 @@ export class EC2Client {
 
   /**
    * Get console output decoded (convenience method)
-  */
+   */
   async getConsoleOutputDecoded(instanceId: string, options?: {
     latest?: boolean
     tailLines?: number
@@ -282,7 +282,7 @@ export class EC2Client {
 
   /**
    * Describe instance status
-  */
+   */
   async describeInstanceStatus(options?: {
     InstanceIds?: string[]
     IncludeAllInstances?: boolean
@@ -352,7 +352,7 @@ export class EC2Client {
 
   /**
    * Start instances
-  */
+   */
   async startInstances(instanceIds: string[]): Promise<{
     StartingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
   }> {
@@ -387,7 +387,7 @@ export class EC2Client {
 
   /**
    * Stop instances
-  */
+   */
   async stopInstances(instanceIds: string[], force?: boolean): Promise<{
     StoppingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
   }> {
@@ -426,7 +426,7 @@ export class EC2Client {
 
   /**
    * Reboot instances
-  */
+   */
   async rebootInstances(instanceIds: string[]): Promise<void> {
     const params: Record<string, string> = {
       Action: 'RebootInstances',
@@ -451,7 +451,7 @@ export class EC2Client {
 
   /**
    * Terminate instances
-  */
+   */
   async terminateInstances(instanceIds: string[]): Promise<{
     TerminatingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
   }> {
@@ -486,7 +486,7 @@ export class EC2Client {
 
   /**
    * Describe VPCs
-  */
+   */
   async describeVpcs(options?: {
     VpcIds?: string[]
     Filters?: { Name: string, Values: string[] }[]
@@ -539,7 +539,7 @@ export class EC2Client {
 
   /**
    * Describe Subnets
-  */
+   */
   async describeSubnets(options?: {
     SubnetIds?: string[]
     Filters?: { Name: string, Values: string[] }[]
@@ -593,7 +593,7 @@ export class EC2Client {
 
   /**
    * Describe Security Groups
-  */
+   */
   async describeSecurityGroups(options?: {
     GroupIds?: string[]
     GroupNames?: string[]
@@ -653,7 +653,7 @@ export class EC2Client {
 
   /**
    * Describe Internet Gateways
-  */
+   */
   async describeInternetGateways(options?: {
     InternetGatewayIds?: string[]
     Filters?: { Name: string, Values: string[] }[]
@@ -705,7 +705,7 @@ export class EC2Client {
 
   /**
    * Describe Elastic IPs (Addresses)
-  */
+   */
   async describeAddresses(options?: {
     AllocationIds?: string[]
     PublicIps?: string[]
@@ -766,7 +766,7 @@ export class EC2Client {
 
   /**
    * Allocate Elastic IP
-  */
+   */
   async allocateAddress(options?: {
     Domain?: 'vpc' | 'standard'
     TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
@@ -814,7 +814,7 @@ export class EC2Client {
 
   /**
    * Associate Elastic IP with instance
-  */
+   */
   async associateAddress(options: {
     AllocationId?: string
     PublicIp?: string
@@ -872,7 +872,7 @@ export class EC2Client {
 
   /**
    * Create tags for resources
-  */
+   */
   async createTags(options: {
     Resources: string[]
     Tags: { Key: string, Value: string }[]
@@ -905,7 +905,7 @@ export class EC2Client {
 
   /**
    * Wait for instance to reach a specific state
-  */
+   */
   async waitForInstanceState(
     instanceId: string,
     targetState: 'running' | 'stopped' | 'terminated',
@@ -933,7 +933,7 @@ export class EC2Client {
 
   /**
    * Create a VPC
-  */
+   */
   async createVpc(options: {
     CidrBlock: string
     InstanceTenancy?: string
@@ -990,7 +990,7 @@ export class EC2Client {
 
   /**
    * Create a Subnet
-  */
+   */
   async createSubnet(options: {
     VpcId: string
     CidrBlock: string
@@ -1050,7 +1050,7 @@ export class EC2Client {
 
   /**
    * Modify a Subnet attribute
-  */
+   */
   async modifySubnetAttribute(options: {
     SubnetId: string
     MapPublicIpOnLaunch?: { Value: boolean }
@@ -1079,7 +1079,7 @@ export class EC2Client {
 
   /**
    * Create a Security Group
-  */
+   */
   async createSecurityGroup(options: {
     GroupName: string
     Description: string
@@ -1129,7 +1129,7 @@ export class EC2Client {
 
   /**
    * Authorize Security Group Ingress (add inbound rule)
-  */
+   */
   async authorizeSecurityGroupIngress(options: {
     GroupId: string
     IpPermissions: IpPermission[]
@@ -1156,7 +1156,7 @@ export class EC2Client {
 
   /**
    * Authorize Security Group Egress (add outbound rule)
-  */
+   */
   async authorizeSecurityGroupEgress(options: {
     GroupId: string
     IpPermissions: IpPermission[]
@@ -1183,7 +1183,7 @@ export class EC2Client {
 
   /**
    * Describe Route Tables
-  */
+   */
   async describeRouteTables(options?: {
     RouteTableIds?: string[]
     Filters?: { Name: string, Values: string[] }[]
@@ -1245,7 +1245,7 @@ export class EC2Client {
 
   /**
    * Encode IpPermissions into query parameters for security group rules
-  */
+   */
   private encodeIpPermissions(params: Record<string, string>, permissions: IpPermission[]): void {
     permissions.forEach((perm, i) => {
       const prefix = `IpPermissions.${i + 1}`

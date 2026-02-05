@@ -4,7 +4,7 @@ import type { CloudConfig } from '@stacksjs/ts-cloud-types'
  * Data Pipeline Preset
  * Perfect for: ETL pipelines, data processing, analytics workflows
  * Includes: Kinesis + Lambda + S3 + Athena + Glue
-*/
+ */
 export function createDataPipelinePreset(options: {
   name: string
   slug: string

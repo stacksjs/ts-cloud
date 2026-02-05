@@ -1,7 +1,7 @@
 /**
  * SES Email Analytics
  * Email tracking, analytics, and reporting
-*/
+ */
 
 export interface EmailEvent {
   id: string
@@ -87,7 +87,7 @@ export interface ABTestVariant {
 
 /**
  * Email analytics manager
-*/
+ */
 export class EmailAnalyticsManager {
   private events: Map<string, EmailEvent> = new Map()
   private campaigns: Map<string, EmailCampaign> = new Map()
@@ -100,7 +100,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Track email event
-  */
+   */
   trackEvent(event: Omit<EmailEvent, 'id'>): EmailEvent {
     const id = `event-${Date.now()}-${this.eventCounter++}`
 
@@ -121,7 +121,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Track open event
-  */
+   */
   trackOpen(options: {
     messageId: string
     recipient: string
@@ -138,7 +138,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Track click event
-  */
+   */
   trackClick(options: {
     messageId: string
     recipient: string
@@ -156,7 +156,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Create campaign
-  */
+   */
   createCampaign(campaign: Omit<EmailCampaign, 'id' | 'sentCount' | 'deliveredCount' | 'openCount' | 'clickCount' | 'bounceCount' | 'complaintCount' | 'createdAt'>): EmailCampaign {
     const id = `campaign-${Date.now()}-${this.campaignCounter++}`
 
@@ -179,7 +179,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Update campaign stats
-  */
+   */
   private updateCampaignStats(campaignId: string, eventType: string): void {
     const campaign = this.campaigns.get(campaignId)
 
@@ -211,7 +211,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Generate analytics report
-  */
+   */
   generateReport(options: {
     campaignId?: string
     startDate: Date
@@ -305,7 +305,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Create A/B test
-  */
+   */
   createABTest(options: {
     name: string
     variants: Array<{
@@ -338,7 +338,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Start A/B test
-  */
+   */
   startABTest(abTestId: string): ABTest {
     const abTest = this.abTests.get(abTestId)
 
@@ -354,7 +354,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Complete A/B test
-  */
+   */
   completeABTest(abTestId: string): ABTest {
     const abTest = this.abTests.get(abTestId)
 
@@ -383,21 +383,21 @@ export class EmailAnalyticsManager {
 
   /**
    * Get campaign
-  */
+   */
   getCampaign(id: string): EmailCampaign | undefined {
     return this.campaigns.get(id)
   }
 
   /**
    * List campaigns
-  */
+   */
   listCampaigns(): EmailCampaign[] {
     return Array.from(this.campaigns.values())
   }
 
   /**
    * Get events
-  */
+   */
   getEvents(options?: {
     messageId?: string
     eventType?: string
@@ -427,7 +427,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Generate CloudFormation for tracking configuration
-  */
+   */
   generateTrackingConfigurationCF(options: {
     configurationSetName: string
     openTracking?: boolean
@@ -448,7 +448,7 @@ export class EmailAnalyticsManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.events.clear()
     this.campaigns.clear()
@@ -463,5 +463,5 @@ export class EmailAnalyticsManager {
 
 /**
  * Global email analytics manager instance
-*/
+ */
 export const emailAnalyticsManager: EmailAnalyticsManager = new EmailAnalyticsManager()

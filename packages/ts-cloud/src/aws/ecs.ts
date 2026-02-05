@@ -1,7 +1,7 @@
 /**
  * AWS ECS Operations
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -63,7 +63,7 @@ export interface Container {
 
 /**
  * ECS service management using direct API calls
-*/
+ */
 export class ECSClient {
   private client: AWSClient
   private region: string
@@ -75,7 +75,7 @@ export class ECSClient {
 
   /**
    * Describe ECS services
-  */
+   */
   async describeServices(options: DescribeServicesOptions): Promise<{ services?: Service[], failures?: any[] }> {
     const params: Record<string, any> = {
       cluster: options.cluster,
@@ -99,7 +99,7 @@ export class ECSClient {
 
   /**
    * List ECS services in a cluster
-  */
+   */
   async listServices(cluster: string): Promise<{ serviceArns?: string[] }> {
     const params: Record<string, any> = {
       cluster,
@@ -122,7 +122,7 @@ export class ECSClient {
 
   /**
    * List tasks in a cluster
-  */
+   */
   async listTasks(cluster: string, serviceName?: string): Promise<{ taskArns?: string[] }> {
     const params: Record<string, any> = {
       cluster,
@@ -149,7 +149,7 @@ export class ECSClient {
 
   /**
    * Describe ECS tasks
-  */
+   */
   async describeTasks(cluster: string, tasks: string[]): Promise<{ tasks?: Task[], failures?: any[] }> {
     const params: Record<string, any> = {
       cluster,
@@ -173,7 +173,7 @@ export class ECSClient {
 
   /**
    * Update ECS service (e.g., force new deployment)
-  */
+   */
   async updateService(options: {
     cluster: string
     service: string
@@ -215,7 +215,7 @@ export class ECSClient {
 
   /**
    * Create a new ECS service
-  */
+   */
   async createService(options: {
     cluster: string
     serviceName: string
@@ -284,7 +284,7 @@ export class ECSClient {
 
   /**
    * Delete an ECS service
-  */
+   */
   async deleteService(options: {
     cluster: string
     service: string
@@ -316,7 +316,7 @@ export class ECSClient {
 
   /**
    * List ECS clusters
-  */
+   */
   async listClusters(): Promise<{ clusterArns?: string[] }> {
     const result = await this.client.request({
       service: 'ecs',
@@ -335,7 +335,7 @@ export class ECSClient {
 
   /**
    * Describe ECS clusters
-  */
+   */
   async describeClusters(clusters: string[]): Promise<{ clusters?: any[], failures?: any[] }> {
     const params = {
       clusters,
@@ -359,7 +359,7 @@ export class ECSClient {
 
   /**
    * Stop a running task
-  */
+   */
   async stopTask(options: {
     cluster: string
     task: string
@@ -391,7 +391,7 @@ export class ECSClient {
 
   /**
    * Run a one-off task
-  */
+   */
   async runTask(options: {
     cluster: string
     taskDefinition: string
@@ -450,7 +450,7 @@ export class ECSClient {
 
   /**
    * Register a new task definition
-  */
+   */
   async registerTaskDefinition(options: {
     family: string
     containerDefinitions: Array<{
@@ -495,7 +495,7 @@ export class ECSClient {
 
   /**
    * Deregister a task definition
-  */
+   */
   async deregisterTaskDefinition(taskDefinition: string): Promise<{ taskDefinition?: any }> {
     const result = await this.client.request({
       service: 'ecs',
@@ -514,7 +514,7 @@ export class ECSClient {
 
   /**
    * Describe task definitions
-  */
+   */
   async describeTaskDefinition(taskDefinition: string): Promise<{ taskDefinition?: any, tags?: any[] }> {
     const result = await this.client.request({
       service: 'ecs',
@@ -533,7 +533,7 @@ export class ECSClient {
 
   /**
    * List task definition families
-  */
+   */
   async listTaskDefinitionFamilies(options?: {
     familyPrefix?: string
     status?: 'ACTIVE' | 'INACTIVE' | 'ALL'
@@ -565,7 +565,7 @@ export class ECSClient {
 
   /**
    * Wait for service to become stable
-  */
+   */
   async waitForServiceStable(cluster: string, service: string, maxAttempts = 40, delayMs = 15000): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       const result = await this.describeServices({
@@ -593,7 +593,7 @@ export class ECSClient {
 
   /**
    * Helper: Force new deployment
-  */
+   */
   async forceNewDeployment(cluster: string, service: string): Promise<{ service?: Service }> {
     return this.updateService({
       cluster,
@@ -604,7 +604,7 @@ export class ECSClient {
 
   /**
    * Helper: Scale service
-  */
+   */
   async scaleService(cluster: string, service: string, desiredCount: number): Promise<{ service?: Service }> {
     return this.updateService({
       cluster,

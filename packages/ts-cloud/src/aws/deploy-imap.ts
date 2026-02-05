@@ -8,7 +8,7 @@
  * - Fetches IMAP passwords from AWS Secrets Manager at startup
  * - Secret name: stacks/mail-server/credentials
  * - Credentials are read from email config and synced to Secrets Manager
-*/
+ */
 
 import { SSMClient } from './ssm'
 import { AWSClient } from './client'
@@ -38,7 +38,7 @@ export interface MailServerDeployConfig {
  *   - Full email strings: 'chris@stacksjs.com' -> looks up MAIL_PASSWORD_CHRIS
  *   - Objects with email: { email: 'chris@stacksjs.com', password: '...' }
  *   - Objects with address (deprecated): { address: 'chris@stacksjs.com' }
-*/
+ */
 function normalizeMailbox(mailbox: string | MailboxConfig | { address: string, password?: string }, domain: string): MailboxConfig {
   if (typeof mailbox === 'string') {
     // If it's just a username (no @), append the domain

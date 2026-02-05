@@ -1,7 +1,7 @@
 /**
  * Cloudflare DNS Provider
  * API documentation: https://developers.cloudflare.com/api/resources/dns/subresources/records/
-*/
+ */
 
 import type {
   CreateRecordResult,
@@ -69,7 +69,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Make an authenticated API request to Cloudflare
-  */
+   */
   private async request<T>(
     method: string,
     endpoint: string,
@@ -105,7 +105,7 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Get the root domain from a full domain name
    * e.g., "api.example.com" -> "example.com"
-  */
+   */
   private getRootDomain(domain: string): string {
     const parts = domain.replace(/\.$/, '').split('.')
     if (parts.length >= 2) {
@@ -116,7 +116,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Get Zone ID for a domain (with caching)
-  */
+   */
   private async getZoneId(domain: string): Promise<string> {
     const rootDomain = this.getRootDomain(domain)
 
@@ -144,7 +144,7 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Get the full record name
    * Cloudflare stores records with full domain names
-  */
+   */
   private getFullRecordName(name: string, domain: string): string {
     const rootDomain = this.getRootDomain(domain)
     const cleanName = name.replace(/\.$/, '')
@@ -165,7 +165,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Convert DnsRecord to Cloudflare record format
-  */
+   */
   private toCloudflareRecord(record: DnsRecord, domain: string): Partial<CloudflareRecord> {
     const cfRecord: Partial<CloudflareRecord> = {
       type: record.type,
@@ -191,7 +191,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Convert Cloudflare record to DnsRecordResult format
-  */
+   */
   private fromCloudflareRecord(record: CloudflareRecord): DnsRecordResult {
     return {
       id: record.id,
@@ -381,7 +381,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * List all domains (zones) managed by this Cloudflare account
-  */
+   */
   async listDomains(): Promise<string[]> {
     try {
       const allZones: CloudflareZone[] = []
@@ -414,7 +414,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Get zone details (Cloudflare-specific)
-  */
+   */
   async getZoneDetails(domain: string): Promise<{
     id: string
     name: string
@@ -444,7 +444,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Purge cache for a domain (Cloudflare-specific)
-  */
+   */
   async purgeCache(domain: string, options?: {
     purgeEverything?: boolean
     files?: string[]
@@ -486,7 +486,7 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Get proxy status for a record (Cloudflare-specific)
    * Returns whether a record is proxied through Cloudflare
-  */
+   */
   async getRecordProxyStatus(domain: string, record: DnsRecord): Promise<boolean | null> {
     try {
       const zoneId = await this.getZoneId(domain)
@@ -511,7 +511,7 @@ export class CloudflareProvider implements DnsProvider {
 
   /**
    * Update proxy status for a record (Cloudflare-specific)
-  */
+   */
   async setRecordProxyStatus(domain: string, record: DnsRecord, proxied: boolean): Promise<boolean> {
     try {
       const zoneId = await this.getZoneId(domain)

@@ -1,7 +1,7 @@
 /**
  * Lambda VPC Configuration
  * VPC networking for Lambda functions
-*/
+ */
 
 export interface LambdaVPCConfig {
   id: string
@@ -44,7 +44,7 @@ export interface VPCConnectivity {
 
 /**
  * Lambda VPC manager
-*/
+ */
 export class LambdaVPCManager {
   private vpcConfigs: Map<string, LambdaVPCConfig> = new Map()
   private endpoints: Map<string, VPCEndpoint> = new Map()
@@ -57,7 +57,7 @@ export class LambdaVPCManager {
 
   /**
    * Configure VPC
-  */
+   */
   configureVPC(config: Omit<LambdaVPCConfig, 'id'>): LambdaVPCConfig {
     const id = `vpc-config-${Date.now()}-${this.configCounter++}`
 
@@ -81,7 +81,7 @@ export class LambdaVPCManager {
 
   /**
    * Configure private VPC
-  */
+   */
   configurePrivateVPC(options: {
     functionName: string
     vpcId: string
@@ -99,7 +99,7 @@ export class LambdaVPCManager {
 
   /**
    * Configure multi-AZ VPC
-  */
+   */
   configureMultiAZVPC(options: {
     functionName: string
     vpcId: string
@@ -120,7 +120,7 @@ export class LambdaVPCManager {
 
   /**
    * Create VPC endpoint
-  */
+   */
   createVPCEndpoint(endpoint: Omit<VPCEndpoint, 'id'>): VPCEndpoint {
     const id = `endpoint-${Date.now()}-${this.endpointCounter++}`
 
@@ -136,7 +136,7 @@ export class LambdaVPCManager {
 
   /**
    * Create S3 VPC endpoint
-  */
+   */
   createS3Endpoint(options: {
     vpcId: string
     routeTableIds: string[]
@@ -151,7 +151,7 @@ export class LambdaVPCManager {
 
   /**
    * Create DynamoDB VPC endpoint
-  */
+   */
   createDynamoDBEndpoint(options: {
     vpcId: string
     routeTableIds: string[]
@@ -166,7 +166,7 @@ export class LambdaVPCManager {
 
   /**
    * Create Secrets Manager VPC endpoint
-  */
+   */
   createSecretsManagerEndpoint(options: {
     vpcId: string
     subnetIds: string[]
@@ -184,7 +184,7 @@ export class LambdaVPCManager {
 
   /**
    * Create network interface
-  */
+   */
   private createNetworkInterface(options: {
     functionName: string
     subnetId: string
@@ -213,7 +213,7 @@ export class LambdaVPCManager {
 
   /**
    * Analyze VPC connectivity
-  */
+   */
   analyzeConnectivity(options: {
     functionName: string
     hasNATGateway?: boolean
@@ -263,14 +263,14 @@ export class LambdaVPCManager {
 
   /**
    * Get VPC config
-  */
+   */
   getVPCConfig(id: string): LambdaVPCConfig | undefined {
     return this.vpcConfigs.get(id)
   }
 
   /**
    * List VPC configs
-  */
+   */
   listVPCConfigs(functionName?: string): LambdaVPCConfig[] {
     const configs = Array.from(this.vpcConfigs.values())
     return functionName
@@ -280,7 +280,7 @@ export class LambdaVPCManager {
 
   /**
    * Get network interfaces
-  */
+   */
   getNetworkInterfaces(functionName: string): NetworkInterface[] {
     return Array.from(this.networkInterfaces.values()).filter(
       eni => eni.functionName === functionName
@@ -289,7 +289,7 @@ export class LambdaVPCManager {
 
   /**
    * List VPC endpoints
-  */
+   */
   listVPCEndpoints(vpcId?: string): VPCEndpoint[] {
     const endpoints = Array.from(this.endpoints.values())
     return vpcId ? endpoints.filter(e => e.vpcId === vpcId) : endpoints
@@ -297,7 +297,7 @@ export class LambdaVPCManager {
 
   /**
    * Generate CloudFormation for VPC config
-  */
+   */
   generateVPCConfigCF(config: LambdaVPCConfig): any {
     return {
       VpcConfig: {
@@ -310,7 +310,7 @@ export class LambdaVPCManager {
 
   /**
    * Generate CloudFormation for VPC endpoint
-  */
+   */
   generateVPCEndpointCF(endpoint: VPCEndpoint): any {
     return {
       Type: 'AWS::EC2::VPCEndpoint',
@@ -331,7 +331,7 @@ export class LambdaVPCManager {
 
   /**
    * Generate security group CloudFormation
-  */
+   */
   generateSecurityGroupCF(options: {
     groupName: string
     vpcId: string
@@ -380,7 +380,7 @@ export class LambdaVPCManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.vpcConfigs.clear()
     this.endpoints.clear()
@@ -395,5 +395,5 @@ export class LambdaVPCManager {
 
 /**
  * Global Lambda VPC manager instance
-*/
+ */
 export const lambdaVPCManager: LambdaVPCManager = new LambdaVPCManager()

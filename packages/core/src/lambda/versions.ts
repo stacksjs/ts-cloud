@@ -1,7 +1,7 @@
 /**
  * Lambda Versions and Aliases
  * Immutable versions and mutable aliases for Lambda functions
-*/
+ */
 
 export interface LambdaVersion {
   id: string
@@ -45,7 +45,7 @@ export interface VersionDeployment {
 
 /**
  * Lambda versions manager
-*/
+ */
 export class LambdaVersionsManager {
   private versions: Map<string, LambdaVersion> = new Map()
   private aliases: Map<string, LambdaAlias> = new Map()
@@ -56,7 +56,7 @@ export class LambdaVersionsManager {
 
   /**
    * Publish function version
-  */
+   */
   publishVersion(options: {
     functionName: string
     description?: string
@@ -87,7 +87,7 @@ export class LambdaVersionsManager {
 
   /**
    * Get next version number
-  */
+   */
   private getNextVersionNumber(functionName: string): number {
     const existingVersions = Array.from(this.versions.values())
       .filter(v => v.functionName === functionName)
@@ -98,7 +98,7 @@ export class LambdaVersionsManager {
 
   /**
    * Create alias
-  */
+   */
   createAlias(alias: Omit<LambdaAlias, 'id' | 'aliasArn' | 'revisionId'>): LambdaAlias {
     const id = `alias-${Date.now()}-${this.aliasCounter++}`
 
@@ -116,7 +116,7 @@ export class LambdaVersionsManager {
 
   /**
    * Create production alias
-  */
+   */
   createProductionAlias(options: {
     functionName: string
     version: string
@@ -131,7 +131,7 @@ export class LambdaVersionsManager {
 
   /**
    * Create staging alias
-  */
+   */
   createStagingAlias(options: {
     functionName: string
     version: string
@@ -146,7 +146,7 @@ export class LambdaVersionsManager {
 
   /**
    * Update alias
-  */
+   */
   updateAlias(aliasId: string, newVersion: string): LambdaAlias {
     const alias = this.aliases.get(aliasId)
 
@@ -162,7 +162,7 @@ export class LambdaVersionsManager {
 
   /**
    * Configure weighted routing
-  */
+   */
   configureWeightedRouting(
     aliasId: string,
     weights: Record<string, number>
@@ -182,7 +182,7 @@ export class LambdaVersionsManager {
 
   /**
    * Create canary deployment
-  */
+   */
   createCanaryDeployment(options: {
     functionName: string
     fromVersion: string
@@ -228,7 +228,7 @@ export class LambdaVersionsManager {
 
   /**
    * Complete deployment
-  */
+   */
   completeDeployment(deploymentId: string): VersionDeployment {
     const deployment = this.deployments.get(deploymentId)
 
@@ -256,7 +256,7 @@ export class LambdaVersionsManager {
 
   /**
    * Rollback deployment
-  */
+   */
   rollbackDeployment(deploymentId: string): VersionDeployment {
     const deployment = this.deployments.get(deploymentId)
 
@@ -284,21 +284,21 @@ export class LambdaVersionsManager {
 
   /**
    * Generate hash
-  */
+   */
   private generateHash(): string {
     return Math.random().toString(36).substring(2, 15)
   }
 
   /**
    * Get version
-  */
+   */
   getVersion(id: string): LambdaVersion | undefined {
     return this.versions.get(id)
   }
 
   /**
    * List versions
-  */
+   */
   listVersions(functionName?: string): LambdaVersion[] {
     const versions = Array.from(this.versions.values())
     return functionName ? versions.filter(v => v.functionName === functionName) : versions
@@ -306,14 +306,14 @@ export class LambdaVersionsManager {
 
   /**
    * Get alias
-  */
+   */
   getAlias(id: string): LambdaAlias | undefined {
     return this.aliases.get(id)
   }
 
   /**
    * List aliases
-  */
+   */
   listAliases(functionName?: string): LambdaAlias[] {
     const aliases = Array.from(this.aliases.values())
     return functionName ? aliases.filter(a => a.functionName === functionName) : aliases
@@ -321,7 +321,7 @@ export class LambdaVersionsManager {
 
   /**
    * Generate CloudFormation for version
-  */
+   */
   generateVersionCF(version: LambdaVersion): any {
     return {
       Type: 'AWS::Lambda::Version',
@@ -334,7 +334,7 @@ export class LambdaVersionsManager {
 
   /**
    * Generate CloudFormation for alias
-  */
+   */
   generateAliasCF(alias: LambdaAlias): any {
     return {
       Type: 'AWS::Lambda::Alias',
@@ -359,7 +359,7 @@ export class LambdaVersionsManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.versions.clear()
     this.aliases.clear()
@@ -372,5 +372,5 @@ export class LambdaVersionsManager {
 
 /**
  * Global Lambda versions manager instance
-*/
+ */
 export const lambdaVersionsManager: LambdaVersionsManager = new LambdaVersionsManager()

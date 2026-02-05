@@ -1,7 +1,7 @@
 /**
  * AWS ECR (Elastic Container Registry) Client
  * Manages Docker container image repositories using direct API calls
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -73,7 +73,7 @@ export interface LifecyclePolicy {
 
 /**
  * ECR service management using direct API calls
-*/
+ */
 export class ECRClient {
   private client: AWSClient
   private region: string
@@ -85,7 +85,7 @@ export class ECRClient {
 
   /**
    * Create a new ECR repository
-  */
+   */
   async createRepository(options: CreateRepositoryOptions): Promise<{ repository?: Repository }> {
     const params: Record<string, any> = {
       repositoryName: options.repositoryName,
@@ -126,7 +126,7 @@ export class ECRClient {
 
   /**
    * Describe ECR repositories
-  */
+   */
   async describeRepositories(options?: {
     repositoryNames?: string[]
     registryId?: string
@@ -171,7 +171,7 @@ export class ECRClient {
 
   /**
    * Get authorization token for Docker login
-  */
+   */
   async getAuthorizationToken(registryIds?: string[]): Promise<{
     authorizationData?: AuthorizationData[]
   }> {
@@ -204,7 +204,7 @@ export class ECRClient {
 
   /**
    * Delete an ECR repository
-  */
+   */
   async deleteRepository(options: {
     repositoryName: string
     registryId?: string
@@ -241,7 +241,7 @@ export class ECRClient {
 
   /**
    * Describe images in a repository
-  */
+   */
   async describeImages(options: {
     repositoryName: string
     registryId?: string
@@ -294,7 +294,7 @@ export class ECRClient {
 
   /**
    * Batch delete images from a repository
-  */
+   */
   async batchDeleteImage(options: {
     repositoryName: string
     registryId?: string
@@ -332,7 +332,7 @@ export class ECRClient {
 
   /**
    * Put lifecycle policy on a repository
-  */
+   */
   async putLifecyclePolicy(options: {
     repositoryName: string
     registryId?: string
@@ -372,7 +372,7 @@ export class ECRClient {
 
   /**
    * Get lifecycle policy for a repository
-  */
+   */
   async getLifecyclePolicy(options: {
     repositoryName: string
     registryId?: string
@@ -412,7 +412,7 @@ export class ECRClient {
 
   /**
    * Set repository policy
-  */
+   */
   async setRepositoryPolicy(options: {
     repositoryName: string
     policyText: string
@@ -457,7 +457,7 @@ export class ECRClient {
 
   /**
    * Get repository policy
-  */
+   */
   async getRepositoryPolicy(options: {
     repositoryName: string
     registryId?: string
@@ -495,7 +495,7 @@ export class ECRClient {
 
   /**
    * Tag a repository resource
-  */
+   */
   async tagResource(options: {
     resourceArn: string
     tags: { Key: string, Value: string }[]
@@ -520,7 +520,7 @@ export class ECRClient {
 
   /**
    * List tags for a resource
-  */
+   */
   async listTagsForResource(resourceArn: string): Promise<{
     tags?: { Key: string, Value: string }[]
   }> {
@@ -547,7 +547,7 @@ export class ECRClient {
 
   /**
    * Helper: Create a standard lifecycle policy to keep only N images
-  */
+   */
   createLifecyclePolicyText(rules: LifecyclePolicy[]): string {
     return JSON.stringify({
       rules: rules.map(rule => ({
@@ -561,7 +561,7 @@ export class ECRClient {
 
   /**
    * Helper: Get docker login command
-  */
+   */
   async getDockerLoginCommand(): Promise<string> {
     const authResult = await this.getAuthorizationToken()
 
@@ -582,14 +582,14 @@ export class ECRClient {
 
   /**
    * Helper: Get the registry URI for this region
-  */
+   */
   getRegistryUri(accountId: string): string {
     return `${accountId}.dkr.ecr.${this.region}.amazonaws.com`
   }
 
   /**
    * Parse repository response
-  */
+   */
   private parseRepository(repo: any): Repository {
     return {
       repositoryArn: repo.repositoryArn,
@@ -605,7 +605,7 @@ export class ECRClient {
 
   /**
    * Parse image detail response
-  */
+   */
   private parseImageDetail(img: any): ImageDetail {
     return {
       registryId: img.registryId,

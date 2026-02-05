@@ -2,7 +2,7 @@
  * IVR Builder (Visual Contact Flow Editor)
  *
  * Provides a programmatic way to build Amazon Connect contact flows
-*/
+ */
 
 export interface IVRFlow {
   id: string
@@ -52,7 +52,7 @@ export interface IVRConnection {
 
 /**
  * IVR Builder Module
-*/
+ */
 export class IVRBuilder {
   private nodes: IVRNode[] = []
   private connections: IVRConnection[] = []
@@ -60,7 +60,7 @@ export class IVRBuilder {
 
   /**
    * Create a new IVR flow
-  */
+   */
   static create(name: string): IVRBuilder {
     const builder = new IVRBuilder()
     return builder
@@ -68,7 +68,7 @@ export class IVRBuilder {
 
   /**
    * Add a start node
-  */
+   */
   start(): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -83,7 +83,7 @@ export class IVRBuilder {
 
   /**
    * Add a play prompt node
-  */
+   */
   playPrompt(text: string, options?: { ssml?: boolean; voice?: string }): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -102,7 +102,7 @@ export class IVRBuilder {
 
   /**
    * Add a get input node (DTMF)
-  */
+   */
   getInput(prompt: string, options?: {
     maxDigits?: number
     timeout?: number
@@ -126,7 +126,7 @@ export class IVRBuilder {
 
   /**
    * Add a menu node
-  */
+   */
   menu(prompt: string, options: Record<string, string>): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -144,7 +144,7 @@ export class IVRBuilder {
 
   /**
    * Add a transfer to queue node
-  */
+   */
   transferToQueue(queueArn: string, options?: { priority?: number }): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -162,7 +162,7 @@ export class IVRBuilder {
 
   /**
    * Add a transfer to phone number node
-  */
+   */
   transferToPhone(phoneNumber: string): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -179,7 +179,7 @@ export class IVRBuilder {
 
   /**
    * Add a Lambda invocation node
-  */
+   */
   invokeLambda(functionArn: string, options?: { timeout?: number }): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -197,7 +197,7 @@ export class IVRBuilder {
 
   /**
    * Add a set attribute node
-  */
+   */
   setAttribute(key: string, value: string): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -215,7 +215,7 @@ export class IVRBuilder {
 
   /**
    * Add a check hours node
-  */
+   */
   checkHours(hoursOfOperationArn: string): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -232,7 +232,7 @@ export class IVRBuilder {
 
   /**
    * Add a record voicemail node
-  */
+   */
   recordVoicemail(options?: {
     maxDuration?: number
     greeting?: string
@@ -255,7 +255,7 @@ export class IVRBuilder {
 
   /**
    * Add a wait node
-  */
+   */
   wait(seconds: number): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -272,7 +272,7 @@ export class IVRBuilder {
 
   /**
    * Add a disconnect node
-  */
+   */
   disconnect(): this {
     const node: IVRNode = {
       id: this.generateId(),
@@ -287,7 +287,7 @@ export class IVRBuilder {
 
   /**
    * Build the IVR flow
-  */
+   */
   build(): IVRFlow {
     return {
       id: this.generateId(),
@@ -303,7 +303,7 @@ export class IVRBuilder {
 
   /**
    * Convert to Amazon Connect contact flow format
-  */
+   */
   toContactFlow(): string {
     const actions: any[] = []
     const nodeMap = new Map(this.nodes.map(n => [n.id, n]))
@@ -464,7 +464,7 @@ export class IVRBuilder {
 
   /**
    * Pre-built IVR templates
-  */
+   */
   static readonly Templates = {
     basicSupport: (): IVRBuilder => {
       return IVRBuilder.create('Basic Support')

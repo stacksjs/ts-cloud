@@ -1,7 +1,7 @@
 /**
  * Preview environment notifications
  * Send notifications to Slack, Discord, email, etc. when preview environments are created/destroyed
-*/
+ */
 
 import type { PreviewEnvironment } from './manager'
 
@@ -47,27 +47,27 @@ export interface NotificationEvent {
 
 /**
  * Preview environment notification service
-*/
+ */
 export class PreviewNotificationService {
   private channels: NotificationChannel[] = []
 
   /**
    * Add notification channel
-  */
+   */
   addChannel(channel: NotificationChannel): void {
     this.channels.push(channel)
   }
 
   /**
    * Remove notification channel
-  */
+   */
   removeChannel(type: NotificationChannel['type']): void {
     this.channels = this.channels.filter(c => c.type !== type)
   }
 
   /**
    * Send notification to all channels
-  */
+   */
   async notify(event: NotificationEvent): Promise<void> {
     const promises = this.channels.map(channel => this.sendToChannel(channel, event))
 
@@ -76,7 +76,7 @@ export class PreviewNotificationService {
 
   /**
    * Send notification to specific channel
-  */
+   */
   private async sendToChannel(channel: NotificationChannel, event: NotificationEvent): Promise<void> {
     switch (channel.type) {
       case 'slack':
@@ -96,7 +96,7 @@ export class PreviewNotificationService {
 
   /**
    * Send notification to Slack
-  */
+   */
   private async sendToSlack(config: SlackConfig, event: NotificationEvent): Promise<void> {
     const message = this.formatSlackMessage(event, config)
 
@@ -115,7 +115,7 @@ export class PreviewNotificationService {
 
   /**
    * Format Slack message
-  */
+   */
   private formatSlackMessage(event: NotificationEvent, config: SlackConfig): any {
     const { environment, type } = event
 
@@ -204,7 +204,7 @@ export class PreviewNotificationService {
 
   /**
    * Send notification to Discord
-  */
+   */
   private async sendToDiscord(config: DiscordConfig, event: NotificationEvent): Promise<void> {
     const message = this.formatDiscordMessage(event, config)
 
@@ -223,7 +223,7 @@ export class PreviewNotificationService {
 
   /**
    * Format Discord message
-  */
+   */
   private formatDiscordMessage(event: NotificationEvent, config: DiscordConfig): any {
     const { environment, type } = event
 
@@ -304,7 +304,7 @@ export class PreviewNotificationService {
 
   /**
    * Send notification via email
-  */
+   */
   private async sendToEmail(config: EmailConfig, event: NotificationEvent): Promise<void> {
     // This is a placeholder - actual implementation would use nodemailer or similar
     // For now, we'll just log that email would be sent
@@ -313,7 +313,7 @@ export class PreviewNotificationService {
 
   /**
    * Send notification to custom webhook
-  */
+   */
   private async sendToWebhook(config: WebhookConfig, event: NotificationEvent): Promise<void> {
     const response = await fetch(config.url, {
       method: config.method || 'POST',
@@ -337,5 +337,5 @@ export class PreviewNotificationService {
 
 /**
  * Global notification service instance
-*/
+ */
 export const previewNotifications: PreviewNotificationService = new PreviewNotificationService()

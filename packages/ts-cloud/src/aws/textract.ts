@@ -2,7 +2,7 @@
  * AWS Textract Client
  * Document OCR, form extraction, table extraction
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -435,28 +435,28 @@ export class TextractClient {
 
   /**
    * Detect text in a document (OCR)
-  */
+   */
   async detectDocumentText(params: DetectDocumentTextCommandInput): Promise<DetectDocumentTextCommandOutput> {
     return this.request('DetectDocumentText', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze a document (forms, tables, queries)
-  */
+   */
   async analyzeDocument(params: AnalyzeDocumentCommandInput): Promise<AnalyzeDocumentCommandOutput> {
     return this.request('AnalyzeDocument', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze expense document (receipts, invoices)
-  */
+   */
   async analyzeExpense(params: AnalyzeExpenseCommandInput): Promise<AnalyzeExpenseCommandOutput> {
     return this.request('AnalyzeExpense', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Analyze ID document (driver's license, passport)
-  */
+   */
   async analyzeID(params: AnalyzeIDCommandInput): Promise<AnalyzeIDCommandOutput> {
     return this.request('AnalyzeID', params as unknown as Record<string, unknown>)
   }
@@ -467,56 +467,56 @@ export class TextractClient {
 
   /**
    * Start async text detection job
-  */
+   */
   async startDocumentTextDetection(params: StartDocumentTextDetectionCommandInput): Promise<StartDocumentTextDetectionCommandOutput> {
     return this.request('StartDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of text detection job
-  */
+   */
   async getDocumentTextDetection(params: GetDocumentTextDetectionCommandInput): Promise<GetDocumentTextDetectionCommandOutput> {
     return this.request('GetDocumentTextDetection', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async document analysis job
-  */
+   */
   async startDocumentAnalysis(params: StartDocumentAnalysisCommandInput): Promise<StartDocumentAnalysisCommandOutput> {
     return this.request('StartDocumentAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of document analysis job
-  */
+   */
   async getDocumentAnalysis(params: GetDocumentAnalysisCommandInput): Promise<GetDocumentAnalysisCommandOutput> {
     return this.request('GetDocumentAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async expense analysis job
-  */
+   */
   async startExpenseAnalysis(params: StartExpenseAnalysisCommandInput): Promise<StartExpenseAnalysisCommandOutput> {
     return this.request('StartExpenseAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of expense analysis job
-  */
+   */
   async getExpenseAnalysis(params: GetExpenseAnalysisCommandInput): Promise<GetExpenseAnalysisCommandOutput> {
     return this.request('GetExpenseAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start async lending analysis job
-  */
+   */
   async startLendingAnalysis(params: StartLendingAnalysisCommandInput): Promise<StartLendingAnalysisCommandOutput> {
     return this.request('StartLendingAnalysis', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Get results of lending analysis job
-  */
+   */
   async getLendingAnalysis(params: GetLendingAnalysisCommandInput): Promise<GetLendingAnalysisCommandOutput> {
     return this.request('GetLendingAnalysis', params as unknown as Record<string, unknown>)
   }
@@ -527,7 +527,7 @@ export class TextractClient {
 
   /**
    * Extract all text from a document
-  */
+   */
   async extractText(document: Document): Promise<string[]> {
     const result = await this.detectDocumentText({ Document: document })
     return result.Blocks?.filter(b => b.BlockType === 'LINE').map(b => b.Text || '') || []
@@ -535,14 +535,14 @@ export class TextractClient {
 
   /**
    * Extract text from S3 document
-  */
+   */
   async extractTextFromS3(bucket: string, key: string): Promise<string[]> {
     return this.extractText({ S3Object: { Bucket: bucket, Name: key } })
   }
 
   /**
    * Extract key-value pairs (forms) from a document
-  */
+   */
   async extractForms(document: Document): Promise<Array<{ key: string; value: string; confidence: number }>> {
     const result = await this.analyzeDocument({
       Document: document,
@@ -579,7 +579,7 @@ export class TextractClient {
 
   /**
    * Extract tables from a document
-  */
+   */
   async extractTables(document: Document): Promise<Array<{ rows: string[][] }>> {
     const result = await this.analyzeDocument({
       Document: document,
@@ -623,7 +623,7 @@ export class TextractClient {
 
   /**
    * Extract expense summary from receipt/invoice
-  */
+   */
   async extractExpenseSummary(document: Document): Promise<{
     vendor?: string
     total?: string
@@ -670,7 +670,7 @@ export class TextractClient {
 
   /**
    * Answer questions about a document
-  */
+   */
   async queryDocument(document: Document, questions: string[]): Promise<Array<{ question: string; answer: string; confidence: number }>> {
     const result = await this.analyzeDocument({
       Document: document,
@@ -704,7 +704,7 @@ export class TextractClient {
 
   /**
    * Wait for async job to complete
-  */
+   */
   async waitForJob(
     jobId: string,
     getJob: (jobId: string) => Promise<{ JobStatus?: string }>,
@@ -742,7 +742,7 @@ export class TextractClient {
 
 /**
  * Quick text extraction from S3 document
-*/
+ */
 export async function extractTextFromS3(
   bucket: string,
   key: string,
@@ -755,7 +755,7 @@ export async function extractTextFromS3(
 
 /**
  * Quick form extraction from S3 document
-*/
+ */
 export async function extractFormsFromS3(
   bucket: string,
   key: string,
@@ -768,7 +768,7 @@ export async function extractFormsFromS3(
 
 /**
  * Quick table extraction from S3 document
-*/
+ */
 export async function extractTablesFromS3(
   bucket: string,
   key: string,

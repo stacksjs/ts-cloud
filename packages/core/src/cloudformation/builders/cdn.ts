@@ -33,7 +33,7 @@ export interface CDNConfig {
 
 /**
  * Add CloudFront distribution to CloudFormation template
-*/
+ */
 export function addCDNResources(
   builder: CloudFormationBuilder,
   config: CDNConfig,
@@ -268,7 +268,7 @@ export function addCDNResources(
 
 /**
  * Extract root domain from subdomain
-*/
+ */
 function extractRootDomain(domain: string): string {
   const parts = domain.split('.')
   if (parts.length >= 2) {

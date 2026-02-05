@@ -1,7 +1,7 @@
 /**
  * Static Site Deployment Module
  * Deploys static sites to AWS using CloudFormation (S3 + CloudFront + Route53/External DNS + ACM)
-*/
+ */
 
 import { CloudFormationClient } from '../aws/cloudformation'
 import { S3Client } from '../aws/s3'
@@ -42,7 +42,7 @@ export interface StaticSiteConfig {
    * External DNS provider configuration (optional)
    * When provided, DNS records will be managed via the specified provider (Porkbun, GoDaddy, etc.)
    * instead of Route53. Useful when your domain is registered outside AWS.
-  */
+   */
   dnsProvider?: DnsProviderConfig
 }
 
@@ -73,7 +73,7 @@ export interface UploadOptions {
 
 /**
  * Generate CloudFormation template for static site infrastructure
-*/
+ */
 export function generateStaticSiteTemplate(config: {
   bucketName: string
   domain?: string
@@ -324,7 +324,7 @@ export function generateStaticSiteTemplate(config: {
 /**
  * Deploy a static site to AWS
  * Automatically routes to external DNS deployment when a non-Route53 dnsProvider is configured
-*/
+ */
 export async function deployStaticSite(config: StaticSiteConfig): Promise<DeployResult> {
   // If using external DNS provider (not Route53), delegate to the external DNS deployment
   if (config.dnsProvider && config.dnsProvider.provider !== 'route53') {
@@ -934,7 +934,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 
 /**
  * Upload files to S3 bucket (only uploads changed files)
-*/
+ */
 export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploaded: number; skipped: number; errors: string[] }> {
   const { sourceDir, bucket, region, cacheControl = 'max-age=31536000, public', onProgress } = options
   const s3 = new S3Client(region)
@@ -1060,7 +1060,7 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
 
 /**
  * Invalidate CloudFront cache
-*/
+ */
 export async function invalidateCache(distributionId: string): Promise<{ invalidationId: string }> {
   const cloudfront = new CloudFrontClient()
   const result = await cloudfront.invalidateAll(distributionId)
@@ -1069,7 +1069,7 @@ export async function invalidateCache(distributionId: string): Promise<{ invalid
 
 /**
  * Delete static site infrastructure
-*/
+ */
 export async function deleteStaticSite(stackName: string, region: string = 'us-east-1'): Promise<{ success: boolean; message: string }> {
   const cf = new CloudFormationClient(region)
 
@@ -1102,7 +1102,7 @@ export async function deleteStaticSite(stackName: string, region: string = 'us-e
 
 /**
  * Full deployment: infrastructure + files + cache invalidation
-*/
+ */
 export async function deployStaticSiteFull(config: StaticSiteConfig & {
   sourceDir: string
   cleanBucket?: boolean

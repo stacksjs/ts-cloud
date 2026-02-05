@@ -1,7 +1,7 @@
 /**
  * Route53 DNS Provider Adapter
  * Wraps the existing Route53Client to implement the DnsProvider interface
-*/
+ */
 
 import { Route53Client } from '../aws/route53'
 import type {
@@ -27,7 +27,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Get the root domain from a full domain name
-  */
+   */
   private getRootDomain(domain: string): string {
     const parts = domain.replace(/\.$/, '').split('.')
     if (parts.length >= 2) {
@@ -38,7 +38,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Get the hosted zone ID for a domain
-  */
+   */
   private async getHostedZoneId(domain: string): Promise<string | null> {
     // If a hosted zone ID was provided, use it
     if (this.providedHostedZoneId) {
@@ -66,7 +66,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Ensure domain name ends with a dot (Route53 requirement)
-  */
+   */
   private normalizeName(name: string): string {
     return name.endsWith('.') ? name : `${name}.`
   }
@@ -307,7 +307,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * List all domains (hosted zones) managed in Route53
-  */
+   */
   async listDomains(): Promise<string[]> {
     try {
       const result = await this.client.listHostedZones()
@@ -320,7 +320,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Get the underlying Route53Client for advanced operations
-  */
+   */
   getRoute53Client(): Route53Client {
     return this.client
   }
@@ -328,7 +328,7 @@ export class Route53Provider implements DnsProvider {
   /**
    * Create an alias record (Route53-specific feature)
    * Useful for CloudFront, ALB, etc.
-  */
+   */
   async createAliasRecord(params: {
     domain: string
     name: string
@@ -371,7 +371,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Create CloudFront alias record (convenience method)
-  */
+   */
   async createCloudFrontAlias(params: {
     domain: string
     name: string
@@ -388,7 +388,7 @@ export class Route53Provider implements DnsProvider {
 
   /**
    * Create ALB alias record (convenience method)
-  */
+   */
   async createAlbAlias(params: {
     domain: string
     name: string

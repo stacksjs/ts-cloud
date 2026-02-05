@@ -73,11 +73,11 @@ export interface GlobalSecondaryIndexOptions {
 /**
  * Database Module - RDS + DynamoDB
  * Provides clean API for relational (RDS) and NoSQL (DynamoDB) databases
-*/
+ */
 export class Database {
   /**
    * Create a PostgreSQL RDS instance
-  */
+   */
   static createPostgres(options: RDSOptions): {
     dbInstance: RDSDBInstance
     subnetGroup?: RDSDBSubnetGroup
@@ -89,7 +89,7 @@ export class Database {
 
   /**
    * Create a MySQL RDS instance
-  */
+   */
   static createMysql(options: RDSOptions): {
     dbInstance: RDSDBInstance
     subnetGroup?: RDSDBSubnetGroup
@@ -101,7 +101,7 @@ export class Database {
 
   /**
    * Create an RDS instance (internal helper)
-  */
+   */
   private static createRDSInstance(
     engine: 'postgres' | 'mysql',
     engineVersion: string,
@@ -222,7 +222,7 @@ export class Database {
 
   /**
    * Create a read replica
-  */
+   */
   static createReadReplica(
     sourceDbLogicalId: string,
     options: Omit<RDSOptions, 'masterUsername' | 'masterPassword' | 'databaseName'>,
@@ -270,7 +270,7 @@ export class Database {
 
   /**
    * Create a DB parameter group
-  */
+   */
   static createParameterGroup(
     engine: 'postgres' | 'mysql',
     version: string,
@@ -317,7 +317,7 @@ export class Database {
 
   /**
    * Enable backup for RDS instance
-  */
+   */
   static enableBackup(
     dbInstance: RDSDBInstance,
     retentionDays: number = 7,
@@ -328,7 +328,7 @@ export class Database {
 
   /**
    * Create a DynamoDB table
-  */
+   */
   static createTable(options: DynamoDBTableOptions): {
     table: DynamoDBTable
     logicalId: string
@@ -441,7 +441,7 @@ export class Database {
 
   /**
    * Add a global secondary index to a DynamoDB table
-  */
+   */
   static addGlobalSecondaryIndex(
     table: DynamoDBTable,
     index: GlobalSecondaryIndexOptions,
@@ -515,7 +515,7 @@ export class Database {
 
   /**
    * Enable streams on a DynamoDB table
-  */
+   */
   static enableStreams(
     table: DynamoDBTable,
     viewType: 'NEW_IMAGE' | 'OLD_IMAGE' | 'NEW_AND_OLD_IMAGES' | 'KEYS_ONLY' = 'NEW_AND_OLD_IMAGES',
@@ -528,7 +528,7 @@ export class Database {
 
   /**
    * Common RDS instance classes
-  */
+   */
   static readonly InstanceClasses = {
     // T3 - Burstable performance
     T3_Micro: 'db.t3.micro',

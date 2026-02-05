@@ -1,7 +1,7 @@
 /**
  * Lambda Layers Management
  * Reusable code and dependencies for Lambda functions
-*/
+ */
 
 export interface LambdaLayer {
   id: string
@@ -44,7 +44,7 @@ export interface LayerPermission {
 
 /**
  * Lambda layers manager
-*/
+ */
 export class LambdaLayersManager {
   private layers: Map<string, LambdaLayer> = new Map()
   private versions: Map<string, LayerVersion> = new Map()
@@ -55,7 +55,7 @@ export class LambdaLayersManager {
 
   /**
    * Create Lambda layer
-  */
+   */
   createLayer(layer: Omit<LambdaLayer, 'id' | 'layerArn' | 'version'>): LambdaLayer {
     const id = `layer-${Date.now()}-${this.layerCounter++}`
     const version = 1
@@ -74,7 +74,7 @@ export class LambdaLayersManager {
 
   /**
    * Create Node.js dependencies layer
-  */
+   */
   createNodeDependenciesLayer(options: {
     layerName: string
     nodeVersion: string
@@ -96,7 +96,7 @@ export class LambdaLayersManager {
 
   /**
    * Create shared utilities layer
-  */
+   */
   createUtilitiesLayer(options: {
     layerName: string
     runtimes: string[]
@@ -118,7 +118,7 @@ export class LambdaLayersManager {
 
   /**
    * Publish layer version
-  */
+   */
   publishVersion(layerId: string): LayerVersion {
     const layer = this.layers.get(layerId)
 
@@ -150,7 +150,7 @@ export class LambdaLayersManager {
 
   /**
    * Add layer permission
-  */
+   */
   addPermission(options: {
     layerName: string
     version: number
@@ -175,35 +175,35 @@ export class LambdaLayersManager {
 
   /**
    * Generate hash
-  */
+   */
   private generateHash(): string {
     return Math.random().toString(36).substring(2, 15)
   }
 
   /**
    * Get layer
-  */
+   */
   getLayer(id: string): LambdaLayer | undefined {
     return this.layers.get(id)
   }
 
   /**
    * List layers
-  */
+   */
   listLayers(): LambdaLayer[] {
     return Array.from(this.layers.values())
   }
 
   /**
    * Get layer versions
-  */
+   */
   getLayerVersions(layerName: string): LayerVersion[] {
     return Array.from(this.versions.values()).filter(v => v.layerName === layerName)
   }
 
   /**
    * Generate CloudFormation for layer
-  */
+   */
   generateLayerCF(layer: LambdaLayer): any {
     return {
       Type: 'AWS::Lambda::LayerVersion',
@@ -229,7 +229,7 @@ export class LambdaLayersManager {
 
   /**
    * Generate CloudFormation for layer permission
-  */
+   */
   generateLayerPermissionCF(permission: LayerPermission): any {
     return {
       Type: 'AWS::Lambda::LayerVersionPermission',
@@ -246,7 +246,7 @@ export class LambdaLayersManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.layers.clear()
     this.versions.clear()
@@ -259,5 +259,5 @@ export class LambdaLayersManager {
 
 /**
  * Global Lambda layers manager instance
-*/
+ */
 export const lambdaLayersManager: LambdaLayersManager = new LambdaLayersManager()

@@ -1,7 +1,7 @@
 /**
  * A/B Testing Infrastructure
  * Traffic splitting based on user attributes, headers, or cookies
-*/
+ */
 
 export interface ABTest {
   id: string
@@ -65,14 +65,14 @@ export interface ABTestResult {
 
 /**
  * A/B testing manager
-*/
+ */
 export class ABTestManager {
   private tests: Map<string, ABTest> = new Map()
   private testCounter = 0
 
   /**
    * Create A/B test
-  */
+   */
   createTest(test: Omit<ABTest, 'id'>): ABTest {
     const id = `abtest-${Date.now()}-${this.testCounter++}`
 
@@ -88,7 +88,7 @@ export class ABTestManager {
 
   /**
    * Create simple A/B test (control vs variant)
-  */
+   */
   createSimpleABTest(options: {
     name: string
     description?: string
@@ -133,7 +133,7 @@ export class ABTestManager {
 
   /**
    * Create multivariate test
-  */
+   */
   createMultivariateTest(options: {
     name: string
     description?: string
@@ -173,7 +173,7 @@ export class ABTestManager {
 
   /**
    * Create header-based A/B test
-  */
+   */
   createHeaderBasedTest(options: {
     name: string
     controlTargetGroupArn: string
@@ -212,7 +212,7 @@ export class ABTestManager {
 
   /**
    * Create geo-based A/B test
-  */
+   */
   createGeoBasedTest(options: {
     name: string
     controlTargetGroupArn: string
@@ -250,7 +250,7 @@ export class ABTestManager {
 
   /**
    * Start A/B test
-  */
+   */
   startTest(testId: string): void {
     const test = this.tests.get(testId)
 
@@ -274,7 +274,7 @@ export class ABTestManager {
 
   /**
    * Pause A/B test
-  */
+   */
   pauseTest(testId: string): void {
     const test = this.tests.get(testId)
 
@@ -288,7 +288,7 @@ export class ABTestManager {
 
   /**
    * Update traffic split
-  */
+   */
   updateTrafficSplit(testId: string, variantId: string, newPercentage: number): void {
     const test = this.tests.get(testId)
 
@@ -311,7 +311,7 @@ export class ABTestManager {
 
   /**
    * Analyze test results
-  */
+   */
   analyzeResults(testId: string): ABTestResult {
     const test = this.tests.get(testId)
 
@@ -360,7 +360,7 @@ export class ABTestManager {
 
   /**
    * Declare winner and route all traffic
-  */
+   */
   declareWinner(testId: string, variantId: string): void {
     const test = this.tests.get(testId)
 
@@ -396,7 +396,7 @@ export class ABTestManager {
 
   /**
    * Collect metrics for test
-  */
+   */
   private collectMetrics(test: ABTest): ABMetrics {
     const variantMetrics: Record<string, VariantMetrics> = {}
 
@@ -430,7 +430,7 @@ export class ABTestManager {
 
   /**
    * Generate recommendation
-  */
+   */
   private generateRecommendation(
     improvement: number,
     significant: boolean,
@@ -457,21 +457,21 @@ export class ABTestManager {
 
   /**
    * Get test
-  */
+   */
   getTest(id: string): ABTest | undefined {
     return this.tests.get(id)
   }
 
   /**
    * List tests
-  */
+   */
   listTests(): ABTest[] {
     return Array.from(this.tests.values())
   }
 
   /**
    * Generate CloudFormation for ALB weighted routing
-  */
+   */
   generateALBListenerRuleCF(test: ABTest): any {
     return {
       Type: 'AWS::ElasticLoadBalancingV2::ListenerRule',
@@ -507,7 +507,7 @@ export class ABTestManager {
 
   /**
    * Generate Lambda@Edge function for A/B testing
-  */
+   */
   generateLambdaEdgeFunction(test: ABTest): string {
     return `'use strict';
 
@@ -569,7 +569,7 @@ exports.handler = (event, context, callback) => {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.tests.clear()
     this.testCounter = 0
@@ -578,5 +578,5 @@ exports.handler = (event, context, callback) => {
 
 /**
  * Global A/B testing manager instance
-*/
+ */
 export const abTestManager: ABTestManager = new ABTestManager()

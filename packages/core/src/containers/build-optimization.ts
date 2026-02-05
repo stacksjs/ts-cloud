@@ -1,7 +1,7 @@
 /**
  * Container Build Optimization
  * Multi-stage builds, layer caching, and build performance
-*/
+ */
 
 export interface BuildConfig {
   id: string
@@ -79,7 +79,7 @@ export interface ImageLayer {
 
 /**
  * Build optimization manager
-*/
+ */
 export class BuildOptimizationManager {
   private configs: Map<string, BuildConfig> = new Map()
   private multiStageConfigs: Map<string, MultiStageConfig> = new Map()
@@ -92,7 +92,7 @@ export class BuildOptimizationManager {
 
   /**
    * Create build config
-  */
+   */
   createBuildConfig(config: Omit<BuildConfig, 'id'>): BuildConfig {
     const id = `build-config-${Date.now()}-${this.configCounter++}`
 
@@ -108,7 +108,7 @@ export class BuildOptimizationManager {
 
   /**
    * Create optimized build config
-  */
+   */
   createOptimizedBuildConfig(options: {
     name: string
     dockerfile: string
@@ -135,7 +135,7 @@ export class BuildOptimizationManager {
 
   /**
    * Create multi-stage config
-  */
+   */
   createMultiStageConfig(config: Omit<MultiStageConfig, 'id'>): MultiStageConfig {
     const id = `multi-stage-${Date.now()}-${this.multiStageCounter++}`
 
@@ -151,7 +151,7 @@ export class BuildOptimizationManager {
 
   /**
    * Create Node.js multi-stage build
-  */
+   */
   createNodeMultiStageBuild(options: {
     name: string
     nodeVersion?: string
@@ -200,7 +200,7 @@ export class BuildOptimizationManager {
 
   /**
    * Generate Dockerfile from multi-stage config
-  */
+   */
   generateDockerfile(configId: string): string {
     const config = this.multiStageConfigs.get(configId)
 
@@ -236,7 +236,7 @@ export class BuildOptimizationManager {
 
   /**
    * Analyze image layers
-  */
+   */
   analyzeImage(imageId: string, layers: Omit<ImageLayer, 'cacheable'>[]): LayerAnalysis {
     const id = `analysis-${Date.now()}-${this.analysisCounter++}`
 
@@ -265,7 +265,7 @@ export class BuildOptimizationManager {
 
   /**
    * Check if layer is cacheable
-  */
+   */
   private isLayerCacheable(command: string): boolean {
     const cacheableCommands = ['FROM', 'RUN', 'COPY', 'ADD', 'WORKDIR', 'ENV']
     const nonCacheableCommands = ['CMD', 'ENTRYPOINT', 'LABEL']
@@ -283,7 +283,7 @@ export class BuildOptimizationManager {
 
   /**
    * Generate optimization recommendations
-  */
+   */
   generateOptimizations(analysisId: string): BuildOptimization {
     const analysis = this.analyses.get(analysisId)
 
@@ -355,49 +355,49 @@ export class BuildOptimizationManager {
 
   /**
    * Get build config
-  */
+   */
   getBuildConfig(id: string): BuildConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List build configs
-  */
+   */
   listBuildConfigs(): BuildConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get multi-stage config
-  */
+   */
   getMultiStageConfig(id: string): MultiStageConfig | undefined {
     return this.multiStageConfigs.get(id)
   }
 
   /**
    * List multi-stage configs
-  */
+   */
   listMultiStageConfigs(): MultiStageConfig[] {
     return Array.from(this.multiStageConfigs.values())
   }
 
   /**
    * Get optimization
-  */
+   */
   getOptimization(id: string): BuildOptimization | undefined {
     return this.optimizations.get(id)
   }
 
   /**
    * List optimizations
-  */
+   */
   listOptimizations(): BuildOptimization[] {
     return Array.from(this.optimizations.values())
   }
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.configs.clear()
     this.multiStageConfigs.clear()
@@ -412,5 +412,5 @@ export class BuildOptimizationManager {
 
 /**
  * Global build optimization manager instance
-*/
+ */
 export const buildOptimizationManager: BuildOptimizationManager = new BuildOptimizationManager()

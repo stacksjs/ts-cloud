@@ -2,11 +2,11 @@ import type { CloudFormationResource } from './index'
 
 /**
  * AWS EventBridge Types
-*/
+ */
 
 /**
  * ECS Parameters for EventBridge targets
-*/
+ */
 export interface EventBridgeEcsParameters {
   TaskDefinitionArn: string
   TaskCount?: number
@@ -45,7 +45,7 @@ export interface EventBridgeEcsParameters {
 
 /**
  * EventBridge Rule Target
-*/
+ */
 export interface EventBridgeTarget {
   Id: string
   Arn: string

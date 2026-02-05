@@ -1,7 +1,7 @@
 /**
  * Queue Advanced Features
  * FIFO queues, DLQ monitoring, batch processing, and queue management
-*/
+ */
 
 export * from './fifo'
 export * from './dlq-monitoring'

@@ -2,7 +2,7 @@
  * Call Recording with Transcription
  *
  * Provides call recording storage and transcription
-*/
+ */
 
 export interface CallRecording {
   recordingId: string
@@ -37,11 +37,11 @@ export interface TranscriptionSegment {
 
 /**
  * Call Recording Module
-*/
+ */
 export class CallRecording {
   /**
    * Lambda code for processing call recordings
-  */
+   */
   static RecordingProcessorCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
 const { TranscribeClient, StartTranscriptionJobCommand, GetTranscriptionJobCommand } = require('@aws-sdk/client-transcribe');
@@ -123,7 +123,7 @@ exports.handler = async (event) => {
 
   /**
    * Lambda code for transcription completion
-  */
+   */
   static TranscriptionCompleteCode = `
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { DynamoDBClient, UpdateItemCommand, QueryCommand } = require('@aws-sdk/client-dynamodb');
@@ -240,7 +240,7 @@ exports.handler = async (event) => {
 
   /**
    * Create recordings DynamoDB table
-  */
+   */
   static createRecordingsTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}CallRecordingsTable`]: {
@@ -275,7 +275,7 @@ exports.handler = async (event) => {
 
   /**
    * Create recording processor Lambda
-  */
+   */
   static createRecordingProcessorLambda(config: {
     slug: string
     roleArn: string

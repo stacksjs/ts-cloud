@@ -91,11 +91,11 @@ export interface CompositeAlarmOptions {
 /**
  * Monitoring Module - CloudWatch
  * Provides clean API for alarms, dashboards, logs, and metrics
-*/
+ */
 export class Monitoring {
   /**
    * Create a CloudWatch alarm
-  */
+   */
   static createAlarm(options: AlarmOptions): {
     alarm: CloudWatchAlarm
     logicalId: string
@@ -177,7 +177,7 @@ export class Monitoring {
 
   /**
    * Create a composite alarm (combines multiple alarms)
-  */
+   */
   static createCompositeAlarm(options: CompositeAlarmOptions): {
     alarm: CloudWatchCompositeAlarm
     logicalId: string
@@ -227,7 +227,7 @@ export class Monitoring {
 
   /**
    * Create a CloudWatch dashboard
-  */
+   */
   static createDashboard(options: DashboardOptions): {
     dashboard: CloudWatchDashboard
     logicalId: string
@@ -271,7 +271,7 @@ export class Monitoring {
 
   /**
    * Create a CloudWatch log group
-  */
+   */
   static createLogGroup(options: LogGroupOptions): {
     logGroup: CloudWatchLogGroup
     logicalId: string
@@ -312,7 +312,7 @@ export class Monitoring {
 
   /**
    * Create a CloudWatch log stream
-  */
+   */
   static createLogStream(
     logGroupLogicalId: string,
     options: LogStreamOptions,
@@ -347,7 +347,7 @@ export class Monitoring {
 
   /**
    * Create a metric filter for log group
-  */
+   */
   static createMetricFilter(
     logGroupLogicalId: string,
     options: MetricFilterOptions,
@@ -391,11 +391,11 @@ export class Monitoring {
 
   /**
    * Common alarm configurations
-  */
+   */
   static readonly AlarmTypes = {
     /**
      * High CPU utilization alarm
-    */
+     */
     highCpu: (
       slug: string,
       environment: EnvironmentType,
@@ -419,7 +419,7 @@ export class Monitoring {
 
     /**
      * High memory utilization alarm
-    */
+     */
     highMemory: (
       slug: string,
       environment: EnvironmentType,
@@ -443,7 +443,7 @@ export class Monitoring {
 
     /**
      * High disk utilization alarm
-    */
+     */
     highDisk: (
       slug: string,
       environment: EnvironmentType,
@@ -467,7 +467,7 @@ export class Monitoring {
 
     /**
      * Lambda error rate alarm
-    */
+     */
     lambdaErrors: (
       slug: string,
       environment: EnvironmentType,
@@ -491,7 +491,7 @@ export class Monitoring {
 
     /**
      * Lambda throttles alarm
-    */
+     */
     lambdaThrottles: (
       slug: string,
       environment: EnvironmentType,
@@ -515,7 +515,7 @@ export class Monitoring {
 
     /**
      * API Gateway 5xx errors alarm
-    */
+     */
     apiGateway5xxErrors: (
       slug: string,
       environment: EnvironmentType,
@@ -539,7 +539,7 @@ export class Monitoring {
 
     /**
      * API Gateway 4xx errors alarm
-    */
+     */
     apiGateway4xxErrors: (
       slug: string,
       environment: EnvironmentType,
@@ -563,7 +563,7 @@ export class Monitoring {
 
     /**
      * DynamoDB throttled requests alarm
-    */
+     */
     dynamoDBThrottles: (
       slug: string,
       environment: EnvironmentType,
@@ -587,7 +587,7 @@ export class Monitoring {
 
     /**
      * RDS CPU alarm
-    */
+     */
     rdsCpu: (
       slug: string,
       environment: EnvironmentType,
@@ -611,7 +611,7 @@ export class Monitoring {
 
     /**
      * RDS free storage alarm
-    */
+     */
     rdsFreeStorage: (
       slug: string,
       environment: EnvironmentType,
@@ -636,7 +636,7 @@ export class Monitoring {
 
     /**
      * SQS queue depth alarm
-    */
+     */
     sqsQueueDepth: (
       slug: string,
       environment: EnvironmentType,
@@ -660,7 +660,7 @@ export class Monitoring {
 
     /**
      * ALB target unhealthy alarm
-    */
+     */
     albUnhealthyTargets: (
       slug: string,
       environment: EnvironmentType,
@@ -685,7 +685,7 @@ export class Monitoring {
 
     /**
      * SES bounce rate alarm
-    */
+     */
     sesBounceRate: (
       slug: string,
       environment: EnvironmentType,
@@ -707,7 +707,7 @@ export class Monitoring {
 
     /**
      * SES complaint rate alarm
-    */
+     */
     sesComplaintRate: (
       slug: string,
       environment: EnvironmentType,
@@ -729,7 +729,7 @@ export class Monitoring {
 
     /**
      * Pinpoint SMS delivery failure alarm
-    */
+     */
     smsDeliveryFailure: (
       slug: string,
       environment: EnvironmentType,
@@ -753,7 +753,7 @@ export class Monitoring {
 
     /**
      * Pinpoint SMS spend alarm
-    */
+     */
     smsSpendLimit: (
       slug: string,
       environment: EnvironmentType,
@@ -775,7 +775,7 @@ export class Monitoring {
 
     /**
      * Connect missed calls alarm
-    */
+     */
     connectMissedCalls: (
       slug: string,
       environment: EnvironmentType,
@@ -800,11 +800,11 @@ export class Monitoring {
 
   /**
    * Common dashboard widgets
-  */
+   */
   static readonly DashboardWidgets = {
     /**
      * Metric widget
-    */
+     */
     metric: (
       x: number,
       y: number,
@@ -828,7 +828,7 @@ export class Monitoring {
 
     /**
      * Text widget
-    */
+     */
     text: (
       x: number,
       y: number,
@@ -848,7 +848,7 @@ export class Monitoring {
 
     /**
      * Log widget
-    */
+     */
     log: (
       x: number,
       y: number,
@@ -875,7 +875,7 @@ export class Monitoring {
 
   /**
    * Common log retention periods
-  */
+   */
   static readonly RetentionPeriods = {
     ONE_DAY: 1,
     THREE_DAYS: 3,
@@ -899,42 +899,42 @@ export class Monitoring {
 
   /**
    * Common metric filter patterns
-  */
+   */
   static readonly FilterPatterns = {
     /**
      * Match ERROR log lines
-    */
+     */
     errors: '[time, request_id, event_type = ERROR*, ...]',
 
     /**
      * Match all log lines
-    */
+     */
     all: '',
 
     /**
      * Match JSON logs with specific field
-    */
+     */
     jsonField: (field: string, value: string): string => `{ $.${field} = "${value}" }`,
 
     /**
      * Match HTTP status codes
-    */
+     */
     httpStatus: (statusCode: number): string => `[..., status_code = ${statusCode}, ...]`,
 
     /**
      * Match 4xx errors
-    */
+     */
     http4xx: '[..., status_code = 4*, ...]',
 
     /**
      * Match 5xx errors
-    */
+     */
     http5xx: '[..., status_code = 5*, ...]',
   } as const
 
   /**
    * Create a comprehensive application dashboard
-  */
+   */
   static createApplicationDashboard(options: {
     slug: string
     environment: EnvironmentType
@@ -1453,11 +1453,11 @@ export class Monitoring {
 
   /**
    * Dashboard templates for common architectures
-  */
+   */
   static readonly DashboardTemplates = {
     /**
      * Static website dashboard (S3 + CloudFront)
-    */
+     */
     staticWebsite: (options: {
       slug: string
       environment: EnvironmentType
@@ -1564,7 +1564,7 @@ export class Monitoring {
 
     /**
      * Serverless API dashboard (Lambda + API Gateway)
-    */
+     */
     serverlessApi: (options: {
       slug: string
       environment: EnvironmentType
@@ -1657,7 +1657,7 @@ export class Monitoring {
 
     /**
      * Container service dashboard (ECS + ALB)
-    */
+     */
     containerService: (options: {
       slug: string
       environment: EnvironmentType
@@ -1821,11 +1821,11 @@ export class Monitoring {
   /**
    * Monitoring Configuration helpers
    * Provides Stacks configuration parity for monitoring options
-  */
+   */
   static readonly Config = {
     /**
      * Create alarm configuration
-    */
+     */
     createAlarmConfig: (options: {
       metricName: string
       namespace: string
@@ -1870,7 +1870,7 @@ export class Monitoring {
 
     /**
      * AWS namespace constants
-    */
+     */
     namespaces: {
       ec2: 'AWS/EC2',
       ecs: 'AWS/ECS',
@@ -1889,7 +1889,7 @@ export class Monitoring {
 
     /**
      * Comparison operator options
-    */
+     */
     comparisonOperators: {
       greaterThan: 'GreaterThanThreshold',
       greaterOrEqual: 'GreaterThanOrEqualToThreshold',
@@ -1899,7 +1899,7 @@ export class Monitoring {
 
     /**
      * Common metric configurations by service
-    */
+     */
     metrics: {
       ec2: {
         cpu: { metricName: 'CPUUtilization', namespace: 'AWS/EC2' },
@@ -1941,11 +1941,11 @@ export class Monitoring {
 
     /**
      * Common alarm presets
-    */
+     */
     presets: {
       /**
        * High CPU alarm
-      */
+       */
       highCpu: (threshold: number = 80): {
         metricName: string;
         threshold: number;
@@ -1964,7 +1964,7 @@ export class Monitoring {
 
       /**
        * High memory alarm (for ECS)
-      */
+       */
       highMemory: (threshold: number = 80): {
         metricName: string;
         threshold: number;
@@ -1983,7 +1983,7 @@ export class Monitoring {
 
       /**
        * High error rate alarm
-      */
+       */
       highErrors: (threshold: number = 10): {
         metricName: string;
         threshold: number;
@@ -2002,7 +2002,7 @@ export class Monitoring {
 
       /**
        * High latency alarm
-      */
+       */
       highLatency: (threshold: number = 5000): {
         metricName: string;
         threshold: number;
@@ -2021,7 +2021,7 @@ export class Monitoring {
 
       /**
        * Low healthy hosts alarm
-      */
+       */
       lowHealthyHosts: (threshold: number = 1): {
         metricName: string;
         namespace: string;
@@ -2042,7 +2042,7 @@ export class Monitoring {
 
       /**
        * Queue depth alarm
-      */
+       */
       queueDepth: (threshold: number = 1000): {
         metricName: string;
         namespace: string;
@@ -2063,7 +2063,7 @@ export class Monitoring {
 
       /**
        * Low storage alarm
-      */
+       */
       lowStorage: (threshold: number = 10737418240): {
         metricName: string;
         namespace: string;

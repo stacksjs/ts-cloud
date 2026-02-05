@@ -1,7 +1,7 @@
 /**
  * AWS CloudTrail Configuration
  * API logging and auditing for security and compliance
-*/
+ */
 
 export interface CloudTrailConfig {
   id: string
@@ -53,14 +53,14 @@ export interface FieldSelector {
 
 /**
  * CloudTrail manager
-*/
+ */
 export class CloudTrailManager {
   private trails: Map<string, CloudTrailConfig> = new Map()
   private trailCounter = 0
 
   /**
    * Create CloudTrail
-  */
+   */
   createTrail(trail: Omit<CloudTrailConfig, 'id'>): CloudTrailConfig {
     const id = `trail-${Date.now()}-${this.trailCounter++}`
 
@@ -76,7 +76,7 @@ export class CloudTrailManager {
 
   /**
    * Create organization trail
-  */
+   */
   createOrganizationTrail(options: {
     name: string
     s3BucketName: string
@@ -99,7 +99,7 @@ export class CloudTrailManager {
 
   /**
    * Create security audit trail
-  */
+   */
   createSecurityAuditTrail(options: {
     name: string
     s3BucketName: string
@@ -133,7 +133,7 @@ export class CloudTrailManager {
 
   /**
    * Create data events trail (S3 and Lambda)
-  */
+   */
   createDataEventsTrail(options: {
     name: string
     s3BucketName: string
@@ -175,7 +175,7 @@ export class CloudTrailManager {
 
   /**
    * Create advanced event selectors trail
-  */
+   */
   createAdvancedTrail(options: {
     name: string
     s3BucketName: string
@@ -193,7 +193,7 @@ export class CloudTrailManager {
 
   /**
    * Create read-only trail
-  */
+   */
   createReadOnlyTrail(options: {
     name: string
     s3BucketName: string
@@ -215,7 +215,7 @@ export class CloudTrailManager {
 
   /**
    * Create write-only trail
-  */
+   */
   createWriteOnlyTrail(options: {
     name: string
     s3BucketName: string
@@ -237,21 +237,21 @@ export class CloudTrailManager {
 
   /**
    * Get trail
-  */
+   */
   getTrail(id: string): CloudTrailConfig | undefined {
     return this.trails.get(id)
   }
 
   /**
    * List trails
-  */
+   */
   listTrails(): CloudTrailConfig[] {
     return Array.from(this.trails.values())
   }
 
   /**
    * Generate CloudFormation for trail
-  */
+   */
   generateTrailCF(trail: CloudTrailConfig): any {
     const cf: any = {
       Type: 'AWS::CloudTrail::Trail',
@@ -327,7 +327,7 @@ export class CloudTrailManager {
 
   /**
    * Generate CloudTrail bucket policy
-  */
+   */
   generateBucketPolicy(bucketName: string, trailAccountIds: string[]): any {
     return {
       Version: '2012-10-17',
@@ -363,7 +363,7 @@ export class CloudTrailManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.trails.clear()
     this.trailCounter = 0
@@ -372,5 +372,5 @@ export class CloudTrailManager {
 
 /**
  * Global CloudTrail manager instance
-*/
+ */
 export const cloudTrailManager: CloudTrailManager = new CloudTrailManager()

@@ -1,7 +1,7 @@
 /**
  * Systems Manager Parameter Store Module
  * Clean API for AWS SSM Parameter Store
-*/
+ */
 
 import type { SSMParameter } from '@stacksjs/ts-cloud-aws-types'
 import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
@@ -20,11 +20,11 @@ export interface ParameterOptions {
 
 /**
  * Parameter Store Module
-*/
+ */
 export class ParameterStore {
   /**
    * Create a parameter
-  */
+   */
   static createParameter(options: ParameterOptions): {
     parameter: SSMParameter
     logicalId: string
@@ -69,7 +69,7 @@ export class ParameterStore {
 
   /**
    * Create a string parameter
-  */
+   */
   static createString(
     slug: string,
     environment: string,
@@ -92,7 +92,7 @@ export class ParameterStore {
 
   /**
    * Create a secure string parameter (encrypted)
-  */
+   */
   static createSecureString(
     slug: string,
     environment: string,
@@ -115,7 +115,7 @@ export class ParameterStore {
 
   /**
    * Create a string list parameter (comma-separated)
-  */
+   */
   static createStringList(
     slug: string,
     environment: string,
@@ -138,11 +138,11 @@ export class ParameterStore {
 
   /**
    * Common parameter patterns
-  */
+   */
   static readonly Parameters = {
     /**
      * Database connection string
-    */
+     */
     databaseUrl: (slug: string, environment: string, url: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createSecureString(
         slug,
@@ -155,7 +155,7 @@ export class ParameterStore {
 
     /**
      * API endpoint
-    */
+     */
     apiEndpoint: (slug: string, environment: string, endpoint: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createString(
         slug,
@@ -168,7 +168,7 @@ export class ParameterStore {
 
     /**
      * Application version
-    */
+     */
     appVersion: (slug: string, environment: string, version: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createString(
         slug,
@@ -181,7 +181,7 @@ export class ParameterStore {
 
     /**
      * Feature flags (comma-separated list)
-    */
+     */
     featureFlags: (slug: string, environment: string, flags: string[]): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createStringList(
         slug,
@@ -194,7 +194,7 @@ export class ParameterStore {
 
     /**
      * Third-party API key (secure)
-    */
+     */
     apiKey: (slug: string, environment: string, serviceName: string, key: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createSecureString(
         slug,
@@ -207,7 +207,7 @@ export class ParameterStore {
 
     /**
      * OAuth credentials
-    */
+     */
     oauthCredentials: (slug: string, environment: string, clientId: string, clientSecret: string): {
       clientId: { parameter: SSMParameter; logicalId: string }
       clientSecret: { parameter: SSMParameter; logicalId: string }
@@ -236,7 +236,7 @@ export class ParameterStore {
 
     /**
      * SMTP credentials
-    */
+     */
     smtpCredentials: (slug: string, environment: string, username: string, password: string, host: string, port: number): {
       username: { parameter: SSMParameter; logicalId: string }
       password: { parameter: SSMParameter; logicalId: string }
@@ -285,7 +285,7 @@ export class ParameterStore {
 
     /**
      * Redis connection
-    */
+     */
     redisUrl: (slug: string, environment: string, url: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createSecureString(
         slug,
@@ -298,7 +298,7 @@ export class ParameterStore {
 
     /**
      * S3 bucket name
-    */
+     */
     s3Bucket: (slug: string, environment: string, bucketName: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createString(
         slug,
@@ -311,7 +311,7 @@ export class ParameterStore {
 
     /**
      * CloudFront distribution ID
-    */
+     */
     cloudFrontDistribution: (slug: string, environment: string, distributionId: string): { parameter: SSMParameter; logicalId: string } => {
       return ParameterStore.createString(
         slug,

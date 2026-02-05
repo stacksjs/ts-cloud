@@ -2,7 +2,7 @@
  * AWS Kendra Client
  * Enterprise search service
  * No external SDK dependencies - implements AWS Signature V4 directly
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -866,7 +866,7 @@ export class KendraClient {
 
   /**
    * Simple search query
-  */
+   */
   async search(indexId: string, queryText: string, options?: {
     pageSize?: number
     pageNumber?: number
@@ -884,7 +884,7 @@ export class KendraClient {
 
   /**
    * Retrieve documents (for RAG)
-  */
+   */
   async retrieveDocuments(indexId: string, queryText: string, options?: {
     pageSize?: number
     pageNumber?: number
@@ -900,7 +900,7 @@ export class KendraClient {
 
   /**
    * Add a text document to the index
-  */
+   */
   async addDocument(indexId: string, document: {
     id: string
     title?: string
@@ -938,7 +938,7 @@ export class KendraClient {
 
   /**
    * Add multiple documents
-  */
+   */
   async addDocuments(indexId: string, documents: Array<{
     id: string
     title?: string
@@ -984,7 +984,7 @@ export class KendraClient {
 
   /**
    * Delete documents
-  */
+   */
   async deleteDocuments(indexId: string, documentIds: string[]): Promise<void> {
     const result = await this.batchDeleteDocument({
       IndexId: indexId,
@@ -998,7 +998,7 @@ export class KendraClient {
 
   /**
    * Wait for index to be active
-  */
+   */
   async waitForIndex(
     indexId: string,
     options?: { maxWaitMs?: number; pollIntervalMs?: number },
@@ -1025,7 +1025,7 @@ export class KendraClient {
 
   /**
    * Wait for data source to be active
-  */
+   */
   async waitForDataSource(
     indexId: string,
     dataSourceId: string,
@@ -1061,7 +1061,7 @@ export class KendraClient {
 
 /**
  * Quick search
-*/
+ */
 export async function search(
   indexId: string,
   query: string,
@@ -1080,7 +1080,7 @@ export async function search(
 
 /**
  * Retrieve for RAG
-*/
+ */
 export async function retrieveForRag(
   indexId: string,
   query: string,

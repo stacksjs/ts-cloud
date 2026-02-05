@@ -1,7 +1,7 @@
 /**
  * AWS CloudFront Operations
  * Direct API calls without AWS CLI dependency
-*/
+ */
 
 import { AWSClient } from './client'
 
@@ -22,7 +22,7 @@ export interface Distribution {
 
 /**
  * CloudFront client using direct API calls
-*/
+ */
 export class CloudFrontClient {
   private client: AWSClient
 
@@ -32,7 +32,7 @@ export class CloudFrontClient {
 
   /**
    * Create cache invalidation
-  */
+   */
   async createInvalidation(options: InvalidationOptions): Promise<{
     Id: string
     Status: string
@@ -71,7 +71,7 @@ export class CloudFrontClient {
 
   /**
    * Get invalidation status
-  */
+   */
   async getInvalidation(distributionId: string, invalidationId: string): Promise<{
     Id: string
     Status: string
@@ -93,7 +93,7 @@ export class CloudFrontClient {
 
   /**
    * List invalidations
-  */
+   */
   async listInvalidations(distributionId: string): Promise<Array<{
     Id: string
     Status: string
@@ -127,7 +127,7 @@ export class CloudFrontClient {
 
   /**
    * Wait for invalidation to complete
-  */
+   */
   async waitForInvalidation(distributionId: string, invalidationId: string): Promise<void> {
     const maxAttempts = 60 // 5 minutes
     let attempts = 0
@@ -149,7 +149,7 @@ export class CloudFrontClient {
 
   /**
    * List distributions
-  */
+   */
   async listDistributions(): Promise<Distribution[]> {
     const result = await this.client.request({
       service: 'cloudfront',
@@ -185,7 +185,7 @@ export class CloudFrontClient {
 
   /**
    * Get distribution by ID
-  */
+   */
   async getDistribution(distributionId: string): Promise<Distribution> {
     const result = await this.client.request({
       service: 'cloudfront',
@@ -208,7 +208,7 @@ export class CloudFrontClient {
 
   /**
    * Get distribution configuration (full config including origins and cache behaviors)
-  */
+   */
   async getDistributionConfig(distributionId: string): Promise<{
     ETag: string
     DistributionConfig: {
@@ -261,7 +261,7 @@ export class CloudFrontClient {
 
   /**
    * Invalidate all files
-  */
+   */
   async invalidateAll(distributionId: string): Promise<{
     Id: string
     Status: string
@@ -275,7 +275,7 @@ export class CloudFrontClient {
 
   /**
    * Invalidate specific paths
-  */
+   */
   async invalidatePaths(distributionId: string, paths: string[]): Promise<{
     Id: string
     Status: string
@@ -292,7 +292,7 @@ export class CloudFrontClient {
 
   /**
    * Invalidate by pattern
-  */
+   */
   async invalidatePattern(distributionId: string, pattern: string): Promise<{
     Id: string
     Status: string
@@ -310,7 +310,7 @@ export class CloudFrontClient {
   /**
    * Invalidate after deployment
    * Useful for CI/CD pipelines
-  */
+   */
   async invalidateAfterDeployment(options: {
     distributionId: string
     changedPaths?: string[]
@@ -343,7 +343,7 @@ export class CloudFrontClient {
 
   /**
    * Find distribution by domain name or alias
-  */
+   */
   async findDistributionByDomain(domain: string): Promise<Distribution | null> {
     const distributions = await this.listDistributions()
 
@@ -364,7 +364,7 @@ export class CloudFrontClient {
   /**
    * Batch invalidate multiple distributions
    * Useful for multi-region or blue/green deployments
-  */
+   */
   async batchInvalidate(distributionIds: string[], paths: string[] = ['/*']): Promise<Array<{
     distributionId: string
     invalidationId: string
@@ -390,7 +390,7 @@ export class CloudFrontClient {
   /**
    * Update custom error responses for a distribution
    * Use this to configure how CloudFront handles 4xx/5xx errors from origins
-  */
+   */
   async updateCustomErrorResponses(options: {
     distributionId: string
     customErrorResponses: Array<{
@@ -475,7 +475,7 @@ export class CloudFrontClient {
   /**
    * Remove all custom error responses from a distribution
    * This will make CloudFront return actual 4xx/5xx errors instead of custom pages
-  */
+   */
   async removeCustomErrorResponses(distributionId: string): Promise<{
     Distribution: Distribution
     ETag: string
@@ -489,7 +489,7 @@ export class CloudFrontClient {
   /**
    * Update distribution configuration
    * This method updates the CloudFront distribution with new settings like aliases and certificates
-  */
+   */
   async updateDistribution(options: {
     distributionId: string
     aliases?: string[]
@@ -572,7 +572,7 @@ export class CloudFrontClient {
   /**
    * Helper to build XML from distribution config object
    * CloudFront requires specific XML structures - this method handles the complex nesting
-  */
+   */
   private buildDistributionConfigXml(config: any): string {
     const escapeXml = (str: string): string => {
       return str.replace(/&/g, '&amp;')
@@ -711,7 +711,7 @@ export class CloudFrontClient {
 
   /**
    * Add aliases to a distribution
-  */
+   */
   async addAliases(distributionId: string, aliases: string[], certificateArn: string): Promise<{
     Distribution: Distribution
     ETag: string
@@ -726,7 +726,7 @@ export class CloudFrontClient {
   /**
    * Create a CloudFront Function
    * CloudFront Functions are lightweight JavaScript functions for viewer request/response manipulation
-  */
+   */
   async createFunction(options: {
     name: string
     code: string
@@ -773,7 +773,7 @@ export class CloudFrontClient {
 
   /**
    * List CloudFront Functions
-  */
+   */
   async listFunctions(): Promise<Array<{
     Name: string
     FunctionARN: string
@@ -815,7 +815,7 @@ export class CloudFrontClient {
 
   /**
    * Get a CloudFront Function
-  */
+   */
   async getFunction(name: string, stage: 'DEVELOPMENT' | 'LIVE' = 'LIVE'): Promise<{
     FunctionARN: string
     Name: string
@@ -854,7 +854,7 @@ export class CloudFrontClient {
   /**
    * Publish a CloudFront Function (move from DEVELOPMENT to LIVE stage)
    * Can be called with just the name (will auto-fetch ETag) or with options object
-  */
+   */
   async publishFunction(nameOrOptions: string | { Name: string, IfMatch: string }, etag?: string): Promise<{
     FunctionARN: string
     Stage: string
@@ -908,7 +908,7 @@ export class CloudFrontClient {
 
   /**
    * Describe a CloudFront Function (get metadata including ETag)
-  */
+   */
   async describeFunction(options: { Name: string, Stage?: 'DEVELOPMENT' | 'LIVE' }): Promise<{
     ETag: string
     FunctionSummary: {
@@ -945,7 +945,7 @@ export class CloudFrontClient {
 
   /**
    * Update a CloudFront Function
-  */
+   */
   async updateFunction(options: {
     Name: string
     FunctionCode: string
@@ -996,7 +996,7 @@ export class CloudFrontClient {
 
   /**
    * Delete a CloudFront Function
-  */
+   */
   async deleteFunction(name: string, etag?: string): Promise<void> {
     // Get the current ETag if not provided
     let functionETag = etag
@@ -1023,7 +1023,7 @@ export class CloudFrontClient {
   /**
    * Create a standard index.html rewrite function for S3 static sites
    * This function rewrites directory requests to index.html
-  */
+   */
   async createIndexRewriteFunction(name: string): Promise<{
     FunctionARN: string
     Name: string
@@ -1057,7 +1057,7 @@ export class CloudFrontClient {
 
   /**
    * Get origin access control configurations
-  */
+   */
   async listOriginAccessControls(): Promise<Array<{
     Id: string
     Name: string
@@ -1095,7 +1095,7 @@ export class CloudFrontClient {
 
   /**
    * Create an Origin Access Control for S3
-  */
+   */
   async createOriginAccessControl(options: {
     name: string
     description?: string
@@ -1155,7 +1155,7 @@ export class CloudFrontClient {
 
   /**
    * Find or create an Origin Access Control
-  */
+   */
   async findOrCreateOriginAccessControl(name: string): Promise<{
     Id: string
     Name: string
@@ -1174,7 +1174,7 @@ export class CloudFrontClient {
 
   /**
    * Create a CloudFront distribution for a static S3 website
-  */
+   */
   async createDistributionForS3(options: {
     bucketName: string
     bucketRegion: string
@@ -1316,7 +1316,7 @@ export class CloudFrontClient {
 
   /**
    * Get S3 bucket policy for CloudFront OAC access
-  */
+   */
   static getS3BucketPolicyForCloudFront(bucketName: string, distributionArn: string): object {
     return {
       Version: '2012-10-17',
@@ -1341,7 +1341,7 @@ export class CloudFrontClient {
 
   /**
    * Wait for distribution to be deployed
-  */
+   */
   async waitForDistributionDeployed(distributionId: string, maxAttempts = 60): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       const dist = await this.getDistribution(distributionId)
@@ -1360,7 +1360,7 @@ export class CloudFrontClient {
   /**
    * Disable a CloudFront distribution
    * Must be disabled before it can be deleted
-  */
+   */
   async disableDistribution(distributionId: string): Promise<{ ETag: string }> {
     // Get current config with ETag
     const getResult = await this.client.request({
@@ -1404,7 +1404,7 @@ export class CloudFrontClient {
   /**
    * Delete a CloudFront distribution
    * Distribution must be disabled first
-  */
+   */
   async deleteDistribution(distributionId: string, etag?: string): Promise<void> {
     // If no ETag provided, get it first
     let etagToUse = etag || ''
@@ -1432,7 +1432,7 @@ export class CloudFrontClient {
 
   /**
    * Wait for distribution to be disabled (ready for deletion)
-  */
+   */
   async waitForDistributionDisabled(distributionId: string, maxAttempts = 60): Promise<boolean> {
     for (let i = 0; i < maxAttempts; i++) {
       const dist = await this.getDistribution(distributionId)
@@ -1451,7 +1451,7 @@ export class CloudFrontClient {
   /**
    * Remove a specific alias (CNAME) from a CloudFront distribution
    * This allows the alias to be used by another distribution
-  */
+   */
   async removeAlias(distributionId: string, alias: string): Promise<{ ETag: string }> {
     // Get current config with ETag
     const getResult = await this.client.request({

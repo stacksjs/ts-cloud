@@ -2,7 +2,7 @@
  * Phone/Voice Module for CloudFormation
  *
  * Provides CloudFormation resources for Amazon Connect phone infrastructure
-*/
+ */
 
 import { handler as incomingCallHandler } from '../phone/handlers/incoming-call'
 import { handler as voicemailHandler } from '../phone/handlers/voicemail'
@@ -23,7 +23,7 @@ export interface PhoneConfig {
 export class Phone {
   /**
    * Lambda code for phone handlers
-  */
+   */
   static LambdaCode: {
     incomingCall: string;
     voicemail: string;
@@ -36,7 +36,7 @@ export class Phone {
 
   /**
    * Create Amazon Connect instance CloudFormation resource
-  */
+   */
   static createConnectInstance(config: PhoneConfig): Record<string, any> {
     const { slug, environment, instanceAlias, inboundCallsEnabled = true, outboundCallsEnabled = true } = config
 
@@ -62,7 +62,7 @@ export class Phone {
 
   /**
    * Create hours of operation resource
-  */
+   */
   static createHoursOfOperation(config: {
     slug: string
     instanceArn: string
@@ -95,7 +95,7 @@ export class Phone {
 
   /**
    * Create queue resource
-  */
+   */
   static createQueue(config: {
     slug: string
     instanceArn: string
@@ -118,7 +118,7 @@ export class Phone {
 
   /**
    * Create contact flow resource
-  */
+   */
   static createContactFlow(config: {
     slug: string
     instanceArn: string
@@ -141,7 +141,7 @@ export class Phone {
 
   /**
    * Create basic IVR contact flow content
-  */
+   */
   static createBasicIvrFlow(config: {
     greeting: string
     queueArn: string
@@ -202,7 +202,7 @@ export class Phone {
 
   /**
    * Create Lambda role for phone handlers
-  */
+   */
   static createPhoneLambdaRole(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}PhoneLambdaRole`]: {
@@ -262,7 +262,7 @@ export class Phone {
 
   /**
    * Create incoming call Lambda function
-  */
+   */
   static createIncomingCallLambda(config: {
     slug: string
     roleArn: string
@@ -297,7 +297,7 @@ export class Phone {
 
   /**
    * Create voicemail Lambda function
-  */
+   */
   static createVoicemailLambda(config: {
     slug: string
     roleArn: string
@@ -334,7 +334,7 @@ export class Phone {
 
   /**
    * Create missed call Lambda function
-  */
+   */
   static createMissedCallLambda(config: {
     slug: string
     roleArn: string
@@ -369,7 +369,7 @@ export class Phone {
 
   /**
    * Create call log DynamoDB table
-  */
+   */
   static createCallLogTable(config: { slug: string }): Record<string, any> {
     return {
       [`${config.slug}CallLogTable`]: {
@@ -390,7 +390,7 @@ export class Phone {
 
   /**
    * Create complete phone setup
-  */
+   */
   static createCompleteSetup(config: PhoneConfig): {
     resources: Record<string, any>
     outputs: Record<string, any>

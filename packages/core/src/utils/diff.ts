@@ -1,7 +1,7 @@
 /**
  * Template diff utilities for incremental deployments
  * Detect changes between CloudFormation templates to optimize deployments
-*/
+ */
 
 import type { CloudFormationTemplate } from '../cloudformation/types'
 
@@ -17,7 +17,7 @@ export interface TemplateDiff {
 
 /**
  * Compare two CloudFormation templates
-*/
+ */
 export function diffTemplates(
   oldTemplate: CloudFormationTemplate,
   newTemplate: CloudFormationTemplate,
@@ -83,7 +83,7 @@ export function diffTemplates(
 
 /**
  * Get diff summary string
-*/
+ */
 export function getDiffSummary(diff: TemplateDiff): string {
   const lines: string[] = []
 
@@ -125,7 +125,7 @@ export function getDiffSummary(diff: TemplateDiff): string {
 
 /**
  * Check if diff requires replacement (destructive changes)
-*/
+ */
 export function requiresReplacement(
   diff: TemplateDiff,
   oldTemplate: CloudFormationTemplate,
@@ -166,7 +166,7 @@ export function requiresReplacement(
 /**
  * Get properties that require replacement when changed
  * This is a simplified version - production code should use CloudFormation property docs
-*/
+ */
 function getReplacementProperties(resourceType: string): string[] {
   const replacementProps: Record<string, string[]> = {
     'AWS::S3::Bucket': ['BucketName'],
@@ -183,7 +183,7 @@ function getReplacementProperties(resourceType: string): string[] {
 
 /**
  * Categorize changes by risk level
-*/
+ */
 export function categorizeChanges(diff: TemplateDiff): {
   safe: string[]
   caution: string[]
@@ -211,7 +211,7 @@ export function categorizeChanges(diff: TemplateDiff): {
 
 /**
  * Get deployment strategy based on diff
-*/
+ */
 export function getDeploymentStrategy(diff: TemplateDiff): {
   strategy: 'create' | 'update' | 'replace' | 'skip'
   reason: string
@@ -245,7 +245,7 @@ export function getDeploymentStrategy(diff: TemplateDiff): {
 
 /**
  * Calculate diff statistics
-*/
+ */
 export function getDiffStats(diff: TemplateDiff): {
   total: number
   added: number

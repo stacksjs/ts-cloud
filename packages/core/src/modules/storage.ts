@@ -61,11 +61,11 @@ export interface BackupPlanOptions {
 /**
  * Storage Module - S3 Bucket Management
  * Provides clean API for creating and configuring S3 buckets
-*/
+ */
 export class Storage {
   /**
    * Create an S3 bucket with the specified options
-  */
+   */
   static createBucket(options: BucketOptions): { bucket: S3Bucket, bucketPolicy?: S3BucketPolicy, logicalId: string } {
     const {
       name,
@@ -215,7 +215,7 @@ export class Storage {
 
   /**
    * Enable versioning on an existing bucket
-  */
+   */
   static enableVersioning(bucket: S3Bucket): S3Bucket {
     if (!bucket.Properties) {
       bucket.Properties = {}
@@ -230,7 +230,7 @@ export class Storage {
 
   /**
    * Enable website hosting on an existing bucket
-  */
+   */
   static enableWebsiteHosting(
     bucket: S3Bucket,
     indexDocument = 'index.html',
@@ -250,7 +250,7 @@ export class Storage {
 
   /**
    * Set lifecycle rules on an existing bucket
-  */
+   */
   static setLifecycleRules(bucket: S3Bucket, rules: LifecycleRule[]): S3Bucket {
     if (!bucket.Properties) {
       bucket.Properties = {}
@@ -273,7 +273,7 @@ export class Storage {
 
   /**
    * Enable intelligent tiering on an existing bucket
-  */
+   */
   static enableIntelligentTiering(bucket: S3Bucket): S3Bucket {
     if (!bucket.Properties) {
       bucket.Properties = {}
@@ -297,7 +297,7 @@ export class Storage {
 
   /**
    * Add Lambda notification to bucket
-  */
+   */
   static addLambdaNotification(bucket: S3Bucket, config: S3NotificationConfig): S3Bucket {
     if (!bucket.Properties) {
       bucket.Properties = {}
@@ -338,11 +338,11 @@ export class Storage {
 
   /**
    * Common notification configurations
-  */
+   */
   static readonly Notifications = {
     /**
      * Trigger Lambda on any object creation
-    */
+     */
     onObjectCreated: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectCreated:*']
@@ -353,7 +353,7 @@ export class Storage {
 
     /**
      * Trigger Lambda on object deletion
-    */
+     */
     onObjectRemoved: (functionArn: string | { 'Fn::GetAtt': [string, string] }): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectRemoved:*']
@@ -364,7 +364,7 @@ export class Storage {
 
     /**
      * Trigger Lambda on image uploads (jpg, png, gif)
-    */
+     */
     onImageUpload: (functionArn: string | { 'Fn::GetAtt': [string, string] }, prefix?: string): {
       functionArn: string | { 'Fn::GetAtt': [string, string] }
       events: readonly ['s3:ObjectCreated:*']
@@ -380,7 +380,7 @@ export class Storage {
 
     /**
      * Trigger Lambda on specific file type
-    */
+     */
     onFileType: (
       functionArn: string | { 'Fn::GetAtt': [string, string] },
       suffix: string,
@@ -400,7 +400,7 @@ export class Storage {
 
     /**
      * Trigger Lambda on uploads to specific folder
-    */
+     */
     onFolderUpload: (
       functionArn: string | { 'Fn::GetAtt': [string, string] },
       folder: string,
@@ -419,7 +419,7 @@ export class Storage {
 
   /**
    * Create an AWS Backup plan for S3 buckets
-  */
+   */
   static createBackupPlan(options: BackupPlanOptions): {
     vault: BackupVault
     plan: BackupPlan
@@ -567,7 +567,7 @@ export class Storage {
 
   /**
    * Common backup schedule expressions
-  */
+   */
   static readonly BackupSchedules = {
     HOURLY: 'cron(0 * * * ? *)',
     DAILY_5AM: 'cron(0 5 * * ? *)',
@@ -581,7 +581,7 @@ export class Storage {
 
   /**
    * Common backup retention periods (in days)
-  */
+   */
   static readonly BackupRetention = {
     ONE_DAY: 1,
     ONE_WEEK: 7,
@@ -598,7 +598,7 @@ export class Storage {
   /**
    * Create a www redirect bucket
    * This bucket redirects www.domain.com to domain.com (or vice versa)
-  */
+   */
   static createWwwRedirectBucket(options: {
     slug: string
     environment: EnvironmentType
@@ -670,7 +670,7 @@ export class Storage {
   /**
    * Create a docs bucket (for documentation sites)
    * Conditional creation based on docs presence
-  */
+   */
   static createDocsBucket(options: {
     slug: string
     environment: EnvironmentType
@@ -723,7 +723,7 @@ export class Storage {
 
   /**
    * Create an email bucket for storing emails
-  */
+   */
   static createEmailBucket(options: {
     slug: string
     environment: EnvironmentType
@@ -807,7 +807,7 @@ export class Storage {
 
   /**
    * Check if a docs directory exists and has content
-  */
+   */
   static docsExist(options: {
     projectRoot?: string
     docsPaths?: string[]
@@ -870,7 +870,7 @@ export class Storage {
 
   /**
    * Conditionally create docs bucket if docs exist
-  */
+   */
   static createDocsBucketIfExists(options: {
     slug: string
     environment: EnvironmentType
@@ -918,7 +918,7 @@ export class Storage {
   /**
    * Create private files bucket
    * For storing private/sensitive files not accessible publicly
-  */
+   */
   static createPrivateBucket(options: {
     slug: string
     environment: EnvironmentType
@@ -993,7 +993,7 @@ export class Storage {
   /**
    * Check if source paths exist for deployment
    * Common paths: views/web/dist, docs/dist, private
-  */
+   */
   static checkSourcePaths(options: {
     projectRoot?: string
     paths?: {
@@ -1034,7 +1034,7 @@ export class Storage {
   /**
    * Create all deployment buckets based on source paths
    * Conditionally creates buckets only for source paths that exist
-  */
+   */
   static createDeploymentBuckets(options: {
     slug: string
     environment: EnvironmentType

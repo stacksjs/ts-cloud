@@ -1,7 +1,7 @@
 /**
  * Lambda Concurrency Management
  * Reserved and provisioned concurrency configuration
-*/
+ */
 
 export interface ConcurrencyConfig {
   id: string
@@ -50,7 +50,7 @@ export interface AutoScalingConfig {
 
 /**
  * Lambda concurrency manager
-*/
+ */
 export class LambdaConcurrencyManager {
   private configs: Map<string, ConcurrencyConfig> = new Map()
   private provisionedConfigs: Map<string, ProvisionedConcurrencyConfig> = new Map()
@@ -63,7 +63,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Set reserved concurrency
-  */
+   */
   setReservedConcurrency(options: {
     functionName: string
     reservedConcurrency: number
@@ -83,7 +83,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Set provisioned concurrency
-  */
+   */
   setProvisionedConcurrency(options: {
     functionName: string
     qualifier: string
@@ -114,7 +114,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Configure warm pool
-  */
+   */
   configureWarmPool(options: {
     functionName: string
     alias: string
@@ -129,7 +129,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Create concurrency schedule
-  */
+   */
   createSchedule(schedule: Omit<ConcurrencySchedule, 'id'>): ConcurrencySchedule {
     const id = `schedule-${Date.now()}-${this.scheduleCounter++}`
 
@@ -145,7 +145,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Create business hours schedule
-  */
+   */
   createBusinessHoursSchedule(options: {
     functionName: string
     qualifier: string
@@ -178,7 +178,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Configure auto-scaling
-  */
+   */
   configureAutoScaling(config: Omit<AutoScalingConfig, 'id'>): AutoScalingConfig {
     const id = `autoscaling-${Date.now()}-${this.autoScalingCounter++}`
 
@@ -194,7 +194,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Configure predictive auto-scaling
-  */
+   */
   configurePredictiveScaling(options: {
     functionName: string
     qualifier: string
@@ -214,35 +214,35 @@ export class LambdaConcurrencyManager {
 
   /**
    * Get concurrency config
-  */
+   */
   getConfig(id: string): ConcurrencyConfig | undefined {
     return this.configs.get(id)
   }
 
   /**
    * List concurrency configs
-  */
+   */
   listConfigs(): ConcurrencyConfig[] {
     return Array.from(this.configs.values())
   }
 
   /**
    * Get provisioned config
-  */
+   */
   getProvisionedConfig(id: string): ProvisionedConcurrencyConfig | undefined {
     return this.provisionedConfigs.get(id)
   }
 
   /**
    * List provisioned configs
-  */
+   */
   listProvisionedConfigs(): ProvisionedConcurrencyConfig[] {
     return Array.from(this.provisionedConfigs.values())
   }
 
   /**
    * Generate CloudFormation for reserved concurrency
-  */
+   */
   generateReservedConcurrencyCF(config: ConcurrencyConfig): any {
     return {
       Type: 'AWS::Lambda::Function',
@@ -255,7 +255,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Generate CloudFormation for provisioned concurrency
-  */
+   */
   generateProvisionedConcurrencyCF(config: ProvisionedConcurrencyConfig): any {
     return {
       Type: 'AWS::Lambda::Alias',
@@ -271,7 +271,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Generate CloudFormation for auto-scaling target
-  */
+   */
   generateAutoScalingTargetCF(config: AutoScalingConfig): any {
     return {
       Type: 'AWS::ApplicationAutoScaling::ScalableTarget',
@@ -287,7 +287,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Generate CloudFormation for auto-scaling policy
-  */
+   */
   generateAutoScalingPolicyCF(config: AutoScalingConfig): any {
     return {
       Type: 'AWS::ApplicationAutoScaling::ScalingPolicy',
@@ -311,7 +311,7 @@ export class LambdaConcurrencyManager {
 
   /**
    * Clear all data
-  */
+   */
   clear(): void {
     this.configs.clear()
     this.provisionedConfigs.clear()
@@ -326,5 +326,5 @@ export class LambdaConcurrencyManager {
 
 /**
  * Global Lambda concurrency manager instance
-*/
+ */
 export const lambdaConcurrencyManager: LambdaConcurrencyManager = new LambdaConcurrencyManager()

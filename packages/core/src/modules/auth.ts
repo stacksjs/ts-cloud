@@ -139,11 +139,11 @@ export interface IdentityPoolRoleAttachmentOptions {
 /**
  * Authentication Module - Cognito
  * Provides clean API for user authentication and identity management
-*/
+ */
 export class Auth {
   /**
    * Create a Cognito User Pool
-  */
+   */
   static createUserPool(options: UserPoolOptions): {
     userPool: CognitoUserPool
     logicalId: string
@@ -256,7 +256,7 @@ export class Auth {
 
   /**
    * Create a Cognito User Pool Client
-  */
+   */
   static createUserPoolClient(
     userPoolLogicalId: string,
     options: UserPoolClientOptions,
@@ -323,7 +323,7 @@ export class Auth {
 
   /**
    * Create a Cognito User Pool Domain
-  */
+   */
   static createUserPoolDomain(
     userPoolLogicalId: string,
     options: UserPoolDomainOptions,
@@ -360,7 +360,7 @@ export class Auth {
 
   /**
    * Create a Cognito Identity Pool
-  */
+   */
   static createIdentityPool(options: IdentityPoolOptions): {
     identityPool: CognitoIdentityPool
     logicalId: string
@@ -401,7 +401,7 @@ export class Auth {
 
   /**
    * Create an Identity Pool Role Attachment
-  */
+   */
   static createIdentityPoolRoleAttachment(
     identityPoolLogicalId: string,
     options: IdentityPoolRoleAttachmentOptions,
@@ -447,7 +447,7 @@ export class Auth {
 
   /**
    * Create IAM role for authenticated users
-  */
+   */
   static createAuthenticatedRole(options: {
     slug: string
     environment: EnvironmentType
@@ -520,7 +520,7 @@ export class Auth {
 
   /**
    * Create IAM role for unauthenticated users
-  */
+   */
   static createUnauthenticatedRole(options: {
     slug: string
     environment: EnvironmentType
@@ -592,11 +592,11 @@ export class Auth {
 
   /**
    * Common password policies
-  */
+   */
   static readonly PasswordPolicies = {
     /**
      * Relaxed password policy for development
-    */
+     */
     relaxed: (): PasswordPolicyOptions => ({
       minimumLength: 8,
       requireLowercase: false,
@@ -608,7 +608,7 @@ export class Auth {
 
     /**
      * Standard password policy
-    */
+     */
     standard: (): PasswordPolicyOptions => ({
       minimumLength: 8,
       requireLowercase: true,
@@ -620,7 +620,7 @@ export class Auth {
 
     /**
      * Strict password policy for production
-    */
+     */
     strict: (): PasswordPolicyOptions => ({
       minimumLength: 12,
       requireLowercase: true,
@@ -633,11 +633,11 @@ export class Auth {
 
   /**
    * Common authentication flows
-  */
+   */
   static readonly AuthFlows = {
     /**
      * Standard auth flows (SRP, refresh token)
-    */
+     */
     standard: [
       'ALLOW_USER_SRP_AUTH',
       'ALLOW_REFRESH_TOKEN_AUTH',
@@ -645,7 +645,7 @@ export class Auth {
 
     /**
      * Admin auth flows (for server-side authentication)
-    */
+     */
     admin: [
       'ALLOW_ADMIN_USER_PASSWORD_AUTH',
       'ALLOW_REFRESH_TOKEN_AUTH',
@@ -653,7 +653,7 @@ export class Auth {
 
     /**
      * Custom auth flows
-    */
+     */
     custom: [
       'ALLOW_CUSTOM_AUTH',
       'ALLOW_REFRESH_TOKEN_AUTH',
@@ -661,7 +661,7 @@ export class Auth {
 
     /**
      * All auth flows (not recommended for production)
-    */
+     */
     all: [
       'ALLOW_USER_SRP_AUTH',
       'ALLOW_USER_PASSWORD_AUTH',
@@ -673,11 +673,11 @@ export class Auth {
 
   /**
    * Common OAuth scopes
-  */
+   */
   static readonly OAuthScopes = {
     /**
      * Basic OAuth scopes
-    */
+     */
     basic: [
       'openid',
       'email',
@@ -686,7 +686,7 @@ export class Auth {
 
     /**
      * All standard scopes
-    */
+     */
     all: [
       'openid',
       'email',
@@ -698,11 +698,11 @@ export class Auth {
 
   /**
    * Common use cases
-  */
+   */
   static readonly UseCases = {
     /**
      * Create a basic user pool for web application
-    */
+     */
     webApp: (slug: string, environment: EnvironmentType, callbackUrl: string): {
       userPool: CognitoUserPool
       poolId: string
@@ -733,7 +733,7 @@ export class Auth {
 
     /**
      * Create a user pool with identity pool for mobile app
-    */
+     */
     mobileApp: (slug: string, environment: EnvironmentType): {
       userPool: CognitoUserPool
       poolId: string
