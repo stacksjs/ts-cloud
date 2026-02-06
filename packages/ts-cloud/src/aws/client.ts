@@ -440,7 +440,9 @@ export class AWSClient {
     let url = `https://${host}${path}`
 
     if (queryParams && Object.keys(queryParams).length > 0) {
-      const queryString = new URLSearchParams(queryParams).toString()
+      const queryString = Object.keys(queryParams)
+        .map(k => `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`)
+        .join('&')
       url += `?${queryString}`
     }
 
@@ -520,7 +522,9 @@ export class AWSClient {
 
     const canonicalUri = path
     const canonicalQueryString = queryParams
-      ? new URLSearchParams(queryParams).toString()
+      ? Object.keys(queryParams).sort().map(k =>
+          `${this.uriEncode(k)}=${this.uriEncode(queryParams[k])}`
+        ).join('&')
       : ''
 
     // Sort headers by lowercase key name (AWS SigV4 requirement)
@@ -584,6 +588,15 @@ export class AWSClient {
    */
   private getDateStamp(date: Date): string {
     return date.toISOString().slice(0, 10).replace(/-/g, '')
+  }
+
+  /**
+   * URI-encode a string per RFC 3986
+   */
+  private uriEncode(str: string): string {
+    return encodeURIComponent(str).replace(/[!'()*]/g, c =>
+      `%${c.charCodeAt(0).toString(16).toUpperCase()}`
+    )
   }
 
   /**
