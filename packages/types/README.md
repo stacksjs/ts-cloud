@@ -6,13 +6,13 @@
 <!-- [![npm downloads][npm-downloads-src]][npm-downloads-href] -->
 <!-- [![Codecov][codecov-src]][codecov-href] -->
 
-# ts-cloud
+# @stacksjs/ts-cloud
 
 > Zero-dependency AWS infrastructure as TypeScript. Deploy production-ready cloud infrastructure without AWS SDK or CLI.
 
 ## Overview
 
-ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, ts-cloud:
+@stacksjs/ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, @stacksjs/ts-cloud:
 
 - **Zero AWS Dependencies** - No AWS SDK, no AWS CLI. Direct AWS API calls only.
 - **Type-Safe Configuration** - Full TypeScript types for all AWS resources
@@ -69,7 +69,7 @@ No SDK, no CLI - pure AWS Signature V4 API calls:
 ### Installation
 
 ```bash
-bun add ts-cloud
+bun add @stacksjs/ts-cloud
 ```
 
 ### Your First Deployment
@@ -77,7 +77,7 @@ bun add ts-cloud
 Create a `cloud.config.ts`:
 
 ```typescript
-import { createStaticSitePreset } from 'ts-cloud/presets'
+import { createStaticSitePreset } from '@stacksjs/ts-cloud/presets'
 
 export default createStaticSitePreset({
   name: 'My Website',
@@ -104,7 +104,7 @@ That's it! You now have:
 #### Full-Stack Application
 
 ```typescript
-import { createFullStackAppPreset } from 'ts-cloud/presets'
+import { createFullStackAppPreset } from '@stacksjs/ts-cloud/presets'
 
 export default createFullStackAppPreset({
   name: 'My App',
@@ -125,7 +125,7 @@ Includes:
 #### Serverless API
 
 ```typescript
-import { createApiBackendPreset } from 'ts-cloud/presets'
+import { createApiBackendPreset } from '@stacksjs/ts-cloud/presets'
 
 export default createApiBackendPreset({
   name: 'My API',
@@ -148,7 +148,7 @@ Includes:
 You can extend any preset with custom configuration:
 
 ```typescript
-import { createNodeJsServerPreset, extendPreset } from 'ts-cloud/presets'
+import { createNodeJsServerPreset, extendPreset } from '@stacksjs/ts-cloud/presets'
 
 export default extendPreset(
   createNodeJsServerPreset({
@@ -175,7 +175,7 @@ export default extendPreset(
 Combine multiple presets:
 
 ```typescript
-import { composePresets, createStaticSitePreset, createApiBackendPreset } from 'ts-cloud/presets'
+import { composePresets, createStaticSitePreset, createApiBackendPreset } from '@stacksjs/ts-cloud/presets'
 
 export default composePresets(
   createStaticSitePreset({ name: 'Frontend', slug: 'frontend', domain: 'example.com' }),
@@ -198,7 +198,7 @@ export default composePresets(
 Generate templates programmatically:
 
 ```typescript
-import { CloudFormationBuilder } from 'ts-cloud/cloudformation'
+import { CloudFormationBuilder } from '@stacksjs/ts-cloud/cloudformation'
 
 const builder = new CloudFormationBuilder(config)
 const template = builder.build()
@@ -211,7 +211,7 @@ console.log(JSON.stringify(template, null, 2))
 Use the AWS clients directly:
 
 ```typescript
-import { CloudFormationClient, S3Client, CloudFrontClient } from 'ts-cloud/aws'
+import { CloudFormationClient, S3Client, CloudFrontClient } from '@stacksjs/ts-cloud/aws'
 
 // CloudFormation
 const cfn = new CloudFormationClient('us-east-1')
@@ -264,7 +264,7 @@ bun run typecheck
 
 ### No Dependencies
 
-ts-cloud uses **zero external dependencies** for AWS operations:
+@stacksjs/ts-cloud uses **zero external dependencies** for AWS operations:
 
 - **AWS Signature V4** - Manual request signing for authentication
 - **Direct HTTPS** - Native `fetch()` for API calls
@@ -312,8 +312,8 @@ The MIT License (MIT). Please see [LICENSE](LICENSE.md) for more information.
 Made with 💙
 
 <!-- Badges -->
-[npm-version-src]: https://img.shields.io/npm/v/ts-cloud?style=flat-square
-[npm-version-href]: https://npmjs.com/package/ts-cloud
+[npm-version-src]: https://img.shields.io/npm/v/@stacksjs/ts-cloud?style=flat-square
+[npm-version-href]: https://npmjs.com/package/@stacksjs/ts-cloud
 [github-actions-src]: https://img.shields.io/github/actions/workflow/status/stacksjs/ts-cloud/ci.yml?style=flat-square&branch=main
 [github-actions-href]: https://github.com/stacksjs/ts-cloud/actions?query=workflow%3Aci
 
