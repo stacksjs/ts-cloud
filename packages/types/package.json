@@ -5,6 +5,14 @@
   "description": "Shared TypeScript types for ts-cloud",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
+  "homepage": "https://github.com/stacksjs/ts-cloud#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stacksjs/ts-cloud.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stacksjs/ts-cloud/issues"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
