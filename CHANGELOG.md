@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.6...v0.1.7)
+
+### 🧹 Chores
+
+- release v0.1.7 ([957bfe6](https://github.com/stacksjs/ts-cloud/commit/957bfe6)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([79a991b](https://github.com/stacksjs/ts-cloud/commit/79a991b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.6...HEAD)
+
+### 🧹 Chores
+
+- wip ([79a991b](https://github.com/stacksjs/ts-cloud/commit/79a991b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.5...v0.1.6)
 
 ### 🧹 Chores
