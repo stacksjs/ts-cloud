@@ -1,6 +1,6 @@
 {
   "name": "@stacksjs/ts-cloud-aws-types",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "description": "AWS CloudFormation resource type definitions (without AWS SDK)",
   "author": "Chris Breuer <chris@stacksjs.com>",
