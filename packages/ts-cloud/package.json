@@ -5,13 +5,13 @@
   "description": "A lightweight, performant infrastructure-as-code library and CLI for deploying both server-based (EC2) and serverless applications.",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
-  "homepage": "https://github.com/stacksjs/cloud#readme",
+  "homepage": "https://github.com/stacksjs/ts-cloud#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/stacksjs/cloud.git"
+    "url": "git+https://github.com/stacksjs/ts-cloud.git"
   },
   "bugs": {
-    "url": "https://github.com/stacksjs/cloud/issues"
+    "url": "https://github.com/stacksjs/ts-cloud/issues"
   },
   "keywords": [
     "typescript",
