@@ -1,5 +1,5 @@
 import type { CLI } from '@stacksjs/clapp'
-import { existsSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync, copyFileSync, readFileSync } from 'node:fs'
 import * as cli from '../../src/utils/cli'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
@@ -199,7 +199,7 @@ export function registerDeployCommands(app: CLI): void {
 
           if (dnsProvider && dnsProvider !== 'route53') {
             // Deploy static sites with external DNS
-            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification)
+            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment)
             return
           }
         }
@@ -922,6 +922,7 @@ async function deployStaticSitesWithExternalDns(
   dnsProviderName: string,
   region: string,
   skipDnsVerification?: boolean,
+  environment?: string,
 ): Promise<void> {
   const sites = config.sites || {}
   const siteNames = specificSite ? [specificSite] : Object.keys(sites)
@@ -961,6 +962,83 @@ async function deployStaticSitesWithExternalDns(
     cli.info(`Source: ${siteConfig.root}`)
     cli.info(`DNS Provider: ${dnsProviderName}`)
 
+    // Load environment-specific .env file before building
+    // Supports aliases: e.g. --env stage will check .env.stage and .env.staging
+    let envLocalBackup: string | null = null
+    let envBackup: string | null = null
+    if (environment) {
+      const cwd = process.cwd()
+      const targetEnv = `${cwd}/.env`
+      const envLocal = `${cwd}/.env.local`
+
+      // Build list of env file candidates
+      const envAliases: Record<string, string[]> = {
+        stage: ['stage', 'staging'],
+        staging: ['staging', 'stage'],
+      }
+      const candidates = (envAliases[environment] || [environment]).map(e => `${cwd}/.env.${e}`)
+
+      const envFile = candidates.find(f => existsSync(f))
+
+      if (envFile) {
+        const envFileName = envFile.split('/').pop()
+        cli.step(`Loading environment file: ${envFileName}`)
+
+        // Back up .env.local if it exists (it takes priority over .env in Nuxt/Vite)
+        if (existsSync(envLocal)) {
+          envLocalBackup = `${envLocal}.bak`
+          copyFileSync(envLocal, envLocalBackup)
+          const { unlinkSync } = await import('node:fs')
+          unlinkSync(envLocal)
+          cli.info('Temporarily moved .env.local out of the way')
+        }
+
+        // Back up .env before overwriting
+        if (existsSync(targetEnv)) {
+          envBackup = `${targetEnv}.bak`
+          copyFileSync(targetEnv, envBackup)
+        }
+
+        copyFileSync(envFile, targetEnv)
+
+        // Parse and load env vars into process.env
+        const envContent = readFileSync(envFile, 'utf-8')
+        for (const line of envContent.split('\n')) {
+          const trimmed = line.trim()
+          if (!trimmed || trimmed.startsWith('#')) continue
+          const eqIndex = trimmed.indexOf('=')
+          if (eqIndex === -1) continue
+          const key = trimmed.slice(0, eqIndex).trim()
+          const value = trimmed.slice(eqIndex + 1).trim()
+          process.env[key] = value
+        }
+
+        cli.success(`Loaded ${envFileName}`)
+      }
+      else if (existsSync(targetEnv)) {
+        cli.warn(`No .env.${environment} found, falling back to .env`)
+      }
+      else {
+        cli.error(`No .env.${environment} or .env file found`)
+        continue
+      }
+    }
+
+    // Helper to restore backed up env files
+    const restoreEnvFiles = async () => {
+      const { unlinkSync } = await import('node:fs')
+      if (envBackup) {
+        copyFileSync(envBackup, `${process.cwd()}/.env`)
+        unlinkSync(envBackup)
+        cli.info('Restored .env')
+      }
+      if (envLocalBackup) {
+        copyFileSync(envLocalBackup, `${process.cwd()}/.env.local`)
+        unlinkSync(envLocalBackup)
+        cli.info('Restored .env.local')
+      }
+    }
+
     // Run build command if configured
     if (siteConfig.build) {
       cli.step(`Running build command: ${siteConfig.build}`)
@@ -974,9 +1052,13 @@ async function deployStaticSitesWithExternalDns(
       }
       catch (err: any) {
         cli.error(`Build failed: ${err.message}`)
+        await restoreEnvFiles()
         continue
       }
     }
+
+    // Restore env files after build
+    await restoreEnvFiles()
 
     // Check if source directory exists
     if (!existsSync(siteConfig.root)) {
