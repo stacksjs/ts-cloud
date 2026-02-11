@@ -1,10 +1,10 @@
 {
   "lockfileVersion": 1,
-  "configVersion": 1,
   "workspaces": {
     "": {
       "name": "ts-cloud",
       "dependencies": {
+        "buddy-bot": "^0.9.14",
         "bun-plugin-dtsx": "^0.21.17",
         "jszip": "^3.10.1",
       },
@@ -14,14 +14,14 @@
     },
     "packages/aws-types": {
       "name": "@stacksjs/ts-cloud-aws-types",
-      "version": "0.1.4",
+      "version": "0.1.7",
       "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
     "packages/core": {
       "name": "@stacksjs/ts-cloud-core",
-      "version": "0.1.4",
+      "version": "0.1.7",
       "dependencies": {
         "@stacksjs/ts-cloud-aws-types": "workspace:*",
         "@stacksjs/ts-cloud-types": "workspace:*",
@@ -32,7 +32,7 @@
     },
     "packages/ts-cloud": {
       "name": "@stacksjs/ts-cloud",
-      "version": "0.1.3",
+      "version": "0.1.7",
       "bin": {
         "cloud": "./dist/bin/cli.js",
       },
@@ -49,7 +49,7 @@
     },
     "packages/types": {
       "name": "@stacksjs/ts-cloud-types",
-      "version": "0.1.4",
+      "version": "0.1.7",
       "devDependencies": {
         "typescript": "^5.9.3",
       },
@@ -88,7 +88,7 @@
 
     "better-dx": ["better-dx@0.2.5", "", { "peerDependencies": { "@stacksjs/bumpx": "0.2.4", "@stacksjs/bunpress": "0.1.0", "@stacksjs/clarity": "0.3.24", "@stacksjs/gitlint": "0.1.5", "@stacksjs/logsmith": "0.2.1", "@types/bun": "1.3.6", "buddy-bot": "0.9.12", "bun-git-hooks": "0.3.1", "bun-plugin-dtsx": "0.9.9", "bunfig": "0.15.6", "pickier": "0.1.10", "ts-error-handling": "0.1.0", "typescript": "5.9.3" }, "bin": { "better-dx": "dist/bin/cli.js", "dx": "dist/bin/cli.js" } }, "sha512-d4GOtZKhx2KrL31MX1eEAZTzrjvX6Tv4zfWlppBXi0SXB8PS/iIRDAox/l8daZZ5KehnXKJyBmrXBkTxOSMDRA=="],
 
-    "buddy-bot": ["buddy-bot@0.9.12", "", { "dependencies": { "bunfig": "0.15.6", "prompts": "2.4.2", "ts-pkgx": "0.4.154" }, "bin": { "buddy-bot": "dist/bin/cli.js" } }, "sha512-1e+6HSwSFnoFWFHySbwDQJDgPiQ6hwhOoH+eOUDG4vwGBZxp1pkEPa4aBcbmAepb1v+qZrHYWmWZTC+px+V0oQ=="],
+    "buddy-bot": ["buddy-bot@0.9.14", "", { "dependencies": { "bunfig": "^0.15.6", "prompts": "^2.4.2", "ts-pkgx": "^0.4.134" }, "bin": { "buddy-bot": "./dist/bin/cli.js" } }, "sha512-ZMA2jiajEHrAehi7iOaeNe94aGii8JzgNej0+X6OIx7jumrHXq9zewMyL9p70kk3iIsgXhg7YqMoDB3rWcW7Aw=="],
 
     "bun-git-hooks": ["bun-git-hooks@0.3.1", "", { "bin": { "git-hooks": "dist/bin/cli.js", "bun-git-hooks": "dist/bin/cli.js" } }, "sha512-Xs/QUqIYgBmLHSVr5VBLVbM5lZbUoAXKX2WZyoQDb2LlzcxC3BpBvMkMTQH75UuOJZwaRBq8yEe4IR6NckqdgQ=="],
 
