@@ -459,35 +459,9 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
     const s3 = new S3Client(region)
     const cloudfront = new CloudFrontClient()
 
-    // Check if S3 bucket exists (orphaned from previous non-CloudFormation deployment)
-    let bucketCleanedUp = false
-    try {
-      const headResult = await s3.headBucket(bucket)
-      if (headResult.exists) {
-        // Bucket exists without a stack - try to clean it up with timeout
-        console.log(`Found orphaned S3 bucket ${bucket}, cleaning up...`)
-        try {
-          // Timeout for bucket cleanup (30 seconds)
-          const cleanupPromise = s3.emptyBucket(bucket).then(() => s3.deleteBucket(bucket))
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Bucket cleanup timeout')), 30000),
-          )
-          await Promise.race([cleanupPromise, timeoutPromise])
-          console.log(`Deleted orphaned S3 bucket ${bucket}`)
-          bucketCleanedUp = true
-        }
-        catch (cleanupErr: any) {
-          console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
-          // If we can't clean up the bucket, use a unique suffix
-          const suffix = Date.now().toString(36)
-          finalBucket = `${bucket}-${suffix}`
-          console.log(`Using alternative bucket name: ${finalBucket}`)
-        }
-      }
-    }
-    catch {
-      // Bucket doesn't exist, good
-    }
+    // Check for existing CloudFront distribution FIRST before cleaning up any "orphaned" buckets
+    // This prevents deleting buckets that are actively used by a CloudFront distribution
+    let hasExistingDistribution = false
 
     // Check for existing CloudFront distribution that WE created for this domain
     // Only reuse distributions that have our domain as an alias - NEVER use other projects' resources
@@ -517,6 +491,7 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
 
           // Only use distribution if it has OUR domain as an alias
           if (aliases.includes(domain)) {
+            hasExistingDistribution = true
             console.log(`Found existing CloudFront distribution ${dist.Id} for ${domain}`)
 
             // Get the origin bucket from the distribution
@@ -629,6 +604,33 @@ export async function deployStaticSite(config: StaticSiteConfig): Promise<Deploy
         catch {
           // Error listing/deleting records
         }
+      }
+    }
+
+    // Only clean up orphaned S3 buckets when no CloudFront distribution references them
+    if (!hasExistingDistribution) {
+      try {
+        const headResult = await s3.headBucket(bucket)
+        if (headResult.exists) {
+          console.log(`Found orphaned S3 bucket ${bucket}, cleaning up...`)
+          try {
+            const cleanupPromise = s3.emptyBucket(bucket).then(() => s3.deleteBucket(bucket))
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Bucket cleanup timeout')), 30000),
+            )
+            await Promise.race([cleanupPromise, timeoutPromise])
+            console.log(`Deleted orphaned S3 bucket ${bucket}`)
+          }
+          catch (cleanupErr: any) {
+            console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
+            const suffix = Date.now().toString(36)
+            finalBucket = `${bucket}-${suffix}`
+            console.log(`Using alternative bucket name: ${finalBucket}`)
+          }
+        }
+      }
+      catch {
+        // Bucket doesn't exist, good
       }
     }
   }

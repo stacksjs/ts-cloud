@@ -423,32 +423,9 @@ export async function deployStaticSiteWithExternalDns(
     const s3 = new S3Client(region)
     const cloudfront = new CloudFrontClient()
 
-    // Check if S3 bucket exists (orphaned from previous deployment)
-    try {
-      const headResult = await s3.headBucket(bucket)
-      if (headResult.exists) {
-        console.log(`Found orphaned S3 bucket ${bucket}, cleaning up...`)
-        try {
-          const cleanupPromise = s3.emptyBucket(bucket).then(() => s3.deleteBucket(bucket))
-          const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Bucket cleanup timeout')), 30000),
-          )
-          await Promise.race([cleanupPromise, timeoutPromise])
-          console.log(`Deleted orphaned S3 bucket ${bucket}`)
-        }
-        catch (cleanupErr: any) {
-          console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
-          const suffix = Date.now().toString(36)
-          finalBucket = `${bucket}-${suffix}`
-          console.log(`Using alternative bucket name: ${finalBucket}`)
-        }
-      }
-    }
-    catch {
-      // Bucket doesn't exist, good
-    }
-
-    // Check for existing CloudFront distributions with our domain
+    // Check for existing CloudFront distributions with our domain FIRST
+    // before deciding to clean up any "orphaned" buckets
+    let hasExistingDistribution = false
     if (domain) {
       try {
         console.log(`Checking for existing CloudFront distributions with alias ${domain}...`)
@@ -470,6 +447,7 @@ export async function deployStaticSiteWithExternalDns(
             }
           }
           if (aliases.includes(domain)) {
+            hasExistingDistribution = true
             console.log(`Found existing CloudFront distribution ${dist.Id} with alias ${domain}`)
             console.log(`Reusing existing infrastructure for updates...`)
 
@@ -522,6 +500,33 @@ export async function deployStaticSiteWithExternalDns(
       }
       catch {
         // No distributions or error listing them
+      }
+    }
+
+    // Only clean up orphaned S3 buckets when no CloudFront distribution references them
+    if (!hasExistingDistribution) {
+      try {
+        const headResult = await s3.headBucket(bucket)
+        if (headResult.exists) {
+          console.log(`Found orphaned S3 bucket ${bucket}, cleaning up...`)
+          try {
+            const cleanupPromise = s3.emptyBucket(bucket).then(() => s3.deleteBucket(bucket))
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Bucket cleanup timeout')), 30000),
+            )
+            await Promise.race([cleanupPromise, timeoutPromise])
+            console.log(`Deleted orphaned S3 bucket ${bucket}`)
+          }
+          catch (cleanupErr: any) {
+            console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
+            const suffix = Date.now().toString(36)
+            finalBucket = `${bucket}-${suffix}`
+            console.log(`Using alternative bucket name: ${finalBucket}`)
+          }
+        }
+      }
+      catch {
+        // Bucket doesn't exist, good
       }
     }
   }
