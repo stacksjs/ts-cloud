@@ -41,10 +41,10 @@ export interface CloudConfig {
    * Deployment hooks for custom logic
    */
   hooks?: {
-    beforeDeploy?: string | ((config: CloudConfig) => Promise<void>)
-    afterDeploy?: string | ((config: CloudConfig) => Promise<void>)
-    beforeBuild?: string | ((config: CloudConfig) => Promise<void>)
-    afterBuild?: string | ((config: CloudConfig) => Promise<void>)
+    beforeDeploy?: string | ((_config: CloudConfig) => Promise<void>)
+    afterDeploy?: string | ((_config: CloudConfig) => Promise<void>)
+    beforeBuild?: string | ((_config: CloudConfig) => Promise<void>)
+    afterBuild?: string | ((_config: CloudConfig) => Promise<void>)
   }
 
   /**
