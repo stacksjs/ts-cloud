@@ -9,6 +9,22 @@ import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 
+/**
+ * Convert binary data to a fetch-compatible body.
+ * Workaround for TypeScript 5.7+ generic ArrayBuffer types
+ * where Buffer/Uint8Array are not directly assignable to BodyInit.
+ */
+function toFetchBody(data: Uint8Array | Buffer): ArrayBuffer {
+  const { buffer, byteOffset, byteLength } = data
+  if (buffer instanceof ArrayBuffer) {
+    return buffer.slice(byteOffset, byteOffset + byteLength)
+  }
+  // SharedArrayBuffer fallback: copy into a new ArrayBuffer
+  const copy = new ArrayBuffer(byteLength)
+  new Uint8Array(copy).set(new Uint8Array(data))
+  return copy
+}
+
 export interface S3SyncOptions {
   source: string
   bucket: string
@@ -433,7 +449,7 @@ export class S3Client {
           ...requestHeaders,
           'Authorization': authorizationHeader,
         },
-        body: new Uint8Array(binaryBody.buffer, binaryBody.byteOffset, binaryBody.byteLength),
+        body: toFetchBody(binaryBody),
       })
 
       if (!response.ok) {
@@ -1891,7 +1907,7 @@ export class S3Client {
         ...requestHeaders,
         'Authorization': authHeader,
       },
-      body: new Uint8Array(body),
+      body: toFetchBody(body),
     })
 
     if (!response.ok) {

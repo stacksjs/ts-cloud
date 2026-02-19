@@ -195,6 +195,24 @@ export interface InfrastructureConfig {
    */
   compute?: ComputeConfig
 
+  /**
+   * Container configuration (ECS Fargate)
+   * Defines containerized services for serverless deployment mode
+   *
+   * @example
+   * containers: {
+   *   api: {
+   *     cpu: 512,
+   *     memory: 1024,
+   *     port: 3000,
+   *     healthCheck: '/health',
+   *     desiredCount: 2,
+   *     autoScaling: { min: 1, max: 10, targetCpuUtilization: 70 },
+   *   }
+   * }
+   */
+  containers?: Record<string, ContainerItemConfig>
+
   storage?: Record<string, StorageItemConfig & ResourceConditions>
   functions?: Record<string, FunctionConfig & ResourceConditions>
   /** @deprecated Use `compute` instead for EC2 configuration */
@@ -765,6 +783,20 @@ export interface InstanceConfig {
  *   ],
  * }
  */
+export interface ContainerItemConfig {
+  cpu?: number
+  memory?: number
+  port?: number
+  healthCheck?: string
+  desiredCount?: number
+  autoScaling?: {
+    min?: number
+    max?: number
+    targetCpuUtilization?: number
+    targetMemoryUtilization?: number
+  }
+}
+
 export interface ComputeConfig {
   /**
    * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
