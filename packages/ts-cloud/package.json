@@ -28,29 +28,30 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./src/index.ts"
+      "import": "./dist/index.js"
     },
     "./aws": {
-      "types": "./src/aws/index.ts",
-      "import": "./src/aws/index.ts"
+      "types": "./dist/aws/index.d.ts",
+      "import": "./dist/aws/index.js"
     },
     "./deploy": {
-      "types": "./src/deploy/index.ts",
-      "import": "./src/deploy/index.ts"
+      "types": "./dist/deploy/index.d.ts",
+      "import": "./dist/deploy/index.js"
     },
     "./dns": {
-      "types": "./src/dns/index.ts",
-      "import": "./src/dns/index.ts"
+      "types": "./dist/dns/index.d.ts",
+      "import": "./dist/dns/index.js"
     },
     "./push": {
-      "types": "./src/push/index.ts",
-      "import": "./src/push/index.ts"
+      "types": "./dist/push/index.d.ts",
+      "import": "./dist/push/index.js"
     },
     "./*": {
-      "import": "./src/*"
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*"
     }
   },
-  "module": "./src/index.ts",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
     "cloud": "./dist/bin/cli.js"
