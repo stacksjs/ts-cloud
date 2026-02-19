@@ -1,3 +1,46 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.7...v0.1.8)
+
+### 🧹 Chores
+
+- release v0.1.8 ([ff5996b](https://github.com/stacksjs/ts-cloud/commit/ff5996b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([f241058](https://github.com/stacksjs/ts-cloud/commit/f241058)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([65ce87c](https://github.com/stacksjs/ts-cloud/commit/65ce87c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([ab4097c](https://github.com/stacksjs/ts-cloud/commit/ab4097c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([1230c95](https://github.com/stacksjs/ts-cloud/commit/1230c95)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([6245192](https://github.com/stacksjs/ts-cloud/commit/6245192)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([4a9ba01](https://github.com/stacksjs/ts-cloud/commit/4a9ba01)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([b2ff8c1](https://github.com/stacksjs/ts-cloud/commit/b2ff8c1)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([cf0cfd4](https://github.com/stacksjs/ts-cloud/commit/cf0cfd4)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 📄 Miscellaneous
+
+- Revert "chore: wip" ([ba20e29](https://github.com/stacksjs/ts-cloud/commit/ba20e29)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.7...HEAD)
+
+### 🧹 Chores
+
+- wip ([f241058](https://github.com/stacksjs/ts-cloud/commit/f241058)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([65ce87c](https://github.com/stacksjs/ts-cloud/commit/65ce87c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([ab4097c](https://github.com/stacksjs/ts-cloud/commit/ab4097c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([1230c95](https://github.com/stacksjs/ts-cloud/commit/1230c95)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([6245192](https://github.com/stacksjs/ts-cloud/commit/6245192)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([4a9ba01](https://github.com/stacksjs/ts-cloud/commit/4a9ba01)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([b2ff8c1](https://github.com/stacksjs/ts-cloud/commit/b2ff8c1)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([cf0cfd4](https://github.com/stacksjs/ts-cloud/commit/cf0cfd4)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 📄 Miscellaneous
+
+- Revert "chore: wip" ([ba20e29](https://github.com/stacksjs/ts-cloud/commit/ba20e29)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.6...v0.1.7)
 
 ### 🧹 Chores
