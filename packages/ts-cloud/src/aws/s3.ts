@@ -433,7 +433,7 @@ export class S3Client {
           ...requestHeaders,
           'Authorization': authorizationHeader,
         },
-        body: binaryBody,
+        body: new Uint8Array(binaryBody.buffer, binaryBody.byteOffset, binaryBody.byteLength),
       })
 
       if (!response.ok) {
@@ -1828,7 +1828,7 @@ export class S3Client {
   /**
    * Upload a part in multipart upload
    */
-  async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Buffer): Promise<{ ETag: string }> {
+  async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Uint8Array | Buffer): Promise<{ ETag: string }> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
     const host = `${bucket}.s3.${this.region}.amazonaws.com`
     const url = `https://${host}/${key}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
@@ -1891,7 +1891,7 @@ export class S3Client {
         ...requestHeaders,
         'Authorization': authHeader,
       },
-      body,
+      body: new Uint8Array(body),
     })
 
     if (!response.ok) {
