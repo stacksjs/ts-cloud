@@ -57,7 +57,8 @@
   },
   "files": [
     "README.md",
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "bun --bun build.ts && bun run compile",
