@@ -1,6 +1,6 @@
-import type { ECRRepository, ECRLifecyclePolicy } from '@stacksjs/ts-cloud-aws-types'
+import type { ECRRepository, ECRLifecyclePolicy } from 'ts-cloud-aws-types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 
 export interface RegistryOptions {
   name: string

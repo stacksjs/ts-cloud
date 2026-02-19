@@ -1,8 +1,8 @@
 import type {
   StepFunctionsStateMachine,
   IAMRole,
-} from '@stacksjs/ts-cloud-aws-types'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+} from 'ts-cloud-aws-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 

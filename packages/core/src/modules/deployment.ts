@@ -2,8 +2,8 @@ import type {
   CodeDeployApplication,
   CodeDeployDeploymentGroup,
   CodeDeployDeploymentConfig,
-} from '@stacksjs/ts-cloud-aws-types'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+} from 'ts-cloud-aws-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, renameSync, copyFileSync } from 'node:fs'
 import { join, basename, dirname, extname } from 'node:path'

@@ -1,10 +1,10 @@
-import type { BackupPlan, BackupSelection, BackupVault, S3Bucket, S3BucketPolicy } from '@stacksjs/ts-cloud-aws-types'
-import type { IAMRole } from '@stacksjs/ts-cloud-aws-types'
+import type { BackupPlan, BackupSelection, BackupVault, S3Bucket, S3BucketPolicy } from 'ts-cloud-aws-types'
+import type { IAMRole } from 'ts-cloud-aws-types'
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 
 export interface BucketOptions {
   name?: string

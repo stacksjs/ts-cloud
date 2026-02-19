@@ -1,5 +1,5 @@
 {
-  "name": "@stacksjs/ts-cloud-types",
+  "name": "ts-cloud-types",
   "version": "0.1.9",
   "type": "module",
   "description": "Shared TypeScript types for ts-cloud",
@@ -23,8 +23,7 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "bun --bun build.ts",

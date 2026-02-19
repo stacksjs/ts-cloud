@@ -1,4 +1,4 @@
-import type { CloudFormationResource, CloudFormationTemplate } from '@stacksjs/ts-cloud-aws-types'
+import type { CloudFormationResource, CloudFormationTemplate } from 'ts-cloud-aws-types'
 
 export class TemplateBuilder {
   private template: CloudFormationTemplate

@@ -40,7 +40,7 @@ export function registerInitCommands(app: CLI): void {
       const spinner = new cli.Spinner('Creating configuration file...')
       spinner.start()
 
-      const configContent = `import { defineConfig } from '@stacksjs/ts-cloud-types'
+      const configContent = `import { defineConfig } from 'ts-cloud-types'
 
 export default defineConfig({
   project: {

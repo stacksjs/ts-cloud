@@ -1,7 +1,7 @@
-import type { Route53HostedZone, Route53RecordSet } from '@stacksjs/ts-cloud-aws-types'
+import type { Route53HostedZone, Route53RecordSet } from 'ts-cloud-aws-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 
 export interface HostedZoneOptions {
   domain: string

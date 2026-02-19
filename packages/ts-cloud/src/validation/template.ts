@@ -3,7 +3,7 @@
  * Validates templates before deployment
  */
 
-import type { CloudFormationTemplate } from '@stacksjs/ts-cloud-aws-types'
+import type { CloudFormationTemplate } from 'ts-cloud-aws-types'
 
 export interface ValidationError {
   path: string

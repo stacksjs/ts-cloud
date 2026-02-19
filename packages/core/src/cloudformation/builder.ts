@@ -1,4 +1,4 @@
-import type { CloudConfig } from '@stacksjs/ts-cloud-types'
+import type { CloudConfig } from 'ts-cloud-types'
 import type { CloudFormationTemplate, CloudFormationResource } from './types'
 import { Fn } from './types'
 import { addNetworkResources } from './builders/network'

@@ -1,2 +1,2 @@
-// Re-export types from @stacksjs/ts-cloud-types
-export * from '@stacksjs/ts-cloud-types'
+// Re-export types from ts-cloud-types
+export * from 'ts-cloud-types'

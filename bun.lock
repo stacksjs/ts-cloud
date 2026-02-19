@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "@stacksjs/ts-cloud",
+      "name": "ts-cloud",
       "dependencies": {
         "bun-plugin-dtsx": "^0.21.17",
         "jszip": "^3.10.1",
@@ -12,33 +12,33 @@
       },
     },
     "packages/aws-types": {
-      "name": "@stacksjs/ts-cloud-aws-types",
+      "name": "ts-cloud-aws-types",
       "version": "0.1.7",
       "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
     "packages/core": {
-      "name": "@stacksjs/ts-cloud-core",
+      "name": "ts-cloud-core",
       "version": "0.1.7",
       "dependencies": {
-        "@stacksjs/ts-cloud-aws-types": "workspace:*",
-        "@stacksjs/ts-cloud-types": "workspace:*",
+        "ts-cloud-aws-types": "workspace:*",
+        "ts-cloud-types": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
     "packages/ts-cloud": {
-      "name": "@stacksjs/ts-cloud",
+      "name": "ts-cloud",
       "version": "0.1.7",
       "bin": {
         "cloud": "./dist/bin/cli.js",
       },
       "dependencies": {
-        "@stacksjs/ts-cloud-aws-types": "workspace:*",
-        "@stacksjs/ts-cloud-core": "workspace:*",
-        "@stacksjs/ts-cloud-types": "workspace:*",
+        "ts-cloud-aws-types": "workspace:*",
+        "ts-cloud-core": "workspace:*",
+        "ts-cloud-types": "workspace:*",
         "fast-xml-parser": "^5.3.5",
       },
       "devDependencies": {
@@ -47,7 +47,7 @@
       },
     },
     "packages/types": {
-      "name": "@stacksjs/ts-cloud-types",
+      "name": "ts-cloud-types",
       "version": "0.1.7",
       "devDependencies": {
         "typescript": "^5.9.3",
@@ -57,7 +57,7 @@
   "packages": {
     "@stacksjs/bumpx": ["@stacksjs/bumpx@0.2.4", "", { "dependencies": { "@stacksjs/clapp": "^0.2.0", "@stacksjs/logsmith": "^0.2.1", "bunfig": "^0.15.6" }, "bin": { "bumpx": "dist/bin/cli.js" } }, "sha512-bt14GhW4QJKqmAgfTyjW0pDblDu+y6+DSX8xva1HnLk2GtLyQe0YXUs51dUvZBFgYVHcHEUijNoj2pivuwIcjQ=="],
 
-    "@stacksjs/bunpress": ["@stacksjs/bunpress@0.1.1", "", { "dependencies": { "@stacksjs/ts-md": "^0.1.1" }, "optionalDependencies": { "@stacksjs/ts-cloud": "^0.1.7", "@stacksjs/ts-cloud-aws-types": "^0.1.7", "@stacksjs/ts-cloud-core": "^0.1.7", "@stacksjs/ts-cloud-types": "^0.1.7" }, "bin": { "bunpress": "./dist/bin/cli.js" } }, "sha512-hof1B0LBTWAWSWlp7+ya5JFlN9967wBNyFFmzp19tSWPFStOJRwbZ881uCrCs/iWRaj968sOrn+ELzrV01LZEg=="],
+    "@stacksjs/bunpress": ["@stacksjs/bunpress@0.1.1", "", { "dependencies": { "@stacksjs/ts-md": "^0.1.1" }, "optionalDependencies": { "ts-cloud": "^0.1.7", "ts-cloud-aws-types": "^0.1.7", "ts-cloud-core": "^0.1.7", "ts-cloud-types": "^0.1.7" }, "bin": { "bunpress": "./dist/bin/cli.js" } }, "sha512-hof1B0LBTWAWSWlp7+ya5JFlN9967wBNyFFmzp19tSWPFStOJRwbZ881uCrCs/iWRaj968sOrn+ELzrV01LZEg=="],
 
     "@stacksjs/clapp": ["@stacksjs/clapp@0.2.0", "", { "dependencies": { "mri": "^1.2.0", "wrap-ansi": "^9.0.0" }, "bin": { "clapp": "dist/bin/cli.js", "@stacksjs/clapp": "dist/bin/cli.js" } }, "sha512-dSqnbeZjXnQLLvVxC5NU7D9Vpjxc6cC9Bo2ZwaqjgruK7pbVoFCI0goc9Mtf/lfSTbTx6Uvv/mbY7+cOW/j3Og=="],
 
@@ -69,13 +69,13 @@
 
     "@stacksjs/logsmith": ["@stacksjs/logsmith@0.2.1", "", { "dependencies": { "@stacksjs/clapp": "^0.2.0", "bunfig": "^0.15.6", "pickier": "^0.1.7" }, "bin": { "logsmith": "dist/bin/cli.js", "@stacksjs/logsmith": "dist/bin/cli.js" } }, "sha512-JbAnn0dWZDEBjks7qRd/L0kWbsD3Qi0uSFmCPkEU9fH0+eP6Fdl7mtnok2oVDUaNitWu97OJZHlFe/MV2ilgnA=="],
 
-    "@stacksjs/ts-cloud": ["@stacksjs/ts-cloud@workspace:packages/ts-cloud"],
+    "ts-cloud": ["ts-cloud@workspace:packages/ts-cloud"],
 
-    "@stacksjs/ts-cloud-aws-types": ["@stacksjs/ts-cloud-aws-types@workspace:packages/aws-types"],
+    "ts-cloud-aws-types": ["ts-cloud-aws-types@workspace:packages/aws-types"],
 
-    "@stacksjs/ts-cloud-core": ["@stacksjs/ts-cloud-core@workspace:packages/core"],
+    "ts-cloud-core": ["ts-cloud-core@workspace:packages/core"],
 
-    "@stacksjs/ts-cloud-types": ["@stacksjs/ts-cloud-types@workspace:packages/types"],
+    "ts-cloud-types": ["ts-cloud-types@workspace:packages/types"],
 
     "@stacksjs/ts-md": ["@stacksjs/ts-md@0.1.1", "", { "bin": { "md": "./bin/cli.ts" } }, "sha512-kvsSg7S3vHq65fnHIRggTLudN4n1sjkos86xLB62V6PVRa8iosYAmFKVDTGaJk+0MdsIoRwQbJ2vLWVcNQsgGw=="],
 

@@ -1,5 +1,5 @@
 {
-  "name": "@stacksjs/ts-cloud-aws-types",
+  "name": "ts-cloud-aws-types",
   "version": "0.1.9",
   "type": "module",
   "description": "AWS CloudFormation resource type definitions (without AWS SDK)",
@@ -23,8 +23,7 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "bun --bun build.ts",

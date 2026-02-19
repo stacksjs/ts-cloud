@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { Auth } from '../src/modules/auth'
 import { TemplateBuilder } from '../src/template-builder'
-import type { EnvironmentType } from '@stacksjs/ts-cloud-types'
+import type { EnvironmentType } from 'ts-cloud-types'
 
 const slug = 'test-app'
 const environment: EnvironmentType = 'development'

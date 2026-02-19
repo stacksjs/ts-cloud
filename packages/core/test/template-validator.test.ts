@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import type { CloudFormationTemplate } from '@stacksjs/ts-cloud-aws-types'
+import type { CloudFormationTemplate } from 'ts-cloud-aws-types'
 import {
   validateTemplate,
   validateTemplateSize,

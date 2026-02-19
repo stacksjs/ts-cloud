@@ -1,6 +1,6 @@
 # AWS Signature V4 Benchmarks
 
-Comparing @stacksjs/ts-cloud's signing implementation against aws4fetch and AWS SDK v3.
+Comparing ts-cloud's signing implementation against aws4fetch and AWS SDK v3.
 
 ## Run Benchmarks
 
@@ -14,7 +14,7 @@ Tested on Apple M3 Pro, Bun 1.3.7
 
 ### Performance (lower is better)
 
-| Benchmark | @stacksjs/ts-cloud | AWS SDK v3 | aws4fetch | @stacksjs/ts-cloud advantage |
+| Benchmark | ts-cloud | AWS SDK v3 | aws4fetch | ts-cloud advantage |
 |-----------|----------|------------|-----------|-------------------|
 | GET request | **3.05 µs** | 13.34 µs | 72.17 µs | **4x** vs SDK, **24x** vs aws4fetch |
 | POST with body | **3.29 µs** | 14.01 µs | 73.01 µs | **4x** vs SDK, **22x** vs aws4fetch |
@@ -29,7 +29,7 @@ Tested on Apple M3 Pro, Bun 1.3.7
 
 ### New Features Performance
 
-| Feature | @stacksjs/ts-cloud | AWS SDK v3 | aws4fetch | @stacksjs/ts-cloud advantage |
+| Feature | ts-cloud | AWS SDK v3 | aws4fetch | ts-cloud advantage |
 |---------|----------|------------|-----------|-------------------|
 | Presigned URLs | **25.11 µs** | 63.18 µs | 88.73 µs | **2.5x** vs SDK, **3.5x** vs aws4fetch |
 | Service auto-detection | **1.74 µs** | 44.47 µs* | 69.48 µs | **26x** vs SDK, **40x** vs aws4fetch |
@@ -43,7 +43,7 @@ Tested on Apple M3 Pro, Bun 1.3.7
 ┌─────────────────────────────┬──────────────┬─────────────────┐
 │ Package                     │ Source Size  │ node_modules    │
 ├─────────────────────────────┼──────────────┼─────────────────┤
-│ @stacksjs/ts-cloud (signature.ts)     │ 17.8 KB      │ 0 KB (built-in) │
+│ ts-cloud (signature.ts)     │ 17.8 KB      │ 0 KB (built-in) │
 │ aws4fetch                   │ 11.0 KB      │ 80 KB           │
 │ @smithy/signature-v4        │ 39.6 KB      │ 6.5 MB          │
 │ @aws-sdk/client-s3          │ N/A          │ 17 MB           │
@@ -51,12 +51,12 @@ Tested on Apple M3 Pro, Bun 1.3.7
 └─────────────────────────────┴──────────────┴─────────────────┘
 ```
 
-**@stacksjs/ts-cloud is 365-1500x smaller than AWS SDK v3 in node_modules**
+**ts-cloud is 365-1500x smaller than AWS SDK v3 in node_modules**
 
 ### Full Dependency Tree
 
 ```
-@stacksjs/ts-cloud signing:
+ts-cloud signing:
   └── signature.ts (17.8 KB)
   └── node:crypto (built-in, 0 KB added)
   Total: 17.8 KB
@@ -83,7 +83,7 @@ AWS SDK v3 with presigned URLs:
   Total: 27+ MB
 ```
 
-## Why @stacksjs/ts-cloud is Faster
+## Why ts-cloud is Faster
 
 1. **Synchronous crypto**: Uses Node.js `createHmac`/`createHash` which are highly optimized native bindings in Bun, vs:
    - aws4fetch: async `crypto.subtle` (browser-compatible but slower)
@@ -93,7 +93,7 @@ AWS SDK v3 with presigned URLs:
 
 3. **Zero dependencies**: No overhead from browser-compatibility abstractions, middleware layers, or plugin systems
 
-4. **No client instantiation**: @stacksjs/ts-cloud signs requests directly without creating client objects
+4. **No client instantiation**: ts-cloud signs requests directly without creating client objects
 
 5. **Minimal allocations**: Direct string manipulation without intermediate Request/Response objects
 
@@ -101,7 +101,7 @@ AWS SDK v3 with presigned URLs:
 
 ## Feature Comparison
 
-| Feature | @stacksjs/ts-cloud | aws4fetch | AWS SDK v3 |
+| Feature | ts-cloud | aws4fetch | AWS SDK v3 |
 |---------|----------|-----------|------------|
 | Sync signing | ✅ | ❌ | ❌ |
 | Async signing | ✅ | ✅ | ✅ |
@@ -125,17 +125,17 @@ AWS SDK v3 with presigned URLs:
 
 ### Browser Compatibility
 
-@stacksjs/ts-cloud provides both sync and async APIs:
+ts-cloud provides both sync and async APIs:
 
 - **Sync functions** (`signRequest`, `createPresignedUrl`): Fastest performance using Node.js crypto. Use in Node.js/Bun.
 - **Async functions** (`signRequestAsync`, `createPresignedUrlAsync`): Browser compatible using Web Crypto API (`crypto.subtle`).
 
-| Benchmark | @stacksjs/ts-cloud sync | @stacksjs/ts-cloud async | aws4fetch | @stacksjs/ts-cloud async advantage |
+| Benchmark | ts-cloud sync | ts-cloud async | aws4fetch | ts-cloud async advantage |
 |-----------|---------------|----------------|-----------|-------------------------|
 | GET request signing | **4.36 µs** | 35.57 µs | 72.65 µs | **2x** vs aws4fetch |
 | Presigned URL | **25.65 µs** | 58.01 µs | 89.82 µs | **1.5x** vs aws4fetch |
 
-**Key insight**: @stacksjs/ts-cloud's async (browser-compatible) API is still ~2x faster than aws4fetch!
+**Key insight**: ts-cloud's async (browser-compatible) API is still ~2x faster than aws4fetch!
 
 ```typescript
 // Node.js/Bun - use sync for best performance (8x faster)
@@ -148,6 +148,7 @@ const signed = await signRequestAsync({ ... })
 ```
 
 **Supported platforms:**
+
 - Node.js (sync + async)
 - Bun (sync + async)
 - Browsers (async via Web Crypto API)
@@ -312,7 +313,8 @@ const signed = signRequest({
 
 ## When to Use Each
 
-**Use @stacksjs/ts-cloud when:**
+**Use ts-cloud when:**
+
 - You need maximum performance (sync API in Node.js/Bun)
 - You need browser support (async API with Web Crypto)
 - You need cross-platform compatibility (works everywhere)
@@ -322,9 +324,11 @@ const signed = signRequest({
 - You want both sync and async options
 
 **Use aws4fetch when:**
+
 - You're already using it in an existing project
 
 **Use AWS SDK v3 when:**
+
 - You need the full SDK ecosystem
 - You want official AWS support
 - Middleware and plugins are important

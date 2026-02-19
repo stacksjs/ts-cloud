@@ -1398,7 +1398,7 @@ export interface QueueItemConfig {
  * Use these to quickly configure queues with sensible defaults
  *
  * @example Basic usage
- * import { QueuePresets } from '@stacksjs/ts-cloud-types'
+ * import { QueuePresets } from 'ts-cloud-types'
  *
  * queues: {
  *   jobs: QueuePresets.backgroundJobs,
@@ -2305,7 +2305,7 @@ export interface RealtimeConfig {
  * Realtime configuration presets
  *
  * @example Serverless presets
- * import { RealtimePresets } from '@stacksjs/ts-cloud-types'
+ * import { RealtimePresets } from 'ts-cloud-types'
  * realtime: RealtimePresets.serverless.production
  *
  * @example Server presets (ts-broadcasting)
