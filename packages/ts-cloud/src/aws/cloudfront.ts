@@ -1031,7 +1031,7 @@ export class CloudFrontClient {
     ETag: string
   }> {
     const code = `function handler(event) {
-    var request = event.request;
+    const request = event.request;
     var uri = request.uri;
 
     // Check if the request is for a directory (ends with /)

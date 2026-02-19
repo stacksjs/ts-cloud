@@ -27,7 +27,7 @@ export class MmsSupport {
    * Lambda code for MMS sending
    */
   static MmsSenderCode = `
-const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 

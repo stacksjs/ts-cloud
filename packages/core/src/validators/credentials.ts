@@ -97,7 +97,7 @@ export async function validateCredentials(
  * Check IAM permissions
  */
 export async function checkIAMPermissions(
-  credentials: AWSCredentials,
+  _credentials: AWSCredentials,
   requiredActions: string[],
 ): Promise<{ allowed: string[], denied: string[] }> {
   // TODO: Implement using IAM SimulatePrincipalPolicy API

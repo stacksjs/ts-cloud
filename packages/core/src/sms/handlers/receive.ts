@@ -8,7 +8,7 @@
  */
 
 export const handler = `
-const { DynamoDBClient, PutItemCommand, GetItemCommand, DeleteItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, PutItemCommand, DeleteItemCommand } = require('@aws-sdk/client-dynamodb');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 
 const dynamodb = new DynamoDBClient({});

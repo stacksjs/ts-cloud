@@ -40,7 +40,7 @@ exports.handler = async (event) => {
   console.log('Template render request:', JSON.stringify(event, null, 2));
 
   try {
-    const { templateId, data, locale, timezone } = JSON.parse(event.body || '{}');
+    const { templateId, data, locale: _locale, timezone: _timezone } = JSON.parse(event.body || '{}');
 
     if (!templateId) {
       return {
@@ -91,19 +91,19 @@ function renderTemplate(template, data) {
   });
 
   // Handle {{#if condition}}...{{/if}} syntax
-  result = result.replace(/\\{\\{#if\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/if\\}\\}/g, (match, key, content) => {
+  result = result.replace(/\\{\\{#if\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/if\\}\\}/g, (_match, key, content) => {
     const value = getNestedValue(data, key);
     return value ? content : '';
   });
 
   // Handle {{#unless condition}}...{{/unless}} syntax
-  result = result.replace(/\\{\\{#unless\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/unless\\}\\}/g, (match, key, content) => {
+  result = result.replace(/\\{\\{#unless\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/unless\\}\\}/g, (_match, key, content) => {
     const value = getNestedValue(data, key);
     return !value ? content : '';
   });
 
   // Handle {{#each array}}...{{/each}} syntax
-  result = result.replace(/\\{\\{#each\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/each\\}\\}/g, (match, key, content) => {
+  result = result.replace(/\\{\\{#each\\s+([\\w.]+)\\}\\}([\\s\\S]*?)\\{\\{\\/each\\}\\}/g, (_match, key, content) => {
     const array = getNestedValue(data, key);
     if (!Array.isArray(array)) return '';
     return array.map((item, index) => {
@@ -393,19 +393,19 @@ The {{appName}} Team`,
     })
 
     // Handle {{#if condition}}...{{/if}} syntax
-    result = result.replace(/\{\{#if\s+([\w.]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (match, key, content) => {
+    result = result.replace(/\{\{#if\s+([\w.]+)\}\}([\s\S]*?)\{\{\/if\}\}/g, (_match, key, content) => {
       const value = EmailTemplates.getNestedValue(data, key)
       return value ? content : ''
     })
 
     // Handle {{#unless condition}}...{{/unless}} syntax
-    result = result.replace(/\{\{#unless\s+([\w.]+)\}\}([\s\S]*?)\{\{\/unless\}\}/g, (match, key, content) => {
+    result = result.replace(/\{\{#unless\s+([\w.]+)\}\}([\s\S]*?)\{\{\/unless\}\}/g, (_match, key, content) => {
       const value = EmailTemplates.getNestedValue(data, key)
       return !value ? content : ''
     })
 
     // Handle {{#each array}}...{{/each}} syntax
-    result = result.replace(/\{\{#each\s+([\w.]+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (match, key, content) => {
+    result = result.replace(/\{\{#each\s+([\w.]+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, key, content) => {
       const array = EmailTemplates.getNestedValue(data, key)
       if (!Array.isArray(array)) return ''
       return array.map((item, index) => {

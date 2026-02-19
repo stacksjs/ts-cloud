@@ -161,7 +161,7 @@ async function getCampaign(id) {
   };
 }
 
-async function listCampaigns(params) {
+async function listCampaigns(_params) {
   const result = await dynamodb.send(new ScanCommand({
     TableName: CAMPAIGNS_TABLE,
   }));
@@ -260,7 +260,7 @@ function unmarshallCampaign(item) {
    * Lambda code for campaign execution
    */
   static CampaignExecutorCode = `
-const { DynamoDBClient, GetItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 const { PinpointClient, SendMessagesCommand } = require('@aws-sdk/client-pinpoint');
 
 const dynamodb = new DynamoDBClient({});

@@ -37,7 +37,7 @@ export class EmailThreading {
    * Lambda code for threading emails
    */
   static ThreadingLambdaCode = `
-const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const crypto = require('crypto');
 
 const s3 = new S3Client({});
@@ -87,7 +87,7 @@ exports.handler = async (event) => {
   return { statusCode: 200 };
 };
 
-function generateThreadId(subject, from, to) {
+function generateThreadId(subject, from, _to) {
   // Normalize subject (remove Re:, Fwd:, etc.)
   const normalizedSubject = subject
     .replace(/^(Re|Fwd|Fw|RE|FWD|FW):\\s*/gi, '')

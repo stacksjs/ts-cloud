@@ -480,7 +480,7 @@ curl -s -X DELETE "$API_URL/v1/domains/$ROOT_DOMAIN/records/TXT/$RECORD_NAME" \\
 /**
  * Generate certificate renewal setup
  */
-function generateRenewalSetup(primaryDomain: string): string {
+function generateRenewalSetup(_primaryDomain: string): string {
   return `
 # ==========================================
 # Certificate Auto-Renewal Setup
@@ -558,7 +558,7 @@ const hasCerts = existsSync(\`\${CERT_PATH}/fullchain.pem\`) && existsSync(\`\${
 
 if (hasCerts) {
   // Start HTTPS server
-  const httpsServer = Bun.serve({
+  const _httpsServer = Bun.serve({
     port: HTTPS_PORT,
     tls: {
       cert: Bun.file(\`\${CERT_PATH}/fullchain.pem\`),
@@ -735,7 +735,7 @@ export async function cleanupDns01Challenge(options: Dns01ChallengeConfig): Prom
 export function needsRenewal(certPath: string): boolean {
   try {
     const { execSync } = require('node:child_process')
-    const result = execSync(
+    const _result = execSync(
       `openssl x509 -checkend 2592000 -noout -in ${certPath}/cert.pem`,
       { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] },
     )

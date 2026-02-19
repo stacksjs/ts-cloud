@@ -511,7 +511,7 @@ export class ABTestManager {
   generateLambdaEdgeFunction(test: ABTest): string {
     return `'use strict';
 
-exports.handler = (event, context, callback) => {
+exports.handler = (event, _context, _callback) => {
   const request = event.Records[0].cf.request;
   const headers = request.headers;
 
@@ -531,7 +531,7 @@ exports.handler = (event, context, callback) => {
   // Assign variant if not already assigned
   if (!variant) {
     const random = Math.random() * 100;
-    let cumulative = 0;
+    const _cumulative = 0;
 
     ${test.variants
       .map((v, i) => {
@@ -543,7 +543,7 @@ exports.handler = (event, context, callback) => {
   }
 
   // Set variant cookie
-  const response = {
+  const _response = {
     status: '200',
     statusDescription: 'OK',
     headers: {

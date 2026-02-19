@@ -57,7 +57,7 @@ export class EmailAnalyticsModule {
    * Lambda code for tracking pixel (open tracking)
    */
   static TrackingPixelLambdaCode = `
-const { DynamoDBClient, UpdateItemCommand, GetItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
 const dynamodb = new DynamoDBClient({});
 const ANALYTICS_TABLE = process.env.ANALYTICS_TABLE;
@@ -403,7 +403,7 @@ exports.handler = async (event) => {
     // Replace links with tracking links
     trackedHtml = trackedHtml.replace(
       /href="(https?:\/\/[^"]+)"/g,
-      (match, url) => {
+      (_match, url) => {
         const encodedUrl = encodeURIComponent(url)
         return `href="https://${trackingDomain}/track/click/${messageId}?url=${encodedUrl}"`
       }

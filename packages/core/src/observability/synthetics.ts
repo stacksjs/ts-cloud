@@ -211,7 +211,7 @@ const log = require('SyntheticsLogger');
 
 const apiCheck = async function () {
   const page = await synthetics.getPage();
-  let response;
+  let _response;
 
   ${endpointChecks}
 

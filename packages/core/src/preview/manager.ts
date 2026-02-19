@@ -82,7 +82,7 @@ export class PreviewEnvironmentManager {
 
     try {
       // Create modified config for preview environment
-      const previewConfig = this.createPreviewConfig(baseConfig, name)
+      const _previewConfig = this.createPreviewConfig(baseConfig, name)
 
       // Deploy preview environment (implementation would use CloudFormation)
       // This is a placeholder - actual implementation would:

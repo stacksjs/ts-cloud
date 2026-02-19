@@ -146,7 +146,7 @@ const MIN_PART_SIZE = 5 * 1024 * 1024
 // Default part size (5MB)
 const DEFAULT_PART_SIZE = 5 * 1024 * 1024
 // Maximum parts in a multipart upload
-const MAX_PARTS = 10000
+const _MAX_PARTS = 10000
 // Threshold for using multipart upload (5MB)
 const MULTIPART_THRESHOLD = 5 * 1024 * 1024
 

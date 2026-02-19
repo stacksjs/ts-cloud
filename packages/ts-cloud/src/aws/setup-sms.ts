@@ -246,14 +246,14 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
 /**
  * Check SMS account status (sandbox, spending limits)
  */
-async function checkSmsAccountStatus(sns: SNSClient): Promise<{
+async function checkSmsAccountStatus(_sns: SNSClient): Promise<{
   inSandbox: boolean
   spendingLimit: number
   usedThisMonth: number
 }> {
   let inSandbox = true
   let spendingLimit = 1
-  let usedThisMonth = 0
+  const usedThisMonth = 0
 
   // Check SNS sandbox status
   try {
@@ -379,7 +379,7 @@ async function setupTwoWayTopic(
   awsClient: AWSClient,
   region: string,
   topicName: string,
-  accountId?: string,
+  _accountId?: string,
 ): Promise<string> {
   // Check if topic exists
   const topics = await sns.listTopics()
@@ -465,7 +465,7 @@ async function setupDeliveryReceiptsTopic(
 /**
  * Get complete SMS infrastructure status
  */
-export async function getSmsInfrastructureStatus(config: {
+export async function getSmsInfrastructureStatus(_config: {
   region?: string
   accountName?: string
 }): Promise<{

@@ -38,7 +38,7 @@ export class Phone {
    * Create Amazon Connect instance CloudFormation resource
    */
   static createConnectInstance(config: PhoneConfig): Record<string, any> {
-    const { slug, environment, instanceAlias, inboundCallsEnabled = true, outboundCallsEnabled = true } = config
+    const { slug, environment: _environment, instanceAlias, inboundCallsEnabled = true, outboundCallsEnabled = true } = config
 
     return {
       [`${slug}ConnectInstance`]: {

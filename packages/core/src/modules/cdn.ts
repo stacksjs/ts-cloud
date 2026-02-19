@@ -492,7 +492,7 @@ exports.handler = async (event) => {
     }
 
     // Build cookie forwarding config
-    let cookieConfig: any = { Forward: forwardCookies }
+    const cookieConfig: any = { Forward: forwardCookies }
     if (forwardCookies === 'whitelist' && whitelistedCookies) {
       cookieConfig.WhitelistedNames = whitelistedCookies
     }

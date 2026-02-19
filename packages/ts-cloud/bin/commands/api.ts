@@ -15,7 +15,7 @@ export function registerApiCommands(app: CLI): void {
 
         // Use Lambda client which has API Gateway methods
         const { LambdaClient } = await import('../../src/aws/lambda')
-        const lambda = new LambdaClient(region)
+        const _lambda = new LambdaClient(region)
 
         const spinner = new cli.Spinner('Fetching APIs...')
         spinner.start()

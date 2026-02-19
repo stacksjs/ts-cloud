@@ -80,7 +80,7 @@ export function registerLogsCommands(app: CLI): void {
     .action(async (options?: { env?: string }) => {
       cli.header('Opening CloudWatch Dashboard')
 
-      const environment = options?.env || 'production'
+      const _environment = options?.env || 'production'
 
       const spinner = new cli.Spinner('Generating dashboard URL...')
       spinner.start()

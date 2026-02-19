@@ -1,6 +1,5 @@
 import type { PickierOptions } from 'pickier'
 
-const config: PickierOptions = {
-}
+const config: PickierOptions = {}
 
 export default config

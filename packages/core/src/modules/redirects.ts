@@ -164,11 +164,11 @@ export class Redirects {
     }).join(',\n')
 
     return `function handler(event) {
-  var request = event.request;
-  var uri = request.uri;
-  var querystring = request.querystring;
+  const request = event.request;
+  const uri = request.uri;
+  const querystring = request.querystring;
 
-  var redirects = {
+  const redirects = {
 ${redirectMap}
   };
 
@@ -192,8 +192,8 @@ ${redirectMap}
 
     // Preserve query string if configured
     if (redirect.preserveQs && Object.keys(querystring).length > 0) {
-      var qs = Object.keys(querystring).map(function(key) {
-        var val = querystring[key];
+      const qs = Object.keys(querystring).map(function(key) {
+        const val = querystring[key];
         if (val.value) {
           return key + '=' + val.value;
         }

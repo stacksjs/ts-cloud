@@ -58,7 +58,7 @@ export class CallAnalytics {
    * Lambda code for aggregating call metrics
    */
   static MetricsAggregatorCode = `
-const { DynamoDBClient, QueryCommand, PutItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, PutItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 
 const dynamodb = new DynamoDBClient({});
 const CALL_LOG_TABLE = process.env.CALL_LOG_TABLE;

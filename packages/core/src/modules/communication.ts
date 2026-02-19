@@ -107,7 +107,7 @@ export class Communication {
    */
   static generate(config: CommunicationConfig): Record<string, any> {
     const resources: Record<string, any> = {}
-    const { slug, environment, region = 'us-east-1' } = config
+    const { slug, environment, region: _region = 'us-east-1' } = config
 
     // Generate IAM role for all Lambda functions
     const lambdaRole = Communication.createLambdaExecutionRole(slug, environment)
@@ -999,7 +999,7 @@ exports.handler = async (event) => {
   console.log('Outbound email:', JSON.stringify(event, null, 2));
   const { to, from, subject, html, text } = JSON.parse(event.body || '{}');
   // Build and send email
-  const boundary = '----=_Part_' + Date.now();
+  const _boundary = '----=_Part_' + Date.now();
   let raw = 'From: ' + from + '\\r\\n';
   raw += 'To: ' + to + '\\r\\n';
   raw += 'Subject: ' + subject + '\\r\\n';
@@ -1013,11 +1013,11 @@ exports.handler = async (event) => {
 };`
 
   static EmailSchedulerCode = `
-const { S3Client, ListObjectsV2Command, GetObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 const s3 = new S3Client({});
 const ses = new SESClient({});
-exports.handler = async (event) => {
+exports.handler = async (_event) => {
   console.log('Email scheduler running');
   // Check for scheduled emails and send them
   return { statusCode: 200 };
@@ -1025,7 +1025,7 @@ exports.handler = async (event) => {
 
   static EmailThreadingCode = `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
-const crypto = require('crypto');
+const _crypto = require('crypto');
 const s3 = new S3Client({});
 exports.handler = async (event) => {
   console.log('Email threading:', JSON.stringify(event, null, 2));
@@ -1040,14 +1040,14 @@ const dynamodb = new DynamoDBClient({});
 const sns = new SNSClient({});
 exports.handler = async (event) => {
   console.log('Incoming call:', JSON.stringify(event, null, 2));
-  const contactData = event.Details?.ContactData || {};
+  const _contactData = event.Details?.ContactData || {};
   // Log call and send notification
   return { statusCode: 200 };
 };`
 
   static VoicemailCode = `
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { TranscribeClient, StartTranscriptionJobCommand } = require('@aws-sdk/client-transcribe');
+const { S3Client } = require('@aws-sdk/client-s3');
+const { TranscribeClient } = require('@aws-sdk/client-transcribe');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const s3 = new S3Client({});
 const transcribe = new TranscribeClient({});
@@ -1060,7 +1060,7 @@ exports.handler = async (event) => {
 
   static SendSmsCode = `
 const { PinpointClient, SendMessagesCommand } = require('@aws-sdk/client-pinpoint');
-const { DynamoDBClient, PutItemCommand, GetItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 const pinpoint = new PinpointClient({});
 const dynamodb = new DynamoDBClient({});
 exports.handler = async (event) => {
@@ -1080,7 +1080,7 @@ exports.handler = async (event) => {
 };`
 
   static ReceiveSmsCode = `
-const { DynamoDBClient, PutItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const dynamodb = new DynamoDBClient({});
 const sns = new SNSClient({});

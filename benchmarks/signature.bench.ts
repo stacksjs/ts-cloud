@@ -536,6 +536,7 @@ summary(() => {
   })
 })
 
+// pickier-disable-next-line ts/no-top-level-await
 await run()
 
 // Print size comparison

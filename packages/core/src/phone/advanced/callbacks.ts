@@ -35,7 +35,7 @@ export class Callbacks {
    * Lambda code for callback request handling
    */
   static CallbackRequestCode = `
-const { DynamoDBClient, PutItemCommand, QueryCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, PutItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 const { ConnectClient, StartOutboundVoiceContactCommand } = require('@aws-sdk/client-connect');
 const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 

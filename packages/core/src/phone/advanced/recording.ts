@@ -43,8 +43,8 @@ export class CallRecording {
    * Lambda code for processing call recordings
    */
   static RecordingProcessorCode = `
-const { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand } = require('@aws-sdk/client-s3');
-const { TranscribeClient, StartTranscriptionJobCommand, GetTranscriptionJobCommand } = require('@aws-sdk/client-transcribe');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { TranscribeClient, StartTranscriptionJobCommand } = require('@aws-sdk/client-transcribe');
 const { DynamoDBClient, PutItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
 const s3 = new S3Client({});

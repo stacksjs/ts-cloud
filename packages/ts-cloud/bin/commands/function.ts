@@ -31,7 +31,7 @@ export function registerFunctionCommands(app: CLI): void {
   app
     .command('function:invoke <name>', 'Test function invocation')
     .option('--payload <json>', 'Event payload as JSON')
-    .action(async (name: string, options?: { payload?: string }) => {
+    .action(async (name: string, _options?: { payload?: string }) => {
       cli.header(`Invoking ${name}`)
 
       const spinner = new cli.Spinner('Invoking function...')

@@ -265,7 +265,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   // Environment Variable Leaks
   {
     name: 'Env Variable with Secret',
-    pattern: /(?:process\.env\.)([A-Z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH)[A-Z_]*)\s*(?:===?\s*['"]([^'"]+)['"])?/g,
+    pattern: /(?:process\.env\.)((?=[A-Z_]*(?:SECRET|KEY|TOKEN|PASSWORD|CREDENTIAL|AUTH))[A-Z_]+)\s*(?:===?\s*['"]([^'"]+)['"])?/g,
     severity: 'medium',
     description: 'Environment variable containing secret may be exposed',
   },

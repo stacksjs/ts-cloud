@@ -407,7 +407,7 @@ function parseStack(data: any): CloudFormationStack {
 /**
  * Parse stack list from XML response
  */
-function parseStackList(data: any): CloudFormationStack[] {
+function parseStackList(_data: any): CloudFormationStack[] {
   // Simplified parsing
   return []
 }
@@ -415,7 +415,7 @@ function parseStackList(data: any): CloudFormationStack[] {
 /**
  * Parse stack events from XML response
  */
-function parseStackEvents(data: any): StackEvent[] {
+function parseStackEvents(_data: any): StackEvent[] {
   // Simplified parsing
   return []
 }

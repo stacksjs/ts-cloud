@@ -126,7 +126,7 @@ export function composePresets(
  */
 export function createPreset<TOptions extends Record<string, any>>(
   basePresetFn: (options: TOptions) => Partial<CloudConfig>,
-  extensions: Partial<CloudConfig> | ((config: Partial<CloudConfig>, options: TOptions) => Partial<CloudConfig>),
+  extensions: Partial<CloudConfig> | ((_config: Partial<CloudConfig>, _options: TOptions) => Partial<CloudConfig>),
 ): (options: TOptions) => Partial<CloudConfig> {
   return (options: TOptions) => {
     const baseConfig = basePresetFn(options)

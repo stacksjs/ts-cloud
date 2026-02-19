@@ -286,7 +286,7 @@ export function registerStatusCommands(app: CLI): void {
   app
     .command('status:costs', 'Show current month cost summary')
     .option('--region <region>', 'AWS region')
-    .action(async (options: { region?: string }) => {
+    .action(async (_options: { region?: string }) => {
       cli.header('Cost Summary')
 
       try {

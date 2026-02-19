@@ -204,7 +204,7 @@ function validateOutput(
   outputName: string,
   output: any,
   errors: ValidationError[],
-  warnings: ValidationError[],
+  _warnings: ValidationError[],
 ): void {
   if (!output.Value) {
     errors.push({

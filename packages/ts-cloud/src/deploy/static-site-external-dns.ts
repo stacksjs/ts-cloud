@@ -128,7 +128,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
         Runtime: 'cloudfront-js-2.0',
       },
       FunctionCode: `function handler(event) {
-  var request = event.request;
+  const request = event.request;
   var uri = request.uri;
 
   // If URI ends with /, serve index.html

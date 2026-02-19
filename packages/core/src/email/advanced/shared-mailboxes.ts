@@ -63,7 +63,7 @@ export class SharedMailboxes {
    * Lambda code for shared mailbox management
    */
   static SharedMailboxLambdaCode = `
-const { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { DynamoDBClient, GetItemCommand, PutItemCommand, QueryCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
 
 const s3 = new S3Client({});
@@ -225,7 +225,7 @@ async function assignMessage(mailboxId, data) {
   };
 }
 
-async function getMailboxMessages(mailboxId, queryParams) {
+async function getMailboxMessages(mailboxId, _queryParams) {
   const mailbox = await getMailbox(mailboxId);
   if (mailbox.statusCode !== 200) return mailbox;
 

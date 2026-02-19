@@ -396,7 +396,7 @@ export class AcmeClient {
    */
   private generateCsr(domains: string[]): { csr: string; privateKey: string } {
     // Generate a new key pair for the certificate
-    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+    const { privateKey, _publicKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     })
 
@@ -445,7 +445,7 @@ export class AcmeClient {
     })
 
     // Poll for certificate
-    let certificateUrl = body.certificate
+    const certificateUrl = body.certificate
     if (!certificateUrl) {
       // Need to poll the order
       throw new Error('Certificate not immediately available - polling not implemented')

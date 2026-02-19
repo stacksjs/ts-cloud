@@ -50,7 +50,7 @@ export class SmsAnalytics {
    * Lambda code for analytics aggregation
    */
   static AnalyticsAggregatorCode = `
-const { DynamoDBClient, ScanCommand, PutItemCommand, QueryCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, ScanCommand, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 
 const dynamodb = new DynamoDBClient({});
 const MESSAGE_LOG_TABLE = process.env.MESSAGE_LOG_TABLE;
