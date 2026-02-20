@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "lockfileVersion": 1,
+  "generatedAt": "1771524898",
+  "packages": {
+    "typescript@^5.9.3": {
+      "name": "typescript",
+      "version": "^5.9.3",
+      "source": "pkgx"
+    },
+    "fast-xml-parser@^5.3.5": {
+      "name": "fast-xml-parser",
+      "version": "^5.3.5",
+      "source": "pkgx"
+    },
+    "better-dx@^0.2.5": {
+      "name": "better-dx",
+      "version": "^0.2.5",
+      "source": "pkgx"
+    },
+    "bunfig@^0.15.6": {
+      "name": "bunfig",
+      "version": "^0.15.6",
+      "source": "pkgx"
+    }
+  }
+}
