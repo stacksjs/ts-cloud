@@ -402,6 +402,7 @@ exports.handler = async (event) => {
 
     // Replace links with tracking links
     trackedHtml = trackedHtml.replace(
+      // pickier-disable-next-line quotes
       /href="(https?:\/\/[^"]+)"/g,
       (_match, url) => {
         const encodedUrl = encodeURIComponent(url)

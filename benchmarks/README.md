@@ -86,8 +86,8 @@ AWS SDK v3 with presigned URLs:
 ## Why ts-cloud is Faster
 
 1. **Synchronous crypto**: Uses Node.js `createHmac`/`createHash` which are highly optimized native bindings in Bun, vs:
-   - aws4fetch: async `crypto.subtle` (browser-compatible but slower)
-   - AWS SDK: JS-based `@aws-crypto/sha256-js` (portable but slow)
+  - aws4fetch: async `crypto.subtle` (browser-compatible but slower)
+  - AWS SDK: JS-based `@aws-crypto/sha256-js` (portable but slow)
 
 2. **Signing key caching**: Caches derived signing keys to avoid recomputing the expensive 4-step HMAC key derivation on repeated requests
 
