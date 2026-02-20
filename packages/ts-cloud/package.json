@@ -1,7 +1,7 @@
 {
   "name": "@stacksjs/ts-cloud",
   "type": "module",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "A lightweight, performant infrastructure-as-code library and CLI for deploying both server-based (EC2) and serverless applications.",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",

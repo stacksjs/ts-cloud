@@ -1,6 +1,6 @@
 {
   "name": "ts-cloud-types",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "type": "module",
   "description": "Shared TypeScript types for ts-cloud",
   "author": "Chris Breuer <chris@stacksjs.com>",
