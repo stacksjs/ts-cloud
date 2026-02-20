@@ -246,7 +246,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
 /**
  * Check SMS account status (sandbox, spending limits)
  */
-async function checkSmsAccountStatus(_sns: SNSClient): Promise<{
+// pickier-disable-next-line no-unused-vars
+async function checkSmsAccountStatus(sns: SNSClient): Promise<{
   inSandbox: boolean
   spendingLimit: number
   usedThisMonth: number
@@ -465,7 +466,8 @@ async function setupDeliveryReceiptsTopic(
 /**
  * Get complete SMS infrastructure status
  */
-export async function getSmsInfrastructureStatus(_config: {
+// pickier-disable-next-line no-unused-vars
+export async function getSmsInfrastructureStatus(config: {
   region?: string
   accountName?: string
 }): Promise<{

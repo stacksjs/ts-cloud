@@ -396,7 +396,7 @@ export class AcmeClient {
    */
   private generateCsr(domains: string[]): { csr: string; privateKey: string } {
     // Generate a new key pair for the certificate
-    const { privateKey, _publicKey } = generateKeyPairSync('rsa', {
+    const { privateKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
     })
 

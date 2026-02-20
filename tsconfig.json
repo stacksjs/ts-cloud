@@ -30,5 +30,5 @@
       "ts-cloud-aws-types/*": ["./packages/aws-types/src/*"]
     }
   },
-  "exclude": ["docs", "dist", "node_modules", "benchmarks", "bunpress.ts"]
+  "exclude": ["docs", "dist", "**/dist", "node_modules", "benchmarks", "bunpress.ts", "pantry"]
 }
