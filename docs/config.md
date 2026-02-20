@@ -233,7 +233,7 @@ For best type checking, add ts-cloud to your `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
-    "types": ["ts-cloud"]
+    "types": ["@stacksjs/ts-cloud"]
   }
 }
 ```
