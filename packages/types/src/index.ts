@@ -98,6 +98,7 @@ export interface EnvironmentConfig {
  * Network/VPC configuration
  */
 export interface NetworkConfig {
+  cidr?: string
   vpc?: VpcConfig
   subnets?: {
     public?: number

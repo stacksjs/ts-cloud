@@ -84,7 +84,7 @@ export class DynamoDBClient {
         throw new Error(`DynamoDB request failed: ${response.status} ${text}`)
       }
 
-      return response.json()
+      return response.json() as Promise<T>
     }
 
     return this.client.request({
