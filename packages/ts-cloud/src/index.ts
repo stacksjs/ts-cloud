@@ -44,6 +44,7 @@ export {
   DynamoDBClient,
   OpenSearchClient,
   TranscribeClient,
+  BedrockClient,
   BedrockRuntimeClient,
   ComprehendClient,
   RekognitionClient,
@@ -60,6 +61,7 @@ export {
   SmsClient,
   VoiceClient,
   SupportClient,
+  EFSClient,
 } from './aws'
 
 // Export AWS module - types with prefixed names where needed
@@ -87,10 +89,26 @@ export type {
   RekognitionBoundingBox,
   TextractS3Object,
   TextractBoundingBox,
+  CountryCode,
+  ContactType,
+  ContactDetail,
   KendraCreateDataSourceCommandInput,
   KendraCreateDataSourceCommandOutput,
   KendraListDataSourcesCommandInput,
   KendraListDataSourcesCommandOutput,
+  InvokeModelCommandInput,
+  InvokeModelCommandOutput,
+  InvokeModelWithResponseStreamCommandInput,
+  InvokeModelWithResponseStreamCommandOutput,
+  CreateModelCustomizationJobCommandInput,
+  CreateModelCustomizationJobCommandOutput,
+  GetModelCustomizationJobCommandInput,
+  GetModelCustomizationJobCommandOutput,
+  ListFoundationModelsCommandInput,
+  ListFoundationModelsCommandOutput,
+  AttributeValue as DynamoDBAttributeValue,
+  KeySchemaElement,
+  AttributeDefinition as DynamoDBAttributeDefinition,
 } from './aws'
 
 export * from './ssl'

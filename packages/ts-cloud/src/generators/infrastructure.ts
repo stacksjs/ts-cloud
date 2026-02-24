@@ -24,6 +24,7 @@ import {
   Monitoring,
   Auth,
   Deployment,
+  Redirects,
   TemplateBuilder,
 } from 'ts-cloud-core'
 
@@ -73,6 +74,7 @@ export class InfrastructureGenerator {
         databases: { ...this.config.infrastructure?.databases, ...envInfra.databases },
         cdn: { ...this.config.infrastructure?.cdn, ...envInfra.cdn },
         queues: { ...this.config.infrastructure?.queues, ...envInfra.queues },
+        redirects: { ...this.config.infrastructure?.redirects, ...envInfra.redirects },
         realtime: { ...this.config.infrastructure?.realtime, ...envInfra.realtime },
       },
     }
@@ -134,12 +136,30 @@ export class InfrastructureGenerator {
       this.mergedConfig.infrastructure?.servers
     )
 
+    // If containers are defined, generate ECS/Fargate resources
+    const hasContainerConfig = !!(
+      this.mergedConfig.infrastructure?.containers
+      && Object.keys(this.mergedConfig.infrastructure.containers).length > 0
+    )
+
+    // Generate network resources first if containers need them
+    if (hasContainerConfig) {
+      this.generateNetworkInfrastructure(slug, env)
+      this.generateContainerInfrastructure(slug, env)
+    }
+
     if (hasServerlessConfig) {
       this.generateServerless(slug, env)
     }
 
     if (hasServerConfig) {
       this.generateServer(slug, env)
+    }
+
+    // If jumpBox is configured, generate bastion host
+    const jumpBoxConfig = this.mergedConfig.infrastructure?.jumpBox
+    if (jumpBoxConfig) {
+      this.generateJumpBox(slug, env)
     }
 
     // Always generate shared infrastructure (storage, CDN, databases, etc.)
@@ -159,6 +179,649 @@ export class InfrastructureGenerator {
   private applyGlobalTags(tags: Record<string, string>): void {
     // This would iterate through all resources in the builder and add tags
     // Implementation depends on TemplateBuilder structure
+  }
+
+  /**
+   * Generate VPC/Network infrastructure required by ECS/Fargate
+   */
+  private generateNetworkInfrastructure(slug: string, env: typeof this.environment): void {
+    // Idempotent — skip if VPC already generated
+    if (this.builder.hasResource('VPC')) return
+
+    const networkConfig = this.mergedConfig.infrastructure?.network
+    const cidr = networkConfig?.cidr || '10.0.0.0/16'
+
+    // VPC
+    const { vpc, logicalId: vpcId } = Network.createVpc({
+      slug,
+      environment: env,
+      cidr,
+      enableDnsHostnames: true,
+      enableDnsSupport: true,
+    })
+    this.builder.addResource('VPC', vpc)
+
+    // Internet Gateway
+    const igwId = `${slug}${env}IGW`.replace(/[^a-zA-Z0-9]/g, '')
+    this.builder.addResource(igwId, {
+      Type: 'AWS::EC2::InternetGateway',
+      Properties: {
+        Tags: [
+          { Key: 'Name', Value: `${slug}-${env}-igw` },
+          { Key: 'Environment', Value: env },
+        ],
+      },
+    } as any)
+
+    // Attach IGW to VPC
+    const attachId = `${slug}${env}IGWAttach`.replace(/[^a-zA-Z0-9]/g, '')
+    this.builder.addResource(attachId, {
+      Type: 'AWS::EC2::VPCGatewayAttachment',
+      Properties: {
+        VpcId: { Ref: 'VPC' },
+        InternetGatewayId: { Ref: igwId },
+      },
+    } as any)
+
+    // Public Route Table
+    const routeTableId = `${slug}${env}PublicRT`.replace(/[^a-zA-Z0-9]/g, '')
+    this.builder.addResource(routeTableId, {
+      Type: 'AWS::EC2::RouteTable',
+      Properties: {
+        VpcId: { Ref: 'VPC' },
+        Tags: [
+          { Key: 'Name', Value: `${slug}-${env}-public-rt` },
+          { Key: 'Environment', Value: env },
+        ],
+      },
+    } as any)
+
+    // Default route to IGW
+    this.builder.addResource(`${slug}${env}PublicRoute`.replace(/[^a-zA-Z0-9]/g, ''), {
+      Type: 'AWS::EC2::Route',
+      Properties: {
+        RouteTableId: { Ref: routeTableId },
+        DestinationCidrBlock: '0.0.0.0/0',
+        GatewayId: { Ref: igwId },
+      },
+      DependsOn: attachId,
+    } as any)
+
+    // Public Subnets (2 AZs for ALB requirement)
+    const region = this.mergedConfig.environments[env]?.region || this.mergedConfig.project.region || 'us-east-1'
+    const azSuffixes = ['a', 'b']
+
+    for (let i = 0; i < 2; i++) {
+      const subnetLogicalId = `PublicSubnet${i + 1}`
+      this.builder.addResource(subnetLogicalId, {
+        Type: 'AWS::EC2::Subnet',
+        Properties: {
+          VpcId: { Ref: 'VPC' },
+          CidrBlock: `10.0.${i}.0/24`,
+          AvailabilityZone: `${region}${azSuffixes[i]}`,
+          MapPublicIpOnLaunch: true,
+          Tags: [
+            { Key: 'Name', Value: `${slug}-${env}-public-${azSuffixes[i]}` },
+            { Key: 'Environment', Value: env },
+          ],
+        },
+      } as any)
+
+      // Associate subnet with route table
+      this.builder.addResource(`${subnetLogicalId}RTAssoc`, {
+        Type: 'AWS::EC2::SubnetRouteTableAssociation',
+        Properties: {
+          SubnetId: { Ref: subnetLogicalId },
+          RouteTableId: { Ref: routeTableId },
+        },
+      } as any)
+    }
+  }
+
+  /**
+   * Generate ECS/Fargate container infrastructure
+   * Creates ECS Cluster, Task Definition, Service, ALB, Security Groups, IAM roles, etc.
+   */
+  private generateContainerInfrastructure(slug: string, env: typeof this.environment): void {
+    const containers = this.mergedConfig.infrastructure?.containers
+    if (!containers) return
+
+    const lbConfig = this.mergedConfig.infrastructure?.loadBalancer
+    const sslConfig = this.mergedConfig.infrastructure?.ssl
+    const dnsConfig = this.mergedConfig.infrastructure?.dns
+
+    // ========================================
+    // ACM Certificate (if SSL is configured)
+    // ========================================
+    let certificateLogicalId: string | undefined
+    if (sslConfig?.enabled && sslConfig.domains?.length) {
+      if (sslConfig.certificateArn) {
+        // Use existing certificate ARN - no resource needed
+      }
+      else {
+        const domain = sslConfig.domains[0]
+        const subdomains = sslConfig.domains.slice(1).map((d: string) => {
+          // If it's already a full domain (e.g. www.example.com), extract subdomain
+          if (d.includes('.') && d.endsWith(domain)) {
+            return d.replace(`.${domain}`, '')
+          }
+          return d
+        })
+
+        const { certificate, logicalId } = Security.createCertificate({
+          domain,
+          subdomains,
+          slug,
+          environment: env,
+          validationMethod: 'DNS',
+          hostedZoneId: dnsConfig?.hostedZoneId,
+        })
+
+        certificateLogicalId = logicalId
+        this.builder.addResource(logicalId, certificate)
+      }
+    }
+
+    // ========================================
+    // ECS Cluster
+    // ========================================
+    const clusterLogicalId = 'ECSCluster'
+    this.builder.addResource(clusterLogicalId, {
+      Type: 'AWS::ECS::Cluster',
+      Properties: {
+        ClusterName: `${slug}-${env}`,
+        ClusterSettings: [
+          { Name: 'containerInsights', Value: 'enabled' },
+        ],
+        Tags: [
+          { Key: 'Name', Value: `${slug}-${env}` },
+          { Key: 'Environment', Value: env },
+        ],
+      },
+    } as any)
+
+    // ========================================
+    // ALB Security Group
+    // ========================================
+    const albSgId = `${slug}${env}ALBSecurityGroup`.replace(/[^a-zA-Z0-9]/g, '')
+    this.builder.addResource(albSgId, {
+      Type: 'AWS::EC2::SecurityGroup',
+      Properties: {
+        GroupDescription: `ALB security group for ${slug}-${env}`,
+        VpcId: { Ref: 'VPC' },
+        SecurityGroupIngress: [
+          { IpProtocol: 'tcp', FromPort: 80, ToPort: 80, CidrIp: '0.0.0.0/0', Description: 'HTTP' },
+          { IpProtocol: 'tcp', FromPort: 443, ToPort: 443, CidrIp: '0.0.0.0/0', Description: 'HTTPS' },
+        ],
+        SecurityGroupEgress: [
+          { IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' },
+        ],
+        Tags: [
+          { Key: 'Name', Value: `${slug}-${env}-alb-sg` },
+          { Key: 'Environment', Value: env },
+        ],
+      },
+    } as any)
+
+    // ========================================
+    // ECS Task Security Group
+    // ========================================
+    const ecsSgId = `${slug}${env}ECSSecurityGroup`.replace(/[^a-zA-Z0-9]/g, '')
+
+    // Iterate over containers to build container-specific resources
+    for (const [name, containerConfig] of Object.entries(containers)) {
+      const port = (containerConfig as any).port || 3000
+
+      this.builder.addResource(ecsSgId, {
+        Type: 'AWS::EC2::SecurityGroup',
+        Properties: {
+          GroupDescription: `ECS tasks security group for ${slug}-${env}`,
+          VpcId: { Ref: 'VPC' },
+          SecurityGroupIngress: [
+            {
+              IpProtocol: 'tcp',
+              FromPort: port,
+              ToPort: port,
+              SourceSecurityGroupId: { Ref: albSgId },
+              Description: 'Allow traffic from ALB',
+            },
+          ],
+          SecurityGroupEgress: [
+            { IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' },
+          ],
+          Tags: [
+            { Key: 'Name', Value: `${slug}-${env}-ecs-sg` },
+            { Key: 'Environment', Value: env },
+          ],
+        },
+      } as any)
+
+      // ========================================
+      // ECS Task Execution Role
+      // ========================================
+      const execRoleId = `${slug}${env}TaskExecRole`.replace(/[^a-zA-Z0-9]/g, '')
+      this.builder.addResource(execRoleId, {
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          RoleName: `${slug}-${env}-ecs-exec-role`,
+          AssumeRolePolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [{
+              Effect: 'Allow',
+              Principal: { Service: 'ecs-tasks.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            }],
+          },
+          ManagedPolicyArns: [
+            'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
+          ],
+          Policies: [{
+            PolicyName: 'ECRPullPolicy',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [{
+                Effect: 'Allow',
+                Action: [
+                  'ecr:GetAuthorizationToken',
+                  'ecr:BatchCheckLayerAvailability',
+                  'ecr:GetDownloadUrlForLayer',
+                  'ecr:BatchGetImage',
+                  'logs:CreateLogStream',
+                  'logs:PutLogEvents',
+                ],
+                Resource: '*',
+              }],
+            },
+          }],
+        },
+      } as any)
+
+      // ========================================
+      // ECS Task Role
+      // ========================================
+      const taskRoleId = `${slug}${env}TaskRole`.replace(/[^a-zA-Z0-9]/g, '')
+      this.builder.addResource(taskRoleId, {
+        Type: 'AWS::IAM::Role',
+        Properties: {
+          RoleName: `${slug}-${env}-ecs-task-role`,
+          AssumeRolePolicyDocument: {
+            Version: '2012-10-17',
+            Statement: [{
+              Effect: 'Allow',
+              Principal: { Service: 'ecs-tasks.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            }],
+          },
+          Policies: [{
+            PolicyName: 'TaskPolicy',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'logs:CreateLogStream',
+                    'logs:PutLogEvents',
+                  ],
+                  Resource: '*',
+                },
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    's3:GetObject',
+                    's3:PutObject',
+                    's3:ListBucket',
+                  ],
+                  Resource: '*',
+                },
+              ],
+            },
+          }],
+        },
+      } as any)
+
+      // ========================================
+      // CloudWatch Log Group
+      // ========================================
+      const logGroupId = `${slug}${env}${name}LogGroup`.replace(/[^a-zA-Z0-9]/g, '')
+      const logGroupName = `/ecs/${slug}-${env}-${name}`
+      this.builder.addResource(logGroupId, {
+        Type: 'AWS::Logs::LogGroup',
+        Properties: {
+          LogGroupName: logGroupName,
+          RetentionInDays: 30,
+        },
+      } as any)
+
+      // ========================================
+      // ECS Task Definition
+      // ========================================
+      const taskDefId = `${slug}${env}${name}TaskDef`.replace(/[^a-zA-Z0-9]/g, '')
+      const cpu = String((containerConfig as any).cpu || 512)
+      const memory = String((containerConfig as any).memory || 1024)
+
+      this.builder.addResource(taskDefId, {
+        Type: 'AWS::ECS::TaskDefinition',
+        Properties: {
+          Family: `${slug}-${env}-${name}`,
+          NetworkMode: 'awsvpc',
+          RequiresCompatibilities: ['FARGATE'],
+          Cpu: cpu,
+          Memory: memory,
+          ExecutionRoleArn: { 'Fn::GetAtt': [execRoleId, 'Arn'] },
+          TaskRoleArn: { 'Fn::GetAtt': [taskRoleId, 'Arn'] },
+          ContainerDefinitions: [{
+            Name: name,
+            Image: { 'Fn::Sub': `\${AWS::AccountId}.dkr.ecr.\${AWS::Region}.amazonaws.com/${slug}:latest` },
+            Essential: true,
+            PortMappings: [{
+              ContainerPort: port,
+              Protocol: 'tcp',
+            }],
+            LogConfiguration: {
+              LogDriver: 'awslogs',
+              Options: {
+                'awslogs-group': logGroupName,
+                'awslogs-region': { Ref: 'AWS::Region' },
+                'awslogs-stream-prefix': name,
+              },
+            },
+            HealthCheck: {
+              Command: ['CMD-SHELL', `curl -f http://localhost:${port}${(containerConfig as any).healthCheck || '/health'} || exit 1`],
+              Interval: 30,
+              Timeout: 5,
+              Retries: 3,
+              StartPeriod: 60,
+            },
+          }],
+          Tags: [
+            { Key: 'Name', Value: `${slug}-${env}-${name}` },
+            { Key: 'Environment', Value: env },
+          ],
+        },
+        DependsOn: [execRoleId, taskRoleId, logGroupId],
+      } as any)
+
+      // ========================================
+      // Application Load Balancer
+      // ========================================
+      const albId = `${slug}${env}ALB`.replace(/[^a-zA-Z0-9]/g, '')
+      if (lbConfig?.enabled !== false) {
+        this.builder.addResource(albId, {
+          Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer',
+          Properties: {
+            Name: `${slug}-${env}-alb`,
+            Scheme: 'internet-facing',
+            Type: 'application',
+            Subnets: [{ Ref: 'PublicSubnet1' }, { Ref: 'PublicSubnet2' }],
+            SecurityGroups: [{ Ref: albSgId }],
+            Tags: [
+              { Key: 'Name', Value: `${slug}-${env}-alb` },
+              { Key: 'Environment', Value: env },
+            ],
+          },
+        } as any)
+
+        // Target Group
+        const tgId = `${slug}${env}TargetGroup`.replace(/[^a-zA-Z0-9]/g, '')
+        const healthCheckPath = lbConfig?.healthCheck?.path || (containerConfig as any).healthCheck || '/health'
+        this.builder.addResource(tgId, {
+          Type: 'AWS::ElasticLoadBalancingV2::TargetGroup',
+          Properties: {
+            Name: `${slug}-${env}-tg`,
+            Port: port,
+            Protocol: 'HTTP',
+            VpcId: { Ref: 'VPC' },
+            TargetType: 'ip',
+            HealthCheckPath: healthCheckPath,
+            HealthCheckIntervalSeconds: lbConfig?.healthCheck?.interval || 30,
+            HealthyThresholdCount: lbConfig?.healthCheck?.healthyThreshold || 2,
+            UnhealthyThresholdCount: lbConfig?.healthCheck?.unhealthyThreshold || 5,
+            HealthCheckTimeoutSeconds: 10,
+            Tags: [
+              { Key: 'Name', Value: `${slug}-${env}-tg` },
+              { Key: 'Environment', Value: env },
+            ],
+          },
+        } as any)
+
+        // HTTP Listener (redirect to HTTPS if SSL, otherwise forward)
+        const httpListenerId = `${slug}${env}HTTPListener`.replace(/[^a-zA-Z0-9]/g, '')
+        if (sslConfig?.enabled && sslConfig?.redirectHttp) {
+          this.builder.addResource(httpListenerId, {
+            Type: 'AWS::ElasticLoadBalancingV2::Listener',
+            Properties: {
+              LoadBalancerArn: { Ref: albId },
+              Port: 80,
+              Protocol: 'HTTP',
+              DefaultActions: [{
+                Type: 'redirect',
+                RedirectConfig: {
+                  Protocol: 'HTTPS',
+                  Port: '443',
+                  StatusCode: 'HTTP_301',
+                },
+              }],
+            },
+          } as any)
+        }
+        else {
+          this.builder.addResource(httpListenerId, {
+            Type: 'AWS::ElasticLoadBalancingV2::Listener',
+            Properties: {
+              LoadBalancerArn: { Ref: albId },
+              Port: 80,
+              Protocol: 'HTTP',
+              DefaultActions: [{
+                Type: 'forward',
+                TargetGroupArn: { Ref: tgId },
+              }],
+            },
+          } as any)
+        }
+
+        // HTTPS Listener (if SSL is configured)
+        if (sslConfig?.enabled) {
+          const certArn = sslConfig.certificateArn
+            || (certificateLogicalId ? { Ref: certificateLogicalId } : undefined)
+
+          if (certArn) {
+            const httpsListenerId = `${slug}${env}HTTPSListener`.replace(/[^a-zA-Z0-9]/g, '')
+            this.builder.addResource(httpsListenerId, {
+              Type: 'AWS::ElasticLoadBalancingV2::Listener',
+              Properties: {
+                LoadBalancerArn: { Ref: albId },
+                Port: 443,
+                Protocol: 'HTTPS',
+                Certificates: [{ CertificateArn: certArn }],
+                DefaultActions: [{
+                  Type: 'forward',
+                  TargetGroupArn: { Ref: tgId },
+                }],
+                SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
+              },
+            } as any)
+          }
+        }
+
+        // ========================================
+        // ECS Service (with load balancer)
+        // ========================================
+        const serviceId = `${slug}${env}${name}Service`.replace(/[^a-zA-Z0-9]/g, '')
+        const desiredCount = (containerConfig as any).desiredCount || 1
+
+        this.builder.addResource(serviceId, {
+          Type: 'AWS::ECS::Service',
+          Properties: {
+            ServiceName: `${slug}-${env}-${name}`,
+            Cluster: { Ref: clusterLogicalId },
+            TaskDefinition: { Ref: taskDefId },
+            DesiredCount: desiredCount,
+            LaunchType: 'FARGATE',
+            NetworkConfiguration: {
+              AwsvpcConfiguration: {
+                AssignPublicIp: 'ENABLED',
+                SecurityGroups: [{ Ref: ecsSgId }],
+                Subnets: [{ Ref: 'PublicSubnet1' }, { Ref: 'PublicSubnet2' }],
+              },
+            },
+            LoadBalancers: [{
+              ContainerName: name,
+              ContainerPort: port,
+              TargetGroupArn: { Ref: tgId },
+            }],
+            HealthCheckGracePeriodSeconds: 120,
+            Tags: [
+              { Key: 'Name', Value: `${slug}-${env}-${name}` },
+              { Key: 'Environment', Value: env },
+            ],
+          },
+          DependsOn: [taskDefId, httpListenerId, tgId],
+        } as any)
+
+        // ========================================
+        // Auto Scaling
+        // ========================================
+        const autoScaling = (containerConfig as any).autoScaling
+        if (autoScaling) {
+          const scalableTargetId = `${slug}${env}${name}ScalableTarget`.replace(/[^a-zA-Z0-9]/g, '')
+          this.builder.addResource(scalableTargetId, {
+            Type: 'AWS::ApplicationAutoScaling::ScalableTarget',
+            Properties: {
+              MaxCapacity: autoScaling.max || 10,
+              MinCapacity: autoScaling.min || 1,
+              ResourceId: { 'Fn::Sub': `service/\${${clusterLogicalId}}/${slug}-${env}-${name}` },
+              ScalableDimension: 'ecs:service:DesiredCount',
+              ServiceNamespace: 'ecs',
+              RoleARN: { 'Fn::Sub': 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService' },
+            },
+            DependsOn: serviceId,
+          } as any)
+
+          if (autoScaling.targetCpuUtilization) {
+            this.builder.addResource(`${slug}${env}${name}CPUScaling`.replace(/[^a-zA-Z0-9]/g, ''), {
+              Type: 'AWS::ApplicationAutoScaling::ScalingPolicy',
+              Properties: {
+                PolicyName: `${slug}-${env}-${name}-cpu-scaling`,
+                PolicyType: 'TargetTrackingScaling',
+                ScalingTargetId: { Ref: scalableTargetId },
+                TargetTrackingScalingPolicyConfiguration: {
+                  PredefinedMetricSpecification: {
+                    PredefinedMetricType: 'ECSServiceAverageCPUUtilization',
+                  },
+                  TargetValue: autoScaling.targetCpuUtilization,
+                  ScaleInCooldown: 300,
+                  ScaleOutCooldown: 60,
+                },
+              },
+            } as any)
+          }
+
+          if (autoScaling.targetMemoryUtilization) {
+            this.builder.addResource(`${slug}${env}${name}MemoryScaling`.replace(/[^a-zA-Z0-9]/g, ''), {
+              Type: 'AWS::ApplicationAutoScaling::ScalingPolicy',
+              Properties: {
+                PolicyName: `${slug}-${env}-${name}-memory-scaling`,
+                PolicyType: 'TargetTrackingScaling',
+                ScalingTargetId: { Ref: scalableTargetId },
+                TargetTrackingScalingPolicyConfiguration: {
+                  PredefinedMetricSpecification: {
+                    PredefinedMetricType: 'ECSServiceAverageMemoryUtilization',
+                  },
+                  TargetValue: autoScaling.targetMemoryUtilization,
+                  ScaleInCooldown: 300,
+                  ScaleOutCooldown: 60,
+                },
+              },
+            } as any)
+          }
+        }
+
+        // ========================================
+        // Route53 DNS Record for API
+        // ========================================
+        if (dnsConfig?.domain && dnsConfig?.hostedZoneId) {
+          this.builder.addResource(`${slug}${env}ApiDnsRecord`.replace(/[^a-zA-Z0-9]/g, ''), {
+            Type: 'AWS::Route53::RecordSet',
+            Properties: {
+              HostedZoneId: dnsConfig.hostedZoneId,
+              Name: `api.${dnsConfig.domain}`,
+              Type: 'A',
+              AliasTarget: {
+                DNSName: { 'Fn::GetAtt': [albId, 'DNSName'] },
+                HostedZoneId: { 'Fn::GetAtt': [albId, 'CanonicalHostedZoneID'] },
+              },
+            },
+          } as any)
+        }
+
+        // ========================================
+        // Outputs
+        // ========================================
+        this.builder.addOutput('ECSClusterArn', {
+          Description: 'ECS Cluster ARN',
+          Value: { 'Fn::GetAtt': [clusterLogicalId, 'Arn'] },
+          Export: { Name: { 'Fn::Sub': '${AWS::StackName}-ecs-cluster-arn' } as any },
+        })
+
+        this.builder.addOutput('ECSServiceName', {
+          Description: 'ECS Service Name',
+          Value: `${slug}-${env}-${name}`,
+          Export: { Name: { 'Fn::Sub': '${AWS::StackName}-ecs-service-name' } as any },
+        })
+
+        this.builder.addOutput('LoadBalancerDNS', {
+          Description: 'Application Load Balancer DNS Name',
+          Value: { 'Fn::GetAtt': [albId, 'DNSName'] },
+          Export: { Name: { 'Fn::Sub': '${AWS::StackName}-alb-dns' } as any },
+        })
+      }
+      else {
+        // No load balancer - create service without ALB attachment
+        const serviceId = `${slug}${env}${name}Service`.replace(/[^a-zA-Z0-9]/g, '')
+        this.builder.addResource(serviceId, {
+          Type: 'AWS::ECS::Service',
+          Properties: {
+            ServiceName: `${slug}-${env}-${name}`,
+            Cluster: { Ref: clusterLogicalId },
+            TaskDefinition: { Ref: taskDefId },
+            DesiredCount: (containerConfig as any).desiredCount || 1,
+            LaunchType: 'FARGATE',
+            NetworkConfiguration: {
+              AwsvpcConfiguration: {
+                AssignPublicIp: 'ENABLED',
+                SecurityGroups: [{ Ref: ecsSgId }],
+                Subnets: [{ Ref: 'PublicSubnet1' }, { Ref: 'PublicSubnet2' }],
+              },
+            },
+            Tags: [
+              { Key: 'Name', Value: `${slug}-${env}-${name}` },
+              { Key: 'Environment', Value: env },
+            ],
+          },
+          DependsOn: [taskDefId],
+        } as any)
+      }
+
+      // Only process the first container for now (primary API container)
+      break
+    }
+
+    // ========================================
+    // S3 Bucket Outputs (for frontend/docs deployment)
+    // ========================================
+    // These outputs are consumed by the deploy action
+    const storageConfig = this.mergedConfig.infrastructure?.storage
+    if (storageConfig) {
+      for (const [storageName] of Object.entries(storageConfig)) {
+        const bucketLogicalId = `${slug}${env}${storageName}`.replace(/[^a-zA-Z0-9]/g, '')
+        this.builder.addOutput(`${bucketLogicalId}BucketName`, {
+          Description: `S3 Bucket Name for ${storageName}`,
+          Value: { Ref: bucketLogicalId },
+          Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-${storageName}-bucket` } as any },
+        })
+      }
+    }
   }
 
   /**
@@ -217,22 +880,165 @@ export class InfrastructureGenerator {
 
   /**
    * Generate server infrastructure (EC2)
+   * Creates a full stack per server: EC2 instance + security group + IAM role + instance profile + EIP
    */
   private generateServer(slug: string, env: typeof this.environment): void {
-    // Example: EC2 instance
-    if (this.config.infrastructure?.servers) {
-      for (const [name, serverConfig] of Object.entries(this.config.infrastructure.servers)) {
-        const { instance, logicalId } = Compute.createServer({
-          slug,
-          environment: env,
-          instanceType: serverConfig.size || 't3.micro',
-          imageId: serverConfig.image || 'ami-0c55b159cbfafe1f0',
-          userData: serverConfig.startupScript,
-        })
+    if (!this.config.infrastructure?.servers) return
 
-        this.builder.addResource(logicalId, instance)
+    const servers = this.config.infrastructure.servers
+    const computeConfig = this.config.infrastructure?.compute
+    const sslConfig = this.config.infrastructure?.ssl as { enabled?: boolean, letsEncrypt?: { email?: string } } | undefined
+
+    // Check if any server needs a new VPC
+    const needsVpc = Object.values(servers).some(s =>
+      !s.privateNetwork || s.privateNetwork === 'create',
+    )
+
+    if (needsVpc) {
+      this.generateNetworkInfrastructure(slug, env)
+    }
+
+    // Generate each server
+    for (const [name, serverConfig] of Object.entries(servers)) {
+      // Resolve instance type: explicit instanceType > size lookup > compute default > fallback
+      const sizeKey = serverConfig.instanceType || serverConfig.size || computeConfig?.size
+      const sizeSpec = sizeKey ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string] : undefined
+      const resolvedInstanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
+
+      // Determine UserData
+      const serverType = serverConfig.type || 'app'
+      let userData = serverConfig.userData || serverConfig.startupScript
+
+      if (!userData) {
+        // Auto-generate UserData based on server type
+        userData = Compute.UserData.generateAppServerScript({
+          runtime: 'bun',
+          runtimeVersion: serverConfig.bunVersion || 'latest',
+          webServer: serverType === 'cache' ? 'none' : 'caddy',
+          domain: serverConfig.domain,
+          enableSsl: !!sslConfig?.enabled,
+          sslEmail: sslConfig?.letsEncrypt?.email,
+          installRedis: serverType === 'cache',
+          installDatabaseClients: !!serverConfig.database,
+        })
+      }
+
+      // Resolve VPC and subnet IDs
+      const vpcId = serverConfig.privateNetwork && serverConfig.privateNetwork !== 'create'
+        ? serverConfig.privateNetwork
+        : { Ref: 'VPC' } as unknown as string
+
+      const subnetId = serverConfig.subnet
+        || { Ref: 'PublicSubnet1' } as unknown as string
+
+      // Create full server stack (SG + IAM role + instance profile + EC2 + EIP)
+      const stack = Compute.createServerModeStack({
+        slug: `${slug}-${name}`,
+        environment: env,
+        vpcId,
+        subnetId,
+        instanceType: resolvedInstanceType,
+        keyName: serverConfig.keyName || `${slug}-${env}`,
+        domain: serverConfig.domain,
+        userData,
+        volumeSize: serverConfig.diskSize || 20,
+        imageId: serverConfig.image,
+      })
+
+      // Add all resources from the stack to the template
+      for (const [logicalId, resource] of Object.entries(stack.resources)) {
+        this.builder.addResource(logicalId, resource)
+      }
+
+      // Add outputs for this server
+      this.builder.addOutput(`${name}InstanceId`, {
+        Value: { Ref: stack.outputs.instanceLogicalId },
+        Description: `Instance ID for ${name} server`,
+      })
+      this.builder.addOutput(`${name}PublicIp`, {
+        Value: { Ref: stack.outputs.eipLogicalId },
+        Description: `Public IP for ${name} server`,
+      })
+    }
+  }
+
+  /**
+   * Generate jump box / bastion host infrastructure
+   */
+  private generateJumpBox(slug: string, env: typeof this.environment): void {
+    const raw = this.config.infrastructure?.jumpBox
+    if (!raw) return
+
+    // Normalize: `true` becomes default config
+    const jumpBoxConfig = raw === true ? {} : raw
+    if (jumpBoxConfig.enabled === false) return
+
+    // Ensure VPC exists (jumpbox needs to be in a VPC)
+    // generateNetworkInfrastructure is idempotent — it checks for existing VPC resource
+    this.generateNetworkInfrastructure(slug, env)
+
+    // Resolve instance type from size
+    const sizeKey = jumpBoxConfig.size || 'micro'
+    const sizeSpec = (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string]
+    const instanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
+
+    // Resolve EFS mount
+    let mountEfs: { fileSystemId: string, mountPath?: string } | undefined
+    if (jumpBoxConfig.mountEfs) {
+      const efsId = typeof jumpBoxConfig.mountEfs === 'string'
+        ? jumpBoxConfig.mountEfs
+        : { Ref: 'FileSystem' } as unknown as string // auto-detect from template
+      mountEfs = {
+        fileSystemId: efsId,
+        mountPath: jumpBoxConfig.mountPath || '/mnt/efs',
       }
     }
+
+    // Use the appropriate JumpBox preset
+    let result
+    if (jumpBoxConfig.databaseTools) {
+      result = Compute.JumpBox.withDatabaseTools({
+        slug,
+        environment: env,
+        vpcId: { Ref: 'VPC' } as unknown as string,
+        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
+        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
+        allowedCidrs: jumpBoxConfig.allowedCidrs,
+      })
+    } else if (mountEfs) {
+      result = Compute.JumpBox.withEfsMount({
+        slug,
+        environment: env,
+        vpcId: { Ref: 'VPC' } as unknown as string,
+        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
+        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
+        fileSystemId: mountEfs.fileSystemId,
+        mountPath: mountEfs.mountPath,
+        allowedCidrs: jumpBoxConfig.allowedCidrs,
+      })
+    } else {
+      result = Compute.createJumpBox({
+        slug,
+        environment: env,
+        vpcId: { Ref: 'VPC' } as unknown as string,
+        subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
+        keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
+        instanceType,
+        allowedCidrs: jumpBoxConfig.allowedCidrs,
+        mountEfs,
+      })
+    }
+
+    // Add all resources
+    for (const [logicalId, resource] of Object.entries(result.resources)) {
+      this.builder.addResource(logicalId, resource)
+    }
+
+    // Add outputs
+    this.builder.addOutput('JumpBoxInstanceId', {
+      Value: { Ref: result.instanceLogicalId },
+      Description: 'The ID of the JumpBox EC2 instance (use with SSM Session Manager or SSH)',
+    })
   }
 
   /**
@@ -560,6 +1366,46 @@ export class InfrastructureGenerator {
       }
       else {
         this.generateRealtimeResources(slug, env)
+      }
+    }
+
+    // Redirects (domain + path)
+    const redirectsConfig = this.mergedConfig.infrastructure?.redirects
+    if (redirectsConfig) {
+      const targetDomain = redirectsConfig.target
+        || this.mergedConfig.infrastructure?.dns?.domain
+        || ''
+      const protocol = redirectsConfig.protocol || 'https'
+
+      // Domain redirects — each source domain gets an S3 redirect bucket
+      if (redirectsConfig.domains?.length && targetDomain) {
+        for (const sourceDomain of redirectsConfig.domains) {
+          const { bucket, bucketPolicy, logicalId, policyLogicalId } = Redirects.createDomainRedirectBucket({
+            slug,
+            environment: env,
+            sourceDomain,
+            targetDomain,
+            protocol,
+          })
+
+          this.builder.addResource(logicalId, bucket)
+          this.builder.addResource(policyLogicalId, bucketPolicy)
+        }
+      }
+
+      // Path redirects — CloudFront Function for URL rewrites
+      if (redirectsConfig.paths && Object.keys(redirectsConfig.paths).length > 0) {
+        const rules = Redirects.fromMapping(redirectsConfig.paths, {
+          statusCode: redirectsConfig.statusCode || 301,
+        })
+
+        const { function: redirectFn, logicalId } = Redirects.createPathRedirectFunction({
+          slug,
+          environment: env,
+          rules,
+        })
+
+        this.builder.addResource(logicalId, redirectFn)
       }
     }
 

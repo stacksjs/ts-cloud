@@ -119,6 +119,20 @@ export class CloudWatchLogsClient {
     return result
   }
 
+  async deleteLogGroup(logGroupName: string): Promise<void> {
+    await this.client.request({
+      service: 'logs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'Logs_20140328.DeleteLogGroup',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify({ logGroupName }),
+    })
+  }
+
   async filterLogEvents(options: {
     logGroupName: string
     logStreamNames?: string[]

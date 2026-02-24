@@ -1244,6 +1244,276 @@ export class EC2Client {
   }
 
   /**
+   * Delete a VPC
+   */
+  async deleteVpc(vpcId: string): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'DeleteVpc',
+      Version: '2016-11-15',
+      VpcId: vpcId,
+    }
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Delete a subnet
+   */
+  async deleteSubnet(subnetId: string): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'DeleteSubnet',
+      Version: '2016-11-15',
+      SubnetId: subnetId,
+    }
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Describe network interfaces
+   */
+  async describeNetworkInterfaces(options?: {
+    NetworkInterfaceIds?: string[]
+    Filters?: { Name: string, Values: string[] }[]
+  }): Promise<{
+    NetworkInterfaces?: {
+      NetworkInterfaceId?: string
+      SubnetId?: string
+      VpcId?: string
+      Status?: string
+      Attachment?: {
+        AttachmentId?: string
+        InstanceId?: string
+        Status?: string
+      }
+    }[]
+  }> {
+    const params: Record<string, string> = {
+      Action: 'DescribeNetworkInterfaces',
+      Version: '2016-11-15',
+    }
+
+    if (options?.NetworkInterfaceIds) {
+      options.NetworkInterfaceIds.forEach((id, i) => {
+        params[`NetworkInterfaceId.${i + 1}`] = id
+      })
+    }
+
+    if (options?.Filters) {
+      options.Filters.forEach((filter, i) => {
+        params[`Filter.${i + 1}.Name`] = filter.Name
+        filter.Values.forEach((val, j) => {
+          params[`Filter.${i + 1}.Value.${j + 1}`] = val
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.DescribeNetworkInterfacesResponse || result
+
+    return {
+      NetworkInterfaces: this.parseArray(response.networkInterfaceSet?.item).map((ni: any) => ({
+        NetworkInterfaceId: ni.networkInterfaceId,
+        SubnetId: ni.subnetId,
+        VpcId: ni.vpcId,
+        Status: ni.status,
+        Attachment: ni.attachment ? {
+          AttachmentId: ni.attachment.attachmentId,
+          InstanceId: ni.attachment.instanceId,
+          Status: ni.attachment.status,
+        } : undefined,
+      })),
+    }
+  }
+
+  /**
+   * Detach a network interface
+   */
+  async detachNetworkInterface(attachmentId: string, force?: boolean): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'DetachNetworkInterface',
+      Version: '2016-11-15',
+      AttachmentId: attachmentId,
+    }
+
+    if (force) {
+      params.Force = 'true'
+    }
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Delete a network interface
+   */
+  async deleteNetworkInterface(networkInterfaceId: string): Promise<void> {
+    const params: Record<string, string> = {
+      Action: 'DeleteNetworkInterface',
+      Version: '2016-11-15',
+      NetworkInterfaceId: networkInterfaceId,
+    }
+
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+  }
+
+  /**
+   * Describe AWS regions
+   */
+  async describeRegions(): Promise<{
+    Regions?: { RegionName?: string, Endpoint?: string }[]
+  }> {
+    const params: Record<string, string> = {
+      Action: 'DescribeRegions',
+      Version: '2016-11-15',
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.DescribeRegionsResponse || result
+
+    return {
+      Regions: this.parseArray(response.regionInfo?.item).map((r: any) => ({
+        RegionName: r.regionName,
+        Endpoint: r.regionEndpoint,
+      })),
+    }
+  }
+
+  /**
+   * Run new EC2 instances
+   */
+  async runInstances(options: {
+    ImageId: string
+    InstanceType: string
+    MinCount: number
+    MaxCount: number
+    SecurityGroupIds?: string[]
+    SubnetId?: string
+    UserData?: string
+    IamInstanceProfile?: { Name?: string, Arn?: string }
+    TagSpecifications?: {
+      ResourceType: string
+      Tags: { Key: string, Value: string }[]
+    }[]
+  }): Promise<{
+    Instances?: Instance[]
+  }> {
+    const params: Record<string, string> = {
+      Action: 'RunInstances',
+      Version: '2016-11-15',
+      ImageId: options.ImageId,
+      InstanceType: options.InstanceType,
+      MinCount: String(options.MinCount),
+      MaxCount: String(options.MaxCount),
+    }
+
+    if (options.SecurityGroupIds) {
+      options.SecurityGroupIds.forEach((id, i) => {
+        params[`SecurityGroupId.${i + 1}`] = id
+      })
+    }
+
+    if (options.SubnetId) {
+      params.SubnetId = options.SubnetId
+    }
+
+    if (options.UserData) {
+      params.UserData = options.UserData
+    }
+
+    if (options.IamInstanceProfile) {
+      if (options.IamInstanceProfile.Name) {
+        params['IamInstanceProfile.Name'] = options.IamInstanceProfile.Name
+      }
+      if (options.IamInstanceProfile.Arn) {
+        params['IamInstanceProfile.Arn'] = options.IamInstanceProfile.Arn
+      }
+    }
+
+    if (options.TagSpecifications) {
+      options.TagSpecifications.forEach((spec, i) => {
+        params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+        spec.Tags.forEach((tag, j) => {
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+        })
+      })
+    }
+
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams(params).toString(),
+    })
+
+    const response = result.RunInstancesResponse || result
+
+    return {
+      Instances: this.parseInstances(response.instancesSet?.item || response.instancesSet),
+    }
+  }
+
+  /**
    * Encode IpPermissions into query parameters for security group rules
    */
   private encodeIpPermissions(params: Record<string, string>, permissions: IpPermission[]): void {

@@ -59,13 +59,34 @@ export interface TableDescription {
 export class DynamoDBClient {
   private client: AWSClient
   private region: string
+  private endpoint?: string
 
-  constructor(region: string = 'us-east-1') {
+  constructor(region: string = 'us-east-1', options?: { endpoint?: string }) {
     this.region = region
+    this.endpoint = options?.endpoint
     this.client = new AWSClient()
   }
 
   private async request<T>(action: string, params: Record<string, any>): Promise<T> {
+    // For custom endpoints (e.g., local DynamoDB), use direct fetch
+    if (this.endpoint) {
+      const response = await fetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.0',
+          'X-Amz-Target': `DynamoDB_20120810.${action}`,
+        },
+        body: JSON.stringify(params),
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`DynamoDB request failed: ${response.status} ${text}`)
+      }
+
+      return response.json()
+    }
+
     return this.client.request({
       service: 'dynamodb',
       region: this.region,

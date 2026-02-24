@@ -470,7 +470,22 @@ export class CloudFormationClient {
       body: new URLSearchParams(params).toString(),
     })
 
-    return { StackSummaries: [] } // TODO: Parse response
+    const response = result.ListStacksResponse || result
+    const summariesResult = response.ListStacksResult || response
+    const members = summariesResult.StackSummaries?.member || summariesResult.StackSummaries || []
+    const items = Array.isArray(members) ? members : (members ? [members] : [])
+
+    return {
+      StackSummaries: items.map((s: any) => ({
+        StackId: s.StackId || '',
+        StackName: s.StackName || '',
+        TemplateDescription: s.TemplateDescription,
+        CreationTime: s.CreationTime || '',
+        LastUpdatedTime: s.LastUpdatedTime,
+        DeletionTime: s.DeletionTime,
+        StackStatus: s.StackStatus || '',
+      })),
+    }
   }
 
 

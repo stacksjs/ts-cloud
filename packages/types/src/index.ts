@@ -284,6 +284,32 @@ export interface InfrastructureConfig {
   api?: ApiConfig
   loadBalancer?: LoadBalancerConfig
   ssl?: SslConfig
+
+  /**
+   * Domain and path redirect configuration
+   *
+   * Domain redirects create S3 buckets that redirect all traffic to a target domain.
+   * Path redirects create CloudFront Functions for URL-level rewrites.
+   *
+   * @example
+   * // Simple domain redirects (redirect these domains to your primary domain)
+   * redirects: {
+   *   domains: ['www.stacksjs.com', 'stacks.dev'],
+   *   target: 'stacksjs.com',
+   * }
+   *
+   * @example
+   * // Domain + path redirects
+   * redirects: {
+   *   domains: ['old-domain.com'],
+   *   target: 'new-domain.com',
+   *   paths: {
+   *     '/old-blog': '/blog',
+   *     '/legacy/api': '/api/v2',
+   *   },
+   * }
+   */
+  redirects?: RedirectsConfig
   streaming?: Record<string, {
     name?: string
     shardCount?: number
@@ -366,6 +392,115 @@ export interface InfrastructureConfig {
       schedule?: string
     }>
   }
+
+  /**
+   * Jump Box / Bastion Host configuration
+   * Provides SSH access to private resources in your VPC
+   *
+   * Set to `true` for a default jump box, or provide a config object.
+   *
+   * @example
+   * // Simple — default t3.micro jump box
+   * jumpBox: true
+   *
+   * @example
+   * // With EFS mount for file access
+   * jumpBox: {
+   *   enabled: true,
+   *   size: 'micro',
+   *   mountEfs: true,
+   * }
+   *
+   * @example
+   * // Restrict SSH to a specific IP
+   * jumpBox: {
+   *   enabled: true,
+   *   allowedCidrs: ['203.0.113.0/32'],
+   * }
+   */
+  jumpBox?: boolean | JumpBoxConfig
+}
+
+/**
+ * Jump Box (Bastion Host) configuration
+ */
+export interface JumpBoxConfig {
+  /**
+   * Enable the jump box
+   * @default true
+   */
+  enabled?: boolean
+
+  /**
+   * Instance size or direct instance type
+   * @default 'micro'
+   */
+  size?: InstanceSize
+
+  /**
+   * SSH key pair name
+   */
+  keyName?: string
+
+  /**
+   * CIDR blocks allowed to SSH into the jump box
+   * @default ['0.0.0.0/0']
+   */
+  allowedCidrs?: string[]
+
+  /**
+   * Mount an EFS file system on the jump box
+   * Set to `true` to auto-detect from infrastructure.fileSystem, or provide an EFS ID
+   */
+  mountEfs?: boolean | string
+
+  /**
+   * EFS mount path
+   * @default '/mnt/efs'
+   */
+  mountPath?: string
+
+  /**
+   * Install database CLI tools (psql, mysql, redis-cli)
+   * @default false
+   */
+  databaseTools?: boolean
+}
+
+/**
+ * Redirect configuration for domain and path-level redirects
+ */
+export interface RedirectsConfig {
+  /**
+   * Source domains to redirect (e.g. 'www.stacksjs.com', 'old-domain.com')
+   * Each domain gets an S3 redirect bucket pointing to the target
+   */
+  domains?: string[]
+
+  /**
+   * Target domain all redirects point to
+   * @example 'stacksjs.com'
+   */
+  target?: string
+
+  /**
+   * Protocol for the redirect target
+   * @default 'https'
+   */
+  protocol?: 'http' | 'https'
+
+  /**
+   * Path-level redirects (CloudFront Function)
+   * Keys are source paths, values are target paths
+   * @example { '/old-page': '/new-page', '/blog/old-post': '/blog/new-post' }
+   */
+  paths?: Record<string, string>
+
+  /**
+   * Status code for path redirects
+   * @default 301
+   */
+  statusCode?: 301 | 302 | 307 | 308
 }
 
 /**
@@ -724,6 +859,88 @@ export interface ServerItemConfig {
    * Custom startup script
    */
   startupScript?: string
+
+  /**
+   * Human-readable server name
+   * @example 'app-server-1'
+   */
+  name?: string
+
+  /**
+   * Domain associated with this server
+   * @example 'stacksjs.com'
+   */
+  domain?: string
+
+  /**
+   * AWS region for this server
+   * @example 'us-east-1'
+   */
+  region?: string
+
+  /**
+   * Server role type
+   * @example 'app', 'web', 'worker', 'cache', 'search'
+   */
+  type?: 'app' | 'web' | 'worker' | 'cache' | 'search' | (string & {})
+
+  /**
+   * Disk size in GB
+   * @default 20
+   */
+  diskSize?: number
+
+  /**
+   * Existing VPC ID or 'create' to provision a new one
+   * @example 'vpc-123456789' or 'create'
+   */
+  privateNetwork?: string
+
+  /**
+   * Existing subnet ID
+   * @example 'subnet-123456789'
+   */
+  subnet?: string
+
+  /**
+   * Server OS image identifier
+   * @example 'ubuntu-20-lts-x86_64'
+   */
+  serverOS?: string
+
+  /**
+   * Bun runtime version to install
+   * @example '1.1.26'
+   */
+  bunVersion?: string
+
+  /**
+   * Database engine to install clients for
+   * @example 'sqlite', 'postgres'
+   */
+  database?: string
+
+  /**
+   * Database name to create
+   * @example 'stacks'
+   */
+  databaseName?: string
+
+  /**
+   * Post-provision script (alias for startupScript)
+   */
+  userData?: string
+
+  /**
+   * Direct AWS instance type override
+   * @example 't3.micro', 'm6i.large'
+   */
+  instanceType?: string
+
+  /**
+   * SSH key pair name for instance access
+   */
+  keyName?: string
 }
 
 /**

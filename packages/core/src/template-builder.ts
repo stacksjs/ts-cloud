@@ -50,6 +50,13 @@ export class TemplateBuilder {
   }
 
   /**
+   * Check if a resource already exists in the template
+   */
+  hasResource(logicalId: string): boolean {
+    return logicalId in this.template.Resources
+  }
+
+  /**
    * Get resources from the template
    */
   getResources(): Record<string, CloudFormationResource> {
