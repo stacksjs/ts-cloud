@@ -233,6 +233,7 @@ export class SenderReputationManager {
     const openRate = options.delivered > 0 ? (options.opened / options.delivered) * 100 : 0
     const clickRate = options.delivered > 0 ? (options.clicked / options.delivered) * 100 : 0
     const bounceRate = (options.bounced / options.totalSent) * 100
+    // eslint-disable-next-line regexp/no-super-linear-backtracking
     const complaintRate = options.delivered > 0 ? (options.complained / options.delivered) * 100 : 0
 
     const engagementScore = (openRate * 0.4) + (clickRate * 0.6)

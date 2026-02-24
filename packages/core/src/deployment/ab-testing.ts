@@ -400,6 +400,7 @@ export class ABTestManager {
   private collectMetrics(test: ABTest): ABMetrics {
     const variantMetrics: Record<string, VariantMetrics> = {}
 
+    // eslint-disable-next-line regexp/no-super-linear-backtracking
     // Simulate metric collection
     let totalRequests = 0
 

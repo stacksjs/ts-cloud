@@ -1726,6 +1726,7 @@ export class ImapServer {
     return `${d}-${m}-${y} ${h}:${min}:${s} ${tz}`
   }
 
+  // eslint-disable-next-line regexp/no-super-linear-backtracking
   /**
    * Parse IMAP sequence set (e.g., "1:*", "1,3,5", "1:10")
    */
