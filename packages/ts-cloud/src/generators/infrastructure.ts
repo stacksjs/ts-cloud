@@ -25,6 +25,7 @@ import {
   Auth,
   Deployment,
   Redirects,
+  Search,
   TemplateBuilder,
 } from 'ts-cloud-core'
 
@@ -39,6 +40,7 @@ export class InfrastructureGenerator {
   private config: CloudConfig
   private environment: 'production' | 'staging' | 'development'
   private mergedConfig: CloudConfig
+  private serverEipLogicalIds: Map<string, string> = new Map()
 
   constructor(options: GenerationOptions) {
     this.config = options.config
@@ -76,6 +78,11 @@ export class InfrastructureGenerator {
         queues: { ...this.config.infrastructure?.queues, ...envInfra.queues },
         redirects: { ...this.config.infrastructure?.redirects, ...envInfra.redirects },
         realtime: { ...this.config.infrastructure?.realtime, ...envInfra.realtime },
+        cache: { ...this.config.infrastructure?.cache, ...envInfra.cache },
+        fileSystem: { ...this.config.infrastructure?.fileSystem, ...envInfra.fileSystem },
+        email: { ...this.config.infrastructure?.email, ...envInfra.email },
+        search: { ...this.config.infrastructure?.search, ...envInfra.search },
+        ai: { ...this.config.infrastructure?.ai, ...envInfra.ai },
       },
     }
   }
@@ -127,18 +134,22 @@ export class InfrastructureGenerator {
     // Auto-detect and generate based on what's configured (using merged config)
     // If functions or API are defined, generate serverless resources
     const hasServerlessConfig = !!(
-      this.mergedConfig.infrastructure?.functions
+      (this.mergedConfig.infrastructure?.functions && Object.keys(this.mergedConfig.infrastructure.functions).length > 0)
       || this.mergedConfig.infrastructure?.api
     )
 
     // If servers are defined, generate server resources
     const hasServerConfig = !!(
       this.mergedConfig.infrastructure?.servers
+      && Object.keys(this.mergedConfig.infrastructure.servers).length > 0
     )
 
     // If containers are defined, generate ECS/Fargate resources
+    // Only generate when mode is 'serverless' or containers are explicitly configured
+    const mode = this.mergedConfig.mode || 'server'
     const hasContainerConfig = !!(
-      this.mergedConfig.infrastructure?.containers
+      mode === 'serverless'
+      && this.mergedConfig.infrastructure?.containers
       && Object.keys(this.mergedConfig.infrastructure.containers).length > 0
     )
 
@@ -807,21 +818,7 @@ export class InfrastructureGenerator {
       break
     }
 
-    // ========================================
-    // S3 Bucket Outputs (for frontend/docs deployment)
-    // ========================================
-    // These outputs are consumed by the deploy action
-    const storageConfig = this.mergedConfig.infrastructure?.storage
-    if (storageConfig) {
-      for (const [storageName] of Object.entries(storageConfig)) {
-        const bucketLogicalId = `${slug}${env}${storageName}`.replace(/[^a-zA-Z0-9]/g, '')
-        this.builder.addOutput(`${bucketLogicalId}BucketName`, {
-          Description: `S3 Bucket Name for ${storageName}`,
-          Value: { Ref: bucketLogicalId },
-          Export: { Name: { 'Fn::Sub': `\${AWS::StackName}-${storageName}-bucket` } as any },
-        })
-      }
-    }
+    // S3 Bucket Outputs are generated in generateSharedInfrastructure()
   }
 
   /**
@@ -867,7 +864,7 @@ export class InfrastructureGenerator {
     }
 
     // Example: API Gateway
-    if (this.config.infrastructure?.api) {
+    if (this.mergedConfig.infrastructure?.api) {
       const { restApi, logicalId } = ApiGateway.createRestApi({
         slug,
         environment: env,
@@ -883,11 +880,11 @@ export class InfrastructureGenerator {
    * Creates a full stack per server: EC2 instance + security group + IAM role + instance profile + EIP
    */
   private generateServer(slug: string, env: typeof this.environment): void {
-    if (!this.config.infrastructure?.servers) return
+    if (!this.mergedConfig.infrastructure?.servers) return
 
-    const servers = this.config.infrastructure.servers
-    const computeConfig = this.config.infrastructure?.compute
-    const sslConfig = this.config.infrastructure?.ssl as { enabled?: boolean, letsEncrypt?: { email?: string } } | undefined
+    const servers = this.mergedConfig.infrastructure.servers
+    const computeConfig = this.mergedConfig.infrastructure?.compute
+    const sslConfig = this.mergedConfig.infrastructure?.ssl as { enabled?: boolean, letsEncrypt?: { email?: string } } | undefined
 
     // Check if any server needs a new VPC
     const needsVpc = Object.values(servers).some(s =>
@@ -950,6 +947,10 @@ export class InfrastructureGenerator {
         this.builder.addResource(logicalId, resource)
       }
 
+      // Track EIP and instance IDs for CloudFront API routing
+      this.serverEipLogicalIds.set(name, stack.outputs.eipLogicalId)
+      this.serverEipLogicalIds.set(`${name}Instance`, stack.outputs.instanceLogicalId)
+
       // Add outputs for this server
       this.builder.addOutput(`${name}InstanceId`, {
         Value: { Ref: stack.outputs.instanceLogicalId },
@@ -966,7 +967,7 @@ export class InfrastructureGenerator {
    * Generate jump box / bastion host infrastructure
    */
   private generateJumpBox(slug: string, env: typeof this.environment): void {
-    const raw = this.config.infrastructure?.jumpBox
+    const raw = this.mergedConfig.infrastructure?.jumpBox
     if (!raw) return
 
     // Normalize: `true` becomes default config
@@ -1045,16 +1046,113 @@ export class InfrastructureGenerator {
    * Generate shared infrastructure (storage, database, etc.)
    */
   private generateSharedInfrastructure(slug: string, env: typeof this.environment): void {
+    const sslConfig = this.mergedConfig.infrastructure?.ssl
+    const dnsConfig = this.mergedConfig.infrastructure?.dns
+    const domain = dnsConfig?.domain
+    const hostedZoneId = dnsConfig?.hostedZoneId
+
+    // Track CloudFront distribution logical IDs for website buckets
+    // so we can create DNS records after all distributions are created
+    const websiteBucketDistributions: Array<{
+      name: string
+      bucketLogicalId: string
+      distLogicalId: string
+      oacLogicalId: string
+      aliases: string[]
+    }> = []
+
+    // ========================================
+    // ACM Certificate for CloudFront
+    // ========================================
+    // CloudFront requires certs in us-east-1. Create one covering all website domains.
+    let cfCertificateLogicalId: string | undefined
+    let cfCertificateArn: string | undefined
+
+    if (sslConfig?.certificateArn) {
+      // Use existing certificate ARN
+      cfCertificateArn = sslConfig.certificateArn
+    }
+    else if (sslConfig?.enabled && domain && hostedZoneId) {
+      // Auto-create certificate covering the domain + www + docs subdomains
+      const sslDomains = sslConfig.domains || [domain]
+      const primaryDomain = sslDomains[0]
+      const subdomains = sslDomains.slice(1).map((d: string) => {
+        if (d.includes('.') && d.endsWith(primaryDomain)) {
+          return d.replace(`.${primaryDomain}`, '')
+        }
+        return d
+      })
+
+      // Add docs subdomain if docs storage is configured
+      if (this.mergedConfig.infrastructure?.storage?.docs && !subdomains.includes('docs')) {
+        subdomains.push('docs')
+      }
+
+      const { certificate, logicalId: certLogicalId } = Security.createCertificate({
+        domain: primaryDomain,
+        subdomains,
+        slug,
+        environment: env,
+        validationMethod: 'DNS',
+        hostedZoneId,
+      })
+
+      cfCertificateLogicalId = certLogicalId
+      this.builder.addResource(certLogicalId, certificate)
+    }
+
+    // ========================================
     // Storage buckets
-    if (this.config.infrastructure?.storage) {
-      for (const [name, storageConfig] of Object.entries(this.config.infrastructure.storage)) {
+    // ========================================
+    if (this.mergedConfig.infrastructure?.storage) {
+      // Determine if any website bucket exists (needs shared OAC)
+      const hasWebsiteBuckets = Object.entries(this.mergedConfig.infrastructure.storage).some(
+        ([, cfg]) => cfg.website,
+      )
+
+      // Create a shared Origin Access Control for all website buckets
+      let sharedOacLogicalId: string | undefined
+      if (hasWebsiteBuckets && (cfCertificateLogicalId || cfCertificateArn)) {
+        sharedOacLogicalId = `${slug}${env}CloudFrontOAC`.replace(/[^a-zA-Z0-9]/g, '')
+        this.builder.addResource(sharedOacLogicalId, {
+          Type: 'AWS::CloudFront::OriginAccessControl',
+          Properties: {
+            OriginAccessControlConfig: {
+              Name: `${slug}-${env}-s3-oac`,
+              Description: `OAC for ${slug} ${env} S3 website buckets`,
+              OriginAccessControlOriginType: 's3',
+              SigningBehavior: 'always',
+              SigningProtocol: 'sigv4',
+            },
+          },
+        } as any)
+      }
+
+      for (const [name, storageConfig] of Object.entries(this.mergedConfig.infrastructure.storage)) {
+        // For website buckets served via CloudFront, don't make them public directly
+        // CloudFront OAC will handle access
+        const serveViaCloudFront = !!(storageConfig.website && sharedOacLogicalId)
         const { bucket, logicalId } = Storage.createBucket({
           slug,
+          name,
           environment: env,
           bucketName: `${slug}-${env}-${name}`,
           versioning: storageConfig.versioning,
           encryption: storageConfig.encryption,
+          // Don't set public if serving via CloudFront - OAC handles access
+          public: serveViaCloudFront ? false : storageConfig.public,
         })
+
+        // For CloudFront-served buckets, allow bucket policies (needed for OAC)
+        // but block direct public access via ACLs
+        if (serveViaCloudFront && bucket.Properties) {
+          bucket.Properties.PublicAccessBlockConfiguration = {
+            BlockPublicAcls: true,
+            IgnorePublicAcls: true,
+            BlockPublicPolicy: false, // Allow CloudFront bucket policy
+            RestrictPublicBuckets: false, // Allow CloudFront access via policy
+          }
+        }
 
         this.builder.addResource(logicalId, bucket)
 
@@ -1068,12 +1166,328 @@ export class InfrastructureGenerator {
           )
           this.builder.addResource(logicalId, enhanced)
         }
+
+        // ========================================
+        // CloudFront distribution for website buckets
+        // ========================================
+        if (serveViaCloudFront && sharedOacLogicalId && domain) {
+          const distLogicalId = `${slug}${env}${name}CDN`.replace(/[^a-zA-Z0-9]/g, '')
+
+          // Determine aliases for this bucket
+          const aliases: string[] = []
+          if (name === 'public') {
+            // Main site: domain + www
+            aliases.push(domain)
+            if (sslConfig?.domains?.includes(`www.${domain}`)) {
+              aliases.push(`www.${domain}`)
+            }
+          }
+          else if (name === 'docs') {
+            aliases.push(`docs.${domain}`)
+          }
+          else if (name === 'blog') {
+            aliases.push(`blog.${domain}`)
+          }
+          // Other website buckets don't get automatic aliases
+
+          // Determine error page behavior
+          const websiteConfig = typeof storageConfig.website === 'object' ? storageConfig.website : {}
+          const isSpa = name === 'public' // SPA routing: 403/404 → index.html
+          const errorDocument = websiteConfig.errorDocument || (isSpa ? 'index.html' : '404.html')
+
+          const customErrorResponses: any[] = []
+          if (isSpa) {
+            // SPA: route all 403/404 to index.html for client-side routing
+            customErrorResponses.push(
+              { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: '/index.html', ErrorCachingMinTTL: 300 },
+              { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: '/index.html', ErrorCachingMinTTL: 300 },
+            )
+          }
+          else {
+            // Docs: show proper error page
+            customErrorResponses.push(
+              { ErrorCode: 403, ResponseCode: 404, ResponsePagePath: `/${errorDocument}`, ErrorCachingMinTTL: 300 },
+              { ErrorCode: 404, ResponseCode: 404, ResponsePagePath: `/${errorDocument}`, ErrorCachingMinTTL: 300 },
+            )
+          }
+
+          // Build viewer certificate
+          const viewerCertificate: any = cfCertificateArn && aliases.length > 0
+            ? {
+                AcmCertificateArn: cfCertificateArn,
+                SslSupportMethod: 'sni-only',
+                MinimumProtocolVersion: 'TLSv1.2_2021',
+              }
+            : cfCertificateLogicalId && aliases.length > 0
+              ? {
+                  AcmCertificateArn: { Ref: cfCertificateLogicalId },
+                  SslSupportMethod: 'sni-only',
+                  MinimumProtocolVersion: 'TLSv1.2_2021',
+                }
+              : { CloudFrontDefaultCertificate: true }
+
+          const originId = `S3-${slug}-${env}-${name}`
+          const region = this.mergedConfig.project.region || 'us-east-1'
+
+          // For non-SPA static sites (docs, blog), create a CloudFront Function
+          // to rewrite directory URLs to index.html (e.g., /posts/slug/ → /posts/slug/index.html)
+          let cfFunctionLogicalId: string | undefined
+          if (!isSpa) {
+            cfFunctionLogicalId = `${slug}${env}${name}UrlRewrite`.replace(/[^a-zA-Z0-9]/g, '')
+            this.builder.addResource(cfFunctionLogicalId, {
+              Type: 'AWS::CloudFront::Function',
+              Properties: {
+                Name: `${slug}-${env}-${name}-url-rewrite`,
+                AutoPublish: true,
+                FunctionConfig: {
+                  Comment: `URL rewrite for ${slug} ${env} ${name} - appends index.html to directory paths`,
+                  Runtime: 'cloudfront-js-2.0',
+                },
+                FunctionCode: `function handler(event) { var request = event.request; var uri = request.uri; if (uri.endsWith('/')) { request.uri += 'index.html'; } else if (!uri.includes('.')) { request.uri += '/index.html'; } return request; }`,
+              },
+            } as any)
+          }
+
+          // For the public distribution, add EC2 origin for /api/* routing if servers exist
+          const origins: any[] = [{
+            Id: originId,
+            // Use S3 REST endpoint (not website endpoint) for OAC
+            DomainName: { 'Fn::Sub': `\${${logicalId}}.s3.${region}.amazonaws.com` },
+            OriginPath: '',
+            S3OriginConfig: {
+              OriginAccessIdentity: '', // Required but empty when using OAC
+            },
+            OriginAccessControlId: { Ref: sharedOacLogicalId },
+          }]
+
+          const cacheBehaviors: any[] = []
+          const extraDependsOn: string[] = []
+
+          // Add EC2 API origin for the public (main site) distribution
+          if (name === 'public') {
+            // Find the first app server's EIP for API routing
+            const appEipId = this.serverEipLogicalIds.get('app')
+            const appInstanceId = this.serverEipLogicalIds.get('appInstance')
+            if (appEipId) {
+              const apiOriginId = `EC2-${slug}-${env}-api`
+
+              // CloudFront requires a DNS hostname, not an IP address.
+              // Construct the EC2 public DNS name from the EIP:
+              //   us-east-1: ec2-{ip-with-dashes}.compute-1.amazonaws.com
+              //   other regions: ec2-{ip-with-dashes}.{region}.compute.amazonaws.com
+              const serverRegion = this.mergedConfig.infrastructure?.servers?.app?.region
+                || this.mergedConfig.project?.region
+                || 'us-east-1'
+              const dnsSuffix = serverRegion === 'us-east-1'
+                ? '.compute-1.amazonaws.com'
+                : `.${serverRegion}.compute.amazonaws.com`
+
+              const originDomainName = {
+                'Fn::Join': ['', [
+                  'ec2-',
+                  { 'Fn::Join': ['-', { 'Fn::Split': ['.', { Ref: appEipId }] }] },
+                  dnsSuffix,
+                ]],
+              }
+
+              origins.push({
+                Id: apiOriginId,
+                DomainName: originDomainName,
+                CustomOriginConfig: {
+                  HTTPPort: 80,
+                  HTTPSPort: 443,
+                  OriginProtocolPolicy: 'http-only', // Bun on EC2 handles HTTP from CloudFront
+                  OriginSSLProtocols: ['TLSv1.2'],
+                },
+              })
+              extraDependsOn.push(appEipId)
+              if (appInstanceId) extraDependsOn.push(appInstanceId)
+
+              // Add /api/* cache behavior routing to EC2
+              cacheBehaviors.push({
+                PathPattern: '/api/*',
+                TargetOriginId: apiOriginId,
+                ViewerProtocolPolicy: 'redirect-to-https',
+                AllowedMethods: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
+                CachedMethods: ['GET', 'HEAD'],
+                Compress: true,
+                // Use CachingDisabled policy for API (no caching)
+                CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+                // Use AllViewerExceptHostHeader origin request policy to forward query strings, cookies, etc.
+                OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+              })
+            }
+          }
+
+          const distribution: any = {
+            Type: 'AWS::CloudFront::Distribution',
+            DependsOn: [logicalId, sharedOacLogicalId, ...(cfFunctionLogicalId ? [cfFunctionLogicalId] : []), ...extraDependsOn],
+            Properties: {
+              DistributionConfig: {
+                Enabled: true,
+                Comment: `${slug} ${env} ${name} site`,
+                DefaultRootObject: 'index.html',
+                Origins: origins,
+                DefaultCacheBehavior: {
+                  TargetOriginId: originId,
+                  ViewerProtocolPolicy: 'redirect-to-https',
+                  AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                  CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                  Compress: true,
+                  // Use CachingOptimized managed policy
+                  CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                  // Add URL rewrite function for non-SPA sites
+                  ...(cfFunctionLogicalId ? {
+                    FunctionAssociations: [{
+                      EventType: 'viewer-request',
+                      FunctionARN: { 'Fn::GetAtt': [cfFunctionLogicalId, 'FunctionARN'] },
+                    }],
+                  } : {}),
+                },
+                ...(cacheBehaviors.length > 0 ? { CacheBehaviors: cacheBehaviors } : {}),
+                ...(aliases.length > 0 ? { Aliases: aliases } : {}),
+                ViewerCertificate: viewerCertificate,
+                PriceClass: 'PriceClass_100',
+                HttpVersion: 'http2and3',
+                IPV6Enabled: true,
+                CustomErrorResponses: customErrorResponses,
+              },
+            },
+          }
+
+          // If using stack-created certificate, add dependency
+          if (cfCertificateLogicalId) {
+            distribution.DependsOn.push(cfCertificateLogicalId)
+          }
+
+          this.builder.addResource(distLogicalId, distribution)
+
+          // S3 Bucket Policy - allow CloudFront OAC to read objects
+          const policyLogicalId = `${logicalId}CloudFrontPolicy`
+          this.builder.addResource(policyLogicalId, {
+            Type: 'AWS::S3::BucketPolicy',
+            DependsOn: [logicalId, distLogicalId],
+            Properties: {
+              Bucket: { Ref: logicalId },
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [{
+                  Sid: 'AllowCloudFrontServicePrincipal',
+                  Effect: 'Allow',
+                  Principal: {
+                    Service: 'cloudfront.amazonaws.com',
+                  },
+                  Action: 's3:GetObject',
+                  Resource: { 'Fn::Sub': `arn:aws:s3:::\${${logicalId}}/*` },
+                  Condition: {
+                    StringEquals: {
+                      'AWS:SourceArn': { 'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}` },
+                    },
+                  },
+                }],
+              },
+            },
+          } as any)
+
+          // Track for DNS record creation
+          if (aliases.length > 0) {
+            websiteBucketDistributions.push({
+              name,
+              bucketLogicalId: logicalId,
+              distLogicalId,
+              oacLogicalId: sharedOacLogicalId,
+              aliases,
+            })
+          }
+
+          // CloudFront distribution outputs
+          this.builder.addOutput(`${name}CloudFrontDomain`, {
+            Value: { 'Fn::GetAtt': [distLogicalId, 'DomainName'] },
+            Description: `CloudFront domain for ${name}`,
+          })
+
+          this.builder.addOutput(`${name}CloudFrontDistributionId`, {
+            Value: { Ref: distLogicalId },
+            Description: `CloudFront distribution ID for ${name}`,
+          })
+        }
+
+        // Add bucket name output
+        this.builder.addOutput(`${name}BucketName`, {
+          Value: { Ref: logicalId },
+          Description: `S3 bucket name for ${name}`,
+        })
+
+        // Map well-known bucket names for deploy action
+        if (name === 'public') {
+          this.builder.addOutput('FrontendBucketName', {
+            Value: { Ref: logicalId },
+            Description: 'Frontend S3 bucket name',
+          })
+        }
+        if (name === 'docs') {
+          this.builder.addOutput('DocsBucketName', {
+            Value: { Ref: logicalId },
+            Description: 'Documentation S3 bucket name',
+          })
+        }
+        if (name === 'blog') {
+          this.builder.addOutput('BlogBucketName', {
+            Value: { Ref: logicalId },
+            Description: 'Blog S3 bucket name',
+          })
+        }
       }
     }
 
+    // ========================================
+    // Route53 DNS records for CloudFront distributions
+    // ========================================
+    if (hostedZoneId && websiteBucketDistributions.length > 0) {
+      for (const { name, distLogicalId, aliases } of websiteBucketDistributions) {
+        for (const alias of aliases) {
+          const safeName = alias.replace(/\./g, '').replace(/[^a-zA-Z0-9]/g, '')
+
+          // A record (IPv4) alias → CloudFront
+          this.builder.addResource(`${safeName}ARecord`, {
+            Type: 'AWS::Route53::RecordSet',
+            DependsOn: [distLogicalId],
+            Properties: {
+              HostedZoneId: hostedZoneId,
+              Name: alias,
+              Type: 'A',
+              AliasTarget: {
+                DNSName: { 'Fn::GetAtt': [distLogicalId, 'DomainName'] },
+                HostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront global hosted zone ID
+                EvaluateTargetHealth: false,
+              },
+            },
+          } as any)
+
+          // AAAA record (IPv6) alias → CloudFront
+          this.builder.addResource(`${safeName}AAAARecord`, {
+            Type: 'AWS::Route53::RecordSet',
+            DependsOn: [distLogicalId],
+            Properties: {
+              HostedZoneId: hostedZoneId,
+              Name: alias,
+              Type: 'AAAA',
+              AliasTarget: {
+                DNSName: { 'Fn::GetAtt': [distLogicalId, 'DomainName'] },
+                HostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront global hosted zone ID
+                EvaluateTargetHealth: false,
+              },
+            },
+          } as any)
+        }
+      }
+    }
+
+    // API routes are handled by the Bun server on EC2, routed via CloudFront /api/* behavior
+
     // Databases
-    if (this.config.infrastructure?.databases) {
-      for (const [name, dbConfig] of Object.entries(this.config.infrastructure.databases)) {
+    if (this.mergedConfig.infrastructure?.databases) {
+      for (const [name, dbConfig] of Object.entries(this.mergedConfig.infrastructure.databases)) {
         if (dbConfig.engine === 'dynamodb') {
           const { table, logicalId } = Database.createTable({
             slug,
@@ -1115,8 +1529,8 @@ export class InfrastructureGenerator {
     }
 
     // CDN
-    if (this.config.infrastructure?.cdn) {
-      for (const [name, cdnConfig] of Object.entries(this.config.infrastructure.cdn)) {
+    if (this.mergedConfig.infrastructure?.cdn) {
+      for (const [name, cdnConfig] of Object.entries(this.mergedConfig.infrastructure.cdn)) {
         const { distribution, logicalId } = CDN.createDistribution({
           slug,
           environment: env,
@@ -1410,8 +1824,8 @@ export class InfrastructureGenerator {
     }
 
     // Monitoring
-    if (this.config.infrastructure?.monitoring?.alarms) {
-      for (const [name, alarmConfig] of Object.entries(this.config.infrastructure.monitoring.alarms)) {
+    if (this.mergedConfig.infrastructure?.monitoring?.alarms) {
+      for (const [name, alarmConfig] of Object.entries(this.mergedConfig.infrastructure.monitoring.alarms)) {
         const { alarm, logicalId } = Monitoring.createAlarm({
           slug,
           environment: env,
@@ -1424,6 +1838,288 @@ export class InfrastructureGenerator {
 
         this.builder.addResource(logicalId, alarm)
       }
+    }
+
+    // Cache (ElastiCache Redis/Memcached)
+    const cacheConfig = this.mergedConfig.infrastructure?.cache
+    if (cacheConfig) {
+      const cacheType = cacheConfig.type || 'redis'
+
+      if (cacheType === 'redis') {
+        // Ensure VPC exists for cache subnet group
+        this.generateNetworkInfrastructure(slug, env)
+
+        const redisConfig = cacheConfig.redis || {}
+        const { replicationGroup, subnetGroup, logicalId, subnetGroupId } = Cache.createRedis({
+          slug,
+          environment: env,
+          nodeType: redisConfig.nodeType || cacheConfig.nodeType || 'cache.t3.micro',
+          engineVersion: redisConfig.engineVersion || '7.1',
+          port: redisConfig.port || 6379,
+          numCacheClusters: redisConfig.numCacheNodes || 2,
+          automaticFailover: redisConfig.automaticFailoverEnabled !== false,
+          atRestEncryption: true,
+          transitEncryption: true,
+          snapshotRetentionDays: redisConfig.snapshotRetentionLimit || 7,
+          snapshotWindow: redisConfig.snapshotWindow,
+          subnetIds: [
+            { Ref: 'PublicSubnet1' } as unknown as string,
+            { Ref: 'PublicSubnet2' } as unknown as string,
+          ],
+        })
+
+        this.builder.addResource(logicalId, replicationGroup)
+        if (subnetGroup && subnetGroupId) {
+          this.builder.addResource(subnetGroupId, subnetGroup)
+        }
+
+        this.builder.addOutput('CacheEndpoint', {
+          Value: { 'Fn::GetAtt': [logicalId, 'PrimaryEndPoint.Address'] } as any,
+          Description: 'Redis primary endpoint address',
+        })
+        this.builder.addOutput('CachePort', {
+          Value: { 'Fn::GetAtt': [logicalId, 'PrimaryEndPoint.Port'] } as any,
+          Description: 'Redis primary endpoint port',
+        })
+      }
+      else if (cacheType === 'memcached') {
+        this.generateNetworkInfrastructure(slug, env)
+
+        const mcConfig = cacheConfig.elasticache || {}
+        const { cluster, subnetGroup, logicalId, subnetGroupId } = Cache.createMemcached({
+          slug,
+          environment: env,
+          nodeType: mcConfig.nodeType || cacheConfig.nodeType || 'cache.t3.micro',
+          engineVersion: mcConfig.engineVersion || '1.6.22',
+          numCacheNodes: mcConfig.numCacheNodes || 2,
+          subnetIds: [
+            { Ref: 'PublicSubnet1' } as unknown as string,
+            { Ref: 'PublicSubnet2' } as unknown as string,
+          ],
+        })
+
+        this.builder.addResource(logicalId, cluster)
+        if (subnetGroup && subnetGroupId) {
+          this.builder.addResource(subnetGroupId, subnetGroup)
+        }
+
+        this.builder.addOutput('CacheEndpoint', {
+          Value: { 'Fn::GetAtt': [logicalId, 'ConfigurationEndpoint.Address'] } as any,
+          Description: 'Memcached configuration endpoint address',
+        })
+      }
+    }
+
+    // Email (SES)
+    const emailConfig = this.mergedConfig.infrastructure?.email
+    if (emailConfig) {
+      const domain = emailConfig.domain || this.mergedConfig.infrastructure?.dns?.domain
+      if (domain) {
+        // Verify domain identity
+        const { emailIdentity, logicalId: identityLogicalId } = Email.verifyDomain({
+          domain,
+          slug,
+          environment: env,
+          enableDkim: emailConfig.enableDkim !== false,
+          dkimKeyLength: emailConfig.dkimKeyLength || 'RSA_2048_BIT',
+        })
+        this.builder.addResource(identityLogicalId, emailIdentity)
+
+        // Create configuration set
+        if (emailConfig.configurationSet !== false) {
+          const { configurationSet, logicalId: configSetLogicalId } = Email.createConfigurationSet({
+            slug,
+            environment: env,
+          })
+          this.builder.addResource(configSetLogicalId, configurationSet)
+        }
+
+        // DNS records (SPF, DMARC) if hosted zone is available
+        const hostedZoneId = emailConfig.hostedZoneId
+          || this.mergedConfig.infrastructure?.dns?.hostedZoneId
+        if (hostedZoneId) {
+          const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(
+            domain,
+            hostedZoneId,
+          )
+          this.builder.addResource(spfLogicalId, spfRecord)
+
+          const { record: dmarcRecord, logicalId: dmarcLogicalId } = Email.createDmarcRecord(
+            domain,
+            hostedZoneId,
+            {
+              policy: 'none',
+              reportingEmail: emailConfig.dmarcReportingEmail || `dmarc-reports@${domain}`,
+            },
+          )
+          this.builder.addResource(dmarcLogicalId, dmarcRecord)
+        }
+
+        this.builder.addOutput('EmailDomain', {
+          Value: domain,
+          Description: 'SES verified email domain',
+        })
+      }
+    }
+
+    // Search (OpenSearch)
+    const searchConfig = this.mergedConfig.infrastructure?.search
+    if (searchConfig) {
+      const searchVpc = searchConfig.vpc
+        ? {
+          subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string],
+          securityGroupIds: [] as string[],
+        }
+        : undefined
+
+      if (searchVpc) {
+        this.generateNetworkInfrastructure(slug, env)
+      }
+
+      const { domain: searchDomain, logicalId: searchLogicalId } = Search.createDomain({
+        slug,
+        environment: env,
+        engineVersion: searchConfig.engineVersion || 'OpenSearch_2.11',
+        instanceType: searchConfig.instanceType || 't3.small.search',
+        instanceCount: searchConfig.instanceCount || 1,
+        volumeSize: searchConfig.volumeSize || 10,
+        volumeType: searchConfig.volumeType || 'gp3',
+        dedicatedMaster: searchConfig.dedicatedMaster || false,
+        dedicatedMasterType: searchConfig.dedicatedMasterType,
+        dedicatedMasterCount: searchConfig.dedicatedMasterCount || 3,
+        multiAz: searchConfig.multiAz || false,
+        encryption: searchConfig.encryption || { atRest: true, nodeToNode: true },
+        advancedSecurity: searchConfig.advancedSecurity,
+        autoTune: searchConfig.autoTune !== false,
+        vpc: searchVpc,
+      })
+
+      this.builder.addResource(searchLogicalId, searchDomain)
+
+      this.builder.addOutput('SearchDomainEndpoint', {
+        Value: { 'Fn::GetAtt': [searchLogicalId, 'DomainEndpoint'] } as any,
+        Description: 'OpenSearch domain endpoint',
+      })
+      this.builder.addOutput('SearchDomainArn', {
+        Value: { 'Fn::GetAtt': [searchLogicalId, 'Arn'] } as any,
+        Description: 'OpenSearch domain ARN',
+      })
+    }
+
+    // File System (EFS)
+    const fileSystemConfig = this.mergedConfig.infrastructure?.fileSystem
+    if (fileSystemConfig && Object.keys(fileSystemConfig).length > 0) {
+      this.generateNetworkInfrastructure(slug, env)
+
+      for (const [name, fsConfig] of Object.entries(fileSystemConfig)) {
+        // Create the EFS file system
+        const { fileSystem, logicalId: fsLogicalId } = FileSystem.createFileSystem({
+          slug: `${slug}-${name}`,
+          environment: env,
+          encrypted: fsConfig.encrypted !== false,
+          performanceMode: fsConfig.performanceMode || 'generalPurpose',
+          throughputMode: fsConfig.throughputMode || 'bursting',
+          enableBackup: true,
+        })
+
+        this.builder.addResource(fsLogicalId, fileSystem)
+
+        // Create EFS security group
+        const { securityGroup, logicalId: sgLogicalId } = FileSystem.createEfsSecurityGroup({
+          slug: `${slug}-${name}`,
+          environment: env,
+          vpcId: { Ref: 'VPC' } as unknown as string,
+          sourceCidrBlocks: ['10.0.0.0/16'],
+        })
+
+        this.builder.addResource(sgLogicalId, securityGroup)
+
+        // Create mount targets in each subnet
+        const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(
+          fsLogicalId,
+          {
+            slug: `${slug}-${name}`,
+            environment: env,
+            subnetIds: [
+              { Ref: 'PublicSubnet1' } as unknown as string,
+              { Ref: 'PublicSubnet2' } as unknown as string,
+            ],
+            securityGroupId: { Ref: sgLogicalId } as unknown as string,
+          },
+        )
+
+        for (let i = 0; i < mountTargets.length; i++) {
+          this.builder.addResource(mtLogicalIds[i], mountTargets[i])
+        }
+
+        this.builder.addOutput(`${name}FileSystemId`, {
+          Value: { Ref: fsLogicalId },
+          Description: `EFS file system ID for ${name}`,
+        })
+      }
+    }
+
+    // AI (Bedrock)
+    const aiConfig = this.mergedConfig.infrastructure?.ai
+    if (aiConfig) {
+      const service = aiConfig.service || 'ecs'
+      const models = aiConfig.models || ['*']
+      const allowStreaming = aiConfig.allowStreaming !== false
+
+      let result: { role: any; logicalId: string }
+
+      if (service === 'ecs') {
+        result = AI.enableBedrockForEcs({
+          slug,
+          environment: env,
+          models,
+          allowStreaming,
+        })
+      }
+      else if (service === 'ec2') {
+        result = AI.enableBedrockForEc2({
+          slug,
+          environment: env,
+          models,
+          allowStreaming,
+        })
+      }
+      else if (service === 'lambda') {
+        result = AI.enableBedrockForLambda({
+          slug,
+          environment: env,
+          models,
+          allowStreaming,
+        })
+      }
+      else {
+        // Custom service principal
+        result = AI.createBedrockRole(service, {
+          slug,
+          environment: env,
+          models,
+          allowStreaming,
+        })
+      }
+
+      this.builder.addResource(result.logicalId, result.role)
+
+      // Also create a standalone policy if async invocation is needed
+      if (aiConfig.allowAsync) {
+        const { policy, logicalId: policyLogicalId } = AI.createBedrockPolicy({
+          slug,
+          environment: env,
+          models,
+          allowStreaming,
+          allowAsync: true,
+        })
+        this.builder.addResource(policyLogicalId, policy)
+      }
+
+      this.builder.addOutput('BedrockRoleArn', {
+        Value: { 'Fn::GetAtt': [result.logicalId, 'Arn'] } as any,
+        Description: 'IAM role ARN with Bedrock permissions',
+      })
     }
   }
 

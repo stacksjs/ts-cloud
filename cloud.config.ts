@@ -111,7 +111,7 @@ const config: CloudConfig = {
       // Server mode (EC2) configuration
       server: {
         instanceType: 't3.small',
-        ami: 'ami-0c55b159cbfafe1f0', // Amazon Linux 2023
+        ami: 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
         autoScaling: {
           min: 1,
           max: 5,

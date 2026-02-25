@@ -12,7 +12,7 @@ async function build() {
     target: 'node',
     format: 'esm',
     splitting: false,
-    minify: true,
+    minify: false,
     plugins: [dts()],
   })
 

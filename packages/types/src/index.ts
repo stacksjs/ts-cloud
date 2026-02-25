@@ -420,6 +420,42 @@ export interface InfrastructureConfig {
    * }
    */
   jumpBox?: boolean | JumpBoxConfig
+
+  /**
+   * Email (SES) configuration
+   * Configures Amazon SES for sending/receiving email
+   *
+   * @example
+   * email: {
+   *   domain: 'stacksjs.com',
+   *   configurationSet: true,
+   * }
+   */
+  email?: EmailInfraConfig
+
+  /**
+   * Search (OpenSearch) configuration
+   * Configures an OpenSearch domain for full-text search
+   *
+   * @example
+   * search: {
+   *   instanceType: 't3.small.search',
+   *   volumeSize: 10,
+   * }
+   */
+  search?: SearchInfraConfig
+
+  /**
+   * AI (Bedrock) configuration
+   * Configures IAM roles and policies for Amazon Bedrock model access
+   *
+   * @example
+   * ai: {
+   *   models: ['anthropic.claude-3-5-sonnet-20241022-v2:0'],
+   *   allowStreaming: true,
+   * }
+   */
+  ai?: AIInfraConfig
 }
 
 /**
@@ -502,6 +538,79 @@ export interface RedirectsConfig {
    * @default 301
    */
   statusCode?: 301 | 302 | 307 | 308
+}
+
+/**
+ * Email (SES) infrastructure configuration
+ */
+export interface EmailInfraConfig {
+  /** Domain to verify for sending email */
+  domain?: string
+  /** Create a SES configuration set for tracking */
+  configurationSet?: boolean
+  /** Hosted zone ID for DNS records (DKIM, SPF, DMARC) */
+  hostedZoneId?: string
+  /** DMARC reporting email */
+  dmarcReportingEmail?: string
+  /** Enable DKIM signing */
+  enableDkim?: boolean
+  /** DKIM key length */
+  dkimKeyLength?: 'RSA_1024_BIT' | 'RSA_2048_BIT'
+}
+
+/**
+ * Search (OpenSearch) infrastructure configuration
+ */
+export interface SearchInfraConfig {
+  /** OpenSearch engine version */
+  engineVersion?: string
+  /** Instance type for data nodes */
+  instanceType?: string
+  /** Number of data node instances */
+  instanceCount?: number
+  /** EBS volume size in GB */
+  volumeSize?: number
+  /** EBS volume type */
+  volumeType?: 'gp2' | 'gp3' | 'io1'
+  /** Enable dedicated master nodes */
+  dedicatedMaster?: boolean
+  /** Instance type for dedicated master nodes */
+  dedicatedMasterType?: string
+  /** Number of dedicated master nodes */
+  dedicatedMasterCount?: number
+  /** Enable multi-AZ deployment */
+  multiAz?: boolean
+  /** Encryption configuration */
+  encryption?: {
+    atRest?: boolean
+    nodeToNode?: boolean
+    kmsKeyId?: string
+  }
+  /** Fine-grained access control */
+  advancedSecurity?: {
+    enabled?: boolean
+    internalUserDatabase?: boolean
+    masterUserName?: string
+    masterUserPassword?: string
+  }
+  /** Auto-tune for performance optimization */
+  autoTune?: boolean
+  /** Deploy inside VPC */
+  vpc?: boolean
+}
+
+/**
+ * AI (Bedrock) infrastructure configuration
+ */
+export interface AIInfraConfig {
+  /** Bedrock model IDs to allow access to (default: ['*'] for all models) */
+  models?: string[]
+  /** Allow streaming responses */
+  allowStreaming?: boolean
+  /** Allow async invocation */
+  allowAsync?: boolean
+  /** Service to grant access: 'ecs', 'ec2', 'lambda', or custom principal */
+  service?: 'ecs' | 'ec2' | 'lambda' | string
 }
 
 /**

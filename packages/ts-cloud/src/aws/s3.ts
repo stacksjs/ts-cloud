@@ -68,10 +68,94 @@ export interface S3Object {
 export class S3Client {
   private client: AWSClient
   private region: string
+  private profile: string
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.profile = profile || 'default'
+    // Resolve credentials from the correct profile and pass them to AWSClient
+    const creds = this.resolveProfileCredentialsSync()
+    this.client = new AWSClient(creds)
+  }
+
+  /**
+   * Resolve credentials synchronously from file with the correct profile
+   */
+  private resolveProfileCredentialsSync(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
+    const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { homedir } = require('node:os') as typeof import('node:os')
+    const { join } = require('node:path') as typeof import('node:path')
+
+    // Check environment variables first (only if no AWS_PROFILE mismatch)
+    const envProfile = process.env.AWS_PROFILE
+    const envAccessKey = process.env.AWS_ACCESS_KEY_ID
+    const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY
+    if (envAccessKey && envSecretKey && (!envProfile || envProfile === this.profile)) {
+      return {
+        accessKeyId: envAccessKey,
+        secretAccessKey: envSecretKey,
+        sessionToken: process.env.AWS_SESSION_TOKEN,
+      }
+    }
+
+    // Load from credentials file with the specified profile
+    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
+    if (existsSync(credentialsPath)) {
+      const content = readFileSync(credentialsPath, 'utf-8')
+      const lines = content.split('\n')
+      let currentProfile: string | null = null
+      let accessKeyId: string | undefined
+      let secretAccessKey: string | undefined
+      let sessionToken: string | undefined
+
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue
+
+        const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
+        if (profileMatch) {
+          if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
+            return { accessKeyId, secretAccessKey, sessionToken }
+          }
+          currentProfile = profileMatch[1]
+          accessKeyId = undefined
+          secretAccessKey = undefined
+          sessionToken = undefined
+          continue
+        }
+
+        if (currentProfile === this.profile) {
+          const [key, ...valueParts] = trimmed.split('=')
+          const value = valueParts.join('=').trim()
+          switch (key.trim().toLowerCase()) {
+            case 'aws_access_key_id':
+              accessKeyId = value
+              break
+            case 'aws_secret_access_key':
+              secretAccessKey = value
+              break
+            case 'aws_session_token':
+              sessionToken = value
+              break
+          }
+        }
+      }
+
+      if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
+        return { accessKeyId, secretAccessKey, sessionToken }
+      }
+    }
+
+    // Fall back to environment variables regardless of profile
+    if (envAccessKey && envSecretKey) {
+      return {
+        accessKeyId: envAccessKey,
+        secretAccessKey: envSecretKey,
+        sessionToken: process.env.AWS_SESSION_TOKEN,
+      }
+    }
+
+    return { accessKeyId: '', secretAccessKey: '' }
   }
 
   /**

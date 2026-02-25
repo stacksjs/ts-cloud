@@ -259,8 +259,9 @@ export function signRequest(options: SignatureOptions): SignedRequest {
     headers['x-amz-security-token'] = sessionToken
   }
 
-  // Add content-type for requests with body
-  if (body && !headers['content-type']) {
+  // Add content-type for requests with body (case-insensitive check)
+  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type')
+  if (body && !hasContentType) {
     headers['content-type'] = 'application/x-amz-json-1.0'
   }
 
@@ -392,8 +393,9 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
     headers['x-amz-security-token'] = sessionToken
   }
 
-  // Add content-type for requests with body
-  if (body && !headers['content-type']) {
+  // Add content-type for requests with body (case-insensitive check)
+  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type')
+  if (body && !hasContentType) {
     headers['content-type'] = 'application/x-amz-json-1.0'
   }
 

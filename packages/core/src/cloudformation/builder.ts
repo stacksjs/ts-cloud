@@ -68,7 +68,7 @@ export class CloudFormationBuilder {
     // Region-specific AMI mappings
     this.template.Mappings = {
       RegionMap: {
-        'us-east-1': { AMI: 'ami-0c55b159cbfafe1f0' },
+        'us-east-1': { AMI: 'ami-0f3caa1cf4417e51b' },
         'us-west-2': { AMI: 'ami-0d1cd67c26f5fca19' },
         'eu-west-1': { AMI: 'ami-0bbc25e23a7640b9b' },
         // Add more regions as needed

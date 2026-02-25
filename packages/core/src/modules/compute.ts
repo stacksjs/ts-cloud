@@ -177,7 +177,7 @@ export class Compute {
       slug,
       environment,
       instanceType = 't3.micro',
-      imageId = 'ami-0c55b159cbfafe1f0', // Amazon Linux 2023
+      imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
       keyName,
       securityGroupIds,
       subnetId,
@@ -1518,7 +1518,7 @@ echo "Bun server setup complete!"
       subnetId,
       keyName,
       instanceType = 't3.micro',
-      imageId = 'ami-0c55b159cbfafe1f0', // Amazon Linux 2023
+      imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
       allowedCidrs = ['0.0.0.0/0'],
       mountEfs,
     } = options
@@ -3067,7 +3067,7 @@ ufw --force enable
       vpcId,
       subnetId,
       instanceType = 't3.small',
-      imageId = 'ami-0c55b159cbfafe1f0', // Amazon Linux 2023
+      imageId = 'ami-0f3caa1cf4417e51b', // Amazon Linux 2023 (us-east-1)
       keyName,
       domain,
       userData,

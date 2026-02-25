@@ -325,7 +325,7 @@ export class AWSClient {
    * Make the actual HTTP request
    */
   private async makeRequest(options: AWSRequestOptions): Promise<any> {
-    const credentials = options.credentials || await this.getCredentials()
+    const credentials = options.credentials || (this.credentials?.accessKeyId ? this.credentials : await this.getCredentials())
     if (!credentials || !credentials.accessKeyId || !credentials.secretAccessKey) {
       throw new Error('AWS credentials not provided')
     }

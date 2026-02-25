@@ -5,7 +5,7 @@
 
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
-import { makeAWSRequest, parseXMLResponse } from './signature'
+import { makeAWSRequest } from './signature'
 
 export interface CloudFormationStack {
   StackName: string
@@ -114,7 +114,8 @@ export class CloudFormationClient {
       sessionToken: credentials.sessionToken,
     })
 
-    return await parseXMLResponse(response)
+    const text = await response.text()
+    return parseCloudFormationXML(text)
   }
 
   /**
@@ -136,23 +137,23 @@ export class CloudFormationClient {
     }
 
     if (options.parameters) {
-      params.Parameters = Object.entries(options.parameters).map(([key, value], index) => ({
-        [`Parameters.member.${index + 1}.ParameterKey`]: key,
-        [`Parameters.member.${index + 1}.ParameterValue`]: value,
-      }))
+      for (const [index, [key, value]] of Object.entries(options.parameters).entries()) {
+        params[`Parameters.member.${index + 1}.ParameterKey`] = key
+        params[`Parameters.member.${index + 1}.ParameterValue`] = value
+      }
     }
 
     if (options.capabilities) {
-      params.Capabilities = options.capabilities.map((cap, index) => ({
-        [`Capabilities.member.${index + 1}`]: cap,
-      }))
+      for (const [index, cap] of options.capabilities.entries()) {
+        params[`Capabilities.member.${index + 1}`] = cap
+      }
     }
 
     if (options.tags) {
-      params.Tags = Object.entries(options.tags).map(([key, value], index) => ({
-        [`Tags.member.${index + 1}.Key`]: key,
-        [`Tags.member.${index + 1}.Value`]: value,
-      }))
+      for (const [index, [key, value]] of Object.entries(options.tags).entries()) {
+        params[`Tags.member.${index + 1}.Key`] = key
+        params[`Tags.member.${index + 1}.Value`] = value
+      }
     }
 
     if (options.timeoutInMinutes) {
@@ -164,7 +165,8 @@ export class CloudFormationClient {
     }
 
     const result = await this.request('CreateStack', params)
-    return result.StackId
+    const createResult = result?.CreateStackResult || result?.CreateStackResponse?.CreateStackResult || result
+    return createResult?.StackId
   }
 
   /**
@@ -183,27 +185,28 @@ export class CloudFormationClient {
     }
 
     if (options.parameters) {
-      params.Parameters = Object.entries(options.parameters).map(([key, value], index) => ({
-        [`Parameters.member.${index + 1}.ParameterKey`]: key,
-        [`Parameters.member.${index + 1}.ParameterValue`]: value,
-      }))
+      for (const [index, [key, value]] of Object.entries(options.parameters).entries()) {
+        params[`Parameters.member.${index + 1}.ParameterKey`] = key
+        params[`Parameters.member.${index + 1}.ParameterValue`] = value
+      }
     }
 
     if (options.capabilities) {
-      params.Capabilities = options.capabilities.map((cap, index) => ({
-        [`Capabilities.member.${index + 1}`]: cap,
-      }))
+      for (const [index, cap] of options.capabilities.entries()) {
+        params[`Capabilities.member.${index + 1}`] = cap
+      }
     }
 
     if (options.tags) {
-      params.Tags = Object.entries(options.tags).map(([key, value], index) => ({
-        [`Tags.member.${index + 1}.Key`]: key,
-        [`Tags.member.${index + 1}.Value`]: value,
-      }))
+      for (const [index, [key, value]] of Object.entries(options.tags).entries()) {
+        params[`Tags.member.${index + 1}.Key`] = key
+        params[`Tags.member.${index + 1}.Value`] = value
+      }
     }
 
     const result = await this.request('UpdateStack', params)
-    return result.StackId
+    const updateResult = result?.UpdateStackResult || result?.UpdateStackResponse?.UpdateStackResult || result
+    return updateResult?.StackId
   }
 
   /**
@@ -223,8 +226,14 @@ export class CloudFormationClient {
       StackName: stackName,
     })
 
-    // Parse stack from XML response
-    return parseStack(result)
+    // Navigate the parsed XML structure
+    const describeResult = result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
+    const stacks = describeResult?.Stacks?.member
+    const stack = Array.isArray(stacks) ? stacks[0] : stacks
+    if (!stack) {
+      throw new Error(`Stack ${stackName} not found`)
+    }
+    return parseStack(stack)
   }
 
   /**
@@ -234,9 +243,9 @@ export class CloudFormationClient {
     const params: Record<string, any> = {}
 
     if (statusFilter) {
-      params.StackStatusFilter = statusFilter.map((status, index) => ({
-        [`StackStatusFilter.member.${index + 1}`]: status,
-      }))
+      for (const [index, status] of statusFilter.entries()) {
+        params[`StackStatusFilter.member.${index + 1}`] = status
+      }
     }
 
     const result = await this.request('ListStacks', params)
@@ -274,15 +283,33 @@ export class CloudFormationClient {
 
       // Get latest events
       if (onProgress) {
-        const events = await this.describeStackEvents(stackName)
-        const newEvents = lastEventId
-          ? events.filter(e => e.EventId !== lastEventId).reverse()
-          : [events[0]]
+        try {
+          const events = await this.describeStackEvents(stackName)
+          let newEvents: StackEvent[] = []
 
-        newEvents.forEach(event => onProgress(event))
+          if (lastEventId) {
+            // Events come newest-first; collect until we hit the last-seen event
+            for (const event of events) {
+              if (event.EventId === lastEventId) break
+              newEvents.push(event)
+            }
+            // Reverse to show in chronological order
+            newEvents.reverse()
+          }
+          else if (events.length > 0) {
+            newEvents = [events[0]]
+          }
 
-        if (events.length > 0) {
-          lastEventId = events[0].EventId
+          for (const event of newEvents) {
+            onProgress(event)
+          }
+
+          if (events.length > 0) {
+            lastEventId = events[0].EventId
+          }
+        }
+        catch {
+          // Ignore event fetch errors - don't break the wait loop
         }
       }
 
@@ -304,6 +331,29 @@ export class CloudFormationClient {
     }
 
     throw new Error(`Timeout waiting for stack ${stackName} to complete`)
+  }
+
+  /**
+   * Wait for stack using waiter-style name (e.g., 'stack-create-complete')
+   * Convenience method that maps waiter names to CloudFormation states
+   */
+  async waitForStackWithProgress(
+    stackName: string,
+    waiterName: string,
+    onProgress?: (event: StackEvent) => void,
+  ): Promise<CloudFormationStack> {
+    const waiterMap: Record<string, string[]> = {
+      'stack-create-complete': ['CREATE_COMPLETE'],
+      'stack-update-complete': ['UPDATE_COMPLETE'],
+      'stack-delete-complete': ['DELETE_COMPLETE'],
+    }
+
+    const desiredStates = waiterMap[waiterName]
+    if (!desiredStates) {
+      throw new Error(`Unknown waiter: ${waiterName}`)
+    }
+
+    return this.waitForStack(stackName, desiredStates, onProgress)
   }
 
   /**
@@ -331,16 +381,16 @@ export class CloudFormationClient {
     }
 
     if (options.parameters) {
-      params.Parameters = Object.entries(options.parameters).map(([key, value], index) => ({
-        [`Parameters.member.${index + 1}.ParameterKey`]: key,
-        [`Parameters.member.${index + 1}.ParameterValue`]: value,
-      }))
+      for (const [index, [key, value]] of Object.entries(options.parameters).entries()) {
+        params[`Parameters.member.${index + 1}.ParameterKey`] = key
+        params[`Parameters.member.${index + 1}.ParameterValue`] = value
+      }
     }
 
     if (options.capabilities) {
-      params.Capabilities = options.capabilities.map((cap, index) => ({
-        [`Capabilities.member.${index + 1}`]: cap,
-      }))
+      for (const [index, cap] of options.capabilities.entries()) {
+        params[`Capabilities.member.${index + 1}`] = cap
+      }
     }
 
     const result = await this.request('CreateChangeSet', params)
@@ -356,6 +406,52 @@ export class CloudFormationClient {
       StackName: stackName,
     })
   }
+
+  /**
+   * Describe stacks (SDK-compatible interface returning { Stacks: [...] })
+   * Accepts either a string stackName or an object { stackName: string }
+   */
+  async describeStacks(input: string | { stackName: string }): Promise<{ Stacks: CloudFormationStack[] }> {
+    const stackName = typeof input === 'string' ? input : input.stackName
+    try {
+      const stack = await this.describeStack(stackName)
+      return { Stacks: [stack] }
+    }
+    catch {
+      return { Stacks: [] }
+    }
+  }
+
+  /**
+   * Get stack outputs as a key-value map
+   */
+  async getStackOutputs(stackName: string): Promise<Record<string, string>> {
+    const result = await this.request('DescribeStacks', {
+      StackName: stackName,
+    })
+
+    const describeResult = result?.DescribeStacksResult || result?.DescribeStacksResponse?.DescribeStacksResult || result
+    const stacks = describeResult?.Stacks?.member
+    const stack = Array.isArray(stacks) ? stacks[0] : stacks
+    if (!stack) return {}
+
+    const outputs: Record<string, string> = {}
+    const outputList = stack.Outputs?.member
+    if (outputList) {
+      const items = Array.isArray(outputList) ? outputList : [outputList]
+      for (const output of items) {
+        if (output.OutputKey && output.OutputValue) {
+          outputs[output.OutputKey] = output.OutputValue
+        }
+      }
+    }
+    return outputs
+  }
+
+  /**
+   * Empty and delete an S3 bucket (convenience for cleanup)
+   * Note: This is a pass-through for S3 operations during stack cleanup
+   */
 }
 
 /**
@@ -389,10 +485,130 @@ function flattenParams(params: Record<string, any>, prefix: string = ''): Record
 }
 
 /**
- * Parse stack from XML response
+ * XML parser for CloudFormation responses.
+ * Properly handles nested elements with the same tag name (e.g., nested <member> elements).
+ */
+function parseCloudFormationXML(xml: string): any {
+  // Remove XML declaration and namespace attributes
+  xml = xml.replace(/<\?xml[^?]*\?>\s*/, '').trim()
+
+  function findMatchingClose(str: string, tagName: string, startPos: number): number {
+    // Find the matching closing tag, accounting for nested elements with the same name
+    let depth = 1
+    let pos = startPos
+    const openPattern = `<${tagName}`
+    const closeTag = `</${tagName}>`
+
+    while (pos < str.length && depth > 0) {
+      const nextOpen = str.indexOf(openPattern, pos)
+      const nextClose = str.indexOf(closeTag, pos)
+
+      if (nextClose === -1) return -1 // No closing tag found
+
+      if (nextOpen !== -1 && nextOpen < nextClose) {
+        // Check if it's actually an opening tag (not just a prefix match)
+        const charAfterTag = str[nextOpen + openPattern.length]
+        if (charAfterTag === '>' || charAfterTag === ' ' || charAfterTag === '/') {
+          // Check for self-closing tag
+          const tagEnd = str.indexOf('>', nextOpen)
+          if (tagEnd !== -1 && str[tagEnd - 1] === '/') {
+            // Self-closing, don't increase depth
+            pos = tagEnd + 1
+          } else {
+            depth++
+            pos = tagEnd + 1
+          }
+        } else {
+          pos = nextOpen + openPattern.length
+        }
+      } else {
+        depth--
+        if (depth === 0) return nextClose
+        pos = nextClose + closeTag.length
+      }
+    }
+    return -1
+  }
+
+  function parseElement(str: string, pos: number): { value: any, end: number } {
+    // Skip whitespace
+    while (pos < str.length && /\s/.test(str[pos])) pos++
+
+    if (pos >= str.length || str[pos] !== '<') {
+      const textEnd = str.indexOf('<', pos)
+      if (textEnd === -1) return { value: str.slice(pos).trim(), end: str.length }
+      return { value: str.slice(pos, textEnd).trim(), end: textEnd }
+    }
+
+    // Check for closing tag
+    if (str[pos + 1] === '/') {
+      return { value: undefined, end: pos }
+    }
+
+    // Parse opening tag
+    const tagMatch = str.slice(pos).match(/^<(\w+)([^>]*?)\/?>/)
+    if (!tagMatch) return { value: undefined, end: pos + 1 }
+
+    const tagName = tagMatch[1]
+    const isSelfClosing = tagMatch[0].endsWith('/>')
+
+    if (isSelfClosing) {
+      // Self-closing tag like <NotificationARNs/> or <Tags/>
+      return { value: '', end: pos + tagMatch[0].length }
+    }
+
+    const innerPos = pos + tagMatch[0].length
+    const closingTag = `</${tagName}>`
+    const closingIdx = findMatchingClose(str, tagName, innerPos)
+    if (closingIdx === -1) return { value: undefined, end: pos + tagMatch[0].length }
+
+    const innerContent = str.slice(innerPos, closingIdx).trim()
+
+    // Check if inner content has child elements
+    if (!innerContent.includes('<')) {
+      return { value: innerContent, end: closingIdx + closingTag.length }
+    }
+
+    // Parse children
+    const children: Record<string, any> = {}
+    let childPos = innerPos
+
+    while (childPos < closingIdx) {
+      while (childPos < closingIdx && /\s/.test(str[childPos])) childPos++
+      if (childPos >= closingIdx) break
+      if (str[childPos] !== '<' || str[childPos + 1] === '/') break
+
+      const childTagMatch = str.slice(childPos).match(/^<(\w+)/)
+      if (!childTagMatch) break
+
+      const childName = childTagMatch[1]
+      const result = parseElement(str, childPos)
+      if (result.value === undefined) { childPos++; continue }
+
+      // Handle list items (member pattern)
+      if (childName === 'member' || children[childName] !== undefined) {
+        if (!Array.isArray(children[childName])) {
+          children[childName] = children[childName] !== undefined ? [children[childName]] : []
+        }
+        children[childName].push(result.value)
+      } else {
+        children[childName] = result.value
+      }
+
+      childPos = result.end
+    }
+
+    return { value: children, end: closingIdx + closingTag.length }
+  }
+
+  const result = parseElement(xml, 0)
+  return result.value || {}
+}
+
+/**
+ * Parse stack from XML response or parsed object
  */
 function parseStack(data: any): CloudFormationStack {
-  // Simplified parsing - in production, use a proper XML parser
   return {
     StackName: data.StackName || '',
     StackId: data.StackId,
@@ -405,17 +621,41 @@ function parseStack(data: any): CloudFormationStack {
 }
 
 /**
- * Parse stack list from XML response
+ * Parse stack list from parsed XML object
  */
-function parseStackList(_data: any): CloudFormationStack[] {
-  // Simplified parsing
-  return []
+function parseStackList(data: any): CloudFormationStack[] {
+  const result = data?.ListStacksResult || data?.ListStacksResponse?.ListStacksResult || data
+  const summaries = result?.StackSummaries?.member
+  if (!summaries) return []
+  const items = Array.isArray(summaries) ? summaries : [summaries]
+  return items.map((s: any) => ({
+    StackName: s.StackName || '',
+    StackId: s.StackId,
+    StackStatus: s.StackStatus,
+    CreationTime: s.CreationTime,
+    LastUpdatedTime: s.LastUpdatedTime,
+    StackStatusReason: s.StackStatusReason,
+    Description: s.Description,
+  }))
 }
 
 /**
- * Parse stack events from XML response
+ * Parse stack events from parsed XML object
  */
-function parseStackEvents(_data: any): StackEvent[] {
-  // Simplified parsing
-  return []
+function parseStackEvents(data: any): StackEvent[] {
+  const result = data?.DescribeStackEventsResult || data?.DescribeStackEventsResponse?.DescribeStackEventsResult || data
+  const events = result?.StackEvents?.member
+  if (!events) return []
+  const items = Array.isArray(events) ? events : [events]
+  return items.map((e: any) => ({
+    StackId: e.StackId || '',
+    EventId: e.EventId || '',
+    StackName: e.StackName || '',
+    LogicalResourceId: e.LogicalResourceId || '',
+    PhysicalResourceId: e.PhysicalResourceId,
+    ResourceType: e.ResourceType || '',
+    Timestamp: e.Timestamp || '',
+    ResourceStatus: e.ResourceStatus || '',
+    ResourceStatusReason: e.ResourceStatusReason,
+  }))
 }

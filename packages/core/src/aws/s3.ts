@@ -923,6 +923,34 @@ export class S3Client {
       headers: signed.headers,
     })
   }
+
+  /**
+   * Empty all objects in a bucket and then delete the bucket
+   */
+  async emptyAndDeleteBucket(bucket: string): Promise<void> {
+    // List and delete all objects
+    for await (const objects of this.listAll(bucket, {})) {
+      if (objects.length > 0) {
+        await this.deleteMany(bucket, objects.map(o => o.key))
+      }
+    }
+
+    // Delete the bucket itself
+    const credentials = await this.getCredentials()
+    const url = this.buildUrl(bucket)
+    const signed = signRequest({
+      method: 'DELETE',
+      url,
+      ...credentials,
+      service: 's3',
+      region: this.region,
+    })
+
+    await fetch(signed.url, {
+      method: signed.method,
+      headers: signed.headers,
+    })
+  }
 }
 
 /**
