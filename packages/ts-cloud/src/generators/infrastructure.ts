@@ -911,7 +911,7 @@ export class InfrastructureGenerator {
         userData = Compute.UserData.generateAppServerScript({
           runtime: 'bun',
           runtimeVersion: serverConfig.bunVersion || 'latest',
-          webServer: serverType === 'cache' ? 'none' : 'caddy',
+          webServer: 'none',
           domain: serverConfig.domain,
           enableSsl: !!sslConfig?.enabled,
           sslEmail: sslConfig?.letsEncrypt?.email,
@@ -1934,10 +1934,28 @@ export class InfrastructureGenerator {
           this.builder.addResource(configSetLogicalId, configurationSet)
         }
 
-        // DNS records (SPF, DMARC) if hosted zone is available
+        // DNS records (SPF, DKIM, DMARC) if hosted zone is available
         const hostedZoneId = emailConfig.hostedZoneId
           || this.mergedConfig.infrastructure?.dns?.hostedZoneId
         if (hostedZoneId) {
+          // DKIM CNAME records (using Fn::GetAtt to reference tokens from the SES identity)
+          if (emailConfig.enableDkim !== false) {
+            for (let i = 1; i <= 3; i++) {
+              const dkimLogicalId = `DkimRecord${i}${domain.replace(/\./g, '')}`
+              this.builder.addResource(dkimLogicalId, {
+                Type: 'AWS::Route53::RecordSet',
+                DependsOn: [identityLogicalId],
+                Properties: {
+                  HostedZoneId: hostedZoneId,
+                  Name: { 'Fn::GetAtt': [identityLogicalId, `DkimDNSTokenName${i}`] },
+                  Type: 'CNAME',
+                  TTL: 1800,
+                  ResourceRecords: [{ 'Fn::GetAtt': [identityLogicalId, `DkimDNSTokenValue${i}`] }],
+                },
+              })
+            }
+          }
+
           const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(
             domain,
             hostedZoneId,
@@ -1959,6 +1977,74 @@ export class InfrastructureGenerator {
           Value: domain,
           Description: 'SES verified email domain',
         })
+
+        // Inbound email pipeline (when server.enabled is true)
+        const emailServerConfig = emailConfig.server as { enabled?: boolean } | undefined
+        if (emailServerConfig?.enabled && hostedZoneId) {
+          const region = this.mergedConfig.environments[env]?.region || this.mergedConfig.project.region || 'us-east-1'
+          const emailBucketName = `${slug}-${env}-email`
+
+          // Create IAM role for email Lambda functions
+          const { role, policy, roleLogicalId, policyLogicalId } = Email.createEmailLambdaRole({
+            slug,
+            environment: env,
+            s3BucketArn: `arn:aws:s3:::${emailBucketName}`,
+            sesIdentityArn: `arn:aws:ses:${region}:*:identity/${domain}`,
+          })
+          this.builder.addResource(roleLogicalId, role)
+          this.builder.addResource(policyLogicalId, policy)
+
+          // Create inbound email Lambda
+          const {
+            function: inboundLambda,
+            permission,
+            logicalId: inboundId,
+            permissionLogicalId,
+          } = Email.createInboundEmailLambda({
+            slug,
+            environment: env,
+            roleArn: { 'Fn::GetAtt': [roleLogicalId, 'Arn'] } as unknown as string,
+            s3BucketName: emailBucketName,
+            organizedPrefix: 'mailboxes/',
+          })
+          this.builder.addResource(inboundId, inboundLambda)
+          this.builder.addResource(permissionLogicalId, permission)
+
+          // Create receipt rule set, receipt rule, and MX record
+          const inboundSetup = Email.createInboundEmailSetup({
+            slug,
+            environment: env,
+            domain,
+            s3BucketName: emailBucketName,
+            s3KeyPrefix: 'inbox/',
+            region,
+            hostedZoneId,
+            lambdaFunctionArn: { 'Fn::GetAtt': [inboundId, 'Arn'] } as unknown as string,
+          })
+          for (const [id, resource] of Object.entries(inboundSetup.resources)) {
+            // SES receipt rule must wait for Lambda permission to exist
+            if ((resource as any).Type === 'AWS::SES::ReceiptRule') {
+              ;(resource as any).DependsOn = [permissionLogicalId, inboundId]
+            }
+            this.builder.addResource(id, resource)
+          }
+
+          this.builder.addOutput('InboundEmailLambda', {
+            Value: { Ref: inboundId } as any,
+            Description: 'Inbound email processing Lambda function',
+          })
+
+          this.builder.addOutput('EmailBucket', {
+            Value: emailBucketName,
+            Description: 'S3 bucket for email storage',
+          })
+
+          // mail.{domain} DNS is managed by the deploy process (A record → EC2 EIP with TLS cert)
+          this.builder.addOutput('MailHost', {
+            Value: `mail.${domain}`,
+            Description: 'Mail server hostname for SMTP/IMAP clients',
+          })
+        }
       }
     }
 

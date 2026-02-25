@@ -2678,10 +2678,48 @@ apt-get install -y curl wget git jq htop unzip
         script += Compute.UserData.Scripts.redis()
       }
 
+      // Install AWS CLI for deployment artifact downloads
+      script += `
+# Install AWS CLI
+if ! command -v aws &> /dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+`
+
       // Install extra packages
       if (extraPackages.length > 0) {
         script += `\n# Install extra packages\napt-get install -y ${extraPackages.join(' ')}\n`
       }
+
+      // Set up API server directory and systemd service
+      script += `
+# Create API server directory
+mkdir -p /var/www/api
+
+# Create stacks-api systemd service
+cat > /etc/systemd/system/stacks-api.service << 'SERVICEFILE'
+[Unit]
+Description=Stacks Bun API Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/var/www/api
+ExecStart=/root/.bun/bin/bun server.ts
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+SERVICEFILE
+
+systemctl daemon-reload
+systemctl enable stacks-api
+`
 
       script += `\necho "Server setup complete!"\n`
 
@@ -3127,6 +3165,33 @@ ufw --force enable
         ManagedPolicyArns: [
           'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore',
           'arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy',
+        ],
+        Policies: [
+          {
+            PolicyName: 'StacksServerPermissions',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'ses:SendEmail',
+                    'ses:SendRawEmail',
+                    'ses:SendBulkEmail',
+                  ],
+                  Resource: '*',
+                },
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    's3:GetObject',
+                    's3:ListBucket',
+                  ],
+                  Resource: '*',
+                },
+              ],
+            },
+          },
         ],
       },
     }

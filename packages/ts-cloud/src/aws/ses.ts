@@ -1078,4 +1078,41 @@ export class SESClient {
       MessageId: response?.MessageId,
     }
   }
+
+  /**
+   * Get a suppressed destination from the account suppression list (SESv2)
+   */
+  async getSuppressedDestination(emailAddress: string): Promise<{
+    EmailAddress: string
+    Reason: string
+    LastUpdateTime: string
+  } | null> {
+    try {
+      const result = await this.client.request({
+        service: 'ses',
+        region: this.region,
+        method: 'GET',
+        path: `/v2/email/suppression/addresses/${encodeURIComponent(emailAddress)}`,
+      })
+
+      return result?.SuppressedDestination || null
+    } catch (error: any) {
+      if (error.message?.includes('404') || error.message?.includes('NotFoundException')) {
+        return null
+      }
+      throw error
+    }
+  }
+
+  /**
+   * Remove an email address from the account suppression list (SESv2)
+   */
+  async deleteSuppressedDestination(emailAddress: string): Promise<void> {
+    await this.client.request({
+      service: 'ses',
+      region: this.region,
+      method: 'DELETE',
+      path: `/v2/email/suppression/addresses/${encodeURIComponent(emailAddress)}`,
+    })
+  }
 }

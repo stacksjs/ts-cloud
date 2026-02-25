@@ -512,7 +512,7 @@ export class Email {
         slug,
         environment,
         ruleSetName: ruleSet.Properties!.RuleSetName || `${slug}-${environment}-receipt-rule-set`,
-        recipients: [domain, `@${domain}`],
+        recipients: [domain],
         s3Action: {
           bucketName: s3BucketName,
           prefix: s3KeyPrefix,
@@ -1239,7 +1239,8 @@ exports.handler = async (event) => {
 `,
 
     /**
-     * Inbound email Lambda - Email organization by From/To
+     * Inbound email Lambda - Processes raw emails into EmailSDK-compatible structure
+     * Writes to: mailboxes/{domain}/{localPart}/inbox.json + per-message files
      */
     inboundEmail: `
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
@@ -1249,120 +1250,274 @@ exports.handler = async (event) => {
   console.log('Processing inbound email:', JSON.stringify(event));
 
   const bucket = process.env.S3_BUCKET;
-  const organizedPrefix = process.env.ORGANIZED_PREFIX || 'organized/';
+  const prefix = process.env.ORGANIZED_PREFIX || 'mailboxes/';
 
-  // Handle SES notification
-  let records = [];
-  if (event.Records) {
-    // S3 notification
-    records = event.Records;
+  // Handle SES receipt rule notification (event contains mail + receipt)
+  // or S3 event notification
+  let rawEmail, messageId, sesMailData;
+
+  if (event.Records && event.Records[0] && event.Records[0].eventSource === 'aws:ses') {
+    // SES action notification
+    sesMailData = event.Records[0].ses;
+    messageId = sesMailData.mail.messageId;
+    // Fetch raw email from S3 (SES stores it at inbox/{messageId})
+    const key = 'inbox/' + messageId;
+    try {
+      const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      rawEmail = await resp.Body.transformToString();
+    } catch (e) {
+      console.log('Raw email not in S3 yet, using SES headers only');
+    }
+  } else if (event.Records && event.Records[0] && event.Records[0].s3) {
+    // S3 event notification
+    const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\\+/g, ' '));
+    messageId = key.split('/').pop();
+    const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    rawEmail = await resp.Body.transformToString();
   } else if (event.mail) {
-    // Direct SES notification
-    records = [{ ses: { mail: event.mail } }];
+    // Direct SES event
+    sesMailData = event;
+    messageId = event.mail.messageId;
+    const key = 'inbox/' + messageId;
+    try {
+      const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      rawEmail = await resp.Body.transformToString();
+    } catch (e) {
+      console.log('Raw email not in S3 yet');
+    }
   }
 
-  for (const record of records) {
-    let mailData;
-    let objectKey;
+  if (!messageId) {
+    console.log('No messageId found, skipping');
+    return { statusCode: 200, body: 'No email to process' };
+  }
 
-    if (record.s3) {
-      // S3 event - read the email from S3
-      objectKey = decodeURIComponent(record.s3.object.key.replace(/\\+/g, ' '));
-      const response = await s3.send(new GetObjectCommand({
-        Bucket: bucket,
-        Key: objectKey
-      }));
-      const rawEmail = await response.Body.transformToString();
-      mailData = parseEmailHeaders(rawEmail);
-    } else if (record.ses) {
-      mailData = record.ses.mail;
-      objectKey = record.ses.mail.messageId;
+  // Parse headers from raw email or SES data
+  const headers = rawEmail ? parseEmailHeaders(rawEmail) : {};
+  const from = sesMailData
+    ? extractEmail(sesMailData.mail.commonHeaders?.from?.[0] || sesMailData.mail.source || '')
+    : extractEmail(headers.from || '');
+  const fromName = sesMailData
+    ? extractName(sesMailData.mail.commonHeaders?.from?.[0] || '')
+    : extractName(headers.from || '');
+  const recipients = sesMailData
+    ? (sesMailData.receipt?.recipients || sesMailData.mail.destination || [])
+    : (headers.to ? headers.to.split(',').map(s => s.trim()) : []);
+  const subject = sesMailData
+    ? (sesMailData.mail.commonHeaders?.subject || 'No Subject')
+    : (headers.subject || 'No Subject');
+  const date = sesMailData
+    ? (sesMailData.mail.timestamp || new Date().toISOString())
+    : (headers.date || new Date().toISOString());
+
+  // Parse body parts if we have raw email
+  let htmlBody = '';
+  let textBody = '';
+  let hasAttachments = false;
+  if (rawEmail) {
+    const parsed = parseEmailBody(rawEmail);
+    htmlBody = parsed.html;
+    textBody = parsed.text;
+    hasAttachments = parsed.hasAttachments;
+  }
+
+  // Generate preview from text or html
+  const preview = textBody
+    ? textBody.substring(0, 200).replace(/\\s+/g, ' ').trim()
+    : htmlBody
+      ? htmlBody.replace(/<[^>]+>/g, '').substring(0, 200).replace(/\\s+/g, ' ').trim()
+      : '';
+
+  // Process each recipient on our domain
+  for (const recipient of recipients) {
+    const recipientEmail = extractEmail(recipient);
+    if (!recipientEmail || !recipientEmail.includes('@')) continue;
+
+    const [localPart, domain] = recipientEmail.split('@');
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+
+    const emailPath = prefix + domain + '/' + localPart + '/' + year + '/' + month + '/' + day + '/' + messageId;
+
+    // Write raw email
+    if (rawEmail) {
+      await putS3(bucket, emailPath + '/raw.eml', rawEmail, 'message/rfc822');
     }
 
-    if (!mailData) continue;
-
-    // Extract sender and recipients
-    const from = extractEmail(mailData.commonHeaders?.from?.[0] || mailData.source || 'unknown');
-    const to = mailData.commonHeaders?.to || mailData.destination || [];
-    const subject = mailData.commonHeaders?.subject || 'No Subject';
-    const date = mailData.timestamp || new Date().toISOString();
-
-    // Create organized paths
-    const dateFolder = date.slice(0, 10).replace(/-/g, '/');
-
-    // Organize by recipient
-    for (const recipient of to) {
-      const recipientEmail = extractEmail(recipient);
-      const organizedKey = \`\${organizedPrefix}by-recipient/\${recipientEmail}/\${dateFolder}/\${sanitizeFilename(subject)}_\${objectKey}\`;
-
-      await copyOrCreateMetadata(bucket, objectKey, organizedKey, {
-        from,
-        to: recipientEmail,
-        subject,
-        date
-      });
-    }
-
-    // Organize by sender
-    const senderKey = \`\${organizedPrefix}by-sender/\${from}/\${dateFolder}/\${sanitizeFilename(subject)}_\${objectKey}\`;
-    await copyOrCreateMetadata(bucket, objectKey, senderKey, {
+    // Write metadata
+    const metadata = {
+      messageId,
       from,
-      to: to.join(', '),
+      fromName,
+      to: recipientEmail,
       subject,
-      date
-    });
+      date,
+      hasAttachments,
+      preview
+    };
+    await putS3(bucket, emailPath + '/metadata.json', JSON.stringify(metadata, null, 2), 'application/json');
 
-    console.log(\`Organized email from \${from} to \${to.join(', ')}: \${subject}\`);
+    // Write body parts
+    if (htmlBody) {
+      await putS3(bucket, emailPath + '/body.html', htmlBody, 'text/html');
+    }
+    if (textBody) {
+      await putS3(bucket, emailPath + '/body.txt', textBody, 'text/plain');
+    }
+    if (preview) {
+      await putS3(bucket, emailPath + '/preview.txt', preview, 'text/plain');
+    }
+
+    // Update inbox.json (prepend, keep last 1000)
+    const inboxKey = prefix + domain + '/' + localPart + '/inbox.json';
+    let inbox = [];
+    try {
+      const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: inboxKey }));
+      inbox = JSON.parse(await resp.Body.transformToString());
+    } catch (e) {
+      // inbox.json doesn't exist yet
+    }
+
+    const inboxEntry = {
+      messageId,
+      from,
+      fromName,
+      to: recipientEmail,
+      subject,
+      date,
+      read: false,
+      preview,
+      hasAttachments,
+      path: emailPath
+    };
+
+    // Prepend new email and cap at 1000
+    inbox.unshift(inboxEntry);
+    if (inbox.length > 1000) inbox = inbox.slice(0, 1000);
+
+    await putS3(bucket, inboxKey, JSON.stringify(inbox, null, 2), 'application/json');
+
+    console.log('Processed email for ' + recipientEmail + ': ' + subject);
   }
 
-  return { statusCode: 200, body: 'Emails organized successfully' };
+  return { statusCode: 200, body: 'Email processed successfully' };
 };
+
+async function putS3(bucket, key, body, contentType) {
+  await s3.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType
+  }));
+}
 
 function parseEmailHeaders(rawEmail) {
   const headers = {};
-  const lines = rawEmail.split('\\r\\n');
+  const lines = rawEmail.split(/\\r?\\n/);
+  let currentKey = '';
+  let currentValue = '';
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line === '') break; // Headers end at empty line
-
-    const match = line.match(/^([^:]+):\\s*(.*)$/);
-    if (match) {
-      const [, key, value] = match;
-      headers[key.toLowerCase()] = value;
+  for (const line of lines) {
+    if (line === '') break;
+    if (line.match(/^\\s/) && currentKey) {
+      currentValue += ' ' + line.trim();
+      headers[currentKey] = currentValue;
+    } else {
+      const match = line.match(/^([^:]+):\\s*(.*)$/);
+      if (match) {
+        currentKey = match[1].toLowerCase();
+        currentValue = match[2];
+        headers[currentKey] = currentValue;
+      }
     }
   }
 
-  return {
-    commonHeaders: {
-      from: headers.from ? [headers.from] : [],
-      to: headers.to ? headers.to.split(',').map(s => s.trim()) : [],
-      subject: headers.subject
-    },
-    timestamp: headers.date
-  };
+  return headers;
 }
 
 function extractEmail(str) {
+  if (!str) return '';
   const match = str.match(/<([^>]+)>/);
   return (match ? match[1] : str).toLowerCase().trim();
 }
 
-function sanitizeFilename(str) {
-  return str.replace(/[^a-zA-Z0-9-_]/g, '_').slice(0, 50);
+function extractName(str) {
+  if (!str) return '';
+  const match = str.match(/^"?([^"<]+)"?\\s*</);
+  return match ? match[1].trim() : '';
 }
 
-async function copyOrCreateMetadata(bucket, sourceKey, destKey, metadata) {
-  try {
-    await s3.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: destKey + '.json',
-      Body: JSON.stringify({ ...metadata, sourceKey }, null, 2),
-      ContentType: 'application/json'
-    }));
-  } catch (error) {
-    console.error('Error creating metadata:', error);
+function parseEmailBody(rawEmail) {
+  const result = { html: '', text: '', hasAttachments: false };
+  const parts = rawEmail.split(/\\r?\\n\\r?\\n/);
+  const headerSection = parts[0];
+  const body = parts.slice(1).join('\\r\\n\\r\\n');
+
+  const contentType = headerSection.match(/Content-Type:\\s*([^\\r\\n]+)/i)?.[1] || 'text/plain';
+
+  if (contentType.includes('multipart')) {
+    const boundaryMatch = contentType.match(/boundary="?([^";\\s]+)"?/);
+    if (boundaryMatch) {
+      const boundary = boundaryMatch[1];
+      const bodyParts = body.split('--' + boundary);
+
+      for (const part of bodyParts) {
+        if (part.trim() === '' || part.trim() === '--') continue;
+
+        const [partHeaders, ...partBody] = part.split(/\\r?\\n\\r?\\n/);
+        const partContent = partBody.join('\\r\\n\\r\\n');
+        const partCT = (partHeaders.match(/Content-Type:\\s*([^;\\r\\n]+)/i)?.[1] || '').trim();
+
+        if (partCT.includes('multipart')) {
+          // Nested multipart - parse recursively
+          const nestedBM = partHeaders.match(/boundary="?([^";\\s]+)"?/i);
+          if (nestedBM) {
+            const nestedParts = partContent.split('--' + nestedBM[1]);
+            for (const np of nestedParts) {
+              if (np.trim() === '' || np.trim() === '--') continue;
+              const [npH, ...npB] = np.split(/\\r?\\n\\r?\\n/);
+              const npContent = npB.join('\\r\\n\\r\\n');
+              const npCT = (npH.match(/Content-Type:\\s*([^;\\r\\n]+)/i)?.[1] || '').trim();
+              if (npCT.includes('text/plain') && !result.text) {
+                result.text = decodeContent(npContent, npH);
+              } else if (npCT.includes('text/html') && !result.html) {
+                result.html = decodeContent(npContent, npH);
+              }
+            }
+          }
+        } else if (partCT.includes('text/plain') && !result.text) {
+          result.text = decodeContent(partContent, partHeaders);
+        } else if (partCT.includes('text/html') && !result.html) {
+          result.html = decodeContent(partContent, partHeaders);
+        } else if (partHeaders.toLowerCase().includes('content-disposition: attachment') ||
+                   partHeaders.toLowerCase().includes('content-disposition: inline')) {
+          result.hasAttachments = true;
+        }
+      }
+    }
+  } else if (contentType.includes('text/html')) {
+    result.html = body;
+  } else {
+    result.text = body;
   }
+
+  return result;
+}
+
+function decodeContent(content, headers) {
+  const encoding = (headers.match(/Content-Transfer-Encoding:\\s*([^\\r\\n]+)/i)?.[1] || '').toLowerCase().trim();
+
+  if (encoding === 'base64') {
+    return Buffer.from(content.replace(/\\s/g, ''), 'base64').toString('utf-8');
+  } else if (encoding === 'quoted-printable') {
+    return content.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+                  .replace(/=\\r?\\n/g, '');
+  }
+
+  return content;
 }
 `,
 
