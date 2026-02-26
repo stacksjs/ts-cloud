@@ -928,6 +928,14 @@ export class InfrastructureGenerator {
       const subnetId = serverConfig.subnet
         || { Ref: 'PublicSubnet1' } as unknown as string
 
+      // Determine allowed ports — add SMTP/IMAP ports when email server is enabled
+      const emailConfig = this.mergedConfig.infrastructure?.email
+      const emailServerEnabled = !!(emailConfig?.server as { enabled?: boolean } | undefined)?.enabled
+      const ports = [22, 80, 443]
+      if (emailServerEnabled) {
+        ports.push(25, 465, 587, 143, 993)
+      }
+
       // Create full server stack (SG + IAM role + instance profile + EC2 + EIP)
       const stack = Compute.createServerModeStack({
         slug: `${slug}-${name}`,
@@ -940,6 +948,7 @@ export class InfrastructureGenerator {
         userData,
         volumeSize: serverConfig.diskSize || 20,
         imageId: serverConfig.image,
+        allowedPorts: ports,
       })
 
       // Add all resources from the stack to the template
@@ -2039,7 +2048,25 @@ export class InfrastructureGenerator {
             Description: 'S3 bucket for email storage',
           })
 
-          // mail.{domain} DNS is managed by the deploy process (A record → EC2 EIP with TLS cert)
+          // Create mail.{domain} A record pointing to the app server's EIP
+          const appEipLogicalId = this.serverEipLogicalIds.get('app')
+          if (appEipLogicalId && hostedZoneId) {
+            const mailSubdomain = (emailServerConfig as any)?.subdomain || 'mail'
+            const mailDomain = `${mailSubdomain}.${domain}`
+            const safeMailName = mailDomain.replace(/[^a-zA-Z0-9]/g, '')
+
+            this.builder.addResource(`${safeMailName}ARecord`, {
+              Type: 'AWS::Route53::RecordSet',
+              Properties: {
+                HostedZoneId: hostedZoneId,
+                Name: mailDomain,
+                Type: 'A',
+                TTL: '300',
+                ResourceRecords: [{ Ref: appEipLogicalId }],
+              },
+            } as any)
+          }
+
           this.builder.addOutput('MailHost', {
             Value: `mail.${domain}`,
             Description: 'Mail server hostname for SMTP/IMAP clients',
