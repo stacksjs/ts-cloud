@@ -928,11 +928,18 @@ export class S3Client {
    * Empty all objects in a bucket and then delete the bucket
    */
   async emptyAndDeleteBucket(bucket: string): Promise<void> {
-    // List and delete all objects
-    for await (const objects of this.listAll(bucket, {})) {
-      if (objects.length > 0) {
-        await this.deleteMany(bucket, objects.map(o => o.key))
+    // List and delete all objects in batches
+    const batchSize = 1000
+    let batch: string[] = []
+    for await (const obj of this.listAll(bucket, {})) {
+      batch.push(obj.key)
+      if (batch.length >= batchSize) {
+        await this.deleteMany(bucket, batch)
+        batch = []
       }
+    }
+    if (batch.length > 0) {
+      await this.deleteMany(bucket, batch)
     }
 
     // Delete the bucket itself

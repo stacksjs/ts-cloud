@@ -556,6 +556,10 @@ export interface EmailInfraConfig {
   enableDkim?: boolean
   /** DKIM key length */
   dkimKeyLength?: 'RSA_1024_BIT' | 'RSA_2048_BIT'
+  /** Inbound email server configuration */
+  server?: {
+    enabled?: boolean
+  }
 }
 
 /**
@@ -588,7 +592,7 @@ export interface SearchInfraConfig {
   }
   /** Fine-grained access control */
   advancedSecurity?: {
-    enabled?: boolean
+    enabled: boolean
     internalUserDatabase?: boolean
     masterUserName?: string
     masterUserPassword?: string
@@ -913,11 +917,11 @@ export interface FileSystemItemConfig {
   /**
    * Performance mode
    */
-  performanceMode?: 'generalPurpose' | 'maxIO' | string
+  performanceMode?: 'generalPurpose' | 'maxIO'
   /**
    * Throughput mode
    */
-  throughputMode?: 'bursting' | 'provisioned' | string
+  throughputMode?: 'bursting' | 'provisioned' | 'elastic'
   /**
    * Enable encryption
    */

@@ -19,7 +19,9 @@ export type {
 // Export AWS module - classes and functions
 export {
   AWSClient,
+  CloudFormationClient,
   CloudFormationClient as AWSCloudFormationClient,
+  CloudFrontClient,
   CloudFrontClient as AWSCloudFrontClient,
   EC2Client,
   S3Client,

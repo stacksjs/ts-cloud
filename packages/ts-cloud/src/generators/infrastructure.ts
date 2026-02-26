@@ -930,7 +930,7 @@ export class InfrastructureGenerator {
 
       // Determine allowed ports — add SMTP/IMAP ports when email server is enabled
       const emailConfig = this.mergedConfig.infrastructure?.email
-      const emailServerEnabled = !!(emailConfig?.server as { enabled?: boolean } | undefined)?.enabled
+      const emailServerEnabled = !!(emailConfig?.server?.enabled)
       const ports = [22, 80, 443]
       if (emailServerEnabled) {
         ports.push(25, 465, 587, 143, 993)
@@ -1988,7 +1988,7 @@ export class InfrastructureGenerator {
         })
 
         // Inbound email pipeline (when server.enabled is true)
-        const emailServerConfig = emailConfig.server as { enabled?: boolean } | undefined
+        const emailServerConfig = emailConfig.server
         if (emailServerConfig?.enabled && hostedZoneId) {
           const region = this.mergedConfig.environments[env]?.region || this.mergedConfig.project.region || 'us-east-1'
           const emailBucketName = `${slug}-${env}-email`
