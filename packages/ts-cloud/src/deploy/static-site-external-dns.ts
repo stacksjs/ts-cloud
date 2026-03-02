@@ -798,6 +798,32 @@ async function ensureDnsRecords(
   if (isApexDomain) {
     // For apex domains, create an ALIAS record (Porkbun supports this)
     // Porkbun uses 'ALIAS' type for apex domain CNAME-like behavior
+    //
+    // First, remove any existing A record at the root that would conflict
+    // with the ALIAS (e.g., a domain previously pointed at a server IP).
+    // Porkbun rejects ALIAS creation when a conflicting A record exists.
+    try {
+      const existingA = await dnsProvider.listRecords(domain, 'A')
+      if (existingA.success) {
+        for (const rec of existingA.records) {
+          // Only delete root A records (subdomain === '' or name === domain)
+          const recSub = rec.name.replace(/\.$/, '')
+          if (recSub === domain || recSub === '') {
+            console.log(`Removing existing root A record (${rec.content}) to make room for ALIAS...`)
+            await dnsProvider.deleteRecord(domain, {
+              name: domain,
+              type: 'A',
+              content: rec.content,
+            })
+          }
+        }
+      }
+    }
+    catch (err) {
+      // Non-fatal: if we can't list/delete, the upsert will just fail and we'll fall through
+      console.log(`Note: Could not check for conflicting A records: ${err instanceof Error ? err.message : err}`)
+    }
+
     console.log(`Creating ALIAS record for apex domain ${domain} -> ${cloudfrontDomain}`)
 
     const result = await dnsProvider.upsertRecord(domain, {
@@ -808,23 +834,9 @@ async function ensureDnsRecords(
     })
 
     if (!result.success) {
-      // Fallback to A record using CloudFront IPs (not recommended but works)
-      console.log(`ALIAS record failed, trying CNAME with @ subdomain...`)
-      const cnameResult = await dnsProvider.upsertRecord(domain, {
-        name: domain,
-        type: 'CNAME',
-        content: cloudfrontDomain,
-        ttl: 600,
-      })
-
-      if (!cnameResult.success) {
-        console.warn(`Warning: Could not create DNS record: ${cnameResult.message}`)
-        console.warn(`Please manually create a CNAME or ALIAS record:`)
-        console.warn(`  ${domain} -> ${cloudfrontDomain}`)
-      }
-      else {
-        console.log(`Created CNAME record: ${domain} -> ${cloudfrontDomain}`)
-      }
+      console.warn(`Warning: Could not create ALIAS record: ${result.message}`)
+      console.warn(`Please manually create an ALIAS record in your DNS provider:`)
+      console.warn(`  ${domain} -> ${cloudfrontDomain}`)
     }
     else {
       console.log(`Created ALIAS record: ${domain} -> ${cloudfrontDomain}`)
