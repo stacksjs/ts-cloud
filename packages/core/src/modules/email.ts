@@ -1493,7 +1493,7 @@ function parseEmailBody(rawEmail) {
         } else if (partCT.includes('text/html') && !result.html) {
           result.html = decodeContent(partContent, partHeaders);
         } else if (partHeaders.toLowerCase().includes('content-disposition: attachment') ||
-                   partHeaders.toLowerCase().includes('content-disposition: inline')) {
+          partHeaders.toLowerCase().includes('content-disposition: inline')) {
           result.hasAttachments = true;
         }
       }
