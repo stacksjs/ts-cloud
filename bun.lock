@@ -33,7 +33,7 @@
         "cloud": "./dist/bin/cli.js",
       },
       "dependencies": {
-        "fast-xml-parser": "^5.3.5",
+        "fast-xml-parser": "^5.4.2",
         "ts-cloud-aws-types": "workspace:*",
         "ts-cloud-core": "workspace:*",
         "ts-cloud-types": "workspace:*",
