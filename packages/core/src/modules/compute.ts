@@ -3178,6 +3178,10 @@ ufw --force enable
                     'ses:SendEmail',
                     'ses:SendRawEmail',
                     'ses:SendBulkEmail',
+                    'ses:VerifyDomainIdentity',
+                    'ses:VerifyDomainDkim',
+                    'ses:GetIdentityDkimAttributes',
+                    'ses:GetIdentityVerificationAttributes',
                   ],
                   Resource: '*',
                 },
@@ -3185,7 +3189,25 @@ ufw --force enable
                   Effect: 'Allow',
                   Action: [
                     's3:GetObject',
+                    's3:PutObject',
                     's3:ListBucket',
+                  ],
+                  Resource: '*',
+                },
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'route53:ChangeResourceRecordSets',
+                    'route53:ListResourceRecordSets',
+                    'route53:GetHostedZone',
+                  ],
+                  Resource: '*',
+                },
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'ssm:GetParameter',
+                    'ssm:GetParameters',
                   ],
                   Resource: '*',
                 },
