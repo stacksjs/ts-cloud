@@ -4,7 +4,7 @@ async function build() {
   await Bun.build({
     entrypoints: ['./src/index.ts'],
     outdir: './dist',
-    plugins: [dts()],
+    plugins: [dts({ entrypoints: ['index.ts'] })],
   })
 }
 

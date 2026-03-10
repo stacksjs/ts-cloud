@@ -13,7 +13,7 @@ async function build() {
     format: 'esm',
     splitting: false,
     minify: false,
-    plugins: [dts()],
+    plugins: [dts({ entrypoints: ['index.ts'] })],
   })
 
   if (!libResult.success) {
