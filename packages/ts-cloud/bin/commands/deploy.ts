@@ -985,12 +985,27 @@ async function deployStaticSitesWithExternalDns(
         cli.step(`Loading environment file: ${envFileName}`)
 
         // Back up .env.local if it exists (it takes priority over .env in Nuxt/Vite)
+        // Also purge its keys from process.env since bun auto-loads .env.local
+        // at startup before our code runs, causing stale values to leak through
         if (existsSync(envLocal)) {
           envLocalBackup = `${envLocal}.bak`
           copyFileSync(envLocal, envLocalBackup)
+
+          // Purge .env.local keys from process.env to prevent bun's
+          // auto-loaded values from leaking into the build
+          const localContent = readFileSync(envLocal, 'utf-8')
+          for (const line of localContent.split('\n')) {
+            const trimmed = line.trim()
+            if (!trimmed || trimmed.startsWith('#')) continue
+            const eqIndex = trimmed.indexOf('=')
+            if (eqIndex === -1) continue
+            const key = trimmed.slice(0, eqIndex).trim()
+            delete process.env[key]
+          }
+
           const { unlinkSync } = await import('node:fs')
           unlinkSync(envLocal)
-          cli.info('Temporarily moved .env.local out of the way')
+          cli.info('Temporarily moved .env.local out of the way and purged its values from process.env')
         }
 
         // Back up .env before overwriting
