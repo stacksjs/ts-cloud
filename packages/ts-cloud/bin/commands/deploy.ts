@@ -163,6 +163,7 @@ export function registerDeployCommands(app: CLI): void {
     }) => {
       cli.header('Deploying Infrastructure')
 
+      let restoreEnv: (() => Promise<void>) | null = null
       try {
         // Load configuration first to get project info
         const config = await loadValidatedConfig()
@@ -194,7 +195,7 @@ export function registerDeployCommands(app: CLI): void {
         const region = config.project.region || 'us-east-1'
 
         // Load environment-specific .env file early, before any deployment path
-        const restoreEnv = await loadEnvironmentFile(environment)
+        restoreEnv = await loadEnvironmentFile(environment)
 
         // Check if this is a static site deployment
         if (config.sites && Object.keys(config.sites).length > 0) {
