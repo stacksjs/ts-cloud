@@ -1,5 +1,5 @@
 import type { ACMCertificate, KMSAlias, KMSKey, WAFv2IPSet, WAFv2WebACL } from 'ts-cloud-aws-types'
-import type { EnvironmentType } from 'ts-cloud-types'
+import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 

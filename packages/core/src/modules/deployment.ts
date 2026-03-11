@@ -3,7 +3,7 @@ import type {
   CodeDeployDeploymentGroup,
   CodeDeployDeploymentConfig,
 } from 'ts-cloud-aws-types'
-import type { EnvironmentType } from 'ts-cloud-types'
+import type { EnvironmentType } from '../types'
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, renameSync, copyFileSync } from 'node:fs'
 import { join, basename, dirname, extname } from 'node:path'

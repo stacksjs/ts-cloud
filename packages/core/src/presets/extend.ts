@@ -1,4 +1,4 @@
-import type { CloudConfig } from 'ts-cloud-types'
+import type { CloudConfig } from '../types'
 
 /**
  * Deep merge utility for combining CloudConfig objects

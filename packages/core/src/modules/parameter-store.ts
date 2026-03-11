@@ -4,7 +4,7 @@
  */
 
 import type { SSMParameter } from 'ts-cloud-aws-types'
-import type { EnvironmentType } from 'ts-cloud-types'
+import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface ParameterOptions {

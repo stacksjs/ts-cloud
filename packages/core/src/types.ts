@@ -1729,7 +1729,7 @@ export interface QueueItemConfig {
  * Use these to quickly configure queues with sensible defaults
  *
  * @example Basic usage
- * import { QueuePresets } from 'ts-cloud-types'
+ * import { QueuePresets } from '@ts-cloud/core'
  *
  * queues: {
  *   jobs: QueuePresets.backgroundJobs,
@@ -2636,7 +2636,7 @@ export interface RealtimeConfig {
  * Realtime configuration presets
  *
  * @example Serverless presets
- * import { RealtimePresets } from 'ts-cloud-types'
+ * import { RealtimePresets } from '@ts-cloud/core'
  * realtime: RealtimePresets.serverless.production
  *
  * @example Server presets (ts-broadcasting)

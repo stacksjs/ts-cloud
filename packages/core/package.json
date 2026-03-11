@@ -1,5 +1,5 @@
 {
-  "name": "ts-cloud-core",
+  "name": "@ts-cloud/core",
   "version": "0.1.14",
   "type": "module",
   "description": "Core CloudFormation generation library for ts-cloud",
@@ -31,7 +31,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ts-cloud-types": "workspace:*",
     "ts-cloud-aws-types": "workspace:*"
   },
   "devDependencies": {

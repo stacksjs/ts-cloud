@@ -3,7 +3,7 @@
  * Manages ephemeral environments for PR previews
  */
 
-import type { CloudConfig } from 'ts-cloud-types'
+import type { CloudConfig } from '../types'
 
 export interface PreviewEnvironment {
   id: string

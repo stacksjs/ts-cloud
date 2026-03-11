@@ -4,7 +4,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
-import type { EnvironmentType } from 'ts-cloud-types'
+import type { EnvironmentType } from '../types'
 
 export interface BucketOptions {
   name?: string
