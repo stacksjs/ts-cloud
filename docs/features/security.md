@@ -223,16 +223,16 @@ Prevent secrets from being committed:
 ```gitignore
 # Environment files
 .env
-.env.*
+.env._
 .env.local
 
 # AWS credentials
 .aws/
 
 # Private keys
-*.pem
-*.key
-id_rsa*
+_.pem
+_.key
+id_rsa_
 ```
 
 ### 4. Use Build-Time Environment Injection
@@ -278,11 +278,11 @@ jobs:
       - uses: oven-sh/setup-bun@v1
       - run: bun install
 
-      # Run security scan first
+# Run security scan first
       - name: Security Scan
         run: bun run cloud deploy:security-scan --source ./dist
 
-      # Deploy only if scan passes
+# Deploy only if scan passes
       - name: Deploy
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

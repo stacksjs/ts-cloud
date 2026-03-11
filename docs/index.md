@@ -28,5 +28,3 @@ features:
     icon: "☁️"
     details: "Generate clean, reviewable CloudFormation templates. Full control over your infrastructure."
 ---
-
-<Home />

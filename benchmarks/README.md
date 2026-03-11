@@ -71,14 +71,14 @@ AWS SDK v3 signing (minimum):
   ├── @aws-crypto/sha256-js (244 KB)
   ├── @smithy/protocol-http (148 KB)
   ├── @smithy/types (948 KB)
-  ├── @smithy/util-* packages
+  ├── @smithy/util-_ packages
   └── + transitive dependencies...
   Total: 6.5+ MB
 
 AWS SDK v3 with presigned URLs:
   ├── @aws-sdk/client-s3 (17 MB)
   ├── @aws-sdk/s3-request-presigner
-  ├── @smithy/* (9 MB)
+  ├── @smithy/_ (9 MB)
   └── @aws-crypto/* (1.6 MB)
   Total: 27+ MB
 ```
@@ -107,7 +107,7 @@ AWS SDK v3 with presigned URLs:
 | Async signing | ✅ | ✅ | ✅ |
 | Key caching | ✅ | ✅ | ❌ |
 | Query string signing | ✅ | ✅ | ✅ |
-| Service auto-detection | ✅ | ✅ | ❌* |
+| Service auto-detection | ✅ | ✅ | ❌_ |
 | Retry logic | ✅ | ✅ | ✅ |
 | Browser compatible | ✅ | ✅ | ✅ |
 | Zero dependencies | ✅ | ✅ | ❌ |
@@ -121,7 +121,7 @@ AWS SDK v3 with presigned URLs:
 | Request Timeout | ✅ | ❌ | ✅ |
 | Middleware support | ❌ | ❌ | ✅ |
 
-*AWS SDK requires explicit region at client creation time
+_AWS SDK requires explicit region at client creation time
 
 ### Browser Compatibility
 
@@ -288,7 +288,7 @@ const s3 = new S3Client({ region: 'us-east-1' })
 // Upload a stream with progress tracking
 const stream = fs.createReadStream('large-file.zip')
 await s3.uploadMultipart('my-bucket', 'large-file.zip', stream, {
-  partSize: 10 * 1024 * 1024, // 10MB parts
+  partSize: 10 _ 1024 _ 1024, // 10MB parts
   concurrency: 4,
   onProgress: ({ loaded, total, part, totalParts }) => {
     console.log(`Part ${part}/${totalParts}: ${loaded}/${total} bytes`)

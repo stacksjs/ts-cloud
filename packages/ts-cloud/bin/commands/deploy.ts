@@ -193,6 +193,9 @@ export function registerDeployCommands(app: CLI): void {
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
 
+        // Load environment-specific .env file early, before any deployment path
+        const restoreEnv = await loadEnvironmentFile(environment)
+
         // Check if this is a static site deployment
         if (config.sites && Object.keys(config.sites).length > 0) {
           const dnsProvider = config.infrastructure?.dns?.provider
@@ -377,6 +380,9 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.info('\nStack trace:')
           console.error(error.stack)
         }
+      }
+      finally {
+        if (restoreEnv) await restoreEnv()
       }
     })
 
@@ -913,6 +919,105 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
 }
 
 /**
+ * Load environment-specific .env file and handle Bun's .env.local auto-loading.
+ *
+ * Bun automatically loads .env.local at process startup before any user code runs,
+ * which means its values always leak into process.env regardless of --env flag.
+ * This function:
+ *  1. Backs up and removes .env.local so child processes (builds) don't re-read it
+ *  2. Purges .env.local keys from process.env to clear the auto-loaded values
+ *  3. Loads the target .env.<environment> file into process.env
+ *  4. Returns a restore function to put .env.local back after deployment
+ */
+async function loadEnvironmentFile(environment: string): Promise<(() => Promise<void>) | null> {
+  const cwd = process.cwd()
+  const targetEnv = `${cwd}/.env`
+  const envLocal = `${cwd}/.env.local`
+
+  // Build list of env file candidates with aliases
+  const envAliases: Record<string, string[]> = {
+    stage: ['stage', 'staging'],
+    staging: ['staging', 'stage'],
+  }
+  const candidates = (envAliases[environment] || [environment]).map(e => `${cwd}/.env.${e}`)
+  const envFile = candidates.find(f => existsSync(f))
+
+  if (!envFile) {
+    if (existsSync(targetEnv)) {
+      cli.warn(`No .env.${environment} found, falling back to .env`)
+    }
+    else {
+      cli.error(`No .env.${environment} or .env file found`)
+    }
+    return null
+  }
+
+  const envFileName = envFile.split('/').pop()
+  cli.step(`Loading environment file: ${envFileName}`)
+
+  let envLocalBackup: string | null = null
+  let envBackup: string | null = null
+
+  // Back up .env.local if it exists and purge its keys from process.env
+  // since Bun auto-loads .env.local at startup before our code runs
+  if (existsSync(envLocal)) {
+    envLocalBackup = `${envLocal}.bak`
+    copyFileSync(envLocal, envLocalBackup)
+
+    const localContent = readFileSync(envLocal, 'utf-8')
+    for (const line of localContent.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eqIndex = trimmed.indexOf('=')
+      if (eqIndex === -1) continue
+      const key = trimmed.slice(0, eqIndex).trim()
+      delete process.env[key]
+    }
+
+    const { unlinkSync } = await import('node:fs')
+    unlinkSync(envLocal)
+    cli.info('Temporarily moved .env.local out of the way and purged its values from process.env')
+  }
+
+  // Back up .env before overwriting
+  if (existsSync(targetEnv)) {
+    envBackup = `${targetEnv}.bak`
+    copyFileSync(targetEnv, envBackup)
+  }
+
+  copyFileSync(envFile, targetEnv)
+
+  // Parse and load env vars into process.env
+  const envContent = readFileSync(envFile, 'utf-8')
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const eqIndex = trimmed.indexOf('=')
+    if (eqIndex === -1) continue
+    const key = trimmed.slice(0, eqIndex).trim()
+    const value = trimmed.slice(eqIndex + 1).trim()
+    process.env[key] = value
+  }
+
+  cli.success(`Loaded ${envFileName}`)
+
+  // Return restore function
+  return async () => {
+    const { unlinkSync } = await import('node:fs')
+    if (envBackup) {
+      copyFileSync(envBackup, `${cwd}/.env`)
+      unlinkSync(envBackup)
+      cli.info('Restored .env')
+    }
+    if (envLocalBackup) {
+      copyFileSync(envLocalBackup, `${cwd}/.env.local`)
+      unlinkSync(envLocalBackup)
+      cli.info('Restored .env.local')
+    }
+  }
+}
+
+/**
  * Deploy static sites with external DNS provider (Cloudflare, Porkbun, GoDaddy)
  * Handles detection of existing DNS records (like Netlify) and prompts for migration
  */
@@ -962,97 +1067,7 @@ async function deployStaticSitesWithExternalDns(
     cli.info(`Source: ${siteConfig.root}`)
     cli.info(`DNS Provider: ${dnsProviderName}`)
 
-    // Load environment-specific .env file before building
-    // Supports aliases: e.g. --env stage will check .env.stage and .env.staging
-    let envLocalBackup: string | null = null
-    let envBackup: string | null = null
-    if (environment) {
-      const cwd = process.cwd()
-      const targetEnv = `${cwd}/.env`
-      const envLocal = `${cwd}/.env.local`
-
-      // Build list of env file candidates
-      const envAliases: Record<string, string[]> = {
-        stage: ['stage', 'staging'],
-        staging: ['staging', 'stage'],
-      }
-      const candidates = (envAliases[environment] || [environment]).map(e => `${cwd}/.env.${e}`)
-
-      const envFile = candidates.find(f => existsSync(f))
-
-      if (envFile) {
-        const envFileName = envFile.split('/').pop()
-        cli.step(`Loading environment file: ${envFileName}`)
-
-        // Back up .env.local if it exists (it takes priority over .env in Nuxt/Vite)
-        // Also purge its keys from process.env since bun auto-loads .env.local
-        // at startup before our code runs, causing stale values to leak through
-        if (existsSync(envLocal)) {
-          envLocalBackup = `${envLocal}.bak`
-          copyFileSync(envLocal, envLocalBackup)
-
-          // Purge .env.local keys from process.env to prevent bun's
-          // auto-loaded values from leaking into the build
-          const localContent = readFileSync(envLocal, 'utf-8')
-          for (const line of localContent.split('\n')) {
-            const trimmed = line.trim()
-            if (!trimmed || trimmed.startsWith('#')) continue
-            const eqIndex = trimmed.indexOf('=')
-            if (eqIndex === -1) continue
-            const key = trimmed.slice(0, eqIndex).trim()
-            delete process.env[key]
-          }
-
-          const { unlinkSync } = await import('node:fs')
-          unlinkSync(envLocal)
-          cli.info('Temporarily moved .env.local out of the way and purged its values from process.env')
-        }
-
-        // Back up .env before overwriting
-        if (existsSync(targetEnv)) {
-          envBackup = `${targetEnv}.bak`
-          copyFileSync(targetEnv, envBackup)
-        }
-
-        copyFileSync(envFile, targetEnv)
-
-        // Parse and load env vars into process.env
-        const envContent = readFileSync(envFile, 'utf-8')
-        for (const line of envContent.split('\n')) {
-          const trimmed = line.trim()
-          if (!trimmed || trimmed.startsWith('#')) continue
-          const eqIndex = trimmed.indexOf('=')
-          if (eqIndex === -1) continue
-          const key = trimmed.slice(0, eqIndex).trim()
-          const value = trimmed.slice(eqIndex + 1).trim()
-          process.env[key] = value
-        }
-
-        cli.success(`Loaded ${envFileName}`)
-      }
-      else if (existsSync(targetEnv)) {
-        cli.warn(`No .env.${environment} found, falling back to .env`)
-      }
-      else {
-        cli.error(`No .env.${environment} or .env file found`)
-        continue
-      }
-    }
-
-    // Helper to restore backed up env files
-    const restoreEnvFiles = async () => {
-      const { unlinkSync } = await import('node:fs')
-      if (envBackup) {
-        copyFileSync(envBackup, `${process.cwd()}/.env`)
-        unlinkSync(envBackup)
-        cli.info('Restored .env')
-      }
-      if (envLocalBackup) {
-        copyFileSync(envLocalBackup, `${process.cwd()}/.env.local`)
-        unlinkSync(envLocalBackup)
-        cli.info('Restored .env.local')
-      }
-    }
+    // Environment file is already loaded by the caller via loadEnvironmentFile()
 
     // Run build command if configured
     if (siteConfig.build) {
@@ -1067,13 +1082,9 @@ async function deployStaticSitesWithExternalDns(
       }
       catch (err: any) {
         cli.error(`Build failed: ${err.message}`)
-        await restoreEnvFiles()
         continue
       }
     }
-
-    // Restore env files after build
-    await restoreEnvFiles()
 
     // Check if source directory exists
     if (!existsSync(siteConfig.root)) {

@@ -105,24 +105,24 @@ For full ts-cloud functionality, your IAM user/role needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "cloudformation:*",
-        "s3:*",
-        "cloudfront:*",
-        "route53:*",
-        "acm:*",
-        "ec2:*",
-        "ecs:*",
-        "rds:*",
-        "elasticache:*",
-        "lambda:*",
-        "apigateway:*",
-        "dynamodb:*",
-        "sqs:*",
-        "sns:*",
-        "logs:*",
+        "cloudformation:_",
+        "s3:_",
+        "cloudfront:_",
+        "route53:_",
+        "acm:_",
+        "ec2:_",
+        "ecs:_",
+        "rds:_",
+        "elasticache:_",
+        "lambda:_",
+        "apigateway:_",
+        "dynamodb:_",
+        "sqs:_",
+        "sns:_",
+        "logs:_",
         "iam:PassRole"
       ],
-      "Resource": "*"
+      "Resource": "_"
     }
   ]
 }

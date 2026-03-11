@@ -281,7 +281,7 @@ deploy:production:
   environment:
     name: production
     url: https://example.com
-  # Requires manual approval in GitHub
+# Requires manual approval in GitHub
 ```
 
 ## Next Steps
