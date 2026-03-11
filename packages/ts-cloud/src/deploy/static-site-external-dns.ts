@@ -36,6 +36,8 @@ export interface ExternalDnsStaticSiteConfig {
   dnsProvider: DnsProviderConfig
   /** Skip DNS verification and record creation (use when DNS is already configured) */
   skipDnsVerification?: boolean
+  /** When true, serves raw files without URL rewriting (for curl | bash install scripts) */
+  passthroughUrls?: boolean
 }
 
 export interface ExternalDnsDeployResult {
@@ -62,6 +64,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   certificateArn?: string
   defaultRootObject?: string
   errorDocument?: string
+  passthroughUrls?: boolean
 }): object {
   const {
     bucketName,
@@ -70,6 +73,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     certificateArn,
     defaultRootObject = 'index.html',
     errorDocument = '404.html',
+    passthroughUrls = false,
   } = config
 
   const resources: Record<string, any> = {}
@@ -117,17 +121,18 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     },
   }
 
-  // CloudFront Function for URL rewriting
-  resources.UrlRewriteFunction = {
-    Type: 'AWS::CloudFront::Function',
-    Properties: {
-      Name: { 'Fn::Sub': '${AWS::StackName}-url-rewrite' },
-      AutoPublish: true,
-      FunctionConfig: {
-        Comment: 'Append .html extension to URLs without extensions',
-        Runtime: 'cloudfront-js-2.0',
-      },
-      FunctionCode: `function handler(event) {
+  // CloudFront Function for URL rewriting (skipped for passthrough/installer sites)
+  if (!passthroughUrls) {
+    resources.UrlRewriteFunction = {
+      Type: 'AWS::CloudFront::Function',
+      Properties: {
+        Name: { 'Fn::Sub': '${AWS::StackName}-url-rewrite' },
+        AutoPublish: true,
+        FunctionConfig: {
+          Comment: 'Append .html extension to URLs without extensions',
+          Runtime: 'cloudfront-js-2.0',
+        },
+        FunctionCode: `function handler(event) {
   const request = event.request;
   var uri = request.uri;
 
@@ -142,7 +147,8 @@ export function generateExternalDnsStaticSiteTemplate(config: {
 
   return request;
 }`,
-    },
+      },
+    }
   }
 
   // CloudFront Distribution
@@ -169,12 +175,14 @@ export function generateExternalDnsStaticSiteTemplate(config: {
       CachedMethods: ['GET', 'HEAD'],
       Compress: true,
       CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // Managed-CachingOptimized
-      FunctionAssociations: [
-        {
-          EventType: 'viewer-request',
-          FunctionARN: { 'Fn::GetAtt': ['UrlRewriteFunction', 'FunctionARN'] },
-        },
-      ],
+      ...(!passthroughUrls && {
+        FunctionAssociations: [
+          {
+            EventType: 'viewer-request',
+            FunctionARN: { 'Fn::GetAtt': ['UrlRewriteFunction', 'FunctionARN'] },
+          },
+        ],
+      }),
     },
     CustomErrorResponses: [
       {
@@ -210,7 +218,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
 
   resources.CloudFrontDistribution = {
     Type: 'AWS::CloudFront::Distribution',
-    DependsOn: ['S3Bucket', 'CloudFrontOAC', 'UrlRewriteFunction'],
+    DependsOn: passthroughUrls ? ['S3Bucket', 'CloudFrontOAC'] : ['S3Bucket', 'CloudFrontOAC', 'UrlRewriteFunction'],
     Properties: {
       DistributionConfig: distributionConfig,
     },
@@ -542,6 +550,7 @@ export async function deployStaticSiteWithExternalDns(
     certificateArn,
     defaultRootObject: config.defaultRootObject,
     errorDocument: config.errorDocument,
+    passthroughUrls: config.passthroughUrls,
   })
 
   // Build tags

@@ -983,6 +983,9 @@ export async function uploadStaticFiles(options: UploadOptions): Promise<{ uploa
       'ttf': 'font/ttf',
       'xml': 'application/xml',
       'txt': 'text/plain; charset=utf-8',
+      'sh': 'text/plain; charset=utf-8',
+      'bash': 'text/plain; charset=utf-8',
+      'ps1': 'text/plain; charset=utf-8',
     }
     return types[ext || ''] || 'application/octet-stream'
   }

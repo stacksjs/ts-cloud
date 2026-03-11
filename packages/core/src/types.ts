@@ -657,6 +657,13 @@ export interface SiteConfig {
   certificateArn?: string
   /** Build command to run before deployment (e.g., 'bun run generate', 'npm run build') */
   build?: string
+  /**
+   * Path to a shell script to serve at the root URL.
+   * Enables `curl -fsSL https://your-domain.com | bash` installs.
+   * When set, the script is served as the default document with `text/plain`
+   * content type and the URL rewrite function is disabled.
+   */
+  installScript?: string
 }
 
 export interface VpcConfig {

@@ -1155,6 +1155,44 @@ async function deployStaticSitesWithExternalDns(
       }
     }
 
+    // Handle install script: prepare a temp directory with the script as index.html
+    let deploySourceDir = siteConfig.root
+    let tempInstallDir: string | undefined
+    const hasInstallScript = !!siteConfig.installScript
+
+    if (hasInstallScript) {
+      const { mkdtempSync, writeFileSync, copyFileSync, readdirSync, statSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const { join, resolve } = await import('node:path')
+
+      tempInstallDir = mkdtempSync(join(tmpdir(), 'cloud-install-'))
+      const scriptPath = resolve(siteConfig.installScript!)
+
+      // Copy the script as index.html (served at root for curl domain | bash)
+      copyFileSync(scriptPath, join(tempInstallDir, 'index.html'))
+
+      // Also keep the original filename for direct access
+      const scriptName = scriptPath.split('/').pop()!
+      if (scriptName !== 'index.html') {
+        copyFileSync(scriptPath, join(tempInstallDir, scriptName))
+      }
+
+      // Copy any other files from root dir if it exists
+      if (existsSync(siteConfig.root)) {
+        const rootFiles = readdirSync(siteConfig.root)
+        for (const file of rootFiles) {
+          const src = join(siteConfig.root, file)
+          if (statSync(src).isFile() && file !== 'index.html') {
+            copyFileSync(src, join(tempInstallDir, file))
+          }
+        }
+      }
+
+      deploySourceDir = tempInstallDir
+      cli.info(`Install script: ${siteConfig.installScript}`)
+      cli.info(`Serving at: curl -fsSL https://${domain} | bash`)
+    }
+
     // Deploy the static site
     cli.step('Deploying to AWS (S3 + CloudFront)...')
 
@@ -1163,10 +1201,11 @@ async function deployStaticSitesWithExternalDns(
       domain,
       region,
       bucket: siteConfig.bucket,
-      sourceDir: siteConfig.root,
+      sourceDir: deploySourceDir,
       certificateArn: siteConfig.certificateArn,
       dnsProvider: dnsConfig,
       skipDnsVerification,
+      passthroughUrls: hasInstallScript,
       onProgress: (stage, detail) => {
         if (stage === 'infrastructure') {
           cli.step(detail || 'Setting up infrastructure...')
@@ -1189,17 +1228,28 @@ async function deployStaticSitesWithExternalDns(
       },
     })
 
+    // Clean up temp install script directory
+    if (tempInstallDir) {
+      const { rmSync } = await import('node:fs')
+      rmSync(tempInstallDir, { recursive: true, force: true })
+    }
+
     if (result.success) {
       cli.success('\nDeployment successful!')
       const filesInfo = (result as any).filesSkipped > 0
         ? `${result.filesUploaded} uploaded, ${(result as any).filesSkipped} unchanged`
         : `${result.filesUploaded}`
+
+      const installInfo = hasInstallScript
+        ? `\nInstall: curl -fsSL https://${result.domain} | bash`
+        : ''
+
       cli.box(`Site Deployed!
 
 Domain: https://${result.domain}
 CloudFront: ${result.distributionDomain}
 Bucket: ${result.bucket}
-Files: ${filesInfo}
+Files: ${filesInfo}${installInfo}
 
 Your site is now live at https://${result.domain}`, 'green')
     } else {
