@@ -651,6 +651,8 @@ export interface SiteConfig {
   path?: string
   /** Custom domain for the site (e.g., 'stage.easyotc.com') */
   domain?: string
+  /** S3 bucket name (auto-generated from domain if not provided) */
+  bucket?: string
   /** SSL certificate ARN (auto-created if not provided) */
   certificateArn?: string
   /** Build command to run before deployment (e.g., 'bun run generate', 'npm run build') */

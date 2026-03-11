@@ -1162,6 +1162,7 @@ async function deployStaticSitesWithExternalDns(
       siteName: `${config.project.slug}-${siteName}`,
       domain,
       region,
+      bucket: siteConfig.bucket,
       sourceDir: siteConfig.root,
       certificateArn: siteConfig.certificateArn,
       dnsProvider: dnsConfig,
