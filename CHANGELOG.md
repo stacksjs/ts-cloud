@@ -1,3 +1,56 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.14...v0.2.0)
+
+### 🚀 Features
+
+- add installScript support for curl  ([09a4206](https://github.com/stacksjs/ts-cloud/commit/09a4206)) _(by  bash deployments <Chris>)_
+- support custom S3 bucket name in site config ([8099501](https://github.com/stacksjs/ts-cloud/commit/8099501)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- move restoreEnv declaration outside try block for scope access ([4432da6](https://github.com/stacksjs/ts-cloud/commit/4432da6)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.0 ([8e6832b](https://github.com/stacksjs/ts-cloud/commit/8e6832b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([755e39b](https://github.com/stacksjs/ts-cloud/commit/755e39b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- ignore claude config in linter ([d0ef83a](https://github.com/stacksjs/ts-cloud/commit/d0ef83a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- add claude code guidelines ([3575c67](https://github.com/stacksjs/ts-cloud/commit/3575c67)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint errors ([218ef49](https://github.com/stacksjs/ts-cloud/commit/218ef49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: update all non-major dependencies (updated) (#91) ([8da4c91](https://github.com/stacksjs/ts-cloud/commit/8da4c91)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#91](https://github.com/stacksjs/ts-cloud/issues/91), [#91](https://github.com/stacksjs/ts-cloud/issues/91))
+- **deps**: update github actions (#93) ([cafc2af](https://github.com/stacksjs/ts-cloud/commit/cafc2af)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#93](https://github.com/stacksjs/ts-cloud/issues/93), [#93](https://github.com/stacksjs/ts-cloud/issues/93))
+
+### Contributors
+
+- _ bash deployments <Chris>_
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.14...HEAD)
+
+### 🚀 Features
+
+- add installScript support for curl  ([09a4206](https://github.com/stacksjs/ts-cloud/commit/09a4206)) _(by  bash deployments <Chris>)_
+- support custom S3 bucket name in site config ([8099501](https://github.com/stacksjs/ts-cloud/commit/8099501)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- move restoreEnv declaration outside try block for scope access ([4432da6](https://github.com/stacksjs/ts-cloud/commit/4432da6)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- wip ([755e39b](https://github.com/stacksjs/ts-cloud/commit/755e39b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- ignore claude config in linter ([d0ef83a](https://github.com/stacksjs/ts-cloud/commit/d0ef83a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- add claude code guidelines ([3575c67](https://github.com/stacksjs/ts-cloud/commit/3575c67)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint errors ([218ef49](https://github.com/stacksjs/ts-cloud/commit/218ef49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: update all non-major dependencies (updated) (#91) ([8da4c91](https://github.com/stacksjs/ts-cloud/commit/8da4c91)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#91](https://github.com/stacksjs/ts-cloud/issues/91), [#91](https://github.com/stacksjs/ts-cloud/issues/91))
+- **deps**: update github actions (#93) ([cafc2af](https://github.com/stacksjs/ts-cloud/commit/cafc2af)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#93](https://github.com/stacksjs/ts-cloud/issues/93), [#93](https://github.com/stacksjs/ts-cloud/issues/93))
+
+### Contributors
+
+- _ bash deployments <Chris>_
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.13...v0.1.14)
 
 ### 🧹 Chores
