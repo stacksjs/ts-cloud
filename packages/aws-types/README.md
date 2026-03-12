@@ -38,7 +38,7 @@ const instance: EC2Instance = {
 - Covers a wide range of AWS services (EC2, S3, Lambda, ECS, RDS, Route53, CloudWatch, SNS, SQS, and many more)
 - Zero runtime dependencies -- types only
 - No AWS SDK required
-- Used internally by `ts-cloud-core` and `@stacksjs/ts-cloud`
+- Used internally by `@ts-cloud/core` and `@stacksjs/ts-cloud`
 
 ## License
 
