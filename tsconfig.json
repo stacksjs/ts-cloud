@@ -25,7 +25,9 @@
       "@ts-cloud/core": ["./packages/core/src"],
       "@ts-cloud/core/*": ["./packages/core/src/*"],
       "@ts-cloud/aws-types": ["./packages/aws-types/src"],
-      "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"]
+      "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"],
+      "@stacksjs/ts-cloud": ["./packages/ts-cloud/src"],
+      "@stacksjs/ts-cloud/*": ["./packages/ts-cloud/src/*"]
     }
   },
   "exclude": ["docs", "dist", "**/dist", "node_modules", "benchmarks", "bunpress.ts", "pantry"]

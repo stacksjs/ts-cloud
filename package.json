@@ -66,5 +66,8 @@
       }
     },
     "commit-msg": "bunx gitlint --edit .git/COMMIT_EDITMSG"
+  },
+  "dependencies": {
+    "@stacksjs/ts-xml": "^0.1.0"
   }
 }
