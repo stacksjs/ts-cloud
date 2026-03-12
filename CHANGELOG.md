@@ -1,3 +1,46 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.1...v0.2.2)
+
+### 🐛 Bug Fixes
+
+- update imports from ts-cloud to @stacksjs/ts-cloud and add @stacksjs/ts-xml dep ([538ee9f](https://github.com/stacksjs/ts-cloud/commit/538ee9f)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- replace stale ts-xml workspace link with @stacksjs/ts-xml ([d1f1a49](https://github.com/stacksjs/ts-cloud/commit/d1f1a49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.2 ([b905c33](https://github.com/stacksjs/ts-cloud/commit/b905c33)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([ff077db](https://github.com/stacksjs/ts-cloud/commit/ff077db)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- add proper claude code guidelines ([cf5e3ce](https://github.com/stacksjs/ts-cloud/commit/cf5e3ce)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([2669f41](https://github.com/stacksjs/ts-cloud/commit/2669f41)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- use pantry monorepo action instead of pantry-setup ([71f6a6a](https://github.com/stacksjs/ts-cloud/commit/71f6a6a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- minor updates ([ed3695d](https://github.com/stacksjs/ts-cloud/commit/ed3695d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- use `ts-xml` ([a49daf3](https://github.com/stacksjs/ts-cloud/commit/a49daf3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.1...HEAD)
+
+### 🐛 Bug Fixes
+
+- update imports from ts-cloud to @stacksjs/ts-cloud and add @stacksjs/ts-xml dep ([538ee9f](https://github.com/stacksjs/ts-cloud/commit/538ee9f)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- replace stale ts-xml workspace link with @stacksjs/ts-xml ([d1f1a49](https://github.com/stacksjs/ts-cloud/commit/d1f1a49)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- wip ([ff077db](https://github.com/stacksjs/ts-cloud/commit/ff077db)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- add proper claude code guidelines ([cf5e3ce](https://github.com/stacksjs/ts-cloud/commit/cf5e3ce)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- wip ([2669f41](https://github.com/stacksjs/ts-cloud/commit/2669f41)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- use pantry monorepo action instead of pantry-setup ([71f6a6a](https://github.com/stacksjs/ts-cloud/commit/71f6a6a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- minor updates ([ed3695d](https://github.com/stacksjs/ts-cloud/commit/ed3695d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- use `ts-xml` ([a49daf3](https://github.com/stacksjs/ts-cloud/commit/a49daf3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.0...v0.2.1)
 
 ### 🧹 Chores
