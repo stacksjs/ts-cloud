@@ -163,9 +163,16 @@ export function registerDeployCommands(app: CLI): void {
     }) => {
       cli.header('Deploying Infrastructure')
 
+      const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
+
+      // Load environment-specific .env file BEFORE anything else.
+      // Bun auto-loads .env.local at process startup, so we must purge
+      // those values before config loading or any other env reads.
       let restoreEnv: (() => Promise<void>) | null = null
+      restoreEnv = await loadEnvironmentFile(environment)
+
       try {
-        // Load configuration first to get project info
+        // Load configuration after env is set up correctly
         const config = await loadValidatedConfig()
 
         // Run security scan before deployment (unless skipped)
@@ -190,12 +197,8 @@ export function registerDeployCommands(app: CLI): void {
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
-        const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
-
-        // Load environment-specific .env file early, before any deployment path
-        restoreEnv = await loadEnvironmentFile(environment)
 
         // Check if this is a static site deployment
         if (config.sites && Object.keys(config.sites).length > 0) {
