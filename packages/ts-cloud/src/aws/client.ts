@@ -7,7 +7,7 @@ import * as crypto from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { XMLParser } from 'ts-xml'
+import { XMLParser } from '@stacksjs/ts-xml'
 
 export interface AWSCredentials {
   accessKeyId: string
