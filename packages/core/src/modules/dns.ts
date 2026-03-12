@@ -1,4 +1,4 @@
-import type { Route53HostedZone, Route53RecordSet } from 'ts-cloud-aws-types'
+import type { Route53HostedZone, Route53RecordSet } from '@ts-cloud/aws-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '../types'

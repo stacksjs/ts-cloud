@@ -31,7 +31,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ts-cloud-aws-types": "workspace:*"
+    "@ts-cloud/aws-types": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

@@ -29,7 +29,7 @@ const stack = defineStack({
 ## Features
 
 - Programmatic CloudFormation template generation
-- Full TypeScript type safety via `ts-cloud-aws-types`
+- Full TypeScript type safety via `@ts-cloud/aws-types`
 - Support for compute, storage, networking, database, CDN, DNS, and more
 - Auth, security, and permissions abstractions
 - Messaging, queue, and event integrations

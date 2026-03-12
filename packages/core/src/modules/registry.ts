@@ -1,4 +1,4 @@
-import type { ECRRepository, ECRLifecyclePolicy } from 'ts-cloud-aws-types'
+import type { ECRRepository, ECRLifecyclePolicy } from '@ts-cloud/aws-types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '../types'
 

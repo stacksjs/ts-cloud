@@ -1,7 +1,7 @@
 import type {
   IAMRole,
   IAMManagedPolicy,
-} from 'ts-cloud-aws-types'
+} from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 

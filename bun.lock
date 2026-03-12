@@ -9,17 +9,17 @@
       },
     },
     "packages/aws-types": {
-      "name": "ts-cloud-aws-types",
-      "version": "0.1.14",
+      "name": "@ts-cloud/aws-types",
+      "version": "0.2.0",
       "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
     "packages/core": {
       "name": "@ts-cloud/core",
-      "version": "0.1.14",
+      "version": "0.2.0",
       "dependencies": {
-        "ts-cloud-aws-types": "workspace:*",
+        "@ts-cloud/aws-types": "workspace:*",
       },
       "devDependencies": {
         "typescript": "^5.9.3",
@@ -27,14 +27,14 @@
     },
     "packages/ts-cloud": {
       "name": "@stacksjs/ts-cloud",
-      "version": "0.1.14",
+      "version": "0.2.0",
       "bin": {
         "cloud": "./dist/bin/cli.js",
       },
       "dependencies": {
+        "@ts-cloud/aws-types": "workspace:*",
         "@ts-cloud/core": "workspace:*",
         "fast-xml-parser": "^5.5.1",
-        "ts-cloud-aws-types": "workspace:*",
       },
       "devDependencies": {
         "better-dx": "^0.2.6",
@@ -66,6 +66,8 @@
     "@stacksjs/ts-cloud-types": ["@stacksjs/ts-cloud-types@0.1.9", "", {}, "sha512-uBRtR/4CzSf2ZDDQ2vGM0ZSbxnxHaMkh/YLdSlXBhJuy30JMBKsos/CuHgBrL1W0CPETxwd9G+Bt7NQ7et6kkQ=="],
 
     "@stacksjs/ts-md": ["@stacksjs/ts-md@0.1.1", "", { "bin": { "md": "./bin/cli.ts" } }, "sha512-kvsSg7S3vHq65fnHIRggTLudN4n1sjkos86xLB62V6PVRa8iosYAmFKVDTGaJk+0MdsIoRwQbJ2vLWVcNQsgGw=="],
+
+    "@ts-cloud/aws-types": ["@ts-cloud/aws-types@workspace:packages/aws-types"],
 
     "@ts-cloud/core": ["@ts-cloud/core@workspace:packages/core"],
 
@@ -122,8 +124,6 @@
     "strnum": ["strnum@2.2.0", "", {}, "sha512-Y7Bj8XyJxnPAORMZj/xltsfo55uOiyHcU2tnAVzHUnSJR/KsEX+9RoDeXEnsXtl/CX4fAcrt64gZ13aGaWPeBg=="],
 
     "tinyglobby": ["tinyglobby@0.2.15", "", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.3" } }, "sha512-j2Zq4NyQYG5XMST4cbs02Ak8iJUdxRM0XI5QyxXuZOzKOINmWurp3smXu3y5wDcJrptwpSjgXHzIQxR0omXljQ=="],
-
-    "ts-cloud-aws-types": ["ts-cloud-aws-types@workspace:packages/aws-types"],
 
     "ts-error-handling": ["ts-error-handling@0.1.1", "", {}, "sha512-d4VqdX0bJ+jvOYNsY58isJgrEr806Q9cjef5+1UO/kIn1M/+YYSwpR6fqdRhn9XXVASJLSzNmcnBSdl0fRCjDg=="],
 

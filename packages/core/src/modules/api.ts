@@ -4,7 +4,7 @@ import type {
   ApiGatewayHttpApi,
   ApiGatewayRestApi,
   ApiGatewayStage,
-} from 'ts-cloud-aws-types'
+} from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'

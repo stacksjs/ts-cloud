@@ -163,9 +163,9 @@ export type {
 // Re-export core functionality (these take precedence for common types)
 export * from '@ts-cloud/core'
 
-// Re-export ts-cloud-aws-types with explicit handling for duplicates
+// Re-export @ts-cloud/aws-types with explicit handling for duplicates
 // Note: @ts-cloud/core also exports CloudFormation* types, so we skip re-exporting them here
-// to avoid duplicates. Users can import directly from ts-cloud-aws-types if needed.
+// to avoid duplicates. Users can import directly from @ts-cloud/aws-types if needed.
 export type {
   // S3 types
   S3Bucket,
@@ -175,4 +175,4 @@ export type {
   CloudFrontOriginAccessControl,
   CloudFrontCacheBehavior,
   CloudFrontOrigin,
-} from 'ts-cloud-aws-types'
+} from '@ts-cloud/aws-types'

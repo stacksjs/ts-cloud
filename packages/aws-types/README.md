@@ -1,15 +1,15 @@
-# ts-cloud-aws-types
+# @ts-cloud/aws-types
 
 AWS CloudFormation resource type definitions for TypeScript, without any dependency on the AWS SDK.
 
 ## Installation
 
 ```bash
-bun add ts-cloud-aws-types
+bun add @ts-cloud/aws-types
 ```
 
 ```bash
-npm install ts-cloud-aws-types
+npm install @ts-cloud/aws-types
 ```
 
 ## Usage
@@ -20,7 +20,7 @@ import type {
   S3Bucket,
   LambdaFunction,
   Route53HostedZone,
-} from 'ts-cloud-aws-types'
+} from '@ts-cloud/aws-types'
 
 // Use fully typed AWS resource definitions
 const instance: EC2Instance = {

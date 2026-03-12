@@ -1,4 +1,4 @@
-import type { CloudFrontDistribution, CloudFrontOriginAccessControl, LambdaFunction, IAMRole } from 'ts-cloud-aws-types'
+import type { CloudFrontDistribution, CloudFrontOriginAccessControl, LambdaFunction, IAMRole } from '@ts-cloud/aws-types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 import type { EnvironmentType } from '../types'

@@ -3,7 +3,7 @@
  * Clean API for AWS SSM Parameter Store
  */
 
-import type { SSMParameter } from 'ts-cloud-aws-types'
+import type { SSMParameter } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 

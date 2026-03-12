@@ -3,7 +3,7 @@
  * Provides clean API for creating domain and path-based redirects
  */
 
-import type { CloudFrontFunction, S3Bucket, S3BucketPolicy } from 'ts-cloud-aws-types'
+import type { CloudFrontFunction, S3Bucket, S3BucketPolicy } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
