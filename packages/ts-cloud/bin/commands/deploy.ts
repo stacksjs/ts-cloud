@@ -1164,7 +1164,7 @@ async function deployStaticSitesWithExternalDns(
     const hasInstallScript = !!siteConfig.installScript
 
     if (hasInstallScript) {
-      const { mkdtempSync, writeFileSync, copyFileSync, readdirSync, statSync } = await import('node:fs')
+      const { mkdtempSync, copyFileSync, readdirSync, statSync } = await import('node:fs')
       const { tmpdir } = await import('node:os')
       const { join, resolve } = await import('node:path')
 
