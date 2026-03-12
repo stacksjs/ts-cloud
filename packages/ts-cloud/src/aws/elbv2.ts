@@ -868,7 +868,7 @@ export class ELBv2Client {
    */
   private normalizeResult(parsed: any, resultKey: string): any {
     // The AWS response is wrapped like: { DescribeLoadBalancersResponse: { DescribeLoadBalancersResult: {...} } }
-    // fast-xml-parser returns: { DescribeLoadBalancersResult: {...}, ResponseMetadata: {...} }
+    // ts-xml returns: { DescribeLoadBalancersResult: {...}, ResponseMetadata: {...} }
 
     // Try direct access first
     if (parsed && parsed[resultKey]) {

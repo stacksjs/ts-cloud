@@ -7,7 +7,7 @@ import * as crypto from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { XMLParser } from 'fast-xml-parser'
+import { XMLParser } from 'ts-xml'
 
 export interface AWSCredentials {
   accessKeyId: string
@@ -625,7 +625,7 @@ export class AWSClient {
   }
 
   /**
-   * Parse XML response using fast-xml-parser
+   * Parse XML response using ts-xml
    */
   private parseXmlResponse(xml: string): any {
     try {
