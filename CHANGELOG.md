@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.0...v0.2.1)
+
+### 🧹 Chores
+
+- release v0.2.1 ([88fa496](https://github.com/stacksjs/ts-cloud/commit/88fa496)) _(by Chris <chrisbreuer93@gmail.com>)_
+- minor adjustments ([7a3bee2](https://github.com/stacksjs/ts-cloud/commit/7a3bee2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.0...HEAD)
+
+### 🧹 Chores
+
+- minor adjustments ([7a3bee2](https://github.com/stacksjs/ts-cloud/commit/7a3bee2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.1.14...v0.2.0)
 
 ### 🚀 Features
