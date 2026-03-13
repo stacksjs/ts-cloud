@@ -2,7 +2,7 @@
 
 ## About
 
-TypeScript cloud infrastructure toolkit.
+A zero-dependency AWS infrastructure-as-code framework that lets you define and deploy production-ready cloud infrastructure using TypeScript configuration files. It generates CloudFormation templates and makes direct AWS API calls using Signature V4 (no AWS SDK or CLI required). Includes 13 production-ready presets (static sites, serverless apps, full-stack apps, microservices, data pipelines, etc.), builders for VPC/S3/EC2/ECS/RDS/DynamoDB/CloudFront and more, plus built-in secret detection scanning before deployments.
 
 ## Linting
 
