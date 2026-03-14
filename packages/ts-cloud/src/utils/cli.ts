@@ -75,6 +75,8 @@ export function header(message: string): void {
 /**
  * Simple spinner
  */
+const isCI = !!(process.env.CI || process.env.GITHUB_ACTIONS || process.env.BUILDKITE || process.env.CIRCLECI || process.env.GITLAB_CI)
+
 export class Spinner {
   private frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
   private interval: Timer | null = null
@@ -91,9 +93,18 @@ export class Spinner {
 
   set text(value: string) {
     this.message = value
+    // In CI, print each status change as a new line
+    if (isCI && this.interval)
+      console.log(`  ${value}`)
   }
 
   start(): void {
+    if (isCI) {
+      // In CI, just print the message once (no animation)
+      console.log(`  ${this.message}`)
+      this.interval = true as unknown as Timer // mark as started
+      return
+    }
     this.interval = setInterval(() => {
       process.stdout.write(`\r${colors.cyan}${this.frames[this.currentFrame]}${colors.reset} ${this.message}`)
       this.currentFrame = (this.currentFrame + 1) % this.frames.length
@@ -117,8 +128,11 @@ export class Spinner {
 
   stop(): void {
     if (this.interval) {
-      clearInterval(this.interval)
-      process.stdout.write('\r')
+      if (!isCI)
+        process.stdout.write('\r')
+      if (typeof this.interval === 'object')
+        clearInterval(this.interval)
+      this.interval = null
     }
   }
 }
