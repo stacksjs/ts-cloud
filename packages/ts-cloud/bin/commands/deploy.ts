@@ -1,6 +1,23 @@
 import type { CLI } from '@stacksjs/clapp'
 import { existsSync, statSync, writeFileSync, copyFileSync, readFileSync } from 'node:fs'
 import * as cli from '../../src/utils/cli'
+
+const isCI = !!process.env.CI || !!process.env.GITHUB_ACTIONS
+
+/** Create a spinner that falls back to plain logs in CI */
+function createSpinner(message: string) {
+  if (isCI) {
+    console.log(message)
+    return {
+      start() {},
+      succeed(msg: string) { console.log(`✓ ${msg}`) },
+      fail(msg: string) { console.error(`✗ ${msg}`) },
+      stop() {},
+    }
+  }
+  const s = createSpinner(message)
+  return s
+}
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
 import { S3Client } from '../../src/aws/s3'
@@ -301,7 +318,7 @@ export function registerDeployCommands(app: CLI): void {
 
         if (stackExists) {
           cli.info('Stack exists, updating...')
-          const updateSpinner = new cli.Spinner('Updating CloudFormation stack...')
+          const updateSpinner = createSpinner('Updating CloudFormation stack...')
           updateSpinner.start()
 
           try {
@@ -335,7 +352,7 @@ export function registerDeployCommands(app: CLI): void {
         }
         else {
           cli.info('Creating new stack...')
-          const createSpinner = new cli.Spinner('Creating CloudFormation stack...')
+          const createSpinner = createSpinner('Creating CloudFormation stack...')
           createSpinner.start()
 
           await cfn.createStack({
@@ -409,7 +426,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         cli.step('Generating EC2 server infrastructure...')
 
         // TODO: Generate server-specific infrastructure
-        const spinner = new cli.Spinner('Deploying server infrastructure...')
+        const spinner = createSpinner('Deploying server infrastructure...')
         spinner.start()
 
         await new Promise(resolve => setTimeout(resolve, 2000))
@@ -449,7 +466,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
 
         cli.step('Generating serverless infrastructure...')
 
-        const spinner = new cli.Spinner('Deploying serverless infrastructure...')
+        const spinner = createSpinner('Deploying serverless infrastructure...')
         spinner.start()
 
         await new Promise(resolve => setTimeout(resolve, 2000))
@@ -483,7 +500,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         cli.info(`Stack: ${stackName}`)
         cli.info(`Region: ${region}`)
 
-        const spinner = new cli.Spinner('Checking deployment status...')
+        const spinner = createSpinner('Checking deployment status...')
         spinner.start()
 
         const cfn = new CloudFormationClient(region)
@@ -541,7 +558,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           return
         }
 
-        const spinner = new cli.Spinner('Rolling back stack...')
+        const spinner = createSpinner('Rolling back stack...')
         spinner.start()
 
         const cfn = new CloudFormationClient(region)
@@ -656,7 +673,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
 
         // Step 1: Upload to S3
         const s3 = new S3Client(region)
-        const uploadSpinner = new cli.Spinner('Uploading files to S3...')
+        const uploadSpinner = createSpinner('Uploading files to S3...')
         uploadSpinner.start()
 
         await s3.sync({
@@ -678,7 +695,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         // Step 2: Invalidate CloudFront (if distribution provided)
         if (shouldInvalidate && distributionId) {
           const cloudfront = new CloudFrontClient()
-          const invalidateSpinner = new cli.Spinner('Invalidating CloudFront cache...')
+          const invalidateSpinner = createSpinner('Invalidating CloudFront cache...')
           invalidateSpinner.start()
 
           const invalidation = await cloudfront.invalidateAll(distributionId)
@@ -687,7 +704,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.info(`Invalidation ID: ${invalidation.Id}`)
 
           if (shouldWait) {
-            const waitSpinner = new cli.Spinner('Waiting for invalidation to complete...')
+            const waitSpinner = createSpinner('Waiting for invalidation to complete...')
             waitSpinner.start()
             await cloudfront.waitForInvalidation(distributionId, invalidation.Id)
             waitSpinner.succeed('Invalidation completed!')
@@ -808,7 +825,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         const ecs = new ECSClient(region)
 
         // Step 1: Get ECR login credentials
-        const loginSpinner = new cli.Spinner('Getting ECR credentials...')
+        const loginSpinner = createSpinner('Getting ECR credentials...')
         loginSpinner.start()
 
         const authResult = await ecr.getAuthorizationToken()
@@ -824,7 +841,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         loginSpinner.succeed('ECR credentials obtained')
 
         // Step 2: Docker login to ECR
-        const dockerLoginSpinner = new cli.Spinner('Logging into ECR...')
+        const dockerLoginSpinner = createSpinner('Logging into ECR...')
         dockerLoginSpinner.start()
 
         const token = auth.authorizationToken || ''
@@ -850,7 +867,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         dockerLoginSpinner.succeed('Logged into ECR')
 
         // Step 3: Build Docker image
-        const buildSpinner = new cli.Spinner('Building Docker image...')
+        const buildSpinner = createSpinner('Building Docker image...')
         buildSpinner.start()
 
         const imageUri = `${registryHost}/${repository}:${imageTag}`
@@ -871,7 +888,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         buildSpinner.succeed('Docker image built')
 
         // Step 4: Push to ECR
-        const pushSpinner = new cli.Spinner('Pushing image to ECR...')
+        const pushSpinner = createSpinner('Pushing image to ECR...')
         pushSpinner.start()
 
         const dockerPush = spawn('docker', ['push', imageUri], {
@@ -890,7 +907,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         pushSpinner.succeed('Image pushed to ECR')
 
         // Step 5: Update ECS service
-        const updateSpinner = new cli.Spinner('Updating ECS service...')
+        const updateSpinner = createSpinner('Updating ECS service...')
         updateSpinner.start()
 
         await ecs.updateService({
@@ -903,7 +920,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
 
         // Step 6: Wait for deployment (if requested)
         if (shouldWait) {
-          const waitSpinner = new cli.Spinner('Waiting for deployment to stabilize...')
+          const waitSpinner = createSpinner('Waiting for deployment to stabilize...')
           waitSpinner.start()
 
           await ecs.waitForServiceStable(cluster, service)

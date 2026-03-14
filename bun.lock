@@ -4,23 +4,20 @@
   "workspaces": {
     "": {
       "name": "ts-cloud",
-      "dependencies": {
-        "@stacksjs/ts-xml": "^0.1.0",
-      },
       "devDependencies": {
         "better-dx": "^0.2.6",
       },
     },
     "packages/aws-types": {
       "name": "@ts-cloud/aws-types",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
     "packages/core": {
       "name": "@ts-cloud/core",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "dependencies": {
         "@ts-cloud/aws-types": "workspace:*",
       },
@@ -30,7 +27,7 @@
     },
     "packages/ts-cloud": {
       "name": "@stacksjs/ts-cloud",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "bin": {
         "cloud": "./dist/bin/cli.js",
       },
