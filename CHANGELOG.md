@@ -1,3 +1,32 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.2...v0.2.3)
+
+### 🧹 Chores
+
+- release v0.2.3 ([e0033f6](https://github.com/stacksjs/ts-cloud/commit/e0033f6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- more ci log enhancements ([7ee2112](https://github.com/stacksjs/ts-cloud/commit/7ee2112)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([f265d66](https://github.com/stacksjs/ts-cloud/commit/f265d66)) _(by Chris <chrisbreuer93@gmail.com>)_
+- enrich CLAUDE.md with detailed project context from README ([eddba32](https://github.com/stacksjs/ts-cloud/commit/eddba32)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- update CLAUDE.md with project context and crosswind details ([670aa1c](https://github.com/stacksjs/ts-cloud/commit/670aa1c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.2...HEAD)
+
+### 🧹 Chores
+
+- more ci log enhancements ([7ee2112](https://github.com/stacksjs/ts-cloud/commit/7ee2112)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([f265d66](https://github.com/stacksjs/ts-cloud/commit/f265d66)) _(by Chris <chrisbreuer93@gmail.com>)_
+- enrich CLAUDE.md with detailed project context from README ([eddba32](https://github.com/stacksjs/ts-cloud/commit/eddba32)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- update CLAUDE.md with project context and crosswind details ([670aa1c](https://github.com/stacksjs/ts-cloud/commit/670aa1c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.1...v0.2.2)
 
 ### 🐛 Bug Fixes
