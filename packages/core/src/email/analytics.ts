@@ -266,11 +266,14 @@ export class EmailAnalyticsManager {
         const ua = (event as OpenEvent | ClickEvent).userAgent.toLowerCase()
         if (ua.includes('mobile')) {
           deviceBreakdown.mobile++
-        } else if (ua.includes('tablet')) {
+        }
+else if (ua.includes('tablet')) {
           deviceBreakdown.tablet++
-        } else if (ua.includes('mozilla')) {
+        }
+else if (ua.includes('mozilla')) {
           deviceBreakdown.desktop++
-        } else {
+        }
+else {
           deviceBreakdown.unknown++
         }
       }

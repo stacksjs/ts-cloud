@@ -108,7 +108,8 @@ exports.handler = async (event) => {
       default:
         return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
@@ -313,7 +314,8 @@ exports.handler = async (event) => {
     }
 
     return { statusCode: 200 };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error executing campaigns:', error);
     return { statusCode: 500, error: error.message };
   }
@@ -379,11 +381,13 @@ async function executeCampaign(campaign) {
         if (status === 'SUCCESSFUL') {
           delivered++;
           cost += 0.00645; // Approximate US SMS cost
-        } else {
+        }
+else {
           failed++;
         }
         sent++;
-      } catch (error) {
+      }
+catch (error) {
         console.error(\`Failed to send to \${recipient.phoneNumber}:\`, error);
         failed++;
       }

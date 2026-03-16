@@ -1015,7 +1015,8 @@ export class InfrastructureGenerator {
         keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
         allowedCidrs: jumpBoxConfig.allowedCidrs,
       })
-    } else if (mountEfs) {
+    }
+else if (mountEfs) {
       result = Compute.JumpBox.withEfsMount({
         slug,
         environment: env,
@@ -1026,7 +1027,8 @@ export class InfrastructureGenerator {
         mountPath: mountEfs.mountPath,
         allowedCidrs: jumpBoxConfig.allowedCidrs,
       })
-    } else {
+    }
+else {
       result = Compute.createJumpBox({
         slug,
         environment: env,
@@ -1252,7 +1254,8 @@ export class InfrastructureGenerator {
                   Comment: `URL rewrite for ${slug} ${env} ${name} - appends index.html to directory paths`,
                   Runtime: 'cloudfront-js-2.0',
                 },
-                FunctionCode: `function handler(event) { var request = event.request; var uri = request.uri; if (uri.endsWith('/')) { request.uri += 'index.html'; } else if (!uri.includes('.')) { request.uri += '/index.html'; } return request; }`,
+                FunctionCode: `function handler(event) { var request = event.request; var uri = request.uri; if (uri.endsWith('/')) { request.uri += 'index.html'; }
+else if (!uri.includes('.')) { request.uri += '/index.html'; } return request; }`,
               },
             } as any)
           }
@@ -2733,7 +2736,8 @@ exports.handler = async (event) => {
     }));
 
     return { statusCode: 200, body: 'Connected' };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Connect error:', error);
     return { statusCode: 500, body: 'Failed to connect' };
   }
@@ -2780,7 +2784,8 @@ exports.handler = async (event) => {
     }
 
     return { statusCode: 200, body: 'Disconnected' };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Disconnect error:', error);
     return { statusCode: 500, body: 'Failed to disconnect' };
   }
@@ -2808,7 +2813,8 @@ exports.handler = async (event) => {
   let body;
   try {
     body = JSON.parse(event.body);
-  } catch {
+  }
+catch {
     return { statusCode: 400, body: 'Invalid JSON' };
   }
 
@@ -2850,7 +2856,8 @@ exports.handler = async (event) => {
               ConnectionId: sub.connectionId,
               Data: message,
             }));
-          } catch (error) {
+          }
+catch (error) {
             if (error.statusCode === 410) {
               // Connection is stale, remove it
               await docClient.send(new DeleteCommand({
@@ -2872,7 +2879,8 @@ exports.handler = async (event) => {
       default:
         return { statusCode: 400, body: JSON.stringify({ error: 'Unknown action', action }) };
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Message handler error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: 'Internal error' }) };
   }

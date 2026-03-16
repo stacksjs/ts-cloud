@@ -250,7 +250,8 @@ export class SmsClient {
         if (parsed) {
           messages.push(parsed)
         }
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to read SMS ${obj.Key}:`, err)
       }
     }
@@ -270,7 +271,8 @@ export class SmsClient {
     try {
       const content = await this.s3.getObject(this.config.inboxBucket, key)
       return this.parseIncomingSms(content, key)
-    } catch (err) {
+    }
+catch (err) {
       return null
     }
   }
@@ -641,7 +643,8 @@ export class SmsClient {
         sms.createdAt = new Date(sms.createdAt)
         if (sms.sentAt) sms.sentAt = new Date(sms.sentAt)
         messages.push(sms)
-      } catch {
+      }
+catch {
         // Skip invalid entries
       }
     }
@@ -666,7 +669,8 @@ export class SmsClient {
       sms.createdAt = new Date(sms.createdAt)
       if (sms.sentAt) sms.sentAt = new Date(sms.sentAt)
       return sms
-    } catch {
+    }
+catch {
       return null
     }
   }
@@ -696,7 +700,8 @@ export class SmsClient {
     if (this.scheduler) {
       try {
         await this.scheduler.deleteRule(`sms-${id}`, true)
-      } catch {
+      }
+catch {
         // Rule may not exist
       }
     }
@@ -734,7 +739,8 @@ export class SmsClient {
       })
 
       return result
-    } catch (err: any) {
+    }
+catch (err: any) {
       // Update with error
       const bucket = this.config.scheduledBucket || this.config.inboxBucket!
       const key = `${this.config.scheduledPrefix}${id}.json`
@@ -839,7 +845,8 @@ export class SmsClient {
         template.createdAt = new Date(template.createdAt)
         if (template.updatedAt) template.updatedAt = new Date(template.updatedAt)
         templates.push(template)
-      } catch {
+      }
+catch {
         // Skip invalid entries
       }
     }
@@ -863,7 +870,8 @@ export class SmsClient {
       template.createdAt = new Date(template.createdAt)
       if (template.updatedAt) template.updatedAt = new Date(template.updatedAt)
       return template
-    } catch {
+    }
+catch {
       return null
     }
   }
@@ -1024,7 +1032,8 @@ export class SmsClient {
         const receipt = JSON.parse(content) as DeliveryReceipt
         receipt.timestamp = new Date(receipt.timestamp)
         return receipt
-      } catch {
+      }
+catch {
         // Try next day
       }
     }
@@ -1062,7 +1071,8 @@ export class SmsClient {
         if (options.status && receipt.status !== options.status) continue
 
         receipts.push(receipt)
-      } catch {
+      }
+catch {
         // Skip invalid entries
       }
     }
@@ -1186,7 +1196,8 @@ export class SmsClient {
 
       // Direct SMS data format
       return this.extractSmsFields(data, key)
-    } catch {
+    }
+catch {
       // Not JSON, might be raw text
       return {
         key,
@@ -1260,7 +1271,8 @@ export function createSmsInboxHandler(config: {
 
           try {
             messageData = JSON.parse(snsMessage.Message)
-          } catch {
+          }
+catch {
             messageData = { body: snsMessage.Message }
           }
 
@@ -1349,7 +1361,8 @@ export function createScheduledSmsHandler(config: {
         statusCode: 200,
         body: JSON.stringify({ messageId: result.messageId }),
       }
-    } catch (err: any) {
+    }
+catch (err: any) {
       console.error(`Failed to send scheduled SMS ${scheduledSmsId}:`, err.message)
 
       if (config.onError) {
@@ -1424,7 +1437,8 @@ export function createDeliveryReceiptHandler(config: {
 
           try {
             data = JSON.parse(snsMessage.Message)
-          } catch {
+          }
+catch {
             data = snsMessage.Message
           }
 
@@ -1584,7 +1598,8 @@ async function forwardToWebhook(
     if (!response.ok) {
       console.error(`Webhook failed: ${response.status} ${response.statusText}`)
     }
-  } catch (err: any) {
+  }
+catch (err: any) {
     console.error(`Webhook error: ${err.message}`)
   }
 }

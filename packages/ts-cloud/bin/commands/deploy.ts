@@ -1123,7 +1123,8 @@ async function deployStaticSitesWithExternalDns(
         if (isCloudFront) {
           cli.info(`Domain already points to CloudFront: ${existingCname.content}`)
           cli.info('Proceeding with file upload...')
-        } else {
+        }
+else {
           const providerName = isNetlify ? 'Netlify' : isVercel ? 'Vercel' : 'another provider'
 
           cli.warn(`\nExisting CNAME record detected:`)
@@ -1150,7 +1151,8 @@ async function deployStaticSitesWithExternalDns(
 
           if (deleteResult.success) {
             cli.success(`Removed CNAME: ${existingCname.name} -> ${existingCname.content}`)
-          } else {
+          }
+else {
             cli.warn(`Could not remove old record: ${deleteResult.message}`)
             cli.info('The deployment will attempt to update it instead.')
           }
@@ -1212,7 +1214,8 @@ async function deployStaticSitesWithExternalDns(
       onProgress: (stage, detail) => {
         if (stage === 'infrastructure') {
           cli.step(detail || 'Setting up infrastructure...')
-        } else if (stage === 'upload') {
+        }
+else if (stage === 'upload') {
           // Show upload progress without spamming
           if (detail?.includes('/') && !detail.includes('1/')) {
             const match = detail.match(/(\d+)\/(\d+)/)
@@ -1223,9 +1226,11 @@ async function deployStaticSitesWithExternalDns(
               }
             }
           }
-        } else if (stage === 'invalidate') {
+        }
+else if (stage === 'invalidate') {
           cli.step('Invalidating CDN cache...')
-        } else if (stage === 'complete') {
+        }
+else if (stage === 'complete') {
           // Handled below
         }
       },
@@ -1255,7 +1260,8 @@ Bucket: ${result.bucket}
 Files: ${filesInfo}${installInfo}
 
 Your site is now live at https://${result.domain}`, 'green')
-    } else {
+    }
+else {
       cli.error(`\nDeployment failed: ${result.message}`)
     }
   }

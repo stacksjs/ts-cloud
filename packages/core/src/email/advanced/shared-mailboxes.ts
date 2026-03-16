@@ -96,7 +96,8 @@ exports.handler = async (event) => {
       default:
         return { statusCode: 404, body: JSON.stringify({ error: 'Not found' }) };
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
@@ -271,7 +272,8 @@ async function getMailboxMessages(mailboxId, _queryParams) {
       statusCode: 200,
       body: JSON.stringify(messages),
     };
-  } catch (error) {
+  }
+catch (error) {
     if (error.name === 'NoSuchKey') {
       return { statusCode: 200, body: JSON.stringify([]) };
     }

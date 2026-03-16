@@ -550,7 +550,8 @@ export function createSSML(text: string, options?: {
     if (options.pitch) ssml += ` pitch="${options.pitch}"`
     if (options.volume) ssml += ` volume="${options.volume}"`
     ssml += `>${text}</prosody>`
-  } else {
+  }
+else {
     ssml += text
   }
 

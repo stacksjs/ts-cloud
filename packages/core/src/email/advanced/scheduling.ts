@@ -105,7 +105,8 @@ exports.handler = async (event) => {
         }));
 
         console.log(\`Sent scheduled email: \${scheduled.id}\`);
-      } catch (sendError) {
+      }
+catch (sendError) {
         console.error(\`Failed to send scheduled email: \${scheduled.id}\`, sendError);
 
         // Update retry count
@@ -123,7 +124,8 @@ exports.handler = async (event) => {
           ContentType: 'application/json',
         }));
       }
-    } catch (error) {
+    }
+catch (error) {
       console.error(\`Error processing scheduled email: \${obj.Key}\`, error);
     }
   }
@@ -151,10 +153,12 @@ function buildRawEmail(email) {
     raw += 'Content-Type: text/html; charset=UTF-8\\r\\n\\r\\n';
     raw += email.html + '\\r\\n\\r\\n';
     raw += \`--\${boundary}--\\r\\n\`;
-  } else if (email.html) {
+  }
+else if (email.html) {
     raw += 'Content-Type: text/html; charset=UTF-8\\r\\n\\r\\n';
     raw += email.html;
-  } else {
+  }
+else {
     raw += 'Content-Type: text/plain; charset=UTF-8\\r\\n\\r\\n';
     raw += email.text || '';
   }

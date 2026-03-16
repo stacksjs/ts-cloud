@@ -238,9 +238,11 @@ export class FCMClient {
     // Target (one of: token, topic, condition)
     if (notification.token) {
       message.token = notification.token
-    } else if (notification.topic) {
+    }
+else if (notification.topic) {
       message.topic = notification.topic
-    } else if (notification.condition) {
+    }
+else if (notification.condition) {
       message.condition = notification.condition
     }
 
@@ -338,14 +340,16 @@ export class FCMClient {
           success: true,
           messageId: data.name,
         }
-      } else {
+      }
+else {
         return {
           success: false,
           error: data.error?.message || 'Unknown error',
           errorCode: data.error?.status,
         }
       }
-    } catch (error: any) {
+    }
+catch (error: any) {
       return {
         success: false,
         error: error.message,
@@ -460,11 +464,13 @@ export class FCMClient {
 
       if (response.ok) {
         return { success: true }
-      } else {
+      }
+else {
         const data = await response.json() as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to subscribe' }
       }
-    } catch (error: any) {
+    }
+catch (error: any) {
       return { success: false, error: error.message }
     }
   }
@@ -493,11 +499,13 @@ export class FCMClient {
 
       if (response.ok) {
         return { success: true }
-      } else {
+      }
+else {
         const data = await response.json() as Record<string, any>
         return { success: false, error: data.error?.message || 'Failed to unsubscribe' }
       }
-    } catch (error: any) {
+    }
+catch (error: any) {
       return { success: false, error: error.message }
     }
   }

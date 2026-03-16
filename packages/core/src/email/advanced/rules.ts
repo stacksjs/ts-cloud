@@ -111,7 +111,8 @@ exports.handler = async (event) => {
         // Stop processing if rule says so
         if (rule.stopProcessing) break;
       }
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing rules:', error);
     }
   }
@@ -199,7 +200,8 @@ function evaluateCondition(metadata, condition) {
       try {
         const regex = new RegExp(condition.value, condition.caseSensitive ? '' : 'i');
         return regex.test(value);
-      } catch {
+      }
+catch {
         return false;
       }
     case 'greater-than':
@@ -270,7 +272,8 @@ async function moveEmail(bucket, basePath, folder, mailbox) {
         Bucket: bucket,
         Key: \`\${basePath}/\${file}\`,
       }));
-    } catch {}
+    }
+catch {}
   }
 }
 
@@ -286,7 +289,8 @@ async function copyEmail(bucket, basePath, folder, mailbox) {
         CopySource: \`\${bucket}/\${basePath}/\${file}\`,
         Key: \`\${newBasePath}/\${file}\`,
       }));
-    } catch {}
+    }
+catch {}
   }
 }
 
@@ -298,7 +302,8 @@ async function deleteEmail(bucket, basePath) {
         Bucket: bucket,
         Key: \`\${basePath}/\${file}\`,
       }));
-    } catch {}
+    }
+catch {}
   }
 }
 

@@ -35,13 +35,16 @@ exports.handler = async (event) => {
 
       if (notificationType === 'Bounce') {
         await handleBounce(message, bucket, adminTopicArn, timestamp);
-      } else if (notificationType === 'Complaint') {
+      }
+else if (notificationType === 'Complaint') {
         await handleComplaint(message, bucket, adminTopicArn, timestamp);
-      } else if (notificationType === 'Delivery') {
+      }
+else if (notificationType === 'Delivery') {
         await handleDelivery(message, bucket, timestamp);
       }
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing feedback:', error);
     }
   }
@@ -180,7 +183,8 @@ async function addToSuppressionList(bucket, email, reason, details) {
       Key: key,
     }));
     list = JSON.parse(await result.Body.transformToString());
-  } catch {
+  }
+catch {
     // List doesn't exist yet
   }
 
@@ -189,7 +193,8 @@ async function addToSuppressionList(bucket, email, reason, details) {
   if (existing) {
     existing.lastUpdated = details.timestamp;
     existing.count = (existing.count || 1) + 1;
-  } else {
+  }
+else {
     list.push({
       email,
       reason,

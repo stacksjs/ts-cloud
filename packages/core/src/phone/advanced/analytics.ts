@@ -122,7 +122,8 @@ exports.handler = async (event) => {
 
     console.log('Metrics aggregated successfully');
     return { statusCode: 200 };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error aggregating metrics:', error);
     return { statusCode: 500, error: error.message };
   }
@@ -251,7 +252,8 @@ exports.handler = async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(metrics),
     };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error getting queue metrics:', error);
     return {
       statusCode: 500,

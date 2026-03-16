@@ -198,7 +198,8 @@ exports.handler = async (event) => {
         const previewKey = key.replace('/metadata.json', '/preview.txt');
         const previewResult = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: previewKey }));
         bodyPreview = await previewResult.Body.transformToString();
-      } catch {}
+      }
+catch {}
 
       // Get full body for indexing
       let body = '';
@@ -206,7 +207,8 @@ exports.handler = async (event) => {
         const textKey = key.replace('/metadata.json', '/body.txt');
         const textResult = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: textKey }));
         body = await textResult.Body.transformToString();
-      } catch {}
+      }
+catch {}
 
       // Extract mailbox from path
       const pathParts = key.split('/');
@@ -235,7 +237,8 @@ exports.handler = async (event) => {
       await indexDocument(doc);
 
       console.log('Indexed email:', metadata.messageId);
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error indexing email:', error);
     }
   }

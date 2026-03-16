@@ -133,7 +133,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
           result.supportCaseId = caseResult.caseId
           result.sandboxStatus = 'EXIT_REQUESTED'
           console.log(`  Support case created: ${caseResult.caseId}`)
-        } catch (err: any) {
+        }
+catch (err: any) {
           result.warnings.push(`Failed to create sandbox exit support case: ${err.message}`)
           console.log(`  Warning: Could not create support case: ${err.message}`)
         }
@@ -156,7 +157,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
         await setSnsSpendingLimit(awsClient, region, config.spending.monthlyLimit)
         result.spendingLimit = config.spending.monthlyLimit
         console.log('  Spending limit updated successfully')
-      } catch (err: any) {
+      }
+catch (err: any) {
         // If direct update fails, file a support ticket
         if (config.sandbox?.companyName) {
           try {
@@ -170,15 +172,18 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
             result.supportCaseId = caseResult.caseId
             result.warnings.push(`Spending limit increase requested via support case: ${caseResult.caseId}`)
             console.log(`  Support case created for limit increase: ${caseResult.caseId}`)
-          } catch (supportErr: any) {
+          }
+catch (supportErr: any) {
             result.warnings.push(`Failed to request spending limit increase: ${supportErr.message}`)
           }
-        } else {
+        }
+else {
           result.warnings.push('Spending limit increase requires AWS Support ticket. Provide companyName in config.')
         }
       }
     }
-  } catch (err: any) {
+  }
+catch (err: any) {
     result.errors.push(`Failed to check SMS account status: ${err.message}`)
     console.log(`  Error checking status: ${err.message}`)
   }
@@ -195,7 +200,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
       result.inboxBucket = config.inbox.bucket
       result.inboxPrefix = config.inbox.prefix || 'sms/inbox/'
       console.log(`  Inbox configured: s3://${config.inbox.bucket}/${result.inboxPrefix}`)
-    } catch (err: any) {
+    }
+catch (err: any) {
       result.errors.push(`Failed to set up S3 inbox: ${err.message}`)
       console.log(`  Error setting up inbox: ${err.message}`)
     }
@@ -209,7 +215,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
       const topicArn = await setupTwoWayTopic(sns, awsClient, region, topicName, config.accountId)
       result.twoWayTopicArn = topicArn
       console.log(`  Two-way topic: ${topicArn}`)
-    } catch (err: any) {
+    }
+catch (err: any) {
       result.errors.push(`Failed to set up two-way SMS topic: ${err.message}`)
       console.log(`  Error setting up two-way: ${err.message}`)
     }
@@ -223,7 +230,8 @@ export async function setupSmsInfrastructure(config: SmsSetupConfig): Promise<Sm
       const topicArn = await setupDeliveryReceiptsTopic(sns, awsClient, region, topicName, config.accountId)
       result.deliveryReceiptTopicArn = topicArn
       console.log(`  Delivery receipts topic: ${topicArn}`)
-    } catch (err: any) {
+    }
+catch (err: any) {
       result.errors.push(`Failed to set up delivery receipts: ${err.message}`)
       console.log(`  Error setting up delivery receipts: ${err.message}`)
     }
@@ -260,7 +268,8 @@ async function checkSmsAccountStatus(sns: SNSClient): Promise<{
   try {
     const sandboxStatus = await sns.getSMSSandboxAccountStatus()
     inSandbox = sandboxStatus.IsInSandbox
-  } catch {
+  }
+catch {
     // Assume sandbox if we can't check
     inSandbox = true
   }
@@ -271,7 +280,8 @@ async function checkSmsAccountStatus(sns: SNSClient): Promise<{
     if (smsAttrs.MonthlySpendLimit) {
       spendingLimit = parseFloat(smsAttrs.MonthlySpendLimit)
     }
-  } catch {
+  }
+catch {
     // Ignore
   }
 
@@ -340,7 +350,8 @@ async function setupS3Inbox(
           body: `SMS folder created ${new Date().toISOString()}`,
           contentType: 'text/plain',
         })
-      } catch {
+      }
+catch {
         // Ignore if already exists
       }
     }
@@ -362,12 +373,14 @@ async function setupS3Inbox(
             Expiration: { Days: config.retentionDays },
           },
         ])
-      } catch (err: any) {
+      }
+catch (err: any) {
         // Lifecycle configuration might fail if not owner, continue anyway
         console.log(`  Note: Could not set lifecycle rules: ${err.message}`)
       }
     }
-  } catch (err: any) {
+  }
+catch (err: any) {
     throw new Error(`Failed to set up S3 inbox: ${err.message}`)
   }
 }

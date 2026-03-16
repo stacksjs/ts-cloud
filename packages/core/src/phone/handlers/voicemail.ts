@@ -52,7 +52,8 @@ exports.handler = async (event) => {
           Key: key.replace('.wav', '.json'),
         }));
         metadata = JSON.parse(await metaResult.Body.transformToString());
-      } catch {
+      }
+catch {
         // No metadata file
       }
 
@@ -95,11 +96,13 @@ exports.handler = async (event) => {
               }));
               const transcriptData = JSON.parse(await transcriptResult.Body.transformToString());
               transcription = transcriptData.results?.transcripts?.[0]?.transcript || '';
-            } catch (err) {
+            }
+catch (err) {
               console.error('Error getting transcription:', err.message);
             }
             break;
-          } else if (status === 'FAILED') {
+          }
+else if (status === 'FAILED') {
             console.error('Transcription failed');
             break;
           }
@@ -167,7 +170,8 @@ exports.handler = async (event) => {
 
       console.log(\`Processed voicemail: \${contactId}\`);
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing voicemail:', error);
     }
   }

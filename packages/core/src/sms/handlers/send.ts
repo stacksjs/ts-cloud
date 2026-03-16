@@ -102,7 +102,8 @@ exports.handler = async (event) => {
           statusCode: result.StatusCode,
         });
 
-      } else {
+      }
+else {
         // Fallback to SNS
         const snsResult = await sns.send(new PublishCommand({
           PhoneNumber: to,
@@ -146,7 +147,8 @@ exports.handler = async (event) => {
 
       console.log(\`SMS sent to \${to}: \${results[results.length - 1].status}\`);
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error sending SMS:', error);
       results.push({
         to: message.to,

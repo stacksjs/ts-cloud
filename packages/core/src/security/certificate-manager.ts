@@ -165,7 +165,8 @@ export class CertificateManager {
           value: `_${Math.random().toString(36).slice(2)}.acm-validations.aws.`,
         },
       ]
-    } else {
+    }
+else {
       validation.validationEmails = [
         `admin@${certificate.domainName}`,
         `administrator@${certificate.domainName}`,
@@ -264,7 +265,8 @@ export class CertificateManager {
       console.log(`  Next renewal: ${renewal.nextRenewal.toISOString()}`)
 
       return { success: true, message: 'Certificate renewed successfully' }
-    } catch (error) {
+    }
+catch (error) {
       renewal.renewalStatus = 'failed'
       this.createAlert({
         certificateArn: certificate.arn,

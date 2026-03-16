@@ -179,12 +179,15 @@ export class DNSSECManager {
 
     if (!dnskeyPresent && !rrsigPresent) {
       validationStatus = 'INSECURE'
-    } else if (dnskeyPresent && rrsigPresent && validSignature) {
+    }
+else if (dnskeyPresent && rrsigPresent && validSignature) {
       validationStatus = 'VALID'
-    } else if (dnskeyPresent || rrsigPresent) {
+    }
+else if (dnskeyPresent || rrsigPresent) {
       validationStatus = 'BOGUS'
       errors.push('Invalid signature or incomplete DNSSEC chain')
-    } else {
+    }
+else {
       validationStatus = 'INVALID'
     }
 

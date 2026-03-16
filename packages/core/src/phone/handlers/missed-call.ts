@@ -93,7 +93,8 @@ exports.handler = async (event) => {
             data: callDetails,
           }),
         });
-      } catch (err) {
+      }
+catch (err) {
         console.error('Webhook notification failed:', err.message);
       }
     }
@@ -103,7 +104,8 @@ exports.handler = async (event) => {
       message: 'Missed call logged',
     };
 
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error processing missed call:', error);
     return {
       statusCode: 500,

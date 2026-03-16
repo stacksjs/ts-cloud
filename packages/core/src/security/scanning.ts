@@ -230,7 +230,8 @@ export class SecurityScanningManager {
       console.log(`    Low: ${scan.summary.lowCount}`)
 
       return scan
-    } catch (error) {
+    }
+catch (error) {
       scan.status = 'failed'
       scan.completedAt = new Date()
       throw error
@@ -274,7 +275,8 @@ export class SecurityScanningManager {
           lastSeen: now,
         })
       )
-    } else if (scan.scanType === 'secrets_detection') {
+    }
+else if (scan.scanType === 'secrets_detection') {
       findings.push(
         this.createFinding({
           severity: 'CRITICAL',

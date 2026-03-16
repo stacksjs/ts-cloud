@@ -198,7 +198,8 @@ export class AcmeClient {
     // Use kid if we have an account URL, otherwise use jwk
     if (this.accountUrl) {
       protectedHeader.kid = this.accountUrl
-    } else {
+    }
+else {
       protectedHeader.jwk = jwk
     }
 
@@ -257,7 +258,8 @@ export class AcmeClient {
     const contentType = response.headers.get('content-type')
     if (contentType?.includes('application/json') || contentType?.includes('application/problem+json')) {
       responseBody = await response.json()
-    } else {
+    }
+else {
       responseBody = await response.text()
     }
 
@@ -345,7 +347,8 @@ export class AcmeClient {
             keyAuthorization,
             identifier: `/.well-known/acme-challenge/${c.token}`,
           }
-        } else {
+        }
+else {
           // DNS-01: TXT record value is base64url(sha256(keyAuthorization))
           const dnsValue = this.base64UrlEncode(
             createHash('sha256').update(keyAuthorization).digest()

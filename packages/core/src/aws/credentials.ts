@@ -65,7 +65,8 @@ export function fromSharedCredentials(options?: CredentialProviderOptions): AWSC
   try {
     const content = readFileSync(credentialsPath, 'utf-8')
     return parseCredentialsFile(content, profile)
-  } catch {
+  }
+catch {
     return null
   }
 }
@@ -190,7 +191,8 @@ export async function fromEC2Metadata(options?: CredentialProviderOptions): Prom
       sessionToken: data.Token,
       expiration: new Date(data.Expiration),
     }
-  } catch {
+  }
+catch {
     return null
   }
 }
@@ -209,7 +211,8 @@ export async function fromECSMetadata(options?: CredentialProviderOptions): Prom
 
   if (relativeUri) {
     credentialsUrl = `http://169.254.170.2${relativeUri}`
-  } else if (fullUri) {
+  }
+else if (fullUri) {
     credentialsUrl = fullUri
   }
 
@@ -245,7 +248,8 @@ export async function fromECSMetadata(options?: CredentialProviderOptions): Prom
       sessionToken: data.Token,
       expiration: new Date(data.Expiration),
     }
-  } catch {
+  }
+catch {
     return null
   }
 }
@@ -313,7 +317,8 @@ export async function fromWebIdentity(options?: CredentialProviderOptions): Prom
       sessionToken: sessionToken ?? undefined,
       expiration: expiration ? new Date(expiration) : undefined,
     }
-  } catch {
+  }
+catch {
     return null
   }
 }
@@ -414,7 +419,8 @@ async function fetchWithTimeout(
     const response = await fetch(url, { ...options, signal: controller.signal })
     clearTimeout(timeoutId)
     return response
-  } catch (error) {
+  }
+catch (error) {
     clearTimeout(timeoutId)
     throw error
   }
@@ -485,7 +491,8 @@ export function resolveRegion(profile?: string): string {
           }
         }
       }
-    } catch {
+    }
+catch {
       // Ignore errors
     }
   }

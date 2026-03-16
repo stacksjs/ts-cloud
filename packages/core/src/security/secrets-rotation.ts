@@ -227,7 +227,8 @@ export class SecretsRotationManager {
         newVersion,
         rotatedAt: new Date(),
       }
-    } catch (error) {
+    }
+catch (error) {
       console.error('\n✗ Rotation failed:', error)
 
       return {

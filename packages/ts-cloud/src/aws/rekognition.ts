@@ -794,7 +794,8 @@ export class RekognitionClient {
         MaxFaces: 1,
       })
       return result.FaceMatches?.[0] || null
-    } catch (error: unknown) {
+    }
+catch (error: unknown) {
       // Face not found
       if (error instanceof Error && error.message.includes('InvalidParameterException')) {
         return null

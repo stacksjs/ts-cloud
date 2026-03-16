@@ -73,7 +73,8 @@ exports.handler = async (event) => {
       default:
         return { statusCode: 405, body: 'Method not allowed' };
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }

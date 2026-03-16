@@ -514,14 +514,17 @@ function parseCloudFormationXML(xml: string): any {
           if (tagEnd !== -1 && str[tagEnd - 1] === '/') {
             // Self-closing, don't increase depth
             pos = tagEnd + 1
-          } else {
+          }
+else {
             depth++
             pos = tagEnd + 1
           }
-        } else {
+        }
+else {
           pos = nextOpen + openPattern.length
         }
-      } else {
+      }
+else {
         depth--
         if (depth === 0) return nextClose
         pos = nextClose + closeTag.length
@@ -591,7 +594,8 @@ function parseCloudFormationXML(xml: string): any {
           children[childName] = children[childName] !== undefined ? [children[childName]] : []
         }
         children[childName].push(result.value)
-      } else {
+      }
+else {
         children[childName] = result.value
       }
 

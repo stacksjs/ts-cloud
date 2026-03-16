@@ -1010,7 +1010,8 @@ export class BedrockRuntimeClient {
         }
         buffer = chunks.remaining
       }
-    } finally {
+    }
+finally {
       reader.releaseLock()
     }
   }
@@ -1031,7 +1032,8 @@ export class BedrockRuntimeClient {
       if (remaining[i] === '{') {
         if (braceCount === 0) start = i
         braceCount++
-      } else if (remaining[i] === '}') {
+      }
+else if (remaining[i] === '}') {
         braceCount--
         if (braceCount === 0 && start !== -1) {
           try {
@@ -1040,7 +1042,8 @@ export class BedrockRuntimeClient {
             remaining = remaining.slice(i + 1)
             i = -1 // Reset to search from beginning of new remaining
             start = -1
-          } catch {
+          }
+catch {
             // Not valid JSON, continue
           }
         }
@@ -1236,13 +1239,15 @@ export class BedrockRuntimeClient {
         texts: Array.isArray(params.inputText) ? params.inputText : [params.inputText],
         input_type: 'search_document',
       }
-    } else if (modelId.includes('titan')) {
+    }
+else if (modelId.includes('titan')) {
       requestBody = {
         inputText: Array.isArray(params.inputText) ? params.inputText[0] : params.inputText,
       }
       if (params.dimensions) requestBody.dimensions = params.dimensions
       if (params.normalize !== undefined) requestBody.normalize = params.normalize
-    } else {
+    }
+else {
       // Default format
       requestBody = {
         inputText: Array.isArray(params.inputText) ? params.inputText[0] : params.inputText,
@@ -1631,7 +1636,8 @@ export class BedrockClient {
       try {
         const result = await this.requestModelAccess({ modelId })
         results.push({ modelId, status: result.status })
-      } catch (error: unknown) {
+      }
+catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         results.push({ modelId, status: 'ERROR', error: errorMessage })
       }

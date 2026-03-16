@@ -42,7 +42,8 @@ exports.handler = async (event) => {
           Key: sourceKey,
         }));
         rawEmail = await getResult.Body.transformToString();
-      } catch (err) {
+      }
+catch (err) {
         console.log('Could not retrieve raw email:', err.message);
         continue;
       }
@@ -57,7 +58,8 @@ exports.handler = async (event) => {
           const colonIndex = line.indexOf(':');
           currentHeader = line.substring(0, colonIndex).toLowerCase();
           headers[currentHeader] = line.substring(colonIndex + 1).trim();
-        } else if (currentHeader && (line.startsWith(' ') || line.startsWith('\\t'))) {
+        }
+else if (currentHeader && (line.startsWith(' ') || line.startsWith('\\t'))) {
           headers[currentHeader] += ' ' + line.trim();
         }
       }
@@ -132,7 +134,8 @@ exports.handler = async (event) => {
           Key: indexKey,
         }));
         inbox = JSON.parse(await indexResult.Body.transformToString());
-      } catch {
+      }
+catch {
         // Index doesn't exist yet
       }
 
@@ -157,7 +160,8 @@ exports.handler = async (event) => {
 
       console.log(\`Processed email: \${messageId} from \${fromEmail} to \${toEmail}\`);
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing email:', error);
     }
   }

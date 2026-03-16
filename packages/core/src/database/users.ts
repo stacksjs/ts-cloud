@@ -238,7 +238,8 @@ export class DatabaseUserManager {
         existingPrivilege.privileges = Array.from(
           new Set([...existingPrivilege.privileges, ...privilege.privileges])
         )
-      } else {
+      }
+else {
         user.privileges.push({ ...privilege })
       }
     }
@@ -264,7 +265,8 @@ export class DatabaseUserManager {
 
       if (existing) {
         existing.privileges = Array.from(new Set([...existing.privileges, ...privilege.privileges]))
-      } else {
+      }
+else {
         user.privileges.push(privilege)
       }
     }
@@ -413,18 +415,21 @@ export class DatabaseUserManager {
       for (const privilege of user.privileges) {
         if (privilege.privileges.includes('ALL')) {
           statements.push(`GRANT ALL PRIVILEGES ON DATABASE ${privilege.database} TO ${user.username};`)
-        } else {
+        }
+else {
           const privs = privilege.privileges.join(', ')
           if (privilege.table) {
             statements.push(
               `GRANT ${privs} ON ${privilege.database}.${privilege.table} TO ${user.username};`
             )
-          } else {
+          }
+else {
             statements.push(`GRANT ${privs} ON DATABASE ${privilege.database} TO ${user.username};`)
           }
         }
       }
-    } else {
+    }
+else {
       // MySQL
       statements.push(
         `CREATE USER '${user.username}'@'%' IDENTIFIED BY '${user.passwordSecretArn}';`

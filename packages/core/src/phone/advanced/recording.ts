@@ -112,7 +112,8 @@ exports.handler = async (event) => {
       }));
 
       console.log(\`Started transcription for: \${recordingId}\`);
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing recording:', error);
     }
   }
@@ -193,7 +194,8 @@ exports.handler = async (event) => {
             text: content,
             confidence,
           };
-        } else {
+        }
+else {
           currentSegment.endTime = endTime;
           currentSegment.text += ' ' + content;
           currentSegment.confidence = (currentSegment.confidence + confidence) / 2;
@@ -221,7 +223,8 @@ exports.handler = async (event) => {
     }));
 
     console.log(\`Transcription completed for: \${recordingId}\`);
-  } else if (jobStatus === 'FAILED') {
+  }
+else if (jobStatus === 'FAILED') {
     await dynamodb.send(new UpdateItemCommand({
       TableName: RECORDINGS_TABLE,
       Key: { recordingId: { S: recordingId } },

@@ -1096,7 +1096,8 @@ export class SESClient {
       })
 
       return result?.SuppressedDestination || null
-    } catch (error: any) {
+    }
+catch (error: any) {
       if (error.message?.includes('404') || error.message?.includes('NotFoundException')) {
         return null
       }

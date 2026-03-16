@@ -239,7 +239,8 @@ export class LambdaDLQManager {
 
         if (!success) {
           reprocessing.error = 'Reprocessing failed - same error occurred'
-        } else {
+        }
+else {
           // Remove message from DLQ if successful
           this.messages.delete(messageId)
         }

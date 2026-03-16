@@ -94,7 +94,8 @@ exports.handler = async (event) => {
             Body: JSON.stringify(metadata, null, 2),
             ContentType: 'application/json',
           }));
-        } catch (err) {
+        }
+catch (err) {
           console.log('Could not update metadata:', err.message);
         }
       }
@@ -114,7 +115,8 @@ exports.handler = async (event) => {
 
       console.log(\`Converted email: \${key}\`);
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error converting email:', error);
     }
   }
@@ -143,7 +145,8 @@ function parseEmail(rawEmail) {
       const colonIndex = line.indexOf(':');
       currentHeader = line.substring(0, colonIndex).toLowerCase();
       result.headers[currentHeader] = line.substring(colonIndex + 1).trim();
-    } else if (currentHeader && (line.startsWith(' ') || line.startsWith('\\t'))) {
+    }
+else if (currentHeader && (line.startsWith(' ') || line.startsWith('\\t'))) {
       result.headers[currentHeader] += ' ' + line.trim();
     }
   }
@@ -185,11 +188,14 @@ function parseEmail(rawEmail) {
             content,
             size: Buffer.from(content, 'base64').length,
           });
-        } else if (partContentType.includes('text/html')) {
+        }
+else if (partContentType.includes('text/html')) {
           result.html = decodeContent(partBody, partEncoding);
-        } else if (partContentType.includes('text/plain')) {
+        }
+else if (partContentType.includes('text/plain')) {
           result.text = decodeContent(partBody, partEncoding);
-        } else if (partContentType.includes('multipart/')) {
+        }
+else if (partContentType.includes('multipart/')) {
           // Nested multipart - recursively parse
           const nestedResult = parseEmail(partHeaders + '\\n\\n' + partBody);
           if (nestedResult.html) result.html = nestedResult.html;
@@ -198,9 +204,11 @@ function parseEmail(rawEmail) {
         }
       }
     }
-  } else if (contentType.includes('text/html')) {
+  }
+else if (contentType.includes('text/html')) {
     result.html = bodySection;
-  } else {
+  }
+else {
     result.text = bodySection;
   }
 
@@ -214,7 +222,8 @@ function decodeContent(content, encoding) {
 
   if (encoding === 'base64') {
     return Buffer.from(content.replace(/\\s/g, ''), 'base64').toString('utf-8');
-  } else if (encoding === 'quoted-printable') {
+  }
+else if (encoding === 'quoted-printable') {
     return content
       .replace(/=\\r?\\n/g, '')
       .replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));

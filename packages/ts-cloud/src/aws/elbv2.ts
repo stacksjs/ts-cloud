@@ -923,16 +923,21 @@ export class ELBv2Client {
           result[key] = Array.isArray(memberValue)
             ? memberValue.map((item: any) => this.normalizeArrays(item))
             : [this.normalizeArrays(memberValue)]
-        } else if (Array.isArray(value)) {
+        }
+else if (Array.isArray(value)) {
           result[key] = value.map(item => this.normalizeArrays(item))
-        } else if (value) {
+        }
+else if (value) {
           result[key] = [this.normalizeArrays(value)]
-        } else {
+        }
+else {
           result[key] = []
         }
-      } else if (typeof value === 'object') {
+      }
+else if (typeof value === 'object') {
         result[key] = this.normalizeArrays(value)
-      } else {
+      }
+else {
         result[key] = value
       }
     }

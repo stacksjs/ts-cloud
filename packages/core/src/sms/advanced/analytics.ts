@@ -139,7 +139,8 @@ exports.handler = async (event) => {
 
     console.log('SMS analytics aggregated successfully');
     return { statusCode: 200 };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error aggregating SMS analytics:', error);
     return { statusCode: 500, error: error.message };
   }
@@ -240,7 +241,8 @@ exports.handler = async (event) => {
       }));
 
       console.log(\`Tracked delivery for \${messageId}: \${messageStatus}\`);
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error tracking delivery:', error);
     }
   }

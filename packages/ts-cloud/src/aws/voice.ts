@@ -253,7 +253,8 @@ export class VoiceClient {
             size: obj.Size,
           })
         }
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to read voicemail ${obj.Key}:`, err)
       }
     }
@@ -304,7 +305,8 @@ export class VoiceClient {
     const metadataKey = key.replace(/\.[^/.]+$/, '.json')
     try {
       await this.s3.deleteObject(this.config.voicemailBucket, metadataKey)
-    } catch {
+    }
+catch {
       // Metadata might not exist
     }
   }
@@ -383,7 +385,8 @@ export class VoiceClient {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    } catch {
+    }
+catch {
       // Create metadata if it doesn't exist
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
@@ -415,7 +418,8 @@ export class VoiceClient {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    } catch {
+    }
+catch {
       // Ignore if metadata doesn't exist
     }
   }
@@ -479,7 +483,8 @@ export class VoiceClient {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    } catch {
+    }
+catch {
       // Create metadata if it doesn't exist
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
@@ -526,7 +531,8 @@ export class VoiceClient {
             }
           }
         }
-      } catch {
+      }
+catch {
         // Could not fetch transcript
       }
     }
@@ -555,7 +561,8 @@ export class VoiceClient {
         body: JSON.stringify(data, null, 2),
         contentType: 'application/json',
       })
-    } catch {
+    }
+catch {
       await this.s3.putObject({
         bucket: this.config.voicemailBucket,
         key: metadataKey,
@@ -654,7 +661,8 @@ export class VoiceClient {
         greeting.createdAt = new Date(greeting.createdAt)
         if (greeting.updatedAt) greeting.updatedAt = new Date(greeting.updatedAt)
         greetings.push(greeting)
-      } catch {
+      }
+catch {
         // Skip invalid
       }
     }
@@ -676,7 +684,8 @@ export class VoiceClient {
       greeting.createdAt = new Date(greeting.createdAt)
       if (greeting.updatedAt) greeting.updatedAt = new Date(greeting.updatedAt)
       return greeting
-    } catch {
+    }
+catch {
       return null
     }
   }
@@ -784,7 +793,8 @@ export class VoiceClient {
     if (greeting?.audioKey) {
       try {
         await this.s3.deleteObject(this.config.voicemailBucket, greeting.audioKey)
-      } catch {
+      }
+catch {
         // Audio may not exist
       }
     }
@@ -875,7 +885,8 @@ export class VoiceClient {
         rule.createdAt = new Date(rule.createdAt)
         if (rule.updatedAt) rule.updatedAt = new Date(rule.updatedAt)
         rules.push(rule)
-      } catch {
+      }
+catch {
         // Skip invalid
       }
     }
@@ -897,7 +908,8 @@ export class VoiceClient {
       rule.createdAt = new Date(rule.createdAt)
       if (rule.updatedAt) rule.updatedAt = new Date(rule.updatedAt)
       return rule
-    } catch {
+    }
+catch {
       return null
     }
   }
@@ -1052,7 +1064,8 @@ export class VoiceClient {
         try {
           const metadataContent = await this.s3.getObject(this.config.voicemailBucket!, metadataKey)
           metadata = JSON.parse(metadataContent)
-        } catch {
+        }
+catch {
           // No metadata file
         }
 
@@ -1066,7 +1079,8 @@ export class VoiceClient {
           contentType: 'audio/wav',
           size: obj.Size,
         })
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to read recording ${obj.Key}:`, err)
       }
     }
@@ -1222,7 +1236,8 @@ export class VoiceClient {
         contentType: audioKey.endsWith('.mp3') ? 'audio/mp3' : 'audio/wav',
         raw: metadata,
       }
-    } catch {
+    }
+catch {
       // No metadata file, return basic info
       return {
         key: audioKey,

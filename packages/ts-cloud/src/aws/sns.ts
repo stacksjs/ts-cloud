@@ -518,7 +518,8 @@ export class SNSClient {
       attrs.forEach((entry: { key: string, value: string }) => {
         attributes[entry.key] = entry.value
       })
-    } else if (attrs) {
+    }
+else if (attrs) {
       attributes[attrs.key] = attrs.value
     }
 

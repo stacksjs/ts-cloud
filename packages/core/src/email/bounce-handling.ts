@@ -299,11 +299,14 @@ export class BounceComplaintHandler {
 
     if (stats.bounceRate > 10 || complaintStats.complaintRate > 0.5) {
       reputationStatus = 'Shutdown'
-    } else if (stats.bounceRate > 5 || complaintStats.complaintRate > 0.1) {
+    }
+else if (stats.bounceRate > 5 || complaintStats.complaintRate > 0.1) {
       reputationStatus = 'Probation'
-    } else if (stats.bounceRate > 2 || complaintStats.complaintRate > 0.05) {
+    }
+else if (stats.bounceRate > 2 || complaintStats.complaintRate > 0.05) {
       reputationStatus = 'Warning'
-    } else {
+    }
+else {
       reputationStatus = 'Good'
     }
 

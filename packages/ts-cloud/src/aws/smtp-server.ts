@@ -153,7 +153,8 @@ export class SmtpServer {
 
         if (session.state === 'data') {
           await this.handleDataLine(session, line)
-        } else {
+        }
+else {
           await this.handleCommand(session, line)
         }
       }
@@ -303,12 +304,14 @@ export class SmtpServer {
       // AUTH PLAIN [base64-credentials]
       if (parts[1]) {
         await this.handleAuthPlain(session, parts[1])
-      } else {
+      }
+else {
         this.send(session, '334 ')
         // Client will send credentials in next line
         session.state = 'ready' // Will handle in next command
       }
-    } else if (mechanism === 'LOGIN') {
+    }
+else if (mechanism === 'LOGIN') {
       // AUTH LOGIN - multi-step
       this.send(session, '334 VXNlcm5hbWU6') // "Username:" in base64
       // Set up state to receive username
@@ -325,7 +328,8 @@ export class SmtpServer {
           username = Buffer.from(line, 'base64').toString('utf-8')
           step = 'password'
           this.send(session, '334 UGFzc3dvcmQ6') // "Password:" in base64
-        } else if (step === 'password') {
+        }
+else if (step === 'password') {
           const password = Buffer.from(line, 'base64').toString('utf-8')
           session.socket.removeAllListeners('data')
           session.socket.on('data', originalHandler)
@@ -333,7 +337,8 @@ export class SmtpServer {
           await this.authenticateUser(session, username, password)
         }
       })
-    } else {
+    }
+else {
       this.send(session, '504 Unrecognized authentication mechanism')
     }
   }
@@ -352,7 +357,8 @@ export class SmtpServer {
       const password = parts.length === 3 ? parts[2] : parts[1]
 
       await this.authenticateUser(session, username, password)
-    } catch (err) {
+    }
+catch (err) {
       this.send(session, '535 Authentication failed')
     }
   }
@@ -372,7 +378,8 @@ export class SmtpServer {
       session.email = user.email
       this.send(session, '235 Authentication successful')
       console.log(`SMTP AUTH success: ${cleanUsername}`)
-    } else {
+    }
+else {
       this.send(session, '535 Authentication failed')
       console.log(`SMTP AUTH failed: ${username}`)
     }
@@ -459,7 +466,8 @@ export class SmtpServer {
     if (line === '.') {
       // End of data
       await this.sendEmail(session)
-    } else {
+    }
+else {
       // Handle dot-stuffing (lines starting with . have the dot removed)
       const actualLine = line.startsWith('.') ? line.slice(1) : line
       session.dataBuffer += actualLine + '\r\n'
@@ -493,7 +501,8 @@ export class SmtpServer {
             contentType: 'message/rfc822',
           })
           console.log(`SMTP: Email stored in S3: ${sentKey}`)
-        } catch (s3Err: any) {
+        }
+catch (s3Err: any) {
           // Log but don't fail - the email was already sent successfully
           console.error(`SMTP: Failed to store sent email in S3 (email was sent successfully):`, s3Err.message)
         }
@@ -503,7 +512,8 @@ export class SmtpServer {
 
       // Reset for next message
       this.resetSession(session)
-    } catch (err: any) {
+    }
+catch (err: any) {
       console.error('SMTP: Failed to send email:', err.message)
       this.send(session, `451 Failed to send: ${err.message}`)
       this.resetSession(session)

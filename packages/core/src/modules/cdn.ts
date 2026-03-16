@@ -799,7 +799,8 @@ exports.handler = async (event) => {
 
   if (uri.endsWith('/')) {
     request.uri = uri + 'index.html';
-  } else if (!uri.includes('.')) {
+  }
+else if (!uri.includes('.')) {
     request.uri = uri + '.html';
   }
 

@@ -80,7 +80,8 @@ exports.handler = async (event) => {
       try {
         const media = await processMedia(url, messageId);
         processedMedia.push(media);
-      } catch (error) {
+      }
+catch (error) {
         console.error(\`Failed to process media \${url}:\`, error);
       }
     }
@@ -151,7 +152,8 @@ exports.handler = async (event) => {
         snsMessageId: snsResult.MessageId,
       }),
     };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error sending MMS:', error);
     return {
       statusCode: 500,

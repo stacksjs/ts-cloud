@@ -594,7 +594,8 @@ if (hasCerts) {
   console.log(\`HTTP redirect server running on port \${HTTP_PORT}\`)
   `
 : ''}
-} else {
+}
+else {
   // No certificates yet, run HTTP only
   console.log('No SSL certificates found, running HTTP only')
   const httpServer = Bun.serve({

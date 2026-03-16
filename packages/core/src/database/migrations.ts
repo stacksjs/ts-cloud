@@ -191,12 +191,14 @@ export class MigrationManager {
           migration.executionTimeMs = Date.now() - migrationStart
 
           console.log(`✓ Applied in ${migration.executionTimeMs}ms\n`)
-        } else {
+        }
+else {
           console.log(`[SKIPPED - DRY RUN]\n`)
         }
 
         appliedMigrations.push(migration.version)
-      } catch (error) {
+      }
+catch (error) {
         console.error(`✗ Failed: ${error instanceof Error ? error.message : String(error)}\n`)
         failedMigrations.push(migration.version)
 
@@ -301,7 +303,8 @@ export class MigrationManager {
             upStatements.push(
               `ALTER TABLE ${tableName} ALTER COLUMN ${change.columnName} TYPE ${change.newType};`
             )
-          } else {
+          }
+else {
             upStatements.push(
               `ALTER TABLE ${tableName} MODIFY COLUMN ${change.columnName} ${change.newType};`
             )

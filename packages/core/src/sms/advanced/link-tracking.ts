@@ -50,13 +50,15 @@ exports.handler = async (event) => {
       // Create short link
       const data = JSON.parse(body || '{}');
       return await createShortLink(data);
-    } else if (httpMethod === 'GET' && pathParameters?.id) {
+    }
+else if (httpMethod === 'GET' && pathParameters?.id) {
       // Redirect to original URL
       return await handleRedirect(pathParameters.id, event);
     }
 
     return { statusCode: 405, body: 'Method not allowed' };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
@@ -141,7 +143,8 @@ async function handleRedirect(id, event) {
         ':visitor': { L: [{ S: visitorId }] },
       },
     }));
-  } catch (e) {
+  }
+catch (e) {
     console.error('Error tracking click:', e);
   }
 

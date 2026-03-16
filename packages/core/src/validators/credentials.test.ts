@@ -262,10 +262,12 @@ describe('validateCredentials', () => {
       if (result.valid) {
         expect(result.accountId).toBeDefined()
         expect(result.region).toBeDefined()
-      } else {
+      }
+else {
         expect(result.error).toBeDefined()
       }
-    } catch (error) {
+    }
+catch (error) {
       // If validation throws, it means credentials are invalid or missing
       // This is expected behavior in test environment
       expect(error).toBeDefined()

@@ -61,7 +61,8 @@ export class SmsChatbot {
     '      if (!originationNumber || !messageBody) continue;',
     '      const response = await processMessage(originationNumber, messageBody.trim());',
     '      await sendResponse(originationNumber, response);',
-    '    } catch (error) {',
+    '    }
+catch (error) {',
     `      console.error('Error:', error);`,
     '    }',
     '  }',

@@ -297,7 +297,8 @@ export class QueueManagementManager {
       status = 'critical'
       issues.push('Large message backlog detected')
       recommendations.push('Increase consumer capacity')
-    } else if (latest.approximateNumberOfMessages > 1000) {
+    }
+else if (latest.approximateNumberOfMessages > 1000) {
       status = 'warning'
       issues.push('Growing message backlog')
       recommendations.push('Monitor consumer performance')

@@ -68,7 +68,8 @@ exports.handler = async (event) => {
       default:
         return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error:', error);
     return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
   }
@@ -289,7 +290,8 @@ exports.handler = async (event) => {
           },
         }));
 
-      } catch (callError) {
+      }
+catch (callError) {
         console.error(\`Failed to call \${phoneNumber}:\`, callError);
 
         // Check if max attempts reached
@@ -304,7 +306,8 @@ exports.handler = async (event) => {
               ':error': { S: callError.message },
             },
           }));
-        } else {
+        }
+else {
           // Reset to pending for retry
           await dynamodb.send(new UpdateItemCommand({
             TableName: CALLBACKS_TABLE,
@@ -320,7 +323,8 @@ exports.handler = async (event) => {
     }
 
     return { statusCode: 200, processed: toProcess.length };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error processing callbacks:', error);
     return { statusCode: 500, error: error.message };
   }

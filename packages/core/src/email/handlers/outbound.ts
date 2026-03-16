@@ -87,19 +87,23 @@ exports.handler = async (event) => {
         rawMessage += emailData.html + '\\r\\n\\r\\n';
 
         rawMessage += \`--\${boundary}--\\r\\n\`;
-      } else if (emailData.html) {
+      }
+else if (emailData.html) {
         if (!hasAttachments) {
           rawMessage += 'Content-Type: text/html; charset=UTF-8\\r\\n';
           rawMessage += 'Content-Transfer-Encoding: quoted-printable\\r\\n\\r\\n';
-        } else {
+        }
+else {
           rawMessage += 'Content-Type: text/html; charset=UTF-8\\r\\n\\r\\n';
         }
         rawMessage += emailData.html + '\\r\\n';
-      } else {
+      }
+else {
         if (!hasAttachments) {
           rawMessage += 'Content-Type: text/plain; charset=UTF-8\\r\\n';
           rawMessage += 'Content-Transfer-Encoding: quoted-printable\\r\\n\\r\\n';
-        } else {
+        }
+else {
           rawMessage += 'Content-Type: text/plain; charset=UTF-8\\r\\n\\r\\n';
         }
         rawMessage += (emailData.text || emailData.body || '') + '\\r\\n';
@@ -166,7 +170,8 @@ exports.handler = async (event) => {
         Key: key,
       }));
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error sending email:', error);
     }
   }

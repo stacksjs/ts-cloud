@@ -331,7 +331,8 @@ export class APNsClient {
               apnsId,
               statusCode,
             })
-          } else {
+          }
+else {
             let error = 'Unknown error'
             let reason: string | undefined
             let timestamp: number | undefined
@@ -342,7 +343,8 @@ export class APNsClient {
                 reason = parsed.reason
                 timestamp = parsed.timestamp
                 error = reason || error
-              } catch {
+              }
+catch {
                 error = responseData
               }
             }
@@ -370,7 +372,8 @@ export class APNsClient {
         req.write(payload)
         req.end()
       })
-    } catch (error: any) {
+    }
+catch (error: any) {
       return {
         success: false,
         deviceToken: notification.deviceToken,

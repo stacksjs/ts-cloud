@@ -143,14 +143,16 @@ exports.handler = async (event) => {
           });
 
           console.log(\`Webhook response: \${response.status}\`);
-        } catch (err) {
+        }
+catch (err) {
           console.error('Webhook failed:', err.message);
         }
       }
 
       console.log(\`Processed inbound SMS from \${originationNumber}\`);
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing inbound SMS:', error);
     }
   }

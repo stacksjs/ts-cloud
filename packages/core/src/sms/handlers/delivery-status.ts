@@ -116,12 +116,14 @@ exports.handler = async (event) => {
               },
             }),
           });
-        } catch (err) {
+        }
+catch (err) {
           console.error('Webhook failed:', err.message);
         }
       }
 
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing delivery status:', error);
     }
   }

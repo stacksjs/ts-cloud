@@ -79,7 +79,8 @@ exports.handler = async (event) => {
       await updateThreadIndex(bucket, mailboxPath, threadId, metadata);
 
       console.log(\`Threaded email \${metadata.messageId} into thread \${threadId}\`);
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error threading email:', error);
     }
   }
@@ -114,7 +115,8 @@ async function updateThreadIndex(bucket, mailboxPath, threadId, metadata) {
       Key: threadsKey,
     }));
     threads = JSON.parse(await result.Body.transformToString());
-  } catch {
+  }
+catch {
     // No threads file yet
   }
 

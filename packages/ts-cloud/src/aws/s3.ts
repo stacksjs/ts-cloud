@@ -219,9 +219,11 @@ export class S3Client {
 
           if (key.trim() === 'aws_access_key_id') {
             accessKeyId = value
-          } else if (key.trim() === 'aws_secret_access_key') {
+          }
+else if (key.trim() === 'aws_secret_access_key') {
             secretAccessKey = value
-          } else if (key.trim() === 'aws_session_token') {
+          }
+else if (key.trim() === 'aws_session_token') {
             sessionToken = value
           }
         }
@@ -230,7 +232,8 @@ export class S3Client {
       if (accessKeyId && secretAccessKey) {
         return { accessKeyId, secretAccessKey, sessionToken }
       }
-    } catch {
+    }
+catch {
       // Failed to read credentials file
     }
 
@@ -966,7 +969,8 @@ export class S3Client {
         returnHeaders: true,
       })
       return { exists: true, region: result?.headers?.['x-amz-bucket-region'] }
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return { exists: false }
       }
@@ -998,7 +1002,8 @@ export class S3Client {
         ETag: result?.headers?.['etag'],
         LastModified: result?.headers?.['last-modified'],
       }
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1088,7 +1093,8 @@ export class S3Client {
         queryParams: { lifecycle: '' },
       })
       return result?.LifecycleConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1112,14 +1118,16 @@ export class S3Client {
       
       if (rule.Filter) {
         ruleXml += `<Filter><Prefix>${rule.Filter.Prefix || ''}</Prefix></Filter>`
-      } else {
+      }
+else {
         ruleXml += '<Filter><Prefix></Prefix></Filter>'
       }
       
       if (rule.Expiration) {
         if (rule.Expiration.Days) {
           ruleXml += `<Expiration><Days>${rule.Expiration.Days}</Days></Expiration>`
-        } else if (rule.Expiration.Date) {
+        }
+else if (rule.Expiration.Date) {
           ruleXml += `<Expiration><Date>${rule.Expiration.Date}</Date></Expiration>`
         }
       }
@@ -1180,7 +1188,8 @@ export class S3Client {
         queryParams: { cors: '' },
       })
       return result?.CORSConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1265,7 +1274,8 @@ export class S3Client {
         queryParams: { encryption: '' },
       })
       return result?.ServerSideEncryptionConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1327,7 +1337,8 @@ export class S3Client {
       const tagSet = result?.Tagging?.TagSet?.Tag
       if (!tagSet) return []
       return Array.isArray(tagSet) ? tagSet : [tagSet]
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return []
       }
@@ -1385,7 +1396,8 @@ export class S3Client {
       const tagSet = result?.Tagging?.TagSet?.Tag
       if (!tagSet) return []
       return Array.isArray(tagSet) ? tagSet : [tagSet]
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return []
       }
@@ -1647,7 +1659,8 @@ export class S3Client {
         queryParams: { website: '' },
       })
       return result?.WebsiteConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1670,7 +1683,8 @@ export class S3Client {
         <HostName>${config.RedirectAllRequestsTo.HostName}</HostName>
         ${config.RedirectAllRequestsTo.Protocol ? `<Protocol>${config.RedirectAllRequestsTo.Protocol}</Protocol>` : ''}
       </RedirectAllRequestsTo>`
-    } else {
+    }
+else {
       configXml = `<IndexDocument><Suffix>${config.IndexDocument}</Suffix></IndexDocument>`
       if (config.ErrorDocument) {
         configXml += `<ErrorDocument><Key>${config.ErrorDocument}</Key></ErrorDocument>`
@@ -1719,7 +1733,8 @@ export class S3Client {
         queryParams: { replication: '' },
       })
       return result?.ReplicationConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -1753,7 +1768,8 @@ export class S3Client {
         queryParams: { publicAccessBlock: '' },
       })
       return result?.PublicAccessBlockConfiguration
-    } catch (e: any) {
+    }
+catch (e: any) {
       if (e.statusCode === 404) {
         return null
       }
@@ -2090,16 +2106,19 @@ export class S3Client {
     let inputSerialization = ''
     if (inputFormat === 'CSV') {
       inputSerialization = '<CSV><FileHeaderInfo>USE</FileHeaderInfo></CSV>'
-    } else if (inputFormat === 'JSON') {
+    }
+else if (inputFormat === 'JSON') {
       inputSerialization = '<JSON><Type>DOCUMENT</Type></JSON>'
-    } else {
+    }
+else {
       inputSerialization = '<Parquet/>'
     }
 
     let outputSerialization = ''
     if (outputFormat === 'CSV') {
       outputSerialization = '<CSV/>'
-    } else {
+    }
+else {
       outputSerialization = '<JSON/>'
     }
 

@@ -497,7 +497,8 @@ export class Route53RoutingManager {
       const calculated = healthCheck as CalculatedHealthCheck
       config.Properties.HealthCheckConfig.ChildHealthChecks = calculated.childHealthChecks
       config.Properties.HealthCheckConfig.HealthThreshold = calculated.healthThreshold
-    } else {
+    }
+else {
       if (healthCheck.ipAddress) {
         config.Properties.HealthCheckConfig.IPAddress = healthCheck.ipAddress
       }

@@ -70,7 +70,8 @@ exports.handler = async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(rendered),
     };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error rendering template:', error);
     return {
       statusCode: error.name === 'NoSuchKey' ? 404 : 500,

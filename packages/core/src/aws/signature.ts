@@ -12,7 +12,8 @@
 let nodeCrypto: typeof import('node:crypto') | undefined
 try {
   nodeCrypto = await import('node:crypto')
-} catch {
+}
+catch {
   // Running in browser - nodeCrypto stays undefined
 }
 
@@ -158,26 +159,34 @@ export function detectServiceRegion(url: string | URL): { service: string, regio
   // Handle special cases
   if (region === 'us-gov') {
     region = 'us-gov-west-1'
-  } else if (region === 's3' || region === 's3-accelerate') {
+  }
+else if (region === 's3' || region === 's3-accelerate') {
     region = 'us-east-1'
     service = 's3'
-  } else if (service === 'iot') {
+  }
+else if (service === 'iot') {
     if (hostname.startsWith('iot.')) {
       service = 'execute-api'
-    } else if (hostname.startsWith('data.jobs.iot.')) {
+    }
+else if (hostname.startsWith('data.jobs.iot.')) {
       service = 'iot-jobs-data'
-    } else {
+    }
+else {
       service = pathname === '/mqtt' ? 'iotdevicegateway' : 'iotdata'
     }
-  } else if (service === 'autoscaling') {
+  }
+else if (service === 'autoscaling') {
     // Could be application-autoscaling or autoscaling-plans based on target
     // Default to autoscaling
-  } else if (!region && service.startsWith('s3-')) {
+  }
+else if (!region && service.startsWith('s3-')) {
     region = service.slice(3).replace(/^fips-|^external-1/, '')
     service = 's3'
-  } else if (service.endsWith('-fips')) {
+  }
+else if (service.endsWith('-fips')) {
     service = service.slice(0, -5)
-  } else if (region && /-\d$/.test(service) && !/-\d$/.test(region)) {
+  }
+else if (region && /-\d$/.test(service) && !/-\d$/.test(region)) {
     // Swap service and region if they appear reversed
     [service, region] = [region, service]
   }
@@ -985,7 +994,8 @@ export async function makeAWSRequest(
       // Non-retryable error or max retries reached
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
-    } catch (error) {
+    }
+catch (error) {
       clearTimeout(timeoutId)
       lastError = error as Error
 
@@ -1073,7 +1083,8 @@ export async function makeAWSRequestAsync(
       // Non-retryable error or max retries reached
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
-    } catch (error) {
+    }
+catch (error) {
       clearTimeout(timeoutId)
       lastError = error as Error
 

@@ -664,18 +664,21 @@ function buildQueryParams(action: string, params: Record<string, unknown>): stri
           for (const [subKey, subValue] of Object.entries(item as Record<string, unknown>)) {
             queryParams.push(`${key}.member.${index + 1}.${subKey}=${encodeURIComponent(String(subValue))}`)
           }
-        } else {
+        }
+else {
           queryParams.push(`${key}.member.${index + 1}=${encodeURIComponent(String(item))}`)
         }
       })
-    } else if (typeof value === 'object') {
+    }
+else if (typeof value === 'object') {
       // Handle nested objects
       for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
         if (subValue !== undefined && subValue !== null) {
           queryParams.push(`${key}.${subKey}=${encodeURIComponent(String(subValue))}`)
         }
       }
-    } else {
+    }
+else {
       queryParams.push(`${key}=${encodeURIComponent(String(value))}`)
     }
   }

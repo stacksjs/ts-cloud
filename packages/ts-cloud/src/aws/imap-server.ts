@@ -710,7 +710,8 @@ export class ImapServer {
     // Simple search - return all message sequence numbers
     if (messages.length === 0) {
       this.send(session, `* SEARCH`)
-    } else {
+    }
+else {
       const results = messages.map((_, i) => i + 1)
       this.send(session, `* SEARCH ${results.join(' ')}`)
     }
@@ -727,7 +728,8 @@ export class ImapServer {
     // Simple UID search - return all UIDs
     if (messages.length === 0) {
       this.send(session, `* SEARCH`)
-    } else {
+    }
+else {
       const results = messages.map(m => m.uid)
       this.send(session, `* SEARCH ${results.join(' ')}`)
     }
@@ -777,10 +779,12 @@ export class ImapServer {
             msg.flags.push(flag)
           }
         }
-      } else if (operation.startsWith('-')) {
+      }
+else if (operation.startsWith('-')) {
         // Remove flags
         msg.flags = msg.flags.filter(f => !flags.includes(f))
-      } else {
+      }
+else {
         // Replace flags
         msg.flags = [...flags]
       }
@@ -843,10 +847,12 @@ export class ImapServer {
             msg.flags.push(flag)
           }
         }
-      } else if (operation.startsWith('-')) {
+      }
+else if (operation.startsWith('-')) {
         // Remove flags
         msg.flags = msg.flags.filter(f => !flags.includes(f))
-      } else {
+      }
+else {
         // Replace flags
         msg.flags = [...flags]
       }
@@ -913,7 +919,8 @@ export class ImapServer {
         })
 
         console.log(`Copied message from ${msg.key} to ${newKey}`)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to copy message: ${err}`)
       }
     }
@@ -969,7 +976,8 @@ export class ImapServer {
         })
 
         console.log(`UID COPY: Copied message from ${msg.key} to ${newKey}`)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to copy message: ${err}`)
       }
     }
@@ -1024,7 +1032,8 @@ export class ImapServer {
         await this.s3.deleteObject(this.config.bucket, msg.key)
         console.log(`MOVE: ${msg.key} -> ${newKey}`)
         movedIndices.push(idx)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to move message: ${err}`)
       }
     }
@@ -1095,7 +1104,8 @@ export class ImapServer {
         await this.s3.deleteObject(this.config.bucket, msg.key)
         console.log(`UID MOVE: ${msg.key} -> ${newKey}`)
         movedIndices.push(idx + 1)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to move message: ${err}`)
       }
     }
@@ -1151,7 +1161,8 @@ export class ImapServer {
       try {
         await this.s3.deleteObject(this.config.bucket, key)
         console.log(`Deleted from S3: ${key}`)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to delete from S3: ${key}`, err)
       }
     }
@@ -1210,7 +1221,8 @@ export class ImapServer {
       try {
         await this.s3.deleteObject(this.config.bucket, key)
         console.log(`EXPUNGE: Deleted from S3: ${key}`)
-      } catch (err) {
+      }
+catch (err) {
         console.error(`Failed to delete from S3: ${key}`, err)
       }
     }
@@ -1813,7 +1825,8 @@ export class ImapServer {
       const flags = JSON.parse(content)
       this.flagsCache.set(email, flags)
       return flags
-    } catch {
+    }
+catch {
       // No flags file yet
       const empty: Record<string, string[]> = {}
       this.flagsCache.set(email, empty)
@@ -1837,7 +1850,8 @@ export class ImapServer {
         contentType: 'application/json',
       })
       console.log(`Saved flags for ${email}`)
-    } catch (err) {
+    }
+catch (err) {
       console.error(`Failed to save flags for ${email}:`, err)
     }
   }
@@ -1861,7 +1875,8 @@ export class ImapServer {
       this.uidMappingCache.set(email, mapping)
       this.nextUidCache.set(email, loadedNextUid)
       return { mapping, nextUid: loadedNextUid }
-    } catch {
+    }
+catch {
       // No UID mapping file yet
       const empty: Record<string, number> = {}
       this.uidMappingCache.set(email, empty)
@@ -1886,7 +1901,8 @@ export class ImapServer {
         body: JSON.stringify({ mapping, nextUid }),
         contentType: 'application/json',
       })
-    } catch (err) {
+    }
+catch (err) {
       console.error(`Failed to save UID mapping for ${email}:`, err)
     }
   }

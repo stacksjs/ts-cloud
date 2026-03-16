@@ -1182,7 +1182,8 @@ async function run() {
     console.log(\`[Job Runner] Job $\{jobClass\} completed in $\{duration\}ms\`)
 
     process.exit(0)
-  } catch (error) {
+  }
+catch (error) {
     console.error(\`[Job Runner] Job $\{jobClass\} failed:\`, error)
     process.exit(1)
   }

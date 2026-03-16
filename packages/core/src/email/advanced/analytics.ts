@@ -89,7 +89,8 @@ exports.handler = async (event) => {
 
       console.log(\`Tracked open for: \${messageId}\`);
     }
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error tracking open:', error);
   }
 
@@ -169,7 +170,8 @@ exports.handler = async (event) => {
       },
       body: '',
     };
-  } catch (error) {
+  }
+catch (error) {
     console.error('Error tracking click:', error);
     return {
       statusCode: 500,
@@ -259,7 +261,8 @@ exports.handler = async (event) => {
       }));
 
       console.log(\`Processed \${eventType} for: \${messageId}\`);
-    } catch (error) {
+    }
+catch (error) {
       console.error('Error processing SES event:', error);
     }
   }

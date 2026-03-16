@@ -1265,16 +1265,19 @@ exports.handler = async (event) => {
     try {
       const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       rawEmail = await resp.Body.transformToString();
-    } catch (e) {
+    }
+catch (e) {
       console.log('Raw email not in S3 yet, using SES headers only');
     }
-  } else if (event.Records && event.Records[0] && event.Records[0].s3) {
+  }
+else if (event.Records && event.Records[0] && event.Records[0].s3) {
     // S3 event notification
     const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\\+/g, ' '));
     messageId = key.split('/').pop();
     const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     rawEmail = await resp.Body.transformToString();
-  } else if (event.mail) {
+  }
+else if (event.mail) {
     // Direct SES event
     sesMailData = event;
     messageId = event.mail.messageId;
@@ -1282,7 +1285,8 @@ exports.handler = async (event) => {
     try {
       const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       rawEmail = await resp.Body.transformToString();
-    } catch (e) {
+    }
+catch (e) {
       console.log('Raw email not in S3 yet');
     }
   }
@@ -1376,7 +1380,8 @@ exports.handler = async (event) => {
     try {
       const resp = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: inboxKey }));
       inbox = JSON.parse(await resp.Body.transformToString());
-    } catch (e) {
+    }
+catch (e) {
       // inbox.json doesn't exist yet
     }
 
@@ -1425,7 +1430,8 @@ function parseEmailHeaders(rawEmail) {
     if (line.match(/^\\s/) && currentKey) {
       currentValue += ' ' + line.trim();
       headers[currentKey] = currentValue;
-    } else {
+    }
+else {
       const match = line.match(/^([^:]+):\\s*(.*)$/);
       if (match) {
         currentKey = match[1].toLowerCase();
@@ -1483,24 +1489,30 @@ function parseEmailBody(rawEmail) {
               const npCT = (npH.match(/Content-Type:\\s*([^;\\r\\n]+)/i)?.[1] || '').trim();
               if (npCT.includes('text/plain') && !result.text) {
                 result.text = decodeContent(npContent, npH);
-              } else if (npCT.includes('text/html') && !result.html) {
+              }
+else if (npCT.includes('text/html') && !result.html) {
                 result.html = decodeContent(npContent, npH);
               }
             }
           }
-        } else if (partCT.includes('text/plain') && !result.text) {
+        }
+else if (partCT.includes('text/plain') && !result.text) {
           result.text = decodeContent(partContent, partHeaders);
-        } else if (partCT.includes('text/html') && !result.html) {
+        }
+else if (partCT.includes('text/html') && !result.html) {
           result.html = decodeContent(partContent, partHeaders);
-        } else if (partHeaders.toLowerCase().includes('content-disposition: attachment') ||
+        }
+else if (partHeaders.toLowerCase().includes('content-disposition: attachment') ||
           partHeaders.toLowerCase().includes('content-disposition: inline')) {
           result.hasAttachments = true;
         }
       }
     }
-  } else if (contentType.includes('text/html')) {
+  }
+else if (contentType.includes('text/html')) {
     result.html = body;
-  } else {
+  }
+else {
     result.text = body;
   }
 
@@ -1512,7 +1524,8 @@ function decodeContent(content, headers) {
 
   if (encoding === 'base64') {
     return Buffer.from(content.replace(/\\s/g, ''), 'base64').toString('utf-8');
-  } else if (encoding === 'quoted-printable') {
+  }
+else if (encoding === 'quoted-printable') {
     return content.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
                   .replace(/=\\r?\\n/g, '');
   }
@@ -1621,7 +1634,8 @@ function parseEmail(rawEmail) {
   for (const line of headerLines) {
     if (line.match(/^\\s/)) {
       currentValue += ' ' + line.trim();
-    } else {
+    }
+else {
       if (currentHeader) {
         result.headers[currentHeader.toLowerCase()] = currentValue;
       }
@@ -1654,9 +1668,11 @@ function parseEmail(rawEmail) {
 
         if (partContentType.includes('text/plain')) {
           result.text = decodeContent(partContent, partHeaders);
-        } else if (partContentType.includes('text/html')) {
+        }
+else if (partContentType.includes('text/html')) {
           result.html = decodeContent(partContent, partHeaders);
-        } else if (partHeaders.toLowerCase().includes('content-disposition: attachment')) {
+        }
+else if (partHeaders.toLowerCase().includes('content-disposition: attachment')) {
           const filenameMatch = partHeaders.match(/filename="?([^"\\r\\n]+)"?/i);
           result.attachments.push({
             filename: filenameMatch?.[1] || 'attachment',
@@ -1667,9 +1683,11 @@ function parseEmail(rawEmail) {
         }
       }
     }
-  } else if (contentType.includes('text/html')) {
+  }
+else if (contentType.includes('text/html')) {
     result.html = body;
-  } else {
+  }
+else {
     result.text = body;
   }
 
@@ -1681,7 +1699,8 @@ function decodeContent(content, headers) {
 
   if (encoding === 'base64') {
     return Buffer.from(content.replace(/\\s/g, ''), 'base64').toString('utf-8');
-  } else if (encoding === 'quoted-printable') {
+  }
+else if (encoding === 'quoted-printable') {
     return content.replace(/=([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
                   .replace(/=\\r?\\n/g, '');
   }

@@ -463,7 +463,8 @@ export class AWSClient {
     if (service === 's3') {
       if (options.bucket) {
         host = `${options.bucket}.s3.${region}.amazonaws.com`
-      } else {
+      }
+else {
         host = `s3.${region}.amazonaws.com`
       }
     }

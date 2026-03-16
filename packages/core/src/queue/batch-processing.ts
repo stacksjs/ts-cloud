@@ -210,7 +210,8 @@ export class BatchProcessingManager {
 
     if (success) {
       message.status = 'success'
-    } else {
+    }
+else {
       message.status = 'failed'
       message.error = 'Processing error'
     }

@@ -279,16 +279,20 @@ export class S3Client {
     if (typeof body === 'string') {
       size = new TextEncoder().encode(body).length
       bodyToUpload = body
-    } else if (body instanceof ArrayBuffer) {
+    }
+else if (body instanceof ArrayBuffer) {
       size = body.byteLength
       bodyToUpload = body
-    } else if (body instanceof Uint8Array) {
+    }
+else if (body instanceof Uint8Array) {
       size = body.byteLength
       bodyToUpload = body
-    } else if (body instanceof Blob) {
+    }
+else if (body instanceof Blob) {
       size = body.size
       bodyToUpload = body
-    } else {
+    }
+else {
       // ReadableStream - use multipart upload
       return this.uploadMultipart(bucket, key, body, {
         ...options,
@@ -346,9 +350,11 @@ export class S3Client {
     let bodyString: string
     if (typeof body === 'string') {
       bodyString = body
-    } else if (body instanceof Blob) {
+    }
+else if (body instanceof Blob) {
       bodyString = await body.text()
-    } else {
+    }
+else {
       bodyString = new TextDecoder().decode(body instanceof ArrayBuffer ? new Uint8Array(body) : body)
     }
 
@@ -659,10 +665,12 @@ export class S3Client {
 
     if (body instanceof ReadableStream) {
       stream = body as ReadableStream<Uint8Array>
-    } else if (body instanceof Blob) {
+    }
+else if (body instanceof Blob) {
       stream = body.stream()
       totalSize = body.size
-    } else {
+    }
+else {
       const blob = new Blob([body])
       stream = blob.stream()
       totalSize = blob.size
@@ -687,7 +695,8 @@ export class S3Client {
 
       // Complete multipart upload
       return await this.completeMultipartUpload(bucket, key, uploadId, parts)
-    } catch (error) {
+    }
+catch (error) {
       // Abort on failure
       await this.abortMultipartUpload(bucket, key, uploadId).catch(() => {})
       throw error
