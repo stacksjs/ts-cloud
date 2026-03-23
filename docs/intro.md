@@ -2,7 +2,7 @@
 
 ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, ts-cloud takes a fundamentally different approach.
 
-## Why ts-cloud?
+## Why ts-cloud
 
 ### Zero AWS Dependencies
 
@@ -89,6 +89,7 @@ bun run cloud deploy
 ```
 
 That's it! You now have:
+
 - ✅ S3 bucket with static website hosting
 - ✅ CloudFront CDN with HTTPS
 - ✅ Route53 DNS configuration

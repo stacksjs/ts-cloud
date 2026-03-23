@@ -260,7 +260,7 @@ ts-cloud supports multiple DNS providers for domain management and SSL certifica
 ### Cloudflare
 
 1. Log in to your [Cloudflare Dashboard](https://dash.cloudflare.com/)
-2. Go to **My Profile** → **API Tokens** (or visit <https://dash.cloudflare.com/profile/api-tokens>)
+2. Go to **My Profile**→**API Tokens** (or visit <https://dash.cloudflare.com/profile/api-tokens>)
 3. Click **Create Token**
 4. Use the **Edit zone DNS** template, or create a custom token with:
   - **Permissions**: Zone → DNS → Edit

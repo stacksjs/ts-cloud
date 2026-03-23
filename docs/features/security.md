@@ -163,10 +163,12 @@ Findings:
 ✗ Security scan failed - deployment blocked
 
 Recommendations:
+
   1. Remove any hardcoded credentials from your code
   2. Use environment variables or AWS Secrets Manager
   3. Add sensitive files to .gitignore
   4. Use --skip-patterns to ignore false positives
+
 ```
 
 ## Configuration Options
@@ -274,16 +276,21 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
       - run: bun install
 
 # Run security scan first
+
       - name: Security Scan
+
         run: bun run cloud deploy:security-scan --source ./dist
 
 # Deploy only if scan passes
+
       - name: Deploy
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -294,24 +301,32 @@ jobs:
 
 ```yaml
 stages:
+
   - security
   - deploy
 
 security-scan:
   stage: security
   script:
+
     - bun install
     - bun run cloud deploy:security-scan --source ./dist
+
   rules:
+
     - if: $CI_COMMIT_BRANCH == "main"
 
 deploy:
   stage: deploy
   needs: [security-scan]
   script:
+
     - bun run cloud deploy:static --source ./dist --bucket $S3_BUCKET
+
   rules:
+
     - if: $CI_COMMIT_BRANCH == "main"
+
 ```
 
 ## Handling False Positives

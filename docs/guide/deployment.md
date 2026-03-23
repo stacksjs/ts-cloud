@@ -305,6 +305,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v1
@@ -312,6 +313,7 @@ jobs:
       - run: bun install
 
       - name: Deploy
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -328,10 +330,14 @@ deploy:
   stage: deploy
   image: oven/bun:latest
   script:
+
     - bun install
     - bun run cloud deploy --stack my-app
+
   only:
+
     - main
+
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
@@ -347,18 +353,24 @@ version: 2.1
 jobs:
   deploy:
     docker:
+
       - image: oven/bun:latest
+
     steps:
+
       - checkout
       - run: bun install
       - run:
+
           name: Deploy
           command: bun run cloud deploy --stack my-app
 
 workflows:
   main:
     jobs:
+
       - deploy:
+
           filters:
             branches:
               only: main

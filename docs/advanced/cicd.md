@@ -18,6 +18,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
 
       - uses: oven-sh/setup-bun@v1
@@ -25,6 +26,7 @@ jobs:
       - run: bun install
 
       - name: Deploy
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -48,11 +50,13 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
       - run: bun install
 
       - name: Deploy Preview
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -60,6 +64,7 @@ jobs:
           bun run cloud deploy --stack preview-${{ github.event.number }}
 
       - name: Comment PR
+
         uses: actions/github-script@v7
         with:
           script: |
@@ -74,11 +79,13 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v1
       - run: bun install
 
       - name: Deploy Production
+
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -90,6 +97,7 @@ jobs:
 ```yaml
 # .gitlab-ci.yml
 stages:
+
   - validate
   - deploy
 
@@ -100,19 +108,26 @@ validate:
   stage: validate
   image: oven/bun:latest
   script:
+
     - bun install
     - bun run cloud validate
+
   only:
+
     - merge_requests
 
 deploy:staging:
   stage: deploy
   image: oven/bun:latest
   script:
+
     - bun install
     - bun run cloud deploy --all --env staging
+
   only:
+
     - develop
+
   environment:
     name: staging
 
@@ -120,10 +135,14 @@ deploy:production:
   stage: deploy
   image: oven/bun:latest
   script:
+
     - bun install
     - bun run cloud deploy --all --env prod
+
   only:
+
     - main
+
   environment:
     name: production
   when: manual
@@ -138,12 +157,14 @@ version: 2.1
 executors:
   bun:
     docker:
+
       - image: oven/bun:latest
 
 jobs:
   validate:
     executor: bun
     steps:
+
       - checkout
       - run: bun install
       - run: bun run cloud validate
@@ -154,6 +175,7 @@ jobs:
       environment:
         type: string
     steps:
+
       - checkout
       - run: bun install
       - run: bun run cloud deploy --all --env << parameters.environment >>
@@ -161,20 +183,28 @@ jobs:
 workflows:
   main:
     jobs:
+
       - validate
       - deploy:
+
           name: deploy-staging
           environment: staging
           requires:
+
             - validate
+
           filters:
             branches:
               only: develop
+
       - deploy:
+
           name: deploy-production
           environment: prod
           requires:
+
             - validate
+
           filters:
             branches:
               only: main
@@ -253,7 +283,9 @@ jobs:
       id-token: write
       contents: read
     steps:
+
       - uses: aws-actions/configure-aws-credentials@v4
+
         with:
           role-to-assume: arn:aws:iam::123456789:role/GitHubActions
           aws-region: us-east-1
@@ -265,13 +297,16 @@ jobs:
 jobs:
   validate:
     steps:
+
       - run: bun run cloud validate
       - run: bun run cloud diff --all
 
   deploy:
     needs: validate
     steps:
+
       - run: bun run cloud deploy --all
+
 ```
 
 ### Use Environments for Approval Gates

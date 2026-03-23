@@ -16,24 +16,24 @@ Tested on Apple M3 Pro, Bun 1.3.7
 
 | Benchmark | ts-cloud | AWS SDK v3 | aws4fetch | ts-cloud advantage |
 |-----------|----------|------------|-----------|-------------------|
-| GET request | **3.05 µs** | 13.34 µs | 72.17 µs | **4x** vs SDK, **24x** vs aws4fetch |
-| POST with body | **3.29 µs** | 14.01 µs | 73.01 µs | **4x** vs SDK, **22x** vs aws4fetch |
-| Large body (100KB+) | **42.68 µs** | 537.98 µs | 129.15 µs | **13x** vs SDK, **3x** vs aws4fetch |
-| Session token | **3.30 µs** | 13.40 µs | 72.03 µs | **4x** vs SDK, **22x** vs aws4fetch |
-| Custom headers | **3.77 µs** | 15.60 µs | 77.83 µs | **4x** vs SDK, **21x** vs aws4fetch |
-| Batch (10 requests) | **34.54 µs** | 125.28 µs | 321.48 µs | **4x** vs SDK, **9x** vs aws4fetch |
-| Batch (100 requests) | **308 µs** | 1.25 ms | 2.78 ms | **4x** vs SDK, **9x** vs aws4fetch |
-| Presigned URL | **25.11 µs** | 63.18 µs | 88.73 µs | **2.5x** vs SDK, **3.5x** vs aws4fetch |
-| Service auto-detection | **1.74 µs** | 44.47 µs | 69.48 µs | **26x** vs SDK, **40x** vs aws4fetch |
-| Sign with auto-detect | **4.33 µs** | 12.92 µs | 69.56 µs | **3x** vs SDK, **16x** vs aws4fetch |
+| GET request | **3.05 µs**| 13.34 µs | 72.17 µs |**4x**vs SDK,**24x** vs aws4fetch |
+| POST with body | **3.29 µs**| 14.01 µs | 73.01 µs |**4x**vs SDK,**22x** vs aws4fetch |
+| Large body (100KB+) | **42.68 µs**| 537.98 µs | 129.15 µs |**13x**vs SDK,**3x** vs aws4fetch |
+| Session token | **3.30 µs**| 13.40 µs | 72.03 µs |**4x**vs SDK,**22x** vs aws4fetch |
+| Custom headers | **3.77 µs**| 15.60 µs | 77.83 µs |**4x**vs SDK,**21x** vs aws4fetch |
+| Batch (10 requests) | **34.54 µs**| 125.28 µs | 321.48 µs |**4x**vs SDK,**9x** vs aws4fetch |
+| Batch (100 requests) | **308 µs**| 1.25 ms | 2.78 ms |**4x**vs SDK,**9x** vs aws4fetch |
+| Presigned URL | **25.11 µs**| 63.18 µs | 88.73 µs |**2.5x**vs SDK,**3.5x** vs aws4fetch |
+| Service auto-detection | **1.74 µs**| 44.47 µs | 69.48 µs |**26x**vs SDK,**40x** vs aws4fetch |
+| Sign with auto-detect | **4.33 µs**| 12.92 µs | 69.56 µs |**3x**vs SDK,**16x** vs aws4fetch |
 
 ### New Features Performance
 
 | Feature | ts-cloud | AWS SDK v3 | aws4fetch | ts-cloud advantage |
 |---------|----------|------------|-----------|-------------------|
-| Presigned URLs | **25.11 µs** | 63.18 µs | 88.73 µs | **2.5x** vs SDK, **3.5x** vs aws4fetch |
-| Service auto-detection | **1.74 µs** | 44.47 µs* | 69.48 µs | **26x** vs SDK, **40x** vs aws4fetch |
-| Sign with auto-detect | **4.33 µs** | 12.92 µs | 69.56 µs | **3x** vs SDK, **16x** vs aws4fetch |
+| Presigned URLs | **25.11 µs**| 63.18 µs | 88.73 µs |**2.5x**vs SDK,**3.5x** vs aws4fetch |
+| Service auto-detection | **1.74 µs** | 44.47 µs* | 69.48 µs | **26x**vs SDK,**40x** vs aws4fetch |
+| Sign with auto-detect | **4.33 µs**| 12.92 µs | 69.56 µs |**3x**vs SDK,**16x** vs aws4fetch |
 
 *AWS SDK requires creating a new client for each region (no URL-based detection)
 
@@ -132,8 +132,8 @@ ts-cloud provides both sync and async APIs:
 
 | Benchmark | ts-cloud sync | ts-cloud async | aws4fetch | ts-cloud async advantage |
 |-----------|---------------|----------------|-----------|-------------------------|
-| GET request signing | **4.36 µs** | 35.57 µs | 72.65 µs | **2x** vs aws4fetch |
-| Presigned URL | **25.65 µs** | 58.01 µs | 89.82 µs | **1.5x** vs aws4fetch |
+| GET request signing | **4.36 µs**| 35.57 µs | 72.65 µs |**2x** vs aws4fetch |
+| Presigned URL | **25.65 µs**| 58.01 µs | 89.82 µs |**1.5x** vs aws4fetch |
 
 **Key insight**: ts-cloud's async (browser-compatible) API is still ~2x faster than aws4fetch!
 
