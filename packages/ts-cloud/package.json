@@ -91,7 +91,7 @@
   },
   "devDependencies": {
     "bunfig": "^0.15.6",
-    "better-dx": "^0.2.6"
+    "better-dx": "^0.2.7"
   },
   "lint-staged": {
     "*.{js,ts,json,yaml,yml,md}": "bunx --bun pickier lint --fix"
