@@ -1185,8 +1185,12 @@ else {
           const distLogicalId = `${slug}${env}${name}CDN`.replace(/[^a-zA-Z0-9]/g, '')
 
           // Determine aliases for this bucket
+          // Explicit aliases take precedence over the convention-based defaults
           const aliases: string[] = []
-          if (name === 'public') {
+          if (storageConfig.aliases && storageConfig.aliases.length > 0) {
+            aliases.push(...storageConfig.aliases)
+          }
+          else if (name === 'public') {
             // Main site: domain + www
             aliases.push(domain)
             if (sslConfig?.domains?.includes(`www.${domain}`)) {
@@ -1199,11 +1203,12 @@ else {
           else if (name === 'blog') {
             aliases.push(`blog.${domain}`)
           }
-          // Other website buckets don't get automatic aliases
+          // Other website buckets without explicit aliases don't get automatic aliases
 
           // Determine error page behavior
+          // SPA mode is opt-in — default is SSG (URL rewriting + proper 404 pages)
           const websiteConfig = typeof storageConfig.website === 'object' ? storageConfig.website : {}
-          const isSpa = name === 'public' // SPA routing: 403/404 → index.html
+          const isSpa = storageConfig.spa === true
           const errorDocument = websiteConfig.errorDocument || (isSpa ? 'index.html' : '404.html')
 
           const customErrorResponses: any[] = []
@@ -1240,8 +1245,9 @@ else {
           const originId = `S3-${slug}-${env}-${name}`
           const region = this.mergedConfig.project.region || 'us-east-1'
 
-          // For non-SPA static sites (docs, blog), create a CloudFront Function
-          // to rewrite directory URLs to index.html (e.g., /posts/slug/ → /posts/slug/index.html)
+          // For non-SPA static sites, create a CloudFront Function to rewrite URLs.
+          // Appends .html to extensionless paths (e.g., /about → /about.html) for SSG flat-file output,
+          // and index.html to directory paths (e.g., / → /index.html).
           let cfFunctionLogicalId: string | undefined
           if (!isSpa) {
             cfFunctionLogicalId = `${slug}${env}${name}UrlRewrite`.replace(/[^a-zA-Z0-9]/g, '')
@@ -1251,11 +1257,11 @@ else {
                 Name: `${slug}-${env}-${name}-url-rewrite`,
                 AutoPublish: true,
                 FunctionConfig: {
-                  Comment: `URL rewrite for ${slug} ${env} ${name} - appends index.html to directory paths`,
+                  Comment: `URL rewrite for ${slug} ${env} ${name} - appends .html to extensionless paths`,
                   Runtime: 'cloudfront-js-2.0',
                 },
                 FunctionCode: `function handler(event) { var request = event.request; var uri = request.uri; if (uri.endsWith('/')) { request.uri += 'index.html'; }
-else if (!uri.includes('.')) { request.uri += '/index.html'; } return request; }`,
+else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
               },
             } as any)
           }

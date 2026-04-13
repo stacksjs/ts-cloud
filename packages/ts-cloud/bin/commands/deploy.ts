@@ -204,8 +204,8 @@ export function registerDeployCommands(app: CLI): void {
         if (config.sites && Object.keys(config.sites).length > 0) {
           const dnsProvider = config.infrastructure?.dns?.provider
 
-          if (dnsProvider && dnsProvider !== 'route53') {
-            // Deploy static sites with external DNS
+          if (dnsProvider) {
+            // Deploy static sites with DNS provider (Route53, Cloudflare, Porkbun, GoDaddy)
             await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment)
             return
           }
@@ -375,6 +375,56 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           cli.info('\nStack Outputs:')
           for (const [key, value] of Object.entries(outputs)) {
             cli.info(`  - ${key}: ${value}`)
+          }
+        }
+
+        // Auto-upload files for website storage buckets that have a `root` configured
+        if (config.infrastructure?.storage) {
+          for (const [name, storageConfig] of Object.entries(config.infrastructure.storage)) {
+            if (!storageConfig.website || !storageConfig.root) continue
+
+            const bucketName = outputs[`${name}BucketName`] || outputs.FrontendBucketName
+            const distributionId = outputs[`${name}CloudFrontDistributionId`]
+
+            if (!bucketName) {
+              cli.warn(`Could not find bucket name for storage '${name}' — skipping file upload`)
+              continue
+            }
+
+            if (!existsSync(storageConfig.root)) {
+              cli.warn(`Source directory not found: ${storageConfig.root} — skipping file upload for '${name}'`)
+              continue
+            }
+
+            cli.step(`Uploading files from ${storageConfig.root} to s3://${bucketName}...`)
+            const { uploadStaticFiles, invalidateCache } = await import('../../src/deploy/static-site')
+            const uploadResult = await uploadStaticFiles({
+              sourceDir: storageConfig.root,
+              bucket: bucketName,
+              region,
+              onProgress: (uploaded, total, file) => {
+                if (uploaded % 10 === 0 || uploaded === total) {
+                  cli.info(`  ${uploaded}/${total}: ${file}`)
+                }
+              },
+            })
+
+            if (uploadResult.errors.length > 0) {
+              cli.warn(`Upload completed with errors: ${uploadResult.errors.join(', ')}`)
+            }
+            else {
+              const msg = uploadResult.skipped > 0
+                ? `Uploaded ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged)`
+                : `Uploaded ${uploadResult.uploaded} files`
+              cli.success(msg)
+            }
+
+            // Invalidate CloudFront cache
+            if (distributionId && uploadResult.uploaded > 0) {
+              cli.step('Invalidating CloudFront cache...')
+              const { invalidationId } = await invalidateCache(distributionId)
+              cli.success(`Cache invalidation created: ${invalidationId}`)
+            }
           }
         }
       }

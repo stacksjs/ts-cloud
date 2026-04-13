@@ -9,6 +9,7 @@ import { CloudFrontClient } from '../aws/cloudfront'
 import { ACMClient } from '../aws/acm'
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
 import { createDnsProvider } from '../dns'
+import { Route53Provider } from '../dns/route53-adapter'
 import { UnifiedDnsValidator } from '../dns/validator'
 
 export interface ExternalDnsStaticSiteConfig {
@@ -805,69 +806,107 @@ async function ensureDnsRecords(
   const isApexDomain = parts.length === 2
 
   if (isApexDomain) {
-    // For apex domains, create an ALIAS record (Porkbun supports this)
-    // Porkbun uses 'ALIAS' type for apex domain CNAME-like behavior
-    //
-    // First, remove any existing A record at the root that would conflict
-    // with the ALIAS (e.g., a domain previously pointed at a server IP).
-    // Porkbun rejects ALIAS creation when a conflicting A record exists.
-    try {
-      const existingA = await dnsProvider.listRecords(domain, 'A')
-      if (existingA.success) {
-        for (const rec of existingA.records) {
-          // Only delete root A records (subdomain === '' or name === domain)
-          const recSub = rec.name.replace(/\.$/, '')
-          if (recSub === domain || recSub === '') {
-            console.log(`Removing existing root A record (${rec.content}) to make room for ALIAS...`)
-            await dnsProvider.deleteRecord(domain, {
-              name: domain,
-              type: 'A',
-              content: rec.content,
-            })
+    if (dnsProvider instanceof Route53Provider) {
+      // Route53: use native A-record alias pointing to CloudFront
+      console.log(`Creating Route53 alias record for apex domain ${domain} -> ${cloudfrontDomain}`)
+
+      const result = await dnsProvider.createCloudFrontAlias({
+        domain,
+        name: domain,
+        cloudFrontDomainName: cloudfrontDomain,
+      })
+
+      if (!result.success) {
+        console.warn(`Warning: Could not create Route53 alias record: ${result.message}`)
+        console.warn(`Please manually create an A-record alias in Route53:`)
+        console.warn(`  ${domain} -> ${cloudfrontDomain}`)
+      }
+      else {
+        console.log(`Created Route53 alias record: ${domain} -> ${cloudfrontDomain}`)
+      }
+
+      // Also create alias for www subdomain
+      const wwwDomain = `www.${domain}`
+      console.log(`Creating Route53 alias record for ${wwwDomain} -> ${cloudfrontDomain}`)
+      const wwwResult = await dnsProvider.createCloudFrontAlias({
+        domain,
+        name: wwwDomain,
+        cloudFrontDomainName: cloudfrontDomain,
+      })
+
+      if (!wwwResult.success) {
+        console.warn(`Warning: Could not create www Route53 alias: ${wwwResult.message}`)
+        console.warn(`Please manually create an A-record alias in Route53:`)
+        console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
+      }
+      else {
+        console.log(`Created Route53 alias record: ${wwwDomain} -> ${cloudfrontDomain}`)
+      }
+    }
+    else {
+      // External DNS providers (Porkbun, Cloudflare, etc.): use ALIAS record type
+      //
+      // First, remove any existing A record at the root that would conflict
+      // with the ALIAS (e.g., a domain previously pointed at a server IP).
+      // Porkbun rejects ALIAS creation when a conflicting A record exists.
+      try {
+        const existingA = await dnsProvider.listRecords(domain, 'A')
+        if (existingA.success) {
+          for (const rec of existingA.records) {
+            // Only delete root A records (subdomain === '' or name === domain)
+            const recSub = rec.name.replace(/\.$/, '')
+            if (recSub === domain || recSub === '') {
+              console.log(`Removing existing root A record (${rec.content}) to make room for ALIAS...`)
+              await dnsProvider.deleteRecord(domain, {
+                name: domain,
+                type: 'A',
+                content: rec.content,
+              })
+            }
           }
         }
       }
-    }
-    catch (err) {
-      // Non-fatal: if we can't list/delete, the upsert will just fail and we'll fall through
-      console.log(`Note: Could not check for conflicting A records: ${err instanceof Error ? err.message : err}`)
-    }
+      catch (err) {
+        // Non-fatal: if we can't list/delete, the upsert will just fail and we'll fall through
+        console.log(`Note: Could not check for conflicting A records: ${err instanceof Error ? err.message : err}`)
+      }
 
-    console.log(`Creating ALIAS record for apex domain ${domain} -> ${cloudfrontDomain}`)
+      console.log(`Creating ALIAS record for apex domain ${domain} -> ${cloudfrontDomain}`)
 
-    const result = await dnsProvider.upsertRecord(domain, {
-      name: domain,
-      type: 'ALIAS' as any, // Porkbun-specific type for apex domains
-      content: cloudfrontDomain,
-      ttl: 600,
-    })
+      const result = await dnsProvider.upsertRecord(domain, {
+        name: domain,
+        type: 'ALIAS' as any, // Porkbun-specific type for apex domains
+        content: cloudfrontDomain,
+        ttl: 600,
+      })
 
-    if (!result.success) {
-      console.warn(`Warning: Could not create ALIAS record: ${result.message}`)
-      console.warn(`Please manually create an ALIAS record in your DNS provider:`)
-      console.warn(`  ${domain} -> ${cloudfrontDomain}`)
-    }
-    else {
-      console.log(`Created ALIAS record: ${domain} -> ${cloudfrontDomain}`)
-    }
+      if (!result.success) {
+        console.warn(`Warning: Could not create ALIAS record: ${result.message}`)
+        console.warn(`Please manually create an ALIAS record in your DNS provider:`)
+        console.warn(`  ${domain} -> ${cloudfrontDomain}`)
+      }
+      else {
+        console.log(`Created ALIAS record: ${domain} -> ${cloudfrontDomain}`)
+      }
 
-    // Also create CNAME for www subdomain
-    const wwwDomain = `www.${domain}`
-    console.log(`Creating CNAME record for ${wwwDomain} -> ${cloudfrontDomain}`)
-    const wwwResult = await dnsProvider.upsertRecord(domain, {
-      name: wwwDomain,
-      type: 'CNAME',
-      content: cloudfrontDomain,
-      ttl: 600,
-    })
+      // Also create CNAME for www subdomain
+      const wwwDomain = `www.${domain}`
+      console.log(`Creating CNAME record for ${wwwDomain} -> ${cloudfrontDomain}`)
+      const wwwResult = await dnsProvider.upsertRecord(domain, {
+        name: wwwDomain,
+        type: 'CNAME',
+        content: cloudfrontDomain,
+        ttl: 600,
+      })
 
-    if (!wwwResult.success) {
-      console.warn(`Warning: Could not create www DNS record: ${wwwResult.message}`)
-      console.warn(`Please manually create a CNAME record:`)
-      console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
-    }
-    else {
-      console.log(`Created CNAME record: ${wwwDomain} -> ${cloudfrontDomain}`)
+      if (!wwwResult.success) {
+        console.warn(`Warning: Could not create www DNS record: ${wwwResult.message}`)
+        console.warn(`Please manually create a CNAME record:`)
+        console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
+      }
+      else {
+        console.log(`Created CNAME record: ${wwwDomain} -> ${cloudfrontDomain}`)
+      }
     }
   }
   else {

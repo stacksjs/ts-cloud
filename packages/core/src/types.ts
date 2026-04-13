@@ -850,6 +850,25 @@ export interface StorageItemConfig {
     errorDocument?: string
   }
   /**
+   * Explicit CloudFront distribution aliases for this bucket.
+   * Overrides the default alias logic based on bucket name.
+   * Example: ['example.com', 'www.example.com']
+   */
+  aliases?: string[]
+  /**
+   * Whether this bucket serves a single-page application (SPA).
+   * When true: 403/404 errors return index.html with status 200 (for client-side routing).
+   * When false (default): A CloudFront Function rewrites extensionless URLs to .html files,
+   * and 403/404 errors return a proper 404 page. This is correct for multi-page SSG sites.
+   */
+  spa?: boolean
+  /**
+   * Root directory containing the built static files to upload (e.g., 'dist', '.output/public').
+   * When set, `cloud deploy` will auto-upload files from this directory to the S3 bucket
+   * after the CloudFormation stack reaches a COMPLETE status, and invalidate CloudFront cache.
+   */
+  root?: string
+  /**
    * Storage type (for special storage like EFS)
    */
   type?: 'efs' | 's3'
