@@ -15,3 +15,4 @@ packages/ts-cloud/bin/cloud
 .env
 bin/cloud
 /pantry
+pantry
