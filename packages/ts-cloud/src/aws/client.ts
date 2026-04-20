@@ -890,3 +890,58 @@ export function buildQueryParams(params: Record<string, any>): Record<string, st
 
   return result
 }
+
+/**
+ * Describes where AWS credentials will be loaded from based on current env state.
+ * Useful for diagnostics — surfaces which source the deploy will actually use
+ * before any AWS calls happen.
+ */
+export interface CredentialSourceInfo {
+  source: 'env' | 'file' | 'ec2' | 'none'
+  /** Profile name when source is 'file' */
+  profile?: string
+  /** Empty AWS_ACCESS_KEY_ID env var was found — likely a misconfigured .env */
+  emptyEnvKey?: boolean
+  /** Empty AWS_SECRET_ACCESS_KEY env var was found */
+  emptyEnvSecret?: boolean
+  /** Human-readable description */
+  description: string
+}
+
+export function detectCredentialSource(): CredentialSourceInfo {
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+
+  // Detect set-but-empty env vars (e.g., `AWS_ACCESS_KEY_ID=` in a .env file)
+  const emptyEnvKey = accessKeyId === ''
+  const emptyEnvSecret = secretAccessKey === ''
+
+  if (accessKeyId && secretAccessKey) {
+    return {
+      source: 'env',
+      emptyEnvKey,
+      emptyEnvSecret,
+      description: 'environment variables (AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY)',
+    }
+  }
+
+  const profile = process.env.AWS_PROFILE || 'default'
+  const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
+
+  if (existsSync(credentialsPath)) {
+    return {
+      source: 'file',
+      profile,
+      emptyEnvKey,
+      emptyEnvSecret,
+      description: `~/.aws/credentials (profile: ${profile})`,
+    }
+  }
+
+  return {
+    source: 'ec2',
+    emptyEnvKey,
+    emptyEnvSecret,
+    description: 'EC2 instance metadata service (IMDSv2)',
+  }
+}

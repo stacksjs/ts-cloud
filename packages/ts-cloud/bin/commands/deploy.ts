@@ -7,11 +7,42 @@ import { S3Client } from '../../src/aws/s3'
 import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { ECRClient } from '../../src/aws/ecr'
 import { ECSClient } from '../../src/aws/ecs'
+import { STSClient } from '../../src/aws/sts'
+import { detectCredentialSource } from '../../src/aws/client'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
 import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
+import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
+
+/**
+ * Detect AWS credential source, warn on misconfiguration, and print the
+ * resolved IAM identity. Surfaces "who am I deploying as" before any
+ * AWS calls happen — saves a lot of debugging time when env vars and
+ * profiles disagree.
+ */
+async function reportAwsIdentity(region: string): Promise<void> {
+  const credSource = detectCredentialSource()
+
+  // Warn on set-but-empty env vars (almost always a misconfigured .env file)
+  if (credSource.emptyEnvKey || credSource.emptyEnvSecret) {
+    cli.warn('Empty AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY env var detected — likely a misconfigured .env file. Remove the empty lines or fill them in.')
+  }
+
+  cli.info(`AWS credentials: ${credSource.description}`)
+
+  try {
+    const sts = new STSClient(region)
+    const identity = await sts.getCallerIdentity()
+    if (identity.Arn) {
+      cli.info(`AWS identity: ${identity.Arn}`)
+    }
+  }
+  catch (err: any) {
+    cli.warn(`Could not verify AWS identity: ${err.message}`)
+  }
+}
 
 /**
  * Run pre-deployment security scan
@@ -174,6 +205,11 @@ export function registerDeployCommands(app: CLI): void {
       try {
         // Load configuration after env is set up correctly
         const config = await loadValidatedConfig()
+
+        // Surface which AWS credentials and identity are about to be used
+        // (helps catch wrong-profile / wrong-account mistakes before any AWS calls)
+        const awsRegion = config.project?.region || 'us-east-1'
+        await reportAwsIdentity(awsRegion)
 
         // Run security scan before deployment (unless skipped)
         if (!options?.skipSecurityScan) {
@@ -1101,7 +1137,16 @@ async function deployStaticSitesWithExternalDns(
     return
   }
 
-  const dnsProvider = getDnsProvider(dnsProviderName)
+  // Merge config-level DNS settings (e.g., hostedZoneId from cloud.config.ts)
+  // so users don't have to set AWS_HOSTED_ZONE_ID just to point at an existing zone.
+  if (dnsConfig.provider === 'route53') {
+    const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
+    if (configHostedZoneId && !dnsConfig.hostedZoneId) {
+      dnsConfig.hostedZoneId = configHostedZoneId
+    }
+  }
+
+  const dnsProvider = createDnsProvider(dnsConfig)
 
   for (const siteName of siteNames) {
     const siteConfig = sites[siteName]

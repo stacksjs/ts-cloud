@@ -54,10 +54,11 @@
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "cloud": "./dist/bin/cli.js"
+    "cloud": "./bin/cli.ts"
   },
   "files": [
     "README.md",
+    "bin",
     "dist"
   ],
   "scripts": {
