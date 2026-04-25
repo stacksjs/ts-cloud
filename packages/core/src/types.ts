@@ -219,6 +219,16 @@ export interface InfrastructureConfig {
   /** @deprecated Use `compute` instead for EC2 configuration */
   servers?: Record<string, ServerItemConfig & ResourceConditions>
   databases?: Record<string, DatabaseItemConfig & ResourceConditions>
+  /**
+   * Single-database shorthand (Forge-style). Use this for the common case
+   * of "I have one app and one database." For multiple named databases,
+   * use `databases` (plural) instead.
+   *
+   * - `'sqlite'`   → installed on the EC2 box, file lives at /var/www/app/data.db
+   * - `'mysql'`    → RDS MySQL with sane defaults, DATABASE_URL injected into env
+   * - `'postgres'` → RDS Postgres with sane defaults, DATABASE_URL injected into env
+   */
+  database?: 'sqlite' | 'mysql' | 'postgres'
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
   /**
@@ -645,7 +655,11 @@ export interface ResourceConditions {
 }
 
 export interface SiteConfig {
-  /** Root directory containing the built static files (e.g., '.output/public', 'dist') */
+  /**
+   * Directory to deploy.
+   *  - For static sites: the built static files to upload to S3 (e.g., 'dist').
+   *  - For SSR sites: the build output to tar+ship to EC2 (e.g., '.output').
+   */
   root: string
   /** Path prefix for deployment (usually '/') */
   path?: string
@@ -664,6 +678,33 @@ export interface SiteConfig {
    * content type and the URL rewrite function is disabled.
    */
   installScript?: string
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // SSR app deploy — when `start` is set, this site deploys to the
+  // environment's `infrastructure.compute` EC2 instance as a systemd service
+  // instead of S3+CloudFront. Multiple SSR sites can share the same EC2 box.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Command the systemd service runs (becomes ExecStart).
+   * Presence of this field is the discriminator: set => SSR (deploy to EC2),
+   * unset => static (deploy to S3+CloudFront).
+   *
+   * Example: 'bun run server.ts'
+   */
+  start?: string
+
+  /**
+   * Port the SSR app listens on. Required when `start` is set.
+   * Two SSR sites on the same EC2 instance must use different ports.
+   */
+  port?: number
+
+  /**
+   * Environment variables written to the per-site systemd EnvironmentFile
+   * (`/var/www/<site>/.env`). Available as process.env.* inside the running app.
+   */
+  env?: Record<string, string>
 }
 
 export interface VpcConfig {
@@ -1374,6 +1415,30 @@ export interface ComputeConfig {
     /** Allocation strategy @default 'capacity-optimized' */
     strategy?: 'lowest-price' | 'capacity-optimized'
   }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // App runtime — installed at instance bootstrap via User Data.
+  // Machine-level: shared across all sites running on this compute.
+  // Per-site app config (build, start, port, env) lives on `SiteConfig`.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Application runtime to install on the instance.
+   * Shared by every site that gets deployed to this compute.
+   */
+  runtime?: 'bun' | 'node' | 'deno'
+
+  /**
+   * Pinned runtime version (e.g. '1.3.13'). Defaults to 'latest'.
+   */
+  runtimeVersion?: string
+
+  /**
+   * Extra OS packages to install at bootstrap (dnf/apt names).
+   * Latest available version is always installed — no pinning.
+   * Example: ['sqlite', 'imagemagick']
+   */
+  systemPackages?: string[]
 }
 
 export interface DatabaseItemConfig {

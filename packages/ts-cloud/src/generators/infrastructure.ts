@@ -70,6 +70,7 @@ export class InfrastructureGenerator {
         ...this.config.infrastructure,
         ...envInfra,
         // Deep merge for nested objects
+        compute: { ...this.config.infrastructure?.compute, ...envInfra.compute },
         storage: { ...this.config.infrastructure?.storage, ...envInfra.storage },
         functions: { ...this.config.infrastructure?.functions, ...envInfra.functions },
         servers: { ...this.config.infrastructure?.servers, ...envInfra.servers },
@@ -144,6 +145,15 @@ export class InfrastructureGenerator {
       && Object.keys(this.mergedConfig.infrastructure.servers).length > 0
     )
 
+    // If any site has a `start` command (= SSR site that needs a runtime),
+    // provision the EC2 app stack (single EC2 + IAM + SG + EIP + deploy staging bucket).
+    // All SSR sites in this environment share the same EC2 instance, each as
+    // its own systemd service.
+    const hasComputeAppConfig = !!(
+      this.mergedConfig.sites
+      && Object.values(this.mergedConfig.sites).some((s: any) => s?.start)
+    )
+
     // If containers are defined, generate ECS/Fargate resources
     // Only generate when mode is 'serverless' or containers are explicitly configured
     const mode = this.mergedConfig.mode || 'server'
@@ -165,6 +175,10 @@ export class InfrastructureGenerator {
 
     if (hasServerConfig) {
       this.generateServer(slug, env)
+    }
+
+    if (hasComputeAppConfig) {
+      this.generateComputeApp(slug, env)
     }
 
     // If jumpBox is configured, generate bastion host
@@ -970,6 +984,161 @@ export class InfrastructureGenerator {
         Description: `Public IP for ${name} server`,
       })
     }
+  }
+
+  /**
+   * Generate the new Forge-style EC2 app stack from `infrastructure.compute`.
+   *
+   * Creates:
+   *  - A deploy staging S3 bucket (`<slug>-<env>-deploy`) with 7-day lifecycle.
+   *    Holds release tarballs that the EC2 instance pulls during `cloud deploy`.
+   *  - An EC2 instance + IAM role + security group + EIP via Compute.createServerModeStack().
+   *  - User Data that bootstraps Bun, system packages, and a systemd `app.service` skeleton.
+   *  - Tags on the EC2 instance (Project / Environment / Role / ManagedBy) so
+   *    the deploy command can target by tag instead of instance ID.
+   *
+   * Triggered when `infrastructure.compute.start` is set (the signal that
+   * "this compute is hosting an app, not just an opaque server").
+   */
+  private generateComputeApp(slug: string, env: typeof this.environment): void {
+    const compute = this.mergedConfig.infrastructure?.compute || {}
+    const sites = this.mergedConfig.sites || {}
+    const ssrSites = Object.entries(sites).filter(([, s]: [string, any]) => s?.start)
+
+    // Bail if no SSR sites — nothing to host
+    if (ssrSites.length === 0) return
+
+    const dnsConfig = this.mergedConfig.infrastructure?.dns
+    const domain = dnsConfig?.domain
+    const dbEngine = this.mergedConfig.infrastructure?.database
+
+    // Resolve instance type from `size` shorthand (or fall back to t3.micro)
+    const sizeKey = compute.size
+    const sizeSpec = sizeKey ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string] : undefined
+    const resolvedInstanceType = sizeSpec?.instanceType || 't3.micro'
+
+    // Need a VPC + subnet for the instance
+    if (!this.builder.hasResource('VPC')) {
+      this.generateNetworkInfrastructure(slug, env)
+    }
+
+    // Bootstrap script — app-agnostic. Per-site systemd services are
+    // written by the deploy command at deploy time, not at boot.
+    const userData = Compute.UserData.generateBunAppScript({
+      runtime: compute.runtime || 'bun',
+      runtimeVersion: compute.runtimeVersion || 'latest',
+      systemPackages: compute.systemPackages,
+      database: dbEngine,
+    })
+
+    // Open every port that any SSR site needs
+    const sitePorts = ssrSites
+      .map(([, s]: [string, any]) => s.port as number | undefined)
+      .filter((p): p is number => typeof p === 'number' && ![80, 443].includes(p))
+
+    // Provision the deploy staging bucket
+    const deployBucketLogicalId = `${slug}${env}DeployBucket`.replace(/[^a-zA-Z0-9]/g, '')
+    const deployBucketName = `${slug}-${env}-deploy`
+    this.builder.addResource(deployBucketLogicalId, {
+      Type: 'AWS::S3::Bucket',
+      Properties: {
+        BucketName: deployBucketName,
+        PublicAccessBlockConfiguration: {
+          BlockPublicAcls: true,
+          BlockPublicPolicy: true,
+          IgnorePublicAcls: true,
+          RestrictPublicBuckets: true,
+        },
+        LifecycleConfiguration: {
+          Rules: [{
+            Id: 'expire-old-releases',
+            Status: 'Enabled',
+            ExpirationInDays: 7,
+            Prefix: 'releases/',
+          }],
+        },
+        Tags: [
+          { Key: 'Project', Value: slug },
+          { Key: 'Environment', Value: env },
+          { Key: 'ManagedBy', Value: 'ts-cloud' },
+        ],
+      },
+    } as any)
+
+    // Create EC2 + IAM + SG + EIP via the existing helper
+    const stack = Compute.createServerModeStack({
+      slug: `${slug}-app`,
+      environment: env,
+      vpcId: { Ref: 'VPC' } as unknown as string,
+      subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
+      instanceType: resolvedInstanceType,
+      keyName: `${slug}-${env}`,
+      domain,
+      userData,
+      volumeSize: compute.disk?.size || 20,
+      imageId: compute.image,
+      allowedPorts: [22, 80, 443, ...sitePorts],
+    })
+
+    // Add the canonical Project / Environment / Role / ManagedBy tags to the EC2
+    // instance so the deploy command can target by tag (not instance ID).
+    // createServerModeStack doesn't know about our app-level tags, so we
+    // augment its instance resource here.
+    const instance = stack.resources[stack.outputs.instanceLogicalId] as any
+    if (instance?.Properties) {
+      const existingTags = instance.Properties.Tags || []
+      instance.Properties.Tags = [
+        ...existingTags,
+        { Key: 'Project', Value: slug },
+        { Key: 'Environment', Value: env },
+        { Key: 'Role', Value: 'app' },
+        { Key: 'ManagedBy', Value: 'ts-cloud' },
+      ]
+    }
+
+    // Grant the instance's IAM role read access to the deploy bucket
+    // so the SSM-driven `aws s3 cp` works at deploy time.
+    const role = stack.resources[stack.outputs.roleLogicalId] as any
+    if (role?.Properties) {
+      role.Properties.Policies = role.Properties.Policies || []
+      role.Properties.Policies.push({
+        PolicyName: 'DeployBucketRead',
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [{
+            Effect: 'Allow',
+            Action: ['s3:GetObject', 's3:ListBucket'],
+            Resource: [
+              `arn:aws:s3:::${deployBucketName}`,
+              `arn:aws:s3:::${deployBucketName}/*`,
+            ],
+          }],
+        },
+      })
+    }
+
+    // Register all of createServerModeStack's resources
+    for (const [logicalId, resource] of Object.entries(stack.resources)) {
+      this.builder.addResource(logicalId, resource)
+    }
+
+    // Stack outputs that `cloud deploy` reads at deploy time
+    this.builder.addOutput('deployBucketName', {
+      Value: { Ref: deployBucketLogicalId },
+      Description: 'S3 bucket where release tarballs are uploaded',
+    })
+    this.builder.addOutput('appInstanceId', {
+      Value: { Ref: stack.outputs.instanceLogicalId },
+      Description: 'EC2 instance ID for the app server',
+    })
+    this.builder.addOutput('appPublicIp', {
+      Value: { Ref: stack.outputs.eipLogicalId },
+      Description: 'Public IP for the app server',
+    })
+
+    // Track for CloudFront API routing if a public site reuses this EC2
+    this.serverEipLogicalIds.set('app', stack.outputs.eipLogicalId)
+    this.serverEipLogicalIds.set('appInstance', stack.outputs.instanceLogicalId)
   }
 
   /**

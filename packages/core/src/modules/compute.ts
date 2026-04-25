@@ -2727,6 +2727,106 @@ systemctl enable stacks-api
     },
 
     /**
+     * Generate a minimal app-agnostic bootstrap script for Amazon Linux 2023.
+     *
+     * The instance is left in a "ready for deploys" state — runtime + tools +
+     * `/var/www` exist, but no app-specific systemd services are created here.
+     * Per-site systemd services (`<slug>-<site>.service`) are written by the
+     * deploy command at `cloud deploy` time, since:
+     *  - Sites can be added/removed without re-bootstrapping
+     *  - Each site has its own dir, port, env, and ExecStart
+     *  - Multiple sites can share one EC2 instance
+     */
+    generateBunAppScript: (options: {
+      runtime?: 'bun' | 'node' | 'deno'
+      runtimeVersion?: string
+      systemPackages?: string[]
+      database?: 'sqlite' | 'mysql' | 'postgres'
+    }): string => {
+      const {
+        runtime = 'bun',
+        runtimeVersion = 'latest',
+        systemPackages = [],
+        database,
+      } = options
+
+      // Auto-add a database client when a database engine is configured.
+      const packages = new Set(systemPackages)
+      if (database === 'sqlite')
+        packages.add('sqlite')
+      // For mysql/postgres the actual DB lives in RDS — install only the
+      // client lib, useful for shell debugging.
+      else if (database === 'mysql')
+        packages.add('mysql')
+      else if (database === 'postgres')
+        packages.add('postgresql15')
+
+      let script = `#!/bin/bash
+set -euo pipefail
+
+# Amazon Linux 2023 base setup
+dnf update -y
+dnf install -y curl tar gzip unzip git
+`
+
+      if (packages.size > 0) {
+        script += `
+# System packages (latest from AL2023 repo)
+dnf install -y ${[...packages].join(' ')}
+`
+      }
+
+      // AWS CLI v2 — required by the SSM deploy step to pull release tarballs
+      script += `
+# AWS CLI v2 (needed by the deploy step to pull release artifacts from S3)
+if ! command -v aws &> /dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+`
+
+      // Install runtime
+      if (runtime === 'bun') {
+        script += `
+# Bun runtime${runtimeVersion === 'latest' ? '' : ` (pinned to ${runtimeVersion})`}
+export BUN_INSTALL="/root/.bun"
+curl -fsSL https://bun.sh/install | bash${runtimeVersion === 'latest' ? '' : ` -s "bun-v${runtimeVersion}"`}
+ln -sf /root/.bun/bin/bun /usr/local/bin/bun
+echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
+echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
+`
+      }
+      else if (runtime === 'node') {
+        const nodeMajor = (runtimeVersion === 'latest' || !runtimeVersion) ? '20' : runtimeVersion.split('.')[0]
+        script += `
+# Node.js (major ${nodeMajor})
+dnf install -y nodejs${nodeMajor}
+ln -sf /usr/bin/node /usr/local/bin/node
+ln -sf /usr/bin/npm /usr/local/bin/npm
+`
+      }
+      else if (runtime === 'deno') {
+        script += `
+# Deno runtime
+curl -fsSL https://deno.land/install.sh | sh
+ln -sf /root/.deno/bin/deno /usr/local/bin/deno
+`
+      }
+
+      // App root, no per-site setup here (deploys handle that)
+      script += `
+# Reserved root for site deploys (each site lands at /var/www/<site>/)
+mkdir -p /var/www
+
+echo "ts-cloud bootstrap complete — instance is ready for site deploys"
+`
+
+      return script
+    },
+
+    /**
      * Individual installation scripts
      */
     Scripts: {

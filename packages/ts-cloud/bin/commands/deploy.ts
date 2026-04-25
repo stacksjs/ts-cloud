@@ -8,7 +8,11 @@ import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { ECRClient } from '../../src/aws/ecr'
 import { ECSClient } from '../../src/aws/ecs'
 import { STSClient } from '../../src/aws/sts'
+import { SSMClient } from '../../src/aws/ssm'
 import { detectCredentialSource } from '../../src/aws/client'
+import { execSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
+import { join as pathJoin } from 'node:path'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
 import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
@@ -42,6 +46,201 @@ async function reportAwsIdentity(region: string): Promise<void> {
   catch (err: any) {
     cli.warn(`Could not verify AWS identity: ${err.message}`)
   }
+}
+
+/**
+ * Translate a `start` command (e.g. "bun run server.ts") into an absolute
+ * systemd ExecStart by swapping the leading runtime word for its absolute path.
+ */
+function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): string {
+  const bin = runtime === 'bun'
+    ? '/usr/local/bin/bun'
+    : runtime === 'deno'
+      ? '/usr/local/bin/deno'
+      : '/usr/local/bin/node'
+  const args = start.replace(/^(bun|node|deno)\s+/, '')
+  return `${bin} ${args}`
+}
+
+/**
+ * Forge-style EC2 app deploy. For each site that has a `start` command:
+ *  1. Build locally (run site.build if set)
+ *  2. Tar the site's `root` directory
+ *  3. Upload to S3 deploy bucket at releases/<site>/<sha>.tar.gz
+ *  4. SSM Run Command tells every tagged EC2 instance to:
+ *     - aws s3 cp the tarball
+ *     - extract to /var/www/<site>/
+ *     - write /var/www/<site>/.env from site.env
+ *     - write/enable/restart /etc/systemd/system/<slug>-<site>.service
+ *
+ * Multiple sites cohabit on one EC2 box, each as its own systemd service.
+ * Returns true if at least one site was deployed (caller knows compute is in use).
+ */
+async function deployAppToCompute(
+  config: any,
+  environment: string,
+  region: string,
+): Promise<boolean> {
+  const sites = config.sites || {}
+  const ssrSites = Object.entries<any>(sites).filter(([, s]) => s?.start)
+  if (ssrSites.length === 0) return false
+
+  const slug = config.project.slug
+  const stackName = `${slug}-${environment}`
+  const compute = config.infrastructure?.compute || {}
+  const runtime: 'bun' | 'node' | 'deno' = compute.runtime || 'bun'
+
+  // Discover the deploy bucket from CloudFormation stack outputs (set up by generateComputeApp)
+  const cfn = new CloudFormationClient(region)
+  let outputs: Record<string, string>
+  try {
+    outputs = await cfn.getStackOutputs(stackName)
+  }
+  catch {
+    cli.error(`Stack '${stackName}' not found. Run cloud deploy to provision infrastructure first.`)
+    return true
+  }
+
+  const bucket = outputs.deployBucketName
+  if (!bucket) {
+    cli.error('No `deployBucketName` in stack outputs. Re-deploy infrastructure to add the staging bucket.')
+    return true
+  }
+
+  // Resolve a single release SHA used across all sites in this deploy
+  let sha: string
+  try {
+    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  }
+  catch {
+    sha = Date.now().toString(36)
+  }
+
+  const s3 = new S3Client(region)
+  const ssm = new SSMClient(region)
+
+  for (const [siteName, site] of ssrSites) {
+    cli.header(`Deploying site: ${siteName}`)
+    cli.info(`Domain: ${site.domain || '(none)'}`)
+    cli.info(`Source: ${site.root}`)
+    cli.info(`Start: ${site.start}`)
+    cli.info(`Port: ${site.port ?? '(unset)'}`)
+
+    // 1. Build
+    if (site.build) {
+      cli.step(`Running build: ${site.build}`)
+      try {
+        execSync(site.build, { stdio: 'inherit', cwd: process.cwd() })
+      }
+      catch (err: any) {
+        cli.error(`Build failed for site '${siteName}': ${err.message}`)
+        return true
+      }
+    }
+
+    if (!existsSync(site.root)) {
+      cli.error(`Build output not found at ${site.root} for site '${siteName}'`)
+      return true
+    }
+
+    // 2. Tar
+    const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
+    cli.step(`Packaging ${site.root} → ${tarballPath}`)
+    try {
+      execSync(`tar czf "${tarballPath}" -C "${site.root}" .`, { stdio: 'inherit' })
+    }
+    catch (err: any) {
+      cli.error(`Failed to package '${siteName}': ${err.message}`)
+      return true
+    }
+
+    // 3. Upload
+    const key = `releases/${siteName}/${sha}.tar.gz`
+    cli.step(`Uploading to s3://${bucket}/${key}...`)
+    try {
+      await s3.putObject({
+        bucket,
+        key,
+        body: readFileSync(tarballPath),
+        contentType: 'application/gzip',
+      })
+    }
+    catch (err: any) {
+      cli.error(`Upload failed for '${siteName}': ${err.message}`)
+      return true
+    }
+
+    // 4. Compose remote script
+    const serviceName = `${slug}-${siteName}.service`
+    const appDir = `/var/www/${siteName}`
+    const execStart = resolveExecStart(site.start, runtime)
+    const port = site.port
+
+    const envFile = Object.entries(site.env || {})
+      .map(([k, v]) => `${k}=${JSON.stringify(String(v))}`)
+      .join('\n')
+
+    const remoteScript = [
+      `set -euo pipefail`,
+      // Pull artifact
+      `aws s3 cp "s3://${bucket}/${key}" /tmp/${siteName}-release.tar.gz --region ${region}`,
+      // Extract — wipe site dir except .env (we rewrite it next)
+      `mkdir -p ${appDir}`,
+      `find ${appDir} -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +`,
+      `tar xzf /tmp/${siteName}-release.tar.gz -C ${appDir}`,
+      // Write .env
+      `cat > ${appDir}/.env <<'TS_CLOUD_ENV_EOF'`,
+      envFile,
+      `TS_CLOUD_ENV_EOF`,
+      `chmod 600 ${appDir}/.env`,
+      // Write / refresh systemd unit (idempotent)
+      `cat > /etc/systemd/system/${serviceName} <<'TS_CLOUD_UNIT_EOF'`,
+      `[Unit]`,
+      `Description=${siteName} (managed by ts-cloud)`,
+      `After=network.target`,
+      ``,
+      `[Service]`,
+      `Type=simple`,
+      `WorkingDirectory=${appDir}`,
+      `ExecStart=${execStart}`,
+      `Restart=always`,
+      `RestartSec=5`,
+      `EnvironmentFile=${appDir}/.env`,
+      ...(port ? [`Environment=PORT=${port}`] : []),
+      ``,
+      `[Install]`,
+      `WantedBy=multi-user.target`,
+      `TS_CLOUD_UNIT_EOF`,
+      `systemctl daemon-reload`,
+      `systemctl enable ${serviceName}`,
+      `systemctl restart ${serviceName}`,
+      // Surface a non-success status to SSM if the service died on start
+      `systemctl is-active ${serviceName}`,
+    ]
+
+    // 5. SSM Run Command, tag-targeted
+    cli.step(`Deploying to instances (tag: Project=${slug} Environment=${environment} Role=app)...`)
+    const result = await ssm.sendCommandByTags({
+      tags: { Project: slug, Environment: environment, Role: 'app' },
+      commands: remoteScript,
+      comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
+    })
+
+    if (!result.success) {
+      cli.error(`Deploy of '${siteName}' failed: ${result.error || 'unknown error'}`)
+      for (const inst of result.perInstance) {
+        cli.error(`  ${inst.instanceId}: ${inst.status}${inst.error ? ` — ${inst.error}` : ''}`)
+      }
+      return true
+    }
+
+    cli.success(`Deployed ${slug}/${siteName}@${sha} to ${result.instanceCount} instance(s)`)
+    for (const inst of result.perInstance) {
+      cli.info(`  ✓ ${inst.instanceId}: ${inst.status}`)
+    }
+  }
+
+  return true
 }
 
 /**
@@ -236,11 +435,13 @@ export function registerDeployCommands(app: CLI): void {
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
 
-        // Check if this is a static site deployment
+        // Static-site lightweight path — only when EVERY site is static (no `start` command).
+        // Mixed or SSR-only configs fall through to the InfrastructureGenerator + deployAppToCompute below.
         if (config.sites && Object.keys(config.sites).length > 0) {
+          const allStatic = Object.values<any>(config.sites).every((s: any) => !s?.start)
           const dnsProvider = config.infrastructure?.dns?.provider
 
-          if (dnsProvider) {
+          if (allStatic && dnsProvider) {
             // Deploy static sites with DNS provider (Route53, Cloudflare, Porkbun, GoDaddy)
             await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment)
             return
@@ -462,6 +663,13 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
               cli.success(`Cache invalidation created: ${invalidationId}`)
             }
           }
+        }
+
+        // EC2 app deploy via SSM (Forge-style) — when any site has a `start` command
+        const hasSsrSite = config.sites
+          && Object.values<any>(config.sites).some((s: any) => s?.start)
+        if (hasSsrSite) {
+          await deployAppToCompute(config, environment, region)
         }
       }
       catch (error: any) {

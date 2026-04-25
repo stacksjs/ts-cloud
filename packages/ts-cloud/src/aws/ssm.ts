@@ -631,10 +631,12 @@ export class SSMClient {
   }
 
   /**
-   * Send a command to EC2 instances via SSM
+   * Send a command to EC2 instances via SSM. Accepts either explicit
+   * `InstanceIds` or tag-based `Targets` (one is required).
    */
   async sendCommand(options: {
-    InstanceIds: string[]
+    InstanceIds?: string[]
+    Targets?: Array<{ Key: string, Values: string[] }>
     DocumentName: string
     Parameters?: Record<string, string[]>
     TimeoutSeconds?: number
@@ -646,9 +648,20 @@ export class SSMClient {
     Status?: string
     StatusDetails?: string
   }> {
+    if (!options.InstanceIds && !options.Targets) {
+      throw new Error('SendCommand requires either InstanceIds or Targets')
+    }
+
     const params: Record<string, any> = {
-      InstanceIds: options.InstanceIds,
       DocumentName: options.DocumentName,
+    }
+
+    if (options.InstanceIds) {
+      params.InstanceIds = options.InstanceIds
+    }
+
+    if (options.Targets) {
+      params.Targets = options.Targets
     }
 
     if (options.Parameters) {
@@ -803,5 +816,140 @@ export class SSMClient {
     }
 
     return { success: false, error: 'Command timed out waiting for completion' }
+  }
+
+  /**
+   * List per-instance invocations for a previously-sent command.
+   * Used by tag-based deploys to discover which instances received the
+   * command and poll each one for completion.
+   */
+  async listCommandInvocations(options: {
+    CommandId: string
+    Details?: boolean
+  }): Promise<Array<{
+    InstanceId: string
+    Status?: string
+    StatusDetails?: string
+    StandardOutputContent?: string
+    StandardErrorContent?: string
+  }>> {
+    const params: Record<string, any> = {
+      CommandId: options.CommandId,
+    }
+    if (options.Details) {
+      params.Details = true
+    }
+
+    const result = await this.client.request({
+      service: 'ssm',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: {
+        'X-Amz-Target': 'AmazonSSM.ListCommandInvocations',
+        'Content-Type': 'application/x-amz-json-1.1',
+      },
+      body: JSON.stringify(params),
+    })
+
+    const invocations = result.CommandInvocations || []
+    return invocations.map((inv: any) => ({
+      InstanceId: inv.InstanceId,
+      Status: inv.Status,
+      StatusDetails: inv.StatusDetails,
+      // Output content lives in CommandPlugins[0].Output when Details=true
+      StandardOutputContent: inv.CommandPlugins?.[0]?.Output,
+      StandardErrorContent: inv.CommandPlugins?.[0]?.StandardErrorUrl,
+    }))
+  }
+
+  /**
+   * Fan out a shell command to every EC2 instance matching the given tags
+   * and wait for all of them to finish. The Forge-style "deploy to my app
+   * servers" primitive — no instance IDs to track, just tag filters.
+   */
+  async sendCommandByTags(options: {
+    tags: Record<string, string>
+    commands: string[]
+    timeoutSeconds?: number
+    pollIntervalMs?: number
+    maxWaitMs?: number
+    comment?: string
+  }): Promise<{
+    success: boolean
+    instanceCount: number
+    perInstance: Array<{ instanceId: string, status: string, output?: string, error?: string }>
+    error?: string
+  }> {
+    const targets = Object.entries(options.tags).map(([key, value]) => ({
+      Key: `tag:${key}`,
+      Values: [value],
+    }))
+
+    const sendResult = await this.sendCommand({
+      Targets: targets,
+      DocumentName: 'AWS-RunShellScript',
+      Parameters: { commands: options.commands },
+      TimeoutSeconds: options.timeoutSeconds || 600,
+      Comment: options.comment,
+    })
+
+    if (!sendResult.CommandId) {
+      return { success: false, instanceCount: 0, perInstance: [], error: 'Failed to send command' }
+    }
+
+    const pollInterval = options.pollIntervalMs || 3000
+    const maxWait = options.maxWaitMs || 600000 // 10 minutes for tag-fanout (more instances = more time)
+    const startTime = Date.now()
+
+    const terminalStatuses = new Set(['Success', 'Failed', 'Cancelled', 'TimedOut'])
+    let lastInvocations: Array<{ InstanceId: string, Status?: string, StatusDetails?: string, StandardOutputContent?: string, StandardErrorContent?: string }> = []
+
+    while (Date.now() - startTime < maxWait) {
+      await new Promise(resolve => setTimeout(resolve, pollInterval))
+
+      try {
+        lastInvocations = await this.listCommandInvocations({
+          CommandId: sendResult.CommandId,
+          Details: true,
+        })
+
+        // No invocations yet — SSM is still resolving the targets
+        if (lastInvocations.length === 0) continue
+
+        const allDone = lastInvocations.every(inv => terminalStatuses.has(inv.Status || ''))
+        if (allDone) {
+          const perInstance = lastInvocations.map(inv => ({
+            instanceId: inv.InstanceId,
+            status: inv.Status || 'Unknown',
+            output: inv.StandardOutputContent,
+            error: inv.StandardErrorContent || inv.StatusDetails,
+          }))
+          const allSucceeded = lastInvocations.every(inv => inv.Status === 'Success')
+          return {
+            success: allSucceeded,
+            instanceCount: lastInvocations.length,
+            perInstance,
+            error: allSucceeded ? undefined : 'One or more instances reported a non-success status',
+          }
+        }
+      }
+      catch (e: any) {
+        // Bubble up real errors; ignore "still propagating" type errors
+        if (!e.message?.includes('InvocationDoesNotExist')) {
+          return { success: false, instanceCount: 0, perInstance: [], error: e.message }
+        }
+      }
+    }
+
+    return {
+      success: false,
+      instanceCount: lastInvocations.length,
+      perInstance: lastInvocations.map(inv => ({
+        instanceId: inv.InstanceId,
+        status: inv.Status || 'Unknown',
+      })),
+      error: 'Command timed out waiting for all instances to complete',
+    }
   }
 }
