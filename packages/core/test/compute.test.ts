@@ -522,6 +522,78 @@ describe('Compute Module', () => {
         expect(userData).toContain('github.com/user/app.git')
       })
     })
+
+    describe('generateBunAppScript', () => {
+      it('produces an AL2023 bootstrap with Bun + AWS CLI + /var/www', () => {
+        const script = Compute.UserData.generateBunAppScript({})
+
+        expect(script.startsWith('#!/bin/bash')).toBe(true)
+        // AL2023 uses dnf, not apt
+        expect(script).toContain('dnf update -y')
+        // Bun is the default runtime
+        expect(script).toContain('bun.sh/install')
+        expect(script).toContain('/usr/local/bin/bun')
+        // AWS CLI is required for the SSM-driven deploy step
+        expect(script).toContain('awscli-exe-linux')
+        // The site root dir lives under /var/www
+        expect(script).toContain('mkdir -p /var/www')
+      })
+
+      it('does NOT lay down a per-app systemd service at boot', () => {
+        // Per-site systemd units are written by the deploy command at deploy time,
+        // not at instance bootstrap (sites can be added/removed without re-bootstrapping).
+        const script = Compute.UserData.generateBunAppScript({})
+
+        expect(script).not.toContain('app.service')
+        expect(script).not.toContain('systemctl enable')
+        expect(script).not.toContain('ExecStart=')
+      })
+
+      it('pins the runtime version when one is specified', () => {
+        const pinned = Compute.UserData.generateBunAppScript({ runtimeVersion: '1.3.13' })
+        const latest = Compute.UserData.generateBunAppScript({ runtimeVersion: 'latest' })
+
+        expect(pinned).toContain('bun-v1.3.13')
+        expect(latest).not.toContain('bun-v')
+      })
+
+      it('installs explicit systemPackages plus the right database client', () => {
+        const sqliteScript = Compute.UserData.generateBunAppScript({
+          systemPackages: ['imagemagick'],
+          database: 'sqlite',
+        })
+        expect(sqliteScript).toContain('dnf install -y')
+        expect(sqliteScript).toContain('sqlite')
+        expect(sqliteScript).toContain('imagemagick')
+
+        const mysqlScript = Compute.UserData.generateBunAppScript({ database: 'mysql' })
+        expect(mysqlScript).toContain('mysql')
+
+        const postgresScript = Compute.UserData.generateBunAppScript({ database: 'postgres' })
+        // We install the AL2023 packaged Postgres client by major version
+        expect(postgresScript).toContain('postgresql15')
+      })
+
+      it('switches runtime install when runtime is node or deno', () => {
+        const nodeScript = Compute.UserData.generateBunAppScript({ runtime: 'node', runtimeVersion: '20.11.0' })
+        expect(nodeScript).toContain('dnf install -y nodejs20')
+        expect(nodeScript).not.toContain('bun.sh/install')
+
+        const denoScript = Compute.UserData.generateBunAppScript({ runtime: 'deno' })
+        expect(denoScript).toContain('deno.land/install.sh')
+        expect(denoScript).toContain('/usr/local/bin/deno')
+      })
+
+      it('handles empty systemPackages without printing a stray dnf install', () => {
+        const script = Compute.UserData.generateBunAppScript({
+          systemPackages: [],
+        })
+
+        // The "System packages (latest from AL2023 repo)" header should not appear
+        // when there's nothing to install
+        expect(script).not.toContain('System packages (latest from AL2023 repo)')
+      })
+    })
   })
 
   describe('Integration with TemplateBuilder', () => {
