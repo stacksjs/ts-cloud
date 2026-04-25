@@ -63,7 +63,8 @@ function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): stri
 }
 
 /**
- * Forge-style EC2 app deploy. For each site that has a `start` command:
+ * Forge-style EC2 app deploy. Triggered when `infrastructure.compute` is set
+ * (compute presence is the deploy-mode declaration). For every configured site:
  *  1. Build locally (run site.build if set)
  *  2. Tar the site's `root` directory
  *  3. Upload to S3 deploy bucket at releases/<site>/<sha>.tar.gz
@@ -74,7 +75,8 @@ function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): stri
  *     - write/enable/restart /etc/systemd/system/<slug>-<site>.service
  *
  * Multiple sites cohabit on one EC2 box, each as its own systemd service.
- * Returns true if at least one site was deployed (caller knows compute is in use).
+ * A site without `start` is skipped with a warning (it has nothing to run).
+ * Returns true so the caller knows EC2 mode handled this deploy.
  */
 async function deployAppToCompute(
   config: any,
@@ -82,8 +84,21 @@ async function deployAppToCompute(
   region: string,
 ): Promise<boolean> {
   const sites = config.sites || {}
-  const ssrSites = Object.entries<any>(sites).filter(([, s]) => s?.start)
-  if (ssrSites.length === 0) return false
+  const allSites = Object.entries<any>(sites)
+
+  if (allSites.length === 0) {
+    cli.warn('infrastructure.compute is set but no sites are configured — nothing to deploy. Add sites to `cloud.config.ts`.')
+    return true
+  }
+
+  const deployable = allSites.filter(([name, s]) => {
+    if (!s?.start) {
+      cli.warn(`Site '${name}' has no \`start\` command — skipping (compute mode requires every site to declare how to run).`)
+      return false
+    }
+    return true
+  })
+  if (deployable.length === 0) return true
 
   const slug = config.project.slug
   const stackName = `${slug}-${environment}`
@@ -119,7 +134,7 @@ async function deployAppToCompute(
   const s3 = new S3Client(region)
   const ssm = new SSMClient(region)
 
-  for (const [siteName, site] of ssrSites) {
+  for (const [siteName, site] of deployable) {
     cli.header(`Deploying site: ${siteName}`)
     cli.info(`Domain: ${site.domain || '(none)'}`)
     cli.info(`Source: ${site.root}`)
@@ -435,13 +450,13 @@ export function registerDeployCommands(app: CLI): void {
         const stackName = options?.stack || `${config.project.slug}-${environment}`
         const region = config.project.region || 'us-east-1'
 
-        // Static-site lightweight path — only when EVERY site is static (no `start` command).
-        // Mixed or SSR-only configs fall through to the InfrastructureGenerator + deployAppToCompute below.
-        if (config.sites && Object.keys(config.sites).length > 0) {
-          const allStatic = Object.values<any>(config.sites).every((s: any) => !s?.start)
+        // Static-site lightweight path — only when `infrastructure.compute` is NOT set.
+        // Compute presence flips the deploy mode to EC2 (handled below by the
+        // InfrastructureGenerator + deployAppToCompute).
+        if (config.sites && Object.keys(config.sites).length > 0 && !config.infrastructure?.compute) {
           const dnsProvider = config.infrastructure?.dns?.provider
 
-          if (allStatic && dnsProvider) {
+          if (dnsProvider) {
             // Deploy static sites with DNS provider (Route53, Cloudflare, Porkbun, GoDaddy)
             await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment)
             return
@@ -665,10 +680,9 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           }
         }
 
-        // EC2 app deploy via SSM (Forge-style) — when any site has a `start` command
-        const hasSsrSite = config.sites
-          && Object.values<any>(config.sites).some((s: any) => s?.start)
-        if (hasSsrSite) {
+        // EC2 app deploy via SSM (Forge-style) — when `infrastructure.compute` is set,
+        // deploy every configured site as a systemd service on the EC2 instance.
+        if (config.infrastructure?.compute) {
           await deployAppToCompute(config, environment, region)
         }
       }

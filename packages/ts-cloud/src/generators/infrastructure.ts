@@ -145,14 +145,12 @@ export class InfrastructureGenerator {
       && Object.keys(this.mergedConfig.infrastructure.servers).length > 0
     )
 
-    // If any site has a `start` command (= SSR site that needs a runtime),
-    // provision the EC2 app stack (single EC2 + IAM + SG + EIP + deploy staging bucket).
-    // All SSR sites in this environment share the same EC2 instance, each as
-    // its own systemd service.
-    const hasComputeAppConfig = !!(
-      this.mergedConfig.sites
-      && Object.values(this.mergedConfig.sites).some((s: any) => s?.start)
-    )
+    // Presence of `infrastructure.compute` is the deploy-mode declaration:
+    //   present → EC2 mode (provision EC2 + IAM + SG + EIP + deploy staging bucket)
+    //   absent  → static mode (sites go through the lightweight S3+CloudFront path)
+    // Every site in this environment deploys as a systemd service on the
+    // shared EC2 instance.
+    const hasComputeAppConfig = !!this.mergedConfig.infrastructure?.compute
 
     // If containers are defined, generate ECS/Fargate resources
     // Only generate when mode is 'serverless' or containers are explicitly configured
@@ -1001,12 +999,11 @@ export class InfrastructureGenerator {
    * "this compute is hosting an app, not just an opaque server").
    */
   private generateComputeApp(slug: string, env: typeof this.environment): void {
-    const compute = this.mergedConfig.infrastructure?.compute || {}
-    const sites = this.mergedConfig.sites || {}
-    const ssrSites = Object.entries(sites).filter(([, s]: [string, any]) => s?.start)
+    const compute = this.mergedConfig.infrastructure?.compute
+    if (!compute) return
 
-    // Bail if no SSR sites — nothing to host
-    if (ssrSites.length === 0) return
+    const sites = this.mergedConfig.sites || {}
+    const allSites = Object.entries(sites)
 
     const dnsConfig = this.mergedConfig.infrastructure?.dns
     const domain = dnsConfig?.domain
@@ -1031,8 +1028,8 @@ export class InfrastructureGenerator {
       database: dbEngine,
     })
 
-    // Open every port that any SSR site needs
-    const sitePorts = ssrSites
+    // Open every port that any site needs
+    const sitePorts = allSites
       .map(([, s]: [string, any]) => s.port as number | undefined)
       .filter((p): p is number => typeof p === 'number' && ![80, 443].includes(p))
 
