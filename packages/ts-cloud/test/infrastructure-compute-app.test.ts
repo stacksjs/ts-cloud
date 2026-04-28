@@ -113,7 +113,7 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     ])
   })
 
-  it('opens the SSR site port in the security group on top of 22/80/443', () => {
+  it('opens 80/443 plus the SSR site port in the security group, but NOT 22', () => {
     const template = generate({
       ...baseConfig,
       sites: {
@@ -131,10 +131,35 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     ) as any
     const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
 
-    expect(ingressPorts).toContain(22)
+    // SSH is closed by default — shell access is via SSM Session Manager,
+    // deploys go through SSM Run Command. No port 22 needed.
+    expect(ingressPorts).not.toContain(22)
+
     expect(ingressPorts).toContain(80)
     expect(ingressPorts).toContain(443)
     expect(ingressPorts).toContain(4000)
+  })
+
+  it('reopens port 22 when compute.allowSsh is explicitly true', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        compute: {
+          ...baseConfig.infrastructure!.compute!,
+          allowSsh: true,
+        },
+      },
+    })
+
+    const sg = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::EC2::SecurityGroup',
+    ) as any
+    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
+
+    expect(ingressPorts).toContain(22)
+    expect(ingressPorts).toContain(80)
+    expect(ingressPorts).toContain(443)
   })
 
   it('does NOT provision the EC2 stack when infrastructure.compute is absent', () => {

@@ -1439,6 +1439,17 @@ export interface ComputeConfig {
    * Example: ['sqlite', 'imagemagick']
    */
   systemPackages?: string[]
+
+  /**
+   * Open port 22 (SSH) to 0.0.0.0/0 in the instance security group.
+   * Default is `false` — deploys use SSM Run Command (no SSH needed) and
+   * shell access can be obtained via SSM Session Manager
+   * (`aws ssm start-session --target <instance-id>`), so SSH is only
+   * useful for legacy tooling.
+   *
+   * Set to `true` only if you need traditional SSH access.
+   */
+  allowSsh?: boolean
 }
 
 export interface DatabaseItemConfig {

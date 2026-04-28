@@ -1074,7 +1074,14 @@ export class InfrastructureGenerator {
       userData,
       volumeSize: compute.disk?.size || 20,
       imageId: compute.image,
-      allowedPorts: [22, 80, 443, ...sitePorts],
+      // SSH (port 22) is closed by default — deploys go through SSM Run Command
+      // and shell access is via SSM Session Manager. Opt in with `compute.allowSsh: true`.
+      allowedPorts: [
+        ...(compute.allowSsh ? [22] : []),
+        80,
+        443,
+        ...sitePorts,
+      ],
     })
 
     // Add the canonical Project / Environment / Role / ManagedBy tags to the EC2
