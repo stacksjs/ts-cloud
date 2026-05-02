@@ -4,8 +4,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import fs from 'node:fs'
-import path from 'node:path'
+import { createReadStream, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
 
 export interface FileHash {
   path: string
@@ -32,7 +32,7 @@ export async function hashFile(
 
   return new Promise((resolve, reject) => {
     const hash = createHash(algorithm)
-    const stream = fs.createReadStream(filePath, { highWaterMark: chunkSize })
+    const stream = createReadStream(filePath, { highWaterMark: chunkSize })
 
     stream.on('data', chunk => hash.update(chunk))
     stream.on('end', () => resolve(hash.digest('hex')))
@@ -72,11 +72,11 @@ export async function hashDirectory(
   const files: FileHash[] = []
 
   async function walk(dir: string): Promise<void> {
-    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    const entries = readdirSync(dir, { withFileTypes: true })
 
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry.name)
-      const relativePath = path.relative(dirPath, fullPath)
+      const fullPath = join(dir, entry.name)
+      const relativePath = relative(dirPath, fullPath)
 
       // Skip ignored patterns
       if (ignorePatterns.some(pattern => relativePath.includes(pattern))) {
@@ -87,7 +87,7 @@ export async function hashDirectory(
         await walk(fullPath)
       }
       else if (entry.isFile()) {
-        const stats = fs.statSync(fullPath)
+        const stats = statSync(fullPath)
         const hash = await hashFile(fullPath, options)
 
         files.push({
@@ -121,7 +121,7 @@ export function hashManifest(fileHashes: FileHash[]): string {
  * Use for quick change detection
  */
 export function quickHash(filePath: string): string {
-  const stats = fs.statSync(filePath)
+  const stats = statSync(filePath)
   return hashString(`${filePath}:${stats.size}:${stats.mtimeMs}`)
 }
 
@@ -179,7 +179,7 @@ export class HashCache {
    * Get cached hash if file hasn't changed
    */
   get(filePath: string): string | undefined {
-    const stats = fs.statSync(filePath)
+    const stats = statSync(filePath)
     const cached = this.cache.get(filePath)
 
     if (cached && cached.mtime === stats.mtimeMs && cached.size === stats.size) {
@@ -193,7 +193,7 @@ export class HashCache {
    * Cache a file hash
    */
   set(filePath: string, hash: string): void {
-    const stats = fs.statSync(filePath)
+    const stats = statSync(filePath)
 
     this.cache.set(filePath, {
       hash,

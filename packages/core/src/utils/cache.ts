@@ -4,8 +4,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export interface CacheOptions {
   ttl?: number // Time to live in milliseconds
@@ -120,8 +120,8 @@ export class FileCache<T = any> {
     this.ttl = options.ttl || 24 * 60 * 60 * 1000 // Default: 24 hours
 
     // Create cache directory if it doesn't exist
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true })
+    if (!existsSync(cacheDir)) {
+      mkdirSync(cacheDir, { recursive: true })
     }
   }
 
@@ -130,7 +130,7 @@ export class FileCache<T = any> {
    */
   private getCachePath(key: string): string {
     const hash = createHash('sha256').update(key).digest('hex')
-    return path.join(this.cacheDir, `${hash}.json`)
+    return join(this.cacheDir, `${hash}.json`)
   }
 
   /**
@@ -139,17 +139,17 @@ export class FileCache<T = any> {
   get(key: string): T | undefined {
     const cachePath = this.getCachePath(key)
 
-    if (!fs.existsSync(cachePath)) {
+    if (!existsSync(cachePath)) {
       return undefined
     }
 
     try {
-      const data = fs.readFileSync(cachePath, 'utf-8')
+      const data = readFileSync(cachePath, 'utf-8')
       const entry: CacheEntry<T> = JSON.parse(data)
 
       // Check if entry has expired
       if (Date.now() - entry.timestamp > this.ttl) {
-        fs.unlinkSync(cachePath)
+        unlinkSync(cachePath)
         return undefined
       }
 
@@ -157,7 +157,7 @@ export class FileCache<T = any> {
     }
     catch {
       // If cache file is corrupted, delete it
-      fs.unlinkSync(cachePath)
+      unlinkSync(cachePath)
       return undefined
     }
   }
@@ -174,7 +174,7 @@ export class FileCache<T = any> {
       hash,
     }
 
-    fs.writeFileSync(cachePath, JSON.stringify(entry), 'utf-8')
+    writeFileSync(cachePath, JSON.stringify(entry), 'utf-8')
   }
 
   /**
@@ -188,9 +188,9 @@ export class FileCache<T = any> {
    * Clear all cache files
    */
   clear(): void {
-    const files = fs.readdirSync(this.cacheDir)
+    const files = readdirSync(this.cacheDir)
     for (const file of files) {
-      fs.unlinkSync(path.join(this.cacheDir, file))
+      unlinkSync(join(this.cacheDir, file))
     }
   }
 
@@ -198,23 +198,23 @@ export class FileCache<T = any> {
    * Remove expired entries
    */
   prune(): void {
-    const files = fs.readdirSync(this.cacheDir)
+    const files = readdirSync(this.cacheDir)
     const now = Date.now()
 
     for (const file of files) {
-      const filePath = path.join(this.cacheDir, file)
+      const filePath = join(this.cacheDir, file)
 
       try {
-        const data = fs.readFileSync(filePath, 'utf-8')
+        const data = readFileSync(filePath, 'utf-8')
         const entry: CacheEntry<any> = JSON.parse(data)
 
         if (now - entry.timestamp > this.ttl) {
-          fs.unlinkSync(filePath)
+          unlinkSync(filePath)
         }
       }
       catch {
         // If file is corrupted, delete it
-        fs.unlinkSync(filePath)
+        unlinkSync(filePath)
       }
     }
   }

@@ -12,7 +12,7 @@
 
 import * as net from 'node:net'
 import * as tls from 'node:tls'
-import * as fs from 'node:fs'
+import { readFileSync } from 'node:fs'
 import * as crypto from 'node:crypto'
 import { SESClient } from './ses'
 import { S3Client } from './s3'
@@ -87,8 +87,8 @@ export class SmtpServer {
     // Start implicit TLS SMTP server on port 465 if certificates provided
     if (this.config.tls?.key && this.config.tls?.cert) {
       const tlsOptions: tls.TlsOptions = {
-        key: fs.readFileSync(this.config.tls.key),
-        cert: fs.readFileSync(this.config.tls.cert),
+        key: readFileSync(this.config.tls.key),
+        cert: readFileSync(this.config.tls.cert),
       }
 
       this.tlsServer = tls.createServer(tlsOptions, (socket) => {
@@ -276,8 +276,8 @@ else {
     this.send(session, '220 Ready to start TLS')
 
     const tlsOptions: tls.TLSSocketOptions = {
-      key: fs.readFileSync(this.config.tls.key),
-      cert: fs.readFileSync(this.config.tls.cert),
+      key: readFileSync(this.config.tls.key),
+      cert: readFileSync(this.config.tls.cert),
       isServer: true,
     }
 

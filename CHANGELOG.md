@@ -1,3 +1,13 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.6...v0.2.7)
+
+### 🧹 Chores
+
+- release v0.2.7 ([b754a46](https://github.com/stacksjs/ts-cloud/commit/b754a46)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.5...v0.2.6)
 
 ### 🐛 Bug Fixes

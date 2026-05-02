@@ -12,8 +12,8 @@
 
 import { SSMClient } from './ssm'
 import { AWSClient } from './client'
-import * as fs from 'node:fs'
-import * as path from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export interface MailboxConfig {
   email: string
@@ -165,9 +165,9 @@ export async function deployImapServer(config: MailServerDeployConfig = defaultC
   }
 
   // Read the source files
-  const imapServerCode = fs.readFileSync(path.join(__dirname, 'imap-server.ts'), 'utf-8')
-  const s3ClientCode = fs.readFileSync(path.join(__dirname, 's3.ts'), 'utf-8')
-  const clientCode = fs.readFileSync(path.join(__dirname, 'client.ts'), 'utf-8')
+  const imapServerCode = readFileSync(join(__dirname, 'imap-server.ts'), 'utf-8')
+  const s3ClientCode = readFileSync(join(__dirname, 's3.ts'), 'utf-8')
+  const clientCode = readFileSync(join(__dirname, 'client.ts'), 'utf-8')
 
   // Build users config for server script from normalized mailboxes
   const usersConfig = normalizedMailboxes.map((m) => {
@@ -215,7 +215,7 @@ async function main() {
     console.error('Using fallback empty passwords - logins will fail')
   }
 
-  const hasTlsCerts = fs.existsSync('/etc/letsencrypt/live/mail.${config.domain}/privkey.pem')
+  const hasTlsCerts = existsSync('/etc/letsencrypt/live/mail.${config.domain}/privkey.pem')
   console.log('TLS certificates available:', hasTlsCerts)
 
   const server = await startImapServer({
