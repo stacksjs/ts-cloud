@@ -4,8 +4,8 @@
  */
 
 import { createHash } from 'node:crypto'
-import fs from 'node:fs'
-import path from 'node:path'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
 
 export interface CacheOptions {
   ttl?: number // Time to live in milliseconds

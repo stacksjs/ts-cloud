@@ -2,6 +2,8 @@ async function build() {
   const result = await Bun.build({
     entrypoints: ['./src/index.ts'],
     outdir: './dist',
+    target: 'node',
+    format: 'esm',
   })
 
   if (!result.success) {
