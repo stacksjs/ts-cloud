@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.4...v0.2.5)
+
+### 🐛 Bug Fixes
+
+- slim ts-cloud package publish ([17b6447](https://github.com/stacksjs/ts-cloud/commit/17b6447)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.5 ([4b0b08e](https://github.com/stacksjs/ts-cloud/commit/4b0b08e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.3...v0.2.4)
 
 ### 🚀 Features
