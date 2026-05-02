@@ -47,6 +47,8 @@
     "changelog": "bunx logsmith --verbose",
     "changelog:generate": "bunx logsmith --output CHANGELOG.md",
     "release": "bun --bun run changelog:generate && bunx --bun bumpx prompt --recursive",
+    "release:patch": "bunx --bun bumpx patch --recursive",
+    "publish:patch": "bunx --bun bumpx patch --recursive --commit --tag --push",
     "dev:docs": "bun --bun vitepress dev docs",
     "build:docs": "bun --bun vitepress build docs",
     "preview:docs": "bun --bun vitepress preview docs",
@@ -54,7 +56,7 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
-    "better-dx": "^0.2.7"
+    "better-dx": "^0.2.12"
   },
   "workspaces": [
     "packages/*"

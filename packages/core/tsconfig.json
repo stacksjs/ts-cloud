@@ -3,14 +3,15 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
-    "composite": true,
+    "composite": false,
     "declaration": true,
-    "declarationMap": true
+    "declarationMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@ts-cloud/aws-types": ["../aws-types/dist/index.d.ts"],
+      "@ts-cloud/aws-types/*": ["../aws-types/dist/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../types" },
-    { "path": "../aws-types" }
-  ]
+  "include": ["src/**/*", "src/**/*.json"],
+  "exclude": ["node_modules", "dist"]
 }
