@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.5...v0.2.6)
+
+### 🐛 Bug Fixes
+
+- build core for node builtins ([9349974](https://github.com/stacksjs/ts-cloud/commit/9349974)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.6 ([38a16f5](https://github.com/stacksjs/ts-cloud/commit/38a16f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.4...v0.2.5)
 
 ### 🐛 Bug Fixes
