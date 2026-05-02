@@ -215,11 +215,7 @@
 
     "path-scurry": ["path-scurry@1.11.1", "", { "dependencies": { "lru-cache": "^10.2.0", "minipass": "^5.0.0 || ^6.0.2 || ^7.0.0" } }, "sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA=="],
 
-<<<<<<< HEAD
-    "pickier": ["pickier@0.1.25", "", { "dependencies": { "@stacksjs/clapp": "^0.2.0" }, "optionalDependencies": { "ts-spell-check": "^0.1.0" }, "bin": { "pickier": "./dist/bin/cli.js" } }, "sha512-CAB+NxLSbC2/jnwNd1JXjNcCzG35GHO1O5Y+V8Ah4IX8rgow0K0aGQ7e1O6z6kQvmsMyBCc+3yuqQRU9A7J8Vg=="],
-=======
     "pickier": ["pickier@0.1.28", "", { "dependencies": { "@stacksjs/clapp": "^0.2.3" }, "optionalDependencies": { "@stacksjs/ts-spell-check": "^0.1.0" }, "bin": { "pickier": "./dist/bin/cli.js" } }, "sha512-ZeK4auVRJiRLfs+/4DppCI5+TpwbEugUOxePdVysj9zPO9mmpQFyJvBse6vdWlpg4FfzGH9INlFWWP+hmItWTA=="],
->>>>>>> 0ed0531 (chore: release v0.2.4)
 
     "process": ["process@0.11.10", "", {}, "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A=="],
 

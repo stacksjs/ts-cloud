@@ -1,4 +1,3 @@
-import { dts } from 'bun-plugin-dtsx'
 import { join } from 'node:path'
 
 const __dirname = import.meta.dirname
@@ -13,7 +12,6 @@ async function build() {
     format: 'esm',
     splitting: false,
     minify: false,
-    plugins: [dts({ entrypoints: ['index.ts'] })],
   })
 
   if (!libResult.success) {
@@ -21,7 +19,26 @@ async function build() {
     for (const log of libResult.logs) {
       console.error(log)
     }
+    process.exit(1)
   }
+
+  const declarations = Bun.spawn([
+    'bunx',
+    'tsc',
+    '-p',
+    join(__dirname, 'tsconfig.json'),
+    '--emitDeclarationOnly',
+    '--noEmit',
+    'false',
+    '--declarationMap',
+    'false',
+  ], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+
+  const declarationExitCode = await declarations.exited
+  if (declarationExitCode !== 0) process.exit(declarationExitCode)
 
   // Build CLI entry point
   const cliResult = await Bun.build({
@@ -38,6 +55,7 @@ async function build() {
     for (const log of cliResult.logs) {
       console.error(log)
     }
+    process.exit(1)
   }
 }
 
