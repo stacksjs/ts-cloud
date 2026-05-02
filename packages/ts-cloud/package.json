@@ -90,7 +90,7 @@
     "@stacksjs/ts-xml": "^0.1.0"
   },
   "devDependencies": {
-    "bunfig": "^0.15.6",
+    "bunfig": "^0.15.11",
     "better-dx": "^0.2.12"
   },
   "lint-staged": {
