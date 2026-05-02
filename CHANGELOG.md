@@ -1,3 +1,55 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.3...v0.2.4)
+
+### 🚀 Features
+
+- SSR site deploys to EC2 via SSM Run Command ([d6bf506](https://github.com/stacksjs/ts-cloud/commit/d6bf506)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- publish ts-cloud core declarations ([e7dc34b](https://github.com/stacksjs/ts-cloud/commit/e7dc34b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- add setup-bun to publish-commit job ([ea2b90b](https://github.com/stacksjs/ts-cloud/commit/ea2b90b)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **security**: close port 22 by default; add compute.allowSsh opt-in ([0ebaa0c](https://github.com/stacksjs/ts-cloud/commit/0ebaa0c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- Route53 deploy path, auto-upload, and SPA/SSG handling ([5c3e598](https://github.com/stacksjs/ts-cloud/commit/5c3e598)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### ♻️ Code Refactoring
+
+- use compute presence as deploy-mode discriminator ([d368bff](https://github.com/stacksjs/ts-cloud/commit/d368bff)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧪 Tests
+
+- cover SSR EC2 deploy feature ([6d1c62d](https://github.com/stacksjs/ts-cloud/commit/6d1c62d)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🤖 Continuous Integration
+
+- drop redundant setup-bun (pantry installs bun via deps.yaml) ([9737bea](https://github.com/stacksjs/ts-cloud/commit/9737bea)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.4 ([5bafd23](https://github.com/stacksjs/ts-cloud/commit/5bafd23)) _(by Chris <chrisbreuer93@gmail.com>)_
+- refresh bun.lock and apply pickier --fix ([e90ed59](https://github.com/stacksjs/ts-cloud/commit/e90ed59)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- refresh bun.lock ([d4b8e15](https://github.com/stacksjs/ts-cloud/commit/d4b8e15)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fresh install to pick up dtsx 0.9.14 and bunfig 0.15.9 ([9f0e322](https://github.com/stacksjs/ts-cloud/commit/9f0e322)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint errors ([f334ca9](https://github.com/stacksjs/ts-cloud/commit/f334ca9)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fresh install to pick up pickier 0.1.21 ([951d7ad](https://github.com/stacksjs/ts-cloud/commit/951d7ad)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint errors ([29e7f80](https://github.com/stacksjs/ts-cloud/commit/29e7f80)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- gitignore pantry directory ([dc8a352](https://github.com/stacksjs/ts-cloud/commit/dc8a352)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint errors ([a34c6d7](https://github.com/stacksjs/ts-cloud/commit/a34c6d7)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: update all non-major dependencies (rebased) (#97) ([8eff742](https://github.com/stacksjs/ts-cloud/commit/8eff742)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#97](https://github.com/stacksjs/ts-cloud/issues/97), [#97](https://github.com/stacksjs/ts-cloud/issues/97))
+- fix lint errors ([a1c2743](https://github.com/stacksjs/ts-cloud/commit/a1c2743)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- repo cleanup and modernization ([c77b8f8](https://github.com/stacksjs/ts-cloud/commit/c77b8f8)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- remove redundant docs/.vitepress ([44c7927](https://github.com/stacksjs/ts-cloud/commit/44c7927)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- use Pantry action for publish-commit and add job dependencies ([339461e](https://github.com/stacksjs/ts-cloud/commit/339461e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: update all non-major dependencies (rebased) (#94) ([9231f79](https://github.com/stacksjs/ts-cloud/commit/9231f79)) _(by [github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>](https://github.com/github-actions[bot]))_ ([#94](https://github.com/stacksjs/ts-cloud/issues/94), [#94](https://github.com/stacksjs/ts-cloud/issues/94))
+- wip ([183dd58](https://github.com/stacksjs/ts-cloud/commit/183dd58)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- remove file ignores from pickier config ([298e533](https://github.com/stacksjs/ts-cloud/commit/298e533)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- add CLAUDE.md and CHANGELOG.md to pickier ignores ([42334b2](https://github.com/stacksjs/ts-cloud/commit/42334b2)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- fix lint warnings ([8b40527](https://github.com/stacksjs/ts-cloud/commit/8b40527)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 ## v0.2.3
 
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.2...v0.2.3)
