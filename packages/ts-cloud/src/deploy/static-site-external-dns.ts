@@ -39,6 +39,15 @@ export interface ExternalDnsStaticSiteConfig {
   skipDnsVerification?: boolean
   /** When true, serves raw files without URL rewriting (for curl | bash install scripts) */
   passthroughUrls?: boolean
+  /**
+   * When true, missing files (S3 403/404) fall through to the index document
+   * with a 200 status — required for client-side-routed SPAs.
+   *
+   * Defaults to false: missing files return a real 404 with the error document.
+   * Multi-page static sites should leave this off so /favicon.ico, /robots.txt,
+   * /sitemap.xml etc. don't masquerade as the homepage.
+   */
+  singlePageApp?: boolean
 }
 
 export interface ExternalDnsDeployResult {
@@ -66,6 +75,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   defaultRootObject?: string
   errorDocument?: string
   passthroughUrls?: boolean
+  singlePageApp?: boolean
 }): object {
   const {
     bucketName,
@@ -75,6 +85,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     defaultRootObject = 'index.html',
     errorDocument = '404.html',
     passthroughUrls = false,
+    singlePageApp = false,
   } = config
 
   const resources: Record<string, any> = {}
@@ -185,20 +196,35 @@ export function generateExternalDnsStaticSiteTemplate(config: {
         ],
       }),
     },
-    CustomErrorResponses: [
-      {
-        ErrorCode: 403,
-        ResponseCode: 200,
-        ResponsePagePath: `/${defaultRootObject}`,
-        ErrorCachingMinTTL: 300,
-      },
-      {
-        ErrorCode: 404,
-        ResponseCode: 404,
-        ResponsePagePath: `/${errorDocument}`,
-        ErrorCachingMinTTL: 300,
-      },
-    ],
+    CustomErrorResponses: singlePageApp
+      ? [
+          {
+            ErrorCode: 403,
+            ResponseCode: 200,
+            ResponsePagePath: `/${defaultRootObject}`,
+            ErrorCachingMinTTL: 300,
+          },
+          {
+            ErrorCode: 404,
+            ResponseCode: 200,
+            ResponsePagePath: `/${defaultRootObject}`,
+            ErrorCachingMinTTL: 300,
+          },
+        ]
+      : [
+          {
+            ErrorCode: 403,
+            ResponseCode: 404,
+            ResponsePagePath: `/${errorDocument}`,
+            ErrorCachingMinTTL: 300,
+          },
+          {
+            ErrorCode: 404,
+            ResponseCode: 404,
+            ResponsePagePath: `/${errorDocument}`,
+            ErrorCachingMinTTL: 300,
+          },
+        ],
   }
 
   // Add custom domain configuration if provided
@@ -552,6 +578,7 @@ export async function deployStaticSiteWithExternalDns(
     defaultRootObject: config.defaultRootObject,
     errorDocument: config.errorDocument,
     passthroughUrls: config.passthroughUrls,
+    singlePageApp: config.singlePageApp,
   })
 
   // Build tags
