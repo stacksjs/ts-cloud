@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.8...v0.2.9)
+
+### 🚀 Features
+
+- **deploy**: add deploySite — opinionated wrapper for static sites ([9ed6452](https://github.com/stacksjs/ts-cloud/commit/9ed6452)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.9 ([617b6e9](https://github.com/stacksjs/ts-cloud/commit/617b6e9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.7...v0.2.8)
 
 ### 🚀 Features
