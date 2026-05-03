@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.7...v0.2.8)
+
+### 🚀 Features
+
+- **deploy**: add singlePageApp option for static site CloudFront ([4846af1](https://github.com/stacksjs/ts-cloud/commit/4846af1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.8 ([398c571](https://github.com/stacksjs/ts-cloud/commit/398c571)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.6...v0.2.7)
 
 ### 🧹 Chores
