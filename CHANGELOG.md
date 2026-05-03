@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.9...v0.2.10)
+
+### 🐛 Bug Fixes
+
+- **deploy**: re-export deploySite + helper types from package root ([192168d](https://github.com/stacksjs/ts-cloud/commit/192168d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.10 ([7584605](https://github.com/stacksjs/ts-cloud/commit/7584605)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.8...v0.2.9)
 
 ### 🚀 Features
