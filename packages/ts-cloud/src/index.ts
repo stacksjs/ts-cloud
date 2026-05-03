@@ -125,6 +125,8 @@ export {
   deployStaticSiteWithExternalDns,
   deployStaticSiteWithExternalDnsFull,
   generateExternalDnsStaticSiteTemplate,
+  // High-level helper with smart defaults (Porkbun, non-SPA, etc.)
+  deploySite,
 } from './deploy'
 export type {
   StaticSiteConfig,
@@ -133,6 +135,10 @@ export type {
   // External DNS types
   ExternalDnsStaticSiteConfig,
   ExternalDnsDeployResult,
+  // Helper types
+  DeploySiteConfig,
+  DeploySiteResult,
+  StaticSiteDnsProvider,
 } from './deploy'
 
 // Export DNS providers
