@@ -72,172 +72,91 @@ export class S3Client {
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.profile = profile || 'default'
+    this.profile = profile || process.env.AWS_PROFILE || 'default'
     // Resolve credentials from the correct profile and pass them to AWSClient
     const creds = this.resolveProfileCredentialsSync()
     this.client = new AWSClient(creds)
   }
 
   /**
-   * Resolve credentials synchronously from file with the correct profile
+   * Resolve credentials honoring AWS SDK precedence: env vars > shared credentials file (this.profile).
    */
   private resolveProfileCredentialsSync(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
-    const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs')
-    const { homedir } = require('node:os') as typeof import('node:os')
-    const { join } = require('node:path') as typeof import('node:path')
-
-    // Check environment variables first (only if no AWS_PROFILE mismatch)
-    const envProfile = process.env.AWS_PROFILE
     const envAccessKey = process.env.AWS_ACCESS_KEY_ID
     const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY
-    if (envAccessKey && envSecretKey && (!envProfile || envProfile === this.profile)) {
-      return {
-        accessKeyId: envAccessKey,
-        secretAccessKey: envSecretKey,
-        sessionToken: process.env.AWS_SESSION_TOKEN,
-      }
-    }
-
-    // Load from credentials file with the specified profile
-    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
-    if (existsSync(credentialsPath)) {
-      const content = readFileSync(credentialsPath, 'utf-8')
-      const lines = content.split('\n')
-      let currentProfile: string | null = null
-      let accessKeyId: string | undefined
-      let secretAccessKey: string | undefined
-      let sessionToken: string | undefined
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue
-
-        const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
-        if (profileMatch) {
-          if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
-            return { accessKeyId, secretAccessKey, sessionToken }
-          }
-          currentProfile = profileMatch[1]
-          accessKeyId = undefined
-          secretAccessKey = undefined
-          sessionToken = undefined
-          continue
-        }
-
-        if (currentProfile === this.profile) {
-          const [key, ...valueParts] = trimmed.split('=')
-          const value = valueParts.join('=').trim()
-          switch (key.trim().toLowerCase()) {
-            case 'aws_access_key_id':
-              accessKeyId = value
-              break
-            case 'aws_secret_access_key':
-              secretAccessKey = value
-              break
-            case 'aws_session_token':
-              sessionToken = value
-              break
-          }
-        }
-      }
-
-      if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
-        return { accessKeyId, secretAccessKey, sessionToken }
-      }
-    }
-
-    // Fall back to environment variables regardless of profile
     if (envAccessKey && envSecretKey) {
       return {
         accessKeyId: envAccessKey,
         secretAccessKey: envSecretKey,
         sessionToken: process.env.AWS_SESSION_TOKEN,
       }
+    }
+
+    const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs')
+    const { homedir } = require('node:os') as typeof import('node:os')
+    const { join } = require('node:path') as typeof import('node:path')
+
+    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
+    if (!existsSync(credentialsPath)) {
+      return { accessKeyId: '', secretAccessKey: '' }
+    }
+
+    const content = readFileSync(credentialsPath, 'utf-8')
+    let currentProfile: string | null = null
+    let accessKeyId: string | undefined
+    let secretAccessKey: string | undefined
+    let sessionToken: string | undefined
+
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue
+
+      const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
+      if (profileMatch) {
+        if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
+          return { accessKeyId, secretAccessKey, sessionToken }
+        }
+        currentProfile = profileMatch[1]
+        accessKeyId = undefined
+        secretAccessKey = undefined
+        sessionToken = undefined
+        continue
+      }
+
+      if (currentProfile === this.profile) {
+        const [key, ...valueParts] = trimmed.split('=')
+        const value = valueParts.join('=').trim()
+        switch (key.trim().toLowerCase()) {
+          case 'aws_access_key_id':
+            accessKeyId = value
+            break
+          case 'aws_secret_access_key':
+            secretAccessKey = value
+            break
+          case 'aws_session_token':
+            sessionToken = value
+            break
+        }
+      }
+    }
+
+    if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
+      return { accessKeyId, secretAccessKey, sessionToken }
     }
 
     return { accessKeyId: '', secretAccessKey: '' }
   }
 
   /**
-   * Get AWS credentials from environment or credentials file
+   * Get AWS credentials, honoring this.profile (used by presigned URL / bucket-policy paths
+   * that bypass AWSClient.request).
    */
   private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
-    // 1. Check environment variables first
-    const envAccessKey = process.env.AWS_ACCESS_KEY_ID
-    const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY
-    const envSessionToken = process.env.AWS_SESSION_TOKEN
-
-    if (envAccessKey && envSecretKey) {
-      return { accessKeyId: envAccessKey, secretAccessKey: envSecretKey, sessionToken: envSessionToken }
+    const creds = this.resolveProfileCredentialsSync()
+    if (creds.accessKeyId && creds.secretAccessKey) {
+      return creds
     }
-
-    // 2. Try to load from ~/.aws/credentials file
-    const fileCreds = this.loadCredentialsFromFile()
-    if (fileCreds) {
-      return fileCreds
-    }
-
-    throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or configure ~/.aws/credentials.')
-  }
-
-  /**
-   * Load credentials from ~/.aws/credentials file
-   */
-  private loadCredentialsFromFile(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } | null {
-    try {
-      const { existsSync, readFileSync } = require('node:fs')
-      const { homedir } = require('node:os')
-      const { join: pathJoin } = require('node:path')
-
-      const profile = process.env.AWS_PROFILE || 'default'
-      const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || pathJoin(homedir(), '.aws', 'credentials')
-
-      if (!existsSync(credentialsPath)) {
-        return null
-      }
-
-      const content = readFileSync(credentialsPath, 'utf-8')
-      const lines = content.split('\n')
-      let currentProfile = ''
-      let accessKeyId = ''
-      let secretAccessKey = ''
-      let sessionToken: string | undefined
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || trimmed.startsWith('#')) continue
-
-        const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
-        if (profileMatch) {
-          currentProfile = profileMatch[1]
-          continue
-        }
-
-        if (currentProfile === profile) {
-          const [key, ...valueParts] = trimmed.split('=')
-          const value = valueParts.join('=').trim()
-
-          if (key.trim() === 'aws_access_key_id') {
-            accessKeyId = value
-          }
-else if (key.trim() === 'aws_secret_access_key') {
-            secretAccessKey = value
-          }
-else if (key.trim() === 'aws_session_token') {
-            sessionToken = value
-          }
-        }
-      }
-
-      if (accessKeyId && secretAccessKey) {
-        return { accessKeyId, secretAccessKey, sessionToken }
-      }
-    }
-catch {
-      // Failed to read credentials file
-    }
-
-    return null
+    throw new Error(`AWS credentials not found for profile '${this.profile}'. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or configure the profile in ~/.aws/credentials.`)
   }
 
   /**

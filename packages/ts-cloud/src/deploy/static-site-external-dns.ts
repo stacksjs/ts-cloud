@@ -334,13 +334,14 @@ export async function deployStaticSiteWithExternalDns(
 
     // Verify DNS provider can manage this domain
     console.log(`Verifying DNS provider can manage ${domain}...`)
-    const canManage = await dnsProvider.canManageDomain(domain)
-    if (!canManage) {
+    const verify = await dnsProvider.listRecords(domain)
+    if (!verify.success) {
+      const reason = verify.message || 'unknown error — check API credentials and domain ownership'
       return {
         success: false,
         stackName,
         bucket,
-        message: `DNS provider '${dnsProvider.name}' cannot manage domain ${domain}. Please check your API credentials and domain ownership.`,
+        message: `DNS provider '${dnsProvider.name}' cannot manage domain ${domain}: ${reason}`,
       }
     }
     console.log(`DNS provider '${dnsProvider.name}' verified for ${domain}`)

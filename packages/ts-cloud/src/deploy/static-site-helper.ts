@@ -145,6 +145,7 @@ export async function deploySite(config: DeploySiteConfig): Promise<DeploySiteRe
   }
 }
 
+// eslint-disable-next-line pickier/no-unused-vars
 function resolveDnsProvider(input?: DeploySiteConfig['dnsProvider']):
   | { provider: 'porkbun', apiKey: string, secretKey: string }
   | { provider: 'godaddy', apiKey: string, apiSecret: string, environment?: 'production' | 'ote' }
