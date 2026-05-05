@@ -1,7 +1,81 @@
 import type { CLI } from '@stacksjs/clapp'
+import { CostExplorerClient } from '../../src/aws/cost-explorer'
+import { S3Client } from '../../src/aws/s3'
 import * as cli from '../../src/utils/cli'
 
+const S3_SERVICE_NAME = 'Amazon Simple Storage Service'
+
+function lastFullMonthRange(): { start: string, end: string, label: string } {
+  const now = new Date()
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+  const start = new Date(end)
+  start.setUTCMonth(start.getUTCMonth() - 1)
+  const iso = (d: Date) => d.toISOString().slice(0, 10)
+  const label = start.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return { start: iso(start), end: iso(end), label }
+}
+
+function formatUSD(amount: number): string {
+  return `$${amount.toFixed(2)}`
+}
+
 export function registerCostCommands(app: CLI): void {
+  app
+    .command('cost:analyze', 'Rank AWS services by cost for the last full month')
+    .action(async () => {
+      const { start, end, label } = lastFullMonthRange()
+      cli.header(`Cost Analysis — ${label}`)
+
+      const spinner = new cli.Spinner('Querying AWS Cost Explorer...')
+      spinner.start()
+
+      let services: Awaited<ReturnType<CostExplorerClient['getCostByService']>>
+      try {
+        services = await new CostExplorerClient().getCostByService({ start, end })
+      }
+      catch (err: any) {
+        spinner.stop()
+        cli.error(`Cost Explorer request failed: ${err?.message ?? err}`)
+        cli.info('\nThis command needs the ce:GetCostAndUsage IAM permission.')
+        return
+      }
+
+      let s3Buckets: number | null = null
+      if (services.some(s => s.service === S3_SERVICE_NAME)) {
+        try {
+          const result = await new S3Client().listBuckets()
+          s3Buckets = result.Buckets?.length ?? 0
+        }
+        catch {
+          // listBuckets needs s3:ListAllMyBuckets — silently fall back to '-'
+        }
+      }
+
+      spinner.stop()
+
+      if (services.length === 0) {
+        cli.info('No billed services in this period.')
+        return
+      }
+
+      const total = services.reduce((sum, s) => sum + s.amount, 0)
+
+      cli.table(
+        ['Service', 'Resources', 'Cost', '% of Total'],
+        services.map((s) => {
+          let resources = '-'
+          if (s.service === S3_SERVICE_NAME && s3Buckets !== null) {
+            resources = `${s3Buckets} bucket${s3Buckets === 1 ? '' : 's'}`
+          }
+          const pct = total > 0 ? `${((s.amount / total) * 100).toFixed(1)}%` : '—'
+          return [s.service, resources, formatUSD(s.amount), pct]
+        }),
+      )
+
+      cli.info(`\nTotal: ${formatUSD(total)} across ${services.length} service${services.length === 1 ? '' : 's'}`)
+    })
+
+
   app
     .command('cost', 'Show estimated monthly cost')
     .option('--env <environment>', 'Environment (production, staging, development)')
