@@ -22,16 +22,17 @@ function formatUSD(amount: number): string {
 export function registerCostCommands(app: CLI): void {
   app
     .command('cost:analyze', 'Rank AWS services by cost for the last full month')
-    .action(async () => {
+    .action(async (options?: { profile?: string }) => {
+      const profile = options?.profile
       const { start, end, label } = lastFullMonthRange()
-      cli.header(`Cost Analysis — ${label}`)
+      cli.header(`Cost Analysis — ${label}${profile ? ` (profile: ${profile})` : ''}`)
 
       const spinner = new cli.Spinner('Querying AWS Cost Explorer...')
       spinner.start()
 
       let services: Awaited<ReturnType<CostExplorerClient['getCostByService']>>
       try {
-        services = await new CostExplorerClient().getCostByService({ start, end })
+        services = await new CostExplorerClient(profile).getCostByService({ start, end })
       }
       catch (err: any) {
         spinner.stop()
@@ -43,7 +44,7 @@ export function registerCostCommands(app: CLI): void {
       let s3Buckets: number | null = null
       if (services.some(s => s.service === S3_SERVICE_NAME)) {
         try {
-          const result = await new S3Client().listBuckets()
+          const result = await new S3Client('us-east-1', profile).listBuckets()
           s3Buckets = result.Buckets?.length ?? 0
         }
         catch {

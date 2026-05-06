@@ -6,6 +6,7 @@
  */
 
 import { AWSClient } from './client'
+import { resolveCredentials } from './credentials'
 
 export interface ServiceCost {
   service: string
@@ -16,8 +17,8 @@ export interface ServiceCost {
 export class CostExplorerClient {
   private client: AWSClient
 
-  constructor() {
-    this.client = new AWSClient()
+  constructor(profile?: string) {
+    this.client = new AWSClient(resolveCredentials(profile))
   }
 
   /**

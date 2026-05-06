@@ -1,6 +1,18 @@
 #!/usr/bin/env bun
-import { CLI } from '@stacksjs/clapp'
+import { CLI, Command } from '@stacksjs/clapp'
 import { version } from '../package.json'
+
+// Workaround for @stacksjs/clapp 0.2.7: Command's constructor strips the namespace
+// from `this.name` ("cost:analyze" → "analyze"), so isMatched("cost:analyze")
+// returns false and every colon-prefixed command is silently unrunnable. Restore
+// matching against the fully-qualified `namespace:name` form.
+const _origIsMatched = Command.prototype.isMatched
+Command.prototype.isMatched = function (name: string): boolean {
+  if ((this as any).namespace && `${(this as any).namespace}:${this.name}` === name) {
+    return true
+  }
+  return _origIsMatched.call(this, name)
+}
 import {
   registerInitCommands,
   registerConfigCommands,

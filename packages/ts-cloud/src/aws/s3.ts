@@ -5,6 +5,7 @@
 
 import * as crypto from 'node:crypto'
 import { AWSClient } from './client'
+import { resolveCredentials } from './credentials'
 import { readdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
@@ -68,95 +69,24 @@ export interface S3Object {
 export class S3Client {
   private client: AWSClient
   private region: string
-  private profile: string
+  private explicitProfile?: string
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.profile = profile || process.env.AWS_PROFILE || 'default'
-    // Resolve credentials from the correct profile and pass them to AWSClient
-    const creds = this.resolveProfileCredentialsSync()
-    this.client = new AWSClient(creds)
+    this.explicitProfile = profile
+    this.client = new AWSClient(resolveCredentials(profile))
   }
 
   /**
-   * Resolve credentials honoring AWS SDK precedence: env vars > shared credentials file (this.profile).
-   */
-  private resolveProfileCredentialsSync(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
-    const envAccessKey = process.env.AWS_ACCESS_KEY_ID
-    const envSecretKey = process.env.AWS_SECRET_ACCESS_KEY
-    if (envAccessKey && envSecretKey) {
-      return {
-        accessKeyId: envAccessKey,
-        secretAccessKey: envSecretKey,
-        sessionToken: process.env.AWS_SESSION_TOKEN,
-      }
-    }
-
-    const { existsSync, readFileSync } = require('node:fs') as typeof import('node:fs')
-    const { homedir } = require('node:os') as typeof import('node:os')
-    const { join } = require('node:path') as typeof import('node:path')
-
-    const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
-    if (!existsSync(credentialsPath)) {
-      return { accessKeyId: '', secretAccessKey: '' }
-    }
-
-    const content = readFileSync(credentialsPath, 'utf-8')
-    let currentProfile: string | null = null
-    let accessKeyId: string | undefined
-    let secretAccessKey: string | undefined
-    let sessionToken: string | undefined
-
-    for (const line of content.split('\n')) {
-      const trimmed = line.trim()
-      if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith(';')) continue
-
-      const profileMatch = trimmed.match(/^\[([^\]]+)\]$/)
-      if (profileMatch) {
-        if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
-          return { accessKeyId, secretAccessKey, sessionToken }
-        }
-        currentProfile = profileMatch[1]
-        accessKeyId = undefined
-        secretAccessKey = undefined
-        sessionToken = undefined
-        continue
-      }
-
-      if (currentProfile === this.profile) {
-        const [key, ...valueParts] = trimmed.split('=')
-        const value = valueParts.join('=').trim()
-        switch (key.trim().toLowerCase()) {
-          case 'aws_access_key_id':
-            accessKeyId = value
-            break
-          case 'aws_secret_access_key':
-            secretAccessKey = value
-            break
-          case 'aws_session_token':
-            sessionToken = value
-            break
-        }
-      }
-    }
-
-    if (currentProfile === this.profile && accessKeyId && secretAccessKey) {
-      return { accessKeyId, secretAccessKey, sessionToken }
-    }
-
-    return { accessKeyId: '', secretAccessKey: '' }
-  }
-
-  /**
-   * Get AWS credentials, honoring this.profile (used by presigned URL / bucket-policy paths
-   * that bypass AWSClient.request).
+   * Get AWS credentials (used by presigned URL / bucket-policy paths that bypass AWSClient.request).
+   * Honors the same explicit-vs-implicit profile semantics as the constructor.
    */
   private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
-    const creds = this.resolveProfileCredentialsSync()
+    const creds = resolveCredentials(this.explicitProfile)
     if (creds.accessKeyId && creds.secretAccessKey) {
       return creds
     }
-    throw new Error(`AWS credentials not found for profile '${this.profile}'. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, or configure the profile in ~/.aws/credentials.`)
+    throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, pass an explicit profile, or configure ~/.aws/credentials.')
   }
 
   /**
