@@ -19,10 +19,27 @@ function formatUSD(amount: number): string {
   return `$${amount.toFixed(2)}`
 }
 
+function renderMarkdownReport(params: {
+  label: string
+  profile: string | undefined
+  rows: string[][]
+  total: number
+  count: number
+}): string {
+  const { label, profile, rows, total, count } = params
+  const header = `# AWS Cost Analysis — ${label}`
+  const meta = profile ? `\n_Profile: \`${profile}\`_\n` : '\n'
+  const tableHeader = `| Service | Resources | Cost | % of Total |\n|---|---|---|---|`
+  const tableBody = rows.map(([s, r, c, p]) => `| ${s} | ${r} | ${c} | ${p} |`).join('\n')
+  const totalLine = `\n**Total: ${formatUSD(total)} across ${count} service${count === 1 ? '' : 's'}**`
+  return `${header}\n${meta}\n${tableHeader}\n${tableBody}\n${totalLine}\n`
+}
+
 export function registerCostCommands(app: CLI): void {
   app
     .command('cost:analyze', 'Rank AWS services by cost for the last full month')
-    .action(async (options?: { profile?: string }) => {
+    .option('--output', 'Also write a markdown report to ./aws.md')
+    .action(async (options?: { profile?: string, output?: boolean }) => {
       const profile = options?.profile
       const { start, end, label } = lastFullMonthRange()
       cli.header(`Cost Analysis — ${label}${profile ? ` (profile: ${profile})` : ''}`)
@@ -60,20 +77,23 @@ export function registerCostCommands(app: CLI): void {
       }
 
       const total = services.reduce((sum, s) => sum + s.amount, 0)
+      const rows = services.map((s) => {
+        let resources = '-'
+        if (s.service === S3_SERVICE_NAME && s3Buckets !== null) {
+          resources = `${s3Buckets} bucket${s3Buckets === 1 ? '' : 's'}`
+        }
+        const pct = total > 0 ? `${((s.amount / total) * 100).toFixed(1)}%` : '—'
+        return [s.service, resources, formatUSD(s.amount), pct]
+      })
 
-      cli.table(
-        ['Service', 'Resources', 'Cost', '% of Total'],
-        services.map((s) => {
-          let resources = '-'
-          if (s.service === S3_SERVICE_NAME && s3Buckets !== null) {
-            resources = `${s3Buckets} bucket${s3Buckets === 1 ? '' : 's'}`
-          }
-          const pct = total > 0 ? `${((s.amount / total) * 100).toFixed(1)}%` : '—'
-          return [s.service, resources, formatUSD(s.amount), pct]
-        }),
-      )
-
+      cli.table(['Service', 'Resources', 'Cost', '% of Total'], rows)
       cli.info(`\nTotal: ${formatUSD(total)} across ${services.length} service${services.length === 1 ? '' : 's'}`)
+
+      if (options?.output) {
+        const path = `${process.cwd()}/aws.md`
+        await Bun.write(path, renderMarkdownReport({ label, profile, rows, total, count: services.length }))
+        cli.success(`\nWrote ${path}`)
+      }
     })
 
 
