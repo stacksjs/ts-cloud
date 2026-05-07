@@ -58,14 +58,17 @@ export function registerCostCommands(app: CLI): void {
         return
       }
 
+      // Track s3:ListAllMyBuckets outcome separately so we can distinguish
+      // "0 buckets visible to this identity" from "couldn't enumerate at all".
       let s3Buckets: number | null = null
+      let s3ListBlocked = false
       if (services.some(s => s.service === S3_SERVICE_NAME)) {
         try {
           const result = await new S3Client('us-east-1', profile).listBuckets()
           s3Buckets = result.Buckets?.length ?? 0
         }
         catch {
-          // listBuckets needs s3:ListAllMyBuckets — silently fall back to '-'
+          s3ListBlocked = true
         }
       }
 
@@ -79,8 +82,9 @@ export function registerCostCommands(app: CLI): void {
       const total = services.reduce((sum, s) => sum + s.amount, 0)
       const rows = services.map((s) => {
         let resources = '-'
-        if (s.service === S3_SERVICE_NAME && s3Buckets !== null) {
-          resources = `${s3Buckets} bucket${s3Buckets === 1 ? '' : 's'}`
+        if (s.service === S3_SERVICE_NAME) {
+          if (s3ListBlocked) resources = 'unknown (no s3:ListAllMyBuckets)'
+          else if (s3Buckets !== null) resources = `${s3Buckets} bucket${s3Buckets === 1 ? '' : 's'}`
         }
         const pct = total > 0 ? `${((s.amount / total) * 100).toFixed(1)}%` : '—'
         return [s.service, resources, formatUSD(s.amount), pct]
@@ -88,6 +92,14 @@ export function registerCostCommands(app: CLI): void {
 
       cli.table(['Service', 'Resources', 'Cost', '% of Total'], rows)
       cli.info(`\nTotal: ${formatUSD(total)} across ${services.length} service${services.length === 1 ? '' : 's'}`)
+
+      // Sanity hint: non-trivial S3 spend with 0 visible buckets usually means
+      // the calling identity is in the org's payer/management account — billing
+      // rolls up but the workload buckets live in a member account.
+      const s3Cost = services.find(s => s.service === S3_SERVICE_NAME)?.amount ?? 0
+      if (s3Cost > 1 && s3Buckets === 0) {
+        cli.warn('\nS3 has spend but listBuckets returned 0. The buckets are likely owned by a different account in your AWS Organization (consolidated billing rolls up to the payer account, but ListBuckets only shows buckets owned by the calling account).')
+      }
 
       if (options?.output) {
         const path = `${process.cwd()}/aws.md`

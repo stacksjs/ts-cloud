@@ -101,7 +101,11 @@ export class S3Client {
     })
 
     const buckets: Array<{ Name: string, CreationDate?: string }> = []
-    const bucketList = result?.ListAllMyBucketsResult?.Buckets?.Bucket
+    // AWSClient.parseXmlResponse strips the single-root wrapper, so what we get
+    // is the *contents* of <ListAllMyBucketsResult>. Keep the wrapped lookup as
+    // a fallback in case that behavior changes.
+    const root = result?.ListAllMyBucketsResult ?? result
+    const bucketList = root?.Buckets?.Bucket
 
     if (bucketList) {
       const list = Array.isArray(bucketList) ? bucketList : [bucketList]
@@ -212,7 +216,10 @@ export class S3Client {
         queryParams: params,
       })
 
-      const contents = result?.ListBucketResult?.Contents
+      // parseXmlResponse strips the <ListBucketResult> wrapper; fall back to
+      // the wrapped form for safety if that ever changes.
+      const root = result?.ListBucketResult ?? result
+      const contents = root?.Contents
       if (contents) {
         const list = Array.isArray(contents) ? contents : [contents]
         for (const obj of list) {
@@ -226,9 +233,9 @@ export class S3Client {
       }
 
       // Check for more results
-      const isTruncated = result?.ListBucketResult?.IsTruncated
+      const isTruncated = root?.IsTruncated
       continuationToken = isTruncated === 'true' || isTruncated === true
-        ? result?.ListBucketResult?.NextContinuationToken
+        ? root?.NextContinuationToken
         : undefined
 
     } while (continuationToken)
@@ -248,11 +255,11 @@ export class S3Client {
       path: `/${options.bucket}`,
     })
 
-    // Parse S3 XML response
+    // Parse S3 XML response. parseXmlResponse strips the <ListBucketResult>
+    // root wrapper; fall back to the wrapped form for safety.
     const objects: S3Object[] = []
-
-    // Handle ListBucketResult structure from XML parsing
-    const contents = result?.ListBucketResult?.Contents
+    const root = result?.ListBucketResult ?? result
+    const contents = root?.Contents
     if (contents) {
       const items = Array.isArray(contents) ? contents : [contents]
       for (const item of items) {
@@ -2102,9 +2109,10 @@ else {
       queryParams,
     })
 
-    // Parse S3 XML response
+    // Parse S3 XML response. parseXmlResponse strips the <ListBucketResult>
+    // root wrapper; fall back to the wrapped form for safety.
     const objects: S3Object[] = []
-    const listResult = result?.ListBucketResult
+    const listResult = result?.ListBucketResult ?? result
 
     if (listResult?.Contents) {
       const items = Array.isArray(listResult.Contents) ? listResult.Contents : [listResult.Contents]
