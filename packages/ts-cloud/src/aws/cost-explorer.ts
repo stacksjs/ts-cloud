@@ -3,9 +3,14 @@
  * Direct JSON-RPC calls (no AWS SDK / CLI dependency).
  *
  * Endpoint is global but lives in us-east-1.
+ *
+ * Cost Explorer requests are billed at $0.01 each, so getCostByService is
+ * served from a filesystem cache by default. Pass `useCache: false` to bypass.
  */
 
 import { AWSClient } from './client'
+import type { CacheHit, CostCacheKey } from './cost-explorer-cache'
+import { loadCache, saveCache } from './cost-explorer-cache'
 import { resolveCredentials } from './credentials'
 
 export interface ServiceCost {
@@ -14,10 +19,21 @@ export interface ServiceCost {
   unit: string
 }
 
+export interface CostExplorerOptions {
+  useCache?: boolean
+}
+
 export class CostExplorerClient {
   private client: AWSClient
+  private profile: string | undefined
+  private useCache: boolean
 
-  constructor(profile?: string) {
+  /** Set after each call so callers can render a "(cached, NNN seconds old)" hint. */
+  public lastCacheAgeSeconds: number | null = null
+
+  constructor(profile?: string, options?: CostExplorerOptions) {
+    this.profile = profile
+    this.useCache = options?.useCache ?? true
     this.client = new AWSClient(resolveCredentials(profile))
   }
 
@@ -30,6 +46,19 @@ export class CostExplorerClient {
     granularity?: 'DAILY' | 'MONTHLY'
   }): Promise<ServiceCost[]> {
     const { start, end, granularity = 'MONTHLY' } = params
+    const metrics = ['UnblendedCost']
+    const groupBy = [{ Type: 'DIMENSION', Key: 'SERVICE' }]
+
+    const cacheKey: CostCacheKey = { start, end, granularity, metrics, groupBy }
+
+    if (this.useCache) {
+      const hit: CacheHit<ServiceCost[]> | null = loadCache<ServiceCost[]>(this.profile, cacheKey)
+      if (hit) {
+        this.lastCacheAgeSeconds = hit.ageSeconds
+        return hit.response
+      }
+    }
+    this.lastCacheAgeSeconds = null
 
     const result = await this.client.request({
       service: 'ce',
@@ -43,13 +72,13 @@ export class CostExplorerClient {
       body: JSON.stringify({
         TimePeriod: { Start: start, End: end },
         Granularity: granularity,
-        Metrics: ['UnblendedCost'],
-        GroupBy: [{ Type: 'DIMENSION', Key: 'SERVICE' }],
+        Metrics: metrics,
+        GroupBy: groupBy,
       }),
     })
 
     const groups = result?.ResultsByTime?.[0]?.Groups ?? []
-    return groups
+    const services: ServiceCost[] = groups
       .map((g: any): ServiceCost => ({
         service: g.Keys?.[0] ?? 'Unknown',
         amount: Number.parseFloat(g.Metrics?.UnblendedCost?.Amount ?? '0'),
@@ -57,5 +86,11 @@ export class CostExplorerClient {
       }))
       .filter((g: ServiceCost) => g.amount > 0)
       .sort((a: ServiceCost, b: ServiceCost) => b.amount - a.amount)
+
+    if (this.useCache) {
+      saveCache(this.profile, cacheKey, services)
+    }
+
+    return services
   }
 }

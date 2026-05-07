@@ -1,5 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
 import { CostExplorerClient } from '../../src/aws/cost-explorer'
+import { cacheLocation, clearCache } from '../../src/aws/cost-explorer-cache'
 import { S3Client } from '../../src/aws/s3'
 import * as cli from '../../src/utils/cli'
 
@@ -39,17 +40,21 @@ export function registerCostCommands(app: CLI): void {
   app
     .command('cost:analyze', 'Rank AWS services by cost for the last full month')
     .option('--output', 'Also write a markdown report to ./aws.md')
-    .action(async (options?: { profile?: string, output?: boolean }) => {
+    .option('--no-cache', 'Skip the local response cache (always hit AWS — costs $0.01)')
+    .action(async (options?: { profile?: string, output?: boolean, cache?: boolean }) => {
       const profile = options?.profile
+      // clapp turns --no-cache into `cache: false`; default to true.
+      const useCache = options?.cache !== false
       const { start, end, label } = lastFullMonthRange()
       cli.header(`Cost Analysis — ${label}${profile ? ` (profile: ${profile})` : ''}`)
 
       const spinner = new cli.Spinner('Querying AWS Cost Explorer...')
       spinner.start()
 
+      const ceClient = new CostExplorerClient(profile, { useCache })
       let services: Awaited<ReturnType<CostExplorerClient['getCostByService']>>
       try {
-        services = await new CostExplorerClient(profile).getCostByService({ start, end })
+        services = await ceClient.getCostByService({ start, end })
       }
       catch (err: any) {
         spinner.stop()
@@ -93,6 +98,10 @@ export function registerCostCommands(app: CLI): void {
       cli.table(['Service', 'Resources', 'Cost', '% of Total'], rows)
       cli.info(`\nTotal: ${formatUSD(total)} across ${services.length} service${services.length === 1 ? '' : 's'}`)
 
+      if (ceClient.lastCacheAgeSeconds !== null) {
+        cli.info(`(cached, ${ceClient.lastCacheAgeSeconds}s old — pass --no-cache to refresh)`)
+      }
+
       // Sanity hint: non-trivial S3 spend with 0 visible buckets usually means
       // the calling identity is in the org's payer/management account — billing
       // rolls up but the workload buckets live in a member account.
@@ -108,6 +117,16 @@ export function registerCostCommands(app: CLI): void {
       }
     })
 
+  app
+    .command('cost:cache:clear', 'Wipe the local Cost Explorer response cache')
+    .option('--all', 'Wipe entries for every profile (default: just the current profile)')
+    .action(async (options?: { profile?: string, all?: boolean }) => {
+      const scope = options?.all ? undefined : options?.profile
+      const before = cacheLocation(scope)
+      const result = clearCache(scope)
+      cli.info(`Cleared ${result.deletedFiles} cached response${result.deletedFiles === 1 ? '' : 's'} for ${result.scope}`)
+      cli.info(`(${before})`)
+    })
 
   app
     .command('cost', 'Show estimated monthly cost')
