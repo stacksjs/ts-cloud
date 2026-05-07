@@ -49,6 +49,7 @@ const config: BunPressConfig = {
       text: 'Features',
       items: [
         { text: 'AWS Resources', link: '/features/aws' },
+        { text: 'Cost Analysis', link: '/features/cost' },
         { text: 'State Management', link: '/features/state' },
         { text: 'Multi-Region', link: '/features/multi-region' },
         { text: 'Environments', link: '/features/environments' },
