@@ -1,3 +1,38 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.10...v0.2.11)
+
+### 🚀 Features
+
+- **cost**: cache Cost Explorer responses on disk to skip $0.01/req billing ([76316e2](https://github.com/stacksjs/ts-cloud/commit/76316e2)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **cost**: add --output flag to cost:analyze (writes ./aws.md) ([d8783dc](https://github.com/stacksjs/ts-cloud/commit/d8783dc)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **cli**: wire --profile into cost:analyze, fix clapp colon-command routing ([b4c4f0a](https://github.com/stacksjs/ts-cloud/commit/b4c4f0a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **cost**: add cost:analyze command ([32364cc](https://github.com/stacksjs/ts-cloud/commit/32364cc)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- route api origin to app port ([d827687](https://github.com/stacksjs/ts-cloud/commit/d827687)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cost**: replace mock-data stubs with 'not implemented' warnings ([88191b8](https://github.com/stacksjs/ts-cloud/commit/88191b8)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **s3**: unwrap XML root so list/listBuckets actually return results ([fd6a213](https://github.com/stacksjs/ts-cloud/commit/fd6a213)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **s3**: respect configured profile in all credential paths ([6dbdc50](https://github.com/stacksjs/ts-cloud/commit/6dbdc50)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 📚 Documentation
+
+- **cost**: add features/cost.md covering cost:analyze + cache + status ([7211d73](https://github.com/stacksjs/ts-cloud/commit/7211d73)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🤖 Continuous Integration
+
+- build workspace before running tests ([8d4f1f8](https://github.com/stacksjs/ts-cloud/commit/8d4f1f8)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.11 ([6989d4f](https://github.com/stacksjs/ts-cloud/commit/6989d4f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: bump @stacksjs/clapp to 0.2.8 + drop colon-command shim ([84ab03f](https://github.com/stacksjs/ts-cloud/commit/84ab03f)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- refresh bun.lock to pick up bun-plugin-dtsx@0.9.18 ([afb6d51](https://github.com/stacksjs/ts-cloud/commit/afb6d51)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.9...v0.2.10)
 
 ### 🐛 Bug Fixes
