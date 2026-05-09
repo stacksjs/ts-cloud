@@ -113,7 +113,7 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     ])
   })
 
-  it('opens 80/443 plus the SSR site port in the security group, but NOT 22', () => {
+  it('opens 80/443 plus the API and SSR site ports in the security group, but NOT 22', () => {
     const template = generate({
       ...baseConfig,
       sites: {
@@ -137,7 +137,89 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
 
     expect(ingressPorts).toContain(80)
     expect(ingressPorts).toContain(443)
+    expect(ingressPorts).toContain(3008)
     expect(ingressPorts).toContain(4000)
+  })
+
+  it('routes the public /api/* CloudFront origin to the API port', () => {
+    const template = generate({
+      ...baseConfig,
+      sites: {
+        public: {
+          domain: 'my-app.example.com',
+          root: 'dist',
+        },
+      },
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        storage: {
+          public: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: 'index.html',
+            },
+          },
+        },
+        ssl: {
+          enabled: true,
+          certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/test',
+        },
+      },
+    })
+
+    const distribution = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::CloudFront::Distribution',
+    ) as any
+    const origins = distribution.Properties.DistributionConfig.Origins
+    const apiOrigin = origins.find((origin: any) => String(origin.Id).includes('-api'))
+
+    expect(apiOrigin.CustomOriginConfig.HTTPPort).toBe(3008)
+    expect(distribution.Properties.DistributionConfig.CacheBehaviors).toContainEqual(
+      expect.objectContaining({
+        PathPattern: '/api/*',
+        TargetOriginId: apiOrigin.Id,
+      }),
+    )
+  })
+
+  it('honors infrastructure.api.port for the public API CloudFront origin', () => {
+    const template = generate({
+      ...baseConfig,
+      sites: {
+        public: {
+          domain: 'my-app.example.com',
+          root: 'dist',
+        },
+      },
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        api: { port: 4010 },
+        storage: {
+          public: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: 'index.html',
+            },
+          },
+        },
+        ssl: {
+          enabled: true,
+          certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/test',
+        },
+      },
+    })
+
+    const sg = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::EC2::SecurityGroup',
+    ) as any
+    const distribution = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::CloudFront::Distribution',
+    ) as any
+    const ingressPorts = (sg.Properties.SecurityGroupIngress as any[]).map(i => i.FromPort)
+    const apiOrigin = distribution.Properties.DistributionConfig.Origins.find((origin: any) => String(origin.Id).includes('-api'))
+
+    expect(ingressPorts).toContain(4010)
+    expect(apiOrigin.CustomOriginConfig.HTTPPort).toBe(4010)
   })
 
   it('reopens port 22 when compute.allowSsh is explicitly true', () => {

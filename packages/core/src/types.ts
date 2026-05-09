@@ -3129,6 +3129,12 @@ export const RealtimePresets: {
 export interface ApiConfig {
   enabled?: boolean
   name?: string
+  /**
+   * Origin port for app API traffic routed through the public CDN.
+   * Defaults to 3008 so APIs do not contend with HTTP services such as
+   * mail or ACME challenge responders on port 80.
+   */
+  port?: number
 }
 
 /**

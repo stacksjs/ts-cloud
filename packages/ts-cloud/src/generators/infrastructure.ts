@@ -124,6 +124,14 @@ export class InfrastructureGenerator {
     return true
   }
 
+  private resolveApiOriginPort(): number {
+    const configuredPort = (this.mergedConfig.infrastructure as any)?.api?.port
+      ?? (this.mergedConfig as any).ports?.api
+
+    const port = Number(configuredPort || 3008)
+    return Number.isFinite(port) && port > 0 ? port : 3008
+  }
+
   /**
    * Generate complete infrastructure
    * Auto-detects what to generate based on configuration
@@ -943,7 +951,7 @@ export class InfrastructureGenerator {
       // Determine allowed ports — add SMTP/IMAP ports when email server is enabled
       const emailConfig = this.mergedConfig.infrastructure?.email
       const emailServerEnabled = !!(emailConfig?.server?.enabled)
-      const ports = [22, 80, 443]
+      const ports = [22, 80, 443, this.resolveApiOriginPort()]
       if (emailServerEnabled) {
         ports.push(25, 465, 587, 143, 993)
       }
@@ -1032,6 +1040,7 @@ export class InfrastructureGenerator {
     const sitePorts = allSites
       .map(([, s]: [string, any]) => s.port as number | undefined)
       .filter((p): p is number => typeof p === 'number' && ![80, 443].includes(p))
+    const apiOriginPort = this.resolveApiOriginPort()
 
     // Provision the deploy staging bucket
     const deployBucketLogicalId = `${slug}${env}DeployBucket`.replace(/[^a-zA-Z0-9]/g, '')
@@ -1080,6 +1089,7 @@ export class InfrastructureGenerator {
         ...(compute.allowSsh ? [22] : []),
         80,
         443,
+        apiOriginPort,
         ...sitePorts,
       ],
     })
@@ -1481,11 +1491,13 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                 ]],
               }
 
+              const apiOriginPort = this.resolveApiOriginPort()
+
               origins.push({
                 Id: apiOriginId,
                 DomainName: originDomainName,
                 CustomOriginConfig: {
-                  HTTPPort: 80,
+                  HTTPPort: apiOriginPort,
                   HTTPSPort: 443,
                   OriginProtocolPolicy: 'http-only', // Bun on EC2 handles HTTP from CloudFront
                   OriginSSLProtocols: ['TLSv1.2'],
