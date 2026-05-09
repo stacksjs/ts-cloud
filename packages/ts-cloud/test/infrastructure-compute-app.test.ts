@@ -222,6 +222,75 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     expect(apiOrigin.CustomOriginConfig.HTTPPort).toBe(4010)
   })
 
+  it('mounts docs and blog website buckets under the public CloudFront distribution', () => {
+    const template = generate({
+      ...baseConfig,
+      sites: {
+        public: {
+          domain: 'my-app.example.com',
+          root: 'dist',
+        },
+      },
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        storage: {
+          public: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: '404.html',
+            },
+          },
+          docs: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: '404.html',
+            },
+            path: '/docs',
+          },
+          blog: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: '404.html',
+            },
+            mountPath: '/blog',
+          },
+        },
+        ssl: {
+          enabled: true,
+          certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/test',
+        },
+      },
+    })
+
+    const distributions = Object.values(template.Resources).filter(
+      (r: any) => r.Type === 'AWS::CloudFront::Distribution',
+    ) as any[]
+    expect(distributions).toHaveLength(1)
+
+    const distributionConfig = distributions[0].Properties.DistributionConfig
+    expect(distributionConfig.Aliases).toEqual(['my-app.example.com'])
+    expect(distributionConfig.Aliases).not.toContain('docs.my-app.example.com')
+    expect(distributionConfig.Aliases).not.toContain('blog.my-app.example.com')
+
+    const origins = distributionConfig.Origins.map((origin: any) => origin.Id)
+    expect(origins).toContain('S3-my-app-production-public')
+    expect(origins).toContain('S3-my-app-production-docs')
+    expect(origins).toContain('S3-my-app-production-blog')
+
+    const pathPatterns = distributionConfig.CacheBehaviors.map((behavior: any) => behavior.PathPattern)
+    expect(pathPatterns).toContain('/docs')
+    expect(pathPatterns).toContain('/docs/*')
+    expect(pathPatterns).toContain('/blog')
+    expect(pathPatterns).toContain('/blog/*')
+
+    const recordNames = Object.values(template.Resources)
+      .filter((r: any) => r.Type === 'AWS::Route53::RecordSet')
+      .map((r: any) => r.Properties.Name)
+    expect(recordNames).toContain('my-app.example.com')
+    expect(recordNames).not.toContain('docs.my-app.example.com')
+    expect(recordNames).not.toContain('blog.my-app.example.com')
+  })
+
   it('reopens port 22 when compute.allowSsh is explicitly true', () => {
     const template = generate({
       ...baseConfig,

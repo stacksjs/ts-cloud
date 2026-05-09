@@ -132,6 +132,26 @@ export class InfrastructureGenerator {
     return Number.isFinite(port) && port > 0 ? port : 3008
   }
 
+  private normalizeMountPath(config: { path?: string, mountPath?: string } | undefined): string | undefined {
+    const rawPath = config?.mountPath || config?.path
+    if (!rawPath || rawPath === '/') return undefined
+
+    const normalized = `/${rawPath}`.replace(/\/+/g, '/').replace(/\/$/, '')
+    return normalized === '/' ? undefined : normalized
+  }
+
+  private storageBucketLogicalId(slug: string, env: typeof this.environment, name: string): string {
+    return `${slug}-${env}-s3-${name}`
+      .split(/[^a-zA-Z0-9]+/)
+      .filter(Boolean)
+      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .join('')
+  }
+
+  private pathMountRewriteFunctionCode(mountPath: string): string {
+    return `function handler(event) { var request = event.request; var prefix = ${JSON.stringify(mountPath)}; var uri = request.uri; if (uri === prefix) { uri = '/'; } else if (uri.indexOf(prefix + '/') === 0) { uri = uri.substring(prefix.length); } if (uri === '' || uri === '/') { request.uri = '/index.html'; return request; } if (uri.endsWith('/')) { request.uri = uri + 'index.html'; return request; } var lastSegment = uri.substring(uri.lastIndexOf('/') + 1); if (lastSegment.indexOf('.') === -1) { request.uri = uri + '/index.html'; return request; } request.uri = uri; return request; }`
+  }
+
   /**
    * Generate complete infrastructure
    * Auto-detects what to generate based on configuration
@@ -1267,7 +1287,7 @@ else {
       cfCertificateArn = sslConfig.certificateArn
     }
     else if (sslConfig?.enabled && domain && hostedZoneId) {
-      // Auto-create certificate covering the domain + www + docs subdomains
+      // Auto-create certificate covering the configured website domains.
       const sslDomains = sslConfig.domains || [domain]
       const primaryDomain = sslDomains[0]
       const subdomains = sslDomains.slice(1).map((d: string) => {
@@ -1276,11 +1296,6 @@ else {
         }
         return d
       })
-
-      // Add docs subdomain if docs storage is configured
-      if (this.mergedConfig.infrastructure?.storage?.docs && !subdomains.includes('docs')) {
-        subdomains.push('docs')
-      }
 
       const { certificate, logicalId: certLogicalId } = Security.createCertificate({
         domain: primaryDomain,
@@ -1321,6 +1336,15 @@ else {
           },
         } as any)
       }
+
+      const pathMountedWebsiteBuckets = Object.entries(this.mergedConfig.infrastructure.storage)
+        .map(([bucketName, bucketConfig]) => ({
+          name: bucketName,
+          config: bucketConfig,
+          mountPath: this.normalizeMountPath(bucketConfig),
+          logicalId: this.storageBucketLogicalId(slug, env, bucketName),
+        }))
+        .filter(bucket => bucket.name !== 'public' && bucket.config.website && bucket.mountPath)
 
       for (const [name, storageConfig] of Object.entries(this.mergedConfig.infrastructure.storage)) {
         // For website buckets served via CloudFront, don't make them public directly
@@ -1364,7 +1388,8 @@ else {
         // ========================================
         // CloudFront distribution for website buckets
         // ========================================
-        if (serveViaCloudFront && sharedOacLogicalId && domain) {
+        const mountPath = this.normalizeMountPath(storageConfig)
+        if (serveViaCloudFront && sharedOacLogicalId && domain && !(mountPath && name !== 'public')) {
           const distLogicalId = `${slug}${env}${name}CDN`.replace(/[^a-zA-Z0-9]/g, '')
 
           // Determine aliases for this bucket
@@ -1520,6 +1545,52 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                 OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
               })
             }
+
+            for (const mountedBucket of pathMountedWebsiteBuckets) {
+              const mountedOriginId = `S3-${slug}-${env}-${mountedBucket.name}`
+              const mountedFunctionLogicalId = `${slug}${env}${mountedBucket.name}PathMountRewrite`.replace(/[^a-zA-Z0-9]/g, '')
+
+              this.builder.addResource(mountedFunctionLogicalId, {
+                Type: 'AWS::CloudFront::Function',
+                Properties: {
+                  Name: `${slug}-${env}-${mountedBucket.name}-path-mount-rewrite`,
+                  AutoPublish: true,
+                  FunctionConfig: {
+                    Comment: `Path mount rewrite for ${slug} ${env} ${mountedBucket.name} at ${mountedBucket.mountPath}`,
+                    Runtime: 'cloudfront-js-2.0',
+                  },
+                  FunctionCode: this.pathMountRewriteFunctionCode(mountedBucket.mountPath!),
+                },
+              } as any)
+
+              origins.push({
+                Id: mountedOriginId,
+                DomainName: { 'Fn::Sub': `\${${mountedBucket.logicalId}}.s3.${region}.amazonaws.com` },
+                OriginPath: '',
+                S3OriginConfig: {
+                  OriginAccessIdentity: '',
+                },
+                OriginAccessControlId: { Ref: sharedOacLogicalId },
+              })
+
+              extraDependsOn.push(mountedBucket.logicalId, mountedFunctionLogicalId)
+
+              for (const pathPattern of [mountedBucket.mountPath!, `${mountedBucket.mountPath}/*`]) {
+                cacheBehaviors.push({
+                  PathPattern: pathPattern,
+                  TargetOriginId: mountedOriginId,
+                  ViewerProtocolPolicy: 'redirect-to-https',
+                  AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                  CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                  Compress: true,
+                  CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                  FunctionAssociations: [{
+                    EventType: 'viewer-request',
+                    FunctionARN: { 'Fn::GetAtt': [mountedFunctionLogicalId, 'FunctionARN'] },
+                  }],
+                })
+              }
+            }
           }
 
           const distribution: any = {
@@ -1591,6 +1662,36 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
               },
             },
           } as any)
+
+          if (name === 'public') {
+            for (const mountedBucket of pathMountedWebsiteBuckets) {
+              const mountedPolicyLogicalId = `${mountedBucket.logicalId}CloudFrontPolicy`
+              this.builder.addResource(mountedPolicyLogicalId, {
+                Type: 'AWS::S3::BucketPolicy',
+                DependsOn: [mountedBucket.logicalId, distLogicalId],
+                Properties: {
+                  Bucket: { Ref: mountedBucket.logicalId },
+                  PolicyDocument: {
+                    Version: '2012-10-17',
+                    Statement: [{
+                      Sid: 'AllowCloudFrontServicePrincipal',
+                      Effect: 'Allow',
+                      Principal: {
+                        Service: 'cloudfront.amazonaws.com',
+                      },
+                      Action: 's3:GetObject',
+                      Resource: { 'Fn::Sub': `arn:aws:s3:::\${${mountedBucket.logicalId}}/*` },
+                      Condition: {
+                        StringEquals: {
+                          'AWS:SourceArn': { 'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}` },
+                        },
+                      },
+                    }],
+                  },
+                },
+              } as any)
+            }
+          }
 
           // Track for DNS record creation
           if (aliases.length > 0) {

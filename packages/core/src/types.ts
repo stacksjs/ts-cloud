@@ -897,6 +897,13 @@ export interface StorageItemConfig {
    */
   aliases?: string[]
   /**
+   * Mount this website bucket under the main site CloudFront distribution instead
+   * of provisioning a dedicated distribution/subdomain.
+   * Example: '/docs' serves this bucket at https://example.com/docs.
+   */
+  path?: string
+  mountPath?: string
+  /**
    * Whether this bucket serves a single-page application (SPA).
    * When true: 403/404 errors return index.html with status 200 (for client-side routing).
    * When false (default): A CloudFront Function rewrites extensionless URLs to .html files,
