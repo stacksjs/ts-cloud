@@ -1583,7 +1583,11 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                   AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
                   CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
                   Compress: true,
-                  CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+                  // Path-mounted buckets can rewrite different mount roots to the
+                  // same origin URI (for example /docs and /blog -> /index.html).
+                  // Disable CloudFront object caching for these HTML-heavy mounts
+                  // so sibling origins cannot poison each other's cache entries.
+                  CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
                   FunctionAssociations: [{
                     EventType: 'viewer-request',
                     FunctionARN: { 'Fn::GetAtt': [mountedFunctionLogicalId, 'FunctionARN'] },
