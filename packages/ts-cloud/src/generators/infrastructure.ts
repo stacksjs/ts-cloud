@@ -148,8 +148,8 @@ export class InfrastructureGenerator {
       .join('')
   }
 
-  private pathMountRewriteFunctionCode(mountPath: string): string {
-    return `function handler(event) { var request = event.request; var prefix = ${JSON.stringify(mountPath)}; var uri = request.uri; if (uri === prefix) { uri = '/'; } else if (uri.indexOf(prefix + '/') === 0) { uri = uri.substring(prefix.length); } if (uri === '' || uri === '/') { request.uri = '/index.html'; return request; } if (uri.endsWith('/')) { request.uri = uri + 'index.html'; return request; } var lastSegment = uri.substring(uri.lastIndexOf('/') + 1); if (lastSegment.indexOf('.') === -1) { request.uri = uri + '/index.html'; return request; } request.uri = uri; return request; }`
+  private pathMountRewriteFunctionCode(mountPath: string, rewriteStyle: 'directory' | 'flat' = 'directory'): string {
+    return `function handler(event) { var request = event.request; var prefix = ${JSON.stringify(mountPath)}; var rewriteStyle = ${JSON.stringify(rewriteStyle)}; var uri = request.uri; if (uri === prefix) { uri = '/'; } else if (uri.indexOf(prefix + '/') === 0) { uri = uri.substring(prefix.length); } if (uri === '' || uri === '/') { request.uri = '/index.html'; return request; } if (uri.endsWith('/')) { request.uri = uri + 'index.html'; return request; } var lastSegment = uri.substring(uri.lastIndexOf('/') + 1); if (lastSegment.indexOf('.') === -1) { request.uri = rewriteStyle === 'flat' ? uri + '.html' : uri + '/index.html'; return request; } request.uri = uri; return request; }`
   }
 
   /**
@@ -1342,6 +1342,7 @@ else {
           name: bucketName,
           config: bucketConfig,
           mountPath: this.normalizeMountPath(bucketConfig),
+          rewriteStyle: bucketConfig.pathRewriteStyle || 'directory',
           logicalId: this.storageBucketLogicalId(slug, env, bucketName),
         }))
         .filter(bucket => bucket.name !== 'public' && bucket.config.website && bucket.mountPath)
@@ -1559,7 +1560,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                     Comment: `Path mount rewrite for ${slug} ${env} ${mountedBucket.name} at ${mountedBucket.mountPath}`,
                     Runtime: 'cloudfront-js-2.0',
                   },
-                  FunctionCode: this.pathMountRewriteFunctionCode(mountedBucket.mountPath!),
+                  FunctionCode: this.pathMountRewriteFunctionCode(mountedBucket.mountPath!, mountedBucket.rewriteStyle),
                 },
               } as any)
 

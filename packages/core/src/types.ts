@@ -904,6 +904,15 @@ export interface StorageItemConfig {
   path?: string
   mountPath?: string
   /**
+   * URL rewrite style for path-mounted website buckets.
+   *
+   * - directory: /docs/guide/get-started -> /guide/get-started/index.html
+   * - flat: /docs/guide/get-started -> /guide/get-started.html
+   *
+   * Defaults to directory, which matches most blog/static-export outputs.
+   */
+  pathRewriteStyle?: 'directory' | 'flat'
+  /**
    * Whether this bucket serves a single-page application (SPA).
    * When true: 403/404 errors return index.html with status 200 (for client-side routing).
    * When false (default): A CloudFront Function rewrites extensionless URLs to .html files,

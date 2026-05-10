@@ -246,6 +246,7 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
               errorDocument: '404.html',
             },
             path: '/docs',
+            pathRewriteStyle: 'flat',
           },
           blog: {
             website: {
@@ -282,6 +283,18 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     expect(pathPatterns).toContain('/docs/*')
     expect(pathPatterns).toContain('/blog')
     expect(pathPatterns).toContain('/blog/*')
+
+    const functions = Object.values(template.Resources).filter(
+      (r: any) => r.Type === 'AWS::CloudFront::Function',
+    ) as any[]
+    expect(functions.some((fn: any) =>
+      fn.Properties.FunctionCode.includes('var rewriteStyle = "flat"')
+      && fn.Properties.FunctionCode.includes(`uri + '.html'`),
+    )).toBe(true)
+    expect(functions.some((fn: any) =>
+      fn.Properties.FunctionCode.includes('var rewriteStyle = "directory"')
+      && fn.Properties.FunctionCode.includes(`uri + '/index.html'`),
+    )).toBe(true)
 
     const recordNames = Object.values(template.Resources)
       .filter((r: any) => r.Type === 'AWS::Route53::RecordSet')
