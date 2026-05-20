@@ -3,6 +3,7 @@
  * Direct API calls without AWS SDK dependency
  */
 
+import type { AWSCredentials } from './client'
 import { AWSClient } from './client'
 
 export interface EmailIdentity {
@@ -34,9 +35,17 @@ export class SESClient {
   private client: AWSClient
   private region: string
 
-  constructor(region: string = 'us-east-1') {
+  /**
+   * @param region - AWS region (defaults to `us-east-1`)
+   * @param credentials - Optional explicit credentials. When omitted, AWSClient
+   *   falls back to the env-var chain (`AWS_ACCESS_KEY_ID`, etc.) and then to
+   *   `~/.aws/credentials`. Pass explicit creds when the caller has them
+   *   under a non-default config key (e.g. `services.ses.credentials`) so a
+   *   per-service identity doesn't have to overload the global env vars.
+   */
+  constructor(region: string = 'us-east-1', credentials?: AWSCredentials) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(credentials)
   }
 
   /**
