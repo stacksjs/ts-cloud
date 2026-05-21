@@ -132,6 +132,53 @@ export class InfrastructureGenerator {
     return Number.isFinite(port) && port > 0 ? port : 3008
   }
 
+  /**
+   * Build a Caddyfile from the sites config. Returns undefined when no
+   * site has a `domain` (Caddy install is then skipped — useful for
+   * staging EC2 boxes accessed by raw IP).
+   *
+   * Sites sharing a `domain` collapse into a single block. Within that
+   * block, sites with an explicit `path` get `handle <path>` blocks
+   * (ordered most-specific first so prefix matches take priority); a
+   * site with no `path` (or `path: '/'`) becomes the bare catch-all
+   * `handle` at the end.
+   */
+  private buildCaddyfile(allSites: Array<[string, any]>): string | undefined {
+    const sitesWithDomain = allSites.filter(([, s]) => typeof s.domain === 'string' && s.domain && typeof s.port === 'number')
+    if (sitesWithDomain.length === 0) return undefined
+
+    const byDomain = new Map<string, Array<{ port: number, path?: string }>>()
+    for (const [, site] of sitesWithDomain) {
+      const list = byDomain.get(site.domain) ?? []
+      list.push({ port: site.port, path: site.path })
+      byDomain.set(site.domain, list)
+    }
+
+    const blocks: string[] = []
+    for (const [domain, sites] of byDomain) {
+      // Specific paths first; the catch-all (no path or '/') goes last
+      const sorted = [...sites].sort((a, b) => {
+        const aIsCatchAll = !a.path || a.path === '/'
+        const bIsCatchAll = !b.path || b.path === '/'
+        if (aIsCatchAll && !bIsCatchAll) return 1
+        if (!aIsCatchAll && bIsCatchAll) return -1
+        return (b.path?.length ?? 0) - (a.path?.length ?? 0)
+      })
+
+      const handles = sorted.map((s) => {
+        const isCatchAll = !s.path || s.path === '/'
+        const inner = `reverse_proxy localhost:${s.port}`
+        return isCatchAll
+          ? `  handle {\n    ${inner}\n  }`
+          : `  handle ${s.path} {\n    ${inner}\n  }`
+      })
+
+      blocks.push(`${domain} {\n${handles.join('\n')}\n}`)
+    }
+
+    return blocks.join('\n\n')
+  }
+
   private normalizeMountPath(config: { path?: string, mountPath?: string } | undefined): string | undefined {
     const rawPath = config?.mountPath || config?.path
     if (!rawPath || rawPath === '/') return undefined
@@ -1047,6 +1094,13 @@ export class InfrastructureGenerator {
       this.generateNetworkInfrastructure(slug, env)
     }
 
+    // Build a Caddyfile from the sites config when any site has a domain.
+    // Caddy goes in front of the systemd-managed app services and handles
+    // TLS termination + path/host routing. Sites sharing a `domain` get
+    // grouped into one block, ordered with explicit `path`s first and the
+    // catch-all (`/` or unset) last so prefix matches win.
+    const caddyfile = this.buildCaddyfile(allSites)
+
     // Bootstrap script — app-agnostic. Per-site systemd services are
     // written by the deploy command at deploy time, not at boot.
     const userData = Compute.UserData.generateBunAppScript({
@@ -1054,6 +1108,7 @@ export class InfrastructureGenerator {
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: dbEngine,
+      caddyfile,
     })
 
     // Open every port that any site needs

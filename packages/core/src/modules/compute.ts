@@ -2742,12 +2742,20 @@ systemctl enable stacks-api
       runtimeVersion?: string
       systemPackages?: string[]
       database?: 'sqlite' | 'mysql' | 'postgres'
+      /**
+       * Caddyfile content. When set, installs Caddy and configures it as
+       * a reverse proxy + TLS terminator using the supplied Caddyfile.
+       * Caddy auto-fetches Let's Encrypt certs for any site block whose
+       * address is a public hostname pointed at this instance.
+       */
+      caddyfile?: string
     }): string => {
       const {
         runtime = 'bun',
         runtimeVersion = 'latest',
         systemPackages = [],
         database,
+        caddyfile,
       } = options
 
       // Auto-add a database client when a database engine is configured.
@@ -2819,7 +2827,62 @@ ln -sf /root/.deno/bin/deno /usr/local/bin/deno
       script += `
 # Reserved root for site deploys (each site lands at /var/www/<site>/)
 mkdir -p /var/www
+`
 
+      // Caddy install + Caddyfile. Uses the official static binary (no
+      // distro repo dependency — works the same on AL2023, Ubuntu, etc.).
+      // Runs as a dedicated `caddy` user; binds :80/:443 via CAP_NET_BIND_SERVICE.
+      if (caddyfile) {
+        const escaped = caddyfile.replace(/\$/g, '\\$')
+        script += `
+# Caddy (reverse proxy + automatic TLS via Let's Encrypt)
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=$\{ARCH}" -o /usr/local/bin/caddy
+chmod +x /usr/local/bin/caddy
+
+# Dedicated service account
+getent group caddy >/dev/null || groupadd --system caddy
+getent passwd caddy >/dev/null || useradd --system --gid caddy \\
+  --create-home --home-dir /var/lib/caddy \\
+  --shell /usr/sbin/nologin --comment "Caddy web server" caddy
+
+mkdir -p /etc/caddy /var/lib/caddy /var/log/caddy
+chown -R caddy:caddy /var/lib/caddy /var/log/caddy
+
+cat > /etc/systemd/system/caddy.service <<'CADDY_UNIT_EOF'
+[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+CADDY_UNIT_EOF
+
+cat > /etc/caddy/Caddyfile <<'CADDY_CONFIG_EOF'
+${escaped}
+CADDY_CONFIG_EOF
+
+systemctl daemon-reload
+systemctl enable caddy
+systemctl start caddy
+`
+      }
+
+      script += `
 echo "ts-cloud bootstrap complete — instance is ready for site deploys"
 `
 
