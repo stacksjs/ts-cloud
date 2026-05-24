@@ -61,6 +61,7 @@ export interface RunRemoteDeployOptions {
   commands: string[]
   comment?: string
   timeoutSeconds?: number
+  tags?: Record<string, string>
 }
 
 /**
@@ -111,11 +112,10 @@ export interface DeploySiteReleaseResult {
 
 /**
  * Resolve the configured cloud provider. Defaults to AWS for backward compatibility.
+ * Environment-based auto-detection is handled when constructing the Hetzner driver.
  */
 export function resolveCloudProvider(config: CloudConfig): CloudProviderName {
   if (config.cloud?.provider) return config.cloud.provider
-  if (config.hetzner?.apiToken || process.env.HCLOUD_TOKEN || process.env.HETZNER_API_TOKEN) {
-    return 'hetzner'
-  }
+  if (config.hetzner?.apiToken) return 'hetzner'
   return 'aws'
 }
