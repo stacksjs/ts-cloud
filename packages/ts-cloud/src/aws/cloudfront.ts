@@ -163,22 +163,25 @@ export class CloudFrontClient {
     // The response structure is: DistributionList.Items.DistributionSummary
     const distList = result.DistributionList || result
     const items = distList.Items
-    const summaryData = items?.DistributionSummary
 
-    if (summaryData) {
-      const summaries = Array.isArray(summaryData)
-        ? summaryData
-        : [summaryData]
-
-      distributions.push(...summaries.map((item: any) => ({
-        Id: item.Id,
-        ARN: item.ARN,
-        Status: item.Status,
-        DomainName: item.DomainName,
-        Aliases: item.Aliases || undefined,
-        Enabled: item.Enabled === 'true' || item.Enabled === true,
-      })))
+    let summaries: any[] = []
+    if (Array.isArray(items)) {
+      summaries = items
     }
+    else if (items?.DistributionSummary) {
+      summaries = Array.isArray(items.DistributionSummary)
+        ? items.DistributionSummary
+        : [items.DistributionSummary]
+    }
+
+    distributions.push(...summaries.map((item: any) => ({
+      Id: item.Id,
+      ARN: item.ARN,
+      Status: item.Status,
+      DomainName: item.DomainName,
+      Aliases: item.Aliases || undefined,
+      Enabled: item.Enabled === 'true' || item.Enabled === true,
+    })))
 
     return distributions
   }
@@ -707,6 +710,105 @@ export class CloudFrontClient {
     }
 
     return `<?xml version="1.0" encoding="UTF-8"?>\n<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">\n${Object.entries(config).filter(([k]) => !k.startsWith('@_')).map(([key, val]) => buildXmlElement(key, val, '  ', 'DistributionConfig')).join('')}</DistributionConfig>`
+  }
+
+  /**
+   * Allow POST/PUT/PATCH/DELETE on the default cache behavior (and API cache behaviors).
+   * Required when CloudFront fronts a Bun/Node app on EC2 instead of a static S3 site.
+   */
+  async ensureDynamicHttpMethods(distributionId: string): Promise<boolean> {
+    const getResult = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      returnHeaders: true,
+    })
+
+    const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
+    const currentConfig = getResult.body?.DistributionConfig
+      || getResult.DistributionConfig
+      || getResult.body
+
+    if (!currentConfig) {
+      throw new Error('Failed to get current distribution config')
+    }
+
+    let changed = false
+    const dynamicMethods = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
+
+    const parseAllowedMethods = (allowedMethods: any): string[] => {
+      if (!allowedMethods) return []
+      const items = allowedMethods.Items
+      if (!items) return []
+      if (Array.isArray(items)) return items.map(String)
+      if (typeof items === 'object' && items.Method) {
+        const method = items.Method
+        return Array.isArray(method) ? method.map(String) : [String(method)]
+      }
+      if (items.Item) {
+        return Array.isArray(items.Item) ? items.Item.map(String) : [String(items.Item)]
+      }
+      return []
+    }
+
+    const defaultBehavior = currentConfig.DefaultCacheBehavior
+    if (defaultBehavior) {
+      const allowed = parseAllowedMethods(defaultBehavior.AllowedMethods)
+
+      if (!allowed.includes('POST')) {
+        defaultBehavior.AllowedMethods = {
+          Quantity: dynamicMethods.length,
+          Items: dynamicMethods,
+          CachedMethods: {
+            Quantity: 2,
+            Items: ['GET', 'HEAD'],
+          },
+        }
+        changed = true
+      }
+    }
+
+    const cacheItems = currentConfig.CacheBehaviors?.Items
+    const behaviors = cacheItems
+      ? (Array.isArray(cacheItems) ? cacheItems : [cacheItems])
+      : []
+
+    for (const behavior of behaviors) {
+      const allowed = parseAllowedMethods(behavior.AllowedMethods)
+
+      if (!allowed.includes('POST')) {
+        behavior.AllowedMethods = {
+          Quantity: dynamicMethods.length,
+          Items: dynamicMethods,
+          CachedMethods: {
+            Quantity: 2,
+            Items: ['GET', 'HEAD'],
+          },
+        }
+        changed = true
+      }
+    }
+
+    if (!changed) {
+      return false
+    }
+
+    const configXml = this.buildDistributionConfigXml(currentConfig)
+
+    await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'PUT',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      body: configXml,
+      headers: {
+        'Content-Type': 'application/xml',
+        'If-Match': etag,
+      },
+    })
+
+    return true
   }
 
   /**

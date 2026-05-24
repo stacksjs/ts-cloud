@@ -19,6 +19,7 @@ import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-sit
 import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
+import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -398,6 +399,7 @@ export function registerDeployCommands(app: CLI): void {
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
     .option('--skip-dns-verification', 'Skip DNS provider verification and record creation (use when DNS is already configured)')
     .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
+    .option('--yes', 'Skip confirmation prompts (non-interactive / CI)')
     .action(async (options?: {
       stack?: string
       env?: string
@@ -405,9 +407,11 @@ export function registerDeployCommands(app: CLI): void {
       skipSecurityScan?: boolean
       skipDnsVerification?: boolean
       securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+      yes?: boolean
     }) => {
       cli.header('Deploying Infrastructure')
 
+      const autoConfirm = options?.yes === true || process.env.CI === 'true'
       const environment = (options?.env || 'staging') as 'production' | 'staging' | 'development'
 
       // Load environment-specific .env file BEFORE anything else.
@@ -458,7 +462,7 @@ export function registerDeployCommands(app: CLI): void {
 
           if (dnsProvider) {
             // Deploy static sites with DNS provider (Route53, Cloudflare, Porkbun, GoDaddy)
-            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment)
+            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment, autoConfirm)
             return
           }
         }
@@ -530,7 +534,7 @@ export function registerDeployCommands(app: CLI): void {
         }
 
         // Confirm deployment
-        const confirmed = await cli.confirm('\nDeploy now?', true)
+        const confirmed = autoConfirm || await cli.confirm('\nDeploy now?', true)
         if (!confirmed) {
           cli.info('Deployment cancelled')
           return
@@ -684,6 +688,17 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         // deploy every configured site as a systemd service on the EC2 instance.
         if (config.infrastructure?.compute) {
           await deployAppToCompute(config, environment, region)
+        }
+
+        // When compute serves site domains via CloudFront, ensure POST/auth routes work
+        if (config.infrastructure?.compute && config.sites) {
+          const siteDomains = Object.values(config.sites)
+            .map((site: { domain?: string }) => site.domain)
+            .filter((domain): domain is string => !!domain)
+          if (siteDomains.length > 0) {
+            cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
+            await ensureDynamicMethodsForDomains(siteDomains)
+          }
         }
       }
       catch (error: any) {
@@ -1340,6 +1355,7 @@ async function deployStaticSitesWithExternalDns(
   region: string,
   skipDnsVerification?: boolean,
   environment?: string,
+  autoConfirm = false,
 ): Promise<void> {
   const sites = config.sites || {}
   const siteNames = specificSite ? [specificSite] : Object.keys(sites)
@@ -1452,7 +1468,7 @@ else {
             cli.info('Deploying will update this record to point to AWS CloudFront.')
           }
 
-          const proceed = await cli.confirm(`\nUpdate DNS record to point to AWS CloudFront?`, true)
+          const proceed = autoConfirm || await cli.confirm(`\nUpdate DNS record to point to AWS CloudFront?`, true)
           if (!proceed) {
             cli.info('Deployment cancelled')
             continue

@@ -40,6 +40,11 @@ export interface ExternalDnsStaticSiteConfig {
   /** When true, serves raw files without URL rewriting (for curl | bash install scripts) */
   passthroughUrls?: boolean
   /**
+   * When true, allow POST/PUT/PATCH/DELETE on the default cache behavior.
+   * Use when CloudFront fronts a dynamic app (EC2) rather than static S3 only.
+   */
+  dynamicApp?: boolean
+  /**
    * When true, missing files (S3 403/404) fall through to the index document
    * with a 200 status — required for client-side-routed SPAs.
    *
@@ -76,6 +81,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   errorDocument?: string
   passthroughUrls?: boolean
   singlePageApp?: boolean
+  dynamicApp?: boolean
 }): object {
   const {
     bucketName,
@@ -86,7 +92,15 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     errorDocument = '404.html',
     passthroughUrls = false,
     singlePageApp = false,
+    dynamicApp = false,
   } = config
+
+  const defaultAllowedMethods = dynamicApp
+    ? ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
+    : ['GET', 'HEAD']
+  const defaultCachedMethods = dynamicApp
+    ? ['GET', 'HEAD']
+    : ['GET', 'HEAD']
 
   const resources: Record<string, any> = {}
   const outputs: Record<string, any> = {}
@@ -183,8 +197,8 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     DefaultCacheBehavior: {
       TargetOriginId: `S3-${bucketName}`,
       ViewerProtocolPolicy: 'redirect-to-https',
-      AllowedMethods: ['GET', 'HEAD'],
-      CachedMethods: ['GET', 'HEAD'],
+      AllowedMethods: defaultAllowedMethods,
+      CachedMethods: defaultCachedMethods,
       Compress: true,
       CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // Managed-CachingOptimized
       ...(!passthroughUrls && {
