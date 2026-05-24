@@ -140,7 +140,8 @@ export function registerGenerateCommands(app: CLI): void {
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
-        const stackName = options?.stack || `${config.project.slug}-${environment}`
+        const { resolveProjectStackName } = await import('@ts-cloud/core')
+        const stackName = options?.stack || resolveProjectStackName(config, environment)
         const region = config.project.region || 'us-east-1'
 
         cli.info(`Stack: ${stackName}`)

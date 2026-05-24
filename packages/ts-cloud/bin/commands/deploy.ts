@@ -20,6 +20,7 @@ import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
+import { resolveProjectStackName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -102,7 +103,7 @@ async function deployAppToCompute(
   if (deployable.length === 0) return true
 
   const slug = config.project.slug
-  const stackName = `${slug}-${environment}`
+  const stackName = resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
   const compute = config.infrastructure?.compute || {}
   const runtime: 'bun' | 'node' | 'deno' = compute.runtime || 'bun'
 
@@ -451,20 +452,42 @@ export function registerDeployCommands(app: CLI): void {
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
-        const stackName = options?.stack || `${config.project.slug}-${environment}`
+        const stackName = options?.stack || resolveProjectStackName(config, environment)
         const region = config.project.region || 'us-east-1'
+        const deployInfrastructureStack = config.infrastructure?.deployStack !== false
+        const hasSites = config.sites && Object.keys(config.sites).length > 0
+        const dnsProvider = config.infrastructure?.dns?.provider
 
-        // Static-site lightweight path — only when `infrastructure.compute` is NOT set.
-        // Compute presence flips the deploy mode to EC2 (handled below by the
-        // InfrastructureGenerator + deployAppToCompute).
-        if (config.sites && Object.keys(config.sites).length > 0 && !config.infrastructure?.compute) {
-          const dnsProvider = config.infrastructure?.dns?.provider
+        // Site stacks (S3 + CloudFront) — run whenever sites + DNS are configured,
+        // including alongside compute (registry EC2 + pantry.dev CDN are separate concerns).
+        if (hasSites && dnsProvider) {
+          await deployStaticSitesWithExternalDns(
+            config,
+            options?.site,
+            dnsProvider,
+            region,
+            options?.skipDnsVerification,
+            environment,
+            autoConfirm,
+          )
 
-          if (dnsProvider) {
-            // Deploy static sites with DNS provider (Route53, Cloudflare, Porkbun, GoDaddy)
-            await deployStaticSitesWithExternalDns(config, options?.site, dnsProvider, region, options?.skipDnsVerification, environment, autoConfirm)
+          if (!deployInfrastructureStack) {
+            if (config.infrastructure?.compute) {
+              const siteDomains = Object.values(config.sites!)
+                .map(site => site.domain)
+                .filter((domain): domain is string => !!domain)
+              if (siteDomains.length > 0) {
+                cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
+                await ensureDynamicMethodsForDomains(siteDomains)
+              }
+            }
             return
           }
+        }
+
+        if (!deployInfrastructureStack) {
+          cli.info('Infrastructure stack deployment disabled (infrastructure.deployStack: false)')
+          return
         }
 
         cli.info(`Stack: ${stackName}`)
@@ -800,7 +823,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       try {
         const config = await loadValidatedConfig()
         const environment = options?.env || 'production'
-        const stackName = options?.stack || `${config.project.slug}-${environment}`
+        const stackName = options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
         const region = config.project.region || 'us-east-1'
 
         cli.info(`Stack: ${stackName}`)
@@ -852,7 +875,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       try {
         const config = await loadValidatedConfig()
         const environment = options?.env || 'production'
-        const stackName = options?.stack || `${config.project.slug}-${environment}`
+        const stackName = options?.stack || resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
         const region = config.project.region || 'us-east-1'
 
         cli.info(`Stack: ${stackName}`)
@@ -1534,8 +1557,14 @@ else {
     // Deploy the static site
     cli.step('Deploying to AWS (S3 + CloudFront)...')
 
+    const siteStackName = resolveSiteStackName(config, siteName, siteConfig, environment as 'production' | 'staging' | 'development')
+    const siteResourceName = resolveSiteResourceName(config, siteName)
+
+    cli.info(`Stack: ${siteStackName}`)
+
     const result = await deployStaticSiteWithExternalDnsFull({
-      siteName: `${config.project.slug}-${siteName}`,
+      siteName: siteResourceName,
+      stackName: siteStackName,
       domain,
       region,
       bucket: siteConfig.bucket,
@@ -1544,6 +1573,12 @@ else {
       dnsProvider: dnsConfig,
       skipDnsVerification,
       passthroughUrls: hasInstallScript,
+      dynamicApp: !!config.infrastructure?.compute?.cloudFrontOriginDomain,
+      computeOriginDomain: config.infrastructure?.compute?.cloudFrontOriginDomain,
+      computeOriginPort: config.infrastructure?.compute?.cloudFrontOriginPort
+        ?? (config.infrastructure as { api?: { port?: number } })?.api?.port
+        ?? 3008,
+      computeOriginId: config.infrastructure?.compute?.cloudFrontOriginId ?? `${config.project.slug}-site-ec2`,
       onProgress: (stage, detail) => {
         if (stage === 'infrastructure') {
           cli.step(detail || 'Setting up infrastructure...')

@@ -759,10 +759,10 @@ export class CloudFrontClient {
       if (!allowed.includes('POST')) {
         defaultBehavior.AllowedMethods = {
           Quantity: dynamicMethods.length,
-          Items: dynamicMethods,
+          Items: { Method: dynamicMethods },
           CachedMethods: {
             Quantity: 2,
-            Items: ['GET', 'HEAD'],
+            Items: { Method: ['GET', 'HEAD'] },
           },
         }
         changed = true
@@ -780,10 +780,10 @@ export class CloudFrontClient {
       if (!allowed.includes('POST')) {
         behavior.AllowedMethods = {
           Quantity: dynamicMethods.length,
-          Items: dynamicMethods,
+          Items: { Method: dynamicMethods },
           CachedMethods: {
             Quantity: 2,
-            Items: ['GET', 'HEAD'],
+            Items: { Method: ['GET', 'HEAD'] },
           },
         }
         changed = true

@@ -20,6 +20,7 @@ export {
 // We prefer Fn from cloudformation/types, so only export Pseudo here
 export { Pseudo } from './intrinsic-functions'
 export * from './resource-naming'
+export * from './stack-naming'
 export * from './dependency-graph'
 export * from './stack-diff'
 // modules re-exports many things including Cache (ElastiCache module)

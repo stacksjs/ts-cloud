@@ -69,6 +69,7 @@ export class Storage {
   static createBucket(options: BucketOptions): { bucket: S3Bucket, bucketPolicy?: S3BucketPolicy, logicalId: string } {
     const {
       name,
+      bucketName: explicitBucketName,
       slug,
       environment,
       public: isPublic = false,
@@ -80,7 +81,7 @@ export class Storage {
       lifecycleRules,
     } = options
 
-    const resourceName = generateResourceName({
+    const resourceName = explicitBucketName ?? generateResourceName({
       slug,
       environment,
       resourceType: 's3',

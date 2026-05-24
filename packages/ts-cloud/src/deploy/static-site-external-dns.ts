@@ -44,6 +44,12 @@ export interface ExternalDnsStaticSiteConfig {
    * Use when CloudFront fronts a dynamic app (EC2) rather than static S3 only.
    */
   dynamicApp?: boolean
+  /** EC2 public DNS hostname for CloudFront (required when dynamicApp is true). */
+  computeOriginDomain?: string
+  /** HTTP port on the compute origin. @default 3008 */
+  computeOriginPort?: number
+  /** CloudFront origin Id for the compute origin. */
+  computeOriginId?: string
   /**
    * When true, missing files (S3 403/404) fall through to the index document
    * with a 200 status — required for client-side-routed SPAs.
@@ -82,6 +88,9 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   passthroughUrls?: boolean
   singlePageApp?: boolean
   dynamicApp?: boolean
+  computeOriginDomain?: string
+  computeOriginPort?: number
+  computeOriginId?: string
 }): object {
   const {
     bucketName,
@@ -93,12 +102,17 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     passthroughUrls = false,
     singlePageApp = false,
     dynamicApp = false,
+    computeOriginDomain,
+    computeOriginPort = 3008,
+    computeOriginId = 'app-compute',
   } = config
 
-  const defaultAllowedMethods = dynamicApp
+  const useComputeOrigin = dynamicApp && !!computeOriginDomain
+
+  const defaultAllowedMethods = useComputeOrigin
     ? ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
     : ['GET', 'HEAD']
-  const defaultCachedMethods = dynamicApp
+  const defaultCachedMethods = useComputeOrigin
     ? ['GET', 'HEAD']
     : ['GET', 'HEAD']
 
@@ -177,6 +191,30 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     }
   }
 
+  const s3Origin = {
+    Id: `S3-${bucketName}`,
+    DomainName: { 'Fn::GetAtt': ['S3Bucket', 'RegionalDomainName'] },
+    S3OriginConfig: {
+      OriginAccessIdentity: '',
+    },
+    OriginAccessControlId: { 'Fn::GetAtt': ['CloudFrontOAC', 'Id'] },
+  }
+
+  const computeOrigin = useComputeOrigin
+    ? {
+        Id: computeOriginId,
+        DomainName: computeOriginDomain,
+        CustomOriginConfig: {
+          HTTPPort: computeOriginPort,
+          HTTPSPort: 443,
+          OriginProtocolPolicy: 'http-only',
+          OriginSSLProtocols: ['TLSv1.2'],
+        },
+      }
+    : null
+
+  const defaultTargetOriginId = useComputeOrigin ? computeOriginId : `S3-${bucketName}`
+
   // CloudFront Distribution
   const distributionConfig: any = {
     Enabled: true,
@@ -184,31 +222,29 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     HttpVersion: 'http2and3',
     IPV6Enabled: true,
     PriceClass: 'PriceClass_100',
-    Origins: [
-      {
-        Id: `S3-${bucketName}`,
-        DomainName: { 'Fn::GetAtt': ['S3Bucket', 'RegionalDomainName'] },
-        S3OriginConfig: {
-          OriginAccessIdentity: '',
-        },
-        OriginAccessControlId: { 'Fn::GetAtt': ['CloudFrontOAC', 'Id'] },
-      },
-    ],
+    Origins: computeOrigin ? [computeOrigin, s3Origin] : [s3Origin],
     DefaultCacheBehavior: {
-      TargetOriginId: `S3-${bucketName}`,
+      TargetOriginId: defaultTargetOriginId,
       ViewerProtocolPolicy: 'redirect-to-https',
       AllowedMethods: defaultAllowedMethods,
       CachedMethods: defaultCachedMethods,
       Compress: true,
-      CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // Managed-CachingOptimized
-      ...(!passthroughUrls && {
-        FunctionAssociations: [
-          {
-            EventType: 'viewer-request',
-            FunctionARN: { 'Fn::GetAtt': ['UrlRewriteFunction', 'FunctionARN'] },
-          },
-        ],
-      }),
+      ...(useComputeOrigin
+        ? {
+            CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+            OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+          }
+        : {
+            CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+            ...(!passthroughUrls && {
+              FunctionAssociations: [
+                {
+                  EventType: 'viewer-request',
+                  FunctionARN: { 'Fn::GetAtt': ['UrlRewriteFunction', 'FunctionARN'] },
+                },
+              ],
+            }),
+          }),
     },
     CustomErrorResponses: singlePageApp
       ? [
@@ -594,6 +630,10 @@ export async function deployStaticSiteWithExternalDns(
     errorDocument: config.errorDocument,
     passthroughUrls: config.passthroughUrls,
     singlePageApp: config.singlePageApp,
+    dynamicApp: config.dynamicApp,
+    computeOriginDomain: config.computeOriginDomain,
+    computeOriginPort: config.computeOriginPort,
+    computeOriginId: config.computeOriginId,
   })
 
   // Build tags

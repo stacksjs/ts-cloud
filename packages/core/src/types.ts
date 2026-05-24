@@ -65,6 +65,11 @@ export interface ProjectConfig {
   name: string
   slug: string
   region: string
+  /**
+   * Override the main CloudFormation stack name.
+   * Default: `{slug}-{environment}` (e.g. `pantry-production`).
+   */
+  stackName?: string
 }
 
 /**
@@ -163,6 +168,13 @@ export interface MessagingConfig {
 }
 
 export interface InfrastructureConfig {
+  /**
+   * When false, `cloud deploy` skips the main CloudFormation stack and only runs
+   * site deploys, compute sync, and hooks. Use when infrastructure is managed
+   * elsewhere (e.g. registry EC2 via SSH) but site CDN/S3 still uses ts-cloud.
+   */
+  deployStack?: boolean
+
   vpc?: VpcConfig
 
   /**
@@ -667,6 +679,11 @@ export interface SiteConfig {
   domain?: string
   /** S3 bucket name (auto-generated from domain if not provided) */
   bucket?: string
+  /**
+   * CloudFormation stack for this site's S3 + CloudFront infrastructure.
+   * Default: `{slug}-{environment}-{siteKey}-site` (e.g. `pantry-production-main-site`).
+   */
+  stackName?: string
   /** SSL certificate ARN (auto-created if not provided) */
   certificateArn?: string
   /** Build command to run before deployment (e.g., 'bun run generate', 'npm run build') */
@@ -879,6 +896,10 @@ export interface AlarmItemConfig {
 }
 
 export interface StorageItemConfig {
+  /**
+   * Physical S3 bucket name. When omitted, defaults to `{slug}-{environment}-{key}`.
+   */
+  bucket?: string
   /**
    * Make bucket publicly accessible
    */
@@ -1261,6 +1282,16 @@ export interface ComputeConfig {
    * If not specified, uses the provider's default Linux image
    */
   image?: string
+
+  /**
+   * CloudFront custom origin for the registry/app server (when the site stack
+   * fronts EC2 instead of S3-only). Use the EC2 public DNS name, not a raw IP.
+   */
+  cloudFrontOriginDomain?: string
+  /** HTTP port on the compute origin. @default 3008 */
+  cloudFrontOriginPort?: number
+  /** Stable CloudFront origin Id (preserve across stack updates). @default `{slug}-compute` */
+  cloudFrontOriginId?: string
 
   /**
    * Server mode (EC2) configuration

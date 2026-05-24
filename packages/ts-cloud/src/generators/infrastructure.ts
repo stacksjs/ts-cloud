@@ -1507,11 +1507,12 @@ else {
         // For website buckets served via CloudFront, don't make them public directly
         // CloudFront OAC will handle access
         const serveViaCloudFront = !!(storageConfig.website && sharedOacLogicalId)
+        const physicalBucketName = storageConfig.bucket ?? `${slug}-${env}-${name}`
         const { bucket, logicalId } = Storage.createBucket({
           slug,
           name,
           environment: env,
-          bucketName: `${slug}-${env}-${name}`,
+          bucketName: physicalBucketName,
           versioning: storageConfig.versioning,
           encryption: storageConfig.encryption,
           // Don't set public if serving via CloudFront - OAC handles access
