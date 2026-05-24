@@ -255,6 +255,30 @@ export function generateExternalDnsStaticSiteTemplate(config: {
             }),
           }),
     },
+    ...(useComputeOrigin && passthroughUrls
+      ? {
+          CacheBehaviors: [
+            {
+              PathPattern: '/install.sh',
+              TargetOriginId: `S3-${bucketName}`,
+              ViewerProtocolPolicy: 'redirect-to-https',
+              AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+              CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
+              Compress: true,
+              CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+            },
+            {
+              PathPattern: '/',
+              TargetOriginId: `S3-${bucketName}`,
+              ViewerProtocolPolicy: 'redirect-to-https',
+              AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+              CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
+              Compress: true,
+              CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+            },
+          ],
+        }
+      : {}),
     CustomErrorResponses: singlePageApp
       ? [
           {
