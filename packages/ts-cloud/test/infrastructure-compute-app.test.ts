@@ -174,12 +174,87 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     const apiOrigin = origins.find((origin: any) => String(origin.Id).includes('-api'))
 
     expect(apiOrigin.CustomOriginConfig.HTTPPort).toBe(3008)
+    const pathPatterns = distribution.Properties.DistributionConfig.CacheBehaviors.map(
+      (behavior: any) => behavior.PathPattern,
+    )
+    expect(pathPatterns).toContain('/api/*')
+    expect(pathPatterns).toContain('/auth/*')
     expect(distribution.Properties.DistributionConfig.CacheBehaviors).toContainEqual(
       expect.objectContaining({
         PathPattern: '/api/*',
         TargetOriginId: apiOrigin.Id,
       }),
     )
+  })
+
+  it('routes compute paths for storage buckets with routeCompute enabled', () => {
+    const template = generate({
+      ...baseConfig,
+      sites: {
+        public: {
+          domain: 'my-app.example.com',
+          root: 'dist',
+        },
+      },
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        storage: {
+          site: {
+            website: {
+              indexDocument: 'index.html',
+              errorDocument: 'index.html',
+            },
+            aliases: ['my-app.example.com'],
+            routeCompute: true,
+          },
+        },
+        ssl: {
+          enabled: true,
+          certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/test',
+        },
+      },
+    })
+
+    const distribution = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::CloudFront::Distribution'
+        && r.Properties.DistributionConfig.Aliases?.includes('my-app.example.com'),
+    ) as any
+    const pathPatterns = distribution.Properties.DistributionConfig.CacheBehaviors.map(
+      (behavior: any) => behavior.PathPattern,
+    )
+
+    expect(pathPatterns).toContain('/auth/*')
+    expect(pathPatterns).toContain('/publisher/api/*')
+  })
+
+  it('routes compute paths for standalone CDN distributions with routeCompute', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        cdn: {
+          main: {
+            origin: 'my-app-production-site.s3.us-east-1.amazonaws.com',
+            customDomain: 'my-app.example.com',
+            routeCompute: true,
+          },
+        },
+        ssl: {
+          enabled: true,
+          certificateArn: 'arn:aws:acm:us-east-1:123456789012:certificate/test',
+        },
+      },
+    })
+
+    const distribution = Object.values(template.Resources).find(
+      (r: any) => r.Type === 'AWS::CloudFront::Distribution',
+    ) as any
+    const pathPatterns = distribution.Properties.DistributionConfig.CacheBehaviors.map(
+      (behavior: any) => behavior.PathPattern,
+    )
+
+    expect(pathPatterns).toContain('/auth/*')
+    expect(pathPatterns).toContain('/api/*')
   })
 
   it('honors infrastructure.api.port for the public API CloudFront origin', () => {

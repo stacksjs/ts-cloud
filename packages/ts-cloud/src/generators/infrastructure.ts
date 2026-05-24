@@ -132,6 +132,107 @@ export class InfrastructureGenerator {
     return Number.isFinite(port) && port > 0 ? port : 3008
   }
 
+  private defaultComputeCachePathPatterns(): string[] {
+    return [
+      '/api/*',
+      '/auth/*',
+      '/publisher/api/*',
+      '/publisher/*',
+      '/publish',
+      '/publish/*',
+      '/analytics/*',
+      '/packages/*',
+      '/npm/*',
+      '/zig/*',
+      '/php/*',
+      '/commits/*',
+      '/health',
+      '/dashboard/*',
+      '/search',
+      '/login',
+      '/logout',
+      '/signup',
+      '/account',
+      '/account/*',
+    ]
+  }
+
+  private shouldRouteStorageBucketToCompute(name: string, storageConfig: { routeCompute?: boolean }): boolean {
+    return name === 'public' || storageConfig.routeCompute === true
+  }
+
+  private resolveComputeCachePathPatterns(routes?: string[]): string[] {
+    if (routes && routes.length > 0) {
+      return routes
+    }
+    return this.defaultComputeCachePathPatterns()
+  }
+
+  private createComputeCacheBehavior(pathPattern: string, apiOriginId: string): Record<string, unknown> {
+    return {
+      PathPattern: pathPattern,
+      TargetOriginId: apiOriginId,
+      ViewerProtocolPolicy: 'redirect-to-https',
+      AllowedMethods: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
+      CachedMethods: ['GET', 'HEAD'],
+      Compress: true,
+      CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+      OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+    }
+  }
+
+  private appendComputeAppOrigin(
+    origins: any[],
+    cacheBehaviors: any[],
+    extraDependsOn: string[],
+    slug: string,
+    env: string,
+    pathPatterns: string[],
+  ): void {
+    const appEipId = this.serverEipLogicalIds.get('app')
+    const appInstanceId = this.serverEipLogicalIds.get('appInstance')
+    if (!appEipId) {
+      return
+    }
+
+    const apiOriginId = `EC2-${slug}-${env}-api`
+    const serverRegion = this.mergedConfig.infrastructure?.servers?.app?.region
+      || this.mergedConfig.project?.region
+      || 'us-east-1'
+    const dnsSuffix = serverRegion === 'us-east-1'
+      ? '.compute-1.amazonaws.com'
+      : `.${serverRegion}.compute.amazonaws.com`
+
+    const originDomainName = {
+      'Fn::Join': ['', [
+        'ec2-',
+        { 'Fn::Join': ['-', { 'Fn::Split': ['.', { Ref: appEipId }] }] },
+        dnsSuffix,
+      ]],
+    }
+
+    const apiOriginPort = this.resolveApiOriginPort()
+
+    origins.push({
+      Id: apiOriginId,
+      DomainName: originDomainName,
+      CustomOriginConfig: {
+        HTTPPort: apiOriginPort,
+        HTTPSPort: 443,
+        OriginProtocolPolicy: 'http-only',
+        OriginSSLProtocols: ['TLSv1.2'],
+      },
+    })
+    extraDependsOn.push(appEipId)
+    if (appInstanceId) {
+      extraDependsOn.push(appInstanceId)
+    }
+
+    for (const pathPattern of pathPatterns) {
+      cacheBehaviors.push(this.createComputeCacheBehavior(pathPattern, apiOriginId))
+    }
+  }
+
   /**
    * Build a Caddyfile from the sites config. Returns undefined when no
    * site has a `domain` (Caddy install is then skipped — useful for
@@ -1545,62 +1646,16 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           const cacheBehaviors: any[] = []
           const extraDependsOn: string[] = []
 
-          // Add EC2 API origin for the public (main site) distribution
-          if (name === 'public') {
-            // Find the first app server's EIP for API routing
-            const appEipId = this.serverEipLogicalIds.get('app')
-            const appInstanceId = this.serverEipLogicalIds.get('appInstance')
-            if (appEipId) {
-              const apiOriginId = `EC2-${slug}-${env}-api`
-
-              // CloudFront requires a DNS hostname, not an IP address.
-              // Construct the EC2 public DNS name from the EIP:
-              //   us-east-1: ec2-{ip-with-dashes}.compute-1.amazonaws.com
-              //   other regions: ec2-{ip-with-dashes}.{region}.compute.amazonaws.com
-              const serverRegion = this.mergedConfig.infrastructure?.servers?.app?.region
-                || this.mergedConfig.project?.region
-                || 'us-east-1'
-              const dnsSuffix = serverRegion === 'us-east-1'
-                ? '.compute-1.amazonaws.com'
-                : `.${serverRegion}.compute.amazonaws.com`
-
-              const originDomainName = {
-                'Fn::Join': ['', [
-                  'ec2-',
-                  { 'Fn::Join': ['-', { 'Fn::Split': ['.', { Ref: appEipId }] }] },
-                  dnsSuffix,
-                ]],
-              }
-
-              const apiOriginPort = this.resolveApiOriginPort()
-
-              origins.push({
-                Id: apiOriginId,
-                DomainName: originDomainName,
-                CustomOriginConfig: {
-                  HTTPPort: apiOriginPort,
-                  HTTPSPort: 443,
-                  OriginProtocolPolicy: 'http-only', // Bun on EC2 handles HTTP from CloudFront
-                  OriginSSLProtocols: ['TLSv1.2'],
-                },
-              })
-              extraDependsOn.push(appEipId)
-              if (appInstanceId) extraDependsOn.push(appInstanceId)
-
-              // Add /api/* cache behavior routing to EC2
-              cacheBehaviors.push({
-                PathPattern: '/api/*',
-                TargetOriginId: apiOriginId,
-                ViewerProtocolPolicy: 'redirect-to-https',
-                AllowedMethods: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
-                CachedMethods: ['GET', 'HEAD'],
-                Compress: true,
-                // Use CachingDisabled policy for API (no caching)
-                CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
-                // Use AllViewerExceptHostHeader origin request policy to forward query strings, cookies, etc.
-                OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
-              })
-            }
+          // Route dynamic app paths to compute (EC2) when enabled for this bucket
+          if (this.shouldRouteStorageBucketToCompute(name, storageConfig)) {
+            this.appendComputeAppOrigin(
+              origins,
+              cacheBehaviors,
+              extraDependsOn,
+              slug,
+              env,
+              this.resolveComputeCachePathPatterns(storageConfig.computeRoutes),
+            )
 
             for (const mountedBucket of pathMountedWebsiteBuckets) {
               const mountedOriginId = `S3-${slug}-${env}-${mountedBucket.name}`
@@ -1723,7 +1778,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             },
           } as any)
 
-          if (name === 'public') {
+          if (this.shouldRouteStorageBucketToCompute(name, storageConfig)) {
             for (const mountedBucket of pathMountedWebsiteBuckets) {
               const mountedPolicyLogicalId = `${mountedBucket.logicalId}CloudFrontPolicy`
               this.builder.addResource(mountedPolicyLogicalId, {
@@ -1892,19 +1947,105 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       }
     }
 
-    // CDN
+    // CDN (optional standalone distributions — supports compute path routing)
     if (this.mergedConfig.infrastructure?.cdn) {
       for (const [name, cdnConfig] of Object.entries(this.mergedConfig.infrastructure.cdn)) {
-        const { distribution, logicalId } = CDN.createDistribution({
-          slug,
-          environment: env,
-          origin: {
-            domainName: cdnConfig.origin,
-            originId: `${slug}-origin`,
-          },
-        })
+        if (!cdnConfig.origin) {
+          continue
+        }
 
-        this.builder.addResource(logicalId, distribution)
+        const customDomain = typeof cdnConfig.customDomain === 'string'
+          ? cdnConfig.customDomain
+          : cdnConfig.customDomain?.domain
+            || cdnConfig.domain
+        const explicitCertificateArn = typeof cdnConfig.customDomain === 'object'
+          ? cdnConfig.customDomain?.certificateArn
+          : cdnConfig.certificateArn
+        const resolvedCertArn = explicitCertificateArn || cfCertificateArn
+
+        const distLogicalId = `${slug}${env}${name}CDN`.replace(/[^a-zA-Z0-9]/g, '')
+        const originId = `S3-${slug}-${env}-${name}-cdn`
+        const origins: any[] = [{
+          Id: originId,
+          DomainName: cdnConfig.origin,
+          OriginPath: '',
+          S3OriginConfig: {
+            OriginAccessIdentity: '',
+          },
+        }]
+        const cacheBehaviors: any[] = []
+        const extraDependsOn: string[] = []
+
+        if (cdnConfig.routeCompute) {
+          this.appendComputeAppOrigin(
+            origins,
+            cacheBehaviors,
+            extraDependsOn,
+            slug,
+            env,
+            this.resolveComputeCachePathPatterns(cdnConfig.computeRoutes),
+          )
+        }
+
+        const viewerCertificate: any = resolvedCertArn && customDomain
+          ? {
+              AcmCertificateArn: cfCertificateLogicalId && !explicitCertificateArn
+                ? { Ref: cfCertificateLogicalId }
+                : resolvedCertArn,
+              SslSupportMethod: 'sni-only',
+              MinimumProtocolVersion: 'TLSv1.2_2021',
+            }
+          : { CloudFrontDefaultCertificate: true }
+
+        const distributionDependsOn = [...extraDependsOn]
+        if (cfCertificateLogicalId && !explicitCertificateArn && customDomain) {
+          distributionDependsOn.push(cfCertificateLogicalId)
+        }
+
+        const distribution: any = {
+          Type: 'AWS::CloudFront::Distribution',
+          ...(distributionDependsOn.length > 0 ? { DependsOn: distributionDependsOn } : {}),
+          Properties: {
+            DistributionConfig: {
+              Enabled: true,
+              Comment: `${slug} ${env} ${name} CDN`,
+              DefaultRootObject: 'index.html',
+              Origins: origins,
+              DefaultCacheBehavior: {
+                TargetOriginId: originId,
+                ViewerProtocolPolicy: 'redirect-to-https',
+                AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
+                Compress: cdnConfig.compress !== false,
+                CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
+              },
+              ...(cacheBehaviors.length > 0 ? { CacheBehaviors: cacheBehaviors } : {}),
+              ...(customDomain && resolvedCertArn ? { Aliases: [customDomain] } : {}),
+              ViewerCertificate: viewerCertificate,
+              PriceClass: 'PriceClass_100',
+              HttpVersion: cdnConfig.http3 ? 'http2and3' : 'http2',
+            },
+          },
+        }
+
+        this.builder.addResource(distLogicalId, distribution)
+
+        if (hostedZoneId && customDomain && resolvedCertArn) {
+          const safeName = customDomain.replace(/\./g, '').replace(/[^a-zA-Z0-9]/g, '')
+          this.builder.addResource(`${safeName}CdnARecord`, {
+            Type: 'AWS::Route53::RecordSet',
+            DependsOn: [distLogicalId, ...(cfCertificateLogicalId && !explicitCertificateArn ? [cfCertificateLogicalId] : [])],
+            Properties: {
+              HostedZoneId: hostedZoneId,
+              Name: customDomain,
+              Type: 'A',
+              AliasTarget: {
+                HostedZoneId: 'Z2FDTNDATAQYW2',
+                DNSName: { 'Fn::GetAtt': [distLogicalId, 'DomainName'] },
+              },
+            },
+          } as any)
+        }
       }
     }
 

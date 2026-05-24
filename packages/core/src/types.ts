@@ -920,6 +920,16 @@ export interface StorageItemConfig {
    */
   spa?: boolean
   /**
+   * Route dynamic app paths to the compute server (EC2) via CloudFront cache behaviors.
+   * The `public` bucket enables this automatically; set explicitly for other bucket names.
+   */
+  routeCompute?: boolean
+  /**
+   * CloudFront path patterns forwarded to compute (POST/PUT/PATCH/DELETE allowed).
+   * Used when `routeCompute` is true. Defaults to a registry-style path set when omitted.
+   */
+  computeRoutes?: string[]
+  /**
    * Root directory containing the built static files to upload (e.g., 'dist', '.output/public').
    * When set, `cloud deploy` will auto-upload files from this directory to the S3 bucket
    * after the CloudFormation stack reaches a COMPLETE status, and invalidate CloudFront cache.
@@ -1566,6 +1576,14 @@ export interface CdnItemConfig {
     functionArn?: string
     name?: string
   }>
+  /**
+   * Forward dynamic paths to the compute app (EC2) in addition to the S3 origin.
+   */
+  routeCompute?: boolean
+  /**
+   * CloudFront path patterns for compute routing. See `StorageConfig.computeRoutes`.
+   */
+  computeRoutes?: string[]
 }
 
 /**
