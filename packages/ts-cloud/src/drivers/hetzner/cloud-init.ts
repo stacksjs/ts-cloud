@@ -1,0 +1,137 @@
+/**
+ * Ubuntu cloud-init bootstrap for Hetzner compute targets.
+ * Mirrors Compute.UserData.generateBunAppScript but uses apt instead of dnf
+ * and omits AWS CLI (deploys use SCP + SSH).
+ */
+
+export interface UbuntuBootstrapOptions {
+  runtime?: 'bun' | 'node' | 'deno'
+  runtimeVersion?: string
+  systemPackages?: string[]
+  database?: 'sqlite' | 'mysql' | 'postgres'
+  caddyfile?: string
+}
+
+export function generateUbuntuAppCloudInit(options: UbuntuBootstrapOptions = {}): string {
+  const {
+    runtime = 'bun',
+    runtimeVersion = 'latest',
+    systemPackages = [],
+    database,
+    caddyfile,
+  } = options
+
+  const packages = new Set(systemPackages)
+  if (database === 'sqlite') packages.add('sqlite3')
+  else if (database === 'mysql') packages.add('mysql-client')
+  else if (database === 'postgres') packages.add('postgresql-client')
+
+  let script = `#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update -y
+apt-get upgrade -y
+apt-get install -y curl tar gzip unzip git ca-certificates
+`
+
+  if (packages.size > 0) {
+    script += `
+apt-get install -y ${[...packages].join(' ')}
+`
+  }
+
+  if (runtime === 'bun') {
+    script += `
+export BUN_INSTALL="/root/.bun"
+curl -fsSL https://bun.sh/install | bash${runtimeVersion === 'latest' ? '' : ` -s "bun-v${runtimeVersion}"`}
+ln -sf /root/.bun/bin/bun /usr/local/bin/bun
+echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
+echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
+`
+  }
+  else if (runtime === 'node') {
+    const nodeMajor = (runtimeVersion === 'latest' || !runtimeVersion) ? '20' : runtimeVersion.split('.')[0]
+    script += `
+curl -fsSL https://deb.nodesource.com/setup_${nodeMajor}.x | bash -
+apt-get install -y nodejs
+ln -sf /usr/bin/node /usr/local/bin/node
+ln -sf /usr/bin/npm /usr/local/bin/npm
+`
+  }
+  else if (runtime === 'deno') {
+    script += `
+curl -fsSL https://deno.land/install.sh | sh
+ln -sf /root/.deno/bin/deno /usr/local/bin/deno
+`
+  }
+
+  script += `
+mkdir -p /var/www /var/ts-cloud/staging /var/ts-cloud/releases
+`
+
+  if (caddyfile) {
+    const escaped = caddyfile.replace(/\$/g, '\\$')
+    script += `
+ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
+curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=\${ARCH}" -o /usr/local/bin/caddy
+chmod +x /usr/local/bin/caddy
+
+getent group caddy >/dev/null || groupadd --system caddy
+getent passwd caddy >/dev/null || useradd --system --gid caddy \\
+  --create-home --home-dir /var/lib/caddy \\
+  --shell /usr/sbin/nologin --comment "Caddy web server" caddy
+
+mkdir -p /etc/caddy /var/lib/caddy /var/log/caddy
+chown -R caddy:caddy /var/lib/caddy /var/log/caddy
+
+cat > /etc/systemd/system/caddy.service <<'CADDY_UNIT_EOF'
+[Unit]
+Description=Caddy
+Documentation=https://caddyserver.com/docs/
+After=network.target network-online.target
+Requires=network-online.target
+
+[Service]
+Type=notify
+User=caddy
+Group=caddy
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+CADDY_UNIT_EOF
+
+cat > /etc/caddy/Caddyfile <<'CADDY_CONFIG_EOF'
+${escaped}
+CADDY_CONFIG_EOF
+
+systemctl daemon-reload
+systemctl enable caddy
+systemctl start caddy
+`
+  }
+
+  script += `
+echo "ts-cloud bootstrap complete — instance is ready for site deploys"
+`
+
+  return script
+}
+
+/**
+ * Wrap a bash bootstrap script as Hetzner cloud-init user_data (#cloud-config).
+ */
+export function wrapCloudInitUserData(bootstrapScript: string): string {
+  return `#cloud-config
+runcmd:
+  - |
+    ${bootstrapScript.split('\n').join('\n    ')}
+`
+}
