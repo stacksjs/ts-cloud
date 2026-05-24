@@ -769,26 +769,7 @@ export class CloudFrontClient {
       }
     }
 
-    const cacheItems = currentConfig.CacheBehaviors?.Items
-    const behaviors = cacheItems
-      ? (Array.isArray(cacheItems) ? cacheItems : [cacheItems])
-      : []
-
-    for (const behavior of behaviors) {
-      const allowed = parseAllowedMethods(behavior.AllowedMethods)
-
-      if (!allowed.includes('POST')) {
-        behavior.AllowedMethods = {
-          Quantity: dynamicMethods.length,
-          Items: { Method: dynamicMethods },
-          CachedMethods: {
-            Quantity: 2,
-            Items: { Method: ['GET', 'HEAD'] },
-          },
-        }
-        changed = true
-      }
-    }
+    // Only widen methods on the default (compute) behavior — leave S3 path behaviors GET-only.
 
     if (!changed) {
       return false

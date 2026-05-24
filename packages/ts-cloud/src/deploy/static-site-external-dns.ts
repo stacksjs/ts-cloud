@@ -170,6 +170,36 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     },
   }
 
+  // CloudFront cannot use path pattern "/" alone — redirect apex GET / to /install.sh on S3.
+  let installRootRedirectLogicalId: string | undefined
+  if (passthroughUrls && useComputeOrigin) {
+    installRootRedirectLogicalId = 'InstallRootRedirectFunction'
+    resources[installRootRedirectLogicalId] = {
+      Type: 'AWS::CloudFront::Function',
+      Properties: {
+        Name: { 'Fn::Sub': '${AWS::StackName}-install-root-redirect' },
+        AutoPublish: true,
+        FunctionConfig: {
+          Comment: 'Redirect curl pantry.dev | bash (GET /) to /install.sh on S3',
+          Runtime: 'cloudfront-js-2.0',
+        },
+        FunctionCode: `function handler(event) {
+  var request = event.request;
+  if (request.uri === '/' || request.uri === '') {
+    return {
+      statusCode: 302,
+      statusDescription: 'Found',
+      headers: {
+        location: { value: 'https://' + request.headers.host.value + '/install.sh' }
+      }
+    };
+  }
+  return request;
+}`,
+      },
+    }
+  }
+
   // CloudFront Function for URL rewriting (skipped for passthrough/installer sites)
   if (!passthroughUrls) {
     resources.UrlRewriteFunction = {
@@ -242,6 +272,14 @@ export function generateExternalDnsStaticSiteTemplate(config: {
         ? {
             CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
             OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+            ...(passthroughUrls && installRootRedirectLogicalId
+              ? {
+                  FunctionAssociations: [{
+                    EventType: 'viewer-request',
+                    FunctionARN: { 'Fn::GetAtt': [installRootRedirectLogicalId, 'FunctionARN'] },
+                  }],
+                }
+              : {}),
           }
         : {
             CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
@@ -260,15 +298,6 @@ export function generateExternalDnsStaticSiteTemplate(config: {
           CacheBehaviors: [
             {
               PathPattern: '/install.sh',
-              TargetOriginId: `S3-${bucketName}`,
-              ViewerProtocolPolicy: 'redirect-to-https',
-              AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
-              CachedMethods: ['GET', 'HEAD', 'OPTIONS'],
-              Compress: true,
-              CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
-            },
-            {
-              PathPattern: '/',
               TargetOriginId: `S3-${bucketName}`,
               ViewerProtocolPolicy: 'redirect-to-https',
               AllowedMethods: ['GET', 'HEAD', 'OPTIONS'],
@@ -329,7 +358,12 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   resources.CloudFrontDistribution = {
     Type: 'AWS::CloudFront::Distribution',
     ...retainPolicy,
-    DependsOn: passthroughUrls ? ['S3Bucket', 'CloudFrontOAC'] : ['S3Bucket', 'CloudFrontOAC', 'UrlRewriteFunction'],
+    DependsOn: [
+      'S3Bucket',
+      'CloudFrontOAC',
+      ...(passthroughUrls && useComputeOrigin && installRootRedirectLogicalId ? [installRootRedirectLogicalId] : []),
+      ...(!passthroughUrls ? ['UrlRewriteFunction'] : []),
+    ],
     Properties: {
       DistributionConfig: distributionConfig,
     },
