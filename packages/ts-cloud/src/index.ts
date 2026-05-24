@@ -141,6 +141,25 @@ export type {
   StaticSiteDnsProvider,
 } from './deploy'
 
+// Export cloud drivers
+export {
+  createCloudDriver,
+  CloudDriverFactory,
+  cloudDrivers,
+  AwsDriver,
+  HetznerDriver,
+  HetznerClient,
+  resolveHetznerApiToken,
+  generateUbuntuAppCloudInit,
+  wrapCloudInitUserData,
+  buildCaddyfile,
+  buildSiteDeployScript,
+  resolveExecStart,
+  deployAllComputeSites,
+  deploySiteRelease,
+} from './drivers'
+export type { CreateCloudDriverOptions } from './drivers/factory'
+
 // Export DNS providers
 export {
   createDnsProvider,

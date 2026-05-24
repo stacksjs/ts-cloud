@@ -8,7 +8,6 @@ import { CloudFrontClient } from '../../src/aws/cloudfront'
 import { ECRClient } from '../../src/aws/ecr'
 import { ECSClient } from '../../src/aws/ecs'
 import { STSClient } from '../../src/aws/sts'
-import { SSMClient } from '../../src/aws/ssm'
 import { detectCredentialSource } from '../../src/aws/client'
 import { execSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -20,7 +19,9 @@ import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
-import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
+import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
+import { createCloudDriver } from '../../src/drivers'
+import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -51,39 +52,24 @@ async function reportAwsIdentity(region: string): Promise<void> {
 }
 
 /**
- * Translate a `start` command (e.g. "bun run server.ts") into an absolute
- * systemd ExecStart by swapping the leading runtime word for its absolute path.
+ * Resolve a release SHA used across all sites in this deploy.
  */
-function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): string {
-  const bin = runtime === 'bun'
-    ? '/usr/local/bin/bun'
-    : runtime === 'deno'
-      ? '/usr/local/bin/deno'
-      : '/usr/local/bin/node'
-  const args = start.replace(/^(bun|node|deno)\s+/, '')
-  return `${bin} ${args}`
+function resolveReleaseSha(): string {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+  }
+  catch {
+    return Date.now().toString(36)
+  }
 }
 
 /**
- * Forge-style EC2 app deploy. Triggered when `infrastructure.compute` is set
- * (compute presence is the deploy-mode declaration). For every configured site:
- *  1. Build locally (run site.build if set)
- *  2. Tar the site's `root` directory
- *  3. Upload to S3 deploy bucket at releases/<site>/<sha>.tar.gz
- *  4. SSM Run Command tells every tagged EC2 instance to:
- *     - aws s3 cp the tarball
- *     - extract to /var/www/<site>/
- *     - write /var/www/<site>/.env from site.env
- *     - write/enable/restart /etc/systemd/system/<slug>-<site>.service
- *
- * Multiple sites cohabit on one EC2 box, each as its own systemd service.
- * A site without `start` is skipped with a warning (it has nothing to run).
- * Returns true so the caller knows EC2 mode handled this deploy.
+ * Forge-style compute app deploy via the active cloud driver.
  */
 async function deployAppToCompute(
   config: any,
-  environment: string,
-  region: string,
+  environment: 'production' | 'staging' | 'development',
+  _region: string,
 ): Promise<boolean> {
   const sites = config.sites || {}
   const allSites = Object.entries<any>(sites)
@@ -103,47 +89,19 @@ async function deployAppToCompute(
   if (deployable.length === 0) return true
 
   const slug = config.project.slug
-  const stackName = resolveProjectStackName(config, environment as 'production' | 'staging' | 'development')
   const compute = config.infrastructure?.compute || {}
   const runtime: 'bun' | 'node' | 'deno' = compute.runtime || 'bun'
-
-  // Discover the deploy bucket from CloudFormation stack outputs (set up by generateComputeApp)
-  const cfn = new CloudFormationClient(region)
-  let outputs: Record<string, string>
-  try {
-    outputs = await cfn.getStackOutputs(stackName)
-  }
-  catch {
-    cli.error(`Stack '${stackName}' not found. Run cloud deploy to provision infrastructure first.`)
-    return true
-  }
-
-  const bucket = outputs.deployBucketName
-  if (!bucket) {
-    cli.error('No `deployBucketName` in stack outputs. Re-deploy infrastructure to add the staging bucket.')
-    return true
-  }
-
-  // Resolve a single release SHA used across all sites in this deploy
-  let sha: string
-  try {
-    sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
-  }
-  catch {
-    sha = Date.now().toString(36)
-  }
-
-  const s3 = new S3Client(region)
-  const ssm = new SSMClient(region)
+  const driver = createCloudDriver({ config })
+  const sha = resolveReleaseSha()
+  const tarballs = new Map<string, string>()
 
   for (const [siteName, site] of deployable) {
-    cli.header(`Deploying site: ${siteName}`)
+    cli.header(`Preparing site: ${siteName}`)
     cli.info(`Domain: ${site.domain || '(none)'}`)
     cli.info(`Source: ${site.root}`)
     cli.info(`Start: ${site.start}`)
     cli.info(`Port: ${site.port ?? '(unset)'}`)
 
-    // 1. Build
     if (site.build) {
       cli.step(`Running build: ${site.build}`)
       try {
@@ -160,7 +118,6 @@ async function deployAppToCompute(
       return true
     }
 
-    // 2. Tar
     const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
     cli.step(`Packaging ${site.root} → ${tarballPath}`)
     try {
@@ -171,93 +128,30 @@ async function deployAppToCompute(
       return true
     }
 
-    // 3. Upload
-    const key = `releases/${siteName}/${sha}.tar.gz`
-    cli.step(`Uploading to s3://${bucket}/${key}...`)
-    try {
-      await s3.putObject({
-        bucket,
-        key,
-        body: readFileSync(tarballPath),
-        contentType: 'application/gzip',
-      })
-    }
-    catch (err: any) {
-      cli.error(`Upload failed for '${siteName}': ${err.message}`)
-      return true
-    }
-
-    // 4. Compose remote script
-    const serviceName = `${slug}-${siteName}.service`
-    const appDir = `/var/www/${siteName}`
-    const execStart = resolveExecStart(site.start, runtime)
-    const port = site.port
-
-    const envFile = Object.entries(site.env || {})
-      .map(([k, v]) => `${k}=${JSON.stringify(String(v))}`)
-      .join('\n')
-
-    const remoteScript = [
-      `set -euo pipefail`,
-      // Pull artifact
-      `aws s3 cp "s3://${bucket}/${key}" /tmp/${siteName}-release.tar.gz --region ${region}`,
-      // Extract — wipe site dir except .env (we rewrite it next)
-      `mkdir -p ${appDir}`,
-      `find ${appDir} -mindepth 1 -maxdepth 1 ! -name '.env' -exec rm -rf {} +`,
-      `tar xzf /tmp/${siteName}-release.tar.gz -C ${appDir}`,
-      // Write .env
-      `cat > ${appDir}/.env <<'TS_CLOUD_ENV_EOF'`,
-      envFile,
-      `TS_CLOUD_ENV_EOF`,
-      `chmod 600 ${appDir}/.env`,
-      // Write / refresh systemd unit (idempotent)
-      `cat > /etc/systemd/system/${serviceName} <<'TS_CLOUD_UNIT_EOF'`,
-      `[Unit]`,
-      `Description=${siteName} (managed by ts-cloud)`,
-      `After=network.target`,
-      ``,
-      `[Service]`,
-      `Type=simple`,
-      `WorkingDirectory=${appDir}`,
-      `ExecStart=${execStart}`,
-      `Restart=always`,
-      `RestartSec=5`,
-      `EnvironmentFile=${appDir}/.env`,
-      ...(port ? [`Environment=PORT=${port}`] : []),
-      ``,
-      `[Install]`,
-      `WantedBy=multi-user.target`,
-      `TS_CLOUD_UNIT_EOF`,
-      `systemctl daemon-reload`,
-      `systemctl enable ${serviceName}`,
-      `systemctl restart ${serviceName}`,
-      // Surface a non-success status to SSM if the service died on start
-      `systemctl is-active ${serviceName}`,
-    ]
-
-    // 5. SSM Run Command, tag-targeted
-    cli.step(`Deploying to instances (tag: Project=${slug} Environment=${environment} Role=app)...`)
-    const result = await ssm.sendCommandByTags({
-      tags: { Project: slug, Environment: environment, Role: 'app' },
-      commands: remoteScript,
-      comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
-    })
-
-    if (!result.success) {
-      cli.error(`Deploy of '${siteName}' failed: ${result.error || 'unknown error'}`)
-      for (const inst of result.perInstance) {
-        cli.error(`  ${inst.instanceId}: ${inst.status}${inst.error ? ` — ${inst.error}` : ''}`)
-      }
-      return true
-    }
-
-    cli.success(`Deployed ${slug}/${siteName}@${sha} to ${result.instanceCount} instance(s)`)
-    for (const inst of result.perInstance) {
-      cli.info(`  ✓ ${inst.instanceId}: ${inst.status}`)
-    }
+    tarballs.set(siteName, tarballPath)
   }
 
-  return true
+  const ok = await deployAllComputeSites({
+    config,
+    environment,
+    driver,
+    sha,
+    runtime,
+    tarballForSite: siteName => {
+      const path = tarballs.get(siteName)
+      if (!path) throw new Error(`Missing tarball for site '${siteName}'`)
+      return path
+    },
+    logger: {
+      info: message => cli.info(message),
+      warn: message => cli.warn(message),
+      error: message => cli.error(message),
+      step: message => cli.step(message),
+      success: message => cli.success(message),
+    },
+  })
+
+  return ok
 }
 
 /**
@@ -490,9 +384,26 @@ export function registerDeployCommands(app: CLI): void {
           return
         }
 
+        const cloudProvider = resolveCloudProvider(config)
+        cli.info(`Cloud provider: ${cloudProvider}`)
         cli.info(`Stack: ${stackName}`)
         cli.info(`Region: ${region}`)
         cli.info(`Environment: ${environment}`)
+
+        if (cloudProvider === 'hetzner' && config.infrastructure?.compute) {
+          cli.step('Provisioning Hetzner compute infrastructure...')
+          const driver = createCloudDriver({ config, provider: 'hetzner' })
+          if (!driver.provisionComputeInfrastructure) {
+            cli.error('Hetzner driver does not support compute provisioning')
+            return
+          }
+
+          const outputs = await driver.provisionComputeInfrastructure({ config, environment })
+          cli.success('Hetzner compute infrastructure ready')
+          if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
+          if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
+          return
+        }
 
         // Generate CloudFormation template
         cli.step('Generating CloudFormation template...')
