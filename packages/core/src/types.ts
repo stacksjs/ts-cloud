@@ -1,4 +1,31 @@
 /**
+ * Top-level cloud provider selection
+ */
+export interface CloudProviderConfig {
+  /**
+   * Infrastructure provider for compute and related resources.
+   * @default 'aws'
+   */
+  provider?: 'aws' | 'hetzner'
+}
+
+/**
+ * Hetzner Cloud configuration
+ */
+export interface HetznerConfig {
+  /** Hetzner Cloud API token (falls back to HCLOUD_TOKEN / HETZNER_API_TOKEN) */
+  apiToken?: string
+  /** Location slug, e.g. fsn1, nbg1, hel1 @default 'fsn1' */
+  location?: string
+  /** Server image slug @default 'ubuntu-24.04' */
+  image?: string
+  /** Path to SSH private key used for deploy commands @default ~/.ssh/id_ed25519 */
+  sshPrivateKeyPath?: string
+  /** SSH user for deploy commands @default 'root' */
+  sshUser?: string
+}
+
+/**
  * AWS-specific configuration
  */
 export interface AwsConfig {
@@ -30,6 +57,16 @@ export interface CloudConfig {
    * AWS-specific configuration
    */
   aws?: AwsConfig
+
+  /**
+   * Cloud provider selection (AWS, Hetzner, …)
+   */
+  cloud?: CloudProviderConfig
+
+  /**
+   * Hetzner Cloud configuration (when cloud.provider is 'hetzner')
+   */
+  hetzner?: HetznerConfig
 
   /**
    * Feature flags to enable/disable resources conditionally
@@ -677,7 +714,10 @@ export interface SiteConfig {
   path?: string
   /** Custom domain for the site (e.g., 'stage.easyotc.com') */
   domain?: string
-  /** S3 bucket name (auto-generated from domain if not provided) */
+  /**
+   * S3 bucket name. Default: `{slug}-{environment}-site` for `main`,
+   * else `{slug}-{environment}-{siteKey}`.
+   */
   bucket?: string
   /**
    * CloudFormation stack for this site's S3 + CloudFront infrastructure.

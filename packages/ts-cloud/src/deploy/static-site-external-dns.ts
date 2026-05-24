@@ -91,6 +91,8 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   computeOriginDomain?: string
   computeOriginPort?: number
   computeOriginId?: string
+  /** When true, retain S3/CloudFront resources if the stack is deleted (stack migration). */
+  retainOnStackDelete?: boolean
 }): object {
   const {
     bucketName,
@@ -105,7 +107,12 @@ export function generateExternalDnsStaticSiteTemplate(config: {
     computeOriginDomain,
     computeOriginPort = 3008,
     computeOriginId = 'app-compute',
+    retainOnStackDelete = false,
   } = config
+
+  const retainPolicy = retainOnStackDelete
+    ? { DeletionPolicy: 'Retain' as const, UpdateReplacePolicy: 'Retain' as const }
+    : {}
 
   const useComputeOrigin = dynamicApp && !!computeOriginDomain
 
@@ -122,6 +129,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   // S3 Bucket
   resources.S3Bucket = {
     Type: 'AWS::S3::Bucket',
+    ...retainPolicy,
     Properties: {
       BucketName: bucketName,
       PublicAccessBlockConfiguration: {
@@ -150,6 +158,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   // Origin Access Control
   resources.CloudFrontOAC = {
     Type: 'AWS::CloudFront::OriginAccessControl',
+    ...retainPolicy,
     Properties: {
       OriginAccessControlConfig: {
         Name: `OAC-${bucketName}`,
@@ -295,6 +304,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
 
   resources.CloudFrontDistribution = {
     Type: 'AWS::CloudFront::Distribution',
+    ...retainPolicy,
     DependsOn: passthroughUrls ? ['S3Bucket', 'CloudFrontOAC'] : ['S3Bucket', 'CloudFrontOAC', 'UrlRewriteFunction'],
     Properties: {
       DistributionConfig: distributionConfig,
@@ -314,6 +324,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   // S3 Bucket Policy for CloudFront OAC
   resources.S3BucketPolicy = {
     Type: 'AWS::S3::BucketPolicy',
+    ...retainPolicy,
     DependsOn: ['S3Bucket', 'CloudFrontDistribution'],
     Properties: {
       Bucket: { Ref: 'S3Bucket' },

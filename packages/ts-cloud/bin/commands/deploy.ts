@@ -20,7 +20,7 @@ import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
-import { resolveProjectStackName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
+import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName } from '@ts-cloud/core'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -1567,7 +1567,7 @@ else {
       stackName: siteStackName,
       domain,
       region,
-      bucket: siteConfig.bucket,
+      bucket: resolveSiteBucketName(config.project.slug, environment as 'production' | 'staging' | 'development', siteName, siteConfig.bucket),
       sourceDir: deploySourceDir,
       certificateArn: siteConfig.certificateArn,
       dnsProvider: dnsConfig,

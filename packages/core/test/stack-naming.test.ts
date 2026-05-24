@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   resolveDeployBucketName,
   resolveProjectStackName,
+  resolveSiteBucketName,
   resolveSiteResourceName,
   resolveSiteStackName,
   resolveStorageBucketName,
@@ -38,6 +39,12 @@ describe('stack-naming', () => {
 
   it('resolves site resource prefix as slug-siteKey', () => {
     expect(resolveSiteResourceName(baseConfig, 'main')).toBe('pantry-main')
+  })
+
+  it('resolves site bucket names', () => {
+    expect(resolveSiteBucketName('pantry', 'production', 'main')).toBe('pantry-production-site')
+    expect(resolveSiteBucketName('pantry', 'production', 'docs')).toBe('pantry-production-docs')
+    expect(resolveSiteBucketName('pantry', 'production', 'main', 'legacy-bucket')).toBe('legacy-bucket')
   })
 
   it('resolves storage bucket names', () => {

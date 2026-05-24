@@ -36,6 +36,21 @@ export function resolveSiteResourceName(
 }
 
 /**
+ * S3 bucket for a site (install script / static assets).
+ * Convention: `{slug}-{environment}-site` (e.g. `pantry-production-site`).
+ */
+export function resolveSiteBucketName(
+  slug: string,
+  environment: EnvironmentType,
+  siteKey: string,
+  explicitBucket?: string,
+): string {
+  if (explicitBucket) return explicitBucket
+  if (siteKey === 'main') return `${slug}-${environment}-site`
+  return `${slug}-${environment}-${siteKey}`
+}
+
+/**
  * S3 bucket name for a storage block in infrastructure.storage.
  * Convention: `{slug}-{environment}-{bucketKey}` unless `bucket` is set on the item.
  */

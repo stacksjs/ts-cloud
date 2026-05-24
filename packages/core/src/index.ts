@@ -5,6 +5,9 @@
 // Core types
 export * from './types'
 
+// Cloud drivers (provider abstraction)
+export * from './drivers'
+
 // Legacy exports (Phase 1)
 export * from './template-builder'
 // template-validator exports ValidationResult and ValidationError (interface)
