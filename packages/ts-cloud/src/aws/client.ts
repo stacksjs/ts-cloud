@@ -38,6 +38,57 @@ export interface AWSClientConfig {
   retryDelay?: number
   cacheEnabled?: boolean
   defaultCacheTTL?: number
+  /**
+   * Override the S3 endpoint host for S3-compatible providers (Backblaze B2,
+   * Hetzner Object Storage). Host only, no scheme — e.g.
+   * `s3.us-west-004.backblazeb2.com` or `fsn1.your-objectstorage.com`.
+   * When omitted, the standard AWS S3 endpoint is used.
+   */
+  endpoint?: string
+  /**
+   * Force path-style addressing (bucket in the path) instead of
+   * virtual-hosted style (bucket in the host). Defaults to virtual-hosted,
+   * which AWS, Backblaze B2 and Hetzner all support.
+   */
+  forcePathStyle?: boolean
+}
+
+/**
+ * Resolve the S3 (or S3-compatible) host and canonical request path.
+ *
+ * Supports AWS S3 plus S3-compatible providers (Backblaze B2, Hetzner Object
+ * Storage) by allowing an endpoint override and path- vs virtual-hosted-style
+ * addressing. With no `endpoint` and no `forcePathStyle` the result is byte-for-byte
+ * identical to the previous AWS-only behavior, so existing callers are unaffected.
+ *
+ * The returned `path` is used for BOTH the request URL and the SigV4 canonical
+ * URI, so the signature always matches the wire request.
+ */
+export function resolveS3Endpoint(options: {
+  region: string
+  /** Original request path, e.g. '/key', '/bucket/key' or '/'. */
+  path: string
+  /** Bucket name when the request is bucket-scoped (virtual-hosted eligible). */
+  bucket?: string
+  /** Endpoint host override, e.g. 's3.us-west-004.backblazeb2.com'. */
+  endpoint?: string
+  /** Force path-style addressing (bucket in path) instead of virtual-hosted. */
+  forcePathStyle?: boolean
+}): { host: string, path: string } {
+  const base = options.endpoint || `s3.${options.region}.amazonaws.com`
+
+  // No bucket scope: ListBuckets, or the bucket is already encoded in the path.
+  if (!options.bucket) {
+    return { host: base, path: options.path }
+  }
+
+  if (options.forcePathStyle) {
+    const path = options.path === '/' ? `/${options.bucket}` : `/${options.bucket}${options.path}`
+    return { host: base, path }
+  }
+
+  // Virtual-hosted style — the AWS default, also supported by B2 and Hetzner.
+  return { host: `${options.bucket}.${base}`, path: options.path }
 }
 
 export interface AWSError extends Error {
@@ -398,17 +449,23 @@ export class AWSClient {
    * Build the full URL for the request
    */
   private buildUrl(options: AWSRequestOptions): string {
-    const { service, region, path, queryParams } = options
+    const { service, region, queryParams } = options
+    let { path } = options
 
     let host: string
     if (service === 's3') {
-      // Use virtual-hosted style for S3 buckets (required for newer buckets)
-      if (options.bucket) {
-        host = `${options.bucket}.s3.${region}.amazonaws.com`
-      }
-      else {
-        host = `s3.${region}.amazonaws.com`
-      }
+      // Virtual-hosted style by default; endpoint override + path-style for
+      // S3-compatible providers (Backblaze B2, Hetzner). Reassigns `path` so the
+      // URL matches the SigV4 canonical URI computed in signRequest.
+      const resolved = resolveS3Endpoint({
+        region,
+        path,
+        bucket: options.bucket,
+        endpoint: this.config.endpoint,
+        forcePathStyle: this.config.forcePathStyle,
+      })
+      host = resolved.host
+      path = resolved.path
     }
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'
@@ -453,7 +510,10 @@ export class AWSClient {
    * Sign the request using AWS Signature Version 4
    */
   private signRequest(options: AWSRequestOptions, credentials: AWSCredentials): Record<string, string> {
-    const { service, region, method, path, queryParams, body } = options
+    const { service, region, method, queryParams, body } = options
+    // `path` may be rewritten for S3-compatible path-style addressing; the
+    // rewritten value becomes the SigV4 canonical URI (see canonicalUri below).
+    let { path } = options
 
     const now = new Date()
     const amzDate = this.getAmzDate(now)
@@ -461,12 +521,15 @@ export class AWSClient {
 
     let host: string
     if (service === 's3') {
-      if (options.bucket) {
-        host = `${options.bucket}.s3.${region}.amazonaws.com`
-      }
-else {
-        host = `s3.${region}.amazonaws.com`
-      }
+      const resolved = resolveS3Endpoint({
+        region,
+        path,
+        bucket: options.bucket,
+        endpoint: this.config.endpoint,
+        forcePathStyle: this.config.forcePathStyle,
+      })
+      host = resolved.host
+      path = resolved.path
     }
     else if (service === 'cloudfront') {
       host = 'cloudfront.amazonaws.com'

@@ -111,6 +111,19 @@ export type {
   AttributeDefinition as DynamoDBAttributeDefinition,
 } from './aws'
 
+// Multi-provider object storage (AWS S3, Backblaze B2, Hetzner Object Storage)
+export {
+  createObjectStorageClient,
+  providerEndpoint,
+  resolveObjectStorage,
+} from './object-storage'
+export type {
+  ObjectStorageConfig,
+  ObjectStorageCredentials,
+  ObjectStorageProvider,
+  ResolvedObjectStorage,
+} from './object-storage'
+
 export * from './ssl'
 
 // Export deployment modules

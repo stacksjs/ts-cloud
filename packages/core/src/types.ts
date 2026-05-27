@@ -10,6 +10,38 @@ export interface CloudProviderConfig {
 }
 
 /**
+ * Object storage provider selection.
+ *
+ * AWS S3, Backblaze B2 and Hetzner Object Storage are all S3-compatible, so the
+ * same client drives any of them — only the endpoint, addressing style and
+ * credentials differ. Choose a provider to move object storage (static assets,
+ * release artifacts, registry tarballs/binaries) off AWS S3 for cost without
+ * touching the rest of the deployment.
+ */
+export interface ObjectStorageConfig {
+  /**
+   * Object storage provider.
+   * @default 'aws'
+   */
+  provider?: 'aws' | 'backblaze' | 'hetzner'
+  /**
+   * Region / location slug. Provider-specific default when omitted
+   * (aws: us-east-1, backblaze: us-west-004, hetzner: fsn1).
+   */
+  region?: string
+  /**
+   * Endpoint host override (no scheme), e.g. `s3.us-west-004.backblazeb2.com`.
+   * Defaults to the provider's standard endpoint for the region.
+   */
+  endpoint?: string
+  /**
+   * Force path-style addressing (bucket in the path) instead of virtual-hosted.
+   * @default false
+   */
+  forcePathStyle?: boolean
+}
+
+/**
  * Hetzner Cloud configuration
  */
 export interface HetznerConfig {
@@ -67,6 +99,13 @@ export interface CloudConfig {
    * Hetzner Cloud configuration (when cloud.provider is 'hetzner')
    */
   hetzner?: HetznerConfig
+
+  /**
+   * Object storage provider selection (AWS S3, Backblaze B2, Hetzner Object Storage).
+   * Independent of `cloud.provider` — you can run compute on AWS while keeping
+   * object storage on Backblaze, for example.
+   */
+  objectStorage?: ObjectStorageConfig
 
   /**
    * Feature flags to enable/disable resources conditionally

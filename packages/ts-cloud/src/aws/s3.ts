@@ -64,29 +64,75 @@ export interface S3Object {
 }
 
 /**
+ * Options for configuring an {@link S3Client} against AWS S3 or an
+ * S3-compatible provider (Backblaze B2, Hetzner Object Storage).
+ */
+export interface S3ClientOptions {
+  /**
+   * Endpoint host override (no scheme) for S3-compatible providers, e.g.
+   * `s3.us-west-004.backblazeb2.com` or `fsn1.your-objectstorage.com`.
+   */
+  endpoint?: string
+  /** Force path-style addressing instead of virtual-hosted. Defaults to virtual-hosted. */
+  forcePathStyle?: boolean
+  /**
+   * Explicit credentials. When set, these take precedence over profile/env
+   * resolution — used by S3-compatible providers whose keys live in
+   * provider-specific env vars rather than the AWS chain.
+   */
+  credentials?: { accessKeyId: string, secretAccessKey: string, sessionToken?: string }
+}
+
+/**
  * S3 client using direct API calls
  */
 export class S3Client {
   private client: AWSClient
   private region: string
   private explicitProfile?: string
+  private endpoint?: string
+  private forcePathStyle?: boolean
+  private explicitCredentials?: { accessKeyId: string, secretAccessKey: string, sessionToken?: string }
 
-  constructor(region: string = 'us-east-1', profile?: string) {
+  constructor(region: string = 'us-east-1', profile?: string, options?: S3ClientOptions) {
     this.region = region
     this.explicitProfile = profile
-    this.client = new AWSClient(resolveCredentials(profile))
+    this.endpoint = options?.endpoint
+    this.forcePathStyle = options?.forcePathStyle
+    this.explicitCredentials = options?.credentials
+    this.client = new AWSClient(
+      options?.credentials ?? resolveCredentials(profile),
+      { endpoint: options?.endpoint, forcePathStyle: options?.forcePathStyle },
+    )
   }
 
   /**
-   * Get AWS credentials (used by presigned URL / bucket-policy paths that bypass AWSClient.request).
-   * Honors the same explicit-vs-implicit profile semantics as the constructor.
+   * Get credentials (used by presigned URL / bucket-policy paths that bypass AWSClient.request).
+   * Explicit credentials win; otherwise honors the same explicit-vs-implicit profile
+   * semantics as the constructor.
    */
   private getCredentials(): { accessKeyId: string, secretAccessKey: string, sessionToken?: string } {
+    if (this.explicitCredentials?.accessKeyId && this.explicitCredentials.secretAccessKey) {
+      return this.explicitCredentials
+    }
     const creds = resolveCredentials(this.explicitProfile)
     if (creds.accessKeyId && creds.secretAccessKey) {
       return creds
     }
-    throw new Error('AWS credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables, pass an explicit profile, or configure ~/.aws/credentials.')
+    throw new Error('S3 credentials not found. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY (or pass explicit credentials/profile), or configure ~/.aws/credentials.')
+  }
+
+  /** Base S3 endpoint host (no bucket): the provider endpoint or AWS default. */
+  private s3BaseHost(): string {
+    return this.endpoint || `s3.${this.region}.amazonaws.com`
+  }
+
+  /**
+   * Virtual-hosted-style host for a bucket. In path-style mode the bucket lives
+   * in the request path instead, so this returns the bare base host.
+   */
+  private s3VirtualHost(bucket: string): string {
+    return this.forcePathStyle ? this.s3BaseHost() : `${bucket}.${this.s3BaseHost()}`
   }
 
   /**
@@ -129,10 +175,12 @@ export class S3Client {
       headers['x-amz-acl'] = options.acl
     }
 
-    // For us-east-1, don't include LocationConstraint
-    // For other regions, include it in the body
+    // For us-east-1, don't include LocationConstraint.
+    // For other AWS regions, include it in the body. S3-compatible providers
+    // (Backblaze B2, Hetzner) encode the region in the endpoint and reject the
+    // AWS LocationConstraint body, so skip it whenever a custom endpoint is set.
     let body: string | undefined
-    if (this.region !== 'us-east-1') {
+    if (this.region !== 'us-east-1' && !this.endpoint) {
       body = `<?xml version="1.0" encoding="UTF-8"?>
 <CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
   <LocationConstraint>${this.region}</LocationConstraint>
@@ -327,7 +375,7 @@ export class S3Client {
       // Actually, for S3 we need to send raw binary, not base64
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-      const host = `${options.bucket}.s3.${this.region}.amazonaws.com`
+      const host = this.s3VirtualHost(options.bucket)
       const url = `https://${host}/${options.key}`
 
       const now = new Date()
@@ -635,7 +683,7 @@ export class S3Client {
    */
   async putBucketPolicy(bucket: string, policy: object | string): Promise<void> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-    const host = `s3.${this.region}.amazonaws.com`
+    const host = this.s3BaseHost()
     const policyString = typeof policy === 'string' ? policy : JSON.stringify(policy)
 
     const now = new Date()
@@ -718,7 +766,7 @@ export class S3Client {
    */
   async getBucketPolicy(bucket: string): Promise<object | null> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-    const host = `s3.${this.region}.amazonaws.com`
+    const host = this.s3BaseHost()
 
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -1679,7 +1727,7 @@ catch (e: any) {
    */
   generatePresignedGetUrl(bucket: string, key: string, expiresInSeconds: number = 3600): string {
     const { accessKeyId, secretAccessKey } = this.getCredentials()
-    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const host = this.s3VirtualHost(bucket)
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -1726,7 +1774,7 @@ catch (e: any) {
    */
   generatePresignedPutUrl(bucket: string, key: string, contentType: string, expiresInSeconds: number = 3600): string {
     const { accessKeyId, secretAccessKey } = this.getCredentials()
-    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const host = this.s3VirtualHost(bucket)
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
@@ -1802,7 +1850,7 @@ catch (e: any) {
    */
   async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Uint8Array | Buffer): Promise<{ ETag: string }> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
-    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const host = this.s3VirtualHost(bucket)
     const url = `https://${host}/${key}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
 
     const now = new Date()
@@ -2017,7 +2065,7 @@ else {
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
 
-    const host = `${bucket}.s3.${this.region}.amazonaws.com`
+    const host = this.s3VirtualHost(bucket)
     const method = operation === 'putObject' ? 'PUT' : 'GET'
     const algorithm = 'AWS4-HMAC-SHA256'
     const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
