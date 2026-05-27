@@ -1,3 +1,40 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.15...v0.2.16)
+
+### 🚀 Features
+
+- add Backblaze B2 and Hetzner object storage support ([efb61c2](https://github.com/stacksjs/ts-cloud/commit/efb61c2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: route compute deploys through cloud drivers ([e449496](https://github.com/stacksjs/ts-cloud/commit/e449496)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **drivers**: add AWS and Hetzner cloud driver implementations ([8be9f54](https://github.com/stacksjs/ts-cloud/commit/8be9f54)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: add site stack migration and canonical bucket naming ([cf437f2](https://github.com/stacksjs/ts-cloud/commit/cf437f2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: align stack naming and site stacks with compute origins ([683e379](https://github.com/stacksjs/ts-cloud/commit/683e379)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: add --yes flag and sync CloudFront POST for compute sites ([ebe15c8](https://github.com/stacksjs/ts-cloud/commit/ebe15c8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ses**: accept explicit credentials in SESClient constructor ([fb34d76](https://github.com/stacksjs/ts-cloud/commit/fb34d76)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **deploy**: redirect GET / to install.sh on compute-backed sites ([aabd301](https://github.com/stacksjs/ts-cloud/commit/aabd301)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: route install.sh and root paths to S3 on compute-origin sites ([8672525](https://github.com/stacksjs/ts-cloud/commit/8672525)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **core**: refine CloudDriver types and provider resolution ([a298041](https://github.com/stacksjs/ts-cloud/commit/a298041)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **infrastructure**: forward auth and API POST paths to compute via CloudFront ([69e67f9](https://github.com/stacksjs/ts-cloud/commit/69e67f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **scripts**: stop double-generating CHANGELOG on release ([8e06894](https://github.com/stacksjs/ts-cloud/commit/8e06894)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_
+
+### 🤖 Continuous Integration
+
+- **buddy-bot**: add daily cleanup cron to workflow ([964020d](https://github.com/stacksjs/ts-cloud/commit/964020d)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_
+- **buddy-bot**: regenerate workflow from current template ([65bb82d](https://github.com/stacksjs/ts-cloud/commit/65bb82d)) _(by Glenn Michael Torregosa <gtorregosa@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.16 ([7e23874](https://github.com/stacksjs/ts-cloud/commit/7e23874)) _(by Chris <chrisbreuer93@gmail.com>)_
+- caddy support ([7f5c19a](https://github.com/stacksjs/ts-cloud/commit/7f5c19a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **deps**: bump better-dx to ^0.2.15 ([ce4353a](https://github.com/stacksjs/ts-cloud/commit/ce4353a)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _Glenn Michael Torregosa <gtorregosa@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.14...v0.2.15)
 
 ### 🧹 Chores
