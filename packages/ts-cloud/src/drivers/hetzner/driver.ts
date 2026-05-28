@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
@@ -14,7 +15,7 @@ import type {
 } from '@ts-cloud/core'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
 import { buildCaddyfile } from '../shared/caddyfile'
-import { HetznerClient, resolveHetznerApiToken } from './client'
+import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
@@ -23,6 +24,7 @@ import { readDriverState, writeDriverState, type HetznerDriverState } from './st
 export interface HetznerDriverOptions {
   apiToken?: string
   sshPrivateKeyPath?: string
+  sshPublicKeyPath?: string
   sshUser?: string
   location?: string
   client?: HetznerClient
@@ -38,6 +40,7 @@ export class HetznerDriver implements CloudDriver {
 
   private client: HetznerClient
   private sshPrivateKeyPath: string
+  private sshPublicKeyPath: string
   private sshUser: string
   private location: string
 
@@ -46,6 +49,7 @@ export class HetznerDriver implements CloudDriver {
       apiToken: resolveHetznerApiToken(options.apiToken),
     })
     this.sshPrivateKeyPath = expandHome(options.sshPrivateKeyPath || process.env.HCLOUD_SSH_KEY || '~/.ssh/id_ed25519')
+    this.sshPublicKeyPath = expandHome(options.sshPublicKeyPath || process.env.HCLOUD_SSH_PUBLIC_KEY || `${this.sshPrivateKeyPath}.pub`)
     this.sshUser = options.sshUser || process.env.HCLOUD_SSH_USER || 'root'
     this.location = options.location || process.env.HCLOUD_LOCATION || 'fsn1'
   }
@@ -92,10 +96,14 @@ export class HetznerDriver implements CloudDriver {
       name: firewallName,
       labels,
       rules: buildHetznerFirewallRules({
-        allowSsh: compute.allowSsh,
+        // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
+        // reachable. Only close it when the caller explicitly opts out.
+        allowSsh: compute.allowSsh !== false,
         sitePorts,
       }),
     })
+
+    const sshKeyId = await this.ensureSshKey(slug, environment, labels)
 
     const { server, action } = await this.client.createServer({
       name: serverName,
@@ -104,6 +112,7 @@ export class HetznerDriver implements CloudDriver {
       location: config.hetzner?.location || this.location,
       userData,
       labels,
+      sshKeys: sshKeyId ? [sshKeyId] : undefined,
       firewalls: [{ firewall: firewall.id }],
     })
 
@@ -226,6 +235,36 @@ export class HetznerDriver implements CloudDriver {
       perInstance,
       error: success ? undefined : 'One or more SSH deploy commands failed',
     }
+  }
+
+  /**
+   * Ensure the local SSH public key is registered in the Hetzner project and
+   * return its id, so the freshly created server authorizes the same key the
+   * deploy step (SCP/SSH) uses. Without this, deploys fail with "Permission
+   * denied (publickey)" because the server has no authorized keys.
+   */
+  private async ensureSshKey(slug: string, environment: string, labels: Record<string, string>): Promise<number | undefined> {
+    if (!existsSync(this.sshPublicKeyPath)) {
+      throw new Error(
+        `SSH public key not found at ${this.sshPublicKeyPath}. ts-cloud deploys to Hetzner over SSH and needs a public key to authorize on the server. `
+        + `Generate one (\`ssh-keygen -t ed25519\`) or set hetzner.sshPrivateKeyPath / HCLOUD_SSH_PUBLIC_KEY.`,
+      )
+    }
+
+    const publicKey = readFileSync(this.sshPublicKeyPath, 'utf8').trim()
+    const normalized = normalizeSshPublicKey(publicKey)
+
+    const existing = await this.client.listSshKeys()
+    const match = existing.find(key => normalizeSshPublicKey(key.public_key) === normalized)
+    if (match)
+      return match.id
+
+    const created = await this.client.createSshKey({
+      name: `${slug}-${environment}-deploy`,
+      publicKey,
+      labels,
+    })
+    return created.id
   }
 
   private outputsFromState(state: HetznerDriverState, server?: { public_net: { ipv4?: { ip: string } } }): ComputeStackOutputs {

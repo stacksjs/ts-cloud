@@ -76,6 +76,12 @@ export interface CreateFirewallOptions {
   applyTo?: Array<{ type: 'server', server: number }>
 }
 
+export interface CreateSshKeyOptions {
+  name: string
+  publicKey: string
+  labels?: Record<string, string>
+}
+
 export interface HetznerClientOptions {
   apiToken: string
   baseUrl?: string
@@ -177,6 +183,15 @@ export class HetznerClient {
     return data.ssh_keys
   }
 
+  async createSshKey(options: CreateSshKeyOptions): Promise<HetznerSshKey> {
+    const data = await this.request<{ ssh_key: HetznerSshKey }>('POST', '/ssh_keys', {
+      name: options.name,
+      public_key: options.publicKey,
+      labels: options.labels,
+    })
+    return data.ssh_key
+  }
+
   async waitForAction(actionId: number, options?: { pollIntervalMs?: number, maxWaitMs?: number }): Promise<HetznerAction> {
     const pollInterval = options?.pollIntervalMs ?? 2000
     const maxWait = options?.maxWaitMs ?? 300000
@@ -215,4 +230,14 @@ export function resolveHetznerApiToken(configToken?: string): string {
     throw new Error('Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.')
   }
   return token
+}
+
+/**
+ * Normalize an OpenSSH public key to its `<type> <base64>` body, dropping the
+ * trailing comment. Lets us match a local key against keys already registered
+ * in the Hetzner project regardless of differing comments/whitespace.
+ */
+export function normalizeSshPublicKey(publicKey: string): string {
+  const [type, body] = publicKey.trim().split(/\s+/)
+  return body ? `${type} ${body}` : type
 }

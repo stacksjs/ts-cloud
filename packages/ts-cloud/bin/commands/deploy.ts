@@ -402,6 +402,17 @@ export function registerDeployCommands(app: CLI): void {
           cli.success('Hetzner compute infrastructure ready')
           if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
           if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
+
+          // Deploy the configured app sites to the freshly provisioned server.
+          // Unlike AWS (which provisions via CloudFormation and is handled
+          // below), Hetzner has no separate stack step — provision then deploy.
+          if (config.sites && Object.keys(config.sites).length > 0) {
+            const ok = await deployAppToCompute(config, environment, region)
+            if (!ok)
+              cli.error('App deploy to Hetzner compute reported a failure')
+            else
+              cli.success('App deployed to Hetzner compute')
+          }
           return
         }
 
