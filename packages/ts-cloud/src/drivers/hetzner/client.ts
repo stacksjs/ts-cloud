@@ -82,17 +82,20 @@ export interface CreateSshKeyOptions {
   labels?: Record<string, string>
 }
 
+/** Minimal fetch signature the client relies on (always called with a string URL). */
+export type HetznerFetch = (url: string, init?: RequestInit) => Promise<Response>
+
 export interface HetznerClientOptions {
   apiToken: string
   baseUrl?: string
-  fetchImpl?: typeof fetch
+  fetchImpl?: HetznerFetch
 }
 
 export class HetznerClient {
   readonly name = 'hetzner'
   private apiToken: string
   private baseUrl: string
-  private fetchImpl: typeof fetch
+  private fetchImpl: HetznerFetch
 
   constructor(options: HetznerClientOptions) {
     this.apiToken = options.apiToken
