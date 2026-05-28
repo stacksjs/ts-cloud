@@ -376,7 +376,15 @@ export class S3Client {
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
       const host = this.s3VirtualHost(options.bucket)
-      const url = `https://${host}/${options.key}`
+      // URI-encode the key for both the request URL and the SigV4 canonical
+      // URI. They MUST match byte-for-byte: strict S3-compatible backends
+      // (e.g. Hetzner/Ceph) re-encode the received path per RFC 3986 before
+      // verifying the signature, so a raw key containing reserved characters
+      // like `+` (common in SemVer build metadata, e.g. `0.17.0-dev.131+abc`)
+      // is canonicalized to `%2B` server-side and yields SignatureDoesNotMatch
+      // unless we sign the encoded form too. Preserve `/` as the path separator.
+      const encodedKey = options.key.split('/').map(seg => encodeURIComponent(seg)).join('/')
+      const url = `https://${host}/${encodedKey}`
 
       const now = new Date()
       const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -408,7 +416,7 @@ export class S3Client {
 
       const canonicalRequest = [
         'PUT',
-        `/${options.key}`,
+        `/${encodedKey}`,
         '',
         canonicalHeaders,
         signedHeaders,
@@ -1733,6 +1741,9 @@ catch (e: any) {
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
     const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
     const credential = `${accessKeyId}/${credentialScope}`
+    // Encode the key consistently in the signed canonical URI and the returned
+    // URL so reserved chars like `+` survive strict S3 backends (see putObject).
+    const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/')
 
     const queryParams = new URLSearchParams({
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -1744,7 +1755,7 @@ catch (e: any) {
 
     const canonicalRequest = [
       'GET',
-      `/${key}`,
+      `/${encodedKey}`,
       queryParams.toString(),
       `host:${host}\n`,
       'host',
@@ -1766,7 +1777,7 @@ catch (e: any) {
 
     queryParams.append('X-Amz-Signature', signature)
 
-    return `https://${host}/${key}?${queryParams.toString()}`
+    return `https://${host}/${encodedKey}?${queryParams.toString()}`
   }
 
   /**
@@ -1780,6 +1791,7 @@ catch (e: any) {
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
     const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
     const credential = `${accessKeyId}/${credentialScope}`
+    const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/')
 
     const queryParams = new URLSearchParams({
       'X-Amz-Algorithm': 'AWS4-HMAC-SHA256',
@@ -1791,7 +1803,7 @@ catch (e: any) {
 
     const canonicalRequest = [
       'PUT',
-      `/${key}`,
+      `/${encodedKey}`,
       queryParams.toString(),
       `content-type:${contentType}\nhost:${host}\n`,
       'content-type;host',
@@ -1813,7 +1825,7 @@ catch (e: any) {
 
     queryParams.append('X-Amz-Signature', signature)
 
-    return `https://${host}/${key}?${queryParams.toString()}`
+    return `https://${host}/${encodedKey}?${queryParams.toString()}`
   }
 
   /**
@@ -2090,8 +2102,9 @@ else {
       .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
       .join('&')
 
-    // Canonical request
-    const canonicalUri = '/' + key
+    // Canonical request — encode the key so reserved chars like `+` survive
+    // strict S3 backends; the URL below reuses this same encoded path (see putObject).
+    const canonicalUri = '/' + key.split('/').map(seg => encodeURIComponent(seg)).join('/')
     const canonicalHeaders = `host:${host}\n`
     const signedHeaders = 'host'
     const payloadHash = 'UNSIGNED-PAYLOAD'
