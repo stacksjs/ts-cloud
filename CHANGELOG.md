@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.18...v0.2.19)
+
+### 🐛 Bug Fixes
+
+- **s3**: encode object keys on the string-body upload + get/delete paths too ([5faedb2](https://github.com/stacksjs/ts-cloud/commit/5faedb2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.19 ([dce8279](https://github.com/stacksjs/ts-cloud/commit/dce8279)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.17...v0.2.18)
 
 ### 🐛 Bug Fixes
