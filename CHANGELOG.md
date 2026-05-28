@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.17...v0.2.18)
+
+### 🐛 Bug Fixes
+
+- **s3**: URI-encode object keys in binary upload + presigned URL signing ([e288505](https://github.com/stacksjs/ts-cloud/commit/e288505)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.18 ([989cf26](https://github.com/stacksjs/ts-cloud/commit/989cf26)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.16...v0.2.17)
 
 ### 🧹 Chores
