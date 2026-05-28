@@ -363,6 +363,14 @@ export class S3Client {
       }
     }
 
+    // URI-encode the key once for use as both the request path and the SigV4
+    // canonical URI across both upload branches (binary fast-path and the
+    // string body via AWSClient.request). Strict S3 backends (Hetzner/Ceph)
+    // canonicalize `+` to `%2B` server-side, so an unencoded key with reserved
+    // chars (e.g. SemVer build metadata `0.17.0-dev.131+abc`) yields
+    // SignatureDoesNotMatch. Preserve `/` as the path separator.
+    const encodedKey = options.key.split('/').map(seg => encodeURIComponent(seg)).join('/')
+
     // Normalize body to Buffer for binary data
     // Uint8Array needs to be converted to Buffer for proper handling
     const normalizedBody = options.body instanceof Uint8Array && !Buffer.isBuffer(options.body)
@@ -376,14 +384,6 @@ export class S3Client {
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
       const host = this.s3VirtualHost(options.bucket)
-      // URI-encode the key for both the request URL and the SigV4 canonical
-      // URI. They MUST match byte-for-byte: strict S3-compatible backends
-      // (e.g. Hetzner/Ceph) re-encode the received path per RFC 3986 before
-      // verifying the signature, so a raw key containing reserved characters
-      // like `+` (common in SemVer build metadata, e.g. `0.17.0-dev.131+abc`)
-      // is canonicalized to `%2B` server-side and yields SignatureDoesNotMatch
-      // unless we sign the encoded form too. Preserve `/` as the path separator.
-      const encodedKey = options.key.split('/').map(seg => encodeURIComponent(seg)).join('/')
       const url = `https://${host}/${encodedKey}`
 
       const now = new Date()
@@ -463,7 +463,7 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'PUT',
-      path: `/${options.key}`,
+      path: `/${encodedKey}`,
       bucket: options.bucket, // Use virtual-hosted style
       headers,
       body: options.body as string,
@@ -475,11 +475,12 @@ export class S3Client {
    * Returns raw content as string (not parsed as XML)
    */
   async getObject(bucket: string, key: string): Promise<string> {
+    const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/')
     const result = await this.client.request({
       service: 's3',
       region: this.region,
       method: 'GET',
-      path: `/${bucket}/${key}`,
+      path: `/${bucket}/${encodedKey}`,
       rawResponse: true,
     })
 
@@ -529,11 +530,12 @@ export class S3Client {
    * Delete object from S3
    */
   async deleteObject(bucket: string, key: string): Promise<void> {
+    const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/')
     await this.client.request({
       service: 's3',
       region: this.region,
       method: 'DELETE',
-      path: `/${bucket}/${key}`,
+      path: `/${bucket}/${encodedKey}`,
     })
   }
 

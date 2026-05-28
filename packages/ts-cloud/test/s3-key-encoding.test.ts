@@ -59,4 +59,34 @@ describe('S3 object-key URI encoding (+ in SemVer build metadata)', () => {
     expect(url).toContain(`/${plain}?`)
     expect(url.split('?')[0]).not.toContain('%')
   })
+
+  // String-body putObject (e.g. the `.sha256` sidecar), getObject and
+  // deleteObject route through AWSClient.request — capture the signed path.
+  function captureRequestPath(c: S3Client): { last: () => string } {
+    let lastPath = ''
+    // @ts-expect-error — stub the private AWSClient.request to record the path
+    c.client.request = async (opts: { path: string }) => {
+      lastPath = opts.path
+      return ''
+    }
+    return { last: () => lastPath }
+  }
+
+  it('string-body putObject encodes + in the signed path', async () => {
+    const c = client()
+    const cap = captureRequestPath(c)
+    await c.putObject({ bucket: 'pantry-registry', key: `${KEY}.sha256`, body: 'abc123  file\n', contentType: 'text/plain' })
+    expect(cap.last()).toContain('%2B')
+    expect(cap.last()).not.toContain('+')
+  })
+
+  it('getObject and deleteObject encode + in the signed path', async () => {
+    const c = client()
+    const cap = captureRequestPath(c)
+    await c.getObject('pantry-registry', KEY)
+    expect(cap.last()).toContain('%2B')
+    await c.deleteObject('pantry-registry', KEY)
+    expect(cap.last()).toContain('%2B')
+    expect(cap.last()).not.toContain('+')
+  })
 })
