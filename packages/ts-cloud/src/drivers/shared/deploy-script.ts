@@ -25,6 +25,13 @@ export interface BuildSiteDeployScriptOptions {
   execStart: string
   envEntries: Record<string, string>
   port?: number
+  /**
+   * Commands run inside `appDir` after extraction + `.env` write, before the
+   * systemd unit is (re)written and started. Typically dependency install
+   * and/or build steps (e.g. `bun install --frozen-lockfile`, `bun run build`)
+   * so the release tarball can omit `node_modules`.
+   */
+  preStartCommands?: string[]
 }
 
 /**
@@ -38,6 +45,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     execStart,
     envEntries,
     port,
+    preStartCommands = [],
   } = options
   const appDir = options.appDir ?? `/var/www/${siteName}`
   const serviceName = `${slug}-${siteName}.service`
@@ -45,6 +53,13 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const envFile = Object.entries(envEntries)
     .map(([k, v]) => `${k}=${JSON.stringify(String(v))}`)
     .join('\n')
+
+  // preStart commands (install / build) run inside appDir. Bun auto-loads the
+  // freshly written `.env` from the cwd, so build steps see the same config as
+  // the running service without us fragile-sourcing the file in the shell.
+  const preStart = preStartCommands.length > 0
+    ? [`cd ${appDir}`, ...preStartCommands]
+    : []
 
   return [
     'set -euo pipefail',
@@ -56,6 +71,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     envFile,
     'TS_CLOUD_ENV_EOF',
     `chmod 600 ${appDir}/.env`,
+    ...preStart,
     `cat > /etc/systemd/system/${serviceName} <<'TS_CLOUD_UNIT_EOF'`,
     '[Unit]',
     `Description=${siteName} (managed by ts-cloud)`,

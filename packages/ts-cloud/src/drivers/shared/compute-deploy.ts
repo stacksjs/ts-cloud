@@ -84,6 +84,7 @@ export async function deploySiteRelease(
     execStart: resolveExecStart(site.start!, runtime),
     envEntries: site.env || {},
     port: site.port,
+    preStartCommands: site.preStart,
   })
 
   logger.step(`Deploying to ${targets.length} target(s)...`)

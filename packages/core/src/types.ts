@@ -801,6 +801,17 @@ export interface SiteConfig {
    * (`/var/www/<site>/.env`). Available as process.env.* inside the running app.
    */
   env?: Record<string, string>
+
+  /**
+   * SSR only. Commands run on the server inside the app directory after the
+   * release tarball is extracted and the `.env` is written, but before the
+   * systemd service (re)starts. Use this to install runtime dependencies and/or
+   * produce build artifacts on the machine itself — so the release tarball can
+   * ship source only (no `node_modules`) and stays small.
+   *
+   * Example: ['bun install --frozen-lockfile', 'bun run build']
+   */
+  preStart?: string[]
 }
 
 export interface VpcConfig {

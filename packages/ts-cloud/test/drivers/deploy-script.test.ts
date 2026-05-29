@@ -36,6 +36,41 @@ describe('buildSiteDeployScript', () => {
     expect(script.join('\n')).toContain('NODE_ENV="production"')
     expect(script.join('\n')).toContain('systemctl restart my-app-web.service')
   })
+
+  it('runs preStart commands in the app dir after extraction, before the unit starts', () => {
+    const script = buildSiteDeployScript({
+      siteName: 'web',
+      slug: 'my-app',
+      artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
+      execStart: '/usr/local/bin/bun run server.ts',
+      envEntries: { NODE_ENV: 'production' },
+      port: 3000,
+      preStartCommands: ['bun install --frozen-lockfile', 'bun run build'],
+    })
+
+    const joined = script.join('\n')
+    expect(joined).toContain('cd /var/www/web')
+    expect(joined).toContain('bun install --frozen-lockfile')
+    expect(joined).toContain('bun run build')
+
+    // preStart must come after extraction + env write but before the unit write.
+    const extractIdx = script.findIndex(l => l.includes('tar xzf'))
+    const installIdx = script.findIndex(l => l === 'bun install --frozen-lockfile')
+    const unitIdx = script.findIndex(l => l.includes('/etc/systemd/system/'))
+    expect(extractIdx).toBeLessThan(installIdx)
+    expect(installIdx).toBeLessThan(unitIdx)
+  })
+
+  it('omits the preStart block entirely when no commands are given', () => {
+    const script = buildSiteDeployScript({
+      siteName: 'web',
+      slug: 'my-app',
+      artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
+      execStart: '/usr/local/bin/bun run server.ts',
+      envEntries: {},
+    })
+    expect(script.some(l => l.startsWith('cd /var/www/'))).toBe(false)
+  })
 })
 
 describe('buildAwsArtifactFetch', () => {
