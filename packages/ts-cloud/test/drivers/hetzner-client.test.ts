@@ -6,8 +6,8 @@ import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from '../../src/dri
 describe('resolveHetznerServerType', () => {
   it('maps size shorthands to Hetzner server types', () => {
     expect(resolveHetznerServerType('micro')).toBe('cpx11')
-    expect(resolveHetznerServerType('small')).toBe('cx22')
-    expect(resolveHetznerServerType('medium')).toBe('cx32')
+    expect(resolveHetznerServerType('small')).toBe('cx23')
+    expect(resolveHetznerServerType('medium')).toBe('cx33')
   })
 
   it('passes through provider-specific type strings', () => {
@@ -55,6 +55,16 @@ describe('wrapCloudInitUserData', () => {
     expect(wrapped.startsWith('#cloud-config')).toBe(true)
     expect(wrapped).toContain('runcmd:')
     expect(wrapped).toContain('echo hello')
+  })
+
+  it('runs the bootstrap via bash so set -o pipefail does not break under dash', () => {
+    const wrapped = wrapCloudInitUserData('#!/bin/bash\nset -euo pipefail\necho hi')
+    // The script must be written to disk and executed with an explicit bash,
+    // not inlined under runcmd (which cloud-init runs with /bin/sh).
+    expect(wrapped).toContain('write_files:')
+    expect(wrapped).toContain('/var/lib/cloud/ts-cloud-bootstrap.sh')
+    expect(wrapped).toContain('[ bash, /var/lib/cloud/ts-cloud-bootstrap.sh ]')
+    expect(wrapped).toContain('set -euo pipefail')
   })
 })
 
