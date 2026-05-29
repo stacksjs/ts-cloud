@@ -5,11 +5,15 @@ import type { InstanceSize } from '@ts-cloud/core'
  * @see https://www.hetzner.com/cloud
  */
 export const HETZNER_INSTANCE_TYPES: Record<Exclude<InstanceSize, string & {}> | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge', string> = {
+  // Hetzner deprecated the original shared-Intel `cx` line (cx11…cx52). The
+  // current shared lines are `cx2x`-suffixed (cx23/cx33/cx43/cx53) for Intel
+  // and `cpx`/`cax` for AMD/ARM. Map to non-deprecated types so `createServer`
+  // doesn't fail with "server type N is deprecated".
   micro: 'cpx11',
-  small: 'cx22',
-  medium: 'cx32',
-  large: 'cx42',
-  xlarge: 'cx52',
+  small: 'cx23',
+  medium: 'cx33',
+  large: 'cx43',
+  xlarge: 'cx53',
   '2xlarge': 'ccx33',
 }
 
