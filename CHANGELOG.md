@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.20...v0.2.21)
+
+### 🚀 Features
+
+- **compute**: add site.preStart hook to install/build on the server ([bb4d807](https://github.com/stacksjs/ts-cloud/commit/bb4d807)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **hetzner**: raise SSH/SCP maxBuffer for release deploys ([c09423d](https://github.com/stacksjs/ts-cloud/commit/c09423d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: map instance sizes to non-deprecated server types ([799788e](https://github.com/stacksjs/ts-cloud/commit/799788e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: run cloud-init bootstrap under bash ([f8ceb36](https://github.com/stacksjs/ts-cloud/commit/f8ceb36)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: type fetchImpl with a minimal signature to satisfy tsc ([2ab44b3](https://github.com/stacksjs/ts-cloud/commit/2ab44b3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.21 ([9aae8f1](https://github.com/stacksjs/ts-cloud/commit/9aae8f1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.19...v0.2.20)
 
 ### 🚀 Features
