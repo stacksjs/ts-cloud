@@ -21,6 +21,9 @@ import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
 
+/** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
+const SSH_MAX_BUFFER = 1024 * 1024 * 256
+
 export interface HetznerDriverOptions {
   apiToken?: string
   sshPrivateKeyPath?: string
@@ -293,14 +296,19 @@ export class HetznerDriver implements CloudDriver {
       '-o', 'BatchMode=yes',
       localPath,
       `${this.sshUser}@${host}:${remotePath}`,
-    ].map(arg => `"${arg.replace(/"/g, '\\"')}"`).join(' '), { stdio: 'pipe' })
+    ].map(arg => `"${arg.replace(/"/g, '\\"')}"`).join(' '), { stdio: 'pipe', maxBuffer: SSH_MAX_BUFFER })
   }
 
   private sshExec(host: string, script: string): string {
     const escaped = script.replace(/'/g, `'\\''`)
+    // A release deploy extracts the full app tarball (often tens of thousands
+    // of files), and `tar` happily emits a warning line per oddity. With the
+    // default 1MB maxBuffer, execSync kills the SSH child mid-deploy with
+    // ENOBUFS, so give the remote command plenty of headroom.
     return execSync(`ssh ${this.sshBaseArgs(host).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} '${escaped}'`, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: SSH_MAX_BUFFER,
     })
   }
 }
