@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.23...v0.2.24)
+
+### 🧹 Chores
+
+- release v0.2.24 ([27d7fee](https://github.com/stacksjs/ts-cloud/commit/27d7fee)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ⏪ Reverts
+
+- **hetzner**: drop ts-cloud's own Caddy reverse-proxy generation ([7ede40a](https://github.com/stacksjs/ts-cloud/commit/7ede40a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.22...v0.2.23)
 
 ### 🚀 Features
