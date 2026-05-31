@@ -1,3 +1,23 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.22...v0.2.23)
+
+### 🚀 Features
+
+- **cli**: migrate:storage command ([79cecd6](https://github.com/stacksjs/ts-cloud/commit/79cecd6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **migrate**: cross-provider object-storage migration ([254df7f](https://github.com/stacksjs/ts-cloud/commit/254df7f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **s3**: binary-safe getObjectBytes ([b45b865](https://github.com/stacksjs/ts-cloud/commit/b45b865)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧪 Tests
+
+- **migrate**: cross-provider migration tests + docs ([267b038](https://github.com/stacksjs/ts-cloud/commit/267b038)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.23 ([005f57c](https://github.com/stacksjs/ts-cloud/commit/005f57c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.21...v0.2.22)
 
 ### 🚀 Features
