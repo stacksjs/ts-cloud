@@ -488,6 +488,95 @@ export class S3Client {
   }
 
   /**
+   * Get object as raw bytes (binary-safe).
+   *
+   * {@link getObject} decodes the response as UTF-8 text, which corrupts binary
+   * payloads (images, archives, mail attachments). This issues a SigV4-signed
+   * GET and reads the body via `arrayBuffer()`, preserving every byte. It also
+   * returns the `content-type` header so a copy can faithfully reproduce it.
+   *
+   * Works against any S3-compatible provider (AWS, Backblaze, Hetzner) — it
+   * signs against the same virtual-hosted/path-style host the client is
+   * configured for.
+   */
+  async getObjectBytes(bucket: string, key: string): Promise<{ body: Uint8Array, contentType?: string, contentLength?: number }> {
+    const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
+    const host = this.s3VirtualHost(bucket)
+    // In path-style mode the bucket lives in the path; in virtual-hosted mode the
+    // host already carries it. Mirror putObject's encoding so reserved chars survive.
+    const encodedKey = key.split('/').map(seg => encodeURIComponent(seg)).join('/')
+    const canonicalUri = this.forcePathStyle ? `/${bucket}/${encodedKey}` : `/${encodedKey}`
+    const url = `https://${host}${canonicalUri}`
+
+    const now = new Date()
+    const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
+    const payloadHash = crypto.createHash('sha256').update('').digest('hex')
+
+    const requestHeaders: Record<string, string> = {
+      'host': host,
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+    }
+    if (sessionToken) {
+      requestHeaders['x-amz-security-token'] = sessionToken
+    }
+
+    const canonicalHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(k => `${k.toLowerCase()}:${requestHeaders[k].trim()}\n`)
+      .join('')
+    const signedHeaders = Object.keys(requestHeaders)
+      .sort()
+      .map(k => k.toLowerCase())
+      .join(';')
+
+    const canonicalRequest = [
+      'GET',
+      canonicalUri,
+      '',
+      canonicalHeaders,
+      signedHeaders,
+      payloadHash,
+    ].join('\n')
+
+    const algorithm = 'AWS4-HMAC-SHA256'
+    const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`
+    const stringToSign = [
+      algorithm,
+      amzDate,
+      credentialScope,
+      crypto.createHash('sha256').update(canonicalRequest).digest('hex'),
+    ].join('\n')
+
+    const kDate = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update(dateStamp).digest()
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest()
+    const kService = crypto.createHmac('sha256', kRegion).update('s3').digest()
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest()
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
+
+    const authorizationHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { ...requestHeaders, Authorization: authorizationHeader },
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`S3 GET failed: ${response.status} ${errorText}`)
+    }
+
+    const buffer = await response.arrayBuffer()
+    const contentLengthHeader = response.headers.get('content-length')
+    return {
+      body: new Uint8Array(buffer),
+      contentType: response.headers.get('content-type') ?? undefined,
+      contentLength: contentLengthHeader ? Number.parseInt(contentLengthHeader, 10) : undefined,
+    }
+  }
+
+  /**
    * Copy object within S3 (server-side copy)
    */
   async copyObject(options: {
