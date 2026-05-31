@@ -100,7 +100,7 @@ export interface BuildStaticSiteDeployScriptOptions {
   siteName: string
   /** How the remote host obtains the release tarball */
   artifactFetch: string[]
-  /** Target directory served by Caddy `file_server`. Default `/var/www/<site>`. */
+  /** Target directory the static site is shipped to. Default `/var/www/<site>`. */
   appDir?: string
   /**
    * Commands run inside `appDir` after extraction — e.g. build the docs/blog on
@@ -113,8 +113,8 @@ export interface BuildStaticSiteDeployScriptOptions {
 /**
  * Build the remote shell commands that install/refresh a STATIC site on a
  * compute target. Unlike {@link buildSiteDeployScript}, there is no systemd
- * service — the extracted files are served directly by Caddy `file_server`
- * (Caddy is reloaded separately when the Caddyfile changes).
+ * service — the extracted files are shipped to `/var/www/<site>` and served by
+ * the operator's own proxy (e.g. rpx + tlsx), which ts-cloud does not manage.
  */
 export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScriptOptions): string[] {
   const { siteName, artifactFetch, preStartCommands = [] } = options

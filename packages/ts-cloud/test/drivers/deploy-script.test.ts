@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'bun:test'
-import { buildCaddyfile } from '../../src/drivers/shared/caddyfile'
 import {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
@@ -79,21 +78,5 @@ describe('buildAwsArtifactFetch', () => {
       .toEqual([
         'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/web-release.tar.gz --region us-east-1',
       ])
-  })
-})
-
-describe('buildCaddyfile', () => {
-  it('groups sites by domain with path-specific handles first', () => {
-    const caddyfile = buildCaddyfile({
-      api: { domain: 'example.com', port: 3001, path: '/api', root: '.output', build: 'bun run build', start: 'bun run api.ts' },
-      web: { domain: 'example.com', port: 3000, root: '.output', build: 'bun run build', start: 'bun run web.ts' },
-    })
-
-    expect(caddyfile).toContain('example.com {')
-    // Path-specific handle (`/api`) is ordered before the catch-all route,
-    // which now renders as a bare `reverse_proxy` (no redundant `handle {}`).
-    expect(caddyfile!.indexOf('handle /api')).toBeLessThan(caddyfile!.indexOf('reverse_proxy localhost:3000'))
-    expect(caddyfile).toContain('reverse_proxy localhost:3001')
-    expect(caddyfile).toContain('reverse_proxy localhost:3000')
   })
 })

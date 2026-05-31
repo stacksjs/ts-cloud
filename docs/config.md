@@ -140,8 +140,14 @@ Each entry in `sites` deploys to one of two **targets**, set explicitly with
 | `deploy` | `start` | Resolved kind | What happens |
 |----------|---------|---------------|--------------|
 | `'bucket'` (or unset, no `start`) | — | **bucket** | Built `root` is uploaded to object storage (S3 / Hetzner OS) and served via a CDN (CloudFront on AWS). |
-| `'server'` (or unset, `start` set) | set | **server-app** | Dynamic app run as a `systemd` service behind the Caddy reverse proxy (`reverse_proxy`). |
-| `'server'` | unset | **server-static** | Static site **built and served on the compute box** by Caddy `file_server`, optionally fronted by a CDN. |
+| `'server'` (or unset, `start` set) | set | **server-app** | Dynamic app run as a `systemd` service. |
+| `'server'` | unset | **server-static** | Static site **built and shipped to the compute box** (to `/var/www/<site>`), optionally fronted by a CDN. |
+
+> Proxying and TLS on compute (`server`) targets are handled by the operator's
+> own tooling (e.g. [rpx](https://github.com/stacksjs/rpx) for proxying +
+> [tlsx](https://github.com/stacksjs/tlsx) for TLS), **not** ts-cloud. ts-cloud
+> provisions the box, runs the systemd app, and ships static assets — it does
+> not install or configure a reverse proxy.
 
 Inference rules (when `deploy` is omitted): explicit `deploy` always wins; else
 `start` present ⇒ `'server'`; else ⇒ `'bucket'`. This keeps every existing
@@ -155,11 +161,11 @@ const config: CloudConfig = {
 
   // The server-targeted sites need a compute box to land on.
   infrastructure: {
-    compute: { mode: 'server', proxy: { email: 'ops@example.com' } },
+    compute: { mode: 'server' },
   },
 
   sites: {
-    // Dynamic SSR app → systemd service behind Caddy reverse_proxy
+    // Dynamic SSR app → systemd service (proxied by the operator's own rpx)
     app: {
       root: '.output',
       domain: 'example.com',
@@ -167,7 +173,7 @@ const config: CloudConfig = {
       port: 3000,
     },
 
-    // Docs built AND served on the same box via Caddy file_server
+    // Docs built AND shipped to the same box (served by the operator's proxy)
     docs: {
       root: 'docs/.vitepress/dist',
       domain: 'docs.example.com',
@@ -206,13 +212,14 @@ or add a server.
 The `cache` hint applies to either origin:
 
 - **bucket** — front the origin with a CDN (CloudFront on AWS).
-- **server-static** — emits `Cache-Control` headers in the Caddy `file_server`
-  block (`cache.enabled` → `max-age` from `cache.maxAge`, default `3600`).
+- **server-static** — `cache.enabled` / `cache.maxAge` express the intended
+  edge caching; the actual `Cache-Control` headers are configured in the
+  operator's own proxy (rpx + tlsx), not by ts-cloud.
 
 On **AWS**, a server origin can sit behind CloudFront via the existing
-compute-origin routing. On **Hetzner** there is no native CDN — proper
-`Cache-Control` headers are emitted and you can place CloudFront / Cloudflare /
-bunny in front of the box yourself. ts-cloud does not provision a Hetzner CDN.
+compute-origin routing. On **Hetzner** there is no native CDN — you can place
+CloudFront / Cloudflare / bunny in front of the box yourself. ts-cloud does not
+provision a Hetzner CDN.
 
 ## Preset Configuration
 

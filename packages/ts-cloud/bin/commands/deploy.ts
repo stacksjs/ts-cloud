@@ -104,7 +104,7 @@ async function deployAppToCompute(
     cli.header(`Preparing site: ${siteName}`)
     cli.info(`Domain: ${site.domain || '(none)'}`)
     cli.info(`Source: ${site.root}`)
-    cli.info(`Kind: ${kind === 'server-static' ? 'static (Caddy file_server)' : 'app (systemd service)'}`)
+    cli.info(`Kind: ${kind === 'server-static' ? 'static (shipped to /var/www)' : 'app (systemd service)'}`)
     if (kind === 'server-app') {
       cli.info(`Start: ${site.start}`)
       cli.info(`Port: ${site.port ?? '(unset)'}`)
@@ -1360,8 +1360,8 @@ async function deployStaticSitesWithExternalDns(
     }
 
     // Skip sites the user EXPLICITLY targeted at the server (deploy:'server') —
-    // those are handled by the compute path (systemd app or Caddy file_server),
-    // not S3+CloudFront. Backward-compat: a legacy site with `start` and NO
+    // those are handled by the compute path (systemd app or static site shipped
+    // to /var/www), not S3+CloudFront. Backward-compat: a legacy site with `start` and NO
     // explicit `deploy` still gets its static front here (unchanged behavior);
     // only an explicit deploy:'server' opts out of the bucket path.
     if (siteConfig.deploy === 'server') {

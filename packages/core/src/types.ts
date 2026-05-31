@@ -749,12 +749,12 @@ export interface ResourceConditions {
  *   Hetzner Object Storage) and served via a CDN (CloudFront on AWS). This is
  *   the classic static-site path.
  * - `'server'` — the site lives on the environment's compute server (EC2 /
- *   Hetzner VM) behind the Caddy reverse proxy. A `'server'` site resolves to
+ *   Hetzner VM). Proxying/TLS for these targets is handled by the operator's
+ *   own tooling (e.g. rpx + tlsx), not ts-cloud. A `'server'` site resolves to
  *   one of two kinds depending on whether it declares a `start` command:
- *   - `start` present → a **dynamic app** run as a systemd service and proxied
- *     by Caddy (`reverse_proxy`).
- *   - no `start` (but a static `root`) → a **static site built and served on the
- *     server** by Caddy `file_server`, optionally fronted by a CDN.
+ *   - `start` present → a **dynamic app** run as a systemd service.
+ *   - no `start` (but a static `root`) → a **static site built and shipped to
+ *     the server** (to `/var/www/<site>`), optionally fronted by a CDN.
  *
  * @see resolveSiteDeployTarget for the default inference rules.
  */
@@ -763,11 +763,11 @@ export type SiteDeployTarget = 'bucket' | 'server'
 /**
  * Per-site caching hint, applicable to either origin (bucket or server).
  *
- * For a `server`-served static site the values are emitted as `Cache-Control`
- * headers inside the Caddy `file_server` block. `cdn` expresses the intent to
- * place a CDN in front of the origin — on AWS this reuses the existing
- * CloudFront machinery; on Hetzner (no native CDN) it's advisory only (put
- * CloudFront / Cloudflare / bunny in front of the box yourself).
+ * `cdn` expresses the intent to place a CDN in front of the origin — on AWS
+ * this reuses the existing CloudFront machinery; on Hetzner (no native CDN)
+ * it's advisory only (put CloudFront / Cloudflare / bunny in front of the box
+ * yourself). For a `server`-served static site, caching/TLS at the edge is
+ * configured by the operator's own proxy (e.g. rpx + tlsx).
  */
 export interface SiteCacheConfig {
   /** Emit cache-control headers / enable CDN caching for this site. */
@@ -821,9 +821,9 @@ export interface SiteConfig {
    * An explicit value always wins over the inference. Combined with `start`,
    * this resolves to one of three kinds (see {@link SiteDeployTarget}):
    *  - `'bucket'` → upload built `root` to object storage + CDN;
-   *  - `'server'` + `start` → dynamic app as a systemd service behind Caddy;
-   *  - `'server'` + no `start` (static `root`) → static site built and served
-   *    **on the server** via Caddy `file_server`, with optional CDN caching.
+   *  - `'server'` + `start` → dynamic app as a systemd service;
+   *  - `'server'` + no `start` (static `root`) → static site built and shipped
+   *    **to the server** (`/var/www/<site>`), with optional CDN caching.
    *
    * Set `deploy: 'server'` (without `start`) to build/serve docs or a blog on an
    * existing compute box instead of a bucket. Set `deploy: 'bucket'` on a site
@@ -833,22 +833,23 @@ export interface SiteConfig {
 
   /**
    * Per-site caching hint, used for both bucket and server origins.
-   * For a server-served static site, emits `Cache-Control` headers in the Caddy
-   * `file_server` block; `cdn` expresses "front this origin with a CDN".
+   * `cdn` expresses "front this origin with a CDN". For a server-served static
+   * site, edge caching/TLS is configured by the operator's own proxy (rpx +
+   * tlsx), not ts-cloud.
    */
   cache?: SiteCacheConfig
 
   /**
    * Whether this site serves a single-page application (client-side routing).
-   * For a `server`-served static site, unmatched paths fall back to
-   * `index.html` (Caddy `try_files {path} /index.html`). Mirrors
-   * {@link StorageItemConfig.spa} for the bucket path.
+   * Mirrors {@link StorageItemConfig.spa} for the bucket path. For a
+   * `server`-served static site, SPA fallback is configured in the operator's
+   * own proxy.
    */
   spa?: boolean
 
   /**
-   * URL rewrite style for a `server`-served static site's extensionless URLs,
-   * mirroring {@link StorageItemConfig.pathRewriteStyle}:
+   * URL rewrite style for a static site's extensionless URLs, mirroring
+   * {@link StorageItemConfig.pathRewriteStyle}:
    *  - `'directory'` (default): `/guide/get-started` → `/guide/get-started/index.html`
    *  - `'flat'`: `/guide/get-started` → `/guide/get-started.html`
    */
@@ -1414,163 +1415,6 @@ export interface ContainerItemConfig {
   }
 }
 
-/**
- * A single upstream application fronted by the Caddy reverse proxy.
- *
- * Each app maps one or more request domains to a local upstream port, so a
- * single server can host several apps (e.g. a registry, a web app and a
- * tunnel server) behind one Caddy instance with host-based routing.
- */
-export interface CaddyAppConfig {
-  /**
-   * Optional human-readable name for the app (used only for Caddyfile
-   * comments / readability). Defaults to the first domain.
-   */
-  name?: string
-
-  /**
-   * Domains routed to this upstream. Multiple domains share one site block.
-   *
-   * - Explicit hostnames (e.g. `app.example.com`) get automatic Let's Encrypt
-   *   TLS via the HTTP-01 challenge.
-   * - Wildcards (`*.tunnel.example.com`) or a bare `*` require on-demand TLS
-   *   (see `proxy.onDemandTls`) because Caddy can't pre-provision certs for an
-   *   unbounded set of hostnames.
-   */
-  domains: string[]
-
-  /**
-   * Local upstream port the app listens on (Caddy proxies to
-   * `localhost:<port>`).
-   *
-   * Required for a reverse-proxy (dynamic) app. Omit for a static
-   * (`file_server`) site, which is selected by setting {@link root} instead.
-   */
-  port?: number
-
-  /**
-   * Serve a static site from this directory via Caddy `file_server` (the box is
-   * the origin) instead of reverse-proxying to a port. Mutually exclusive with
-   * {@link port}; when set, this app emits a `root * <root>` + `file_server`
-   * block rather than a `reverse_proxy`.
-   */
-  root?: string
-
-  /**
-   * Static `file_server` only. When true, unmatched paths fall back to
-   * `index.html` (`try_files {path} /index.html`) for client-side SPA routing.
-   */
-  spa?: boolean
-
-  /**
-   * Static `file_server` only. URL rewrite style for extensionless requests,
-   * mirroring {@link StorageItemConfig.pathRewriteStyle}:
-   *  - `'directory'` (default): `/guide/get-started` → `/guide/get-started/index.html`
-   *  - `'flat'`: `/guide/get-started` → `/guide/get-started.html`
-   */
-  pathRewriteStyle?: 'directory' | 'flat'
-
-  /**
-   * Static `file_server` only. When set, emits a `Cache-Control` header for
-   * served assets. `maxAge` (seconds) controls `max-age`; defaults to 3600 when
-   * enabled without an explicit value.
-   */
-  cache?: SiteCacheConfig
-
-  /**
-   * Upstream host. Defaults to `localhost`. Set this to proxy to another
-   * machine / container on the private network.
-   * @default 'localhost'
-   */
-  upstreamHost?: string
-
-  /**
-   * Optional path prefix. When set, only requests matching this path are
-   * routed to the upstream; several apps can then share a domain. Omit (or use
-   * `/`) for a catch-all.
-   */
-  path?: string
-
-  /**
-   * Extra raw directives placed inside this app's `reverse_proxy` block
-   * (e.g. `header_up Host {host}`, `lb_policy round_robin`). Advanced escape
-   * hatch — emitted verbatim.
-   */
-  reverseProxyDirectives?: string[]
-}
-
-/**
- * On-demand TLS configuration. Caddy obtains a certificate at the moment of
- * the first TLS handshake for a hostname, rather than ahead of time. Essential
- * for wildcard/tunnel domains where the full hostname set isn't known up front.
- *
- * @see https://caddyserver.com/docs/automatic-https#on-demand-tls
- */
-export interface CaddyOnDemandTlsConfig {
-  /**
-   * URL Caddy queries before issuing a certificate for an unknown host. Caddy
-   * issues a cert only on a 2xx response, which prevents unbounded issuance.
-   * Strongly recommended (Caddy refuses to start on-demand TLS without it in
-   * most production setups).
-   *
-   * Example: `http://localhost:9007/check-domain`
-   */
-  ask?: string
-
-  /**
-   * Rate limit: max certificate issuances allowed within `interval`.
-   * @deprecated by Caddy upstream but still emitted when set.
-   */
-  burst?: number
-
-  /** Interval (Caddy duration, e.g. `1m`, `2h`) for the `burst` rate limit. */
-  interval?: string
-}
-
-/**
- * Typed reverse-proxy front for a compute server. Generates a `/etc/caddy/Caddyfile`
- * that performs host-based routing to one or more upstream apps with automatic
- * HTTPS (Let's Encrypt HTTP-01) and optional on-demand TLS.
- */
-export interface CaddyProxyConfig {
-  /**
-   * Apps fronted by the proxy. Each maps domain(s) → an upstream port.
-   * When omitted, ts-cloud derives apps from `sites` that declare a `domain`
-   * and `port`, so single-app deploys keep working without extra config.
-   */
-  apps?: CaddyAppConfig[]
-
-  /**
-   * Email used for the Let's Encrypt ACME account (recommended — receives
-   * expiry warnings). Emitted in the Caddyfile global options block.
-   */
-  email?: string
-
-  /**
-   * Enable on-demand TLS for wildcard/tunnel domains. Either `true` (use the
-   * `ask` endpoint from this object) or a full config object.
-   */
-  onDemandTls?: boolean | CaddyOnDemandTlsConfig
-
-  /**
-   * Use the Let's Encrypt **staging** CA (higher rate limits, untrusted certs)
-   * — handy while iterating on a new deploy so you don't burn prod rate limits.
-   */
-  staging?: boolean
-
-  /**
-   * Extra global directives placed in the Caddyfile global options block
-   * (e.g. `admin off`, `servers { protocols h1 h2 h3 } `). Emitted verbatim.
-   */
-  globalDirectives?: string[]
-
-  /**
-   * Provide a fully pre-rendered Caddyfile, bypassing generation entirely.
-   * Mutually exclusive with `apps` (raw wins). Escape hatch for advanced setups.
-   */
-  raw?: string
-}
-
 export interface ComputeConfig {
   /**
    * Compute mode: 'server' for EC2, 'serverless' for Fargate/Lambda
@@ -1834,17 +1678,6 @@ export interface ComputeConfig {
    * Set to `true` only if you need traditional SSH access.
    */
   allowSsh?: boolean
-
-  /**
-   * Reverse-proxy front (Caddy) for this server: host-based routing to one or
-   * more upstream apps with automatic HTTPS and optional on-demand TLS.
-   *
-   * Lets a single server host multiple apps (e.g. a registry + web app +
-   * tunnel server) behind :80/:443. When omitted, ts-cloud falls back to
-   * deriving a proxy from `sites` that declare a `domain` + `port`, so
-   * single-app deploys keep working unchanged.
-   */
-  proxy?: CaddyProxyConfig
 }
 
 export interface DatabaseItemConfig {

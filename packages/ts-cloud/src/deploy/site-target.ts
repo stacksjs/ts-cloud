@@ -3,10 +3,10 @@ import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
 /**
  * The three resolved deployment kinds for a site:
  *  - `'bucket'`        — upload built `root` to object storage + CDN.
- *  - `'server-app'`    — `server` + `start`: dynamic app as a systemd service
- *                        behind the Caddy reverse proxy.
+ *  - `'server-app'`    — `server` + `start`: dynamic app as a systemd service.
  *  - `'server-static'` — `server` + no `start` (has static `root`): a static
- *                        site built and served on the box via Caddy `file_server`.
+ *                        site built and shipped to `/var/www/<site>` on the box
+ *                        (served by the operator's own proxy, e.g. rpx + tlsx).
  */
 export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static'
 

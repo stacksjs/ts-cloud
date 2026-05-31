@@ -332,12 +332,12 @@ describe('HetznerDriver', () => {
     const ruleArgs = (setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>])
     expect(ruleArgs[0]).toBe(55)
     const ports = ruleArgs[1].map(r => r.port).sort()
-    // Caddy fronts the site (it has a domain), so only 80/443 + SSH are open —
-    // the upstream port 3000 stays private.
-    expect(ports).toEqual(['22', '443', '80'])
+    // ts-cloud runs no reverse proxy — the site's app port is opened directly
+    // alongside the base 80/443 + SSH rules.
+    expect(ports).toEqual(['22', '3000', '443', '80'])
   })
 
-  it('opens raw upstream ports when no domain (no proxy) is configured', async () => {
+  it('opens raw upstream ports for sites with an app port', async () => {
     const setFirewallRules = mock(async () => [])
     let createdRules: Array<{ port: string }> = []
     const client = mockHetznerClient({
@@ -351,7 +351,6 @@ describe('HetznerDriver', () => {
 
     const config: CloudConfig = {
       ...baseConfig,
-      // Site without a domain => no Caddyfile => raw-port deploy.
       sites: { api: { root: '.', port: 4000, start: 'bun run server.ts' } },
     }
     await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
@@ -360,7 +359,7 @@ describe('HetznerDriver', () => {
     expect(ports).toContain('4000')
   })
 
-  it('routes multiple apps on one server via compute.proxy', async () => {
+  it('does not install or configure a reverse proxy on the box', async () => {
     let capturedUserData = ''
     const client = mockHetznerClient({
       createServer: mock(async (opts: any) => {
@@ -381,32 +380,12 @@ describe('HetznerDriver', () => {
     })
     const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
 
-    const config: CloudConfig = {
-      ...baseConfig,
-      sites: {},
-      infrastructure: {
-        compute: {
-          size: 'small',
-          runtime: 'bun',
-          proxy: {
-            email: 'ops@example.com',
-            onDemandTls: { ask: 'http://localhost:9007/check' },
-            apps: [
-              { name: 'registry', domains: ['registry.example.com'], port: 9007 },
-              { name: 'web', domains: ['example.com'], port: 3000 },
-              { name: 'tunnel', domains: ['*.tunnel.example.com'], port: 8080 },
-            ],
-          },
-        },
-      },
-    }
-    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    // The generated Caddyfile is embedded in cloud-init user_data.
-    expect(capturedUserData).toContain('registry.example.com')
-    expect(capturedUserData).toContain('reverse_proxy localhost:9007')
-    expect(capturedUserData).toContain('reverse_proxy localhost:3000')
-    expect(capturedUserData).toContain('on_demand_tls')
-    expect(capturedUserData).toContain('email ops@example.com')
+    // Proxying/TLS are handled by the operator's own tooling (rpx + tlsx), so
+    // cloud-init must not install Caddy or write any Caddyfile.
+    expect(capturedUserData).not.toContain('caddy')
+    expect(capturedUserData).not.toContain('reverse_proxy')
+    expect(capturedUserData).not.toContain('on_demand_tls')
   })
 })

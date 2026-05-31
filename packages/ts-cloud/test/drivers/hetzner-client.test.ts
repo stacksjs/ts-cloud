@@ -39,13 +39,10 @@ describe('generateUbuntuAppCloudInit', () => {
     expect(script).toContain('/var/ts-cloud/staging')
   })
 
-  it('installs caddy when a caddyfile is provided', () => {
-    const script = generateUbuntuAppCloudInit({
-      runtime: 'bun',
-      caddyfile: 'example.com {\n  reverse_proxy localhost:3000\n}',
-    })
-    expect(script).toContain('/etc/caddy/Caddyfile')
-    expect(script).toContain('systemctl enable caddy')
+  it('does not install or configure a reverse proxy (operator runs their own)', () => {
+    const script = generateUbuntuAppCloudInit({ runtime: 'bun' })
+    expect(script).not.toContain('caddy')
+    expect(script).not.toContain('/etc/caddy/Caddyfile')
   })
 })
 

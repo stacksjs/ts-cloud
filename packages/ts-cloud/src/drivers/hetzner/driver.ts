@@ -3,7 +3,6 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import type {
-  CaddyProxyConfig,
   CloudDriver,
   ComputeStackOutputs,
   ComputeTarget,
@@ -15,7 +14,6 @@ import type {
   UploadReleaseResult,
 } from '@ts-cloud/core'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
-import { resolveCaddyfile } from '../shared/caddyfile'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
@@ -128,21 +126,17 @@ export class HetznerDriver implements CloudDriver {
     }
 
     const sites = config.sites || {}
-    const caddyfile = resolveCaddyfile(sites, compute.proxy)
 
-    // When Caddy fronts traffic (a Caddyfile was generated), upstream app ports
-    // stay private — only 80/443 (+ SSH) are exposed. Without a proxy we fall
-    // back to opening the raw site/app ports so direct-port deploys still work.
-    const sitePorts = caddyfile
-      ? []
-      : this.collectUpstreamPorts(sites, compute.proxy)
+    // ts-cloud does not run a reverse proxy on the box — the operator runs
+    // their own (e.g. rpx + tlsx). Open the upstream app/site ports so the
+    // operator's proxy (or direct access) can reach each app.
+    const sitePorts = this.collectUpstreamPorts(sites)
 
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
-      caddyfile,
     })
     const userData = wrapCloudInitUserData(bootstrap)
 
@@ -186,7 +180,7 @@ export class HetznerDriver implements CloudDriver {
     await writeDriverState(stackName, state)
 
     // The server reports `running` the moment the VM powers on, but cloud-init
-    // (apt, runtime install, Caddy) is still going. Deploying now races the
+    // (apt, runtime install) is still going. Deploying now races the
     // bootstrap — SSH may be refused or `bun` may be missing. Wait for SSH to
     // come up, then for cloud-init to finish, before handing back outputs.
     const ip = running.public_net.ipv4?.ip
@@ -375,18 +369,14 @@ export class HetznerDriver implements CloudDriver {
   }
 
   /**
-   * Collect the upstream app ports that must be reachable when no reverse proxy
-   * is fronting traffic (raw-port deploys). Drops 80/443 (handled separately).
+   * Collect the upstream app ports that must be reachable on the box. ts-cloud
+   * does not front traffic with its own proxy, so each site's app port is
+   * opened directly. Drops 80/443 (always handled by the firewall base rules).
    */
   private collectUpstreamPorts(
     sites: Record<string, { port?: number }>,
-    proxy?: CaddyProxyConfig,
   ): number[] {
     const ports = new Set<number>()
-    for (const app of proxy?.apps ?? []) {
-      if (typeof app.port === 'number')
-        ports.add(app.port)
-    }
     for (const site of Object.values(sites)) {
       if (typeof site.port === 'number')
         ports.add(site.port)
@@ -426,8 +416,8 @@ export class HetznerDriver implements CloudDriver {
 
   /**
    * Block until cloud-init finishes (`cloud-init status --wait`). cloud-init is
-   * what installs the runtime + Caddy; deploying before it completes leaves the
-   * release pointing at a half-provisioned box (missing `bun`, no Caddy).
+   * what installs the runtime; deploying before it completes leaves the
+   * release pointing at a half-provisioned box (missing `bun`).
    */
   private async waitForCloudInit(host: string): Promise<void> {
     const { cloudInitIntervalMs, cloudInitTimeoutMs } = this.bootWait

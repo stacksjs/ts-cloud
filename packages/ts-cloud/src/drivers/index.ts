@@ -4,14 +4,6 @@ export { HetznerDriver } from './hetzner/driver'
 export { HetznerClient, resolveHetznerApiToken } from './hetzner/client'
 export { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './hetzner/cloud-init'
 export {
-  buildCaddyfile,
-  buildCaddyfileFromProxy,
-  isOnDemandDomain,
-  proxyConfigFromSites,
-  resolveCaddyfile,
-  staticSiteServerRoot,
-} from './shared/caddyfile'
-export {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
