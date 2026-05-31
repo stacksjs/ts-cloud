@@ -26,6 +26,8 @@
 import type { S3ClientOptions } from '../aws/s3'
 import { S3Client } from '../aws/s3'
 
+export * from './migrate'
+
 export type ObjectStorageProvider = 'aws' | 'backblaze' | 'hetzner'
 
 export interface ObjectStorageCredentials {

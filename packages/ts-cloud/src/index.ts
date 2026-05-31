@@ -123,6 +123,20 @@ export type {
   ObjectStorageProvider,
   ResolvedObjectStorage,
 } from './object-storage'
+export {
+  keyMatchesFilters,
+  migrateObjectStorage,
+  remapKey,
+} from './object-storage/migrate'
+export type {
+  MigrateEndpoint,
+  MigrateError,
+  MigrateOptions,
+  MigratePlanItem,
+  MigrateProgress,
+  MigrateResult,
+  MigrateVerification,
+} from './object-storage/migrate'
 
 export * from './ssl'
 
