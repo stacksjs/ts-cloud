@@ -23,6 +23,7 @@ export { registerAnalyticsCommands } from './analytics'
 // New infrastructure commands
 export { registerCdnCommands } from './cdn'
 export { registerStorageCommands } from './storage'
+export { registerMigrateCommands } from './migrate'
 export { registerCacheCommands } from './cache'
 export { registerQueueCommands } from './queue'
 export { registerNetworkCommands } from './network'

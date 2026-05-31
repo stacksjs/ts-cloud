@@ -26,6 +26,7 @@ import {
   // New infrastructure commands
   registerCdnCommands,
   registerStorageCommands,
+  registerMigrateCommands,
   registerCacheCommands,
   registerQueueCommands,
   registerNetworkCommands,
@@ -74,6 +75,7 @@ registerFunctionCommands(app)
 registerContainerCommands(app)
 registerCdnCommands(app)
 registerStorageCommands(app)
+registerMigrateCommands(app)
 registerCacheCommands(app)
 registerQueueCommands(app)
 registerNetworkCommands(app)
