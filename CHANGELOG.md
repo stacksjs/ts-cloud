@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.25...v0.2.26)
+
+### 🚀 Features
+
+- codify CDN-in-front-of-Hetzner-origin pattern ([c39aa3a](https://github.com/stacksjs/ts-cloud/commit/c39aa3a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.26 ([1c900ba](https://github.com/stacksjs/ts-cloud/commit/1c900ba)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.24...v0.2.25)
 
 ### 🚀 Features
