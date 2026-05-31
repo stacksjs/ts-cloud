@@ -253,6 +253,74 @@ await cloudfront.createInvalidation({
 })
 ```
 
+## Migrating object storage between providers
+
+ts-cloud speaks the S3 API for AWS S3, Backblaze B2 and Hetzner Object Storage,
+so you can move a service's data off AWS (or between any two S3-compatible
+buckets) with a single command. Bytes are copied (not strings), so binary
+payloads — images, archives, mail attachments — survive intact, and Content-Type
+is preserved when the source reports it. The copy is idempotent (objects already
+present at the destination with the same size are skipped) and can verify itself
+afterwards.
+
+```bash
+cloud migrate:storage \
+  --from aws:stacks-production-email \
+  --to hetzner:stacks-mail \
+  --include mailboxes/,inbox/,incoming/,sent/,trash/,drafts/,junk/,archive/,flags/,uids/,sms/ \
+  --exclude mail-server,deploy/,_deploy/,imap-server/ \
+  --verify
+```
+
+This copies only the mail data prefixes, deliberately leaving the server
+binaries and deploy artifacts behind (they show up in the report's `EXCLUDED`
+list so you can confirm nothing was missed), then re-lists the destination and
+asserts the object count and sizes match.
+
+### Flags
+
+- `--from <provider:bucket>` / `--to <provider:bucket>` — provider is `aws`, `hetzner` or `backblaze` (e.g. `aws:my-bucket`).
+- `--from-region` / `--to-region`, `--from-endpoint` / `--to-endpoint` — optional; default to the provider's standard endpoint.
+- `--from-prefix` / `--to-prefix` — key prefix on each side. The source prefix is stripped and the dest prefix prepended, so you can remap (`email/inbox/a.eml` → `mail/inbox/a.eml`).
+- `--include <csv>` / `--exclude <csv>` — only copy / skip keys under these comma-separated prefixes (`exclude` always wins).
+- `--dry-run` — print the plan (what would copy / what is excluded) without writing.
+- `--force` — re-copy even if the destination already has an object of the same size.
+- `--delete-extraneous` — delete destination keys not present in the source (default OFF).
+- `--concurrency <n>` — max concurrent copies (default 8).
+- `--verify` — after copying, re-list the destination and assert object count + sizes match the copied set.
+
+### Credentials per provider
+
+Set the credentials for **both** sides — the migrator resolves each side
+independently using the object-storage env conventions:
+
+| Provider | Access key env | Secret key env | Region env |
+|----------|----------------|----------------|------------|
+| `aws` | `AWS_ACCESS_KEY_ID` (or `S3_ACCESS_KEY_ID`) | `AWS_SECRET_ACCESS_KEY` (or `S3_SECRET_ACCESS_KEY`) | `AWS_REGION` |
+| `hetzner` | `HETZNER_S3_ACCESS_KEY` (falls back to `S3_ACCESS_KEY_ID`/`AWS_ACCESS_KEY_ID`) | `HETZNER_S3_SECRET_KEY` (falls back to `S3_SECRET_ACCESS_KEY`/`AWS_SECRET_ACCESS_KEY`) | `HETZNER_S3_REGION` |
+| `backblaze` | `B2_APPLICATION_KEY_ID` (falls back to `S3_ACCESS_KEY_ID`/`AWS_ACCESS_KEY_ID`) | `B2_APPLICATION_KEY` (falls back to `S3_SECRET_ACCESS_KEY`/`AWS_SECRET_ACCESS_KEY`) | `B2_REGION` |
+
+When both sides use the same credentials (e.g. one Hetzner project), the generic
+`S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` pair covers them.
+
+### Programmatic API
+
+The same migration is available as a library function (usable from scripts or
+stacks buddy):
+
+```typescript
+import { migrateObjectStorage } from 'ts-cloud'
+
+const result = await migrateObjectStorage({
+  from: { provider: 'aws', bucket: 'stacks-production-email' },
+  to: { provider: 'hetzner', bucket: 'stacks-mail' },
+  include: ['mailboxes/', 'inbox/', 'sent/'],
+  exclude: ['mail-server', 'deploy/'],
+  verify: true,
+})
+// result: { copied, skipped, excluded, bytesCopied, errors, excludedKeys, deleted, verification }
+```
+
 ## DNS Providers
 
 ts-cloud supports multiple DNS providers for domain management and SSL certificate validation:
