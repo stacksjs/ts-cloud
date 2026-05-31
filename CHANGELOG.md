@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.21...v0.2.22)
+
+### 🚀 Features
+
+- **deploy**: explicit per-site bucket vs server deploy target ([ecdc855](https://github.com/stacksjs/ts-cloud/commit/ecdc855)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: reverse proxy + auto TLS + multi-app consolidation ([0017858](https://github.com/stacksjs/ts-cloud/commit/0017858)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.22 ([2388e14](https://github.com/stacksjs/ts-cloud/commit/2388e14)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.20...v0.2.21)
 
 ### 🚀 Features
