@@ -140,6 +140,10 @@ export {
   generateExternalDnsStaticSiteTemplate,
   // High-level helper with smart defaults (Porkbun, non-SPA, etc.)
   deploySite,
+  // Per-site deploy-target model (resolver + validation)
+  resolveSiteDeployTarget,
+  resolveSiteKind,
+  validateDeploymentConfig,
 } from './deploy'
 export type {
   StaticSiteConfig,
@@ -152,6 +156,9 @@ export type {
   DeploySiteConfig,
   DeploySiteResult,
   StaticSiteDnsProvider,
+  // Per-site deploy-target model
+  SiteDeployKind,
+  DeploymentValidationResult,
 } from './deploy'
 
 // Export cloud drivers
@@ -170,7 +177,9 @@ export {
   isOnDemandDomain,
   proxyConfigFromSites,
   resolveCaddyfile,
+  staticSiteServerRoot,
   buildSiteDeployScript,
+  buildStaticSiteDeployScript,
   resolveExecStart,
   deployAllComputeSites,
   deploySiteRelease,

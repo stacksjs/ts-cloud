@@ -3,6 +3,7 @@
  * High-level deployment functions for common AWS architectures
  */
 
+export * from './site-target'
 export * from './static-site'
 export * from './static-site-external-dns'
 export * from './static-site-helper'

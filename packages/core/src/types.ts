@@ -742,6 +742,42 @@ export interface ResourceConditions {
   condition?: (config: CloudConfig, env: EnvironmentType) => boolean
 }
 
+/**
+ * Where a {@link SiteConfig} is deployed.
+ *
+ * - `'bucket'` — the built `root` is uploaded to object storage (AWS S3 /
+ *   Hetzner Object Storage) and served via a CDN (CloudFront on AWS). This is
+ *   the classic static-site path.
+ * - `'server'` — the site lives on the environment's compute server (EC2 /
+ *   Hetzner VM) behind the Caddy reverse proxy. A `'server'` site resolves to
+ *   one of two kinds depending on whether it declares a `start` command:
+ *   - `start` present → a **dynamic app** run as a systemd service and proxied
+ *     by Caddy (`reverse_proxy`).
+ *   - no `start` (but a static `root`) → a **static site built and served on the
+ *     server** by Caddy `file_server`, optionally fronted by a CDN.
+ *
+ * @see resolveSiteDeployTarget for the default inference rules.
+ */
+export type SiteDeployTarget = 'bucket' | 'server'
+
+/**
+ * Per-site caching hint, applicable to either origin (bucket or server).
+ *
+ * For a `server`-served static site the values are emitted as `Cache-Control`
+ * headers inside the Caddy `file_server` block. `cdn` expresses the intent to
+ * place a CDN in front of the origin — on AWS this reuses the existing
+ * CloudFront machinery; on Hetzner (no native CDN) it's advisory only (put
+ * CloudFront / Cloudflare / bunny in front of the box yourself).
+ */
+export interface SiteCacheConfig {
+  /** Emit cache-control headers / enable CDN caching for this site. */
+  enabled?: boolean
+  /** `max-age` (seconds) used in the emitted `Cache-Control` header. */
+  maxAge?: number
+  /** Front this origin with a CDN (CloudFront on AWS; advisory on Hetzner). */
+  cdn?: boolean
+}
+
 export interface SiteConfig {
   /**
    * Directory to deploy.
@@ -775,6 +811,49 @@ export interface SiteConfig {
    */
   installScript?: string
 
+  /**
+   * Explicit deployment target for this site.
+   *
+   * When omitted, the target is **inferred** for backward compatibility:
+   *  - if `start` is present → `'server'`;
+   *  - otherwise → `'bucket'`.
+   *
+   * An explicit value always wins over the inference. Combined with `start`,
+   * this resolves to one of three kinds (see {@link SiteDeployTarget}):
+   *  - `'bucket'` → upload built `root` to object storage + CDN;
+   *  - `'server'` + `start` → dynamic app as a systemd service behind Caddy;
+   *  - `'server'` + no `start` (static `root`) → static site built and served
+   *    **on the server** via Caddy `file_server`, with optional CDN caching.
+   *
+   * Set `deploy: 'server'` (without `start`) to build/serve docs or a blog on an
+   * existing compute box instead of a bucket. Set `deploy: 'bucket'` on a site
+   * that also declares `start` to force the classic static path.
+   */
+  deploy?: SiteDeployTarget
+
+  /**
+   * Per-site caching hint, used for both bucket and server origins.
+   * For a server-served static site, emits `Cache-Control` headers in the Caddy
+   * `file_server` block; `cdn` expresses "front this origin with a CDN".
+   */
+  cache?: SiteCacheConfig
+
+  /**
+   * Whether this site serves a single-page application (client-side routing).
+   * For a `server`-served static site, unmatched paths fall back to
+   * `index.html` (Caddy `try_files {path} /index.html`). Mirrors
+   * {@link StorageItemConfig.spa} for the bucket path.
+   */
+  spa?: boolean
+
+  /**
+   * URL rewrite style for a `server`-served static site's extensionless URLs,
+   * mirroring {@link StorageItemConfig.pathRewriteStyle}:
+   *  - `'directory'` (default): `/guide/get-started` → `/guide/get-started/index.html`
+   *  - `'flat'`: `/guide/get-started` → `/guide/get-started.html`
+   */
+  pathRewriteStyle?: 'directory' | 'flat'
+
   // ──────────────────────────────────────────────────────────────────────────
   // SSR app deploy — when `start` is set, this site deploys to the
   // environment's `infrastructure.compute` EC2 instance as a systemd service
@@ -783,8 +862,9 @@ export interface SiteConfig {
 
   /**
    * Command the systemd service runs (becomes ExecStart).
-   * Presence of this field is the discriminator: set => SSR (deploy to EC2),
-   * unset => static (deploy to S3+CloudFront).
+   * Presence of this field, in the absence of an explicit `deploy`, is the
+   * discriminator: set => `server` (deploy to compute as a systemd service),
+   * unset => `bucket` (deploy to object storage + CDN). See {@link deploy}.
    *
    * Example: 'bun run server.ts'
    */
@@ -1362,8 +1442,40 @@ export interface CaddyAppConfig {
   /**
    * Local upstream port the app listens on (Caddy proxies to
    * `localhost:<port>`).
+   *
+   * Required for a reverse-proxy (dynamic) app. Omit for a static
+   * (`file_server`) site, which is selected by setting {@link root} instead.
    */
-  port: number
+  port?: number
+
+  /**
+   * Serve a static site from this directory via Caddy `file_server` (the box is
+   * the origin) instead of reverse-proxying to a port. Mutually exclusive with
+   * {@link port}; when set, this app emits a `root * <root>` + `file_server`
+   * block rather than a `reverse_proxy`.
+   */
+  root?: string
+
+  /**
+   * Static `file_server` only. When true, unmatched paths fall back to
+   * `index.html` (`try_files {path} /index.html`) for client-side SPA routing.
+   */
+  spa?: boolean
+
+  /**
+   * Static `file_server` only. URL rewrite style for extensionless requests,
+   * mirroring {@link StorageItemConfig.pathRewriteStyle}:
+   *  - `'directory'` (default): `/guide/get-started` → `/guide/get-started/index.html`
+   *  - `'flat'`: `/guide/get-started` → `/guide/get-started.html`
+   */
+  pathRewriteStyle?: 'directory' | 'flat'
+
+  /**
+   * Static `file_server` only. When set, emits a `Cache-Control` header for
+   * served assets. `maxAge` (seconds) controls `max-age`; defaults to 3600 when
+   * enabled without an explicit value.
+   */
+  cache?: SiteCacheConfig
 
   /**
    * Upstream host. Defaults to `localhost`. Set this to proxy to another

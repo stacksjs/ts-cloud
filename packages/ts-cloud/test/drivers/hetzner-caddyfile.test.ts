@@ -173,6 +173,82 @@ describe('buildCaddyfileFromProxy', () => {
   })
 })
 
+describe('buildCaddyfileFromProxy — static file_server', () => {
+  it('serves a static site root via file_server (directory rewrite by default)', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ name: 'docs', domains: ['docs.example.com'], root: '/var/www/docs' }],
+    })!
+    expect(out).toContain('docs.example.com {')
+    expect(out).toContain('root * /var/www/docs')
+    expect(out).toContain('file_server')
+    expect(out).toContain('try_files {path} {path}/index.html')
+    expect(out).not.toContain('reverse_proxy')
+  })
+
+  it('uses SPA fallback to index.html when spa is set', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ domains: ['app.example.com'], root: '/var/www/app', spa: true }],
+    })!
+    expect(out).toContain('try_files {path} /index.html')
+    expect(out).toContain('file_server')
+  })
+
+  it('uses flat rewrite style when pathRewriteStyle is flat', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ domains: ['blog.example.com'], root: '/var/www/blog', pathRewriteStyle: 'flat' }],
+    })!
+    expect(out).toContain('try_files {path} {path}.html {path}/index.html')
+  })
+
+  it('emits a Cache-Control header when cache.enabled', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ domains: ['docs.example.com'], root: '/var/www/docs', cache: { enabled: true, maxAge: 600 } }],
+    })!
+    expect(out).toContain('header Cache-Control "public, max-age=600"')
+  })
+
+  it('defaults max-age to 3600 when cache enabled without maxAge', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ domains: ['docs.example.com'], root: '/var/www/docs', cache: { enabled: true } }],
+    })!
+    expect(out).toContain('max-age=3600')
+  })
+
+  it('omits Cache-Control when cache is not enabled', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [{ domains: ['docs.example.com'], root: '/var/www/docs' }],
+    })!
+    expect(out).not.toContain('Cache-Control')
+  })
+
+  it('mixes a reverse_proxy app and a static file_server site behind one Caddy', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [
+        { name: 'app', domains: ['example.com'], port: 3000 },
+        { name: 'docs', domains: ['docs.example.com'], root: '/var/www/docs' },
+      ],
+    })!
+    expect(out).toContain('example.com {')
+    expect(out).toContain('reverse_proxy localhost:3000')
+    expect(out).toContain('docs.example.com {')
+    expect(out).toContain('root * /var/www/docs')
+    expect(out).toContain('file_server')
+  })
+
+  it('wraps a path-scoped static site in a handle block', () => {
+    const out = buildCaddyfileFromProxy({
+      apps: [
+        { name: 'app', domains: ['example.com'], port: 3000 },
+        { name: 'docs', domains: ['example.com'], root: '/var/www/docs', path: '/docs' },
+      ],
+    })!
+    expect(out).toContain('handle /docs {')
+    expect(out).toContain('file_server')
+    // path handle ordered before the catch-all proxy
+    expect(out.indexOf('handle /docs')).toBeLessThan(out.indexOf('reverse_proxy localhost:3000'))
+  })
+})
+
 describe('proxyConfigFromSites', () => {
   it('maps sites with domain + port to apps and ignores the rest', () => {
     const sites: Record<string, SiteConfig> = {
@@ -184,6 +260,22 @@ describe('proxyConfigFromSites', () => {
     const { apps } = proxyConfigFromSites(sites)
     expect(apps).toHaveLength(2)
     expect(apps.map(a => a.port).sort()).toEqual([3000, 9007])
+  })
+
+  it('maps deploy:server static sites to file_server apps', () => {
+    const sites: Record<string, SiteConfig> = {
+      docs: { root: 'docs/dist', domain: 'docs.example.com', deploy: 'server', cache: { enabled: true } },
+      app: { root: '.output', domain: 'example.com', start: 'bun run server.ts', port: 3000 },
+    }
+    const { apps } = proxyConfigFromSites(sites)
+    expect(apps).toHaveLength(2)
+    const docs = apps.find(a => a.name === 'docs')!
+    expect(docs.root).toBe('/var/www/docs')
+    expect(docs.port).toBeUndefined()
+    expect(docs.cache?.enabled).toBe(true)
+    const app = apps.find(a => a.name === 'app')!
+    expect(app.port).toBe(3000)
+    expect(app.root).toBeUndefined()
   })
 })
 

@@ -1,8 +1,28 @@
 import type { CaddyAppConfig, CaddyOnDemandTlsConfig, CaddyProxyConfig, SiteConfig } from '@ts-cloud/core'
+import { resolveSiteKind } from '../../deploy/site-target'
 
 /** A domain is "on-demand" (needs lazy TLS) if it's a wildcard or bare catch-all. */
 export function isOnDemandDomain(domain: string): boolean {
   return domain === '*' || domain.includes('*')
+}
+
+/** A Caddy app is "static" (file_server) when it declares a `root` directory. */
+function isStaticApp(app: CaddyAppConfig): boolean {
+  return typeof app.root === 'string' && app.root.length > 0
+}
+
+/** A Caddy app is a usable reverse-proxy when it declares a numeric `port`. */
+function isProxyApp(app: CaddyAppConfig): boolean {
+  return typeof app.port === 'number'
+}
+
+/**
+ * The on-server install path a static site's `root` is shipped to. Mirrors the
+ * release layout used by the systemd app deploy (`/var/www/<name>`), so a box
+ * can host both proxied apps and file-served static sites side by side.
+ */
+export function staticSiteServerRoot(name: string): string {
+  return `/var/www/${name}`
 }
 
 function normalizeOnDemandTls(
@@ -15,9 +35,18 @@ function normalizeOnDemandTls(
   return onDemandTls
 }
 
+/** Wrap an inner directive body in a `handle <path> { ... }` block for path routing. */
+function wrapInHandle(body: string, path: string, indent: string): string {
+  const inner = body
+    .split('\n')
+    .map(line => `  ${line}`)
+    .join('\n')
+  return `${indent}handle ${path} {\n${inner}\n${indent}}`
+}
+
 /**
- * Render the `reverse_proxy` directive (and optional handle wrapper) for one app.
- * Indentation is applied by the caller via `indent`.
+ * Render the `reverse_proxy` directive (and optional handle wrapper) for one
+ * dynamic app. Indentation is applied by the caller via `indent`.
  */
 function renderUpstreamBlock(app: CaddyAppConfig, indent: string): string {
   const host = app.upstreamHost || 'localhost'
@@ -37,11 +66,50 @@ function renderUpstreamBlock(app: CaddyAppConfig, indent: string): string {
     return proxyLine
 
   // Wrap in a handle so several apps can share a domain with path routing.
-  const inner = proxyLine
-    .split('\n')
-    .map(line => `  ${line}`)
-    .join('\n')
-  return `${indent}handle ${app.path} {\n${inner}\n${indent}}`
+  return wrapInHandle(proxyLine, app.path!, indent)
+}
+
+/**
+ * Render a static `file_server` block for one app: serves files from `root`,
+ * with SPA fallback / extensionless rewrites and optional cache headers. The
+ * box itself is the origin (no upstream port).
+ */
+function renderStaticBlock(app: CaddyAppConfig, indent: string): string {
+  const root = app.root!
+  const lines: string[] = [`${indent}root * ${root}`]
+
+  // Optional Cache-Control header for served assets.
+  if (app.cache?.enabled) {
+    const maxAge = app.cache.maxAge ?? 3600
+    lines.push(`${indent}header Cache-Control "public, max-age=${maxAge}"`)
+  }
+
+  if (app.spa) {
+    // SPA: any unmatched path falls back to the app shell for client routing.
+    lines.push(`${indent}try_files {path} /index.html`)
+  }
+  else if (app.pathRewriteStyle === 'flat') {
+    // /guide/get-started -> /guide/get-started.html
+    lines.push(`${indent}try_files {path} {path}.html {path}/index.html`)
+  }
+  else {
+    // directory (default): /guide/get-started -> /guide/get-started/index.html
+    lines.push(`${indent}try_files {path} {path}/index.html {path}.html`)
+  }
+
+  lines.push(`${indent}file_server`)
+  const body = lines.join('\n')
+
+  const isCatchAll = !app.path || app.path === '/'
+  if (isCatchAll)
+    return body
+
+  return wrapInHandle(body, app.path!, indent)
+}
+
+/** Render the appropriate block for an app (static file_server or reverse_proxy). */
+function renderAppBlock(app: CaddyAppConfig, indent: string): string {
+  return isStaticApp(app) ? renderStaticBlock(app, indent) : renderUpstreamBlock(app, indent)
 }
 
 /**
@@ -91,7 +159,9 @@ export function buildCaddyfileFromProxy(proxy: CaddyProxyConfig): string | undef
   if (proxy.raw && proxy.raw.trim())
     return proxy.raw.trim()
 
-  const apps = (proxy.apps ?? []).filter(app => app.domains.length > 0 && typeof app.port === 'number')
+  // An app routes when it has at least one domain AND is either a reverse-proxy
+  // (numeric port) or a static file_server (root directory).
+  const apps = (proxy.apps ?? []).filter(app => app.domains.length > 0 && (isProxyApp(app) || isStaticApp(app)))
   if (apps.length === 0)
     return undefined
 
@@ -132,7 +202,7 @@ export function buildCaddyfileFromProxy(proxy: CaddyProxyConfig): string | undef
 
   for (const group of groupAppsByDomains(apps)) {
     const sorted = sortAppsByPath(group.apps)
-    const body = sorted.map(app => renderUpstreamBlock(app, '  ')).join('\n')
+    const body = sorted.map(app => renderAppBlock(app, '  ')).join('\n')
 
     // A block needs on-demand TLS if any of its domains is a wildcard/catch-all.
     const needsOnDemand = onDemand && group.domains.some(isOnDemandDomain)
@@ -161,12 +231,30 @@ export function buildCaddyfileFromProxy(proxy: CaddyProxyConfig): string | undef
 export function proxyConfigFromSites(sites: Record<string, SiteConfig>): CaddyProxyConfig & { apps: CaddyAppConfig[] } {
   const apps: CaddyAppConfig[] = []
   for (const [name, site] of Object.entries(sites)) {
-    if (typeof site.domain === 'string' && site.domain && typeof site.port === 'number') {
+    if (typeof site.domain !== 'string' || !site.domain)
+      continue
+
+    if (typeof site.port === 'number' && site.deploy !== 'bucket') {
+      // Dynamic app → reverse_proxy to its port. Backward compat: any site
+      // declaring a domain + port (with or without `start`) becomes a proxy app
+      // unless explicitly forced onto the bucket path (deploy:'bucket').
       apps.push({
         name,
         domains: [site.domain],
         port: site.port,
         path: site.path,
+      })
+    }
+    else if (resolveSiteKind(site) === 'server-static') {
+      // Static site served on the box → file_server from the shipped root.
+      apps.push({
+        name,
+        domains: [site.domain],
+        root: staticSiteServerRoot(name),
+        path: site.path,
+        spa: site.spa,
+        pathRewriteStyle: site.pathRewriteStyle,
+        cache: site.cache,
       })
     }
   }

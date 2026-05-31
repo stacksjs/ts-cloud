@@ -9,11 +9,13 @@ export {
   isOnDemandDomain,
   proxyConfigFromSites,
   resolveCaddyfile,
+  staticSiteServerRoot,
 } from './shared/caddyfile'
 export {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
+  buildStaticSiteDeployScript,
   resolveExecStart,
 } from './shared/deploy-script'
 export { deployAllComputeSites, deploySiteRelease } from './shared/compute-deploy'

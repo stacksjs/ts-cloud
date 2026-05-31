@@ -22,6 +22,7 @@ import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-
 import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
+import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -80,8 +81,11 @@ async function deployAppToCompute(
   }
 
   const deployable = allSites.filter(([name, s]) => {
-    if (!s?.start) {
-      cli.warn(`Site '${name}' has no \`start\` command — skipping (compute mode requires every site to declare how to run).`)
+    if (!s)
+      return false
+    const kind = resolveSiteKind(s)
+    if (kind === 'bucket') {
+      cli.warn(`Site '${name}' targets a bucket — skipping compute deploy (handled by the static-site path).`)
       return false
     }
     return true
@@ -96,11 +100,15 @@ async function deployAppToCompute(
   const tarballs = new Map<string, string>()
 
   for (const [siteName, site] of deployable) {
+    const kind = resolveSiteKind(site)
     cli.header(`Preparing site: ${siteName}`)
     cli.info(`Domain: ${site.domain || '(none)'}`)
     cli.info(`Source: ${site.root}`)
-    cli.info(`Start: ${site.start}`)
-    cli.info(`Port: ${site.port ?? '(unset)'}`)
+    cli.info(`Kind: ${kind === 'server-static' ? 'static (Caddy file_server)' : 'app (systemd service)'}`)
+    if (kind === 'server-app') {
+      cli.info(`Start: ${site.start}`)
+      cli.info(`Port: ${site.port ?? '(unset)'}`)
+    }
 
     if (site.build) {
       cli.step(`Running build: ${site.build}`)
@@ -318,6 +326,19 @@ export function registerDeployCommands(app: CLI): void {
       try {
         // Load configuration after env is set up correctly
         const config = await loadValidatedConfig()
+
+        // Validate the per-site deployment model up front — turns silent runtime
+        // failures (e.g. a server-app site with no compute server) into an
+        // explicit, actionable contract. Errors abort; warnings continue.
+        const { errors: deployErrors, warnings: deployWarnings } = validateDeploymentConfig(config)
+        for (const w of deployWarnings)
+          cli.warn(w)
+        if (deployErrors.length > 0) {
+          cli.error('\n✗ Deployment configuration is invalid:')
+          for (const e of deployErrors)
+            cli.error(`  • ${e}`)
+          return
+        }
 
         // Surface which AWS credentials and identity are about to be used
         // (helps catch wrong-profile / wrong-account mistakes before any AWS calls)
@@ -1335,6 +1356,16 @@ async function deployStaticSitesWithExternalDns(
     const siteConfig = sites[siteName]
     if (!siteConfig) {
       cli.error(`Site '${siteName}' not found in configuration`)
+      continue
+    }
+
+    // Skip sites the user EXPLICITLY targeted at the server (deploy:'server') —
+    // those are handled by the compute path (systemd app or Caddy file_server),
+    // not S3+CloudFront. Backward-compat: a legacy site with `start` and NO
+    // explicit `deploy` still gets its static front here (unchanged behavior);
+    // only an explicit deploy:'server' opts out of the bucket path.
+    if (siteConfig.deploy === 'server') {
+      cli.info(`Site '${siteName}' is deploy:'server' — handled by the compute path, skipping static (bucket) deploy.`)
       continue
     }
 

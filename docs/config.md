@@ -132,6 +132,88 @@ const config: StaticSiteConfig = {
 }
 ```
 
+## Site Deployment Targets
+
+Each entry in `sites` deploys to one of two **targets**, set explicitly with
+`deploy` (or inferred for backward compatibility):
+
+| `deploy` | `start` | Resolved kind | What happens |
+|----------|---------|---------------|--------------|
+| `'bucket'` (or unset, no `start`) | — | **bucket** | Built `root` is uploaded to object storage (S3 / Hetzner OS) and served via a CDN (CloudFront on AWS). |
+| `'server'` (or unset, `start` set) | set | **server-app** | Dynamic app run as a `systemd` service behind the Caddy reverse proxy (`reverse_proxy`). |
+| `'server'` | unset | **server-static** | Static site **built and served on the compute box** by Caddy `file_server`, optionally fronted by a CDN. |
+
+Inference rules (when `deploy` is omitted): explicit `deploy` always wins; else
+`start` present ⇒ `'server'`; else ⇒ `'bucket'`. This keeps every existing
+config working unchanged — a legacy `start` site still deploys to compute, and a
+legacy static site still deploys to a bucket.
+
+```typescript
+const config: CloudConfig = {
+  project: { name: 'Example', slug: 'example', region: 'us-east-1' },
+  environments: { production: { type: 'production' } },
+
+  // The server-targeted sites need a compute box to land on.
+  infrastructure: {
+    compute: { mode: 'server', proxy: { email: 'ops@example.com' } },
+  },
+
+  sites: {
+    // Dynamic SSR app → systemd service behind Caddy reverse_proxy
+    app: {
+      root: '.output',
+      domain: 'example.com',
+      start: 'bun run server.ts',
+      port: 3000,
+    },
+
+    // Docs built AND served on the same box via Caddy file_server
+    docs: {
+      root: 'docs/.vitepress/dist',
+      domain: 'docs.example.com',
+      deploy: 'server',
+      build: 'bun run docs:build',
+      cache: { enabled: true, maxAge: 3600 },
+    },
+
+    // Blog, also served on the box
+    blog: {
+      root: 'blog/dist',
+      domain: 'blog.example.com',
+      deploy: 'server',
+    },
+
+    // Classic static site → object storage + CDN
+    marketing: {
+      root: 'marketing/dist',
+      domain: 'www.example.com',
+      // deploy omitted ⇒ inferred 'bucket'
+    },
+  },
+}
+```
+
+### Server-optional contract
+
+A project with only `bucket` sites needs **no** compute server and validates
+clean. If a site targets a server (`deploy: 'server'`, or `start` set) but no
+`infrastructure.compute` is configured, `cloud deploy` aborts up front with an
+actionable error instead of failing silently at runtime — set `deploy: 'bucket'`
+or add a server.
+
+### CDN / caching
+
+The `cache` hint applies to either origin:
+
+- **bucket** — front the origin with a CDN (CloudFront on AWS).
+- **server-static** — emits `Cache-Control` headers in the Caddy `file_server`
+  block (`cache.enabled` → `max-age` from `cache.maxAge`, default `3600`).
+
+On **AWS**, a server origin can sit behind CloudFront via the existing
+compute-origin routing. On **Hetzner** there is no native CDN — proper
+`Cache-Control` headers are emitted and you can place CloudFront / Cloudflare /
+bunny in front of the box yourself. ts-cloud does not provision a Hetzner CDN.
+
 ## Preset Configuration
 
 ### Static Site Preset

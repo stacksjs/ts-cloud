@@ -96,6 +96,44 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   ]
 }
 
+export interface BuildStaticSiteDeployScriptOptions {
+  siteName: string
+  /** How the remote host obtains the release tarball */
+  artifactFetch: string[]
+  /** Target directory served by Caddy `file_server`. Default `/var/www/<site>`. */
+  appDir?: string
+  /**
+   * Commands run inside `appDir` after extraction — e.g. build the docs/blog on
+   * the box itself (`bun install`, `bun run docs:build`) when the tarball ships
+   * source rather than a pre-built site.
+   */
+  preStartCommands?: string[]
+}
+
+/**
+ * Build the remote shell commands that install/refresh a STATIC site on a
+ * compute target. Unlike {@link buildSiteDeployScript}, there is no systemd
+ * service — the extracted files are served directly by Caddy `file_server`
+ * (Caddy is reloaded separately when the Caddyfile changes).
+ */
+export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScriptOptions): string[] {
+  const { siteName, artifactFetch, preStartCommands = [] } = options
+  const appDir = options.appDir ?? `/var/www/${siteName}`
+
+  const preStart = preStartCommands.length > 0
+    ? [`cd ${appDir}`, ...preStartCommands]
+    : []
+
+  return [
+    'set -euo pipefail',
+    ...artifactFetch,
+    `mkdir -p ${appDir}`,
+    `find ${appDir} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
+    `tar xzf /tmp/${siteName}-release.tar.gz -C ${appDir}`,
+    ...preStart,
+  ]
+}
+
 export function buildAwsArtifactFetch(bucket: string, key: string, region: string, siteName: string): string[] {
   return [
     `aws s3 cp "s3://${bucket}/${key}" /tmp/${siteName}-release.tar.gz --region ${region}`,
