@@ -118,11 +118,24 @@ export class HetznerClient {
     })
 
     const text = await response.text()
-    const data = text ? JSON.parse(text) as T & HetznerApiErrorBody : {} as T & HetznerApiErrorBody
+    let data: T & HetznerApiErrorBody
+    try {
+      data = (text ? JSON.parse(text) : {}) as T & HetznerApiErrorBody
+    }
+    catch {
+      // Non-JSON body (e.g. an HTML 502/503 from an upstream gateway). Surface
+      // the raw text so the error is actionable instead of an opaque parse fail.
+      if (!response.ok) {
+        const snippet = text.trim().slice(0, 200) || response.statusText || 'Hetzner API error'
+        throw new Error(`Hetzner API ${method} ${path} (${response.status}): ${snippet}`)
+      }
+      throw new Error(`Hetzner API ${method} ${path}: unexpected non-JSON response`)
+    }
 
     if (!response.ok) {
       const message = data.error?.message || response.statusText || 'Hetzner API error'
-      throw new Error(`Hetzner API ${method} ${path}: ${message}`)
+      const code = data.error?.code ? ` [${data.error.code}]` : ''
+      throw new Error(`Hetzner API ${method} ${path} (${response.status})${code}: ${message}`)
     }
 
     return data as T
@@ -172,6 +185,17 @@ export class HetznerClient {
       apply_to: options.applyTo,
     })
     return { firewall: data.firewall, actions: data.actions }
+  }
+
+  /**
+   * Replace a firewall's rule set in place. Used to keep an existing (reused)
+   * firewall's rules in sync with the desired config without recreating it.
+   */
+  async setFirewallRules(firewallId: number, rules: HetznerFirewallRule[]): Promise<HetznerAction[]> {
+    const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/set_rules`, {
+      rules,
+    })
+    return data.actions ?? []
   }
 
   async applyFirewallToResources(firewallId: number, applyTo: Array<{ type: 'server', server: number }>): Promise<HetznerAction[]> {

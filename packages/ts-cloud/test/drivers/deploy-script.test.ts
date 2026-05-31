@@ -90,7 +90,9 @@ describe('buildCaddyfile', () => {
     })
 
     expect(caddyfile).toContain('example.com {')
-    expect(caddyfile!.indexOf('handle /api')).toBeLessThan(caddyfile!.indexOf('handle {'))
+    // Path-specific handle (`/api`) is ordered before the catch-all route,
+    // which now renders as a bare `reverse_proxy` (no redundant `handle {}`).
+    expect(caddyfile!.indexOf('handle /api')).toBeLessThan(caddyfile!.indexOf('reverse_proxy localhost:3000'))
     expect(caddyfile).toContain('reverse_proxy localhost:3001')
     expect(caddyfile).toContain('reverse_proxy localhost:3000')
   })

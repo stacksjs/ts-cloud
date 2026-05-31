@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import type {
+  CaddyProxyConfig,
   CloudDriver,
   ComputeStackOutputs,
   ComputeTarget,
@@ -14,7 +15,8 @@ import type {
   UploadReleaseResult,
 } from '@ts-cloud/core'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
-import { buildCaddyfile } from '../shared/caddyfile'
+import { resolveCaddyfile } from '../shared/caddyfile'
+import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildHetznerFirewallRules } from './firewall-rules'
@@ -31,6 +33,27 @@ export interface HetznerDriverOptions {
   sshUser?: string
   location?: string
   client?: HetznerClient
+  /**
+   * After the server reports `running`, block until SSH is reachable and
+   * cloud-init has finished before returning from provisioning. Disable in
+   * tests (or fast-path provisioning) to avoid real network waits.
+   * @default true
+   */
+  waitForBoot?: boolean
+  /**
+   * Tunables for the SSH-readiness / cloud-init wait loops. Overridable so
+   * tests can use tiny intervals.
+   */
+  bootWait?: {
+    /** Delay between SSH probe attempts (ms). @default 5000 */
+    sshIntervalMs?: number
+    /** Max time to wait for SSH to accept connections (ms). @default 300000 */
+    sshTimeoutMs?: number
+    /** Delay between `cloud-init status` polls (ms). @default 5000 */
+    cloudInitIntervalMs?: number
+    /** Max time to wait for cloud-init to finish (ms). @default 600000 */
+    cloudInitTimeoutMs?: number
+  }
 }
 
 function expandHome(path: string): string {
@@ -46,6 +69,8 @@ export class HetznerDriver implements CloudDriver {
   private sshPublicKeyPath: string
   private sshUser: string
   private location: string
+  private waitForBoot: boolean
+  private bootWait: Required<NonNullable<HetznerDriverOptions['bootWait']>>
 
   constructor(options: HetznerDriverOptions = {}) {
     this.client = options.client ?? new HetznerClient({
@@ -55,6 +80,13 @@ export class HetznerDriver implements CloudDriver {
     this.sshPublicKeyPath = expandHome(options.sshPublicKeyPath || process.env.HCLOUD_SSH_PUBLIC_KEY || `${this.sshPrivateKeyPath}.pub`)
     this.sshUser = options.sshUser || process.env.HCLOUD_SSH_USER || 'root'
     this.location = options.location || process.env.HCLOUD_LOCATION || 'fsn1'
+    this.waitForBoot = options.waitForBoot ?? true
+    this.bootWait = {
+      sshIntervalMs: options.bootWait?.sshIntervalMs ?? 5000,
+      sshTimeoutMs: options.bootWait?.sshTimeoutMs ?? 300000,
+      cloudInitIntervalMs: options.bootWait?.cloudInitIntervalMs ?? 5000,
+      cloudInitTimeoutMs: options.bootWait?.cloudInitTimeoutMs ?? 600000,
+    }
   }
 
   async provisionComputeInfrastructure(options: ProvisionComputeOptions): Promise<ComputeStackOutputs> {
@@ -66,20 +98,45 @@ export class HetznerDriver implements CloudDriver {
     }
 
     const stackName = resolveProjectStackName(config, environment)
+    const serverName = `${slug}-${environment}-app`
+
     const existing = await readDriverState(stackName)
     if (existing?.serverId) {
-      const server = await this.client.getServer(existing.serverId)
-      if (server.status !== 'off') {
+      const server = await this.tryGetServer(existing.serverId)
+      if (server && server.status !== 'off') {
         return this.outputsFromState(existing, server)
       }
     }
 
-    const sites = config.sites || {}
-    const sitePorts = Object.values(sites)
-      .map(site => site.port)
-      .filter((port): port is number => typeof port === 'number' && ![80, 443].includes(port))
+    // Idempotency: even without local state (e.g. CI ran on a fresh checkout),
+    // a server may already exist from a prior deploy. Look it up by ts-cloud
+    // labels before creating a duplicate, and rehydrate local state from it.
+    const labels = tsCloudLabels(slug, environment, 'app')
+    const alreadyRunning = await this.findExistingServer(slug, environment, serverName)
+    if (alreadyRunning && alreadyRunning.status !== 'off') {
+      const rehydrated: HetznerDriverState = {
+        provider: 'hetzner',
+        stackName,
+        serverId: alreadyRunning.id,
+        serverName: alreadyRunning.name,
+        publicIp: alreadyRunning.public_net.ipv4?.ip,
+        deployStoragePath: '/var/ts-cloud/staging',
+        sshUser: this.sshUser,
+      }
+      await writeDriverState(stackName, rehydrated)
+      return this.outputsFromState(rehydrated, alreadyRunning)
+    }
 
-    const caddyfile = buildCaddyfile(sites)
+    const sites = config.sites || {}
+    const caddyfile = resolveCaddyfile(sites, compute.proxy)
+
+    // When Caddy fronts traffic (a Caddyfile was generated), upstream app ports
+    // stay private — only 80/443 (+ SSH) are exposed. Without a proxy we fall
+    // back to opening the raw site/app ports so direct-port deploys still work.
+    const sitePorts = caddyfile
+      ? []
+      : this.collectUpstreamPorts(sites, compute.proxy)
+
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
@@ -89,22 +146,16 @@ export class HetznerDriver implements CloudDriver {
     })
     const userData = wrapCloudInitUserData(bootstrap)
 
-    const serverName = `${slug}-${environment}-app`
     const serverType = resolveHetznerServerType(compute.size)
     const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
-    const labels = tsCloudLabels(slug, environment, 'app')
 
     const firewallName = `${slug}-${environment}-app-fw`
-    const { firewall } = await this.client.createFirewall({
-      name: firewallName,
-      labels,
-      rules: buildHetznerFirewallRules({
-        // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
-        // reachable. Only close it when the caller explicitly opts out.
-        allowSsh: compute.allowSsh !== false,
-        sitePorts,
-      }),
-    })
+    const { firewall } = await this.ensureFirewall(firewallName, labels, buildHetznerFirewallRules({
+      // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
+      // reachable. Only close it when the caller explicitly opts out.
+      allowSsh: compute.allowSsh !== false,
+      sitePorts,
+    }))
 
     const sshKeyId = await this.ensureSshKey(slug, environment, labels)
 
@@ -133,6 +184,16 @@ export class HetznerDriver implements CloudDriver {
       sshUser: this.sshUser,
     }
     await writeDriverState(stackName, state)
+
+    // The server reports `running` the moment the VM powers on, but cloud-init
+    // (apt, runtime install, Caddy) is still going. Deploying now races the
+    // bootstrap — SSH may be refused or `bun` may be missing. Wait for SSH to
+    // come up, then for cloud-init to finish, before handing back outputs.
+    const ip = running.public_net.ipv4?.ip
+    if (ip && this.waitForBoot) {
+      await this.waitForSshReady(ip)
+      await this.waitForCloudInit(ip)
+    }
 
     return this.outputsFromState(state, running)
   }
@@ -270,6 +331,125 @@ export class HetznerDriver implements CloudDriver {
     return created.id
   }
 
+  /** getServer that returns null instead of throwing when the server is gone. */
+  private async tryGetServer(id: number): Promise<HetznerServer | null> {
+    try {
+      return await this.client.getServer(id)
+    }
+    catch {
+      // Stale state pointing at a deleted server — fall through to recreate.
+      return null
+    }
+  }
+
+  /**
+   * Look up an existing ts-cloud server for this project/environment by labels
+   * (falling back to name match). Used for idempotency when local state is
+   * missing, so re-running deploy doesn't spin up a duplicate server.
+   */
+  private async findExistingServer(slug: string, environment: string, serverName: string): Promise<HetznerServer | undefined> {
+    const servers = await this.client.listServers()
+    return servers.find(server =>
+      matchesTsCloudLabels(server.labels, slug, environment, 'app') || server.name === serverName,
+    )
+  }
+
+  /**
+   * Idempotent firewall: reuse an existing firewall with the same name rather
+   * than creating a duplicate on every deploy. When found, its rules are
+   * updated to the desired set so config changes (new ports) still apply.
+   */
+  private async ensureFirewall(
+    name: string,
+    labels: Record<string, string>,
+    rules: HetznerFirewallRule[],
+  ): Promise<{ firewall: HetznerFirewall }> {
+    const existing = await this.client.listFirewalls()
+    const match = existing.find(fw => fw.name === name)
+    if (match) {
+      await this.client.setFirewallRules(match.id, rules)
+      return { firewall: match }
+    }
+    const { firewall } = await this.client.createFirewall({ name, labels, rules })
+    return { firewall }
+  }
+
+  /**
+   * Collect the upstream app ports that must be reachable when no reverse proxy
+   * is fronting traffic (raw-port deploys). Drops 80/443 (handled separately).
+   */
+  private collectUpstreamPorts(
+    sites: Record<string, { port?: number }>,
+    proxy?: CaddyProxyConfig,
+  ): number[] {
+    const ports = new Set<number>()
+    for (const app of proxy?.apps ?? []) {
+      if (typeof app.port === 'number')
+        ports.add(app.port)
+    }
+    for (const site of Object.values(sites)) {
+      if (typeof site.port === 'number')
+        ports.add(site.port)
+    }
+    return [...ports].filter(port => ![80, 443].includes(port))
+  }
+
+  private async sleep(ms: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+  /**
+   * Probe SSH (a trivial `true` over the connection) with backoff until the box
+   * accepts connections. A freshly booted server refuses SSH for a few seconds
+   * while sshd starts; without this, the very next deploy command races it and
+   * fails with "Connection refused".
+   */
+  private async waitForSshReady(host: string): Promise<void> {
+    const { sshIntervalMs, sshTimeoutMs } = this.bootWait
+    const start = Date.now()
+    let lastErr: unknown
+    while (Date.now() - start < sshTimeoutMs) {
+      try {
+        execSync(`ssh ${this.sshBaseArgs(host, ['-o', 'ConnectTimeout=5']).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} true`, {
+          stdio: 'pipe',
+          maxBuffer: SSH_MAX_BUFFER,
+        })
+        return
+      }
+      catch (err) {
+        lastErr = err
+        await this.sleep(sshIntervalMs)
+      }
+    }
+    throw new Error(`Timed out waiting for SSH on ${host} after ${sshTimeoutMs}ms: ${(lastErr as Error)?.message ?? 'unknown error'}`)
+  }
+
+  /**
+   * Block until cloud-init finishes (`cloud-init status --wait`). cloud-init is
+   * what installs the runtime + Caddy; deploying before it completes leaves the
+   * release pointing at a half-provisioned box (missing `bun`, no Caddy).
+   */
+  private async waitForCloudInit(host: string): Promise<void> {
+    const { cloudInitIntervalMs, cloudInitTimeoutMs } = this.bootWait
+    const start = Date.now()
+    while (Date.now() - start < cloudInitTimeoutMs) {
+      try {
+        const out = this.sshExec(host, 'cloud-init status --long 2>/dev/null || cloud-init status 2>/dev/null || echo status:\\ done')
+        if (/status:\s*done/.test(out))
+          return
+        if (/status:\s*error/.test(out))
+          throw new Error(`cloud-init reported an error on ${host}:\n${out}`)
+      }
+      catch (err) {
+        // SSH hiccup mid-boot — keep polling until the overall timeout.
+        if (err instanceof Error && /cloud-init reported an error/.test(err.message))
+          throw err
+      }
+      await this.sleep(cloudInitIntervalMs)
+    }
+    throw new Error(`Timed out waiting for cloud-init to finish on ${host} after ${cloudInitTimeoutMs}ms`)
+  }
+
   private outputsFromState(state: HetznerDriverState, server?: { public_net: { ipv4?: { ip: string } } }): ComputeStackOutputs {
     return {
       deployStoragePath: state.deployStoragePath || '/var/ts-cloud/staging',
@@ -279,11 +459,12 @@ export class HetznerDriver implements CloudDriver {
     }
   }
 
-  private sshBaseArgs(host: string): string[] {
+  private sshBaseArgs(host: string, extra: string[] = []): string[] {
     return [
       '-i', this.sshPrivateKeyPath,
       '-o', 'StrictHostKeyChecking=accept-new',
       '-o', 'BatchMode=yes',
+      ...extra,
       `${this.sshUser}@${host}`,
     ]
   }

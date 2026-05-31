@@ -96,11 +96,39 @@ describe('HetznerClient', () => {
 
   it('throws with API error message on failure', async () => {
     const fetchImpl = mock(async () => new Response(JSON.stringify({
-      error: { message: 'unauthorized' },
+      error: { message: 'unauthorized', code: 'unauthorized' },
     }), { status: 401 }))
 
     const client = new HetznerClient({ apiToken: 'bad-token', fetchImpl })
     await expect(client.listServers()).rejects.toThrow('unauthorized')
+  })
+
+  it('surfaces a non-JSON error body (e.g. gateway HTML) instead of a parse error', async () => {
+    const fetchImpl = mock(async () => new Response('<html>502 Bad Gateway</html>', { status: 502 }))
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    await expect(client.listServers()).rejects.toThrow(/502/)
+  })
+
+  it('includes the status code and error code in the thrown message', async () => {
+    const fetchImpl = mock(async () => new Response(JSON.stringify({
+      error: { message: 'rate limit exceeded', code: 'rate_limit_exceeded' },
+    }), { status: 429 }))
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    await expect(client.listServers()).rejects.toThrow(/\(429\) \[rate_limit_exceeded\]: rate limit exceeded/)
+  })
+
+  it('sets firewall rules in place (idempotent reuse)', async () => {
+    let body: any
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      expect(url).toContain('/firewalls/55/actions/set_rules')
+      body = JSON.parse(String(init?.body))
+      return new Response(JSON.stringify({ actions: [{ id: 9, status: 'success' }] }), { status: 201 })
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    const rules = [{ direction: 'in' as const, protocol: 'tcp' as const, port: '443', source_ips: ['0.0.0.0/0'] }]
+    const actions = await client.setFirewallRules(55, rules)
+    expect(body.rules).toEqual(rules)
+    expect(actions[0].id).toBe(9)
   })
 
   it('creates a server with labels and user_data', async () => {

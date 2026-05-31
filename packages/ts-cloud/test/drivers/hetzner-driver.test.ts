@@ -54,6 +54,8 @@ function mockHetznerClient(overrides: Partial<HetznerClient> = {}): HetznerClien
       server_type: { name: 'cx22' },
       datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
     })),
+    listFirewalls: mock(async () => []),
+    setFirewallRules: mock(async () => []),
     createFirewall: mock(async () => ({
       firewall: { id: 10, name: 'fw', rules: [] },
       actions: [{ id: 2, status: 'success' as const }],
@@ -136,7 +138,7 @@ describe('HetznerDriver', () => {
 
   it('provisions server + firewall and writes local state', async () => {
     const client = mockHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey() })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
 
     const outputs = await driver.provisionComputeInfrastructure!({
       config: baseConfig,
@@ -173,7 +175,7 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createSshKey, createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey() })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -204,7 +206,7 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createSshKey, listSshKeys, createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey() })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -278,5 +280,133 @@ describe('HetznerDriver', () => {
 
     expect(outputs.appInstanceId).toBe('42')
     expect(createServer).not.toHaveBeenCalled()
+  })
+
+  it('does not create a duplicate server when one already exists (no local state)', async () => {
+    // Simulate CI on a fresh checkout: no .ts-cloud/state, but a server with
+    // matching ts-cloud labels already exists in the Hetzner project.
+    const createServer = mock(async () => { throw new Error('should not create server') })
+    const client = mockHetznerClient({
+      createServer,
+      listServers: mock(async () => [{
+        id: 77,
+        name: 'my-app-production-app',
+        status: 'running',
+        public_net: { ipv4: { ip: '203.0.113.77' } },
+        labels: {
+          'ts-cloud/project': 'my-app',
+          'ts-cloud/environment': 'production',
+          'ts-cloud/role': 'app',
+        },
+        server_type: { name: 'cx22' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      }]),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    const outputs = await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    expect(createServer).not.toHaveBeenCalled()
+    expect(outputs.appInstanceId).toBe('77')
+    expect(outputs.appPublicIp).toBe('203.0.113.77')
+
+    // Local state should have been rehydrated from the discovered server.
+    const state = JSON.parse(await Bun.file(driverStatePath(stackName)).text())
+    expect(state.serverId).toBe(77)
+  })
+
+  it('reuses an existing firewall (updating its rules) instead of creating one', async () => {
+    const createFirewall = mock(async () => { throw new Error('should not create firewall') })
+    const setFirewallRules = mock(async () => [])
+    const client = mockHetznerClient({
+      createFirewall,
+      setFirewallRules,
+      listFirewalls: mock(async () => [{ id: 55, name: 'my-app-production-app-fw', rules: [] }]),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    expect(createFirewall).not.toHaveBeenCalled()
+    expect(setFirewallRules).toHaveBeenCalledTimes(1)
+    const ruleArgs = (setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>])
+    expect(ruleArgs[0]).toBe(55)
+    const ports = ruleArgs[1].map(r => r.port).sort()
+    // Caddy fronts the site (it has a domain), so only 80/443 + SSH are open —
+    // the upstream port 3000 stays private.
+    expect(ports).toEqual(['22', '443', '80'])
+  })
+
+  it('opens raw upstream ports when no domain (no proxy) is configured', async () => {
+    const setFirewallRules = mock(async () => [])
+    let createdRules: Array<{ port: string }> = []
+    const client = mockHetznerClient({
+      setFirewallRules,
+      createFirewall: mock(async (opts: any) => {
+        createdRules = opts.rules
+        return { firewall: { id: 10, name: opts.name, rules: opts.rules }, actions: [] }
+      }),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    const config: CloudConfig = {
+      ...baseConfig,
+      // Site without a domain => no Caddyfile => raw-port deploy.
+      sites: { api: { root: '.', port: 4000, start: 'bun run server.ts' } },
+    }
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    const ports = createdRules.map(r => r.port).sort()
+    expect(ports).toContain('4000')
+  })
+
+  it('routes multiple apps on one server via compute.proxy', async () => {
+    let capturedUserData = ''
+    const client = mockHetznerClient({
+      createServer: mock(async (opts: any) => {
+        capturedUserData = opts.userData
+        return {
+          server: {
+            id: 42,
+            name: 'my-app-production-app',
+            status: 'initializing',
+            public_net: { ipv4: { ip: '203.0.113.10' } },
+            labels: {},
+            server_type: { name: 'cx22' },
+            datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+          },
+          action: { id: 1, status: 'running' as const },
+        }
+      }),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    const config: CloudConfig = {
+      ...baseConfig,
+      sites: {},
+      infrastructure: {
+        compute: {
+          size: 'small',
+          runtime: 'bun',
+          proxy: {
+            email: 'ops@example.com',
+            onDemandTls: { ask: 'http://localhost:9007/check' },
+            apps: [
+              { name: 'registry', domains: ['registry.example.com'], port: 9007 },
+              { name: 'web', domains: ['example.com'], port: 3000 },
+              { name: 'tunnel', domains: ['*.tunnel.example.com'], port: 8080 },
+            ],
+          },
+        },
+      },
+    }
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    // The generated Caddyfile is embedded in cloud-init user_data.
+    expect(capturedUserData).toContain('registry.example.com')
+    expect(capturedUserData).toContain('reverse_proxy localhost:9007')
+    expect(capturedUserData).toContain('reverse_proxy localhost:3000')
+    expect(capturedUserData).toContain('on_demand_tls')
+    expect(capturedUserData).toContain('email ops@example.com')
   })
 })
