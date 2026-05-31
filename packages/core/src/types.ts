@@ -1678,6 +1678,53 @@ export interface ComputeConfig {
    * Set to `true` only if you need traditional SSH access.
    */
   allowSsh?: boolean
+
+  /**
+   * Reverse-proxy gateway to provision on the box. When set to an engine,
+   * `buddy deploy` generates the gateway's route config from the `sites` model
+   * (mapping each non-bucket site to a route by `domain`/`path`) and installs +
+   * starts the gateway on :80/:443.
+   *
+   * Opt-in and **off by default** (`undefined` → no gateway provisioned, the
+   * operator runs their own), so existing deploys are unaffected.
+   *
+   * Currently the only engine is `rpx` (`@stacksjs/rpx`), which natively
+   * supports path-based routing within a host, on-demand TLS, and serving
+   * static dirs — so an app, docs, and a public site can share one domain.
+   */
+  proxy?: ComputeProxyConfig
+}
+
+/**
+ * Reverse-proxy gateway provisioning for a compute box. The gateway is
+ * generated from the `sites` model and installed by the driver's cloud-init /
+ * deploy flow. See {@link ComputeConfig.proxy}.
+ */
+export interface ComputeProxyConfig {
+  /**
+   * Gateway engine. `rpx` provisions `@stacksjs/rpx` as a systemd service
+   * (`rpx-gateway.service`) reading a generated config. This is the only
+   * supported engine today.
+   */
+  engine: 'rpx'
+  /**
+   * npm version/range of `@stacksjs/rpx` to install on the box.
+   * @default 'latest'
+   */
+  version?: string
+  /**
+   * Directory on the box holding real TLS certs (PEM `<domain>.crt`/`.key`),
+   * served per-SNI by rpx. @default '/etc/rpx/certs'
+   */
+  certsDir?: string
+  /**
+   * Enable rpx on-demand TLS: lazily issue a real (Let's Encrypt) cert for an
+   * approved host the first time it's needed. The site domains are used as the
+   * allowlist. Off by default.
+   */
+  onDemandTls?: boolean
+  /** Contact email for the ACME account when {@link onDemandTls} is enabled. */
+  onDemandTlsEmail?: string
 }
 
 export interface DatabaseItemConfig {
