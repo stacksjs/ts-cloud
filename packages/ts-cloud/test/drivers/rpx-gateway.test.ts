@@ -120,6 +120,31 @@ describe('buildRpxConfig', () => {
     expect(config.onDemandTls?.certsDir).toBe('/etc/bun-gateway/certs')
   })
 
+  it('enables origin lockdown from proxy.cdn when a secret is set', () => {
+    const proxy: ComputeProxyConfig = {
+      engine: 'rpx',
+      cdn: {
+        originDomain: 'origin.stacksjs.com',
+        frontedHosts: ['stacksjs.com', 'www.stacksjs.com', 'origin.stacksjs.com'],
+        secret: 'shh',
+      },
+    }
+    const config = buildRpxConfig(sites, { proxy })
+    expect(config.originGuard?.header).toBe('X-Origin-Verify')
+    expect(config.originGuard?.value).toBe('shh')
+    expect(config.originGuard?.hosts).toContain('origin.stacksjs.com')
+    // appears in the rendered launcher so startProxies applies it
+    expect(renderRpxLauncher(config)).toContain('originGuard')
+  })
+
+  it('omits origin lockdown when cdn has no secret', () => {
+    const proxy: ComputeProxyConfig = {
+      engine: 'rpx',
+      cdn: { originDomain: 'origin.x.com', frontedHosts: ['x.com'] },
+    }
+    expect(buildRpxConfig(sites, { proxy }).originGuard).toBeUndefined()
+  })
+
   it('skips a server-app without a port (not routable)', () => {
     const config = buildRpxConfig({
       noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },

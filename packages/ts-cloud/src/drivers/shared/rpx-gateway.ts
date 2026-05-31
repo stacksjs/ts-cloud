@@ -61,6 +61,11 @@ export interface RpxGatewayConfig {
   hostsManagement: false
   /** Don't remove certs/hosts on exit. */
   cleanup: { hosts: false, certs: false }
+  /**
+   * Origin lockdown (from `proxy.cdn` when a `secret` is set): rpx rejects
+   * direct hits to the CDN-fronted hosts that lack the shared-secret header.
+   */
+  originGuard?: { header: string, value: string, hosts: string[] }
 }
 
 export interface BuildRpxConfigOptions {
@@ -163,6 +168,16 @@ export function buildRpxConfig(
       allowedSuffixes: [...domains],
       email: options.proxy.onDemandTlsEmail,
       certsDir,
+    }
+  }
+
+  // CDN-in-front origin lockdown: enforce the shared secret on the fronted hosts.
+  const cdn = options.proxy.cdn
+  if (cdn?.secret && cdn.frontedHosts.length > 0) {
+    config.originGuard = {
+      header: cdn.secretHeader ?? 'X-Origin-Verify',
+      value: cdn.secret,
+      hosts: cdn.frontedHosts,
     }
   }
 

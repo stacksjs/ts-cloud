@@ -28,3 +28,13 @@ export type {
   RpxGatewayConfig,
   RpxRoute,
 } from './shared/rpx-gateway'
+export {
+  buildCloudFrontOriginConfig,
+  MANAGED_CACHE_POLICY_DISABLED,
+  MANAGED_CACHE_POLICY_OPTIMIZED,
+  MANAGED_ORIGIN_REQUEST_POLICY_ALL_VIEWER,
+} from './shared/cloudfront-origin'
+export type {
+  BuildCloudFrontOriginOptions,
+  OriginFrontedBehavior,
+} from './shared/cloudfront-origin'

@@ -1725,6 +1725,35 @@ export interface ComputeProxyConfig {
   onDemandTls?: boolean
   /** Contact email for the ACME account when {@link onDemandTls} is enabled. */
   onDemandTlsEmail?: string
+  /**
+   * Put a CDN (CloudFront) in front of this self-hosted gateway. A CDN custom
+   * origin can't be a bare IP and can't be one of the public aliases (it would
+   * resolve back to the CDN — an infinite loop), so it needs a dedicated origin
+   * hostname pointing at this box. Requests then flow
+   * `viewer → CDN → originDomain (this box)`.
+   *
+   * When {@link CdnFrontConfig.secret} is set, the CDN injects it as a header
+   * on the origin hop and the gateway rejects any request to the fronted hosts
+   * that lacks it — so the publicly-resolvable origin can't be used to bypass
+   * the CDN (origin lockdown via rpx `createOriginGuard`). Pair with
+   * `buildCloudFrontOriginConfig` for the matching AWS distribution config.
+   */
+  cdn?: CdnFrontConfig
+}
+
+/** CDN-in-front-of-gateway configuration (see {@link ComputeProxyConfig.cdn}). */
+export interface CdnFrontConfig {
+  /**
+   * Hostname the CDN connects to (e.g. `origin.example.com`). MUST resolve to
+   * this box and MUST NOT be one of {@link frontedHosts} (else the CDN loops).
+   */
+  originDomain: string
+  /** Public hosts served through the CDN (its aliases) — locked down when {@link secret} is set. */
+  frontedHosts: string[]
+  /** Shared secret the CDN injects on the origin hop; the gateway enforces it on {@link frontedHosts}. */
+  secret?: string
+  /** Header name carrying {@link secret}. @default 'X-Origin-Verify' */
+  secretHeader?: string
 }
 
 export interface DatabaseItemConfig {
