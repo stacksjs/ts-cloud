@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.24...v0.2.25)
+
+### 🚀 Features
+
+- **hetzner**: provision rpx gateway + reload routes after deploy ([85ce308](https://github.com/stacksjs/ts-cloud/commit/85ce308)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: generate rpx gateway config from the sites model ([1470b0c](https://github.com/stacksjs/ts-cloud/commit/1470b0c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.25 ([d058678](https://github.com/stacksjs/ts-cloud/commit/d058678)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.23...v0.2.24)
 
 ### 🧹 Chores
