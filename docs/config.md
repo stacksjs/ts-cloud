@@ -143,11 +143,13 @@ Each entry in `sites` deploys to one of two **targets**, set explicitly with
 | `'server'` (or unset, `start` set) | set | **server-app** | Dynamic app run as a `systemd` service. |
 | `'server'` | unset | **server-static** | Static site **built and shipped to the compute box** (to `/var/www/<site>`), optionally fronted by a CDN. |
 
-> Proxying and TLS on compute (`server`) targets are handled by the operator's
-> own tooling (e.g. [rpx](https://github.com/stacksjs/rpx) for proxying +
-> [tlsx](https://github.com/stacksjs/tlsx) for TLS), **not** ts-cloud. ts-cloud
-> provisions the box, runs the systemd app, and ships static assets — it does
-> not install or configure a reverse proxy.
+> Proxying and TLS on compute (`server`) targets are handled by
+> [rpx](https://github.com/stacksjs/rpx) (proxy + TLS). By default ts-cloud
+> provisions the box, runs the systemd app, and ships static assets but leaves
+> the proxy to the operator. Opt in to having `buddy deploy` **provision and
+> wire rpx for you** from the `sites` model with
+> `infrastructure.compute.proxy: { engine: 'rpx' }` — see
+> [Reverse proxy: rpx](#reverse-proxy-rpx) below.
 
 Inference rules (when `deploy` is omitted): explicit `deploy` always wins; else
 `start` present ⇒ `'server'`; else ⇒ `'bucket'`. This keeps every existing
@@ -220,6 +222,64 @@ On **AWS**, a server origin can sit behind CloudFront via the existing
 compute-origin routing. On **Hetzner** there is no native CDN — you can place
 CloudFront / Cloudflare / bunny in front of the box yourself. ts-cloud does not
 provision a Hetzner CDN.
+
+### Reverse proxy: rpx
+
+The reverse-proxy gateway on a compute box is [rpx](https://github.com/stacksjs/rpx)
+(its own tooling — this replaces the older Caddy generation). Set
+`infrastructure.compute.proxy` and `buddy deploy` will **generate rpx's routes
+from the `sites` model** and provision rpx as the gateway on `:80`/`:443`:
+
+```typescript
+const config: CloudConfig = {
+  // …
+  infrastructure: {
+    compute: {
+      mode: 'server',
+      // Opt in: provision rpx and wire it from `sites`. Off by default.
+      proxy: {
+        engine: 'rpx',
+        // version: 'latest',           // npm version/range of @stacksjs/rpx
+        // certsDir: '/etc/rpx/certs',  // real per-domain PEMs (SNI)
+        // onDemandTls: true,           // lazily issue Let's Encrypt certs
+        // onDemandTlsEmail: 'ops@example.com',
+      },
+    },
+  },
+  sites: {
+    // App + docs + public site sharing ONE domain via path-based routing:
+    main:   { domain: 'stacksjs.com', path: '/api', start: 'bun run server.ts', port: 3000, root: '.output' },
+    docs:   { domain: 'stacksjs.com', path: '/docs', deploy: 'server', root: 'docs/dist' },
+    public: { domain: 'stacksjs.com', deploy: 'server', root: 'public' },
+  },
+}
+```
+
+How it maps:
+
+- each non-bucket site with a `domain` becomes an rpx route, grouped by
+  `domain` so several sites can share a host on different `path`s;
+- **server-app** → `{ to: domain, path, from: 'localhost:<port>' }`;
+- **server-static** → `{ to: domain, path, static: '/var/www/<name>' }`
+  (with `cleanUrls` from `pathRewriteStyle`, `spa` from the site's `spa`);
+- TLS is served from `certsDir` per SNI server name; `onDemandTls` lazily
+  issues real certs for the configured domains.
+
+The example above produces three routes under `stacksjs.com`: `/api/*` proxied
+to the app on `:3000`, `/docs*` served from `/var/www/docs`, and `/` served
+from `/var/www/public` (longest path prefix wins).
+
+What provisioning does on the box (idempotent, re-runnable):
+
+1. `bun add -g @stacksjs/rpx` (at first boot via cloud-init);
+2. writes the generated launcher to `/etc/rpx/gateway.ts`;
+3. installs + enables a `rpx-gateway.service` systemd unit that runs the
+   gateway on `:80`/`:443`.
+
+On every subsequent `buddy deploy`, after shipping the sites, ts-cloud
+regenerates the route config and restarts the gateway — so new
+server-app/server-static sites appear automatically. Leaving `proxy` unset
+keeps the prior behavior (no gateway installed; you run your own).
 
 ## Preset Configuration
 

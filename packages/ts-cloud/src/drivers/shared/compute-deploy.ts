@@ -14,6 +14,7 @@ import {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './deploy-script'
+import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -189,5 +190,63 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
     }
   }
 
+  // After shipping every server site, regenerate the rpx gateway config from
+  // the (now-current) sites model and reload it, so newly added
+  // server-app/server-static sites appear in the gateway automatically. Opt-in
+  // via `compute.proxy.engine === 'rpx'`; a no-op otherwise.
+  const reloaded = await reloadRpxGateway(options)
+  if (!reloaded)
+    return false
+
+  return true
+}
+
+/**
+ * Regenerate the rpx gateway config from the sites model and (re)start the
+ * gateway on the compute targets. No-op (returns `true`) unless
+ * `compute.proxy.engine === 'rpx'`. Re-runnable: the provision script writes the
+ * launcher + unit and `systemctl restart`s, which reloads the new routes.
+ */
+export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<boolean> {
+  const { config, environment, driver, logger = noopLogger } = options
+  const proxy = config.infrastructure?.compute?.proxy
+  if (proxy?.engine !== 'rpx')
+    return true
+
+  const sites = config.sites || {}
+  const rpxConfig = buildRpxConfig(sites, { proxy })
+  if (rpxConfig.proxies.length === 0) {
+    logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
+    return true
+  }
+
+  const targets = await driver.findComputeTargets({
+    slug: config.project.slug,
+    environment,
+    role: 'app',
+  })
+  if (targets.length === 0) {
+    logger.warn('rpx gateway: no compute targets found — skipping gateway reload.')
+    return true
+  }
+
+  logger.step(`Reloading rpx gateway with ${rpxConfig.proxies.length} route(s)...`)
+  const script = buildRpxProvisionScript({ proxy, config: rpxConfig })
+  const result = await driver.runRemoteDeploy({
+    targets,
+    commands: script,
+    comment: `ts-cloud rpx gateway reload ${config.project.slug}`,
+    tags: {
+      Project: config.project.slug,
+      Environment: environment,
+      Role: 'app',
+    },
+  })
+
+  if (!result.success) {
+    logger.error(`rpx gateway reload failed: ${result.error || 'unknown error'}`)
+    return false
+  }
+  logger.success(`rpx gateway reloaded on ${result.instanceCount} target(s)`)
   return true
 }

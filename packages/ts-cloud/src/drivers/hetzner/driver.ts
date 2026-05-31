@@ -17,6 +17,7 @@ import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
+import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -127,16 +128,28 @@ export class HetznerDriver implements CloudDriver {
 
     const sites = config.sites || {}
 
-    // ts-cloud does not run a reverse proxy on the box — the operator runs
-    // their own (e.g. rpx + tlsx). Open the upstream app/site ports so the
-    // operator's proxy (or direct access) can reach each app.
+    // ts-cloud does not run a reverse proxy on the box by default — the operator
+    // runs their own. Open the upstream app/site ports so the operator's proxy
+    // (or direct access) can reach each app. When `compute.proxy.engine` is set,
+    // ts-cloud provisions that gateway (rpx) on the box from the sites model.
     const sitePorts = this.collectUpstreamPorts(sites)
+
+    // Opt-in rpx gateway: generate the route config from the sites model and
+    // install + start it on :80/:443 at first boot. Off by default.
+    const rpxProvision = compute.proxy?.engine === 'rpx'
+      ? buildRpxProvisionScript({
+          proxy: compute.proxy,
+          config: buildRpxConfig(sites, { proxy: compute.proxy }),
+          bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+        })
+      : undefined
 
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
+      rpxProvision,
     })
     const userData = wrapCloudInitUserData(bootstrap)
 

@@ -155,6 +155,65 @@ describe('HetznerDriver', () => {
     expect(state.firewallId).toBe(10)
   })
 
+  it('does not provision a gateway by default (no proxy configured)', async () => {
+    const createServer = mock(async () => ({
+      server: {
+        id: 42,
+        name: 'my-app-production-app',
+        status: 'initializing',
+        public_net: { ipv4: { ip: '203.0.113.10' } },
+        labels: {},
+        server_type: { name: 'cx22' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      action: { id: 1, status: 'running' as const },
+    }))
+    const client = mockHetznerClient({ createServer })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    const userData = (createServer.mock.calls[0] as unknown as [{ userData: string }])[0].userData
+    expect(userData).not.toContain('rpx-gateway.service')
+    expect(userData).not.toContain('@stacksjs/rpx')
+  })
+
+  it('provisions the rpx gateway in cloud-init when proxy.engine is rpx', async () => {
+    const createServer = mock(async () => ({
+      server: {
+        id: 42,
+        name: 'my-app-production-app',
+        status: 'initializing',
+        public_net: { ipv4: { ip: '203.0.113.10' } },
+        labels: {},
+        server_type: { name: 'cx22' },
+        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+      },
+      action: { id: 1, status: 'running' as const },
+    }))
+    const client = mockHetznerClient({ createServer })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    const config: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: {
+          ...baseConfig.infrastructure!.compute!,
+          proxy: { engine: 'rpx' },
+        },
+      },
+    }
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    const userData = (createServer.mock.calls[0] as unknown as [{ userData: string }])[0].userData
+    expect(userData).toContain('bun add -g @stacksjs/rpx@latest')
+    expect(userData).toContain('rpx-gateway.service')
+    expect(userData).toContain('/etc/rpx/gateway.ts')
+    // The route for the web app (port 3000) is baked into the launcher config.
+    expect(userData).toContain('localhost:3000')
+    expect(userData).toContain('my-app.example.com')
+  })
+
   it('registers the local SSH key and attaches it to the new server', async () => {
     const createSshKey = mock(async () => ({
       id: 99,

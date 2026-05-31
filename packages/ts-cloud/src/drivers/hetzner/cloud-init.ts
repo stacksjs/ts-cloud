@@ -10,6 +10,13 @@ export interface UbuntuBootstrapOptions {
   systemPackages?: string[]
   database?: 'sqlite' | 'mysql' | 'postgres'
   caddyfile?: string
+  /**
+   * Shell commands that install + start the rpx reverse-proxy gateway, built by
+   * {@link import('../shared/rpx-gateway').buildRpxProvisionScript}. Appended
+   * after the runtime is installed so `bun add -g @stacksjs/rpx` works. Mutually
+   * exclusive with `caddyfile` (the box runs one gateway).
+   */
+  rpxProvision?: string[]
 }
 
 export function generateUbuntuAppCloudInit(options: UbuntuBootstrapOptions = {}): string {
@@ -19,6 +26,7 @@ export function generateUbuntuAppCloudInit(options: UbuntuBootstrapOptions = {})
     systemPackages = [],
     database,
     caddyfile,
+    rpxProvision,
   } = options
 
   const packages = new Set(systemPackages)
@@ -115,6 +123,19 @@ CADDY_CONFIG_EOF
 systemctl daemon-reload
 systemctl enable caddy
 systemctl start caddy
+`
+  }
+
+  // rpx gateway: install + start the reverse proxy generated from the sites
+  // model. Runs after the runtime install so `bun add -g @stacksjs/rpx` works.
+  if (rpxProvision && rpxProvision.length > 0) {
+    // The provision script carries its own `set -euo pipefail`; strip a leading
+    // duplicate so the embedded block is clean.
+    const body = rpxProvision[0] === 'set -euo pipefail'
+      ? rpxProvision.slice(1)
+      : rpxProvision
+    script += `
+${body.join('\n')}
 `
   }
 

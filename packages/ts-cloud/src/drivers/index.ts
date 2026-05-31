@@ -10,4 +10,21 @@ export {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './shared/deploy-script'
-export { deployAllComputeSites, deploySiteRelease } from './shared/compute-deploy'
+export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from './shared/compute-deploy'
+export {
+  buildRpxConfig,
+  buildRpxProvisionScript,
+  deriveRouteId,
+  normalizeRoutePath,
+  renderRpxLauncher,
+  DEFAULT_RPX_CERTS_DIR,
+  RPX_DIR,
+  RPX_LAUNCHER_PATH,
+  RPX_SERVICE_NAME,
+} from './shared/rpx-gateway'
+export type {
+  BuildRpxConfigOptions,
+  BuildRpxProvisionOptions,
+  RpxGatewayConfig,
+  RpxRoute,
+} from './shared/rpx-gateway'
