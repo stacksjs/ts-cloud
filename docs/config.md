@@ -177,8 +177,8 @@ const config: CloudConfig = {
 
     // Docs built AND shipped to the same box (served by the operator's proxy)
     docs: {
-      root: 'docs/.vitepress/dist',
-      domain: 'docs.example.com',
+      root: 'docs/.bunpress/dist',
+      domain: 'example.com/docs',
       deploy: 'server',
       build: 'bun run docs:build',
       cache: { enabled: true, maxAge: 3600 },
@@ -187,7 +187,7 @@ const config: CloudConfig = {
     // Blog, also served on the box
     blog: {
       root: 'blog/dist',
-      domain: 'blog.example.com',
+      domain: 'example.com/blog',
       deploy: 'server',
     },
 

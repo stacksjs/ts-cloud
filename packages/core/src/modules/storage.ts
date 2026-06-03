@@ -828,7 +828,7 @@ export class Storage {
 
       if (existsSync(fullPath)) {
         // Check for dist/build folder within docs
-        const distPaths = ['dist', 'build', '.vitepress/dist', '_site', 'out', 'public']
+        const distPaths = ['dist', 'build', '.bunpress/dist', '_site', 'out', 'public']
 
         for (const distPath of distPaths) {
           const fullDistPath = join(fullPath, distPath)

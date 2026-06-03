@@ -314,7 +314,7 @@ export class CDN {
     }
 
     // Lambda@Edge function code for docs routing
-    // This handles VitePress/docs URL patterns
+    // This handles BunPress/docs URL patterns
     const lambdaCode = `
 'use strict';
 
@@ -334,7 +334,7 @@ exports.handler = async (event) => {
   }
 
   // Try to determine if this is a directory or a file
-  // First, try appending .html (for VitePress clean URLs)
+  // First, try appending .html (for BunPress clean URLs)
   // If the file doesn't exist, CloudFront will try the directory with index.html
 
   // Check if the URI looks like a file path without extension
@@ -789,7 +789,7 @@ exports.handler = async (event) => {
    */
   static readonly EdgeFunctionTemplates = {
     /**
-     * Origin request handler for docs/VitePress routing
+     * Origin request handler for docs/BunPress routing
      */
     docsOriginRequest: (`
 'use strict';

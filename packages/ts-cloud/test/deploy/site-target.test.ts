@@ -29,7 +29,7 @@ describe('resolveSiteDeployTarget', () => {
   })
 
   it('honors an explicit deploy:server even without start', () => {
-    expect(resolveSiteDeployTarget({ root: 'docs/.vitepress/dist', deploy: 'server' })).toBe('server')
+    expect(resolveSiteDeployTarget({ root: 'docs/.bunpress/dist', deploy: 'server' })).toBe('server')
   })
 })
 
