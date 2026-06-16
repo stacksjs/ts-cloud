@@ -49,6 +49,7 @@ export * from './presets/realtime-app'
 export * from './presets/data-pipeline'
 export * from './presets/ml-api'
 export * from './presets/traditional-web-app'
+export * from './presets/laravel'
 export * from './presets/extend'
 
 // AWS clients (Phase 5)
