@@ -1185,10 +1185,13 @@ export class InfrastructureGenerator {
     const domain = dnsConfig?.domain
     const dbEngine = this.mergedConfig.infrastructure?.database
 
-    // Resolve instance type from `size` shorthand (or fall back to t3.micro)
+    // Resolve instance type from `size` shorthand. When the value isn't a
+    // known shorthand (nano/micro/small/...), treat it as a raw instance type
+    // (e.g. 't2.small') — matches the jump-box path's behavior and lets a
+    // 1-vCPU instance fit accounts capped at the default vCPU quota.
     const sizeKey = compute.size
     const sizeSpec = sizeKey ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string] : undefined
-    const resolvedInstanceType = sizeSpec?.instanceType || 't3.micro'
+    const resolvedInstanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
 
     // Need a VPC + subnet for the instance
     if (!this.builder.hasResource('VPC')) {
@@ -1254,7 +1257,10 @@ export class InfrastructureGenerator {
       vpcId: { Ref: 'VPC' } as unknown as string,
       subnetId: { Ref: 'PublicSubnet1' } as unknown as string,
       instanceType: resolvedInstanceType,
-      keyName: `${slug}-${env}`,
+      // Only attach a key pair when SSH is opted in — otherwise CloudFormation
+      // rejects the launch because the named key pair doesn't exist (and
+      // wouldn't be reachable anyway with port 22 closed).
+      keyName: compute.allowSsh ? `${slug}-${env}` : undefined,
       domain,
       userData,
       volumeSize: compute.disk?.size || 20,

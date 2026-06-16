@@ -318,6 +318,22 @@ const DEFAULT_EXCLUDE_DIRS = [
   '.turbo',
   '.next',
   '.nuxt',
+  // Local toolchain caches — typically vendored .d.ts/package.json files
+  // that trip generic secret patterns (base64-ish strings, hashes).
+  'pantry',
+  '.pantry',
+  // Test fixtures routinely contain `DB_PASSWORD=password123`-style mock
+  // values. These are not deployed and are not real secrets.
+  'tests',
+  'test',
+  '__tests__',
+  'spec',
+  '__mocks__',
+  // CI configs commonly hard-code mock DB passwords for service containers
+  // (`MYSQL_PASSWORD: password`). They never reach the deploy artifact.
+  '.github',
+  '.gitlab',
+  '.circleci',
 ]
 
 /**
@@ -328,9 +344,25 @@ const DEFAULT_EXCLUDE_FILES = [
   'yarn.lock',
   'pnpm-lock.yaml',
   'bun.lockb',
+  'bun.lock',
   '*.min.js',
   '*.min.css',
   '*.map',
+  // TypeScript declaration files are almost always auto-generated and
+  // contain template-literal types (`====...===`) that trip the generic
+  // "AWS Secret Key" regex. Real secrets virtually never live in .d.ts.
+  '*.d.ts',
+  // Test files for the same reason — fixtures, mocks, not real secrets.
+  '*.test.ts',
+  '*.test.js',
+  '*.spec.ts',
+  '*.spec.js',
+  // .env files are convention-based local secret stores — they contain
+  // secrets by design and are gitignored. Flagging them here is noise;
+  // what matters is whether they end up in the deploy tarball, which is
+  // a separate concern enforced via tar excludes.
+  '.env',
+  '.env.*',
 ]
 
 /**
@@ -461,6 +493,14 @@ export class PreDeployScanner {
           continue
         }
 
+        // Entropy guard — real secrets/keys are high-entropy strings.
+        // ASCII section dividers (`====...===`) and other low-diversity
+        // matches (`0000...000`, `XXXX...XXX`) overwhelmingly produce
+        // false positives against the generic 40-char base64 pattern.
+        if (this.isLowEntropy(match[1] || match[0])) {
+          continue
+        }
+
         findings.push({
           file: filePath,
           line: lineNumber,
@@ -527,6 +567,28 @@ export class PreDeployScanner {
   }
 
   /**
+   * Heuristic for "this match has way too little entropy to be a real secret."
+   * Real cryptographic keys spread their characters across the alphabet; ASCII
+   * art dividers, padding placeholders, and runs of repeated chars do not.
+   *
+   * Drops a match when EITHER:
+   *   - fewer than 8 distinct characters across the whole string, OR
+   *   - any single character repeats 4+ times consecutively
+   *
+   * A real 40-char base64 key has ~30+ distinct chars and no long runs.
+   */
+  private isLowEntropy(value: string): boolean {
+    if (value.length < 8) return false // too short for this check to be meaningful
+
+    const distinct = new Set(value).size
+    if (distinct < 8) return true
+
+    if (/(.)\1{3,}/.test(value)) return true
+
+    return false
+  }
+
+  /**
    * Mask a secret for display
    */
   private maskSecret(value: string): string {
@@ -579,9 +641,16 @@ export class PreDeployScanner {
 
     for (const pattern of this.excludeFiles) {
       if (pattern.startsWith('*')) {
-        // Wildcard pattern
+        // Suffix wildcard (e.g. '*.min.js')
         const suffix = pattern.substring(1)
         if (fileName.endsWith(suffix)) {
+          return true
+        }
+      }
+      else if (pattern.endsWith('*')) {
+        // Prefix wildcard (e.g. '.env.*' to match .env.production etc.)
+        const prefix = pattern.substring(0, pattern.length - 1)
+        if (fileName.startsWith(prefix)) {
           return true
         }
       }

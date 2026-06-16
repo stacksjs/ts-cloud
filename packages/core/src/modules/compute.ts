@@ -2545,6 +2545,7 @@ echo "Database tools installed!"
       java17: 'java17',
       go: 'provided.al2023',
       rust: 'provided.al2023',
+      bun: 'provided.al2023',
     } as const,
 
     /**
@@ -3239,7 +3240,13 @@ ufw --force enable
     subnetId: string
     instanceType?: string
     imageId?: string
-    keyName: string
+    /**
+     * EC2 KeyName for SSH access. Optional — when omitted, no SSH key is
+     * associated with the instance and shell access goes via SSM Session
+     * Manager. The provided KeyName must already exist in EC2 or the
+     * launch fails with "key pair does not exist".
+     */
+    keyName?: string
     domain?: string
     userData?: string
     allowedPorts?: number[]

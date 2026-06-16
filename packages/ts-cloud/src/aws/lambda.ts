@@ -149,6 +149,11 @@ export interface CreateFunctionParams {
   EphemeralStorage?: {
     Size: number
   }
+  /**
+   * Lambda layer version ARNs to attach (max 5). Required for custom runtimes
+   * such as the Bun layer used with `Runtime: 'provided.al2023'`.
+   */
+  Layers?: string[]
 }
 
 export interface UpdateFunctionCodeParams {
@@ -267,6 +272,8 @@ export class LambdaClient {
     Timeout?: number
     MemorySize?: number
     Environment?: { Variables: Record<string, string> }
+    /** Layer version ARNs (max 5). Pass to re-point a function at a new layer version. */
+    Layers?: string[]
   }): Promise<LambdaFunctionConfiguration> {
     const { FunctionName, ...rest } = params
     const result = await this.client.request({

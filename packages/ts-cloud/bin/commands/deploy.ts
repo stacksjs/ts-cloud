@@ -129,7 +129,12 @@ async function deployAppToCompute(
     const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
     cli.step(`Packaging ${site.root} → ${tarballPath}`)
     try {
-      execSync(`tar czf "${tarballPath}" -C "${site.root}" .`, { stdio: 'inherit' })
+      // Honor `site.exclude` so heavy/host-specific paths (node_modules with
+      // native binaries, .git, dev caches) stay out of the release tarball.
+      const excludeFlags = (site.exclude || [])
+        .map((pattern: string) => `--exclude='${pattern}'`)
+        .join(' ')
+      execSync(`tar czf "${tarballPath}" -C "${site.root}" ${excludeFlags} .`, { stdio: 'inherit' })
     }
     catch (err: any) {
       cli.error(`Failed to package '${siteName}': ${err.message}`)
@@ -451,6 +456,17 @@ export function registerDeployCommands(app: CLI): void {
         const templateBody = generator.toJSON()
         const template = JSON.parse(templateBody)
 
+        // A site-only project (sites + DNS, no compute/database/VPC/etc.) produces an
+        // environment stack with no resources. The sites were already deployed above, so
+        // there is genuinely nothing left to provision here. CloudFormation rejects empty
+        // stacks ("At least one resource is required") — skip gracefully instead of
+        // surfacing that as a deployment failure.
+        const envResourceCount = Object.keys(template.Resources || {}).length
+        if (envResourceCount === 0) {
+          cli.info(`No infrastructure resources to deploy for environment '${environment}' — skipping stack ${stackName}.`)
+          return
+        }
+
         // Validate template
         cli.step('Validating template...')
         const validation = validateTemplate(template)
@@ -552,10 +568,14 @@ export function registerDeployCommands(app: CLI): void {
           catch (error: any) {
             if (error.message.includes('No updates are to be performed')) {
               updateSpinner.succeed('No changes detected')
-              cli.info('Stack is already up to date')
-              return
+              cli.info('Stack is already up to date — continuing to app deploy')
+              // Do NOT return here: an unchanged stack still needs the code
+              // (sites) deployed/redeployed below. Returning early made code
+              // deploys impossible once the infra existed.
             }
-            throw error
+            else {
+              throw error
+            }
           }
         }
         else {

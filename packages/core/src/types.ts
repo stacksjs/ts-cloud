@@ -909,6 +909,17 @@ export interface SiteConfig {
    */
   preStart?: string[]
 
+  /**
+   * SSR only. tar `--exclude` patterns applied when packaging the release
+   * tarball. Keep host-specific / heavy paths out of the artifact — most
+   * importantly `node_modules` (host-built native binaries won't run on the
+   * target OS; install fresh via `preStart` instead), plus `.git`, dev caches,
+   * and the built frontend.
+   *
+   * Example: ['node_modules', '.git', 'dist']
+   */
+  exclude?: string[]
+
   // ──────────────────────────────────────────────────────────────────────────
   // Laravel / PHP sites (Forge-style). When `type` is a PHP framework, the site
   // is deployed to the environment's compute box via git clone into atomic
