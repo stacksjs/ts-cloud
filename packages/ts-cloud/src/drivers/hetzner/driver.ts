@@ -296,7 +296,7 @@ export class HetznerDriver implements CloudDriver {
 
     // 3. Services box — DB/cache/search only (no php/nginx).
     const servicesProvision = [
-      ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }),
+      ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
       ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
       ...buildAutoUpdatesScript(true),
       ...buildMonitoringScript(true),

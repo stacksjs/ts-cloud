@@ -26,7 +26,7 @@ function sq(value: string): string {
  * Build apt install + enable commands for each requested on-box service.
  * Idempotent: apt install is a no-op when already present.
  */
-export function buildServicesProvisionScript(services: ComputeServicesConfig = {}): string[] {
+export function buildServicesProvisionScript(services: ComputeServicesConfig = {}, options: { bindPrivate?: boolean } = {}): string[] {
   const out: string[] = ['export DEBIAN_FRONTEND=noninteractive']
   let touchedApt = false
   const ensureUpdate = (): void => {
@@ -35,22 +35,48 @@ export function buildServicesProvisionScript(services: ComputeServicesConfig = {
       touchedApt = true
     }
   }
+  // In a fleet the services box must accept connections from the app servers
+  // over the private network — bind the engines to all interfaces (they sit
+  // behind the firewall, which only allows the private range). Without this
+  // MySQL/Redis bind to 127.0.0.1 and remote app servers get "Connection refused".
+  const bind = options.bindPrivate === true
 
-  if (enabled(services.mysql)) {
+  if (enabled(services.mysql) || enabled(services.mariadb)) {
     ensureUpdate()
-    out.push('apt-get install -y mysql-server', 'systemctl enable mysql', 'systemctl start mysql')
-  }
-  if (enabled(services.mariadb)) {
-    ensureUpdate()
-    out.push('apt-get install -y mariadb-server', 'systemctl enable mariadb', 'systemctl start mariadb')
+    const pkg = enabled(services.mysql) ? 'mysql-server' : 'mariadb-server'
+    const svc = enabled(services.mysql) ? 'mysql' : 'mariadb'
+    out.push(`apt-get install -y ${pkg}`)
+    if (bind) {
+      // conf.d is read by both MySQL and MariaDB.
+      out.push(
+        'mkdir -p /etc/mysql/conf.d',
+        'printf \'[mysqld]\\nbind-address = 0.0.0.0\\n\' > /etc/mysql/conf.d/zz-ts-cloud-bind.cnf',
+      )
+    }
+    out.push(`systemctl enable ${svc}`, `systemctl restart ${svc}`)
   }
   if (enabled(services.postgres)) {
     ensureUpdate()
-    out.push('apt-get install -y postgresql postgresql-contrib', 'systemctl enable postgresql', 'systemctl start postgresql')
+    out.push('apt-get install -y postgresql postgresql-contrib')
+    if (bind) {
+      out.push(
+        'echo "listen_addresses = \'*\'" > /etc/postgresql/conf.d-ts-cloud.conf 2>/dev/null || true',
+        'CONF=$(ls /etc/postgresql/*/main/postgresql.conf 2>/dev/null | head -1); [ -n "$CONF" ] && sed -i "s/^#\\?listen_addresses.*/listen_addresses = \'*\'/" "$CONF" || true',
+        'HBA=$(ls /etc/postgresql/*/main/pg_hba.conf 2>/dev/null | head -1); [ -n "$HBA" ] && echo "host all all 10.0.0.0/8 md5" >> "$HBA" || true',
+      )
+    }
+    out.push('systemctl enable postgresql', 'systemctl restart postgresql')
   }
   if (enabled(services.redis)) {
     ensureUpdate()
-    out.push('apt-get install -y redis-server', 'systemctl enable redis-server', 'systemctl start redis-server')
+    out.push('apt-get install -y redis-server')
+    if (bind) {
+      out.push(
+        'sed -i \'s/^bind .*/bind 0.0.0.0/\' /etc/redis/redis.conf || true',
+        'sed -i \'s/^protected-mode yes/protected-mode no/\' /etc/redis/redis.conf || true',
+      )
+    }
+    out.push('systemctl enable redis-server', 'systemctl restart redis-server')
   }
   if (enabled(services.memcached)) {
     ensureUpdate()
@@ -73,7 +99,7 @@ export function buildServicesProvisionScript(services: ComputeServicesConfig = {
       'Type=simple',
       'User=meilisearch',
       'Group=meilisearch',
-      'ExecStart=/usr/local/bin/meilisearch --db-path /var/lib/meilisearch/data --env production',
+      `ExecStart=/usr/local/bin/meilisearch --db-path /var/lib/meilisearch/data --env production${bind ? ' --http-addr 0.0.0.0:7700' : ''}`,
       'Restart=always',
       'RestartSec=5',
       '',
