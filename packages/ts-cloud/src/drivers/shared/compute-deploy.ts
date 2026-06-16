@@ -14,6 +14,7 @@ import {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './deploy-script'
+import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildManagedDbEnv } from './db-provision'
 import { buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
@@ -96,9 +97,15 @@ export async function deploySiteRelease(
     })
 
     // nginx vhost (skipped when the operator fronts the box with rpx instead).
-    const vhostScript = compute?.webServer === 'rpx'
-      ? []
-      : buildNginxVhostScript({
+    // A `custom` cert is baked straight into the vhost; Let's Encrypt is layered
+    // on afterwards by certbot, which rewrites the :80 block to add :443.
+    const useNginx = compute?.webServer !== 'rpx'
+    const sslProvider = resolveSslProvider(site)
+    const customCert = sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
+      ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
+      : undefined
+    const vhostScript = useNginx
+      ? buildNginxVhostScript({
           siteName,
           domain: site.domain || siteName,
           aliases: site.aliases,
@@ -107,7 +114,10 @@ export async function deploySiteRelease(
           webDirectory: site.webDirectory,
           phpVersion,
           redirects: site.redirects,
+          ssl: customCert,
         })
+      : []
+    const sslScript = useNginx ? buildSslScript(site) : []
 
     // Reconcile queue workers / scheduler / daemons after the release is live.
     const servicesScript = siteHasServices(site)
@@ -117,7 +127,7 @@ export async function deploySiteRelease(
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...deployScript, ...vhostScript, ...servicesScript],
+      commands: [...deployScript, ...vhostScript, ...sslScript, ...servicesScript],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })

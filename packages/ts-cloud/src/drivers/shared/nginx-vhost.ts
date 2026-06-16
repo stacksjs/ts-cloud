@@ -39,6 +39,13 @@ export interface NginxVhostOptions {
   phpVersion?: string
   /** `from path` → `to URL` 301 redirects. */
   redirects?: Record<string, string>
+  /**
+   * Serve TLS directly from this vhost using operator-provided certs. When set,
+   * the :80 block becomes an HTTPS redirect and a :443 `ssl` block serves the
+   * site. Used for the `custom` SSL provider; for Let's Encrypt, certbot
+   * rewrites the :80 block itself (leave this unset).
+   */
+  ssl?: { certPath: string, keyPath: string }
 }
 
 const PHP_TYPES: ReadonlySet<NginxSiteType> = new Set(['laravel', 'php', 'statamic', 'wordpress'])
@@ -62,22 +69,15 @@ function resolveRoot(appDir: string, webDirectory: string): string {
   return sub ? `${base}/${sub}` : base
 }
 
-/**
- * Build the nginx server block text for a site.
- */
-export function buildNginxVhost(options: NginxVhostOptions): string {
+/** Inner directives (root, index, security headers, locations) for a server block. */
+function vhostBody(options: NginxVhostOptions): string[] {
   const type = options.type ?? 'laravel'
   const webDirectory = options.webDirectory ?? defaultWebDirectory(type)
   const root = resolveRoot(options.appDir, webDirectory)
-  const serverNames = [options.domain, ...(options.aliases || [])].filter(Boolean).join(' ')
   const isPhp = isPhpSiteType(type)
   const phpVersion = options.phpVersion ?? '8.3'
 
   const lines: string[] = [
-    'server {',
-    '    listen 80;',
-    '    listen [::]:80;',
-    `    server_name ${serverNames};`,
     `    root ${root};`,
     '',
     '    add_header X-Frame-Options "SAMEORIGIN";',
@@ -134,7 +134,49 @@ export function buildNginxVhost(options: NginxVhostOptions): string {
     )
   }
 
-  lines.push('}')
+  return lines
+}
+
+/**
+ * Build the nginx server block text for a site. With `options.ssl`, emits a
+ * :80 → HTTPS redirect plus a :443 `ssl` block (the `custom` cert path);
+ * otherwise a single :80 block (certbot upgrades it for Let's Encrypt).
+ */
+export function buildNginxVhost(options: NginxVhostOptions): string {
+  const serverNames = [options.domain, ...(options.aliases || [])].filter(Boolean).join(' ')
+  const body = vhostBody(options)
+
+  if (options.ssl) {
+    const redirect = [
+      'server {',
+      '    listen 80;',
+      '    listen [::]:80;',
+      `    server_name ${serverNames};`,
+      '    return 301 https://$host$request_uri;',
+      '}',
+    ]
+    const tls = [
+      'server {',
+      '    listen 443 ssl;',
+      '    listen [::]:443 ssl;',
+      `    server_name ${serverNames};`,
+      `    ssl_certificate ${options.ssl.certPath};`,
+      `    ssl_certificate_key ${options.ssl.keyPath};`,
+      '',
+      ...body,
+      '}',
+    ]
+    return `${[...redirect, '', ...tls].join('\n')}\n`
+  }
+
+  const lines = [
+    'server {',
+    '    listen 80;',
+    '    listen [::]:80;',
+    `    server_name ${serverNames};`,
+    ...body,
+    '}',
+  ]
   return `${lines.join('\n')}\n`
 }
 
