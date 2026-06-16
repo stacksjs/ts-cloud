@@ -1,0 +1,71 @@
+import { describe, expect, it } from 'bun:test'
+import {
+  buildPantryBootstrapScript,
+  buildPantryInstallScript,
+  buildPantryServiceScript,
+  PANTRY_INSTALL_DIR,
+  PANTRY_PACKAGES,
+  pantryDomain,
+} from '../../src/drivers/shared/package-manager'
+
+describe('buildPantryBootstrapScript', () => {
+  it('installs the pantry CLI headlessly in system service scope', () => {
+    const script = buildPantryBootstrapScript().join('\n')
+    expect(script).toContain('export PANTRY_SERVICE_SCOPE=system')
+    expect(script).toContain(`export PANTRY_INSTALL_DIR=${PANTRY_INSTALL_DIR}`)
+    expect(script).toContain('curl -fsSL https://pantry.dev | bash')
+    // Idempotent: skip when pantry already present.
+    expect(script).toContain('command -v pantry >/dev/null 2>&1 ||')
+    // curl + unzip are the only apt prerequisites.
+    expect(script).toContain('apt-get install -y curl ca-certificates')
+    expect(script).toContain('apt-get install -y unzip')
+  })
+
+  it('defaults to the latest release but can pin a version', () => {
+    expect(buildPantryBootstrapScript().join('\n')).toContain('PANTRY_VERSION:-latest')
+    const pinned = buildPantryBootstrapScript({ version: '0.9.39' }).join('\n')
+    expect(pinned).toContain('export PANTRY_VERSION=\'0.9.39\'')
+  })
+})
+
+describe('buildPantryInstallScript', () => {
+  it('resolves all packages in a single pass', () => {
+    const script = buildPantryInstallScript(['php.net', 'nginx.org', 'getcomposer.org'])
+    expect(script).toEqual(['pantry install \'php.net\' \'nginx.org\' \'getcomposer.org\''])
+  })
+
+  it('supports pinned versions and dedupes', () => {
+    const script = buildPantryInstallScript(['php.net@8.3', 'php.net@8.3', 'redis.io']).join('\n')
+    expect(script).toContain('\'php.net@8.3\'')
+    expect(script).toContain('\'redis.io\'')
+    // Deduped: php.net@8.3 appears once.
+    expect(script.match(/php\.net@8\.3/g)?.length).toBe(1)
+  })
+
+  it('returns nothing for an empty list', () => {
+    expect(buildPantryInstallScript([])).toEqual([])
+  })
+})
+
+describe('buildPantryServiceScript', () => {
+  it('enables then starts each service', () => {
+    expect(buildPantryServiceScript(['php-fpm', 'nginx'])).toEqual([
+      'pantry enable \'php-fpm\'',
+      'pantry start \'php-fpm\'',
+      'pantry enable \'nginx\'',
+      'pantry start \'nginx\'',
+    ])
+  })
+})
+
+describe('pantryDomain', () => {
+  it('maps logical keys to package domains', () => {
+    expect(pantryDomain('php')).toBe('php.net')
+    expect(pantryDomain('redis')).toBe('redis.io')
+    expect(PANTRY_PACKAGES.meilisearch).toBe('meilisearch.com')
+  })
+
+  it('passes an explicit domain through unchanged', () => {
+    expect(pantryDomain('nginx.org')).toBe('nginx.org')
+  })
+})
