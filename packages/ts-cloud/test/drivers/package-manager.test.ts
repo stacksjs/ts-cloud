@@ -51,12 +51,12 @@ describe('buildPantryInstallScript', () => {
 })
 
 describe('buildPantryServiceScript', () => {
-  it('enables then starts each service in the project', () => {
+  it('starts then enables each service in the project', () => {
     expect(buildPantryServiceScript(['php-fpm', 'nginx'])).toEqual([
-      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'php-fpm')`,
       `(cd ${PANTRY_PROJECT_DIR} && pantry start 'php-fpm')`,
-      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'nginx')`,
+      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'php-fpm')`,
       `(cd ${PANTRY_PROJECT_DIR} && pantry start 'nginx')`,
+      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'nginx')`,
     ])
   })
 })

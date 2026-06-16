@@ -122,9 +122,11 @@ export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[]
  * package domains.
  */
 export function buildPantryServiceScript(services: readonly string[]): string[] {
+  // Start before enable: `pantry start` writes the systemd unit (then runs it),
+  // and `pantry enable` (boot persistence) needs that unit to already exist.
   return [...new Set(services)].flatMap(name => [
-    `(cd ${PANTRY_PROJECT_DIR} && pantry enable ${sh(name)})`,
     `(cd ${PANTRY_PROJECT_DIR} && pantry start ${sh(name)})`,
+    `(cd ${PANTRY_PROJECT_DIR} && pantry enable ${sh(name)})`,
   ])
 }
 
