@@ -1,0 +1,5 @@
+#!/bin/sh
+# Lambda custom-runtime entrypoint. Lives at /opt/bootstrap in the layer.
+# Puts the bundled Bun binary on PATH and hands control to the runtime loop.
+export PATH="/opt/bin:$PATH"
+exec bun /opt/runtime.ts

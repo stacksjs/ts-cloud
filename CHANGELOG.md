@@ -1,3 +1,63 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.26...v0.2.27)
+
+### 🚀 Features
+
+- **fleet**: Hetzner load-balanced fleet provisioning + teardown ([0257090](https://github.com/stacksjs/ts-cloud/commit/0257090)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: topology resolution + services-host env wiring ([5ef5c87](https://github.com/stacksjs/ts-cloud/commit/5ef5c87)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: 'cloud destroy' command to tear down single-server compute ([574fec9](https://github.com/stacksjs/ts-cloud/commit/574fec9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- AWS server deploys via CLI + driver teardown (destroyCompute) ([b6160be](https://github.com/stacksjs/ts-cloud/commit/b6160be)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: lightweight Ubuntu EC2 boot path (Forge parity on AWS) ([897cce9](https://github.com/stacksjs/ts-cloud/commit/897cce9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **image**: golden image support — bake recipe, Packer, size optimization ([e5ede13](https://github.com/stacksjs/ts-cloud/commit/e5ede13)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ssh**: declarative SSH key management + fix type conflicts ([cc87663](https://github.com/stacksjs/ts-cloud/commit/cc87663)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: deploy static sites (incl. the dashboard) behind nginx + htpasswd ([1c9ed3a](https://github.com/stacksjs/ts-cloud/commit/1c9ed3a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: ts-cloud dashboard (stx) with SSH key management ([42c2e18](https://github.com/stacksjs/ts-cloud/commit/42c2e18)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **nginx**: HTTP Basic auth (htpasswd) for sites ([64237b4](https://github.com/stacksjs/ts-cloud/commit/64237b4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **preset**: Laravel preset + docs ([402635e](https://github.com/stacksjs/ts-cloud/commit/402635e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **notify**: Slack/Discord/Telegram/email/webhook notifications ([51faa0a](https://github.com/stacksjs/ts-cloud/commit/51faa0a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ops**: UFW firewall, auto-updates, monitoring, scheduled backups ([3e2ccd7](https://github.com/stacksjs/ts-cloud/commit/3e2ccd7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ssl**: Let's Encrypt via certbot + custom certs, auto-renew ([bc0af72](https://github.com/stacksjs/ts-cloud/commit/bc0af72)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **db**: on-box database + cache/search provisioning ([5a2b284](https://github.com/stacksjs/ts-cloud/commit/5a2b284)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **laravel**: queue workers, scheduler, and daemons ([9557430](https://github.com/stacksjs/ts-cloud/commit/9557430)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: git tag-based deploy strategy ([4009c58](https://github.com/stacksjs/ts-cloud/commit/4009c58)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **laravel**: end-to-end git deploy path for PHP/Laravel sites ([a4d63d2](https://github.com/stacksjs/ts-cloud/commit/a4d63d2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: atomic zero-downtime releases + git-clone deploy ([c38fc09](https://github.com/stacksjs/ts-cloud/commit/c38fc09)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **nginx**: generate per-site nginx vhosts for Laravel/PHP/static/SPA ([a82c885](https://github.com/stacksjs/ts-cloud/commit/a82c885)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **php**: provision nginx + php-fpm + Composer on the box ([db25aec](https://github.com/stacksjs/ts-cloud/commit/db25aec)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **types**: add Laravel/PHP site + compute config model ([a757144](https://github.com/stacksjs/ts-cloud/commit/a757144)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **core,deploy**: resolve post-pull merge conflict and skip empty env stack ([d6318ce](https://github.com/stacksjs/ts-cloud/commit/d6318ce)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- **fleet**: force MySQL bind-address override (conf.d load order) ([2167d38](https://github.com/stacksjs/ts-cloud/commit/2167d38)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: bind services to the private network so app servers can connect ([d7ca8e9](https://github.com/stacksjs/ts-cloud/commit/d7ca8e9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: don't pin SSH host keys for ephemeral cloud servers ([681a0ed](https://github.com/stacksjs/ts-cloud/commit/681a0ed)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: wait for all boxes' cloud-init before deploy; surface services IP ([ad40b56](https://github.com/stacksjs/ts-cloud/commit/ad40b56)) _(by Chris <chrisbreuer93@gmail.com>)_
+- harden deploy/provision from review (quoting, idempotency, robustness) ([3e1db84](https://github.com/stacksjs/ts-cloud/commit/3e1db84)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: make live EC2 Laravel deploys actually work end-to-end ([323eb89](https://github.com/stacksjs/ts-cloud/commit/323eb89)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ♻️ Code Refactoring
+
+- extract shared Ubuntu bootstrap recipe + baked flag ([0c72640](https://github.com/stacksjs/ts-cloud/commit/0c72640)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧪 Tests
+
+- **laravel**: end-to-end Forge-parity verification ([f6617c6](https://github.com/stacksjs/ts-cloud/commit/f6617c6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.2.27 ([bbe8feb](https://github.com/stacksjs/ts-cloud/commit/bbe8feb)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+- untrack + gitignore *.tsbuildinfo ([7924869](https://github.com/stacksjs/ts-cloud/commit/7924869)) _(by Chris <chrisbreuer93@gmail.com>)_
+- wip ([306bd92](https://github.com/stacksjs/ts-cloud/commit/306bd92)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Merge
+
+- Laravel Forge parity (Hetzner + AWS), golden images, stx UI ([2487985](https://github.com/stacksjs/ts-cloud/commit/2487985)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.25...v0.2.26)
 
 ### 🚀 Features
