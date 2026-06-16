@@ -25,6 +25,7 @@ import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildBackupProvisionScript } from '../shared/backups'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildNotifierScript } from '../shared/notifications'
+import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -171,18 +172,19 @@ export class HetznerDriver implements CloudDriver {
     const provisionExtras: string[] = []
     // On-box notifier first, so cron-driven jobs (backups) can call it.
     provisionExtras.push(...buildNotifierScript(config.notifications))
-    if (compute.services) {
+    if (compute.managedServices) {
       provisionExtras.push(
-        ...buildServicesProvisionScript(compute.services),
-        ...buildDatabaseSetupScript(config.infrastructure?.database, compute.services),
+        ...buildServicesProvisionScript(compute.managedServices),
+        ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices),
       )
     }
     provisionExtras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
     provisionExtras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
     provisionExtras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
+    provisionExtras.push(...buildAuthorizedKeysScript(compute.sshKeys))
     if (compute.backups?.enabled) {
       provisionExtras.push(...buildBackupProvisionScript({
-        database: config.infrastructure?.database,
+        database: config.infrastructure?.appDatabase,
         backups: compute.backups,
       }))
     }

@@ -59,13 +59,13 @@ export function createLaravelPreset(options: {
         runtime: 'php',
         webServer: 'nginx',
         php: { versions: [phpVersion], default: phpVersion },
-        services: { mysql: true, redis: true },
+        managedServices: { mysql: true, redis: true },
         firewall: { enabled: true },
         autoUpdates: true,
         monitoring: true,
         backups: { enabled: true, schedule: '0 2 * * *', retentionCount: 7 },
       },
-      database: {
+      appDatabase: {
         engine: 'mysql',
         name: database,
         username: database,

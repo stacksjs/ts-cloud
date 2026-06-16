@@ -13,8 +13,8 @@ describe('createLaravelPreset', () => {
   it('provisions a PHP/nginx server with on-box mysql + redis', () => {
     expect(config.infrastructure?.compute?.runtime).toBe('php')
     expect(config.infrastructure?.compute?.webServer).toBe('nginx')
-    expect(config.infrastructure?.compute?.services?.mysql).toBe(true)
-    expect(config.infrastructure?.compute?.services?.redis).toBe(true)
+    expect(config.infrastructure?.compute?.managedServices?.mysql).toBe(true)
+    expect(config.infrastructure?.compute?.managedServices?.redis).toBe(true)
   })
 
   it('enables Forge-equivalent server ops by default', () => {
@@ -40,7 +40,7 @@ describe('createLaravelPreset', () => {
       repository: { url: 'git@github.com:acme/app.git' },
       deployStrategy: 'tag',
     })
-    expect(tagged.infrastructure?.database?.name).toBe('my_app')
+    expect(tagged.infrastructure?.appDatabase?.name).toBe('my_app')
     expect(tagged.sites?.main.repository?.strategy).toBe('tag')
   })
 })

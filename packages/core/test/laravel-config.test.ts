@@ -35,12 +35,12 @@ describe('Laravel/PHP config model', () => {
       mode: 'server',
       webServer: 'nginx',
       php: { versions: ['8.3', '8.2'], default: '8.3', extensions: ['imagick'] },
-      services: { mysql: true, redis: true, meilisearch: { version: '1.6' } },
+      managedServices: { mysql: true, redis: true, meilisearch: { version: '1.6' } },
     }
 
     expect(compute.php?.versions).toContain('8.3')
     expect(compute.webServer).toBe('nginx')
-    expect(compute.services?.mysql).toBe(true)
+    expect(compute.managedServices?.mysql).toBe(true)
   })
 
   it('keeps queue worker and daemon shapes distinct', () => {

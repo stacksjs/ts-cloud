@@ -84,7 +84,7 @@ export async function deploySiteRelease(
 
     // Auto-wire DB_* from infrastructure.database (on-box or managed) into the
     // app's .env. Explicit site.env values always win.
-    const dbEnv = buildManagedDbEnv(config.infrastructure?.database)
+    const dbEnv = buildManagedDbEnv(config.infrastructure?.appDatabase)
     const siteWithEnv = Object.keys(dbEnv).length > 0
       ? { ...site, env: { ...dbEnv, ...(site.env || {}) } }
       : site

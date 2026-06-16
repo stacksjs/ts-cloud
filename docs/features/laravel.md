@@ -53,13 +53,13 @@ export default {
       runtime: 'php',
       webServer: 'nginx', // or 'rpx'
       php: { versions: ['8.3', '8.2'], default: '8.3' },
-      services: { mysql: true, redis: true, meilisearch: true },
+      managedServices: { mysql: true, redis: true, meilisearch: true },
       firewall: { enabled: true, allowedPorts: [8080] },
       autoUpdates: true, // unattended-upgrades
       monitoring: true,
       backups: { enabled: true, schedule: '0 2 * * *', retentionCount: 7, bucket: 'acme-backups' },
     },
-    database: { engine: 'mysql', name: 'acme', username: 'acme', password: process.env.DB_PASSWORD },
+    appDatabase: { engine: 'mysql', name: 'acme', username: 'acme', password: process.env.DB_PASSWORD },
   },
 
   sites: {

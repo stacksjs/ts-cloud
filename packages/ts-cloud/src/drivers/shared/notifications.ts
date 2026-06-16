@@ -9,10 +9,10 @@
  *  - {@link buildNotifierScript} — generates an on-box `ts-cloud-notify`
  *    helper that cron-driven events (certbot renewal, backups) can call.
  */
-import type { NotificationEvent, NotificationsConfig } from '@ts-cloud/core'
+import type { NotifyEvent, NotificationsConfig } from '@ts-cloud/core'
 
 /** Should this channel fire for the given event? (no `events` filter ⇒ all). */
-function wantsEvent(config: NotificationsConfig, event: NotificationEvent): boolean {
+function wantsEvent(config: NotificationsConfig, event: NotifyEvent): boolean {
   return !config.events || config.events.includes(event)
 }
 
@@ -35,7 +35,7 @@ export interface SendNotificationsOptions {
  */
 export async function sendNotifications(
   config: NotificationsConfig | undefined,
-  event: NotificationEvent,
+  event: NotifyEvent,
   message: string,
   options: SendNotificationsOptions = {},
 ): Promise<string[]> {
@@ -85,7 +85,7 @@ export async function sendNotifications(
 /** Best-effort email via ts-cloud's SES client (dynamic import to avoid a hard AWS dep). */
 async function sendEmailNotification(
   email: NonNullable<NotificationsConfig['email']>,
-  event: NotificationEvent,
+  event: NotifyEvent,
   message: string,
 ): Promise<void> {
   try {

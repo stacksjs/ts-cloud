@@ -324,6 +324,14 @@ export interface InfrastructureConfig {
    * - `'postgres'` → RDS Postgres with sane defaults, DATABASE_URL injected into env
    */
   database?: 'sqlite' | 'mysql' | 'postgres'
+  /**
+   * Application database connection (object form) for the Forge-style on-box /
+   * managed database path. Provides the name/user/password that
+   * `compute.managedServices` creates on the box, and the `DB_*` values
+   * auto-wired into PHP sites' `.env`. Distinct from the {@link database}
+   * string shorthand.
+   */
+  appDatabase?: DatabaseConfig
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
   /**
@@ -1132,7 +1140,7 @@ export interface DaemonConfig {
 }
 
 /** A lifecycle event that can trigger a notification. */
-export type NotificationEvent = 'deploy' | 'deploy-failed' | 'ssl' | 'health' | 'backup'
+export type NotifyEvent = 'deploy' | 'deploy-failed' | 'ssl' | 'health' | 'backup'
 
 /**
  * Notification channels (Forge-style). Configure any subset; each configured
@@ -1152,7 +1160,7 @@ export interface NotificationsConfig {
   /**
    * Which events to notify on. @default all events
    */
-  events?: NotificationEvent[]
+  events?: NotifyEvent[]
 }
 
 export interface VpcConfig {
@@ -1999,8 +2007,11 @@ export interface ComputeConfig {
    * database engine, cache, and search. Each may be `true` for defaults or an
    * object for pinning a version. Omit to install nothing (e.g. when pointing
    * the app at a managed/RDS database instead).
+   *
+   * Named `managedServices` to avoid colliding with the ECS microservices
+   * `services` array above.
    */
-  services?: ComputeServicesConfig
+  managedServices?: ComputeServicesConfig
 
   /**
    * Host firewall (UFW). When enabled, only SSH + the listed ports are open.
@@ -2021,6 +2032,22 @@ export interface ComputeConfig {
    * storage. Off unless configured.
    */
   backups?: ComputeBackupConfig
+
+  /**
+   * Operator SSH keys authorized on the box, in addition to the deploy key.
+   * Managed declaratively: keys are written to `authorized_keys` inside a
+   * ts-cloud-managed block on every provision/deploy, so adding one is as
+   * simple as adding an entry here and redeploying.
+   */
+  sshKeys?: SshKeyConfig[]
+}
+
+/** An operator SSH key authorized on the box. See {@link ComputeConfig.sshKeys}. */
+export interface SshKeyConfig {
+  /** Human label for the key (comment). */
+  name: string
+  /** The public key line (e.g. `ssh-ed25519 AAAA… user@host`). */
+  publicKey: string
 }
 
 /** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
