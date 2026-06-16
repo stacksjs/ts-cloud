@@ -24,9 +24,18 @@ export interface GitCheckoutOptions {
 /** Default branch when the repository config omits one. */
 export const DEFAULT_DEPLOY_BRANCH = 'main'
 
+/** Default tag glob when `strategy: 'tag'` and no explicit tag is set. */
+export const DEFAULT_TAG_PATTERN = 'v*'
+
 /**
  * Build the shell commands that clone + checkout the repository into the
  * release directory. Assumes `git` is installed (the bootstrap installs it).
+ *
+ * Strategy is taken from `repository.strategy`:
+ *  - `'push'` (default) — clone the branch tip (or a pinned `commit`).
+ *  - `'tag'` — clone a version tag: the explicit `repository.tag`, else the
+ *    highest tag matching `repository.tagPattern`, resolved on the box via
+ *    `git ls-remote --sort=-v:refname`.
  */
 export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
   const { repository, releaseDir, commit } = options
@@ -38,7 +47,25 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
     `mkdir -p ${releaseDir}`,
   ]
 
-  if (commit) {
+  if (repository.strategy === 'tag') {
+    if (repository.tag) {
+      // git clone --branch accepts a tag name as well as a branch.
+      lines.push(`git clone -q --depth 1 --branch ${repository.tag} ${url} ${releaseDir}`)
+      lines.push(`printf '%s' ${shellQuote(repository.tag)} > ${releaseDir}/.ts-cloud-tag`)
+    }
+    else {
+      const pattern = repository.tagPattern || DEFAULT_TAG_PATTERN
+      // Resolve the highest version tag matching the pattern on the remote, then
+      // shallow-clone exactly that tag. `-v:refname` sorts semver-ish names.
+      lines.push(
+        `TS_CLOUD_TAG="$(git ls-remote --tags --refs --sort=-v:refname ${url} ${shellQuote(`refs/tags/${pattern}`)} | head -n1 | sed 's#.*refs/tags/##')"`,
+        `test -n "$TS_CLOUD_TAG" || { echo "no tags matching ${pattern} found in ${url}" >&2; exit 1; }`,
+        `git clone -q --depth 1 --branch "$TS_CLOUD_TAG" ${url} ${releaseDir}`,
+        `printf '%s' "$TS_CLOUD_TAG" > ${releaseDir}/.ts-cloud-tag`,
+      )
+    }
+  }
+  else if (commit) {
     // Reproducible deploy of an exact commit: init + fetch just that commit.
     lines.push(
       `git -C ${releaseDir} init -q`,
@@ -59,4 +86,10 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
   )
 
   return lines
+}
+
+/** Single-quote a value for safe embedding in the generated shell. */
+function shellQuote(value: string): string {
+  const escaped = value.split('\'').join('\'\\\'\'')
+  return `'${escaped}'`
 }

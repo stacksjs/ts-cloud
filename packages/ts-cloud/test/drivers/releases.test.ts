@@ -77,4 +77,31 @@ describe('buildGitCheckoutScript', () => {
     expect(script).toContain('checkout -q FETCH_HEAD')
     expect(script).not.toContain('git clone')
   })
+
+  it('clones an explicit version tag', () => {
+    const script = buildGitCheckoutScript({
+      repository: { url: 'git@github.com:acme/app.git', strategy: 'tag', tag: 'v1.4.2' },
+      releaseDir: paths.release,
+    }).join('\n')
+    expect(script).toContain('git clone -q --depth 1 --branch v1.4.2 git@github.com:acme/app.git')
+    expect(script).toContain('.ts-cloud-tag')
+  })
+
+  it('resolves the latest tag matching a pattern on the remote', () => {
+    const script = buildGitCheckoutScript({
+      repository: { url: 'git@github.com:acme/app.git', strategy: 'tag', tagPattern: 'v*' },
+      releaseDir: paths.release,
+    }).join('\n')
+    expect(script).toContain('git ls-remote --tags --refs --sort=-v:refname')
+    expect(script).toContain("'refs/tags/v*'")
+    expect(script).toContain('git clone -q --depth 1 --branch "$TS_CLOUD_TAG"')
+  })
+
+  it('defaults the tag pattern to v* when none is given', () => {
+    const script = buildGitCheckoutScript({
+      repository: { url: 'git@github.com:acme/app.git', strategy: 'tag' },
+      releaseDir: paths.release,
+    }).join('\n')
+    expect(script).toContain("'refs/tags/v*'")
+  })
 })

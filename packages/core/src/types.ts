@@ -1009,6 +1009,22 @@ export interface SiteRepositoryConfig {
   branch?: string
   /** Hosting provider — drives push-to-deploy hook wiring. @default 'github' */
   provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom'
+  /**
+   * Deploy strategy:
+   *  - `'push'` (default) — deploy the tip of `branch` (push-to-deploy).
+   *  - `'tag'` — deploy a git version tag: a specific {@link tag}, or the latest
+   *    tag matching {@link tagPattern} (e.g. release `v*` tags). Useful for
+   *    promoting tagged releases rather than every push.
+   */
+  strategy?: 'push' | 'tag'
+  /** Exact tag to deploy when `strategy: 'tag'`. Overrides {@link tagPattern}. */
+  tag?: string
+  /**
+   * Glob matching the tags to consider when `strategy: 'tag'` and no explicit
+   * {@link tag} is set; the highest version (`-sort=-v:refname`) is deployed.
+   * @default 'v*'
+   */
+  tagPattern?: string
 }
 
 /**
