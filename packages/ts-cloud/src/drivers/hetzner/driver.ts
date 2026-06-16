@@ -332,8 +332,9 @@ export class HetznerDriver implements CloudDriver {
       installNginx: compute.webServer !== 'rpx',
     })
     const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked }))
+    const appServerIds: number[] = []
     for (let i = 0; i < topology.appServers; i++) {
-      const { action } = await this.client.createServer({
+      const { server, action } = await this.client.createServer({
         name: `${slug}-${environment}-app-${i + 1}`,
         serverType,
         image,
@@ -345,6 +346,21 @@ export class HetznerDriver implements CloudDriver {
         networks: [network.id],
       })
       await this.client.waitForAction(action.id)
+      appServerIds.push(server.id)
+    }
+
+    // Wait for SSH + cloud-init on every box (app + services) before returning,
+    // so the deploy doesn't race the bootstrap (php/nginx/services installs).
+    if (this.waitForBoot) {
+      const waitIds = [svcCreate.id, ...appServerIds]
+      await Promise.all(waitIds.map(async (id) => {
+        const running = await this.client.waitForServerRunning(id)
+        const ip = running.public_net.ipv4?.ip
+        if (ip) {
+          await this.waitForSshReady(ip)
+          await this.waitForCloudInit(ip)
+        }
+      }))
     }
 
     // 5. Load balancer fronting the app servers (selected by role label).
@@ -464,6 +480,10 @@ export class HetznerDriver implements CloudDriver {
     if (state?.serverId) {
       const server = await this.client.getServer(state.serverId)
       return this.outputsFromState(state, server)
+    }
+    // Fleet: no single serverId, but state carries the LB IP + services IP.
+    if (state?.loadBalancerId || state?.servicesPrivateIp) {
+      return this.outputsFromState(state)
     }
 
     const targets = await this.findComputeTargets({
