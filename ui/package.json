@@ -1,0 +1,13 @@
+{
+  "name": "@ts-cloud/ui",
+  "type": "module",
+  "private": true,
+  "description": "ts-cloud management dashboard (stx). Served behind HTTP Basic auth.",
+  "scripts": {
+    "build": "stx build --pages pages --out dist --no-sitemap",
+    "dev": "stx dev --pages pages"
+  },
+  "devDependencies": {
+    "stx": "^0.2.66"
+  }
+}

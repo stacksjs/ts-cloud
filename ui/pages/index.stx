@@ -1,0 +1,298 @@
+<script server>
+// ts-cloud dashboard. At build/deploy time this data is populated from the
+// resolved cloud config + the box's /var/lib/ts-cloud/metrics.json. The sample
+// values below render the design; `ui/build.ts` injects real data when present.
+const meta = {
+  title: 'ts-cloud — Dashboard',
+  description: 'ts-cloud server & deployment dashboard',
+}
+
+const server = {
+  name: 'acme-production-app',
+  provider: 'Hetzner',
+  region: 'fsn1',
+  ip: '203.0.113.42',
+  os: 'Ubuntu 24.04',
+  uptime: '14d 6h',
+}
+
+const metrics = {
+  load: 0.42,
+  cpus: 4,
+  memUsedMb: 2480,
+  memTotalMb: 7860,
+  diskUsedPct: 38,
+}
+const memPct = Math.round((metrics.memUsedMb / metrics.memTotalMb) * 100)
+const loadPct = Math.min(100, Math.round((metrics.load / metrics.cpus) * 100))
+
+const services = [
+  { name: 'nginx', status: 'running' },
+  { name: 'php8.3-fpm', status: 'running' },
+  { name: 'mysql', status: 'running' },
+  { name: 'redis', status: 'running' },
+  { name: 'meilisearch', status: 'running' },
+]
+
+const sites = [
+  { name: 'main', domain: 'acme.com', type: 'laravel', php: '8.3', ssl: true, status: 'live', lastDeploy: '12m ago' },
+  { name: 'admin', domain: 'admin.acme.com', type: 'laravel', php: '8.3', ssl: true, status: 'live', lastDeploy: '12m ago' },
+  { name: 'docs', domain: 'docs.acme.com', type: 'static', php: '—', ssl: true, status: 'live', lastDeploy: '2h ago' },
+]
+
+const workers = [
+  { name: 'default', processes: 2, status: 'running' },
+  { name: 'emails', processes: 1, status: 'running' },
+]
+const scheduler = { enabled: true, lastRun: '36s ago' }
+
+const deployments = [
+  { sha: 'a4d63d2', site: 'main', branch: 'main', status: 'success', when: '12m ago', took: '34s' },
+  { sha: '9557430', site: 'main', branch: 'main', status: 'success', when: '2h ago', took: '31s' },
+  { sha: 'c38fc09', site: 'docs', branch: 'main', status: 'success', when: '2h ago', took: '12s' },
+  { sha: '5a2b284', site: 'admin', branch: 'main', status: 'failed', when: '5h ago', took: '8s' },
+]
+
+const backup = { enabled: true, last: 'today 02:00', size: '142 MB', destination: 'acme-backups', retention: 7 }
+
+const sshKeys = [
+  { name: 'chris@macbook', fingerprint: 'SHA256:9Xk…q2A', added: '14d ago' },
+  { name: 'ci-deploy', fingerprint: 'SHA256:b7P…m4Z', added: '14d ago' },
+]
+
+function statusTone(status) {
+  if (status === 'running' || status === 'live' || status === 'success') return 'ok'
+  if (status === 'failed' || status === 'stopped') return 'bad'
+  return 'warn'
+}
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meta.title }}</title>
+  <meta name="description" content="{{ meta.description }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b1020; --bg2: #0f1730; --panel: rgba(255,255,255,0.04); --panel-br: rgba(255,255,255,0.08);
+      --txt: #e8edf7; --txt2: #9fb0cc; --txt3: #64748b;
+      --accent: #5b8cff; --ok: #34d399; --okbg: rgba(52,211,153,0.12);
+      --bad: #f87171; --badbg: rgba(248,113,113,0.12); --warn: #fbbf24; --warnbg: rgba(251,191,36,0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif; color: var(--txt); min-height: 100vh;
+      background: radial-gradient(1200px 600px at 80% -10%, rgba(91,140,255,0.12), transparent 60%), linear-gradient(160deg, var(--bg), var(--bg2));
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 64px; }
+
+    nav {
+      display: flex; align-items: center; gap: 16px; padding: 18px 24px; position: sticky; top: 0; z-index: 10;
+      background: rgba(11,16,32,0.7); backdrop-filter: blur(14px); border-bottom: 1px solid var(--panel-br);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
+    .brand .dot { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8b5cf6); box-shadow: 0 0 18px rgba(91,140,255,0.6); }
+    .nav-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--txt2); font-size: 13px; }
+    .env { padding: 4px 10px; border-radius: 999px; background: var(--okbg); color: var(--ok); font-weight: 600; font-size: 12px; }
+
+    header.page { padding: 36px 0 22px; }
+    header.page h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+    header.page p { color: var(--txt2); margin-top: 4px; font-size: 14px; }
+    .server-line { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; color: var(--txt2); font-size: 13px; }
+    .server-line b { color: var(--txt); font-weight: 600; }
+
+    .grid { display: grid; gap: 16px; }
+    .cards { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 880px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    .panel {
+      background: var(--panel); border: 1px solid var(--panel-br); border-radius: 16px; padding: 18px;
+      backdrop-filter: blur(6px);
+    }
+    .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--txt3); font-weight: 700; }
+    .stat { font-size: 28px; font-weight: 800; margin-top: 8px; letter-spacing: -0.02em; }
+    .stat small { font-size: 14px; color: var(--txt2); font-weight: 500; }
+    .bar { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.07); margin-top: 12px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #8b5cf6); }
+
+    .section { margin-top: 30px; }
+    .section > h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+    @media (max-width: 880px) { .cols { grid-template-columns: 1fr; } }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; color: var(--txt3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 12px 10px; }
+    td { padding: 12px; border-top: 1px solid rgba(255,255,255,0.05); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--txt2); }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .pill.ok { background: var(--okbg); color: var(--ok); }
+    .pill.bad { background: var(--badbg); color: var(--bad); }
+    .pill.warn { background: var(--warnbg); color: var(--warn); }
+    .tag { padding: 2px 8px; border-radius: 6px; background: rgba(91,140,255,0.12); color: var(--accent); font-size: 12px; font-weight: 600; }
+
+    .svc { display: flex; flex-wrap: wrap; gap: 10px; }
+    .svc .item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--panel-br); font-size: 13px; font-weight: 500; }
+    .kv { display: flex; justify-content: space-between; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .kv:first-of-type { border-top: 0; }
+    .kv span { color: var(--txt2); }
+    .deploy { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .deploy:first-of-type { border-top: 0; }
+    .deploy .when { margin-left: auto; color: var(--txt3); font-size: 12px; }
+
+    .key { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .key:first-of-type { border-top: 0; }
+    .key .fp { margin-left: auto; color: var(--txt3); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .key .rm { color: var(--bad); background: var(--badbg); border: 0; border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+    .addkey { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+    .addkey .row { display: flex; gap: 10px; }
+    .addkey input, .addkey textarea {
+      width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px;
+      padding: 10px 12px; color: var(--txt); font-family: inherit; font-size: 14px; resize: vertical;
+    }
+    .addkey textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; min-height: 64px; }
+    .addkey input:focus, .addkey textarea:focus { outline: none; border-color: var(--accent); }
+    .btn { background: linear-gradient(135deg, var(--accent), #8b5cf6); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+    .btn:hover { filter: brightness(1.08); }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="brand"><span class="dot"></span> ts-cloud</div>
+    <div class="nav-meta">
+      <span>{{ server.name }}</span>
+      <span class="env">production</span>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <header class="page">
+      <h1>Server Dashboard</h1>
+      <p>{{ server.provider }} · {{ server.region }} · {{ server.os }}</p>
+      <div class="server-line">
+        <span>IP <b>{{ server.ip }}</b></span>
+        <span>Uptime <b>{{ server.uptime }}</b></span>
+        <span>CPUs <b>{{ metrics.cpus }}</b></span>
+      </div>
+    </header>
+
+    <div class="grid cards">
+      <div class="panel">
+        <h3>CPU Load</h3>
+        <div class="stat">{{ metrics.load }} <small>/ {{ metrics.cpus }}</small></div>
+        <div class="bar"><i style="width: {{ loadPct }}%"></i></div>
+      </div>
+      <div class="panel">
+        <h3>Memory</h3>
+        <div class="stat">{{ memPct }}%</div>
+        <div class="bar"><i style="width: {{ memPct }}%"></i></div>
+      </div>
+      <div class="panel">
+        <h3>Disk</h3>
+        <div class="stat">{{ metrics.diskUsedPct }}%</div>
+        <div class="bar"><i style="width: {{ metrics.diskUsedPct }}%"></i></div>
+      </div>
+      <div class="panel">
+        <h3>Backups</h3>
+        <div class="stat">{{ backup.size }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">Last {{ backup.last }}</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Services</h2>
+      <div class="panel">
+        <div class="svc">
+          @foreach (services as svc)
+            <div class="item">{{ svc.name }} <span class="pill {{ statusTone(svc.status) }}">{{ svc.status }}</span></div>
+          @endforeach
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>SSH Keys</h2>
+      <div class="panel">
+        @foreach (sshKeys as key)
+          <div class="key">
+            <span class="pill ok"></span>
+            <b>{{ key.name }}</b>
+            <span style="color: var(--txt3); font-size: 12px">added {{ key.added }}</span>
+            <span class="fp">{{ key.fingerprint }}</span>
+            <button class="rm" type="button">Remove</button>
+          </div>
+        @endforeach
+        <form class="addkey" method="post" action="/api/ssh-keys">
+          <div class="row">
+            <input name="name" placeholder="Key name (e.g. laptop)" autocomplete="off">
+            <button class="btn" type="submit">Add SSH key</button>
+          </div>
+          <textarea name="public_key" placeholder="Paste public key — ssh-ed25519 AAAA… user@host"></textarea>
+        </form>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Sites</h2>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Site</th><th>Domain</th><th>Type</th><th>PHP</th><th>SSL</th><th>Deploy</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            @foreach (sites as site)
+              <tr>
+                <td><b>{{ site.name }}</b></td>
+                <td><a href="https://{{ site.domain }}" class="mono">{{ site.domain }}</a></td>
+                <td><span class="tag">{{ site.type }}</span></td>
+                <td class="mono">{{ site.php }}</td>
+                <td>@if (site.ssl)<span class="pill ok">https</span>@else<span class="pill warn">http</span>@endif</td>
+                <td style="color: var(--txt2)">{{ site.lastDeploy }}</td>
+                <td><span class="pill {{ statusTone(site.status) }}">{{ site.status }}</span></td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section cols">
+      <div>
+        <h2>Recent Deployments</h2>
+        <div class="panel">
+          @foreach (deployments as d)
+            <div class="deploy">
+              <span class="pill {{ statusTone(d.status) }}">{{ d.status }}</span>
+              <span class="mono">{{ d.sha }}</span>
+              <span style="color: var(--txt2)">{{ d.site }} · {{ d.branch }}</span>
+              <span class="when">{{ d.when }} · {{ d.took }}</span>
+            </div>
+          @endforeach
+        </div>
+      </div>
+      <div>
+        <h2>Queues & Scheduler</h2>
+        <div class="panel">
+          @foreach (workers as w)
+            <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
+          @endforeach
+          <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="pill ok">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
+        </div>
+        <div style="height: 16px"></div>
+        <h2>Backups</h2>
+        <div class="panel">
+          <div class="kv"><span>destination</span> <span class="mono">{{ backup.destination }}</span></div>
+          <div class="kv"><span>retention</span> <span>{{ backup.retention }} copies</span></div>
+          <div class="kv"><span>last run</span> <span style="color: var(--txt2)">{{ backup.last }}</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
