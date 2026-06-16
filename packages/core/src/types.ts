@@ -893,6 +893,191 @@ export interface SiteConfig {
    * Example: ['bun install --frozen-lockfile', 'bun run build']
    */
   preStart?: string[]
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Laravel / PHP sites (Forge-style). When `type` is a PHP framework, the site
+  // is deployed to the environment's compute box via git clone into atomic
+  // release directories, served by nginx + php-fpm (or rpx when
+  // `compute.webServer === 'rpx'`). See drivers/shared/* for the generators.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Application type. Drives the default deploy script and the nginx vhost
+   * template:
+   *  - `'laravel'` — `public/` web root, Laravel deploy script (composer,
+   *    artisan caches, migrate, storage:link, queue:restart).
+   *  - `'php'` — generic PHP app behind php-fpm (vanilla PHP, custom framework).
+   *  - `'statamic'` / `'wordpress'` — PHP apps with framework-specific defaults.
+   *  - `'static'` — plain static files served by nginx.
+   *  - `'spa'` — single-page app with a `try_files … /index.html` fallback.
+   *
+   * When omitted the legacy inference applies (`start` ⇒ a systemd runtime app,
+   * otherwise a bucket static site) — so existing bun/node sites are unaffected.
+   */
+  type?: 'laravel' | 'php' | 'statamic' | 'wordpress' | 'static' | 'spa'
+
+  /**
+   * PHP version for this site (e.g. `'8.3'`). Selects the php-fpm pool/socket
+   * the nginx vhost points at. Must be one of `compute.php.versions`. Defaults
+   * to `compute.php.default`.
+   */
+  phpVersion?: string
+
+  /**
+   * Web root relative to the release directory. Defaults to `'public'` for
+   * `laravel`/`statamic`/`wordpress`, and `''` (the release root) for `php`,
+   * `static`, and `spa`.
+   */
+  webDirectory?: string
+
+  /**
+   * Git repository the server clones/pulls on deploy (Forge-style). When set,
+   * the deploy clones `branch` into `releases/<sha>` rather than shipping a
+   * tarball over SCP.
+   */
+  repository?: SiteRepositoryConfig
+
+  /**
+   * Override the deploy script run inside the new release directory. When
+   * omitted, a sensible default for `type` is used (e.g. the Laravel script).
+   * The special tokens `$CREATE_RELEASE`, `$ACTIVATE_RELEASE`, and
+   * `$RESTART_QUEUES` expand to the zero-downtime release macros.
+   */
+  deployScript?: string[]
+
+  /**
+   * Paths symlinked from the site's `shared/` directory into every release so
+   * they persist across deploys (e.g. `storage`, uploaded files, a SQLite db).
+   * `.env` is always shared and need not be listed.
+   * @default ['storage', '.env']
+   */
+  sharedPaths?: string[]
+
+  /**
+   * Number of past releases to retain on the box for rollback.
+   * @default 4
+   */
+  keepReleases?: number
+
+  /**
+   * Use zero-downtime atomic releases (clone → build → flip `current` symlink).
+   * @default true for git-deployed PHP sites
+   */
+  zeroDowntime?: boolean
+
+  /** Laravel queue workers to run for this site (systemd-managed). */
+  queues?: QueueWorkerConfig[]
+
+  /**
+   * Run the Laravel scheduler for this site
+   * (`* * * * * php artisan schedule:run`).
+   */
+  scheduler?: boolean
+
+  /** Arbitrary long-running processes to keep alive (systemd-managed). */
+  daemons?: DaemonConfig[]
+
+  /** TLS configuration for this site's nginx vhost. */
+  ssl?: SiteSslConfig
+
+  /** Additional hostnames served by the same vhost (nginx `server_name`). */
+  aliases?: string[]
+
+  /** `from` path/host → `to` URL redirects emitted into the nginx vhost. */
+  redirects?: Record<string, string>
+
+  /**
+   * Give this site a dedicated php-fpm pool (isolated user/process) rather than
+   * sharing the default pool.
+   */
+  isolation?: boolean
+
+  /** Post-deploy health check (Forge-style) pinged after `current` is flipped. */
+  healthCheck?: { path?: string }
+}
+
+/**
+ * Git source for a Forge-style git-clone deploy. See {@link SiteConfig.repository}.
+ */
+export interface SiteRepositoryConfig {
+  /** Clone URL (https or git@). */
+  url: string
+  /** Branch to deploy. @default 'main' */
+  branch?: string
+  /** Hosting provider — drives push-to-deploy hook wiring. @default 'github' */
+  provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom'
+}
+
+/**
+ * TLS for a PHP/static site's nginx vhost. See {@link SiteConfig.ssl}.
+ */
+export interface SiteSslConfig {
+  /**
+   * Certificate source:
+   *  - `'letsencrypt'` — issue + auto-renew via certbot (default for sites with
+   *    a `domain`).
+   *  - `'custom'` — install operator-provided `certPath`/`keyPath`.
+   *  - `'none'` — serve plain HTTP only.
+   */
+  provider?: 'letsencrypt' | 'custom' | 'none'
+  /** Contact email for Let's Encrypt registration/expiry notices. */
+  email?: string
+  /** Path to the certificate (PEM) when `provider: 'custom'`. */
+  certPath?: string
+  /** Path to the private key (PEM) when `provider: 'custom'`. */
+  keyPath?: string
+}
+
+/**
+ * A Laravel queue worker (or Horizon supervisor) run as a systemd service.
+ * Mirrors Forge's queue configuration. See {@link SiteConfig.queues}.
+ */
+export interface QueueWorkerConfig {
+  /**
+   * Use `php artisan horizon` instead of `queue:work`. When true, connection /
+   * queue / worker tuning is taken from the app's `config/horizon.php`.
+   * @default false
+   */
+  horizon?: boolean
+  /** Queue connection (`php artisan queue:work <connection>`). @default 'default' */
+  connection?: string
+  /** Comma-separated queues to consume, highest priority first. @default 'default' */
+  queue?: string
+  /** Number of worker processes to run in parallel. @default 1 */
+  processes?: number
+  /** `--timeout`: seconds a child job may run before being killed. @default 60 */
+  timeout?: number
+  /** `--sleep`: seconds to wait when no job is available. @default 3 */
+  sleep?: number
+  /** `--tries`: attempts before a job is marked failed. @default 3 */
+  tries?: number
+  /** `--max-jobs`: restart the worker after N jobs (0 = unlimited). */
+  maxJobs?: number
+  /** `--max-time`: restart the worker after N seconds (0 = unlimited). */
+  maxTime?: number
+  /** `--memory`: restart the worker when it exceeds N MB. @default 128 */
+  memory?: number
+  /** Seconds to wait for in-flight jobs to finish on stop/restart. @default 90 */
+  stopWaitSecs?: number
+}
+
+/**
+ * A generic long-running process kept alive by systemd. Mirrors Forge daemons.
+ * See {@link SiteConfig.daemons}.
+ */
+export interface DaemonConfig {
+  /** Command to run (becomes systemd `ExecStart`). */
+  command: string
+  /** Working directory. Defaults to the site's `current` release directory. */
+  directory?: string
+  /** User to run as. Defaults to the deploy user. */
+  user?: string
+  /** Number of identical processes to run. @default 1 */
+  processes?: number
+  /** Restart policy. @default 'always' */
+  restart?: 'always' | 'on-failure' | 'no'
+  /** Optional explicit unit name; defaults to a slug of the command. */
+  name?: string
 }
 
 export interface VpcConfig {
@@ -1693,6 +1878,68 @@ export interface ComputeConfig {
    * static dirs — so an app, docs, and a public site can share one domain.
    */
   proxy?: ComputeProxyConfig
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Laravel / PHP machine provisioning (Forge-style). Machine-level: shared by
+  // every PHP site on this box. Per-site PHP version lives on `SiteConfig`.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * PHP-FPM provisioning. When set (or `runtime: 'php'`), the box installs the
+   * requested PHP versions (via `ppa:ondrej/php`), Composer, and the common
+   * Laravel extension set. Each site picks its version with `SiteConfig.phpVersion`.
+   */
+  php?: ComputePhpConfig
+
+  /**
+   * Web server that fronts the box.
+   *  - `'nginx'` (default) — per-site nginx vhost + php-fpm, Let's Encrypt via certbot.
+   *  - `'rpx'` — the existing `@stacksjs/rpx` gateway with on-demand TLS.
+   * Independent of {@link proxy}, which only configures the rpx engine details.
+   * @default 'nginx'
+   */
+  webServer?: 'nginx' | 'rpx'
+
+  /**
+   * On-box managed services to install (Forge's single-server model): the
+   * database engine, cache, and search. Each may be `true` for defaults or an
+   * object for pinning a version. Omit to install nothing (e.g. when pointing
+   * the app at a managed/RDS database instead).
+   */
+  services?: ComputeServicesConfig
+}
+
+/**
+ * PHP-FPM provisioning for a compute box. See {@link ComputeConfig.php}.
+ */
+export interface ComputePhpConfig {
+  /**
+   * PHP versions to install (e.g. `['8.3', '8.2']`). Each gets its own php-fpm
+   * pool/socket so sites can pin different versions. @default ['8.3']
+   */
+  versions?: string[]
+  /** Default PHP version for sites that don't set `phpVersion`. @default first of `versions` */
+  default?: string
+  /**
+   * Extra PHP extensions to install beyond the Laravel baseline (mbstring, xml,
+   * curl, mysql, pgsql, redis, gd, bcmath, zip, intl). apt package suffixes,
+   * e.g. `['imagick', 'swoole']`.
+   */
+  extensions?: string[]
+}
+
+/**
+ * On-box managed services (database / cache / search) for a compute box.
+ * Each entry is `true` (install with defaults) or an object pinning a version.
+ * See {@link ComputeConfig.services}.
+ */
+export interface ComputeServicesConfig {
+  mysql?: boolean | { version?: string }
+  mariadb?: boolean | { version?: string }
+  postgres?: boolean | { version?: string }
+  redis?: boolean | { version?: string }
+  memcached?: boolean | { version?: string }
+  meilisearch?: boolean | { version?: string }
 }
 
 /**
