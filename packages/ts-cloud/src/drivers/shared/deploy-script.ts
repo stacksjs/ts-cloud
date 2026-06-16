@@ -1,6 +1,7 @@
 /**
  * Shared deploy script helpers for Forge-style compute deploys.
  */
+import { formatEnvFile } from './env-file'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -50,9 +51,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const appDir = options.appDir ?? `/var/www/${siteName}`
   const serviceName = `${slug}-${siteName}.service`
 
-  const envFile = Object.entries(envEntries)
-    .map(([k, v]) => `${k}=${JSON.stringify(String(v))}`)
-    .join('\n')
+  const envFile = formatEnvFile(envEntries)
 
   // preStart commands (install / build) run inside appDir. Bun auto-loads the
   // freshly written `.env` from the cwd, so build steps see the same config as

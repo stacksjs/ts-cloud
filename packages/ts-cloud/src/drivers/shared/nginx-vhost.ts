@@ -214,10 +214,14 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
   // Generate the htpasswd file (apr1 hash via openssl — no apache2-utils dep).
   if (options.auth) {
     const file = htpasswdPath(options.siteName)
-    const pw = options.auth.password.split('\'').join('\'\\\'\'')
+    // Single-quote-escape both fields so a `'` (or other shell metachar) in the
+    // password/username can't break out of the command.
+    const sq = (v: string): string => v.split('\'').join('\'\\\'\'')
+    const pw = sq(options.auth.password)
+    const user = sq(options.auth.username)
     out.push(
       `TS_CLOUD_HTPASS=$(openssl passwd -apr1 '${pw}')`,
-      `printf '%s:%s\\n' '${options.auth.username}' "$TS_CLOUD_HTPASS" > ${file}`,
+      `printf '%s:%s\\n' '${user}' "$TS_CLOUD_HTPASS" > ${file}`,
       `chmod 640 ${file}`,
       `chown root:www-data ${file} 2>/dev/null || true`,
     )

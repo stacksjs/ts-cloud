@@ -120,7 +120,12 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
 export function buildPruneReleases(paths: ReleasePaths, keep: number = DEFAULT_KEEP_RELEASES): string[] {
   const n = Math.max(1, keep)
   return [
-    // ls -1dt: dirs newest-first; tail skips the kept ones; xargs removes the rest.
-    `ls -1dt ${paths.releases}/*/ 2>/dev/null | tail -n +${n + 1} | xargs -r rm -rf`,
+    // Never delete whatever `current` resolves to, even if an older release's
+    // mtime got bumped — losing the live release would take the site down.
+    `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
+    // ls -1dt: dirs newest-first; keep the newest N; delete the rest except current.
+    `ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | tail -n +${n + 1} | while read -r TS_CLOUD_OLD; do`,
+    '  [ "$(readlink -f "$TS_CLOUD_OLD")" = "$TS_CLOUD_CURRENT" ] || rm -rf "$TS_CLOUD_OLD"',
+    'done',
   ]
 }

@@ -122,14 +122,19 @@ export function buildDatabaseSetupScript(
     ]
   }
 
-  // MySQL / MariaDB share the same client + SQL.
-  const sql = [
-    `CREATE DATABASE IF NOT EXISTS \\\`${name}\\\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
-    `CREATE USER IF NOT EXISTS '${user}'@'%' IDENTIFIED BY '${pass}';`,
-    `GRANT ALL PRIVILEGES ON \\\`${name}\\\`.* TO '${user}'@'%';`,
+  // MySQL / MariaDB share the same client + SQL. Pipe via a quoted heredoc so
+  // the shell never interprets the SQL, and SQL-escape every value: backtick
+  // for identifiers, backslash/quote for string literals.
+  const ident = (v: string): string => v.replace(/`/g, '``')
+  const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+  return [
+    'mysql <<\'TS_CLOUD_SQL_EOF\'',
+    `CREATE DATABASE IF NOT EXISTS \`${ident(name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
+    `CREATE USER IF NOT EXISTS '${lit(user)}'@'%' IDENTIFIED BY '${lit(pass)}';`,
+    `GRANT ALL PRIVILEGES ON \`${ident(name)}\`.* TO '${lit(user)}'@'%';`,
     'FLUSH PRIVILEGES;',
-  ].join(' ')
-  return [`mysql -e "${sql}"`]
+    'TS_CLOUD_SQL_EOF',
+  ]
 }
 
 /**

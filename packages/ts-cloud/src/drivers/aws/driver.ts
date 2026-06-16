@@ -79,27 +79,37 @@ export class AwsDriver implements CloudDriver {
         throw new Error('Could not resolve the Ubuntu 24.04 AMI from SSM')
     }
 
-    // Default VPC + a subnet to launch into.
+    // A VPC + a subnet to launch into. Prefer a subnet that auto-assigns a
+    // public IP, else the instance has no public address for deploys/SSL.
     const vpcs = await ec2.describeVpcs()
-    const defaultVpc = (vpcs.Vpcs || []).find(v => v.IsDefault) || (vpcs.Vpcs || [])[0]
-    if (!defaultVpc?.VpcId)
+    const vpc = (vpcs.Vpcs || []).find(v => v.IsDefault) || (vpcs.Vpcs || [])[0]
+    if (!vpc?.VpcId)
       throw new Error('No VPC found to launch the instance into')
-    const subnets = await ec2.describeSubnets({ Filters: [{ Name: 'vpc-id', Values: [defaultVpc.VpcId] }] })
-    const subnetId = (subnets.Subnets || [])[0]?.SubnetId
+    const subnets = (await ec2.describeSubnets({ Filters: [{ Name: 'vpc-id', Values: [vpc.VpcId] }] })).Subnets || []
+    const subnet = subnets.find(s => s.MapPublicIpOnLaunch) || subnets[0]
+    const subnetId = subnet?.SubnetId
+    if (!subnet?.MapPublicIpOnLaunch)
+      // eslint-disable-next-line no-console
+      console.warn('ts-cloud: no public subnet found; the instance may not get a public IP (deploys/SSL need one).')
 
-    // Security group (idempotent by name) + ingress rules.
+    // Security group scoped to the VPC (a same-named SG in another VPC must not
+    // be reused). Reconcile ingress rules every time so config changes apply.
     const sgName = `${slug}-${environment}-app-sg`
-    const found = await ec2.describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }] })
+    const found = await ec2.describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }, { Name: 'vpc-id', Values: [vpc.VpcId] }] })
     let groupId = found.SecurityGroups?.[0]?.GroupId
     if (!groupId) {
-      const created = await ec2.createSecurityGroup({ GroupName: sgName, Description: `ts-cloud ${slug}/${environment} app`, VpcId: defaultVpc.VpcId })
+      const created = await ec2.createSecurityGroup({ GroupName: sgName, Description: `ts-cloud ${slug}/${environment} app`, VpcId: vpc.VpcId })
       groupId = created.GroupId
-      const rules = awsComputeIngressRules(config)
-      await ec2.authorizeSecurityGroupIngress({
-        GroupId: groupId!,
-        IpPermissions: rules.map(r => ({ IpProtocol: r.protocol, FromPort: r.port, ToPort: r.port, IpRanges: [{ CidrIp: r.cidr }] })),
-      })
     }
+    // Authorize desired ingress; ignore "already exists" so this is idempotent.
+    const rules = awsComputeIngressRules(config)
+    await ec2.authorizeSecurityGroupIngress({
+      GroupId: groupId!,
+      IpPermissions: rules.map(r => ({ IpProtocol: r.protocol, FromPort: r.port, ToPort: r.port, IpRanges: [{ CidrIp: r.cidr }] })),
+    }).catch((e: any) => {
+      if (!/InvalidPermission\.Duplicate/.test(e?.message || ''))
+        throw e
+    })
 
     const userData = encodeUserData(buildAwsUserData(config))
     const instanceType = compute.server?.instanceType || 't3.small'
@@ -129,9 +139,11 @@ export class AwsDriver implements CloudDriver {
       throw new Error('RunInstances did not return an instance id')
 
     const running = await ec2.waitForInstanceState(instanceId, 'running')
+    if (!running)
+      throw new Error(`Instance ${instanceId} did not reach 'running' before timeout`)
     return {
       appInstanceId: instanceId,
-      appPublicIp: running?.PublicIpAddress,
+      appPublicIp: running.PublicIpAddress,
       sshUser: 'ubuntu',
       deployStoragePath: '/var/ts-cloud/staging',
     }
@@ -150,9 +162,13 @@ export class AwsDriver implements CloudDriver {
         sshUser: 'ec2-user',
       }
     }
-    catch {
-      // Lightweight EC2 boot path (provisionComputeInfrastructure) creates no
-      // CloudFormation stack. Fall back to a tag-based lookup of the instance.
+    catch (err: any) {
+      // Only fall back for "stack does not exist" (the lightweight EC2 boot
+      // path creates no CloudFormation stack). Rethrow transient/permission
+      // errors so they aren't masked as a missing stack.
+      if (!/does not exist|ValidationError/i.test(err?.message || ''))
+        throw err
+      // Tag-based lookup of the instance booted by provisionComputeInfrastructure.
       const targets = await this.findComputeTargets({
         slug: options.config.project.slug,
         environment: options.environment,

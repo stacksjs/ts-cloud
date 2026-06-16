@@ -16,6 +16,7 @@
  */
 import type { SiteConfig } from '@ts-cloud/core'
 import { buildGitCheckoutScript } from './git-deploy'
+import { formatEnvFile } from './env-file'
 import {
   buildActivateRelease,
   buildEnsureReleaseLayout,
@@ -96,9 +97,7 @@ function substituteBins(line: string, phpBin: string): string {
 
 /** Write `site.env` to the shared `.env` (heredoc), `chmod 600`. */
 function writeSharedEnv(sharedEnvPath: string, env: Record<string, string>): string[] {
-  const body = Object.entries(env)
-    .map(([k, v]) => `${k}=${JSON.stringify(String(v))}`)
-    .join('\n')
+  const body = formatEnvFile(env)
   return [
     `cat > ${sharedEnvPath} <<'TS_CLOUD_ENV_EOF'`,
     body,

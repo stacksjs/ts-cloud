@@ -198,6 +198,11 @@ export class HetznerClient {
     return data.actions ?? []
   }
 
+  /** Delete a firewall. A firewall still applied to a server cannot be deleted. */
+  async deleteFirewall(firewallId: number): Promise<void> {
+    await this.request('DELETE', `/firewalls/${firewallId}`)
+  }
+
   async applyFirewallToResources(firewallId: number, applyTo: Array<{ type: 'server', server: number }>): Promise<HetznerAction[]> {
     const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/apply_to_resources`, {
       apply_to: applyTo,

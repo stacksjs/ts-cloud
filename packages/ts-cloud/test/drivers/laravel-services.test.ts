@@ -35,7 +35,7 @@ describe('buildSiteServicesScript — queue workers', () => {
   })
 
   it('prunes stale units for the site', () => {
-    expect(script).toContain("grep -E '^acme-app-(queue|daemon)-'")
+    expect(script).toContain("grep -E '^acme-app-(queue|daemon)-.*\\.service$'")
   })
 })
 

@@ -485,6 +485,60 @@ export class EC2Client {
   }
 
   /**
+   * Create an AMI from a running instance (golden-image bake without Packer).
+   * `noReboot: true` snapshots the live root volume without rebooting.
+   */
+  async createImage(options: {
+    InstanceId: string
+    Name: string
+    Description?: string
+    NoReboot?: boolean
+    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+  }): Promise<{ ImageId?: string }> {
+    const params: Record<string, string> = {
+      Action: 'CreateImage',
+      Version: '2016-11-15',
+      InstanceId: options.InstanceId,
+      Name: options.Name,
+    }
+    if (options.Description)
+      params.Description = options.Description
+    if (options.NoReboot !== undefined)
+      params.NoReboot = String(options.NoReboot)
+    if (options.TagSpecifications) {
+      options.TagSpecifications.forEach((spec, i) => {
+        params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
+        spec.Tags.forEach((tag, j) => {
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Key`] = tag.Key
+          params[`TagSpecification.${i + 1}.Tag.${j + 1}.Value`] = tag.Value
+        })
+      })
+    }
+    const result = await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(params).toString(),
+    })
+    const response = result.CreateImageResponse || result
+    return { ImageId: response.imageId }
+  }
+
+  /** Deregister an AMI (cleanup). */
+  async deregisterImage(imageId: string): Promise<void> {
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ Action: 'DeregisterImage', Version: '2016-11-15', ImageId: imageId }).toString(),
+    })
+  }
+
+  /**
    * Describe VPCs
    */
   async describeVpcs(options?: {

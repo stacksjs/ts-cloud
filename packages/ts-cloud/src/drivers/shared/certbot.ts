@@ -23,7 +23,9 @@ export function resolveSslProvider(site: SiteConfig): 'letsencrypt' | 'custom' |
 export function buildCertbotInstallScript(): string[] {
   return [
     'export DEBIAN_FRONTEND=noninteractive',
-    'apt-get install -y certbot python3-certbot-nginx',
+    // Install only if missing (avoids an apt round-trip on every deploy) and
+    // refresh lists first — a baked/cleaned image has empty /var/lib/apt/lists.
+    'command -v certbot >/dev/null 2>&1 || { apt-get update -y && apt-get install -y certbot python3-certbot-nginx; }',
     // Reload nginx after each successful renewal so the new cert is served.
     'mkdir -p /etc/letsencrypt/renewal-hooks/deploy',
     'cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh <<\'TS_CLOUD_HOOK_EOF\'',

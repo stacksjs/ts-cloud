@@ -51,9 +51,10 @@ describe('buildActivateRelease', () => {
 })
 
 describe('buildPruneReleases', () => {
-  it('keeps the newest N releases', () => {
-    expect(buildPruneReleases(paths, 4)[0]).toContain('tail -n +5')
-    expect(buildPruneReleases(paths, 2)[0]).toContain('tail -n +3')
+  it('keeps the newest N releases and never deletes the live one', () => {
+    expect(buildPruneReleases(paths, 4).join('\n')).toContain('tail -n +5')
+    expect(buildPruneReleases(paths, 2).join('\n')).toContain('tail -n +3')
+    expect(buildPruneReleases(paths, 4).join('\n')).toContain('readlink -f /var/www/app/current')
   })
 })
 

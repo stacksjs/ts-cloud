@@ -25,17 +25,20 @@ function backupEntryFor(database: DatabaseConfig): string | null {
   const isPostgres = database.engine === 'postgres'
   const type = isPostgres ? 'postgresql' : 'mysql'
   const port = database.port ?? (isPostgres ? 5432 : 3306)
+  // Escape for a single-quoted TS string literal so a `'` or `\` in a
+  // credential can't break the generated backups.config.ts.
+  const ts = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
 
   return [
     '  {',
     `    type: '${type}',`,
-    `    name: '${database.name}',`,
+    `    name: '${ts(database.name)}',`,
     '    connection: {',
-    `      hostname: '${host}',`,
+    `      hostname: '${ts(host)}',`,
     `      port: ${port},`,
-    `      database: '${database.name}',`,
-    `      username: '${database.username || database.name}',`,
-    `      password: '${database.password || ''}',`,
+    `      database: '${ts(database.name)}',`,
+    `      username: '${ts(database.username || database.name)}',`,
+    `      password: '${ts(database.password || '')}',`,
     '      ssl: false,',
     '    },',
     '    includeSchema: true,',

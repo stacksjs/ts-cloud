@@ -25,6 +25,11 @@ export interface SiteServicesOptions {
   appBase?: string
 }
 
+/** Escape a string for safe use inside a POSIX/ERE regex character context. */
+function reEscape(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /** Lowercase-kebab slug for embedding a free-form name in a unit filename. */
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed'
@@ -155,7 +160,10 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   out.push(
     'systemctl daemon-reload',
     `TS_CLOUD_DESIRED="${desiredList}"`,
-    `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${slug}-${siteName}-(queue|daemon)-' || true); do`,
+    // Escape regex metachars in slug/siteName and anchor to `.service` so a
+    // sibling site whose name is a prefix (e.g. `app` vs `app-admin`) or a slug
+    // with a `.`/`+` doesn't over-match and prune another site's units.
+    `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${reEscape(slug)}-${reEscape(siteName)}-(queue|daemon)-.*\\.service$' || true); do`,
     '  case " $TS_CLOUD_DESIRED " in',
     '    *" $unit "*) ;;',
     '    *) systemctl stop "$unit" 2>/dev/null || true; systemctl disable "$unit" 2>/dev/null || true; rm -f "/etc/systemd/system/$unit" ;;',
