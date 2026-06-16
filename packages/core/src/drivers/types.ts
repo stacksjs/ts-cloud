@@ -99,8 +99,13 @@ export interface DeploySiteReleaseOptions {
   site: SiteConfig
   slug: string
   sha: string
-  runtime: 'bun' | 'node' | 'deno'
-  localTarballPath: string
+  runtime: 'bun' | 'node' | 'deno' | 'php'
+  /**
+   * Local release tarball to ship. Required for tarball deploys (bun/node/deno
+   * apps and server-static sites); omitted for PHP/Laravel sites, which clone
+   * from git on the box instead.
+   */
+  localTarballPath?: string
 }
 
 export interface DeploySiteReleaseResult {

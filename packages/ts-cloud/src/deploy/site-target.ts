@@ -8,7 +8,24 @@ import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
  *                        site built and shipped to `/var/www/<site>` on the box
  *                        (served by the operator's own proxy, e.g. rpx + tlsx).
  */
-export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static'
+export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php'
+
+/** Site `type` values that deploy as a PHP/Laravel git-release site. */
+const PHP_SITE_TYPES: ReadonlySet<NonNullable<SiteConfig['type']>> = new Set([
+  'laravel',
+  'php',
+  'statamic',
+  'wordpress',
+])
+
+/**
+ * A PHP/Laravel site: deployed to the compute box via git clone into atomic
+ * release directories and served by nginx + php-fpm. Identified by a PHP
+ * `type` (laravel/php/statamic/wordpress).
+ */
+export function isPhpSite(site: SiteConfig): boolean {
+  return site.type != null && PHP_SITE_TYPES.has(site.type)
+}
 
 /**
  * Resolve the explicit-or-inferred {@link SiteDeployTarget} for a site.
@@ -21,6 +38,9 @@ export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static'
 export function resolveSiteDeployTarget(site: SiteConfig): SiteDeployTarget {
   if (site.deploy)
     return site.deploy
+  // PHP/Laravel sites are always server-deployed (nginx + php-fpm on the box).
+  if (isPhpSite(site))
+    return 'server'
   if (site.start)
     return 'server'
   return 'bucket'
@@ -35,6 +55,10 @@ export function resolveSiteDeployTarget(site: SiteConfig): SiteDeployTarget {
  * - `server` + no `start`         → `'server-static'`
  */
 export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
+  // PHP/Laravel sites always deploy to the box via git + atomic releases,
+  // regardless of `deploy`/`start`.
+  if (isPhpSite(site))
+    return 'server-php'
   const target = resolveSiteDeployTarget(site)
   if (target === 'bucket')
     return 'bucket'
@@ -84,7 +108,20 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
       continue
     }
 
-    if (kind === 'server-app') {
+    if (kind === 'server-php') {
+      // PHP/Laravel sites clone from git onto the compute box.
+      if (!computeConfigured) {
+        errors.push(
+          `Site '${name}' is a PHP site (type:'${site.type}') but no \`infrastructure.compute\` is configured. Add a server (infrastructure.compute) with PHP provisioning.`,
+        )
+      }
+      if (!site.repository?.url) {
+        errors.push(
+          `Site '${name}' is a PHP site (type:'${site.type}') but has no \`repository.url\` to clone. PHP sites deploy via git.`,
+        )
+      }
+    }
+    else if (kind === 'server-app') {
       // A server-app needs a place to run. Without a compute server this is the
       // old silent runtime failure — surface it now.
       if (!computeConfigured) {

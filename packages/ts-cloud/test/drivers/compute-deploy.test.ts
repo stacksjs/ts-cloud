@@ -105,6 +105,45 @@ describe('deploySiteRelease', () => {
     expect(deployCall.commands.join('\n')).not.toContain('aws s3 cp')
   })
 
+  it('serves a static site (e.g. the UI) behind nginx + htpasswd', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+
+    const uiConfig: CloudConfig = {
+      project: { name: 'App', slug: 'my-app', region: 'us-east-1' },
+      environments: { production: { type: 'production' } },
+      infrastructure: { compute: { webServer: 'nginx' } },
+      sites: {
+        dashboard: {
+          root: 'ui/dist',
+          deploy: 'server',
+          type: 'static',
+          domain: 'dashboard.example.com',
+          auth: { username: 'admin', password: 's3cret' },
+        },
+      },
+    }
+
+    await deploySiteRelease(driver, {
+      config: uiConfig,
+      environment: 'production',
+      siteName: 'dashboard',
+      site: uiConfig.sites!.dashboard,
+      slug: 'my-app',
+      sha: 'abc123',
+      runtime: 'bun',
+      localTarballPath: tarball,
+    })
+
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(commands).toContain('/etc/nginx/sites-available/dashboard')
+    expect(commands).toContain('auth_basic_user_file /etc/nginx/.htpasswd-dashboard;')
+    expect(commands).toContain("openssl passwd -apr1 's3cret'")
+    expect(commands).toContain('certbot --nginx')
+  })
+
   it('returns failure when no compute targets exist', async () => {
     const driver = createMockDriver({
       findComputeTargets: mock(async () => []),

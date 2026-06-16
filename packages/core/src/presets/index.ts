@@ -11,6 +11,7 @@ export { createRealtimeAppPreset } from './realtime-app'
 export { createDataPipelinePreset } from './data-pipeline'
 export { createMLApiPreset } from './ml-api'
 export { createTraditionalWebAppPreset } from './traditional-web-app'
+export { createLaravelPreset } from './laravel'
 
 // Preset extension utilities
 export {

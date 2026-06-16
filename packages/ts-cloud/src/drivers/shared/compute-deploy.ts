@@ -6,7 +6,7 @@ import type {
   EnvironmentType,
 } from '@ts-cloud/core'
 import { resolveProjectStackName } from '@ts-cloud/core'
-import { resolveSiteKind } from '../../deploy/site-target'
+import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
@@ -14,6 +14,12 @@ import {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './deploy-script'
+import { buildSslScript, resolveSslProvider } from './certbot'
+import { buildManagedDbEnv } from './db-provision'
+import { resolveNotifications, sendNotifications } from './notifications'
+import { buildLaravelDeployScript } from './laravel-deploy'
+import { buildSiteServicesScript, siteHasServices } from './laravel-services'
+import { buildNginxVhostScript } from './nginx-vhost'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -68,6 +74,90 @@ export async function deploySiteRelease(
     return { success: false, error: hint }
   }
 
+  // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
+  // tarball upload). The box clones the repo, runs the deploy script inside the
+  // new release, flips `current`, then nginx is (re)pointed at it.
+  if (isPhpSite(site)) {
+    const compute = config.infrastructure?.compute
+    const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
+    const appBase = `/var/www/${siteName}`
+
+    // Auto-wire DB_* from infrastructure.database (on-box or managed) into the
+    // app's .env. Explicit site.env values always win.
+    const dbEnv = buildManagedDbEnv(config.infrastructure?.appDatabase)
+    const siteWithEnv = Object.keys(dbEnv).length > 0
+      ? { ...site, env: { ...dbEnv, ...(site.env || {}) } }
+      : site
+
+    const deployScript = buildLaravelDeployScript({
+      siteName,
+      site: siteWithEnv,
+      releaseId: sha,
+      appBase,
+      defaultPhpVersion: phpVersion,
+    })
+
+    // nginx vhost (skipped when the operator fronts the box with rpx instead).
+    // A `custom` cert is baked straight into the vhost; Let's Encrypt is layered
+    // on afterwards by certbot, which rewrites the :80 block to add :443.
+    const useNginx = compute?.webServer !== 'rpx'
+    const sslProvider = resolveSslProvider(site)
+    const customCert = sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
+      ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
+      : undefined
+    const vhostScript = useNginx
+      ? buildNginxVhostScript({
+          siteName,
+          domain: site.domain || siteName,
+          aliases: site.aliases,
+          type: site.type,
+          appDir: `${appBase}/current`,
+          webDirectory: site.webDirectory,
+          phpVersion,
+          redirects: site.redirects,
+          ssl: customCert,
+          auth: site.auth && site.auth.enabled !== false && site.auth.password
+            ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+            : undefined,
+        })
+      : []
+    const sslScript = useNginx ? buildSslScript(site) : []
+
+    // Reconcile queue workers / scheduler / daemons after the release is live.
+    const servicesScript = siteHasServices(site)
+      ? buildSiteServicesScript({ slug, siteName, site, phpVersion, appBase })
+      : []
+
+    logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
+    const phpResult = await driver.runRemoteDeploy({
+      targets,
+      commands: [...deployScript, ...vhostScript, ...sslScript, ...servicesScript],
+      comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
+      tags: { Project: slug, Environment: environment, Role: 'app' },
+    })
+
+    const notifications = resolveNotifications(config.notifications, site.notifications)
+    if (!phpResult.success) {
+      await sendNotifications(notifications, 'deploy-failed', `❌ Deploy of ${slug}/${siteName}@${sha} failed: ${phpResult.error || 'unknown error'}`)
+      return {
+        success: false,
+        error: phpResult.error || 'Remote PHP deploy failed',
+        instanceCount: phpResult.instanceCount,
+        perInstance: phpResult.perInstance,
+      }
+    }
+    const deployedUrl = site.domain ? ` → https://${site.domain}` : ''
+    await sendNotifications(notifications, 'deploy', `✅ Deployed ${slug}/${siteName}@${sha}${deployedUrl}`)
+    return {
+      success: true,
+      instanceCount: phpResult.instanceCount,
+      perInstance: phpResult.perInstance,
+    }
+  }
+
+  if (!localTarballPath)
+    return { success: false, error: `Site '${siteName}' requires a release tarball but none was provided` }
+
   const uploadResult = await driver.uploadRelease({
     config,
     environment,
@@ -80,10 +170,10 @@ export async function deploySiteRelease(
     ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', siteName)
     : buildLocalArtifactFetch(uploadResult.artifactRef, siteName)
 
-  // server-static sites are shipped to /var/www/<site> (no systemd) and served
-  // by the operator's own proxy (e.g. rpx + tlsx); server-app sites run as a
-  // systemd service.
-  const remoteScript = resolveSiteKind(site) === 'server-static'
+  // server-static sites are shipped to /var/www/<site> (no systemd); server-app
+  // sites run as a systemd service.
+  const kind = resolveSiteKind(site)
+  const baseScript = kind === 'server-static'
     ? buildStaticSiteDeployScript({
         siteName,
         artifactFetch,
@@ -93,11 +183,34 @@ export async function deploySiteRelease(
         siteName,
         slug,
         artifactFetch,
-        execStart: resolveExecStart(site.start!, runtime),
+        // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
+        execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
         envEntries: site.env || {},
         port: site.port,
         preStartCommands: site.preStart,
       })
+
+  // A static site served on the box can be fronted by nginx (default) with
+  // HTTP Basic auth + Let's Encrypt — this is how the ts-cloud UI is published
+  // behind htpasswd. When the operator runs rpx instead, skip the vhost.
+  const compute = config.infrastructure?.compute
+  const wantsNginxStatic = kind === 'server-static' && compute?.webServer !== 'rpx' && !!site.domain
+  const staticVhost = wantsNginxStatic
+    ? buildNginxVhostScript({
+        siteName,
+        domain: site.domain!,
+        aliases: site.aliases,
+        type: site.type === 'spa' ? 'spa' : 'static',
+        appDir: `/var/www/${siteName}`,
+        webDirectory: '',
+        redirects: site.redirects,
+        auth: site.auth && site.auth.enabled !== false && site.auth.password
+          ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+          : undefined,
+      })
+    : []
+  const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
+  const remoteScript = [...baseScript, ...staticVhost, ...staticSsl]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)
   const result = await driver.runRemoteDeploy({
@@ -132,7 +245,7 @@ export interface DeployAllSitesOptions {
   environment: EnvironmentType
   driver: CloudDriver
   sha: string
-  runtime: 'bun' | 'node' | 'deno'
+  runtime: 'bun' | 'node' | 'deno' | 'php'
   tarballForSite: (siteName: string) => string
   logger?: ComputeDeployLogger
 }
@@ -161,6 +274,8 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
 
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
+    // PHP/Laravel sites clone from git on the box — no local tarball to build.
+    const localTarballPath = isPhpSite(site) ? undefined : tarballForSite(siteName)
     const result = await deploySiteRelease(driver, {
       config,
       environment,
@@ -169,7 +284,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
       slug,
       sha,
       runtime,
-      localTarballPath: tarballForSite(siteName),
+      localTarballPath,
     }, logger)
 
     if (!result.success) {

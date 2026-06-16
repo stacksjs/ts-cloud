@@ -86,6 +86,13 @@ export interface CloudConfig {
   sites?: Record<string, SiteConfig>
 
   /**
+   * Notification channels for deploy, SSL, health-check, and backup events
+   * (Slack, Discord, Telegram, email, generic webhook). Project-wide default;
+   * a site may override via {@link SiteConfig.notifications}.
+   */
+  notifications?: NotificationsConfig
+
+  /**
    * AWS-specific configuration
    */
   aws?: AwsConfig
@@ -317,6 +324,14 @@ export interface InfrastructureConfig {
    * - `'postgres'` → RDS Postgres with sane defaults, DATABASE_URL injected into env
    */
   database?: 'sqlite' | 'mysql' | 'postgres'
+  /**
+   * Application database connection (object form) for the Forge-style on-box /
+   * managed database path. Provides the name/user/password that
+   * `compute.managedServices` creates on the box, and the `DB_*` values
+   * auto-wired into PHP sites' `.env`. Distinct from the {@link database}
+   * string shorthand.
+   */
+  appDatabase?: DatabaseConfig
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
   /**
@@ -893,6 +908,259 @@ export interface SiteConfig {
    * Example: ['bun install --frozen-lockfile', 'bun run build']
    */
   preStart?: string[]
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Laravel / PHP sites (Forge-style). When `type` is a PHP framework, the site
+  // is deployed to the environment's compute box via git clone into atomic
+  // release directories, served by nginx + php-fpm (or rpx when
+  // `compute.webServer === 'rpx'`). See drivers/shared/* for the generators.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Application type. Drives the default deploy script and the nginx vhost
+   * template:
+   *  - `'laravel'` — `public/` web root, Laravel deploy script (composer,
+   *    artisan caches, migrate, storage:link, queue:restart).
+   *  - `'php'` — generic PHP app behind php-fpm (vanilla PHP, custom framework).
+   *  - `'statamic'` / `'wordpress'` — PHP apps with framework-specific defaults.
+   *  - `'static'` — plain static files served by nginx.
+   *  - `'spa'` — single-page app with a `try_files … /index.html` fallback.
+   *
+   * When omitted the legacy inference applies (`start` ⇒ a systemd runtime app,
+   * otherwise a bucket static site) — so existing bun/node sites are unaffected.
+   */
+  type?: 'laravel' | 'php' | 'statamic' | 'wordpress' | 'static' | 'spa'
+
+  /**
+   * PHP version for this site (e.g. `'8.3'`). Selects the php-fpm pool/socket
+   * the nginx vhost points at. Must be one of `compute.php.versions`. Defaults
+   * to `compute.php.default`.
+   */
+  phpVersion?: string
+
+  /**
+   * Web root relative to the release directory. Defaults to `'public'` for
+   * `laravel`/`statamic`/`wordpress`, and `''` (the release root) for `php`,
+   * `static`, and `spa`.
+   */
+  webDirectory?: string
+
+  /**
+   * Git repository the server clones/pulls on deploy (Forge-style). When set,
+   * the deploy clones `branch` into `releases/<sha>` rather than shipping a
+   * tarball over SCP.
+   */
+  repository?: SiteRepositoryConfig
+
+  /**
+   * Override the deploy script run inside the new release directory. When
+   * omitted, a sensible default for `type` is used (e.g. the Laravel script).
+   * The special tokens `$CREATE_RELEASE`, `$ACTIVATE_RELEASE`, and
+   * `$RESTART_QUEUES` expand to the zero-downtime release macros.
+   */
+  deployScript?: string[]
+
+  /**
+   * Paths symlinked from the site's `shared/` directory into every release so
+   * they persist across deploys (e.g. `storage`, uploaded files, a SQLite db).
+   * `.env` is always shared and need not be listed.
+   * @default ['storage', '.env']
+   */
+  sharedPaths?: string[]
+
+  /**
+   * Number of past releases to retain on the box for rollback.
+   * @default 4
+   */
+  keepReleases?: number
+
+  /**
+   * Use zero-downtime atomic releases (Envoyer-style: clone → build → flip the
+   * `current` symlink only after every step succeeds, with the previous release
+   * kept for instant rollback). On by default for git-deployed PHP sites — set
+   * `false` only to deploy in place.
+   * @default true
+   */
+  zeroDowntime?: boolean
+
+  /** Laravel queue workers to run for this site (systemd-managed). */
+  queues?: QueueWorkerConfig[]
+
+  /**
+   * Run the Laravel scheduler for this site
+   * (`* * * * * php artisan schedule:run`).
+   */
+  scheduler?: boolean
+
+  /** Arbitrary long-running processes to keep alive (systemd-managed). */
+  daemons?: DaemonConfig[]
+
+  /** TLS configuration for this site's nginx vhost. */
+  ssl?: SiteSslConfig
+
+  /** Additional hostnames served by the same vhost (nginx `server_name`). */
+  aliases?: string[]
+
+  /** `from` path/host → `to` URL redirects emitted into the nginx vhost. */
+  redirects?: Record<string, string>
+
+  /**
+   * Give this site a dedicated php-fpm pool (isolated user/process) rather than
+   * sharing the default pool.
+   */
+  isolation?: boolean
+
+  /** Post-deploy health check (Forge-style) pinged after `current` is flipped. */
+  healthCheck?: { path?: string }
+
+  /**
+   * Per-site notification channels, overriding the project-wide
+   * {@link CloudConfig.notifications} for this site's events.
+   */
+  notifications?: NotificationsConfig
+
+  /**
+   * HTTP Basic auth (htpasswd) protecting the whole site at the nginx layer.
+   * Typically driven from an env value, e.g. `{ username: 'admin', password:
+   * process.env.UI_PASSWORD }`. The htpasswd file is generated on the box.
+   */
+  auth?: SiteAuthConfig
+}
+
+/** HTTP Basic auth for a site's nginx vhost. See {@link SiteConfig.auth}. */
+export interface SiteAuthConfig {
+  /** Enable basic auth. @default true when this object is present */
+  enabled?: boolean
+  /** Username. @default 'admin' */
+  username?: string
+  /** Plaintext password (hashed on the box). Usually `process.env.X`. */
+  password?: string
+  /** Realm shown in the browser auth prompt. @default 'Restricted' */
+  realm?: string
+}
+
+/**
+ * Git source for a Forge-style git-clone deploy. See {@link SiteConfig.repository}.
+ */
+export interface SiteRepositoryConfig {
+  /** Clone URL (https or git@). */
+  url: string
+  /** Branch to deploy. @default 'main' */
+  branch?: string
+  /** Hosting provider — drives push-to-deploy hook wiring. @default 'github' */
+  provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom'
+  /**
+   * Deploy strategy:
+   *  - `'push'` (default) — deploy the tip of `branch` (push-to-deploy).
+   *  - `'tag'` — deploy a git version tag: a specific {@link tag}, or the latest
+   *    tag matching {@link tagPattern} (e.g. release `v*` tags). Useful for
+   *    promoting tagged releases rather than every push.
+   */
+  strategy?: 'push' | 'tag'
+  /** Exact tag to deploy when `strategy: 'tag'`. Overrides {@link tagPattern}. */
+  tag?: string
+  /**
+   * Glob matching the tags to consider when `strategy: 'tag'` and no explicit
+   * {@link tag} is set; the highest version (`-sort=-v:refname`) is deployed.
+   * @default 'v*'
+   */
+  tagPattern?: string
+}
+
+/**
+ * TLS for a PHP/static site's nginx vhost. See {@link SiteConfig.ssl}.
+ */
+export interface SiteSslConfig {
+  /**
+   * Certificate source:
+   *  - `'letsencrypt'` — issue + auto-renew via certbot (default for sites with
+   *    a `domain`).
+   *  - `'custom'` — install operator-provided `certPath`/`keyPath`.
+   *  - `'none'` — serve plain HTTP only.
+   */
+  provider?: 'letsencrypt' | 'custom' | 'none'
+  /** Contact email for Let's Encrypt registration/expiry notices. */
+  email?: string
+  /** Path to the certificate (PEM) when `provider: 'custom'`. */
+  certPath?: string
+  /** Path to the private key (PEM) when `provider: 'custom'`. */
+  keyPath?: string
+}
+
+/**
+ * A Laravel queue worker (or Horizon supervisor) run as a systemd service.
+ * Mirrors Forge's queue configuration. See {@link SiteConfig.queues}.
+ */
+export interface QueueWorkerConfig {
+  /**
+   * Use `php artisan horizon` instead of `queue:work`. When true, connection /
+   * queue / worker tuning is taken from the app's `config/horizon.php`.
+   * @default false
+   */
+  horizon?: boolean
+  /** Queue connection (`php artisan queue:work <connection>`). @default 'default' */
+  connection?: string
+  /** Comma-separated queues to consume, highest priority first. @default 'default' */
+  queue?: string
+  /** Number of worker processes to run in parallel. @default 1 */
+  processes?: number
+  /** `--timeout`: seconds a child job may run before being killed. @default 60 */
+  timeout?: number
+  /** `--sleep`: seconds to wait when no job is available. @default 3 */
+  sleep?: number
+  /** `--tries`: attempts before a job is marked failed. @default 3 */
+  tries?: number
+  /** `--max-jobs`: restart the worker after N jobs (0 = unlimited). */
+  maxJobs?: number
+  /** `--max-time`: restart the worker after N seconds (0 = unlimited). */
+  maxTime?: number
+  /** `--memory`: restart the worker when it exceeds N MB. @default 128 */
+  memory?: number
+  /** Seconds to wait for in-flight jobs to finish on stop/restart. @default 90 */
+  stopWaitSecs?: number
+}
+
+/**
+ * A generic long-running process kept alive by systemd. Mirrors Forge daemons.
+ * See {@link SiteConfig.daemons}.
+ */
+export interface DaemonConfig {
+  /** Command to run (becomes systemd `ExecStart`). */
+  command: string
+  /** Working directory. Defaults to the site's `current` release directory. */
+  directory?: string
+  /** User to run as. Defaults to the deploy user. */
+  user?: string
+  /** Number of identical processes to run. @default 1 */
+  processes?: number
+  /** Restart policy. @default 'always' */
+  restart?: 'always' | 'on-failure' | 'no'
+  /** Optional explicit unit name; defaults to a slug of the command. */
+  name?: string
+}
+
+/** A lifecycle event that can trigger a notification. */
+export type NotifyEvent = 'deploy' | 'deploy-failed' | 'ssl' | 'health' | 'backup'
+
+/**
+ * Notification channels (Forge-style). Configure any subset; each configured
+ * channel receives the events listed in {@link events} (all events by default).
+ */
+export interface NotificationsConfig {
+  /** Slack incoming-webhook URL. */
+  slack?: { webhookUrl: string }
+  /** Discord webhook URL. */
+  discord?: { webhookUrl: string }
+  /** Telegram bot token + chat id. */
+  telegram?: { botToken: string, chatId: string }
+  /** Email recipients (sent via ts-cloud's email/SES client). */
+  email?: { to: string | string[], from?: string }
+  /** Generic webhook — receives `{ event, message }` as JSON. */
+  webhook?: { url: string, method?: 'POST' | 'GET' }
+  /**
+   * Which events to notify on. @default all events
+   */
+  events?: NotifyEvent[]
 }
 
 export interface VpcConfig {
@@ -917,8 +1185,26 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  engine?: 'postgres' | 'mysql'
+  engine?: 'postgres' | 'mysql' | 'mariadb'
   instanceType?: string
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // On-box / app database wiring (Forge single-server model). When the box
+  // installs a database engine (`compute.services`), these create the app's
+  // database + user at provision time. `host`/`port` point a PHP app at a
+  // managed database instead.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Database/schema name to create (e.g. `forge`). */
+  name?: string
+  /** Application database user to create. */
+  username?: string
+  /** Password for {@link username}. */
+  password?: string
+  /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
+  host?: string
+  /** Port (defaults: mysql/mariadb 3306, postgres 5432). */
+  port?: number
 }
 
 export interface CacheConfig {
@@ -1449,10 +1735,21 @@ export interface ComputeConfig {
   fleet?: InstanceConfig[]
 
   /**
-   * Custom machine image (optional)
-   * If not specified, uses the provider's default Linux image
+   * Custom machine image (optional). For the Forge path this is a ts-cloud
+   * **golden image** (a Hetzner snapshot / AWS AMI baked with the full stack —
+   * nginx, php-fpm, Composer, services). If not specified, the provider's
+   * default Ubuntu image is used and the stack is installed at first boot.
+   * @see bakedImage
    */
   image?: string
+
+  /**
+   * The configured {@link image} is a pre-provisioned golden image that already
+   * has the runtime + PHP + services + base packages installed. Boot skips the
+   * install-heavy provisioning for a near-instant start. Build + publish the
+   * image with the bake recipe (see scripts/build-image.ts). @default false
+   */
+  bakedImage?: boolean
 
   /**
    * CloudFront custom origin for the registry/app server (when the site stack
@@ -1471,6 +1768,12 @@ export interface ComputeConfig {
     instanceType?: string
     ami?: string
     keyPair?: string
+    /**
+     * IAM instance profile name attached at launch. For the lightweight EC2
+     * boot path, this should grant `AmazonSSMManagedInstanceCore` so deploys
+     * (SSM Run Command) reach the box.
+     */
+    iamInstanceProfile?: string
     autoScaling?: {
       min?: number
       max?: number
@@ -1652,9 +1955,10 @@ export interface ComputeConfig {
 
   /**
    * Application runtime to install on the instance.
-   * Shared by every site that gets deployed to this compute.
+   * Shared by every site that gets deployed to this compute. `'php'` provisions
+   * nginx + php-fpm + Composer (see {@link php}) for Laravel/PHP sites.
    */
-  runtime?: 'bun' | 'node' | 'deno'
+  runtime?: 'bun' | 'node' | 'deno' | 'php'
 
   /**
    * Pinned runtime version (e.g. '1.3.13'). Defaults to 'latest'.
@@ -1693,6 +1997,131 @@ export interface ComputeConfig {
    * static dirs — so an app, docs, and a public site can share one domain.
    */
   proxy?: ComputeProxyConfig
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Laravel / PHP machine provisioning (Forge-style). Machine-level: shared by
+  // every PHP site on this box. Per-site PHP version lives on `SiteConfig`.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /**
+   * PHP-FPM provisioning. When set (or `runtime: 'php'`), the box installs the
+   * requested PHP versions (via `ppa:ondrej/php`), Composer, and the common
+   * Laravel extension set. Each site picks its version with `SiteConfig.phpVersion`.
+   */
+  php?: ComputePhpConfig
+
+  /**
+   * Web server that fronts the box.
+   *  - `'nginx'` (default) — per-site nginx vhost + php-fpm, Let's Encrypt via certbot.
+   *  - `'rpx'` — the existing `@stacksjs/rpx` gateway with on-demand TLS.
+   * Independent of {@link proxy}, which only configures the rpx engine details.
+   * @default 'nginx'
+   */
+  webServer?: 'nginx' | 'rpx'
+
+  /**
+   * On-box managed services to install (Forge's single-server model): the
+   * database engine, cache, and search. Each may be `true` for defaults or an
+   * object for pinning a version. Omit to install nothing (e.g. when pointing
+   * the app at a managed/RDS database instead).
+   *
+   * Named `managedServices` to avoid colliding with the ECS microservices
+   * `services` array above.
+   */
+  managedServices?: ComputeServicesConfig
+
+  /**
+   * Host firewall (UFW). When enabled, only SSH + the listed ports are open.
+   * On Hetzner this complements the cloud firewall; on a bare box it's the
+   * primary firewall. @default { enabled: true } for PHP boxes
+   */
+  firewall?: ComputeFirewallConfig
+
+  /**
+   * Automatic unattended security/system updates (Forge's "maintenance"). When
+   * enabled, installs `unattended-upgrades` and enables daily auto-updates.
+   * @default true for PHP boxes
+   */
+  autoUpdates?: boolean
+
+  /**
+   * Scheduled database backups (powered by `ts-backups`), synced to object
+   * storage. Off unless configured.
+   */
+  backups?: ComputeBackupConfig
+
+  /**
+   * Operator SSH keys authorized on the box, in addition to the deploy key.
+   * Managed declaratively: keys are written to `authorized_keys` inside a
+   * ts-cloud-managed block on every provision/deploy, so adding one is as
+   * simple as adding an entry here and redeploying.
+   */
+  sshKeys?: SshKeyConfig[]
+}
+
+/** An operator SSH key authorized on the box. See {@link ComputeConfig.sshKeys}. */
+export interface SshKeyConfig {
+  /** Human label for the key (comment). */
+  name: string
+  /** The public key line (e.g. `ssh-ed25519 AAAA… user@host`). */
+  publicKey: string
+}
+
+/** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
+export interface ComputeFirewallConfig {
+  /** Enable UFW. @default true */
+  enabled?: boolean
+  /** TCP ports to allow in addition to SSH/80/443 (always allowed). */
+  allowedPorts?: number[]
+}
+
+/** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */
+export interface ComputeBackupConfig {
+  /** Enable scheduled backups. @default false */
+  enabled?: boolean
+  /** Cron schedule for the backup run. @default '0 2 * * *' (daily 02:00) */
+  schedule?: string
+  /** Keep the newest N backups locally. @default 5 */
+  retentionCount?: number
+  /** Delete local backups older than N days. @default 30 */
+  retentionDays?: number
+  /** Object-storage bucket (S3 or Hetzner) the backups are synced to. */
+  bucket?: string
+  /** S3-compatible endpoint (e.g. Hetzner object storage). Omit for AWS S3. */
+  endpoint?: string
+}
+
+/**
+ * PHP-FPM provisioning for a compute box. See {@link ComputeConfig.php}.
+ */
+export interface ComputePhpConfig {
+  /**
+   * PHP versions to install (e.g. `['8.3', '8.2']`). Each gets its own php-fpm
+   * pool/socket so sites can pin different versions. @default ['8.3']
+   */
+  versions?: string[]
+  /** Default PHP version for sites that don't set `phpVersion`. @default first of `versions` */
+  default?: string
+  /**
+   * Extra PHP extensions to install beyond the Laravel baseline (mbstring, xml,
+   * curl, mysql, pgsql, redis, gd, bcmath, zip, intl). apt package suffixes,
+   * e.g. `['imagick', 'swoole']`.
+   */
+  extensions?: string[]
+}
+
+/**
+ * On-box managed services (database / cache / search) for a compute box.
+ * Each entry is `true` (install with defaults) or an object pinning a version.
+ * See {@link ComputeConfig.services}.
+ */
+export interface ComputeServicesConfig {
+  mysql?: boolean | { version?: string }
+  mariadb?: boolean | { version?: string }
+  postgres?: boolean | { version?: string }
+  redis?: boolean | { version?: string }
+  memcached?: boolean | { version?: string }
+  meilisearch?: boolean | { version?: string }
 }
 
 /**

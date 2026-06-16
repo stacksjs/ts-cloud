@@ -18,6 +18,7 @@ import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './clie
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
+import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -144,12 +145,24 @@ export class HetznerDriver implements CloudDriver {
         })
       : undefined
 
+    // Machine provisioning (PHP/nginx + services + db + firewall + updates +
+    // monitoring + ssh keys + notifier + backups). Composed by the shared
+    // builder so a cold boot and a golden-image bake install the same stack.
+    const provision = buildComputeProvisionScripts(config)
+
+    // When booting a pre-baked golden image, the stack is already installed —
+    // skip the install-heavy steps for a near-instant boot.
+    const baked = compute.bakedImage === true
+
     const bootstrap = generateUbuntuAppCloudInit({
-      runtime: compute.runtime || 'bun',
-      runtimeVersion: compute.runtimeVersion || 'latest',
+      runtime: provision.runtime,
+      runtimeVersion: provision.runtimeVersion,
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
+      phpProvision: provision.phpProvision,
+      servicesProvision: provision.servicesProvision,
       rpxProvision,
+      baked,
     })
     const userData = wrapCloudInitUserData(bootstrap)
 

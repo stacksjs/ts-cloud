@@ -2738,7 +2738,7 @@ systemctl enable stacks-api
      *  - Multiple sites can share one EC2 instance
      */
     generateBunAppScript: (options: {
-      runtime?: 'bun' | 'node' | 'deno'
+      runtime?: 'bun' | 'node' | 'deno' | 'php'
       runtimeVersion?: string
       systemPackages?: string[]
       database?: 'sqlite' | 'mysql' | 'postgres'
