@@ -1768,6 +1768,12 @@ export interface ComputeConfig {
     instanceType?: string
     ami?: string
     keyPair?: string
+    /**
+     * IAM instance profile name attached at launch. For the lightweight EC2
+     * boot path, this should grant `AmazonSSMManagedInstanceCore` so deploys
+     * (SSM Run Command) reach the box.
+     */
+    iamInstanceProfile?: string
     autoScaling?: {
       min?: number
       max?: number
