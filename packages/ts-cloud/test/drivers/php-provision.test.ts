@@ -1,63 +1,50 @@
 import { describe, expect, it } from 'bun:test'
 import {
   buildPhpProvisionScript,
-  LARAVEL_PHP_EXTENSIONS,
+  PHP_FPM_LISTEN,
   phpFpmSocketPath,
-  phpPackagesForVersion,
+  resolveDefaultPhpVersion,
 } from '../../src/drivers/shared/php-provision'
 import { generateUbuntuAppCloudInit } from '../../src/drivers/hetzner/cloud-init'
 
-describe('buildPhpProvisionScript', () => {
-  it('defaults to PHP 8.3 with nginx + Composer', () => {
+describe('buildPhpProvisionScript (pantry)', () => {
+  it('installs php + composer + nginx via pantry and starts php-fpm', () => {
     const script = buildPhpProvisionScript().join('\n')
-    expect(script).toContain('add-apt-repository -y ppa:ondrej/php')
-    expect(script).toContain('apt-get install -y nginx')
-    expect(script).toContain('apt-get install -y php8.3-fpm')
-    expect(script).toContain('systemctl enable php8.3-fpm')
-    expect(script).toContain('update-alternatives --set php /usr/bin/php8.3')
-    expect(script).toContain('--filename=composer')
+    expect(script).toContain('pantry install \'php.net@8.3\' \'getcomposer.org\' \'nginx.org\'')
+    expect(script).toContain('pantry enable \'php-fpm\'')
+    expect(script).toContain('pantry start \'php-fpm\'')
+    // No apt/ppa anymore.
+    expect(script).not.toContain('apt-get')
+    expect(script).not.toContain('ppa:ondrej/php')
   })
 
-  it('installs each requested version with its own fpm pool', () => {
-    const script = buildPhpProvisionScript({ versions: ['8.3', '8.2'] }).join('\n')
-    expect(script).toContain('php8.3-fpm')
-    expect(script).toContain('php8.2-fpm')
-    expect(script).toContain('systemctl start php8.2-fpm')
-  })
-
-  it('honours an explicit default version', () => {
-    const script = buildPhpProvisionScript({ versions: ['8.3', '8.2'], default: '8.2' }).join('\n')
-    expect(script).toContain('update-alternatives --set php /usr/bin/php8.2')
-  })
-
-  it('appends extra extensions and keeps the Laravel baseline', () => {
-    const pkgs = phpPackagesForVersion('8.3', [...LARAVEL_PHP_EXTENSIONS, 'imagick'])
-    expect(pkgs).toContain('php8.3-mbstring')
-    expect(pkgs).toContain('php8.3-redis')
-    expect(pkgs).toContain('php8.3-imagick')
+  it('pins the requested default php version', () => {
+    expect(buildPhpProvisionScript({ versions: ['8.4'] }).join('\n')).toContain('\'php.net@8.4\'')
+    expect(buildPhpProvisionScript({ versions: ['8.3', '8.2'], default: '8.2' }).join('\n')).toContain('\'php.net@8.2\'')
+    expect(resolveDefaultPhpVersion({ versions: ['8.3', '8.2'], default: '8.2' })).toBe('8.2')
   })
 
   it('can skip nginx (rpx engine) and Composer', () => {
     const script = buildPhpProvisionScript({ installNginx: false, installComposer: false }).join('\n')
-    expect(script).not.toContain('apt-get install -y nginx')
-    // The composer *installer* must not run (the COMPOSER_HOME env export is fine).
+    expect(script).not.toContain('nginx.org')
     expect(script).not.toContain('getcomposer.org')
-    expect(script).not.toContain('--filename=composer')
+    expect(script).toContain('\'php.net@8.3\'')
   })
 
-  it('exposes the fpm socket path nginx fastcgi_pass uses', () => {
-    expect(phpFpmSocketPath('8.3')).toBe('/run/php/php8.3-fpm.sock')
+  it('php-fpm listens on TCP for nginx fastcgi_pass', () => {
+    expect(phpFpmSocketPath('8.3')).toBe(PHP_FPM_LISTEN)
+    expect(PHP_FPM_LISTEN).toBe('127.0.0.1:9074')
   })
 })
 
 describe('generateUbuntuAppCloudInit with phpProvision', () => {
-  it('splices the PHP provision script into the bootstrap', () => {
+  it('splices the pantry PHP provision into the bootstrap', () => {
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: 'php',
       phpProvision: buildPhpProvisionScript({ versions: ['8.3'] }),
     })
-    expect(bootstrap).toContain('php8.3-fpm')
-    expect(bootstrap).toContain('apt-get install -y nginx')
+    expect(bootstrap).toContain('php.net@8.3')
+    expect(bootstrap).toContain('pantry start \'php-fpm\'')
     // A php runtime must not pull in the bun installer.
     expect(bootstrap).not.toContain('bun.sh/install')
   })
@@ -68,11 +55,8 @@ describe('generateUbuntuAppCloudInit with phpProvision', () => {
       phpProvision: buildPhpProvisionScript({ versions: ['8.3'] }),
       baked: true,
     })
-    // No apt installs / php provisioning on a pre-baked image.
-    expect(bootstrap).not.toContain('apt-get install -y nginx')
-    expect(bootstrap).not.toContain('php8.3-fpm')
+    expect(bootstrap).not.toContain('php.net@8.3')
     expect(bootstrap).not.toContain('apt-get update')
-    // Cheap per-boot setup still runs.
     expect(bootstrap).toContain('mkdir -p /var/www')
     expect(bootstrap).toContain('bootstrap complete')
   })

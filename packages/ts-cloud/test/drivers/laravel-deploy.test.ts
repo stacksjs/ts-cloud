@@ -51,14 +51,16 @@ describe('buildLaravelDeployScript', () => {
     expect(joined).toContain('chmod 600 /var/www/app/shared/.env')
   })
 
-  it('rewrites php to the versioned binary', () => {
-    expect(joined).toContain('php8.3 artisan migrate --force')
-    expect(joined).toContain('php8.3 artisan queue:restart || true')
+  it('uses pantry php (activated via pantry env) — no versioned binary', () => {
+    expect(joined).toContain('pantry env')
+    expect(joined).toContain('php artisan migrate --force')
+    expect(joined).toContain('php artisan queue:restart || true')
+    expect(joined).not.toContain('php8.3')
   })
 
   it('expands $ACTIVATE_RELEASE into atomic flip + prune + fpm reload', () => {
     expect(joined).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
-    expect(joined).toContain('systemctl reload php8.3-fpm || true')
+    expect(joined).toContain('pantry restart php-fpm')
     expect(joined).toContain('tail -n +5') // keepReleases default 4
   })
 
@@ -79,8 +81,8 @@ describe('buildLaravelDeployScript', () => {
       site: { ...laravelSite, deployScript: [MACRO_CREATE_RELEASE, 'php artisan optimize', MACRO_ACTIVATE_RELEASE] },
       releaseId: 'rel2',
     }).join('\n')
-    expect(custom).toContain('php8.3 artisan optimize')
-    expect(custom).not.toContain('php8.3 artisan migrate --force')
+    expect(custom).toContain('php artisan optimize')
+    expect(custom).not.toContain('artisan migrate --force')
   })
 })
 

@@ -6,23 +6,24 @@ import {
 } from '../../src/drivers/shared/db-provision'
 
 describe('buildServicesProvisionScript', () => {
-  it('installs and enables the requested engines', () => {
+  it('installs and enables the requested engines via pantry', () => {
     const script = buildServicesProvisionScript({ mysql: true, redis: true }).join('\n')
-    expect(script).toContain('apt-get install -y mysql-server')
-    expect(script).toContain('systemctl enable mysql')
-    expect(script).toContain('apt-get install -y redis-server')
+    expect(script).toContain('pantry install \'mysql.com\' \'redis.io\'')
+    expect(script).toContain('pantry enable \'mysql\'')
+    expect(script).toContain('pantry start \'mysql\'')
+    expect(script).toContain('pantry start \'redis\'')
+    expect(script).not.toContain('apt-get')
   })
 
   it('installs postgres + meilisearch when requested', () => {
     const script = buildServicesProvisionScript({ postgres: true, meilisearch: { version: '1.6' } }).join('\n')
-    expect(script).toContain('apt-get install -y postgresql postgresql-contrib')
-    expect(script).toContain('install.meilisearch.com')
-    expect(script).toContain('/etc/systemd/system/meilisearch.service')
+    expect(script).toContain('pantry install \'postgresql.org\' \'meilisearch.com\'')
+    expect(script).toContain('pantry start \'postgres\'')
+    expect(script).toContain('pantry start \'meilisearch\'')
   })
 
-  it('emits nothing engine-specific for an empty config', () => {
-    const script = buildServicesProvisionScript({})
-    expect(script.some(l => l.includes('mysql-server'))).toBe(false)
+  it('emits nothing for an empty config', () => {
+    expect(buildServicesProvisionScript({})).toEqual([])
   })
 })
 

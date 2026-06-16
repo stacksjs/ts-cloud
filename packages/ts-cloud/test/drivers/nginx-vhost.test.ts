@@ -18,7 +18,7 @@ describe('buildNginxVhost', () => {
     expect(vhost).toContain('server_name example.com;')
     expect(vhost).toContain('root /var/www/app/current/public;')
     expect(vhost).toContain('try_files $uri $uri/ /index.php?$query_string;')
-    expect(vhost).toContain('fastcgi_pass unix:/run/php/php8.3-fpm.sock;')
+    expect(vhost).toContain('fastcgi_pass 127.0.0.1:9074;')
     expect(vhost).toContain('error_page 404 /index.php;')
   })
 

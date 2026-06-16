@@ -24,7 +24,8 @@ describe('buildSiteServicesScript — queue workers', () => {
   })
 
   it('renders the queue:work command with tuning flags', () => {
-    expect(script).toContain('php8.3 /var/www/app/current/artisan queue:work redis --queue=default,emails')
+    expect(script).toContain('exec php /var/www/app/current/artisan queue:work redis --queue=default,emails')
+    expect(script).toContain('pantry env')
     expect(script).toContain('--tries=5')
     expect(script).toContain('--timeout=90')
   })
@@ -43,7 +44,7 @@ describe('buildSiteServicesScript — Horizon', () => {
   it('uses artisan horizon when horizon is set', () => {
     const site: SiteConfig = { root: '.', type: 'laravel', queues: [{ horizon: true }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
-    expect(script).toContain('php8.3 /var/www/app/current/artisan horizon')
+    expect(script).toContain('exec php /var/www/app/current/artisan horizon')
     expect(script).not.toContain('queue:work')
   })
 })
@@ -53,7 +54,7 @@ describe('buildSiteServicesScript — scheduler', () => {
     const site: SiteConfig = { root: '.', type: 'laravel', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain(`cat > ${schedulerCronPath('acme', 'app')}`)
-    expect(script).toContain('* * * * * root cd /var/www/app/current && php8.3 artisan schedule:run')
+    expect(script).toContain('cd /var/www/app/current && eval "$(cd /opt/pantry && pantry env 2>/dev/null)" && php artisan schedule:run')
   })
 
   it('removes the cron entry when scheduler is disabled', () => {
@@ -72,7 +73,8 @@ describe('buildSiteServicesScript — daemons', () => {
     }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain('/etc/systemd/system/acme-app-daemon-reverb-0.service')
-    expect(script).toContain('ExecStart=php artisan reverb:start')
+    expect(script).toContain("ExecStart=/bin/sh -lc '")
+    expect(script).toContain('exec php artisan reverb:start')
     expect(script).toContain('Restart=on-failure')
   })
 })

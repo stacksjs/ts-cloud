@@ -12,6 +12,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { buildServicesProvisionScript, buildDatabaseSetupScript } from './db-provision'
 import { buildPhpProvisionScript } from './php-provision'
+import { buildPantryBootstrapScript } from './package-manager'
 import { buildUfwScript } from './ufw'
 import { buildAutoUpdatesScript } from './maintenance'
 import { buildMonitoringScript } from './monitoring'
@@ -40,16 +41,28 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   const compute = config.infrastructure?.compute ?? {}
   const phpBox = compute.runtime === 'php' || !!compute.php
 
+  // Bootstrap the pantry CLI (system service scope) before any package install.
+  // Prepended to the php provision on a PHP box, or to the services block when
+  // the box only runs managed services.
+  const needsPantry = phpBox || !!compute.managedServices
+  const pantryBootstrap = needsPantry ? buildPantryBootstrapScript() : []
+
   const phpProvision = phpBox
-    ? buildPhpProvisionScript({
-        versions: compute.php?.versions,
-        default: compute.php?.default,
-        extensions: compute.php?.extensions,
-        installNginx: compute.webServer !== 'rpx',
-      })
+    ? [
+        ...pantryBootstrap,
+        ...buildPhpProvisionScript({
+          versions: compute.php?.versions,
+          default: compute.php?.default,
+          extensions: compute.php?.extensions,
+          installNginx: compute.webServer !== 'rpx',
+        }),
+      ]
     : undefined
 
   const extras: string[] = []
+  // pantry bootstrap for a services-only (non-PHP) box.
+  if (!phpBox && needsPantry)
+    extras.push(...pantryBootstrap)
   // On-box notifier first, so cron-driven jobs (backups) can call it.
   extras.push(...buildNotifierScript(config.notifications))
   if (compute.managedServices) {

@@ -1,0 +1,10 @@
+{
+  "provider": "hetzner",
+  "stackName": "tscehz-production",
+  "serverId": 141908279,
+  "serverName": "tscehz-production-app",
+  "firewallId": 11144349,
+  "publicIp": "167.233.140.222",
+  "deployStoragePath": "/var/ts-cloud/staging",
+  "sshUser": "root"
+}

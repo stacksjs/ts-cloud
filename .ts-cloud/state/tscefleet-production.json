@@ -1,0 +1,4 @@
+{
+  "provider": "hetzner",
+  "stackName": "tscefleet-production"
+}

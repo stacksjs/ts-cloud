@@ -1,117 +1,94 @@
 /**
- * Generate the apt provisioning script for a Forge-style PHP box: nginx,
- * one or more PHP-FPM versions (via `ppa:ondrej/php`), the standard Laravel
- * extension set, and Composer.
+ * Provision PHP + Composer for a Forge-style box using **pantry** (not apt).
  *
- * Returns an array of shell command lines (matching the convention of
- * {@link import('./rpx-gateway').buildRpxProvisionScript}) so it can be spliced
- * into the Ubuntu cloud-init bootstrap. Each requested PHP version installs its
- * own `phpX.Y-fpm` pool so different sites can pin different versions and nginx
- * can `fastcgi_pass` to the matching unix socket
- * (`/run/php/phpX.Y-fpm.sock`).
+ * `pantry install php.net@<version> getcomposer.org` pulls the source-built PHP
+ * (with the full Laravel extension matrix + pdo_mysql/pdo_pgsql) and Composer
+ * from the pantry registry into the shared project at {@link PANTRY_PROJECT_DIR},
+ * and `pantry enable/start php-fpm` runs PHP-FPM as a boot-time systemd service.
+ *
+ * PHP-FPM listens on TCP (pantry's service model), not a unix socket — nginx
+ * `fastcgi_pass`es to {@link PHP_FPM_LISTEN}. php/composer are exposed to deploy
+ * steps via {@link import('./package-manager').pantryEnvActivation}.
+ *
+ * Returns an array of shell command lines spliced into the Ubuntu bootstrap.
  */
+import type { PantrySpec } from './package-manager'
+import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PROJECT_DIR } from './package-manager'
 
 /**
- * Baseline PHP extension package suffixes installed for every version
- * (`phpX.Y-<suffix>`). Covers Laravel's documented requirements plus the
- * common drivers (mysql/pgsql/sqlite/redis) and image/locale/number stack.
+ * The baseline Laravel PHP extensions. pantry's `php.net` is a single source
+ * build that already bundles these, so unlike apt there are no per-extension
+ * packages to install — this list documents the expectation and is asserted
+ * against `php -m` in tests.
  */
 export const LARAVEL_PHP_EXTENSIONS: readonly string[] = [
-  'fpm',
-  'cli',
-  'common',
   'mbstring',
   'xml',
   'curl',
-  'mysql',
-  'pgsql',
-  'sqlite3',
-  'redis',
+  'pdo_mysql',
+  'pdo_pgsql',
   'gd',
   'bcmath',
   'zip',
   'intl',
-  'readline',
-  'soap',
-  'gmp',
-  'opcache',
+  'openssl',
+  'tokenizer',
+  'ctype',
+  'fileinfo',
+  'sodium',
 ]
 
 export interface PhpProvisionOptions {
-  /** PHP versions to install (e.g. `['8.3', '8.2']`). @default ['8.3'] */
+  /** PHP versions to install (first is the default). pantry runs one php-fpm. @default ['8.3'] */
   versions?: string[]
-  /** Default PHP version (sets the `php` CLI alternative). @default first of `versions` */
+  /** Default PHP version. @default first of `versions` */
   default?: string
-  /** Extra extension suffixes beyond {@link LARAVEL_PHP_EXTENSIONS} (e.g. `['imagick']`). */
+  /** Extra extensions — informational; pantry's php build is fixed. */
   extensions?: string[]
-  /** Install + enable nginx. @default true */
+  /** Install the nginx binary (the vhost/service is wired separately). @default true */
   installNginx?: boolean
-  /** Install Composer to `/usr/local/bin/composer`. @default true */
+  /** Install Composer. @default true */
   installComposer?: boolean
 }
 
-/** Per-version apt package names for the given extension suffixes. */
-export function phpPackagesForVersion(version: string, extensions: readonly string[]): string[] {
-  return extensions.map(suffix => `php${version}-${suffix}`)
+/** PHP-FPM listen address for nginx `fastcgi_pass` (pantry's php-fpm is TCP). */
+export const PHP_FPM_LISTEN = '127.0.0.1:9074'
+
+/**
+ * php-fpm `fastcgi_pass` target. The `version` arg is accepted for API
+ * compatibility with the old per-version unix sockets; pantry runs a single
+ * php-fpm on {@link PHP_FPM_LISTEN}.
+ */
+export function phpFpmSocketPath(_version?: string): string {
+  return PHP_FPM_LISTEN
 }
 
-/** Absolute php-fpm unix socket path for a version (matches ondrej's layout). */
-export function phpFpmSocketPath(version: string): string {
-  return `/run/php/php${version}-fpm.sock`
+/** Resolve the default PHP version from the requested set. */
+export function resolveDefaultPhpVersion(options: PhpProvisionOptions = {}): string {
+  const versions = options.versions?.length ? options.versions : ['8.3']
+  return options.default && versions.includes(options.default) ? options.default : versions[0]
 }
 
 /**
- * Build the shell command lines that provision PHP-FPM, nginx, and Composer.
+ * Build the shell command lines that install PHP-FPM + Composer (+ the nginx
+ * binary) via pantry and start php-fpm as a system service. Assumes the pantry
+ * CLI is already bootstrapped (see
+ * {@link import('./package-manager').buildPantryBootstrapScript}).
  */
 export function buildPhpProvisionScript(options: PhpProvisionOptions = {}): string[] {
-  const versions = options.versions?.length ? [...new Set(options.versions)] : ['8.3']
-  const defaultVersion = options.default && versions.includes(options.default)
-    ? options.default
-    : versions[0]
+  const defaultVersion = resolveDefaultPhpVersion(options)
   const installNginx = options.installNginx !== false
   const installComposer = options.installComposer !== false
-  const extensions = [...new Set([...LARAVEL_PHP_EXTENSIONS, ...(options.extensions || [])])]
 
-  const lines: string[] = [
-    'export DEBIAN_FRONTEND=noninteractive',
-    // cloud-init/SSM run without HOME set; Composer refuses to run without it.
-    'export HOME="${HOME:-/root}"',
-    'export COMPOSER_HOME="${COMPOSER_HOME:-/root/.composer}"',
-    'apt-get update -y',
-    // add-apt-repository lives in software-properties-common on Ubuntu.
-    'apt-get install -y software-properties-common ca-certificates apt-transport-https lsb-release gnupg',
-    // ppa:ondrej/php carries every modern PHP version + the -fpm pools.
-    'add-apt-repository -y ppa:ondrej/php',
-    'apt-get update -y',
+  const specs: PantrySpec[] = [`php.net@${defaultVersion}`]
+  if (installComposer)
+    specs.push('getcomposer.org')
+  if (installNginx)
+    specs.push('nginx.org')
+
+  return [
+    ...buildPantryInstallScript(specs),
+    // php-fpm runs as a boot-time system service (TCP 127.0.0.1:9074).
+    ...buildPantryServiceScript(['php-fpm']),
   ]
-
-  if (installNginx) {
-    lines.push(
-      'apt-get install -y nginx',
-      'systemctl enable nginx',
-    )
-  }
-
-  for (const version of versions) {
-    const pkgs = phpPackagesForVersion(version, extensions)
-    lines.push(
-      `apt-get install -y ${pkgs.join(' ')}`,
-      `systemctl enable php${version}-fpm`,
-      `systemctl start php${version}-fpm`,
-    )
-  }
-
-  // Make the default version the system `php` so `php artisan`/Composer scripts
-  // that don't pin a version use it.
-  lines.push(`update-alternatives --set php /usr/bin/php${defaultVersion}`)
-
-  if (installComposer) {
-    lines.push(
-      'curl -fsSL https://getcomposer.org/installer -o /tmp/composer-setup.php',
-      'php /tmp/composer-setup.php --install-dir=/usr/local/bin --filename=composer',
-      'rm -f /tmp/composer-setup.php',
-    )
-  }
-
-  return lines
 }

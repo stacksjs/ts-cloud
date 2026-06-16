@@ -128,7 +128,7 @@ function vhostBody(options: NginxVhostOptions): string[] {
       '    error_page 404 /index.php;',
       '',
       '    location ~ \\.php$ {',
-      `        fastcgi_pass unix:${phpFpmSocketPath(phpVersion)};`,
+      `        fastcgi_pass ${phpFpmSocketPath(phpVersion)};`,
       '        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;',
       '        include fastcgi_params;',
       '    }',

@@ -80,16 +80,16 @@ describe('Laravel end-to-end: server bootstrap (cloud-init)', () => {
   const bootstrap = generateUbuntuAppCloudInit({ runtime: 'php', phpProvision, servicesProvision: services })
 
   it('installs nginx + php-fpm + Composer', () => {
-    expect(bootstrap).toContain('ppa:ondrej/php')
-    expect(bootstrap).toContain('php8.3-fpm')
-    expect(bootstrap).toContain('apt-get install -y nginx')
-    expect(bootstrap).toContain('--filename=composer')
+    expect(bootstrap).toContain('pantry install')
+    expect(bootstrap).toContain('php.net@8.3')
+    expect(bootstrap).toContain('nginx.org')
+    expect(bootstrap).toContain('getcomposer.org')
   })
 
   it('installs the database engine + cache + search and creates the app DB', () => {
-    expect(bootstrap).toContain('apt-get install -y mysql-server')
-    expect(bootstrap).toContain('apt-get install -y redis-server')
-    expect(bootstrap).toContain('install.meilisearch.com')
+    expect(bootstrap).toContain('mysql.com')
+    expect(bootstrap).toContain('redis.io')
+    expect(bootstrap).toContain('meilisearch.com')
     expect(bootstrap).toContain('CREATE DATABASE IF NOT EXISTS')
   })
 
@@ -135,14 +135,15 @@ describe('Laravel end-to-end: app deploy', () => {
     expect(cmd).toContain('ln -sfn /var/www/main/shared/storage /var/www/main/releases/deadbeef/storage')
     // Laravel build steps with the versioned php binary
     expect(cmd).toContain('composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev')
-    expect(cmd).toContain('php8.3 artisan migrate --force')
-    expect(cmd).toContain('php8.3 artisan config:cache')
+    expect(cmd).toContain('php artisan migrate --force')
+    expect(cmd).toContain('pantry env')
+    expect(cmd).toContain('php artisan config:cache')
     // atomic flip + queue restart
     expect(cmd).toContain('mv -Tf /var/www/main/current.tmp /var/www/main/current')
-    expect(cmd).toContain('php8.3 artisan queue:restart || true')
+    expect(cmd).toContain('php artisan queue:restart || true')
     // nginx vhost + Let's Encrypt
     expect(cmd).toContain('/etc/nginx/sites-available/main')
-    expect(cmd).toContain('fastcgi_pass unix:/run/php/php8.3-fpm.sock;')
+    expect(cmd).toContain('fastcgi_pass 127.0.0.1:9074;')
     expect(cmd).toContain('certbot --nginx')
     // DB_* auto-wired into .env
     expect(cmd).toContain('DB_DATABASE="acme"')

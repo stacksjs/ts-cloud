@@ -26,8 +26,8 @@ describe('buildComputeProvisionScripts', () => {
     const all = [...(p.phpProvision || []), ...(p.servicesProvision || [])].join('\n')
     expect(p.runtime).toBe('php')
     expect(p.phpBox).toBe(true)
-    expect(all).toContain('php8.3-fpm')
-    expect(all).toContain('apt-get install -y mysql-server')
+    expect(all).toContain('php.net@8.3')
+    expect(all).toContain('mysql.com')
     expect(all).toContain('ufw --force enable')
     expect(all).toContain('unattended-upgrades')
   })
@@ -38,9 +38,9 @@ describe('buildImageRecipe', () => {
 
   it('bakes the full stack (installs run, not skipped)', () => {
     expect(recipe).toContain('#!/bin/bash')
-    expect(recipe).toContain('php8.3-fpm')
-    expect(recipe).toContain('apt-get install -y nginx')
-    expect(recipe).toContain('apt-get install -y mysql-server')
+    expect(recipe).toContain('php.net@8.3')
+    expect(recipe).toContain('nginx.org')
+    expect(recipe).toContain('mysql.com')
   })
 
   it('stays generic — excludes per-project SSH keys, app DB, and backups', () => {

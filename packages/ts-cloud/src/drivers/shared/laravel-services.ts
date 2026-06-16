@@ -14,6 +14,19 @@
  * deploy's $RESTART_QUEUES macro) cycles them onto the new release.
  */
 import type { DaemonConfig, QueueWorkerConfig, SiteConfig } from '@ts-cloud/core'
+import { PANTRY_PROJECT_DIR } from './package-manager'
+
+/** Shell that loads pantry's env (PATH + LD_LIBRARY_PATH) for php/composer. */
+const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)"`
+
+/**
+ * Wrap a command so a systemd unit / cron runs it inside pantry's environment
+ * (php + its shared libs on PATH/LD_LIBRARY_PATH). systemd units have no shell
+ * env, so the bare `php` and its libs are otherwise unresolved.
+ */
+function pantryExec(cmd: string): string {
+  return `/bin/sh -lc '${PANTRY_ENV_EVAL}; exec ${cmd}'`
+}
 
 export interface SiteServicesOptions {
   slug: string
@@ -112,8 +125,8 @@ export function schedulerCronPath(slug: string, siteName: string): string {
  */
 export function buildSiteServicesScript(options: SiteServicesOptions): string[] {
   const { slug, siteName, site } = options
-  const phpVersion = site.phpVersion ?? options.phpVersion ?? '8.3'
-  const phpBin = `php${phpVersion}`
+  // pantry exposes a single `php` on PATH via `pantry env`; no versioned binary.
+  const phpBin = 'php'
   const base = options.appBase ?? `/var/www/${siteName}`
   const current = `${base}/current`
   const artisan = `${current}/artisan`
@@ -131,7 +144,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       out.push(...writeUnitScript(name, systemdUnit({
         description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
         workingDir: current,
-        execStart: queueExecStart(worker, phpBin, artisan),
+        execStart: pantryExec(queueExecStart(worker, phpBin, artisan)),
         stopWaitSecs: worker.stopWaitSecs ?? 90,
       })))
     }
@@ -147,7 +160,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       out.push(...writeUnitScript(name, systemdUnit({
         description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
         workingDir: daemon.directory || current,
-        execStart: daemon.command,
+        execStart: pantryExec(daemon.command),
         restart: daemon.restart,
         user: daemon.user,
       })))
@@ -179,7 +192,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   // removal of any prior entry when disabled.
   const cronPath = schedulerCronPath(slug, siteName)
   if (site.scheduler) {
-    const cron = `* * * * * root cd ${current} && ${phpBin} artisan schedule:run >> /dev/null 2>&1\n`
+    const cron = `* * * * * root cd ${current} && ${PANTRY_ENV_EVAL} && ${phpBin} artisan schedule:run >> /dev/null 2>&1\n`
     out.push(
       `cat > ${cronPath} <<'TS_CLOUD_CRON_EOF'`,
       cron.replace(/\n$/, ''),

@@ -17,6 +17,7 @@
 import type { SiteConfig } from '@ts-cloud/core'
 import { buildGitCheckoutScript } from './git-deploy'
 import { formatEnvFile } from './env-file'
+import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
 import {
   buildActivateRelease,
   buildEnsureReleaseLayout,
@@ -116,8 +117,10 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
     throw new Error(`Site '${siteName}' is a PHP/git site but has no repository.url to clone`)
 
   const base = options.appBase ?? `/var/www/${siteName}`
-  const phpVersion = site.phpVersion ?? options.defaultPhpVersion ?? '8.3'
-  const phpBin = `php${phpVersion}`
+  // pantry exposes a single `php` on PATH (via `pantry env`); there are no
+  // versioned `phpX.Y` binaries as with apt/ondrej. The requested version is
+  // pinned at install time (php.net@<version>), not in the deploy command.
+  const phpBin = 'php'
   const paths = releasePaths(base, releaseId)
   const sharedPaths = site.sharedPaths ?? DEFAULT_SHARED_PATHS
   const keepReleases = site.keepReleases ?? DEFAULT_KEEP_RELEASES
@@ -133,6 +136,8 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
     // Deploys run as root; without this Composer disables plugins, breaking
     // Laravel package discovery.
     'export COMPOSER_ALLOW_SUPERUSER=1',
+    // Put pantry-installed php/composer (+ their shared libs) on PATH.
+    pantryEnvActivation(),
   ]
 
   // Ensure the releases/shared skeleton exists, then write the shared .env so
@@ -158,7 +163,7 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
     else if (line === MACRO_ACTIVATE_RELEASE) {
       out.push(...buildActivateRelease(paths))
       out.push(...buildPruneReleases(paths, keepReleases))
-      out.push(`systemctl reload php${phpVersion}-fpm || true`)
+      out.push(`(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm) 2>/dev/null || true`)
     }
     else if (line === MACRO_RESTART_QUEUES) {
       // Laravel-native: signals all workers (queue:work + Horizon) to restart.

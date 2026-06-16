@@ -40,9 +40,9 @@ describe('buildAwsUserData', () => {
   it('uses the same Ubuntu apt bootstrap as Hetzner (nginx + php-fpm)', () => {
     const ud = buildAwsUserData(phpConfig)
     expect(ud).toContain('#!/bin/bash')
-    expect(ud).toContain('apt-get install -y nginx')
-    expect(ud).toContain('php8.3-fpm')
-    expect(ud).toContain('mysql-server')
+    expect(ud).toContain('pantry install')
+    expect(ud).toContain('php.net@8.3')
+    expect(ud).toContain('mysql.com')
   })
 
   it('skips installs for a baked golden image', () => {
@@ -51,7 +51,7 @@ describe('buildAwsUserData', () => {
       infrastructure: { compute: { ...phpConfig.infrastructure!.compute, image: 'ami-123', bakedImage: true } },
     }
     const ud = buildAwsUserData(baked)
-    expect(ud).not.toContain('apt-get install -y nginx')
+    expect(ud).not.toContain('php.net@8.3')
     expect(ud).toContain('mkdir -p /var/www')
   })
 })
