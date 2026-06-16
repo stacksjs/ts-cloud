@@ -1837,9 +1837,10 @@ export interface ComputeConfig {
 
   /**
    * Application runtime to install on the instance.
-   * Shared by every site that gets deployed to this compute.
+   * Shared by every site that gets deployed to this compute. `'php'` provisions
+   * nginx + php-fpm + Composer (see {@link php}) for Laravel/PHP sites.
    */
-  runtime?: 'bun' | 'node' | 'deno'
+  runtime?: 'bun' | 'node' | 'deno' | 'php'
 
   /**
    * Pinned runtime version (e.g. '1.3.13'). Defaults to 'latest'.

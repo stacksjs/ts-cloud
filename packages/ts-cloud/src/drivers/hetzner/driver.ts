@@ -18,6 +18,7 @@ import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './clie
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
+import { buildPhpProvisionScript } from '../shared/php-provision'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -144,11 +145,25 @@ export class HetznerDriver implements CloudDriver {
         })
       : undefined
 
+    // PHP box: install nginx + php-fpm + Composer at first boot when the
+    // runtime is `php` or `compute.php` is configured. Built from the same
+    // generator nginx vhosts later fastcgi_pass against.
+    const wantsPhp = compute.runtime === 'php' || !!compute.php
+    const phpProvision = wantsPhp
+      ? buildPhpProvisionScript({
+          versions: compute.php?.versions,
+          default: compute.php?.default,
+          extensions: compute.php?.extensions,
+          installNginx: compute.webServer !== 'rpx',
+        })
+      : undefined
+
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
+      phpProvision,
       rpxProvision,
     })
     const userData = wrapCloudInitUserData(bootstrap)

@@ -5,10 +5,17 @@
  */
 
 export interface UbuntuBootstrapOptions {
-  runtime?: 'bun' | 'node' | 'deno'
+  runtime?: 'bun' | 'node' | 'deno' | 'php'
   runtimeVersion?: string
   systemPackages?: string[]
   database?: 'sqlite' | 'mysql' | 'postgres'
+  /**
+   * Shell commands that install PHP-FPM + nginx + Composer, built by
+   * {@link import('../shared/php-provision').buildPhpProvisionScript}. Spliced
+   * after the base packages so Laravel/PHP sites have their runtime ready
+   * before any deploy. Used when `runtime === 'php'` (or `compute.php` is set).
+   */
+  phpProvision?: string[]
   caddyfile?: string
   /**
    * Shell commands that install + start the rpx reverse-proxy gateway, built by
@@ -25,6 +32,7 @@ export function generateUbuntuAppCloudInit(options: UbuntuBootstrapOptions = {})
     runtimeVersion = 'latest',
     systemPackages = [],
     database,
+    phpProvision,
     caddyfile,
     rpxProvision,
   } = options
@@ -46,6 +54,14 @@ apt-get install -y curl tar gzip unzip git ca-certificates
   if (packages.size > 0) {
     script += `
 apt-get install -y ${[...packages].join(' ')}
+`
+  }
+
+  // PHP/Laravel box: install nginx + php-fpm + Composer before the runtime
+  // branch. A `php` runtime installs nothing in the bun/node/deno chain below.
+  if (phpProvision && phpProvision.length > 0) {
+    script += `
+${phpProvision.join('\n')}
 `
   }
 
