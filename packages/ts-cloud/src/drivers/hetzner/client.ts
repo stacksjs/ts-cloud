@@ -67,6 +67,40 @@ export interface CreateServerOptions {
   userData?: string
   labels?: Record<string, string>
   firewalls?: Array<{ firewall: number }>
+  /** Private networks to attach the server to (fleet topology). */
+  networks?: number[]
+}
+
+export interface HetznerNetwork {
+  id: number
+  name: string
+  ip_range: string
+}
+
+export interface HetznerLoadBalancer {
+  id: number
+  name: string
+  public_net?: { ipv4?: { ip?: string } }
+}
+
+export interface CreateNetworkOptions {
+  name: string
+  ipRange?: string
+  labels?: Record<string, string>
+}
+
+export interface CreateLoadBalancerOptions {
+  name: string
+  /** LB type (e.g. 'lb11'). @default 'lb11' */
+  type?: string
+  location?: string
+  networkZone?: string
+  network?: number
+  labels?: Record<string, string>
+  /** Listener services (e.g. 80→80, 443→443). */
+  services: Array<{ listenPort: number, destinationPort: number, protocol?: 'tcp' | 'http' }>
+  /** Target app servers by label selector (e.g. `ts-cloud/role=app`). */
+  labelSelector: string
 }
 
 export interface CreateFirewallOptions {
@@ -162,9 +196,61 @@ export class HetznerClient {
       user_data: options.userData,
       labels: options.labels,
       firewalls: options.firewalls,
+      networks: options.networks,
       start_after_create: true,
     })
     return { server: data.server, action: data.action }
+  }
+
+  // ── Private networks (fleet) ────────────────────────────────────────────
+  async listNetworks(): Promise<HetznerNetwork[]> {
+    const data = await this.request<{ networks: HetznerNetwork[] }>('GET', '/networks')
+    return data.networks
+  }
+
+  async createNetwork(options: CreateNetworkOptions): Promise<HetznerNetwork> {
+    const ipRange = options.ipRange ?? '10.0.0.0/16'
+    const data = await this.request<{ network: HetznerNetwork }>('POST', '/networks', {
+      name: options.name,
+      ip_range: ipRange,
+      // A single cloud subnet covering the range, in eu-central (fsn1/nbg1/hel1).
+      subnets: [{ type: 'cloud', ip_range: ipRange, network_zone: 'eu-central' }],
+      labels: options.labels,
+    })
+    return data.network
+  }
+
+  async deleteNetwork(id: number): Promise<void> {
+    await this.request('DELETE', `/networks/${id}`)
+  }
+
+  // ── Load balancers (fleet) ──────────────────────────────────────────────
+  async listLoadBalancers(): Promise<HetznerLoadBalancer[]> {
+    const data = await this.request<{ load_balancers: HetznerLoadBalancer[] }>('GET', '/load_balancers')
+    return data.load_balancers
+  }
+
+  async createLoadBalancer(options: CreateLoadBalancerOptions): Promise<HetznerLoadBalancer> {
+    const data = await this.request<{ load_balancer: HetznerLoadBalancer }>('POST', '/load_balancers', {
+      name: options.name,
+      load_balancer_type: options.type ?? 'lb11',
+      location: options.location,
+      network_zone: options.network ? undefined : (options.networkZone ?? 'eu-central'),
+      network: options.network,
+      labels: options.labels,
+      // Route to app servers selected by label over the private network.
+      targets: [{ type: 'label_selector', label_selector: { selector: options.labelSelector }, use_private_ip: !!options.network }],
+      services: options.services.map(s => ({
+        protocol: s.protocol ?? 'tcp',
+        listen_port: s.listenPort,
+        destination_port: s.destinationPort,
+      })),
+    })
+    return data.load_balancer
+  }
+
+  async deleteLoadBalancer(id: number): Promise<void> {
+    await this.request('DELETE', `/load_balancers/${id}`)
   }
 
   async deleteServer(id: number): Promise<HetznerAction> {

@@ -19,6 +19,14 @@ import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { resolveFleetTopology } from '../shared/fleet'
+import { buildPhpProvisionScript } from '../shared/php-provision'
+import { buildServicesProvisionScript, buildDatabaseSetupScript } from '../shared/db-provision'
+import { buildUfwScript } from '../shared/ufw'
+import { buildAutoUpdatesScript } from '../shared/maintenance'
+import { buildMonitoringScript } from '../shared/monitoring'
+import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
+import { buildNotifierScript } from '../shared/notifications'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -99,6 +107,12 @@ export class HetznerDriver implements CloudDriver {
 
     const stackName = resolveProjectStackName(config, environment)
     const serverName = `${slug}-${environment}-app`
+
+    // Fleet topology: a load-balanced multi-app deployment with a dedicated
+    // services box takes a separate provisioning path.
+    const topology = resolveFleetTopology(compute)
+    if (topology.dedicatedServices || topology.appServers > 1)
+      return this.provisionFleet(options, topology)
 
     const existing = await readDriverState(stackName)
     if (existing?.serverId) {
@@ -218,36 +232,220 @@ export class HetznerDriver implements CloudDriver {
     return this.outputsFromState(state, running)
   }
 
-  /** Tear down the server + its ts-cloud firewall, and clear local state. */
+  /**
+   * Provision a load-balanced fleet: a private network, a dedicated services
+   * box (DB/cache/search), N app servers (nginx + php-fpm), and a load
+   * balancer fronting the app servers. App servers connect to the services box
+   * over the private network (wired into their `.env` at deploy time).
+   */
+  private async provisionFleet(
+    options: ProvisionComputeOptions,
+    topology: ReturnType<typeof resolveFleetTopology>,
+  ): Promise<ComputeStackOutputs> {
+    const { config, environment } = options
+    const slug = config.project.slug
+    const compute = config.infrastructure!.compute!
+    const stackName = resolveProjectStackName(config, environment)
+    const serverType = resolveHetznerServerType(compute.size)
+    const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
+    const location = config.hetzner?.location || this.location
+    const baked = compute.bakedImage === true
+
+    // Idempotency: a prior fleet (by LB label) → return its outputs.
+    const existingState = await readDriverState(stackName)
+    if (existingState?.loadBalancerId) {
+      const lbs = await this.client.listLoadBalancers().catch(() => [])
+      const lb = lbs.find(l => l.id === existingState.loadBalancerId)
+      if (lb) {
+        return {
+          appPublicIp: lb.public_net?.ipv4?.ip,
+          loadBalancerIp: lb.public_net?.ipv4?.ip,
+          servicesPrivateIp: existingState.servicesPrivateIp,
+          deployStoragePath: '/var/ts-cloud/staging',
+          sshUser: this.sshUser,
+        }
+      }
+    }
+
+    const sshKeyId = await this.ensureSshKey(slug, environment, tsCloudLabels(slug, environment, 'app'))
+
+    // 1. Private network connecting the whole fleet.
+    const netName = `${slug}-${environment}-net`
+    const networks = await this.client.listNetworks().catch(() => [])
+    const network = networks.find(n => n.name === netName)
+      ?? await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') })
+
+    // 2. Firewalls. App servers: SSH + 80/443. Services box: SSH + DB/cache/
+    //    search reachable only from the private network range.
+    const { firewall: appFw } = await this.ensureFirewall(
+      `${slug}-${environment}-app-fw`,
+      tsCloudLabels(slug, environment, 'app'),
+      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [] }),
+    )
+    const { firewall: svcFw } = await this.ensureFirewall(
+      `${slug}-${environment}-services-fw`,
+      tsCloudLabels(slug, environment, 'services'),
+      [
+        { direction: 'in', protocol: 'tcp', port: '22', source_ips: ['0.0.0.0/0', '::/0'] },
+        { direction: 'in', protocol: 'tcp', port: '3306', source_ips: [network.ip_range] },
+        { direction: 'in', protocol: 'tcp', port: '5432', source_ips: [network.ip_range] },
+        { direction: 'in', protocol: 'tcp', port: '6379', source_ips: [network.ip_range] },
+        { direction: 'in', protocol: 'tcp', port: '7700', source_ips: [network.ip_range] },
+      ],
+    )
+
+    // 3. Services box — DB/cache/search only (no php/nginx).
+    const servicesProvision = [
+      ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }),
+      ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
+      ...buildAutoUpdatesScript(true),
+      ...buildMonitoringScript(true),
+      ...buildAuthorizedKeysScript(compute.sshKeys),
+    ]
+    const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked }))
+    const { server: svcCreate, action: svcAction } = await this.client.createServer({
+      name: `${slug}-${environment}-services`,
+      serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
+      image,
+      location,
+      userData: servicesUserData,
+      labels: tsCloudLabels(slug, environment, 'services'),
+      sshKeys: sshKeyId ? [sshKeyId] : undefined,
+      firewalls: [{ firewall: svcFw.id }],
+      networks: [network.id],
+    })
+    await this.client.waitForAction(svcAction.id)
+    const svcRunning = await this.client.waitForServerRunning(svcCreate.id)
+    const servicesPrivateIp = svcRunning.private_net?.[0]?.ip
+
+    // 4. App servers — php + nginx, services installed remotely (not here).
+    const appProvision = [
+      ...buildAutoUpdatesScript(true),
+      ...buildMonitoringScript(true),
+      ...buildAuthorizedKeysScript(compute.sshKeys),
+      ...buildNotifierScript(config.notifications),
+    ]
+    const appPhp = buildPhpProvisionScript({
+      versions: compute.php?.versions,
+      default: compute.php?.default,
+      extensions: compute.php?.extensions,
+      installNginx: compute.webServer !== 'rpx',
+    })
+    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked }))
+    for (let i = 0; i < topology.appServers; i++) {
+      const { action } = await this.client.createServer({
+        name: `${slug}-${environment}-app-${i + 1}`,
+        serverType,
+        image,
+        location,
+        userData: appUserData,
+        labels: tsCloudLabels(slug, environment, 'app'),
+        sshKeys: sshKeyId ? [sshKeyId] : undefined,
+        firewalls: [{ firewall: appFw.id }],
+        networks: [network.id],
+      })
+      await this.client.waitForAction(action.id)
+    }
+
+    // 5. Load balancer fronting the app servers (selected by role label).
+    const lbName = `${slug}-${environment}-lb`
+    const lbs = await this.client.listLoadBalancers().catch(() => [])
+    const lb = lbs.find(l => l.name === lbName) ?? await this.client.createLoadBalancer({
+      name: lbName,
+      location,
+      network: network.id,
+      labels: tsCloudLabels(slug, environment, 'lb'),
+      labelSelector: `ts-cloud/project=${slug},ts-cloud/environment=${environment},ts-cloud/role=app`,
+      services: [
+        { listenPort: 80, destinationPort: 80 },
+        { listenPort: 443, destinationPort: 443 },
+      ],
+    })
+
+    const state: HetznerDriverState = {
+      provider: 'hetzner',
+      stackName,
+      networkId: network.id,
+      loadBalancerId: lb.id,
+      servicesServerId: svcCreate.id,
+      servicesPrivateIp,
+      publicIp: lb.public_net?.ipv4?.ip,
+      deployStoragePath: '/var/ts-cloud/staging',
+      sshUser: this.sshUser,
+    }
+    await writeDriverState(stackName, state)
+
+    return {
+      appPublicIp: lb.public_net?.ipv4?.ip,
+      loadBalancerIp: lb.public_net?.ipv4?.ip,
+      servicesPrivateIp,
+      deployStoragePath: '/var/ts-cloud/staging',
+      sshUser: this.sshUser,
+    }
+  }
+
+  /**
+   * Tear down the compute — single server or full fleet (load balancer, all
+   * app + services servers, firewalls, and the private network) — and clear
+   * local state.
+   */
   async destroyCompute(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }> {
     const { config, environment } = options
     const slug = config.project.slug
     const stackName = resolveProjectStackName(config, environment)
+    const state = await readDriverState(stackName)
     const destroyed: string[] = []
 
-    // Find the server via state, else by labels.
-    const state = await readDriverState(stackName)
-    let serverId = state?.serverId
-    if (!serverId) {
-      const targets = await this.findComputeTargets({ slug, environment, role: 'app' })
-      serverId = targets[0] ? Number(targets[0].id) : undefined
-    }
-    if (serverId) {
-      await this.client.deleteServer(serverId).catch(() => {})
-      destroyed.push(`server ${serverId}`)
+    // 1. Load balancer first (so it stops referencing the network).
+    const lbName = `${slug}-${environment}-lb`
+    const lbs = await this.client.listLoadBalancers().catch(() => [])
+    const lb = lbs.find(l => l.name === lbName)
+    if (lb) {
+      await this.client.deleteLoadBalancer(lb.id).catch(() => {})
+      destroyed.push(`load balancer ${lbName}`)
     }
 
-    // Delete the project's firewall (now that no server references it).
-    const firewallName = `${slug}-${environment}-app-fw`
+    // 2. All servers for this project/env (app + services roles), via state +
+    //    labels, deduped.
+    const allServers = await this.client.listServers().catch(() => [])
+    const serverIds = new Set<number>()
+    for (const s of allServers) {
+      if (matchesTsCloudLabels(s.labels, slug, environment, 'app') || matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+        serverIds.add(s.id)
+    }
+    if (state?.serverId) serverIds.add(state.serverId)
+    if (state?.servicesServerId) serverIds.add(state.servicesServerId)
+    for (const id of serverIds) {
+      await this.client.deleteServer(id).catch(() => {})
+      destroyed.push(`server ${id}`)
+    }
+
+    // 3. Firewalls (retry — can't delete until detached from deleting servers).
     const firewalls = await this.client.listFirewalls().catch(() => [])
-    const fw = firewalls.find(f => f.name === firewallName)
-    if (fw) {
-      // The firewall can't be deleted until detached from the (now deleting)
-      // server; retry briefly.
-      for (let i = 0; i < 10; i++) {
+    for (const name of [`${slug}-${environment}-app-fw`, `${slug}-${environment}-services-fw`]) {
+      const fw = firewalls.find(f => f.name === name)
+      if (!fw) continue
+      for (let i = 0; i < 12; i++) {
         try {
           await this.client.deleteFirewall(fw.id)
-          destroyed.push(`firewall ${firewallName}`)
+          destroyed.push(`firewall ${name}`)
+          break
+        }
+        catch {
+          await this.sleep(3000)
+        }
+      }
+    }
+
+    // 4. Private network (after servers detach).
+    const netName = `${slug}-${environment}-net`
+    const networks = await this.client.listNetworks().catch(() => [])
+    const net = networks.find(n => n.name === netName)
+    if (net) {
+      for (let i = 0; i < 12; i++) {
+        try {
+          await this.client.deleteNetwork(net.id)
+          destroyed.push(`network ${netName}`)
           break
         }
         catch {
@@ -511,9 +709,12 @@ export class HetznerDriver implements CloudDriver {
   private outputsFromState(state: HetznerDriverState, server?: { public_net: { ipv4?: { ip: string } } }): ComputeStackOutputs {
     return {
       deployStoragePath: state.deployStoragePath || '/var/ts-cloud/staging',
-      appInstanceId: String(state.serverId),
+      appInstanceId: state.serverId ? String(state.serverId) : undefined,
       appPublicIp: server?.public_net.ipv4?.ip || state.publicIp,
       sshUser: state.sshUser || this.sshUser,
+      // Fleet: surface the services box private IP so the deploy wires the
+      // app .env at it (DB/Redis/Meilisearch).
+      servicesPrivateIp: state.servicesPrivateIp,
     }
   }
 

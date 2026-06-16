@@ -16,6 +16,10 @@ export interface ComputeStackOutputs {
   appInstanceId?: string
   appPublicIp?: string
   sshUser?: string
+  /** Fleet: private IP of the dedicated services box (DB/cache/search). */
+  servicesPrivateIp?: string
+  /** Fleet: public IP of the load balancer fronting the app servers. */
+  loadBalancerIp?: string
 }
 
 export interface RemoteDeployInstanceResult {

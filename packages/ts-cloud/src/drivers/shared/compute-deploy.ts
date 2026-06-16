@@ -16,6 +16,7 @@ import {
 } from './deploy-script'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildManagedDbEnv } from './db-provision'
+import { buildFleetServicesEnv } from './fleet'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
@@ -82,9 +83,12 @@ export async function deploySiteRelease(
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
     const appBase = `/var/www/${siteName}`
 
-    // Auto-wire DB_* from infrastructure.database (on-box or managed) into the
-    // app's .env. Explicit site.env values always win.
-    const dbEnv = buildManagedDbEnv(config.infrastructure?.appDatabase)
+    // Auto-wire DB_* into the app's .env. In a fleet (dedicated services box),
+    // point DB/Redis/Meilisearch at the services box's private IP; otherwise
+    // use the on-box/managed database host. Explicit site.env values win.
+    const dbEnv = outputs.servicesPrivateIp
+      ? buildFleetServicesEnv(outputs.servicesPrivateIp, config.infrastructure?.appDatabase)
+      : buildManagedDbEnv(config.infrastructure?.appDatabase)
     const siteWithEnv = Object.keys(dbEnv).length > 0
       ? { ...site, env: { ...dbEnv, ...(site.env || {}) } }
       : site

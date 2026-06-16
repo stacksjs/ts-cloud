@@ -11,6 +11,11 @@ export interface HetznerDriverState {
   publicIp?: string
   deployStoragePath?: string
   sshUser?: string
+  /** Fleet: network/LB ids + the services box private IP, for deploy + teardown. */
+  networkId?: number
+  loadBalancerId?: number
+  servicesServerId?: number
+  servicesPrivateIp?: string
 }
 
 const STATE_DIR = '.ts-cloud/state'
