@@ -1722,6 +1722,23 @@ export interface ComputeConfig {
   size?: InstanceSize
 
   /**
+   * Number of application servers (Forge load-balanced fleet). When > 1, a load
+   * balancer is provisioned in front and a private network connects the fleet;
+   * the app is deployed to every app server. Pair with {@link servicesServer}
+   * so the database/cache/search live on one shared box. @default 1
+   */
+  appServers?: number
+
+  /**
+   * Provision a **dedicated services server** (its own box) running the
+   * configured {@link managedServices} (MySQL/Redis/Meilisearch), instead of
+   * co-locating them on the app server(s). App servers then point their `.env`
+   * at this box over the private network. Required for a multi-app fleet so all
+   * app servers share one database/cache. `true` uses the default size.
+   */
+  servicesServer?: boolean | { size?: InstanceSize }
+
+  /**
    * Mixed instance fleet for cost optimization
    * Allows combining different sizes and spot instances
    *
