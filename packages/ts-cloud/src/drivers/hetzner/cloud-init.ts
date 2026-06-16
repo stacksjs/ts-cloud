@@ -16,6 +16,12 @@ export interface UbuntuBootstrapOptions {
    * before any deploy. Used when `runtime === 'php'` (or `compute.php` is set).
    */
   phpProvision?: string[]
+  /**
+   * Shell commands that install on-box services (database engine, redis,
+   * memcached, meilisearch) and create the app database + user, built by
+   * {@link import('../shared/db-provision')}. Spliced after the PHP provision.
+   */
+  servicesProvision?: string[]
   caddyfile?: string
   /**
    * Shell commands that install + start the rpx reverse-proxy gateway, built by
@@ -33,6 +39,7 @@ export function generateUbuntuAppCloudInit(options: UbuntuBootstrapOptions = {})
     systemPackages = [],
     database,
     phpProvision,
+    servicesProvision,
     caddyfile,
     rpxProvision,
   } = options
@@ -62,6 +69,14 @@ apt-get install -y ${[...packages].join(' ')}
   if (phpProvision && phpProvision.length > 0) {
     script += `
 ${phpProvision.join('\n')}
+`
+  }
+
+  // On-box services (database engine, redis, memcached, meilisearch) + app
+  // database/user creation. Runs after PHP so the engine client is available.
+  if (servicesProvision && servicesProvision.length > 0) {
+    script += `
+${servicesProvision.join('\n')}
 `
   }
 

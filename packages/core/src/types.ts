@@ -1121,8 +1121,26 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  engine?: 'postgres' | 'mysql'
+  engine?: 'postgres' | 'mysql' | 'mariadb'
   instanceType?: string
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // On-box / app database wiring (Forge single-server model). When the box
+  // installs a database engine (`compute.services`), these create the app's
+  // database + user at provision time. `host`/`port` point a PHP app at a
+  // managed database instead.
+  // ──────────────────────────────────────────────────────────────────────────
+
+  /** Database/schema name to create (e.g. `forge`). */
+  name?: string
+  /** Application database user to create. */
+  username?: string
+  /** Password for {@link username}. */
+  password?: string
+  /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
+  host?: string
+  /** Port (defaults: mysql/mariadb 3306, postgres 5432). */
+  port?: number
 }
 
 export interface CacheConfig {

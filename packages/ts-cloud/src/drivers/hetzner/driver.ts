@@ -19,6 +19,7 @@ import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildPhpProvisionScript } from '../shared/php-provision'
+import { buildDatabaseSetupScript, buildServicesProvisionScript } from '../shared/db-provision'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -158,12 +159,22 @@ export class HetznerDriver implements CloudDriver {
         })
       : undefined
 
+    // On-box services (database engine, redis, memcached, meilisearch) + the
+    // app database/user, when `compute.services` is configured.
+    const servicesProvision = compute.services
+      ? [
+          ...buildServicesProvisionScript(compute.services),
+          ...buildDatabaseSetupScript(config.infrastructure?.database, compute.services),
+        ]
+      : undefined
+
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
       runtimeVersion: compute.runtimeVersion || 'latest',
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
       phpProvision,
+      servicesProvision,
       rpxProvision,
     })
     const userData = wrapCloudInitUserData(bootstrap)

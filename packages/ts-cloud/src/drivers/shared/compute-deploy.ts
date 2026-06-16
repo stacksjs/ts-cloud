@@ -14,6 +14,7 @@ import {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './deploy-script'
+import { buildManagedDbEnv } from './db-provision'
 import { buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript } from './nginx-vhost'
@@ -79,9 +80,16 @@ export async function deploySiteRelease(
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
     const appBase = `/var/www/${siteName}`
 
+    // Auto-wire DB_* from infrastructure.database (on-box or managed) into the
+    // app's .env. Explicit site.env values always win.
+    const dbEnv = buildManagedDbEnv(config.infrastructure?.database)
+    const siteWithEnv = Object.keys(dbEnv).length > 0
+      ? { ...site, env: { ...dbEnv, ...(site.env || {}) } }
+      : site
+
     const deployScript = buildLaravelDeployScript({
       siteName,
-      site,
+      site: siteWithEnv,
       releaseId: sha,
       appBase,
       defaultPhpVersion: phpVersion,
