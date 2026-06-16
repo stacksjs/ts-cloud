@@ -1945,6 +1945,50 @@ export interface ComputeConfig {
    * the app at a managed/RDS database instead).
    */
   services?: ComputeServicesConfig
+
+  /**
+   * Host firewall (UFW). When enabled, only SSH + the listed ports are open.
+   * On Hetzner this complements the cloud firewall; on a bare box it's the
+   * primary firewall. @default { enabled: true } for PHP boxes
+   */
+  firewall?: ComputeFirewallConfig
+
+  /**
+   * Automatic unattended security/system updates (Forge's "maintenance"). When
+   * enabled, installs `unattended-upgrades` and enables daily auto-updates.
+   * @default true for PHP boxes
+   */
+  autoUpdates?: boolean
+
+  /**
+   * Scheduled database backups (powered by `ts-backups`), synced to object
+   * storage. Off unless configured.
+   */
+  backups?: ComputeBackupConfig
+}
+
+/** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
+export interface ComputeFirewallConfig {
+  /** Enable UFW. @default true */
+  enabled?: boolean
+  /** TCP ports to allow in addition to SSH/80/443 (always allowed). */
+  allowedPorts?: number[]
+}
+
+/** Scheduled database backup configuration. See {@link ComputeConfig.backups}. */
+export interface ComputeBackupConfig {
+  /** Enable scheduled backups. @default false */
+  enabled?: boolean
+  /** Cron schedule for the backup run. @default '0 2 * * *' (daily 02:00) */
+  schedule?: string
+  /** Keep the newest N backups locally. @default 5 */
+  retentionCount?: number
+  /** Delete local backups older than N days. @default 30 */
+  retentionDays?: number
+  /** Object-storage bucket (S3 or Hetzner) the backups are synced to. */
+  bucket?: string
+  /** S3-compatible endpoint (e.g. Hetzner object storage). Omit for AWS S3. */
+  endpoint?: string
 }
 
 /**

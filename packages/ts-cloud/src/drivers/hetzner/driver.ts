@@ -20,6 +20,10 @@ import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildPhpProvisionScript } from '../shared/php-provision'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from '../shared/db-provision'
+import { buildUfwScript } from '../shared/ufw'
+import { buildAutoUpdatesScript } from '../shared/maintenance'
+import { buildBackupProvisionScript } from '../shared/backups'
+import { buildMonitoringScript } from '../shared/monitoring'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -160,13 +164,26 @@ export class HetznerDriver implements CloudDriver {
       : undefined
 
     // On-box services (database engine, redis, memcached, meilisearch) + the
-    // app database/user, when `compute.services` is configured.
-    const servicesProvision = compute.services
-      ? [
-          ...buildServicesProvisionScript(compute.services),
-          ...buildDatabaseSetupScript(config.infrastructure?.database, compute.services),
-        ]
-      : undefined
+    // app database/user, host firewall (UFW), automatic system updates, and
+    // scheduled backups. PHP boxes default UFW + auto-updates on (Forge-style).
+    const phpBox = wantsPhp
+    const provisionExtras: string[] = []
+    if (compute.services) {
+      provisionExtras.push(
+        ...buildServicesProvisionScript(compute.services),
+        ...buildDatabaseSetupScript(config.infrastructure?.database, compute.services),
+      )
+    }
+    provisionExtras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
+    provisionExtras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
+    provisionExtras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
+    if (compute.backups?.enabled) {
+      provisionExtras.push(...buildBackupProvisionScript({
+        database: config.infrastructure?.database,
+        backups: compute.backups,
+      }))
+    }
+    const servicesProvision = provisionExtras.length > 0 ? provisionExtras : undefined
 
     const bootstrap = generateUbuntuAppCloudInit({
       runtime: compute.runtime || 'bun',
