@@ -1,10 +1,26 @@
 import { describe, expect, it } from 'bun:test'
 import {
+  buildNginxServiceScript,
   buildNginxVhost,
   buildNginxVhostScript,
   defaultWebDirectory,
   isPhpSiteType,
 } from '../../src/drivers/shared/nginx-vhost'
+
+describe('buildNginxServiceScript', () => {
+  it('sets up ts-cloud nginx on the pantry binary via a systemd unit', () => {
+    const script = buildNginxServiceScript().join('\n')
+    // Wrapper runs the pantry nginx binary inside pantry env.
+    expect(script).toContain('/usr/local/bin/ts-cloud-nginx')
+    expect(script).toContain('pantry env')
+    // Full nginx.conf includes the per-site vhosts and runs as www-data.
+    expect(script).toContain('include /etc/nginx/sites-enabled/*;')
+    expect(script).toContain('user www-data;')
+    // systemd unit on the box (not apt's nginx service).
+    expect(script).toContain('/etc/systemd/system/ts-cloud-nginx.service')
+    expect(script).toContain('systemctl enable ts-cloud-nginx')
+  })
+})
 
 describe('buildNginxVhost', () => {
   it('renders a Laravel vhost with public root + php-fpm fastcgi', () => {
@@ -89,8 +105,8 @@ describe('buildNginxVhostScript', () => {
     expect(script).toContain('cat > /etc/nginx/sites-available/app')
     expect(script).toContain('ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app')
     expect(script).toContain('rm -f /etc/nginx/sites-enabled/default')
-    expect(script).toContain('nginx -t')
-    expect(script).toContain('systemctl reload nginx')
+    expect(script).toContain('/usr/local/bin/ts-cloud-nginx -t')
+    expect(script).toContain('systemctl reload ts-cloud-nginx')
   })
 })
 

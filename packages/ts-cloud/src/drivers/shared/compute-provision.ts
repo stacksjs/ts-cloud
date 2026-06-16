@@ -12,6 +12,7 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { buildServicesProvisionScript, buildDatabaseSetupScript } from './db-provision'
 import { buildPhpProvisionScript } from './php-provision'
+import { buildNginxServiceScript } from './nginx-vhost'
 import { buildPantryBootstrapScript } from './package-manager'
 import { buildUfwScript } from './ufw'
 import { buildAutoUpdatesScript } from './maintenance'
@@ -47,6 +48,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   const needsPantry = phpBox || !!compute.managedServices
   const pantryBootstrap = needsPantry ? buildPantryBootstrapScript() : []
 
+  const useNginx = compute.webServer !== 'rpx'
   const phpProvision = phpBox
     ? [
         ...pantryBootstrap,
@@ -54,8 +56,11 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
           versions: compute.php?.versions,
           default: compute.php?.default,
           extensions: compute.php?.extensions,
-          installNginx: compute.webServer !== 'rpx',
+          installNginx: useNginx,
         }),
+        // Set up ts-cloud-managed nginx (config + systemd unit) on the
+        // pantry-installed nginx binary, ready for per-site vhosts.
+        ...(useNginx ? buildNginxServiceScript() : []),
       ]
     : undefined
 

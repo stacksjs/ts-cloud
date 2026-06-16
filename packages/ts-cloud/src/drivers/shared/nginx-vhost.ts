@@ -234,8 +234,98 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
     `ln -sf ${available} ${enabled}`,
     // Drop the stock default site so it doesn't shadow our server_name.
     'rm -f /etc/nginx/sites-enabled/default',
-    'nginx -t',
-    'systemctl reload nginx',
+    // Validate + reload via the ts-cloud nginx wrapper (pantry binary + env).
+    `${NGINX_WRAPPER} -t`,
+    // Reload if running, else (re)start so the first deploy brings nginx up.
+    'systemctl reload ts-cloud-nginx 2>/dev/null || systemctl restart ts-cloud-nginx 2>/dev/null || true',
   )
   return out
+}
+
+/** Wrapper that runs the pantry-installed nginx binary inside pantry's env. */
+export const NGINX_WRAPPER = '/usr/local/bin/ts-cloud-nginx'
+
+/**
+ * Set up ts-cloud-managed nginx on top of the pantry-installed nginx binary:
+ * a wrapper that runs nginx within `pantry env` (so it + its shared libs
+ * resolve), a full `/etc/nginx/nginx.conf` that `include`s the per-site vhosts,
+ * and a systemd unit on :80/:443. Replaces apt's nginx service (pantry's own
+ * nginx service serves a minimal :8080 default and isn't started here).
+ *
+ * Run once at provision time, after the nginx binary is installed.
+ */
+export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
+  return [
+    'mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/log/nginx /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi /var/lib/nginx/uwsgi /var/lib/nginx/scgi',
+    'getent passwd www-data >/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin www-data',
+    'chown -R www-data:www-data /var/lib/nginx /var/log/nginx',
+    // nginx wrapper — pantry env puts nginx + its libs on PATH/LD_LIBRARY_PATH.
+    `cat > ${NGINX_WRAPPER} <<'TS_CLOUD_NGINXBIN_EOF'`,
+    '#!/bin/sh',
+    `eval "$(cd ${projectDir} && pantry env 2>/dev/null)"`,
+    'NGINX_BIN=$(command -v nginx || echo /opt/pantry/pantry/.bin/nginx)',
+    'exec "$NGINX_BIN" -c /etc/nginx/nginx.conf "$@"',
+    'TS_CLOUD_NGINXBIN_EOF',
+    `chmod +x ${NGINX_WRAPPER}`,
+    // Full nginx.conf: workers as www-data, logs/pid/temp under /var, and the
+    // per-site vhosts from sites-enabled.
+    'cat > /etc/nginx/nginx.conf <<\'TS_CLOUD_NGINXCONF_EOF\'',
+    'user www-data;',
+    'worker_processes auto;',
+    'pid /run/nginx.pid;',
+    'error_log /var/log/nginx/error.log;',
+    'events { worker_connections 1024; }',
+    'http {',
+    '    default_type application/octet-stream;',
+    '    types {',
+    '        text/html html htm;',
+    '        text/css css;',
+    '        application/javascript js;',
+    '        application/json json;',
+    '        image/svg+xml svg;',
+    '        image/png png;',
+    '        image/jpeg jpg jpeg;',
+    '        image/gif gif;',
+    '        image/x-icon ico;',
+    '        image/webp webp;',
+    '        font/woff2 woff2;',
+    '        font/woff woff;',
+    '        text/plain txt;',
+    '    }',
+    '    access_log /var/log/nginx/access.log;',
+    '    sendfile on;',
+    '    tcp_nopush on;',
+    '    keepalive_timeout 65;',
+    '    server_tokens off;',
+    '    client_max_body_size 100m;',
+    '    client_body_temp_path /var/lib/nginx/body;',
+    '    proxy_temp_path /var/lib/nginx/proxy;',
+    '    fastcgi_temp_path /var/lib/nginx/fastcgi;',
+    '    uwsgi_temp_path /var/lib/nginx/uwsgi;',
+    '    scgi_temp_path /var/lib/nginx/scgi;',
+    '    include /etc/nginx/sites-enabled/*;',
+    '}',
+    'TS_CLOUD_NGINXCONF_EOF',
+    // systemd unit running nginx via the wrapper on :80/:443.
+    'cat > /etc/systemd/system/ts-cloud-nginx.service <<\'TS_CLOUD_NGINXUNIT_EOF\'',
+    '[Unit]',
+    'Description=ts-cloud nginx (pantry)',
+    'After=network.target',
+    '',
+    '[Service]',
+    'Type=simple',
+    `ExecStartPre=${NGINX_WRAPPER} -t`,
+    `ExecStart=${NGINX_WRAPPER} -g 'daemon off;'`,
+    `ExecReload=${NGINX_WRAPPER} -s reload`,
+    'Restart=always',
+    'RestartSec=3',
+    '',
+    '[Install]',
+    'WantedBy=multi-user.target',
+    'TS_CLOUD_NGINXUNIT_EOF',
+    'systemctl daemon-reload',
+    'systemctl enable ts-cloud-nginx',
+    // Start now if there is at least one site; otherwise it starts on first deploy.
+    'ls /etc/nginx/sites-enabled/* >/dev/null 2>&1 && systemctl restart ts-cloud-nginx || true',
+  ]
 }
