@@ -24,6 +24,7 @@ import { buildUfwScript } from '../shared/ufw'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildBackupProvisionScript } from '../shared/backups'
 import { buildMonitoringScript } from '../shared/monitoring'
+import { buildNotifierScript } from '../shared/notifications'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -168,6 +169,8 @@ export class HetznerDriver implements CloudDriver {
     // scheduled backups. PHP boxes default UFW + auto-updates on (Forge-style).
     const phpBox = wantsPhp
     const provisionExtras: string[] = []
+    // On-box notifier first, so cron-driven jobs (backups) can call it.
+    provisionExtras.push(...buildNotifierScript(config.notifications))
     if (compute.services) {
       provisionExtras.push(
         ...buildServicesProvisionScript(compute.services),

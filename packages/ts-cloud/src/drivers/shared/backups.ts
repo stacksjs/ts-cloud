@@ -101,10 +101,11 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     // Runner: dump via ts-backups, then sync off-box.
     `cat > ${BACKUP_RUNNER_PATH} <<'TS_CLOUD_BACKUP_RUN_EOF'`,
     '#!/bin/bash',
-    'set -euo pipefail',
+    'set -uo pipefail',
+    'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
     'cd /etc/ts-cloud',
-    'bunx ts-backups backup --config /etc/ts-cloud/backups.config.ts',
-    syncCmd,
+    'if ! bunx ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed (dump)"; exit 1; fi',
+    `if ! ${syncCmd}; then notify "❌ ts-cloud backup failed (upload)"; exit 1; fi`,
     'TS_CLOUD_BACKUP_RUN_EOF',
     `chmod +x ${BACKUP_RUNNER_PATH}`,
     // Cron entry.

@@ -86,6 +86,13 @@ export interface CloudConfig {
   sites?: Record<string, SiteConfig>
 
   /**
+   * Notification channels for deploy, SSL, health-check, and backup events
+   * (Slack, Discord, Telegram, email, generic webhook). Project-wide default;
+   * a site may override via {@link SiteConfig.notifications}.
+   */
+  notifications?: NotificationsConfig
+
+  /**
    * AWS-specific configuration
    */
   aws?: AwsConfig
@@ -997,6 +1004,12 @@ export interface SiteConfig {
 
   /** Post-deploy health check (Forge-style) pinged after `current` is flipped. */
   healthCheck?: { path?: string }
+
+  /**
+   * Per-site notification channels, overriding the project-wide
+   * {@link CloudConfig.notifications} for this site's events.
+   */
+  notifications?: NotificationsConfig
 }
 
 /**
@@ -1097,6 +1110,30 @@ export interface DaemonConfig {
   restart?: 'always' | 'on-failure' | 'no'
   /** Optional explicit unit name; defaults to a slug of the command. */
   name?: string
+}
+
+/** A lifecycle event that can trigger a notification. */
+export type NotificationEvent = 'deploy' | 'deploy-failed' | 'ssl' | 'health' | 'backup'
+
+/**
+ * Notification channels (Forge-style). Configure any subset; each configured
+ * channel receives the events listed in {@link events} (all events by default).
+ */
+export interface NotificationsConfig {
+  /** Slack incoming-webhook URL. */
+  slack?: { webhookUrl: string }
+  /** Discord webhook URL. */
+  discord?: { webhookUrl: string }
+  /** Telegram bot token + chat id. */
+  telegram?: { botToken: string, chatId: string }
+  /** Email recipients (sent via ts-cloud's email/SES client). */
+  email?: { to: string | string[], from?: string }
+  /** Generic webhook — receives `{ event, message }` as JSON. */
+  webhook?: { url: string, method?: 'POST' | 'GET' }
+  /**
+   * Which events to notify on. @default all events
+   */
+  events?: NotificationEvent[]
 }
 
 export interface VpcConfig {

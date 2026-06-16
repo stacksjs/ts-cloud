@@ -16,6 +16,7 @@ import {
 } from './deploy-script'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildManagedDbEnv } from './db-provision'
+import { resolveNotifications, sendNotifications } from './notifications'
 import { buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript } from './nginx-vhost'
@@ -132,7 +133,9 @@ export async function deploySiteRelease(
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })
 
+    const notifications = resolveNotifications(config.notifications, site.notifications)
     if (!phpResult.success) {
+      await sendNotifications(notifications, 'deploy-failed', `❌ Deploy of ${slug}/${siteName}@${sha} failed: ${phpResult.error || 'unknown error'}`)
       return {
         success: false,
         error: phpResult.error || 'Remote PHP deploy failed',
@@ -140,6 +143,8 @@ export async function deploySiteRelease(
         perInstance: phpResult.perInstance,
       }
     }
+    const deployedUrl = site.domain ? ` → https://${site.domain}` : ''
+    await sendNotifications(notifications, 'deploy', `✅ Deployed ${slug}/${siteName}@${sha}${deployedUrl}`)
     return {
       success: true,
       instanceCount: phpResult.instanceCount,
