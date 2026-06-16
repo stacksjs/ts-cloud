@@ -170,10 +170,10 @@ export async function deploySiteRelease(
     ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', siteName)
     : buildLocalArtifactFetch(uploadResult.artifactRef, siteName)
 
-  // server-static sites are shipped to /var/www/<site> (no systemd) and served
-  // by the operator's own proxy (e.g. rpx + tlsx); server-app sites run as a
-  // systemd service.
-  const remoteScript = resolveSiteKind(site) === 'server-static'
+  // server-static sites are shipped to /var/www/<site> (no systemd); server-app
+  // sites run as a systemd service.
+  const kind = resolveSiteKind(site)
+  const baseScript = kind === 'server-static'
     ? buildStaticSiteDeployScript({
         siteName,
         artifactFetch,
@@ -189,6 +189,28 @@ export async function deploySiteRelease(
         port: site.port,
         preStartCommands: site.preStart,
       })
+
+  // A static site served on the box can be fronted by nginx (default) with
+  // HTTP Basic auth + Let's Encrypt — this is how the ts-cloud UI is published
+  // behind htpasswd. When the operator runs rpx instead, skip the vhost.
+  const compute = config.infrastructure?.compute
+  const wantsNginxStatic = kind === 'server-static' && compute?.webServer !== 'rpx' && !!site.domain
+  const staticVhost = wantsNginxStatic
+    ? buildNginxVhostScript({
+        siteName,
+        domain: site.domain!,
+        aliases: site.aliases,
+        type: site.type === 'spa' ? 'spa' : 'static',
+        appDir: `/var/www/${siteName}`,
+        webDirectory: '',
+        redirects: site.redirects,
+        auth: site.auth && site.auth.enabled !== false && site.auth.password
+          ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+          : undefined,
+      })
+    : []
+  const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
+  const remoteScript = [...baseScript, ...staticVhost, ...staticSsl]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)
   const result = await driver.runRemoteDeploy({
