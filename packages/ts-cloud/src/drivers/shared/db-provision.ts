@@ -47,10 +47,12 @@ export function buildServicesProvisionScript(services: ComputeServicesConfig = {
     const svc = enabled(services.mysql) ? 'mysql' : 'mariadb'
     out.push(`apt-get install -y ${pkg}`)
     if (bind) {
-      // conf.d is read by both MySQL and MariaDB.
+      // The default `bind-address = 127.0.0.1` lives in mysqld.cnf; neutralize
+      // any existing bind directives, then drop a `zz-` override into the same
+      // dir (read last, so it wins) for both MySQL + MariaDB layouts.
       out.push(
-        'mkdir -p /etc/mysql/conf.d',
-        'printf \'[mysqld]\\nbind-address = 0.0.0.0\\n\' > /etc/mysql/conf.d/zz-ts-cloud-bind.cnf',
+        'find /etc/mysql -name \'*.cnf\' -exec sed -i \'s/^[[:space:]]*bind-address.*/bind-address = 0.0.0.0/; s/^[[:space:]]*mysqlx-bind-address.*/mysqlx-bind-address = 0.0.0.0/\' {} + 2>/dev/null || true',
+        'for d in /etc/mysql/mysql.conf.d /etc/mysql/mariadb.conf.d; do [ -d "$d" ] && printf \'[mysqld]\\nbind-address = 0.0.0.0\\n\' > "$d/zz-ts-cloud-bind.cnf"; done',
       )
     }
     out.push(`systemctl enable ${svc}`, `systemctl restart ${svc}`)
