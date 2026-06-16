@@ -50,6 +50,22 @@ function backupEntryFor(database: DatabaseConfig): string | null {
 /** Generate the `ts-backups` config file content from the database config. */
 export function buildBackupsConfigTs(database: DatabaseConfig | undefined, backups: ComputeBackupConfig): string {
   const entry = database ? backupEntryFor(database) : null
+  // Use ts-backups' native S3 destination (uploads every backup off-box, S3 +
+  // S3-compatible endpoints like Hetzner Object Storage) instead of a separate
+  // `aws s3 sync`. `optional: false` so an upload failure fails the run.
+  const destinations = backups.bucket
+    ? [
+        '  destinations: [',
+        '    {',
+        '      type: \'s3\',',
+        `      bucket: '${backups.bucket}',`,
+        '      prefix: \'db-backups\',',
+        ...(backups.endpoint ? [`      endpoint: '${backups.endpoint}',`] : []),
+        '      optional: false,',
+        '    },',
+        '  ],',
+      ]
+    : []
   return [
     'import type { BackupConfig } from \'ts-backups\'',
     '',
@@ -63,6 +79,7 @@ export function buildBackupsConfigTs(database: DatabaseConfig | undefined, backu
     '  databases: [',
     ...(entry ? [entry] : []),
     '  ],',
+    ...destinations,
     '}',
     '',
     'export default config',
@@ -87,28 +104,22 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
   const schedule = backups.schedule || '0 2 * * *'
   const configTs = buildBackupsConfigTs(database, backups)
 
-  // Object-storage sync. Hetzner object storage is S3-compatible via an endpoint.
-  const syncCmd = backups.bucket
-    ? `aws s3 sync ${BACKUP_OUTPUT_DIR} s3://${backups.bucket}/db-backups${backups.endpoint ? ` --endpoint-url ${backups.endpoint}` : ''}`
-    : `echo "ts-cloud: no backup bucket configured; keeping ${BACKUP_OUTPUT_DIR} local only"`
-
   return [
     'export DEBIAN_FRONTEND=noninteractive',
     `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR}`,
     // Bun runtime for ts-backups (no-op if already installed).
     'command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun)',
-    // Generated ts-backups config.
+    // Generated ts-backups config (dump + native off-box S3 upload).
     `cat > ${BACKUP_CONFIG_PATH} <<'TS_CLOUD_BACKUP_CFG_EOF'`,
     configTs.replace(/\n$/, ''),
     'TS_CLOUD_BACKUP_CFG_EOF',
-    // Runner: dump via ts-backups, then sync off-box.
+    // Runner: ts-backups dumps + uploads to the configured destination natively.
     `cat > ${BACKUP_RUNNER_PATH} <<'TS_CLOUD_BACKUP_RUN_EOF'`,
     '#!/bin/bash',
     'set -uo pipefail',
     'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
     'cd /etc/ts-cloud',
-    'if ! bunx ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed (dump)"; exit 1; fi',
-    `if ! ${syncCmd}; then notify "❌ ts-cloud backup failed (upload)"; exit 1; fi`,
+    'if ! bunx ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
     'TS_CLOUD_BACKUP_RUN_EOF',
     `chmod +x ${BACKUP_RUNNER_PATH}`,
     // Cron entry.
