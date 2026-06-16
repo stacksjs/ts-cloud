@@ -109,6 +109,9 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `mkdir -p /etc/ts-cloud ${BACKUP_OUTPUT_DIR}`,
     // Bun runtime for ts-backups (no-op if already installed).
     'command -v bun >/dev/null 2>&1 || (curl -fsSL https://bun.sh/install | bash && ln -sf /root/.bun/bin/bun /usr/local/bin/bun)',
+    // Install ts-backups globally at provision time so scheduled runs don't
+    // depend on the registry being reachable each night.
+    'bun add -g ts-backups || true',
     // Generated ts-backups config (dump + native off-box S3 upload).
     `cat > ${BACKUP_CONFIG_PATH} <<'TS_CLOUD_BACKUP_CFG_EOF'`,
     configTs.replace(/\n$/, ''),
@@ -117,9 +120,11 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `cat > ${BACKUP_RUNNER_PATH} <<'TS_CLOUD_BACKUP_RUN_EOF'`,
     '#!/bin/bash',
     'set -uo pipefail',
+    // cron has a minimal PATH; make the globally-installed bun/ts-backups reachable.
+    'export PATH="/root/.bun/bin:/usr/local/bin:$PATH"',
     'notify() { [ -x /usr/local/bin/ts-cloud-notify ] && /usr/local/bin/ts-cloud-notify "$1" || true; }',
     'cd /etc/ts-cloud',
-    'if ! bunx ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
+    'if ! ts-backups backup --config /etc/ts-cloud/backups.config.ts; then notify "❌ ts-cloud backup failed"; exit 1; fi',
     'TS_CLOUD_BACKUP_RUN_EOF',
     `chmod +x ${BACKUP_RUNNER_PATH}`,
     // Cron entry.

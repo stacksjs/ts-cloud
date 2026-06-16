@@ -72,7 +72,8 @@ describe('backups (ts-backups integration)', () => {
       backups: { enabled: true, bucket: 'my-backups', endpoint: 'https://hel1.your-objectstorage.com', schedule: '0 3 * * *' },
     }).join('\n')
     expect(script).toContain('bun.sh/install')
-    expect(script).toContain('bunx ts-backups backup')
+    expect(script).toContain('bun add -g ts-backups')
+    expect(script).toContain('ts-backups backup --config')
     expect(script).not.toContain('aws s3 sync')
     expect(script).toContain('0 3 * * * root /usr/local/bin/ts-cloud-backup.sh')
   })

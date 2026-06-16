@@ -303,20 +303,30 @@ export class HetznerDriver implements CloudDriver {
       ...buildAuthorizedKeysScript(compute.sshKeys),
     ]
     const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked }))
-    const { server: svcCreate, action: svcAction } = await this.client.createServer({
-      name: `${slug}-${environment}-services`,
-      serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
-      image,
-      location,
-      userData: servicesUserData,
-      labels: tsCloudLabels(slug, environment, 'services'),
-      sshKeys: sshKeyId ? [sshKeyId] : undefined,
-      firewalls: [{ firewall: svcFw.id }],
-      networks: [network.id],
-    })
-    await this.client.waitForAction(svcAction.id)
-    const svcRunning = await this.client.waitForServerRunning(svcCreate.id)
-    const servicesPrivateIp = svcRunning.private_net?.[0]?.ip
+    // Idempotent: reuse an existing services box (by role label) rather than
+    // creating a duplicate on re-run.
+    const all = await this.client.listServers().catch(() => [])
+    const newServerIds: number[] = []
+    let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+    if (!svcServer) {
+      const { server, action } = await this.client.createServer({
+        name: `${slug}-${environment}-services`,
+        serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
+        image,
+        location,
+        userData: servicesUserData,
+        labels: tsCloudLabels(slug, environment, 'services'),
+        sshKeys: sshKeyId ? [sshKeyId] : undefined,
+        firewalls: [{ firewall: svcFw.id }],
+        networks: [network.id],
+      })
+      await this.client.waitForAction(action.id)
+      svcServer = await this.client.waitForServerRunning(server.id)
+      newServerIds.push(server.id)
+    }
+    const servicesServerId = svcServer.id
+    const servicesPrivateIp = svcServer.private_net?.[0]?.ip
+      ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
 
     // 4. App servers — php + nginx, services installed remotely (not here).
     const appProvision = [
@@ -332,8 +342,19 @@ export class HetznerDriver implements CloudDriver {
       installNginx: compute.webServer !== 'rpx',
     })
     const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked }))
-    const appServerIds: number[] = []
-    for (let i = 0; i < topology.appServers; i++) {
+
+    // Reconcile the app-server set to the desired count: reuse existing ones,
+    // create only the delta, and destroy extras on scale-down (so stale boxes
+    // don't keep serving traffic via the LB's label selector).
+    const existingApp = all.filter(s => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
+    const appServerIds: number[] = existingApp.map(s => s.id)
+    if (existingApp.length > topology.appServers) {
+      for (const extra of existingApp.slice(topology.appServers)) {
+        await this.client.deleteServer(extra.id).catch(() => {})
+        appServerIds.splice(appServerIds.indexOf(extra.id), 1)
+      }
+    }
+    for (let i = existingApp.length; i < topology.appServers; i++) {
       const { server, action } = await this.client.createServer({
         name: `${slug}-${environment}-app-${i + 1}`,
         serverType,
@@ -347,13 +368,13 @@ export class HetznerDriver implements CloudDriver {
       })
       await this.client.waitForAction(action.id)
       appServerIds.push(server.id)
+      newServerIds.push(server.id)
     }
 
-    // Wait for SSH + cloud-init on every box (app + services) before returning,
-    // so the deploy doesn't race the bootstrap (php/nginx/services installs).
-    if (this.waitForBoot) {
-      const waitIds = [svcCreate.id, ...appServerIds]
-      await Promise.all(waitIds.map(async (id) => {
+    // Wait for SSH + cloud-init on freshly-created boxes before returning, so
+    // the deploy doesn't race the bootstrap (php/nginx/services installs).
+    if (this.waitForBoot && newServerIds.length > 0) {
+      await Promise.all(newServerIds.map(async (id) => {
         const running = await this.client.waitForServerRunning(id)
         const ip = running.public_net.ipv4?.ip
         if (ip) {
@@ -363,37 +384,48 @@ export class HetznerDriver implements CloudDriver {
       }))
     }
 
-    // 5. Load balancer fronting the app servers (selected by role label).
+    // 5. Load balancer fronting the app servers — only when the topology calls
+    // for one (a single app server + dedicated services box needs no LB).
     const lbName = `${slug}-${environment}-lb`
-    const lbs = await this.client.listLoadBalancers().catch(() => [])
-    const lb = lbs.find(l => l.name === lbName) ?? await this.client.createLoadBalancer({
-      name: lbName,
-      location,
-      network: network.id,
-      labels: tsCloudLabels(slug, environment, 'lb'),
-      labelSelector: `ts-cloud/project=${slug},ts-cloud/environment=${environment},ts-cloud/role=app`,
-      services: [
-        { listenPort: 80, destinationPort: 80 },
-        { listenPort: 443, destinationPort: 443 },
-      ],
-    })
+    let lbIp: string | undefined
+    let lbId: number | undefined
+    if (topology.loadBalancer) {
+      const lbs = await this.client.listLoadBalancers().catch(() => [])
+      const lb = lbs.find(l => l.name === lbName) ?? await this.client.createLoadBalancer({
+        name: lbName,
+        location,
+        network: network.id,
+        labels: tsCloudLabels(slug, environment, 'lb'),
+        labelSelector: `ts-cloud/project=${slug},ts-cloud/environment=${environment},ts-cloud/role=app`,
+        services: [
+          { listenPort: 80, destinationPort: 80 },
+          { listenPort: 443, destinationPort: 443 },
+        ],
+      })
+      lbId = lb.id
+      lbIp = lb.public_net?.ipv4?.ip
+    }
+
+    // Public endpoint: the LB if present, else the (single) app server's IP.
+    const appPublicIp = lbIp
+      ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
 
     const state: HetznerDriverState = {
       provider: 'hetzner',
       stackName,
       networkId: network.id,
-      loadBalancerId: lb.id,
-      servicesServerId: svcCreate.id,
+      loadBalancerId: lbId,
+      servicesServerId,
       servicesPrivateIp,
-      publicIp: lb.public_net?.ipv4?.ip,
+      publicIp: appPublicIp,
       deployStoragePath: '/var/ts-cloud/staging',
       sshUser: this.sshUser,
     }
     await writeDriverState(stackName, state)
 
     return {
-      appPublicIp: lb.public_net?.ipv4?.ip,
-      loadBalancerIp: lb.public_net?.ipv4?.ip,
+      appPublicIp,
+      loadBalancerIp: lbIp,
       servicesPrivateIp,
       deployStoragePath: '/var/ts-cloud/staging',
       sshUser: this.sshUser,
@@ -417,8 +449,12 @@ export class HetznerDriver implements CloudDriver {
     const lbs = await this.client.listLoadBalancers().catch(() => [])
     const lb = lbs.find(l => l.name === lbName)
     if (lb) {
-      await this.client.deleteLoadBalancer(lb.id).catch(() => {})
-      destroyed.push(`load balancer ${lbName}`)
+      // Only report what was actually removed — don't claim success on failure.
+      try {
+        await this.client.deleteLoadBalancer(lb.id)
+        destroyed.push(`load balancer ${lbName}`)
+      }
+      catch { /* surfaced by the leftover resource on the next run */ }
     }
 
     // 2. All servers for this project/env (app + services roles), via state +
@@ -432,8 +468,11 @@ export class HetznerDriver implements CloudDriver {
     if (state?.serverId) serverIds.add(state.serverId)
     if (state?.servicesServerId) serverIds.add(state.servicesServerId)
     for (const id of serverIds) {
-      await this.client.deleteServer(id).catch(() => {})
-      destroyed.push(`server ${id}`)
+      try {
+        await this.client.deleteServer(id)
+        destroyed.push(`server ${id}`)
+      }
+      catch { /* leftover surfaces on the next teardown */ }
     }
 
     // 3. Firewalls (retry — can't delete until detached from deleting servers).

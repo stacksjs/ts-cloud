@@ -244,6 +244,18 @@ export class HetznerClient {
         protocol: s.protocol ?? 'tcp',
         listen_port: s.listenPort,
         destination_port: s.destinationPort,
+        // HTTP health check on :80 so a box only enters rotation once nginx +
+        // the app actually respond — a bare TCP check would route to a box
+        // returning 502 before the app is deployed. (HTTPS health checks need
+        // the cert in place, so probe over HTTP on the destination port.)
+        health_check: {
+          protocol: 'http',
+          port: 80,
+          interval: 15,
+          timeout: 10,
+          retries: 3,
+          http: { path: '/', status_codes: ['2??', '3??'] },
+        },
       })),
     })
     return data.load_balancer
