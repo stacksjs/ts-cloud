@@ -4,8 +4,9 @@ import { join } from 'node:path'
 export interface HetznerDriverState {
   provider: 'hetzner'
   stackName: string
-  serverId: number
-  serverName: string
+  /** Absent after teardown (destroyCompute clears it). */
+  serverId?: number
+  serverName?: string
   firewallId?: number
   publicIp?: string
   deployStoragePath?: string

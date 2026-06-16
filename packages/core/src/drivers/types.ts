@@ -79,6 +79,14 @@ export interface CloudDriver {
   /** Provision compute infrastructure (Hetzner). AWS uses InfrastructureGenerator + CFN. */
   provisionComputeInfrastructure?(options: ProvisionComputeOptions): Promise<ComputeStackOutputs>
 
+  /**
+   * Tear down the lightweight single-server compute (instance + security
+   * group/firewall + local state) provisioned by
+   * {@link provisionComputeInfrastructure}. Returns a human-readable summary of
+   * what was destroyed. Not for CloudFormation-managed stacks.
+   */
+  destroyCompute?(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }>
+
   /** Read outputs needed for deploy (stack outputs, state file, or live API) */
   getComputeOutputs(options: ProvisionComputeOptions): Promise<ComputeStackOutputs>
 

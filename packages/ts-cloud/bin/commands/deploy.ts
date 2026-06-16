@@ -411,28 +411,31 @@ export function registerDeployCommands(app: CLI): void {
         cli.info(`Region: ${region}`)
         cli.info(`Environment: ${environment}`)
 
-        if (cloudProvider === 'hetzner' && config.infrastructure?.compute) {
-          cli.step('Provisioning Hetzner compute infrastructure...')
-          const driver = createCloudDriver({ config, provider: 'hetzner' })
+        // Lightweight single-server (Forge-style) path: provision one box via
+        // the driver and deploy onto it — no CloudFormation. Used for Hetzner,
+        // and for AWS when `compute.mode === 'server'` (boots an Ubuntu EC2).
+        const serverCompute = cloudProvider === 'hetzner'
+          || config.infrastructure?.compute?.mode === 'server'
+        if (serverCompute && config.infrastructure?.compute) {
+          cli.step(`Provisioning ${cloudProvider} compute infrastructure...`)
+          const driver = createCloudDriver({ config, provider: cloudProvider })
           if (!driver.provisionComputeInfrastructure) {
-            cli.error('Hetzner driver does not support compute provisioning')
+            cli.error(`${cloudProvider} driver does not support compute provisioning`)
             return
           }
 
           const outputs = await driver.provisionComputeInfrastructure({ config, environment })
-          cli.success('Hetzner compute infrastructure ready')
+          cli.success(`${cloudProvider} compute infrastructure ready`)
           if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
           if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
 
-          // Deploy the configured app sites to the freshly provisioned server.
-          // Unlike AWS (which provisions via CloudFormation and is handled
-          // below), Hetzner has no separate stack step — provision then deploy.
+          // Provision-then-deploy (no separate CloudFormation stack step).
           if (config.sites && Object.keys(config.sites).length > 0) {
             const ok = await deployAppToCompute(config, environment, region)
             if (!ok)
-              cli.error('App deploy to Hetzner compute reported a failure')
+              cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
             else
-              cli.success('App deployed to Hetzner compute')
+              cli.success(`App deployed to ${cloudProvider} compute`)
           }
           return
         }

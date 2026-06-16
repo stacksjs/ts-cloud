@@ -218,6 +218,48 @@ export class HetznerDriver implements CloudDriver {
     return this.outputsFromState(state, running)
   }
 
+  /** Tear down the server + its ts-cloud firewall, and clear local state. */
+  async destroyCompute(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }> {
+    const { config, environment } = options
+    const slug = config.project.slug
+    const stackName = resolveProjectStackName(config, environment)
+    const destroyed: string[] = []
+
+    // Find the server via state, else by labels.
+    const state = await readDriverState(stackName)
+    let serverId = state?.serverId
+    if (!serverId) {
+      const targets = await this.findComputeTargets({ slug, environment, role: 'app' })
+      serverId = targets[0] ? Number(targets[0].id) : undefined
+    }
+    if (serverId) {
+      await this.client.deleteServer(serverId).catch(() => {})
+      destroyed.push(`server ${serverId}`)
+    }
+
+    // Delete the project's firewall (now that no server references it).
+    const firewallName = `${slug}-${environment}-app-fw`
+    const firewalls = await this.client.listFirewalls().catch(() => [])
+    const fw = firewalls.find(f => f.name === firewallName)
+    if (fw) {
+      // The firewall can't be deleted until detached from the (now deleting)
+      // server; retry briefly.
+      for (let i = 0; i < 10; i++) {
+        try {
+          await this.client.deleteFirewall(fw.id)
+          destroyed.push(`firewall ${firewallName}`)
+          break
+        }
+        catch {
+          await this.sleep(3000)
+        }
+      }
+    }
+
+    await writeDriverState(stackName, { provider: 'hetzner', stackName }).catch(() => {})
+    return { destroyed }
+  }
+
   async getComputeOutputs(options: ProvisionComputeOptions): Promise<ComputeStackOutputs> {
     const stackName = resolveProjectStackName(options.config, options.environment)
     const state = await readDriverState(stackName)

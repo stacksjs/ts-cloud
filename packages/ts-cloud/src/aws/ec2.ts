@@ -1351,6 +1351,18 @@ export class EC2Client {
     })
   }
 
+  /** Delete a security group (fails while still attached to an instance/ENI). */
+  async deleteSecurityGroup(groupId: string): Promise<void> {
+    await this.client.request({
+      service: 'ec2',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ Action: 'DeleteSecurityGroup', Version: '2016-11-15', GroupId: groupId }).toString(),
+    })
+  }
+
   /**
    * Describe network interfaces
    */

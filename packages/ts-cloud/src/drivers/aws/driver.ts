@@ -149,6 +149,40 @@ export class AwsDriver implements CloudDriver {
     }
   }
 
+  /** Terminate the lightweight EC2 box + delete its security group. */
+  async destroyCompute(options: ProvisionComputeOptions): Promise<{ destroyed: string[] }> {
+    const { config, environment } = options
+    const region = this.resolveRegion(config)
+    const ec2 = new EC2Client(region)
+    const destroyed: string[] = []
+
+    const targets = await this.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
+    const ids = targets.map(t => t.id)
+    if (ids.length > 0) {
+      await ec2.terminateInstances(ids)
+      destroyed.push(...ids.map(id => `instance ${id}`))
+      // The SG can't be deleted until the ENIs detach; wait then retry.
+      await Promise.all(ids.map(id => ec2.waitForInstanceState(id, 'terminated').catch(() => undefined)))
+    }
+
+    const sgName = `${config.project.slug}-${environment}-app-sg`
+    const found = await ec2.describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }] }).catch(() => ({ SecurityGroups: [] }))
+    const groupId = found.SecurityGroups?.[0]?.GroupId
+    if (groupId) {
+      for (let i = 0; i < 10; i++) {
+        try {
+          await ec2.deleteSecurityGroup(groupId)
+          destroyed.push(`security group ${sgName}`)
+          break
+        }
+        catch {
+          await new Promise(r => setTimeout(r, 3000))
+        }
+      }
+    }
+    return { destroyed }
+  }
+
   async getComputeOutputs(options: ProvisionComputeOptions): Promise<ComputeStackOutputs> {
     const region = this.resolveRegion(options.config)
     const stackName = resolveProjectStackName(options.config, options.environment)
