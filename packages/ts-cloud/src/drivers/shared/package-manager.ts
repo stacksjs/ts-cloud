@@ -50,6 +50,14 @@ export type PantrySpec = PantryPackageDomain | `${PantryPackageDomain}@${string}
 /** Where the `pantry` binary itself is installed (on PATH for all later steps). */
 export const PANTRY_INSTALL_DIR = '/usr/local/bin'
 
+/**
+ * Server-side pantry project root. `pantry install` is project-scoped — it
+ * writes packages under `<root>/pantry/` and exposes their binaries via
+ * `<root>/pantry/.bin`. Provisioning installs everything into this one fixed
+ * project so the env (and thus PATH) is stable across deploy/systemd steps.
+ */
+export const PANTRY_PROJECT_DIR = '/opt/pantry'
+
 /** Single-quote a value for safe embedding in the generated shell. */
 function sh(value: string): string {
   return `'${value.split('\'').join('\'\\\'\'')}'`
@@ -80,10 +88,20 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
     'command -v curl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y curl ca-certificates)',
     'command -v unzip >/dev/null 2>&1 || (apt-get update -y && apt-get install -y unzip)',
     'command -v pantry >/dev/null 2>&1 || curl -fsSL https://pantry.dev | bash',
-    // Put pantry + its installed package shims on PATH for the rest of bootstrap.
+    // The pantry CLI lives in PANTRY_INSTALL_DIR; put it on PATH for later steps.
     `export PATH="${PANTRY_INSTALL_DIR}:$PATH"`,
-    'eval "$(pantry shell-init 2>/dev/null)" || true',
+    `mkdir -p ${PANTRY_PROJECT_DIR}`,
   ]
+}
+
+/**
+ * Shell snippet that puts the project's pantry-installed binaries (php,
+ * composer, …) on PATH for a deploy step. `pantry env` is project-scoped, so it
+ * is evaluated from {@link PANTRY_PROJECT_DIR}. Returns a single line to
+ * `eval`/source before invoking those binaries.
+ */
+export function pantryEnvActivation(): string {
+  return `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)" || true`
 }
 
 /**
@@ -94,7 +112,8 @@ export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[]
   if (specs.length === 0)
     return []
   const unique = [...new Set(specs)]
-  return [`pantry install ${unique.map(sh).join(' ')}`]
+  // `pantry install` is project-scoped; install into the fixed project root.
+  return [`(cd ${PANTRY_PROJECT_DIR} && pantry install ${unique.map(sh).join(' ')})`]
 }
 
 /**
@@ -104,8 +123,8 @@ export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[]
  */
 export function buildPantryServiceScript(services: readonly string[]): string[] {
   return [...new Set(services)].flatMap(name => [
-    `pantry enable ${sh(name)}`,
-    `pantry start ${sh(name)}`,
+    `(cd ${PANTRY_PROJECT_DIR} && pantry enable ${sh(name)})`,
+    `(cd ${PANTRY_PROJECT_DIR} && pantry start ${sh(name)})`,
   ])
 }
 

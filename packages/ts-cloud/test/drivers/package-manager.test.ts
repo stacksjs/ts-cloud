@@ -5,7 +5,9 @@ import {
   buildPantryServiceScript,
   PANTRY_INSTALL_DIR,
   PANTRY_PACKAGES,
+  PANTRY_PROJECT_DIR,
   pantryDomain,
+  pantryEnvActivation,
 } from '../../src/drivers/shared/package-manager'
 
 describe('buildPantryBootstrapScript', () => {
@@ -19,6 +21,7 @@ describe('buildPantryBootstrapScript', () => {
     // curl + unzip are the only apt prerequisites.
     expect(script).toContain('apt-get install -y curl ca-certificates')
     expect(script).toContain('apt-get install -y unzip')
+    expect(script).toContain(`mkdir -p ${PANTRY_PROJECT_DIR}`)
   })
 
   it('defaults to the latest release but can pin a version', () => {
@@ -29,9 +32,9 @@ describe('buildPantryBootstrapScript', () => {
 })
 
 describe('buildPantryInstallScript', () => {
-  it('resolves all packages in a single pass', () => {
+  it('resolves all packages in a single project-scoped pass', () => {
     const script = buildPantryInstallScript(['php.net', 'nginx.org', 'getcomposer.org'])
-    expect(script).toEqual(['pantry install \'php.net\' \'nginx.org\' \'getcomposer.org\''])
+    expect(script).toEqual([`(cd ${PANTRY_PROJECT_DIR} && pantry install 'php.net' 'nginx.org' 'getcomposer.org')`])
   })
 
   it('supports pinned versions and dedupes', () => {
@@ -48,13 +51,19 @@ describe('buildPantryInstallScript', () => {
 })
 
 describe('buildPantryServiceScript', () => {
-  it('enables then starts each service', () => {
+  it('enables then starts each service in the project', () => {
     expect(buildPantryServiceScript(['php-fpm', 'nginx'])).toEqual([
-      'pantry enable \'php-fpm\'',
-      'pantry start \'php-fpm\'',
-      'pantry enable \'nginx\'',
-      'pantry start \'nginx\'',
+      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'php-fpm')`,
+      `(cd ${PANTRY_PROJECT_DIR} && pantry start 'php-fpm')`,
+      `(cd ${PANTRY_PROJECT_DIR} && pantry enable 'nginx')`,
+      `(cd ${PANTRY_PROJECT_DIR} && pantry start 'nginx')`,
     ])
+  })
+})
+
+describe('pantryEnvActivation', () => {
+  it('activates the project env from the project dir', () => {
+    expect(pantryEnvActivation()).toBe(`eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)" || true`)
   })
 })
 
