@@ -18,14 +18,7 @@ import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './clie
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
-import { buildPhpProvisionScript } from '../shared/php-provision'
-import { buildDatabaseSetupScript, buildServicesProvisionScript } from '../shared/db-provision'
-import { buildUfwScript } from '../shared/ufw'
-import { buildAutoUpdatesScript } from '../shared/maintenance'
-import { buildBackupProvisionScript } from '../shared/backups'
-import { buildMonitoringScript } from '../shared/monitoring'
-import { buildNotifierScript } from '../shared/notifications'
-import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
+import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -152,52 +145,24 @@ export class HetznerDriver implements CloudDriver {
         })
       : undefined
 
-    // PHP box: install nginx + php-fpm + Composer at first boot when the
-    // runtime is `php` or `compute.php` is configured. Built from the same
-    // generator nginx vhosts later fastcgi_pass against.
-    const wantsPhp = compute.runtime === 'php' || !!compute.php
-    const phpProvision = wantsPhp
-      ? buildPhpProvisionScript({
-          versions: compute.php?.versions,
-          default: compute.php?.default,
-          extensions: compute.php?.extensions,
-          installNginx: compute.webServer !== 'rpx',
-        })
-      : undefined
+    // Machine provisioning (PHP/nginx + services + db + firewall + updates +
+    // monitoring + ssh keys + notifier + backups). Composed by the shared
+    // builder so a cold boot and a golden-image bake install the same stack.
+    const provision = buildComputeProvisionScripts(config)
 
-    // On-box services (database engine, redis, memcached, meilisearch) + the
-    // app database/user, host firewall (UFW), automatic system updates, and
-    // scheduled backups. PHP boxes default UFW + auto-updates on (Forge-style).
-    const phpBox = wantsPhp
-    const provisionExtras: string[] = []
-    // On-box notifier first, so cron-driven jobs (backups) can call it.
-    provisionExtras.push(...buildNotifierScript(config.notifications))
-    if (compute.managedServices) {
-      provisionExtras.push(
-        ...buildServicesProvisionScript(compute.managedServices),
-        ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices),
-      )
-    }
-    provisionExtras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
-    provisionExtras.push(...buildAutoUpdatesScript(compute.autoUpdates ?? phpBox))
-    provisionExtras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
-    provisionExtras.push(...buildAuthorizedKeysScript(compute.sshKeys))
-    if (compute.backups?.enabled) {
-      provisionExtras.push(...buildBackupProvisionScript({
-        database: config.infrastructure?.appDatabase,
-        backups: compute.backups,
-      }))
-    }
-    const servicesProvision = provisionExtras.length > 0 ? provisionExtras : undefined
+    // When booting a pre-baked golden image, the stack is already installed —
+    // skip the install-heavy steps for a near-instant boot.
+    const baked = compute.bakedImage === true
 
     const bootstrap = generateUbuntuAppCloudInit({
-      runtime: compute.runtime || 'bun',
-      runtimeVersion: compute.runtimeVersion || 'latest',
+      runtime: provision.runtime,
+      runtimeVersion: provision.runtimeVersion,
       systemPackages: compute.systemPackages,
       database: config.infrastructure?.database,
-      phpProvision,
-      servicesProvision,
+      phpProvision: provision.phpProvision,
+      servicesProvision: provision.servicesProvision,
       rpxProvision,
+      baked,
     })
     const userData = wrapCloudInitUserData(bootstrap)
 

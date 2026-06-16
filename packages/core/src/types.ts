@@ -1735,10 +1735,21 @@ export interface ComputeConfig {
   fleet?: InstanceConfig[]
 
   /**
-   * Custom machine image (optional)
-   * If not specified, uses the provider's default Linux image
+   * Custom machine image (optional). For the Forge path this is a ts-cloud
+   * **golden image** (a Hetzner snapshot / AWS AMI baked with the full stack —
+   * nginx, php-fpm, Composer, services). If not specified, the provider's
+   * default Ubuntu image is used and the stack is installed at first boot.
+   * @see bakedImage
    */
   image?: string
+
+  /**
+   * The configured {@link image} is a pre-provisioned golden image that already
+   * has the runtime + PHP + services + base packages installed. Boot skips the
+   * install-heavy provisioning for a near-instant start. Build + publish the
+   * image with the bake recipe (see scripts/build-image.ts). @default false
+   */
+  bakedImage?: boolean
 
   /**
    * CloudFront custom origin for the registry/app server (when the site stack
