@@ -94,6 +94,33 @@ describe('buildNginxVhostScript', () => {
   })
 })
 
+describe('basic auth (htpasswd)', () => {
+  it('emits auth_basic directives referencing the site htpasswd file', () => {
+    const vhost = buildNginxVhost({
+      siteName: 'ui',
+      domain: 'ui.example.com',
+      type: 'static',
+      appDir: '/var/www/ui/current',
+      auth: { username: 'admin', password: 's3cret', realm: 'ts-cloud' },
+    })
+    expect(vhost).toContain('auth_basic "ts-cloud";')
+    expect(vhost).toContain('auth_basic_user_file /etc/nginx/.htpasswd-ui;')
+  })
+
+  it('generates the htpasswd file via openssl in the script', () => {
+    const script = buildNginxVhostScript({
+      siteName: 'ui',
+      domain: 'ui.example.com',
+      type: 'static',
+      appDir: '/var/www/ui/current',
+      auth: { username: 'admin', password: 's3cret' },
+    }).join('\n')
+    expect(script).toContain("openssl passwd -apr1 's3cret'")
+    expect(script).toContain("printf '%s:%s\\n' 'admin'")
+    expect(script).toContain('/etc/nginx/.htpasswd-ui')
+  })
+})
+
 describe('site type helpers', () => {
   it('classifies php-served types', () => {
     expect(isPhpSiteType('laravel')).toBe(true)

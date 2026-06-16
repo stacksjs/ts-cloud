@@ -1010,6 +1010,25 @@ export interface SiteConfig {
    * {@link CloudConfig.notifications} for this site's events.
    */
   notifications?: NotificationsConfig
+
+  /**
+   * HTTP Basic auth (htpasswd) protecting the whole site at the nginx layer.
+   * Typically driven from an env value, e.g. `{ username: 'admin', password:
+   * process.env.UI_PASSWORD }`. The htpasswd file is generated on the box.
+   */
+  auth?: SiteAuthConfig
+}
+
+/** HTTP Basic auth for a site's nginx vhost. See {@link SiteConfig.auth}. */
+export interface SiteAuthConfig {
+  /** Enable basic auth. @default true when this object is present */
+  enabled?: boolean
+  /** Username. @default 'admin' */
+  username?: string
+  /** Plaintext password (hashed on the box). Usually `process.env.X`. */
+  password?: string
+  /** Realm shown in the browser auth prompt. @default 'Restricted' */
+  realm?: string
 }
 
 /**

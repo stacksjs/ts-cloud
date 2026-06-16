@@ -116,6 +116,9 @@ export async function deploySiteRelease(
           phpVersion,
           redirects: site.redirects,
           ssl: customCert,
+          auth: site.auth && site.auth.enabled !== false && site.auth.password
+            ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+            : undefined,
         })
       : []
     const sslScript = useNginx ? buildSslScript(site) : []

@@ -46,6 +46,17 @@ export interface NginxVhostOptions {
    * rewrites the :80 block itself (leave this unset).
    */
   ssl?: { certPath: string, keyPath: string }
+  /**
+   * HTTP Basic auth (htpasswd). When set, the vhost requires auth and the
+   * generated script writes the htpasswd file. The `realm` is shown in the
+   * browser prompt.
+   */
+  auth?: { username: string, password: string, realm?: string }
+}
+
+/** Path of the htpasswd file for a site. */
+export function htpasswdPath(siteName: string): string {
+  return `/etc/nginx/.htpasswd-${siteName}`
 }
 
 const PHP_TYPES: ReadonlySet<NginxSiteType> = new Set(['laravel', 'php', 'statamic', 'wordpress'])
@@ -88,6 +99,15 @@ function vhostBody(options: NginxVhostOptions): string[] {
     '    charset utf-8;',
     '',
   ]
+
+  // HTTP Basic auth gates the whole site.
+  if (options.auth) {
+    lines.push(
+      `    auth_basic "${options.auth.realm || 'Restricted'}";`,
+      `    auth_basic_user_file ${htpasswdPath(options.siteName)};`,
+      '',
+    )
+  }
 
   // Redirects emitted as exact-match 301s before the catch-all location.
   for (const [from, to] of Object.entries(options.redirects || {})) {
@@ -189,7 +209,21 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
   const enabled = `/etc/nginx/sites-enabled/${options.siteName}`
   const vhost = buildNginxVhost(options)
 
-  return [
+  const out: string[] = []
+
+  // Generate the htpasswd file (apr1 hash via openssl — no apache2-utils dep).
+  if (options.auth) {
+    const file = htpasswdPath(options.siteName)
+    const pw = options.auth.password.split('\'').join('\'\\\'\'')
+    out.push(
+      `TS_CLOUD_HTPASS=$(openssl passwd -apr1 '${pw}')`,
+      `printf '%s:%s\\n' '${options.auth.username}' "$TS_CLOUD_HTPASS" > ${file}`,
+      `chmod 640 ${file}`,
+      `chown root:www-data ${file} 2>/dev/null || true`,
+    )
+  }
+
+  out.push(
     `cat > ${available} <<'TS_CLOUD_NGINX_EOF'`,
     vhost.replace(/\n$/, ''),
     'TS_CLOUD_NGINX_EOF',
@@ -198,5 +232,6 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
     'rm -f /etc/nginx/sites-enabled/default',
     'nginx -t',
     'systemctl reload nginx',
-  ]
+  )
+  return out
 }
