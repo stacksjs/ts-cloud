@@ -44,9 +44,9 @@ export function registerComputeLifecycleCommands(app: CLI): void {
         else
           cli.info('Nothing to destroy (no matching resources found)')
       }
-      catch (error: any) {
+      catch (error: unknown) {
         spinner.fail('Teardown failed')
-        cli.error(error.message)
+        cli.error(error instanceof Error ? error.message : String(error))
       }
     })
 }

@@ -106,8 +106,8 @@ export class AwsDriver implements CloudDriver {
     await ec2.authorizeSecurityGroupIngress({
       GroupId: groupId!,
       IpPermissions: rules.map(r => ({ IpProtocol: r.protocol, FromPort: r.port, ToPort: r.port, IpRanges: [{ CidrIp: r.cidr }] })),
-    }).catch((e: any) => {
-      if (!/InvalidPermission\.Duplicate/.test(e?.message || ''))
+    }).catch((e: unknown) => {
+      if (!/InvalidPermission\.Duplicate/.test(e instanceof Error ? e.message : ''))
         throw e
     })
 
@@ -196,11 +196,11 @@ export class AwsDriver implements CloudDriver {
         sshUser: 'ec2-user',
       }
     }
-    catch (err: any) {
+    catch (err: unknown) {
       // Only fall back for "stack does not exist" (the lightweight EC2 boot
       // path creates no CloudFormation stack). Rethrow transient/permission
       // errors so they aren't masked as a missing stack.
-      if (!/does not exist|ValidationError/i.test(err?.message || ''))
+      if (!/does not exist|ValidationError/i.test(err instanceof Error ? err.message : ''))
         throw err
       // Tag-based lookup of the instance booted by provisionComputeInfrastructure.
       const targets = await this.findComputeTargets({

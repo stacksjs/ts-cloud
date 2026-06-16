@@ -1,4 +1,4 @@
-import type { CloudConfig } from '../types'
+import type { CloudConfig, InstanceSize, PhpVersion } from '../types'
 
 /**
  * Laravel Preset — a Forge-style single server.
@@ -17,9 +17,9 @@ export function createLaravelPreset(options: {
   /** Git repository to deploy. */
   repository: { url: string, branch?: string, provider?: 'github' | 'gitlab' | 'bitbucket' | 'custom' }
   /** PHP version. @default '8.3' */
-  phpVersion?: string
-  /** Server size (provider-specific token). @default 'small' */
-  size?: string
+  phpVersion?: PhpVersion
+  /** Server size. @default 'small' */
+  size?: InstanceSize
   /** App database name. @default slug */
   database?: string
   /** Database password (set via env in real configs). */
@@ -55,7 +55,7 @@ export function createLaravelPreset(options: {
     infrastructure: {
       compute: {
         mode: 'server',
-        size: size as any,
+        size,
         runtime: 'php',
         webServer: 'nginx',
         php: { versions: [phpVersion], default: phpVersion },

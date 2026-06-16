@@ -947,7 +947,7 @@ export interface SiteConfig {
    * the nginx vhost points at. Must be one of `compute.php.versions`. Defaults
    * to `compute.php.default`.
    */
-  phpVersion?: string
+  phpVersion?: PhpVersion
 
   /**
    * Web root relative to the release directory. Defaults to `'public'` for
@@ -2120,6 +2120,13 @@ export interface ComputeBackupConfig {
 }
 
 /**
+ * A PHP version selector. Known versions provide editor autocomplete; the
+ * `(string & {})` arm keeps it open for versions released after this type was
+ * written (e.g. a future `'8.5'`) without a type error.
+ */
+export type PhpVersion = '8.1' | '8.2' | '8.3' | '8.4' | (string & {})
+
+/**
  * PHP-FPM provisioning for a compute box. See {@link ComputeConfig.php}.
  */
 export interface ComputePhpConfig {
@@ -2127,9 +2134,9 @@ export interface ComputePhpConfig {
    * PHP versions to install (e.g. `['8.3', '8.2']`). Each gets its own php-fpm
    * pool/socket so sites can pin different versions. @default ['8.3']
    */
-  versions?: string[]
+  versions?: PhpVersion[]
   /** Default PHP version for sites that don't set `phpVersion`. @default first of `versions` */
-  default?: string
+  default?: PhpVersion
   /**
    * Extra PHP extensions to install beyond the Laravel baseline (mbstring, xml,
    * curl, mysql, pgsql, redis, gd, bcmath, zip, intl). apt package suffixes,
