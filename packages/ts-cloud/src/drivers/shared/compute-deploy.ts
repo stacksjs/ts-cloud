@@ -6,7 +6,7 @@ import type {
   EnvironmentType,
 } from '@ts-cloud/core'
 import { resolveProjectStackName } from '@ts-cloud/core'
-import { resolveSiteKind } from '../../deploy/site-target'
+import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
@@ -14,6 +14,8 @@ import {
   buildStaticSiteDeployScript,
   resolveExecStart,
 } from './deploy-script'
+import { buildLaravelDeployScript } from './laravel-deploy'
+import { buildNginxVhostScript } from './nginx-vhost'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -68,6 +70,62 @@ export async function deploySiteRelease(
     return { success: false, error: hint }
   }
 
+  // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
+  // tarball upload). The box clones the repo, runs the deploy script inside the
+  // new release, flips `current`, then nginx is (re)pointed at it.
+  if (isPhpSite(site)) {
+    const compute = config.infrastructure?.compute
+    const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
+    const appBase = `/var/www/${siteName}`
+
+    const deployScript = buildLaravelDeployScript({
+      siteName,
+      site,
+      releaseId: sha,
+      appBase,
+      defaultPhpVersion: phpVersion,
+    })
+
+    // nginx vhost (skipped when the operator fronts the box with rpx instead).
+    const vhostScript = compute?.webServer === 'rpx'
+      ? []
+      : buildNginxVhostScript({
+          siteName,
+          domain: site.domain || siteName,
+          aliases: site.aliases,
+          type: site.type,
+          appDir: `${appBase}/current`,
+          webDirectory: site.webDirectory,
+          phpVersion,
+          redirects: site.redirects,
+        })
+
+    logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
+    const phpResult = await driver.runRemoteDeploy({
+      targets,
+      commands: [...deployScript, ...vhostScript],
+      comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
+      tags: { Project: slug, Environment: environment, Role: 'app' },
+    })
+
+    if (!phpResult.success) {
+      return {
+        success: false,
+        error: phpResult.error || 'Remote PHP deploy failed',
+        instanceCount: phpResult.instanceCount,
+        perInstance: phpResult.perInstance,
+      }
+    }
+    return {
+      success: true,
+      instanceCount: phpResult.instanceCount,
+      perInstance: phpResult.perInstance,
+    }
+  }
+
+  if (!localTarballPath)
+    return { success: false, error: `Site '${siteName}' requires a release tarball but none was provided` }
+
   const uploadResult = await driver.uploadRelease({
     config,
     environment,
@@ -93,7 +151,8 @@ export async function deploySiteRelease(
         siteName,
         slug,
         artifactFetch,
-        execStart: resolveExecStart(site.start!, runtime),
+        // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
+        execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
         envEntries: site.env || {},
         port: site.port,
         preStartCommands: site.preStart,
@@ -132,7 +191,7 @@ export interface DeployAllSitesOptions {
   environment: EnvironmentType
   driver: CloudDriver
   sha: string
-  runtime: 'bun' | 'node' | 'deno'
+  runtime: 'bun' | 'node' | 'deno' | 'php'
   tarballForSite: (siteName: string) => string
   logger?: ComputeDeployLogger
 }
@@ -161,6 +220,8 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
 
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
+    // PHP/Laravel sites clone from git on the box — no local tarball to build.
+    const localTarballPath = isPhpSite(site) ? undefined : tarballForSite(siteName)
     const result = await deploySiteRelease(driver, {
       config,
       environment,
@@ -169,7 +230,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
       slug,
       sha,
       runtime,
-      localTarballPath: tarballForSite(siteName),
+      localTarballPath,
     }, logger)
 
     if (!result.success) {
