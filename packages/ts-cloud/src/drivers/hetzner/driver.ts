@@ -738,10 +738,24 @@ export class HetznerDriver implements CloudDriver {
     }
   }
 
+  /**
+   * SSH options for connecting to freshly-created cloud servers. Host-key
+   * pinning is disabled (`StrictHostKeyChecking=no` + `UserKnownHostsFile`
+   * `/dev/null`): the box is identified + trusted via the Hetzner API, and
+   * providers recycle public IPs, so a stale `known_hosts` entry from a prior
+   * (now-deleted) server would otherwise abort the deploy with
+   * "REMOTE HOST IDENTIFICATION HAS CHANGED".
+   */
+  private static readonly SSH_HOST_KEY_OPTS = [
+    '-o', 'StrictHostKeyChecking=no',
+    '-o', 'UserKnownHostsFile=/dev/null',
+    '-o', 'LogLevel=ERROR',
+  ]
+
   private sshBaseArgs(host: string, extra: string[] = []): string[] {
     return [
       '-i', this.sshPrivateKeyPath,
-      '-o', 'StrictHostKeyChecking=accept-new',
+      ...HetznerDriver.SSH_HOST_KEY_OPTS,
       '-o', 'BatchMode=yes',
       ...extra,
       `${this.sshUser}@${host}`,
@@ -752,7 +766,7 @@ export class HetznerDriver implements CloudDriver {
     execSync([
       'scp',
       '-i', this.sshPrivateKeyPath,
-      '-o', 'StrictHostKeyChecking=accept-new',
+      ...HetznerDriver.SSH_HOST_KEY_OPTS,
       '-o', 'BatchMode=yes',
       localPath,
       `${this.sshUser}@${host}:${remotePath}`,
