@@ -15,6 +15,7 @@ import {
   resolveExecStart,
 } from './deploy-script'
 import { buildLaravelDeployScript } from './laravel-deploy'
+import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript } from './nginx-vhost'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
@@ -100,10 +101,15 @@ export async function deploySiteRelease(
           redirects: site.redirects,
         })
 
+    // Reconcile queue workers / scheduler / daemons after the release is live.
+    const servicesScript = siteHasServices(site)
+      ? buildSiteServicesScript({ slug, siteName, site, phpVersion, appBase })
+      : []
+
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...deployScript, ...vhostScript],
+      commands: [...deployScript, ...vhostScript, ...servicesScript],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })
