@@ -59,4 +59,19 @@ describe('generateUbuntuAppCloudInit with phpProvision', () => {
     // A php runtime must not pull in the bun installer.
     expect(bootstrap).not.toContain('bun.sh/install')
   })
+
+  it('baked image skips install-heavy steps but keeps per-boot setup', () => {
+    const bootstrap = generateUbuntuAppCloudInit({
+      runtime: 'php',
+      phpProvision: buildPhpProvisionScript({ versions: ['8.3'] }),
+      baked: true,
+    })
+    // No apt installs / php provisioning on a pre-baked image.
+    expect(bootstrap).not.toContain('apt-get install -y nginx')
+    expect(bootstrap).not.toContain('php8.3-fpm')
+    expect(bootstrap).not.toContain('apt-get update')
+    // Cheap per-boot setup still runs.
+    expect(bootstrap).toContain('mkdir -p /var/www')
+    expect(bootstrap).toContain('bootstrap complete')
+  })
 })
