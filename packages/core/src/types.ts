@@ -960,8 +960,11 @@ export interface SiteConfig {
   keepReleases?: number
 
   /**
-   * Use zero-downtime atomic releases (clone → build → flip `current` symlink).
-   * @default true for git-deployed PHP sites
+   * Use zero-downtime atomic releases (Envoyer-style: clone → build → flip the
+   * `current` symlink only after every step succeeds, with the previous release
+   * kept for instant rollback). On by default for git-deployed PHP sites — set
+   * `false` only to deploy in place.
+   * @default true
    */
   zeroDowntime?: boolean
 
