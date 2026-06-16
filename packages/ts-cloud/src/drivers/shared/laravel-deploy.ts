@@ -126,7 +126,15 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
     ? site.deployScript
     : defaultDeployScriptFor(site.type ?? 'laravel')
 
-  const out: string[] = ['set -euo pipefail']
+  const out: string[] = [
+    'set -euo pipefail',
+    // SSM/cloud-init shells have no HOME; Composer + git need it set.
+    'export HOME="${HOME:-/root}"',
+    'export COMPOSER_HOME="${COMPOSER_HOME:-/root/.composer}"',
+    // Deploys run as root; without this Composer disables plugins, breaking
+    // Laravel package discovery.
+    'export COMPOSER_ALLOW_SUPERUSER=1',
+  ]
 
   // Ensure the releases/shared skeleton exists, then write the shared .env so
   // it's in place before the new release symlinks it in.
@@ -140,6 +148,13 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
       out.push(...buildGitCheckoutScript({ repository: site.repository, releaseDir: paths.release, commit }))
       out.push(...buildLinkSharedPaths(paths, sharedPaths))
       out.push(`cd ${paths.release}`)
+      // php-fpm runs as www-data; make the writable Laravel paths owned by it
+      // so the app can write logs/cache/sessions (Forge/Envoyer do the same).
+      out.push(
+        `chown -R www-data:www-data ${paths.shared}/storage 2>/dev/null || true`,
+        `[ -d ${paths.release}/bootstrap/cache ] && chown -R www-data:www-data ${paths.release}/bootstrap/cache 2>/dev/null || true`,
+        `chmod -R ug+rwX ${paths.shared}/storage 2>/dev/null || true`,
+      )
     }
     else if (line === MACRO_ACTIVATE_RELEASE) {
       out.push(...buildActivateRelease(paths))

@@ -40,7 +40,9 @@ describe('buildPhpProvisionScript', () => {
   it('can skip nginx (rpx engine) and Composer', () => {
     const script = buildPhpProvisionScript({ installNginx: false, installComposer: false }).join('\n')
     expect(script).not.toContain('apt-get install -y nginx')
-    expect(script).not.toContain('composer')
+    // The composer *installer* must not run (the COMPOSER_HOME env export is fine).
+    expect(script).not.toContain('getcomposer.org')
+    expect(script).not.toContain('--filename=composer')
   })
 
   it('exposes the fpm socket path nginx fastcgi_pass uses', () => {

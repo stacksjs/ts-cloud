@@ -919,7 +919,17 @@ export class EC2Client {
     const startTime = Date.now()
 
     while (Date.now() - startTime < maxWait) {
-      const instance = await this.getInstance(instanceId)
+      // A freshly-launched instance id is not immediately describable (EC2
+      // eventual consistency) — DescribeInstances can return
+      // InvalidInstanceID.NotFound for a few seconds. Treat any transient
+      // lookup error as "not ready yet" and keep polling.
+      let instance: Instance | undefined
+      try {
+        instance = await this.getInstance(instanceId)
+      }
+      catch {
+        instance = undefined
+      }
 
       if (instance?.State?.Name === targetState) {
         return instance

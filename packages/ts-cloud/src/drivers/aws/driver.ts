@@ -141,12 +141,30 @@ export class AwsDriver implements CloudDriver {
     const region = this.resolveRegion(options.config)
     const stackName = resolveProjectStackName(options.config, options.environment)
     const cfn = new CloudFormationClient(region)
-    const outputs = await cfn.getStackOutputs(stackName)
-    return {
-      deployBucketName: outputs.deployBucketName,
-      appInstanceId: outputs.appInstanceId,
-      appPublicIp: outputs.appPublicIp,
-      sshUser: 'ec2-user',
+    try {
+      const outputs = await cfn.getStackOutputs(stackName)
+      return {
+        deployBucketName: outputs.deployBucketName,
+        appInstanceId: outputs.appInstanceId,
+        appPublicIp: outputs.appPublicIp,
+        sshUser: 'ec2-user',
+      }
+    }
+    catch {
+      // Lightweight EC2 boot path (provisionComputeInfrastructure) creates no
+      // CloudFormation stack. Fall back to a tag-based lookup of the instance.
+      const targets = await this.findComputeTargets({
+        slug: options.config.project.slug,
+        environment: options.environment,
+        role: 'app',
+      })
+      const first = targets[0]
+      return {
+        appInstanceId: first?.id,
+        appPublicIp: first?.publicIp,
+        sshUser: 'ubuntu',
+        deployStoragePath: '/var/ts-cloud/staging',
+      }
     }
   }
 
@@ -203,6 +221,15 @@ export class AwsDriver implements CloudDriver {
     return targets
   }
 
+  /**
+   * SSM AWS-RunShellScript executes the joined commands with `/bin/sh` (dash on
+   * Ubuntu), which rejects bash-only syntax like `set -o pipefail`. Our deploy
+   * scripts are bash, so run them through a bash heredoc.
+   */
+  private bashWrap(commands: string[]): string[] {
+    return ['bash <<\'TS_CLOUD_BASH_EOF\'', commands.join('\n'), 'TS_CLOUD_BASH_EOF']
+  }
+
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {
     const region = this.region
     const ssm = new SSMClient(region)
@@ -211,7 +238,7 @@ export class AwsDriver implements CloudDriver {
       const sendResult = await ssm.sendCommand({
         InstanceIds: options.targets.map(target => target.id),
         DocumentName: 'AWS-RunShellScript',
-        Parameters: { commands: options.commands },
+        Parameters: { commands: this.bashWrap(options.commands) },
         TimeoutSeconds: options.timeoutSeconds || 600,
         Comment: options.comment,
       })
@@ -229,7 +256,7 @@ export class AwsDriver implements CloudDriver {
 
     const result = await ssm.sendCommandByTags({
       tags: options.tags,
-      commands: options.commands,
+      commands: this.bashWrap(options.commands),
       timeoutSeconds: options.timeoutSeconds || 600,
       comment: options.comment,
     })

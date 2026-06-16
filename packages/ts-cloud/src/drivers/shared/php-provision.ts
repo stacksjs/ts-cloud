@@ -74,6 +74,9 @@ export function buildPhpProvisionScript(options: PhpProvisionOptions = {}): stri
 
   const lines: string[] = [
     'export DEBIAN_FRONTEND=noninteractive',
+    // cloud-init/SSM run without HOME set; Composer refuses to run without it.
+    'export HOME="${HOME:-/root}"',
+    'export COMPOSER_HOME="${COMPOSER_HOME:-/root/.composer}"',
     'apt-get update -y',
     // add-apt-repository lives in software-properties-common on Ubuntu.
     'apt-get install -y software-properties-common ca-certificates apt-transport-https lsb-release gnupg',
