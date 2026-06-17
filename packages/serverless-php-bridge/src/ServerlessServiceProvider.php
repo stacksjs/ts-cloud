@@ -2,8 +2,10 @@
 
 namespace TsCloud\Serverless;
 
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use TsCloud\Serverless\Console\SqsHandleCommand;
+use TsCloud\Serverless\Http\SignedStorageUrlController;
 
 /**
  * Registers the ts-cloud serverless runtime bridge for Laravel on AWS Lambda.
@@ -27,5 +29,11 @@ class ServerlessServiceProvider extends ServiceProvider
                 SqsHandleCommand::class,
             ]);
         }
+
+        // Direct browser → S3 upload endpoint (the Vapor.store() flow).
+        Route::middleware('web')->post(
+            '/tscloud/signed-storage-url',
+            [SignedStorageUrlController::class, 'store'],
+        );
     }
 }

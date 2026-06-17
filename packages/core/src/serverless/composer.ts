@@ -153,6 +153,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     TSCLOUD_LAMBDA_MODE: mode,
     TSCLOUD_ENV: environment,
     ...(app.octane ? { TSCLOUD_OCTANE: '1' } : {}),
+    ...(app.scheduler === 'sub-minute' ? { TSCLOUD_SCHEDULER: 'sub-minute' } : {}),
     ...(cacheEnabled ? { TSCLOUD_CACHE_TABLE: `${slug}-${environment}-cache` } : {}),
     ...(hasQueue ? { TSCLOUD_QUEUE: queueNames[0] } : {}),
     ...(app.env ?? {}),
@@ -180,7 +181,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
       }
     : {}
 
-  function addFunction(logicalId: string, name: string, handler: string, mode: string, memory: number, timeout: number, reservedConcurrency?: number): void {
+  function addFunction(logicalId: string, name: string, handler: string, mode: string, memory: number, timeout: number, reservedConcurrency?: number, tmp: number = tmpStorage): void {
     resources[`${logicalId}LogGroup`] = {
       Type: 'AWS::Logs::LogGroup',
       Properties: { LogGroupName: `/aws/lambda/${name}`, RetentionInDays: 14 },
@@ -213,7 +214,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Timeout: timeout,
         Role: Fn.getAtt('AppRole', 'Arn'),
         Environment: { Variables: baseEnv(mode) },
-        EphemeralStorage: { Size: tmpStorage },
+        EphemeralStorage: { Size: tmp },
         ...codeProps,
         ...(reservedConcurrency !== undefined ? { ReservedConcurrentExecutions: reservedConcurrency } : {}),
         ...vpcConfig,
@@ -221,10 +222,10 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     }
   }
 
-  addFunction('HttpFunction', functionNames.http, handlers.http, 'http', app.memory ?? 1024, app.timeout ?? 28, app.concurrency)
-  addFunction('CliFunction', functionNames.cli, handlers.cli, 'cli', app.cliMemory ?? 1024, app.cliTimeout ?? 900)
+  addFunction('HttpFunction', functionNames.http, handlers.http, 'http', app.memory ?? 1024, app.timeout ?? 28, app.concurrency, tmpStorage)
+  addFunction('CliFunction', functionNames.cli, handlers.cli, 'cli', app.cliMemory ?? 1024, app.cliTimeout ?? 900, undefined, app.cliTmpStorage ?? tmpStorage)
   if (hasQueue)
-    addFunction('QueueFunction', functionNames.queue, handlers.queue, 'queue', app.queueMemory ?? 1024, app.queueTimeout ?? 120)
+    addFunction('QueueFunction', functionNames.queue, handlers.queue, 'queue', app.queueMemory ?? 1024, app.queueTimeout ?? 120, undefined, app.queueTmpStorage ?? tmpStorage)
 
   // ── HTTP API (API Gateway v2) — author the integration/route/permission that
   //    the generic builder omits ─────────────────────────────────────────────
@@ -274,6 +275,66 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     Value: Fn.getAtt('HttpApi', 'ApiEndpoint'),
   }
   outputs.HttpApiId = { Description: 'HTTP API id', Value: Fn.ref('HttpApi') }
+
+  // ── Custom domain(s) for the HTTP API ───────────────────────────────────────
+  // Maps each `app.domain` to the API via an APIGW v2 regional custom domain.
+  // The certificate comes from `certificateArn`, or is issued + DNS-validated
+  // against `hostedZoneId`; with a hosted zone we also create the alias record.
+  const domains = (Array.isArray(app.domain) ? app.domain : app.domain ? [app.domain] : []).filter(Boolean)
+  if (domains.length) {
+    if (!app.certificateArn && !app.hostedZoneId) {
+      throw new Error('serverless app: a custom `domain` needs either `certificateArn` (pre-issued, regional) or `hostedZoneId` (to auto-issue + validate an ACM cert).')
+    }
+
+    let certRef: any = app.certificateArn
+    if (!certRef) {
+      resources.HttpCertificate = {
+        Type: 'AWS::CertificateManager::Certificate',
+        Properties: {
+          DomainName: domains[0],
+          ...(domains.length > 1 ? { SubjectAlternativeNames: domains.slice(1) } : {}),
+          ValidationMethod: 'DNS',
+          DomainValidationOptions: domains.map(d => ({ DomainName: d, HostedZoneId: app.hostedZoneId })),
+        },
+      }
+      certRef = Fn.ref('HttpCertificate')
+    }
+
+    domains.forEach((d, i) => {
+      const dn = `HttpDomain${i}`
+      resources[dn] = {
+        Type: 'AWS::ApiGatewayV2::DomainName',
+        Properties: {
+          DomainName: d,
+          DomainNameConfigurations: [{ CertificateArn: certRef, EndpointType: 'REGIONAL' }],
+        },
+      }
+      resources[`HttpApiMapping${i}`] = {
+        Type: 'AWS::ApiGatewayV2::ApiMapping',
+        DependsOn: ['HttpStage'],
+        Properties: { ApiId: Fn.ref('HttpApi'), DomainName: Fn.ref(dn), Stage: '$default' },
+      }
+      if (app.hostedZoneId) {
+        resources[`HttpDomainRecord${i}`] = {
+          Type: 'AWS::Route53::RecordSet',
+          Properties: {
+            HostedZoneId: app.hostedZoneId,
+            Name: d,
+            Type: 'A',
+            AliasTarget: {
+              DNSName: Fn.getAtt(dn, 'RegionalDomainName'),
+              HostedZoneId: Fn.getAtt(dn, 'RegionalHostedZoneId'),
+            },
+          },
+        }
+      }
+      outputs[`CustomDomain${i}`] = { Description: `Custom domain ${d}`, Value: d }
+      outputs[`CustomDomainTarget${i}`] = {
+        Description: `Point ${d} (CNAME/alias) at this APIGW regional domain`,
+        Value: Fn.getAtt(dn, 'RegionalDomainName'),
+      }
+    })
+  }
 
   // ── SQS queues + DLQ + event source mappings ───────────────────────────────
   if (hasQueue) {

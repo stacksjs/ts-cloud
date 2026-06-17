@@ -165,6 +165,33 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 Everything is declared under `environments.<env>.app` (the `vapor.yml`
 equivalent). See `ServerlessAppConfig` for the full field set: `runtime`,
 `memory`/`timeout`, `gatewayVersion`, `warm`, `queues`/`queueConcurrency`/
-`queueTimeout`/`queueTries`, `scheduler`, `build`/`deploy` hooks, `octane`,
-`vpc`, `rdsProxy`, `database`, `cache`, `storage`, `firewall`, `domain`,
-`assets`, `env`, `secrets`, and (PHP) `phpVersion`/`architecture`/`layers`.
+`queueTimeout`/`queueTries`, `scheduler` (`on`/`off`/`sub-minute`),
+`build`/`deploy` hooks, `octane`, `vpc`, `rdsProxy`, `database`, `cache`,
+`storage`, `firewall`, `domain`, `assets`, `env`, `secrets`, the per-function
+`tmpStorage`/`cliTmpStorage`/`queueTmpStorage`, and (PHP)
+`phpVersion`/`architecture`/`layers`.
+
+### Custom domains
+
+Set `domain` (a string or array) plus either `certificateArn` (a pre-issued
+regional ACM cert) or `hostedZoneId` (ts-cloud then issues + DNS-validates the
+cert and creates the Route53 alias automatically):
+
+```ts
+app: { kind: 'php', domain: 'app.acme.com', hostedZoneId: 'Z0123…' }
+// or, non-Route53 DNS: point a CNAME at the emitted CustomDomainTarget output
+app: { kind: 'node', entry: 'src/server.ts', domain: 'app.acme.com', certificateArn: 'arn:aws:acm:…' }
+```
+
+### Direct browser uploads (`Vapor.store`)
+
+The `tscloud/serverless` package registers `POST /tscloud/signed-storage-url`,
+which returns a pre-signed S3 PUT (the `Vapor.store()` flow) — the browser
+uploads straight to S3, then hands the `key` back to your app. Guard it by
+defining an `uploadFiles` gate/policy.
+
+### Sub-minute scheduler
+
+`scheduler: 'sub-minute'` keeps the 1-minute EventBridge trigger but loops
+`schedule:run` within each invocation so tasks scheduled more often than once a
+minute fire (Laravel/PHP).

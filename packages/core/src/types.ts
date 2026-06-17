@@ -1269,6 +1269,35 @@ export interface DatabaseConfig {
   host?: string
   /** Port (defaults: mysql/mariadb 3306, postgres 5432). */
   port?: number
+  /**
+   * Additional database users to create beyond the app {@link username}
+   * (the Forge Database Users feature). Each can be granted full or read-only
+   * access to one or more databases. Created at provision time on the on-box
+   * engine.
+   */
+  users?: DatabaseUserConfig[]
+}
+
+/**
+ * An extra database user provisioned on the on-box engine (per-user grants).
+ * Beyond the application user, you can create reporting/read-only accounts or
+ * service-specific logins with their own access scope.
+ */
+export interface DatabaseUserConfig {
+  /** User name to create. */
+  username: string
+  /** Password for the user. */
+  password: string
+  /**
+   * Databases this user may access. Defaults to the app database
+   * ({@link DatabaseConfig.name}) when omitted.
+   */
+  databases?: string[]
+  /**
+   * Access level granted on {@link databases}. `all` (default) is full
+   * read/write; `readonly` grants SELECT only (plus connect on Postgres).
+   */
+  access?: 'all' | 'readonly'
 }
 
 export interface CacheConfig {
@@ -1703,8 +1732,12 @@ export interface ServerlessAppConfig {
   }
   /** Front the database with an RDS Proxy for Lambda connection pooling. */
   rdsProxy?: boolean | { name?: string }
-  /** Ephemeral `/tmp` size in MB (512–10240). @default 512 */
+  /** Ephemeral storage in MB (512 to 10240) for the HTTP function. @default 512 */
   tmpStorage?: number
+  /** Ephemeral storage in MB for the CLI function. @default tmpStorage */
+  cliTmpStorage?: number
+  /** Ephemeral storage in MB for the queue function. @default tmpStorage */
+  queueTmpStorage?: number
   /** Database attachment. */
   database?: {
     connection?: 'rds-proxy' | 'aurora-serverless' | 'rds'
@@ -1724,10 +1757,17 @@ export interface ServerlessAppConfig {
   firewall?: WafConfig
 
   // ── Domain & assets ────────────────────────────────────────────────────────
-  /** Custom domain for the app (overrides {@link EnvironmentConfig.domain}). */
+  /** Custom domain(s) for the app's HTTP API (overrides {@link EnvironmentConfig.domain}). */
   domain?: string | string[]
-  /** Pre-issued ACM certificate ARN for the custom domain. */
+  /** Pre-issued ACM certificate ARN for the custom domain (regional, same region). */
   certificateArn?: string
+  /**
+   * Route53 hosted zone ID for the custom domain. When set (and no
+   * `certificateArn`), ts-cloud issues + DNS-validates an ACM cert and creates
+   * the alias record automatically. Without it, supply `certificateArn` and
+   * point your DNS at the API's regional domain (emitted as a stack output).
+   */
+  hostedZoneId?: string
   /** Local directory whose contents are uploaded to S3/CloudFront as versioned assets. */
   assets?: string
 
@@ -3640,7 +3680,7 @@ export interface RealtimeHooksConfig {
  * })
  *
  * // Private channel
- * Echo.private(`user.${userId}`).listen('notification', (e) => {
+ * Echo.private('user.' + userId).listen('notification', (e) => {
  *   console.log('Private notification:', e)
  * })
  *

@@ -184,6 +184,38 @@ describe('composeServerlessAppTemplate', () => {
     expect((template.Resources.HttpFunction as any).Properties.Runtime).toBe('provided.al2023')
   })
 
+  it('provisions an APIGW custom domain + cert + alias when domain+hostedZoneId set', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', domain: 'app.acme.com', hostedZoneId: 'Z123' })
+    expect((template.Resources.HttpCertificate as any).Properties.ValidationMethod).toBe('DNS')
+    expect((template.Resources.HttpDomain0 as any).Properties.DomainName).toBe('app.acme.com')
+    expect((template.Resources.HttpApiMapping0 as any).Type).toBe('AWS::ApiGatewayV2::ApiMapping')
+    expect((template.Resources.HttpDomainRecord0 as any).Properties.AliasTarget).toBeDefined()
+  })
+
+  it('uses a pre-issued certificateArn without creating a cert', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', domain: ['a.acme.com', 'b.acme.com'], certificateArn: 'arn:aws:acm:us-east-1:1:certificate/x' })
+    expect(template.Resources.HttpCertificate).toBeUndefined()
+    expect((template.Resources.HttpDomain0 as any).Properties.DomainNameConfigurations[0].CertificateArn).toBe('arn:aws:acm:us-east-1:1:certificate/x')
+    expect((template.Resources.HttpDomain1 as any).Properties.DomainName).toBe('b.acme.com')
+  })
+
+  it('throws when a custom domain has neither certificateArn nor hostedZoneId', () => {
+    expect(() => compose({ kind: 'node', entry: 'a.ts', domain: 'app.acme.com' }))
+      .toThrow(/certificateArn.*hostedZoneId/s)
+  })
+
+  it('applies per-function ephemeral storage (cli/queue tmp)', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', tmpStorage: 512, cliTmpStorage: 2048, queueTmpStorage: 1024, queues: ['jobs'] })
+    expect((template.Resources.HttpFunction as any).Properties.EphemeralStorage.Size).toBe(512)
+    expect((template.Resources.CliFunction as any).Properties.EphemeralStorage.Size).toBe(2048)
+    expect((template.Resources.QueueFunction as any).Properties.EphemeralStorage.Size).toBe(1024)
+  })
+
+  it('sets TSCLOUD_SCHEDULER=sub-minute env when scheduler is sub-minute', () => {
+    const { template } = compose({ kind: 'php', scheduler: 'sub-minute' })
+    expect((template.Resources.CliFunction as any).Properties.Environment.Variables.TSCLOUD_SCHEDULER).toBe('sub-minute')
+  })
+
   it('passes structural + resource-limit validation', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], assets: 'public' })
     const structural = validateTemplate(template as any)

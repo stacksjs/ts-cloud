@@ -52,6 +52,22 @@ function dispatch(array $event, string $artisan, string $queueCommand): array
 
     // Scheduler / arbitrary command.
     $command = $event['command'] ?? 'schedule:run';
+
+    // Sub-minute scheduling: EventBridge fires once a minute, so loop
+    // `schedule:run` within the invocation (~every 10s for ~55s) to honor tasks
+    // scheduled more frequently than once a minute.
+    if ($command === 'schedule:run' && getenv('TSCLOUD_SCHEDULER') === 'sub-minute') {
+        $deadline = time() + 55;
+        $last = '';
+        do {
+            runArtisan($artisan, ['schedule:run'], [], $last);
+            if (time() < $deadline) {
+                sleep(10);
+            }
+        } while (time() < $deadline);
+        return ['statusCode' => 0, 'output' => $last];
+    }
+
     $args = preg_split('/\s+/', trim($command));
     $exit = runArtisan($artisan, $args, [], $out);
     return ['statusCode' => $exit, 'output' => $out];
