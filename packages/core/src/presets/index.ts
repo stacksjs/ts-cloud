@@ -2,6 +2,7 @@
 export { createStaticSitePreset } from './static-site'
 export { createNodeJsServerPreset } from './nodejs-server'
 export { createNodeJsServerlessPreset } from './nodejs-serverless'
+export { createServerlessNodePreset } from './serverless-node'
 export { createFullStackAppPreset } from './fullstack-app'
 export { createApiBackendPreset } from './api-backend'
 export { createWordPressPreset } from './wordpress'
@@ -12,6 +13,7 @@ export { createDataPipelinePreset } from './data-pipeline'
 export { createMLApiPreset } from './ml-api'
 export { createTraditionalWebAppPreset } from './traditional-web-app'
 export { createLaravelPreset } from './laravel'
+export { createServerlessLaravelPreset } from './serverless-laravel'
 
 // Preset extension utilities
 export {

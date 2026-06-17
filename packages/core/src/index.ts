@@ -40,6 +40,7 @@ export * from './cloudformation/types'
 export * from './presets/static-site'
 export * from './presets/nodejs-server'
 export * from './presets/nodejs-serverless'
+export * from './presets/serverless-node'
 export * from './presets/fullstack-app'
 export * from './presets/api-backend'
 export * from './presets/wordpress'
@@ -50,6 +51,7 @@ export * from './presets/data-pipeline'
 export * from './presets/ml-api'
 export * from './presets/traditional-web-app'
 export * from './presets/laravel'
+export * from './presets/serverless-laravel'
 export * from './presets/dashboard'
 export * from './presets/extend'
 
@@ -331,6 +333,12 @@ export * from './sms'
 
 // Queue Advanced Features (Phase 7.14)
 export * from './queue'
+
+// Serverless application pipeline (Laravel-Vapor-equivalent)
+export * from './serverless'
+
+// PHP/Laravel-on-Lambda runtime (true Laravel-Vapor clone)
+export * from './serverless-php'
 
 // Static Site Features (Phase 7.15)
 export * from './static-site'
