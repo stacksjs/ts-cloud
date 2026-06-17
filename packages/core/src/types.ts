@@ -1122,6 +1122,33 @@ export interface SiteSslConfig {
   certPath?: string
   /** Path to the private key (PEM) when `provider: 'custom'`. */
   keyPath?: string
+  /**
+   * Issue a **wildcard** certificate (`*.<domain>` + `<domain>`). Requires
+   * DNS-01 validation, so {@link dns} must be set. The nginx plugin can't do
+   * wildcards (that needs HTTP-01 per host).
+   */
+  wildcard?: boolean
+  /**
+   * Use DNS-01 validation via a certbot DNS plugin instead of the nginx
+   * (HTTP-01) challenge. Needed for wildcard certs and for issuing before the
+   * domain resolves to the box. The plugin + credentials are wired on the box.
+   */
+  dns?: SslDnsConfig
+}
+
+/** certbot DNS-01 plugin configuration for DNS-validated / wildcard certs. */
+export interface SslDnsConfig {
+  /** DNS provider whose certbot plugin handles the `_acme-challenge` records. */
+  provider: 'cloudflare' | 'route53' | 'digitalocean' | 'google'
+  /**
+   * Provider credentials written to a root-only INI certbot reads
+   * (`--dns-<provider>-credentials`). For route53, AWS env/instance-role creds
+   * are used instead, so this may be omitted. Keys are provider-specific, e.g.
+   * `{ dns_cloudflare_api_token: '…' }`.
+   */
+  credentials?: Record<string, string>
+  /** Seconds to wait for DNS propagation before certbot asks the CA to verify. */
+  propagationSeconds?: number
 }
 
 /**

@@ -144,7 +144,7 @@ describe('Laravel end-to-end: app deploy', () => {
     // nginx vhost + Let's Encrypt
     expect(cmd).toContain('/etc/nginx/sites-available/main')
     expect(cmd).toContain('fastcgi_pass 127.0.0.1:9074;')
-    expect(cmd).toContain('certbot --nginx')
+    expect(cmd).toContain('--nginx')
     // DB_* auto-wired into .env
     expect(cmd).toContain('DB_DATABASE="acme"')
     // queue worker + scheduler + daemon reconcile
@@ -175,6 +175,6 @@ describe('Laravel end-to-end: app deploy', () => {
     expect(cmd).toContain('/etc/nginx/sites-available/dashboard')
     expect(cmd).toContain('auth_basic_user_file /etc/nginx/.htpasswd-dashboard;')
     expect(cmd).toContain("openssl passwd -apr1 'ui-pw'")
-    expect(cmd).toContain('certbot --nginx')
+    expect(cmd).toContain('--nginx')
   })
 })

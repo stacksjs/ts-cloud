@@ -141,7 +141,7 @@ describe('deploySiteRelease', () => {
     expect(commands).toContain('/etc/nginx/sites-available/dashboard')
     expect(commands).toContain('auth_basic_user_file /etc/nginx/.htpasswd-dashboard;')
     expect(commands).toContain("openssl passwd -apr1 's3cret'")
-    expect(commands).toContain('certbot --nginx')
+    expect(commands).toContain('--nginx')
   })
 
   it('returns failure when no compute targets exist', async () => {
