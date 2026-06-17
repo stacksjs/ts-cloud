@@ -195,3 +195,35 @@ defining an `uploadFiles` gate/policy.
 `scheduler: 'sub-minute'` keeps the 1-minute EventBridge trigger but loops
 `schedule:run` within each invocation so tasks scheduled more often than once a
 minute fire (Laravel/PHP).
+
+### Shared filesystem (EFS)
+
+Mount a shared Elastic File System on all functions (Vapor's `/mnt/local`). Set
+`efs: true` to provision an EFS file system + access point, or attach an existing
+one by ARN. Requires a VPC:
+
+```ts
+app: { kind: 'php', vpc: { subnets: ['subnet-a', 'subnet-b'] }, efs: true }
+// or: efs: { accessPointArn: 'arn:aws:elasticfilesystem:…', mountPath: '/mnt/local' }
+```
+
+### Custom asset CDN host
+
+Serve assets from your own host (Vapor `asset-domain`) instead of the default
+CloudFront domain. CloudFront requires a **us-east-1** ACM cert:
+
+```ts
+app: { assets: 'public', assetDomain: 'cdn.acme.com', assetCertificateArn: 'arn:aws:acm:us-east-1:…', hostedZoneId: 'Z…' }
+```
+
+Other asset knobs: `dotFilesAsAssets` (upload dotfiles — excluded by default),
+`serveAssets` and `redirectRobotsTxt` (injected as env for the app to honor).
+
+### Database access (private Aurora)
+
+Run ad-hoc SQL against a private serverless database through the in-VPC CLI
+function — no bastion required (needs the `tscloud/serverless` PHP bridge):
+
+```sh
+cloud serverless:db-shell "select count(*) from users" --env production
+```

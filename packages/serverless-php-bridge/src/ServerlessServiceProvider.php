@@ -4,6 +4,7 @@ namespace TsCloud\Serverless;
 
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use TsCloud\Serverless\Console\DbQueryCommand;
 use TsCloud\Serverless\Console\SqsHandleCommand;
 use TsCloud\Serverless\Http\SignedStorageUrlController;
 
@@ -27,6 +28,7 @@ class ServerlessServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 SqsHandleCommand::class,
+                DbQueryCommand::class,
             ]);
         }
 

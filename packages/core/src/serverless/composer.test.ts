@@ -216,6 +216,36 @@ describe('composeServerlessAppTemplate', () => {
     expect((template.Resources.CliFunction as any).Properties.Environment.Variables.TSCLOUD_SCHEDULER).toBe('sub-minute')
   })
 
+  it('provisions + mounts EFS at /mnt/local when efs:true (with VPC)', () => {
+    const { template } = compose({ kind: 'php', efs: true, vpc: { subnets: ['subnet-a', 'subnet-b'] } })
+    expect((template.Resources.EfsFileSystem as any).Type).toBe('AWS::EFS::FileSystem')
+    expect((template.Resources.EfsMountTarget0 as any).Type).toBe('AWS::EFS::MountTarget')
+    expect((template.Resources.EfsMountTarget1 as any).Type).toBe('AWS::EFS::MountTarget')
+    expect((template.Resources.EfsAccessPoint as any).Type).toBe('AWS::EFS::AccessPoint')
+    const fn = template.Resources.HttpFunction as any
+    expect(fn.Properties.FileSystemConfigs[0].LocalMountPath).toBe('/mnt/local')
+    expect(fn.DependsOn).toContain('EfsMountTarget0')
+  })
+
+  it('attaches an existing EFS access point without provisioning', () => {
+    const { template } = compose({ kind: 'php', vpc: { subnets: ['subnet-a'] }, efs: { accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', mountPath: '/mnt/shared' } })
+    expect(template.Resources.EfsFileSystem).toBeUndefined()
+    expect((template.Resources.HttpFunction as any).Properties.FileSystemConfigs[0]).toEqual({ Arn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', LocalMountPath: '/mnt/shared' })
+  })
+
+  it('throws when efs is requested without VPC subnets', () => {
+    expect(() => compose({ kind: 'php', efs: true })).toThrow(/efs require app\.vpc\.subnets/)
+  })
+
+  it('adds a custom asset CDN host (Aliases + viewer cert) and errors without a cert', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', assetCertificateArn: 'arn:aws:acm:us-east-1:1:certificate/c', hostedZoneId: 'Z1' })
+    const cfg = (template.Resources.AssetsDistribution as any).Properties.DistributionConfig
+    expect(cfg.Aliases).toEqual(['cdn.acme.com'])
+    expect(cfg.ViewerCertificate.AcmCertificateArn).toBe('arn:aws:acm:us-east-1:1:certificate/c')
+    expect((template.Resources.AssetsDomainRecord as any).Properties.AliasTarget.HostedZoneId).toBe('Z2FDTNDATAQYW2')
+    expect(() => compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com' })).toThrow(/assetCertificateArn/)
+  })
+
   it('passes structural + resource-limit validation', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], assets: 'public' })
     const structural = validateTemplate(template as any)

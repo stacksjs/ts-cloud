@@ -940,6 +940,23 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('serverless:db-shell <sql>', 'Run a SQL statement against a private serverless database (via the CLI function)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (sql: string, options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { runDbQuery } = await import('../../src/deploy/serverless-app')
+        const output = await runDbQuery(config, environment, sql)
+        cli.info(output)
+      }
+      catch (error: any) {
+        cli.error(`Query failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('serverless:build-php-layer', 'Build + publish the ts-cloud PHP runtime layer (requires Docker)')
     .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
     .option('--php <version>', 'PHP version', { default: '8.3' })

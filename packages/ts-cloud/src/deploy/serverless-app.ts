@@ -192,6 +192,8 @@ export function buildFunctionEnv(
     TSCLOUD_ENV: environment,
     MAINTENANCE_MODE: '0',
     ...(app.octane ? { TSCLOUD_OCTANE: '1' } : {}),
+    ...(app.serveAssets ? { TSCLOUD_SERVE_ASSETS: '1' } : {}),
+    ...(app.redirectRobotsTxt === false ? { TSCLOUD_REDIRECT_ROBOTS_TXT: '0' } : {}),
     ...laravelDefaults,
     ...infraEnv,
     ...(ctx.app.cache?.driver !== 'elasticache' ? { TSCLOUD_CACHE_TABLE: `${ctx.slug}-${environment}-cache` } : {}),
@@ -233,13 +235,16 @@ function* walk(dir: string): Generator<string> {
   }
 }
 
-async function uploadAssets(s3: S3Client, bucket: string, dir: string, prefix: string): Promise<number> {
+async function uploadAssets(s3: S3Client, bucket: string, dir: string, prefix: string, includeDotfiles = false): Promise<number> {
   let count = 0
   for (const file of walk(dir)) {
-    const key = `${prefix}/${relative(dir, file).replace(/\\/g, '/')}`
+    const rel = relative(dir, file).replace(/\\/g, '/')
+    // Vapor excludes dotfiles by default; include them only when opted in.
+    if (!includeDotfiles && rel.split('/').some(seg => seg.startsWith('.')))
+      continue
     await s3.putObject({
       bucket,
-      key,
+      key: `${prefix}/${rel}`,
       body: readFileSync(file),
       contentType: contentType(file),
       cacheControl: 'public, max-age=31536000, immutable',
@@ -401,10 +406,11 @@ export async function deployServerlessApp(
   if (app.assets) {
     const assetsDir = join(projectRoot, app.assets)
     if (existsSync(assetsDir)) {
-      const cdn = outputs.AssetsCdnDomain
+      // Prefer the custom asset CDN host (assetDomain) over CloudFront's default.
+      const cdn = app.assetDomain || outputs.AssetsCdnDomain
       assetUrl = cdn ? `https://${cdn}/${artifactSha}` : undefined
       cli.step(`Syncing assets from ${app.assets}`)
-      const n = await uploadAssets(s3, ctx.assetsBucket, assetsDir, artifactSha)
+      const n = await uploadAssets(s3, ctx.assetsBucket, assetsDir, artifactSha, app.dotFilesAsAssets)
       cli.info(`Uploaded ${n} asset(s)${assetUrl ? ` → ${assetUrl}` : ''}`)
     }
     else {
@@ -575,4 +581,15 @@ export async function runRemoteCommand(config: CloudConfig, environment: Environ
   if (res.FunctionError)
     throw new Error(`Command failed: ${res.Payload}`)
   return res.Payload ?? ''
+}
+
+/**
+ * Run a SQL statement against a (private, in-VPC) serverless database via the CLI
+ * function — no bastion needed. Requires the `tscloud/serverless` PHP bridge
+ * (`tscloud:db-query`). The SQL is base64-encoded so it survives the runtime's
+ * whitespace argument parsing.
+ */
+export async function runDbQuery(config: CloudConfig, environment: EnvironmentType, sql: string): Promise<string> {
+  const b64 = Buffer.from(sql, 'utf-8').toString('base64')
+  return runRemoteCommand(config, environment, `tscloud:db-query --sql-base64=${b64}`)
 }

@@ -1795,6 +1795,18 @@ export interface ServerlessAppConfig {
   storage?: {
     bucket?: string
   }
+  /**
+   * Mount a shared Elastic File System on the functions (Vapor's `/mnt/local`).
+   * Requires a VPC. `true` provisions an EFS file system + access point;
+   * otherwise attach an existing access point by ARN. The mount path defaults
+   * to `/mnt/local`.
+   */
+  efs?: boolean | {
+    /** Existing EFS Access Point ARN to attach (skips provisioning). */
+    accessPointArn?: string
+    /** Mount path inside the functions. @default '/mnt/local' */
+    mountPath?: string
+  }
 
   /** Managed WAF in front of the HTTP API / CloudFront. */
   firewall?: WafConfig
@@ -1813,6 +1825,19 @@ export interface ServerlessAppConfig {
   hostedZoneId?: string
   /** Local directory whose contents are uploaded to S3/CloudFront as versioned assets. */
   assets?: string
+  /**
+   * Serve assets from a custom CDN host instead of the default CloudFront domain
+   * (Vapor `asset-domain`). Requires a us-east-1 ACM cert via assetCertificateArn.
+   */
+  assetDomain?: string
+  /** us-east-1 ACM certificate ARN for {@link assetDomain} (CloudFront requirement). */
+  assetCertificateArn?: string
+  /** Include dotfiles when uploading assets (Vapor `dot-files-as-assets`). @default false */
+  dotFilesAsAssets?: boolean
+  /** Serve assets from the app/root domain too (Vapor `serve_assets`). Injected as env. */
+  serveAssets?: boolean
+  /** Redirect robots.txt to the asset CDN (Vapor `redirect_robots_txt`). Injected as env. @default true */
+  redirectRobotsTxt?: boolean
 
   // ── PHP-specific (kind: 'php') ───────────────────────────────────────────
   /** PHP version for the runtime layer. @default '8.3' */

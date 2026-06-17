@@ -29,6 +29,13 @@ describe('buildFunctionEnv', () => {
     expect(env.APP_NAME).toBe('override')
   })
 
+  it('injects serve-assets / robots env from app flags', () => {
+    const c: ResolvedContext = { ...ctx, app: { ...ctx.app, serveAssets: true, redirectRobotsTxt: false } }
+    const env = buildFunctionEnv(c.app, c, 'production', 'http', {}, undefined, undefined)
+    expect(env.TSCLOUD_SERVE_ASSETS).toBe('1')
+    expect(env.TSCLOUD_REDIRECT_ROBOTS_TXT).toBe('0')
+  })
+
   it('omits the DynamoDB cache var when using elasticache', () => {
     const elasticacheCtx: ResolvedContext = { ...ctx, app: { ...ctx.app, cache: { driver: 'elasticache' } } }
     const env = buildFunctionEnv(elasticacheCtx.app, elasticacheCtx, 'production', 'cli', {}, undefined, undefined)

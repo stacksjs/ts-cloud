@@ -33,6 +33,15 @@ composer require tscloud/serverless
 The service provider is auto-discovered. No further configuration is required;
 the ts-cloud deployer sets `QUEUE_CONNECTION=sqs` and the rest of the env.
 
+## Also provided
+
+- **`tscloud:db-query`** — runs a SQL statement and prints JSON; backs
+  `cloud serverless:db-shell` for ad-hoc access to a private serverless database
+  from inside the VPC (no bastion).
+- **`POST /tscloud/signed-storage-url`** — issues a pre-signed S3 upload URL (the
+  `Vapor.store()` flow) for direct browser → S3 uploads. Guard it with an
+  `uploadFiles` gate/policy.
+
 ## Override the queue command
 
 The runtime calls `tscloud:sqs-handle` by default. To use your own command, set

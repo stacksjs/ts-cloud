@@ -159,14 +159,22 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     ...(app.env ?? {}),
   })
 
-  // Data services (ElastiCache/Aurora/RDS Proxy) require the functions in a VPC.
+  // EFS shared filesystem mount (Vapor's /mnt/local). Requires a VPC.
+  const efsEnabled = Boolean(app.efs)
+  const efsOpts = typeof app.efs === 'object' ? app.efs : {}
+  const efsMountPath = efsOpts.mountPath ?? '/mnt/local'
+  const efsProvision = efsEnabled && !efsOpts.accessPointArn
+  const efsAccessPoint: any = efsOpts.accessPointArn ?? (efsProvision ? Fn.getAtt('EfsAccessPoint', 'Arn') : undefined)
+
+  // Data services (ElastiCache/Aurora/RDS Proxy/EFS) require the functions in a VPC.
   const subnets = app.vpc?.subnets ?? []
   const hasVpc = subnets.length > 0
   const needsDataVpc = app.cache?.driver === 'elasticache'
     || app.database?.connection === 'aurora-serverless'
     || Boolean(app.rdsProxy)
+    || efsEnabled
   if (needsDataVpc && !hasVpc) {
-    throw new Error('serverless app: elasticache / aurora-serverless / rdsProxy require app.vpc.subnets (private subnets) to be set.')
+    throw new Error('serverless app: elasticache / aurora-serverless / rdsProxy / efs require app.vpc.subnets (private subnets) to be set.')
   }
 
   const vpcConfig = hasVpc
@@ -180,6 +188,20 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         },
       }
     : {}
+
+  // Functions must wait for the EFS mount targets before they can mount.
+  const efsDependsOn = efsProvision ? subnets.map((_, i) => `EfsMountTarget${i}`) : []
+  const efsConfig = efsEnabled
+    ? { FileSystemConfigs: [{ Arn: efsAccessPoint, LocalMountPath: efsMountPath }] }
+    : {}
+  if (efsEnabled) {
+    // `inlinePolicies` is referenced by AppRole; pushing here still applies.
+    inlinePolicies[0].PolicyDocument.Statement.push({
+      Effect: 'Allow',
+      Action: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite', 'elasticfilesystem:ClientRootAccess', 'elasticfilesystem:DescribeMountTargets'],
+      Resource: '*',
+    })
+  }
 
   function addFunction(logicalId: string, name: string, handler: string, mode: string, memory: number, timeout: number, reservedConcurrency?: number, tmp: number = tmpStorage): void {
     resources[`${logicalId}LogGroup`] = {
@@ -206,7 +228,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
 
     resources[logicalId] = {
       Type: 'AWS::Lambda::Function',
-      DependsOn: [`${logicalId}LogGroup`],
+      DependsOn: [`${logicalId}LogGroup`, ...efsDependsOn],
       Properties: {
         FunctionName: name,
         Architectures: [architecture],
@@ -218,6 +240,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         ...codeProps,
         ...(reservedConcurrency !== undefined ? { ReservedConcurrentExecutions: reservedConcurrency } : {}),
         ...vpcConfig,
+        ...efsConfig,
       },
     }
   }
@@ -492,8 +515,39 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
             OriginAccessControlId: Fn.ref('AssetsOAC'),
             S3OriginConfig: { OriginAccessIdentity: '' },
           }],
+          // Custom asset CDN host (Vapor `asset-domain`). CloudFront requires a
+          // us-east-1 ACM cert, supplied via assetCertificateArn.
+          ...(app.assetDomain
+            ? {
+                Aliases: [app.assetDomain],
+                ViewerCertificate: {
+                  AcmCertificateArn: app.assetCertificateArn,
+                  SslSupportMethod: 'sni-only',
+                  MinimumProtocolVersion: 'TLSv1.2_2021',
+                },
+              }
+            : {}),
         },
       },
+    }
+    if (app.assetDomain) {
+      if (!app.assetCertificateArn)
+        throw new Error('serverless app: `assetDomain` requires `assetCertificateArn` (a us-east-1 ACM cert — CloudFront only accepts certs from us-east-1).')
+      if (app.hostedZoneId) {
+        resources.AssetsDomainRecord = {
+          Type: 'AWS::Route53::RecordSet',
+          Properties: {
+            HostedZoneId: app.hostedZoneId,
+            Name: app.assetDomain,
+            Type: 'A',
+            AliasTarget: {
+              DNSName: Fn.getAtt('AssetsDistribution', 'DomainName'),
+              HostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront's fixed hosted zone id
+            },
+          },
+        }
+      }
+      outputs.AssetDomain = { Description: 'Custom asset CDN host', Value: app.assetDomain }
     }
     resources.AssetsBucketPolicy = {
       Type: 'AWS::S3::BucketPolicy',
@@ -570,7 +624,8 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // ── VPC-attached data services (ElastiCache / Aurora / RDS Proxy) ────────────
   // These require the functions to be in a VPC; AWS requires private subnets.
   if (hasVpc && needsDataVpc) {
-    // A managed security group shared by the data services + functions.
+    // A managed security group shared by the data services + functions. The
+    // intra-VPC ingress also covers NFS (2049) for the EFS mount targets.
     resources.DataSecurityGroup = {
       Type: 'AWS::EC2::SecurityGroup',
       Properties: {
@@ -578,6 +633,41 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         SecurityGroupIngress: [{ IpProtocol: '-1', CidrIp: '10.0.0.0/8' }],
       },
     }
+  }
+
+  // EFS shared filesystem (Vapor's /mnt/local). Provision the FS + per-subnet
+  // mount targets + an access point (posix uid/gid 1001) unless an existing
+  // access point ARN was supplied.
+  if (efsProvision) {
+    resources.EfsFileSystem = {
+      Type: 'AWS::EFS::FileSystem',
+      Properties: {
+        Encrypted: true,
+        FileSystemTags: [{ Key: 'Name', Value: `${slug}-${environment}-efs` }],
+      },
+    }
+    subnets.forEach((subnetId, i) => {
+      resources[`EfsMountTarget${i}`] = {
+        Type: 'AWS::EFS::MountTarget',
+        Properties: {
+          FileSystemId: Fn.ref('EfsFileSystem'),
+          SubnetId: subnetId,
+          SecurityGroups: [Fn.getAtt('DataSecurityGroup', 'GroupId')],
+        },
+      }
+    })
+    resources.EfsAccessPoint = {
+      Type: 'AWS::EFS::AccessPoint',
+      Properties: {
+        FileSystemId: Fn.ref('EfsFileSystem'),
+        PosixUser: { Uid: 1001, Gid: 1001 },
+        RootDirectory: {
+          Path: '/lambda',
+          CreationInfo: { OwnerUid: 1001, OwnerGid: 1001, Permissions: '0755' },
+        },
+      },
+    }
+    outputs.EfsFileSystemId = { Description: 'EFS file system id', Value: Fn.ref('EfsFileSystem') }
   }
 
   // ElastiCache Redis (replication group, single node by default).
