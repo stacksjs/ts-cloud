@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.3...v0.5.4)
+
+### 🐛 Bug Fixes
+
+- **serverless**: make container-image + data-stack deploys work (live-verified) ([f66cef2](https://github.com/stacksjs/ts-cloud/commit/f66cef2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: pin mysql.com install to the published 8.0.43 ([3afb0d5](https://github.com/stacksjs/ts-cloud/commit/3afb0d5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.4 ([bdc4faa](https://github.com/stacksjs/ts-cloud/commit/bdc4faa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.2...v0.5.3)
 
 ### 🐛 Bug Fixes
