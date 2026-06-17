@@ -1,3 +1,24 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.3.1...v0.4.0)
+
+### 🚀 Features
+
+- **serverless**: wire runtime resolution into deploy + add node/bun layer commands ([35b4e94](https://github.com/stacksjs/ts-cloud/commit/35b4e94)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: unified provided.al2023 runtimes for Node (any version) + Bun ([8cb4e7a](https://github.com/stacksjs/ts-cloud/commit/8cb4e7a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: wait for DB readiness before app-DB setup ([45c0214](https://github.com/stacksjs/ts-cloud/commit/45c0214)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **provision**: map mariadb to mariadb.com/server (has a linux build) ([0a72676](https://github.com/stacksjs/ts-cloud/commit/0a72676)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: correct Postgres DB-setup SQL (identifiers vs literals) ([7086b5a](https://github.com/stacksjs/ts-cloud/commit/7086b5a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.4.0 ([d0cea60](https://github.com/stacksjs/ts-cloud/commit/d0cea60)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.3.0...v0.3.1)
 
 ### 🚀 Features
