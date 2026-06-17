@@ -1043,6 +1043,25 @@ export interface SiteConfig {
    * process.env.UI_PASSWORD }`. The htpasswd file is generated on the box.
    */
   auth?: SiteAuthConfig
+
+  /**
+   * Package-registry credentials written into the release before
+   * `composer install` / `npm install` so private packages resolve (Forge's
+   * Composer/npm credentials feature).
+   */
+  credentials?: SiteCredentialsConfig
+}
+
+/** Private package-registry credentials for a site's build. */
+export interface SiteCredentialsConfig {
+  /**
+   * Composer `auth.json` contents — an object (serialized to JSON) or a
+   * ready-made JSON string. Written to the release root before `composer
+   * install` (e.g. `{ 'github-oauth': { 'github.com': '<token>' } }`).
+   */
+  composerAuth?: Record<string, unknown> | string
+  /** `.npmrc` contents written to the release root before `npm install`. */
+  npmrc?: string
 }
 
 /** HTTP Basic auth for a site's nginx vhost. See {@link SiteConfig.auth}. */

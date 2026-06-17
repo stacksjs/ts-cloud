@@ -51,6 +51,25 @@ describe('buildLaravelDeployScript', () => {
     expect(joined).toContain('chmod 600 /var/www/app/shared/.env')
   })
 
+  it('writes composer auth.json + .npmrc credentials into the release', () => {
+    const s = buildLaravelDeployScript({
+      siteName: 'app',
+      releaseId: 'rel1',
+      site: {
+        ...laravelSite,
+        credentials: {
+          composerAuth: { 'github-oauth': { 'github.com': 'tok123' } },
+          npmrc: '//registry.npmjs.org/:_authToken=npmtok',
+        },
+      },
+    }).join('\n')
+    expect(s).toContain('cat > /var/www/app/releases/rel1/auth.json')
+    expect(s).toContain('"github-oauth"')
+    expect(s).toContain('cat > /var/www/app/releases/rel1/.npmrc')
+    expect(s).toContain('_authToken=npmtok')
+    expect(s).toContain('chmod 600 /var/www/app/releases/rel1/auth.json')
+  })
+
   it('uses pantry php (activated via pantry env) — no versioned binary', () => {
     expect(joined).toContain('pantry env')
     expect(joined).toContain('php artisan migrate --force')

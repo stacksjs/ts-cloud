@@ -4,12 +4,29 @@ import {
   buildEnsureReleaseLayout,
   buildLinkSharedPaths,
   buildPruneReleases,
+  buildRollbackScript,
   DEFAULT_SHARED_PATHS,
   releasePaths,
 } from '../../src/drivers/shared/releases'
 import { buildGitCheckoutScript } from '../../src/drivers/shared/git-deploy'
 
 const paths = releasePaths('/var/www/app', '20240601120000')
+
+describe('buildRollbackScript', () => {
+  it('rolls back to the previous release atomically when no target given', () => {
+    const s = buildRollbackScript(paths).join('\n')
+    expect(s).toContain('readlink -f /var/www/app/current')
+    expect(s).toContain('no previous release to roll back to')
+    expect(s).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
+  })
+
+  it('rolls back to a specific release id, guarding for existence', () => {
+    const s = buildRollbackScript(paths, { to: 'r-old' }).join('\n')
+    expect(s).toContain('[ -d /var/www/app/releases/r-old ]')
+    expect(s).toContain('ln -sfn /var/www/app/releases/r-old /var/www/app/current.tmp')
+    expect(s).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
+  })
+})
 
 describe('releasePaths', () => {
   it('derives the standard layout', () => {

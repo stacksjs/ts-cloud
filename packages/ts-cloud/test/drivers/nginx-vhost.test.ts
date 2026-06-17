@@ -20,6 +20,13 @@ describe('buildNginxServiceScript', () => {
     expect(script).toContain('/etc/systemd/system/ts-cloud-nginx.service')
     expect(script).toContain('systemctl enable ts-cloud-nginx')
   })
+
+  it('includes a catch-all default server returning 444 for unconfigured domains', () => {
+    const script = buildNginxServiceScript().join('\n')
+    expect(script).toContain('listen 80 default_server;')
+    expect(script).toContain('server_name _;')
+    expect(script).toContain('return 444;')
+  })
 })
 
 describe('buildNginxVhost', () => {

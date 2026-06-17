@@ -14,7 +14,7 @@
  * (not-yet-live) release, so a failure leaves the previous release serving —
  * the Envoyer zero-downtime guarantee.
  */
-import type { SiteConfig } from '@ts-cloud/core'
+import type { SiteConfig, SiteCredentialsConfig } from '@ts-cloud/core'
 import { buildGitCheckoutScript } from './git-deploy'
 import { formatEnvFile } from './env-file'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
@@ -107,6 +107,30 @@ function writeSharedEnv(sharedEnvPath: string, env: Record<string, string>): str
   ]
 }
 
+/** Write a file via a quoted heredoc (no shell interpolation of contents). */
+function writeFileHeredoc(path: string, body: string, marker: string): string[] {
+  return [`cat > ${path} <<'${marker}'`, body.replace(/\n$/, ''), marker, `chmod 600 ${path}`]
+}
+
+/**
+ * Write private-registry credential files into the release before build:
+ * Composer `auth.json` and/or `.npmrc`. Quoted heredocs keep tokens literal.
+ */
+export function buildCredentialFiles(releaseDir: string, creds?: SiteCredentialsConfig): string[] {
+  if (!creds)
+    return []
+  const out: string[] = []
+  if (creds.composerAuth) {
+    const json = typeof creds.composerAuth === 'string'
+      ? creds.composerAuth
+      : JSON.stringify(creds.composerAuth, null, 2)
+    out.push(...writeFileHeredoc(`${releaseDir}/auth.json`, json, 'TS_CLOUD_AUTHJSON_EOF'))
+  }
+  if (creds.npmrc)
+    out.push(...writeFileHeredoc(`${releaseDir}/.npmrc`, creds.npmrc, 'TS_CLOUD_NPMRC_EOF'))
+  return out
+}
+
 /**
  * Build the full remote shell script for a PHP/Laravel git deploy, expanding the
  * release macros. Requires `site.repository` to be set.
@@ -152,6 +176,9 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
       out.push(...buildGitCheckoutScript({ repository: site.repository, releaseDir: paths.release, commit }))
       out.push(...buildLinkSharedPaths(paths, sharedPaths))
       out.push(`cd ${paths.release}`)
+      // Private-registry credentials, written into the release before
+      // composer/npm install so private packages resolve.
+      out.push(...buildCredentialFiles(paths.release, site.credentials))
       // php-fpm runs as www-data; make the writable Laravel paths owned by it
       // so the app can write logs/cache/sessions (Forge/Envoyer do the same).
       out.push(

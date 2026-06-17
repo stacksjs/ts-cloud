@@ -114,6 +114,35 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
 }
 
 /**
+ * Roll the active release back to a previous one (Forge-style rollback). With
+ * `to` set, points `current` at `releases/<to>`; otherwise picks the most recent
+ * release that isn't the one `current` resolves to. Atomic (temp symlink + `mv
+ * -T`), and a no-op-safe guard fails loudly if the target is missing rather than
+ * leaving `current` dangling. The caller appends the engine reload
+ * (php-fpm/queues) — see {@link import('./laravel-deploy')}.
+ */
+export function buildRollbackScript(paths: ReleasePaths, options: { to?: string } = {}): string[] {
+  if (options.to) {
+    const target = `${paths.releases}/${options.to}`
+    return [
+      `[ -d ${target} ] || { echo "rollback target ${target} not found" >&2; exit 1; }`,
+      `ln -sfn ${target} ${paths.current}.tmp`,
+      `mv -Tf ${paths.current}.tmp ${paths.current}`,
+    ]
+  }
+  return [
+    `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
+    // Newest release dir whose real path differs from current = the prior deploy.
+    `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do `
+    + '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
+    '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
+    `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
+    `mv -Tf ${paths.current}.tmp ${paths.current}`,
+    'echo "rolled back to $TS_CLOUD_PREV"',
+  ]
+}
+
+/**
  * Remove all but the newest `keep` releases (by mtime). `current` always points
  * at the newest, so it is never pruned.
  */

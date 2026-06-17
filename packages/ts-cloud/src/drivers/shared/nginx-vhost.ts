@@ -326,6 +326,16 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     '    fastcgi_temp_path /var/lib/nginx/fastcgi;',
     '    uwsgi_temp_path /var/lib/nginx/uwsgi;',
     '    scgi_temp_path /var/lib/nginx/scgi;',
+    // Catch-all default server: drop (HTTP 444) requests to hostnames no site
+    // claims, so the box never serves a random site for an unconfigured domain
+    // (Forge\'s default-site protection). Real site vhosts use an explicit
+    // server_name and take precedence.
+    '    server {',
+    '        listen 80 default_server;',
+    '        listen [::]:80 default_server;',
+    '        server_name _;',
+    '        return 444;',
+    '    }',
     '    include /etc/nginx/sites-enabled/*;',
     '}',
     'TS_CLOUD_NGINXCONF_EOF',
