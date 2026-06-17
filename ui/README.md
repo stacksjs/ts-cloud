@@ -27,6 +27,8 @@ switchable from the nav: **Server** (`/`) and **Serverless** (`/serverless`).
 - **Secrets** — masked list with last-updated.
 - **Actions** — deploy, roll back, and toggle maintenance mode (down/up).
 
+## Managed - Laravel Cloud
+
 ## Build
 
 ```sh

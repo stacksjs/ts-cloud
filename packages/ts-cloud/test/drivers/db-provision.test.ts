@@ -35,7 +35,19 @@ describe('buildDatabaseSetupScript', () => {
     ).join('\n')
     expect(script).toContain('CREATE DATABASE IF NOT EXISTS')
     expect(script).toContain("CREATE USER IF NOT EXISTS 'forge'@'%' IDENTIFIED BY 'secret'")
+    expect(script).toContain("CREATE USER IF NOT EXISTS 'forge'@'localhost' IDENTIFIED BY 'secret'")
     expect(script).toContain('GRANT ALL PRIVILEGES')
+    // Connects as root via the unix socket (fresh root is socket/localhost-only).
+    expect(script).toContain('mysql --socket=/var/lib/pantry/mysql/mysqld.sock -u root')
+  })
+
+  it('creates a MariaDB database via the mariadb socket', () => {
+    const script = buildDatabaseSetupScript(
+      { name: 'app', username: 'app', password: 'pw' },
+      { mariadb: true },
+    ).join('\n')
+    expect(script).toContain('mysql --socket=/var/lib/pantry/mariadb/mariadbd.sock -u root')
+    expect(script).toContain("CREATE USER IF NOT EXISTS 'app'@'%' IDENTIFIED BY 'pw'")
   })
 
   it('creates a Postgres role + database with existence guards', () => {

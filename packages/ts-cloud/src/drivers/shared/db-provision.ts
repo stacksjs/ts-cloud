@@ -122,18 +122,25 @@ export function buildDatabaseSetupScript(
     ]
   }
 
-  // MySQL / MariaDB share the same client + SQL. Connect over TCP localhost and
-  // pipe the SQL via a quoted heredoc; SQL-escape every value.
+  // MySQL / MariaDB share the same client + SQL. Connect as root via the UNIX
+  // SOCKET — a freshly-initialized pantry engine grants passwordless root only
+  // from localhost (socket); a TCP root@127.0.0.1 doesn't exist, so a TCP setup
+  // would fail and the app user would never be created. The socket lives in the
+  // engine's system-scope data dir. Create the app user for both `%` (TCP from
+  // the app) and `localhost` (socket) so either connection path authenticates.
+  const sock = useMariadb ? '/var/lib/pantry/mariadb/mariadbd.sock' : '/var/lib/pantry/mysql/mysqld.sock'
   const ident = (v: string): string => v.replace(/`/g, '``')
   const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
   return [
     pantryEnvActivation(),
-    // Wait until the just-started engine accepts connections before setup.
-    'for i in $(seq 1 30); do mysqladmin -h 127.0.0.1 -P 3306 -u root ping 2>/dev/null | grep -q alive && break; sleep 2; done',
-    'mysql -h 127.0.0.1 -P 3306 -u root <<\'TS_CLOUD_SQL_EOF\'',
+    // Wait until the just-started engine accepts socket connections before setup.
+    `for i in $(seq 1 30); do mysqladmin --socket=${sock} -u root ping 2>/dev/null | grep -q alive && break; sleep 2; done`,
+    `mysql --socket=${sock} -u root <<'TS_CLOUD_SQL_EOF'`,
     `CREATE DATABASE IF NOT EXISTS \`${ident(name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
     `CREATE USER IF NOT EXISTS '${lit(user)}'@'%' IDENTIFIED BY '${lit(pass)}';`,
+    `CREATE USER IF NOT EXISTS '${lit(user)}'@'localhost' IDENTIFIED BY '${lit(pass)}';`,
     `GRANT ALL PRIVILEGES ON \`${ident(name)}\`.* TO '${lit(user)}'@'%';`,
+    `GRANT ALL PRIVILEGES ON \`${ident(name)}\`.* TO '${lit(user)}'@'localhost';`,
     'FLUSH PRIVILEGES;',
     'TS_CLOUD_SQL_EOF',
   ]
