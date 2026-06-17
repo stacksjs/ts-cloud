@@ -158,6 +158,15 @@ export {
   resolveSiteDeployTarget,
   resolveSiteKind,
   validateDeploymentConfig,
+  // Serverless application pipeline (Laravel-Vapor-equivalent)
+  buildAndPushServerlessImage,
+  buildFunctionEnv,
+  deployServerlessApp,
+  infraEnvFromOutputs,
+  redeployServerlessApp,
+  rollbackServerlessApp,
+  runRemoteCommand,
+  setMaintenance,
 } from './deploy'
 export type {
   StaticSiteConfig,
@@ -173,6 +182,12 @@ export type {
   // Per-site deploy-target model
   SiteDeployKind,
   DeploymentValidationResult,
+  // Serverless application pipeline
+  BuildImageOptions,
+  BuiltImage,
+  CodeSource,
+  DeployServerlessOptions,
+  ResolvedContext,
 } from './deploy'
 
 // Export cloud drivers
