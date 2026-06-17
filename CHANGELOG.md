@@ -1,3 +1,48 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.27...v0.3.0)
+
+### 🚀 Features
+
+- **ui**: add Vapor-style serverless dashboard ([4fd6124](https://github.com/stacksjs/ts-cloud/commit/4fd6124)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: deploy orchestrator, container build/push, and CLI commands ([bf69c6d](https://github.com/stacksjs/ts-cloud/commit/bf69c6d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: add serverless-node + serverless-laravel presets ([6f648a1](https://github.com/stacksjs/ts-cloud/commit/6f648a1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: add tscloud/serverless PHP queue bridge package ([5c48e03](https://github.com/stacksjs/ts-cloud/commit/5c48e03)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: PHP/Laravel-on-Lambda custom runtime + layer builder ([deaeb64](https://github.com/stacksjs/ts-cloud/commit/deaeb64)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: Node/Bun packaging, runtime adapter, and CFN composer ([7fb7284](https://github.com/stacksjs/ts-cloud/commit/7fb7284)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: add serverless application config + stack naming ([b85b011](https://github.com/stacksjs/ts-cloud/commit/b85b011)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: ts-cloud-managed nginx on the pantry nginx binary ([6b28353](https://github.com/stacksjs/ts-cloud/commit/6b28353)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: migrate Forge-style provisioning + deploy to pantry ([44e5c78](https://github.com/stacksjs/ts-cloud/commit/44e5c78)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: add pantry package-manager abstraction ([bcd43a4](https://github.com/stacksjs/ts-cloud/commit/bcd43a4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: use ts-backups native S3 destination (drop aws-cli sync) ([ec05859](https://github.com/stacksjs/ts-cloud/commit/ec05859)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **provision**: start pantry services before enabling them ([e51f325](https://github.com/stacksjs/ts-cloud/commit/e51f325)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: write /etc/nginx/fastcgi_params for pantry nginx ([e279bf6](https://github.com/stacksjs/ts-cloud/commit/e279bf6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: align pantry abstraction with live CLI behavior ([eae414e](https://github.com/stacksjs/ts-cloud/commit/eae414e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet/backups**: harden from review pass ([681c78b](https://github.com/stacksjs/ts-cloud/commit/681c78b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ♻️ Code Refactoring
+
+- **types**: narrow PHP version + drop any casts ([a58101f](https://github.com/stacksjs/ts-cloud/commit/a58101f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 📚 Documentation
+
+- **serverless**: add serverless guide, examples, and sidebar entry ([22e8319](https://github.com/stacksjs/ts-cloud/commit/22e8319)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.3.0 ([dc111d8](https://github.com/stacksjs/ts-cloud/commit/dc111d8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- add release:minor script ([7dd1876](https://github.com/stacksjs/ts-cloud/commit/7dd1876)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 📄 Miscellaneous
+
+- '8.2' ([- Add a](https://github.com/stacksjs/ts-cloud/commit/- Add a)) _(by '8.3' <'8.4'>)_
+
+### Contributors
+
+- _'8.3' <'8.4'>_
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.26...v0.2.27)
 
 ### 🚀 Features
