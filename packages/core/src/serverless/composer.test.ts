@@ -100,7 +100,7 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('creates ElastiCache + security group when cache.driver is elasticache', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', cache: { driver: 'elasticache' }, vpc: { subnets: ['subnet-a', 'subnet-b'] } })
+    const { template } = compose({ kind: 'node', entry: 'a.ts', cache: { driver: 'elasticache' }, vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] } })
     expect((template.Resources.CacheCluster as any).Type).toBe('AWS::ElastiCache::ReplicationGroup')
     expect((template.Resources.DataSecurityGroup as any).Type).toBe('AWS::EC2::SecurityGroup')
     // No DynamoDB cache table when using elasticache.
@@ -115,7 +115,7 @@ describe('composeServerlessAppTemplate', () => {
       kind: 'php',
       database: { connection: 'aurora-serverless' },
       rdsProxy: true,
-      vpc: { subnets: ['subnet-a', 'subnet-b'] },
+      vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
     } as ServerlessAppConfig)
     expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toBeDefined()
     expect((template.Resources.DbInstance as any).Properties.DBInstanceClass).toBe('db.serverless')
@@ -217,7 +217,7 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('provisions + mounts EFS at /mnt/local when efs:true (with VPC)', () => {
-    const { template } = compose({ kind: 'php', efs: true, vpc: { subnets: ['subnet-a', 'subnet-b'] } })
+    const { template } = compose({ kind: 'php', efs: true, vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] } })
     expect((template.Resources.EfsFileSystem as any).Type).toBe('AWS::EFS::FileSystem')
     expect((template.Resources.EfsMountTarget0 as any).Type).toBe('AWS::EFS::MountTarget')
     expect((template.Resources.EfsMountTarget1 as any).Type).toBe('AWS::EFS::MountTarget')
@@ -228,7 +228,7 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('attaches an existing EFS access point without provisioning', () => {
-    const { template } = compose({ kind: 'php', vpc: { subnets: ['subnet-a'] }, efs: { accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', mountPath: '/mnt/shared' } })
+    const { template } = compose({ kind: 'php', vpc: { id: 'vpc-test', subnets: ['subnet-a'] }, efs: { accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', mountPath: '/mnt/shared' } })
     expect(template.Resources.EfsFileSystem).toBeUndefined()
     expect((template.Resources.HttpFunction as any).Properties.FileSystemConfigs[0]).toEqual({ Arn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', LocalMountPath: '/mnt/shared' })
   })

@@ -118,3 +118,24 @@ for rollback.
 | Maintenance | auto updates | unattended-upgrades |
 | Backups | scheduled | scheduled (ts-backups to object storage) |
 | Notifications | Slack/Discord/Telegram/email/webhook | same |
+
+## Management dashboard (auto-deployed)
+
+Every server provision/deploy automatically ships the ts-cloud management
+dashboard — a stx app with **Server** and **Serverless** views (health,
+services, sites, deployments, queues, functions, scheduler, data, secrets) — as
+a server-static site. No config needed; the prebuilt UI ships inside the package.
+
+It is served behind HTTP Basic auth **only when `TS_CLOUD_UI_PASSWORD` is set**;
+if it is unset the dashboard is served without auth (and a warning is logged — set
+a password for any internet-facing box). Env knobs:
+
+| Env | Purpose |
+| --- | --- |
+| `TS_CLOUD_UI_PASSWORD` | htpasswd password (unset ⇒ no auth) |
+| `TS_CLOUD_UI_USERNAME` | htpasswd user (default `admin`) |
+| `TS_CLOUD_UI_DOMAIN`   | dashboard host (else `dashboard.<apex>`) |
+| `TS_CLOUD_UI_DISABLE`  | set truthy to skip auto-deploy |
+
+The host defaults to `dashboard.<your-apex-domain>`; set `TS_CLOUD_UI_DOMAIN` to
+override. Disable entirely with `TS_CLOUD_UI_DISABLE=1`.

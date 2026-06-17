@@ -624,11 +624,14 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // ── VPC-attached data services (ElastiCache / Aurora / RDS Proxy) ────────────
   // These require the functions to be in a VPC; AWS requires private subnets.
   if (hasVpc && needsDataVpc) {
+    if (!app.vpc?.id)
+      throw new Error('serverless app: data services (elasticache / aurora-serverless / rdsProxy / efs) need app.vpc.id (the VPC id) so the managed security group is created in the right VPC.')
     // A managed security group shared by the data services + functions. The
     // intra-VPC ingress also covers NFS (2049) for the EFS mount targets.
     resources.DataSecurityGroup = {
       Type: 'AWS::EC2::SecurityGroup',
       Properties: {
+        VpcId: app.vpc.id,
         GroupDescription: `${slug}-${environment} serverless data access`,
         SecurityGroupIngress: [{ IpProtocol: '-1', CidrIp: '10.0.0.0/8' }],
       },
@@ -717,6 +720,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Engine: 'aurora-mysql',
         EngineMode: 'provisioned',
         DBClusterIdentifier: `${slug}-${environment}-db`,
+        DatabaseName: 'app',
         MasterUsername: Fn.sub('{{resolve:secretsmanager:${DbSecret}:SecretString:username}}'),
         MasterUserPassword: Fn.sub('{{resolve:secretsmanager:${DbSecret}:SecretString:password}}'),
         ServerlessV2ScalingConfiguration: { MinCapacity: 0.5, MaxCapacity: 4 },
@@ -763,6 +767,17 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         VpcSubnetIds: subnets,
         VpcSecurityGroupIds: [Fn.getAtt('DataSecurityGroup', 'GroupId')],
         RequireTLS: false,
+      },
+    }
+    // Register the Aurora cluster as the proxy's backend — without this the proxy
+    // has no target and connections fail with "MySQL server has gone away".
+    resources.DbProxyTargetGroup = {
+      Type: 'AWS::RDS::DBProxyTargetGroup',
+      DependsOn: ['DbInstance'],
+      Properties: {
+        DBProxyName: Fn.ref('DbProxy'),
+        TargetGroupName: 'default',
+        DBClusterIdentifiers: [Fn.ref('DbCluster')],
       },
     }
     outputs.DbProxyEndpoint = { Description: 'RDS Proxy endpoint', Value: Fn.getAtt('DbProxy', 'Endpoint') }

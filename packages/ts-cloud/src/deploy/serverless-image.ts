@@ -8,7 +8,7 @@
  */
 
 import type { ServerlessAppConfig } from '@ts-cloud/core'
-import { execFileSync, execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -112,15 +112,28 @@ export async function buildAndPushServerlessImage(opts: BuildImageOptions): Prom
 
     const imageUri = `${repoUri}:${tag}`
 
+    // Build with the default docker config so buildx/BuildKit stays enabled; the
+    // image lands in the shared daemon store and push (below) finds it by tag.
+    // `--provenance=false --sbom=false` keep buildx from emitting an OCI
+    // manifest-list with attestation manifests — Lambda only accepts a plain
+    // single-platform Docker v2 manifest.
     step('docker build')
-    execFileSync('docker', ['build', '--platform', platform, '-t', imageUri, stage], { stdio: 'inherit' })
+    execFileSync('docker', ['build', '--platform', platform, '--provenance=false', '--sbom=false', '-t', imageUri, stage], { stdio: 'inherit' })
 
-    step('ecr login')
-    const loginCmd = await ecr.getDockerLoginCommand()
-    execSync(loginCmd, { stdio: 'inherit' })
-
-    step('docker push')
-    execFileSync('docker', ['push', imageUri], { stdio: 'inherit' })
+    // Authenticate by writing the ECR token straight into an isolated docker
+    // config (the token IS base64("AWS:password") = the `auth` value), then push
+    // with DOCKER_CONFIG pointed at it. This avoids `docker login` and the host
+    // credential store entirely (e.g. macOS osxkeychain errors on duplicates).
+    step('ecr auth + push')
+    const auth = await ecr.getAuthorizationToken()
+    const data = auth.authorizationData?.[0]
+    if (!data?.authorizationToken || !data.proxyEndpoint)
+      throw new Error('failed to get an ECR authorization token')
+    const registry = data.proxyEndpoint.replace(/^https?:\/\//, '')
+    const dockerConfig = join(stage, '.docker')
+    mkdirSync(dockerConfig, { recursive: true })
+    writeFileSync(join(dockerConfig, 'config.json'), JSON.stringify({ auths: { [registry]: { auth: data.authorizationToken } } }))
+    execFileSync('docker', ['push', imageUri], { stdio: 'inherit', env: { ...process.env, DOCKER_CONFIG: dockerConfig } })
 
     cli.info(`Image: ${imageUri}`)
     return { imageUri, tag, handlers }

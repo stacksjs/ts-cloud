@@ -101,13 +101,37 @@ per invocation without double-delivery.
 - **Octane** — set `octane: true` to boot Laravel once per container and serve
   in-process (no php-fpm). Lower latency; requires an Octane-safe app.
 - **Large apps (> 250 MB)** — set `packaging: 'image'` to ship a container image
-  to ECR (up to 10 GB) instead of a ZIP. The PHP runtime is baked into the image.
+  to ECR (up to 10 GB) instead of a ZIP (see [Container-image packaging](#container-image-packaging)).
 - **arm64** — set `architecture: 'arm64'` (build the layer with `--arch arm64`).
 - **Managed data** — attach `cache: { driver: 'elasticache' }`,
-  `database: { connection: 'aurora-serverless' }`, and `rdsProxy: true` (all
-  require `vpc: { subnets: [...] }`); the deployer injects `DB_HOST`/`REDIS_HOST`
-  into the functions. A `firewall` (WAF) can front the HTTP API, and `warm: N`
-  keeps N containers warm via scheduled pings.
+  `database: { connection: 'aurora-serverless' }`, and `rdsProxy: true`. These all
+  require a VPC — give `vpc: { id, subnets }` (the `id` is needed so the managed
+  security group lands in your VPC). The deployer injects `REDIS_HOST` and the
+  full `DB_*` set (`DB_HOST` → the RDS Proxy endpoint, `DB_USERNAME`/`DB_PASSWORD`
+  resolved from the auto-created Secrets Manager secret, `DB_DATABASE=app`). A
+  `firewall` (WAF) can front the HTTP API, and `warm: N` keeps N containers warm.
+
+> **All of the above is verified end-to-end against real AWS** — Node + PHP HTTP,
+> SQS queue workers, the EventBridge scheduler, on-demand CLI/artisan, maintenance
+> mode, rollback/redeploy, container-image packaging, and the full data stack
+> (Aurora Serverless v2 + RDS Proxy + ElastiCache + EFS) with live `db-shell`
+> queries.
+
+## Container-image packaging
+
+For apps that exceed the 250 MB zip/layer limit, ship a container image to ECR
+instead (Lambda runs images up to 10 GB):
+
+```ts
+app: { kind: 'node', entry: 'src/server.ts', packaging: 'image' }
+// PHP: a multi-stage image bakes the runtime in — no separate layer needed
+app: { kind: 'php', packaging: 'image' }
+```
+
+`cloud deploy:serverless` builds the image (`docker`), creates/uses an ECR repo
+`{slug}-{env}`, authenticates without touching your local credential store, and
+deploys the functions as `PackageType: Image`. Requires Docker; Node uses the AWS
+Lambda Node base image, PHP a self-contained multi-stage build.
 
 ## Runtimes
 
@@ -203,7 +227,7 @@ Mount a shared Elastic File System on all functions (Vapor's `/mnt/local`). Set
 one by ARN. Requires a VPC:
 
 ```ts
-app: { kind: 'php', vpc: { subnets: ['subnet-a', 'subnet-b'] }, efs: true }
+app: { kind: 'php', vpc: { id: 'vpc-…', subnets: ['subnet-a', 'subnet-b'] }, efs: true }
 // or: efs: { accessPointArn: 'arn:aws:elasticfilesystem:…', mountPath: '/mnt/local' }
 ```
 
@@ -221,8 +245,13 @@ Other asset knobs: `dotFilesAsAssets` (upload dotfiles — excluded by default),
 
 ### Database access (private Aurora)
 
-Run ad-hoc SQL against a private serverless database through the in-VPC CLI
-function — no bastion required (needs the `tscloud/serverless` PHP bridge):
+With `database: { connection: 'aurora-serverless' }` + `rdsProxy: true`, ts-cloud
+provisions an Aurora Serverless v2 cluster (initial database `app`), an RDS Proxy
+with its target group, and a generated credentials secret — and injects the full
+`DB_*` env into your functions, so the app connects through the proxy out of the box.
+
+Run ad-hoc SQL against the (private) database through the in-VPC CLI function —
+no bastion required (needs the `tscloud/serverless` PHP bridge's `tscloud:db-query`):
 
 ```sh
 cloud serverless:db-shell "select count(*) from users" --env production

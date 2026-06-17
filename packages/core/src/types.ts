@@ -1768,8 +1768,10 @@ export interface ServerlessAppConfig {
   packaging?: 'zip' | 'image'
 
   // ── Networking / data attachment ──────────────────────────────────────────
-  /** Attach the functions to a VPC (required for ElastiCache / private RDS). */
+  /** Attach the functions to a VPC (required for ElastiCache / private RDS / EFS). */
   vpc?: {
+    /** VPC id — required when ts-cloud provisions a managed security group for data services. */
+    id?: string
     subnets?: string[]
     securityGroups?: string[]
   }

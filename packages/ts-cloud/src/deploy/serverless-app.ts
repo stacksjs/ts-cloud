@@ -437,6 +437,21 @@ export async function deployServerlessApp(
   cli.step('Resolving secrets')
   const secrets = await resolveSecrets(app, region)
 
+  // For a managed Aurora cluster, inject DB_USERNAME/DB_PASSWORD from the
+  // auto-created secret ({slug}/{env}/db) so the app can actually connect.
+  if (app.database?.connection === 'aurora-serverless') {
+    try {
+      const sm = new SecretsManagerClient(region)
+      const v = await sm.getSecretValue({ SecretId: `${slug}/${environment}/db` })
+      const creds = JSON.parse(v.SecretString ?? '{}') as { username?: string, password?: string }
+      if (creds.username) secrets.DB_USERNAME = creds.username
+      if (creds.password) secrets.DB_PASSWORD = creds.password
+    }
+    catch (err: any) {
+      cli.warn(`Could not resolve Aurora DB credentials: ${err.message}`)
+    }
+  }
+
   // Release state lives in the artifact bucket; ensure it exists (image mode
   // may not have created it above).
   if (!(await s3.bucketExists(artifactBucket))) {
