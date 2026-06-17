@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.2...v0.5.0)
+
+### 🚀 Features
+
+- **deploy**: auto-deploy the management dashboard on every server ([6497b86](https://github.com/stacksjs/ts-cloud/commit/6497b86)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **provision**: create app DB via root unix socket + grant %/localhost ([f0357bb](https://github.com/stacksjs/ts-cloud/commit/f0357bb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.0 ([b101177](https://github.com/stacksjs/ts-cloud/commit/b101177)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.1...v0.4.2)
 
 ### 🐛 Bug Fixes
