@@ -26,7 +26,9 @@ export const PANTRY_PACKAGES = {
   nginx: 'nginx.org',
   composer: 'getcomposer.org',
   mysql: 'mysql.com',
-  mariadb: 'mariadb.org',
+  // The registry package that ships the mariadbd server + client for linux
+  // (`mariadb.org` has no linux build).
+  mariadb: 'mariadb.com/server',
   postgres: 'postgresql.org',
   redis: 'redis.io',
   memcached: 'memcached.org',

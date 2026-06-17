@@ -11,7 +11,7 @@
  */
 import type { ComputeServicesConfig, DatabaseConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
-import { buildPantryInstallScript, buildPantryServiceScript, pantryEnvActivation } from './package-manager'
+import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
 
 type ServiceSpec = boolean | { version?: string } | undefined
 
@@ -33,7 +33,7 @@ function planServices(services: ComputeServicesConfig): ServicePlan {
     names.push('mysql')
   }
   else if (enabled(services.mariadb)) {
-    packages.push('mariadb.org')
+    packages.push(PANTRY_PACKAGES.mariadb)
     names.push('mariadb')
   }
   if (enabled(services.postgres)) {
