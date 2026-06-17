@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.1...v0.4.2)
+
+### 🐛 Bug Fixes
+
+- **serverless**: make the PHP runtime layer actually build + load on Lambda ([24fa0bf](https://github.com/stacksjs/ts-cloud/commit/24fa0bf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 📚 Documentation
+
+- **serverless**: note the official bun-lambda layer as an HTTP-only alternative ([0202874](https://github.com/stacksjs/ts-cloud/commit/0202874)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.4.2 ([1a00f0b](https://github.com/stacksjs/ts-cloud/commit/1a00f0b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.0...v0.4.1)
 
 ### 🐛 Bug Fixes
