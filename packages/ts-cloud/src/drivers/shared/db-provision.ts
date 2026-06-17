@@ -107,6 +107,9 @@ export function buildDatabaseSetupScript(
     const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
     return [
       pantryEnvActivation(),
+      // The engine service was just started; wait until it accepts connections
+      // (first boot runs initdb, which takes a few seconds) before setup.
+      'for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -p 5432 -q && break; sleep 2; done',
       'psql -h 127.0.0.1 -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'',
       'DO $$ BEGIN',
       `  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${pgLit(user)}) THEN`,
@@ -125,6 +128,8 @@ export function buildDatabaseSetupScript(
   const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
   return [
     pantryEnvActivation(),
+    // Wait until the just-started engine accepts connections before setup.
+    'for i in $(seq 1 30); do mysqladmin -h 127.0.0.1 -P 3306 -u root ping 2>/dev/null | grep -q alive && break; sleep 2; done',
     'mysql -h 127.0.0.1 -P 3306 -u root <<\'TS_CLOUD_SQL_EOF\'',
     `CREATE DATABASE IF NOT EXISTS \`${ident(name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
     `CREATE USER IF NOT EXISTS '${lit(user)}'@'%' IDENTIFIED BY '${lit(pass)}';`,
