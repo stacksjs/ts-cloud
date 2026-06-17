@@ -140,6 +140,13 @@ app: { kind: 'node', runtimeVersion: '24', entry: 'src/server.ts' }
 app: { kind: 'bun', entry: 'src/server.ts' }
 ```
 
+> ts-cloud's Bun layer pairs the official Bun binary with a unified Runtime API
+> loop that handles all three function modes (http/queue/cli). If you only need
+> HTTP and prefer Oven's [official `bun-lambda` layer](https://github.com/oven-sh/bun/blob/main/packages/bun-lambda/README.md),
+> publish it yourself and point `app.layers` at its ARN — the http function works
+> with a `fetch` handler, though the queue/scheduler functions expect ts-cloud's
+> loop.
+
 ## Operations
 
 | Command | What it does |
