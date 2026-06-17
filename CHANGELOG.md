@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.1...v0.5.2)
+
+### 🚀 Features
+
+- **serverless**: EFS mounts, custom asset CDN host, and private-DB shell ([3171f0c](https://github.com/stacksjs/ts-cloud/commit/3171f0c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: rollback, deploy:history, and recipe CLI commands ([f9bda58](https://github.com/stacksjs/ts-cloud/commit/f9bda58)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: scheduler heartbeat monitoring ([663317d](https://github.com/stacksjs/ts-cloud/commit/663317d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: deployment history + per-deploy output capture ([6c939a7](https://github.com/stacksjs/ts-cloud/commit/6c939a7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: reusable nginx templates + per-site config snippets ([2fcaff6](https://github.com/stacksjs/ts-cloud/commit/2fcaff6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: production PHP/OPcache tuning (Optimize for Production) ([85cd17e](https://github.com/stacksjs/ts-cloud/commit/85cd17e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.2 ([8060304](https://github.com/stacksjs/ts-cloud/commit/8060304)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.0...v0.5.1)
 
 ### 🚀 Features
