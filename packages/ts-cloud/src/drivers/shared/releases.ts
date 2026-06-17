@@ -19,6 +19,24 @@ export const DEFAULT_SHARED_PATHS: readonly string[] = ['storage', '.env']
 /** Default number of past releases to retain for rollback. */
 export const DEFAULT_KEEP_RELEASES = 4
 
+/** Number of per-deploy output logs to keep on the box. */
+export const DEFAULT_KEEP_DEPLOY_LOGS = 20
+
+/** ts-cloud metadata dir for a site (deploy history + per-deploy logs). */
+export function deployMetaDir(base: string): string {
+  return `${base.replace(/\/+$/, '')}/.ts-cloud`
+}
+
+/** Append-only deploy history log path for a site. */
+export function deployHistoryPath(base: string): string {
+  return `${deployMetaDir(base)}/deploy-history.log`
+}
+
+/** Per-deploy output log path for a release. */
+export function deployLogPath(base: string, releaseId: string): string {
+  return `${deployMetaDir(base)}/deploys/${releaseId}.log`
+}
+
 export interface ReleasePaths {
   /** Site base directory (`/var/www/<site>`). */
   base: string
@@ -156,5 +174,49 @@ export function buildPruneReleases(paths: ReleasePaths, keep: number = DEFAULT_K
     `ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | tail -n +${n + 1} | while read -r TS_CLOUD_OLD; do`,
     '  [ "$(readlink -f "$TS_CLOUD_OLD")" = "$TS_CLOUD_CURRENT" ] || rm -rf "$TS_CLOUD_OLD"',
     'done',
+  ]
+}
+
+export interface DeployHistoryOptions {
+  /** This deploy's release id. */
+  releaseId: string
+  /** Commit SHA being deployed (recorded in the history line). */
+  commit?: string
+  /** Branch being deployed. */
+  branch?: string
+  /** Per-deploy logs to retain. @default {@link DEFAULT_KEEP_DEPLOY_LOGS} */
+  keepLogs?: number
+}
+
+/**
+ * Header lines that record deployment history + capture per-deploy output
+ * (Forge's deployment log). Emitted near the top of the deploy script: it tees
+ * all stdout/stderr to `<base>/.ts-cloud/deploys/<releaseId>.log` and installs
+ * an EXIT trap that appends a `<ts>\t<releaseId>\t<commit>\t<status>` line to
+ * `<base>/.ts-cloud/deploy-history.log` — so both successful and failed deploys
+ * are recorded (the trap reads `$?`). Requires bash (the deploy script already
+ * uses `set -euo pipefail`).
+ */
+export function buildDeployHistoryHeader(base: string, options: DeployHistoryOptions): string[] {
+  const meta = deployMetaDir(base)
+  const log = deployLogPath(base, options.releaseId)
+  const history = deployHistoryPath(base)
+  const keepLogs = Math.max(1, options.keepLogs ?? DEFAULT_KEEP_DEPLOY_LOGS)
+  const commit = options.commit || ''
+  const branch = options.branch || ''
+  return [
+    `mkdir -p ${meta}/deploys`,
+    // Tee every line to the per-deploy log while still streaming to the driver.
+    `exec > >(tee -a ${log}) 2>&1`,
+    `echo "[ts-cloud] deploy ${options.releaseId} commit=${commit} branch=${branch} starting $(date -u +%Y-%m-%dT%H:%M:%SZ)"`,
+    // Record outcome on exit (success or failure) via $?.
+    'ts_cloud_record_deploy() {',
+    '  TS_CLOUD_RC=$?',
+    '  if [ "$TS_CLOUD_RC" -eq 0 ]; then TS_CLOUD_ST=success; else TS_CLOUD_ST=failed; fi',
+    `  printf '%s\\t%s\\t%s\\t%s\\trc=%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${options.releaseId}" "${commit}" "$TS_CLOUD_ST" "$TS_CLOUD_RC" >> ${history}`,
+    '}',
+    'trap ts_cloud_record_deploy EXIT',
+    // Keep only the most recent N per-deploy logs.
+    `ls -1t ${meta}/deploys/*.log 2>/dev/null | tail -n +${keepLogs + 1} | while read -r TS_CLOUD_OLDLOG; do rm -f "$TS_CLOUD_OLDLOG"; done`,
   ]
 }

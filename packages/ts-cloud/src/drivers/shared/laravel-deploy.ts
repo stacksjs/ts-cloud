@@ -20,6 +20,7 @@ import { formatEnvFile } from './env-file'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
 import {
   buildActivateRelease,
+  buildDeployHistoryHeader,
   buildEnsureReleaseLayout,
   buildLinkSharedPaths,
   buildPruneReleases,
@@ -163,6 +164,16 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
     // Put pantry-installed php/composer (+ their shared libs) on PATH.
     pantryEnvActivation(),
   ]
+
+  // Record deployment history + capture this deploy's output on the box
+  // (Forge's deployment log). Installed before any release work so a failure
+  // anywhere below is still recorded via the EXIT trap.
+  out.push(...buildDeployHistoryHeader(base, {
+    releaseId,
+    commit,
+    branch: site.repository.branch,
+    keepLogs: keepReleases,
+  }))
 
   // Ensure the releases/shared skeleton exists, then write the shared .env so
   // it's in place before the new release symlinks it in.

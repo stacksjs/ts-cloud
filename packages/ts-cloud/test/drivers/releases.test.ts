@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'bun:test'
 import {
   buildActivateRelease,
+  buildDeployHistoryHeader,
   buildEnsureReleaseLayout,
   buildLinkSharedPaths,
   buildPruneReleases,
   buildRollbackScript,
   DEFAULT_SHARED_PATHS,
+  deployHistoryPath,
+  deployLogPath,
   releasePaths,
 } from '../../src/drivers/shared/releases'
 import { buildGitCheckoutScript } from '../../src/drivers/shared/git-deploy'
@@ -121,5 +124,29 @@ describe('buildGitCheckoutScript', () => {
       releaseDir: paths.release,
     }).join('\n')
     expect(script).toContain("'refs/tags/v*'")
+  })
+})
+
+describe('buildDeployHistoryHeader', () => {
+  it('captures output + records success/failure via an EXIT trap', () => {
+    const script = buildDeployHistoryHeader('/var/www/app', { releaseId: 'abc123', commit: 'abc123', branch: 'main' }).join('\n')
+    // Per-deploy output is teed to a log under the site's .ts-cloud dir.
+    expect(script).toContain(`exec > >(tee -a ${deployLogPath('/var/www/app', 'abc123')}) 2>&1`)
+    // History line appended on exit, for both success and failure.
+    expect(script).toContain('trap ts_cloud_record_deploy EXIT')
+    expect(script).toContain('TS_CLOUD_RC=$?')
+    expect(script).toContain(deployHistoryPath('/var/www/app'))
+    expect(script).toContain('branch=main')
+    expect(script).toContain('commit=abc123')
+  })
+
+  it('prunes old per-deploy logs to the keep count', () => {
+    const script = buildDeployHistoryHeader('/var/www/app', { releaseId: 'r', keepLogs: 3 }).join('\n')
+    expect(script).toContain('tail -n +4')
+  })
+
+  it('paths live outside releases/ so they survive pruning', () => {
+    expect(deployHistoryPath('/var/www/app/')).toBe('/var/www/app/.ts-cloud/deploy-history.log')
+    expect(deployLogPath('/var/www/app', '20240601')).toBe('/var/www/app/.ts-cloud/deploys/20240601.log')
   })
 })
