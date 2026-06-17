@@ -129,15 +129,21 @@ export interface InvokeResult {
 
 export interface CreateFunctionParams {
   FunctionName: string
-  Runtime: 'nodejs18.x' | 'nodejs20.x' | 'python3.11' | 'python3.12' | string
+  /** Omit for container-image functions (PackageType: 'Image'). */
+  Runtime?: 'nodejs18.x' | 'nodejs20.x' | 'python3.11' | 'python3.12' | string
   Role: string
-  Handler: string
+  /** Omit for container-image functions (the image CMD is the entrypoint). */
+  Handler?: string
   Code: {
     ZipFile?: string // Base64 encoded
     S3Bucket?: string
     S3Key?: string
     S3ObjectVersion?: string
+    /** ECR image URI for container-image functions. */
+    ImageUri?: string
   }
+  /** 'Zip' (default) or 'Image' for container-image deployments. */
+  PackageType?: 'Zip' | 'Image'
   Description?: string
   Timeout?: number
   MemorySize?: number
@@ -162,6 +168,8 @@ export interface UpdateFunctionCodeParams {
   S3Bucket?: string
   S3Key?: string
   S3ObjectVersion?: string
+  /** ECR image URI for container-image functions. */
+  ImageUri?: string
   Publish?: boolean
   Architectures?: ('x86_64' | 'arm64')[]
 }

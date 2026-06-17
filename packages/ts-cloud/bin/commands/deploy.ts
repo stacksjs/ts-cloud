@@ -739,43 +739,154 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
-    .command('deploy:serverless', 'Deploy serverless infrastructure')
+    .command('deploy:serverless', 'Deploy a serverless application (http/queue/cli Lambda functions)')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .option('--function <name>', 'Deploy specific function only')
-    .action(async (options?: { env?: string, function?: string }) => {
-      cli.header('Deploying Serverless Infrastructure')
-
+    .option('--skip-build', 'Skip local build hooks')
+    .option('--skip-hooks', 'Skip remote deploy hooks (e.g. migrations)')
+    .option('--redeploy', 'Re-activate the last build without rebuilding')
+    .action(async (options?: { env?: string, skipBuild?: boolean, skipHooks?: boolean, redeploy?: boolean }) => {
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
-        const stackName = `${config.project.slug}-serverless-${environment}`
-        const region = config.project.region || 'us-east-1'
+        const { deployServerlessApp, redeployServerlessApp } = await import('../../src/deploy/serverless-app')
 
-        cli.info(`Stack: ${stackName}`)
-        cli.info(`Region: ${region}`)
-        cli.info(`Environment: ${environment}`)
-
-        if (options?.function) {
-          cli.info(`Function: ${options.function}`)
+        if (options?.redeploy) {
+          await redeployServerlessApp(config, environment)
+          return
         }
-
-        cli.step('Generating serverless infrastructure...')
-
-        const spinner = new cli.Spinner('Deploying serverless infrastructure...')
-        spinner.start()
-
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        spinner.succeed('Serverless infrastructure deployed successfully!')
-
-        cli.success('\nDeployment complete!')
-        cli.info('\nNext steps:')
-        cli.info('  - cloud function:list - View deployed functions')
-        cli.info('  - cloud function:logs <name> - View function logs')
-        cli.info('  - cloud function:invoke <name> - Test function')
+        await deployServerlessApp(config, environment, {
+          skipBuild: options?.skipBuild,
+          skipDeployHooks: options?.skipHooks,
+        })
       }
       catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('serverless:rollback', 'Roll back a serverless app to the previous build')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { rollbackServerlessApp } = await import('../../src/deploy/serverless-app')
+        await rollbackServerlessApp(config, environment)
+      }
+      catch (error: any) {
+        cli.error(`Rollback failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('down', 'Put the serverless app into maintenance mode (503)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--secret <secret>', 'Bypass secret (send as x-maintenance-bypass header)')
+    .action(async (options?: { env?: string, secret?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { setMaintenance } = await import('../../src/deploy/serverless-app')
+        await setMaintenance(config, environment, true, options?.secret)
+      }
+      catch (error: any) {
+        cli.error(`Failed to enable maintenance mode: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('up', 'Bring the serverless app out of maintenance mode')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { setMaintenance } = await import('../../src/deploy/serverless-app')
+        await setMaintenance(config, environment, false)
+      }
+      catch (error: any) {
+        cli.error(`Failed to disable maintenance mode: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('command <cmd>', 'Run a command on the serverless CLI function (e.g. migrations)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (cmd: string, options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { runRemoteCommand } = await import('../../src/deploy/serverless-app')
+        const output = await runRemoteCommand(config, environment, cmd)
+        cli.info(output)
+      }
+      catch (error: any) {
+        cli.error(`Command failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('serverless:build-php-layer', 'Build + publish the ts-cloud PHP runtime layer (requires Docker)')
+    .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
+    .option('--php <version>', 'PHP version', { default: '8.3' })
+    .option('--name <name>', 'Layer name', { default: 'tscloud-php' })
+    .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
+    .option('--region <region>', 'AWS region')
+    .action(async (options?: { arch?: 'x86_64' | 'arm64', php?: string, name?: string, bucket?: string, region?: string }) => {
+      cli.header('Building PHP runtime layer')
+      try {
+        const config = await loadValidatedConfig().catch(() => null)
+        const region = options?.region || config?.project.region || 'us-east-1'
+        const arch = options?.arch || 'x86_64'
+        const phpVersion = options?.php || '8.3'
+        const layerName = `${options?.name || 'tscloud-php'}-${phpVersion.replace('.', '')}-${arch}`
+        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+
+        const { buildPhpRuntimeLayerZip } = await import('@ts-cloud/core')
+        const { S3Client } = await import('../../src/aws/s3')
+        const { LambdaClient } = await import('../../src/aws/lambda')
+
+        const artifact = buildPhpRuntimeLayerZip({ architecture: arch, phpVersion, onStep: m => cli.step(m) })
+        cli.info(`Layer: ${artifact.fileCount} files, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+
+        const s3 = new S3Client(region)
+        if (!(await s3.bucketExists(bucket))) {
+          cli.step(`Creating layer bucket ${bucket}`)
+          await s3.createBucket(bucket)
+        }
+        const key = `layers/${layerName}.zip`
+        cli.step('Uploading layer zip')
+        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+        cli.step('Publishing layer version')
+        const lambda = new LambdaClient(region)
+        const published = await lambda.publishLayerVersion({
+          LayerName: layerName,
+          Description: `ts-cloud PHP ${phpVersion} runtime (${arch})`,
+          Content: { S3Bucket: bucket, S3Key: key },
+          CompatibleRuntimes: ['provided.al2023'],
+          CompatibleArchitectures: [arch],
+        })
+
+        cli.box([
+          'PHP runtime layer published',
+          '',
+          `ARN: ${published.LayerVersionArn}`,
+          '',
+          'Reference it in your config:',
+          `  app: { kind: 'php', layers: ['${published.LayerVersionArn}'] }`,
+          'or set TSCLOUD_PHP_LAYER_ARN before deploying.',
+        ].join('\n'), 'green')
+      }
+      catch (error: any) {
+        cli.error(`Layer build failed: ${error.message}`)
+        process.exitCode = 1
       }
     })
 
