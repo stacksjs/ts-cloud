@@ -180,6 +180,13 @@ export interface EnvironmentConfig {
    * Example: smaller instances in dev, larger in production
    */
   infrastructure?: Partial<InfrastructureConfig>
+  /**
+   * Serverless application manifest (Laravel-Vapor-equivalent). Defining this opts
+   * the environment into the serverless app deploy pipeline: one codebase deployed
+   * as http/queue/cli Lambda functions with assets, hooks, and atomic activation.
+   * @see ServerlessAppConfig
+   */
+  app?: ServerlessAppConfig
 }
 
 /**
@@ -1492,6 +1499,198 @@ export interface FunctionConfig {
     suffix?: string
   }>
   environment?: Record<string, string>
+}
+
+/**
+ * Serverless application configuration — the Laravel-Vapor-equivalent manifest.
+ *
+ * One application codebase is deployed as three Lambda functions sharing a single
+ * code artifact:
+ *   - **http**     fronted by API Gateway v2 (or v1) + an optional custom domain
+ *   - **queue**    triggered by an SQS event source mapping (one job per invocation)
+ *   - **cli**      invoked by an EventBridge schedule (`schedule:run`) and on demand
+ *                  (deploy hooks, migrations, `command`)
+ *
+ * Declared per-environment via {@link EnvironmentConfig.app}. Defining it opts a
+ * project into the serverless application deploy pipeline (`cloud deploy:serverless`).
+ *
+ * @example
+ * environments: {
+ *   production: {
+ *     type: 'production',
+ *     domain: 'app.example.com',
+ *     app: {
+ *       runtime: 'nodejs20.x',
+ *       entry: 'src/server.ts',
+ *       memory: 1024,
+ *       build: ['bun install', 'bun run build'],
+ *       deploy: ['migrate'],
+ *       queues: true,
+ *       scheduler: 'on',
+ *     },
+ *   },
+ * }
+ */
+export interface ServerlessAppConfig {
+  /**
+   * Lambda runtime shared by all three functions.
+   * Use `provided.al2023` for PHP (custom runtime layer) or Bun custom runtimes.
+   * @default 'nodejs20.x'
+   */
+  runtime?: 'nodejs20.x' | 'nodejs22.x' | 'provided.al2023' | (string & {})
+
+  /**
+   * Application kind. Drives packaging + runtime selection.
+   * - `node` / `bun`: bundle a JS/TS handler artifact
+   * - `php`: build/attach the PHP runtime layer and FPM bridge (Laravel)
+   * @default 'node'
+   */
+  kind?: 'node' | 'bun' | 'php'
+
+  /**
+   * Entry file (relative to project root) that exports the request handler.
+   * Used when `handlers` is not provided; a single shim re-exports http/queue/cli.
+   * @example 'src/server.ts'
+   */
+  entry?: string
+
+  /**
+   * Explicit per-function handlers, overriding the single-`entry` shim.
+   * Values are Lambda handler strings (e.g. `dist/index.http`).
+   */
+  handlers?: {
+    http?: string
+    queue?: string
+    cli?: string
+  }
+
+  // ── HTTP function ────────────────────────────────────────────────────────
+  /** HTTP function memory in MB. @default 1024 */
+  memory?: number
+  /** HTTP request timeout in seconds (API Gateway caps at 29s for v2). @default 28 */
+  timeout?: number
+  /** Reserved concurrency for the HTTP function. */
+  concurrency?: number
+  /** API Gateway version: 2 = HTTP API (cheaper, default), 1 = REST API. @default 2 */
+  gatewayVersion?: 1 | 2
+  /**
+   * Keep-warm count. Sets provisioned concurrency on the HTTP alias, or drives a
+   * scheduled warmer rule. 0/undefined disables warming.
+   */
+  warm?: number
+
+  // ── CLI function (scheduler + on-demand command/deploy hooks) ─────────────
+  /** CLI function memory in MB. @default 1024 */
+  cliMemory?: number
+  /** CLI command timeout in seconds (allow room for migrations). @default 900 */
+  cliTimeout?: number
+
+  // ── Queue worker function ─────────────────────────────────────────────────
+  /**
+   * Queue names to process. `true` provisions a single `default` queue; `false`
+   * disables the queue function entirely. Entries may carry a per-queue
+   * concurrency, e.g. `[{ emails: 10 }]`.
+   */
+  queues?: boolean | Array<string | Record<string, number>>
+  /** Max concurrent queue job executions (SQS event source mapping). @default 1000 */
+  queueConcurrency?: number
+  /** Queue visibility timeout in seconds. @default 120 */
+  queueTimeout?: number
+  /** Queue function memory in MB. @default 1024 */
+  queueMemory?: number
+  /** Max receive count before a message is sent to the DLQ. @default 3 */
+  queueTries?: number
+
+  // ── Scheduler ─────────────────────────────────────────────────────────────
+  /**
+   * Task scheduler mode:
+   * - `on`         EventBridge rule invokes the CLI fn (`schedule:run`) every minute
+   * - `sub-minute` adds a self-rescheduling runner for sub-minute tasks
+   * - `off`        no scheduler
+   * @default 'on'
+   */
+  scheduler?: 'off' | 'on' | 'sub-minute'
+
+  // ── Build / deploy hooks (Vapor parity) ───────────────────────────────────
+  /** Commands run locally before packaging (e.g. `composer install`, `bun run build`). */
+  build?: string[]
+  /**
+   * Commands run remotely after the new code is live, by invoking the CLI function
+   * (e.g. `migrate --force`). A failing hook aborts the deploy and rolls back.
+   */
+  deploy?: string[]
+
+  /**
+   * Persistent application mode (Laravel Octane / long-lived server) instead of
+   * per-request FPM/handler boot. Lower latency; requires an Octane-safe app.
+   * @default false
+   */
+  octane?: boolean
+
+  /**
+   * Deployment package format:
+   * - `zip`   ship a ZIP artifact (250 MB unzipped layer+code limit)
+   * - `image` ship a container image to ECR (up to 10 GB) for large apps
+   * @default 'zip'
+   */
+  packaging?: 'zip' | 'image'
+
+  // ── Networking / data attachment ──────────────────────────────────────────
+  /** Attach the functions to a VPC (required for ElastiCache / private RDS). */
+  vpc?: {
+    subnets?: string[]
+    securityGroups?: string[]
+  }
+  /** Front the database with an RDS Proxy for Lambda connection pooling. */
+  rdsProxy?: boolean | { name?: string }
+  /** Ephemeral `/tmp` size in MB (512–10240). @default 512 */
+  tmpStorage?: number
+  /** Database attachment. */
+  database?: {
+    connection?: 'rds-proxy' | 'aurora-serverless' | 'rds'
+    cluster?: string
+  }
+  /** Cache attachment. DynamoDB cache table is the zero-NAT default. */
+  cache?: {
+    driver?: 'dynamodb' | 'elasticache'
+    cluster?: string
+  }
+  /** Application object-storage bucket (Vapor `storage:`). */
+  storage?: {
+    bucket?: string
+  }
+
+  /** Managed WAF in front of the HTTP API / CloudFront. */
+  firewall?: WafConfig
+
+  // ── Domain & assets ────────────────────────────────────────────────────────
+  /** Custom domain for the app (overrides {@link EnvironmentConfig.domain}). */
+  domain?: string | string[]
+  /** Pre-issued ACM certificate ARN for the custom domain. */
+  certificateArn?: string
+  /** Local directory whose contents are uploaded to S3/CloudFront as versioned assets. */
+  assets?: string
+
+  // ── PHP-specific (kind: 'php') ───────────────────────────────────────────
+  /** PHP version for the runtime layer. @default '8.3' */
+  phpVersion?: PhpVersion
+  /** CPU architecture. @default 'x86_64' */
+  architecture?: 'x86_64' | 'arm64'
+  /**
+   * Lambda layer version ARNs attached to all functions. For PHP apps this is
+   * the ts-cloud PHP runtime layer; if omitted, the deployer falls back to the
+   * `TSCLOUD_PHP_LAYER_ARN` environment variable.
+   */
+  layers?: string[]
+
+  // ── Env + secrets ──────────────────────────────────────────────────────────
+  /** Plaintext environment variables injected into all functions. */
+  env?: Record<string, string>
+  /**
+   * Secret names resolved from Secrets Manager / SSM at deploy time and injected
+   * as environment variables. Array of names, or name→source map.
+   */
+  secrets?: string[] | Record<string, string>
 }
 
 /**

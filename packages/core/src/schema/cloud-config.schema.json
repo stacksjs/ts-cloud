@@ -128,6 +128,27 @@
         "region": {
           "type": "string",
           "description": "AWS region override for this environment"
+        },
+        "app": {
+          "type": "object",
+          "description": "Serverless application manifest (Laravel-Vapor-equivalent). Defining this opts the environment into the serverless app deploy pipeline (http/queue/cli Lambda functions, assets, build/deploy hooks).",
+          "properties": {
+            "runtime": { "type": "string", "description": "Lambda runtime (e.g. nodejs20.x, provided.al2023)" },
+            "kind": { "type": "string", "enum": ["node", "bun", "php"], "description": "Application kind (drives packaging + runtime)" },
+            "entry": { "type": "string", "description": "Entry file exporting the request handler" },
+            "memory": { "type": "number", "description": "HTTP function memory in MB" },
+            "timeout": { "type": "number", "description": "HTTP request timeout in seconds" },
+            "gatewayVersion": { "type": "number", "enum": [1, 2], "description": "API Gateway version (2 = HTTP API, 1 = REST)" },
+            "warm": { "type": "number", "description": "Keep-warm / provisioned concurrency count" },
+            "queues": { "description": "Queue names (true = single default queue, false = disabled)" },
+            "scheduler": { "type": "string", "enum": ["off", "on", "sub-minute"], "description": "Task scheduler mode" },
+            "build": { "type": "array", "items": { "type": "string" }, "description": "Commands run locally before packaging" },
+            "deploy": { "type": "array", "items": { "type": "string" }, "description": "Commands run remotely after activation (e.g. migrations)" },
+            "octane": { "type": "boolean", "description": "Persistent application mode (Laravel Octane)" },
+            "packaging": { "type": "string", "enum": ["zip", "image"], "description": "Deployment package format (zip or container image)" },
+            "phpVersion": { "type": "string", "description": "PHP version for the runtime layer (kind: php)" },
+            "architecture": { "type": "string", "enum": ["x86_64", "arm64"], "description": "CPU architecture" }
+          }
         }
       }
     },

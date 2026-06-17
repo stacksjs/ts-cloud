@@ -70,3 +70,32 @@ export function resolveStorageBucketName(
 export function resolveDeployBucketName(slug: string, environment: EnvironmentType): string {
   return `${slug}-${environment}-deploy`
 }
+
+/**
+ * CloudFormation stack for a serverless application (Lambda http/queue/cli +
+ * API Gateway + SQS + assets). Kept distinct from {@link resolveProjectStackName}
+ * so the app stack can be deployed/rolled-back independently of shared infra.
+ * Convention: `{slug}-{environment}-app` (e.g. `pantry-production-app`).
+ */
+export function resolveServerlessAppStackName(
+  config: Pick<CloudConfig, 'project'>,
+  environment: EnvironmentType,
+): string {
+  return `${config.project.slug}-${environment}-app`
+}
+
+/**
+ * S3 bucket holding serverless deployment artifacts + release snapshots.
+ * Convention: `{slug}-{environment}-deployments`.
+ */
+export function resolveServerlessArtifactBucketName(slug: string, environment: EnvironmentType): string {
+  return `${slug}-${environment}-deployments`
+}
+
+/**
+ * S3 bucket fronting CloudFront for versioned serverless app assets.
+ * Convention: `{slug}-{environment}-assets`.
+ */
+export function resolveServerlessAssetBucketName(slug: string, environment: EnvironmentType): string {
+  return `${slug}-${environment}-assets`
+}
