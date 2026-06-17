@@ -57,6 +57,8 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
           default: compute.php?.default,
           extensions: compute.php?.extensions,
           installNginx: useNginx,
+          optimizeForProduction: compute.php?.optimizeForProduction,
+          ini: compute.php?.ini,
         }),
         // Set up ts-cloud-managed nginx (config + systemd unit) on the
         // pantry-installed nginx binary, ready for per-site vhosts.

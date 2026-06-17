@@ -2442,6 +2442,19 @@ export interface ComputePhpConfig {
    * e.g. `['imagick', 'swoole']`.
    */
   extensions?: string[]
+  /**
+   * Apply the production OPcache + php.ini tuning (Forge's "Optimize for
+   * Production"): OPcache on with timestamp validation off, larger file/string
+   * buffers, and a bigger realpath cache. Deploys restart php-fpm, so disabled
+   * timestamp validation is safe. @default true
+   */
+  optimizeForProduction?: boolean
+  /**
+   * Extra `php.ini` directives merged on top of the production tuning (and
+   * applied even when {@link optimizeForProduction} is false), e.g.
+   * `{ memory_limit: '512M', upload_max_filesize: '128M' }`.
+   */
+  ini?: Record<string, string>
 }
 
 /**

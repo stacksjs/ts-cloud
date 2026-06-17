@@ -340,6 +340,8 @@ export class HetznerDriver implements CloudDriver {
       default: compute.php?.default,
       extensions: compute.php?.extensions,
       installNginx: compute.webServer !== 'rpx',
+      optimizeForProduction: compute.php?.optimizeForProduction,
+      ini: compute.php?.ini,
     })
     const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked }))
 
