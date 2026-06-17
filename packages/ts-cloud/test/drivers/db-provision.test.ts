@@ -43,9 +43,12 @@ describe('buildDatabaseSetupScript', () => {
       { name: 'app', username: 'app', password: 'pw' },
       { postgres: true },
     ).join('\n')
-    expect(script).toContain('pg_roles WHERE rolname=')
-    expect(script).toContain('CREATE DATABASE')
-    expect(script).toContain('OWNER')
+    // Role guarded by a DO block; identifiers double-quoted, password literal.
+    expect(script).toContain('IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \'app\')')
+    expect(script).toContain('CREATE ROLE "app" LOGIN PASSWORD \'pw\'')
+    // Database created idempotently via \gexec.
+    expect(script).toContain('CREATE DATABASE "app" OWNER "app"')
+    expect(script).toContain('\\gexec')
   })
 
   it('skips creation for a managed (remote-host) database', () => {

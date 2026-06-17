@@ -19,12 +19,6 @@ function enabled(spec: ServiceSpec): boolean {
   return spec === true || (typeof spec === 'object' && spec != null)
 }
 
-/** Single-quote for safe embedding in the generated shell. */
-function sq(value: string): string {
-  const escaped = value.split('\'').join('\'\\\'\'')
-  return `'${escaped}'`
-}
-
 /** Map a service flag set to the pantry package domains + service names to run. */
 interface ServicePlan {
   packages: PantrySpec[]
@@ -102,14 +96,26 @@ export function buildDatabaseSetupScript(
   const useMysql = enabled(services.mysql) || database.engine === 'mysql'
 
   if (usePostgres && !useMysql && !useMariadb) {
-    // Create role + database via psql over TCP, guarding for re-runs.
-    const psql = 'psql -h 127.0.0.1 -p 5432 -U postgres'
+    // Create role + database via a psql heredoc over TCP. Identifiers are
+    // double-quoted (Postgres treats single-quoted as string literals, which is
+    // a syntax error for a role/db name); string literals (the password,
+    // existence-check comparisons) are single-quoted. Idempotent: a DO block
+    // guards the role, and `\gexec` conditionally creates the database (which
+    // can't run inside a DO block / transaction). The heredoc is quoted so the
+    // shell leaves the SQL untouched.
+    const pgIdent = (v: string): string => `"${v.replace(/"/g, '""')}"`
+    const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
     return [
       pantryEnvActivation(),
-      `${psql} -tc "SELECT 1 FROM pg_roles WHERE rolname=${sq(user)}" | grep -q 1 `
-      + `|| ${psql} -c "CREATE ROLE ${sq(user)} LOGIN PASSWORD ${sq(pass)};"`,
-      `${psql} -tc "SELECT 1 FROM pg_database WHERE datname=${sq(name)}" | grep -q 1 `
-      + `|| ${psql} -c "CREATE DATABASE ${sq(name)} OWNER ${sq(user)};"`,
+      'psql -h 127.0.0.1 -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'',
+      'DO $$ BEGIN',
+      `  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${pgLit(user)}) THEN`,
+      `    CREATE ROLE ${pgIdent(user)} LOGIN PASSWORD ${pgLit(pass)};`,
+      '  END IF;',
+      'END $$;',
+      `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' `
+      + `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
+      'TS_CLOUD_PG_EOF',
     ]
   }
 
