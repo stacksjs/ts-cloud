@@ -102,18 +102,209 @@ runs the deploy script, then atomically flips `current`. A failed step leaves
 the previous release serving. The last `keepReleases` (default 4) are retained
 for rollback.
 
+## SSL certificates
+
+By default every site with a `domain` gets a free **Let's Encrypt** certificate
+issued by certbot (HTTP-01), with auto-renewal and an nginx reload on renewal.
+You can also bring your own certificate, or issue a **wildcard** via DNS-01.
+
+```ts
+sites: {
+  main: {
+    // Let's Encrypt (default when a domain is set)
+    ssl: { provider: 'letsencrypt', email: 'ops@acme.com' },
+  },
+}
+```
+
+**Custom certificate** — install an operator-provided cert/key (Forge's "Install
+Existing Certificate"):
+
+```ts
+ssl: { provider: 'custom', certPath: '/etc/ssl/acme.crt', keyPath: '/etc/ssl/acme.key' }
+```
+
+**Wildcard / DNS-01** — `*.acme.com` requires DNS-01 validation through your DNS
+provider (cloudflare, route53, digitalocean, google). The credentials are written
+to a root-only INI; route53 can use the instance role instead.
+
+```ts
+ssl: {
+  provider: 'letsencrypt',
+  email: 'ops@acme.com',
+  wildcard: true,
+  dns: {
+    provider: 'cloudflare',
+    credentials: { dns_cloudflare_api_token: process.env.CLOUDFLARE_DNS_TOKEN! },
+    propagationSeconds: 30,
+  },
+}
+```
+
+## Database users
+
+Beyond the application user, provision extra database logins — read-only
+reporting accounts, per-service users, etc. (Forge's "Database Users"). Each can
+be granted full or read-only access to one or more databases, and re-provisioning
+resets the password.
+
+```ts
+infrastructure: {
+  appDatabase: {
+    engine: 'mysql',
+    name: 'acme',
+    username: 'acme',
+    password: process.env.DB_PASSWORD,
+    users: [
+      { username: 'reporter', password: process.env.RO_PASSWORD, access: 'readonly' },
+      { username: 'analytics', password: process.env.AN_PASSWORD, databases: ['acme', 'metrics'] },
+    ],
+  },
+}
+```
+
+`access: 'readonly'` grants `SELECT` only on MySQL/MariaDB (and `CONNECT` +
+`USAGE` + `SELECT`, including future tables, on Postgres). The default is full
+read/write.
+
+## PHP settings & OPcache
+
+PHP boxes are tuned for production by default (Forge's "Optimize for
+Production"): OPcache is enabled with timestamp validation **off** (every deploy
+restarts php-fpm, so a fresh release always recompiles), larger interned-string
+and accelerated-file buffers, and a bigger realpath cache. Override or extend
+with custom `php.ini` directives.
+
+```ts
+infrastructure: {
+  compute: {
+    php: {
+      versions: ['8.3'],
+      optimizeForProduction: true, // default
+      ini: {
+        memory_limit: '512M',
+        upload_max_filesize: '128M',
+        post_max_size: '128M',
+      },
+    },
+  },
+}
+```
+
+Set `optimizeForProduction: false` to skip the OPcache tuning (your `ini`
+overrides still apply). The directives are written as a managed `php.ini`
+drop-in discovered at runtime, so they work regardless of where PHP is installed.
+
+## Nginx configuration
+
+Inject custom directives into a site's generated `server { … }` block (Forge's
+"Edit Nginx Configuration"), and define **reusable templates** shared across
+sites.
+
+```ts
+infrastructure: {
+  compute: {
+    // Reusable directive blocks, referenced by name from a site.
+    nginxTemplates: {
+      hardening: [
+        'add_header X-Robots-Tag "noindex, nofollow";',
+        'location ~* \\.(env|git) { deny all; }',
+      ],
+    },
+  },
+},
+sites: {
+  main: {
+    nginx: {
+      template: 'hardening',                       // inject the shared block
+      clientMaxBodySize: '256M',                   // per-vhost upload ceiling
+      serverSnippet: ['gzip on;', 'location /health { return 200; }'],
+    },
+  },
+}
+```
+
+The resolved template lines plus the per-site `serverSnippet` are inserted after
+the managed root/locations, so the framework defaults still apply.
+
+## Deployment history
+
+Every deploy tees its full output to a per-release log and appends a record to a
+history log on the box (Forge's deployment log) — both successful and failed
+deploys are captured. Inspect it with the CLI:
+
+```sh
+cloud deploy:history            # most recent deploys for the first site
+cloud deploy:history main --limit 50
+```
+
+Logs live under `<site>/.ts-cloud/` (outside `releases/`, so they survive
+pruning); per-deploy logs are capped to the release keep-count.
+
+## Scheduler & heartbeat monitoring
+
+Enable the Laravel scheduler (a per-minute `php artisan schedule:run` cron) and,
+optionally, attach a **heartbeat monitor** (healthchecks.io / Oh Dear style) that
+is pinged only after a successful run — so you're alerted if the scheduler stops.
+
+```ts
+sites: {
+  main: {
+    scheduler: true, // simplest form
+
+    // …or with heartbeat monitoring:
+    scheduler: {
+      heartbeatUrl: 'https://hc-ping.com/your-uuid',
+      heartbeatMethod: 'GET', // GET (default) | POST | HEAD
+    },
+  },
+}
+```
+
+## Rollback & recipes (CLI)
+
+Roll a site back to a previous release, or run a reusable script across every
+server (Forge's "Recipes"):
+
+```sh
+# Roll back to the previous release (atomic flip + php-fpm/queue restart)
+cloud deploy:rollback main
+
+# Roll back to a specific release id
+cloud deploy:rollback main --to 20240601120000
+
+# Run a local bash script on every server, as a chosen user
+cloud deploy:recipe clear-opcache ./recipes/clear-opcache.sh --user www-data
+```
+
+### CLI reference (Forge-parity commands)
+
+| Command | What it does |
+| --- | --- |
+| `cloud deploy production` | Provision (first run) + deploy all sites |
+| `cloud deploy:rollback [site] [--to <id>]` | Roll a site back to a previous release |
+| `cloud deploy:history [site] [--limit <n>]` | Show on-box deployment history |
+| `cloud deploy:recipe <name> <script> [--user <u>]` | Run a bash recipe across servers |
+
 ## What gets provisioned
 
 | Area | Forge | ts-cloud |
 | --- | --- | --- |
 | Web server | nginx + php-fpm | nginx + php-fpm (per-site PHP version) |
 | TLS | Let's Encrypt | Let's Encrypt (certbot) + custom certs, auto-renew |
+| Wildcard SSL | DNS-01 | DNS-01 (cloudflare/route53/digitalocean/google) |
 | Deploys | git, zero-downtime | git, zero-downtime atomic releases |
+| Deployment history | per-deploy log | per-deploy + history log on the box |
+| Rollback | one-click | `cloud deploy:rollback` (atomic) |
 | Database | MySQL/MariaDB/Postgres | same, on-box or managed |
+| Database users | read-only + full | read-only + full grants, password reset |
+| PHP tuning | Optimize for Production | OPcache + custom `php.ini` (default on) |
+| Nginx config | per-site + templates | per-site snippets + reusable templates |
 | Cache/Search | Redis/Memcached/Meilisearch | same |
 | Queues | workers / Horizon | systemd workers / Horizon |
-| Scheduler | cron | cron (`schedule:run`) |
+| Scheduler | cron + heartbeat | cron (`schedule:run`) + heartbeat ping |
 | Daemons | systemd | systemd |
+| Recipes | run scripts on servers | `cloud deploy:recipe` (login shell, any user) |
 | Firewall | UFW | UFW (+ Hetzner cloud firewall) |
 | Maintenance | auto updates | unattended-upgrades |
 | Backups | scheduled | scheduled (ts-backups to object storage) |
@@ -126,7 +317,17 @@ dashboard — a stx app with **Server** and **Serverless** views (health,
 services, sites, deployments, queues, functions, scheduler, data, secrets) — as
 a server-static site. No config needed; the prebuilt UI ships inside the package.
 
+The **Server** view shows host health (CPU/memory/disk), service status, sites
+with SSL + deployment state, recent deployments, queue workers, the scheduler,
+SSH keys, and backups:
+
 ![ts-cloud Server dashboard](/images/dashboard-server.png)
+
+The **Serverless** view (for the Lambda pipeline) covers function metrics,
+queues, the scheduler, the WAF, data services, recent deployments with rollback,
+assets/CDN, and secrets:
+
+![ts-cloud Serverless dashboard](/images/dashboard-serverless.png)
 
 It is served behind HTTP Basic auth **only when `TS_CLOUD_UI_PASSWORD` is set**;
 if it is unset the dashboard is served without auth (and a warning is logged — set
