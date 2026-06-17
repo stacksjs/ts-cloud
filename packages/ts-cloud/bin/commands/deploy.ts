@@ -787,6 +787,109 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('deploy:rollback [site]', 'Roll a compute site back to a previous release')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--to <release>', 'Release id to roll back to (default: the previous release)')
+    .action(async (site?: string, options?: { env?: string, to?: string }) => {
+      cli.header('Rolling Back Release')
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const siteName = site || Object.keys(config.sites || {})[0]
+        if (!siteName) {
+          cli.error('No site configured to roll back.')
+          process.exitCode = 1
+          return
+        }
+        const { rollbackComputeSite } = await import('../../src/drivers/shared/compute-ops')
+        const result = await rollbackComputeSite(
+          { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
+          { siteName, to: options?.to },
+        )
+        if (!result.success) {
+          cli.error(`Rollback failed: ${result.error || 'unknown error'}`)
+          process.exitCode = 1
+          return
+        }
+        for (const inst of result.perInstance || [])
+          cli.info(`  ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)
+      }
+      catch (error: any) {
+        cli.error(`Rollback failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('deploy:history [site]', 'Show a compute site\'s deployment history')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--limit <n>', 'Number of entries to show', { default: '20' })
+    .action(async (site?: string, options?: { env?: string, limit?: string }) => {
+      cli.header('Deployment History')
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const siteName = site || Object.keys(config.sites || {})[0]
+        if (!siteName) {
+          cli.error('No site configured.')
+          process.exitCode = 1
+          return
+        }
+        const { getComputeDeployHistory } = await import('../../src/drivers/shared/compute-ops')
+        const result = await getComputeDeployHistory(
+          { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
+          { siteName, limit: Number.parseInt(options?.limit || '20', 10) || 20 },
+        )
+        if (!result.success) {
+          cli.error(`Could not read history: ${result.error || 'unknown error'}`)
+          process.exitCode = 1
+          return
+        }
+        for (const inst of result.perInstance || []) {
+          cli.info(`\n${inst.instanceId}:`)
+          cli.info(inst.output?.trimEnd() || '(no output)')
+        }
+      }
+      catch (error: any) {
+        cli.error(`History lookup failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('deploy:recipe <name> <script>', 'Run a reusable server recipe (a local bash file) across servers')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--user <user>', 'User to run the recipe as', { default: 'root' })
+    .action(async (name: string, script: string, options?: { env?: string, user?: string }) => {
+      cli.header(`Running Recipe: ${name}`)
+      try {
+        if (!existsSync(script)) {
+          cli.error(`Recipe script not found: ${script}`)
+          process.exitCode = 1
+          return
+        }
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const lines = readFileSync(script, 'utf8').split('\n')
+        const { runComputeRecipe } = await import('../../src/drivers/shared/compute-ops')
+        const result = await runComputeRecipe(
+          { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
+          { name, script: lines, user: options?.user },
+        )
+        for (const inst of result.perInstance || []) {
+          cli.info(`\n${inst.instanceId}:`)
+          cli.info(inst.output?.trimEnd() || '(no output)')
+        }
+        if (!result.success)
+          process.exitCode = 1
+      }
+      catch (error: any) {
+        cli.error(`Recipe failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('down', 'Put the serverless app into maintenance mode (503)')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--secret <secret>', 'Bypass secret (send as x-maintenance-bypass header)')
