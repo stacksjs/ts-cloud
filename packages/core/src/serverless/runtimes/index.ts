@@ -97,8 +97,11 @@ export function buildBunRuntimeLayerZip(options: BuildRuntimeLayerOptions): Runt
 
   const stage = mkdtempSync(join(tmpdir(), 'tscloud-bun-layer-'))
   try {
-    const tag = version ? `bun-v${version}` : 'latest'
-    const url = `https://github.com/oven-sh/bun/releases/download/${tag}/${bunArch}.zip`
+    // GitHub's "latest" lives at /releases/latest/download/<asset>, whereas a
+    // pinned release is at /releases/download/<tag>/<asset>.
+    const url = version
+      ? `https://github.com/oven-sh/bun/releases/download/bun-v${version}/${bunArch}.zip`
+      : `https://github.com/oven-sh/bun/releases/latest/download/${bunArch}.zip`
     step(`downloading Bun ${version || 'latest'} (${architecture})`)
     const zipPath = join(stage, 'bun.zip')
     fetchToFile(url, zipPath)
