@@ -1,0 +1,348 @@
+<script server>
+// ts-cloud serverless (Vapor-style) dashboard. At build/deploy time this data is
+// populated from the resolved cloud config + live AWS reads (Lambda, SQS, CFN
+// outputs). The sample values below render the design; `ui/build.ts` injects real
+// data when present.
+const meta = {
+  title: 'ts-cloud — Serverless',
+  description: 'ts-cloud serverless application dashboard',
+}
+
+const app = {
+  name: 'acme',
+  env: 'production',
+  region: 'us-east-1',
+  runtime: 'php-8.3 (fpm)',
+  url: 'https://acme.com',
+  build: 'a4d63d2',
+  deployedAt: '12m ago',
+}
+
+const maintenance = { enabled: false }
+
+// Headline metrics (last 24h).
+const metrics = {
+  invocations: 184320,
+  errorRatePct: 0.12,
+  p95Ms: 86,
+  coldStartPct: 1.8,
+  concurrency: 42,
+  estCostUsd: 7.4,
+}
+
+const functions = [
+  { key: 'http', name: 'acme-production-http', memory: 1024, timeout: 28, runtime: 'provided.al2023', invocations: 171200, errors: 21, p95: 86, status: 'active' },
+  { key: 'queue', name: 'acme-production-queue', memory: 1024, timeout: 120, runtime: 'provided.al2023', invocations: 12840, errors: 3, p95: 240, status: 'active' },
+  { key: 'cli', name: 'acme-production-cli', memory: 1024, timeout: 900, runtime: 'provided.al2023', invocations: 1440, errors: 0, p95: 1100, status: 'active' },
+]
+
+const queues = [
+  { name: 'default', visible: 0, inFlight: 2, processed: 12830, dlq: 0 },
+  { name: 'emails', visible: 4, inFlight: 1, processed: 9210, dlq: 1 },
+]
+
+const scheduler = { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
+
+const data = [
+  { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5–4 ACU', status: 'available' },
+  { name: 'RDS Proxy', detail: 'acme-production-proxy', status: 'available' },
+  { name: 'ElastiCache (redis)', detail: 'cache.t4g.micro', status: 'available' },
+]
+
+const assets = { bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', assetUrl: 'https://d2x1.cloudfront.net/a4d63d2' }
+const waf = { enabled: true, rules: ['rate-limit', 'common', 'sqlInjection'], blocked24h: 318 }
+
+const deployments = [
+  { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris' },
+  { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci' },
+  { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci' },
+  { sha: '5a2b284', status: 'rolled-back', when: '1d ago', took: '12s', by: 'chris' },
+]
+
+const secrets = [
+  { key: 'APP_KEY', updated: '14d ago' },
+  { key: 'DB_PASSWORD', updated: '14d ago' },
+  { key: 'STRIPE_SECRET', updated: '3d ago' },
+]
+
+function statusTone(status) {
+  if (status === 'active' || status === 'available' || status === 'success' || status === 'on') return 'ok'
+  if (status === 'failed' || status === 'stopped' || status === 'error') return 'bad'
+  if (status === 'rolled-back') return 'warn'
+  return 'warn'
+}
+function fmt(n) {
+  return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n)
+}
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meta.title }}</title>
+  <meta name="description" content="{{ meta.description }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b1020; --bg2: #0f1730; --panel: rgba(255,255,255,0.04); --panel-br: rgba(255,255,255,0.08);
+      --txt: #e8edf7; --txt2: #9fb0cc; --txt3: #64748b;
+      --accent: #5b8cff; --ok: #34d399; --okbg: rgba(52,211,153,0.12);
+      --bad: #f87171; --badbg: rgba(248,113,113,0.12); --warn: #fbbf24; --warnbg: rgba(251,191,36,0.12);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif; color: var(--txt); min-height: 100vh;
+      background: radial-gradient(1200px 600px at 80% -10%, rgba(91,140,255,0.12), transparent 60%), linear-gradient(160deg, var(--bg), var(--bg2));
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: inherit; text-decoration: none; }
+    .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 64px; }
+
+    nav {
+      display: flex; align-items: center; gap: 16px; padding: 18px 24px; position: sticky; top: 0; z-index: 10;
+      background: rgba(11,16,32,0.7); backdrop-filter: blur(14px); border-bottom: 1px solid var(--panel-br);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
+    .brand .dot { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8b5cf6); box-shadow: 0 0 18px rgba(91,140,255,0.6); }
+    .tabs { display: flex; gap: 4px; margin-left: 18px; }
+    .tabs a { padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--txt2); }
+    .tabs a.active { background: rgba(91,140,255,0.14); color: var(--accent); }
+    .nav-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--txt2); font-size: 13px; }
+    .env { padding: 4px 10px; border-radius: 999px; background: var(--okbg); color: var(--ok); font-weight: 600; font-size: 12px; }
+
+    header.page { padding: 36px 0 22px; display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+    header.page h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
+    header.page p { color: var(--txt2); margin-top: 4px; font-size: 14px; }
+    .server-line { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 14px; color: var(--txt2); font-size: 13px; }
+    .server-line b { color: var(--txt); font-weight: 600; }
+    .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
+    .grid { display: grid; gap: 16px; }
+    .cards { grid-template-columns: repeat(4, 1fr); }
+    @media (max-width: 880px) { .cards { grid-template-columns: repeat(2, 1fr); } }
+    .panel { background: var(--panel); border: 1px solid var(--panel-br); border-radius: 16px; padding: 18px; backdrop-filter: blur(6px); }
+    .panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--txt3); font-weight: 700; }
+    .stat { font-size: 28px; font-weight: 800; margin-top: 8px; letter-spacing: -0.02em; }
+    .stat small { font-size: 14px; color: var(--txt2); font-weight: 500; }
+    .bar { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.07); margin-top: 12px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #8b5cf6); }
+
+    .section { margin-top: 30px; }
+    .section > h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+    @media (max-width: 880px) { .cols { grid-template-columns: 1fr; } }
+
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; color: var(--txt3); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; padding: 0 12px 10px; }
+    td { padding: 12px; border-top: 1px solid rgba(255,255,255,0.05); }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; color: var(--txt2); }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .pill::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .pill.ok { background: var(--okbg); color: var(--ok); }
+    .pill.bad { background: var(--badbg); color: var(--bad); }
+    .pill.warn { background: var(--warnbg); color: var(--warn); }
+    .tag { padding: 2px 8px; border-radius: 6px; background: rgba(91,140,255,0.12); color: var(--accent); font-size: 12px; font-weight: 600; }
+
+    .kv { display: flex; justify-content: space-between; padding: 9px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .kv:first-of-type { border-top: 0; }
+    .kv span { color: var(--txt2); }
+    .deploy { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .deploy:first-of-type { border-top: 0; }
+    .deploy .when { margin-left: auto; color: var(--txt3); font-size: 12px; }
+
+    .btn { background: linear-gradient(135deg, var(--accent), #8b5cf6); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 700; font-size: 14px; cursor: pointer; font-family: inherit; white-space: nowrap; }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost { background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); color: var(--txt); }
+    .btn.danger { background: var(--badbg); color: var(--bad); }
+    .btn.sm { padding: 6px 12px; font-size: 12px; }
+
+    .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--txt2); }
+    .data-item { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .data-item:first-of-type { border-top: 0; }
+    .data-item .detail { color: var(--txt3); font-size: 12px; }
+    .data-item .st { margin-left: auto; }
+    .secret { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+    .secret:first-of-type { border-top: 0; }
+    .secret .val { margin-left: auto; color: var(--txt3); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <div class="brand"><span class="dot"></span> ts-cloud</div>
+    <div class="tabs">
+      <a href="/">Server</a>
+      <a href="/serverless" class="active">Serverless</a>
+    </div>
+    <div class="nav-meta">
+      <span>{{ app.name }}</span>
+      <span class="env">{{ app.env }}</span>
+    </div>
+  </nav>
+
+  <div class="wrap">
+    <header class="page">
+      <div>
+        <h1>Serverless Dashboard</h1>
+        <p>AWS Lambda · {{ app.region }} · {{ app.runtime }}</p>
+        <div class="server-line">
+          <span>URL <b><a href="{{ app.url }}" class="mono">{{ app.url }}</a></b></span>
+          <span>Build <b class="mono">{{ app.build }}</b></span>
+          <span>Deployed <b>{{ app.deployedAt }}</b></span>
+        </div>
+      </div>
+      <div class="header-actions">
+        @if (maintenance.enabled)
+          <span class="pill warn">maintenance</span>
+          <form method="post" action="/api/serverless/up"><button class="btn sm" type="submit">Bring up</button></form>
+        @else
+          <span class="pill ok">live</span>
+          <form method="post" action="/api/serverless/down"><button class="btn ghost sm" type="submit">Maintenance</button></form>
+        @endif
+        <form method="post" action="/api/serverless/deploy"><button class="btn sm" type="submit">Deploy</button></form>
+      </div>
+    </header>
+
+    <div class="grid cards">
+      <div class="panel">
+        <h3>Invocations (24h)</h3>
+        <div class="stat">{{ fmt(metrics.invocations) }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.concurrency }} concurrent now</p>
+      </div>
+      <div class="panel">
+        <h3>Error Rate</h3>
+        <div class="stat">{{ metrics.errorRatePct }}%</div>
+        <div class="bar"><i style="width: {{ Math.min(100, metrics.errorRatePct * 10) }}%"></i></div>
+      </div>
+      <div class="panel">
+        <h3>p95 Latency</h3>
+        <div class="stat">{{ metrics.p95Ms }} <small>ms</small></div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.coldStartPct }}% cold starts</p>
+      </div>
+      <div class="panel">
+        <h3>Est. Cost (24h)</h3>
+        <div class="stat">${{ metrics.estCostUsd }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">pay-per-request</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Functions</h2>
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>Function</th><th>Name</th><th>Memory</th><th>Timeout</th><th>Invocations</th><th>Errors</th><th>p95</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            @foreach (functions as fn)
+              <tr>
+                <td><span class="tag">{{ fn.key }}</span></td>
+                <td class="mono">{{ fn.name }}</td>
+                <td>{{ fn.memory }} MB</td>
+                <td class="mono">{{ fn.timeout }}s</td>
+                <td>{{ fmt(fn.invocations) }}</td>
+                <td>@if (fn.errors > 0)<span class="pill bad">{{ fn.errors }}</span>@else<span style="color: var(--txt3)">0</span>@endif</td>
+                <td class="mono">{{ fn.p95 }}ms</td>
+                <td><span class="pill {{ statusTone(fn.status) }}">{{ fn.status }}</span></td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section cols">
+      <div>
+        <h2>Queues</h2>
+        <div class="panel">
+          <table>
+            <thead>
+              <tr><th>Queue</th><th>Visible</th><th>In-flight</th><th>Processed</th><th>DLQ</th></tr>
+            </thead>
+            <tbody>
+              @foreach (queues as q)
+                <tr>
+                  <td><b>{{ q.name }}</b></td>
+                  <td>{{ q.visible }}</td>
+                  <td>{{ q.inFlight }}</td>
+                  <td style="color: var(--txt2)">{{ fmt(q.processed) }}</td>
+                  <td>@if (q.dlq > 0)<span class="pill bad">{{ q.dlq }}</span>@else<span style="color: var(--txt3)">0</span>@endif</td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div>
+        <h2>Scheduler</h2>
+        <div class="panel">
+          <div class="kv"><span>state</span> @if (scheduler.enabled)<span class="pill ok">on</span>@else<span class="pill warn">off</span>@endif</div>
+          <div class="kv"><span>expression</span> <span class="mono">{{ scheduler.expression }}</span></div>
+          <div class="kv"><span>last run</span> <span style="color: var(--txt2)">{{ scheduler.lastRun }}</span></div>
+        </div>
+        <div style="height: 16px"></div>
+        <h2>Firewall (WAF)</h2>
+        <div class="panel">
+          <div class="kv"><span>state</span> @if (waf.enabled)<span class="pill ok">on</span>@else<span class="pill warn">off</span>@endif</div>
+          <div class="kv"><span>rules</span> <span class="mono">{{ waf.rules.join(', ') }}</span></div>
+          <div class="kv"><span>blocked (24h)</span> <span>{{ fmt(waf.blocked24h) }}</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Data</h2>
+      <div class="panel">
+        @foreach (data as d)
+          <div class="data-item">
+            <b>{{ d.name }}</b>
+            <span class="detail">{{ d.detail }}</span>
+            <span class="st"><span class="pill {{ statusTone(d.status) }}">{{ d.status }}</span></span>
+          </div>
+        @endforeach
+      </div>
+    </div>
+
+    <div class="section cols">
+      <div>
+        <h2>Recent Deployments</h2>
+        <div class="panel">
+          @foreach (deployments as d)
+            <div class="deploy">
+              <span class="pill {{ statusTone(d.status) }}">{{ d.status }}</span>
+              <span class="mono">{{ d.sha }}</span>
+              <span style="color: var(--txt2)">by {{ d.by }}</span>
+              <span class="when">{{ d.when }} · {{ d.took }}</span>
+            </div>
+          @endforeach
+          <form method="post" action="/api/serverless/rollback" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
+            <button class="btn ghost sm" type="submit">Roll back to previous build</button>
+          </form>
+        </div>
+      </div>
+      <div>
+        <h2>Assets &amp; CDN</h2>
+        <div class="panel">
+          <div class="kv"><span>bucket</span> <span class="mono">{{ assets.bucket }}</span></div>
+          <div class="kv"><span>cdn</span> <span class="mono">{{ assets.cdn }}</span></div>
+          <div class="kv"><span>ASSET_URL</span> <span class="mono" style="font-size: 11px">{{ assets.assetUrl }}</span></div>
+        </div>
+        <div style="height: 16px"></div>
+        <h2>Secrets</h2>
+        <div class="panel">
+          @foreach (secrets as s)
+            <div class="secret">
+              <b class="mono">{{ s.key }}</b>
+              <span style="color: var(--txt3); font-size: 12px">updated {{ s.updated }}</span>
+              <span class="val">••••••••</span>
+            </div>
+          @endforeach
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -97,6 +97,9 @@ function statusTone(status) {
     }
     .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
     .brand .dot { width: 22px; height: 22px; border-radius: 7px; background: linear-gradient(135deg, var(--accent), #8b5cf6); box-shadow: 0 0 18px rgba(91,140,255,0.6); }
+    .tabs { display: flex; gap: 4px; margin-left: 18px; }
+    .tabs a { padding: 6px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--txt2); }
+    .tabs a.active { background: rgba(91,140,255,0.14); color: var(--accent); }
     .nav-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--txt2); font-size: 13px; }
     .env { padding: 4px 10px; border-radius: 999px; background: var(--okbg); color: var(--ok); font-weight: 600; font-size: 12px; }
 
@@ -165,6 +168,10 @@ function statusTone(status) {
 <body>
   <nav>
     <div class="brand"><span class="dot"></span> ts-cloud</div>
+    <div class="tabs">
+      <a href="/" class="active">Server</a>
+      <a href="/serverless">Serverless</a>
+    </div>
     <div class="nav-meta">
       <span>{{ server.name }}</span>
       <span class="env">production</span>

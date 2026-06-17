@@ -1,10 +1,11 @@
 # @ts-cloud/ui
 
-The ts-cloud management dashboard — a Forge-style overview of your server and
-deployments, built with [stx](https://github.com/stacksjs/stx) and served as a
-static site **behind HTTP Basic auth** (password from an env value).
+The ts-cloud management dashboard — a Forge- **and** Vapor-style overview of your
+infrastructure, built with [stx](https://github.com/stacksjs/stx) and served as a
+static site **behind HTTP Basic auth** (password from an env value). Two views,
+switchable from the nav: **Server** (`/`) and **Serverless** (`/serverless`).
 
-## What it shows
+## Server view (`/`) — Forge-style
 
 - **Server health** — CPU load, memory, disk, uptime (from the box's metrics agent).
 - **Services** — nginx, php-fpm, database, redis, meilisearch status.
@@ -13,6 +14,18 @@ static site **behind HTTP Basic auth** (password from an env value).
 - **Deployments** — recent releases with sha, branch, status, duration.
 - **Queues & Scheduler** — worker processes and scheduler state.
 - **Backups** — destination, retention, last run.
+
+## Serverless view (`/serverless`) — Vapor-style
+
+- **Headline metrics** — invocations, error rate, p95 latency, cold starts, est. cost.
+- **Functions** — the http/queue/cli Lambdas with memory, timeout, invocations, errors, p95.
+- **Queues** — visible/in-flight/processed/DLQ per SQS queue.
+- **Scheduler & WAF** — schedule expression + last run; firewall rules + blocked count.
+- **Data** — Aurora Serverless, RDS Proxy, ElastiCache/DynamoDB status.
+- **Deployments** — releases with sha, author, duration + one-click rollback.
+- **Assets & CDN** — bucket, CloudFront domain, `ASSET_URL`.
+- **Secrets** — masked list with last-updated.
+- **Actions** — deploy, roll back, and toggle maintenance mode (down/up).
 
 ## Build
 
