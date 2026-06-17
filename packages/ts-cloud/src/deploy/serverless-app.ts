@@ -20,6 +20,7 @@ import {
   packagePhpApp,
   packageServerlessApp,
   resolveServerlessAppStackName,
+  resolveServerlessRuntime,
   resolveServerlessArtifactBucketName,
   resolveServerlessAssetBucketName,
 } from '@ts-cloud/core'
@@ -285,6 +286,7 @@ export async function deployServerlessApp(
 
   const isPhp = app.kind === 'php'
   const imageMode = app.packaging === 'image'
+  const resolved = resolveServerlessRuntime(app)
 
   // 1–2. Produce the deployable artifact: a container image (>250 MB apps) or a
   //      ZIP uploaded to S3. `codeSource` is what each function is pointed at.
@@ -293,6 +295,14 @@ export async function deployServerlessApp(
   let artifactSha: string
   let runtimeLayers: string[] | undefined
   const parameters: Array<{ ParameterKey: string, ParameterValue: string }> = []
+
+  if (imageMode && resolved.usesLayer && resolved.layerKind !== 'php') {
+    throw new Error(
+      `packaging: 'image' currently supports PHP and managed Node runtimes. `
+      + `${resolved.kind}${resolved.kind === 'node' ? ` ${resolved.version}` : ''} uses a custom runtime — `
+      + `use the default zip packaging (the runtime layer is built + attached automatically).`,
+    )
+  }
 
   if (imageMode) {
     cli.step('Building + pushing container image')
@@ -320,11 +330,21 @@ export async function deployServerlessApp(
     handlers = artifact.handlers
     artifactSha = artifact.sha256
 
-    // PHP (zip) requires the custom runtime layer (provided.al2023).
-    if (isPhp) {
-      runtimeLayers = app.layers ?? (process.env.TSCLOUD_PHP_LAYER_ARN ? [process.env.TSCLOUD_PHP_LAYER_ARN] : undefined)
+    // Custom-runtime apps (PHP, Bun, or newer Node) need a provided.al2023 layer.
+    if (resolved.usesLayer) {
+      const envArn = resolved.layerEnvVar ? process.env[resolved.layerEnvVar] : undefined
+      runtimeLayers = app.layers ?? (envArn ? [envArn] : undefined)
       if (!runtimeLayers?.length) {
-        throw new Error('PHP serverless apps need a runtime layer. Set environments.<env>.app.layers or the TSCLOUD_PHP_LAYER_ARN env var (build one with `cloud serverless:build-php-layer`), or use packaging: \'image\'.')
+        const buildCmd = resolved.layerKind === 'php'
+          ? 'serverless:build-php-layer'
+          : resolved.layerKind === 'bun'
+            ? 'serverless:build-bun-layer'
+            : 'serverless:build-node-layer'
+        throw new Error(
+          `${resolved.kind} apps on provided.al2023 need a runtime layer. Set environments.<env>.app.layers `
+          + `or the ${resolved.layerEnvVar} env var (build one with \`cloud ${buildCmd}\`)`
+          + `${resolved.kind === 'node' ? ', or use a managed Node version (18/20/22)' : ''}.`,
+        )
       }
     }
 

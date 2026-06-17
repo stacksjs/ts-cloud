@@ -161,6 +161,29 @@ describe('composeServerlessAppTemplate', () => {
     expect(fn.Properties.ImageConfig).toBeUndefined()
   })
 
+  it('derives a managed runtime for default Node (no layer needed)', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts' })
+    expect((template.Resources.HttpFunction as any).Properties.Runtime).toBe('nodejs22.x')
+  })
+
+  it('derives provided.al2023 for newer Node and attaches the layer', () => {
+    const { template } = composeServerlessAppTemplate({
+      config,
+      environment: 'production',
+      app: { kind: 'node', entry: 'a.ts', runtimeVersion: '24' },
+      handlers,
+      runtimeLayers: ['arn:aws:lambda:us-east-1:1:layer:tscloud-node-24-x86_64:1'],
+    })
+    const fn = template.Resources.HttpFunction as any
+    expect(fn.Properties.Runtime).toBe('provided.al2023')
+    expect(fn.Properties.Layers).toEqual(['arn:aws:lambda:us-east-1:1:layer:tscloud-node-24-x86_64:1'])
+  })
+
+  it('derives provided.al2023 for Bun', () => {
+    const { template } = compose({ kind: 'bun', entry: 'a.ts' })
+    expect((template.Resources.HttpFunction as any).Properties.Runtime).toBe('provided.al2023')
+  })
+
   it('passes structural + resource-limit validation', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], assets: 'public' })
     const structural = validateTemplate(template as any)

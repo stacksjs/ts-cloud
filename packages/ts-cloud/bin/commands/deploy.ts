@@ -891,6 +891,122 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('serverless:build-node-layer', 'Build + publish a ts-cloud Node custom runtime layer (any version, incl. 24)')
+    .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
+    .option('--node <version>', 'Node version (e.g. 24)', { default: '24' })
+    .option('--name <name>', 'Layer name', { default: 'tscloud-node' })
+    .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
+    .option('--region <region>', 'AWS region')
+    .action(async (options?: { arch?: 'x86_64' | 'arm64', node?: string, name?: string, bucket?: string, region?: string }) => {
+      cli.header('Building Node runtime layer')
+      try {
+        const config = await loadValidatedConfig().catch(() => null)
+        const region = options?.region || config?.project.region || 'us-east-1'
+        const arch = options?.arch || 'x86_64'
+        const version = options?.node || '24'
+        const { buildNodeRuntimeLayerZip } = await import('@ts-cloud/core')
+        const { S3Client } = await import('../../src/aws/s3')
+        const { LambdaClient } = await import('../../src/aws/lambda')
+
+        const artifact = buildNodeRuntimeLayerZip({ architecture: arch, version, onStep: m => cli.step(m) })
+        const layerName = `${options?.name || 'tscloud-node'}-${artifact.version.split('.')[0]}-${arch}`
+        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+        cli.info(`Layer: Node ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+
+        const s3 = new S3Client(region)
+        if (!(await s3.bucketExists(bucket))) {
+          cli.step(`Creating layer bucket ${bucket}`)
+          await s3.createBucket(bucket)
+        }
+        const key = `layers/${layerName}.zip`
+        cli.step('Uploading layer zip')
+        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+        cli.step('Publishing layer version')
+        const lambda = new LambdaClient(region)
+        const published = await lambda.publishLayerVersion({
+          LayerName: layerName,
+          Description: `ts-cloud Node ${artifact.version} runtime (${arch})`,
+          Content: { S3Bucket: bucket, S3Key: key },
+          CompatibleRuntimes: ['provided.al2023'],
+          CompatibleArchitectures: [arch],
+        })
+
+        cli.box([
+          'Node runtime layer published',
+          '',
+          `ARN: ${published.LayerVersionArn}`,
+          '',
+          'Reference it in your config:',
+          `  app: { kind: 'node', runtimeVersion: '${artifact.version.split('.')[0]}', layers: ['${published.LayerVersionArn}'] }`,
+          'or set TSCLOUD_NODE_LAYER_ARN before deploying.',
+        ].join('\n'), 'green')
+      }
+      catch (error: any) {
+        cli.error(`Layer build failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('serverless:build-bun-layer', 'Build + publish a ts-cloud Bun custom runtime layer')
+    .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
+    .option('--bun <version>', 'Bun version (e.g. 1.3.13, or "latest")', { default: 'latest' })
+    .option('--name <name>', 'Layer name', { default: 'tscloud-bun' })
+    .option('--bucket <bucket>', 'S3 bucket to stage the layer zip (defaults to {slug}-layers)')
+    .option('--region <region>', 'AWS region')
+    .action(async (options?: { arch?: 'x86_64' | 'arm64', bun?: string, name?: string, bucket?: string, region?: string }) => {
+      cli.header('Building Bun runtime layer')
+      try {
+        const config = await loadValidatedConfig().catch(() => null)
+        const region = options?.region || config?.project.region || 'us-east-1'
+        const arch = options?.arch || 'x86_64'
+        const version = options?.bun || 'latest'
+        const { buildBunRuntimeLayerZip } = await import('@ts-cloud/core')
+        const { S3Client } = await import('../../src/aws/s3')
+        const { LambdaClient } = await import('../../src/aws/lambda')
+
+        const artifact = buildBunRuntimeLayerZip({ architecture: arch, version, onStep: m => cli.step(m) })
+        const layerName = `${options?.name || 'tscloud-bun'}-${artifact.version.replace(/\./g, '')}-${arch}`
+        const bucket = options?.bucket || `${config?.project.slug || 'tscloud'}-layers`
+        cli.info(`Layer: Bun ${artifact.version}, ${(artifact.zip.length / 1024 / 1024).toFixed(1)} MB`)
+
+        const s3 = new S3Client(region)
+        if (!(await s3.bucketExists(bucket))) {
+          cli.step(`Creating layer bucket ${bucket}`)
+          await s3.createBucket(bucket)
+        }
+        const key = `layers/${layerName}.zip`
+        cli.step('Uploading layer zip')
+        await s3.putObject({ bucket, key, body: artifact.zip, contentType: 'application/zip' })
+
+        cli.step('Publishing layer version')
+        const lambda = new LambdaClient(region)
+        const published = await lambda.publishLayerVersion({
+          LayerName: layerName,
+          Description: `ts-cloud Bun ${artifact.version} runtime (${arch})`,
+          Content: { S3Bucket: bucket, S3Key: key },
+          CompatibleRuntimes: ['provided.al2023'],
+          CompatibleArchitectures: [arch],
+        })
+
+        cli.box([
+          'Bun runtime layer published',
+          '',
+          `ARN: ${published.LayerVersionArn}`,
+          '',
+          'Reference it in your config:',
+          `  app: { kind: 'bun', layers: ['${published.LayerVersionArn}'] }`,
+          'or set TSCLOUD_BUN_LAYER_ARN before deploying.',
+        ].join('\n'), 'green')
+      }
+      catch (error: any) {
+        cli.error(`Layer build failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('deploy:status', 'Check deployment status')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment')

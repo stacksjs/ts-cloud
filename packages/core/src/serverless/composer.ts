@@ -15,6 +15,7 @@ import type { CloudConfig, EnvironmentType, ServerlessAppConfig } from '../types
 import type { CloudFormationTemplate } from '../cloudformation/types'
 import { Fn } from '../cloudformation/types'
 import { resolveServerlessAssetBucketName } from '../stack-naming'
+import { resolveServerlessRuntime } from './runtime-resolve'
 
 export interface ComposeOptions {
   config: Pick<CloudConfig, 'project'>
@@ -49,7 +50,7 @@ export function resolveQueueNames(app: ServerlessAppConfig, slug: string, env: E
 export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemplate {
   const { app, environment, handlers } = opts
   const slug = opts.config.project.slug
-  const runtime = app.runtime ?? 'nodejs20.x'
+  const runtime = resolveServerlessRuntime(app).lambdaRuntime
   const architecture = app.architecture ?? 'x86_64'
   const region = opts.config.project.region
 

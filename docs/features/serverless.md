@@ -109,6 +109,37 @@ per invocation without double-delivery.
   into the functions. A `firewall` (WAF) can front the HTTP API, and `warm: N`
   keeps N containers warm via scheduled pings.
 
+## Runtimes
+
+All three runtimes follow one model. Common Node versions use the AWS **managed**
+runtime (zero config); everything else — Bun, and Node versions AWS doesn't offer
+a managed runtime for (e.g. 24) — runs on a **custom `provided.al2023` layer** that
+ts-cloud builds (a binary + `bootstrap` + a shared Runtime API loop), exactly like
+the PHP/Laravel runtime.
+
+| Config | Lambda runtime | Layer |
+| --- | --- | --- |
+| `kind: 'node'` (18/20/22) | `nodejs{N}.x` (managed) | none |
+| `kind: 'node', runtimeVersion: '24'` | `provided.al2023` | `serverless:build-node-layer` |
+| `kind: 'bun'` | `provided.al2023` | `serverless:build-bun-layer` |
+| `kind: 'php'` | `provided.al2023` | `serverless:build-php-layer` |
+
+Custom-runtime layers are built once and referenced by ARN (via `app.layers` or
+`TSCLOUD_{NODE,BUN,PHP}_LAYER_ARN`). The Node and Bun layers need no Docker — the
+official binary is downloaded and zipped:
+
+```sh
+cloud serverless:build-node-layer --node 24 --arch arm64   # → prints a layer ARN
+cloud serverless:build-bun-layer  --bun 1.3.13
+```
+
+```ts
+// run the latest Node on Lambda
+app: { kind: 'node', runtimeVersion: '24', entry: 'src/server.ts' }
+// or run Bun (use Bun.* APIs)
+app: { kind: 'bun', entry: 'src/server.ts' }
+```
+
 ## Operations
 
 | Command | What it does |
