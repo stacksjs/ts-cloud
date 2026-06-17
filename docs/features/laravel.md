@@ -126,6 +126,8 @@ dashboard — a stx app with **Server** and **Serverless** views (health,
 services, sites, deployments, queues, functions, scheduler, data, secrets) — as
 a server-static site. No config needed; the prebuilt UI ships inside the package.
 
+![ts-cloud Server dashboard](/images/dashboard-server.png)
+
 It is served behind HTTP Basic auth **only when `TS_CLOUD_UI_PASSWORD` is set**;
 if it is unset the dashboard is served without auth (and a warning is logged — set
 a password for any internet-facing box). Env knobs:

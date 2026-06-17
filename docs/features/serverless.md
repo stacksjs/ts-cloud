@@ -14,6 +14,12 @@ build/deploy hooks, atomic activation, rollback/redeploy, maintenance mode, and
 secret injection — the Vapor feature set, for both **Node/Bun** and
 **PHP/Laravel** runtimes.
 
+The auto-deployed [management dashboard](/features/laravel#management-dashboard-auto-deployed)
+includes a Serverless view of your functions, queues, scheduler, data services,
+deployments, and secrets:
+
+![ts-cloud Serverless dashboard](/images/dashboard-serverless.png)
+
 ## Node/Bun quick start
 
 ```ts
