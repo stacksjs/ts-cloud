@@ -62,6 +62,28 @@ describe('buildSiteServicesScript — scheduler', () => {
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain(`rm -f ${schedulerCronPath('acme', 'app')}`)
   })
+
+  it('pings a heartbeat monitor only after a successful run', () => {
+    const site: SiteConfig = {
+      root: '.',
+      type: 'laravel',
+      scheduler: { heartbeatUrl: 'https://hc-ping.com/abc-123' },
+    }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('php artisan schedule:run >> /dev/null 2>&1 && curl -fsS -m 10 \'https://hc-ping.com/abc-123\'')
+  })
+
+  it('escapes cron % and honors a custom heartbeat method', () => {
+    const site: SiteConfig = {
+      root: '.',
+      type: 'laravel',
+      scheduler: { heartbeatUrl: 'https://example.com/ping?t=100%', heartbeatMethod: 'POST' },
+    }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('-X POST ')
+    // `%` is escaped so cron doesn't treat it as a newline.
+    expect(script).toContain('100\\%')
+  })
 })
 
 describe('buildSiteServicesScript — daemons', () => {

@@ -43,6 +43,11 @@ function reEscape(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Single-quote a value for safe embedding in a cron command (e.g. a URL). */
+function cronQuote(value: string): string {
+  return `'${value.split('\'').join('\'\\\'\'')}'`
+}
+
 /** Lowercase-kebab slug for embedding a free-form name in a unit filename. */
 function slugify(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'unnamed'
@@ -189,10 +194,23 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
   }
 
   // Laravel scheduler — a cron.d entry running schedule:run every minute, or
-  // removal of any prior entry when disabled.
+  // removal of any prior entry when disabled. A heartbeat URL (healthchecks.io
+  // / Oh Dear style) is pinged only after a successful run, so the monitor
+  // alerts if the scheduler stops.
   const cronPath = schedulerCronPath(slug, siteName)
-  if (site.scheduler) {
-    const cron = `* * * * * root cd ${current} && ${PANTRY_ENV_EVAL} && ${phpBin} artisan schedule:run >> /dev/null 2>&1\n`
+  const scheduler = site.scheduler
+  const schedulerEnabled = scheduler === true || (typeof scheduler === 'object' && scheduler !== null)
+  if (schedulerEnabled) {
+    const heartbeat = typeof scheduler === 'object' && scheduler !== null ? scheduler : undefined
+    let command = `cd ${current} && ${PANTRY_ENV_EVAL} && ${phpBin} artisan schedule:run >> /dev/null 2>&1`
+    if (heartbeat?.heartbeatUrl) {
+      const method = heartbeat.heartbeatMethod || 'GET'
+      const methodFlag = method === 'GET' ? '' : `-X ${method} `
+      // Ping only on success (&&); -f fails on HTTP errors, -m caps the request.
+      command += ` && curl -fsS -m 10 ${methodFlag}${cronQuote(heartbeat.heartbeatUrl)} >/dev/null 2>&1`
+    }
+    // cron treats `%` as a newline in the command field — escape any in the URL.
+    const cron = `* * * * * root ${command}\n`.replace(/%/g, '\\%')
     out.push(
       `cat > ${cronPath} <<'TS_CLOUD_CRON_EOF'`,
       cron.replace(/\n$/, ''),

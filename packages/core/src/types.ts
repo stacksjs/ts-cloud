@@ -1006,9 +1006,10 @@ export interface SiteConfig {
 
   /**
    * Run the Laravel scheduler for this site
-   * (`* * * * * php artisan schedule:run`).
+   * (`* * * * * php artisan schedule:run`). `true` enables it with defaults;
+   * pass a {@link SchedulerConfig} to attach heartbeat monitoring.
    */
-  scheduler?: boolean
+  scheduler?: boolean | SchedulerConfig
 
   /** Arbitrary long-running processes to keep alive (systemd-managed). */
   daemons?: DaemonConfig[]
@@ -1174,6 +1175,23 @@ export interface SslDnsConfig {
   credentials?: Record<string, string>
   /** Seconds to wait for DNS propagation before certbot asks the CA to verify. */
   propagationSeconds?: number
+}
+
+/**
+ * Laravel scheduler options for a site (Forge's scheduler + heartbeat
+ * monitoring). The scheduler runs `php artisan schedule:run` every minute.
+ */
+export interface SchedulerConfig {
+  /**
+   * Heartbeat monitor URL pinged after each successful `schedule:run`
+   * (healthchecks.io, Oh Dear, Better Uptime, …). If the scheduler stops, the
+   * monitor stops receiving pings and alerts you.
+   */
+  heartbeatUrl?: string
+  /**
+   * HTTP method for the heartbeat ping. @default 'GET'
+   */
+  heartbeatMethod?: 'GET' | 'POST' | 'HEAD'
 }
 
 /**
