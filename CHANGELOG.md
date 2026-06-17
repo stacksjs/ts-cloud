@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.3.0...v0.3.1)
+
+### 🚀 Features
+
+- **serverless**: export the serverless deploy orchestrator from the public API ([e02c127](https://github.com/stacksjs/ts-cloud/commit/e02c127)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.3.1 ([15d1954](https://github.com/stacksjs/ts-cloud/commit/15d1954)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.2.27...v0.3.0)
 
 ### 🚀 Features
