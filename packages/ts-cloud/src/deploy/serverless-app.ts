@@ -358,7 +358,8 @@ export async function deployServerlessApp(
       cli.step(`Creating artifact bucket ${artifactBucket}`)
       await s3.createBucket(artifactBucket)
     }
-    const exists = await s3.headObject(artifactBucket, key).then(() => true).catch(() => false)
+    // headObject resolves to null (not a throw) for a missing key.
+    const exists = await s3.headObject(artifactBucket, key).then(r => r !== null).catch(() => false)
     if (exists) {
       cli.info('Artifact already uploaded — reusing')
     }
@@ -378,7 +379,21 @@ export async function deployServerlessApp(
   const templateBody = JSON.stringify(composed.template)
   const capabilities = ['CAPABILITY_NAMED_IAM']
 
-  const stackExists = await cfn.describeStacks({ stackName }).then(r => r.Stacks.length > 0).catch(() => false)
+  // Resolve the current stack status; a stale failed/deleting stack can't be
+  // updated, and a ROLLBACK_COMPLETE/REVIEW stack must be deleted before create.
+  const status = await cfn.describeStacks({ stackName }).then(r => r.Stacks[0]?.StackStatus as string | undefined).catch(() => undefined)
+  let stackExists = status !== undefined
+  if (status && /DELETE_IN_PROGRESS/.test(status)) {
+    cli.step('Waiting for an in-progress stack delete to finish')
+    await cfn.waitForStack(stackName, 'stack-delete-complete').catch(() => {})
+    stackExists = false
+  }
+  else if (status && /(?:ROLLBACK_COMPLETE|REVIEW_IN_PROGRESS|CREATE_FAILED)/.test(status)) {
+    cli.step(`Deleting unusable stack (status ${status}) before recreate`)
+    await cfn.deleteStack(stackName)
+    await cfn.waitForStack(stackName, 'stack-delete-complete').catch(() => {})
+    stackExists = false
+  }
   cli.step(stackExists ? 'Updating infrastructure stack' : 'Creating infrastructure stack')
   try {
     if (stackExists) {
