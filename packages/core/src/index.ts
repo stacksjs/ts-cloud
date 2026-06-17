@@ -53,6 +53,7 @@ export * from './presets/traditional-web-app'
 export * from './presets/laravel'
 export * from './presets/serverless-laravel'
 export * from './presets/dashboard'
+export * from './presets/management-dashboard'
 export * from './presets/extend'
 
 // AWS clients (Phase 5)

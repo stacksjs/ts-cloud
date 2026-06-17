@@ -72,6 +72,11 @@ async function deployAppToCompute(
   environment: 'production' | 'staging' | 'development',
   _region: string,
 ): Promise<boolean> {
+  // Auto-deploy the management dashboard (Server + Serverless stx UI) alongside
+  // the app on every server box, behind htpasswd when TS_CLOUD_UI_PASSWORD is set.
+  const { ensureManagementDashboard } = await import('../../src/deploy/management-dashboard')
+  ensureManagementDashboard(config, { logger: { info: cli.info, warn: cli.warn } })
+
   const sites = config.sites || {}
   const allSites = Object.entries<any>(sites)
 
@@ -434,14 +439,14 @@ export function registerDeployCommands(app: CLI): void {
           if (outputs.appPublicIp) cli.info(`App server: ${outputs.appPublicIp}`)
           if (outputs.appInstanceId) cli.info(`Server ID: ${outputs.appInstanceId}`)
 
-          // Provision-then-deploy (no separate CloudFormation stack step).
-          if (config.sites && Object.keys(config.sites).length > 0) {
-            const ok = await deployAppToCompute(config, environment, region)
-            if (!ok)
-              cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
-            else
-              cli.success(`App deployed to ${cloudProvider} compute`)
-          }
+          // Provision-then-deploy (no separate CloudFormation stack step). Always
+          // run the deploy step — even with no user sites — so the management
+          // dashboard is auto-deployed on every freshly started server.
+          const ok = await deployAppToCompute(config, environment, region)
+          if (!ok)
+            cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
+          else
+            cli.success(`App deployed to ${cloudProvider} compute`)
           return
         }
 
