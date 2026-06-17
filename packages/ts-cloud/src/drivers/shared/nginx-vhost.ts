@@ -13,10 +13,30 @@
  * The block listens on :80 only; TLS (the `:443` block + redirect) is layered
  * on by certbot in the SSL step, so this stays stable across cert renewals.
  */
-import type { SiteConfig } from '@ts-cloud/core'
+import type { SiteConfig, SiteNginxConfig } from '@ts-cloud/core'
 import { phpFpmSocketPath } from './php-provision'
 
 export type NginxSiteType = NonNullable<SiteConfig['type']>
+
+/**
+ * Resolve the nginx directive lines for a site's vhost from its
+ * {@link SiteNginxConfig} and the server's reusable templates: the referenced
+ * template's lines first, then the per-site `serverSnippet`. Unknown template
+ * names resolve to nothing. Returns `[]` when there's no customization.
+ */
+export function resolveNginxSnippet(
+  nginx: SiteNginxConfig | undefined,
+  templates: Record<string, string[]> | undefined,
+): string[] {
+  if (!nginx)
+    return []
+  const out: string[] = []
+  if (nginx.template && templates?.[nginx.template])
+    out.push(...templates[nginx.template])
+  if (nginx.serverSnippet)
+    out.push(...nginx.serverSnippet)
+  return out
+}
 
 export interface NginxVhostOptions {
   /** Site key — names the config file (`/etc/nginx/sites-available/<siteName>`). */
@@ -52,6 +72,14 @@ export interface NginxVhostOptions {
    * browser prompt.
    */
   auth?: { username: string, password: string, realm?: string }
+  /**
+   * Custom nginx directive lines injected into the server block (after the
+   * managed directives) — a resolved reusable template plus per-site snippet.
+   * See {@link import('@ts-cloud/core').SiteNginxConfig}.
+   */
+  serverSnippet?: string[]
+  /** `client_max_body_size` override for this vhost (e.g. `'256M'`). */
+  clientMaxBodySize?: string
 }
 
 /** Path of the htpasswd file for a site. */
@@ -99,6 +127,11 @@ function vhostBody(options: NginxVhostOptions): string[] {
     '    charset utf-8;',
     '',
   ]
+
+  // Per-vhost upload ceiling (overrides the http-level client_max_body_size).
+  if (options.clientMaxBodySize) {
+    lines.push(`    client_max_body_size ${options.clientMaxBodySize};`, '')
+  }
 
   // HTTP Basic auth gates the whole site.
   if (options.auth) {
@@ -152,6 +185,14 @@ function vhostBody(options: NginxVhostOptions): string[] {
       '        try_files $uri $uri/ =404;',
       '    }',
     )
+  }
+
+  // Operator-supplied directives (resolved template + per-site snippet) are
+  // injected last so they can add/override locations within the server block.
+  if (options.serverSnippet && options.serverSnippet.length > 0) {
+    lines.push('')
+    for (const line of options.serverSnippet)
+      lines.push(line ? `    ${line}` : '')
   }
 
   return lines

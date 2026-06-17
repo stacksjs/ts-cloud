@@ -1050,6 +1050,31 @@ export interface SiteConfig {
    * Composer/npm credentials feature).
    */
   credentials?: SiteCredentialsConfig
+
+  /**
+   * Custom nginx for this site's vhost (Forge's "Edit Nginx Configuration").
+   * Directives are injected into the generated `server { … }` block, so the
+   * managed root/locations/SSL still apply.
+   */
+  nginx?: SiteNginxConfig
+}
+
+/** Per-site nginx customization injected into the generated server block. */
+export interface SiteNginxConfig {
+  /**
+   * Name of a reusable template defined in
+   * {@link ComputeConfig.nginxTemplates}. Its directive lines are injected into
+   * this site's server block.
+   */
+  template?: string
+  /**
+   * Raw nginx directive lines added to this site's server block (after the
+   * managed directives), e.g. `['gzip on;', 'location /metrics { deny all; }']`.
+   * Applied on top of {@link template} when both are set.
+   */
+  serverSnippet?: string[]
+  /** `client_max_body_size` for this vhost (e.g. `'256M'`) for large uploads. */
+  clientMaxBodySize?: string
 }
 
 /** Private package-registry credentials for a site's build. */
@@ -2345,6 +2370,14 @@ export interface ComputeConfig {
    * @default 'nginx'
    */
   webServer?: 'nginx' | 'rpx'
+
+  /**
+   * Reusable nginx config templates, keyed by name. A site references one via
+   * `site.nginx.template`, and its directive lines are injected into that
+   * site's server block — define a hardening/caching/proxy snippet once and
+   * share it across sites (Forge's nginx templates).
+   */
+  nginxTemplates?: Record<string, string[]>
 
   /**
    * On-box managed services to install (Forge's single-server model): the

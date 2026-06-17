@@ -5,6 +5,7 @@ import {
   buildNginxVhostScript,
   defaultWebDirectory,
   isPhpSiteType,
+  resolveNginxSnippet,
 } from '../../src/drivers/shared/nginx-vhost'
 
 describe('buildNginxServiceScript', () => {
@@ -156,5 +157,40 @@ describe('site type helpers', () => {
     expect(defaultWebDirectory('laravel')).toBe('public')
     expect(defaultWebDirectory('php')).toBe('')
     expect(defaultWebDirectory('static')).toBe('')
+  })
+})
+
+describe('custom nginx config (templates + per-site snippets)', () => {
+  it('resolves a referenced template then the per-site snippet', () => {
+    const lines = resolveNginxSnippet(
+      { template: 'hardening', serverSnippet: ['location /ping { return 200; }'] },
+      { hardening: ['add_header X-Robots-Tag noindex;', 'server_tokens off;'] },
+    )
+    expect(lines).toEqual([
+      'add_header X-Robots-Tag noindex;',
+      'server_tokens off;',
+      'location /ping { return 200; }',
+    ])
+  })
+
+  it('ignores an unknown template name and handles no customization', () => {
+    expect(resolveNginxSnippet({ template: 'missing' }, {})).toEqual([])
+    expect(resolveNginxSnippet(undefined, { x: ['y;'] })).toEqual([])
+  })
+
+  it('injects the resolved snippet + client_max_body_size into the server block', () => {
+    const vhost = buildNginxVhost({
+      siteName: 'app',
+      domain: 'app.test',
+      type: 'laravel',
+      appDir: '/var/www/app/current',
+      serverSnippet: ['gzip on;', 'location /metrics { deny all; }'],
+      clientMaxBodySize: '256M',
+    })
+    expect(vhost).toContain('    client_max_body_size 256M;')
+    expect(vhost).toContain('    gzip on;')
+    expect(vhost).toContain('    location /metrics { deny all; }')
+    // Custom directives sit inside the managed server block.
+    expect(vhost.trimEnd().endsWith('}')).toBe(true)
   })
 })

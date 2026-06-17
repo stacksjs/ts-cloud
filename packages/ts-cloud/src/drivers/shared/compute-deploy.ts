@@ -20,7 +20,7 @@ import { buildFleetServicesEnv } from './fleet'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
-import { buildNginxVhostScript } from './nginx-vhost'
+import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -123,6 +123,8 @@ export async function deploySiteRelease(
           auth: site.auth && site.auth.enabled !== false && site.auth.password
             ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
             : undefined,
+          serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
+          clientMaxBodySize: site.nginx?.clientMaxBodySize,
         })
       : []
     const sslScript = useNginx ? buildSslScript(site) : []
@@ -211,6 +213,8 @@ export async function deploySiteRelease(
         auth: site.auth && site.auth.enabled !== false && site.auth.password
           ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
           : undefined,
+        serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
+        clientMaxBodySize: site.nginx?.clientMaxBodySize,
       })
     : []
   const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
