@@ -133,7 +133,8 @@
           "type": "object",
           "description": "Serverless application manifest (Laravel-Vapor-equivalent). Defining this opts the environment into the serverless app deploy pipeline (http/queue/cli Lambda functions, assets, build/deploy hooks).",
           "properties": {
-            "runtime": { "type": "string", "description": "Lambda runtime (e.g. nodejs20.x, provided.al2023)" },
+            "runtime": { "type": "string", "description": "Lambda runtime override (usually derived from kind + runtimeVersion)" },
+            "runtimeVersion": { "type": "string", "description": "Node major (18/20/22 managed, 24+ custom layer) or Bun release for node/bun apps" },
             "kind": { "type": "string", "enum": ["node", "bun", "php"], "description": "Application kind (drives packaging + runtime)" },
             "entry": { "type": "string", "description": "Entry file exporting the request handler" },
             "memory": { "type": "number", "description": "HTTP function memory in MB" },

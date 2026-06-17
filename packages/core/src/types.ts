@@ -1533,11 +1533,25 @@ export interface FunctionConfig {
  */
 export interface ServerlessAppConfig {
   /**
-   * Lambda runtime shared by all three functions.
-   * Use `provided.al2023` for PHP (custom runtime layer) or Bun custom runtimes.
-   * @default 'nodejs20.x'
+   * Explicit Lambda runtime override. Usually you don't set this — it's derived
+   * from {@link kind} + {@link runtimeVersion}:
+   * - `node` on a managed version → `nodejs{18,20,22}.x`
+   * - `node` on a non-managed version (e.g. 24), `bun`, or `php` →
+   *   `provided.al2023` with a ts-cloud-built custom runtime layer
+   *
+   * Set this to force a specific value (e.g. `provided.al2023` to run Node on a
+   * custom layer even for a managed version).
+   * @default derived from kind/runtimeVersion
    */
-  runtime?: 'nodejs20.x' | 'nodejs22.x' | 'provided.al2023' | (string & {})
+  runtime?: 'nodejs18.x' | 'nodejs20.x' | 'nodejs22.x' | 'provided.al2023' | (string & {})
+
+  /**
+   * Runtime version for `node`/`bun` apps (PHP uses {@link phpVersion}).
+   * - node: '18' | '20' | '22' (managed) or '24'+ (custom provided.al2023 layer)
+   * - bun:  a Bun release, e.g. '1.3.13' (always a custom provided.al2023 layer)
+   * @default node '22', bun the layer's pinned default
+   */
+  runtimeVersion?: string
 
   /**
    * Application kind. Drives packaging + runtime selection.

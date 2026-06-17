@@ -1,0 +1,5 @@
+#!/bin/sh
+# ts-cloud Bun custom-runtime entrypoint (provided.al2023).
+# Puts the bundled Bun binary on PATH and runs the shared Runtime API loop.
+export PATH="/opt/bin:$PATH"
+exec /opt/bin/bun /opt/runtime.mjs

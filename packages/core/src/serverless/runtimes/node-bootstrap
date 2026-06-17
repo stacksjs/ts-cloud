@@ -1,0 +1,5 @@
+#!/bin/sh
+# ts-cloud Node custom-runtime entrypoint (provided.al2023).
+# Puts the bundled Node binary on PATH and runs the shared Runtime API loop.
+export PATH="/opt/bin:$PATH"
+exec /opt/bin/node /opt/runtime.mjs

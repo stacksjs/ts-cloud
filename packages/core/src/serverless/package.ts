@@ -89,9 +89,11 @@ export async function packageServerlessApp(opts: PackageOptions): Promise<Packag
     writeFileSync(bootstrapPath, generateBootstrap({ entryImport: entryPath, adapterImport: './adapter' }))
 
     opts.onStep?.('bundling application')
+    // Bun apps target the Bun runtime (so Bun.* APIs work on the Bun layer);
+    // everything else targets node (managed runtime or the Node custom layer).
     const result = await Bun.build({
       entrypoints: [bootstrapPath],
-      target: 'node',
+      target: app.kind === 'bun' ? 'bun' : 'node',
       format: 'esm',
       minify: false,
       sourcemap: 'none',
