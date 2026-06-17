@@ -57,9 +57,10 @@ describe('laravelServerlessEnvDefaults', () => {
 })
 
 describe('generatePhpLayerDockerfile', () => {
-  it('targets AL2023 + Remi and installs the Laravel extension set', () => {
+  it('builds on AlmaLinux 9 + Remi and installs the Laravel extension set', () => {
     const df = generatePhpLayerDockerfile({ phpVersion: '8.3' })
-    expect(df).toContain('FROM amazonlinux:2023')
+    // Built on almalinux:9 (Remi-compatible; glibc 2.34 matches provided.al2023).
+    expect(df).toContain('FROM almalinux:9')
     expect(df).toContain('remi-release-9')
     expect(df).toContain('php83-php-pecl-redis6')
     expect(phpLayerPackages('8.3')).toContain('php83-php-mysqlnd')

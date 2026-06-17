@@ -12,6 +12,9 @@ set -e
 
 export PATH="/opt/bin:/opt/php/bin:/opt/php/sbin:${PATH}"
 export LD_LIBRARY_PATH="/opt/php/lib:${LD_LIBRARY_PATH}"
+# The relocated PHP's compiled-in ini path points at the build-time SCL location,
+# so point it at the layer's ini (sets extension_dir + loads every extension).
+export PHPRC="/opt/php/etc/php.ini"
 
 # Only /tmp is writable on Lambda; pre-create Laravel's runtime directories.
 mkdir -p \

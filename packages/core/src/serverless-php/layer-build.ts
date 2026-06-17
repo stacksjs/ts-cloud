@@ -13,7 +13,7 @@
 
 import type { ZipEntry } from '../serverless/zip'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative } from 'node:path'
 import { createZip } from '../serverless/zip'
@@ -62,19 +62,22 @@ export function buildPhpRuntimeLayerZip(options: BuildPhpLayerOptions = {}): Php
     step('Building PHP runtime image (docker)')
     execFileSync('docker', ['build', '--platform', platform, '-t', imageTag, stage], { stdio: 'inherit' })
 
-    // Extract /opt from the built image.
-    step('Extracting /opt from image')
+    // Extract only the relocated /opt/php tree (the rest of /opt — the Remi SCL
+    // install — is build scratch we don't ship, and copying it both bloats the
+    // layer and trips over restricted-permission files like /opt/remi/*/enable).
+    step('Extracting /opt/php from image')
     const cid = execFileSync('docker', ['create', '--platform', platform, imageTag], { encoding: 'utf-8' }).trim()
     const optDir = join(stage, 'opt')
+    mkdirSync(optDir, { recursive: true })
     try {
-      execFileSync('docker', ['cp', `${cid}:/opt/.`, optDir], { stdio: 'inherit' })
+      execFileSync('docker', ['cp', `${cid}:/opt/php`, join(optDir, 'php')], { stdio: 'inherit' })
     }
     finally {
       execFileSync('docker', ['rm', cid], { stdio: 'ignore' })
     }
 
-    if (!existsSync(optDir))
-      throw new Error('layer build produced no /opt directory')
+    if (!existsSync(join(optDir, 'php', 'bin', 'php')))
+      throw new Error('layer build produced no /opt/php/bin/php')
 
     // Collect the built /opt tree.
     const entries: ZipEntry[] = []
