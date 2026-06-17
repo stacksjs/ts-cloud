@@ -8,7 +8,7 @@ import {
 describe('buildServicesProvisionScript', () => {
   it('installs and enables the requested engines via pantry', () => {
     const script = buildServicesProvisionScript({ mysql: true, redis: true }).join('\n')
-    expect(script).toContain('pantry install \'mysql.com\' \'redis.io\'')
+    expect(script).toContain('pantry install \'mysql.com@8.0.43\' \'redis.io\'')
     expect(script).toContain('pantry enable \'mysql\'')
     expect(script).toContain('pantry start \'mysql\'')
     expect(script).toContain('pantry start \'redis\'')

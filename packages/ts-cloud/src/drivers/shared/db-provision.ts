@@ -29,7 +29,13 @@ function planServices(services: ComputeServicesConfig): ServicePlan {
   const packages: PantrySpec[] = []
   const names: string[] = []
   if (enabled(services.mysql)) {
-    packages.push('mysql.com')
+    // Pin the version pantry actually source-builds + publishes for both arches.
+    // The catalog's newest tags are "innovation" releases (9.x) with no source
+    // tarball; 8.0.43 is the latest GA whose bundled-boost source builds cleanly.
+    // (MariaDB is the default MySQL-compatible engine; mysql.com is opt-in.)
+    packages.push(typeof services.mysql === 'object' && services.mysql.version
+      ? `mysql.com@${services.mysql.version}`
+      : 'mysql.com@8.0.43')
     names.push('mysql')
   }
   else if (enabled(services.mariadb)) {
