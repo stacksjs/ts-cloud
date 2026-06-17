@@ -1,0 +1,36 @@
+#!/bin/sh
+# ts-cloud PHP custom runtime bootstrap for AWS Lambda (provided.al2023).
+#
+# Selects the runtime mode from TSCLOUD_LAMBDA_MODE:
+#   http  -> start php-fpm and run the FastCGI bridge loop (runtime.php)
+#   queue -> SQS worker loop (cli-runtime.php)
+#   cli   -> scheduler / on-demand artisan commands (cli-runtime.php)
+#
+# The PHP binary + extensions + these scripts are provided by the ts-cloud PHP
+# runtime layer mounted at /opt.
+set -e
+
+export PATH="/opt/bin:/opt/php/bin:/opt/php/sbin:${PATH}"
+export LD_LIBRARY_PATH="/opt/php/lib:${LD_LIBRARY_PATH}"
+
+# Only /tmp is writable on Lambda; pre-create Laravel's runtime directories.
+mkdir -p \
+  /tmp/storage/framework/cache/data \
+  /tmp/storage/framework/sessions \
+  /tmp/storage/framework/views \
+  /tmp/storage/logs \
+  /tmp/bootstrap/cache
+
+MODE="${TSCLOUD_LAMBDA_MODE:-http}"
+
+if [ "$MODE" = "http" ]; then
+  if [ "${TSCLOUD_OCTANE:-0}" = "1" ]; then
+    # Persistent mode: boot Laravel once, serve in-process (no php-fpm).
+    exec php /opt/tscloud/octane-runtime.php
+  fi
+  # Launch php-fpm (listening on a unix socket in /tmp) then run the bridge loop.
+  php-fpm --nodaemonize --fpm-config /opt/tscloud/php-fpm.conf &
+  exec php /opt/tscloud/runtime.php
+else
+  exec php /opt/tscloud/cli-runtime.php
+fi
