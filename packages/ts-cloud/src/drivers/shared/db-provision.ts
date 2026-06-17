@@ -9,7 +9,7 @@
  * 5432, redis 6379, memcached 11211, meilisearch 7700); DB setup connects over
  * TCP, and the engine clients are on PATH via `pantry env`.
  */
-import type { ComputeServicesConfig, DatabaseConfig } from '@ts-cloud/core'
+import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
 
@@ -105,19 +105,51 @@ export function buildDatabaseSetupScript(
     // shell leaves the SQL untouched.
     const pgIdent = (v: string): string => `"${v.replace(/"/g, '""')}"`
     const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
+    // Idempotently ensure a login role exists with the given password.
+    const pgEnsureRole = (u: string, p: string): string[] => [
+      'DO $$ BEGIN',
+      `  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${pgLit(u)}) THEN`,
+      `    CREATE ROLE ${pgIdent(u)} LOGIN PASSWORD ${pgLit(p)};`,
+      '  ELSE',
+      `    ALTER ROLE ${pgIdent(u)} LOGIN PASSWORD ${pgLit(p)};`,
+      '  END IF;',
+      'END $$;',
+    ]
+    // Grant a role access to a database. `readonly` gets connect + SELECT on
+    // existing and future tables; `all` gets full privileges on the database.
+    const pgGrant = (u: DatabaseUserConfig): string[] => {
+      const dbs = u.databases && u.databases.length > 0 ? u.databases : [name]
+      const lines: string[] = []
+      for (const db of dbs) {
+        if (u.access === 'readonly') {
+          lines.push(
+            `GRANT CONNECT ON DATABASE ${pgIdent(db)} TO ${pgIdent(u.username)};`,
+            // Per-database object grants must run connected to that database.
+            `\\connect ${pgIdent(db)}`,
+            `GRANT USAGE ON SCHEMA public TO ${pgIdent(u.username)};`,
+            `GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${pgIdent(u.username)};`,
+            `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${pgIdent(u.username)};`,
+            '\\connect postgres',
+          )
+        }
+        else {
+          lines.push(`GRANT ALL PRIVILEGES ON DATABASE ${pgIdent(db)} TO ${pgIdent(u.username)};`)
+        }
+      }
+      return lines
+    }
+    const extraUsers = (database.users || [])
     return [
       pantryEnvActivation(),
       // The engine service was just started; wait until it accepts connections
       // (first boot runs initdb, which takes a few seconds) before setup.
       'for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -p 5432 -q && break; sleep 2; done',
       'psql -h 127.0.0.1 -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'',
-      'DO $$ BEGIN',
-      `  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${pgLit(user)}) THEN`,
-      `    CREATE ROLE ${pgIdent(user)} LOGIN PASSWORD ${pgLit(pass)};`,
-      '  END IF;',
-      'END $$;',
+      ...pgEnsureRole(user, pass),
       `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' `
       + `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
+      // Additional users (read-only / extra logins) with their own grants.
+      ...extraUsers.flatMap(u => [...pgEnsureRole(u.username, u.password), ...pgGrant(u)]),
       'TS_CLOUD_PG_EOF',
     ]
   }
@@ -131,16 +163,36 @@ export function buildDatabaseSetupScript(
   const sock = useMariadb ? '/var/lib/pantry/mariadb/mariadbd.sock' : '/var/lib/pantry/mysql/mysqld.sock'
   const ident = (v: string): string => v.replace(/`/g, '``')
   const lit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+  // Create a user for both `%` (TCP) and `localhost` (socket), then grant the
+  // given privilege list on each database. `ALTER USER` keeps the password in
+  // sync on a re-provision (a Forge-style password reset).
+  const mysqlUser = (u: DatabaseUserConfig | { username: string, password: string, databases?: string[], access?: 'all' | 'readonly' }): string[] => {
+    const dbs = u.databases && u.databases.length > 0 ? u.databases : [name]
+    const priv = u.access === 'readonly' ? 'SELECT' : 'ALL PRIVILEGES'
+    const lines = [
+      `CREATE USER IF NOT EXISTS '${lit(u.username)}'@'%' IDENTIFIED BY '${lit(u.password)}';`,
+      `CREATE USER IF NOT EXISTS '${lit(u.username)}'@'localhost' IDENTIFIED BY '${lit(u.password)}';`,
+      `ALTER USER '${lit(u.username)}'@'%' IDENTIFIED BY '${lit(u.password)}';`,
+      `ALTER USER '${lit(u.username)}'@'localhost' IDENTIFIED BY '${lit(u.password)}';`,
+    ]
+    for (const db of dbs) {
+      lines.push(
+        `GRANT ${priv} ON \`${ident(db)}\`.* TO '${lit(u.username)}'@'%';`,
+        `GRANT ${priv} ON \`${ident(db)}\`.* TO '${lit(u.username)}'@'localhost';`,
+      )
+    }
+    return lines
+  }
+  const extraUsers = (database.users || [])
   return [
     pantryEnvActivation(),
     // Wait until the just-started engine accepts socket connections before setup.
     `for i in $(seq 1 30); do mysqladmin --socket=${sock} -u root ping 2>/dev/null | grep -q alive && break; sleep 2; done`,
     `mysql --socket=${sock} -u root <<'TS_CLOUD_SQL_EOF'`,
     `CREATE DATABASE IF NOT EXISTS \`${ident(name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
-    `CREATE USER IF NOT EXISTS '${lit(user)}'@'%' IDENTIFIED BY '${lit(pass)}';`,
-    `CREATE USER IF NOT EXISTS '${lit(user)}'@'localhost' IDENTIFIED BY '${lit(pass)}';`,
-    `GRANT ALL PRIVILEGES ON \`${ident(name)}\`.* TO '${lit(user)}'@'%';`,
-    `GRANT ALL PRIVILEGES ON \`${ident(name)}\`.* TO '${lit(user)}'@'localhost';`,
+    ...mysqlUser({ username: user, password: pass }),
+    // Additional users (read-only / extra logins) with their own grants.
+    ...extraUsers.flatMap(mysqlUser),
     'FLUSH PRIVILEGES;',
     'TS_CLOUD_SQL_EOF',
   ]

@@ -63,6 +63,46 @@ describe('buildDatabaseSetupScript', () => {
     expect(script).toContain('\\gexec')
   })
 
+  it('creates extra MySQL users with read-only + full grants', () => {
+    const script = buildDatabaseSetupScript(
+      {
+        name: 'forge',
+        username: 'forge',
+        password: 'secret',
+        users: [
+          { username: 'reporter', password: 'ro', access: 'readonly' },
+          { username: 'svc', password: 'sv', databases: ['forge', 'analytics'] },
+        ],
+      },
+      { mysql: true },
+    ).join('\n')
+    // Read-only user gets SELECT only on the app database.
+    expect(script).toContain("CREATE USER IF NOT EXISTS 'reporter'@'%' IDENTIFIED BY 'ro'")
+    expect(script).toContain("GRANT SELECT ON `forge`.* TO 'reporter'@'%'")
+    // Re-provision keeps the password in sync (Forge-style reset).
+    expect(script).toContain("ALTER USER 'reporter'@'localhost' IDENTIFIED BY 'ro'")
+    // Full user with multiple databases.
+    expect(script).toContain("GRANT ALL PRIVILEGES ON `forge`.* TO 'svc'@'%'")
+    expect(script).toContain("GRANT ALL PRIVILEGES ON `analytics`.* TO 'svc'@'%'")
+  })
+
+  it('creates extra Postgres users with read-only grants', () => {
+    const script = buildDatabaseSetupScript(
+      {
+        name: 'app',
+        username: 'app',
+        password: 'pw',
+        users: [{ username: 'reporter', password: 'ro', access: 'readonly' }],
+      },
+      { postgres: true },
+    ).join('\n')
+    expect(script).toContain('CREATE ROLE "reporter" LOGIN PASSWORD \'ro\'')
+    expect(script).toContain('GRANT CONNECT ON DATABASE "app" TO "reporter"')
+    expect(script).toContain('GRANT SELECT ON ALL TABLES IN SCHEMA public TO "reporter"')
+    expect(script).toContain('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "reporter"')
+    expect(script).toContain('\\connect "app"')
+  })
+
   it('skips creation for a managed (remote-host) database', () => {
     const script = buildDatabaseSetupScript(
       { name: 'app', host: 'db.internal.example.com' },

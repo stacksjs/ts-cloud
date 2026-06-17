@@ -1,3 +1,20 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.0...v0.5.1)
+
+### 🚀 Features
+
+- **serverless**: close Vapor gaps — custom domains, per-fn tmp, sub-minute, signed uploads ([c9068e8](https://github.com/stacksjs/ts-cloud/commit/c9068e8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: wildcard SSL + DNS-01 certbot validation ([a0479b3](https://github.com/stacksjs/ts-cloud/commit/a0479b3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: server recipes (run reusable bash across servers) ([9e973c8](https://github.com/stacksjs/ts-cloud/commit/9e973c8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **forge**: rollback, catch-all 444, composer/npm credentials ([2432c47](https://github.com/stacksjs/ts-cloud/commit/2432c47)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.1 ([41fb076](https://github.com/stacksjs/ts-cloud/commit/41fb076)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.2...v0.5.0)
 
 ### 🚀 Features
