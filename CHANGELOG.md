@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.4.0...v0.4.1)
+
+### 🐛 Bug Fixes
+
+- **serverless**: correct Bun "latest" layer download URL ([7d2ee94](https://github.com/stacksjs/ts-cloud/commit/7d2ee94)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.4.1 ([2ac845a](https://github.com/stacksjs/ts-cloud/commit/2ac845a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.3.1...v0.4.0)
 
 ### 🚀 Features
