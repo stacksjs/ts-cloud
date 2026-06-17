@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.2...v0.5.3)
+
+### 🐛 Bug Fixes
+
+- **serverless**: make Node/Bun deploys work from the published package ([f900163](https://github.com/stacksjs/ts-cloud/commit/f900163)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.3 ([d4f9b59](https://github.com/stacksjs/ts-cloud/commit/d4f9b59)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.1...v0.5.2)
 
 ### 🚀 Features
