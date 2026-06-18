@@ -162,74 +162,31 @@ const functionName = naming.name('handler', { suffix: 'lambda' })
 Create a `cloud.config.ts` file:
 
 ```typescript
-import type { CloudConfig } from 'ts-cloud'
+import type { CloudConfig } from '@stacksjs/ts-cloud'
 
 export default {
-  name: 'my-app',
-  region: 'us-east-1',
-
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
   environments: {
-    dev: {
-      account: '123456789012',
-      region: 'us-east-1',
-    },
-    prod: {
-      account: '987654321098',
-      region: 'us-west-2',
-    },
+    staging: { type: 'staging' },
+    production: { type: 'production', domain: 'my-app.com' },
   },
-
-  stacks: {
-    network: './stacks/network.ts',
-    database: './stacks/database.ts',
-    application: './stacks/application.ts',
-  },
-} satisfies CloudConfig
+} satisfies Partial<CloudConfig>
 ```
 
-## Stack Definition
+What you add to this config decides what deploys — a serverless `app`, an
+`infrastructure.compute` server + `sites`, or managed AWS resources. See the
+[Configuration reference](/config) for the full shape, and the
+[Serverless](/features/serverless) / [Laravel](/features/laravel) pages for the
+two app models.
 
-Define stacks in separate files:
-
-```typescript
-// stacks/network.ts
-import { defineStack } from 'ts-cloud'
-
-export default defineStack({
-  name: 'network',
-
-  resources: (ctx) => ({
-    VPC: {
-      Type: 'AWS::EC2::VPC',
-      Properties: {
-        CidrBlock: '10.0.0.0/16',
-        EnableDnsHostnames: true,
-      },
-    },
-
-    PublicSubnet: {
-      Type: 'AWS::EC2::Subnet',
-      Properties: {
-        VpcId: { Ref: 'VPC' },
-        CidrBlock: '10.0.1.0/24',
-        AvailabilityZone: { 'Fn::Select': [0, { 'Fn::GetAZs': '' }] },
-        MapPublicIpOnLaunch: true,
-      },
-    },
-  }),
-
-  outputs: {
-    VpcId: {
-      Value: { Ref: 'VPC' },
-      Export: { Name: 'VpcId' },
-    },
-  },
-})
-```
+> Most users never hand-write CloudFormation — the config + presets generate it.
+> If you need to drop down to raw resources, the CloudFormation builders
+> (`CloudFormationBuilder`, the `S3Bucket`/`Lambda`/etc. builders) and
+> `validateTemplate` are exported for that.
 
 ## Template Validation
 
-Validate templates before deployment:
+When building templates programmatically, validate them before deployment:
 
 ```typescript
 import { validateTemplate, validateResourceLimits } from 'ts-cloud'
@@ -289,27 +246,26 @@ console.log('Resources to update:', diff.modified)
 ## CLI Commands
 
 ```bash
-# Initialize project
-cloud init my-project
+# Initialize a project (interactive, or pass --name)
+cloud init --name my-project
 
-# Generate templates
+# Generate CloudFormation templates
 cloud generate
 
-# Validate templates
-cloud validate
+# Validate the cloud.config
+cloud config:validate
 
-# Show diff against deployed stack
-cloud diff --stack my-stack
+# Show a diff against deployed infrastructure
+cloud diff
 
-# Deploy stack
-cloud deploy --stack my-stack
+# Deploy an environment (server or serverless, per your config)
+cloud deploy --env production
 
-# Deploy all stacks
-cloud deploy --all
-
-# Destroy stack
-cloud destroy --stack my-stack
+# Tear down a CloudFormation stack
+cloud stack:delete my-project-production
 ```
+
+See the [CLI reference](/cli) for the full command surface.
 
 ## Next Steps
 

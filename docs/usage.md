@@ -214,17 +214,17 @@ console.log('Deployed to:', result.domain)
 ### Project Management
 
 ```bash
-# Initialize project
-cloud init my-project
+# Initialize a project (interactive, or pass --name)
+cloud init --name my-project
 
 # Generate CloudFormation templates
 cloud generate
 
-# Validate templates
-cloud validate
+# Validate the cloud.config
+cloud config:validate
 
-# Preview changes
-cloud diff --stack my-stack
+# Preview changes against deployed infrastructure
+cloud diff
 ```
 
 ### Security Scanning
@@ -246,23 +246,27 @@ cloud deploy:security-scan --skip-patterns "JWT Token,Generic API Key"
 ### Deployment
 
 ```bash
-# Deploy a stack (includes automatic security scan)
-cloud deploy --stack my-stack
+# Deploy the configured app/infrastructure for an environment
+# (includes an automatic secret scan)
+cloud deploy --env production
 
-# Deploy all stacks
-cloud deploy --all
+# Deploy only one site (when several are configured)
+cloud deploy --env production --site main
 
-# Deploy static site to S3 + CloudFront
+# Serverless (Lambda) app deploy
+cloud deploy:serverless --env production
+
+# Deploy a static site to S3 + CloudFront
 cloud deploy:static --source ./dist --bucket my-bucket
 
-# Deploy container to ECS
+# Deploy a container to ECS
 cloud deploy:container --cluster my-cluster --service my-service
 
-# Skip security scan (not recommended for production)
-cloud deploy --skip-security-scan
+# Skip the secret scan (not recommended for production)
+cloud deploy --env production --skip-security-scan
 
-# Destroy a stack
-cloud destroy --stack my-stack
+# Tear down a CloudFormation stack
+cloud stack:delete my-app-production
 ```
 
 ## Next Steps

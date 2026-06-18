@@ -26,7 +26,7 @@ export default createLaravelPreset({
 ```
 
 ```sh
-cloud deploy production
+cloud deploy --env production
 ```
 
 This provisions the server (first run) and deploys the app: clone, then
@@ -281,10 +281,55 @@ cloud deploy:recipe clear-opcache ./recipes/clear-opcache.sh --user www-data
 
 | Command | What it does |
 | --- | --- |
-| `cloud deploy production` | Provision (first run) + deploy all sites |
+| `cloud deploy --env production` | Provision (first run) + deploy all sites |
 | `cloud deploy:rollback [site] [--to <id>]` | Roll a site back to a previous release |
 | `cloud deploy:history [site] [--limit <n>]` | Show on-box deployment history |
 | `cloud deploy:recipe <name> <script> [--user <u>]` | Run a bash recipe across servers |
+
+## Per-site options
+
+Beyond deploys + SSL, each site supports the Forge per-site knobs:
+
+```ts
+sites: {
+  admin: {
+    domain: 'admin.acme.com',
+    // Dedicated OS user + php-fpm pool (Forge "User Isolation") — a compromised
+    // site can't read another site's files.
+    isolation: true,
+    // HTTP Basic auth at nginx (htpasswd), hashed on the box.
+    auth: { username: 'ops', password: process.env.ADMIN_PASSWORD, realm: 'Admin' },
+    // Post-deploy health check — pinged from the deployer; a failure flags the deploy.
+    healthCheck: { path: '/up' },
+    // nginx redirects (Forge "Redirects").
+    redirects: { '/old': '/new' },
+    // Private-registry auth written before composer/npm install.
+    credentials: {
+      composerAuth: { 'github-oauth': { 'github.com': process.env.COMPOSER_TOKEN } },
+      npmrc: '//registry.npmjs.org/:_authToken=${NPM_TOKEN}',
+    },
+  },
+}
+```
+
+### SSH keys
+
+Operator SSH keys are declarative — list them under `infrastructure.compute.sshKeys`
+and they're written to the box's `authorized_keys` on the next deploy (Forge's
+account/server keys):
+
+```ts
+infrastructure: {
+  compute: {
+    sshKeys: [
+      { name: 'chris@laptop', publicKey: 'ssh-ed25519 AAAA… chris@laptop' },
+      { name: 'ci-deploy', publicKey: process.env.CI_DEPLOY_PUBKEY! },
+    ],
+  },
+}
+```
+
+Connect with `cloud server:ssh <name>`.
 
 ## What gets provisioned
 

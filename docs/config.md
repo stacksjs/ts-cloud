@@ -1,136 +1,82 @@
 # Configuration
 
-ts-cloud uses a `cloud.config.ts` file to define your infrastructure.
-
-## Basic Configuration
-
-Create a `cloud.config.ts` in your project root:
+ts-cloud is configured with a single `cloud.config.ts` in your project root. The
+top-level shape is `CloudConfig`:
 
 ```typescript
-import type { CloudConfig } from 'ts-cloud'
+import type { CloudConfig } from '@stacksjs/ts-cloud'
 
 export default {
-  name: 'my-app',
-  region: 'us-east-1',
-
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
   environments: {
-    dev: {
-      account: '123456789012',
-      region: 'us-east-1',
-    },
-    prod: {
-      account: '987654321098',
-      region: 'us-west-2',
-    },
+    production: { type: 'production' },
   },
-
-  stacks: {
-    network: './stacks/network.ts',
-    database: './stacks/database.ts',
-    application: './stacks/application.ts',
-  },
-} satisfies CloudConfig
+} satisfies Partial<CloudConfig>
 ```
 
-## Configuration Options
+Everything beyond `project` + `environments` is opt-in, and what you add decides
+what gets deployed:
 
-### Core Options
+| Key | Type | Purpose |
+|-----|------|---------|
+| `project` | `{ name, slug, region }` | **Required.** `slug` is the prefix for all resource names. |
+| `environments` | `Record<string, EnvironmentConfig>` | **Required.** One entry per environment (`production`, `staging`, …). |
+| `mode` | `'serverless' \| …` | Optional — auto-detected from the config; rarely set by hand. |
+| `infrastructure` | `InfrastructureConfig` | EC2 compute, databases, caches, SES, search, and other managed AWS resources (see [AWS Resources](/features/aws)). |
+| `sites` | `Record<string, SiteConfig>` | Static sites + server-served app sites ([Site Deployment Targets](#site-deployment-targets)). |
+| `notifications` | `NotificationsConfig` | Slack/Discord/Telegram/email/webhook for deploy, SSL, health-check, backup events. |
+| `cloud` | `{ provider: 'aws' \| 'hetzner' }` | Compute provider. Defaults to AWS. |
+| `hetzner` | `HetznerConfig` | Hetzner Cloud settings when `cloud.provider` is `hetzner`. |
+| `objectStorage` | `ObjectStorageConfig` | Object-storage provider (AWS S3, Backblaze B2, Hetzner) — independent of `cloud.provider`. |
+| `aws` | `AwsConfig` | AWS account/credential overrides. |
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `name` | `string` | required | Project name, used for resource naming |
-| `region` | `string` | `'us-east-1'` | Default AWS region |
-| `environments` | `object` | `{}` | Environment-specific settings |
-| `stacks` | `object` | `{}` | Stack definitions |
+## Two app models
 
-### Environment Configuration
+ts-cloud deploys apps two ways; pick per environment:
+
+- **Serverless** (Laravel Vapor replacement) — set `environments.<env>.app`
+  (`ServerlessAppConfig`). One codebase → http/queue/cli Lambda functions. See
+  [Serverless](/features/serverless).
+- **Server** (Laravel Forge replacement) — set `infrastructure.compute` + `sites`.
+  A provisioned EC2/Hetzner box running nginx + php-fpm. See
+  [Laravel / Forge-style](/features/laravel).
+
+```typescript
+// Serverless (Vapor-style)
+export default {
+  project: { name: 'My API', slug: 'my-api', region: 'us-east-1' },
+  environments: {
+    production: {
+      type: 'production',
+      app: { kind: 'node', entry: 'src/server.ts', queues: true, scheduler: 'on' },
+    },
+  },
+} satisfies Partial<CloudConfig>
+```
+
+### Environment configuration
+
+Each `environments.<env>` entry is an `EnvironmentConfig`:
+
+| Field | Type | Purpose |
+|-------|------|---------|
+| `type` | `'production' \| 'staging' \| 'development'` | **Required.** Environment class. |
+| `region` | `string` | Override the project region for this environment. |
+| `variables` | `Record<string, string>` | Plain (non-secret) env vars. |
+| `domain` | `string` | Custom domain for this environment. |
+| `infrastructure` | `Partial<InfrastructureConfig>` | Per-environment infra overrides (e.g. smaller instances in dev). |
+| `app` | `ServerlessAppConfig` | Serverless app manifest (opts into the Lambda pipeline). |
 
 ```typescript
 environments: {
-  dev: {
-    account: '123456789012',
-    region: 'us-east-1',
-    variables: {
-      LOG_LEVEL: 'debug',
-    },
-  },
-  staging: {
-    account: '123456789012',
-    region: 'us-east-1',
-    variables: {
-      LOG_LEVEL: 'info',
-    },
-  },
-  prod: {
-    account: '987654321098',
-    region: 'us-west-2',
-    variables: {
-      LOG_LEVEL: 'warn',
-    },
-  },
+  staging: { type: 'staging', variables: { LOG_LEVEL: 'debug' } },
+  production: { type: 'production', domain: 'my-app.com', variables: { LOG_LEVEL: 'warn' } },
 }
 ```
 
-### Stack Configuration
-
-```typescript
-stacks: {
-  // Reference external files
-  network: './stacks/network.ts',
-
-  // Or define inline
-  storage: {
-    resources: {
-      Bucket: {
-        Type: 'AWS::S3::Bucket',
-        Properties: {
-          BucketName: 'my-bucket',
-        },
-      },
-    },
-  },
-}
-```
-
-## Static Site Configuration
-
-For static site deployments, use `StaticSiteConfig`:
-
-```typescript
-import type { StaticSiteConfig } from 'ts-cloud'
-
-const config: StaticSiteConfig = {
-  siteName: 'my-docs',
-  region: 'us-east-1',
-
-  // Domain configuration
-  domain: 'docs.example.com',
-  // Or use subdomain + baseDomain
-  subdomain: 'docs',
-  baseDomain: 'example.com',
-
-  // S3 configuration
-  bucket: 'my-docs-bucket', // auto-generated if not specified
-
-  // CloudFront configuration
-  defaultRootObject: 'index.html',
-  errorDocument: '404.html',
-  cacheControl: 'max-age=31536000, public',
-
-  // SSL/TLS
-  certificateArn: 'arn:aws:acm:...', // auto-created if not specified
-  hostedZoneId: 'Z1234567890', // auto-detected if not specified
-
-  // CloudFormation
-  stackName: 'my-docs-stack', // auto-generated if not specified
-
-  // Tags
-  tags: {
-    Project: 'MyDocs',
-    Environment: 'production',
-  },
-}
-```
+> Secrets are **not** plain `variables`. For serverless apps they live under
+> `environments.<env>.app.secrets` (resolved from AWS Secrets Manager); manage
+> them with `cloud secrets:set/get/list/delete`.
 
 ## Site Deployment Targets
 

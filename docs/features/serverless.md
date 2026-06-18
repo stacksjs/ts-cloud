@@ -254,13 +254,19 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 
 Everything is declared under `environments.<env>.app` (the `vapor.yml`
 equivalent). See `ServerlessAppConfig` for the full field set: `runtime`,
-`memory`/`timeout`, `warm`/`warmFunctions`/`provisionedConcurrency`, `logRetention`, `queues`/`queueConcurrency`/
-`queueTimeout`/`queueTries`, `scheduler` (`on`/`off`/`sub-minute`),
-`build`/`deploy` hooks, `octane`, `vpc`, `rdsProxy`, `database`, `cache`,
-`storage`, `firewall`, `domain`, `assets`, `env`, `secrets`, the per-function
+`memory`/`timeout`, the per-function `cliMemory`/`cliTimeout`/`queueMemory`/
+`queueTimeout`, reserved `concurrency` (HTTP), `warm`/`warmFunctions`/
+`provisionedConcurrency`, `logRetention`, `queues`/`queueConcurrency`/
+`queueTries`, `scheduler` (`on`/`off`/`sub-minute`), `build`/`deploy` hooks,
+`octane`, `vpc`, `rdsProxy`, `database`, `cache`, `storage`, `firewall`,
+`domain`, `assets`, `env`, `secrets`, the per-function
 `tmpStorage`/`cliTmpStorage`/`queueTmpStorage`, and (PHP)
 `phpVersion`/`architecture`/`layers`. Only API Gateway **HTTP API (v2)** is
 supported (`gatewayVersion: 1` throws).
+
+By default the three handlers are auto-resolved from your `entry` (Node/Bun) or
+`public/index.php` + artisan (PHP). Override them explicitly with `handlers:
+{ http, queue, cli }` if your app exposes them elsewhere.
 
 ### Queues
 
