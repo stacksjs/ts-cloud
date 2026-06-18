@@ -79,7 +79,7 @@ Create a simple test file:
 
 ```typescript
 // test.ts
-import { CloudFormationClient } from 'ts-cloud'
+import { CloudFormationClient } from '@stacksjs/ts-cloud'
 
 const client = new CloudFormationClient('us-east-1')
 const stacks = await client.listStacks()

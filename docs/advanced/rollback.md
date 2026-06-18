@@ -1,215 +1,65 @@
 # Rollback Strategies
 
-Handle deployment failures gracefully with ts-cloud's rollback capabilities.
+ts-cloud makes failed deploys recoverable at three levels: CloudFormation's own
+automatic rollback, the CLI rollback commands for app deploys, and the
+blue-green / canary managers for traffic-level safety.
 
-## Automatic Rollback
+## Automatic rollback (CloudFormation)
 
-CloudFormation automatically rolls back failed deployments:
+Infrastructure deploys go through CloudFormation, which **automatically rolls a
+failed `CREATE`/`UPDATE` back** to the last good state — no configuration needed.
+The serverless deploy orchestrator also detects a stack left in a stale
+`ROLLBACK_COMPLETE`/`CREATE_FAILED` state from a prior failed create and
+deletes + recreates it so the next `cloud deploy:serverless` succeeds.
+
+```sh
+cloud deploy --env production       # a failed stack op auto-reverts
+cloud diff                          # preview changes before deploying
+```
+
+## App rollback (CLI)
+
+Once an app is live, roll the **code** back without touching infrastructure:
+
+```sh
+# Serverless (Lambda): re-activate the previous build — flips the `live` alias
+# (provisioned-concurrency model) or restores the prior code + env. Never deletes
+# the stack.
+cloud serverless:rollback --env production
+
+# Server (EC2/Forge-style): atomically flip a site's `current` symlink back to
+# the previous release, then restart php-fpm + queue workers.
+cloud deploy:rollback main
+cloud deploy:rollback main --to 20240601120000   # a specific release id
+```
+
+Both are atomic and fast — serverless flips an alias/version; compute flips a
+symlink. The serverless deployer also snapshots each release
+(`releases/{slug}/{env}/current.json` in the artifact bucket) so a rollback
+restores the prior code **and** environment, not just the binary.
+
+## Programmatic stack control
+
+For custom tooling, drive CloudFormation directly with `CloudFormationClient`
+(real methods: `createStack`, `updateStack`, `deleteStack`, `waitForStack`,
+`getStackOutputs`, `getTemplate`):
 
 ```typescript
-import { deploy } from 'ts-cloud'
+import { CloudFormationClient } from '@stacksjs/ts-cloud'
 
-await deploy({
-  stackName: 'my-app',
-  template,
-  onRollback: (event) => {
-    console.log('Rolling back:', event.resourceType, event.reason)
-  },
-})
+const cf = new CloudFormationClient('us-east-1')
+
+// Re-apply the currently deployed template (e.g. after an out-of-band change).
+const { TemplateBody } = await cf.getTemplate('my-app-production')
+await cf.updateStack({ stackName: 'my-app-production', templateBody: TemplateBody })
+await cf.waitForStack('my-app-production', 'stack-update-complete')
 ```
 
-## Rollback Triggers
+## Traffic-level rollback (blue-green & canary)
 
-Configure CloudWatch alarms to trigger rollbacks:
-
-```typescript
-await deploy({
-  stackName: 'my-app',
-  template,
-  rollbackConfiguration: {
-    rollbackTriggers: [
-      {
-        arn: 'arn:aws:cloudwatch:us-east-1:123456789:alarm:HighErrorRate',
-        type: 'AWS::CloudWatch::Alarm',
-      },
-      {
-        arn: 'arn:aws:cloudwatch:us-east-1:123456789:alarm:HighLatency',
-        type: 'AWS::CloudWatch::Alarm',
-      },
-    ],
-    monitoringTimeInMinutes: 10,
-  },
-})
-```
-
-## Manual Rollback
-
-Roll back to a previous stack state:
-
-```bash
-# Rollback to previous version
-cloud rollback --stack my-app
-
-# Rollback to specific version
-cloud rollback --stack my-app --version v1.2.3
-
-# Rollback with confirmation
-cloud rollback --stack my-app --confirm
-```
-
-Programmatically:
-
-```typescript
-import { CloudFormationClient } from 'ts-cloud'
-
-const client = new CloudFormationClient('us-east-1')
-
-// Get previous template
-const previousTemplate = await client.getTemplate('my-app', 'PREVIOUS')
-
-// Deploy previous version
-await client.updateStack({
-  stackName: 'my-app',
-  templateBody: previousTemplate,
-})
-```
-
-## Disable Rollback for Debugging
-
-During development, you may want to inspect failed resources:
-
-```typescript
-await deploy({
-  stackName: 'my-app-dev',
-  template,
-  disableRollback: true, // Keep failed resources for inspection
-})
-```
-
-```bash
-cloud deploy --stack my-app-dev --no-rollback
-```
-
-## Change Sets for Safe Deployments
-
-Preview changes before applying:
-
-```typescript
-import { CloudFormationClient } from 'ts-cloud'
-
-const client = new CloudFormationClient('us-east-1')
-
-// Create change set
-const changeSet = await client.createChangeSet({
-  stackName: 'my-app',
-  templateBody: JSON.stringify(template),
-  changeSetName: 'my-changes',
-})
-
-// Review changes
-console.log('Changes:', changeSet.changes)
-
-// Execute if approved
-if (approved) {
-  await client.executeChangeSet({
-    stackName: 'my-app',
-    changeSetName: 'my-changes',
-  })
-}
-else {
-  // Delete change set without applying
-  await client.deleteChangeSet({
-    stackName: 'my-app',
-    changeSetName: 'my-changes',
-  })
-}
-```
-
-## Blue-Green Deployments
-
-Zero-downtime deployments with instant rollback:
-
-```typescript
-import { BlueGreenManager } from 'ts-cloud'
-
-const blueGreen = new BlueGreenManager({
-  stackPrefix: 'my-app',
-  region: 'us-east-1',
-})
-
-// Deploy new version
-await blueGreen.deployGreen(newTemplate)
-
-// Test new version
-const healthy = await blueGreen.healthCheck('green')
-
-if (healthy) {
-  // Switch traffic
-  await blueGreen.switchToGreen()
-  // Cleanup old version
-  await blueGreen.cleanupBlue()
-}
-else {
-  // Rollback - just destroy green
-  await blueGreen.destroyGreen()
-}
-```
-
-## Canary Rollback
-
-Automatic rollback based on metrics:
-
-```typescript
-import { CanaryDeployment } from 'ts-cloud'
-
-const canary = new CanaryDeployment({
-  stackName: 'my-app',
-  stages: [
-    { percentage: 10, duration: 300 },
-    { percentage: 50, duration: 600 },
-    { percentage: 100, duration: 0 },
-  ],
-  rollbackThreshold: {
-    errorRate: 0.05, // 5% errors triggers rollback
-    latencyP99: 1000, // 1s p99 latency triggers rollback
-  },
-  onRollback: async (stage, reason) => {
-    // Notify team
-    await slack.send(`Deployment rolled back at ${stage}%: ${reason}`)
-  },
-})
-
-await canary.deploy(template)
-```
-
-## Stack Policies
-
-Prevent accidental deletion of critical resources:
-
-```typescript
-await deploy({
-  stackName: 'my-app',
-  template,
-  stackPolicy: {
-    Statement: [
-      {
-        Effect: 'Deny',
-        Action: 'Update:Delete',
-        Principal: '*',
-        Resource: 'LogicalResourceId/Database',
-      },
-      {
-        Effect: 'Allow',
-        Action: 'Update:*',
-        Principal: '*',
-        Resource: '*',
-      },
-    ],
-  },
-})
-```
-
-## Next Steps
-
-- [CI/CD Integration](/advanced/cicd) - Automate deployments
-- [Deployment](/guide/deployment) - Deployment guide
+For zero-downtime cutovers with instant rollback, ts-cloud ships
+`BlueGreenManager` (ALB target-group swap) and `CanaryManager` (weighted Lambda
+shifting with automatic rollback on error-rate/latency thresholds). Both expose
+`executeDeployment(id)` and `rollback(id)`. See
+[Deployment](/guide/deployment#blue-green) for the real APIs and
+end-to-end examples.

@@ -12,7 +12,7 @@ backups**, and **Slack/Discord/Telegram/email/webhook notifications**.
 
 ```ts
 // cloud.config.ts
-import { createLaravelPreset } from 'ts-cloud'
+import { createLaravelPreset } from '@stacksjs/ts-cloud'
 
 export default createLaravelPreset({
   name: 'Acme',
@@ -37,7 +37,7 @@ SSL is issued and the queue worker + scheduler are started.
 ## Full configuration
 
 ```ts
-import type { CloudConfig } from 'ts-cloud'
+import type { CloudConfig } from '@stacksjs/ts-cloud'
 
 export default {
   project: { name: 'Acme', slug: 'acme', region: 'us-east-1' },

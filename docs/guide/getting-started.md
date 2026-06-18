@@ -25,7 +25,7 @@ bun add ts-cloud
 ### Creating a Stack
 
 ```typescript
-import { CloudFormation } from 'ts-cloud'
+import { CloudFormation } from '@stacksjs/ts-cloud'
 
 const stack = new CloudFormation('my-app-stack', {
   Description: 'My application infrastructure',
@@ -48,7 +48,7 @@ const template = stack.toJSON()
 Use the fluent template builder API:
 
 ```typescript
-import { TemplateBuilder } from 'ts-cloud'
+import { TemplateBuilder } from '@stacksjs/ts-cloud'
 
 const template = new TemplateBuilder()
   .description('My infrastructure')
@@ -79,7 +79,7 @@ const template = new TemplateBuilder()
 Use CloudFormation intrinsic functions:
 
 ```typescript
-import { Fn, Pseudo } from 'ts-cloud'
+import { Fn, Pseudo } from '@stacksjs/ts-cloud'
 
 const template = new TemplateBuilder()
   .addResource('Bucket', {
@@ -142,7 +142,7 @@ Pseudo.AccountId
 Generate consistent resource names:
 
 ```typescript
-import { ResourceNaming } from 'ts-cloud'
+import { ResourceNaming } from '@stacksjs/ts-cloud'
 
 const naming = new ResourceNaming({
   prefix: 'myapp',
@@ -189,7 +189,7 @@ two app models.
 When building templates programmatically, validate them before deployment:
 
 ```typescript
-import { validateTemplate, validateResourceLimits } from 'ts-cloud'
+import { validateTemplate, validateResourceLimits } from '@stacksjs/ts-cloud'
 
 const template = stack.toJSON()
 
@@ -211,7 +211,7 @@ if (!limitsResult.valid) {
 Visualize resource dependencies:
 
 ```typescript
-import { DependencyGraph } from 'ts-cloud'
+import { DependencyGraph } from '@stacksjs/ts-cloud'
 
 const graph = new DependencyGraph(template)
 
@@ -231,7 +231,7 @@ if (circular.length > 0) {
 Compare templates before deployment:
 
 ```typescript
-import { diffStacks } from 'ts-cloud'
+import { diffStacks } from '@stacksjs/ts-cloud'
 
 const currentTemplate = await loadCurrentTemplate()
 const newTemplate = stack.toJSON()

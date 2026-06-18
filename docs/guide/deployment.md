@@ -1,10 +1,40 @@
 # Deployment
 
-Deploy your infrastructure to AWS using ts-cloud.
+Deploy your infrastructure to AWS using the `cloud` CLI.
+
+## The Deploy Command
+
+`cloud deploy` is the primary way to ship. It loads `cloud.config.ts`, runs a security scan, and then deploys based on what your config declares — there is no separate "stack" to name. The deploy model is driven by your `project` / `environments` / `infrastructure` / `sites` config (see [Configuration](/config)).
+
+```bash
+# Deploy the default (staging) environment
+cloud deploy
+
+# Deploy a specific environment
+cloud deploy --env production
+
+# Deploy only one site
+cloud deploy --env production --site marketing
+
+# Non-interactive (CI) — skip the confirmation prompt
+cloud deploy --env production --yes
+```
+
+`cloud deploy` auto-detects what to do from your config:
+
+- **Sites + DNS configured** → deploys each site (S3 + CloudFront) via the configured DNS provider.
+- **`infrastructure.compute` with `mode: 'server'` (or a Hetzner provider)** → provisions a single server (Forge-style) and deploys your sites onto it as systemd services. No CloudFormation.
+- **Other `infrastructure` resources** → generates a CloudFormation template, validates it, and creates/updates the environment stack (named `{slug}-{environment}` unless overridden by `project.stackName`).
+
+If a generated stack ends up with no resources (e.g. a site-only project), the stack step is skipped — sites were already deployed.
+
+### Environment-Scoped `.env`
+
+Before loading config, `cloud deploy --env <env>` loads the matching environment file (e.g. `.env.production`), so each environment deploys with its own variables.
 
 ## Pre-Deployment Security Scanning
 
-ts-cloud automatically scans your code for leaked secrets before every deployment. This prevents accidental exposure of API keys, credentials, and other sensitive data.
+ts-cloud scans your code for leaked secrets before every deployment. This prevents accidental exposure of API keys, credentials, and other sensitive data.
 
 ### Automatic Scanning
 
@@ -12,7 +42,7 @@ Security scans run automatically with all deploy commands:
 
 ```bash
 # Scans project root before infrastructure deployment
-cloud deploy
+cloud deploy --env production
 
 # Scans source directory before S3 upload
 cloud deploy:static --source ./dist --bucket my-bucket
@@ -29,10 +59,10 @@ Run a security scan without deploying:
 # Scan current directory
 cloud deploy:security-scan
 
-# Scan specific directory
+# Scan a specific directory
 cloud deploy:security-scan --source ./dist
 
-# Set severity threshold
+# Set severity threshold (critical | high | medium | low)
 cloud deploy:security-scan --fail-on high
 ```
 
@@ -53,16 +83,18 @@ cloud deploy:security-scan --fail-on high
 For development or testing (not recommended for production):
 
 ```bash
-# Skip security scan entirely
+# Skip the scan entirely
 cloud deploy --skip-security-scan
 
-# Lower the severity threshold
+# Raise the threshold so only higher-severity findings block the deploy
 cloud deploy --security-fail-on high
 ```
 
-See the [Security Guide](/features/security) for more details on detected patterns and best practices.
+See the [Security Guide](/features/security) for detected patterns and best practices.
 
 ## AWS Credentials
+
+ts-cloud resolves AWS credentials automatically (environment variables, then the shared credentials file, then instance/task metadata). Before any AWS call, `cloud deploy` prints the resolved IAM identity so you can confirm which account you are deploying to.
 
 ### Environment Variables
 
@@ -72,7 +104,7 @@ export AWS_SECRET_ACCESS_KEY=your-secret-key
 export AWS_REGION=us-east-1
 ```
 
-### Credentials File
+### Credentials File and Profiles
 
 ```ini
 # ~/.aws/credentials
@@ -85,208 +117,240 @@ aws_access_key_id = prod-access-key
 aws_secret_access_key = prod-secret-key
 ```
 
-### Using Profiles
-
-```typescript
-import { AWSCredentials } from 'ts-cloud'
-
-const credentials = new AWSCredentials({
-  profile: 'production',
-})
-```
-
-## CLI Deployment
-
-### Deploy Single Stack
+Select a profile with the standard `AWS_PROFILE` environment variable:
 
 ```bash
-# Deploy to default region
-cloud deploy --stack my-app
-
-# Deploy to specific region
-cloud deploy --stack my-app --region us-west-2
-
-# Deploy with profile
-cloud deploy --stack my-app --profile production
+AWS_PROFILE=production cloud deploy --env production
 ```
 
-### Deploy All Stacks
+The deploy region comes from `project.region` in `cloud.config.ts` (falling back to `us-east-1`).
+
+## Other Deploy Commands
+
+### Serverless Applications
+
+For a serverless app environment (one defining `app` in its `EnvironmentConfig`), deploy the http/queue/cli Lambda functions, assets, and hooks:
 
 ```bash
-# Deploy all stacks in dependency order
-cloud deploy --all
+# Deploy the serverless app (build + upload + atomic activation)
+cloud deploy:serverless --env production
 
-# Deploy specific environment
-cloud deploy --all --env production
+# Re-activate the last build without rebuilding
+cloud deploy:serverless --env production --redeploy
+
+# Skip local build hooks or remote deploy hooks (e.g. migrations)
+cloud deploy:serverless --env production --skip-build --skip-hooks
 ```
 
-### Preview Changes
+### Server (EC2) Applications
 
 ```bash
-# Show what will change
-cloud diff --stack my-app
-
-# Detailed change output
-cloud diff --stack my-app --verbose
+# Deploy configured sites onto the EC2 compute box (Forge-style, via SSM)
+cloud deploy:server --env production
 ```
 
-### Destroy Stack
+### Static Sites
 
 ```bash
-# Destroy single stack
-cloud destroy --stack my-app
+cloud deploy:static \
+  --source ./dist \
+  --bucket my-bucket \
+  --distribution E1234567890ABC \
+  --cache-control "public, max-age=31536000"
+```
 
-# Force destroy (skip confirmation)
-cloud destroy --stack my-app --force
+### Containers
+
+```bash
+cloud deploy:container \
+  --cluster my-cluster \
+  --service my-service \
+  --repository my-repo \
+  --image latest
+```
+
+## Rollback
+
+### Compute Sites
+
+Roll a deployed compute (server) site back to a previous release:
+
+```bash
+# Roll back to the previous release
+cloud deploy:rollback --env production
+
+# Roll back a specific site to a specific release id
+cloud deploy:rollback my-app --env production --to 2026-06-16-abc1234
+
+# Inspect release history first
+cloud deploy:history my-app --env production
+```
+
+### Serverless Apps
+
+```bash
+# Roll a serverless app back to its previous build
+cloud serverless:rollback --env production
+```
+
+## Stack Operations
+
+CloudFormation stacks (created by `cloud deploy` for non-server infrastructure) can be inspected and removed directly:
+
+```bash
+# Show what would change before deploying
+cloud diff --env production
+
+# List, describe, and read outputs from deployed stacks
+cloud stack:list
+cloud stack:describe my-app-production
+cloud stack:outputs my-app-production
+
+# Delete a stack and all its resources (prompts for confirmation)
+cloud stack:delete my-app-production
+```
+
+To tear down a single-server (non-CloudFormation) compute box and its firewall:
+
+```bash
+cloud destroy --env production --force
 ```
 
 ## Programmatic Deployment
 
-### Deploy Stack
+The CLI is the recommended path, but the same primitives are available from `@ts-cloud/core` / `ts-cloud` if you need to drive deployments yourself. `CloudFormationClient` wraps the CloudFormation API directly (no AWS SDK).
 
 ```typescript
-import { CloudFormationClient, deploy } from 'ts-cloud'
+import { CloudFormationClient } from '@stacksjs/ts-cloud'
 
-const client = new CloudFormationClient({
-  region: 'us-east-1',
-})
+const cfn = new CloudFormationClient('us-east-1')
 
-const template = stack.toJSON()
-
-const result = await deploy({
-  client,
-  stackName: 'my-app',
-  template,
-  parameters: {
-    Environment: 'production',
-    DatabasePassword: 'secret-from-ssm',
-  },
+await cfn.createStack({
+  stackName: 'my-app-production',
+  templateBody, // JSON string of a CloudFormation template
   capabilities: ['CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM'],
+  tags: [
+    { Key: 'Project', Value: 'my-app' },
+    { Key: 'Environment', Value: 'production' },
+  ],
 })
 
-console.log('Stack deployed:', result.stackId)
+// Block until the stack reaches its terminal state
+await cfn.waitForStack('my-app-production', 'stack-create-complete')
+
+// Read outputs as a flat key/value map
+const outputs = await cfn.getStackOutputs('my-app-production')
+console.log(outputs)
 ```
 
-### Monitor Deployment
+Use `updateStack` for an existing stack and `deleteStack(stackName)` to remove one. To build a template in code, use the [`TemplateBuilder`](/api/builders) or `CloudFormationBuilder`.
+
+## Advanced Deployment Strategies
+
+ts-cloud ships standalone managers for blue/green and canary rollouts. They model the deployment (traffic weights, health/metric thresholds) and can emit the CloudFormation snippets that perform the cut-over. They are lower-level building blocks — `cloud deploy` does not invoke them automatically.
+
+### Blue-Green
+
+`BlueGreenManager` tracks two environments and switches the active one once health checks pass.
 
 ```typescript
-import { waitForStack } from 'ts-cloud'
+import { BlueGreenManager } from '@stacksjs/ts-cloud'
 
-const status = await waitForStack({
-  client,
-  stackName: 'my-app',
-  desiredStatus: 'CREATE_COMPLETE',
-  timeout: 300000, // 5 minutes
-  onProgress: (event) => {
-    console.log(`${event.resourceType}: ${event.resourceStatus}`)
+const manager = new BlueGreenManager()
+
+// Build an ALB-based blue/green deployment
+const deployment = manager.createALBDeployment({
+  name: 'my-app',
+  listenerArn: 'arn:aws:elasticloadbalancing:...:listener/...',
+  blueTargetGroupArn: 'arn:aws:elasticloadbalancing:...:targetgroup/blue',
+  greenTargetGroupArn: 'arn:aws:elasticloadbalancing:...:targetgroup/green',
+  autoPromote: true,
+  healthCheckConfig: {
+    healthyThreshold: 3,
+    unhealthyThreshold: 2,
+    interval: 30,
+    timeout: 5,
+    path: '/health',
   },
 })
 
-if (status.success) {
-  console.log('Deployment complete!')
-}
-else {
-  console.error('Deployment failed:', status.reason)
-}
+// Deploy to the inactive environment, run health checks, then switch traffic
+const result = await manager.executeDeployment(deployment.id)
+if (!result.success)
+  await manager.rollback(deployment.id)
+
+// Emit the CloudFormation listener rule for the active environment
+const listenerRule = manager.generateALBListenerCF(deployment)
 ```
 
-## Blue-Green Deployment
+`BlueGreenManager` also provides `createRoute53Deployment(...)` and `createECSDeployment(...)`, plus `getDeployment(id)`, `listDeployments()`, and `getDeploymentHistory(id)`.
 
-### Setup Blue-Green
+### Canary
+
+`CanaryManager` rolls a new version out in stages, shifting traffic and checking metric thresholds at each step before promoting.
 
 ```typescript
-import { BlueGreenManager } from 'ts-cloud'
+import { CanaryManager } from '@stacksjs/ts-cloud'
 
-const blueGreen = new BlueGreenManager({
-  stackPrefix: 'my-app',
+const manager = new CanaryManager()
+
+// Lambda canary using a built-in strategy (CONSERVATIVE | BALANCED | AGGRESSIVE | LINEAR_10)
+const deployment = manager.createLambdaCanaryDeployment({
+  name: 'my-app',
+  baselineVersionArn: 'arn:aws:lambda:...:function:my-app:1',
+  canaryVersionArn: 'arn:aws:lambda:...:function:my-app:2',
+  strategy: 'CONSERVATIVE',
+  errorRateThreshold: 1, // percent — exceeding this rolls back
+  latencyThreshold: 1000, // ms (P99)
+})
+
+const result = await manager.executeDeployment(deployment.id)
+if (result.rolledBack)
+  console.error('Canary rolled back:', result.reason)
+```
+
+Stages are `{ name, trafficPercentage, durationMinutes, alarmThresholds }`. You can also define them by hand via `createDeployment(...)`, build an ECS canary with `createECSCanaryDeployment(...)`, and emit CloudFormation with `generateLambdaAliasCF(...)` / `generateALBListenerRuleCF(...)`.
+
+### Multi-Region
+
+`MultiRegionManager` deploys a `CloudConfig` across several regions and tracks per-region status.
+
+```typescript
+import { MultiRegionManager } from '@stacksjs/ts-cloud'
+
+const manager = new MultiRegionManager()
+
+const deployment = await manager.deploy(config, {
+  regions: [
+    { code: 'us-east-1', name: 'US East', isPrimary: true },
+    { code: 'eu-west-1', name: 'EU West' },
+  ],
+  globalResources: { route53: true, cloudfront: true },
+  failover: { enabled: true, healthCheckPath: '/health' },
+})
+
+console.log(deployment.status, deployment.regions)
+```
+
+### Preview Environments
+
+`PreviewEnvironmentManager` manages ephemeral, TTL-bound stacks for PR previews.
+
+```typescript
+import { PreviewEnvironmentManager } from '@stacksjs/ts-cloud'
+
+const manager = new PreviewEnvironmentManager()
+
+const preview = await manager.createPreviewEnvironment({
+  branch: 'feature/new-feature',
+  pr: 123,
+  commitSha: 'abc1234',
+  ttl: 24, // hours
+  baseConfig: config,
   region: 'us-east-1',
 })
 
-// Deploy to blue environment
-await blueGreen.deployBlue(template)
-
-// Run health checks
-const healthy = await blueGreen.checkHealth('blue')
-
-if (healthy) {
-  // Switch traffic to blue
-  await blueGreen.switchToBlue()
-
-  // Cleanup old green environment
-  await blueGreen.cleanupGreen()
-}
-else {
-  // Rollback
-  await blueGreen.destroyBlue()
-}
-```
-
-## Canary Deployment
-
-### Gradual Rollout
-
-```typescript
-import { CanaryManager } from 'ts-cloud'
-
-const canary = new CanaryManager({
-  stackName: 'my-app',
-  stages: [
-    { percentage: 10, duration: 300 },  // 10% for 5 minutes
-    { percentage: 25, duration: 300 },  // 25% for 5 minutes
-    { percentage: 50, duration: 600 },  // 50% for 10 minutes
-    { percentage: 100, duration: 0 },   // Full rollout
-  ],
-  rollbackThreshold: {
-    errorRate: 0.05,  // 5% error rate triggers rollback
-  },
-})
-
-await canary.deploy(template)
-```
-
-## Multi-Region Deployment
-
-### Deploy to Multiple Regions
-
-```typescript
-import { MultiRegionDeployment } from 'ts-cloud'
-
-const multiRegion = new MultiRegionDeployment({
-  regions: ['us-east-1', 'us-west-2', 'eu-west-1'],
-  stackName: 'my-global-app',
-})
-
-// Deploy to all regions
-await multiRegion.deploy(template)
-
-// Deploy with region-specific parameters
-await multiRegion.deploy(template, {
-  'us-east-1': { Environment: 'prod-us' },
-  'eu-west-1': { Environment: 'prod-eu' },
-})
-```
-
-## Multi-Account Deployment
-
-### Cross-Account Deployment
-
-```typescript
-import { MultiAccountDeployment } from 'ts-cloud'
-
-const multiAccount = new MultiAccountDeployment({
-  accounts: {
-    dev: '111111111111',
-    staging: '222222222222',
-    prod: '333333333333',
-  },
-  assumeRole: 'arn:aws:iam::${accountId}:role/DeploymentRole',
-})
-
-// Deploy to specific account
-await multiAccount.deployTo('prod', template)
-
-// Deploy to all accounts
-await multiAccount.deployToAll(template)
+console.log('Preview:', preview.stackName, preview.url)
 ```
 
 ## CI/CD Integration
@@ -305,21 +369,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-
       - uses: actions/checkout@v4
-
       - uses: oven-sh/setup-bun@v1
-
       - run: bun install
-
       - name: Deploy
-
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
-        run: |
-          bun run cloud deploy --stack my-app
+        run: bunx cloud deploy --env production --yes
 ```
 
 ### GitLab CI
@@ -330,136 +388,20 @@ deploy:
   stage: deploy
   image: oven/bun:latest
   script:
-
     - bun install
-    - bun run cloud deploy --stack my-app
-
+    - bunx cloud deploy --env production --yes
   only:
-
     - main
-
   variables:
     AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
     AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
     AWS_REGION: us-east-1
 ```
 
-### CircleCI
-
-```yaml
-# .circleci/config.yml
-version: 2.1
-
-jobs:
-  deploy:
-    docker:
-
-      - image: oven/bun:latest
-
-    steps:
-
-      - checkout
-      - run: bun install
-      - run:
-
-          name: Deploy
-          command: bun run cloud deploy --stack my-app
-
-workflows:
-  main:
-    jobs:
-
-      - deploy:
-
-          filters:
-            branches:
-              only: main
-```
-
-## Preview Environments
-
-### Create Preview Environment
-
-```typescript
-import { PreviewEnvironmentManager } from 'ts-cloud'
-
-const preview = new PreviewEnvironmentManager({
-  baseStackName: 'my-app',
-  ttl: 86400, // 24 hours
-})
-
-// Create preview for PR
-const previewEnv = await preview.create({
-  branchName: 'feature/new-feature',
-  prNumber: 123,
-})
-
-console.log('Preview URL:', previewEnv.url)
-
-// Cleanup after PR merge
-await preview.destroy('feature/new-feature')
-```
-
-### GitHub PR Integration
-
-```typescript
-import { GitHubPreviewIntegration } from 'ts-cloud'
-
-const github = new GitHubPreviewIntegration({
-  token: process.env.GITHUB_TOKEN,
-  repo: 'owner/repo',
-})
-
-// Comment preview URL on PR
-await github.commentPreviewUrl(prNumber, previewEnv.url)
-```
-
-## Rollback
-
-### Automatic Rollback
-
-```typescript
-import { deploy } from 'ts-cloud'
-
-await deploy({
-  stackName: 'my-app',
-  template,
-  rollbackConfiguration: {
-    rollbackTriggers: [
-      {
-        arn: alarmArn,
-        type: 'AWS::CloudWatch::Alarm',
-      },
-    ],
-    monitoringTimeInMinutes: 5,
-  },
-})
-```
-
-### Manual Rollback
-
-```bash
-# Rollback to previous version
-cloud rollback --stack my-app
-
-# Rollback to specific version
-cloud rollback --stack my-app --version v1.2.3
-```
-
-## Cost Estimation
-
-### Estimate Deployment Cost
-
-```typescript
-import { estimateCost } from 'ts-cloud'
-
-const estimate = await estimateCost(template)
-
-console.log('Estimated monthly cost:', estimate.monthly)
-console.log('Cost breakdown:', estimate.breakdown)
-```
+In CI, `cloud deploy` auto-confirms when `CI=true` is set, so `--yes` is optional in most pipelines.
 
 ## Next Steps
 
-- [Getting Started](/guide/getting-started) - Setup guide
-- [Cloud Providers](/guide/providers) - Resource types
+- [Getting Started](/guide/getting-started) — setup guide
+- [Configuration](/config) — the `project` / `environments` / `infrastructure` / `sites` schema
+- [Cloud Providers](/guide/providers) — resource types

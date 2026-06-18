@@ -56,7 +56,7 @@ For more control, use the AWS clients directly:
 ### CloudFormation
 
 ```typescript
-import { CloudFormationClient } from 'ts-cloud'
+import { CloudFormationClient } from '@stacksjs/ts-cloud'
 
 const cfn = new CloudFormationClient('us-east-1')
 
@@ -80,7 +80,7 @@ const outputs = await cfn.getStackOutputs('my-stack')
 ### S3
 
 ```typescript
-import { S3Client } from 'ts-cloud'
+import { S3Client } from '@stacksjs/ts-cloud'
 
 const s3 = new S3Client('us-east-1')
 
@@ -103,7 +103,7 @@ await s3.syncDirectory({
 ### CloudFront
 
 ```typescript
-import { CloudFrontClient } from 'ts-cloud'
+import { CloudFrontClient } from '@stacksjs/ts-cloud'
 
 const cloudfront = new CloudFrontClient()
 
@@ -192,7 +192,7 @@ export default composePresets(
 The most common use case is deploying a static site:
 
 ```typescript
-import { deployStaticSiteFull } from 'ts-cloud'
+import { deployStaticSiteFull } from '@stacksjs/ts-cloud'
 
 const result = await deployStaticSiteFull({
   siteName: 'my-docs',

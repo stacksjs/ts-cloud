@@ -1,395 +1,155 @@
 # Cloud Providers
 
-ts-cloud supports AWS CloudFormation with typed resource definitions.
+ts-cloud deploys to **AWS** or **Hetzner Cloud** for compute, and can put object storage on **AWS S3**, **Backblaze B2**, or **Hetzner Object Storage** — independently of where compute runs. You pick all of this in `cloud.config.ts`; there is no separate provider plugin to install.
 
-## AWS Resources
+## Choosing a compute provider
 
-### Compute
-
-#### Lambda Functions
+Set `cloud.provider` in your config. It defaults to `'aws'`.
 
 ```typescript
-import { Lambda } from 'ts-cloud'
+import type { CloudConfig } from '@stacksjs/ts-cloud'
 
-const lambdaManager = new Lambda()
-
-// Create function
-const func = lambdaManager.createFunction({
-  name: 'my-handler',
-  runtime: 'nodejs20.x',
-  handler: 'index.handler',
-  code: {
-    s3Bucket: 'my-bucket',
-    s3Key: 'function.zip',
+const config: CloudConfig = {
+  project: {
+    name: 'My App',
+    slug: 'my-app',
+    region: 'us-east-1',
   },
-  memorySize: 256,
-  timeout: 30,
-  environment: {
-    DATABASE_URL: 'postgres://...',
+  environments: {
+    production: { type: 'production', region: 'us-east-1' },
   },
-})
-```
 
-#### ECS Containers
-
-```typescript
-import { ContainerManager } from 'ts-cloud'
-
-const containers = new ContainerManager()
-
-// Create ECS cluster
-const cluster = containers.createCluster({
-  name: 'my-cluster',
-  containerInsights: true,
-})
-
-// Create service
-const service = containers.createService({
-  name: 'web',
-  cluster: cluster.ref,
-  desiredCount: 3,
-  launchType: 'FARGATE',
-  taskDefinition: taskDef.ref,
-})
-```
-
-### Storage
-
-#### S3 Buckets
-
-```typescript
-import { StorageAdvancedManager } from 'ts-cloud'
-
-const storage = new StorageAdvancedManager()
-
-// Create bucket with lifecycle
-const bucket = storage.createBucket({
-  name: 'my-assets',
-  versioning: true,
-  encryption: 'AES256',
-  lifecycleRules: [
-    {
-      id: 'archive-old',
-      status: 'Enabled',
-      transitions: [
-        { days: 30, storageClass: 'STANDARD_IA' },
-        { days: 90, storageClass: 'GLACIER' },
-      ],
-      expiration: { days: 365 },
-    },
-  ],
-})
-```
-
-### Database
-
-#### RDS
-
-```typescript
-import { DatabaseManager } from 'ts-cloud'
-
-const database = new DatabaseManager()
-
-// Create Aurora Serverless
-const aurora = database.createAuroraServerless({
-  clusterIdentifier: 'my-cluster',
-  engine: 'aurora-mysql',
-  masterUsername: 'admin',
-  masterUserPassword: { Ref: 'DatabasePassword' },
-  minCapacity: 1,
-  maxCapacity: 16,
-  autoPause: true,
-  autoPauseSeconds: 300,
-})
-
-// Create RDS instance
-const rds = database.createInstance({
-  identifier: 'my-db',
-  engine: 'postgres',
-  instanceClass: 'db.t3.micro',
-  allocatedStorage: 20,
-  masterUsername: 'admin',
-  masterUserPassword: { Ref: 'DatabasePassword' },
-  multiAZ: true,
-})
-```
-
-### Networking
-
-#### VPC
-
-```typescript
-import { NetworkModule } from 'ts-cloud'
-
-const network = new NetworkModule()
-
-// Create VPC with subnets
-const vpc = network.createVpc({
-  cidrBlock: '10.0.0.0/16',
-  enableDnsHostnames: true,
-  enableDnsSupport: true,
-})
-
-// Add public subnets
-const publicSubnets = network.createPublicSubnets({
-  vpcId: vpc.ref,
-  cidrBlocks: ['10.0.1.0/24', '10.0.2.0/24'],
-})
-
-// Add private subnets
-const privateSubnets = network.createPrivateSubnets({
-  vpcId: vpc.ref,
-  cidrBlocks: ['10.0.10.0/24', '10.0.11.0/24'],
-})
-```
-
-#### Load Balancer
-
-```typescript
-import { ALBModule } from 'ts-cloud'
-
-const alb = new ALBModule()
-
-// Create Application Load Balancer
-const loadBalancer = alb.create({
-  name: 'my-alb',
-  subnets: publicSubnets.refs,
-  securityGroups: [securityGroup.ref],
-  listeners: [
-    {
-      port: 443,
-      protocol: 'HTTPS',
-      certificates: [certificateArn],
-      defaultAction: {
-        type: 'forward',
-        targetGroupArn: targetGroup.ref,
-      },
-    },
-  ],
-})
-```
-
-### CDN
-
-#### CloudFront
-
-```typescript
-import { CDNModule } from 'ts-cloud'
-
-const cdn = new CDNModule()
-
-// Create distribution
-const distribution = cdn.createDistribution({
-  origins: [
-    {
-      domainName: bucket.domainName,
-      id: 'S3Origin',
-      s3OriginConfig: {
-        originAccessIdentity: oai.ref,
-      },
-    },
-  ],
-  defaultCacheBehavior: {
-    targetOriginId: 'S3Origin',
-    viewerProtocolPolicy: 'redirect-to-https',
-    cachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // CachingOptimized
+  // Compute provider — 'aws' (default) or 'hetzner'
+  cloud: {
+    provider: 'aws',
   },
-  aliases: ['example.com', 'www.example.com'],
-  certificate: certificateArn,
-})
+}
+
+export default config
 ```
 
-### DNS
+Provider selection is resolved by `resolveCloudProvider(config)`, which follows this order:
 
-#### Route 53
+1. `cloud.provider`, if set.
+2. `'hetzner'` if `hetzner.apiToken` is present.
+3. `'aws'` otherwise.
+
+### AWS
+
+AWS is the default. Compute infrastructure is expressed as **CloudFormation** templates (the AWS driver sets `usesCloudFormation = true`). Optional AWS-specific settings live in the `aws` block:
 
 ```typescript
-import { Route53RoutingManager } from 'ts-cloud'
+const config: CloudConfig = {
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
+  environments: { production: { type: 'production', region: 'us-east-1' } },
 
-const dns = new Route53RoutingManager()
+  cloud: { provider: 'aws' },
 
-// Create hosted zone
-const zone = dns.createHostedZone({
-  name: 'example.com',
-})
-
-// Add A record
-const record = dns.createRecord({
-  hostedZoneId: zone.ref,
-  name: 'www.example.com',
-  type: 'A',
-  aliasTarget: {
-    dnsName: distribution.domainName,
-    hostedZoneId: 'Z2FDTNDATAQYW2', // CloudFront zone
+  aws: {
+    region: 'us-east-1',   // overrides project.region for AWS calls
+    profile: 'default',    // AWS named profile
+    accountId: '123456789012',
   },
-})
+}
 ```
 
-### Security
+The driver uses the region from `aws.region` / `project.region`. Credentials come from the standard AWS chain (named profile, environment variables, or instance role) — ts-cloud makes signed API calls directly with Signature V4, so no AWS SDK or CLI is required.
 
-#### IAM
+### Hetzner Cloud
+
+Hetzner provisions a server over the Hetzner Cloud API and deploys to it over SSH (Forge-style). Set `cloud.provider` to `'hetzner'` and provide a `hetzner` block:
 
 ```typescript
-import { SecurityManager } from 'ts-cloud'
+const config: CloudConfig = {
+  project: { name: 'My App', slug: 'my-app', region: 'fsn1' },
+  environments: { production: { type: 'production', region: 'fsn1' } },
 
-const security = new SecurityManager()
+  cloud: { provider: 'hetzner' },
 
-// Create role
-const role = security.createRole({
-  name: 'my-lambda-role',
-  assumeRolePolicyDocument: {
-    Version: '2012-10-17',
-    Statement: [
-      {
-        Effect: 'Allow',
-        Principal: { Service: 'lambda.amazonaws.com' },
-        Action: 'sts:AssumeRole',
-      },
-    ],
+  hetzner: {
+    // falls back to HCLOUD_TOKEN / HETZNER_API_TOKEN if omitted
+    apiToken: process.env.HCLOUD_TOKEN,
+    location: 'fsn1',                       // fsn1, nbg1, hel1, … (default: fsn1)
+    image: 'ubuntu-24.04',                  // default: ubuntu-24.04
+    sshPrivateKeyPath: '~/.ssh/id_ed25519', // key used for deploy commands
+    sshUser: 'root',                        // default: root
   },
-  managedPolicyArns: [
-    'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-  ],
-})
+}
 ```
 
-#### Secrets Manager
+`HetznerConfig` fields:
+
+| Field | Description | Default |
+| --- | --- | --- |
+| `apiToken` | Hetzner Cloud API token | `HCLOUD_TOKEN` / `HETZNER_API_TOKEN` env |
+| `location` | Location slug (`fsn1`, `nbg1`, `hel1`, …) | `fsn1` |
+| `image` | Server image slug | `ubuntu-24.04` |
+| `sshPrivateKeyPath` | SSH private key for deploy commands | `~/.ssh/id_ed25519` |
+| `sshUser` | SSH user for deploy commands | `root` |
+
+If you set `hetzner.apiToken` but no `cloud.provider`, the provider resolves to `'hetzner'` automatically.
+
+## Choosing an object storage provider
+
+Object storage is configured separately via the `objectStorage` block. AWS S3, Backblaze B2, and Hetzner Object Storage are all S3-compatible and authenticate with Signature V4, so a single client drives all three — only the endpoint, addressing style, and credentials differ. This lets you keep compute on AWS while moving static assets, release artifacts, or registry tarballs onto cheaper storage.
 
 ```typescript
-import { SecretsManager } from 'ts-cloud'
+const config: CloudConfig = {
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
+  environments: { production: { type: 'production', region: 'us-east-1' } },
 
-const secrets = new SecretsManager()
+  cloud: { provider: 'aws' },
 
-// Create secret
-const secret = secrets.createSecret({
-  name: 'my-app/database',
-  description: 'Database credentials',
-  generateSecretString: {
-    secretStringTemplate: JSON.stringify({ username: 'admin' }),
-    generateStringKey: 'password',
-    excludePunctuation: true,
+  // Move object storage to Backblaze B2 (compute still on AWS)
+  objectStorage: {
+    provider: 'backblaze',
+    region: 'us-west-004',
+    // endpoint and forcePathStyle default to the provider's standard values
   },
-})
+}
 ```
 
-### Messaging
+`ObjectStorageConfig` fields:
 
-#### SQS
+| Field | Description | Default |
+| --- | --- | --- |
+| `provider` | `'aws'`, `'backblaze'`, or `'hetzner'` | `'aws'` |
+| `region` | Region / location slug | aws: `us-east-1`, backblaze: `us-west-004`, hetzner: `fsn1` |
+| `endpoint` | Endpoint host override (no scheme), e.g. `s3.us-west-004.backblazeb2.com` | provider's standard endpoint |
+| `forcePathStyle` | Use path-style addressing (bucket in path) | `false` (virtual-hosted) |
+
+Credentials are resolved from provider-specific environment variables when not supplied programmatically:
+
+- **AWS** — the standard AWS chain (profile / `AWS_*` env / instance role).
+- **Backblaze** — `B2_APPLICATION_KEY_ID` / `B2_APPLICATION_KEY` (falls back to `S3_*` / `AWS_*`).
+- **Hetzner** — `HETZNER_S3_ACCESS_KEY` / `HETZNER_S3_SECRET_KEY` (falls back to `S3_*` / `AWS_*`).
+
+You can also drive object storage entirely from the environment with `OBJECT_STORAGE_PROVIDER` (or `STORAGE_PROVIDER`).
+
+## Programmatic access
+
+If you need a storage client outside the deploy flow, the resolution helpers are exported from the package root:
 
 ```typescript
-import { QueueManager } from 'ts-cloud'
+import { createObjectStorageClient, resolveObjectStorage } from '@stacksjs/ts-cloud'
 
-const queues = new QueueManager()
+// Inspect the resolved config (pure, no side effects)
+const resolved = resolveObjectStorage({ provider: 'backblaze', region: 'us-west-004' })
+console.log(resolved.endpoint, resolved.publicBaseUrl('my-bucket'))
 
-// Create queue
-const queue = queues.createQueue({
-  name: 'my-queue',
-  visibilityTimeout: 30,
-  messageRetentionPeriod: 1209600, // 14 days
-  deadLetterQueue: {
-    targetArn: dlq.arn,
-    maxReceiveCount: 3,
-  },
+// Get a ready-to-use S3-compatible client
+const s3 = createObjectStorageClient({
+  provider: 'backblaze',
+  region: 'us-west-004',
+  credentials: { accessKeyId: keyId, secretAccessKey: appKey },
 })
+await s3.putObject({ bucket: 'my-bucket', key: 'a.txt', body: 'hi' })
 ```
 
-#### SNS
-
-```typescript
-import { SNSModule } from 'ts-cloud'
-
-const sns = new SNSModule()
-
-// Create topic
-const topic = sns.createTopic({
-  name: 'my-topic',
-  displayName: 'My Notifications',
-})
-
-// Add subscription
-const subscription = sns.createSubscription({
-  topicArn: topic.ref,
-  protocol: 'https',
-  endpoint: 'https://api.example.com/webhook',
-})
-```
-
-### Cache
-
-#### ElastiCache
-
-```typescript
-import { Cache } from 'ts-cloud'
-
-const cache = new Cache()
-
-// Create Redis cluster
-const redis = cache.createRedisCluster({
-  clusterName: 'my-cache',
-  nodeType: 'cache.t3.micro',
-  numCacheClusters: 2,
-  automaticFailoverEnabled: true,
-})
-```
-
-## Resource Configuration
-
-### Tags
-
-Apply tags to all resources:
-
-```typescript
-import { TemplateBuilder } from 'ts-cloud'
-
-const template = new TemplateBuilder()
-  .setDefaultTags({
-    Environment: 'prod',
-    Project: 'my-app',
-    ManagedBy: 'ts-cloud',
-  })
-  .addResource('Bucket', {
-    Type: 'AWS::S3::Bucket',
-    Properties: {
-      // Tags automatically added
-    },
-  })
-  .build()
-```
-
-### Conditions
-
-Use conditions for conditional resources:
-
-```typescript
-const template = new TemplateBuilder()
-  .addCondition('IsProduction', {
-    'Fn::Equals': [{ Ref: 'Environment' }, 'prod'],
-  })
-  .addResource('ProdOnlyResource', {
-    Type: 'AWS::S3::Bucket',
-    Condition: 'IsProduction',
-    Properties: {
-      // Only created in production
-    },
-  })
-  .build()
-```
-
-### Dependencies
-
-Explicitly define dependencies:
-
-```typescript
-template.addResource('Database', {
-  Type: 'AWS::RDS::DBInstance',
-  DependsOn: ['VPC', 'SecurityGroup'],
-  Properties: {
-    // ...
-  },
-})
-```
+For how providers are wired internally — and why there is no user-facing "custom provider" plugin API — see [Custom Providers](/advanced/providers).
 
 ## Next Steps
 
 - [Getting Started](/guide/getting-started) - Setup guide
 - [Deployment](/guide/deployment) - Deploy infrastructure
+- [Custom Providers](/advanced/providers) - Driver architecture

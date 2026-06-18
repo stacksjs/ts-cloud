@@ -212,7 +212,7 @@ const apiKey = process.env.API_KEY
 For production deployments:
 
 ```typescript
-import { SecretsManagerClient } from 'ts-cloud'
+import { SecretsManagerClient } from '@stacksjs/ts-cloud'
 
 const secrets = new SecretsManagerClient('us-east-1')
 const apiKey = await secrets.getSecretString('my-api-key')
@@ -358,7 +358,7 @@ If confirmed safe, use `--skip-patterns` to exclude it.
 Use the scanner in your own scripts:
 
 ```typescript
-import { PreDeployScanner, scanForSecrets } from 'ts-cloud'
+import { PreDeployScanner, scanForSecrets } from '@stacksjs/ts-cloud'
 
 // Quick scan
 const result = await scanForSecrets({

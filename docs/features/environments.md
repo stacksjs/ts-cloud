@@ -1,37 +1,42 @@
 # Environment Configuration
 
-Manage multiple environments (dev, staging, prod) with ts-cloud.
+Manage multiple environments (development, staging, production) with ts-cloud.
+
+A `CloudConfig` has a single `project` block plus an `environments` map. Each entry is keyed by name and described by an `EnvironmentConfig`. The `type` field is required and must be one of `'production' | 'staging' | 'development'`.
 
 ## Defining Environments
 
 Configure environments in your `cloud.config.ts`:
 
 ```typescript
-import type { CloudConfig } from 'ts-cloud'
+import type { CloudConfig } from '@stacksjs/ts-cloud'
 
 export default {
-  name: 'my-app',
+  project: {
+    name: 'My App',
+    slug: 'my-app',
+    region: 'us-east-1',
+  },
 
   environments: {
-    dev: {
-      account: '111111111111',
-      region: 'us-east-1',
+    development: {
+      type: 'development',
       variables: {
         LOG_LEVEL: 'debug',
         API_URL: 'https://api-dev.example.com',
       },
     },
     staging: {
-      account: '222222222222',
-      region: 'us-east-1',
+      type: 'staging',
+      domain: 'staging.example.com',
       variables: {
         LOG_LEVEL: 'info',
         API_URL: 'https://api-staging.example.com',
       },
     },
-    prod: {
-      account: '333333333333',
-      region: 'us-east-1',
+    production: {
+      type: 'production',
+      domain: 'example.com',
       variables: {
         LOG_LEVEL: 'warn',
         API_URL: 'https://api.example.com',
@@ -41,122 +46,115 @@ export default {
 } satisfies CloudConfig
 ```
 
-## Environment-Specific Resources
+There is no top-level `name`, `region`, or `stacks` — those live under `project`. There is no per-environment `account` field, and no environment-level `secrets` map (for serverless apps, secrets live under `environments.<env>.app.secrets`, shown below).
 
-Scale resources based on environment:
+## The `EnvironmentConfig` shape
 
 ```typescript
-import { defineStack, getEnvironment } from 'ts-cloud'
+interface EnvironmentConfig {
+  type: 'production' | 'staging' | 'development'
+  region?: string // override project.region for this environment
+  variables?: Record<string, string> // plain env vars
+  domain?: string // custom domain for this environment
+  infrastructure?: Partial<InfrastructureConfig> // per-env infra overrides
+  app?: ServerlessAppConfig // serverless app manifest (opt-in)
+}
+```
 
-export default defineStack({
-  name: 'application',
+## Per-Environment Domains
 
-  resources: (ctx) => {
-    const env = getEnvironment()
-    const isProd = env === 'prod'
+Give each environment its own domain. Sites and serverless apps use this to wire up certificates and DNS:
 
-    return {
-      Database: {
-        Type: 'AWS::RDS::DBInstance',
-        Properties: {
-          DBInstanceClass: isProd ? 'db.r5.large' : 'db.t3.micro',
-          MultiAZ: isProd,
-          AllocatedStorage: isProd ? 100 : 20,
-        },
-      },
+```typescript
+environments: {
+  staging: { type: 'staging', domain: 'staging.example.com' },
+  production: { type: 'production', domain: 'example.com' },
+}
+```
 
-      Cache: {
-        Type: 'AWS::ElastiCache::CacheCluster',
-        Properties: {
-          CacheNodeType: isProd ? 'cache.r5.large' : 'cache.t3.micro',
-          NumCacheNodes: isProd ? 3 : 1,
-        },
-      },
-    }
+## Environment-Specific Infrastructure
+
+The `infrastructure` key on an environment is a `Partial<InfrastructureConfig>` merged over the top-level `infrastructure`. Use it to scale resources up in production and keep them small in development:
+
+```typescript
+import type { CloudConfig } from '@stacksjs/ts-cloud'
+
+export default {
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
+
+  // Shared defaults for all environments
+  infrastructure: {
+    compute: { instances: 1, instanceType: 't3.micro' },
+    database: 'postgres',
   },
-})
+
+  environments: {
+    development: {
+      type: 'development',
+      // inherits the small defaults above
+    },
+    production: {
+      type: 'production',
+      domain: 'example.com',
+      infrastructure: {
+        compute: {
+          instances: 3,
+          instanceType: 't3.large',
+          autoScaling: { min: 2, max: 10, scaleUpThreshold: 70 },
+        },
+      },
+    },
+  },
+} satisfies CloudConfig
 ```
 
-## Using Conditions
+## Per-Environment Regions
 
-Use CloudFormation conditions for environment logic:
+Override the project's default region for a specific environment:
 
 ```typescript
-import { TemplateBuilder } from 'ts-cloud'
+project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
 
-const template = new TemplateBuilder()
-  .addParameter('Environment', {
-    Type: 'String',
-    AllowedValues: ['dev', 'staging', 'prod'],
-  })
-  .addCondition('IsProd', {
-    'Fn::Equals': [{ Ref: 'Environment' }, 'prod'],
-  })
-  .addCondition('IsNotProd', {
-    'Fn::Not': [{ Condition: 'IsProd' }],
-  })
-  .addResource('ProdOnlyAlarm', {
-    Type: 'AWS::CloudWatch::Alarm',
-    Condition: 'IsProd',
-    Properties: {
-      // Only created in production
-    },
-  })
-  .build()
+environments: {
+  staging: { type: 'staging' }, // us-east-1 (project default)
+  production: { type: 'production', region: 'eu-west-1' },
+}
 ```
 
-## Deploying to Environments
+For deploying one config across *many* regions at once, see [Multi-Region](/features/multi-region).
+
+## Deploying to an Environment
+
+The CLI selects the environment with `--env`. It defaults to `staging` when omitted, and accepts `production`, `staging`, or `development`:
 
 ```bash
-# Deploy to specific environment
-cloud deploy --env dev
+# Deploy a specific environment
+cloud deploy --env development
 cloud deploy --env staging
-cloud deploy --env prod
-
-# Deploy all stacks to an environment
-cloud deploy --all --env prod
+cloud deploy --env production
 ```
 
-## Environment Variables
+The main CloudFormation stack is named `{project.slug}-{environment}` (e.g. `my-app-production`), unless you override it with `project.stackName`. `cloud deploy --env production` also loads an environment-specific dotenv file (e.g. `.env.production`) before reading config.
 
-Access environment variables in your infrastructure:
+## Serverless App Secrets
 
-```typescript
-import { Fn } from 'ts-cloud'
-
-const template = new TemplateBuilder()
-  .addResource('Function', {
-    Type: 'AWS::Lambda::Function',
-    Properties: {
-      Environment: {
-        Variables: {
-          LOG_LEVEL: Fn.Ref('LogLevel'),
-          DATABASE_URL: Fn.Sub('{{resolve:secretsmanager:${Environment}/database:SecretString:url}}'),
-        },
-      },
-    },
-  })
-  .build()
-```
-
-## Secrets Per Environment
-
-Manage secrets separately for each environment:
+For serverless (Lambda) applications, the app manifest lives under `environments.<env>.app`. Secrets are resolved from Secrets Manager / SSM at deploy time and injected as environment variables — there is no environment-level `secrets` map:
 
 ```typescript
-export default {
-  environments: {
-    dev: {
-      secrets: {
-        database: 'dev/database-credentials',
-        api: 'dev/api-keys',
-      },
-    },
-    prod: {
-      secrets: {
-        database: 'prod/database-credentials',
-        api: 'prod/api-keys',
-      },
+environments: {
+  production: {
+    type: 'production',
+    domain: 'app.example.com',
+    app: {
+      runtime: 'nodejs20.x',
+      entry: 'src/server.ts',
+      memory: 1024,
+      // plaintext env vars
+      env: { APP_ENV: 'production' },
+      // names resolved from Secrets Manager / SSM at deploy time
+      secrets: ['DATABASE_URL', 'STRIPE_SECRET'],
+      // or a name → source map
+      // secrets: { DATABASE_URL: 'prod/database-url' },
     },
   },
 }
@@ -164,5 +162,5 @@ export default {
 
 ## Next Steps
 
+- [Multi-Region](/features/multi-region) - Deploying across regions
 - [Deployment](/guide/deployment) - Deployment strategies
-- [CI/CD Integration](/advanced/cicd) - Automate deployments

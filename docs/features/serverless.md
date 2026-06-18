@@ -40,7 +40,7 @@ injected environment:
 
 ```ts
 // cloud.config.ts
-import { createServerlessNodePreset } from 'ts-cloud'
+import { createServerlessNodePreset } from '@stacksjs/ts-cloud'
 
 export default createServerlessNodePreset({
   name: 'My API',
@@ -89,7 +89,7 @@ cloud serverless:build-php-layer --php 8.3 --arch x86_64
 
 ```ts
 // cloud.config.ts
-import { createServerlessLaravelPreset } from 'ts-cloud'
+import { createServerlessLaravelPreset } from '@stacksjs/ts-cloud'
 
 export default createServerlessLaravelPreset({
   name: 'My App',
@@ -139,7 +139,7 @@ per invocation without double-delivery.
 > creates the Web ACL (rules + CloudWatch metrics, surfaced as the `WafAclArn`
 > output) but doesn't auto-attach it; to enforce it, front the API with a
 > CloudFront distribution and attach the ACL there.
-
+>
 > **All of the above is verified end-to-end against real AWS** — Node + PHP HTTP,
 > SQS queue workers, the EventBridge scheduler, on-demand CLI/artisan, maintenance
 > mode, rollback/redeploy, container-image packaging, and the full data stack

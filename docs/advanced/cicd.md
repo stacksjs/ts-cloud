@@ -1,103 +1,155 @@
 # CI/CD Integration
 
-Automate your infrastructure deployments with popular CI/CD platforms.
+ts-cloud deploys from a single CLI — the same `cloud` binary you run locally. There
+is no separate programmatic deploy API to wire up; CI just runs `cloud` commands with
+AWS credentials in the environment.
+
+## How it works
+
+- The CLI ships as `cloud` (the `@stacksjs/ts-cloud` package's bin). In a repo where
+  it's a dependency, invoke it with `bunx cloud …` (or `bun run cloud …` if you've
+  added a script).
+- It authenticates with the standard AWS environment variables —
+  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and (for temporary creds)
+  `AWS_SESSION_TOKEN` — or via an assumed role (OIDC). No `aws` CLI or AWS SDK is
+  required.
+- Set `CI=true` (most CI providers set this automatically) or pass `--yes` to
+  `cloud deploy` so it runs non-interactively and skips confirmation prompts.
+- Region resolves from your config (`project.region` / `environments.<env>.region`)
+  or the `AWS_REGION` environment variable.
+
+### Core commands
+
+| Command | Purpose |
+| --- | --- |
+| `cloud config:validate` | Validate `cloud.config.ts` before deploying |
+| `cloud diff` | Show the diff between local config and the deployed stack |
+| `cloud deploy --env <env>` | Deploy infrastructure for an environment |
+| `cloud deploy:serverless --env <env>` | Deploy the serverless (Lambda) app |
+| `cloud deploy:static` | Sync a static site to S3 + invalidate CloudFront |
+| `cloud deploy:container` | Build/push an image to ECR + roll the ECS service |
+| `cloud serverless:rollback --env <env>` | Roll a serverless app back to the prior release |
+
+`cloud deploy` defaults to the `staging` environment when `--env` is omitted.
 
 ## GitHub Actions
 
-### Basic Deployment
+### Deploy on push to main
 
 ```yaml
 # .github/workflows/deploy.yml
-name: Deploy Infrastructure
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v1
-
-      - run: bun install
-
-      - name: Deploy
-
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_REGION: us-east-1
-        run: bun run cloud deploy --all
-```
-
-### With Preview Environments
-
-```yaml
 name: Deploy
 
 on:
   push:
     branches: [main]
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 jobs:
-  preview:
-    if: github.event_name == 'pull_request'
+  deploy:
     runs-on: ubuntu-latest
     steps:
-
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
+
       - run: bun install
 
-      - name: Deploy Preview
-
+      - name: Deploy
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: |
-          bun run cloud deploy --stack preview-${{ github.event.number }}
+          AWS_REGION: us-east-1
+        run: bunx cloud deploy --env production --yes
+```
 
-      - name: Comment PR
+### Validate on PRs, deploy on merge
 
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: 'Preview deployed to https://preview-${{ github.event.number }}.example.com'
-            })
+```yaml
+# .github/workflows/ci.yml
+name: Infra
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bunx cloud config:validate
+      - name: Diff against deployed stack
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: bunx cloud diff
 
   deploy:
     if: github.ref == 'refs/heads/main'
+    needs: validate
     runs-on: ubuntu-latest
     steps:
-
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
       - run: bun install
-
-      - name: Deploy Production
-
+      - name: Deploy production
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        run: bun run cloud deploy --all --env prod
+          AWS_REGION: us-east-1
+        run: bunx cloud deploy --env production --yes
 ```
+
+### Authenticate with OIDC (no long-lived secrets)
+
+Prefer short-lived credentials from an assumed role over stored access keys:
+
+```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeploy
+          aws-region: us-east-1
+
+      # configure-aws-credentials exports AWS_* into the environment,
+      # so cloud picks them up automatically.
+      - run: bunx cloud deploy --env production --yes
+```
+
+### Deploy a serverless app
+
+```yaml
+      - name: Deploy serverless app
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: us-east-1
+        run: bunx cloud deploy:serverless --env production
+```
+
+Each deploy records a release snapshot, so a failed rollout can be reverted from CI
+or locally with `cloud serverless:rollback --env production`. See
+[State Management](/features/state) for how releases are tracked.
 
 ## GitLab CI
 
 ```yaml
 # .gitlab-ci.yml
 stages:
-
   - validate
   - deploy
 
@@ -108,26 +160,19 @@ validate:
   stage: validate
   image: oven/bun:latest
   script:
-
     - bun install
-    - bun run cloud validate
-
+    - bunx cloud config:validate
   only:
-
     - merge_requests
 
 deploy:staging:
   stage: deploy
   image: oven/bun:latest
   script:
-
     - bun install
-    - bun run cloud deploy --all --env staging
-
+    - bunx cloud deploy --env staging --yes
   only:
-
     - develop
-
   environment:
     name: staging
 
@@ -135,18 +180,17 @@ deploy:production:
   stage: deploy
   image: oven/bun:latest
   script:
-
     - bun install
-    - bun run cloud deploy --all --env prod
-
+    - bunx cloud deploy --env production --yes
   only:
-
     - main
-
   environment:
     name: production
   when: manual
 ```
+
+Set `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as masked CI/CD variables in the
+project settings.
 
 ## CircleCI
 
@@ -157,17 +201,15 @@ version: 2.1
 executors:
   bun:
     docker:
-
       - image: oven/bun:latest
 
 jobs:
   validate:
     executor: bun
     steps:
-
       - checkout
       - run: bun install
-      - run: bun run cloud validate
+      - run: bunx cloud config:validate
 
   deploy:
     executor: bun
@@ -175,151 +217,63 @@ jobs:
       environment:
         type: string
     steps:
-
       - checkout
       - run: bun install
-      - run: bun run cloud deploy --all --env << parameters.environment >>
+      - run: bunx cloud deploy --env << parameters.environment >> --yes
 
 workflows:
   main:
     jobs:
-
       - validate
       - deploy:
-
           name: deploy-staging
           environment: staging
-          requires:
-
-            - validate
-
+          requires: [validate]
           filters:
             branches:
               only: develop
-
       - deploy:
-
           name: deploy-production
-          environment: prod
-          requires:
-
-            - validate
-
+          environment: production
+          requires: [validate]
           filters:
             branches:
               only: main
 ```
 
-## AWS CodePipeline
+Configure AWS credentials as project environment variables (or via the CircleCI AWS
+OIDC integration).
 
-```typescript
-// pipeline-stack.ts
-import { defineStack } from 'ts-cloud'
+## Best practices
 
-export default defineStack({
-  name: 'deployment-pipeline',
+### Validate and diff before deploying
 
-  resources: {
-    Pipeline: {
-      Type: 'AWS::CodePipeline::Pipeline',
-      Properties: {
-        Stages: [
-          {
-            Name: 'Source',
-            Actions: [
-              {
-                Name: 'GitHub',
-                ActionTypeId: {
-                  Category: 'Source',
-                  Owner: 'ThirdParty',
-                  Provider: 'GitHub',
-                  Version: '1',
-                },
-                Configuration: {
-                  Owner: 'my-org',
-                  Repo: 'my-repo',
-                  Branch: 'main',
-                },
-                OutputArtifacts: [{ Name: 'Source' }],
-              },
-            ],
-          },
-          {
-            Name: 'Deploy',
-            Actions: [
-              {
-                Name: 'CloudFormation',
-                ActionTypeId: {
-                  Category: 'Deploy',
-                  Owner: 'AWS',
-                  Provider: 'CloudFormation',
-                  Version: '1',
-                },
-                Configuration: {
-                  ActionMode: 'CREATE_UPDATE',
-                  StackName: 'my-app',
-                  TemplatePath: 'Source::template.json',
-                },
-                InputArtifacts: [{ Name: 'Source' }],
-              },
-            ],
-          },
-        ],
-      },
-    },
-  },
-})
+```bash
+cloud config:validate      # catch config errors early
+cloud diff                 # review the change set before applying
+cloud deploy --env production --yes
 ```
 
-## Best Practices
+### Use environments for approval gates
 
-### Use OIDC for AWS Authentication
-
-```yaml
-# GitHub Actions with OIDC
-jobs:
-  deploy:
-    permissions:
-      id-token: write
-      contents: read
-    steps:
-
-      - uses: aws-actions/configure-aws-credentials@v4
-
-        with:
-          role-to-assume: arn:aws:iam::123456789:role/GitHubActions
-          aws-region: us-east-1
-```
-
-### Separate Validation and Deployment
+Most CI providers can gate a job behind a manual approval tied to a named
+environment — pair that with `cloud deploy --env production`:
 
 ```yaml
-jobs:
-  validate:
-    steps:
-
-      - run: bun run cloud validate
-      - run: bun run cloud diff --all
-
-  deploy:
-    needs: validate
-    steps:
-
-      - run: bun run cloud deploy --all
-
-```
-
-### Use Environments for Approval Gates
-
-```yaml
-deploy:production:
+# GitHub Actions
+deploy-production:
   environment:
     name: production
-    url: https://example.com
-# Requires manual approval in GitHub
+    url: https://example.com   # requires manual approval in repo settings
 ```
+
+### Prefer OIDC over stored keys
+
+Short-lived, role-assumed credentials (shown above) avoid long-lived secrets in your
+CI provider and scope each deploy to a least-privilege IAM role.
 
 ## Next Steps
 
+- [State Management](/features/state) - How releases and stack state are tracked
 - [Deployment](/guide/deployment) - Deployment strategies
 - [Rollback Strategies](/advanced/rollback) - Handle failures
