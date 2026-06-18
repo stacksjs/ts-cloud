@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.5...v0.5.6)
+
+### 🐛 Bug Fixes
+
+- **serverless**: correctness fixes from a Vapor-parity audit ([25bab13](https://github.com/stacksjs/ts-cloud/commit/25bab13)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.6 ([7f59972](https://github.com/stacksjs/ts-cloud/commit/7f59972)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.4...v0.5.5)
 
 ### 🚀 Features
