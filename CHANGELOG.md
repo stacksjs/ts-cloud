@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.7...v0.5.8)
+
+### 🚀 Features
+
+- **serverless**: command history, configurable warmer scope, secret-collision guard ([fcc1166](https://github.com/stacksjs/ts-cloud/commit/fcc1166)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.8 ([c3f0e4c](https://github.com/stacksjs/ts-cloud/commit/c3f0e4c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.6...v0.5.7)
 
 ### 🚀 Features
