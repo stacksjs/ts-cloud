@@ -590,6 +590,81 @@ export class RDSClient {
   }
 
   /**
+   * Modify a DB cluster — used to rescale an Aurora Serverless v2 cluster's
+   * ServerlessV2 min/max ACU capacity.
+   */
+  async modifyDBCluster(options: {
+    DBClusterIdentifier: string
+    ServerlessV2ScalingConfiguration?: { MinCapacity: number, MaxCapacity: number }
+    BackupRetentionPeriod?: number
+    ApplyImmediately?: boolean
+  }): Promise<{ DBCluster?: DBCluster }> {
+    const params: Record<string, any> = {
+      Action: 'ModifyDBCluster',
+      Version: '2014-10-31',
+      DBClusterIdentifier: options.DBClusterIdentifier,
+    }
+    if (options.ServerlessV2ScalingConfiguration) {
+      params['ServerlessV2ScalingConfiguration.MinCapacity'] = options.ServerlessV2ScalingConfiguration.MinCapacity
+      params['ServerlessV2ScalingConfiguration.MaxCapacity'] = options.ServerlessV2ScalingConfiguration.MaxCapacity
+    }
+    if (options.BackupRetentionPeriod !== undefined) params.BackupRetentionPeriod = options.BackupRetentionPeriod
+    if (options.ApplyImmediately !== undefined) params.ApplyImmediately = options.ApplyImmediately
+
+    const queryString = new URLSearchParams(buildQueryParams(params)).toString()
+    const result = await this.client.request({
+      service: 'rds',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: queryString,
+    })
+    const response = result.ModifyDBClusterResult || result
+    return { DBCluster: response.DBCluster }
+  }
+
+  /**
+   * Restore an Aurora cluster to a point in time as a NEW cluster (the source is
+   * left untouched). Either RestoreToTime or UseLatestRestorableTime is required.
+   */
+  async restoreDBClusterToPointInTime(options: {
+    DBClusterIdentifier: string
+    SourceDBClusterIdentifier: string
+    RestoreToTime?: Date
+    UseLatestRestorableTime?: boolean
+    VpcSecurityGroupIds?: string[]
+    DBSubnetGroupName?: string
+  }): Promise<{ DBCluster?: DBCluster }> {
+    const params: Record<string, any> = {
+      Action: 'RestoreDBClusterToPointInTime',
+      Version: '2014-10-31',
+      DBClusterIdentifier: options.DBClusterIdentifier,
+      SourceDBClusterIdentifier: options.SourceDBClusterIdentifier,
+    }
+    if (options.RestoreToTime) params.RestoreToTime = options.RestoreToTime.toISOString()
+    if (options.UseLatestRestorableTime) params.UseLatestRestorableTime = true
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.VpcSecurityGroupIds) {
+      options.VpcSecurityGroupIds.forEach((id, i) => {
+        params[`VpcSecurityGroupIds.VpcSecurityGroupId.${i + 1}`] = id
+      })
+    }
+
+    const queryString = new URLSearchParams(buildQueryParams(params)).toString()
+    const result = await this.client.request({
+      service: 'rds',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: queryString,
+    })
+    const response = result.RestoreDBClusterToPointInTimeResult || result
+    return { DBCluster: response.DBCluster }
+  }
+
+  /**
    * Start a DB instance
    */
   async startDBInstance(dbInstanceIdentifier: string): Promise<{ DBInstance?: DBInstance }> {

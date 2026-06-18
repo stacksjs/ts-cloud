@@ -1,285 +1,230 @@
 import type { CLI } from '@stacksjs/clapp'
+import type { EnvironmentType } from '@ts-cloud/core'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { resolveServerlessAppStackName } from '@ts-cloud/core'
+import { CloudFormationClient } from '../../src/aws/cloudformation'
+import { LambdaClient } from '../../src/aws/lambda'
+import { assertEnvWithinLimit, resolveServerlessFunctions } from '../../src/deploy/serverless-app'
 import * as cli from '../../src/utils/cli'
+import { loadValidatedConfig } from './shared'
+
+/** Commands that would need multi-stack orchestration we haven't built — fail
+ * honestly instead of printing fabricated success. */
+function notImplemented(name: string, guidance: string): void {
+  cli.error(`'${name}' is not implemented yet.`)
+  cli.info(guidance)
+  process.exitCode = 1
+}
+
+/** Parse a dotenv-style file into key/value pairs (ignores comments/blank lines). */
+function parseDotenv(text: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const raw of text.split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq === -1) continue
+    const key = line.slice(0, eq).trim()
+    let val = line.slice(eq + 1).trim()
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith('\'') && val.endsWith('\'')))
+      val = val.slice(1, -1)
+    out[key] = val
+  }
+  return out
+}
+
+/** Serialize key/value pairs to dotenv text, quoting values that need it. */
+function toDotenv(vars: Record<string, string>): string {
+  const lines = Object.entries(vars)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => {
+      if (!/[\s#"']/.test(v)) return `${k}=${v}`
+      const quoted = '"' + v.replace(/"/g, '\\"') + '"'
+      return `${k}=${quoted}`
+    })
+  return lines.join('\n') + '\n'
+}
 
 export function registerEnvironmentCommands(app: CLI): void {
   app
-    .command('env:create <name>', 'Create new environment')
-    .option('--clone <source>', 'Clone from existing environment')
-    .action(async (name: string, options?: { clone?: string }) => {
-      cli.header(`Creating Environment: ${name}`)
-
-      const validEnvs = ['production', 'staging', 'development', 'preview', 'test']
-      if (!validEnvs.includes(name.toLowerCase())) {
-        cli.warn(`Warning: Creating non-standard environment name`)
-        cli.info(`Standard names: ${validEnvs.join(', ')}`)
+    .command('env:list', 'List configured environments and their deployed stack status')
+    .action(async () => {
+      cli.header('Environments')
+      try {
+        const config = await loadValidatedConfig()
+        const envs = Object.keys(config.environments ?? {})
+        if (!envs.length) {
+          cli.info('No environments configured. Add environments.<env> to your cloud.config.')
+          return
+        }
+        const rows: string[][] = []
+        for (const env of envs) {
+          const envCfg = (config.environments as any)[env]
+          const region = envCfg?.region || config.project.region || 'us-east-1'
+          const kind = envCfg?.app ? `serverless (${envCfg.app.kind})` : 'server/static'
+          let status = 'not deployed'
+          if (envCfg?.app) {
+            try {
+              const cf = new CloudFormationClient(region)
+              const { Stacks } = await cf.describeStacks({ stackName: resolveServerlessAppStackName(config, env as EnvironmentType) })
+              status = Stacks?.[0]?.StackStatus ?? 'not deployed'
+            }
+            catch { status = 'not deployed' }
+          }
+          rows.push([env, envCfg?.type ?? env, kind, region, status])
+        }
+        cli.table(['Environment', 'Type', 'Kind', 'Region', 'Stack status'], rows)
       }
-
-      if (options?.clone) {
-        cli.info(`Cloning from: ${options.clone}`)
+      catch (error: any) {
+        cli.error(`Failed to list environments: ${error.message}`)
+        process.exitCode = 1
       }
-
-      const confirm = await cli.confirm('\nCreate this environment?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const spinner = new cli.Spinner('Creating environment infrastructure...')
-      spinner.start()
-
-      // TODO: Create CloudFormation stack for new environment
-      // TODO: If cloning, copy configuration from source environment
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      spinner.succeed('Environment created successfully')
-
-      cli.success('\nEnvironment created!')
-      cli.info(`Environment ${name} is now available`)
-
-      cli.info('\nNext steps:')
-      cli.info(`  - Deploy to environment: cloud deploy --env ${name}`)
-      cli.info(`  - Switch to environment: cloud env:switch ${name}`)
     })
 
   app
-    .command('env:list', 'List environments')
-    .action(async () => {
-      cli.header('Environments')
+    .command('env:compare <env1> <env2>', 'Compare two environments\' app configuration')
+    .action(async (env1: string, env2: string) => {
+      cli.header(`Comparing ${env1} ↔ ${env2}`)
+      try {
+        const config = await loadValidatedConfig()
+        const a = (config.environments as any)?.[env1]
+        const b = (config.environments as any)?.[env2]
+        if (!a || !b) {
+          cli.error(`Both environments must exist in config (have: ${Object.keys(config.environments ?? {}).join(', ') || 'none'}).`)
+          process.exitCode = 1
+          return
+        }
+        const flatten = (o: any, prefix = ''): Record<string, string> => {
+          const out: Record<string, string> = {}
+          for (const [k, v] of Object.entries(o ?? {})) {
+            const key = prefix ? `${prefix}.${k}` : k
+            if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flatten(v, key))
+            else out[key] = Array.isArray(v) ? JSON.stringify(v) : String(v)
+          }
+          return out
+        }
+        const fa = flatten(a)
+        const fb = flatten(b)
+        const keys = [...new Set([...Object.keys(fa), ...Object.keys(fb)])].sort()
+        const rows = keys
+          .filter(k => fa[k] !== fb[k])
+          .map(k => [k, fa[k] ?? '—', fb[k] ?? '—'])
+        if (!rows.length) {
+          cli.success('Identical — no configuration differences.')
+          return
+        }
+        cli.table(['Setting', env1, env2], rows)
+        cli.info(`\n${rows.length} difference(s)`)
+      }
+      catch (error: any) {
+        cli.error(`Comparison failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
 
-      const spinner = new cli.Spinner('Fetching environments...')
-      spinner.start()
+  app
+    .command('env:pull', 'Download a serverless function\'s environment to a .env file')
+    .option('--env <environment>', 'Environment (production, staging, development)', { default: 'production' })
+    .option('--function <which>', 'Which function: http | queue | cli', { default: 'http' })
+    .option('--file <path>', 'Output file (default .env.<environment>)')
+    .action(async (options?: { env?: string, function?: string, file?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as EnvironmentType
+        const { region, functions } = resolveServerlessFunctions(config, environment)
+        const which = (options?.function ?? 'http') as 'http' | 'queue' | 'cli'
+        const lambda = new LambdaClient(region)
+        const fn = await lambda.getFunction(functions[which])
+        const vars = (fn.Configuration?.Environment?.Variables ?? {}) as Record<string, string>
+        const file = options?.file ?? `.env.${environment}`
+        writeFileSync(file, toDotenv(vars))
+        cli.success(`Wrote ${Object.keys(vars).length} variable(s) from ${functions[which]} → ${file}`)
+      }
+      catch (error: any) {
+        cli.error(`env:pull failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
 
-      // TODO: Fetch from CloudFormation stacks or config
-      await new Promise(resolve => setTimeout(resolve, 1500))
+  app
+    .command('env:push', 'Upload a .env file to a serverless function\'s configuration')
+    .option('--env <environment>', 'Environment (production, staging, development)', { default: 'production' })
+    .option('--function <which>', 'Function: http | queue | cli | all', { default: 'all' })
+    .option('--file <path>', 'Input file (default .env.<environment>)')
+    .option('--replace', 'Replace the entire env instead of merging over the live config')
+    .action(async (options?: { env?: string, function?: string, file?: string, replace?: boolean }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as EnvironmentType
+        const { region, functions } = resolveServerlessFunctions(config, environment)
+        const file = options?.file ?? `.env.${environment}`
+        if (!existsSync(file)) {
+          cli.error(`File not found: ${file}`)
+          process.exitCode = 1
+          return
+        }
+        const fileVars = parseDotenv(readFileSync(file, 'utf8'))
+        const which = (options?.function ?? 'all').toLowerCase()
+        if (which !== 'all' && !['http', 'queue', 'cli'].includes(which)) {
+          cli.error('--function must be one of: http, queue, cli, all')
+          process.exitCode = 1
+          return
+        }
+        const targets = which === 'all' ? (['http', 'queue', 'cli'] as const) : ([which] as Array<'http' | 'queue' | 'cli'>)
+        const lambda = new LambdaClient(region)
+        for (const mode of targets) {
+          const name = functions[mode]
+          // Merge over the live env by default so deploy-injected infra/secret
+          // vars (ASSET_URL, DB_*, REDIS_HOST, …) aren't dropped. --replace opts out.
+          let next = fileVars
+          if (!options?.replace) {
+            const fn = await lambda.getFunction(name)
+            next = { ...(fn.Configuration?.Environment?.Variables ?? {}), ...fileVars }
+          }
+          assertEnvWithinLimit(name, next)
+          await lambda.updateFunctionConfiguration({ FunctionName: name, Environment: { Variables: next } })
+          await lambda.waitForFunctionActive(name, 120)
+          cli.success(`Pushed ${Object.keys(fileVars).length} var(s) → ${name}${options?.replace ? ' (replaced)' : ' (merged)'}`)
+        }
+        cli.info('Note: a subsequent `cloud deploy:serverless` re-injects infra/secret env from config.')
+      }
+      catch (error: any) {
+        cli.error(`env:push failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
 
-      spinner.stop()
-
-      cli.table(
-        ['Environment', 'Status', 'Region', 'Last Deployed', 'Active'],
-        [
-          ['production', 'Active', 'us-east-1', '2 hours ago', ''],
-          ['staging', 'Active', 'us-east-1', '1 day ago', '*'],
-          ['development', 'Active', 'us-west-2', '3 days ago', ''],
-          ['preview-pr-123', 'Active', 'us-east-1', '5 hours ago', ''],
-        ],
-      )
-
-      cli.info('\nTip: Use `cloud env:switch NAME` to switch active environment')
-      cli.info('Tip: Use `cloud env:create NAME` to create new environment')
+  // The following require multi-stack orchestration that isn't built yet. They
+  // fail clearly rather than faking success (was: setTimeout + fabricated data).
+  app
+    .command('env:create <name>', 'Create new environment')
+    .action(async (name: string) => {
+      notImplemented(`env:create ${name}`, 'Add an `environments.<name>` block to your cloud.config and run `cloud deploy:serverless --env <name>`.')
     })
 
   app
     .command('env:switch <name>', 'Switch active environment')
     .action(async (name: string) => {
-      cli.header(`Switching to Environment: ${name}`)
-
-      cli.info(`Switching to: ${name}`)
-
-      const spinner = new cli.Spinner('Updating environment configuration...')
-      spinner.start()
-
-      // TODO: Update config to set active environment
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      spinner.succeed('Environment switched successfully')
-
-      cli.success(`\nNow using environment: ${name}`)
-      cli.info(`All commands will now target the ${name} environment`)
-
-      cli.info('\nEnvironment details:')
-      cli.info(`  - Region: us-east-1`)
-      cli.info(`  - Status: Active`)
-      cli.info(`  - Last deployed: 1 day ago`)
+      notImplemented(`env:switch ${name}`, 'ts-cloud has no persistent "active" environment — pass --env <name> to each command.')
     })
 
-  app
-    .command('env:clone <source> <target>', 'Clone environment')
-    .action(async (source: string, target: string) => {
-      cli.header('Cloning Environment')
-
-      cli.info(`Source: ${source}`)
-      cli.info(`Target: ${target}`)
-
-      cli.warn('\nThis will copy:')
-      cli.info('  - Infrastructure configuration')
-      cli.info('  - Environment variables')
-      cli.info('  - Database schema (not data)')
-
-      const confirm = await cli.confirm('\nClone environment?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const spinner = new cli.Spinner('Cloning environment...')
-      spinner.start()
-
-      // TODO: Copy CloudFormation stack and config
-      await new Promise(resolve => setTimeout(resolve, 5000))
-
-      spinner.succeed('Environment cloned')
-
-      cli.success(`\nEnvironment ${target} created from ${source}!`)
-      cli.info('Deploy with: cloud deploy --env ' + target)
-    })
-
-  app
-    .command('env:promote <source> <target>', 'Promote environment')
-    .action(async (source: string, target: string) => {
-      cli.header('Promoting Environment')
-
-      cli.info(`From: ${source}`)
-      cli.info(`To: ${target}`)
-
-      cli.warn('\nThis will:')
-      cli.info('  - Deploy code from source to target')
-      cli.info('  - Update target configuration')
-      cli.info('  - Run database migrations if any')
-
-      const confirm = await cli.confirm('\nPromote to ' + target + '?', false)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const spinner = new cli.Spinner('Promoting environment...')
-      spinner.start()
-
-      // TODO: Deploy source to target
-      await new Promise(resolve => setTimeout(resolve, 6000))
-
-      spinner.succeed('Promotion complete')
-
-      cli.success(`\n${source} promoted to ${target}!`)
-    })
-
-  app
-    .command('env:compare <env1> <env2>', 'Compare configurations')
-    .action(async (env1: string, env2: string) => {
-      cli.header('Comparing Environments')
-
-      cli.info(`Environment 1: ${env1}`)
-      cli.info(`Environment 2: ${env2}`)
-
-      const spinner = new cli.Spinner('Analyzing configurations...')
-      spinner.start()
-
-      // TODO: Compare CloudFormation stacks and config
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      spinner.stop()
-
-      cli.info('\nConfiguration Differences:\n')
-
-      cli.table(
-        ['Setting', env1, env2, 'Match'],
-        [
-          ['Instance Type', 't3.medium', 't3.small', 'X'],
-          ['Database Size', 'db.t3.medium', 'db.t3.micro', 'X'],
-          ['Auto Scaling', 'Enabled', 'Disabled', 'X'],
-          ['Region', 'us-east-1', 'us-east-1', '*'],
-          ['Node Version', '20.x', '20.x', '*'],
-        ],
-      )
-
-      cli.info('\nFound 3 differences')
-    })
-
-  app
-    .command('env:sync <source> <target>', 'Sync configuration')
-    .action(async (source: string, target: string) => {
-      cli.header('Syncing Configuration')
-
-      cli.info(`Source: ${source}`)
-      cli.info(`Target: ${target}`)
-
-      cli.warn('\nThis will sync configuration (not resources or data)')
-
-      const confirm = await cli.confirm('\nSync configuration?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const spinner = new cli.Spinner('Syncing configuration...')
-      spinner.start()
-
-      // TODO: Sync config files
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      spinner.succeed('Configuration synced')
-
-      cli.success('\nConfiguration synchronized!')
-    })
+  for (const verb of ['clone', 'promote', 'sync'] as const) {
+    app
+      .command(`env:${verb} <source> <target>`, `(${verb}) environment configuration`)
+      .action(async (source: string, target: string) => {
+        notImplemented(`env:${verb} ${source} ${target}`, `Copy the \`environments.${source}\` block to \`environments.${target}\` in cloud.config, then \`cloud deploy:serverless --env ${target}\`.`)
+      })
+  }
 
   app
     .command('env:preview <branch>', 'Create preview environment from branch')
     .action(async (branch: string) => {
-      cli.header(`Creating Preview Environment for ${branch}`)
-
-      const envName = `preview-${branch.replace(/[^a-z0-9]/gi, '-').toLowerCase()}`
-
-      cli.info(`Environment name: ${envName}`)
-      cli.info(`Branch: ${branch}`)
-
-      const confirm = await cli.confirm('\nCreate preview environment?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const spinner = new cli.Spinner('Creating preview environment...')
-      spinner.start()
-
-      // TODO: Create temporary CloudFormation stack
-      await new Promise(resolve => setTimeout(resolve, 8000))
-
-      spinner.succeed('Preview environment created')
-
-      cli.success('\nPreview environment ready!')
-      cli.info(`URL: https://${envName}.preview.example.com`)
-      cli.info('\nThis environment will auto-delete after 7 days')
+      notImplemented(`env:preview ${branch}`, 'Ephemeral preview environments are not implemented. Define a dedicated environment and deploy to it.')
     })
 
   app
     .command('env:cleanup', 'Remove stale preview environments')
     .action(async () => {
-      cli.header('Cleaning Up Preview Environments')
-
-      const spinner = new cli.Spinner('Finding stale preview environments...')
-      spinner.start()
-
-      // TODO: Find old preview stacks
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      spinner.stop()
-
-      cli.info('\nFound 3 stale preview environments:\n')
-
-      cli.table(
-        ['Environment', 'Created', 'Age', 'Status'],
-        [
-          ['preview-feature-123', '2024-10-15', '30 days', 'Inactive'],
-          ['preview-bugfix-456', '2024-10-20', '25 days', 'Inactive'],
-          ['preview-test-789', '2024-11-01', '14 days', 'Inactive'],
-        ],
-      )
-
-      const confirm = await cli.confirm('\nDelete these environments?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const cleanupSpinner = new cli.Spinner('Deleting stale environments...')
-      cleanupSpinner.start()
-
-      // TODO: Delete CloudFormation stacks
-      await new Promise(resolve => setTimeout(resolve, 4000))
-
-      cleanupSpinner.succeed('Cleanup complete')
-
-      cli.success('\n3 preview environments deleted!')
-      cli.info('Estimated monthly savings: $87')
+      notImplemented('env:cleanup', 'Delete unused stacks with `cloud stack:delete <name>` (or via the AWS console).')
     })
 }

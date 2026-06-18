@@ -84,6 +84,27 @@ function resolveContext(config: CloudConfig, environment: EnvironmentType): Reso
   }
 }
 
+/**
+ * Resolve the deployed function names, region, and slug for an environment —
+ * shared by the logs/metrics/env/warming CLI commands. Throws if the env has no
+ * serverless app configured.
+ */
+export function resolveServerlessFunctions(config: CloudConfig, environment: EnvironmentType): {
+  region: string
+  slug: string
+  stackName: string
+  functions: { http: string, queue: string, cli: string }
+} {
+  const ctx = resolveContext(config, environment)
+  const base = `${ctx.slug}-${environment}`
+  return {
+    region: ctx.region,
+    slug: ctx.slug,
+    stackName: ctx.stackName,
+    functions: { http: `${base}-http`, queue: `${base}-queue`, cli: `${base}-cli` },
+  }
+}
+
 /** Lambda update operations can race with each other; retry on conflict. */
 async function withConflictRetry<T>(fn: () => Promise<T>, attempts = 8): Promise<T> {
   let lastErr: unknown
@@ -649,4 +670,64 @@ export async function runRemoteCommand(config: CloudConfig, environment: Environ
 export async function runDbQuery(config: CloudConfig, environment: EnvironmentType, sql: string): Promise<string> {
   const b64 = Buffer.from(sql, 'utf-8').toString('base64')
   return runRemoteCommand(config, environment, `tscloud:db-query --sql-base64=${b64}`)
+}
+
+// ── Aurora Serverless v2 lifecycle ─────────────────────────────────────────────
+
+/** The composer's Aurora cluster identifier for an environment. */
+function serverlessClusterId(slug: string, environment: EnvironmentType): string {
+  return `${slug}-${environment}-db`
+}
+
+/** Rescale the serverless Aurora cluster's min/max ACU capacity. */
+export async function scaleServerlessDatabase(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  minCapacity: number,
+  maxCapacity: number,
+): Promise<void> {
+  const ctx = resolveContext(config, environment)
+  if (ctx.app.database?.connection !== 'aurora-serverless')
+    throw new Error('No Aurora Serverless v2 database is configured for this environment.')
+  const { RDSClient } = await import('../aws/rds')
+  const rds = new RDSClient(ctx.region)
+  const id = serverlessClusterId(ctx.slug, environment)
+  cli.step(`Scaling ${id} → ${minCapacity}–${maxCapacity} ACUs`)
+  await rds.modifyDBCluster({
+    DBClusterIdentifier: id,
+    ServerlessV2ScalingConfiguration: { MinCapacity: minCapacity, MaxCapacity: maxCapacity },
+    ApplyImmediately: true,
+  })
+  cli.success(`Scaling applied to ${id} (takes effect shortly).`)
+}
+
+/**
+ * Restore the serverless Aurora cluster to a point in time as a NEW cluster
+ * (the source is untouched). Returns the new cluster identifier.
+ */
+export async function restoreServerlessDatabase(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  opts: { toTime?: Date, latest?: boolean, target?: string },
+): Promise<string> {
+  const ctx = resolveContext(config, environment)
+  if (ctx.app.database?.connection !== 'aurora-serverless')
+    throw new Error('No Aurora Serverless v2 database is configured for this environment.')
+  if (!opts.toTime && !opts.latest)
+    throw new Error('Specify a restore point: --to <ISO timestamp> or --latest.')
+  const { RDSClient } = await import('../aws/rds')
+  const rds = new RDSClient(ctx.region)
+  const source = serverlessClusterId(ctx.slug, environment)
+  // Build a stable, human-readable target name from the requested time.
+  const stamp = opts.latest ? 'latest' : opts.toTime!.toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+  const targetId = opts.target ?? `${source}-restore-${stamp}`
+  cli.step(`Restoring ${source} → new cluster ${targetId} (${opts.latest ? 'latest restorable time' : opts.toTime!.toISOString()})`)
+  await rds.restoreDBClusterToPointInTime({
+    DBClusterIdentifier: targetId,
+    SourceDBClusterIdentifier: source,
+    RestoreToTime: opts.toTime,
+    UseLatestRestorableTime: opts.latest,
+  })
+  cli.success(`Restore started → ${targetId}. Add an instance to it (or point a new env at it) once available.`)
+  return targetId
 }

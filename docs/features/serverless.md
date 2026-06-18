@@ -189,6 +189,16 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 | `cloud up --env <env>` | Exit maintenance mode |
 | `cloud function:list` / `function:invoke` / `function:logs` | Inspect functions |
 | `cloud secrets:set/get/list/delete` | Manage per-env secrets (Secrets Manager) |
+| `cloud logs --env <env> [--function http\|queue\|cli\|all] [--tail]` | Tail CloudWatch logs across the function trio |
+| `cloud metrics --env <env> [--since 1h]` | Invocations / errors / error-rate / throttles / duration per function |
+| `cloud metrics:dashboard --env <env>` | Print the CloudWatch console URL for this app |
+| `cloud alarms` / `alarms:create` | List / create CloudWatch alarms on Lambda metrics |
+| `cloud env:pull --env <env> [--function http]` | Download a function's env to `.env.<env>` |
+| `cloud env:push --env <env> [--replace]` | Upload `.env.<env>` to the functions (merges over live env by default) |
+| `cloud env:list` / `env:compare <a> <b>` | List configured environments / diff two environments' config |
+| `cloud serverless:db-scale <min> <max> --env <env>` | Rescale the Aurora Serverless v2 cluster (ACUs) |
+| `cloud serverless:db-restore --env <env> --to <ISO>\|--latest` | Point-in-time restore the Aurora cluster (as a new cluster) |
+| `cloud serverless:db-shell "<sql>" --env <env>` | Run SQL against the private Aurora DB via the CLI function |
 
 ## Configuration reference
 

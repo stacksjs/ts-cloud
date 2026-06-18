@@ -63,6 +63,11 @@ app
 // Register All Commands
 // ============================================
 
+// Monitoring & Logs — registered FIRST so the bare `logs`/`metrics`/`alarms`
+// commands win clapp's first-match resolution over namespaced `*:logs`/`*:metrics`
+// commands (clapp matches a namespaced command by its bare trailing segment too).
+registerLogsCommands(app)
+
 // Core commands
 registerInitCommands(app)
 registerConfigCommands(app)
@@ -89,8 +94,7 @@ registerSslCommands(app)
 // Database & Data
 registerDatabaseCommands(app)
 
-// Monitoring & Logs
-registerLogsCommands(app)
+// Monitoring & Logs (registerLogsCommands is registered earlier — see top)
 registerStatusCommands(app)
 
 // Scheduling & Events

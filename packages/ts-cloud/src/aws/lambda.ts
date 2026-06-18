@@ -474,6 +474,53 @@ export class LambdaClient {
     return result
   }
 
+  /** Point an existing alias at a (new) function version. */
+  async updateAlias(params: {
+    FunctionName: string
+    Name: string
+    FunctionVersion: string
+    Description?: string
+  }): Promise<{ AliasArn?: string, Name?: string, FunctionVersion?: string }> {
+    const { FunctionName, Name, ...rest } = params
+    return this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'PUT',
+      path: `/2015-03-31/functions/${encodeURIComponent(FunctionName)}/aliases/${encodeURIComponent(Name)}`,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(rest),
+    })
+  }
+
+  /** Pre-provision N warm execution environments on a function version/alias. */
+  async putProvisionedConcurrencyConfig(params: {
+    FunctionName: string
+    Qualifier: string
+    ProvisionedConcurrentExecutions: number
+  }): Promise<{ Status?: string, RequestedProvisionedConcurrentExecutions?: number }> {
+    const { FunctionName, Qualifier, ProvisionedConcurrentExecutions } = params
+    return this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'PUT',
+      path: `/2019-09-30/functions/${encodeURIComponent(FunctionName)}/provisioned-concurrency`,
+      queryParams: { Qualifier },
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ProvisionedConcurrentExecutions }),
+    })
+  }
+
+  /** Remove a provisioned-concurrency config from a function version/alias. */
+  async deleteProvisionedConcurrencyConfig(functionName: string, qualifier: string): Promise<void> {
+    await this.client.request({
+      service: 'lambda',
+      region: this.region,
+      method: 'DELETE',
+      path: `/2019-09-30/functions/${encodeURIComponent(functionName)}/provisioned-concurrency`,
+      queryParams: { Qualifier: qualifier },
+    })
+  }
+
   /**
    * Wait for function to become active
    */

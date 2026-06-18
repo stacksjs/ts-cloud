@@ -126,9 +126,18 @@ describe('composeServerlessAppTemplate', () => {
       rdsProxy: true,
       vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
     } as ServerlessAppConfig)
-    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toBeDefined()
+    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({ MinCapacity: 0.5, MaxCapacity: 4 })
     expect((template.Resources.DbInstance as any).Properties.DBInstanceClass).toBe('db.serverless')
     expect((template.Resources.DbProxy as any).Type).toBe('AWS::RDS::DBProxy')
+  })
+
+  it('honors configurable Aurora min/max capacity', () => {
+    const { template } = compose({
+      kind: 'php',
+      database: { connection: 'aurora-serverless', minCapacity: 2, maxCapacity: 16 },
+      vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
+    } as ServerlessAppConfig)
+    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({ MinCapacity: 2, MaxCapacity: 16 })
   })
 
   it('adds warmer rules sized to the warm count (5 targets/rule)', () => {

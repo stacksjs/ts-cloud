@@ -1793,6 +1793,10 @@ export interface ServerlessAppConfig {
   database?: {
     connection?: 'rds-proxy' | 'aurora-serverless' | 'rds'
     cluster?: string
+    /** Aurora Serverless v2 minimum capacity (ACUs). @default 0.5 */
+    minCapacity?: number
+    /** Aurora Serverless v2 maximum capacity (ACUs). @default 4 */
+    maxCapacity?: number
   }
   /** Cache attachment. DynamoDB cache table is the zero-NAT default. */
   cache?: {

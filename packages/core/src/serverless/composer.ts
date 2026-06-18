@@ -770,7 +770,10 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         DatabaseName: 'app',
         MasterUsername: Fn.sub('{{resolve:secretsmanager:${DbSecret}:SecretString:username}}'),
         MasterUserPassword: Fn.sub('{{resolve:secretsmanager:${DbSecret}:SecretString:password}}'),
-        ServerlessV2ScalingConfiguration: { MinCapacity: 0.5, MaxCapacity: 4 },
+        ServerlessV2ScalingConfiguration: {
+          MinCapacity: app.database?.minCapacity ?? 0.5,
+          MaxCapacity: app.database?.maxCapacity ?? 4,
+        },
         DBSubnetGroupName: Fn.ref('DbSubnetGroup'),
         VpcSecurityGroupIds: [Fn.getAtt('DataSecurityGroup', 'GroupId')],
       },

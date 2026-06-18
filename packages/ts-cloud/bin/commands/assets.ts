@@ -7,85 +7,43 @@ import { loadValidatedConfig } from './shared'
 
 export function registerAssetsCommands(app: CLI): void {
   app
-    .command('assets:build', 'Build assets')
-    .option('--minify', 'Minify output')
-    .option('--compress', 'Compress output')
-    .action(async (options?: { minify?: boolean, compress?: boolean }) => {
+    .command('assets:build', 'Run the configured build hooks for an environment')
+    .option('--env <environment>', 'Environment (production, staging, development)', { default: 'production' })
+    .action(async (options?: { env?: string }) => {
       cli.header('Building Assets')
-
-      const minify = options?.minify || false
-      const compress = options?.compress || false
-
-      cli.info('Build configuration:')
-      cli.info(`  - Minify: ${minify ? 'Yes' : 'No'}`)
-      cli.info(`  - Compress: ${compress ? 'Yes' : 'No'}`)
-
-      const spinner = new cli.Spinner('Building assets...')
-      spinner.start()
-
-      // TODO: Run build process
-      await new Promise(resolve => setTimeout(resolve, 4000))
-
-      spinner.succeed('Assets built successfully')
-
-      cli.success('\nBuild complete!')
-      cli.info('\nOutput:')
-      cli.info('  - JS: 2.3 MB > 456 KB (80% reduction)')
-      cli.info('  - CSS: 890 KB > 123 KB (86% reduction)')
-      cli.info('  - Images: 15.2 MB > 8.9 MB (41% reduction)')
-      cli.info('\nBuild directory: ./dist')
+      try {
+        const config = await loadValidatedConfig()
+        const env = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const appCfg = (config.environments as any)?.[env]?.app
+        const steps: string[] = appCfg?.build ?? []
+        if (!steps.length) {
+          cli.error(`No build hooks defined for '${env}'. Set environments.${env}.app.build = ['bun run build', …] in cloud.config.`)
+          process.exitCode = 1
+          return
+        }
+        const { execSync } = await import('node:child_process')
+        for (const step of steps) {
+          cli.step(`$ ${step}`)
+          execSync(step, { stdio: 'inherit' })
+        }
+        cli.success('Build hooks complete')
+      }
+      catch (error: any) {
+        cli.error(`Build failed: ${error.message}`)
+        process.exitCode = 1
+      }
     })
 
-  app
-    .command('assets:optimize:images', 'Optimize images')
-    .option('--quality <quality>', 'Image quality (1-100)', { default: '85' })
-    .action(async (options?: { quality?: string }) => {
-      const quality = options?.quality || '85'
-
-      cli.header('Optimizing Images')
-
-      cli.info(`Quality: ${quality}%`)
-
-      const spinner = new cli.Spinner('Optimizing images...')
-      spinner.start()
-
-      // TODO: Optimize images
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      spinner.succeed('Images optimized')
-
-      cli.success('\nOptimization complete!')
-      cli.info('\nResults:')
-      cli.info('  - Processed: 127 images')
-      cli.info('  - Original: 15.2 MB')
-      cli.info('  - Optimized: 8.9 MB')
-      cli.info('  - Savings: 6.3 MB (41%)')
-    })
-
-  app
-    .command('images:optimize', 'Optimize and compress images')
-    .option('--dir <directory>', 'Directory to optimize', { default: './public/images' })
-    .action(async (options?: { dir?: string }) => {
-      const dir = options?.dir || './public/images'
-
-      cli.header('Optimizing Images')
-
-      cli.info(`Directory: ${dir}`)
-
-      const spinner = new cli.Spinner('Optimizing images...')
-      spinner.start()
-
-      // TODO: Optimize images in directory
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      spinner.succeed('Images optimized')
-
-      cli.success('\nOptimization complete!')
-      cli.info('\nResults:')
-      cli.info('  - PNG: 45 files, 3.2 MB > 1.8 MB (44% savings)')
-      cli.info('  - JPG: 82 files, 12.0 MB > 7.1 MB (41% savings)')
-      cli.info('  - Total savings: 6.3 MB')
-    })
+  for (const cmd of ['assets:optimize:images', 'images:optimize'] as const) {
+    app
+      .command(cmd, 'Optimize images (not implemented)')
+      .option('--dir <directory>', 'Directory to optimize')
+      .action(async () => {
+        cli.error(`'${cmd}' is not implemented — ts-cloud has no built-in image optimizer.`)
+        cli.info('Optimize images in your own build step (e.g. sharp/squoosh), then `cloud assets:deploy`.')
+        process.exitCode = 1
+      })
+  }
 
   app
     .command('assets:deploy', 'Deploy static assets to S3')

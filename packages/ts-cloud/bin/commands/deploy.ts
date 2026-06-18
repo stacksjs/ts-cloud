@@ -716,30 +716,39 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
-        const stackName = `${config.project.slug}-server-${environment}`
         const region = config.project.region || 'us-east-1'
 
-        cli.info(`Stack: ${stackName}`)
+        if (!config.infrastructure?.compute) {
+          cli.error('No `infrastructure.compute` configured — nothing to deploy as a server.')
+          cli.info('Add an EC2 compute block to cloud.config, or use `cloud deploy:serverless` for Lambda apps.')
+          process.exitCode = 1
+          return
+        }
+
         cli.info(`Region: ${region}`)
         cli.info(`Environment: ${environment}`)
 
-        cli.step('Generating EC2 server infrastructure...')
+        // Forge-style EC2 deploy via SSM — the same real path used by `cloud deploy`.
+        const ok = await deployAppToCompute(config, environment, region)
+        if (!ok) {
+          process.exitCode = 1
+          return
+        }
 
-        // TODO: Generate server-specific infrastructure
-        const spinner = new cli.Spinner('Deploying server infrastructure...')
-        spinner.start()
-
-        await new Promise(resolve => setTimeout(resolve, 2000))
-
-        spinner.succeed('Server infrastructure deployed successfully!')
-
-        cli.success('\nDeployment complete!')
-        cli.info('\nNext steps:')
-        cli.info('  - cloud server:list - View deployed servers')
-        cli.info('  - cloud server:ssh <name> - SSH into a server')
+        if (config.sites) {
+          const siteDomains = Object.values(config.sites)
+            .map((site: { domain?: string }) => site.domain)
+            .filter((domain): domain is string => !!domain)
+          if (siteDomains.length > 0) {
+            cli.step('Syncing CloudFront dynamic HTTP methods for app domains...')
+            await ensureDynamicMethodsForDomains(siteDomains)
+          }
+        }
+        cli.success('\nServer deployment complete!')
       }
       catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
+        process.exitCode = 1
       }
     })
 
@@ -952,6 +961,59 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       }
       catch (error: any) {
         cli.error(`Query failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('serverless:db-scale <min> <max>', 'Rescale the serverless Aurora cluster (min/max ACUs)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (min: string, max: string, options?: { env?: string }) => {
+      cli.header('Scaling serverless database')
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const minCapacity = Number(min)
+        const maxCapacity = Number(max)
+        if (!(minCapacity > 0) || !(maxCapacity >= minCapacity)) {
+          cli.error('Provide valid capacities: min > 0 and max >= min (e.g. `serverless:db-scale 0.5 8`).')
+          process.exitCode = 1
+          return
+        }
+        const { scaleServerlessDatabase } = await import('../../src/deploy/serverless-app')
+        await scaleServerlessDatabase(config, environment, minCapacity, maxCapacity)
+      }
+      catch (error: any) {
+        cli.error(`Scale failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('serverless:db-restore', 'Restore the serverless Aurora cluster to a point in time (as a new cluster)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--to <timestamp>', 'Restore to this ISO-8601 time (UTC)')
+    .option('--latest', 'Restore to the latest restorable time')
+    .option('--target <id>', 'New cluster identifier (defaults to <cluster>-restore-<stamp>)')
+    .action(async (options?: { env?: string, to?: string, latest?: boolean, target?: string }) => {
+      cli.header('Restoring serverless database')
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        let toTime: Date | undefined
+        if (options?.to) {
+          toTime = new Date(options.to)
+          if (Number.isNaN(toTime.getTime())) {
+            cli.error(`Invalid --to timestamp: ${options.to} (use ISO-8601, e.g. 2026-06-18T10:00:00Z).`)
+            process.exitCode = 1
+            return
+          }
+        }
+        const { restoreServerlessDatabase } = await import('../../src/deploy/serverless-app')
+        await restoreServerlessDatabase(config, environment, { toTime, latest: options?.latest, target: options?.target })
+      }
+      catch (error: any) {
+        cli.error(`Restore failed: ${error.message}`)
         process.exitCode = 1
       }
     })
