@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.13...v0.5.14)
+
+### 🚀 Features
+
+- **ui**: server dashboard parity — partials + drill-down pages ([331a976](https://github.com/stacksjs/ts-cloud/commit/331a976)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.14 ([91736eb](https://github.com/stacksjs/ts-cloud/commit/91736eb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.12...v0.5.13)
 
 ### 🚀 Features
