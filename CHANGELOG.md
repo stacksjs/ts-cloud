@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.11...v0.5.12)
+
+### 🚀 Features
+
+- **ui**: serverless cost analysis drill-down page ([ab8c5a2](https://github.com/stacksjs/ts-cloud/commit/ab8c5a2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.12 ([0042082](https://github.com/stacksjs/ts-cloud/commit/0042082)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.10...v0.5.11)
 
 ### 🚀 Features
