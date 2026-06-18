@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.9...v0.5.10)
+
+### 🚀 Features
+
+- **serverless**: serverless:info, PC-aware env:push, Laravel example guide ([849e815](https://github.com/stacksjs/ts-cloud/commit/849e815)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.10 ([0fd1e95](https://github.com/stacksjs/ts-cloud/commit/0fd1e95)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.8...v0.5.9)
 
 ### 🚀 Features
