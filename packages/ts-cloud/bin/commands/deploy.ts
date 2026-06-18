@@ -1105,6 +1105,48 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('dashboard:build', 'Build the management dashboard with live data baked in')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--ui <dir>', 'UI directory (default ./ui)', { default: 'ui' })
+    .action(async (options?: { env?: string, ui?: string }) => {
+      cli.header('Building management dashboard (live data)')
+      try {
+        const { existsSync } = await import('node:fs')
+        const uiDir = options?.ui || 'ui'
+        if (!existsSync(`${uiDir}/package.json`)) {
+          cli.error(`No UI project at ${uiDir}/ (expected ${uiDir}/package.json). Pass --ui <dir>.`)
+          process.exitCode = 1
+          return
+        }
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        cli.step('Gathering live data from AWS')
+        const { resolveDashboardData } = await import('../../src/deploy/dashboard-data')
+        const data = await resolveDashboardData(config, environment).catch((e) => {
+          cli.warn(`Could not gather live data (${e.message}); building with sample data.`)
+          return null
+        })
+        cli.step('Building dashboard')
+        const { execSync } = await import('node:child_process')
+        const { rmSync } = await import('node:fs')
+        // stx caches built pages by source-content hash and is blind to env, so a
+        // prior sample build would be served stale — bust the SSG cache first.
+        for (const c of ['.stx/ssg-cache', '.stx/cache'])
+          rmSync(`${uiDir}/${c}`, { recursive: true, force: true })
+        execSync('bun install && bun run build', {
+          cwd: uiDir,
+          stdio: 'inherit',
+          env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: JSON.stringify(data) } : {}) },
+        })
+        cli.success(`Dashboard built → ${uiDir}/dist${data ? ' (live data)' : ' (sample data)'}`)
+      }
+      catch (error: any) {
+        cli.error(`Dashboard build failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('serverless:build-php-layer', 'Build + publish the ts-cloud PHP runtime layer (requires Docker)')
     .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
     .option('--php <version>', 'PHP version', { default: '8.3' })

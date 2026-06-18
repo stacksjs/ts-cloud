@@ -1,24 +1,28 @@
 <script server>
-// ts-cloud serverless (Vapor-style) dashboard. At build/deploy time this data is
-// populated from the resolved cloud config + live AWS reads (Lambda, SQS, CFN
-// outputs). The sample values below render the design; `ui/build.ts` injects real
-// data when present. Each section drills into a dedicated page under /serverless/*.
-const app = {
+// ts-cloud serverless (Vapor-style) dashboard. Real data is injected at build
+// time via the TSCLOUD_DASHBOARD_DATA env var (run `cloud dashboard:build`);
+// the sample values below render the design when nothing is injected. Each
+// section drills into a dedicated page under /serverless/*.
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') }
+catch { __d = null }
+
+const app = __d?.app ?? {
   name: 'acme', env: 'production', region: 'us-east-1', runtime: 'php-8.3 (fpm)',
   url: 'https://acme.com', build: 'a4d63d2', deployedAt: '12m ago',
 }
-const maintenance = { enabled: false }
-const metrics = { invocations: 184320, errorRatePct: 0.12, p95Ms: 86, coldStartPct: 1.8, concurrency: 42, estCostUsd: 7.4 }
-const functions = [
+const maintenance = __d?.maintenance ?? { enabled: false }
+const metrics = __d?.metrics ?? { invocations: 184320, errorRatePct: 0.12, p95Ms: 86, coldStartPct: 1.8, concurrency: 42, estCostUsd: 7.4 }
+const functions = __d?.functions ?? [
   { key: 'http', name: 'acme-production-http', memory: 1024, timeout: 28, runtime: 'provided.al2023', invocations: 171200, errors: 21, p95: 86, status: 'active' },
   { key: 'queue', name: 'acme-production-queue', memory: 1024, timeout: 120, runtime: 'provided.al2023', invocations: 12840, errors: 3, p95: 240, status: 'active' },
   { key: 'cli', name: 'acme-production-cli', memory: 1024, timeout: 900, runtime: 'provided.al2023', invocations: 1440, errors: 0, p95: 1100, status: 'active' },
 ]
-const queues = [
+const queues = __d?.queues ?? [
   { name: 'default', visible: 0, inFlight: 2, processed: 12830, dlq: 0 },
   { name: 'emails', visible: 4, inFlight: 1, processed: 9210, dlq: 1 },
 ]
-const scheduler = { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
+const scheduler = __d?.scheduler ?? { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
 const data = [
   { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5–4 ACU', status: 'available' },
   { name: 'RDS Proxy', detail: 'acme-production-proxy', status: 'available' },

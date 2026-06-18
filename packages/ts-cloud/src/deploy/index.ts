@@ -26,3 +26,7 @@ export {
   type BuildImageOptions,
   type BuiltImage,
 } from './serverless-image'
+export {
+  type DashboardData,
+  resolveDashboardData,
+} from './dashboard-data'

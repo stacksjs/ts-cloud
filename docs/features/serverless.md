@@ -20,6 +20,14 @@ deployments, and secrets — every card drills into a dedicated page:
 
 ![ts-cloud Serverless dashboard](/images/dashboard-serverless.png)
 
+By default the dashboard renders representative sample data so the design is
+self-contained. To bake in **live** values from your real deployment, build it
+with `cloud dashboard:build --env <env>` — this reads the actual stack
+(`serverlessInfo` + CloudWatch metrics + SQS depth + Lambda config) and injects
+it into the pages at build time (no backend, no client JS). The action buttons
+are shown as copyable CLI commands, since the dashboard is a read-only static
+site.
+
 Each section links to a focused detail page (`/serverless/functions`, `/queues`,
 `/scheduler`, `/data`, `/metrics`, `/cost`, `/deployments`, `/firewall`,
 `/assets`, `/secrets`) with deeper data — e.g. the Functions page shows per-function
