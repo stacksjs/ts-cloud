@@ -948,6 +948,25 @@ export async function restoreServerlessDatabase(
     RestoreToTime: opts.toTime,
     UseLatestRestorableTime: opts.latest,
   })
-  cli.success(`Restore started → ${targetId}. Add an instance to it (or point a new env at it) once available.`)
+
+  // A restored Aurora cluster has no instances — it can't accept connections
+  // until a writer is added. Point-in-time restore preserves the source's
+  // ServerlessV2 scaling config, so we just attach a db.serverless writer once
+  // the cluster leaves 'creating'.
+  cli.step('Waiting for the restored cluster to be ready')
+  for (let i = 0; i < 120; i++) {
+    const { DBClusters } = await rds.describeDBClusters({ DBClusterIdentifier: targetId })
+    const status = DBClusters?.[0]?.Status
+    if (status && status !== 'creating') break
+    await new Promise(r => setTimeout(r, 15000))
+  }
+  cli.step('Adding a writer instance')
+  await rds.createDBInstance({
+    DBInstanceIdentifier: `${targetId}-1`,
+    DBClusterIdentifier: targetId,
+    Engine: 'aurora-mysql',
+    DBInstanceClass: 'db.serverless',
+  })
+  cli.success(`Restore complete → cluster ${targetId} with writer ${targetId}-1. Point an env's database at it once available.`)
   return targetId
 }

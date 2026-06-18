@@ -64,15 +64,15 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
           <span>Deployed <b>{{ app.deployedAt }}</b></span>
         </div>
       </div>
-      <div class="header-actions">
+      <div class="cmds header-actions">
         @if (maintenance.enabled)
           <span class="pill warn">maintenance</span>
-          <form method="post" action="/api/serverless/up"><button class="btn sm" type="submit">Bring up</button></form>
+          <span class="cmd">cloud up --env {{ app.env }}</span>
         @else
           <span class="ok pill">live</span>
-          <form method="post" action="/api/serverless/down"><button class="btn ghost sm" type="submit">Maintenance</button></form>
+          <span class="cmd">cloud down --env {{ app.env }}</span>
         @endif
-        <form method="post" action="/api/serverless/deploy"><button class="btn sm" type="submit">Deploy</button></form>
+        <span class="accent cmd">cloud deploy:serverless --env {{ app.env }}</span>
       </div>
     </header>
 
@@ -188,9 +188,9 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
               <span class="when">{{ d.when }} · {{ d.took }}</span>
             </div>
           @endforeach
-          <form method="post" action="/api/serverless/rollback" style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
-            <button class="btn ghost sm" type="submit">Roll back to previous build</button>
-          </form>
+          <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
+            <span class="cmd">cloud serverless:rollback --env {{ app.env }}</span>
+          </div>
         </div>
       </div>
       <div>

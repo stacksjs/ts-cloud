@@ -398,6 +398,8 @@ export class RDSClient {
     DBInstanceIdentifier: string
     DBInstanceClass: string
     Engine: string
+    /** Attach this instance to an existing cluster (Aurora writer/reader). */
+    DBClusterIdentifier?: string
     MasterUsername?: string
     MasterUserPassword?: string
     DBName?: string
@@ -427,6 +429,7 @@ export class RDSClient {
       Engine: options.Engine,
     }
 
+    if (options.DBClusterIdentifier) params.DBClusterIdentifier = options.DBClusterIdentifier
     if (options.MasterUsername) params.MasterUsername = options.MasterUsername
     if (options.MasterUserPassword) params.MasterUserPassword = options.MasterUserPassword
     if (options.DBName) params.DBName = options.DBName

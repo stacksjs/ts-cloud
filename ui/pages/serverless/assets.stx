@@ -25,7 +25,7 @@ const recent = [
         <p>Versioned static assets uploaded to S3 and served via CloudFront; <span class="mono">ASSET_URL</span> is injected into the app.</p>
       </div>
       <div class="header-actions">
-        <form method="post" action="/api/serverless/assets/invalidate"><button class="btn ghost sm" type="submit">Invalidate cache</button></form>
+        <span class="cmd">cloud assets:invalidate</span>
       </div>
     </header>
 

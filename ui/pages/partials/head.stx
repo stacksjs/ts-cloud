@@ -110,4 +110,11 @@
   .field { display: flex; gap: 8px; margin-top: 12px; }
   .field input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px; padding: 9px 12px; color: var(--txt); font-family: inherit; font-size: 14px; }
   .field input:focus { outline: none; border-color: var(--accent); }
+
+  /* Honest action affordance: a copyable CLI command (static dashboard has no
+    backend — the buttons would POST nowhere, so we show the exact command). */
+  .cmd { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; color: var(--txt); white-space: nowrap; }
+  .cmd::before { content: '$'; color: var(--txt3); }
+  .cmd.accent { border-color: rgba(91,140,255,0.4); color: var(--accent); }
+  .cmds { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 </style>

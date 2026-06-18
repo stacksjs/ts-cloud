@@ -65,7 +65,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
                   <td>{{ m.attempts }}</td>
                   <td><span style="color:var(--bad)">{{ m.error }}</span></td>
                   <td style="color:var(--txt3)">{{ m.failed }}</td>
-                  <td><form method="post" action="/api/serverless/queue/redrive"><button class="btn ghost sm" type="submit">Redrive</button></form></td>
+                  <td><span class="cmd">cloud queue:redrive {{ m.queue }}</span></td>
                 </tr>
               @endforeach
             </tbody>

@@ -22,9 +22,9 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn'
         <h1>Deployments</h1>
         <p>Every deploy publishes an immutable artifact; activation is atomic and rollback flips back instantly.</p>
       </div>
-      <div class="header-actions">
-        <form method="post" action="/api/serverless/rollback"><button class="btn ghost sm" type="submit">Roll back to previous</button></form>
-        <form method="post" action="/api/serverless/deploy"><button class="btn sm" type="submit">Deploy</button></form>
+      <div class="cmds header-actions">
+        <span class="cmd">cloud serverless:rollback</span>
+        <span class="accent cmd">cloud deploy:serverless</span>
       </div>
     </header>
 
