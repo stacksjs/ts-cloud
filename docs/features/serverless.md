@@ -21,8 +21,8 @@ deployments, and secrets — every card drills into a dedicated page:
 ![ts-cloud Serverless dashboard](/images/dashboard-serverless.png)
 
 Each section links to a focused detail page (`/serverless/functions`, `/queues`,
-`/scheduler`, `/data`, `/metrics`, `/deployments`, `/firewall`, `/assets`,
-`/secrets`) with deeper data — e.g. the Functions page shows per-function
+`/scheduler`, `/data`, `/metrics`, `/cost`, `/deployments`, `/firewall`,
+`/assets`, `/secrets`) with deeper data — e.g. the Functions page shows per-function
 invocation trends, p50/p95/p99 latency, max memory, recent activity, and the
 injected environment:
 

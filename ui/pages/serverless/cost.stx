@@ -1,0 +1,147 @@
+<script server>
+// Cost analysis drill-down. Sample data renders the design; ui/build.ts injects
+// real figures from Cost Explorer + per-resource estimates when present.
+const app = { name: 'acme', env: 'production' }
+const period = { label: 'Jun 2026 (month-to-date)', days: 17, ofDays: 30 }
+
+const summary = {
+  monthToDateUsd: 126.40,
+  projectedUsd: 223.10,
+  lastMonthUsd: 198.75,
+  dailyAvgUsd: 7.44,
+}
+
+// Cost by AWS service (month-to-date), largest first.
+const services = [
+  { name: 'Lambda (compute)', usd: 41.20, note: 'GB-seconds across http/queue/cli' },
+  { name: 'Provisioned concurrency', usd: 28.60, note: '2 envs always-warm' },
+  { name: 'Aurora Serverless v2', usd: 19.80, note: '0.5–4 ACU' },
+  { name: 'API Gateway (HTTP)', usd: 11.30, note: '4.7M requests' },
+  { name: 'CloudFront + S3 assets', usd: 8.10, note: 'egress + storage' },
+  { name: 'ElastiCache (redis)', usd: 6.40, note: 'cache.t4g.micro' },
+  { name: 'DynamoDB (cache)', usd: 4.20, note: 'on-demand' },
+  { name: 'SQS', usd: 2.90, note: '12.8M messages' },
+  { name: 'RDS Proxy', usd: 2.10, note: 'proxy hours' },
+  { name: 'Secrets Manager', usd: 1.20, note: '4 secrets' },
+  { name: 'WAF', usd: 0.60, note: 'web ACL + rules' },
+]
+
+// Per-function Lambda compute split.
+const perFn = [
+  { key: 'http', requests: 171200, gbSec: 168200, usd: 31.40 },
+  { key: 'queue', requests: 12840, gbSec: 41200, usd: 7.80 },
+  { key: 'cli', requests: 1440, gbSec: 11600, usd: 2.00 },
+]
+
+// Daily spend trend (most recent last).
+const trend = [5.9, 6.2, 7.1, 6.8, 7.4, 8.0, 7.6, 9.1, 8.4, 7.0, 6.4, 7.8, 8.9, 9.3, 8.1, 7.4, 8.2]
+
+const totalServices = services.reduce((s, x) => s + x.usd, 0)
+function pct(v, max) { return Math.round((v / max) * 100) }
+const maxService = Math.max(...services.map(s => s.usd))
+const maxTrend = Math.max(...trend)
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Cost' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Cost</div>
+    <header class="page">
+      <div>
+        <h1>Cost analysis</h1>
+        <p>Spend by service and function — {{ period.label }}.</p>
+      </div>
+    </header>
+
+    <div class="grid cards">
+      <div class="panel">
+        <h3>Month to date</h3>
+        <div class="stat">${{ summary.monthToDateUsd.toFixed(2) }}</div>
+        <div class="bar"><i style="width: {{ pct(period.days, period.ofDays) }}%"></i></div>
+        <p class="note">day {{ period.days }} of {{ period.ofDays }}</p>
+      </div>
+      <div class="panel">
+        <h3>Projected (month)</h3>
+        <div class="stat">${{ summary.projectedUsd.toFixed(2) }}</div>
+        @if (summary.projectedUsd > summary.lastMonthUsd)
+          <p class="note" style="color:var(--warn)">▲ ${{ (summary.projectedUsd - summary.lastMonthUsd).toFixed(2) }} vs last month</p>
+        @else
+          <p class="note" style="color:var(--ok)">▼ ${{ (summary.lastMonthUsd - summary.projectedUsd).toFixed(2) }} vs last month</p>
+        @endif
+      </div>
+      <div class="panel">
+        <h3>Daily average</h3>
+        <div class="stat">${{ summary.dailyAvgUsd.toFixed(2) }}</div>
+        <p class="note">per day this month</p>
+      </div>
+      <div class="panel">
+        <h3>Last month</h3>
+        <div class="stat">${{ summary.lastMonthUsd.toFixed(2) }}</div>
+        <p class="note">final total</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Daily spend</h2>
+      <div class="panel">
+        <div class="spark" style="height:96px">
+          @foreach (trend as d)
+            <i style="height: {{ pct(d, maxTrend) }}%"></i>
+          @endforeach
+        </div>
+        <p class="note">USD/day · {{ period.label }}</p>
+      </div>
+    </div>
+
+    <div class="cols section">
+      <div>
+        <h2>By service</h2>
+        <div class="panel">
+          @foreach (services as s)
+            <div style="padding:11px 0; border-top:1px solid rgba(255,255,255,0.05);">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <b style="min-width:200px">{{ s.name }}</b>
+                <span class="detail" style="color:var(--txt3); font-size:12px;">{{ s.note }}</span>
+                <span style="margin-left:auto; font-weight:700;">${{ s.usd.toFixed(2) }}</span>
+              </div>
+              <div class="bar" style="margin-top:8px;"><i style="width: {{ pct(s.usd, maxService) }}%"></i></div>
+            </div>
+          @endforeach
+          <div class="kv" style="margin-top:6px; border-top:1px solid var(--panel-br); padding-top:12px;"><span>total</span> <b>${{ totalServices.toFixed(2) }}</b></div>
+        </div>
+      </div>
+      <div>
+        <h2>Lambda by function</h2>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Fn</th><th>Requests</th><th>GB-sec</th><th>Cost</th></tr></thead>
+            <tbody>
+              @foreach (perFn as f)
+                <tr>
+                  <td><span class="tag">{{ f.key }}</span></td>
+                  <td>{{ (f.requests / 1000).toFixed(f.requests >= 10000 ? 0 : 1) }}k</td>
+                  <td class="mono">{{ (f.gbSec / 1000).toFixed(0) }}k</td>
+                  <td style="font-weight:700">${{ f.usd.toFixed(2) }}</td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        </div>
+        <div style="height:16px"></div>
+        <h2>Optimize</h2>
+        <div class="panel">
+          <p class="note" style="margin-top:0">Biggest lever: <b style="color:var(--txt)">{{ services[0].name }}</b> at ${{ services[0].usd.toFixed(2) }}.</p>
+          <p class="note">• Right-size memory — over-provisioned MB inflates GB-seconds.</p>
+          <p class="note">• Drop unused <span class="mono">provisionedConcurrency</span> for ping-based <span class="mono">warm</span> if cold starts are tolerable.</p>
+          <p class="note">• Tighten Aurora <span class="mono">db-scale</span> min ACU off-peak.</p>
+          <p class="note">Full breakdown: <span class="mono">cloud cost --env {{ app.env }}</span></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
