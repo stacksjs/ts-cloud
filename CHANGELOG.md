@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.12...v0.5.13)
+
+### 🚀 Features
+
+- **serverless**: live dashboard data via cloud dashboard:build ([5ec733c](https://github.com/stacksjs/ts-cloud/commit/5ec733c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **serverless**: db-restore adds a writer instance; honest dashboard actions ([801a0fc](https://github.com/stacksjs/ts-cloud/commit/801a0fc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.13 ([35d7060](https://github.com/stacksjs/ts-cloud/commit/35d7060)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.11...v0.5.12)
 
 ### 🚀 Features
