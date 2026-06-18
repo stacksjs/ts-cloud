@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.14...v0.5.15)
+
+### 🚀 Features
+
+- **dashboard**: wire every drill-down page to live data with sample fallback ([e026479](https://github.com/stacksjs/ts-cloud/commit/e026479)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: comprehensive live-data resolvers for every panel ([68dd033](https://github.com/stacksjs/ts-cloud/commit/68dd033)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **dashboard**: dashboard:build runs build only (no bun install) ([0ba8a41](https://github.com/stacksjs/ts-cloud/commit/0ba8a41)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.15 ([1ecf92b](https://github.com/stacksjs/ts-cloud/commit/1ecf92b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.13...v0.5.14)
 
 ### 🚀 Features
