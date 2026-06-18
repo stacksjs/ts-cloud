@@ -185,7 +185,7 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
       if (app?.rdsProxy) out.proxy = { name: `${info.slug}-${environment}-proxy`, endpoint: outputs.DbProxyEndpoint ?? '—', pooledConns: Math.round(conns), status: 'available' }
     }
     if (app?.cache?.driver === 'elasticache') {
-      const rgId = `${info.slug}-${environment}-redis`
+      const rgId = `${info.slug}-${environment}-cache`
       const dim = [{ Name: 'CacheClusterId', Value: `${rgId}-001` }]
       const [hits, misses] = await Promise.all([
         cwMetric(cw, 'AWS/ElastiCache', 'CacheHits', dim, 'Sum', start, end),
@@ -197,14 +197,14 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
     if (app?.efs) {
       let sizeMb = 0
       try {
-        if (outputs.EfsId) {
+        if (outputs.EfsFileSystemId) {
           const efs = new EFSClient(region)
-          const { FileSystems } = await efs.describeFileSystems({ FileSystemId: outputs.EfsId })
+          const { FileSystems } = await efs.describeFileSystems({ FileSystemId: outputs.EfsFileSystemId })
           sizeMb = Number((((FileSystems?.[0]?.SizeInBytes?.Value ?? 0)) / 1_048_576).toFixed(1))
         }
       }
       catch { /* efs optional */ }
-      out.efs = { id: outputs.EfsId ?? 'efs', mount: '/mnt/local', sizeMb, status: 'available' }
+      out.efs = { id: outputs.EfsFileSystemId ?? 'efs', mount: '/mnt/local', sizeMb, status: 'available' }
     }
     out.assetsInfo = outputs.AssetsCdnDomain ? { bucket: outputs.AssetsBucketName ?? `${info.slug}-${environment}-assets`, cdn: outputs.AssetsCdnDomain, customDomain: app?.assetDomain ?? '—', assetUrl: info.assetUrl ?? '—', files: 0, sizeMb: 0, cacheHitPct: 0, build: out.app.build } : undefined
   }
@@ -252,7 +252,7 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
 
   // ── Cost (Cost Explorer) ─────────────────────────────────────────────────────
   try {
-    const ce = new CostExplorerClient(region)
+    const ce = new CostExplorerClient() // Cost Explorer is global (us-east-1); first ctor arg is a profile, not a region.
     const now = end
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))

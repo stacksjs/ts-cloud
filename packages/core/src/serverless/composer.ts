@@ -694,15 +694,12 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: `${slug}-${environment}-waf` },
       },
     }
-    resources.WebAclAssociation = {
-      Type: 'AWS::WAFv2::WebACLAssociation',
-      DependsOn: ['HttpStage'],
-      Properties: {
-        // API Gateway v2 stage ARN.
-        ResourceArn: Fn.sub('arn:aws:apigateway:${AWS::Region}::/apis/${HttpApi}/stages/$default'),
-        WebACLArn: Fn.getAtt('WebAcl', 'Arn'),
-      },
-    }
+    // AWS WAFv2 supports REST APIs, ALBs, AppSync, etc. — but a web ACL cannot be
+    // associated with an API Gateway HTTP API (v2) stage. The serverless app uses
+    // HTTP API v2, so we create the web ACL (rules + CloudWatch metrics) and skip
+    // the WebACLAssociation (it would fail with an invalid-ARN error). Attach this
+    // ACL to a CloudFront distribution fronting the API to actually enforce it.
+    outputs.WafAclArn = { Description: 'WAF web ACL ARN. Attach to a CloudFront distribution fronting the API to enforce (HTTP API v2 stages do not support direct WAF association).', Value: Fn.getAtt('WebAcl', 'Arn') }
   }
 
   // ── VPC-attached data services (ElastiCache / Aurora / RDS Proxy) ────────────

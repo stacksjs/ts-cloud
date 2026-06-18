@@ -101,11 +101,14 @@ describe('composeServerlessAppTemplate', () => {
     expect((template.Resources.HttpFunction as any).Properties.Architectures).toEqual(['arm64'])
   })
 
-  it('wires a WAF WebACL + association when firewall is enabled', () => {
+  it('creates a WAF WebACL when firewall is enabled, but NOT an association (WAFv2 cannot attach to HTTP API v2)', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', firewall: { enabled: true, rateLimit: 2000, rules: ['common', 'sqlInjection'] } })
     expect((template.Resources.WebAcl as any).Properties.Scope).toBe('REGIONAL')
     expect((template.Resources.WebAcl as any).Properties.Rules).toHaveLength(3)
-    expect((template.Resources.WebAclAssociation as any).Type).toBe('AWS::WAFv2::WebACLAssociation')
+    // No WebACLAssociation — AWS rejects associating a web ACL with an HTTP API
+    // (v2) stage; the ARN is surfaced as an output to attach via CloudFront.
+    expect(template.Resources.WebAclAssociation).toBeUndefined()
+    expect(((template.Outputs as any).WafAclArn).Value).toEqual({ 'Fn::GetAtt': ['WebAcl', 'Arn'] })
   })
 
   it('creates ElastiCache + security group when cache.driver is elasticache', () => {

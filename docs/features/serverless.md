@@ -131,7 +131,14 @@ per invocation without double-delivery.
   security group lands in your VPC). The deployer injects `REDIS_HOST` and the
   full `DB_*` set (`DB_HOST` → the RDS Proxy endpoint, `DB_USERNAME`/`DB_PASSWORD`
   resolved from the auto-created Secrets Manager secret, `DB_DATABASE=app`). A
-  `firewall` (WAF) can front the HTTP API, and `warm: N` keeps N containers warm.
+  `firewall` (WAF) provisions a Web ACL with your rules, and `warm: N` keeps N
+  containers warm.
+
+> **WAF note:** AWS WAF can't be associated directly with an API Gateway **HTTP
+> API (v2)** stage (only REST APIs, ALBs, AppSync, etc.). `firewall` therefore
+> creates the Web ACL (rules + CloudWatch metrics, surfaced as the `WafAclArn`
+> output) but doesn't auto-attach it; to enforce it, front the API with a
+> CloudFront distribution and attach the ACL there.
 
 > **All of the above is verified end-to-end against real AWS** — Node + PHP HTTP,
 > SQS queue workers, the EventBridge scheduler, on-demand CLI/artisan, maintenance
