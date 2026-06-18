@@ -1150,7 +1150,11 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         // prior sample build would be served stale — bust the SSG cache first.
         for (const c of ['.stx/ssg-cache', '.stx/cache'])
           rmSync(`${uiDir}/${c}`, { recursive: true, force: true })
-        execSync('bun install && bun run build', {
+        // Build only (no `bun install`): the dashboard's deps are already present
+        // (hoisted at the repo root, or shipped prebuilt), and re-resolving can
+        // fail on registry version drift. Run `bun install` in the ui dir yourself
+        // first if you're building it standalone for the first time.
+        execSync('bun run build', {
           cwd: uiDir,
           stdio: 'inherit',
           env: { ...process.env, ...(data ? { TSCLOUD_DASHBOARD_DATA: JSON.stringify(data) } : {}) },
