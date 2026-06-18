@@ -246,6 +246,21 @@ describe('composeServerlessAppTemplate', () => {
     expect(() => compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com' })).toThrow(/assetCertificateArn/)
   })
 
+  it('auto-issues a DNS-validated asset cert when only a hostedZoneId is given (us-east-1)', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' })
+    const cert = template.Resources.AssetsCertificate as any
+    expect(cert.Type).toBe('AWS::CertificateManager::Certificate')
+    expect(cert.Properties.ValidationMethod).toBe('DNS')
+    expect(cert.Properties.DomainValidationOptions[0]).toEqual({ DomainName: 'cdn.acme.com', HostedZoneId: 'Z1' })
+    const cfg = (template.Resources.AssetsDistribution as any).Properties.DistributionConfig
+    expect(cfg.ViewerCertificate.AcmCertificateArn).toEqual({ Ref: 'AssetsCertificate' })
+  })
+
+  it('refuses to auto-issue an asset cert outside us-east-1 (CloudFront cert region)', () => {
+    const euConfig = { project: { name: 'Demo', slug: 'demo', region: 'eu-west-1' } } as Pick<CloudConfig, 'project'>
+    expect(() => composeServerlessAppTemplate({ config: euConfig, environment: 'production', handlers, app: { kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' } })).toThrow(/us-east-1/)
+  })
+
   it('passes structural + resource-limit validation', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], assets: 'public' })
     const structural = validateTemplate(template as any)

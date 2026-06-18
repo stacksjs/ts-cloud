@@ -240,11 +240,20 @@ app: { kind: 'php', vpc: { id: 'vpc-…', subnets: ['subnet-a', 'subnet-b'] }, e
 ### Custom asset CDN host
 
 Serve assets from your own host (Vapor `asset-domain`) instead of the default
-CloudFront domain. CloudFront requires a **us-east-1** ACM cert:
+CloudFront domain. CloudFront only accepts a **us-east-1** ACM cert — give a
+`hostedZoneId` and ts-cloud auto-issues + DNS-validates one for you (when the app
+is in us-east-1), or supply a pre-issued `assetCertificateArn`:
 
 ```ts
+// auto-issued cert (us-east-1 app + hosted zone) — Vapor-style, zero cert setup
+app: { assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z…' }
+// or bring your own us-east-1 cert (required if the app isn't in us-east-1)
 app: { assets: 'public', assetDomain: 'cdn.acme.com', assetCertificateArn: 'arn:aws:acm:us-east-1:…', hostedZoneId: 'Z…' }
 ```
+
+> Verified end-to-end against real AWS: the auto-issued cert validates, CloudFront
+> fronts the versioned assets bucket, the Route53 alias resolves, and assets serve
+> over `https://<assetDomain>/…` (with `ASSET_URL` injected into the app).
 
 Other asset knobs: `dotFilesAsAssets` (upload dotfiles — excluded by default),
 `serveAssets` and `redirectRobotsTxt` (injected as env for the app to honor).

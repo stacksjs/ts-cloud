@@ -516,12 +516,14 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
             S3OriginConfig: { OriginAccessIdentity: '' },
           }],
           // Custom asset CDN host (Vapor `asset-domain`). CloudFront requires a
-          // us-east-1 ACM cert, supplied via assetCertificateArn.
+          // us-east-1 ACM cert — supplied via assetCertificateArn, or auto-issued
+          // + DNS-validated (AssetsCertificate) when a us-east-1 app provides a
+          // hostedZoneId.
           ...(app.assetDomain
             ? {
                 Aliases: [app.assetDomain],
                 ViewerCertificate: {
-                  AcmCertificateArn: app.assetCertificateArn,
+                  AcmCertificateArn: app.assetCertificateArn ?? Fn.ref('AssetsCertificate'),
                   SslSupportMethod: 'sni-only',
                   MinimumProtocolVersion: 'TLSv1.2_2021',
                 },
@@ -531,8 +533,23 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
       },
     }
     if (app.assetDomain) {
-      if (!app.assetCertificateArn)
-        throw new Error('serverless app: `assetDomain` requires `assetCertificateArn` (a us-east-1 ACM cert — CloudFront only accepts certs from us-east-1).')
+      // CloudFront only accepts certs from us-east-1. Auto-issue + DNS-validate
+      // one when the app lives in us-east-1 and a hosted zone is given; otherwise
+      // the user must supply a pre-issued us-east-1 cert via assetCertificateArn.
+      if (!app.assetCertificateArn) {
+        if (!app.hostedZoneId)
+          throw new Error('serverless app: `assetDomain` requires either `assetCertificateArn` (a us-east-1 ACM cert) or `hostedZoneId` (to auto-issue + validate one). CloudFront only accepts certs from us-east-1.')
+        if (region !== 'us-east-1')
+          throw new Error(`serverless app: auto-issuing an asset-domain cert needs a us-east-1 app (CloudFront certs must be us-east-1); this app is in ${region}. Supply a pre-issued us-east-1 \`assetCertificateArn\` instead.`)
+        resources.AssetsCertificate = {
+          Type: 'AWS::CertificateManager::Certificate',
+          Properties: {
+            DomainName: app.assetDomain,
+            ValidationMethod: 'DNS',
+            DomainValidationOptions: [{ DomainName: app.assetDomain, HostedZoneId: app.hostedZoneId }],
+          },
+        }
+      }
       if (app.hostedZoneId) {
         resources.AssetsDomainRecord = {
           Type: 'AWS::Route53::RecordSet',
@@ -810,7 +827,6 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     resourceSummary[(r as any).Type] = (resourceSummary[(r as any).Type] ?? 0) + 1
   }
 
-  void region // reserved for future region-pinned resources (e.g. us-east-1 certs)
 
   return { template, functionNames, queueNames, resourceSummary }
 }

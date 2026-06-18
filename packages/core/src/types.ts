@@ -1829,10 +1829,16 @@ export interface ServerlessAppConfig {
   assets?: string
   /**
    * Serve assets from a custom CDN host instead of the default CloudFront domain
-   * (Vapor `asset-domain`). Requires a us-east-1 ACM cert via assetCertificateArn.
+   * (Vapor `asset-domain`). CloudFront needs a us-east-1 ACM cert: supply one via
+   * {@link assetCertificateArn}, or give {@link hostedZoneId} and (for a us-east-1
+   * app) ts-cloud auto-issues + DNS-validates one.
    */
   assetDomain?: string
-  /** us-east-1 ACM certificate ARN for {@link assetDomain} (CloudFront requirement). */
+  /**
+   * us-east-1 ACM certificate ARN for {@link assetDomain} (CloudFront requirement).
+   * Optional when {@link hostedZoneId} is set and the app is in us-east-1 — the
+   * cert is then auto-issued and DNS-validated.
+   */
   assetCertificateArn?: string
   /** Include dotfiles when uploading assets (Vapor `dot-files-as-assets`). @default false */
   dotFilesAsAssets?: boolean
