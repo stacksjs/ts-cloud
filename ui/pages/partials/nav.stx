@@ -1,0 +1,19 @@
+<nav>
+  <div class="brand"><span class="dot"></span> ts-cloud</div>
+  <div class="tabs">
+    @if ((active ?? '') === 'server')
+      <a href="/" class="active">Server</a>
+    @else
+      <a href="/">Server</a>
+    @endif
+    @if ((active ?? '') === 'serverless')
+      <a href="/serverless" class="active">Serverless</a>
+    @else
+      <a href="/serverless">Serverless</a>
+    @endif
+  </div>
+  <div class="nav-meta">
+    <span>{{ name ?? '' }}</span>
+    <span class="env">{{ env ?? '' }}</span>
+  </div>
+</nav>

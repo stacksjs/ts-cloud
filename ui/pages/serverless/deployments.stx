@@ -1,0 +1,54 @@
+<script server>
+const app = { name: 'acme', env: 'production' }
+const deployments = [
+  { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris', version: 7, hooks: ['composer install --no-dev', 'config:cache', 'route:cache', 'migrate --force'] },
+  { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci', version: 6, hooks: ['config:cache', 'route:cache', 'migrate --force'] },
+  { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci', version: 5, hooks: ['migrate --force'] },
+  { sha: '5a2b284', status: 'rolled-back', when: '1d ago', took: '12s', by: 'chris', version: 4, hooks: [] },
+]
+function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn' : 'bad') }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Deployments' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Deployments</div>
+    <header class="page">
+      <div>
+        <h1>Deployments</h1>
+        <p>Every deploy publishes an immutable artifact; activation is atomic and rollback flips back instantly.</p>
+      </div>
+      <div class="header-actions">
+        <form method="post" action="/api/serverless/rollback"><button class="btn ghost sm" type="submit">Roll back to previous</button></form>
+        <form method="post" action="/api/serverless/deploy"><button class="btn sm" type="submit">Deploy</button></form>
+      </div>
+    </header>
+
+    <div class="section">
+      <div class="panel">
+        <table>
+          <thead><tr><th>Build</th><th>Status</th><th>Version</th><th>Deploy hooks</th><th>By</th><th>Took</th><th>When</th></tr></thead>
+          <tbody>
+            @foreach (deployments as d)
+              <tr>
+                <td class="mono">{{ d.sha }}</td>
+                <td><span class="pill {{ tone(d.status) }}">{{ d.status }}</span></td>
+                <td class="mono">v{{ d.version }}</td>
+                <td class="mono" style="font-size:11px;color:var(--txt3)">@if (d.hooks.length === 0)—@else{{ d.hooks.join(' · ') }}@endif</td>
+                <td style="color:var(--txt2)">{{ d.by }}</td>
+                <td class="mono">{{ d.took }}</td>
+                <td style="color:var(--txt3)">{{ d.when }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Re-activate the last build without rebuilding: <span class="mono">cloud deploy:serverless --redeploy</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

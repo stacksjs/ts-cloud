@@ -1,0 +1,118 @@
+<script server>
+// Function drill-down. Sample data renders the design; ui/build.ts injects real
+// Lambda/CloudWatch reads when present.
+const app = { name: 'acme', env: 'production' }
+
+const functions = [
+  {
+    key: 'http', name: 'acme-production-http', runtime: 'provided.al2023', arch: 'x86_64',
+    memory: 1024, timeout: 28, ephemeral: 512, version: '$LATEST', concurrency: '—',
+    invocations: 171200, errors: 21, throttles: 0, p50: 32, p95: 86, p99: 180, maxMem: 184,
+    spark: [40, 52, 48, 61, 73, 66, 80, 72, 95, 88, 70, 64],
+    env: ['APP_ENV', 'ASSET_URL', 'TSCLOUD_CACHE_TABLE', 'DB_HOST', 'QUEUE_CONNECTION'],
+    recent: [
+      { ts: '01:42:09', msg: 'GET / 200 31ms', err: false },
+      { ts: '01:42:03', msg: 'GET /pricing 200 28ms', err: false },
+      { ts: '01:41:58', msg: 'POST /checkout 500 timeout', err: true },
+    ],
+  },
+  {
+    key: 'queue', name: 'acme-production-queue', runtime: 'provided.al2023', arch: 'x86_64',
+    memory: 1024, timeout: 120, ephemeral: 512, version: '$LATEST', concurrency: 10,
+    invocations: 12840, errors: 3, throttles: 0, p50: 120, p95: 240, p99: 410, maxMem: 256,
+    spark: [12, 18, 9, 22, 31, 28, 19, 24, 33, 27, 20, 14],
+    env: ['APP_ENV', 'QUEUE_CONNECTION', 'TSCLOUD_SQS_RECORD'],
+    recent: [
+      { ts: '01:41:40', msg: 'job App\\Jobs\\SendInvoice ok 210ms', err: false },
+      { ts: '01:40:12', msg: 'job App\\Jobs\\Resize failed → DLQ', err: true },
+    ],
+  },
+  {
+    key: 'cli', name: 'acme-production-cli', runtime: 'provided.al2023', arch: 'x86_64',
+    memory: 1024, timeout: 900, ephemeral: 512, version: '$LATEST', concurrency: '—',
+    invocations: 1440, errors: 0, throttles: 0, p50: 800, p95: 1100, p99: 1400, maxMem: 312,
+    spark: [2, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1],
+    env: ['APP_ENV', 'TSCLOUD_SCHEDULER'],
+    recent: [
+      { ts: '01:42:00', msg: 'schedule:run ok 740ms', err: false },
+      { ts: '01:41:00', msg: 'schedule:run ok 690ms', err: false },
+    ],
+  },
+]
+
+function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Functions' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Functions</div>
+    <header class="page">
+      <div>
+        <h1>Functions</h1>
+        <p>The three Lambda functions sharing one artifact — HTTP, queue worker, and CLI/scheduler.</p>
+      </div>
+    </header>
+
+    @foreach (functions as fn)
+      <div class="section">
+        <h2><span class="tag">{{ fn.key }}</span> <span class="mono">{{ fn.name }}</span></h2>
+        <div class="cols">
+          <div class="panel">
+            <h3>Invocations (24h)</h3>
+            <div class="stat">{{ fmt(fn.invocations) }}</div>
+            <div class="spark">
+              @foreach (fn.spark as h)
+                <i style="height: {{ h }}%"></i>
+              @endforeach
+            </div>
+            <div style="display:flex; gap:24px; margin-top:16px; flex-wrap:wrap;">
+              <div><h3>Errors</h3><div style="font-size:18px;font-weight:700;margin-top:4px;">@if (fn.errors > 0)<span style="color:var(--bad)">{{ fn.errors }}</span>@else<span style="color:var(--txt3)">0</span>@endif</div></div>
+              <div><h3>Throttles</h3><div style="font-size:18px;font-weight:700;margin-top:4px;">{{ fn.throttles }}</div></div>
+              <div><h3>p50 / p95 / p99</h3><div class="mono" style="font-size:14px;margin-top:6px;">{{ fn.p50 }} / {{ fn.p95 }} / {{ fn.p99 }} ms</div></div>
+              <div><h3>Max memory</h3><div style="font-size:18px;font-weight:700;margin-top:4px;">{{ fn.maxMem }} <small style="font-size:12px;color:var(--txt2)">/ {{ fn.memory }} MB</small></div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Configuration</h3>
+            <div style="margin-top:10px;">
+              <div class="kv"><span>runtime</span> <b class="mono">{{ fn.runtime }}</b></div>
+              <div class="kv"><span>architecture</span> <b class="mono">{{ fn.arch }}</b></div>
+              <div class="kv"><span>memory</span> <b>{{ fn.memory }} MB</b></div>
+              <div class="kv"><span>timeout</span> <b>{{ fn.timeout }}s</b></div>
+              <div class="kv"><span>ephemeral /tmp</span> <b>{{ fn.ephemeral }} MB</b></div>
+              <div class="kv"><span>live version</span> <b class="mono">{{ fn.version }}</b></div>
+              <div class="kv"><span>reserved concurrency</span> <b>{{ fn.concurrency }}</b></div>
+            </div>
+          </div>
+        </div>
+        <div class="cols" style="margin-top:16px;">
+          <div class="panel">
+            <h3>Recent activity</h3>
+            <div class="logs" style="margin-top:10px;">
+              @foreach (fn.recent as r)
+                <div>@if (r.err)<span class="ts">{{ r.ts }}</span> <span class="err">{{ r.msg }}</span>@else<span class="ts">{{ r.ts }}</span> {{ r.msg }}@endif</div>
+              @endforeach
+            </div>
+            <p class="note">Tail live with <span class="mono">cloud logs --function {{ fn.key }} --tail</span></p>
+          </div>
+          <div class="panel">
+            <h3>Environment ({{ fn.env.length }} vars)</h3>
+            <div style="margin-top:10px;">
+              @foreach (fn.env as e)
+                <div class="secret"><b class="mono">{{ e }}</b><span class="val">••••••••</span></div>
+              @endforeach
+            </div>
+            <p class="note">Pull/edit with <span class="mono">cloud env:pull --function {{ fn.key }}</span></p>
+          </div>
+        </div>
+      </div>
+    @endforeach
+  </div>
+</body>
+</html>

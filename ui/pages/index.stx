@@ -228,7 +228,7 @@ function statusTone(status) {
       <div class="panel">
         @foreach (sshKeys as key)
           <div class="key">
-            <span class="pill ok"></span>
+            <span class="ok pill"></span>
             <b>{{ key.name }}</b>
             <span style="color: var(--txt3); font-size: 12px">added {{ key.added }}</span>
             <span class="fp">{{ key.fingerprint }}</span>
@@ -259,7 +259,7 @@ function statusTone(status) {
                 <td><a href="https://{{ site.domain }}" class="mono">{{ site.domain }}</a></td>
                 <td><span class="tag">{{ site.type }}</span></td>
                 <td class="mono">{{ site.php }}</td>
-                <td>@if (site.ssl)<span class="pill ok">https</span>@else<span class="pill warn">http</span>@endif</td>
+                <td>@if (site.ssl)<span class="ok pill">https</span>@else<span class="pill warn">http</span>@endif</td>
                 <td style="color: var(--txt2)">{{ site.lastDeploy }}</td>
                 <td><span class="pill {{ statusTone(site.status) }}">{{ site.status }}</span></td>
               </tr>
@@ -269,7 +269,7 @@ function statusTone(status) {
       </div>
     </div>
 
-    <div class="section cols">
+    <div class="cols section">
       <div>
         <h2>Recent Deployments</h2>
         <div class="panel">
@@ -289,7 +289,7 @@ function statusTone(status) {
           @foreach (workers as w)
             <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
           @endforeach
-          <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="pill ok">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
+          <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="ok pill">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
         </div>
         <div style="height: 16px"></div>
         <h2>Backups</h2>

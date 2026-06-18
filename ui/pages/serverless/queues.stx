@@ -1,0 +1,79 @@
+<script server>
+const app = { name: 'acme', env: 'production' }
+const queues = [
+  { name: 'acme-production-default', short: 'default', visible: 0, inFlight: 2, delayed: 0, processed: 12830, oldestSec: 0, concurrency: 10, tries: 3, visTimeout: 720, dlq: 0 },
+  { name: 'acme-production-emails', short: 'emails', visible: 4, inFlight: 1, delayed: 0, processed: 9210, oldestSec: 14, concurrency: 5, tries: 3, visTimeout: 720, dlq: 1 },
+]
+const dlqItems = [
+  { id: 'b1f3…9a', queue: 'emails', job: 'App\\Jobs\\SendInvoice', failed: '2h ago', attempts: 3, error: 'SMTP timeout' },
+]
+function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Queues' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Queues</div>
+    <header class="page">
+      <div>
+        <h1>Queues</h1>
+        <p>SQS queues feeding the queue worker (one job per invocation) with a shared dead-letter queue.</p>
+      </div>
+    </header>
+
+    <div class="section">
+      <div class="panel">
+        <table>
+          <thead><tr><th>Queue</th><th>Visible</th><th>In-flight</th><th>Oldest</th><th>Concurrency</th><th>Tries</th><th>Vis. timeout</th><th>Processed</th><th>DLQ</th></tr></thead>
+          <tbody>
+            @foreach (queues as q)
+              <tr>
+                <td><b>{{ q.short }}</b><div class="mono" style="font-size:11px;color:var(--txt3)">{{ q.name }}</div></td>
+                <td>{{ q.visible }}</td>
+                <td>{{ q.inFlight }}</td>
+                <td class="mono">{{ q.oldestSec }}s</td>
+                <td>{{ q.concurrency }}</td>
+                <td>{{ q.tries }}</td>
+                <td class="mono">{{ q.visTimeout }}s</td>
+                <td style="color:var(--txt2)">{{ fmt(q.processed) }}</td>
+                <td>@if (q.dlq > 0)<span class="bad pill">{{ q.dlq }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Dead-letter queue</h2>
+      <div class="panel">
+        @if (dlqItems.length === 0)
+          <p style="color:var(--txt3)">No failed messages. 🎉</p>
+        @else
+          <table>
+            <thead><tr><th>Message</th><th>Queue</th><th>Job</th><th>Attempts</th><th>Error</th><th>Failed</th><th></th></tr></thead>
+            <tbody>
+              @foreach (dlqItems as m)
+                <tr>
+                  <td class="mono">{{ m.id }}</td>
+                  <td>{{ m.queue }}</td>
+                  <td class="mono">{{ m.job }}</td>
+                  <td>{{ m.attempts }}</td>
+                  <td><span style="color:var(--bad)">{{ m.error }}</span></td>
+                  <td style="color:var(--txt3)">{{ m.failed }}</td>
+                  <td><form method="post" action="/api/serverless/queue/redrive"><button class="btn ghost sm" type="submit">Redrive</button></form></td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        @endif
+        <p class="note">Inspect with <span class="mono">cloud queue:stats</span> · purge with <span class="mono">cloud queue:purge &lt;name&gt;</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

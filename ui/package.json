@@ -4,7 +4,7 @@
   "private": true,
   "description": "ts-cloud management dashboard (stx). Served behind HTTP Basic auth.",
   "scripts": {
-    "build": "stx build --pages pages --out dist --no-sitemap",
+    "build": "stx build --pages pages --out dist --no-sitemap && bun -e \"require('node:fs').rmSync('dist/partials',{recursive:true,force:true})\"",
     "dev": "stx dev --pages pages"
   },
   "devDependencies": {

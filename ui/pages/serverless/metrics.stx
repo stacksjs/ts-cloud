@@ -1,0 +1,74 @@
+<script server>
+const app = { name: 'acme', env: 'production' }
+const window = '24h'
+const totals = { invocations: 184320, errors: 24, errorRatePct: 0.13, p95Ms: 92, throttles: 0, coldStartPct: 1.8, estCostUsd: 7.4, concurrency: 42 }
+const perFn = [
+  { key: 'http', invocations: 171200, errors: 21, throttles: 0, avgMs: 41, maxMs: 282, costUsd: 6.1 },
+  { key: 'queue', invocations: 12840, errors: 3, throttles: 0, avgMs: 168, maxMs: 410, costUsd: 1.0 },
+  { key: 'cli', invocations: 1440, errors: 0, throttles: 0, avgMs: 760, maxMs: 1400, costUsd: 0.3 },
+]
+const invSpark = [60, 72, 68, 81, 95, 88, 102, 94, 120, 110, 90, 84, 78, 96, 130, 122, 100, 92, 88, 104, 140, 132, 108, 100]
+function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+function pct(v, max) { return Math.round((v / max) * 100) }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Metrics' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Metrics</div>
+    <header class="page">
+      <div>
+        <h1>Metrics</h1>
+        <p>CloudWatch metrics across the function trio, last {{ window }}.</p>
+      </div>
+    </header>
+
+    <div class="grid cards">
+      <div class="panel"><h3>Invocations</h3><div class="stat">{{ fmt(totals.invocations) }}</div><p class="note">{{ totals.concurrency }} concurrent now</p></div>
+      <div class="panel"><h3>Error rate</h3><div class="stat">{{ totals.errorRatePct }}%</div><div class="bar"><i style="width: {{ Math.min(100, totals.errorRatePct * 10) }}%"></i></div></div>
+      <div class="panel"><h3>p95 latency</h3><div class="stat">{{ totals.p95Ms }} <small>ms</small></div><p class="note">{{ totals.coldStartPct }}% cold starts</p></div>
+      <div class="panel"><h3>Est. cost</h3><div class="stat">${{ totals.estCostUsd }}</div><p class="note">{{ totals.throttles }} throttles</p></div>
+    </div>
+
+    <div class="section">
+      <h2>Invocations over time</h2>
+      <div class="panel">
+        <div class="spark" style="height:96px">
+          @foreach (invSpark as h)
+            <i style="height: {{ pct(h, 140) }}%"></i>
+          @endforeach
+        </div>
+        <p class="note">hourly buckets · last {{ window }}</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Per function</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Function</th><th>Invocations</th><th>Errors</th><th>Error rate</th><th>Throttles</th><th>Avg</th><th>Max</th><th>Est. cost</th></tr></thead>
+          <tbody>
+            @foreach (perFn as f)
+              <tr>
+                <td><span class="tag">{{ f.key }}</span></td>
+                <td>{{ fmt(f.invocations) }}</td>
+                <td>@if (f.errors > 0)<span class="bad pill">{{ f.errors }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
+                <td class="mono">{{ (f.errors / f.invocations * 100).toFixed(2) }}%</td>
+                <td>{{ f.throttles }}</td>
+                <td class="mono">{{ f.avgMs }}ms</td>
+                <td class="mono">{{ f.maxMs }}ms</td>
+                <td style="color:var(--txt2)">${{ f.costUsd }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Live: <span class="mono">cloud metrics --since {{ window }}</span> · open in console with <span class="mono">cloud metrics:dashboard</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

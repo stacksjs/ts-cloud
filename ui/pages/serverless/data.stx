@@ -1,0 +1,74 @@
+<script server>
+const app = { name: 'acme', env: 'production' }
+const aurora = { id: 'acme-production-db', engine: 'aurora-mysql', minAcu: 0.5, maxAcu: 4, currentAcu: 1.5, database: 'app', connections: 12, status: 'available' }
+const proxy = { name: 'acme-production-proxy', endpoint: 'acme-production-proxy.proxy-xxxx.us-east-1.rds.amazonaws.com', pooledConns: 8, status: 'available' }
+const redis = { id: 'acme-production-redis', node: 'cache.t4g.micro', engine: 'redis 7.1', hitRate: 96.4, status: 'available' }
+const efs = { id: 'fs-0abc', mount: '/mnt/local', sizeMb: 312, status: 'available' }
+function tone(s) { return s === 'available' ? 'ok' : 'warn' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Data' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Data</div>
+    <header class="page">
+      <div>
+        <h1>Data services</h1>
+        <p>Managed data attached to the functions over a private VPC — database, connection proxy, cache, and shared filesystem.</p>
+      </div>
+    </header>
+
+    <div class="section">
+      <h2>Aurora Serverless v2 <span class="more"><span class="pill {{ tone(aurora.status) }}">{{ aurora.status }}</span></span></h2>
+      <div class="cols">
+        <div class="panel">
+          <div class="kv"><span>cluster</span> <b class="mono">{{ aurora.id }}</b></div>
+          <div class="kv"><span>engine</span> <b class="mono">{{ aurora.engine }}</b></div>
+          <div class="kv"><span>database</span> <b class="mono">{{ aurora.database }}</b></div>
+          <div class="kv"><span>active connections</span> <b>{{ aurora.connections }}</b></div>
+        </div>
+        <div class="panel">
+          <h3>Capacity (ACU)</h3>
+          <div class="stat">{{ aurora.currentAcu }} <small>now</small></div>
+          <div class="bar"><i style="width: {{ Math.round((aurora.currentAcu / aurora.maxAcu) * 100) }}%"></i></div>
+          <p class="note">range {{ aurora.minAcu }}–{{ aurora.maxAcu }} ACU · rescale with <span class="mono">cloud serverless:db-scale {{ aurora.minAcu }} {{ aurora.maxAcu }}</span></p>
+        </div>
+      </div>
+    </div>
+
+    <div class="cols section">
+      <div>
+        <h2>RDS Proxy</h2>
+        <div class="panel">
+          <div class="kv"><span>name</span> <b class="mono">{{ proxy.name }}</b></div>
+          <div class="kv"><span>endpoint</span> <b class="mono" style="font-size:11px">{{ proxy.endpoint }}</b></div>
+          <div class="kv"><span>pooled connections</span> <b>{{ proxy.pooledConns }}</b></div>
+          <div class="kv"><span>status</span> <b><span class="pill {{ tone(proxy.status) }}">{{ proxy.status }}</span></b></div>
+        </div>
+        <div style="height:16px"></div>
+        <h2>Shared filesystem (EFS)</h2>
+        <div class="panel">
+          <div class="kv"><span>file system</span> <b class="mono">{{ efs.id }}</b></div>
+          <div class="kv"><span>mount</span> <b class="mono">{{ efs.mount }}</b></div>
+          <div class="kv"><span>used</span> <b>{{ efs.sizeMb }} MB</b></div>
+        </div>
+      </div>
+      <div>
+        <h2>ElastiCache (Redis)</h2>
+        <div class="panel">
+          <div class="kv"><span>cluster</span> <b class="mono">{{ redis.id }}</b></div>
+          <div class="kv"><span>node</span> <b class="mono">{{ redis.node }}</b></div>
+          <div class="kv"><span>engine</span> <b class="mono">{{ redis.engine }}</b></div>
+          <div class="kv"><span>hit rate</span> <b>{{ redis.hitRate }}%</b></div>
+          <div class="kv"><span>status</span> <b><span class="pill {{ tone(redis.status) }}">{{ redis.status }}</span></b></div>
+        </div>
+        <p class="note">Query the private DB without a bastion: <span class="mono">cloud serverless:db-shell "select 1"</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

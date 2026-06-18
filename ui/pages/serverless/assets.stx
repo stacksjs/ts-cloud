@@ -1,0 +1,64 @@
+<script server>
+const app = { name: 'acme', env: 'production' }
+const assets = {
+  bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', customDomain: 'cdn.acme.com',
+  assetUrl: 'https://cdn.acme.com/a4d63d2', files: 412, sizeMb: 18.4, cacheHitPct: 98.7, build: 'a4d63d2',
+}
+const recent = [
+  { path: '/a4d63d2/app.css', size: '123 KB', type: 'text/css' },
+  { path: '/a4d63d2/app.js', size: '456 KB', type: 'application/javascript' },
+  { path: '/a4d63d2/logo.svg', size: '4 KB', type: 'image/svg+xml' },
+]
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud — Assets & CDN' })
+</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Assets &amp; CDN</div>
+    <header class="page">
+      <div>
+        <h1>Assets &amp; CDN</h1>
+        <p>Versioned static assets uploaded to S3 and served via CloudFront; <span class="mono">ASSET_URL</span> is injected into the app.</p>
+      </div>
+      <div class="header-actions">
+        <form method="post" action="/api/serverless/assets/invalidate"><button class="btn ghost sm" type="submit">Invalidate cache</button></form>
+      </div>
+    </header>
+
+    <div class="grid cards">
+      <div class="panel"><h3>Files</h3><div class="stat">{{ assets.files }}</div></div>
+      <div class="panel"><h3>Size</h3><div class="stat">{{ assets.sizeMb }} <small>MB</small></div></div>
+      <div class="panel"><h3>Cache hit</h3><div class="stat">{{ assets.cacheHitPct }}%</div></div>
+      <div class="panel"><h3>Version</h3><div class="mono" style="margin-top:12px">{{ assets.build }}</div></div>
+    </div>
+
+    <div class="section">
+      <div class="panel">
+        <div class="kv"><span>bucket</span> <b class="mono">{{ assets.bucket }}</b></div>
+        <div class="kv"><span>CloudFront</span> <b class="mono">{{ assets.cdn }}</b></div>
+        <div class="kv"><span>custom domain</span> <b class="mono">{{ assets.customDomain }}</b></div>
+        <div class="kv"><span>ASSET_URL</span> <b class="mono" style="font-size:12px">{{ assets.assetUrl }}</b></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Recent assets</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Path</th><th>Type</th><th>Size</th></tr></thead>
+          <tbody>
+            @foreach (recent as a)
+              <tr><td class="mono">{{ a.path }}</td><td style="color:var(--txt2)">{{ a.type }}</td><td>{{ a.size }}</td></tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Sync with <span class="mono">cloud assets:deploy</span> · invalidate with <span class="mono">cloud assets:invalidate</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
