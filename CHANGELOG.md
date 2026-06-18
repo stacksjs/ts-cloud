@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.15...v0.5.16)
+
+### 🚀 Features
+
+- **dashboard**: close the live-data long tail (every field now gathered) ([f169e78](https://github.com/stacksjs/ts-cloud/commit/f169e78)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧪 Tests
+
+- **dashboard**: unit-test the server-metrics probe parser ([20ac41d](https://github.com/stacksjs/ts-cloud/commit/20ac41d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.16 ([a618f70](https://github.com/stacksjs/ts-cloud/commit/a618f70)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.14...v0.5.15)
 
 ### 🚀 Features
