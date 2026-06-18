@@ -122,6 +122,39 @@ describe('composeServerlessAppTemplate', () => {
     expect(JSON.stringify(sg)).toContain('DataSecurityGroup')
   })
 
+  // Contract test: the dashboard resolver (ts-cloud/src/deploy/dashboard-data.ts)
+  // reads these output keys + resource names by string. They are coupled only by
+  // convention, so renaming one here silently breaks live dashboard data. This
+  // locks the contract — it would have caught the EfsId/`-redis` drift bugs.
+  it('emits the exact output keys + resource names the dashboard resolver depends on', () => {
+    const { template } = compose({
+      kind: 'node', entry: 'a.ts',
+      vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
+      database: { connection: 'aurora-serverless' },
+      rdsProxy: true,
+      cache: { driver: 'elasticache' },
+      efs: true,
+      assets: 'public',
+      firewall: { enabled: true, rules: ['common'] },
+      queues: ['jobs'],
+    } as ServerlessAppConfig)
+    const outputs = template.Outputs as Record<string, any>
+    // Output keys read by resolveDashboardData / resolveServerlessFunctions.
+    for (const key of ['DbEndpoint', 'DbProxyEndpoint', 'CacheEndpoint', 'EfsFileSystemId', 'AssetsCdnDomain', 'AssetsBucketName', 'HttpApiEndpoint', 'WafAclArn'])
+      expect(outputs[key], `dashboard reads output '${key}'`).toBeDefined()
+    // Resource-name conventions the resolver reconstructs from slug/env.
+    expect((template.Resources.DbCluster as any).Properties.DBClusterIdentifier).toBe('demo-production-db')
+    expect((template.Resources.CacheCluster as any).Properties.ReplicationGroupId).toBe('demo-production-cache')
+    expect((template.Resources.WebAcl as any).Properties.Name).toBe('demo-production-waf')
+    expect((template.Resources.AppQueueDlq as any).Properties.QueueName).toBe('demo-production-dlq')
+    // Function names — resolveServerlessFunctions rebuilds `${slug}-${env}-{mode}`.
+    expect((template.Resources.HttpFunction as any).Properties.FunctionName).toBe('demo-production-http')
+    expect((template.Resources.QueueFunction as any).Properties.FunctionName).toBe('demo-production-queue')
+    expect((template.Resources.CliFunction as any).Properties.FunctionName).toBe('demo-production-cli')
+    // Template is structurally valid (incl. the WAF-without-association change).
+    expect(validateTemplate(template as any).errors).toEqual([])
+  })
+
   it('creates Aurora Serverless v2 + RDS Proxy', () => {
     const { template } = compose({
       kind: 'php',
