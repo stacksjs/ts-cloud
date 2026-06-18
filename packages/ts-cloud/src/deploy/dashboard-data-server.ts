@@ -27,7 +27,7 @@ function metricsScript(): string[] {
   ]
 }
 
-function parseBlock(output: string): Record<string, string> & { services: Array<{ name: string, status: string }> } {
+export function parseBlock(output: string): Record<string, string> & { services: Array<{ name: string, status: string }> } {
   const kv: any = { services: [] }
   for (const line of output.split('\n')) {
     const l = line.trim()
