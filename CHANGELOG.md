@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.6...v0.5.7)
+
+### 🚀 Features
+
+- **serverless**: real logs/metrics/env/aurora commands; remove fake stubs ([08b72d7](https://github.com/stacksjs/ts-cloud/commit/08b72d7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.7 ([29e74bd](https://github.com/stacksjs/ts-cloud/commit/29e74bd)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.5...v0.5.6)
 
 ### 🐛 Bug Fixes
