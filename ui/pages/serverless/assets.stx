@@ -1,10 +1,12 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
-const assets = {
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const assets = __d?.assetsInfo ?? {
   bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', customDomain: 'cdn.acme.com',
   assetUrl: 'https://cdn.acme.com/a4d63d2', files: 412, sizeMb: 18.4, cacheHitPct: 98.7, build: 'a4d63d2',
 }
-const recent = [
+const recent = __d?.assetsRecent ?? [
   { path: '/a4d63d2/app.css', size: '123 KB', type: 'text/css' },
   { path: '/a4d63d2/app.js', size: '456 KB', type: 'application/javascript' },
   { path: '/a4d63d2/logo.svg', size: '4 KB', type: 'image/svg+xml' },

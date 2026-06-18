@@ -49,9 +49,9 @@ const workers = __d?.workers ?? [
   { name: 'default', processes: 2, status: 'running' },
   { name: 'emails', processes: 1, status: 'running' },
 ]
-const scheduler = __d?.scheduler ?? { enabled: true, lastRun: '36s ago' }
+const scheduler = __d?.serverScheduler ?? { enabled: true, lastRun: '36s ago' }
 
-const deployments = __d?.deployments ?? [
+const deployments = __d?.serverDeployments ?? [
   { sha: 'a4d63d2', site: 'main', branch: 'main', status: 'success', when: '12m ago', took: '34s' },
   { sha: '9557430', site: 'main', branch: 'main', status: 'success', when: '2h ago', took: '31s' },
   { sha: 'c38fc09', site: 'docs', branch: 'main', status: 'success', when: '2h ago', took: '12s' },

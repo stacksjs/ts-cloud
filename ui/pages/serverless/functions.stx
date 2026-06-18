@@ -1,9 +1,9 @@
 <script server>
-// Function drill-down. Sample data renders the design; ui/build.ts injects real
-// Lambda/CloudWatch reads when present.
-const app = { name: 'acme', env: 'production' }
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
 
-const functions = [
+const functions = __d?.functionsDetail ?? [
   {
     key: 'http', name: 'acme-production-http', runtime: 'provided.al2023', arch: 'x86_64',
     memory: 1024, timeout: 28, ephemeral: 512, version: '$LATEST', concurrency: '—',

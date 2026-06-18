@@ -1,10 +1,12 @@
 <script server>
 // Cost analysis drill-down. Sample data renders the design; ui/build.ts injects
 // real figures from Cost Explorer + per-resource estimates when present.
-const app = { name: 'acme', env: 'production' }
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
 const period = { label: 'Jun 2026 (month-to-date)', days: 17, ofDays: 30 }
 
-const summary = {
+const summary = __d?.costSummary ?? {
   monthToDateUsd: 126.40,
   projectedUsd: 223.10,
   lastMonthUsd: 198.75,
@@ -12,7 +14,7 @@ const summary = {
 }
 
 // Cost by AWS service (month-to-date), largest first.
-const services = [
+const services = __d?.costServices ?? [
   { name: 'Lambda (compute)', usd: 41.20, note: 'GB-seconds across http/queue/cli' },
   { name: 'Provisioned concurrency', usd: 28.60, note: '2 envs always-warm' },
   { name: 'Aurora Serverless v2', usd: 19.80, note: '0.5–4 ACU' },

@@ -1,6 +1,8 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
-const deployments = [
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const deployments = __d?.deploymentsDetail ?? [
   { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris', version: 7, hooks: ['composer install --no-dev', 'config:cache', 'route:cache', 'migrate --force'] },
   { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci', version: 6, hooks: ['config:cache', 'route:cache', 'migrate --force'] },
   { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci', version: 5, hooks: ['migrate --force'] },

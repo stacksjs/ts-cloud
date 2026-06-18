@@ -2,7 +2,7 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
-const deployments = __d?.deploymentsDetail ?? [
+const deployments = __d?.serverDeploymentsDetail ?? [
   { sha: 'a4d63d2', site: 'main', branch: 'main', status: 'success', when: '12m ago', took: '34s', by: 'chris', steps: ['composer install --no-dev', 'migrate --force', 'reload php-fpm'] },
   { sha: '9557430', site: 'main', branch: 'main', status: 'success', when: '2h ago', took: '31s', by: 'ci', steps: ['composer install --no-dev', 'migrate --force'] },
   { sha: 'c38fc09', site: 'docs', branch: 'main', status: 'success', when: '2h ago', took: '12s', by: 'ci', steps: ['bun run build'] },

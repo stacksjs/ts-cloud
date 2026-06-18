@@ -1,10 +1,12 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
-const queues = [
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const queues = __d?.queuesDetail ?? [
   { name: 'acme-production-default', short: 'default', visible: 0, inFlight: 2, delayed: 0, processed: 12830, oldestSec: 0, concurrency: 10, tries: 3, visTimeout: 720, dlq: 0 },
   { name: 'acme-production-emails', short: 'emails', visible: 4, inFlight: 1, delayed: 0, processed: 9210, oldestSec: 14, concurrency: 5, tries: 3, visTimeout: 720, dlq: 1 },
 ]
-const dlqItems = [
+const dlqItems = __d?.dlqItems ?? [
   { id: 'b1f3…9a', queue: 'emails', job: 'App\\Jobs\\SendInvoice', failed: '2h ago', attempts: 3, error: 'SMTP timeout' },
 ]
 function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }

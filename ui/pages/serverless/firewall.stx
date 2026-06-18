@@ -1,6 +1,8 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
-const waf = { enabled: true, scope: 'REGIONAL', acl: 'acme-production-waf', allowed24h: 183994, blocked24h: 318 }
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const waf = { ...{ enabled: true, scope: 'REGIONAL', acl: 'acme-production-waf', allowed24h: 183994, blocked24h: 318 }, ...(__d?.waf ?? {}) }
 const rules = [
   { name: 'rate-limit', detail: '2000 req / 5 min / IP', action: 'block', blocked24h: 211 },
   { name: 'common (AWSManagedRulesCommonRuleSet)', detail: 'OWASP common', action: 'block', blocked24h: 64 },

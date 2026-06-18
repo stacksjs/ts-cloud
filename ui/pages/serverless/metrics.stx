@@ -1,13 +1,15 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
 const window = '24h'
-const totals = { invocations: 184320, errors: 24, errorRatePct: 0.13, p95Ms: 92, throttles: 0, coldStartPct: 1.8, estCostUsd: 7.4, concurrency: 42 }
-const perFn = [
+const totals = __d?.metricsTotals ?? { invocations: 184320, errors: 24, errorRatePct: 0.13, p95Ms: 92, throttles: 0, coldStartPct: 1.8, estCostUsd: 7.4, concurrency: 42 }
+const perFn = __d?.metricsPerFn ?? [
   { key: 'http', invocations: 171200, errors: 21, throttles: 0, avgMs: 41, maxMs: 282, costUsd: 6.1 },
   { key: 'queue', invocations: 12840, errors: 3, throttles: 0, avgMs: 168, maxMs: 410, costUsd: 1.0 },
   { key: 'cli', invocations: 1440, errors: 0, throttles: 0, avgMs: 760, maxMs: 1400, costUsd: 0.3 },
 ]
-const invSpark = [60, 72, 68, 81, 95, 88, 102, 94, 120, 110, 90, 84, 78, 96, 130, 122, 100, 92, 88, 104, 140, 132, 108, 100]
+const invSpark = __d?.invSpark ?? [60, 72, 68, 81, 95, 88, 102, 94, 120, 110, 90, 84, 78, 96, 130, 122, 100, 92, 88, 104, 140, 132, 108, 100]
 function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
 function pct(v, max) { return Math.round((v / max) * 100) }
 </script>

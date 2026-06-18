@@ -1,9 +1,11 @@
 <script server>
-const app = { name: 'acme', env: 'production' }
-const aurora = { id: 'acme-production-db', engine: 'aurora-mysql', minAcu: 0.5, maxAcu: 4, currentAcu: 1.5, database: 'app', connections: 12, status: 'available' }
-const proxy = { name: 'acme-production-proxy', endpoint: 'acme-production-proxy.proxy-xxxx.us-east-1.rds.amazonaws.com', pooledConns: 8, status: 'available' }
-const redis = { id: 'acme-production-redis', node: 'cache.t4g.micro', engine: 'redis 7.1', hitRate: 96.4, status: 'available' }
-const efs = { id: 'fs-0abc', mount: '/mnt/local', sizeMb: 312, status: 'available' }
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const aurora = __d?.aurora ?? { id: 'acme-production-db', engine: 'aurora-mysql', minAcu: 0.5, maxAcu: 4, currentAcu: 1.5, database: 'app', connections: 12, status: 'available' }
+const proxy = __d?.proxy ?? { name: 'acme-production-proxy', endpoint: 'acme-production-proxy.proxy-xxxx.us-east-1.rds.amazonaws.com', pooledConns: 8, status: 'available' }
+const redis = __d?.redis ?? { id: 'acme-production-redis', node: 'cache.t4g.micro', engine: 'redis 7.1', hitRate: 96.4, status: 'available' }
+const efs = __d?.efs ?? { id: 'fs-0abc', mount: '/mnt/local', sizeMb: 312, status: 'available' }
 function tone(s) { return s === 'available' ? 'ok' : 'warn' }
 </script>
 <!DOCTYPE html>
