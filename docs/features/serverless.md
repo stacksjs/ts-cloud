@@ -207,6 +207,7 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 | Command | What it does |
 | --- | --- |
 | `cloud deploy:serverless --env <env>` | Build, package, deploy, activate |
+| `cloud serverless:info --env <env>` | Operational summary (URL, versions, provisioned concurrency, queues, scheduler) |
 | `cloud deploy:serverless --redeploy` | Re-activate the last build (no rebuild) |
 | `cloud serverless:rollback --env <env>` | Roll back to the previous build |
 | `cloud command "<cmd>" --env <env>` | Run a command on the CLI function (recorded to history) |

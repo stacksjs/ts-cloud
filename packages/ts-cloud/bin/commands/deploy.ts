@@ -1072,6 +1072,39 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('serverless:info', 'Show an operational summary of a deployed serverless app')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { serverlessInfo } = await import('../../src/deploy/serverless-app')
+        const info = await serverlessInfo(config, environment)
+        cli.header(`${info.slug} (${info.environment})`)
+        cli.info(`Stack:    ${info.stackStatus}`)
+        cli.info(`Region:   ${info.region}`)
+        if (info.endpoint) cli.info(`URL:      ${info.endpoint}`)
+        if (info.assetUrl) cli.info(`Assets:   ${info.assetUrl}`)
+        cli.info(`Scheduler:${info.scheduler === 'off' ? ' off' : ` ${info.scheduler}`}`)
+        cli.info(`Queues:   ${info.queues.length ? info.queues.join(', ') : 'none'}`)
+        cli.info(`Warming:  ${info.provisionedConcurrency > 0 ? `provisioned concurrency ×${info.provisionedConcurrency}` : 'none / ping-warm'}`)
+        if (info.lastRelease) cli.info(`Release:  ${info.lastRelease.sha.slice(0, 12)} @ ${info.lastRelease.timestamp}`)
+        cli.table(
+          ['Function', 'Version', 'Provisioned'],
+          info.functions.map(f => [
+            f.name,
+            f.version,
+            f.provisioned ? `${f.provisioned.status} ${f.provisioned.allocated}/${f.provisioned.requested}` : '—',
+          ]),
+        )
+      }
+      catch (error: any) {
+        cli.error(`Failed to read info: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('serverless:build-php-layer', 'Build + publish the ts-cloud PHP runtime layer (requires Docker)')
     .option('--arch <architecture>', 'x86_64 or arm64', { default: 'x86_64' })
     .option('--php <version>', 'PHP version', { default: '8.3' })

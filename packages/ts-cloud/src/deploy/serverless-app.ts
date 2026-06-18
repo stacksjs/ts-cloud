@@ -19,6 +19,7 @@ import {
   laravelServerlessEnvDefaults,
   packagePhpApp,
   packageServerlessApp,
+  resolveQueueNames,
   resolveServerlessAppStackName,
   resolveServerlessRuntime,
   resolveServerlessArtifactBucketName,
@@ -810,6 +811,85 @@ export async function getCommandRecord(config: CloudConfig, environment: Environ
 export async function runDbQuery(config: CloudConfig, environment: EnvironmentType, sql: string): Promise<string> {
   const b64 = Buffer.from(sql, 'utf-8').toString('base64')
   return runRemoteCommand(config, environment, `tscloud:db-query --sql-base64=${b64}`)
+}
+
+// ── Status / info ──────────────────────────────────────────────────────────--
+
+export interface ServerlessFunctionInfo {
+  mode: 'http' | 'queue' | 'cli'
+  name: string
+  /** `live` alias version when provisioned concurrency is on, else '$LATEST'. */
+  version: string
+  provisioned?: { status: string, allocated: number, requested: number }
+}
+
+export interface ServerlessInfo {
+  slug: string
+  environment: string
+  region: string
+  stackStatus: string
+  endpoint?: string
+  assetUrl?: string
+  scheduler: 'on' | 'off' | 'sub-minute'
+  queues: string[]
+  provisionedConcurrency: number
+  functions: ServerlessFunctionInfo[]
+  lastRelease?: { sha: string, timestamp: string }
+}
+
+/** Gather an operational summary of a deployed serverless app. */
+export async function serverlessInfo(config: CloudConfig, environment: EnvironmentType): Promise<ServerlessInfo> {
+  const ctx = resolveContext(config, environment)
+  const cf = new CloudFormationClient(ctx.region)
+  const lambda = new LambdaClient(ctx.region)
+  const s3 = new S3Client(ctx.region)
+
+  let stackStatus = 'not deployed'
+  const outputs: Record<string, string> = {}
+  try {
+    const { Stacks } = await cf.describeStacks({ stackName: ctx.stackName })
+    stackStatus = Stacks?.[0]?.StackStatus ?? stackStatus
+    for (const o of Stacks?.[0]?.Outputs ?? [])
+      if (o.OutputKey) outputs[o.OutputKey] = o.OutputValue ?? ''
+  }
+  catch { /* stack not deployed */ }
+
+  const queues = resolveQueueNames(ctx.app, ctx.slug, environment)
+  const pc = ctx.app.provisionedConcurrency ?? 0
+  const modes: Array<'http' | 'queue' | 'cli'> = ['http', 'cli', ...(queues.length ? (['queue'] as const) : [])]
+  const base = `${ctx.slug}-${environment}`
+
+  const functions: ServerlessFunctionInfo[] = []
+  for (const mode of modes) {
+    const name = `${base}-${mode}`
+    const info: ServerlessFunctionInfo = { mode, name, version: '$LATEST' }
+    if (pc > 0) {
+      const alias = await lambda.getAlias(name, 'live').catch(() => null)
+      if (alias?.FunctionVersion) {
+        info.version = alias.FunctionVersion
+        const pcc = await lambda.getProvisionedConcurrencyConfig(name, 'live').catch(() => null)
+        if (pcc)
+          info.provisioned = { status: pcc.Status ?? '-', allocated: pcc.AllocatedProvisionedConcurrentExecutions ?? 0, requested: pcc.RequestedProvisionedConcurrentExecutions ?? 0 }
+      }
+    }
+    functions.push(info)
+  }
+
+  const release = await readRelease(s3, ctx.artifactBucket, ctx.slug, environment).catch(() => null)
+
+  return {
+    slug: ctx.slug,
+    environment,
+    region: ctx.region,
+    stackStatus,
+    endpoint: outputs.HttpApiEndpoint,
+    assetUrl: release?.assetUrl,
+    scheduler: (ctx.app.scheduler ?? 'on') as 'on' | 'off' | 'sub-minute',
+    queues,
+    provisionedConcurrency: pc,
+    functions,
+    lastRelease: release ? { sha: release.sha, timestamp: release.timestamp } : undefined,
+  }
 }
 
 // ── Aurora Serverless v2 lifecycle ─────────────────────────────────────────────

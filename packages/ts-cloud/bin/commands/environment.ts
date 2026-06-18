@@ -171,6 +171,10 @@ export function registerEnvironmentCommands(app: CLI): void {
           return
         }
         const targets = which === 'all' ? (['http', 'queue', 'cli'] as const) : ([which] as Array<'http' | 'queue' | 'cli'>)
+        // Under provisioned concurrency, traffic runs a frozen published version,
+        // so an env change on $LATEST must be published + the `live` alias flipped
+        // to take effect.
+        const usesPc = ((config.environments as any)?.[environment]?.app?.provisionedConcurrency ?? 0) > 0
         const lambda = new LambdaClient(region)
         for (const mode of targets) {
           const name = functions[mode]
@@ -184,7 +188,12 @@ export function registerEnvironmentCommands(app: CLI): void {
           assertEnvWithinLimit(name, next)
           await lambda.updateFunctionConfiguration({ FunctionName: name, Environment: { Variables: next } })
           await lambda.waitForFunctionActive(name, 120)
-          cli.success(`Pushed ${Object.keys(fileVars).length} var(s) → ${name}${options?.replace ? ' (replaced)' : ' (merged)'}`)
+          if (usesPc) {
+            const published = await lambda.publishVersion({ FunctionName: name })
+            if (published.Version)
+              await lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: published.Version })
+          }
+          cli.success(`Pushed ${Object.keys(fileVars).length} var(s) → ${name}${options?.replace ? ' (replaced)' : ' (merged)'}${usesPc ? ' (published + flipped live alias)' : ''}`)
         }
         cli.info('Note: a subsequent `cloud deploy:serverless` re-injects infra/secret env from config.')
       }

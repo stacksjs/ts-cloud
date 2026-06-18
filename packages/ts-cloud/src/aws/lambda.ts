@@ -492,6 +492,43 @@ export class LambdaClient {
     })
   }
 
+  /** Read an alias (e.g. the version `live` points at). Returns null if absent. */
+  async getAlias(functionName: string, name: string): Promise<{ Name?: string, FunctionVersion?: string, AliasArn?: string } | null> {
+    try {
+      return await this.client.request({
+        service: 'lambda',
+        region: this.region,
+        method: 'GET',
+        path: `/2015-03-31/functions/${encodeURIComponent(functionName)}/aliases/${encodeURIComponent(name)}`,
+      })
+    }
+    catch (err: any) {
+      if (/ResourceNotFound/i.test(String(err?.message))) return null
+      throw err
+    }
+  }
+
+  /** Read a provisioned-concurrency config for a qualifier. Returns null if none. */
+  async getProvisionedConcurrencyConfig(functionName: string, qualifier: string): Promise<{
+    Status?: string
+    RequestedProvisionedConcurrentExecutions?: number
+    AllocatedProvisionedConcurrentExecutions?: number
+  } | null> {
+    try {
+      return await this.client.request({
+        service: 'lambda',
+        region: this.region,
+        method: 'GET',
+        path: `/2019-09-30/functions/${encodeURIComponent(functionName)}/provisioned-concurrency`,
+        queryParams: { Qualifier: qualifier },
+      })
+    }
+    catch (err: any) {
+      if (/ProvisionedConcurrencyConfigNotFound|ResourceNotFound/i.test(String(err?.message))) return null
+      throw err
+    }
+  }
+
   /** Pre-provision N warm execution environments on a function version/alias. */
   async putProvisionedConcurrencyConfig(params: {
     FunctionName: string
