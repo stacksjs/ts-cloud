@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.10...v0.5.11)
+
+### 🚀 Features
+
+- **ui**: drill-down pages for every serverless dashboard card ([3c3a55d](https://github.com/stacksjs/ts-cloud/commit/3c3a55d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.11 ([dc76bc1](https://github.com/stacksjs/ts-cloud/commit/dc76bc1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.9...v0.5.10)
 
 ### 🚀 Features
