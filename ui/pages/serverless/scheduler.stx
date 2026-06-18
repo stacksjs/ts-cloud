@@ -4,7 +4,7 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const app = __d?.app ?? { name: 'acme', env: 'production' }
 const scheduler = { ...{ enabled: true, mode: 'sub-minute', expression: 'rate(1 minute)', lastRun: '36s ago', nextRun: '24s' }, ...(__d?.scheduler ?? {}) }
 // Tasks Laravel's schedule:run would fire (illustrative — discovered from the app).
-const tasks = [
+const tasks = __d?.schedulerTasks ?? [
   { command: 'emails:digest', cron: '0 8 * * *', desc: 'Daily 08:00', lastRun: '8h ago', lastStatus: 'ok' },
   { command: 'metrics:rollup', cron: '*/5 * * * *', desc: 'Every 5 min', lastRun: '3m ago', lastStatus: 'ok' },
   { command: 'subscriptions:renew', cron: '*/1 * * * *', desc: 'Every minute', lastRun: '36s ago', lastStatus: 'ok' },

@@ -13,11 +13,13 @@ import { CloudFormationClient } from '../aws/cloudformation'
 import { CloudWatchClient } from '../aws/cloudwatch'
 import { CloudWatchLogsClient } from '../aws/cloudwatch-logs'
 import { CostExplorerClient } from '../aws/cost-explorer'
+import { EFSClient } from '../aws/efs'
 import { LambdaClient } from '../aws/lambda'
 import { S3Client } from '../aws/s3'
 import { SecretsManagerClient } from '../aws/secrets-manager'
 import { SQSClient } from '../aws/sqs'
-import { serverlessInfo } from './serverless-app'
+import { WAFv2Client } from '../aws/wafv2'
+import { runRemoteCommand, serverlessInfo } from './serverless-app'
 
 /** A loosely-typed bag — the pages read named slices, missing ones fall back. */
 export type DashboardData = Record<string, any>
@@ -31,6 +33,15 @@ async function lambdaMetric(cw: CloudWatchClient, fn: string, name: string, kind
     Namespace: 'AWS/Lambda', MetricName: name, Dimensions: [{ Name: 'FunctionName', Value: fn }],
     StartTime: start, EndTime: end, Period: 86400, Statistics: [kind],
   }).catch(() => [])
+  if (!pts.length) return 0
+  if (kind === 'Sum') return pts.reduce((n, p) => n + (p.Sum ?? 0), 0)
+  if (kind === 'Maximum') return Math.max(...pts.map(p => p.Maximum ?? 0))
+  return pts.reduce((n, p) => n + (p.Average ?? 0), 0) / pts.length
+}
+
+/** Aggregate any CloudWatch metric over a window (generic namespace/dimensions). */
+async function cwMetric(cw: CloudWatchClient, namespace: string, name: string, dims: Array<{ Name: string, Value: string }>, kind: 'Sum' | 'Average' | 'Maximum', start: Date, end: Date): Promise<number> {
+  const pts = await cw.getMetricStatistics({ Namespace: namespace, MetricName: name, Dimensions: dims, StartTime: start, EndTime: end, Period: 86400, Statistics: [kind] }).catch(() => [])
   if (!pts.length) return 0
   if (kind === 'Sum') return pts.reduce((n, p) => n + (p.Sum ?? 0), 0)
   if (kind === 'Maximum') return Math.max(...pts.map(p => p.Maximum ?? 0))
@@ -127,6 +138,15 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
     const sqs = new SQSClient(region)
     const overview: any[] = []
     const detail: any[] = []
+    // Shared DLQ depth (one DLQ for all queues).
+    let dlqDepth = 0
+    try {
+      const { QueueUrl } = await sqs.getQueueUrl(`${info.slug}-${environment}-dlq`)
+      const { Attributes } = await sqs.getQueueAttributes(QueueUrl)
+      dlqDepth = Number(Attributes.ApproximateNumberOfMessages ?? 0)
+    }
+    catch { /* no dlq */ }
+
     const resolvedQueues = app ? resolveQueues(app, info.slug, environment) : []
     for (const q of resolvedQueues) {
       const short = q.name.replace(`${info.slug}-${environment}-`, '')
@@ -138,9 +158,9 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
         inFlight = Number(Attributes.ApproximateNumberOfMessagesNotVisible ?? 0)
       }
       catch { /* queue may not exist */ }
-      const processed = Math.round(await lambdaMetric(cw, info.functions.find(f => f.mode === 'queue')?.name ?? '', 'Invocations', 'Sum', start, end))
-      overview.push({ name: short, visible, inFlight, processed, dlq: 0 })
-      detail.push({ name: q.name, short, visible, inFlight, delayed: 0, processed, oldestSec: 0, concurrency: q.concurrency ?? app?.queueConcurrency ?? '—', tries: app?.queueTries ?? 3, visTimeout: (app?.queueTimeout ?? 120) * 6, dlq: 0 })
+      const processed = Math.round(await cwMetric(cw, 'AWS/SQS', 'NumberOfMessagesDeleted', [{ Name: 'QueueName', Value: q.name }], 'Sum', start, end))
+      overview.push({ name: short, visible, inFlight, processed, dlq: dlqDepth })
+      detail.push({ name: q.name, short, visible, inFlight, delayed: 0, processed, oldestSec: 0, concurrency: q.concurrency ?? app?.queueConcurrency ?? '—', tries: app?.queueTries ?? 3, visTimeout: (app?.queueTimeout ?? 120) * 6, dlq: dlqDepth })
     }
     if (overview.length) out.queues = overview
     if (detail.length) out.queuesDetail = detail
@@ -155,11 +175,37 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
     const outputs: Record<string, string> = {}
     for (const o of Stacks?.[0]?.Outputs ?? []) if (o.OutputKey) outputs[o.OutputKey] = o.OutputValue ?? ''
     if (app?.database?.connection === 'aurora-serverless') {
-      out.aurora = { id: `${info.slug}-${environment}-db`, engine: 'aurora-mysql', minAcu: app?.database?.minCapacity ?? 0.5, maxAcu: app?.database?.maxCapacity ?? 4, currentAcu: app?.database?.minCapacity ?? 0.5, database: 'app', connections: 0, status: outputs.DbEndpoint ? 'available' : 'creating' }
-      if (app?.rdsProxy) out.proxy = { name: `${info.slug}-${environment}-proxy`, endpoint: outputs.DbProxyEndpoint ?? '—', pooledConns: 0, status: 'available' }
+      const clusterId = `${info.slug}-${environment}-db`
+      const dim = [{ Name: 'DBClusterIdentifier', Value: clusterId }]
+      const [acu, conns] = await Promise.all([
+        cwMetric(cw, 'AWS/RDS', 'ServerlessDatabaseCapacity', dim, 'Average', start, end),
+        cwMetric(cw, 'AWS/RDS', 'DatabaseConnections', dim, 'Maximum', start, end),
+      ])
+      out.aurora = { id: clusterId, engine: 'aurora-mysql', minAcu: app?.database?.minCapacity ?? 0.5, maxAcu: app?.database?.maxCapacity ?? 4, currentAcu: acu ? Number(acu.toFixed(1)) : (app?.database?.minCapacity ?? 0.5), database: 'app', connections: Math.round(conns), status: outputs.DbEndpoint ? 'available' : 'creating' }
+      if (app?.rdsProxy) out.proxy = { name: `${info.slug}-${environment}-proxy`, endpoint: outputs.DbProxyEndpoint ?? '—', pooledConns: Math.round(conns), status: 'available' }
     }
-    if (app?.cache?.driver === 'elasticache') out.redis = { id: `${info.slug}-${environment}-redis`, node: 'cache.t4g.micro', engine: 'redis', hitRate: 0, status: outputs.CacheEndpoint ? 'available' : 'creating' }
-    if (app?.efs) out.efs = { id: outputs.EfsId ?? 'efs', mount: '/mnt/local', sizeMb: 0, status: 'available' }
+    if (app?.cache?.driver === 'elasticache') {
+      const rgId = `${info.slug}-${environment}-redis`
+      const dim = [{ Name: 'CacheClusterId', Value: `${rgId}-001` }]
+      const [hits, misses] = await Promise.all([
+        cwMetric(cw, 'AWS/ElastiCache', 'CacheHits', dim, 'Sum', start, end),
+        cwMetric(cw, 'AWS/ElastiCache', 'CacheMisses', dim, 'Sum', start, end),
+      ])
+      const hitRate = hits + misses > 0 ? Number(((hits / (hits + misses)) * 100).toFixed(1)) : 0
+      out.redis = { id: rgId, node: 'cache.t4g.micro', engine: 'redis', hitRate, status: outputs.CacheEndpoint ? 'available' : 'creating' }
+    }
+    if (app?.efs) {
+      let sizeMb = 0
+      try {
+        if (outputs.EfsId) {
+          const efs = new EFSClient(region)
+          const { FileSystems } = await efs.describeFileSystems({ FileSystemId: outputs.EfsId })
+          sizeMb = Number((((FileSystems?.[0]?.SizeInBytes?.Value ?? 0)) / 1_048_576).toFixed(1))
+        }
+      }
+      catch { /* efs optional */ }
+      out.efs = { id: outputs.EfsId ?? 'efs', mount: '/mnt/local', sizeMb, status: 'available' }
+    }
     out.assetsInfo = outputs.AssetsCdnDomain ? { bucket: outputs.AssetsBucketName ?? `${info.slug}-${environment}-assets`, cdn: outputs.AssetsCdnDomain, customDomain: app?.assetDomain ?? '—', assetUrl: info.assetUrl ?? '—', files: 0, sizeMb: 0, cacheHitPct: 0, build: out.app.build } : undefined
   }
   catch { /* cfn optional */ }
@@ -223,6 +269,15 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
       out.costServices = thisMonth.filter(s => s.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 12).map(s => ({ name: s.service, usd: Number(s.amount.toFixed(2)), note: '' }))
       out.metrics.estCostUsd = Number((mtd / dayOfMonth).toFixed(2))
       out.metricsTotals.estCostUsd = out.metrics.estCostUsd
+
+      // Daily spend trend for the chart.
+      out.costTrend = await ce.getDailyTotals({ start: isoDate(monthStart), end: isoDate(now) }).catch(() => [])
+
+      // Per-function cost: split the Lambda service line by each fn's GB-seconds.
+      const lambdaCost = thisMonth.find(s => /lambda/i.test(s.service))?.amount ?? 0
+      const gbSec = (f: any): number => f.invocations * (f.p50 / 1000) * (f.memory / 1024)
+      const totalGbSec = fnsDetail.reduce((n, f) => n + gbSec(f), 0) || 1
+      out.costPerFn = fnsDetail.map(f => ({ key: f.key, requests: f.invocations, gbSec: Math.round(gbSec(f)), usd: Number((lambdaCost * (gbSec(f) / totalGbSec)).toFixed(2)) }))
     }
   }
   catch { /* cost optional */ }
@@ -233,8 +288,36 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
       const blocked = await cw.getMetricStatistics({ Namespace: 'AWS/WAFV2', MetricName: 'BlockedRequests', StartTime: start, EndTime: end, Period: 86400, Statistics: ['Sum'] }).catch(() => [])
       const allowed = await cw.getMetricStatistics({ Namespace: 'AWS/WAFV2', MetricName: 'AllowedRequests', StartTime: start, EndTime: end, Period: 86400, Statistics: ['Sum'] }).catch(() => [])
       out.waf = { enabled: true, scope: 'REGIONAL', acl: `${info.slug}-${environment}-waf`, allowed24h: Math.round(allowed.reduce((n, p) => n + (p.Sum ?? 0), 0)), blocked24h: Math.round(blocked.reduce((n, p) => n + (p.Sum ?? 0), 0)) }
+      // Rule list from the actual web ACL.
+      try {
+        const waf = new WAFv2Client(region)
+        const acls = await waf.listWebACLs('REGIONAL')
+        const acl = acls.find(a => a.Name?.includes(`${info.slug}-${environment}`)) ?? acls[0]
+        if (acl?.Name && acl.Id) {
+          out.waf.acl = acl.Name
+          const rules = await waf.getWebACLRules(acl.Name, acl.Id, 'REGIONAL')
+          if (rules.length) out.wafRules = rules.map(r => ({ name: r.Name ?? '—', detail: `priority ${r.Priority ?? 0}`, action: r.Action ?? 'count', blocked24h: 0 }))
+        }
+      }
+      catch { /* rule list optional */ }
     }
     catch { /* waf optional */ }
+  }
+
+  // ── Scheduler tasks (Laravel `schedule:list` via the CLI function) ──────────-
+  if (info.scheduler !== 'off' && app?.kind === 'php') {
+    try {
+      const out2 = await runRemoteCommand(config, environment, 'schedule:list')
+      const tasks: any[] = []
+      for (const line of (out2 || '').split('\n')) {
+        // schedule:list rows look like: "*/5 * * * *  php artisan metrics:rollup .... Next Due: ..."
+        const m = /^\s*([\d*/,\-\s]+?)\s{2,}(.+?)(?:\s{2,}Next Due.*)?$/.exec(line)
+        if (m && /[*\d]/.test(m[1]) && m[1].trim().split(/\s+/).length === 5)
+          tasks.push({ command: m[2].trim().replace(/^php artisan /, ''), cron: m[1].trim(), desc: '', lastRun: '—', lastStatus: 'ok' })
+      }
+      if (tasks.length) out.schedulerTasks = tasks
+    }
+    catch { /* schedule:list optional (needs the tscloud bridge / a php app) */ }
   }
 
   return out

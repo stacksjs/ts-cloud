@@ -29,14 +29,14 @@ const services = __d?.costServices ?? [
 ]
 
 // Per-function Lambda compute split.
-const perFn = [
+const perFn = __d?.costPerFn ?? [
   { key: 'http', requests: 171200, gbSec: 168200, usd: 31.40 },
   { key: 'queue', requests: 12840, gbSec: 41200, usd: 7.80 },
   { key: 'cli', requests: 1440, gbSec: 11600, usd: 2.00 },
 ]
 
 // Daily spend trend (most recent last).
-const trend = [5.9, 6.2, 7.1, 6.8, 7.4, 8.0, 7.6, 9.1, 8.4, 7.0, 6.4, 7.8, 8.9, 9.3, 8.1, 7.4, 8.2]
+const trend = __d?.costTrend ?? [5.9, 6.2, 7.1, 6.8, 7.4, 8.0, 7.6, 9.1, 8.4, 7.0, 6.4, 7.8, 8.9, 9.3, 8.1, 7.4, 8.2]
 
 const totalServices = services.reduce((s, x) => s + x.usd, 0)
 function pct(v, max) { return Math.round((v / max) * 100) }

@@ -93,4 +93,25 @@ export class CostExplorerClient {
 
     return services
   }
+
+  /** Total unblended cost per day over a window (for the spend trend chart). */
+  async getDailyTotals(params: { start: string, end: string }): Promise<number[]> {
+    const result = await this.client.request({
+      service: 'ce',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/',
+      headers: {
+        'content-type': 'application/x-amz-json-1.1',
+        'x-amz-target': 'AWSInsightsIndexService.GetCostAndUsage',
+      },
+      body: JSON.stringify({
+        TimePeriod: { Start: params.start, End: params.end },
+        Granularity: 'DAILY',
+        Metrics: ['UnblendedCost'],
+      }),
+    })
+    const byTime = result?.ResultsByTime ?? []
+    return byTime.map((t: any) => Number.parseFloat(t.Total?.UnblendedCost?.Amount ?? '0'))
+  }
 }
