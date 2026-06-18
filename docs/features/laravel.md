@@ -323,6 +323,11 @@ SSH keys, and backups:
 
 ![ts-cloud Server dashboard](/images/dashboard-server.png)
 
+Every card drills into a dedicated page (`/server/metrics`, `/services`,
+`/sites`, `/deployments`, `/workers`, `/ssh-keys`, `/backups`) with deeper
+detail and the matching `cloud server:*` commands. Build it with live values via
+`cloud dashboard:build` (otherwise it renders representative sample data).
+
 The **Serverless** view (for the Lambda pipeline) covers function metrics,
 queues, the scheduler, the WAF, data services, recent deployments with rollback,
 assets/CDN, and secrets:

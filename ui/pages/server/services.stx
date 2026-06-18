@@ -1,0 +1,44 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'acme-production-app' }
+const services = __d?.servicesDetail ?? [
+  { name: 'nginx', status: 'running', since: '14d', memMb: 42, auto: true },
+  { name: 'php8.3-fpm', status: 'running', since: '14d', memMb: 318, auto: true },
+  { name: 'mysql', status: 'running', since: '14d', memMb: 612, auto: true },
+  { name: 'redis', status: 'running', since: '14d', memMb: 28, auto: true },
+  { name: 'meilisearch', status: 'running', since: '6d', memMb: 96, auto: true },
+]
+function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' ? 'bad' : 'warn') }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud — Services' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Services</div>
+    <header class="page"><div><h1>Services</h1><p>systemd / pantry services managed on the box.</p></div></header>
+    <div class="section">
+      <div class="panel">
+        <table>
+          <thead><tr><th>Service</th><th>Status</th><th>Uptime</th><th>Memory</th><th>Autostart</th><th>Restart</th></tr></thead>
+          <tbody>
+            @foreach (services as s)
+              <tr>
+                <td class="mono"><b>{{ s.name }}</b></td>
+                <td><span class="pill {{ tone(s.status) }}">{{ s.status }}</span></td>
+                <td style="color:var(--txt2)">{{ s.since }}</td>
+                <td>{{ s.memMb }} MB</td>
+                <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
+                <td><span class="cmd">cloud server:ssh {{ server.name }} -- systemctl restart {{ s.name }}</span></td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Install software with <span class="mono">cloud server:recipe {{ server.name }} &lt;recipe&gt;</span>.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

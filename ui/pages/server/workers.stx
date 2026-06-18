@@ -1,0 +1,67 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'acme-production-app' }
+const workers = __d?.workersDetail ?? [
+  { name: 'default', processes: 2, connection: 'redis', status: 'running', processed: 128400, failed: 3 },
+  { name: 'emails', processes: 1, connection: 'redis', status: 'running', processed: 9210, failed: 1 },
+]
+const scheduler = __d?.scheduler ?? { enabled: true, lastRun: '36s ago' }
+const cron = __d?.cron ?? [
+  { schedule: '* * * * *', command: 'php artisan schedule:run', desc: 'Laravel scheduler' },
+  { schedule: '0 3 * * *', command: 'backup:run', desc: 'Nightly backup' },
+]
+function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' ? 'bad' : 'warn') }
+function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud — Workers' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Workers &amp; Scheduler</div>
+    <header class="page"><div><h1>Workers &amp; Scheduler</h1><p>Queue workers (supervisor/systemd) and the cron-driven scheduler.</p></div></header>
+    <div class="section">
+      <h2>Queue workers</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Queue</th><th>Processes</th><th>Connection</th><th>Processed</th><th>Failed</th><th>Status</th><th>Restart</th></tr></thead>
+          <tbody>
+            @foreach (workers as w)
+              <tr>
+                <td><b>{{ w.name }}</b></td>
+                <td>×{{ w.processes }}</td>
+                <td class="mono">{{ w.connection }}</td>
+                <td style="color:var(--txt2)">{{ fmt(w.processed) }}</td>
+                <td>@if (w.failed > 0)<span class="bad pill">{{ w.failed }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
+                <td><span class="pill {{ tone(w.status) }}">{{ w.status }}</span></td>
+                <td><span class="cmd">cloud server:worker:restart {{ server.name }} {{ w.name }}</span></td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Add with <span class="mono">cloud server:worker:add {{ server.name }} &lt;queue&gt;</span>.</p>
+      </div>
+    </div>
+    <div class="cols section">
+      <div>
+        <h2>Scheduler</h2>
+        <div class="panel">
+          <div class="kv"><span>state</span> @if (scheduler.enabled)<span class="ok pill">on</span>@else<span class="pill warn">off</span>@endif</div>
+          <div class="kv"><span>last run</span> <span style="color:var(--txt2)">{{ scheduler.lastRun }}</span></div>
+        </div>
+      </div>
+      <div>
+        <h2>Cron jobs</h2>
+        <div class="panel">
+          @foreach (cron as c)
+            <div class="kv"><span class="mono">{{ c.schedule }}</span> <b class="mono" style="font-size:12px">{{ c.command }}</b></div>
+          @endforeach
+          <p class="note">Manage with <span class="mono">cloud server:cron:add {{ server.name }} &lt;schedule&gt; &lt;command&gt;</span>.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

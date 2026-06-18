@@ -1,0 +1,38 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'acme-production-app' }
+const sshKeys = __d?.sshKeys ?? [
+  { name: 'chris@macbook', fingerprint: 'SHA256:9Xk…q2A', type: 'ssh-ed25519', added: '14d ago' },
+  { name: 'ci-deploy', fingerprint: 'SHA256:b7P…m4Z', type: 'ssh-ed25519', added: '14d ago' },
+]
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud — SSH Keys' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> SSH Keys</div>
+    <header class="page"><div><h1>SSH Keys</h1><p>Authorized keys for the box, applied during provisioning.</p></div></header>
+    <div class="section">
+      <div class="panel">
+        <table>
+          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Added</th></tr></thead>
+          <tbody>
+            @foreach (sshKeys as k)
+              <tr>
+                <td><b>{{ k.name }}</b></td>
+                <td class="mono" style="color:var(--txt3)">{{ k.type }}</td>
+                <td class="mono">{{ k.fingerprint }}</td>
+                <td style="color:var(--txt3)">{{ k.added }}</td>
+              </tr>
+            @endforeach
+          </tbody>
+        </table>
+        <p class="note">Keys are declarative — add/remove them under <span class="mono">infrastructure.ssh</span> in cloud.config and run <span class="mono">cloud deploy</span>. Connect with <span class="mono">cloud server:ssh {{ server.name }}</span>.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

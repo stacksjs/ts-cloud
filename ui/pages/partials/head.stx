@@ -117,4 +117,11 @@
   .cmd::before { content: '$'; color: var(--txt3); }
   .cmd.accent { border-color: rgba(91,140,255,0.4); color: var(--accent); }
   .cmds { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+  /* Server dashboard components */
+  .svc { display: flex; flex-wrap: wrap; gap: 10px; }
+  .svc .item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--panel-br); font-size: 13px; font-weight: 500; }
+  .key { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
+  .key:first-of-type { border-top: 0; }
+  .key .fp { margin-left: auto; color: var(--txt3); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>
