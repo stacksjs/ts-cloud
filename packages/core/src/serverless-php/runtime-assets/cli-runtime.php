@@ -36,6 +36,11 @@ while (true) {
 
 function dispatch(array $event, string $artisan, string $queueCommand): array
 {
+    // Warmer pings keep the container warm without running anything.
+    if (($event['warmer'] ?? false) === true) {
+        return ['warm' => true];
+    }
+
     // SQS queue event.
     if (isset($event['Records']) && is_array($event['Records'])) {
         $failures = [];

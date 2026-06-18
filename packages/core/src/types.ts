@@ -1714,6 +1714,11 @@ export interface ServerlessAppConfig {
    * 0/undefined disables warming.
    */
   warm?: number
+  /**
+   * Which functions the warmer keeps warm. @default ['http']
+   * (queue/cli are async + latency-tolerant, so HTTP-only is the sensible default).
+   */
+  warmFunctions?: Array<'http' | 'queue' | 'cli'>
   /** CloudWatch log retention (days) for all function log groups. @default 14 */
   logRetention?: number
 

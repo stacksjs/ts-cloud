@@ -245,6 +245,9 @@ function parseRecordBody(body: string): unknown {
 export function createQueueHandler(handler: JobHandler | undefined): LambdaQueueHandler {
   return async (event: SqsEvent): Promise<SqsBatchResponse> => {
     const batchItemFailures: Array<{ itemIdentifier: string }> = []
+    // Warmer pings invoke the function directly (no SQS Records) — keep the
+    // container warm without treating the ping as a job.
+    if ((event as unknown as { warmer?: boolean }).warmer) return { batchItemFailures }
     if (!handler) return { batchItemFailures }
 
     for (const record of event.Records ?? []) {
@@ -268,6 +271,8 @@ export function createQueueHandler(handler: JobHandler | undefined): LambdaQueue
  */
 export function createCliHandler(handler: CommandHandler | undefined): LambdaCliHandler {
   return async (event: CliEvent): Promise<CliResult> => {
+    // Warmer pings keep the container warm without running a command.
+    if ((event as unknown as { warmer?: boolean }).warmer) return { statusCode: 0, output: 'warm' }
     if (!handler) return { statusCode: 501, output: 'No CLI handler configured' }
     return handler(event)
   }

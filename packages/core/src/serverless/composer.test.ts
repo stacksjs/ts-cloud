@@ -142,14 +142,14 @@ describe('composeServerlessAppTemplate', () => {
 
   it('adds warmer rules sized to the warm count (5 targets/rule)', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', warm: 7 })
-    expect((template.Resources.WarmerRule0 as any).Properties.Targets).toHaveLength(5)
-    expect((template.Resources.WarmerRule1 as any).Properties.Targets).toHaveLength(2)
-    expect((template.Resources.WarmerPermission as any).Properties.Principal).toBe('events.amazonaws.com')
+    expect((template.Resources.WarmerHttpRule0 as any).Properties.Targets).toHaveLength(5)
+    expect((template.Resources.WarmerHttpRule1 as any).Properties.Targets).toHaveLength(2)
+    expect((template.Resources.WarmerHttpPermission as any).Properties.Principal).toBe('events.amazonaws.com')
   })
 
   it('omits warmer rules when warm is unset', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts' })
-    expect(template.Resources.WarmerRule0).toBeUndefined()
+    expect(template.Resources.WarmerHttpRule0).toBeUndefined()
   })
 
   it('sets TSCLOUD_OCTANE on functions when octane is enabled', () => {
@@ -290,6 +290,23 @@ describe('composeServerlessAppTemplate', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['emails', { invoices: 10 }], queueConcurrency: 3 })
     expect((template.Resources.AppQueue0Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(3) // global
     expect((template.Resources.AppQueue1Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(10) // per-queue wins
+  })
+
+  it('warms only HTTP by default', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', warm: 2 })
+    expect((template.Resources.WarmerHttpRule0 as any).Type).toBe('AWS::Events::Rule')
+    expect(template.Resources.WarmerQueueRule0).toBeUndefined()
+    expect(template.Resources.WarmerCliRule0).toBeUndefined()
+    expect((template.Resources.WarmerHttpRule0 as any).Properties.Targets).toHaveLength(2)
+  })
+
+  it('warms the configured set of functions', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', warm: 1, warmFunctions: ['http', 'cli'], queues: false })
+    expect((template.Resources.WarmerHttpRule0 as any).Type).toBe('AWS::Events::Rule')
+    expect((template.Resources.WarmerCliRule0 as any).Type).toBe('AWS::Events::Rule')
+    expect((template.Resources.WarmerCliPermission as any).Properties.FunctionName).toEqual({ Ref: 'CliFunction' })
+    // queue not requested + queues disabled → no queue warmer
+    expect(template.Resources.WarmerQueueRule0).toBeUndefined()
   })
 
   it('honors a custom log retention', () => {

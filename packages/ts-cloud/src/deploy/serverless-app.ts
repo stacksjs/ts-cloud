@@ -142,7 +142,7 @@ async function writeRelease(s3: S3Client, bucket: string, slug: string, env: str
 }
 
 /** Resolve secrets from Secrets Manager into a flat env map. */
-async function resolveSecrets(app: ServerlessAppConfig, region: string): Promise<Record<string, string>> {
+export async function resolveSecrets(app: ServerlessAppConfig, region: string): Promise<Record<string, string>> {
   if (!app.secrets) return {}
   const sm = new SecretsManagerClient(region)
   const out: Record<string, string> = {}
@@ -150,6 +150,20 @@ async function resolveSecrets(app: ServerlessAppConfig, region: string): Promise
   const entries: Array<{ envName: string, secretId: string }> = Array.isArray(app.secrets)
     ? app.secrets.map(name => ({ envName: name.split('/').pop()!.toUpperCase().replace(/[^A-Z0-9_]/g, '_'), secretId: name }))
     : Object.entries(app.secrets).map(([envName, secretId]) => ({ envName, secretId }))
+
+  // Array-form secrets derive their env name from the last path segment, so two
+  // secrets ending in the same segment (e.g. `a/db`, `b/db`) would silently
+  // collide. Fail loudly and tell the user to use the map form to disambiguate.
+  if (Array.isArray(app.secrets)) {
+    const byName = new Map<string, string[]>()
+    for (const { envName, secretId } of entries)
+      byName.set(envName, [...(byName.get(envName) ?? []), secretId])
+    const clashes = [...byName.entries()].filter(([, ids]) => ids.length > 1)
+    if (clashes.length) {
+      const detail = clashes.map(([name, ids]) => `${name} ← ${ids.join(', ')}`).join('; ')
+      throw new Error(`serverless secrets: multiple secrets map to the same env var (${detail}). Use the map form { ENV_NAME: 'secret/id' } to disambiguate.`)
+    }
+  }
 
   for (const { envName, secretId } of entries) {
     const value = await sm.getSecretValue({ SecretId: secretId })
@@ -546,6 +560,11 @@ export async function deployServerlessApp(
         LogType: 'Tail',
       })
       if (res.FunctionError) {
+        // The new code is already live at this point (functions were activated in
+        // step 5, before hooks run). Make that explicit so the operator knows to
+        // roll back rather than assume the deploy didn't land.
+        cli.error('Deploy hook failed — the new build is ALREADY LIVE.')
+        cli.info(`  Roll back with: cloud serverless:rollback --env ${environment}`)
         throw new Error(`Deploy hook failed (${command}): ${res.Payload}`)
       }
     }
@@ -659,6 +678,74 @@ export async function runRemoteCommand(config: CloudConfig, environment: Environ
   if (res.FunctionError)
     throw new Error(`Command failed: ${res.Payload}`)
   return res.Payload ?? ''
+}
+
+// ── Command history (Vapor `command:list` / `command:again`) ───────────────────
+
+/** One recorded `cloud command` invocation. */
+export interface CommandRecord {
+  id: number
+  command: string
+  timestamp: string
+  status: 'ok' | 'error'
+  output: string
+}
+
+const HISTORY_KEY = (slug: string, env: string): string => `commands/${slug}/${env}/history.json`
+const HISTORY_CAP = 50
+
+async function readHistory(s3: S3Client, bucket: string, slug: string, env: string): Promise<CommandRecord[]> {
+  try {
+    return (await s3.getObjectJson<{ records: CommandRecord[] }>(bucket, HISTORY_KEY(slug, env)))?.records ?? []
+  }
+  catch {
+    return []
+  }
+}
+
+/** Run a command on the CLI function AND record it to the history log (best-effort). */
+export async function runAndRecordCommand(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  command: string,
+): Promise<{ id: number, status: 'ok' | 'error', output: string }> {
+  const ctx = resolveContext(config, environment)
+  const lambda = new LambdaClient(ctx.region)
+  const cliName = `${ctx.slug}-${environment}-cli`
+  const res = await lambda.invoke({ FunctionName: cliName, InvocationType: 'RequestResponse', Payload: { command }, LogType: 'Tail' })
+  const output = res.Payload ?? ''
+  const status: 'ok' | 'error' = res.FunctionError ? 'error' : 'ok'
+
+  // Append to history — never let a history write failure mask the command result.
+  let id = -1
+  try {
+    const s3 = new S3Client(ctx.region)
+    if (await s3.bucketExists(ctx.artifactBucket)) {
+      const records = await readHistory(s3, ctx.artifactBucket, ctx.slug, environment)
+      id = records.reduce((m, r) => Math.max(m, r.id), 0) + 1
+      records.push({ id, command, timestamp: new Date().toISOString(), status, output: output.slice(0, 4000) })
+      await s3.putObjectJson(ctx.artifactBucket, HISTORY_KEY(ctx.slug, environment), { records: records.slice(-HISTORY_CAP) })
+    }
+  }
+  catch { /* history is best-effort */ }
+
+  if (res.FunctionError)
+    throw new Error(`Command failed${id > 0 ? ` (#${id})` : ''}: ${output}`)
+  return { id, status, output }
+}
+
+/** Return the recorded command history (most-recent last). */
+export async function listCommandHistory(config: CloudConfig, environment: EnvironmentType): Promise<CommandRecord[]> {
+  const ctx = resolveContext(config, environment)
+  const s3 = new S3Client(ctx.region)
+  return readHistory(s3, ctx.artifactBucket, ctx.slug, environment)
+}
+
+/** Look up one history record by id (or the most recent when id is omitted). */
+export async function getCommandRecord(config: CloudConfig, environment: EnvironmentType, id?: number): Promise<CommandRecord | undefined> {
+  const records = await listCommandHistory(config, environment)
+  if (!records.length) return undefined
+  return id == null ? records[records.length - 1] : records.find(r => r.id === id)
 }
 
 /**

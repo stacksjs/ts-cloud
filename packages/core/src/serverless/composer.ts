@@ -453,38 +453,44 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     }
   }
 
-  // ── Warming: keep N HTTP containers warm via scheduled pings ────────────────
+  // ── Warming: keep N containers warm via scheduled pings ─────────────────────
   // EventBridge allows up to 5 targets per rule, each invoked concurrently — so
-  // a rule with N targets warms N containers. For N > 5 we add more rules.
+  // a rule with N targets warms N containers. For N > 5 we add more rules. The
+  // warmed functions default to HTTP only (queue/cli are latency-tolerant).
   if (app.warm && app.warm > 0) {
     const TARGETS_PER_RULE = 5
-    const ruleCount = Math.ceil(app.warm / TARGETS_PER_RULE)
-    let warmed = 0
-    for (let r = 0; r < ruleCount; r++) {
-      const targets = Math.min(TARGETS_PER_RULE, app.warm - warmed)
-      resources[`WarmerRule${r}`] = {
-        Type: 'AWS::Events::Rule',
+    const fnResource: Record<'http' | 'queue' | 'cli', string> = { http: 'HttpFunction', queue: 'QueueFunction', cli: 'CliFunction' }
+    const warmModes = (app.warmFunctions ?? ['http']).filter(m => m !== 'queue' || hasQueue)
+    for (const mode of warmModes) {
+      const cap = mode.charAt(0).toUpperCase() + mode.slice(1)
+      const ruleCount = Math.ceil(app.warm / TARGETS_PER_RULE)
+      let warmed = 0
+      for (let r = 0; r < ruleCount; r++) {
+        const targets = Math.min(TARGETS_PER_RULE, app.warm - warmed)
+        resources[`Warmer${cap}Rule${r}`] = {
+          Type: 'AWS::Events::Rule',
+          Properties: {
+            Name: `${slug}-${environment}-warmer-${mode}-${r}`,
+            ScheduleExpression: 'rate(5 minutes)',
+            State: 'ENABLED',
+            Targets: Array.from({ length: targets }, (_, i) => ({
+              Id: `warm-${mode}-${r}-${i}`,
+              Arn: Fn.getAtt(fnResource[mode], 'Arn'),
+              Input: JSON.stringify({ warmer: true }),
+            })),
+          },
+        }
+        warmed += targets
+      }
+      resources[`Warmer${cap}Permission`] = {
+        Type: 'AWS::Lambda::Permission',
         Properties: {
-          Name: `${slug}-${environment}-warmer-${r}`,
-          ScheduleExpression: 'rate(5 minutes)',
-          State: 'ENABLED',
-          Targets: Array.from({ length: targets }, (_, i) => ({
-            Id: `warm-${r}-${i}`,
-            Arn: Fn.getAtt('HttpFunction', 'Arn'),
-            Input: JSON.stringify({ warmer: true }),
-          })),
+          FunctionName: Fn.ref(fnResource[mode]),
+          Action: 'lambda:InvokeFunction',
+          Principal: 'events.amazonaws.com',
+          SourceArn: Fn.sub('arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/' + `${slug}-${environment}-warmer-${mode}-*`),
         },
       }
-      warmed += targets
-    }
-    resources.WarmerPermission = {
-      Type: 'AWS::Lambda::Permission',
-      Properties: {
-        FunctionName: Fn.ref('HttpFunction'),
-        Action: 'lambda:InvokeFunction',
-        Principal: 'events.amazonaws.com',
-        SourceArn: Fn.sub('arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/' + `${slug}-${environment}-warmer-*`),
-      },
     }
   }
 

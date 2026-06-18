@@ -184,7 +184,8 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 | `cloud deploy:serverless --env <env>` | Build, package, deploy, activate |
 | `cloud deploy:serverless --redeploy` | Re-activate the last build (no rebuild) |
 | `cloud serverless:rollback --env <env>` | Roll back to the previous build |
-| `cloud command "<cmd>" --env <env>` | Run a command on the CLI function |
+| `cloud command "<cmd>" --env <env>` | Run a command on the CLI function (recorded to history) |
+| `cloud command:history --env <env>` / `command:again [id]` | List past commands / re-run one |
 | `cloud down --env <env> --secret <s>` | Maintenance mode (503 + bypass header) |
 | `cloud up --env <env>` | Exit maintenance mode |
 | `cloud function:list` / `function:invoke` / `function:logs` | Inspect functions |
@@ -204,7 +205,7 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 
 Everything is declared under `environments.<env>.app` (the `vapor.yml`
 equivalent). See `ServerlessAppConfig` for the full field set: `runtime`,
-`memory`/`timeout`, `warm`, `logRetention`, `queues`/`queueConcurrency`/
+`memory`/`timeout`, `warm`/`warmFunctions`, `logRetention`, `queues`/`queueConcurrency`/
 `queueTimeout`/`queueTries`, `scheduler` (`on`/`off`/`sub-minute`),
 `build`/`deploy` hooks, `octane`, `vpc`, `rdsProxy`, `database`, `cache`,
 `storage`, `firewall`, `domain`, `assets`, `env`, `secrets`, the per-function

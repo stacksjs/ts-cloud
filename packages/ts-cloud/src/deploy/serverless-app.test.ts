@@ -1,6 +1,6 @@
 import type { ResolvedContext } from './serverless-app'
 import { describe, expect, it } from 'bun:test'
-import { assertEnvWithinLimit, buildFunctionEnv, infraEnvFromOutputs } from './serverless-app'
+import { assertEnvWithinLimit, buildFunctionEnv, infraEnvFromOutputs, resolveSecrets } from './serverless-app'
 
 const ctx: ResolvedContext = {
   app: { kind: 'node', entry: 'a.ts', env: { APP_NAME: 'demo' } },
@@ -78,5 +78,17 @@ describe('assertEnvWithinLimit', () => {
     const env = { SMALL: 'x', HUGE: 'y'.repeat(5000) }
     expect(() => assertEnvWithinLimit('demo-http', env)).toThrow(/4096B limit/)
     expect(() => assertEnvWithinLimit('demo-http', env)).toThrow(/HUGE/)
+  })
+})
+
+describe('resolveSecrets', () => {
+  it('throws on a colliding array-form env name before hitting AWS', async () => {
+    // `a/db` and `b/db` both derive env var `DB` → collision (no AWS call made).
+    await expect(resolveSecrets({ kind: 'node', entry: 'a.ts', secrets: ['a/db', 'b/db'] }, 'us-east-1'))
+      .rejects.toThrow(/same env var/)
+  })
+
+  it('returns an empty map when no secrets are configured', async () => {
+    expect(await resolveSecrets({ kind: 'node', entry: 'a.ts' }, 'us-east-1')).toEqual({})
   })
 })

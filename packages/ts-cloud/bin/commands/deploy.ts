@@ -938,9 +938,62 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
-        const { runRemoteCommand } = await import('../../src/deploy/serverless-app')
-        const output = await runRemoteCommand(config, environment, cmd)
+        const { runAndRecordCommand } = await import('../../src/deploy/serverless-app')
+        const { id, output } = await runAndRecordCommand(config, environment, cmd)
         cli.info(output)
+        if (id > 0) cli.info(`\n(recorded as #${id} — re-run with \`cloud command:again ${id}\`)`)
+      }
+      catch (error: any) {
+        cli.error(`Command failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('command:history', 'List recorded CLI-function command invocations')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .option('--limit <n>', 'Show at most this many (most recent)', { default: '20' })
+    .action(async (options?: { env?: string, limit?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { listCommandHistory } = await import('../../src/deploy/serverless-app')
+        const records = await listCommandHistory(config, environment)
+        if (!records.length) {
+          cli.info('No command history yet.')
+          return
+        }
+        const limit = Number(options?.limit ?? 20)
+        cli.header(`Command history — ${config.project.slug} (${environment})`)
+        cli.table(
+          ['#', 'When', 'Status', 'Command'],
+          records.slice(-limit).reverse().map(r => [String(r.id), r.timestamp, r.status, r.command]),
+        )
+      }
+      catch (error: any) {
+        cli.error(`Failed to read history: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('command:again [id]', 'Re-run a recorded command (defaults to the most recent)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (id?: string, options?: { env?: string }) => {
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { getCommandRecord, runAndRecordCommand } = await import('../../src/deploy/serverless-app')
+        const record = await getCommandRecord(config, environment, id ? Number(id) : undefined)
+        if (!record) {
+          cli.error(id ? `No command #${id} in history.` : 'No command history to re-run.')
+          process.exitCode = 1
+          return
+        }
+        cli.info(`Re-running #${record.id}: ${record.command}`)
+        const res = await runAndRecordCommand(config, environment, record.command)
+        cli.info(res.output)
+        if (res.id > 0) cli.info(`\n(recorded as #${res.id})`)
       }
       catch (error: any) {
         cli.error(`Command failed: ${error.message}`)

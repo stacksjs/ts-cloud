@@ -112,6 +112,14 @@ describe('Queue adapter', () => {
     expect(seen).toHaveLength(2)
     expect(res.batchItemFailures).toEqual([{ itemIdentifier: 'b' }])
   })
+
+  it('short-circuits warmer pings without invoking the handler', async () => {
+    let called = false
+    const handler = createQueueHandler(async () => { called = true })
+    const res = await handler({ warmer: true } as any)
+    expect(called).toBe(false)
+    expect(res.batchItemFailures).toEqual([])
+  })
 })
 
 describe('CLI adapter', () => {
@@ -119,6 +127,14 @@ describe('CLI adapter', () => {
     const handler = createCliHandler(async ({ command }) => ({ statusCode: 0, output: `ran ${command}` }))
     const res = await handler({ command: 'schedule:run' })
     expect(res.output).toBe('ran schedule:run')
+  })
+
+  it('short-circuits warmer pings without invoking the handler', async () => {
+    let called = false
+    const handler = createCliHandler(async () => { called = true; return { statusCode: 0, output: '' } })
+    const res = await handler({ warmer: true } as any)
+    expect(called).toBe(false)
+    expect(res.output).toBe('warm')
   })
 })
 
