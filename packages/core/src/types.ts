@@ -1709,9 +1709,10 @@ export interface ServerlessAppConfig {
    */
   gatewayVersion?: 1 | 2
   /**
-   * Keep-warm count. Drives a scheduled EventBridge warmer rule that pings the
-   * HTTP function every few minutes (the runtime short-circuits warmer pings).
-   * 0/undefined disables warming.
+   * Cheap keep-warm count. Drives a scheduled EventBridge warmer rule that pings
+   * the function(s) every few minutes (the runtime short-circuits warmer pings).
+   * Reduces (does not eliminate) cold starts. For zero cold starts use
+   * {@link provisionedConcurrency}. 0/undefined disables ping-warming.
    */
   warm?: number
   /**
@@ -1719,6 +1720,14 @@ export interface ServerlessAppConfig {
    * (queue/cli are async + latency-tolerant, so HTTP-only is the sensible default).
    */
   warmFunctions?: Array<'http' | 'queue' | 'cli'>
+  /**
+   * Real provisioned concurrency (zero cold starts for N environments). Opts the
+   * app into the alias/version model: each function gets a `live` alias that
+   * traffic routes through, and every deploy publishes a version + flips the
+   * alias. Costs more than `warm` (you pay for the reserved capacity) but
+   * eliminates cold starts. 0/undefined keeps the default $LATEST model.
+   */
+  provisionedConcurrency?: number
   /** CloudWatch log retention (days) for all function log groups. @default 14 */
   logRetention?: number
 

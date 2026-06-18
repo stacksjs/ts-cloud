@@ -61,6 +61,10 @@ interface ReleaseRecord {
   functionEnv: Record<string, Record<string, string>>
   /** Prior release's per-function environment, so rollback restores env too. */
   previousFunctionEnv?: Record<string, Record<string, string>>
+  /** Published Lambda version per function (provisioned-concurrency/alias model). */
+  functionVersions?: Record<string, string>
+  /** Prior release's published versions, so alias rollback can flip back. */
+  previousFunctionVersions?: Record<string, string>
   functionNames: { http: string, queue?: string, cli: string }
   assetUrl?: string
   timestamp: string
@@ -327,6 +331,20 @@ async function applyFunction(lambda: LambdaClient, name: string, env: Record<str
   await lambda.waitForFunctionActive(name, 120)
 }
 
+/**
+ * Publish a numbered version of $LATEST and point the `live` alias at it — the
+ * provisioned-concurrency model. The alias's PC config (set by the composer)
+ * re-provisions for the new version automatically. Returns the version number.
+ */
+async function publishAndFlip(lambda: LambdaClient, name: string): Promise<string> {
+  const published = await withConflictRetry(() => lambda.publishVersion({ FunctionName: name }))
+  const version = published.Version
+  if (!version)
+    throw new Error(`publishVersion returned no version for ${name}`)
+  await withConflictRetry(() => lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: version }))
+  return version
+}
+
 // ── Deploy ───────────────────────────────────────────────────────────────────
 
 export async function deployServerlessApp(
@@ -531,6 +549,19 @@ export async function deployServerlessApp(
     await applyFunction(lambda, composed.functionNames.queue, functionEnv.queue, codeSource)
   }
 
+  // 5b. Provisioned-concurrency model: publish a version + flip the `live` alias
+  // each function's traffic routes through (the composer points integrations at
+  // the alias). Skipped entirely in the default $LATEST model.
+  const usesProvisionedConcurrency = (app.provisionedConcurrency ?? 0) > 0
+  const functionVersions: Record<string, string> = {}
+  if (usesProvisionedConcurrency) {
+    cli.step('Publishing versions + flipping live alias')
+    functionVersions.http = await publishAndFlip(lambda, composed.functionNames.http)
+    functionVersions.cli = await publishAndFlip(lambda, composed.functionNames.cli)
+    if (composed.queueNames.length)
+      functionVersions.queue = await publishAndFlip(lambda, composed.functionNames.queue)
+  }
+
   // 6. Snapshot the release for rollback.
   await writeRelease(s3, artifactBucket, slug, environment, {
     sha: artifactSha,
@@ -538,6 +569,7 @@ export async function deployServerlessApp(
     previousSha: prior?.sha,
     previousCode: prior?.code,
     previousFunctionEnv: prior?.functionEnv,
+    ...(usesProvisionedConcurrency ? { functionVersions, previousFunctionVersions: prior?.functionVersions } : {}),
     functionEnv,
     functionNames: {
       http: composed.functionNames.http,
@@ -608,6 +640,11 @@ export async function redeployServerlessApp(config: CloudConfig, environment: En
     if (!name) continue
     cli.step(`Re-activating ${mode} (${name})`)
     await applyFunction(lambda, name, release.functionEnv[mode] ?? {}, release.code)
+    // Provisioned-concurrency model: re-flip the `live` alias to the recorded
+    // version so traffic (which routes through the alias) sees the re-activation.
+    const version = release.functionVersions?.[mode]
+    if (version)
+      await withConflictRetry(() => lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: version }))
   }
   cli.success('Redeploy complete')
 }
@@ -631,6 +668,11 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
     // back to the current env only for older records that predate env snapshots).
     const env = release.previousFunctionEnv?.[mode] ?? release.functionEnv[mode] ?? {}
     await applyFunction(lambda, name, env, release.previousCode)
+    // Provisioned-concurrency model: traffic routes through the `live` alias, so
+    // the actual rollback is flipping the alias back to the prior version.
+    const prevVersion = release.previousFunctionVersions?.[mode]
+    if (prevVersion)
+      await withConflictRetry(() => lambda.updateAlias({ FunctionName: name, Name: 'live', FunctionVersion: prevVersion }))
   }
 
   // Swap the release pointer so a subsequent rollback is idempotent-safe.
@@ -639,9 +681,11 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
     sha: release.previousSha ?? release.sha,
     code: release.previousCode,
     functionEnv: release.previousFunctionEnv ?? release.functionEnv,
+    functionVersions: release.previousFunctionVersions ?? release.functionVersions,
     previousSha: undefined,
     previousCode: undefined,
     previousFunctionEnv: undefined,
+    previousFunctionVersions: undefined,
     timestamp: new Date().toISOString(),
   })
   cli.success('Rollback complete')
@@ -666,6 +710,15 @@ export async function setMaintenance(
   if (!enabled) delete env.MAINTENANCE_BYPASS_SECRET
 
   await withConflictRetry(() => lambda.updateFunctionConfiguration({ FunctionName: httpName, Environment: { Variables: env } }))
+
+  // In the provisioned-concurrency model, HTTP traffic runs a published version
+  // (frozen env), so the $LATEST env change above won't be seen until we publish
+  // a new version + flip the `live` alias to it.
+  if ((ctx.app.provisionedConcurrency ?? 0) > 0) {
+    await lambda.waitForFunctionActive(httpName, 120)
+    await publishAndFlip(lambda, httpName)
+  }
+
   cli.success(enabled ? 'Application is now in maintenance mode (503)' : 'Application is live')
 }
 

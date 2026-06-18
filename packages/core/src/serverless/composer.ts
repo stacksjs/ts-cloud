@@ -273,6 +273,37 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   if (hasQueue)
     addFunction('QueueFunction', functionNames.queue, handlers.queue, 'queue', app.queueMemory ?? 1024, app.queueTimeout ?? 120, undefined, app.queueTmpStorage ?? tmpStorage)
 
+  // ── Provisioned concurrency (alias/version model) ───────────────────────────
+  // When opted in, each function gets a bootstrap Version + a `live` alias that
+  // carries the provisioned-concurrency config. Event sources/integrations route
+  // through the alias (below), and the deploy orchestrator publishes a new
+  // version + flips the alias on each deploy. `aliasOf` returns the alias ARN ref
+  // for a function when PC is on, else its unqualified ARN.
+  const pc = (app.provisionedConcurrency ?? 0) > 0 ? app.provisionedConcurrency! : 0
+  const fnLogicalIds = ['HttpFunction', 'CliFunction', ...(hasQueue ? ['QueueFunction'] : [])]
+  if (pc) {
+    for (const L of fnLogicalIds) {
+      resources[`${L}Version`] = {
+        Type: 'AWS::Lambda::Version',
+        DeletionPolicy: 'Retain',
+        Properties: { FunctionName: Fn.ref(L) },
+      }
+      resources[`${L}Alias`] = {
+        Type: 'AWS::Lambda::Alias',
+        Properties: {
+          FunctionName: Fn.ref(L),
+          Name: 'live',
+          FunctionVersion: Fn.getAtt(`${L}Version`, 'Version'),
+          ProvisionedConcurrencyConfig: { ProvisionedConcurrentExecutions: pc },
+        },
+      }
+    }
+  }
+  /** Invoke target (ARN) for a function — the `live` alias when PC is on. */
+  const invokeArn = (L: string): any => (pc ? Fn.ref(`${L}Alias`) : Fn.getAtt(L, 'Arn'))
+  /** FunctionName for permissions/event-source-mappings — alias ARN when PC is on. */
+  const invokeName = (L: string): any => (pc ? Fn.ref(`${L}Alias`) : Fn.ref(L))
+
   // ── HTTP API (API Gateway v2) — author the integration/route/permission that
   //    the generic builder omits ─────────────────────────────────────────────
   resources.HttpApi = {
@@ -287,7 +318,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     Properties: {
       ApiId: Fn.ref('HttpApi'),
       IntegrationType: 'AWS_PROXY',
-      IntegrationUri: Fn.getAtt('HttpFunction', 'Arn'),
+      IntegrationUri: invokeArn('HttpFunction'),
       PayloadFormatVersion: '2.0',
     },
   }
@@ -310,7 +341,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   resources.HttpPermission = {
     Type: 'AWS::Lambda::Permission',
     Properties: {
-      FunctionName: Fn.ref('HttpFunction'),
+      FunctionName: invokeName('HttpFunction'),
       Action: 'lambda:InvokeFunction',
       Principal: 'apigateway.amazonaws.com',
       SourceArn: Fn.sub('arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*'),
@@ -415,7 +446,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Type: 'AWS::Lambda::EventSourceMapping',
         Properties: {
           EventSourceArn: Fn.getAtt(qId, 'Arn'),
-          FunctionName: Fn.ref('QueueFunction'),
+          FunctionName: invokeName('QueueFunction'),
           BatchSize: 1,
           FunctionResponseTypes: ['ReportBatchItemFailures'],
           ...(concurrency
@@ -437,7 +468,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         State: 'ENABLED',
         Targets: [{
           Id: 'cli',
-          Arn: Fn.getAtt('CliFunction', 'Arn'),
+          Arn: invokeArn('CliFunction'),
           Input: JSON.stringify({ command: 'schedule:run' }),
         }],
       },
@@ -445,7 +476,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     resources.SchedulerPermission = {
       Type: 'AWS::Lambda::Permission',
       Properties: {
-        FunctionName: Fn.ref('CliFunction'),
+        FunctionName: invokeName('CliFunction'),
         Action: 'lambda:InvokeFunction',
         Principal: 'events.amazonaws.com',
         SourceArn: Fn.getAtt('SchedulerRule', 'Arn'),

@@ -139,6 +139,31 @@ app: { kind: 'php', packaging: 'image' }
 deploys the functions as `PackageType: Image`. Requires Docker; Node uses the AWS
 Lambda Node base image, PHP a self-contained multi-stage build.
 
+## Warming (cold starts)
+
+Two strategies, pick by cost vs. guarantee:
+
+- **`warm: N`** — cheap. A scheduled EventBridge rule pings N container(s) every
+  few minutes (the runtime short-circuits the ping). Reduces cold starts; you
+  only pay for the pings. `warmFunctions: ['http','queue','cli']` chooses which
+  functions to ping (default `['http']`).
+- **`provisionedConcurrency: N`** — zero cold starts. Opts into the **alias model**:
+  each function gets a `live` alias that all traffic (HTTP/queue/scheduler) routes
+  through, and every deploy publishes a new version and atomically flips the alias
+  to it. AWS keeps N environments always-warm. You pay for the reserved capacity.
+
+```ts
+app: { kind: 'node', entry: 'src/server.ts', provisionedConcurrency: 2 }
+```
+
+> With `provisionedConcurrency`, deploys are blue/green: the new version is
+> published and the alias flips only after the code is live, and `serverless:rollback`
+> instantly flips the alias back to the previous version. (A raw out-of-band
+> CloudFormation stack update resets the alias to its bootstrap version — re-run
+> `deploy:serverless`/`--redeploy` to restore.) Verified end-to-end on real AWS:
+> alias → published version, API Gateway routing through the alias, and
+> provisioned concurrency reaching `READY`.
+
 ## Runtimes
 
 All three runtimes follow one model. Common Node versions use the AWS **managed**
@@ -205,7 +230,7 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 
 Everything is declared under `environments.<env>.app` (the `vapor.yml`
 equivalent). See `ServerlessAppConfig` for the full field set: `runtime`,
-`memory`/`timeout`, `warm`/`warmFunctions`, `logRetention`, `queues`/`queueConcurrency`/
+`memory`/`timeout`, `warm`/`warmFunctions`/`provisionedConcurrency`, `logRetention`, `queues`/`queueConcurrency`/
 `queueTimeout`/`queueTries`, `scheduler` (`on`/`off`/`sub-minute`),
 `build`/`deploy` hooks, `octane`, `vpc`, `rdsProxy`, `database`, `cache`,
 `storage`, `firewall`, `domain`, `assets`, `env`, `secrets`, the per-function

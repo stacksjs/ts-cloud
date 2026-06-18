@@ -309,6 +309,31 @@ describe('composeServerlessAppTemplate', () => {
     expect(template.Resources.WarmerQueueRule0).toBeUndefined()
   })
 
+  it('routes traffic through a live alias when provisionedConcurrency is set', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', provisionedConcurrency: 2, queues: ['jobs'] })
+    // Version + alias per function, alias carries the PC config.
+    expect((template.Resources.HttpFunctionVersion as any).Type).toBe('AWS::Lambda::Version')
+    const alias = template.Resources.HttpFunctionAlias as any
+    expect(alias.Type).toBe('AWS::Lambda::Alias')
+    expect(alias.Properties.Name).toBe('live')
+    expect(alias.Properties.ProvisionedConcurrencyConfig).toEqual({ ProvisionedConcurrentExecutions: 2 })
+    expect(template.Resources.CliFunctionAlias).toBeDefined()
+    expect(template.Resources.QueueFunctionAlias).toBeDefined()
+    // Integrations / event sources / scheduler target the alias.
+    expect((template.Resources.HttpIntegration as any).Properties.IntegrationUri).toEqual({ Ref: 'HttpFunctionAlias' })
+    expect((template.Resources.HttpPermission as any).Properties.FunctionName).toEqual({ Ref: 'HttpFunctionAlias' })
+    expect((template.Resources.AppQueue0Mapping as any).Properties.FunctionName).toEqual({ Ref: 'QueueFunctionAlias' })
+    expect((template.Resources.SchedulerRule as any).Properties.Targets[0].Arn).toEqual({ Ref: 'CliFunctionAlias' })
+  })
+
+  it('keeps the $LATEST model (no aliases) when provisionedConcurrency is unset', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'] })
+    expect(template.Resources.HttpFunctionAlias).toBeUndefined()
+    expect(template.Resources.HttpFunctionVersion).toBeUndefined()
+    expect((template.Resources.HttpIntegration as any).Properties.IntegrationUri).toEqual({ 'Fn::GetAtt': ['HttpFunction', 'Arn'] })
+    expect((template.Resources.AppQueue0Mapping as any).Properties.FunctionName).toEqual({ Ref: 'QueueFunction' })
+  })
+
   it('honors a custom log retention', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', logRetention: 90 })
     expect((template.Resources.HttpFunctionLogGroup as any).Properties.RetentionInDays).toBe(90)
