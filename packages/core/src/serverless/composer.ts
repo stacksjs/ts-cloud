@@ -37,14 +37,30 @@ export interface ComposedTemplate {
   resourceSummary: Record<string, number>
 }
 
-/** Resolve the SQS queue names from the manifest. */
-export function resolveQueueNames(app: ServerlessAppConfig, slug: string, env: EnvironmentType): string[] {
+/** A resolved queue: its full name plus an optional per-queue concurrency cap. */
+export interface ResolvedQueue {
+  name: string
+  /** Per-queue max concurrency (`queues: [{ emails: 10 }]`), if specified. */
+  concurrency?: number
+}
+
+/**
+ * Resolve the SQS queues from the manifest, preserving any per-queue concurrency
+ * (`queues: [{ emails: 10 }]` → `{ name: '…-emails', concurrency: 10 }`).
+ */
+export function resolveQueues(app: ServerlessAppConfig, slug: string, env: EnvironmentType): ResolvedQueue[] {
   if (app.queues === false) return []
-  if (app.queues === undefined || app.queues === true) return [`${slug}-${env}-default`]
+  if (app.queues === undefined || app.queues === true) return [{ name: `${slug}-${env}-default` }]
   return app.queues.map((q) => {
-    const name = typeof q === 'string' ? q : Object.keys(q)[0]
-    return `${slug}-${env}-${name}`
+    if (typeof q === 'string') return { name: `${slug}-${env}-${q}` }
+    const [name, concurrency] = Object.entries(q)[0]
+    return { name: `${slug}-${env}-${name}`, concurrency }
   })
+}
+
+/** Resolve just the SQS queue names from the manifest. */
+export function resolveQueueNames(app: ServerlessAppConfig, slug: string, env: EnvironmentType): string[] {
+  return resolveQueues(app, slug, env).map(q => q.name)
 }
 
 export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemplate {
@@ -59,8 +75,15 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     queue: `${slug}-${environment}-queue`,
     cli: `${slug}-${environment}-cli`,
   }
-  const queueNames = resolveQueueNames(app, slug, environment)
+  // HTTP API (v2) is the only supported gateway. Fail loudly rather than silently
+  // ignoring `gatewayVersion: 1` (REST API), which the composer does not emit.
+  if (app.gatewayVersion === 1)
+    throw new Error('serverless app: `gatewayVersion: 1` (REST API) is not supported — ts-cloud uses API Gateway HTTP API (v2). Remove `gatewayVersion` or set it to 2.')
+
+  const queues = resolveQueues(app, slug, environment)
+  const queueNames = queues.map(q => q.name)
   const hasQueue = queueNames.length > 0
+  const logRetention = app.logRetention ?? 14
   const imageMode = app.packaging === 'image'
   const schedulerEnabled = (app.scheduler ?? 'on') !== 'off'
   const cacheEnabled = (app.cache?.driver ?? 'dynamodb') === 'dynamodb'
@@ -206,7 +229,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   function addFunction(logicalId: string, name: string, handler: string, mode: string, memory: number, timeout: number, reservedConcurrency?: number, tmp: number = tmpStorage): void {
     resources[`${logicalId}LogGroup`] = {
       Type: 'AWS::Logs::LogGroup',
-      Properties: { LogGroupName: `/aws/lambda/${name}`, RetentionInDays: 14 },
+      Properties: { LogGroupName: `/aws/lambda/${name}`, RetentionInDays: logRetention },
     }
     // Container-image functions set the handler/runtime via the image itself and
     // are pinned to a mode using an `IMAGE_CMD`-style override env var so all
@@ -368,19 +391,26 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         MessageRetentionPeriod: 1209600, // 14 days
       },
     }
-    queueNames.forEach((qName, i) => {
+    queues.forEach((q, i) => {
       const qId = `AppQueue${i}`
+      // SQS visibility timeout must comfortably exceed the function timeout or a
+      // long-running job can become visible again and be re-delivered to a second
+      // consumer. AWS recommends ≥ 6× the function timeout; cap at SQS's 12h max.
+      const fnTimeout = app.queueTimeout ?? 120
       resources[qId] = {
         Type: 'AWS::SQS::Queue',
         Properties: {
-          QueueName: qName,
-          VisibilityTimeout: Math.max(app.queueTimeout ?? 120, (app.queueTimeout ?? 120)),
+          QueueName: q.name,
+          VisibilityTimeout: Math.min(43200, fnTimeout * 6),
           RedrivePolicy: {
             deadLetterTargetArn: Fn.getAtt('AppQueueDlq', 'Arn'),
             maxReceiveCount: app.queueTries ?? 3,
           },
         },
       }
+      // Per-queue concurrency (`queues: [{ emails: 10 }]`) wins over the global
+      // `queueConcurrency`; SQS event-source mappings require MaximumConcurrency ≥ 2.
+      const concurrency = q.concurrency ?? app.queueConcurrency
       resources[`${qId}Mapping`] = {
         Type: 'AWS::Lambda::EventSourceMapping',
         Properties: {
@@ -388,12 +418,12 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           FunctionName: Fn.ref('QueueFunction'),
           BatchSize: 1,
           FunctionResponseTypes: ['ReportBatchItemFailures'],
-          ...(app.queueConcurrency
-            ? { ScalingConfig: { MaximumConcurrency: Math.max(2, app.queueConcurrency) } }
+          ...(concurrency
+            ? { ScalingConfig: { MaximumConcurrency: Math.max(2, concurrency) } }
             : {}),
         },
       }
-      outputs[`QueueUrl${i}`] = { Description: `Queue URL: ${qName}`, Value: Fn.ref(qId) }
+      outputs[`QueueUrl${i}`] = { Description: `Queue URL: ${q.name}`, Value: Fn.ref(qId) }
     })
   }
 

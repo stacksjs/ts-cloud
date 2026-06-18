@@ -1703,13 +1703,19 @@ export interface ServerlessAppConfig {
   timeout?: number
   /** Reserved concurrency for the HTTP function. */
   concurrency?: number
-  /** API Gateway version: 2 = HTTP API (cheaper, default), 1 = REST API. @default 2 */
+  /**
+   * API Gateway version. Only `2` (HTTP API — cheaper, faster) is supported;
+   * `1` (REST API) throws at compose time. @default 2
+   */
   gatewayVersion?: 1 | 2
   /**
-   * Keep-warm count. Sets provisioned concurrency on the HTTP alias, or drives a
-   * scheduled warmer rule. 0/undefined disables warming.
+   * Keep-warm count. Drives a scheduled EventBridge warmer rule that pings the
+   * HTTP function every few minutes (the runtime short-circuits warmer pings).
+   * 0/undefined disables warming.
    */
   warm?: number
+  /** CloudWatch log retention (days) for all function log groups. @default 14 */
+  logRetention?: number
 
   // ── CLI function (scheduler + on-demand command/deploy hooks) ─────────────
   /** CLI function memory in MB. @default 1024 */

@@ -17,15 +17,17 @@ require $taskRoot . '/vendor/autoload.php';
 $app = require $taskRoot . '/bootstrap/app.php';
 $kernel = $app->make(\Illuminate\Contracts\Http\Kernel::class);
 
-$maintenance = getenv('MAINTENANCE_MODE') === '1';
-$bypassSecret = getenv('MAINTENANCE_BYPASS_SECRET') ?: '';
-
 while (true) {
     $ctx = nextInvocation($runtimeApi);
     if ($ctx === null) {
         continue;
     }
     [$requestId, $event] = $ctx;
+
+    // Read maintenance state per-invocation so `cloud down`/`up` reaches warm
+    // containers (env is flipped via updateFunctionConfiguration).
+    $maintenance = getenv('MAINTENANCE_MODE') === '1';
+    $bypassSecret = getenv('MAINTENANCE_BYPASS_SECRET') ?: '';
 
     try {
         $response = handle($event, $kernel, $maintenance, $bypassSecret);

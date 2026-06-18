@@ -59,6 +59,8 @@ interface ReleaseRecord {
   previousCode?: CodeSource
   /** Resolved per-function environment at deploy time (for rollback). */
   functionEnv: Record<string, Record<string, string>>
+  /** Prior release's per-function environment, so rollback restores env too. */
+  previousFunctionEnv?: Record<string, Record<string, string>>
   functionNames: { http: string, queue?: string, cli: string }
   assetUrl?: string
   timestamp: string
@@ -259,8 +261,28 @@ export type CodeSource =
   | { kind: 'zip', bucket: string, key: string }
   | { kind: 'image', imageUri: string }
 
+/**
+ * AWS caps the aggregate size of a function's environment variables at 4 KB.
+ * Check before the API call so we fail with an actionable message (which vars,
+ * how far over) instead of a cryptic `InvalidParameterValueException` mid-deploy.
+ */
+export function assertEnvWithinLimit(name: string, env: Record<string, string>): void {
+  const bytes = Object.entries(env).reduce((n, [k, v]) => n + Buffer.byteLength(`${k}=${v}`, 'utf8'), 0)
+  if (bytes > 4096) {
+    const biggest = Object.entries(env)
+      .map(([k, v]) => [k, Buffer.byteLength(`${k}=${v}`, 'utf8')] as const)
+      .sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([k, n]) => `${k} (${n}B)`).join(', ')
+    throw new Error(
+      `${name}: environment variables total ${bytes}B, over AWS's 4096B limit (${bytes - 4096}B too large). `
+      + `Largest: ${biggest}. Move large/secret values out of env — store them in Secrets Manager and fetch at cold start.`,
+    )
+  }
+}
+
 /** Apply env + code to one function, serialized to avoid update conflicts. */
 async function applyFunction(lambda: LambdaClient, name: string, env: Record<string, string>, code: CodeSource): Promise<void> {
+  assertEnvWithinLimit(name, env)
   await withConflictRetry(() => lambda.updateFunctionConfiguration({ FunctionName: name, Environment: { Variables: env } }))
   await lambda.waitForFunctionActive(name, 120)
   const codeParams = code.kind === 'image'
@@ -480,6 +502,7 @@ export async function deployServerlessApp(
     code: codeSource,
     previousSha: prior?.sha,
     previousCode: prior?.code,
+    previousFunctionEnv: prior?.functionEnv,
     functionEnv,
     functionNames: {
       http: composed.functionNames.http,
@@ -564,8 +587,10 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
   for (const [mode, name] of Object.entries(release.functionNames)) {
     if (!name) continue
     cli.step(`Restoring ${mode} (${name})`)
-    // Restore prior code; keep the current env (env rollback is best-effort).
-    await applyFunction(lambda, name, release.functionEnv[mode] ?? {}, release.previousCode)
+    // Restore the prior release faithfully: both its code AND its env (falling
+    // back to the current env only for older records that predate env snapshots).
+    const env = release.previousFunctionEnv?.[mode] ?? release.functionEnv[mode] ?? {}
+    await applyFunction(lambda, name, env, release.previousCode)
   }
 
   // Swap the release pointer so a subsequent rollback is idempotent-safe.
@@ -573,8 +598,10 @@ export async function rollbackServerlessApp(config: CloudConfig, environment: En
     ...release,
     sha: release.previousSha ?? release.sha,
     code: release.previousCode,
+    functionEnv: release.previousFunctionEnv ?? release.functionEnv,
     previousSha: undefined,
     previousCode: undefined,
+    previousFunctionEnv: undefined,
     timestamp: new Date().toISOString(),
   })
   cli.success('Rollback complete')

@@ -194,12 +194,27 @@ app: { kind: 'bun', entry: 'src/server.ts' }
 
 Everything is declared under `environments.<env>.app` (the `vapor.yml`
 equivalent). See `ServerlessAppConfig` for the full field set: `runtime`,
-`memory`/`timeout`, `gatewayVersion`, `warm`, `queues`/`queueConcurrency`/
+`memory`/`timeout`, `warm`, `logRetention`, `queues`/`queueConcurrency`/
 `queueTimeout`/`queueTries`, `scheduler` (`on`/`off`/`sub-minute`),
 `build`/`deploy` hooks, `octane`, `vpc`, `rdsProxy`, `database`, `cache`,
 `storage`, `firewall`, `domain`, `assets`, `env`, `secrets`, the per-function
 `tmpStorage`/`cliTmpStorage`/`queueTmpStorage`, and (PHP)
-`phpVersion`/`architecture`/`layers`.
+`phpVersion`/`architecture`/`layers`. Only API Gateway **HTTP API (v2)** is
+supported (`gatewayVersion: 1` throws).
+
+### Queues
+
+`queues: true` provisions one default SQS queue (+ a shared DLQ). Pass an array
+to declare several, with optional **per-queue concurrency** — a per-queue value
+overrides the global `queueConcurrency`:
+
+```ts
+app: { queues: ['default', { emails: 10 }, { invoices: 2 }], queueConcurrency: 5 }
+```
+
+Each queue's visibility timeout is set to 6× the function timeout (AWS's
+recommendation, capped at SQS's 12-hour max) so a long job is never re-delivered
+to a second worker mid-run.
 
 ### Custom domains
 

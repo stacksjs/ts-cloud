@@ -1,6 +1,6 @@
 import type { ResolvedContext } from './serverless-app'
 import { describe, expect, it } from 'bun:test'
-import { buildFunctionEnv, infraEnvFromOutputs } from './serverless-app'
+import { assertEnvWithinLimit, buildFunctionEnv, infraEnvFromOutputs } from './serverless-app'
 
 const ctx: ResolvedContext = {
   app: { kind: 'node', entry: 'a.ts', env: { APP_NAME: 'demo' } },
@@ -66,5 +66,17 @@ describe('infraEnvFromOutputs', () => {
 
   it('returns an empty map when nothing data-related is attached', () => {
     expect(infraEnvFromOutputs({ kind: 'node' }, {})).toEqual({})
+  })
+})
+
+describe('assertEnvWithinLimit', () => {
+  it('accepts an env under AWS\'s 4KB limit', () => {
+    expect(() => assertEnvWithinLimit('demo-http', { FOO: 'bar', APP_ENV: 'production' })).not.toThrow()
+  })
+
+  it('throws an actionable error when the env exceeds 4KB, naming the largest vars', () => {
+    const env = { SMALL: 'x', HUGE: 'y'.repeat(5000) }
+    expect(() => assertEnvWithinLimit('demo-http', env)).toThrow(/4096B limit/)
+    expect(() => assertEnvWithinLimit('demo-http', env)).toThrow(/HUGE/)
   })
 })

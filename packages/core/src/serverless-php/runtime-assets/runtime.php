@@ -24,9 +24,6 @@ for ($i = 0; $i < 50 && !file_exists($socketPath); $i++) {
     usleep(100000); // 100ms
 }
 
-$maintenance = getenv('MAINTENANCE_MODE') === '1';
-$bypassSecret = getenv('MAINTENANCE_BYPASS_SECRET') ?: '';
-
 while (true) {
     // 1. Get the next invocation.
     $ctx = nextInvocation($runtimeApi);
@@ -34,6 +31,12 @@ while (true) {
         continue;
     }
     [$requestId, $event] = $ctx;
+
+    // Read maintenance state per-invocation: `cloud down`/`up` flips the env via
+    // updateFunctionConfiguration, but warm containers would keep a cold-start
+    // value if cached outside the loop (the Node adapter reads it per-request too).
+    $maintenance = getenv('MAINTENANCE_MODE') === '1';
+    $bypassSecret = getenv('MAINTENANCE_BYPASS_SECRET') ?: '';
 
     try {
         $response = handle($event, $fpm, $docRoot, $maintenance, $bypassSecret);

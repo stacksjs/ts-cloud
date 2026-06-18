@@ -1,7 +1,7 @@
 import type { CloudConfig, ServerlessAppConfig } from '../types'
 import { describe, expect, it } from 'bun:test'
 import { validateResourceLimits, validateTemplate } from '../template-validator'
-import { composeServerlessAppTemplate, resolveQueueNames } from './composer'
+import { composeServerlessAppTemplate, resolveQueueNames, resolveQueues } from './composer'
 
 const config = { project: { name: 'Demo', slug: 'demo', region: 'us-east-1' } } as Pick<CloudConfig, 'project'>
 const handlers = { http: 'index.http', queue: 'index.queue', cli: 'index.cli' }
@@ -16,6 +16,15 @@ describe('resolveQueueNames', () => {
     expect(resolveQueueNames({ queues: false }, 'demo', 'production')).toEqual([])
     expect(resolveQueueNames({ queues: ['emails', { invoices: 5 }] }, 'demo', 'production'))
       .toEqual(['demo-production-emails', 'demo-production-invoices'])
+  })
+})
+
+describe('resolveQueues', () => {
+  it('preserves per-queue concurrency from object entries', () => {
+    expect(resolveQueues({ queues: ['emails', { invoices: 5 }] }, 'demo', 'production')).toEqual([
+      { name: 'demo-production-emails' },
+      { name: 'demo-production-invoices', concurrency: 5 },
+    ])
   })
 })
 
@@ -259,6 +268,28 @@ describe('composeServerlessAppTemplate', () => {
   it('refuses to auto-issue an asset cert outside us-east-1 (CloudFront cert region)', () => {
     const euConfig = { project: { name: 'Demo', slug: 'demo', region: 'eu-west-1' } } as Pick<CloudConfig, 'project'>
     expect(() => composeServerlessAppTemplate({ config: euConfig, environment: 'production', handlers, app: { kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' } })).toThrow(/us-east-1/)
+  })
+
+  it('sets SQS visibility timeout to 6x the function timeout (capped at 12h)', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], queueTimeout: 120 })
+    expect((template.Resources.AppQueue0 as any).Properties.VisibilityTimeout).toBe(720)
+    const { template: big } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'], queueTimeout: 900 })
+    expect((big.Resources.AppQueue0 as any).Properties.VisibilityTimeout).toBe(5400)
+  })
+
+  it('applies per-queue concurrency, falling back to the global queueConcurrency', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['emails', { invoices: 10 }], queueConcurrency: 3 })
+    expect((template.Resources.AppQueue0Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(3) // global
+    expect((template.Resources.AppQueue1Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(10) // per-queue wins
+  })
+
+  it('honors a custom log retention', () => {
+    const { template } = compose({ kind: 'node', entry: 'a.ts', logRetention: 90 })
+    expect((template.Resources.HttpFunctionLogGroup as any).Properties.RetentionInDays).toBe(90)
+  })
+
+  it('throws on the unsupported REST API (gatewayVersion: 1)', () => {
+    expect(() => compose({ kind: 'node', entry: 'a.ts', gatewayVersion: 1 })).toThrow(/gatewayVersion: 1.*not supported/)
   })
 
   it('passes structural + resource-limit validation', () => {
