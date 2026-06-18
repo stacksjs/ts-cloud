@@ -2,27 +2,31 @@
  * Resolve REAL dashboard data for the management UI from live AWS reads, shaped
  * to what the stx dashboard pages consume. `cloud dashboard:build` serializes
  * this to `TSCLOUD_DASHBOARD_DATA` and the pages' `<script server>` blocks read
- * it at build time (falling back to representative sample data per-field when a
- * value isn't present). See `ui/pages/*`.
+ * it at build time (falling back to representative sample data per-field/per-page
+ * when a value isn't present). Every gather is wrapped so one failing source only
+ * drops its own slice — the rest still render live. See `ui/pages/*`.
  */
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { resolveQueues, resolveServerlessAppStackName } from '@ts-cloud/core'
+import { CloudFormationClient } from '../aws/cloudformation'
 import { CloudWatchClient } from '../aws/cloudwatch'
+import { CloudWatchLogsClient } from '../aws/cloudwatch-logs'
+import { CostExplorerClient } from '../aws/cost-explorer'
 import { LambdaClient } from '../aws/lambda'
+import { S3Client } from '../aws/s3'
+import { SecretsManagerClient } from '../aws/secrets-manager'
 import { SQSClient } from '../aws/sqs'
 import { serverlessInfo } from './serverless-app'
 
-export interface DashboardData {
-  app: { name: string, env: string, region: string, runtime: string, url: string, build: string, deployedAt: string }
-  maintenance: { enabled: boolean }
-  metrics: { invocations: number, errorRatePct: number, p95Ms: number, coldStartPct: number, concurrency: number, estCostUsd: number }
-  functions: Array<{ key: string, name: string, version: string, memory: number, timeout: number, runtime: string, invocations: number, errors: number, p95: number, status: string, provisioned?: string }>
-  queues: Array<{ name: string, visible: number, inFlight: number, processed: number, dlq: number }>
-  scheduler: { enabled: boolean, expression: string }
-}
+/** A loosely-typed bag — the pages read named slices, missing ones fall back. */
+export type DashboardData = Record<string, any>
 
-/** Sum/avg helper over a metric's datapoints. */
-async function metric(cw: CloudWatchClient, fn: string, name: string, kind: 'Sum' | 'Average' | 'Maximum', start: Date, end: Date): Promise<number> {
+function pad(n: number): string { return String(n).padStart(2, '0') }
+function isoDate(d: Date): string { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` }
+
+/** Aggregate a Lambda metric over a window. */
+async function lambdaMetric(cw: CloudWatchClient, fn: string, name: string, kind: 'Sum' | 'Average' | 'Maximum', start: Date, end: Date): Promise<number> {
   const pts = await cw.getMetricStatistics({
     Namespace: 'AWS/Lambda', MetricName: name, Dimensions: [{ Name: 'FunctionName', Value: fn }],
     StartTime: start, EndTime: end, Period: 86400, Statistics: [kind],
@@ -33,86 +37,205 @@ async function metric(cw: CloudWatchClient, fn: string, name: string, kind: 'Sum
   return pts.reduce((n, p) => n + (p.Average ?? 0), 0) / pts.length
 }
 
-/** Gather a live snapshot of the serverless app for the dashboard. */
+/** Percentile (p50/p95/p99) of Duration for a function over a window. */
+async function durationPct(cw: CloudWatchClient, fn: string, p: string, start: Date, end: Date): Promise<number> {
+  const pts = await cw.getMetricStatistics({
+    Namespace: 'AWS/Lambda', MetricName: 'Duration', Dimensions: [{ Name: 'FunctionName', Value: fn }],
+    StartTime: start, EndTime: end, Period: 86400, ExtendedStatistics: [p],
+  }).catch(() => [])
+  return Math.round(pts.reduce((n, x) => n + (x.Percentiles?.[p] ?? 0), 0))
+}
+
 export async function resolveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<DashboardData> {
   const info = await serverlessInfo(config, environment)
-  const cw = new CloudWatchClient(info.region)
-  const lambda = new LambdaClient(info.region)
+  const region = info.region
+  const cw = new CloudWatchClient(region)
+  const lambda = new LambdaClient(region)
+  const logs = new CloudWatchLogsClient(region)
   const end = new Date()
   const start = new Date(end.getTime() - 86_400_000)
+  const app = config.environments?.[environment]?.app
+  const out: DashboardData = {}
 
-  let totalInvocations = 0
-  let totalErrors = 0
-  let maxP95 = 0
-  const functions: DashboardData['functions'] = []
+  // ── App header + headline metrics + overview function/queue/scheduler ────────
+  out.app = {
+    name: info.slug, env: environment, region,
+    runtime: app?.kind === 'php' ? `php-${app?.phpVersion ?? '8.3'} (fpm)` : (app?.kind ?? 'node'),
+    url: info.endpoint ?? '', build: info.lastRelease?.sha?.slice(0, 7) ?? '—', deployedAt: info.lastRelease?.timestamp ?? '—',
+  }
+  out.maintenance = { enabled: false }
+  out.scheduler = { enabled: info.scheduler !== 'off', expression: info.scheduler === 'sub-minute' ? 'rate(1 minute) · sub-minute' : 'rate(1 minute)', lastRun: '—' }
+
+  let totalInvocations = 0, totalErrors = 0, maxDur = 0
+  const fns: any[] = []
+  const fnsDetail: any[] = []
   for (const f of info.functions) {
-    const [invocations, errors, durAvg, cfg] = await Promise.all([
-      metric(cw, f.name, 'Invocations', 'Sum', start, end),
-      metric(cw, f.name, 'Errors', 'Sum', start, end),
-      metric(cw, f.name, 'Duration', 'Average', start, end),
+    const [invocations, errors, throttles, durAvg, cfg, p50, p95, p99, spark] = await Promise.all([
+      lambdaMetric(cw, f.name, 'Invocations', 'Sum', start, end),
+      lambdaMetric(cw, f.name, 'Errors', 'Sum', start, end),
+      lambdaMetric(cw, f.name, 'Throttles', 'Sum', start, end),
+      lambdaMetric(cw, f.name, 'Duration', 'Average', start, end),
       lambda.getFunction(f.name).catch(() => null),
+      durationPct(cw, f.name, 'p50', start, end),
+      durationPct(cw, f.name, 'p95', start, end),
+      durationPct(cw, f.name, 'p99', start, end),
+      cw.getMetricSeries({ Namespace: 'AWS/Lambda', MetricName: 'Invocations', Dimensions: [{ Name: 'FunctionName', Value: f.name }], StartTime: new Date(end.getTime() - 12 * 3_600_000), EndTime: end, Period: 3600, Stat: 'Sum' }).catch(() => []),
     ])
     totalInvocations += invocations
     totalErrors += errors
-    maxP95 = Math.max(maxP95, durAvg)
-    functions.push({
-      key: f.mode,
-      name: f.name,
-      version: f.version,
-      memory: cfg?.Configuration?.MemorySize ?? 0,
-      timeout: cfg?.Configuration?.Timeout ?? 0,
-      runtime: cfg?.Configuration?.Runtime ?? 'provided.al2023',
-      invocations: Math.round(invocations),
-      errors: Math.round(errors),
-      p95: Math.round(durAvg),
-      status: 'active',
-      provisioned: f.provisioned ? `${f.provisioned.allocated}/${f.provisioned.requested}` : undefined,
+    maxDur = Math.max(maxDur, durAvg)
+    const memory = cfg?.Configuration?.MemorySize ?? 0
+    const env = Object.keys(cfg?.Configuration?.Environment?.Variables ?? {})
+
+    // Recent activity + max-memory from the REPORT lines in CloudWatch Logs.
+    let recent: any[] = []
+    let maxMem = 0
+    try {
+      const { events = [] } = await logs.filterLogEvents({ logGroupName: `/aws/lambda/${f.name}`, startTime: start.getTime(), limit: 40 })
+      for (const e of events) {
+        const msg = (e.message ?? '').trim()
+        const mm = /Max Memory Used:\s*(\d+)\s*MB/.exec(msg)
+        if (mm) maxMem = Math.max(maxMem, Number(mm[1]))
+      }
+      recent = events.filter(e => !/^(?:START|END|REPORT|INIT_START)/.test((e.message ?? '').trim()))
+        .slice(-6).map(e => ({ ts: new Date(e.timestamp ?? 0).toISOString().slice(11, 19), msg: (e.message ?? '').trim().slice(0, 120), err: /error|exception|fatal/i.test(e.message ?? '') }))
+    }
+    catch { /* logs optional */ }
+
+    const maxSpark = Math.max(1, ...spark)
+    fns.push({ key: f.mode, name: f.name, version: f.version, memory, timeout: cfg?.Configuration?.Timeout ?? 0, runtime: cfg?.Configuration?.Runtime ?? 'provided.al2023', invocations: Math.round(invocations), errors: Math.round(errors), p95: p95 || Math.round(durAvg), status: 'active', provisioned: f.provisioned ? `${f.provisioned.allocated}/${f.provisioned.requested}` : undefined })
+    fnsDetail.push({
+      key: f.mode, name: f.name, runtime: cfg?.Configuration?.Runtime ?? 'provided.al2023', arch: ((cfg?.Configuration as any)?.Architectures?.[0]) ?? 'x86_64',
+      memory, timeout: cfg?.Configuration?.Timeout ?? 0, ephemeral: (cfg?.Configuration as any)?.EphemeralStorage?.Size ?? 512,
+      version: f.version, concurrency: app?.concurrency ?? '—',
+      invocations: Math.round(invocations), errors: Math.round(errors), throttles: Math.round(throttles),
+      p50: p50 || Math.round(durAvg), p95: p95 || Math.round(durAvg), p99: p99 || Math.round(durAvg), maxMem,
+      spark: spark.length ? spark.map(v => Math.round((v / maxSpark) * 100)) : [0],
+      env: env.length ? env : ['(none)'],
+      recent: recent.length ? recent : [{ ts: '—', msg: 'no recent events', err: false }],
     })
   }
-
-  // Queue depth from SQS (best-effort).
-  const sqs = new SQSClient(info.region)
-  const queues: DashboardData['queues'] = []
-  for (const qName of info.queues) {
-    try {
-      const { QueueUrl } = await sqs.getQueueUrl(qName)
-      const { Attributes } = await sqs.getQueueAttributes(QueueUrl)
-      queues.push({
-        name: qName.replace(`${info.slug}-${environment}-`, ''),
-        visible: Number(Attributes.ApproximateNumberOfMessages ?? 0),
-        inFlight: Number(Attributes.ApproximateNumberOfMessagesNotVisible ?? 0),
-        processed: 0,
-        dlq: 0,
-      })
-    }
-    catch {
-      queues.push({ name: qName.replace(`${info.slug}-${environment}-`, ''), visible: 0, inFlight: 0, processed: 0, dlq: 0 })
-    }
-  }
+  out.functions = fns
+  out.functionsDetail = fnsDetail
 
   const errorRatePct = totalInvocations ? Number(((totalErrors / totalInvocations) * 100).toFixed(2)) : 0
+  const concurrency = Math.round(await lambdaMetric(cw, info.functions[0]?.name ?? '', 'ConcurrentExecutions', 'Maximum', start, end))
+  out.metrics = { invocations: Math.round(totalInvocations), errorRatePct, p95Ms: Math.round(maxDur), coldStartPct: 0, concurrency, estCostUsd: 0 }
 
-  return {
-    app: {
-      name: info.slug,
-      env: environment,
-      region: info.region,
-      runtime: `${config.environments?.[environment]?.app?.kind ?? 'node'}`,
-      url: info.endpoint ?? '',
-      build: info.lastRelease?.sha?.slice(0, 7) ?? '—',
-      deployedAt: info.lastRelease?.timestamp ?? '—',
-    },
-    maintenance: { enabled: false },
-    metrics: {
-      invocations: Math.round(totalInvocations),
-      errorRatePct,
-      p95Ms: Math.round(maxP95),
-      coldStartPct: 0,
-      concurrency: 0,
-      estCostUsd: 0,
-    },
-    functions,
-    queues,
-    scheduler: { enabled: info.scheduler !== 'off', expression: info.scheduler === 'sub-minute' ? 'rate(1 minute) · sub-minute' : 'rate(1 minute)' },
+  // ── Queues (+ DLQ) ───────────────────────────────────────────────────────────
+  try {
+    const sqs = new SQSClient(region)
+    const overview: any[] = []
+    const detail: any[] = []
+    const resolvedQueues = app ? resolveQueues(app, info.slug, environment) : []
+    for (const q of resolvedQueues) {
+      const short = q.name.replace(`${info.slug}-${environment}-`, '')
+      let visible = 0, inFlight = 0
+      try {
+        const { QueueUrl } = await sqs.getQueueUrl(q.name)
+        const { Attributes } = await sqs.getQueueAttributes(QueueUrl)
+        visible = Number(Attributes.ApproximateNumberOfMessages ?? 0)
+        inFlight = Number(Attributes.ApproximateNumberOfMessagesNotVisible ?? 0)
+      }
+      catch { /* queue may not exist */ }
+      const processed = Math.round(await lambdaMetric(cw, info.functions.find(f => f.mode === 'queue')?.name ?? '', 'Invocations', 'Sum', start, end))
+      overview.push({ name: short, visible, inFlight, processed, dlq: 0 })
+      detail.push({ name: q.name, short, visible, inFlight, delayed: 0, processed, oldestSec: 0, concurrency: q.concurrency ?? app?.queueConcurrency ?? '—', tries: app?.queueTries ?? 3, visTimeout: (app?.queueTimeout ?? 120) * 6, dlq: 0 })
+    }
+    if (overview.length) out.queues = overview
+    if (detail.length) out.queuesDetail = detail
+    out.dlqItems = []
   }
+  catch { /* sqs optional */ }
+
+  // ── Data services (from CFN outputs / config) ────────────────────────────────
+  try {
+    const cf = new CloudFormationClient(region)
+    const { Stacks } = await cf.describeStacks({ stackName: resolveServerlessAppStackName(config, environment) })
+    const outputs: Record<string, string> = {}
+    for (const o of Stacks?.[0]?.Outputs ?? []) if (o.OutputKey) outputs[o.OutputKey] = o.OutputValue ?? ''
+    if (app?.database?.connection === 'aurora-serverless') {
+      out.aurora = { id: `${info.slug}-${environment}-db`, engine: 'aurora-mysql', minAcu: app?.database?.minCapacity ?? 0.5, maxAcu: app?.database?.maxCapacity ?? 4, currentAcu: app?.database?.minCapacity ?? 0.5, database: 'app', connections: 0, status: outputs.DbEndpoint ? 'available' : 'creating' }
+      if (app?.rdsProxy) out.proxy = { name: `${info.slug}-${environment}-proxy`, endpoint: outputs.DbProxyEndpoint ?? '—', pooledConns: 0, status: 'available' }
+    }
+    if (app?.cache?.driver === 'elasticache') out.redis = { id: `${info.slug}-${environment}-redis`, node: 'cache.t4g.micro', engine: 'redis', hitRate: 0, status: outputs.CacheEndpoint ? 'available' : 'creating' }
+    if (app?.efs) out.efs = { id: outputs.EfsId ?? 'efs', mount: '/mnt/local', sizeMb: 0, status: 'available' }
+    out.assetsInfo = outputs.AssetsCdnDomain ? { bucket: outputs.AssetsBucketName ?? `${info.slug}-${environment}-assets`, cdn: outputs.AssetsCdnDomain, customDomain: app?.assetDomain ?? '—', assetUrl: info.assetUrl ?? '—', files: 0, sizeMb: 0, cacheHitPct: 0, build: out.app.build } : undefined
+  }
+  catch { /* cfn optional */ }
+
+  // ── Assets listing (S3) ──────────────────────────────────────────────────────
+  if (out.assetsInfo) {
+    try {
+      const s3 = new S3Client(region)
+      const objs = await s3.list({ bucket: out.assetsInfo.bucket, maxKeys: 1000 })
+      out.assetsInfo.files = objs.length
+      out.assetsInfo.sizeMb = Number((objs.reduce((n, o) => n + (o.Size ?? 0), 0) / 1_048_576).toFixed(1))
+      out.assetsRecent = objs.slice(0, 8).map(o => ({ path: `/${o.Key}`, size: `${Math.max(1, Math.round((o.Size ?? 0) / 1024))} KB`, type: o.Key.split('.').pop() ?? '' }))
+    }
+    catch { /* s3 optional */ }
+  }
+
+  // ── Secrets (keys only) ──────────────────────────────────────────────────────
+  try {
+    if (app?.secrets) {
+      const list = Array.isArray(app.secrets) ? app.secrets.map(s => ({ key: s.split('/').pop()!.toUpperCase().replace(/[^A-Z0-9_]/g, '_'), source: s })) : Object.entries(app.secrets).map(([k, v]) => ({ key: k, source: String(v) }))
+      out.secretsList = list.map(s => ({ ...s, updated: '—' }))
+    }
+  }
+  catch { /* secrets optional */ }
+
+  // ── Deployments (from release history) ───────────────────────────────────────
+  try {
+    const s3 = new S3Client(region)
+    const bucket = `${info.slug}-${environment}-deployments`
+    const hist = await s3.getObjectJson<{ records: any[] }>(bucket, `deployments/${info.slug}/${environment}/history.json`).catch(() => null)
+    if (hist?.records?.length) {
+      out.deploymentsDetail = hist.records.slice(-12).reverse().map((r: any) => ({ sha: (r.sha ?? '').slice(0, 7), status: r.status ?? 'success', when: r.timestamp ?? '—', took: r.took ?? '—', by: r.by ?? '—', version: r.version ?? '—', hooks: r.hooks ?? [] }))
+    }
+  }
+  catch { /* history optional */ }
+
+  // ── Metrics page (totals + per-fn + invocation series) ───────────────────────
+  out.metricsTotals = { invocations: out.metrics.invocations, errors: Math.round(totalErrors), errorRatePct, p95Ms: out.metrics.p95Ms, throttles: fnsDetail.reduce((n, f) => n + f.throttles, 0), coldStartPct: 0, estCostUsd: 0, concurrency }
+  out.metricsPerFn = fnsDetail.map(f => ({ key: f.key, invocations: f.invocations, errors: f.errors, throttles: f.throttles, avgMs: f.p50, maxMs: f.p99, costUsd: 0 }))
+  try {
+    out.invSpark = await cw.getMetricSeries({ Namespace: 'AWS/Lambda', MetricName: 'Invocations', Dimensions: [{ Name: 'FunctionName', Value: info.functions.find(f => f.mode === 'http')?.name ?? '' }], StartTime: new Date(end.getTime() - 24 * 3_600_000), EndTime: end, Period: 3600, Stat: 'Sum' })
+  }
+  catch { /* series optional */ }
+
+  // ── Cost (Cost Explorer) ─────────────────────────────────────────────────────
+  try {
+    const ce = new CostExplorerClient(region)
+    const now = end
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+    const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
+    const [thisMonth, lastMonth] = await Promise.all([
+      ce.getCostByService({ start: isoDate(monthStart), end: isoDate(now), granularity: 'MONTHLY' }).catch(() => []),
+      ce.getCostByService({ start: isoDate(prevStart), end: isoDate(monthStart), granularity: 'MONTHLY' }).catch(() => []),
+    ])
+    if (thisMonth.length) {
+      const mtd = thisMonth.reduce((n, s) => n + s.amount, 0)
+      const lastTotal = lastMonth.reduce((n, s) => n + s.amount, 0)
+      const dayOfMonth = now.getUTCDate()
+      const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate()
+      out.costSummary = { monthToDateUsd: Number(mtd.toFixed(2)), projectedUsd: Number((mtd / dayOfMonth * daysInMonth).toFixed(2)), lastMonthUsd: Number(lastTotal.toFixed(2)), dailyAvgUsd: Number((mtd / dayOfMonth).toFixed(2)) }
+      out.costServices = thisMonth.filter(s => s.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 12).map(s => ({ name: s.service, usd: Number(s.amount.toFixed(2)), note: '' }))
+      out.metrics.estCostUsd = Number((mtd / dayOfMonth).toFixed(2))
+      out.metricsTotals.estCostUsd = out.metrics.estCostUsd
+    }
+  }
+  catch { /* cost optional */ }
+
+  // ── WAF (CloudWatch counts) ──────────────────────────────────────────────────
+  if (app?.firewall) {
+    try {
+      const blocked = await cw.getMetricStatistics({ Namespace: 'AWS/WAFV2', MetricName: 'BlockedRequests', StartTime: start, EndTime: end, Period: 86400, Statistics: ['Sum'] }).catch(() => [])
+      const allowed = await cw.getMetricStatistics({ Namespace: 'AWS/WAFV2', MetricName: 'AllowedRequests', StartTime: start, EndTime: end, Period: 86400, Statistics: ['Sum'] }).catch(() => [])
+      out.waf = { enabled: true, scope: 'REGIONAL', acl: `${info.slug}-${environment}-waf`, allowed24h: Math.round(allowed.reduce((n, p) => n + (p.Sum ?? 0), 0)), blocked24h: Math.round(blocked.reduce((n, p) => n + (p.Sum ?? 0), 0)) }
+    }
+    catch { /* waf optional */ }
+  }
+
+  return out
 }

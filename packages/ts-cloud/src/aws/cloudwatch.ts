@@ -7,6 +7,8 @@ export interface MetricDatapoint {
   Average?: number
   Maximum?: number
   Minimum?: number
+  /** Percentile values when ExtendedStatistics were requested, e.g. { p95: 86 }. */
+  Percentiles?: Record<string, number>
   Unit?: string
 }
 
@@ -53,7 +55,9 @@ export class CloudWatchClient {
     StartTime: Date
     EndTime: Date
     Period: number
-    Statistics: Array<'Sum' | 'Average' | 'Maximum' | 'Minimum'>
+    Statistics?: Array<'Sum' | 'Average' | 'Maximum' | 'Minimum'>
+    /** Percentiles like ['p50','p95','p99'] (CloudWatch ExtendedStatistics). */
+    ExtendedStatistics?: string[]
   }): Promise<MetricDatapoint[]> {
     const params: Record<string, any> = {
       Action: 'GetMetricStatistics',
@@ -63,7 +67,8 @@ export class CloudWatchClient {
       EndTime: options.EndTime.toISOString(),
       Period: options.Period,
     }
-    options.Statistics.forEach((s, i) => { params[`Statistics.member.${i + 1}`] = s })
+    ;(options.Statistics ?? []).forEach((s, i) => { params[`Statistics.member.${i + 1}`] = s })
+    ;(options.ExtendedStatistics ?? []).forEach((s, i) => { params[`ExtendedStatistics.member.${i + 1}`] = s })
     ;(options.Dimensions ?? []).forEach((d, i) => {
       params[`Dimensions.member.${i + 1}.Name`] = d.Name
       params[`Dimensions.member.${i + 1}.Value`] = d.Value
@@ -73,14 +78,55 @@ export class CloudWatchClient {
     const response = result.GetMetricStatisticsResult || result
     let points = response?.Datapoints?.member ?? []
     if (!Array.isArray(points)) points = points ? [points] : []
-    return points.map((p: any) => ({
-      Timestamp: p.Timestamp,
-      Sum: p.Sum != null ? Number(p.Sum) : undefined,
-      Average: p.Average != null ? Number(p.Average) : undefined,
-      Maximum: p.Maximum != null ? Number(p.Maximum) : undefined,
-      Minimum: p.Minimum != null ? Number(p.Minimum) : undefined,
-      Unit: p.Unit,
-    }))
+    return points.map((p: any) => {
+      // ExtendedStatistics come back as a map: <entry><key>p95</key><value>..</value></entry>
+      const percentiles: Record<string, number> = {}
+      let entries = p.ExtendedStatistics?.entry
+      if (entries) {
+        if (!Array.isArray(entries)) entries = [entries]
+        for (const e of entries) if (e?.key != null) percentiles[e.key] = Number(e.value)
+      }
+      return {
+        Timestamp: p.Timestamp,
+        Sum: p.Sum != null ? Number(p.Sum) : undefined,
+        Average: p.Average != null ? Number(p.Average) : undefined,
+        Maximum: p.Maximum != null ? Number(p.Maximum) : undefined,
+        Minimum: p.Minimum != null ? Number(p.Minimum) : undefined,
+        Percentiles: Object.keys(percentiles).length ? percentiles : undefined,
+        Unit: p.Unit,
+      }
+    })
+  }
+
+  /**
+   * Return a time-ordered series of a single statistic over a window — for
+   * sparklines. `stat` is 'Sum'|'Average'|'Maximum'|'Minimum' or a percentile
+   * like 'p95'.
+   */
+  async getMetricSeries(options: {
+    Namespace: string
+    MetricName: string
+    Dimensions?: Array<{ Name: string, Value: string }>
+    StartTime: Date
+    EndTime: Date
+    Period: number
+    Stat: string
+  }): Promise<number[]> {
+    const isPct = /^p\d/.test(options.Stat)
+    const pts = await this.getMetricStatistics({
+      Namespace: options.Namespace,
+      MetricName: options.MetricName,
+      Dimensions: options.Dimensions,
+      StartTime: options.StartTime,
+      EndTime: options.EndTime,
+      Period: options.Period,
+      Statistics: isPct ? [] : [options.Stat as 'Sum'],
+      ExtendedStatistics: isPct ? [options.Stat] : [],
+    })
+    return pts
+      .slice()
+      .sort((a, b) => new Date(a.Timestamp ?? 0).getTime() - new Date(b.Timestamp ?? 0).getTime())
+      .map(p => (isPct ? (p.Percentiles?.[options.Stat] ?? 0) : (p as any)[options.Stat] ?? 0))
   }
 
   /** List alarms, optionally filtered by name prefix. */

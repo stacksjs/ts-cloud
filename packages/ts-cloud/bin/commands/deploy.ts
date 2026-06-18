@@ -1121,11 +1121,28 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         cli.step('Gathering live data from AWS')
-        const { resolveDashboardData } = await import('../../src/deploy/dashboard-data')
-        const data = await resolveDashboardData(config, environment).catch((e) => {
-          cli.warn(`Could not gather live data (${e.message}); building with sample data.`)
-          return null
-        })
+
+        // Gather both halves the dashboard shows — serverless app (Lambda) and the
+        // server box (EC2) — and merge into one injected payload. Each is
+        // best-effort: a failure leaves that half on representative sample data.
+        let data: Record<string, any> | null = null
+        if (config.environments?.[environment]?.app) {
+          const { resolveDashboardData } = await import('../../src/deploy/dashboard-data')
+          const sl = await resolveDashboardData(config, environment).catch((e) => {
+            cli.warn(`Serverless data unavailable (${e.message}) — that view uses sample data.`)
+            return null
+          })
+          if (sl) data = { ...(data ?? {}), ...sl }
+        }
+        if (config.infrastructure?.compute) {
+          const { resolveServerDashboardData } = await import('../../src/deploy/dashboard-data-server')
+          const sv = await resolveServerDashboardData(config, environment).catch(() => null)
+          if (sv) {
+            if (sv._serverReachable === false)
+              cli.warn('Server box not reachable over SSM — server view uses config + sample data.')
+            data = { ...(data ?? {}), ...sv }
+          }
+        }
         cli.step('Building dashboard')
         const { execSync } = await import('node:child_process')
         const { rmSync } = await import('node:fs')
