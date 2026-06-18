@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.8...v0.5.9)
+
+### 🚀 Features
+
+- **serverless**: real provisioned-concurrency warming via alias/version model ([a3123cf](https://github.com/stacksjs/ts-cloud/commit/a3123cf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.9 ([9b2da10](https://github.com/stacksjs/ts-cloud/commit/9b2da10)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.7...v0.5.8)
 
 ### 🚀 Features
