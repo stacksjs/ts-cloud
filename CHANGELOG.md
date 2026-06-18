@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.4...v0.5.5)
+
+### 🚀 Features
+
+- **serverless**: auto-issue the custom asset-domain ACM cert from hostedZoneId ([2633bcd](https://github.com/stacksjs/ts-cloud/commit/2633bcd)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 📚 Documentation
+
+- **laravel**: document Forge-parity features + add dashboard screenshots ([3bb6978](https://github.com/stacksjs/ts-cloud/commit/3bb6978)) _(by Chris <chrisbreuer93@gmail.com>)_
+- embed management dashboard screenshots (Server + Serverless views) ([516a5f2](https://github.com/stacksjs/ts-cloud/commit/516a5f2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.5 ([812ef72](https://github.com/stacksjs/ts-cloud/commit/812ef72)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.3...v0.5.4)
 
 ### 🐛 Bug Fixes
