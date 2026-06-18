@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.16...v0.5.17)
+
+### 🐛 Bug Fixes
+
+- **serverless**: WAF cannot attach to HTTP API v2; correct dashboard data sources ([32e0d3c](https://github.com/stacksjs/ts-cloud/commit/32e0d3c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.17 ([0a7e0ec](https://github.com/stacksjs/ts-cloud/commit/0a7e0ec)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.15...v0.5.16)
 
 ### 🚀 Features
