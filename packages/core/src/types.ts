@@ -2384,10 +2384,12 @@ export interface ComputeConfig {
   sshKey?: string
 
   /**
-   * Enable detailed monitoring
-   * @default false
+   * On-box server monitoring (Forge-style). `true`/`false` toggles the metrics
+   * collector; pass a {@link ComputeMonitoringConfig} to also set resource
+   * alert thresholds that notify the configured channels on breach.
+   * @default true for PHP boxes
    */
-  monitoring?: boolean
+  monitoring?: boolean | ComputeMonitoringConfig
 
   /**
    * Spot/preemptible instance settings (when using fleet)
@@ -2527,6 +2529,26 @@ export interface SshKeyConfig {
   name: string
   /** The public key line (e.g. `ssh-ed25519 AAAA… user@host`). */
   publicKey: string
+}
+
+/**
+ * On-box monitoring + resource alerts. See {@link ComputeConfig.monitoring}.
+ * The collector writes a metrics snapshot every minute; when a threshold is
+ * breached it calls the on-box notifier (Slack/Discord/Telegram/webhook) once
+ * per OK→alert transition (and again on recovery), so channels aren't spammed.
+ */
+export interface ComputeMonitoringConfig {
+  /** Enable the metrics collector. @default true */
+  enabled?: boolean
+  /** Alert thresholds; omit a field to keep its default. */
+  alerts?: {
+    /** Alert when 1-min load average per CPU exceeds this. @default 2 */
+    cpuLoadPerCore?: number
+    /** Alert when used memory percentage is ≥ this. @default 90 */
+    memPercent?: number
+    /** Alert when root-filesystem usage percentage is ≥ this. @default 90 */
+    diskPercent?: number
+  }
 }
 
 /** Host firewall (UFW) configuration. See {@link ComputeConfig.firewall}. */
