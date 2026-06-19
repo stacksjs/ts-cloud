@@ -95,6 +95,49 @@ export default {
 repository: { url: '…', strategy: 'tag', tagPattern: 'v*' }
 ```
 
+### Push-to-deploy (CI pipeline)
+
+ts-cloud deploys from your machine or CI (git-clone-on-server), so Forge's deploy
+webhook becomes a provider-native pipeline. Set the repo's `provider` and run
+`cloud quick-deploy` to scaffold a workflow that runs `cloud deploy` on every
+push to the deploy branch:
+
+```ts
+repository: { url: 'git@github.com:acme/app.git', branch: 'main', provider: 'github' }
+```
+
+```sh
+cloud quick-deploy            # writes the CI file for the configured provider
+cloud quick-deploy --force    # overwrite an existing file
+```
+
+| `provider` | Generated file |
+| --- | --- |
+| `github` | `.github/workflows/deploy.yml` |
+| `gitlab` | `.gitlab-ci.yml` |
+| `bitbucket` | `bitbucket-pipelines.yml` |
+
+`custom` (or no repository) skips generation — wire your own pipeline to call
+`cloud deploy`.
+
+## Site types
+
+`type` selects the deploy script + nginx template:
+
+| `type` | Web root | Deploy script |
+| --- | --- | --- |
+| `laravel` | `public/` | composer + `artisan migrate`/cache/queue restart |
+| `statamic` | `public/` | full Laravel deploy (composer + artisan) |
+| `wordpress` | release root | optional composer, no artisan; WP hardening |
+| `php` | release root | optional composer, no artisan |
+| `static` | release root | files only (clone + activate) |
+| `spa` | release root | files only, SPA fallback to `index.html` |
+
+**WordPress** vhosts add hardening automatically: `xmlrpc.php` is denied,
+`wp-config.php`/`readme.html`/`license.txt` are blocked, and PHP execution inside
+`wp-content/uploads` is refused. (Bedrock serves from `web/` — set
+`webDirectory: 'web'`.) **Statamic** is treated as a Laravel app.
+
 ## Zero-downtime releases
 
 Every deploy clones into `releases/<id>`, links the shared `storage`/`.env`,
@@ -140,6 +183,25 @@ ssl: {
   },
 }
 ```
+
+### HSTS & TLS hardening
+
+Force HTTPS in browsers with an HSTS header, and pin the TLS protocol versions
+nginx serves. Both live under the site's `ssl`:
+
+```ts
+ssl: {
+  provider: 'letsencrypt',
+  email: 'ops@acme.com',
+  // true ⇒ `max-age=31536000; includeSubDomains`; or customize:
+  hsts: { maxAge: 63072000, includeSubDomains: true, preload: true },
+  // Restrict to modern TLS (applies to the custom-cert :443 block).
+  tlsProtocols: ['TLSv1.2', 'TLSv1.3'],
+}
+```
+
+`hsts: true` emits a one-year `Strict-Transport-Security` header with
+`includeSubDomains`. Only enable `preload` once every subdomain is HTTPS-only.
 
 ## Database users
 
@@ -291,6 +353,8 @@ cloud deploy:recipe clear-opcache ./recipes/clear-opcache.sh --user www-data
 | `cloud deploy:rollback [site] [--to <id>]` | Roll a site back to a previous release |
 | `cloud deploy:history [site] [--limit <n>]` | Show on-box deployment history |
 | `cloud deploy:recipe <name> <script> [--user <u>]` | Run a bash recipe across servers |
+| `cloud quick-deploy [--force]` | Scaffold a push-to-deploy CI pipeline |
+| `cloud db:restore-backup [from]` | Restore the app database from a backup |
 
 ## Per-site options
 
@@ -307,6 +371,11 @@ sites: {
     healthCheck: { path: '/up' },
     // nginx redirects (Forge "Redirects").
     redirects: { '/old': '/new' },
+    // Per-site user isolation: a dedicated OS user + php-fpm pool (see below).
+    isolation: true,
+    // Per-site IP access control (Forge "Security Rules"). With `allow`, every
+    // other IP is denied; `deny` blocks specific addresses.
+    security: { allow: ['203.0.113.0/24'], deny: ['198.51.100.7'] },
     // Private-registry auth written before composer/npm install.
     credentials: {
       composerAuth: { 'github-oauth': { 'github.com': process.env.COMPOSER_TOKEN } },
@@ -316,9 +385,48 @@ sites: {
 }
 ```
 
-> **Note:** per-site **user isolation** (a dedicated OS user + php-fpm pool per
-> site, Forge's "User Isolation") is on the roadmap — the current setup runs all
-> sites under one php-fpm. Use separate servers for hard isolation today.
+### Site isolation (per-site user + php-fpm pool)
+
+Set `isolation: true` on a site for Forge-style **User Isolation**: ts-cloud
+creates a dedicated system user (`web_<site>`), runs that site's PHP in its own
+php-fpm pool (its own worker processes on a per-site port), and jails the pool
+to the site's directory tree via `open_basedir`. nginx (`www-data`) is added to
+the site's group so it can still serve static files. A compromise or runaway in
+one isolated site can't read another site's files or starve the shared pool.
+
+```ts
+sites: {
+  app:   { domain: 'acme.com',     type: 'laravel', isolation: true },
+  blog:  { domain: 'blog.acme.com', type: 'wordpress', isolation: true },
+}
+```
+
+> Requires a pantry build whose php-fpm `include`s the pool dir
+> (`/var/lib/pantry/php-fpm/pool.d/*.conf`); recent pantry releases ship this.
+
+### Deploy hooks
+
+Project-level `hooks` run a shell command or a TypeScript function at each
+lifecycle stage of `cloud deploy`. String hooks run locally (in the deploy CWD);
+function hooks receive the resolved config. A failing **string** hook in
+`beforeBuild`/`beforeDeploy` aborts the deploy. (Server-side steps belong in
+`site.deployScript`; these run on the deploying machine.)
+
+```ts
+// cloud.config.ts — top level, not inside a site
+export default {
+  // …project, infrastructure, sites…
+  hooks: {
+    beforeBuild:  'bun run build',
+    afterBuild:   'echo assets built',
+    beforeDeploy: config => assertEnv(config),
+    afterDeploy:  'curl -fsS https://acme.com/up',
+  },
+}
+```
+
+The four stages run in order: `beforeDeploy` → `beforeBuild` → (build) →
+`afterBuild` → (deploy) → `afterDeploy`.
 
 ### SSH keys
 
@@ -359,6 +467,47 @@ infrastructure: {
 }
 ```
 
+**Restore** a database from a dump on the box (Forge's restore). With no argument
+the newest matching dump is used; pass a path to restore a specific one:
+
+```sh
+# Restore appDatabase from the latest on-box backup
+cloud db:restore-backup
+
+# Restore from a specific dump file
+cloud db:restore-backup /var/backups/ts-cloud/acme_20240601.sql.gz
+```
+
+## Server monitoring & alerts
+
+A dependency-free collector writes a metrics snapshot to
+`/var/lib/ts-cloud/metrics.json` every minute (Forge's server metrics): load,
+CPU count, memory + swap, disk, uptime, network throughput (rx/tx bytes), and
+per-service TCP health (nginx, php-fpm, MySQL/Postgres, Redis, Meilisearch). The
+dashboard reads it; `cloud server:monitoring <name>` prints it.
+
+Pass an object to `monitoring` to set **resource alert thresholds**. When a
+threshold is breached the box calls the on-box notifier (the same
+Slack/Discord/Telegram/webhook channels) once per OK→alert transition, and again
+on recovery — so a hot box doesn't spam every minute:
+
+```ts
+infrastructure: {
+  compute: {
+    monitoring: {
+      alerts: {
+        cpuLoadPerCore: 2,  // 1-min load ÷ CPUs (default 2)
+        memPercent: 90,     // used memory % (default 90)
+        diskPercent: 90,    // root fs usage % (default 90)
+      },
+    },
+  },
+}
+```
+
+`monitoring: true` (the default for PHP boxes) enables the collector with
+default thresholds; `monitoring: false` disables it entirely.
+
 ## Server, database & firewall CLI
 
 `cloud deploy` provisions and deploys from `cloud.config.ts`; for day-to-day
@@ -381,13 +530,19 @@ for the complete list. The most-used commands:
 | --- | --- | --- |
 | Web server | nginx + php-fpm | nginx + php-fpm (per-site PHP version) |
 | TLS | Let's Encrypt | Let's Encrypt (certbot) + custom certs, auto-renew |
+| HSTS / TLS hardening | toggle | `ssl.hsts` + `ssl.tlsProtocols` |
+| Security rules | per-site allow/deny | `site.security` (IP allow/deny) |
 | Wildcard SSL | DNS-01 | DNS-01 (cloudflare/route53/digitalocean/google) |
 | Deploys | git, zero-downtime | git, zero-downtime atomic releases |
+| Push to deploy | webhook | provider CI pipeline (`cloud quick-deploy`) |
+| Deploy hooks | before/after | `hooks` (string command or function) |
 | Deployment history | per-deploy log | per-deploy + history log on the box |
 | Health checks | post-deploy ping | `site.healthCheck` gate (fails the deploy) |
 | Rollback | one-click | `cloud deploy:rollback` (atomic) |
+| Site isolation | per-site user + pool | `isolation: true` (user + php-fpm pool + jail) |
 | Database | MySQL/MariaDB/Postgres | same, on-box or managed |
 | Database users | read-only + full | read-only + full grants, password reset |
+| Backup restore | one-click | `cloud db:restore-backup [from]` |
 | PHP tuning | Optimize for Production | OPcache + custom `php.ini` (default on) |
 | Nginx config | per-site + templates | per-site snippets + reusable templates |
 | Cache/Search | Redis/Memcached/Meilisearch | same |
@@ -398,6 +553,7 @@ for the complete list. The most-used commands:
 | Firewall | UFW | UFW (+ Hetzner cloud firewall) |
 | Maintenance | auto updates | unattended-upgrades |
 | Backups | scheduled | scheduled (ts-backups to object storage) |
+| Monitoring | server metrics | metrics + network/per-service health + resource alerts |
 | Notifications | Slack/Discord/Telegram/email/webhook | same |
 
 ## Management dashboard (auto-deployed)
