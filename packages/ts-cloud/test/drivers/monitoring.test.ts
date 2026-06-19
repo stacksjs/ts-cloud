@@ -10,7 +10,12 @@ describe('buildMonitoringScript', () => {
   it('installs the collector + minute timer when enabled', () => {
     const s = buildMonitoringScript(true).join('\n')
     expect(s).toContain('/usr/local/bin/ts-cloud-metrics.sh')
-    expect(s).toContain(`cat > ${METRICS_PATH}`)
+    // Written atomically (temp + rename) so readers never see a partial file.
+    expect(s).toContain(`cat > ${METRICS_PATH}.tmp`)
+    expect(s).toContain(`mv -f ${METRICS_PATH}.tmp ${METRICS_PATH}`)
+    // Numeric fields are defaulted so a missing reading can't emit invalid JSON.
+    expect(s).toContain('LOAD=${LOAD:-0}')
+    expect(s).toContain('DISK_PCT=${DISK_PCT:-0}')
     expect(s).toContain('/etc/systemd/system/ts-cloud-metrics.timer')
     expect(s).toContain('OnUnitActiveSec=60')
     expect(s).toContain('systemctl enable ts-cloud-metrics.timer')

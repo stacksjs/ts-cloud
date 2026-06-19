@@ -57,8 +57,14 @@ describe('buildPhpFpmPoolScript', () => {
 
   it('grants nginx (www-data) group access and takes ownership of the tree', () => {
     expect(s).toContain('usermod -aG web_app www-data')
-    expect(s).toContain('chown -R web_app:web_app /var/www/app')
-    expect(s).toContain('chmod -R g+rX /var/www/app')
+    // chown/chmod tolerate failure: they run under the deploy script's set -e
+    // after the release is already live, so one odd file must not abort it.
+    expect(s).toContain('chown -R web_app:web_app /var/www/app || true')
+    expect(s).toContain('chmod -R g+rX /var/www/app || true')
+  })
+
+  it('re-tightens the shared .env after the recursive chmod', () => {
+    expect(s).toContain('chmod 600 /var/www/app/shared/.env')
   })
 
   it('drops the pool config into pantry’s include dir and restarts php-fpm', () => {

@@ -82,13 +82,21 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
     // Network throughput: cumulative rx/tx bytes across non-loopback interfaces.
     'RX_BYTES=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{rx+=$3} END{print rx+0}\' /proc/net/dev)',
     'TX_BYTES=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{tx+=$11} END{print tx+0}\' /proc/net/dev)',
-    // Per-service TCP health (up/down) without extra tooling.
-    'probe(){ (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null && { exec 3>&-; echo up; } || echo down; }',
+    // Per-service TCP health (up/down) without extra tooling. The connection is
+    // opened + closed inside the subshell; success ⇒ up.
+    'probe(){ (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null && echo up || echo down; }',
     ...probeLines,
+    // Default every numeric to a literal so a missing reading can't emit invalid
+    // JSON (e.g. `"load":,`) and break every reader for that minute.
+    'LOAD=${LOAD:-0}; CPUS=${CPUS:-1}; MEM_TOTAL=${MEM_TOTAL:-0}; MEM_USED=${MEM_USED:-0}',
+    'SWAP_TOTAL=${SWAP_TOTAL:-0}; SWAP_USED=${SWAP_USED:-0}; DISK_PCT=${DISK_PCT:-0}',
+    'UPTIME_SEC=${UPTIME_SEC:-0}; RX_BYTES=${RX_BYTES:-0}; TX_BYTES=${TX_BYTES:-0}',
     'MEM_PCT=$(( MEM_TOTAL > 0 ? MEM_USED * 100 / MEM_TOTAL : 0 ))',
-    `cat > ${METRICS_PATH} <<JSON`,
+    // Write atomically (temp + rename) so a reader never sees a half-written file.
+    `cat > ${METRICS_PATH}.tmp <<JSON`,
     '{"load":$LOAD,"cpus":$CPUS,"memTotalMb":$MEM_TOTAL,"memUsedMb":$MEM_USED,"memUsedPct":$MEM_PCT,"swapTotalMb":$SWAP_TOTAL,"swapUsedMb":$SWAP_USED,"diskUsedPct":$DISK_PCT,"uptimeSec":$UPTIME_SEC,"network":{"rxBytes":$RX_BYTES,"txBytes":$TX_BYTES},"services":{' + servicesJson + '}}',
     'JSON',
+    `mv -f ${METRICS_PATH}.tmp ${METRICS_PATH}`,
     // Resource alerts: notify on OK→alert transition (and once on recovery).
     'ALERTS=""',
     `if awk -v l="$LOAD" -v c="$CPUS" -v t=${cpuLoadPerCore} 'BEGIN{exit !(c>0 && l/c > t)}'; then ALERTS="$ALERTS load=$LOAD/${cpuLoadPerCore}xCPU"; fi`,

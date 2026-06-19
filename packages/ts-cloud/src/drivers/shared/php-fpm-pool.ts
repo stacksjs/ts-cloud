@@ -40,9 +40,12 @@ export function siteUser(siteName: string): string {
  * given site name (stateless generation), so redeploys reuse the same port.
  */
 export function phpFpmPoolPort(siteName: string): number {
+  // Hash the derived token (not the raw name) so two site names that sanitize
+  // to the same user/conf also resolve to the same port — no dead fastcgi_pass.
+  const token = siteToken(siteName)
   let h = 0
-  for (let i = 0; i < siteName.length; i++)
-    h = (h * 31 + siteName.charCodeAt(i)) >>> 0
+  for (let i = 0; i < token.length; i++)
+    h = (h * 31 + token.charCodeAt(i)) >>> 0
   return POOL_PORT_BASE + (h % POOL_PORT_SPAN)
 }
 
@@ -104,11 +107,17 @@ export function buildPhpFpmPoolScript(options: PhpFpmPoolOptions): string[] {
     // Dedicated system user + group for the site (no login, no home).
     `getent group ${user} >/dev/null || groupadd --system ${user}`,
     `id -u ${user} >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin -g ${user} ${user}`,
-    // nginx (www-data) joins the site group so it can read the served files.
+    // nginx (www-data) joins the site group so it can read the served files
+    // (a vhost reload re-runs initgroups for the workers, so no restart needed).
     `usermod -aG ${user} www-data 2>/dev/null || true`,
     // The site user owns its tree; group-readable so nginx can serve assets.
-    `chown -R ${user}:${user} ${options.appBase}`,
-    `chmod -R g+rX ${options.appBase}`,
+    // `|| true`: these run under the deploy script's `set -e` AFTER the release
+    // is already live — one odd file must not abort the rest of the deploy.
+    `chown -R ${user}:${user} ${options.appBase} || true`,
+    `chmod -R g+rX ${options.appBase} || true`,
+    // Re-tighten the shared .env (the recursive chmod above would otherwise make
+    // it group-readable) — secrets stay readable only by the pool user.
+    `chmod 600 ${options.appBase}/shared/.env 2>/dev/null || true`,
     // Drop the pool config into pantry's php-fpm include dir + restart fpm.
     `mkdir -p ${PHP_FPM_POOL_DIR}`,
     `cat > ${conf} <<'TS_CLOUD_FPMPOOL_EOF'`,
