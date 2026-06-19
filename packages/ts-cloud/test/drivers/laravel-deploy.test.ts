@@ -1,6 +1,7 @@
 import type { SiteConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import {
+  buildHealthCheckScript,
   buildLaravelDeployScript,
   defaultDeployScriptFor,
   MACRO_ACTIVATE_RELEASE,
@@ -110,5 +111,25 @@ describe('site-target resolution for PHP sites', () => {
     expect(isPhpSite(laravelSite)).toBe(true)
     expect(resolveSiteKind(laravelSite)).toBe('server-php')
     expect(resolveSiteKind({ root: 'dist' })).toBe('bucket')
+  })
+})
+
+describe('buildHealthCheckScript', () => {
+  it('pings the live site via localhost with the Host header and fails on non-2xx/3xx', () => {
+    const s = buildHealthCheckScript({ root: '.', type: 'laravel', domain: 'acme.com', healthCheck: { path: '/up' } }).join('\n')
+    expect(s).toContain('http://127.0.0.1/up')
+    expect(s).toContain('-H "Host: acme.com"')
+    expect(s).toContain('health check FAILED')
+    expect(s).toContain('exit 1')
+  })
+
+  it('normalizes a path without a leading slash', () => {
+    const s = buildHealthCheckScript({ root: '.', type: 'laravel', domain: 'acme.com', healthCheck: { path: 'health' } }).join('\n')
+    expect(s).toContain('http://127.0.0.1/health')
+  })
+
+  it('emits nothing without a healthCheck path or domain', () => {
+    expect(buildHealthCheckScript({ root: '.', type: 'laravel', domain: 'acme.com' })).toEqual([])
+    expect(buildHealthCheckScript({ root: '.', type: 'laravel', healthCheck: { path: '/up' } })).toEqual([])
   })
 })

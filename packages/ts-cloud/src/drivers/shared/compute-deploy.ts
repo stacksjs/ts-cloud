@@ -18,7 +18,7 @@ import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildManagedDbEnv } from './db-provision'
 import { buildFleetServicesEnv } from './fleet'
 import { resolveNotifications, sendNotifications } from './notifications'
-import { buildLaravelDeployScript } from './laravel-deploy'
+import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
@@ -134,10 +134,14 @@ export async function deploySiteRelease(
       ? buildSiteServicesScript({ slug, siteName, site, phpVersion, appBase })
       : []
 
+    // Post-deploy health check (Forge-style): fail the deploy if the live site
+    // doesn't respond. Runs last, after the release is flipped + nginx is up.
+    const healthCheckScript = useNginx ? buildHealthCheckScript(site) : []
+
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...deployScript, ...vhostScript, ...sslScript, ...servicesScript],
+      commands: [...deployScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })

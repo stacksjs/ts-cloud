@@ -133,6 +133,27 @@ export function buildCredentialFiles(releaseDir: string, creds?: SiteCredentials
 }
 
 /**
+ * Post-deploy health check (Forge-style): once the release is live, hit the
+ * site through nginx on localhost (with the site's `Host` header) and fail the
+ * deploy if it doesn't return 2xx/3xx within a few retries. A redirect (e.g.
+ * the certbot HTTP→HTTPS 301) counts as healthy — nginx is up and routing.
+ * Returns `[]` when no `healthCheck.path` (or domain) is configured.
+ */
+export function buildHealthCheckScript(site: SiteConfig): string[] {
+  const path = site.healthCheck?.path
+  if (!path || !site.domain)
+    return []
+  const p = path.startsWith('/') ? path : `/${path}`
+  const url = `http://127.0.0.1${p}`
+  return [
+    `echo "[ts-cloud] health check ${url} (Host: ${site.domain})"`,
+    'TS_CLOUD_HC_OK=0',
+    `for i in $(seq 1 10); do TS_CLOUD_HC=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${site.domain}" -m 10 "${url}" 2>/dev/null || echo 000); case "$TS_CLOUD_HC" in 2*|3*) TS_CLOUD_HC_OK=1; break ;; esac; sleep 3; done`,
+    '[ "$TS_CLOUD_HC_OK" = 1 ] && echo "health check passed ($TS_CLOUD_HC)" || { echo "health check FAILED (last=$TS_CLOUD_HC)" >&2; exit 1; }',
+  ]
+}
+
+/**
  * Build the full remote shell script for a PHP/Laravel git deploy, expanding the
  * release macros. Requires `site.repository` to be set.
  */
