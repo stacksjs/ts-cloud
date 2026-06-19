@@ -252,7 +252,8 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
 
   // ── Cost (Cost Explorer) ─────────────────────────────────────────────────────
   try {
-    const ce = new CostExplorerClient() // Cost Explorer is global (us-east-1); first ctor arg is a profile, not a region.
+    // Cost Explorer is global (us-east-1); the first ctor arg is a profile rather than a region.
+    const ce = new CostExplorerClient()
     const now = end
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     const prevStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
