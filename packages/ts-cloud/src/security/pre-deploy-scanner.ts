@@ -567,7 +567,7 @@ export class PreDeployScanner {
   }
 
   /**
-   * Heuristic for "this match has way too little entropy to be a real secret."
+   * Heuristic for `this match has way too little entropy to be a real secret`.
    * Real cryptographic keys spread their characters across the alphabet; ASCII
    * art dividers, padding placeholders, and runs of repeated chars do not.
    *

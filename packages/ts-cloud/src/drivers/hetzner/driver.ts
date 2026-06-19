@@ -785,7 +785,7 @@ export class HetznerDriver implements CloudDriver {
    * `/dev/null`): the box is identified + trusted via the Hetzner API, and
    * providers recycle public IPs, so a stale `known_hosts` entry from a prior
    * (now-deleted) server would otherwise abort the deploy with
-   * "REMOTE HOST IDENTIFICATION HAS CHANGED".
+   * `REMOTE HOST IDENTIFICATION HAS CHANGED`.
    */
   private static readonly SSH_HOST_KEY_OPTS = [
     '-o', 'StrictHostKeyChecking=no',

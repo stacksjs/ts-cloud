@@ -21,7 +21,7 @@ With S3/EC2 origins you never saw this because AWS gave each service its own
 hostname (`*.s3.amazonaws.com`, `ec2-….compute-1.amazonaws.com`). A self-hosted
 box has none, so you point a dedicated record at it:
 
-```
+```text
 origin.example.com  A  <box-ip>
 ```
 

@@ -6,22 +6,22 @@
 set -e
 
 # Colors for output
-RED='\033[ 0;31m'
-GREEN='\033[ 0;32m'
-YELLOW='\033[ 1;33m'
-NC='\033[ 0m' # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-echo -e "${GREEN}Stopping ts-cloud local development environment...${NC}"
+printf '%b\n' "${GREEN}Stopping ts-cloud local development environment...${NC}"
 
 # Check if docker-compose is installed
 if ! command -v docker-compose &> /dev/null; then
-  echo -e "${YELLOW}Warning: docker-compose not found, using 'docker compose' instead${NC}"
-  DOCKER_COMPOSE="docker compose"
+  printf '%b\n' "${YELLOW}Warning: docker-compose not found, using 'docker compose' instead${NC}"
+  DOCKER_COMPOSE=(docker compose)
 else
-  DOCKER_COMPOSE="docker-compose"
+  DOCKER_COMPOSE=(docker-compose)
 fi
 
 # Stop services
-$DOCKER_COMPOSE down
+"${DOCKER_COMPOSE[@]}" down
 
-echo -e "${GREEN}Local development environment stopped${NC}"
+printf '%b\n' "${GREEN}Local development environment stopped${NC}"

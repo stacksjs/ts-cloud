@@ -6,46 +6,45 @@
 set -e
 
 # Colors for output
-RED='\033[ 0;31m'
-GREEN='\033[ 0;32m'
-YELLOW='\033[ 1;33m'
-NC='\033[ 0m' # No Color
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-echo -e "${GREEN}Starting ts-cloud local development environment...${NC}"
+printf '%b\n' "${GREEN}Starting ts-cloud local development environment...${NC}"
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
-  echo -e "${RED}Error: Docker is not running${NC}"
+  printf '%b\n' "${RED}Error: Docker is not running${NC}"
   echo "Please start Docker and try again"
   exit 1
 fi
 
 # Check if docker-compose is installed
 if ! command -v docker-compose &> /dev/null; then
-  echo -e "${YELLOW}Warning: docker-compose not found, using 'docker compose' instead${NC}"
-  DOCKER_COMPOSE="docker compose"
+  printf '%b\n' "${YELLOW}Warning: docker-compose not found, using 'docker compose' instead${NC}"
+  DOCKER_COMPOSE=(docker compose)
 else
-  DOCKER_COMPOSE="docker-compose"
+  DOCKER_COMPOSE=(docker-compose)
 fi
 
 # Start services
-echo -e "${GREEN}Starting Docker services...${NC}"
-$DOCKER_COMPOSE up -d
+printf '%b\n' "${GREEN}Starting Docker services...${NC}"
+"${DOCKER_COMPOSE[@]}" up -d
 
 # Wait for services to be healthy
-echo -e "${GREEN}Waiting for services to be ready...${NC}"
+printf '%b\n' "${GREEN}Waiting for services to be ready...${NC}"
 sleep 5
 
 # Check service health
 check_service() {
-  local service=$1
   local port=$2
   local name=$3
 
-  if nc -z localhost $port 2>/dev/null; then
-    echo -e "${GREEN}✓${NC} $name is running on port $port"
+  if nc -z localhost "$port" 2>/dev/null; then
+    printf '%b\n' "${GREEN}✓${NC} $name is running on port $port"
   else
-    echo -e "${RED}✗${NC} $name failed to start on port $port"
+    printf '%b\n' "${RED}✗${NC} $name failed to start on port $port"
   fi
 }
 
@@ -57,7 +56,7 @@ check_service "minio" 9000 "MinIO (S3)"
 check_service "mailhog" 8025 "MailHog"
 
 echo ""
-echo -e "${GREEN}Local development environment is ready!${NC}"
+printf '%b\n' "${GREEN}Local development environment is ready!${NC}"
 echo ""
 echo "Services:"
 echo "  - LocalStack (AWS):        http://localhost:4566"
@@ -76,4 +75,4 @@ echo "  export AWS_SECRET_ACCESS_KEY=test"
 echo "  export AWS_REGION=us-east-1"
 echo "  export LOCALSTACK_ENDPOINT=http://localhost:4566"
 echo ""
-echo -e "${YELLOW}Tip: Run 'source scripts/local-env.sh' to set environment variables${NC}"
+printf '%b\n' "${YELLOW}Tip: Run 'source scripts/local-env.sh' to set environment variables${NC}"
