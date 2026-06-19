@@ -913,6 +913,32 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     })
 
   app
+    .command('db:restore-backup [from]', 'Restore the app database from an on-box ts-backups dump (latest, or a given file)')
+    .option('--env <environment>', 'Environment (production, staging, development)')
+    .action(async (from?: string, options?: { env?: string }) => {
+      cli.header('Database Restore')
+      try {
+        const config = await loadValidatedConfig()
+        const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const { restoreDatabaseBackup } = await import('../../src/drivers/shared/compute-ops')
+        const result = await restoreDatabaseBackup(
+          { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
+          { database: config.infrastructure?.appDatabase, from },
+        )
+        for (const inst of result.perInstance || [])
+          cli.info(`  ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)
+        if (!result.success) {
+          cli.error(`Restore failed: ${result.error || 'unknown error'}`)
+          process.exitCode = 1
+        }
+      }
+      catch (error: any) {
+        cli.error(`Restore failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
     .command('quick-deploy', 'Generate a push-to-deploy CI pipeline for your git provider (Forge Quick Deploy)')
     .option('--env <environment>', 'Environment to deploy on push', { default: 'production' })
     .option('--force', 'Overwrite an existing pipeline file')

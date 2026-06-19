@@ -7,7 +7,8 @@
  * with the shared generators, and runs it on every box — mirroring how
  * {@link import('./compute-deploy').deploySiteRelease} drives a deploy.
  */
-import type { CloudDriver, EnvironmentType, RemoteDeployInstanceResult } from '@ts-cloud/core'
+import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstanceResult } from '@ts-cloud/core'
+import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
 import { buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
 import { buildServerRecipeScript } from './server-recipes'
@@ -144,5 +145,35 @@ export async function runComputeRecipe(
     logger.error(`Recipe '${options.name}' failed: ${result.error || 'unknown error'}`)
   else
     logger.success(`Recipe '${options.name}' completed.`)
+  return { success: result.success, error: result.error, perInstance: result.perInstance }
+}
+
+/**
+ * Restore a database from a ts-backups dump on the box (Forge's backup restore).
+ * Runs the restore on the project's servers; with no `from`, the newest matching
+ * dump is used. Returns per-server output.
+ */
+export async function restoreDatabaseBackup(
+  ctx: ComputeOpsContext,
+  options: { database: DatabaseConfig | undefined, from?: string },
+): Promise<ComputeOpsResult> {
+  const logger = ctx.logger || noopLogger
+  if (!options.database?.name)
+    return { success: false, error: 'No appDatabase configured to restore.' }
+  const targets = await findTargets(ctx)
+  if (targets.length === 0)
+    return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.slug}/${ctx.environment}.` }
+
+  logger.step(`Restoring database '${options.database.name}'${options.from ? ` from ${options.from}` : ' from the latest backup'} on ${targets.length} server(s)...`)
+  const result = await ctx.driver.runRemoteDeploy({
+    targets,
+    commands: buildBackupRestoreScript(options.database, { from: options.from }),
+    comment: `ts-cloud db:restore ${ctx.slug}/${options.database.name}`,
+    tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
+  })
+  if (!result.success)
+    logger.error(`Restore failed: ${result.error || 'unknown error'}`)
+  else
+    logger.success(`Restored ${options.database.name}.`)
   return { success: result.success, error: result.error, perInstance: result.perInstance }
 }

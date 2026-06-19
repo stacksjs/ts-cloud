@@ -134,3 +134,43 @@ export function buildBackupProvisionScript(options: BackupProvisionOptions): str
     `chmod 644 ${BACKUP_CRON_PATH}`,
   ]
 }
+
+/** Unix socket for the on-box engine (root connects passwordless via socket). */
+function engineSocket(engine?: string): string {
+  return engine === 'mariadb' ? '/var/lib/pantry/mariadb/mariadbd.sock' : '/var/lib/pantry/mysql/mysqld.sock'
+}
+
+export interface BackupRestoreOptions {
+  /** Specific dump file on the box (absolute path). Default: newest matching dump. */
+  from?: string
+}
+
+/**
+ * Build the commands that restore a database from a ts-backups dump on the box.
+ * With no `from`, the newest dump under {@link BACKUP_OUTPUT_DIR} matching the
+ * database name is used. Handles plain `.sql` and gzipped `.sql.gz`. MySQL/
+ * MariaDB restore over the root unix socket; Postgres via `psql -U postgres`.
+ * Returns `[]` when the database has no name.
+ */
+export function buildBackupRestoreScript(database: DatabaseConfig | undefined, options: BackupRestoreOptions = {}): string[] {
+  if (!database?.name)
+    return []
+  const name = database.name
+  const isPg = database.engine === 'postgres'
+  const locate = options.from
+    ? `TS_CLOUD_DUMP="${options.from}"`
+    : `TS_CLOUD_DUMP="$(find ${BACKUP_OUTPUT_DIR} -type f -name '*${name}*.sql' -o -type f -name '*${name}*.sql.gz' 2>/dev/null | xargs -r ls -1t 2>/dev/null | head -1)"`
+  const client = isPg
+    ? `psql -h 127.0.0.1 -p ${database.port ?? 5432} -U postgres -d "${name}"`
+    : `mysql --socket=${engineSocket(database.engine)} -u root "${name}"`
+  return [
+    'set -uo pipefail',
+    'eval "$(cd /opt/pantry && pantry env 2>/dev/null)" || true',
+    locate,
+    '[ -n "$TS_CLOUD_DUMP" ] && [ -f "$TS_CLOUD_DUMP" ] || { echo "no backup dump found to restore" >&2; exit 1; }',
+    'echo "[ts-cloud] restoring ' + name + ' from $TS_CLOUD_DUMP"',
+    // Decompress on the fly when gzipped, else stream the plain SQL.
+    `case "$TS_CLOUD_DUMP" in *.gz) gunzip -c "$TS_CLOUD_DUMP" ;; *) cat "$TS_CLOUD_DUMP" ;; esac | ${client}`,
+    'echo "restore complete"',
+  ]
+}
