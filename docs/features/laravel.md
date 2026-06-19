@@ -195,6 +195,12 @@ Set `optimizeForProduction: false` to skip the OPcache tuning (your `ini`
 overrides still apply). The directives are written as a managed `php.ini`
 drop-in discovered at runtime, so they work regardless of where PHP is installed.
 
+The pantry `php.net` build already bundles the full Laravel extension matrix
+(mbstring, xml, curl, pdo_mysql, pdo_pgsql, redis, gd, bcmath, zip, intl,
+openssl, sodium, …). `php.extensions` is accepted for documentation/intent but
+that build is fixed — extra extensions (e.g. `imagick`, `swoole`) require a
+custom PHP build in pantry, not a runtime flag.
+
 ## Nginx configuration
 
 Inject custom directives into a site's generated `server { … }` block (Forge's
@@ -294,12 +300,10 @@ Beyond deploys + SSL, each site supports the Forge per-site knobs:
 sites: {
   admin: {
     domain: 'admin.acme.com',
-    // Dedicated OS user + php-fpm pool (Forge "User Isolation") — a compromised
-    // site can't read another site's files.
-    isolation: true,
     // HTTP Basic auth at nginx (htpasswd), hashed on the box.
     auth: { username: 'ops', password: process.env.ADMIN_PASSWORD, realm: 'Admin' },
-    // Post-deploy health check — pinged from the deployer; a failure flags the deploy.
+    // Post-deploy health check — after the release is live the site is curled on
+    // the box (via its Host header); a non-2xx/3xx response fails the deploy.
     healthCheck: { path: '/up' },
     // nginx redirects (Forge "Redirects").
     redirects: { '/old': '/new' },
@@ -311,6 +315,10 @@ sites: {
   },
 }
 ```
+
+> **Note:** per-site **user isolation** (a dedicated OS user + php-fpm pool per
+> site, Forge's "User Isolation") is on the roadmap — the current setup runs all
+> sites under one php-fpm. Use separate servers for hard isolation today.
 
 ### SSH keys
 
@@ -331,6 +339,42 @@ infrastructure: {
 
 Connect with `cloud server:ssh <name>`.
 
+## Backups
+
+Scheduled database backups (Forge's "Database Backups") run on the box via cron
+and sync to object storage (S3 or Hetzner). Configure under
+`infrastructure.compute.backups`:
+
+```ts
+infrastructure: {
+  compute: {
+    backups: {
+      enabled: true,
+      schedule: '0 2 * * *',     // cron (default nightly)
+      retentionCount: 7,         // keep the last N dumps
+      bucket: 'acme-backups',    // object-storage bucket
+      // endpoint: '…',          // Hetzner/S3-compatible endpoint (optional)
+    },
+  },
+}
+```
+
+## Server, database & firewall CLI
+
+`cloud deploy` provisions and deploys from `cloud.config.ts`; for day-to-day
+operations there's a full Forge-style CLI — see the **[CLI reference](/cli)**
+for the complete list. The most-used commands:
+
+| Command | What it does |
+| --- | --- |
+| `cloud server:list` / `server:ssh <name>` | List servers / SSH in |
+| `cloud server:logs <name>` / `server:monitoring <name>` | Tail logs / show metrics |
+| `cloud db:list` / `db:create <name>` / `db:backup <name>` | Database management |
+| `cloud db:users:add <name> <user>` | Add a database user |
+| `cloud firewall:block <ip>` / `firewall:unblock <ip>` | Firewall / WAF rules |
+| `cloud ssl:renew <domain>` | Renew a certificate |
+| `cloud backup:list` / `backup:start <arn>` | Backups |
+
 ## What gets provisioned
 
 | Area | Forge | ts-cloud |
@@ -340,6 +384,7 @@ Connect with `cloud server:ssh <name>`.
 | Wildcard SSL | DNS-01 | DNS-01 (cloudflare/route53/digitalocean/google) |
 | Deploys | git, zero-downtime | git, zero-downtime atomic releases |
 | Deployment history | per-deploy log | per-deploy + history log on the box |
+| Health checks | post-deploy ping | `site.healthCheck` gate (fails the deploy) |
 | Rollback | one-click | `cloud deploy:rollback` (atomic) |
 | Database | MySQL/MariaDB/Postgres | same, on-box or managed |
 | Database users | read-only + full | read-only + full grants, password reset |
