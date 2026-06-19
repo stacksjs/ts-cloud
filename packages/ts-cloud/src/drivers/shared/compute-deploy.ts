@@ -21,6 +21,7 @@ import { resolveNotifications, sendNotifications } from './notifications'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
+import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -109,6 +110,10 @@ export async function deploySiteRelease(
     const customCert = sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
       ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
       : undefined
+
+    // Site isolation (Forge-style): a dedicated Linux user + php-fpm pool. The
+    // vhost points at the pool's per-site port instead of the shared php-fpm.
+    const poolScript = site.isolation ? buildPhpFpmPoolScript({ siteName, appBase }) : []
     const vhostScript = useNginx
       ? buildNginxVhostScript({
           siteName,
@@ -118,6 +123,7 @@ export async function deploySiteRelease(
           appDir: `${appBase}/current`,
           webDirectory: site.webDirectory,
           phpVersion,
+          fastcgiPass: site.isolation ? phpFpmPoolListen(siteName) : undefined,
           redirects: site.redirects,
           ssl: customCert,
           auth: site.auth && site.auth.enabled !== false && site.auth.password
@@ -144,7 +150,7 @@ export async function deploySiteRelease(
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...deployScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
+      commands: [...deployScript, ...poolScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })

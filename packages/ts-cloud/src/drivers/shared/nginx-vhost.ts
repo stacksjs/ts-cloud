@@ -57,6 +57,12 @@ export interface NginxVhostOptions {
   webDirectory?: string
   /** PHP version selecting the php-fpm socket. @default '8.3' */
   phpVersion?: string
+  /**
+   * Override the `fastcgi_pass` target (e.g. an isolated site's dedicated
+   * php-fpm pool — see {@link import('./php-fpm-pool').phpFpmPoolListen}).
+   * Defaults to the shared php-fpm listen address for {@link phpVersion}.
+   */
+  fastcgiPass?: string
   /** `from path` → `to URL` 301 redirects. */
   redirects?: Record<string, string>
   /**
@@ -209,7 +215,7 @@ function vhostBody(options: NginxVhostOptions): string[] {
       '    error_page 404 /index.php;',
       '',
       '    location ~ \\.php$ {',
-      `        fastcgi_pass ${phpFpmSocketPath(phpVersion)};`,
+      `        fastcgi_pass ${options.fastcgiPass ?? phpFpmSocketPath(phpVersion)};`,
       '        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;',
       '        include fastcgi_params;',
       '    }',
