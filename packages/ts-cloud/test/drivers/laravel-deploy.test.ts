@@ -133,3 +133,18 @@ describe('buildHealthCheckScript', () => {
     expect(buildHealthCheckScript({ root: '.', type: 'laravel', healthCheck: { path: '/up' } })).toEqual([])
   })
 })
+
+describe('defaultDeployScriptFor — WordPress', () => {
+  it('uses optional composer + no artisan for wordpress', () => {
+    const s = defaultDeployScriptFor('wordpress')
+    expect(s).toContain(MACRO_CREATE_RELEASE)
+    expect(s).toContain(MACRO_ACTIVATE_RELEASE)
+    expect(s.join('\n')).toContain('composer install')
+    expect(s.join('\n')).toContain('|| true')
+    expect(s.join('\n')).not.toContain('artisan')
+  })
+
+  it('statamic stays a full Laravel deploy (composer + artisan)', () => {
+    expect(defaultDeployScriptFor('statamic').join('\n')).toContain('artisan migrate --force')
+  })
+})

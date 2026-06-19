@@ -131,9 +131,10 @@ export function isPhpSiteType(type: NginxSiteType): boolean {
 
 /** Default web root (relative to the release dir) for a site type. */
 export function defaultWebDirectory(type: NginxSiteType): string {
-  // Laravel/Statamic/WordPress serve from public/; vanilla PHP and static
-  // sites serve from the release root.
-  return type === 'laravel' || type === 'statamic' || type === 'wordpress' ? 'public' : ''
+  // Laravel + Statamic (a Laravel app) serve from public/; vanilla PHP, static,
+  // and WordPress serve from the release root (classic WP has no public/; set
+  // `webDirectory: 'web'` for Bedrock).
+  return type === 'laravel' || type === 'statamic' ? 'public' : ''
 }
 
 /** Join an app dir + web directory into an absolute root, dropping trailing slashes. */
@@ -217,6 +218,16 @@ function vhostBody(options: NginxVhostOptions): string[] {
       '        deny all;',
       '    }',
     )
+    // WordPress hardening: block xmlrpc (brute-force vector), wp-config, and PHP
+    // execution inside uploads.
+    if (type === 'wordpress') {
+      lines.push(
+        '',
+        '    location = /xmlrpc.php { deny all; }',
+        '    location ~* /(?:wp-config\\.php|readme\\.html|license\\.txt)$ { deny all; }',
+        '    location ~* /wp-content/uploads/.*\\.php$ { deny all; }',
+      )
+    }
   }
   else if (type === 'spa') {
     lines.push(

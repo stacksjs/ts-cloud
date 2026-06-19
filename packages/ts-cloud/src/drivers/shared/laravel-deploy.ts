@@ -62,12 +62,14 @@ export function defaultDeployScriptFor(type: NonNullable<SiteConfig['type']>): s
         MACRO_RESTART_QUEUES,
       ]
     case 'php':
+    case 'wordpress':
+      // WordPress isn't a Laravel app — no artisan. `composer install` is
+      // optional (Bedrock/composer-managed WP have it; classic WP doesn't).
       return [
         MACRO_CREATE_RELEASE,
         `${COMPOSER_INSTALL} || true`,
         MACRO_ACTIVATE_RELEASE,
       ]
-    case 'wordpress':
     case 'static':
     case 'spa':
       return [

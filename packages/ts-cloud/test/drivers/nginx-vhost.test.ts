@@ -232,3 +232,20 @@ describe('HSTS, TLS protocols, and IP security rules', () => {
     expect(v).toContain('listen 443 ssl;')
   })
 })
+
+describe('WordPress specialization', () => {
+  it('serves WordPress from the release root (not public/) with WP hardening', () => {
+    const v = buildNginxVhost({ siteName: 'blog', domain: 'blog.test', type: 'wordpress', appDir: '/var/www/blog/current' })
+    expect(v).toContain('root /var/www/blog/current;')        // not /public
+    expect(v).toContain('try_files $uri $uri/ /index.php?$query_string;')
+    expect(v).toContain('location = /xmlrpc.php { deny all; }')
+    expect(v).toContain('/wp-content/uploads/.*\\.php$ { deny all; }')
+  })
+
+  it('defaults: laravel/statamic → public, wordpress/php → root', () => {
+    expect(defaultWebDirectory('laravel')).toBe('public')
+    expect(defaultWebDirectory('statamic')).toBe('public')
+    expect(defaultWebDirectory('wordpress')).toBe('')
+    expect(defaultWebDirectory('php')).toBe('')
+  })
+})
