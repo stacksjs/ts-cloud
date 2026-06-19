@@ -1,5 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
-import { existsSync, statSync, writeFileSync, copyFileSync, readFileSync } from 'node:fs'
+import { existsSync, statSync, writeFileSync, copyFileSync, readFileSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
 import * as cli from '../../src/utils/cli'
 import { InfrastructureGenerator } from '../../src/generators/infrastructure'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
@@ -22,6 +23,7 @@ import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-
 import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
+import { runConfigHook } from '../../src/deploy/hooks'
 import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
 
 /**
@@ -103,6 +105,11 @@ async function deployAppToCompute(
   const driver = createCloudDriver({ config })
   const sha = resolveReleaseSha()
   const tarballs = new Map<string, string>()
+  const hookLogger = { step: (m: string) => cli.step(m), error: (m: string) => cli.error(m) }
+
+  // beforeDeploy / beforeBuild lifecycle hooks (run locally).
+  if (!await runConfigHook(config, 'beforeDeploy', hookLogger)) return true
+  if (!await runConfigHook(config, 'beforeBuild', hookLogger)) return true
 
   for (const [siteName, site] of deployable) {
     const kind = resolveSiteKind(site)
@@ -149,6 +156,9 @@ async function deployAppToCompute(
     tarballs.set(siteName, tarballPath)
   }
 
+  // afterBuild hook (run locally once all sites are built/packaged).
+  if (!await runConfigHook(config, 'afterBuild', hookLogger)) return true
+
   const ok = await deployAllComputeSites({
     config,
     environment,
@@ -168,6 +178,10 @@ async function deployAppToCompute(
       success: message => cli.success(message),
     },
   })
+
+  // afterDeploy hook (run locally once the deploy succeeded).
+  if (ok)
+    await runConfigHook(config, 'afterDeploy', hookLogger)
 
   return ok
 }
@@ -894,6 +908,36 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       }
       catch (error: any) {
         cli.error(`Recipe failed: ${error.message}`)
+        process.exitCode = 1
+      }
+    })
+
+  app
+    .command('quick-deploy', 'Generate a push-to-deploy CI pipeline for your git provider (Forge Quick Deploy)')
+    .option('--env <environment>', 'Environment to deploy on push', { default: 'production' })
+    .option('--force', 'Overwrite an existing pipeline file')
+    .action(async (options?: { env?: string, force?: boolean }) => {
+      cli.header('Quick Deploy (push-to-deploy)')
+      try {
+        const config = await loadValidatedConfig()
+        const { buildQuickDeployCi } = await import('../../src/deploy/quick-deploy')
+        const ci = buildQuickDeployCi(config, options?.env || 'production')
+        if (!ci) {
+          cli.warn('No site has a github/gitlab/bitbucket repository — set `sites.<name>.repository.provider` to generate a pipeline.')
+          process.exitCode = 1
+          return
+        }
+        if (existsSync(ci.path) && !options?.force) {
+          cli.warn(`${ci.path} already exists — re-run with --force to overwrite.`)
+          return
+        }
+        mkdirSync(dirname(ci.path), { recursive: true })
+        writeFileSync(ci.path, ci.content)
+        cli.success(`Wrote ${ci.path} (${ci.provider}, deploys on push to '${ci.branch}').`)
+        cli.info('Next: commit it and add your provider credentials as CI secrets/variables.')
+      }
+      catch (error: any) {
+        cli.error(`Quick deploy setup failed: ${error.message}`)
         process.exitCode = 1
       }
     })
