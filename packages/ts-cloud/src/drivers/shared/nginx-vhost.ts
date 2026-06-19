@@ -80,6 +80,41 @@ export interface NginxVhostOptions {
   serverSnippet?: string[]
   /** `client_max_body_size` override for this vhost (e.g. `'256M'`). */
   clientMaxBodySize?: string
+  /** Emit an HSTS header. `true` = 1yr + includeSubDomains; object customizes. */
+  hsts?: boolean | { maxAge?: number, includeSubDomains?: boolean, preload?: boolean }
+  /** `ssl_protocols` for the custom-cert :443 block. */
+  tlsProtocols?: string[]
+  /** Per-site IP allow/deny (Forge "Security Rules"). */
+  security?: { allow?: string[], deny?: string[] }
+}
+
+/** Render the HSTS header line, or `''` when disabled. */
+function hstsHeader(hsts: NginxVhostOptions['hsts']): string {
+  if (!hsts)
+    return ''
+  const o = typeof hsts === 'object' ? hsts : {}
+  const maxAge = o.maxAge ?? 31536000
+  const parts = [`max-age=${maxAge}`]
+  if (o.includeSubDomains ?? true)
+    parts.push('includeSubDomains')
+  if (o.preload)
+    parts.push('preload')
+  return `    add_header Strict-Transport-Security "${parts.join('; ')}" always;`
+}
+
+/** Render nginx `allow`/`deny` lines for per-site IP access control. */
+function securityRules(security: NginxVhostOptions['security']): string[] {
+  if (!security || (!security.allow?.length && !security.deny?.length))
+    return []
+  const lines: string[] = []
+  for (const ip of security.deny || [])
+    lines.push(`    deny ${ip};`)
+  if (security.allow?.length) {
+    for (const ip of security.allow)
+      lines.push(`    allow ${ip};`)
+    lines.push('    deny all;')
+  }
+  return lines
 }
 
 /** Path of the htpasswd file for a site. */
@@ -121,12 +156,24 @@ function vhostBody(options: NginxVhostOptions): string[] {
     '',
     '    add_header X-Frame-Options "SAMEORIGIN";',
     '    add_header X-Content-Type-Options "nosniff";',
+  ]
+
+  // HSTS (force HTTPS in browsers) — served on the TLS block; harmless on :80.
+  const hsts = hstsHeader(options.hsts)
+  if (hsts)
+    lines.push(hsts)
+
+  // Per-site IP allow/deny (Forge Security Rules) gate the whole server block.
+  for (const rule of securityRules(options.security))
+    lines.push(rule)
+
+  lines.push(
     '',
     `    index ${isPhp ? 'index.php index.html' : 'index.html index.htm'};`,
     '',
     '    charset utf-8;',
     '',
-  ]
+  )
 
   // Per-vhost upload ceiling (overrides the http-level client_max_body_size).
   if (options.clientMaxBodySize) {
@@ -223,6 +270,7 @@ export function buildNginxVhost(options: NginxVhostOptions): string {
       `    server_name ${serverNames};`,
       `    ssl_certificate ${options.ssl.certPath};`,
       `    ssl_certificate_key ${options.ssl.keyPath};`,
+      ...(options.tlsProtocols?.length ? [`    ssl_protocols ${options.tlsProtocols.join(' ')};`] : []),
       '',
       ...body,
       '}',

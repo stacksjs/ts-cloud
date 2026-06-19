@@ -125,6 +125,9 @@ export async function deploySiteRelease(
             : undefined,
           serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
           clientMaxBodySize: site.nginx?.clientMaxBodySize,
+          hsts: site.ssl?.hsts,
+          tlsProtocols: site.ssl?.tlsProtocols,
+          security: site.security,
         })
       : []
     const sslScript = useNginx ? buildSslScript(site) : []
@@ -219,6 +222,9 @@ export async function deploySiteRelease(
           : undefined,
         serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
         clientMaxBodySize: site.nginx?.clientMaxBodySize,
+        hsts: site.ssl?.hsts,
+        tlsProtocols: site.ssl?.tlsProtocols,
+        security: site.security,
       })
     : []
   const staticSsl = wantsNginxStatic ? buildSslScript(site) : []

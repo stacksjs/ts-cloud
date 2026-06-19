@@ -1025,9 +1025,12 @@ export interface SiteConfig {
 
   /**
    * Give this site a dedicated php-fpm pool (isolated user/process) rather than
-   * sharing the default pool.
+   * sharing the default pool (Forge's "User Isolation").
    */
   isolation?: boolean
+
+  /** Per-site nginx access control (IP allow/deny — Forge "Security Rules"). */
+  security?: SiteSecurityConfig
 
   /** Post-deploy health check (Forge-style) pinged after `current` is flipped. */
   healthCheck?: { path?: string }
@@ -1160,6 +1163,30 @@ export interface SiteSslConfig {
    * domain resolves to the box. The plugin + credentials are wired on the box.
    */
   dns?: SslDnsConfig
+  /**
+   * Emit an HSTS (`Strict-Transport-Security`) header so browsers force HTTPS.
+   * `true` uses a 1-year max-age with `includeSubDomains`; an object customizes
+   * it. Only meaningful when the site serves TLS.
+   */
+  hsts?: boolean | { maxAge?: number, includeSubDomains?: boolean, preload?: boolean }
+  /**
+   * `ssl_protocols` for the vhost (e.g. `['TLSv1.2', 'TLSv1.3']`). Applied to
+   * the `custom`-cert :443 block; for Let's Encrypt the protocols are managed by
+   * certbot's options file.
+   */
+  tlsProtocols?: string[]
+}
+
+/**
+ * Per-site access control at the nginx layer (Forge's "Security Rules"). IPs/
+ * CIDRs in {@link allow} are permitted and everything else denied; {@link deny}
+ * blocks specific IPs/CIDRs. `allow` takes precedence (allow-list mode).
+ */
+export interface SiteSecurityConfig {
+  /** Allow only these IPs/CIDRs (everything else gets 403). */
+  allow?: string[]
+  /** Block these IPs/CIDRs. */
+  deny?: string[]
 }
 
 /** certbot DNS-01 plugin configuration for DNS-validated / wildcard certs. */
