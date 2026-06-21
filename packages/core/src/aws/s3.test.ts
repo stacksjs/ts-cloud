@@ -168,6 +168,85 @@ describe('Multipart Upload', () => {
     const MULTIPART_THRESHOLD = 5 * 1024 * 1024
     expect(MULTIPART_THRESHOLD).toBe(5242880)
   })
+
+  // Regression test for a part-collection bug: under concurrency the upload
+  // queue mishandled settled promises, dropping and duplicating parts, which
+  // surfaced on real S3-compatible providers (e.g. Hetzner) as InvalidPart on
+  // the complete step. Also asserts every multipart step addresses the SAME
+  // host+path the upload was created against (consistency for virtual-hosted
+  // style and after any redirect).
+  it('uploads every part exactly once and keeps all steps on the same host', async () => {
+    const PART_SIZE = 5 * 1024 * 1024
+    const NUM_PARTS = 12 // > default concurrency (4) to exercise the queue
+    const total = PART_SIZE * NUM_PARTS
+
+    const client = new S3Client({
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: 'AKIAIOSFODNN7EXAMPLE',
+        secretAccessKey: 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY',
+      },
+    })
+
+    const hosts = new Set<string>()
+    const seenParts: number[] = []
+    let completeBody = ''
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url)
+      const url = new URL(urlStr)
+      hosts.add(url.host)
+      const method = init?.method || 'GET'
+
+      if (url.searchParams.has('uploads')) {
+        // initiate
+        return new Response(
+          '<?xml version="1.0"?><InitiateMultipartUploadResult><UploadId>2~test-upload-id</UploadId></InitiateMultipartUploadResult>',
+          { status: 200, headers: { 'content-type': 'application/xml' } },
+        )
+      }
+      if (url.searchParams.has('partNumber')) {
+        // upload part — return a deterministic per-part etag
+        const num = Number(url.searchParams.get('partNumber'))
+        seenParts.push(num)
+        return new Response(null, { status: 200, headers: { ETag: `"etag-${num}"` } })
+      }
+      if (method === 'POST' && url.searchParams.has('uploadId')) {
+        // complete
+        completeBody = (init?.body as string) || ''
+        return new Response(
+          '<?xml version="1.0"?><CompleteMultipartUploadResult><ETag>"final-etag"</ETag></CompleteMultipartUploadResult>',
+          { status: 200 },
+        )
+      }
+      throw new Error(`unexpected request: ${method} ${urlStr}`)
+    }) as typeof fetch
+
+    try {
+      const buf = new Uint8Array(total)
+      const result = await client.uploadMultipart('my-bucket', 'big.bin', buf, { partSize: PART_SIZE })
+
+      expect(result.etag).toBe('final-etag')
+
+      // Every part uploaded exactly once, no dupes, no gaps.
+      const sorted = [...seenParts].sort((a, b) => a - b)
+      const expected = Array.from({ length: NUM_PARTS }, (_, i) => i + 1)
+      expect(sorted).toEqual(expected)
+      expect(new Set(seenParts).size).toBe(NUM_PARTS)
+
+      // Complete body lists parts in order with the correct etag per part number.
+      for (let n = 1; n <= NUM_PARTS; n++) {
+        expect(completeBody).toContain(`<PartNumber>${n}</PartNumber><ETag>"etag-${n}"</ETag>`)
+      }
+
+      // All steps (initiate, parts, complete) hit one consistent host.
+      expect([...hosts]).toEqual(['my-bucket.s3.us-east-1.amazonaws.com'])
+    }
+    finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
 
 describe('List Objects Parsing', () => {

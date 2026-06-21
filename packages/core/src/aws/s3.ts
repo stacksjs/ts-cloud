@@ -676,14 +676,22 @@ else {
       totalSize = blob.size
     }
 
-    // Initiate multipart upload
-    const uploadId = await this.initiateMultipartUpload(bucket, key, options)
+    // Initiate multipart upload.
+    //
+    // The initiate response may have been served from a different host than the
+    // one `buildUrl` computes (some S3-compatible providers issue a redirect that
+    // `fetch` follows transparently). The UploadId only exists on the host that
+    // actually created it, so we capture the *resolved* base URL here and reuse
+    // it verbatim for every subsequent part / complete / abort request. This
+    // keeps all steps addressing — and signing against — the same host+path.
+    const { uploadId, baseUrl } = await this.initiateMultipartUpload(bucket, key, options)
 
     try {
       // Upload parts
       const parts = await this.uploadParts(
         bucket,
         key,
+        baseUrl,
         uploadId,
         stream,
         partSize,
@@ -694,11 +702,11 @@ else {
       )
 
       // Complete multipart upload
-      return await this.completeMultipartUpload(bucket, key, uploadId, parts)
+      return await this.completeMultipartUpload(bucket, key, baseUrl, uploadId, parts)
     }
 catch (error) {
       // Abort on failure
-      await this.abortMultipartUpload(bucket, key, uploadId).catch(() => {})
+      await this.abortMultipartUpload(bucket, key, uploadId, baseUrl).catch(() => {})
       throw error
     }
   }
@@ -710,9 +718,10 @@ catch (error) {
     bucket: string,
     key: string,
     options: PutObjectOptions,
-  ): Promise<string> {
+  ): Promise<{ uploadId: string, baseUrl: string }> {
     const credentials = await this.getCredentials()
-    const url = `${this.buildUrl(bucket, key)}?uploads`
+    const baseUrl = this.buildUrl(bucket, key)
+    const url = `${baseUrl}?uploads`
 
     const headers: Record<string, string> = {
       'Content-Type': options.contentType || detectContentType(key),
@@ -754,7 +763,22 @@ catch (error) {
       throw new S3Error('Failed to parse upload ID from response', 0, bucket, key)
     }
 
-    return uploadIdMatch[1]
+    // If a redirect was transparently followed, `response.url` reflects the host
+    // that actually created the upload. Strip the `?uploads` query to recover the
+    // object's base URL and reuse it (and thus its host) for every later step.
+    let resolvedBaseUrl = baseUrl
+    if (response.url) {
+      try {
+        const resolved = new URL(response.url)
+        resolved.search = ''
+        resolvedBaseUrl = resolved.toString()
+      }
+      catch {
+        // Fall back to the computed base URL if response.url is unusable.
+      }
+    }
+
+    return { uploadId: uploadIdMatch[1], baseUrl: resolvedBaseUrl }
   }
 
   /**
@@ -763,6 +787,7 @@ catch (error) {
   private async uploadParts(
     bucket: string,
     key: string,
+    baseUrl: string,
     uploadId: string,
     stream: ReadableStream<Uint8Array>,
     partSize: number,
@@ -779,10 +804,15 @@ catch (error) {
 
     const totalParts = totalSize ? Math.ceil(totalSize / partSize) : undefined
 
-    const uploadQueue: Array<Promise<{ partNumber: number, etag: string }>> = []
+    // Track in-flight uploads keyed by part number so we can reliably remove the
+    // one that actually settled. (A naive `splice(indexOf(...))` on an array of
+    // promises fails because the resolved value is not the promise object, so it
+    // drops/duplicates parts under concurrency and corrupts the completed list.)
+    const inFlight = new Map<number, Promise<{ partNumber: number, etag: string }>>()
 
     const uploadPart = async (data: Uint8Array, num: number): Promise<{ partNumber: number, etag: string }> => {
-      const url = `${this.buildUrl(bucket, key)}?partNumber=${num}&uploadId=${encodeURIComponent(uploadId)}`
+      // Address the exact host+path the upload was created against.
+      const url = `${baseUrl}?partNumber=${num}&uploadId=${encodeURIComponent(uploadId)}`
 
       // Use UNSIGNED-PAYLOAD for streaming
       const headers: Record<string, string> = {
@@ -803,6 +833,10 @@ catch (error) {
         method: signed.method,
         headers: signed.headers,
         body: data,
+        // Do not follow redirects on part uploads: a redirect would move the
+        // part to a host the UploadId does not live on. The base URL is already
+        // resolved from initiate, so any redirect here is an addressing error.
+        redirect: 'error',
       })
 
       if (!response.ok) {
@@ -811,7 +845,17 @@ catch (error) {
       }
 
       const etag = (response.headers.get('ETag') || '').replace(/"/g, '')
+      if (!etag) {
+        throw new S3Error(`Missing ETag for part ${num}`, response.status, bucket, key)
+      }
       return { partNumber: num, etag }
+    }
+
+    // Drain one settled upload from the in-flight pool and record its result.
+    const drainOne = async (): Promise<void> => {
+      const completed = await Promise.race(inFlight.values())
+      inFlight.delete(completed.partNumber)
+      parts.push(completed)
     }
 
     while (true) {
@@ -832,15 +876,13 @@ catch (error) {
 
         const currentPartNumber = partNumber++
 
-        // Limit concurrency
-        if (uploadQueue.length >= concurrency) {
-          const completed = await Promise.race(uploadQueue)
-          parts.push(completed)
-          uploadQueue.splice(uploadQueue.indexOf(Promise.resolve(completed)), 1)
+        // Limit concurrency: wait for one in-flight upload to finish before
+        // scheduling the next so the pool never exceeds `concurrency`.
+        if (inFlight.size >= concurrency) {
+          await drainOne()
         }
 
-        const uploadPromise = uploadPart(partData, currentPartNumber)
-        uploadQueue.push(uploadPromise)
+        inFlight.set(currentPartNumber, uploadPart(partData, currentPartNumber))
 
         loaded += partData.byteLength
         if (onProgress) {
@@ -857,10 +899,11 @@ catch (error) {
     }
 
     // Wait for remaining uploads
-    const remaining = await Promise.all(uploadQueue)
-    parts.push(...remaining)
+    while (inFlight.size > 0) {
+      await drainOne()
+    }
 
-    // Sort by part number
+    // Sort by part number (completion order is non-deterministic under concurrency)
     parts.sort((a, b) => a.partNumber - b.partNumber)
 
     return parts
@@ -872,11 +915,12 @@ catch (error) {
   private async completeMultipartUpload(
     bucket: string,
     key: string,
+    baseUrl: string,
     uploadId: string,
     parts: Array<{ partNumber: number, etag: string }>,
   ): Promise<{ etag: string }> {
     const credentials = await this.getCredentials()
-    const url = `${this.buildUrl(bucket, key)}?uploadId=${encodeURIComponent(uploadId)}`
+    const url = `${baseUrl}?uploadId=${encodeURIComponent(uploadId)}`
 
     // Build XML body
     const partsXml = parts
@@ -915,9 +959,9 @@ catch (error) {
   /**
    * Abort a multipart upload
    */
-  async abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void> {
+  async abortMultipartUpload(bucket: string, key: string, uploadId: string, baseUrl?: string): Promise<void> {
     const credentials = await this.getCredentials()
-    const url = `${this.buildUrl(bucket, key)}?uploadId=${encodeURIComponent(uploadId)}`
+    const url = `${baseUrl ?? this.buildUrl(bucket, key)}?uploadId=${encodeURIComponent(uploadId)}`
 
     const signed = signRequest({
       method: 'DELETE',
