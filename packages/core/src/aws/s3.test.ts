@@ -193,7 +193,7 @@ describe('Multipart Upload', () => {
     let completeBody = ''
 
     const originalFetch = globalThis.fetch
-    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const urlStr = typeof input === 'string' ? input : (input instanceof URL ? input.toString() : (input as Request).url)
       const url = new URL(urlStr)
       hosts.add(url.host)
