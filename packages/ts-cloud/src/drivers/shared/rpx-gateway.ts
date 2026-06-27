@@ -243,6 +243,17 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   const certsDir = config.productionCerts.certsDir
   const launcher = renderRpxLauncher(config)
 
+  // Bound stalled upstreams. rpx's pooled transport caps connections per
+  // upstream and queues requests for a free slot; with no inactivity timeout a
+  // hung upstream socket holds its slot forever, and enough leaked slots wedge
+  // the gateway (handshakes succeed but no request is ever answered). rpx leaves
+  // this opt-in for dev streaming, so a production gateway must set it — default
+  // 60s, `0` to disable. `RPX_MAX_UPSTREAM_CONNS` is passed through only when set.
+  const upstreamTimeout = proxy.upstreamTimeout ?? 60
+  const poolEnv = [`Environment=RPX_UPSTREAM_TIMEOUT=${upstreamTimeout}`]
+  if (typeof proxy.maxUpstreamConns === 'number')
+    poolEnv.push(`Environment=RPX_MAX_UPSTREAM_CONNS=${proxy.maxUpstreamConns}`)
+
   return [
     'set -euo pipefail',
     `mkdir -p ${RPX_DIR} ${certsDir}`,
@@ -261,6 +272,7 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       'Type=simple',
       `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
       `Environment=BUN_INSTALL=/root/.bun`,
+      ...poolEnv,
       'Restart=always',
       'RestartSec=5',
       'LimitNOFILE=1048576',

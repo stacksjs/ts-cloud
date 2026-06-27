@@ -2651,6 +2651,27 @@ export interface ComputeProxyConfig {
    */
   certsDir?: string
   /**
+   * Inactivity timeout (seconds) for rpx's pooled upstream connections, surfaced
+   * to the gateway as `RPX_UPSTREAM_TIMEOUT`. rpx leaves this **off by default**
+   * because it commonly fronts dev servers doing SSE/HMR/long-poll, but a
+   * production gateway fronting real apps must bound it: the pool caps
+   * connections per upstream and queues requests for a free slot, so a single
+   * stalled upstream socket with no timeout holds its slot forever — enough of
+   * them leak the pool and the gateway wedges (TLS handshakes succeed but no
+   * request is ever answered). The timer resets on every byte, so a stream that
+   * emits data periodically never trips it; only a fully-stalled upstream does.
+   * Set `0` to disable (match rpx's dev default for streaming-heavy upstreams).
+   * @default 60
+   */
+  upstreamTimeout?: number
+  /**
+   * Max open connections rpx keeps per upstream `host:port`, surfaced as
+   * `RPX_MAX_UPSTREAM_CONNS`. Requests beyond this queue for a free slot rather
+   * than churning sockets into TIME_WAIT. Raise for higher peak parallelism per
+   * upstream; omit to use rpx's built-in default (256).
+   */
+  maxUpstreamConns?: number
+  /**
    * Enable rpx on-demand TLS: lazily issue a real (Let's Encrypt) cert for an
    * approved host the first time it's needed. The site domains are used as the
    * allowlist. Off by default.

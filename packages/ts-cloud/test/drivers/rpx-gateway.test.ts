@@ -189,4 +189,33 @@ describe('buildRpxProvisionScript', () => {
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', version: '0.12.0' }, config }).join('\n')
     expect(script).toContain('bun add -g @stacksjs/rpx@0.12.0')
   })
+
+  // A production gateway must bound stalled upstreams, or rpx's per-upstream
+  // connection pool leaks slots until the gateway wedges (the outage this fixes).
+  it('bounds stalled upstreams with a default upstream timeout', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+    expect(script).toContain('Environment=RPX_UPSTREAM_TIMEOUT=60')
+    // The env must land inside the unit, before Restart= — i.e. in [Service].
+    expect(script.indexOf('RPX_UPSTREAM_TIMEOUT')).toBeLessThan(script.indexOf('Restart=always'))
+    // No max-conns override unless asked for.
+    expect(script).not.toContain('RPX_MAX_UPSTREAM_CONNS')
+  })
+
+  it('honors a custom upstream timeout, including 0 to disable', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const t30 = buildRpxProvisionScript({ proxy: { engine: 'rpx', upstreamTimeout: 30 }, config }).join('\n')
+    expect(t30).toContain('Environment=RPX_UPSTREAM_TIMEOUT=30')
+    expect(t30).not.toContain('RPX_UPSTREAM_TIMEOUT=60')
+
+    const off = buildRpxProvisionScript({ proxy: { engine: 'rpx', upstreamTimeout: 0 }, config }).join('\n')
+    expect(off).toContain('Environment=RPX_UPSTREAM_TIMEOUT=0')
+  })
+
+  it('passes through a max-upstream-conns override when set', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', maxUpstreamConns: 512 }, config }).join('\n')
+    expect(script).toContain('Environment=RPX_MAX_UPSTREAM_CONNS=512')
+    expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
+  })
 })
