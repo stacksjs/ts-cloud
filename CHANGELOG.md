@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.21...v0.5.22)
+
+### 🐛 Bug Fixes
+
+- **deploy**: provision nginx before vhosts ([be10c3f](https://github.com/stacksjs/ts-cloud/commit/be10c3f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.22 ([b256568](https://github.com/stacksjs/ts-cloud/commit/b256568)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.20...v0.5.21)
 
 ### 🐛 Bug Fixes
