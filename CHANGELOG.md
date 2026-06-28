@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.23...v0.5.24)
+
+### 🐛 Bug Fixes
+
+- **deploy**: fallback to system nginx ([61dd550](https://github.com/stacksjs/ts-cloud/commit/61dd550)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.24 ([630e23e](https://github.com/stacksjs/ts-cloud/commit/630e23e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.22...v0.5.23)
 
 ### 🐛 Bug Fixes
