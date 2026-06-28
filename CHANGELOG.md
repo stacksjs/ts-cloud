@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.22...v0.5.23)
+
+### 🐛 Bug Fixes
+
+- **deploy**: install pantry nginx for vhosts ([906226f](https://github.com/stacksjs/ts-cloud/commit/906226f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.23 ([44bc44b](https://github.com/stacksjs/ts-cloud/commit/44bc44b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.21...v0.5.22)
 
 ### 🐛 Bug Fixes
