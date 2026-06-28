@@ -315,9 +315,7 @@ export function buildNginxVhostScript(options: NginxVhostOptions): string[] {
   const enabled = `/etc/nginx/sites-enabled/${options.siteName}`
   const vhost = buildNginxVhost(options)
 
-  const out: string[] = []
-
-  out.push('mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled')
+  const out: string[] = [...buildNginxServiceScript()]
 
   // Generate the htpasswd file (apr1 hash via openssl — no apache2-utils dep).
   if (options.auth) {
