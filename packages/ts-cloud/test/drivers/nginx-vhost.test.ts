@@ -110,6 +110,7 @@ describe('buildNginxVhostScript', () => {
       type: 'laravel',
       appDir: '/var/www/app/current',
     }).join('\n')
+    expect(script).toContain('mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled')
     expect(script).toContain('cat > /etc/nginx/sites-available/app')
     expect(script).toContain('ln -sf /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app')
     expect(script).toContain('rm -f /etc/nginx/sites-enabled/default')
