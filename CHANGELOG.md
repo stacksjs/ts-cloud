@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.19...v0.5.20)
+
+### 🚀 Features
+
+- **cli**: add site config command ([67b5c29](https://github.com/stacksjs/ts-cloud/commit/67b5c29)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.20 ([249e701](https://github.com/stacksjs/ts-cloud/commit/249e701)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.18...v0.5.19)
 
 ### 🚀 Features
