@@ -1,5 +1,6 @@
 export { registerInitCommands } from './init'
 export { registerConfigCommands } from './config'
+export { registerSiteCommands } from './site'
 export { registerGenerateCommands } from './generate'
 export { registerServerCommands } from './server'
 export { registerFunctionCommands } from './function'

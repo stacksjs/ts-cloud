@@ -4,6 +4,7 @@ import { version } from '../package.json'
 import {
   registerInitCommands,
   registerConfigCommands,
+  registerSiteCommands,
   registerGenerateCommands,
   registerServerCommands,
   registerFunctionCommands,
@@ -71,6 +72,7 @@ registerLogsCommands(app)
 // Core commands
 registerInitCommands(app)
 registerConfigCommands(app)
+registerSiteCommands(app)
 registerGenerateCommands(app)
 registerDeployCommands(app)
 registerComputeLifecycleCommands(app)
