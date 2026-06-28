@@ -1,5 +1,5 @@
 <script server>
-// Cost analysis drill-down. Sample data renders the design; ui/build.ts injects
+// Cost analysis drill-down. Sample data renders the design; the dashboard build injects
 // real figures from Cost Explorer + per-resource estimates when present.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }

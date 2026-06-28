@@ -4,7 +4,7 @@
  * this to `TSCLOUD_DASHBOARD_DATA` and the pages' `<script server>` blocks read
  * it at build time (falling back to representative sample data per-field/per-page
  * when a value isn't present). Every gather is wrapped so one failing source only
- * drops its own slice — the rest still render live. See `ui/pages/*`.
+ * drops its own slice — the rest still render live. See `packages/ui/pages/*`.
  */
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'

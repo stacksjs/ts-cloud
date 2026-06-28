@@ -117,7 +117,7 @@ describe('deploySiteRelease', () => {
       infrastructure: { compute: { webServer: 'nginx' } },
       sites: {
         dashboard: {
-          root: 'ui/dist',
+          root: 'packages/ui/dist',
           deploy: 'server',
           type: 'static',
           domain: 'dashboard.example.com',

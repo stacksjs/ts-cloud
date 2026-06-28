@@ -2,8 +2,8 @@
  * Auto-deploy of the ts-cloud management dashboard (the `@ts-cloud/ui` stx app)
  * on every server provision/deploy.
  *
- * Resolves the UI directory (the repo's local `ui/`, else the prebuilt UI that
- * ships inside the installed package at `dist/ui`), derives a `dashboard.<apex>`
+ * Resolves the UI directory (the repo's local `packages/ui/`, else the prebuilt
+ * UI that ships inside the installed package at `dist/ui`), derives a `dashboard.<apex>`
  * host, and injects it into `config.sites` as a server-static site. It is served
  * behind htpasswd ONLY when `TS_CLOUD_UI_PASSWORD` is set; when it is not, the
  * dashboard is served without auth (no password is invented).
@@ -34,14 +34,14 @@ function truthy(v: string | undefined): boolean {
 }
 
 /**
- * Resolve the UI source to ship. Prefers the repo's local `ui/` (built on the
- * deploy machine), then the prebuilt UI bundled in the installed package.
+ * Resolve the UI source to ship. Prefers the repo's local `packages/ui/` (built
+ * on the deploy machine), then the prebuilt UI bundled in the installed package.
  * Returns `{ uiRoot, build }` or null when no UI is available.
  */
 export function resolveUiSource(cwd: string): { uiRoot: string, build: string | false } | null {
-  // 1. Local checkout (repo dogfooding): build ui/ → ui/dist on the deploy host.
-  if (existsSync(join(cwd, 'ui', 'pages')) || existsSync(join(cwd, 'ui', 'package.json'))) {
-    return { uiRoot: 'ui/dist', build: 'cd ui && bun install && bun run build' }
+  // 1. Local checkout (repo dogfooding): build packages/ui → packages/ui/dist on the deploy host.
+  if (existsSync(join(cwd, 'packages', 'ui', 'pages')) || existsSync(join(cwd, 'packages', 'ui', 'package.json'))) {
+    return { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun install && bun run build' }
   }
 
   // 2. Prebuilt UI shipped inside the installed package (dist/ui). Probe a few

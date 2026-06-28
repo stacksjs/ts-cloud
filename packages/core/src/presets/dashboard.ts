@@ -20,17 +20,17 @@ export function createDashboardSite(options: {
   password?: string
   /** Basic-auth username. @default 'admin' */
   username?: string
-  /** Built UI output directory shipped to the box. @default 'ui/dist' */
+  /** Built UI output directory shipped to the box. @default 'packages/ui/dist' */
   root?: string
   /** Build command producing {@link root}. @default builds @ts-cloud/ui */
   build?: string
 }): SiteConfig {
   return {
-    root: options.root ?? 'ui/dist',
+    root: options.root ?? 'packages/ui/dist',
     deploy: 'server',
     type: 'static',
     domain: options.domain,
-    build: options.build ?? 'cd ui && bun install && bun run build',
+    build: options.build ?? 'cd packages/ui && bun install && bun run build',
     ssl: { provider: 'letsencrypt' },
     auth: {
       username: options.username ?? 'admin',

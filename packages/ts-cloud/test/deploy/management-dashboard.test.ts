@@ -16,19 +16,19 @@ function cfg(): CloudConfig {
 const ENV_KEYS = ['TS_CLOUD_UI_PASSWORD', 'TS_CLOUD_UI_USERNAME', 'TS_CLOUD_UI_DOMAIN', 'TS_CLOUD_UI_DISABLE', 'TS_CLOUD_UI_REALM']
 afterEach(() => { for (const k of ENV_KEYS) delete process.env[k] })
 
-/** A temp project dir with a local ui/ checkout so resolveUiSource finds it. */
+/** A temp project dir with a local packages/ui checkout so resolveUiSource finds it. */
 function repoCwd(): string {
   const dir = mkdtempSync(join(tmpdir(), 'tscloud-uirepo-'))
-  mkdirSync(join(dir, 'ui', 'pages'), { recursive: true })
-  writeFileSync(join(dir, 'ui', 'package.json'), '{"name":"@ts-cloud/ui"}')
+  mkdirSync(join(dir, 'packages', 'ui', 'pages'), { recursive: true })
+  writeFileSync(join(dir, 'packages', 'ui', 'package.json'), '{"name":"@ts-cloud/ui"}')
   return dir
 }
 
 describe('resolveUiSource', () => {
-  it('detects a local ui/ checkout and builds it', () => {
+  it('detects a local packages/ui checkout and builds it', () => {
     const dir = repoCwd()
     try {
-      expect(resolveUiSource(dir)).toEqual({ uiRoot: 'ui/dist', build: 'cd ui && bun install && bun run build' })
+      expect(resolveUiSource(dir)).toEqual({ uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun install && bun run build' })
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })

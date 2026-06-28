@@ -58,29 +58,29 @@ async function build() {
     process.exit(1)
   }
 
-  // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package
-  // so `cloud deploy` can auto-ship it from any consumer project (no local ui/).
+  // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package so
+  // `cloud deploy` can auto-ship it from any consumer project (no local packages/ui).
   await bundleManagementUi()
 }
 
 async function bundleManagementUi(): Promise<void> {
   const { existsSync, cpSync, rmSync } = await import('node:fs')
-  const uiDir = join(__dirname, '..', '..', 'ui')
+  const uiDir = join(__dirname, '..', 'ui')
   if (!existsSync(join(uiDir, 'package.json'))) {
-    console.warn('UI bundle: ui/ not found — skipping dashboard bundle.')
+    console.warn('UI bundle: packages/ui not found — skipping dashboard bundle.')
     return
   }
 
   const built = Bun.spawnSync(['bun', 'run', 'build'], { cwd: uiDir, stdout: 'inherit', stderr: 'inherit' })
   if (built.exitCode !== 0) {
-    console.warn('UI bundle: `bun run build` in ui/ failed — skipping dashboard bundle.')
+    console.warn('UI bundle: `bun run build` in packages/ui failed — skipping dashboard bundle.')
     return
   }
 
   const distUi = join(uiDir, 'dist')
   const dest = join(__dirname, 'dist', 'ui')
   if (!existsSync(distUi)) {
-    console.warn('UI bundle: ui/dist not produced — skipping.')
+    console.warn('UI bundle: packages/ui/dist not produced — skipping.')
     return
   }
   rmSync(dest, { recursive: true, force: true })

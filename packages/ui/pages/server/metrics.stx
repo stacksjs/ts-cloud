@@ -1,0 +1,167 @@
+<script server>
+// ts-cloud server health view. Real data is injected at build time via
+// TSCLOUD_DASHBOARD_DATA (see deploy/dashboard-data-server.ts); the sample
+// values below render the design when nothing is injected.
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+
+const server = __d?.server ?? {
+  name: 'acme-production-app', provider: 'Hetzner', region: 'fsn1',
+  os: 'Ubuntu 24.04', uptime: '14d 6h', ip: '203.0.113.42',
+}
+const m = __d?.systemMetrics ?? {
+  load: 0.42, cpus: 4,
+  memUsedMb: 2480, memTotalMb: 7860,
+  diskUsedPct: 38, diskUsedGb: 19, diskTotalGb: 50,
+}
+const live = !!__d?._serverReachable
+
+// ── Derived percentages ───────────────────────────────────────────────
+const memPct = Math.min(100, Math.round((m.memUsedMb / Math.max(1, m.memTotalMb)) * 100))
+const loadPct = Math.min(100, Math.round((m.load / Math.max(1, m.cpus || 1)) * 100))
+const diskPct = Math.min(100, Math.round(m.diskUsedPct))
+
+// Human-friendly sizes.
+const gb = mb => (mb / 1024).toFixed(1)
+const memUsedGb = gb(m.memUsedMb)
+const memTotalGb = gb(m.memTotalMb)
+const memFreeGb = gb(Math.max(0, m.memTotalMb - m.memUsedMb))
+const diskFreeGb = Math.max(0, m.diskTotalGb - m.diskUsedGb)
+const loadPerCpu = (m.load / Math.max(1, m.cpus || 1)).toFixed(2)
+
+// ── Threshold tone: green < 70%, amber 70–90%, red ≥ 90% ───────────────
+function toneOf(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
+function word(p) { return p >= 90 ? 'Critical' : p >= 70 ? 'Elevated' : 'Healthy' }
+const cpuTone = toneOf(loadPct), memTone = toneOf(memPct), diskTone = toneOf(diskPct)
+
+// Overall verdict = worst of the three vitals.
+const ranks = { ok: 0, warn: 1, bad: 2 }
+const worst = [cpuTone, memTone, diskTone].sort((a, b) => ranks[b] - ranks[a])[0]
+const overall = {
+  bad: { tone: 'bad', title: 'Action needed', note: 'One or more vitals are in the critical range.' },
+  warn: { tone: 'warn', title: 'Running warm', note: 'Resources are elevated — keep an eye on it.' },
+  ok: { tone: 'ok', title: 'All systems healthy', note: 'CPU, memory, and disk are well within limits.' },
+}[worst]
+
+// Ring geometry (r = 52 → circumference ≈ 326.726).
+const CIRC = +(2 * Math.PI * 52).toFixed(3)
+const dashOf = p => (CIRC * (1 - p / 100)).toFixed(2)
+
+// One descriptor per gauge — rendered with @foreach below.
+const gaugeCards = [
+  { label: 'CPU Load', icon: 'cpu', tone: cpuTone, tag: word(loadPct), big: loadPct, unit: 'of capacity', sub: `${loadPerCpu} load / core · ${m.load} avg`, dash: dashOf(loadPct) },
+  { label: 'Memory', icon: 'mem', tone: memTone, tag: word(memPct), big: memPct, unit: 'memory used', sub: `${memUsedGb} / ${memTotalGb} GB · ${memFreeGb} free`, dash: dashOf(memPct) },
+  { label: 'Disk', icon: 'disk', tone: diskTone, tag: word(diskPct), big: diskPct, unit: 'disk used', sub: `${m.diskUsedGb} / ${m.diskTotalGb} GB · ${diskFreeGb} GB free`, dash: dashOf(diskPct) },
+]
+
+// ── Load trend (sample only — not part of the live metrics payload) ────
+const loadTrend = __d?.loadTrend ?? [22, 28, 31, 26, 40, 38, 33, 45, 41, 30, 27, 35, 48, 52, 39, 33, 29, 44, 50, 47, 36, 31, 28, 34]
+const maxLoad = Math.max(...loadTrend, 1)
+const trendPeak = Math.max(...loadTrend)
+function barPct(v) { return Math.round((v / maxLoad) * 100) }
+function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7 ? 'hot' : '' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud — Server health' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Health</div>
+    <header class="page">
+      <div>
+        <h1>Server health</h1>
+        <p>CPU, memory, disk &amp; vital signs for {{ server.name }}.</p>
+      </div>
+      <div class="header-actions">
+        @if (live)<span class="ok pill">live</span>@else<span class="pill warn">sample data</span>@endif
+      </div>
+    </header>
+
+    <!-- Verdict banner: the one-glance "is the box OK?" answer. -->
+    <div class="health-hero {{ overall.tone }}">
+      <div class="status">
+        <span class="led"></span>
+        <span>{{ overall.title }}<small>{{ overall.note }}</small></span>
+      </div>
+      <div class="hmeta">
+        <div class="item"><span>OS</span><b>{{ server.os }}</b></div>
+        <div class="item"><span>Region</span><b>{{ server.provider }} · {{ server.region }}</b></div>
+        <div class="item"><span>Uptime</span><b>{{ server.uptime }}</b></div>
+        <div class="item"><span>vCPUs</span><b>{{ m.cpus }}</b></div>
+      </div>
+    </div>
+
+    <!-- Centerpiece: radial gauges for the three vitals. -->
+    <div class="gauges">
+      @foreach (gaugeCards as g)
+        <div class="gauge {{ g.tone }}">
+          <div class="ghead">
+            @if (g.icon === 'cpu')
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg>
+            @elseif (g.icon === 'mem')
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v-2M12 7v-2M17 7v-2M7 21v-2M12 21v-2M17 21v-2"/></svg>
+            @else
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+            @endif
+            {{ g.label }}
+          </div>
+          <div class="ring">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <circle class="track" cx="60" cy="60" r="52"></circle>
+              <circle class="val" cx="60" cy="60" r="52" stroke-dasharray="{{ CIRC }}" stroke-dashoffset="{{ g.dash }}"></circle>
+            </svg>
+            <div class="center">
+              <div class="pct">{{ g.big }}<sup>%</sup></div>
+              <div class="punit">{{ g.unit }}</div>
+            </div>
+          </div>
+          <div class="gsub">{{ g.sub }}</div>
+          <div class="gtag">{{ g.tag }}</div>
+        </div>
+      @endforeach
+    </div>
+
+    <!-- Secondary vital signs. -->
+    <div class="section">
+      <h2>Vital signs</h2>
+      <div class="vitals">
+        <div class="vital">
+          <div class="vlabel">Load average</div>
+          <div class="vval">{{ m.load }} <small>/ {{ m.cpus }} cores</small></div>
+          <div class="vnote">{{ loadPerCpu }} per core</div>
+        </div>
+        <div class="vital">
+          <div class="vlabel">Memory free</div>
+          <div class="vval">{{ memFreeGb }} <small>GB</small></div>
+          <div class="vnote">of {{ memTotalGb }} GB total</div>
+        </div>
+        <div class="vital">
+          <div class="vlabel">Disk free</div>
+          <div class="vval">{{ diskFreeGb }} <small>GB</small></div>
+          <div class="vnote">of {{ m.diskTotalGb }} GB total</div>
+        </div>
+        <div class="vital">
+          <div class="vlabel">Uptime</div>
+          <div class="vval">{{ server.uptime }}</div>
+          <div class="vnote">{{ server.os }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Load over recent snapshots. -->
+    <div class="section">
+      <h2>CPU load trend</h2>
+      <div class="chart panel">
+        <div class="spark">
+          @foreach (loadTrend as v)
+            <i class="{{ barTone(v) }}" style="height: {{ barPct(v) }}%"></i>
+          @endforeach
+        </div>
+        <div class="xaxis"><span>−24 snapshots</span><span>peak {{ trendPeak }}% · now</span></div>
+        <p class="note">% of CPU capacity · refresh with <span class="mono">cloud server:monitoring {{ server.name }}</span></p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

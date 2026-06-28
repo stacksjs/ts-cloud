@@ -30,6 +30,14 @@ const metrics = __d?.systemMetrics ?? {
 }
 const memPct = Math.round((metrics.memUsedMb / metrics.memTotalMb) * 100)
 const loadPct = Math.min(100, Math.round((metrics.load / metrics.cpus) * 100))
+const diskPct = Math.min(100, Math.round(metrics.diskUsedPct))
+// Threshold tone: green < 70%, amber 70–90%, red ≥ 90% — shared with the
+// server health view (/server/metrics).
+function healthTone(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
+const ranks = { ok: 0, warn: 1, bad: 2 }
+const overallTone = [healthTone(loadPct), healthTone(memPct), healthTone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0]
+const overallWord = { ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallTone]
+const gb = mb => (mb / 1024).toFixed(1)
 
 const services = __d?.services ?? [
   { name: 'nginx', status: 'running' },
@@ -89,6 +97,7 @@ function statusTone(status) {
           <span>IP <b>{{ server.ip }}</b></span>
           <span>Uptime <b>{{ server.uptime }}</b></span>
           <span>CPUs <b>{{ metrics.cpus }}</b></span>
+          <span class="pill {{ overallTone }}">{{ overallWord }}</span>
         </div>
       </div>
     </header>
@@ -96,18 +105,18 @@ function statusTone(status) {
     <div class="grid cards">
       <a class="panel" href="/server/metrics">
         <h3>CPU Load</h3>
-        <div class="stat">{{ metrics.load }} <small>/ {{ metrics.cpus }}</small></div>
-        <div class="bar"><i style="width: {{ loadPct }}%"></i></div>
+        <div class="stat">{{ loadPct }}<small>% · {{ metrics.load }}/{{ metrics.cpus }}</small></div>
+        <div class="bar {{ healthTone(loadPct) }}"><i style="width: {{ loadPct }}%"></i></div>
       </a>
       <a class="panel" href="/server/metrics">
         <h3>Memory</h3>
-        <div class="stat">{{ memPct }}%</div>
-        <div class="bar"><i style="width: {{ memPct }}%"></i></div>
+        <div class="stat">{{ memPct }}<small>% · {{ gb(metrics.memUsedMb) }}/{{ gb(metrics.memTotalMb) }} GB</small></div>
+        <div class="bar {{ healthTone(memPct) }}"><i style="width: {{ memPct }}%"></i></div>
       </a>
       <a class="panel" href="/server/metrics">
         <h3>Disk</h3>
-        <div class="stat">{{ metrics.diskUsedPct }}%</div>
-        <div class="bar"><i style="width: {{ metrics.diskUsedPct }}%"></i></div>
+        <div class="stat">{{ diskPct }}<small>%</small></div>
+        <div class="bar {{ healthTone(diskPct) }}"><i style="width: {{ diskPct }}%"></i></div>
       </a>
       <a class="panel" href="/server/backups">
         <h3>Backups</h3>

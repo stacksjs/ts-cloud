@@ -6,7 +6,7 @@ describe('createDashboardSite', () => {
     const site = createDashboardSite({ domain: 'dashboard.acme.com', password: 'pw' })
     expect(site.deploy).toBe('server')
     expect(site.type).toBe('static')
-    expect(site.root).toBe('ui/dist')
+    expect(site.root).toBe('packages/ui/dist')
     expect(site.domain).toBe('dashboard.acme.com')
     expect(site.ssl?.provider).toBe('letsencrypt')
     expect(site.auth?.username).toBe('admin')

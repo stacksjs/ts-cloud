@@ -36,12 +36,12 @@ describe('resolveManagementDashboardSite', () => {
   const base = cfg({ sites: { main: { root: 'dist', domain: 'acme.com' } as any } })
 
   it('builds a server-static site with htpasswd when a password is given', () => {
-    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: 'ui/dist', build: 'cd ui && bun run build', password: 's3cret' })
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun run build', password: 's3cret' })
     expect(r?.name).toBe('dashboard')
     expect(r?.site.domain).toBe('dashboard.acme.com')
     expect(r?.site.type).toBe('static')
     expect(r?.site.deploy).toBe('server')
-    expect(r?.site.build).toBe('cd ui && bun run build')
+    expect(r?.site.build).toBe('cd packages/ui && bun run build')
     expect(r?.site.auth).toEqual({ username: 'admin', password: 's3cret', realm: undefined })
   })
 
@@ -53,12 +53,12 @@ describe('resolveManagementDashboardSite', () => {
   })
 
   it('returns null when a dashboard is already configured', () => {
-    const c = cfg({ sites: { dashboard: { root: 'ui/dist', domain: 'd.acme.com' } as any } })
+    const c = cfg({ sites: { dashboard: { root: 'packages/ui/dist', domain: 'd.acme.com' } as any } })
     expect(hasManagementDashboardSite(c)).toBe(true)
-    expect(resolveManagementDashboardSite(c, 'production', { uiRoot: 'ui/dist' })).toBeNull()
+    expect(resolveManagementDashboardSite(c, 'production', { uiRoot: 'packages/ui/dist' })).toBeNull()
   })
 
   it('returns null when no domain can be resolved', () => {
-    expect(resolveManagementDashboardSite(cfg({}), 'production', { uiRoot: 'ui/dist' })).toBeNull()
+    expect(resolveManagementDashboardSite(cfg({}), 'production', { uiRoot: 'packages/ui/dist' })).toBeNull()
   })
 })

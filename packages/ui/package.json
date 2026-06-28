@@ -8,6 +8,6 @@
     "dev": "stx dev --pages pages"
   },
   "devDependencies": {
-    "stx": "^0.2.66"
+    "@stacksjs/stx": "^0.2.72"
   }
 }

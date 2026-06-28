@@ -124,4 +124,81 @@
   .key { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
   .key:first-of-type { border-top: 0; }
   .key .fp { margin-left: auto; color: var(--txt3); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  /* ───────────── Health / vital signs (server metrics) ───────────── */
+  /* Overall status banner — at-a-glance "is the box OK?" verdict. */
+  .health-hero {
+    --hue: var(--ok); --huebg: var(--okbg);
+    display: flex; align-items: center; gap: 18px 28px; flex-wrap: wrap; margin-top: 8px;
+    background:
+      radial-gradient(700px 200px at 0% 0%, var(--huebg), transparent 70%),
+      var(--panel);
+    border: 1px solid var(--panel-br); border-radius: 18px; padding: 18px 22px; backdrop-filter: blur(6px);
+  }
+  .health-hero.warn { --hue: var(--warn); --huebg: var(--warnbg); }
+  .health-hero.bad { --hue: var(--bad); --huebg: var(--badbg); }
+  .health-hero .status { display: inline-flex; align-items: center; gap: 12px; font-weight: 800; font-size: 17px; letter-spacing: -0.01em; color: var(--hue); }
+  .health-hero .status .led {
+    width: 13px; height: 13px; border-radius: 50%; background: var(--hue);
+    box-shadow: 0 0 0 4px var(--huebg), 0 0 16px var(--hue); animation: hb-pulse 2.4s ease-in-out infinite;
+  }
+  .health-hero .status small { display: block; color: var(--txt3); font-size: 12px; font-weight: 500; margin-top: 2px; letter-spacing: 0; }
+  @keyframes hb-pulse { 0%, 100% { opacity: 1 } 50% { opacity: 0.5 } }
+  .health-hero .hmeta { margin-left: auto; display: flex; flex-wrap: wrap; gap: 22px 26px; color: var(--txt2); font-size: 13px; }
+  .health-hero .hmeta .item { display: flex; flex-direction: column; gap: 2px; }
+  .health-hero .hmeta .item span { color: var(--txt3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; }
+  .health-hero .hmeta .item b { color: var(--txt); font-weight: 600; font-size: 14px; }
+
+  /* Radial gauges — the centerpiece read for CPU / memory / disk. */
+  .gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+  @media (max-width: 760px) { .gauges { grid-template-columns: 1fr; } }
+  .gauge {
+    --g: var(--ok); --gbg: var(--okbg);
+    background: var(--panel); border: 1px solid var(--panel-br); border-radius: 18px;
+    padding: 20px 20px 18px; backdrop-filter: blur(6px);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+    transition: border-color .15s, transform .15s;
+  }
+  .gauge:hover { border-color: color-mix(in srgb, var(--g) 45%, transparent); transform: translateY(-1px); }
+  .gauge.warn { --g: var(--warn); --gbg: var(--warnbg); }
+  .gauge.bad { --g: var(--bad); --gbg: var(--badbg); }
+  .gauge .ghead { display: flex; align-items: center; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--txt3); font-weight: 700; }
+  .gauge .ghead svg { width: 15px; height: 15px; color: var(--g); }
+  .gauge .ring { position: relative; width: 172px; height: 172px; margin: 6px 0 2px; }
+  .gauge .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .gauge .ring .track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 11; }
+  .gauge .ring .val {
+    fill: none; stroke: var(--g); stroke-width: 11; stroke-linecap: round;
+    filter: drop-shadow(0 0 7px var(--g)); transition: stroke-dashoffset .9s cubic-bezier(.34,.04,.2,1);
+  }
+  .gauge .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge .pct { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
+  .gauge .pct sup { font-size: 17px; font-weight: 700; color: var(--txt2); margin-left: 1px; top: -0.7em; }
+  .gauge .punit { font-size: 11px; color: var(--txt3); font-weight: 600; margin-top: 7px; text-transform: uppercase; letter-spacing: 0.07em; }
+  .gauge .gsub { color: var(--txt2); font-size: 14px; font-weight: 500; }
+  .gauge .gsub b { color: var(--txt); font-weight: 700; }
+  .gauge .gtag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 11px; border-radius: 999px; background: var(--gbg); color: var(--g); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Vital-sign tiles — the secondary numbers (free RAM, uptime, etc.). */
+  .vitals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  @media (max-width: 880px) { .vitals { grid-template-columns: repeat(2, 1fr); } }
+  .vital { background: var(--panel); border: 1px solid var(--panel-br); border-radius: 14px; padding: 14px 16px; }
+  .vital .vlabel { display: flex; align-items: center; gap: 7px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--txt3); font-weight: 700; }
+  .vital .vlabel svg { width: 13px; height: 13px; }
+  .vital .vval { font-size: 21px; font-weight: 700; margin-top: 7px; letter-spacing: -0.01em; }
+  .vital .vval small { font-size: 12.5px; color: var(--txt2); font-weight: 500; }
+  .vital .vnote { font-size: 12px; color: var(--txt3); margin-top: 3px; }
+
+  /* Tone-colored progress bars (shared with index health cards). */
+  .bar.ok > i { background: linear-gradient(90deg, var(--ok), #22c55e); }
+  .bar.warn > i { background: linear-gradient(90deg, var(--warn), #f59e0b); }
+  .bar.bad > i { background: linear-gradient(90deg, var(--bad), #ef4444); }
+
+  /* Load trend chart — sparkline with capacity guide + axis labels. */
+  .chart { position: relative; }
+  .chart .spark { height: 124px; align-items: flex-end; }
+  .chart .spark > i { background: linear-gradient(180deg, var(--accent), rgba(91,140,255,0.22)); transition: height .6s ease; }
+  .chart .spark > i.hot { background: linear-gradient(180deg, var(--warn), rgba(251,191,36,0.22)); }
+  .chart .spark > i.peak { background: linear-gradient(180deg, var(--bad), rgba(248,113,113,0.25)); }
+  .chart .xaxis { display: flex; justify-content: space-between; margin-top: 9px; color: var(--txt3); font-size: 11px; }
 </style>
