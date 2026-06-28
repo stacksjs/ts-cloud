@@ -11,6 +11,8 @@ import {
 describe('buildNginxServiceScript', () => {
   it('sets up ts-cloud nginx on the pantry binary via a systemd unit', () => {
     const script = buildNginxServiceScript().join('\n')
+    expect(script).toContain('pantry install')
+    expect(script).toContain('nginx.org')
     // Wrapper runs the pantry nginx binary inside pantry env.
     expect(script).toContain('/usr/local/bin/ts-cloud-nginx')
     expect(script).toContain('pantry env')

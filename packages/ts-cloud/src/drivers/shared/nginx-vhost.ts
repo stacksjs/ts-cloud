@@ -14,6 +14,7 @@
  * on by certbot in the SSL step, so this stays stable across cert renewals.
  */
 import type { SiteConfig, SiteNginxConfig } from '@ts-cloud/core'
+import { buildPantryBootstrapScript, buildPantryInstallScript } from './package-manager'
 import { phpFpmSocketPath } from './php-provision'
 
 export type NginxSiteType = NonNullable<SiteConfig['type']>
@@ -362,6 +363,8 @@ export const NGINX_WRAPPER = '/usr/local/bin/ts-cloud-nginx'
  */
 export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
   return [
+    ...buildPantryBootstrapScript(),
+    ...buildPantryInstallScript(['nginx.org']),
     'mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/log/nginx /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi /var/lib/nginx/uwsgi /var/lib/nginx/scgi',
     'getent passwd www-data >/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin www-data',
     'chown -R www-data:www-data /var/lib/nginx /var/log/nginx',
