@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.18...v0.5.19)
+
+### 🚀 Features
+
+- **ui**: redesign server health view and move dashboard into workspace ([5aa583d](https://github.com/stacksjs/ts-cloud/commit/5aa583d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.19 ([6374152](https://github.com/stacksjs/ts-cloud/commit/6374152)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.16...v0.5.17)
 
 ### 🐛 Bug Fixes
