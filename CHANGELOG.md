@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.20...v0.5.21)
+
+### 🐛 Bug Fixes
+
+- **deploy**: ensure nginx vhost directories ([49aa5b9](https://github.com/stacksjs/ts-cloud/commit/49aa5b9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.21 ([ff1e44f](https://github.com/stacksjs/ts-cloud/commit/ff1e44f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.19...v0.5.20)
 
 ### 🚀 Features
