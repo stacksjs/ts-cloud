@@ -1,12 +1,12 @@
 <script server>
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
-const server = __d?.server ?? { name: 'stacks-production-app' }
-const emptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available yet.'
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const emptyReason = __d?.serverlessLogsEmptyReason ?? 'No function logs are available yet.'
 </script>
 <script client>
-// Reactive log viewer: fetches the live server logs, filters by level + source,
-// and auto-refreshes — all via signals + directives (no manual DOM).
+// Reactive aggregated CloudWatch logs across the functions, with level + function
+// filtering and auto-refresh — signals + directives only (no manual DOM).
 const logs = state([])
 const level = state('all')
 const source = state('all')
@@ -19,24 +19,24 @@ async function refresh() {
     const res = await fetch('/api/dashboard-data')
     if (!res.ok) return
     const data = await res.json()
-    if (Array.isArray(data.serverLogs)) logs.set(data.serverLogs)
+    if (Array.isArray(data.serverlessLogs)) logs.set(data.serverlessLogs)
   } catch {}
 }
 onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => clearInterval(id) })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud - Server logs' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud — Function logs' })</head>
 <body>
-  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
   <div class="wrap">
-    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Logs</div>
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Logs</div>
     <header class="page">
       <div>
-        <h1>Logs</h1>
-        <p>Live journal entries from every managed service on {{ server.name }}.</p>
+        <h1>Function logs</h1>
+        <p>Aggregated CloudWatch logs across the {{ app.name }} functions ({{ app.env }}).</p>
       </div>
-      <div class="cmds header-actions"><span class="accent cmd">cloud server:logs {{ server.name }}</span></div>
+      <div class="cmds header-actions"><span class="accent cmd">cloud logs --env {{ app.env }}</span></div>
     </header>
 
     <div class="section">
@@ -49,9 +49,9 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
             <button type="button" :class="{ active: level() === 'info' }" @click="level.set('info')">Info</button>
           </div>
           <label class="select-filter">
-            <span>Source</span>
+            <span>Function</span>
             <select :value="source()" @change="source.set($event.target.value)">
-              <option value="all">All sources</option>
+              <option value="all">All functions</option>
               <template :for="s in sources()">
                 <option :value="s">{{ s }}</option>
               </template>
@@ -71,10 +71,10 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
             </article>
           </template>
         </div>
-        <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
+        <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or function filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
 
-        <p class="note">Live <span class="mono">journalctl</span> for the web server, every managed service, and each app's service, <b>queue workers</b>, and daemons — plus the backup runner. Auto-refreshes every 8s.</p>
+        <p class="note">Live CloudWatch logs (REPORT/START/END boilerplate stripped) across <span class="mono">http</span>, <span class="mono">queue</span>, <span class="mono">cli</span> and scheduler functions. Auto-refreshes every 8s.</p>
       </div>
     </div>
   </div>

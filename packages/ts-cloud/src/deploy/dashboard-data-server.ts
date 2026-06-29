@@ -300,38 +300,64 @@ function securityScript(config: CloudConfig): string[] {
   ]
 }
 
-function serverLogUnits(config: CloudConfig): string[] {
-  const units = new Set<string>()
+interface ServerLogSource {
+  /** journalctl `-u` pattern (a unit name or a glob like `acme-web-queue-*`). */
+  pattern: string
+  /** Clean source label shown + filtered on in the UI. */
+  label: string
+}
+
+/**
+ * Every log source on the box: the web server, each managed service, and per
+ * server-app site the app service PLUS its queue workers and daemons (collected
+ * via journalctl unit globs so all worker instances are covered, not just the
+ * main service). Deduped by label.
+ */
+export function serverLogSources(config: CloudConfig): ServerLogSource[] {
+  const byLabel = new Map<string, ServerLogSource>()
+  const add = (pattern: string, label: string): void => {
+    if (pattern && label && !byLabel.has(label))
+      byLabel.set(label, { pattern, label })
+  }
   const compute = config.infrastructure?.compute as any
+  const slug = config.project.slug
 
   if (compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx')
-    units.add('rpx-gateway')
+    add('rpx-gateway', 'rpx-gateway')
   else
-    units.add('nginx')
+    add('nginx', 'nginx')
 
   for (const svc of configuredServices(config))
-    units.add(svc.name)
+    add(svc.name, svc.name)
 
   for (const [siteName, site] of Object.entries(config.sites ?? {}) as Array<[string, any]>) {
-    if (resolveSiteKind(site) === 'server-app')
-      units.add(`${config.project.slug}-${siteName}`)
+    if (resolveSiteKind(site) !== 'server-app')
+      continue
+    add(`${slug}-${siteName}`, `${slug}-${siteName}`)
+    if (Array.isArray(site.queues ?? site.workers) && (site.queues ?? site.workers).length)
+      add(`${slug}-${siteName}-queue-*`, `${slug}-${siteName}-queues`)
+    if (Array.isArray(site.daemons) && site.daemons.length)
+      add(`${slug}-${siteName}-daemon-*`, `${slug}-${siteName}-daemons`)
   }
 
-  return [...units].filter(Boolean)
+  return [...byLabel.values()]
 }
 
 function serverLogsScript(config: CloudConfig): string[] {
-  const units = serverLogUnits(config)
-  if (units.length === 0)
+  const sources = serverLogSources(config)
+  if (sources.length === 0)
     return ['true']
 
   return [
     'set +e',
-    ...units.map((unit) => {
-      const quoted = shellSingleQuote(unit)
-      const prefix = sedReplacement(unit)
-      return `journalctl -u ${quoted} --no-pager -n 80 -o short-iso 2>/dev/null | sed "s/^/LOG=${prefix}\\t/" || true`
+    // journalctl-backed units (the web server, services, app/workers/daemons).
+    ...sources.map((source) => {
+      const quoted = shellSingleQuote(source.pattern)
+      const prefix = sedReplacement(source.label)
+      return `journalctl -u ${quoted} --no-pager -n 150 -o short-iso 2>/dev/null | sed "s/^/LOG=${prefix}\\t/" || true`
     }),
+    // The scheduled-backup runner logs to a file, not the journal.
+    `[ -f /var/log/ts-cloud-backup.log ] && tail -n 60 /var/log/ts-cloud-backup.log 2>/dev/null | sed "s/^/LOG=backups\\t/" || true`,
     'true',
   ]
 }
@@ -392,7 +418,7 @@ export function parseServerLogs(output: string): Array<Record<string, any>> {
     })
   }
 
-  return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 240)
+  return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 600)
 }
 
 function listenerExposure(listen: string): 'loopback' | 'private' | 'public' {

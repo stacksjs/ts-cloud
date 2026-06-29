@@ -27,6 +27,17 @@ export type DashboardData = Record<string, any>
 function pad(n: number): string { return String(n).padStart(2, '0') }
 function isoDate(d: Date): string { return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` }
 
+/** Compact "Xs/Xm/Xh/Xd ago" label from a millisecond timestamp. */
+function relativeLogTime(ms: number): string {
+  const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000))
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours}h ago`
+  return `${Math.round(hours / 24)}d ago`
+}
+
 /** Aggregate a Lambda metric over a window. */
 async function lambdaMetric(cw: CloudWatchClient, fn: string, name: string, kind: 'Sum' | 'Average' | 'Maximum', start: Date, end: Date): Promise<number> {
   const pts = await cw.getMetricStatistics({
@@ -80,6 +91,7 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
   let totalInvocations = 0, totalErrors = 0, maxDur = 0
   const fns: any[] = []
   const fnsDetail: any[] = []
+  const serverlessLogs: any[] = []
   for (const f of info.functions) {
     const [invocations, errors, throttles, durAvg, cfg, p50, p95, p99, spark] = await Promise.all([
       lambdaMetric(cw, f.name, 'Invocations', 'Sum', start, end),
@@ -102,11 +114,21 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
     let recent: any[] = []
     let maxMem = 0
     try {
-      const { events = [] } = await logs.filterLogEvents({ logGroupName: `/aws/lambda/${f.name}`, startTime: start.getTime(), limit: 40 })
+      const { events = [] } = await logs.filterLogEvents({ logGroupName: `/aws/lambda/${f.name}`, startTime: start.getTime(), limit: 120 })
       for (const e of events) {
         const msg = (e.message ?? '').trim()
         const mm = /Max Memory Used:\s*(\d+)\s*MB/.exec(msg)
         if (mm) maxMem = Math.max(maxMem, Number(mm[1]))
+        // Aggregate non-boilerplate lines into the cross-function logs view.
+        if (msg && !/^(?:START|END|REPORT|INIT_START)/.test(msg)) {
+          serverlessLogs.push({
+            source: f.mode || f.name,
+            timestamp: new Date(e.timestamp ?? 0).toISOString(),
+            when: relativeLogTime(e.timestamp ?? 0),
+            message: msg.slice(0, 400),
+            level: /error|exception|fatal|panic|traceback/i.test(msg) ? 'error' : (/warn|warning|timeout|retr(?:y|ies)|throttl/i.test(msg) ? 'warn' : 'info'),
+          })
+        }
       }
       recent = events.filter(e => !/^(?:START|END|REPORT|INIT_START)/.test((e.message ?? '').trim()))
         .slice(-6).map(e => ({ ts: new Date(e.timestamp ?? 0).toISOString().slice(11, 19), msg: (e.message ?? '').trim().slice(0, 120), err: /error|exception|fatal/i.test(e.message ?? '') }))
@@ -128,6 +150,10 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
   }
   out.functions = fns
   out.functionsDetail = fnsDetail
+  out.serverlessLogs = serverlessLogs.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 600)
+  out.serverlessLogsEmptyReason = serverlessLogs.length
+    ? undefined
+    : 'No recent function logs were found in CloudWatch for this environment.'
 
   const errorRatePct = totalInvocations ? Number(((totalErrors / totalInvocations) * 100).toFixed(2)) : 0
   const concurrency = Math.round(await lambdaMetric(cw, info.functions[0]?.name ?? '', 'ConcurrentExecutions', 'Maximum', start, end))

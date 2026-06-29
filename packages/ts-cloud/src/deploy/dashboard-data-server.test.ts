@@ -1,5 +1,34 @@
+import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { parseBlock, parseDeployHistory, parseServerLogs, parseServerSecurity, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
+import { parseBlock, parseDeployHistory, parseServerLogs, parseServerSecurity, resolveConfigOnlyServerDashboardData, serverLogSources } from './dashboard-data-server'
+
+describe('serverLogSources', () => {
+  const config = {
+    project: { name: 'Acme', slug: 'acme' },
+    infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' }, managedServices: { redis: true } } },
+    sites: {
+      web: { domain: 'acme.com', root: '.', start: 'bun run server.ts', port: 3000, queues: [{ name: 'default' }], daemons: [{ name: 'reverb' }] },
+      docs: { domain: 'acme.com', path: '/docs', root: 'dist', deploy: 'server', type: 'static' },
+    },
+  } as unknown as CloudConfig
+
+  it('collects the web server, services, and each app service + its workers/daemons', () => {
+    const labels = serverLogSources(config).map(s => s.label)
+    expect(labels).toContain('rpx-gateway')
+    expect(labels).toContain('redis')
+    expect(labels).toContain('acme-web')
+    expect(labels).toContain('acme-web-queues')
+    expect(labels).toContain('acme-web-daemons')
+    // static sites have no service to tail.
+    expect(labels).not.toContain('acme-docs')
+  })
+
+  it('maps worker/daemon labels to journalctl unit globs (all instances, not just one)', () => {
+    const sources = serverLogSources(config)
+    expect(sources.find(s => s.label === 'acme-web-queues')?.pattern).toBe('acme-web-queue-*')
+    expect(sources.find(s => s.label === 'acme-web-daemons')?.pattern).toBe('acme-web-daemon-*')
+  })
+})
 
 describe('parseBlock (server metrics probe output)', () => {
   it('parses KEY=VALUE lines and SVC=name=status into services', () => {
