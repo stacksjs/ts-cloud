@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.25...v0.5.26)
+
+### 🐛 Bug Fixes
+
+- **deploy**: prefer rpx without nginx fallback ([c671b6d](https://github.com/stacksjs/ts-cloud/commit/c671b6d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.26 ([058879b](https://github.com/stacksjs/ts-cloud/commit/058879b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.24...v0.5.25)
 
 ### 🐛 Bug Fixes
