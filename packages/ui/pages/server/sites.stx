@@ -16,7 +16,7 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Sites</div>
-    <header class="page"><div><h1>Sites</h1><p>Nginx vhosts served from the box, each deployed as an atomic release.</p></div></header>
+    <header class="page"><div><h1>Sites</h1><p>Server routes served from the box, each deployed as an atomic release.</p></div></header>
     @foreach (sites as site)
       <div class="section">
         <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>

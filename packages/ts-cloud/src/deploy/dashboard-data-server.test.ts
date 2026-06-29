@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseBlock } from './dashboard-data-server'
+import { parseBlock, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
 
 describe('parseBlock (server metrics probe output)', () => {
   it('parses KEY=VALUE lines and SVC=name=status into services', () => {
@@ -36,5 +36,36 @@ describe('parseBlock (server metrics probe output)', () => {
   it('keeps values containing = (only splits on the first)', () => {
     const r = parseBlock('OS=Name=With=Equals')
     expect(r.OS).toBe('Name=With=Equals')
+  })
+})
+
+describe('resolveConfigOnlyServerDashboardData', () => {
+  it('derives rpx services and disabled backups from config instead of sample data', () => {
+    const data = resolveConfigOnlyServerDashboardData({
+      project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
+      cloud: { provider: 'hetzner' },
+      infrastructure: {
+        compute: {
+          instances: 1,
+          disk: { size: 20 },
+          webServer: 'rpx',
+          proxy: { engine: 'rpx' },
+        },
+      },
+      sites: {
+        verygoodadblock: { deploy: 'server', domain: 'verygoodadblock.org', root: '../adblock/dist/site' },
+      },
+    } as any, 'production' as any)
+
+    expect(data.server.name).toBe('stacks-production-app')
+    expect(data.server.provider).toBe('hetzner')
+    expect(data.services).toEqual([{ name: 'rpx-gateway', status: 'configured' }])
+    expect(data.servicesDetail[0].name).toBe('rpx-gateway')
+    expect(data.backup).toMatchObject({ enabled: false, destination: 'off', retention: 0 })
+    expect(data.backupHistory).toEqual([])
+    expect(data.serverDeployments).toEqual([])
+    expect(data.sites[0]).toMatchObject({ name: 'verygoodadblock', domain: 'verygoodadblock.org', type: 'static' })
+    expect(JSON.stringify(data)).not.toContain('acme')
+    expect(JSON.stringify(data)).not.toContain('nginx')
   })
 })
