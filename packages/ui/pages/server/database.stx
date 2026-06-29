@@ -1,0 +1,124 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'acme-production-app' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud — Databases' })</head>
+<body>
+  @include('../partials/nav', { active: 'database', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Databases</div>
+    <header class="page">
+      <div><h1>Databases &amp; users</h1><p>Create databases and app users on the managed engine (<span id="db-engine" class="mono">…</span>).</p></div>
+    </header>
+
+    <div class="cols section">
+      <div>
+        <h2>Create database</h2>
+        <div class="panel">
+          <form id="db-create-form" class="form-grid">
+            <div class="field-block wide"><label for="db-name">Name</label><input id="db-name" name="name" placeholder="acme_production" autocomplete="off"></div>
+            <div class="form-actions"><button class="btn" type="submit">Create database</button></div>
+          </form>
+        </div>
+      </div>
+      <div>
+        <h2>Create user</h2>
+        <div class="panel">
+          <form id="db-user-form" class="form-grid">
+            <div class="field-block"><label for="db-user">Username</label><input id="db-user" name="username" placeholder="acme_app" autocomplete="off"></div>
+            <div class="field-block"><label for="db-pass">Password</label><input id="db-pass" name="password" type="password" autocomplete="new-password"></div>
+            <div class="field-block"><label for="db-user-db">Grant on database</label><select id="db-user-db" name="database"><option value="">(none)</option></select></div>
+            <div class="field-block"><label for="db-access">Access</label><select id="db-access" name="access"><option value="all">all privileges</option><option value="readonly">read only</option></select></div>
+            <div class="form-actions"><button class="btn" type="submit">Create user</button></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <pre id="db-output" class="action-output" hidden></pre>
+
+    <div class="cols section">
+      <div>
+        <h2>Databases</h2>
+        <div class="panel"><div id="db-list" class="svc"><span style="color:var(--txt3)">Loading…</span></div></div>
+      </div>
+      <div>
+        <h2>Users</h2>
+        <div class="panel"><div id="db-user-list" class="svc"><span style="color:var(--txt3)">Loading…</span></div></div>
+      </div>
+    </div>
+    <p class="note">Lists are read live from the engine via the app server. Create operations run as root over the pantry socket; apps connect with the credentials you set here.</p>
+  </div>
+  <script>
+    const output = document.getElementById('db-output')
+    function show(text) { if (output) { output.hidden = false; output.textContent = text } }
+    function tag(text) { const s = document.createElement('span'); s.className = 'item'; s.textContent = text; return s }
+
+    async function loadDatabases() {
+      try {
+        const res = await fetch('/api/databases')
+        const data = await res.json()
+        const engine = document.getElementById('db-engine')
+        if (engine) engine.textContent = data.engine || 'mysql'
+        const list = document.getElementById('db-list')
+        const users = document.getElementById('db-user-list')
+        const dbSelect = document.getElementById('db-user-db')
+        if (list) {
+          list.innerHTML = ''
+          if (!data.ok) list.appendChild(tag(data.error || 'unavailable'))
+          else if (!(data.databases || []).length) list.appendChild(tag('no databases'))
+          else for (const name of data.databases) list.appendChild(tag(name))
+        }
+        if (users) {
+          users.innerHTML = ''
+          if (!data.ok) users.appendChild(tag(data.error || 'unavailable'))
+          else if (!(data.users || []).length) users.appendChild(tag('no users'))
+          else for (const name of data.users) users.appendChild(tag(name))
+        }
+        if (dbSelect && data.ok) {
+          const current = dbSelect.value
+          dbSelect.innerHTML = '<option value="">(none)</option>'
+          for (const name of (data.databases || [])) {
+            const opt = document.createElement('option')
+            opt.value = name; opt.textContent = name
+            dbSelect.appendChild(opt)
+          }
+          dbSelect.value = current
+        }
+      }
+      catch (error) { show(`Could not read databases: ${error?.message || error}`) }
+    }
+
+    document.getElementById('db-create-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const name = document.getElementById('db-name').value.trim()
+      show(`Creating database ${name}...`)
+      const res = await fetch('/api/databases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })
+      const body = await res.json()
+      show(`${body.ok ? 'OK created ' + (body.name || name) : 'FAILED'}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}${body.error ? `\n${body.error}` : ''}`)
+      if (body.ok) { document.getElementById('db-create-form').reset(); loadDatabases() }
+    })
+
+    document.getElementById('db-user-form')?.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const form = event.target
+      const payload = {
+        username: form.username.value.trim(),
+        password: form.password.value,
+        database: form.database.value || undefined,
+        access: form.access.value,
+      }
+      show(`Creating user ${payload.username}...`)
+      const res = await fetch('/api/databases/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+      const body = await res.json()
+      show(`${body.ok ? 'OK created user ' + (body.username || payload.username) : 'FAILED'}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}${body.error ? `\n${body.error}` : ''}`)
+      if (body.ok) { form.reset(); loadDatabases() }
+    })
+
+    loadDatabases()
+  </script>
+</body>
+</html>

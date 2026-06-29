@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
+import { createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabases } from './dashboard-database'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation } from './dashboard-operations'
 import { resolveUiSource } from './management-dashboard'
 import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
@@ -536,6 +537,32 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/server/operations')
           return json(buildDashboardOperations(config as CloudConfig, latestData))
+
+        if (url.pathname === '/api/databases' && req.method === 'GET')
+          return json(await listDatabases(config as CloudConfig, environment))
+
+        if (url.pathname === '/api/databases' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const name = String(body.name ?? '').trim()
+          if (!isValidDbIdentifier(name))
+            return json({ ok: false, error: 'Database name must be a valid identifier (letters, numbers, underscore; not starting with a digit).' }, 422)
+          return json({ ...(await createDatabase(config as CloudConfig, environment, name)), name })
+        }
+
+        if (url.pathname === '/api/databases/users' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const username = String(body.username ?? '').trim()
+          const password = String(body.password ?? '')
+          const database = String(body.database ?? '').trim() || undefined
+          const access = body.access === 'readonly' ? 'readonly' : 'all'
+          if (!isValidDbIdentifier(username))
+            return json({ ok: false, error: 'Username must be a valid identifier.' }, 422)
+          if (!password)
+            return json({ ok: false, error: 'Password is required.' }, 422)
+          if (database && !isValidDbIdentifier(database))
+            return json({ ok: false, error: 'Database must be a valid identifier.' }, 422)
+          return json({ ...(await createDatabaseUser(config as CloudConfig, environment, { username, password, database, access })), username })
+        }
 
         if (url.pathname === '/api/dashboard-data') {
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
