@@ -26,7 +26,12 @@ export function addSiteToCloudConfig(input: AddSiteConfigInput): string {
   })
   const before = input.configText.slice(0, sitesObject.end).trimEnd()
   const after = input.configText.slice(sitesObject.end)
-  const separator = before.endsWith('{') ? '\n' : '\n\n'
+  // Keep the object valid whether or not the preceding site ended with a comma:
+  // empty block → newline only; comma-terminated → blank line; otherwise insert
+  // the missing separating comma before the new entry.
+  const separator = before.endsWith('{')
+    ? '\n'
+    : before.endsWith(',') ? '\n\n' : ',\n\n'
 
   return `${before}${separator}${snippet}\n  ${after}`
 }

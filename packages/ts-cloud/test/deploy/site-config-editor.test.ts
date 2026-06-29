@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'bun:test'
 import { addSiteToCloudConfig, renderSiteSnippet } from '../../src/deploy/site-config-editor'
 
+// Assert the rewritten config still parses as TypeScript so a malformed result
+// (e.g. a missing separating comma between sites) fails loudly.
+function assertValidTs(code: string): void {
+  expect(code).not.toContain(',,')
+  new Bun.Transpiler({ loader: 'ts' }).transformSync(code)
+}
+
 describe('renderSiteSnippet', () => {
   it('renders a server-static site snippet', () => {
     expect(renderSiteSnippet({
@@ -39,6 +46,28 @@ describe('addSiteToCloudConfig', () => {
     expect(updated).toContain('marketing: {')
     expect(updated).toContain("domain: 'verygoodadblock.org'")
     expect(updated.indexOf('marketing: {')).toBeLessThan(updated.indexOf('\n  },\n}'))
+    assertValidTs(updated)
+  })
+
+  it('adds a separating comma when the previous site has no trailing comma', () => {
+    const config = `export default {
+  sites: {
+    main: {
+      root: '.'
+    }
+  },
+}
+`
+    const updated = addSiteToCloudConfig({
+      configText: config,
+      name: 'docs',
+      deploy: 'server',
+      root: 'dist/docs',
+      domain: 'example.com',
+    })
+
+    expect(updated).toContain('docs: {')
+    assertValidTs(updated)
   })
 
   it('refuses duplicate sites', () => {
@@ -57,5 +86,6 @@ describe('addSiteToCloudConfig', () => {
     })
 
     expect(updated).toContain('docs: {')
+    assertValidTs(updated)
   })
 })

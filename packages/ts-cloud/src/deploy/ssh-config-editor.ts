@@ -53,17 +53,32 @@ function updateComputeSshKeys(configText: string, keys: SshKeyConfig[]): string 
   const existing = findPropertyArray(configText, compute.start, compute.end, 'sshKeys')
 
   if (existing) {
-    return `${configText.slice(0, existing.propertyStart)}${rendered}${configText.slice(existing.end + 1)}`
+    // Replace from the `sshKeys` keyword through its closing `]` (existing.end,
+    // inclusive). Everything AFTER the `]` — the property's own trailing comma
+    // and newline — is preserved verbatim, so `rendered` must NOT carry its own
+    // trailing comma, otherwise each edit would accumulate one (`],` → `],,`).
+    //
+    // Back the start up over the line's leading whitespace so the renderer's own
+    // indentation replaces it rather than stacking on top of it each edit.
+    let lineStart = existing.propertyStart
+    while (lineStart > 0 && configText[lineStart - 1] !== '\n' && /\s/.test(configText[lineStart - 1]!))
+      lineStart--
+    return `${configText.slice(0, lineStart)}${rendered}${configText.slice(existing.end + 1)}`
   }
 
+  // Insert a new sshKeys array as the last property of the compute object.
+  // Ensure the preceding property is comma-terminated and add a trailing comma
+  // after the inserted array so the object stays valid regardless of style.
   const before = configText.slice(0, compute.end).trimEnd()
   const after = configText.slice(compute.end)
-  return `${before}\n${rendered}\n    ${after}`
+  const sep = before.endsWith(',') || before.endsWith('{') ? '' : ','
+  return `${before}${sep}\n${rendered},\n    ${after}`
 }
 
 function renderSshKeys(keys: SshKeyConfig[]): string {
+  // No trailing comma: callers preserve or add the separating comma themselves.
   if (keys.length === 0)
-    return '      sshKeys: [],'
+    return '      sshKeys: []'
 
   const body = keys.map(key => [
     '        {',
@@ -72,7 +87,7 @@ function renderSshKeys(keys: SshKeyConfig[]): string {
     '        },',
   ].join('\n')).join('\n')
 
-  return `      sshKeys: [\n${body}\n      ],`
+  return `      sshKeys: [\n${body}\n      ]`
 }
 
 function dedupeKeys(keys: SshKeyConfig[]): SshKeyConfig[] {
