@@ -16,11 +16,11 @@
  * - `TS_CLOUD_UI_DISABLE`   set truthy to skip auto-deploy
  */
 
-import type { CloudConfig, EnvironmentType } from '@stacksjs/ts-cloud'
+import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { hasManagementDashboardSite, resolveManagementDashboardSite } from '@stacksjs/ts-cloud'
+import { hasManagementDashboardSite, resolveManagementDashboardSite } from '@ts-cloud/core'
 
 export interface EnsureDashboardLogger {
   info: (msg: string) => void
