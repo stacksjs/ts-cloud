@@ -37,8 +37,31 @@ export interface RpxRoute {
   cleanUrls?: boolean
   /** SPA fallback for static sites. */
   spa?: boolean
+  /**
+   * HTTP Basic auth gate for this route (from the site's `auth`). rpx challenges
+   * every request to the route until valid credentials are supplied — this is
+   * how the management dashboard (and other protected sites) stay private behind
+   * rpx, the same way the nginx driver applies htpasswd.
+   */
+  auth?: { username: string, password: string, realm?: string }
   /** Stable id used when rpx registers the route. Derived from `to`+`path`. */
   id: string
+}
+
+/**
+ * Resolve a site's `auth` into the rpx route auth shape, or `undefined` when the
+ * site is public. Mirrors the management-dashboard preset: auth applies only when
+ * enabled (default) AND a password is present — no password is ever invented.
+ */
+export function resolveRouteAuth(site: SiteConfig): RpxRoute['auth'] {
+  const auth = site.auth
+  if (!auth || auth.enabled === false || !auth.password)
+    return undefined
+  return {
+    username: auth.username || 'admin',
+    password: auth.password,
+    ...(auth.realm ? { realm: auth.realm } : {}),
+  }
 }
 
 /** The rpx daemon/proxy config produced from a sites model. */
@@ -124,12 +147,13 @@ export function buildRpxConfig(
 
     const path = normalizeRoutePath(site.path)
     const id = deriveRouteId(site.domain, path)
+    const auth = resolveRouteAuth(site)
 
     if (kind === 'server-app') {
       // A server-app must declare the port it listens on to be routable.
       if (typeof site.port !== 'number')
         continue
-      proxies.push({ to: site.domain, path, from: `localhost:${site.port}`, id })
+      proxies.push({ to: site.domain, path, from: `localhost:${site.port}`, id, ...(auth ? { auth } : {}) })
     }
     else {
       // server-static: served from /var/www/<name>. cleanUrls maps the SSG
@@ -140,6 +164,7 @@ export function buildRpxConfig(
         static: `${wwwRoot}/${name}`,
         cleanUrls: site.pathRewriteStyle !== 'flat',
         spa: site.spa ?? false,
+        ...(auth ? { auth } : {}),
         id,
       })
     }

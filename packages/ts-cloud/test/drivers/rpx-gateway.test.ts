@@ -6,6 +6,7 @@ import {
   deriveRouteId,
   normalizeRoutePath,
   renderRpxLauncher,
+  resolveRouteAuth,
   RPX_LAUNCHER_PATH,
   RPX_SERVICE_NAME,
 } from '../../src/drivers/shared/rpx-gateway'
@@ -157,6 +158,55 @@ describe('buildRpxConfig', () => {
       docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
     }, { proxy: rpxProxy, wwwRoot: '/srv/sites' })
     expect(config.proxies[0].static).toBe('/srv/sites/docs')
+  })
+})
+
+describe('resolveRouteAuth', () => {
+  it('maps an enabled auth block, defaulting the username', () => {
+    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { password: 'pw' } } as SiteConfig))
+      .toEqual({ username: 'admin', password: 'pw' })
+    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { username: 'ops', password: 'pw', realm: 'Cockpit' } } as SiteConfig))
+      .toEqual({ username: 'ops', password: 'pw', realm: 'Cockpit' })
+  })
+
+  it('returns undefined for public sites, disabled auth, or a missing password', () => {
+    expect(resolveRouteAuth({ domain: 'd', root: '.' } as SiteConfig)).toBeUndefined()
+    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { enabled: false, username: 'a', password: 'p' } } as SiteConfig)).toBeUndefined()
+    expect(resolveRouteAuth({ domain: 'd', root: '.', auth: { username: 'a' } } as SiteConfig)).toBeUndefined()
+  })
+})
+
+describe('buildRpxConfig auth (dashboard protection)', () => {
+  it('gates a protected static site (e.g. the management dashboard) behind Basic auth', () => {
+    const config = buildRpxConfig({
+      dashboard: {
+        domain: 'dashboard.acme.com',
+        deploy: 'server',
+        type: 'static',
+        root: 'ui/dist',
+        auth: { username: 'admin', password: 's3cret', realm: 'ts-cloud' },
+      },
+    } as Record<string, SiteConfig>, { proxy: rpxProxy })
+
+    const route = config.proxies.find(r => r.to === 'dashboard.acme.com')!
+    expect(route.static).toBe('/var/www/dashboard')
+    expect(route.auth).toEqual({ username: 'admin', password: 's3cret', realm: 'ts-cloud' })
+    // The credentials must survive serialization into the launcher.
+    expect(renderRpxLauncher(config)).toContain('"password": "s3cret"')
+  })
+
+  it('gates a protected server-app route too', () => {
+    const config = buildRpxConfig({
+      admin: { domain: 'admin.acme.com', root: '.', start: 'bun run server.ts', port: 9000, auth: { password: 'pw' } },
+    } as Record<string, SiteConfig>, { proxy: rpxProxy })
+    const route = config.proxies.find(r => r.to === 'admin.acme.com')!
+    expect(route.from).toBe('localhost:9000')
+    expect(route.auth).toEqual({ username: 'admin', password: 'pw' })
+  })
+
+  it('leaves public sites without an auth field', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    expect(config.proxies.every(r => r.auth === undefined)).toBe(true)
   })
 })
 
