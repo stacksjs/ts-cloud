@@ -5,7 +5,8 @@ import type {
   DeploySiteReleaseResult,
   EnvironmentType,
 } from '@ts-cloud/core'
-import { resolveProjectStackName } from '@ts-cloud/core'
+import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, MANAGEMENT_DASHBOARD_SITE } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
@@ -282,6 +283,8 @@ export interface DeployAllSitesOptions {
   runtime: 'bun' | 'node' | 'deno' | 'php'
   tarballForSite: (siteName: string) => string
   logger?: ComputeDeployLogger
+  /** Project root used to resolve/build the management dashboard UI. Defaults to `process.cwd()`. */
+  cwd?: string
 }
 
 /**
@@ -292,6 +295,29 @@ export interface DeployAllSitesOptions {
 export async function deployAllComputeSites(options: DeployAllSitesOptions): Promise<boolean> {
   const { config, environment, driver, sha, runtime, tarballForSite, logger = noopLogger } = options
   const slug = config.project.slug
+  const cwd = options.cwd ?? process.cwd()
+
+  // Auto-inject the management dashboard (the @ts-cloud/ui stx app) so EVERY
+  // consumer of this shared path — the ts-cloud CLI, Stacks' `buddy deploy`, or
+  // any other driver-API caller — ships the cockpit alongside the app. Idempotent:
+  // a no-op when the CLI already injected it or the user configured one.
+  const hadDashboard = hasManagementDashboardSite(config)
+  ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
+  const injectedDashboard = !hadDashboard && hasManagementDashboardSite(config)
+
+  // When WE injected the dashboard (e.g. a Stacks deploy that never built a
+  // tarball for it), build its artifact internally. If that fails, drop the site
+  // entirely so a UI build hiccup can never block the real app deploy.
+  let dashboardTarball: string | null = null
+  if (injectedDashboard) {
+    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[MANAGEMENT_DASHBOARD_SITE] as any, { cwd, slug, sha, logger: { info: logger.info, warn: logger.warn } })
+    if (!dashboardTarball) {
+      logger.warn('Management dashboard: no artifact available — skipping dashboard site for this deploy.')
+      if (config.sites)
+        delete (config.sites as Record<string, unknown>)[MANAGEMENT_DASHBOARD_SITE]
+    }
+  }
+
   const sites = config.sites || {}
   const deployable = Object.entries(sites).filter(([name, site]) => {
     if (!site)
@@ -306,10 +332,15 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
 
   if (deployable.length === 0) return true
 
+  // Use the internally-built dashboard tarball when we injected it; otherwise the
+  // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
+  const tarballFor = (siteName: string): string =>
+    siteName === MANAGEMENT_DASHBOARD_SITE && dashboardTarball ? dashboardTarball : tarballForSite(siteName)
+
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
     // PHP/Laravel sites clone from git on the box — no local tarball to build.
-    const localTarballPath = isPhpSite(site) ? undefined : tarballForSite(siteName)
+    const localTarballPath = isPhpSite(site) ? undefined : tarballFor(siteName)
     const result = await deploySiteRelease(driver, {
       config,
       environment,

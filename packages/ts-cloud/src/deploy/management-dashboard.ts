@@ -17,10 +17,15 @@
  */
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { execSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasManagementDashboardSite, resolveManagementDashboardSite } from '@ts-cloud/core'
+
+/** Site key under which the management dashboard is auto-injected. */
+export const MANAGEMENT_DASHBOARD_SITE = 'dashboard'
 
 export interface EnsureDashboardLogger {
   info: (msg: string) => void
@@ -105,4 +110,47 @@ export function ensureManagementDashboard(
   config.sites = { ...(config.sites ?? {}), [resolved.name]: resolved.site }
   logger.info(`Management dashboard → https://${resolved.site.domain} (${password ? 'htpasswd-protected' : 'NO AUTH — set TS_CLOUD_UI_PASSWORD'})`)
   return config
+}
+
+export interface BuildDashboardArtifactOptions {
+  cwd?: string
+  slug: string
+  sha: string
+  logger?: EnsureDashboardLogger
+}
+
+/**
+ * Build the management-dashboard release tarball from its injected site config:
+ * run the UI `build` (when not already built), then package `site.root`. Returns
+ * the tarball path, or null when the UI cannot be built/found.
+ *
+ * Best-effort: the dashboard is auxiliary, so any failure logs and returns null
+ * rather than throwing — the surrounding app deploy must never be blocked by it.
+ */
+export function buildManagementDashboardArtifact(
+  site: { root?: string, build?: string | false } | undefined,
+  options: BuildDashboardArtifactOptions,
+): string | null {
+  if (!site?.root)
+    return null
+  const cwd = options.cwd ?? process.cwd()
+  const logger = options.logger ?? noopLogger
+  try {
+    if (typeof site.build === 'string' && site.build.trim()) {
+      logger.info(`Management dashboard: building UI (${site.build})`)
+      execSync(site.build, { cwd, stdio: 'inherit' })
+    }
+    const root = isAbsolute(site.root) ? site.root : join(cwd, site.root)
+    if (!existsSync(root)) {
+      logger.warn(`Management dashboard: build output not found at ${root} — skipping dashboard artifact.`)
+      return null
+    }
+    const tarball = join(tmpdir(), `${options.slug}-${MANAGEMENT_DASHBOARD_SITE}-${options.sha}.tar.gz`)
+    execSync(`tar czf "${tarball}" -C "${root}" .`, { stdio: 'inherit' })
+    return tarball
+  }
+  catch (error: any) {
+    logger.warn(`Management dashboard: failed to build artifact — ${error?.message ?? error}. Skipping dashboard deploy.`)
+    return null
+  }
 }

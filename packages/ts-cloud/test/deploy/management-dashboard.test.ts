@@ -1,9 +1,9 @@
 import type { CloudConfig } from '@stacksjs/ts-cloud'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ensureManagementDashboard, resolveUiSource } from '../../src/deploy/management-dashboard'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, resolveUiSource } from '../../src/deploy/management-dashboard'
 
 function cfg(): CloudConfig {
   return {
@@ -91,5 +91,57 @@ describe('ensureManagementDashboard', () => {
       expect((c.sites as any).dashboard).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+describe('buildManagementDashboardArtifact', () => {
+  /** A temp dir standing in for a pre-built UI root. */
+  function builtRoot(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-uiroot-'))
+    writeFileSync(join(dir, 'index.html'), '<html></html>')
+    return dir
+  }
+
+  it('packages an already-built UI root (build: false) into a tarball', () => {
+    const root = builtRoot()
+    try {
+      const tarball = buildManagementDashboardArtifact({ root, build: false }, { cwd: process.cwd(), slug: 'acme', sha: 'abc123' })
+      expect(tarball).toBeTruthy()
+      expect(existsSync(tarball!)).toBe(true)
+      expect(statSync(tarball!).size).toBeGreaterThan(0)
+    }
+    finally { rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('runs the build command before packaging', () => {
+    const root = mkdtempSync(join(tmpdir(), 'tscloud-uibuild-'))
+    try {
+      // The "build" writes the artifact the tarball then captures.
+      const tarball = buildManagementDashboardArtifact(
+        { root, build: `printf '<html></html>' > "${join(root, 'index.html')}"` },
+        { cwd: process.cwd(), slug: 'acme', sha: 'def456' },
+      )
+      expect(tarball).toBeTruthy()
+      expect(existsSync(join(root, 'index.html'))).toBe(true)
+    }
+    finally { rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('returns null (no throw) when the build command fails', () => {
+    const root = builtRoot()
+    try {
+      const tarball = buildManagementDashboardArtifact({ root, build: 'exit 1' }, { cwd: process.cwd(), slug: 'acme', sha: 'x' })
+      expect(tarball).toBeNull()
+    }
+    finally { rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('returns null when the build output root does not exist', () => {
+    const tarball = buildManagementDashboardArtifact({ root: '/no/such/dashboard/root', build: false }, { cwd: process.cwd(), slug: 'acme', sha: 'x' })
+    expect(tarball).toBeNull()
+  })
+
+  it('returns null when no site/root is provided', () => {
+    expect(buildManagementDashboardArtifact(undefined, { cwd: process.cwd(), slug: 'acme', sha: 'x' })).toBeNull()
   })
 })

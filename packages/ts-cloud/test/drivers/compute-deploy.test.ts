@@ -1,7 +1,7 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
 import { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from '../../src/drivers/shared/compute-deploy'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -234,18 +234,106 @@ describe('deployAllComputeSites with rpx gateway', () => {
     writeFileSync(tarball, 'fake tarball')
 
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
-    const ok = await deployAllComputeSites({
-      config: rpxConfig,
-      environment: 'production',
-      driver,
-      sha: 'abc',
-      runtime: 'bun',
-      tarballForSite: () => tarball,
-    })
+    // Keep this test focused on the gateway reload — opt out of the auto-injected
+    // management dashboard so the call count stays deterministic.
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    let ok: boolean
+    try {
+      ok = await deployAllComputeSites({
+        config: rpxConfig,
+        environment: 'production',
+        driver,
+        sha: 'abc',
+        runtime: 'bun',
+        tarballForSite: () => tarball,
+      })
+    }
+    finally { delete process.env.TS_CLOUD_UI_DISABLE }
     expect(ok).toBe(true)
     // One deploy call for the site + one for the gateway reload.
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
     expect(calls.length).toBe(2)
     expect(calls[1][0].commands.join('\n')).toContain('rpx-gateway.service')
   })
+})
+
+describe('deployAllComputeSites auto-injects the management dashboard', () => {
+  function baseConfig(): CloudConfig {
+    return {
+      project: { name: 'App', slug: 'my-app', region: 'fsn1' },
+      environments: { production: { type: 'production' } },
+      sites: { web: { domain: 'my-app.example.com', port: 3000, root: '.output', start: 'bun run server.ts' } },
+      infrastructure: { compute: { runtime: 'bun', webServer: 'rpx', proxy: { engine: 'rpx' } } },
+    }
+  }
+
+  afterEach(() => { delete process.env.TS_CLOUD_UI_DISABLE })
+
+  it('injects, builds, and ships the dashboard for a driver-API consumer (e.g. Stacks)', async () => {
+    // The repo root has packages/ui, so resolveUiSource finds + builds it. The
+    // consumer never injects nor builds the dashboard — the shared path must.
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const config = baseConfig()
+    const ok = await deployAllComputeSites({
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: process.cwd(),
+      // The consumer only knows about its own sites — not the dashboard.
+      tarballForSite: (name) => { if (name === 'web') return webTar; throw new Error(`Missing tarball for site '${name}'`) },
+    })
+
+    expect(ok).toBe(true)
+    expect((config.sites as any).dashboard?.domain).toBe('dashboard.example.com')
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
+    expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(true)
+  }, 60_000)
+
+  it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const config = baseConfig()
+    const ok = await deployAllComputeSites({
+      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: process.cwd(),
+      tarballForSite: () => webTar,
+    })
+
+    expect(ok).toBe(true)
+    expect((config.sites as any).dashboard).toBeUndefined()
+  })
+
+  it('skips the dashboard gracefully (deploy still succeeds) when its UI cannot be built', async () => {
+    // A fake packages/ui (no real stx/deps) so injection happens but the build
+    // fails — the dashboard must be dropped without failing the app deploy.
+    const fakeRepo = mkdtempSync(join(tmpdir(), 'ts-cloud-fakeui-'))
+    mkdirSync(join(fakeRepo, 'packages', 'ui', 'pages'), { recursive: true })
+    writeFileSync(join(fakeRepo, 'packages', 'ui', 'package.json'), '{"name":"@ts-cloud/ui"}')
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const config = baseConfig()
+    const ok = await deployAllComputeSites({
+      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: fakeRepo,
+      tarballForSite: (name) => { if (name === 'web') return webTar; throw new Error(`Missing tarball for site '${name}'`) },
+    })
+
+    expect(ok).toBe(true)
+    // Injected then dropped because the build failed → no dashboard left behind.
+    expect((config.sites as any).dashboard).toBeUndefined()
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
+    expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(false)
+    rmSync(fakeRepo, { recursive: true, force: true })
+  }, 60_000)
 })
