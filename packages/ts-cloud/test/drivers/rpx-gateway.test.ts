@@ -175,11 +175,13 @@ describe('buildRpxProvisionScript', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
 
-    expect(script).toContain('bun add -g @stacksjs/rpx@latest')
+    expect(script).toContain('bun add @stacksjs/rpx@latest')
     expect(script).toContain(`mkdir -p /etc/rpx /etc/rpx/certs`)
     expect(script).toContain(`cat > ${RPX_LAUNCHER_PATH}`)
-    expect(script).toContain('/tmp/ts-cloud-rpx-install')
+    expect(script).toContain('/opt/rpx-gateway')
+    expect(script).toContain('ln -sfn /opt/rpx-gateway/node_modules /etc/rpx/node_modules')
     expect(script).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
+    expect(script).toContain('WorkingDirectory=/opt/rpx-gateway')
     expect(script).toContain('AmbientCapabilities=CAP_NET_BIND_SERVICE')
     expect(script).toContain('systemctl disable --now bun-gateway.service')
     expect(script).toContain('systemctl disable --now ts-cloud-nginx.service')
@@ -190,7 +192,7 @@ describe('buildRpxProvisionScript', () => {
   it('pins the rpx version when provided', () => {
     const config = buildRpxConfig(sites, { proxy: { engine: 'rpx', version: '0.12.0' } })
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', version: '0.12.0' }, config }).join('\n')
-    expect(script).toContain('bun add -g @stacksjs/rpx@0.12.0')
+    expect(script).toContain('bun add @stacksjs/rpx@0.12.0')
   })
 
   // A production gateway must bound stalled upstreams, or rpx's per-upstream

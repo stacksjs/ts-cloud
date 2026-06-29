@@ -206,7 +206,7 @@ describe('HetznerDriver', () => {
     await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
 
     const userData = (createServer.mock.calls[0] as unknown as [{ userData: string }])[0].userData
-    expect(userData).toContain('bun add -g @stacksjs/rpx@latest')
+    expect(userData).toContain('bun add @stacksjs/rpx@latest')
     expect(userData).toContain('rpx-gateway.service')
     expect(userData).toContain('/etc/rpx/gateway.ts')
     // The route for the web app (port 3000) is baked into the launcher config.

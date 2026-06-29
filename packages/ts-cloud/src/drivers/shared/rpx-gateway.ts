@@ -187,7 +187,7 @@ export function buildRpxConfig(
 /**
  * Render the rpx gateway config as a self-contained launcher TS module. The
  * systemd unit runs `bun <file>`, which imports `startProxies` from the
- * globally-installed `@stacksjs/rpx` and starts the gateway with the generated
+ * managed `/opt/rpx-gateway` install and starts the gateway with the generated
  * options. We ship a runnable launcher (not a bare config) because rpx's CLI
  * resolves its own config from its install dir, not an arbitrary path.
  */
@@ -205,6 +205,7 @@ await startProxies(config as any)
 
 /** Default install location for the gateway launcher + config on the box. */
 export const RPX_DIR = '/etc/rpx'
+export const RPX_INSTALL_DIR = '/opt/rpx-gateway'
 export const RPX_LAUNCHER_PATH = '/etc/rpx/gateway.ts'
 export const RPX_SERVICE_NAME = 'rpx-gateway.service'
 
@@ -256,9 +257,13 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
 
   return [
     'set -euo pipefail',
-    `mkdir -p ${RPX_DIR} ${certsDir}`,
-    // Install @stacksjs/rpx globally (idempotent — re-runs upgrade in place).
-    `mkdir -p /tmp/ts-cloud-rpx-install && (cd /tmp/ts-cloud-rpx-install && ${bunBin} add -g @stacksjs/rpx@${version})`,
+    `mkdir -p ${RPX_DIR} ${certsDir} ${RPX_INSTALL_DIR}`,
+    // Install @stacksjs/rpx into an isolated managed project. Bun's global
+    // install state can inherit stale dependency metadata, while a clean local
+    // project install is deterministic and keeps the gateway self-contained.
+    `rm -rf ${RPX_INSTALL_DIR}/node_modules ${RPX_INSTALL_DIR}/bun.lock ${RPX_INSTALL_DIR}/package.json`,
+    `(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/rpx@${version})`,
+    `ln -sfn ${RPX_INSTALL_DIR}/node_modules ${RPX_DIR}/node_modules`,
     // Write the generated gateway launcher (routes from the sites model).
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, launcher, 'TS_CLOUD_RPX_EOF'),
     // systemd unit: runs the launcher as root so it can bind :80/:443.
@@ -271,6 +276,7 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       '[Service]',
       'Type=simple',
       `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
+      `WorkingDirectory=${RPX_INSTALL_DIR}`,
       `Environment=BUN_INSTALL=/root/.bun`,
       ...poolEnv,
       'Restart=always',

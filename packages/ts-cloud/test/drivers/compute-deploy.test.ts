@@ -210,7 +210,7 @@ describe('reloadRpxGateway', () => {
     expect(ok).toBe(true)
     expect(driver.runRemoteDeploy).toHaveBeenCalled()
     const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
-    expect(call.commands.join('\n')).toContain('bun add -g @stacksjs/rpx')
+    expect(call.commands.join('\n')).toContain('bun add @stacksjs/rpx')
     expect(call.commands.join('\n')).toContain('rpx-gateway.service')
     expect(call.commands.join('\n')).toContain('localhost:3000')
   })
