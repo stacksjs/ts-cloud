@@ -61,6 +61,12 @@ async function build() {
   // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package so
   // `cloud deploy` can auto-ship it from any consumer project (no local packages/ui).
   await bundleManagementUi()
+
+  // Also ship the UI *source* (templates + a vendored, dependency-free charts
+  // module) so `cloud dashboard:serve` / `buddy cloud:dashboard` can rebuild the
+  // cockpit with LIVE data in any consumer project that has the stx toolchain
+  // (Stacks projects do) — not just the prebuilt sample-data HTML.
+  await bundleManagementUiSource()
 }
 
 async function bundleManagementUi(): Promise<void> {
@@ -86,6 +92,47 @@ async function bundleManagementUi(): Promise<void> {
   rmSync(dest, { recursive: true, force: true })
   cpSync(distUi, dest, { recursive: true })
   console.warn(`UI bundle: shipped dashboard → ${dest}`)
+}
+
+/**
+ * Ship the UI templates + a self-contained `charts.ts` (with `@ts-charts/charts`
+ * inlined) at `dist/ui-src/`. The local dashboard server rebuilds this with the
+ * project's live data at serve time using the host's stx toolchain, so the
+ * cockpit shows REAL data everywhere — not the prebuilt sample-data fallback.
+ */
+async function bundleManagementUiSource(): Promise<void> {
+  const { existsSync, cpSync, rmSync, mkdirSync, writeFileSync } = await import('node:fs')
+  const uiDir = join(__dirname, '..', 'ui')
+  if (!existsSync(join(uiDir, 'pages'))) {
+    console.warn('UI source bundle: packages/ui/pages not found — skipping.')
+    return
+  }
+
+  const dest = join(__dirname, 'dist', 'ui-src')
+  rmSync(dest, { recursive: true, force: true })
+  mkdirSync(join(dest, 'src'), { recursive: true })
+
+  // Ship the page templates (and their partials) verbatim.
+  cpSync(join(uiDir, 'pages'), join(dest, 'pages'), { recursive: true })
+
+  // Vendor src/charts.ts into a dependency-free module so the only thing needed
+  // to rebuild the UI at serve time is stx itself (no @ts-charts/charts install).
+  const charts = await Bun.build({
+    entrypoints: [join(uiDir, 'src', 'charts.ts')],
+    target: 'node',
+    format: 'esm',
+    minify: false,
+  })
+  if (!charts.success || charts.outputs.length === 0) {
+    console.warn('UI source bundle: charts bundling failed — skipping ui-src.')
+    rmSync(dest, { recursive: true, force: true })
+    return
+  }
+  writeFileSync(join(dest, 'src', 'charts.ts'), await charts.outputs[0].text())
+
+  // Minimal package.json so resolveUiSourceDir detects the bundle and stx builds it.
+  writeFileSync(join(dest, 'package.json'), `${JSON.stringify({ name: '@ts-cloud/ui', type: 'module', private: true }, null, 2)}\n`)
+  console.warn(`UI source bundle: shipped live-rebuildable source → ${dest}`)
 }
 
 build()

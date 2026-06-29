@@ -151,9 +151,17 @@ async function resolveLiveDashboardData(config: CloudConfig, environment: Enviro
 
 function resolveUiSourceDir(cwd: string): string | null {
   const candidates = [
+    // 1. Local checkout (ts-cloud repo dogfooding).
     join(cwd, 'packages', 'ui'),
     join(here, '..', '..', '..', 'ui'),
     join(here, '..', '..', 'ui'),
+    // 2. The source bundle shipped inside the installed package (dist/ui-src),
+    //    so consumer projects (e.g. Stacks) rebuild the cockpit with live data.
+    //    Probed both from the built layout (dist/deploy → dist/ui-src) and when
+    //    running from source after a build (src/deploy → ../../dist/ui-src).
+    join(here, '..', 'ui-src'),
+    join(here, '..', '..', 'ui-src'),
+    join(here, '..', '..', 'dist', 'ui-src'),
   ]
   for (const dir of candidates) {
     if (existsSync(join(dir, 'pages')) && existsSync(join(dir, 'package.json')))
