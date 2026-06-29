@@ -141,17 +141,25 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
   return await req.json().catch(() => ({})) as Record<string, any>
 }
 
+function resolveDashboardMode(config: CloudConfig): 'server' | 'serverless' | 'hybrid' {
+  if ((config as any).mode === 'hybrid')
+    return 'hybrid'
+  return config.infrastructure?.compute ? 'server' : 'serverless'
+}
+
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
+  const mode = resolveDashboardMode(config)
   try {
-    const data = config.infrastructure?.compute
-      ? await resolveServerDashboardData(config, environment)
-      : await resolveDashboardData(config, environment)
-    return data ?? {}
+    const data = mode === 'serverless'
+      ? await resolveDashboardData(config, environment)
+      : await resolveServerDashboardData(config, environment)
+    // The cockpit nav only shows the views relevant to the deployment mode.
+    return { ...(data ?? {}), mode }
   }
   catch {
     // A serverless config without a fully-defined app (or an unreachable box)
     // shouldn't crash the cockpit — fall back to the sample-rendered UI.
-    return {}
+    return { mode }
   }
 }
 
@@ -400,6 +408,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
         }
+
+        // A serverless deployment has no server home — land on the serverless view.
+        if (url.pathname === '/' && latestData?.mode === 'serverless')
+          return new Response(null, { status: 302, headers: { location: '/serverless' } })
 
         if (url.pathname === '/api/env' && req.method === 'POST') {
           const body = await readJsonBody(req)

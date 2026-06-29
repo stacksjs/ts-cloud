@@ -1,20 +1,35 @@
+<script server>
+// Mode-aware nav: a server deployment never needs the serverless views (and vice
+// versa). The active deployment mode is injected with the dashboard data.
+let __nav = null
+try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __nav = null }
+const navMode = __nav?.mode ?? 'server'
+const showServer = navMode === 'server' || navMode === 'hybrid'
+const showServerless = navMode === 'serverless' || navMode === 'hybrid'
+</script>
 <nav>
   <div class="brand"><span class="dot"></span> ts-cloud</div>
   <div class="tabs">
-    @if ((active ?? '') === 'server')
-      <a href="/" class="active">Server</a>
-    @else
-      <a href="/">Server</a>
+    @if (showServer)
+      @if ((active ?? '') === 'server')
+        <a href="/" class="active">Server</a>
+      @else
+        <a href="/">Server</a>
+      @endif
     @endif
-    @if ((active ?? '') === 'serverless')
-      <a href="/serverless" class="active">Serverless</a>
-    @else
-      <a href="/serverless">Serverless</a>
+    @if (showServerless)
+      @if ((active ?? '') === 'serverless')
+        <a href="/serverless" class="active">Serverless</a>
+      @else
+        <a href="/serverless">Serverless</a>
+      @endif
     @endif
-    @if ((active ?? '') === 'database')
-      <a href="/server/database" class="active">Databases</a>
-    @else
-      <a href="/server/database">Databases</a>
+    @if (showServer)
+      @if ((active ?? '') === 'database')
+        <a href="/server/database" class="active">Databases</a>
+      @else
+        <a href="/server/database">Databases</a>
+      @endif
     @endif
   </div>
   <div class="nav-meta">
