@@ -31,8 +31,10 @@
   .tabs a.active { background: rgba(91,140,255,0.14); color: var(--accent); }
   .nav-meta { margin-left: auto; display: flex; align-items: center; gap: 14px; color: var(--txt2); font-size: 13px; }
   .env { padding: 4px 10px; border-radius: 999px; background: var(--okbg); color: var(--ok); font-weight: 600; font-size: 12px; }
-  select.env { appearance: none; -webkit-appearance: none; border: 0; font-family: inherit; cursor: pointer; outline: none; }
-  select.env option { background: var(--bg2); color: var(--txt); }
+  .env-switch { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--panel-br); background: rgba(255,255,255,0.035); border-radius: 999px; }
+  .env-opt { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--txt2); }
+  .env-opt:hover { color: var(--txt); }
+  .env-opt.active { background: var(--okbg); color: var(--ok); }
 
   header.page { padding: 30px 0 22px; display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
   header.page h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }
@@ -141,6 +143,9 @@
     padding: 8px 10px; color: var(--txt); font-family: inherit; font-size: 13px; min-width: 150px;
   }
   .action-output { margin-top: 12px; white-space: pre-wrap; overflow: auto; max-height: 260px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07); background: rgba(0,0,0,0.22); padding: 12px; color: var(--txt2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+  .op-confirm { margin-top: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .op-confirm-input { flex: 0 0 200px; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px; padding: 8px 12px; color: var(--txt); font-family: inherit; font-size: 14px; }
+  .op-confirm-input:focus { outline: none; border-color: var(--accent); }
   .note { color: var(--txt3); font-size: 12px; margin-top: 10px; }
   .row-actions { display: flex; gap: 8px; }
   .field { display: flex; gap: 8px; margin-top: 12px; }

@@ -11,6 +11,31 @@ const services = __d?.servicesDetail ?? [
 ]
 function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' || s === 'failed' ? 'bad' : 'warn') }
 </script>
+<script client>
+// Reactive server-operation runner: a typed-confirmation bar + output, driven by
+// signals + directives (no manual DOM). Buttons call askOp(...) to stage an op.
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb, to) { pending.set({ operation, confirm, verb, to: to || null }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
+  try {
+    const payload = p.to ? { operation: p.operation, confirm: p.confirm, to: p.to } : { operation: p.operation, confirm: p.confirm }
+    const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
+</script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>@include('../partials/head', { title: 'ts-cloud — Services' })</head>
@@ -35,20 +60,20 @@ function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' || s === 'fa
                 <td>{{ s.memMb }} MB</td>
                 <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
                 <td>
-                  <div class="action-runner" data-service="{{ s.name }}">
-                    <button class="btn ghost sm" type="button" data-op="restart:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="restart">Restart</button>
-                    <button class="btn ghost sm" type="button" data-op="reload:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="reload">Reload</button>
-                    <button class="btn ghost sm" type="button" data-op="start:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="start">Start</button>
-                    <button class="btn danger sm" type="button" data-op="stop:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="stop">Stop</button>
-                    <button class="btn ghost sm" type="button" data-op="enable:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="enable">Enable</button>
-                    <button class="btn ghost sm" type="button" data-op="disable:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="disable">Disable</button>
+                  <div class="action-runner">
+                    <button class="btn ghost sm" type="button" @click="askOp('restart:{{ s.name }}', '{{ s.name }}', 'restart')">Restart</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('reload:{{ s.name }}', '{{ s.name }}', 'reload')">Reload</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('start:{{ s.name }}', '{{ s.name }}', 'start')">Start</button>
+                    <button class="btn danger sm" type="button" @click="askOp('stop:{{ s.name }}', '{{ s.name }}', 'stop')">Stop</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('enable:{{ s.name }}', '{{ s.name }}', 'enable')">Enable</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('disable:{{ s.name }}', '{{ s.name }}', 'disable')">Disable</button>
                   </div>
                 </td>
               </tr>
             @endforeach
           </tbody>
         </table>
-        @include('../partials/op-runner')
+        @include('../partials/op-confirm')
         <p class="note">Install software with <span class="mono">cloud server:recipe {{ server.name }} &lt;recipe&gt;</span>.</p>
       </div>
     </div>

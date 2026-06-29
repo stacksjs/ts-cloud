@@ -3,6 +3,36 @@ let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'stacks-production-app' }
 </script>
+<script client>
+// Reactive action runner: non-mutating actions run immediately; mutating ones
+// (deploy) stage a typed-confirmation via the shared op-confirm bar.
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+async function execAction(action, confirm) {
+  opShown.set(true); opOutput.set('Running ' + action + '...')
+  try {
+    const res = await fetch('/api/actions/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, confirm }) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || action) + '\nexit ' + (body.exitCode == null ? '-' : body.exitCode) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + action + '\n\n' + ((e && e.message) || e)) }
+}
+function askAction(action, confirm, verb) {
+  if (!confirm) { execAction(action, ''); return }
+  pending.set({ operation: action, confirm, verb: verb || ('run ' + action) }); typed.set('')
+}
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  await execAction(p.operation, p.confirm)
+}
+</script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>@include('../partials/head', { title: 'ts-cloud - Operations' })</head>
@@ -15,53 +45,16 @@ const server = __d?.server ?? { name: 'stacks-production-app' }
     <div class="section">
       <h2>Run command</h2>
       <div class="panel">
-        <div class="grid cards-2" id="dashboard-actions">
-          <button class="btn ghost" type="button" data-action="status">Refresh Cloud Status</button>
-          <button class="btn ghost" type="button" data-action="doctor">Run Doctor</button>
-          <button class="btn ghost" type="button" data-action="security-scan">Security Scan</button>
-          <button class="btn danger" type="button" data-action="deploy" data-confirm="deploy">Deploy Environment</button>
+        <div class="grid cards-2">
+          <button class="btn ghost" type="button" @click="askAction('status', '', 'refresh status')">Refresh Cloud Status</button>
+          <button class="btn ghost" type="button" @click="askAction('doctor', '')">Run Doctor</button>
+          <button class="btn ghost" type="button" @click="askAction('security-scan', '')">Security Scan</button>
+          <button class="btn danger" type="button" @click="askAction('deploy', 'deploy', 'deploy the environment')">Deploy Environment</button>
         </div>
-        <pre id="dashboard-action-output" class="action-output" hidden></pre>
+        @include('../partials/op-confirm')
         <p class="note">Mutating commands require typed confirmation. Output is clamped so the browser stays responsive.</p>
       </div>
     </div>
   </div>
-  <script>
-    const output = document.getElementById('dashboard-action-output')
-    async function runDashboardAction(button) {
-      const action = button.dataset.action
-      const required = button.dataset.confirm
-      let confirm = ''
-      if (required) {
-        confirm = window.prompt(`Type "${required}" to continue.`) || ''
-        if (confirm !== required)
-          return
-      }
-      button.disabled = true
-      if (output) {
-        output.hidden = false
-        output.textContent = `Running ${action}...\n`
-      }
-      try {
-        const res = await fetch('/api/actions/run', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action, confirm }),
-        })
-        const body = await res.json()
-        if (output)
-          output.textContent = `${body.ok ? 'OK' : 'FAILED'} ${body.command || action}\nexit ${body.exitCode ?? '-'}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}`
-      }
-      catch (error) {
-        if (output)
-          output.textContent = `FAILED ${action}\n\n${error?.message || error}`
-      }
-      finally {
-        button.disabled = false
-      }
-    }
-    for (const button of document.querySelectorAll('[data-action]'))
-      button.addEventListener('click', () => runDashboardAction(button))
-  </script>
 </body>
 </html>

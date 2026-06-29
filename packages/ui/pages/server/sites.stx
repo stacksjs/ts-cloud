@@ -6,11 +6,67 @@ const sites = __d?.sitesDetail ?? [
   { name: 'main', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'stacks', runtime: 'bun', tls: 'https', deploy: 'service', root: '/var/www/main/current', branch: 'main', status: 'live' },
   { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', tls: 'loopback', deploy: 'service', root: '/var/www/api/current', branch: 'main', status: 'live' },
   { name: 'docs', route: 'stacksjs.com/docs', href: 'https://stacksjs.com/docs', kind: 'bunpress', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/docs', branch: 'build artifact', status: 'live' },
-  { name: 'blog', route: 'stacksjs.com/blog', href: 'https://stacksjs.com/blog', kind: 'bunpress blog', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/blog', branch: 'build artifact', status: 'live' },
-  { name: 'public', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'static', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/public', branch: 'build artifact', status: 'shadowed', shadowedBy: 'main' },
-  { name: 'verygoodadblock', route: 'verygoodadblock.org', href: 'https://verygoodadblock.org', kind: 'stx static', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/verygoodadblock', branch: 'build artifact', status: 'live' },
 ]
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
+</script>
+<script client>
+// Reactive site management — add, per-site deploy/edit/remove — via signals +
+// directives. Mutations re-render the server-built page (location.reload) once
+// the cloud config has changed.
+const addName = state(''); const addRoot = state(''); const addDomain = state(''); const addPath = state('')
+const addDeploy = state('server'); const addPort = state(''); const addBuild = state(''); const addStart = state('')
+const addMsg = state(''); const addMsgKind = state('')
+async function addSite() {
+  addMsg.set('Adding site...'); addMsgKind.set('')
+  const payload = { name: addName(), root: addRoot(), domain: addDomain(), path: addPath(), deploy: addDeploy(), port: addPort(), build: addBuild(), start: addStart() }
+  try {
+    const res = await fetch('/api/sites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const b = await res.json()
+    if (!b.ok) throw new Error(b.error || 'Could not add site')
+    addMsg.set('Added ' + b.site + '. Refreshing...'); addMsgKind.set('ok'); location.reload()
+  } catch (e) { addMsg.set((e && e.message) || String(e)); addMsgKind.set('bad') }
+}
+
+// Deploy / remove run through the shared op-confirm bar.
+const opOutput = state(''); const opShown = state(false); const pending = state(null); const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askDeploy(name) { pending.set({ kind: 'deploy', name, confirm: name, verb: 'deploy ' + name }); typed.set('') }
+function askRemove(name) { pending.set({ kind: 'remove', name, confirm: name, verb: 'remove ' + name }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending(); if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set((p.kind === 'deploy' ? 'Deploying ' : 'Removing ') + p.name + '...')
+  try {
+    if (p.kind === 'deploy') {
+      const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.name }) })
+      const b = await res.json()
+      opOutput.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || ('deploy ' + p.name)) + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    } else {
+      const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
+      const b = await res.json()
+      if (b.ok) { opOutput.set('Removed ' + p.name + ' from cloud config. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not remove site')
+    }
+  } catch (e) { opOutput.set('FAILED ' + p.name + '\n\n' + ((e && e.message) || e)) }
+}
+
+// Inline per-site edit (TLS / domain / env).
+const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state('')
+function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set('') }
+async function saveEdit(name) {
+  const payload = { name }
+  if (editSsl() === 'false') payload.ssl = false; else if (editSsl()) payload.ssl = { provider: editSsl() }
+  if (editDomain()) payload.domain = editDomain()
+  if (editEnv()) { payload.env = {}; for (const line of editEnv().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.env[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
+  opShown.set(true); opOutput.set('Updating ' + name + '...')
+  try {
+    const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const b = await res.json()
+    if (b.ok) { opOutput.set('Updated ' + name + '. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not update site')
+  } catch (e) { opOutput.set('FAILED ' + name + '\n\n' + ((e && e.message) || e)) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -26,16 +82,16 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
     <div class="section">
       <h2>Add site</h2>
       <div class="panel">
-        <form id="site-add-form" class="form-grid">
-          <div class="field-block"><label for="site-name">Name</label><input id="site-name" name="name" placeholder="docs"></div>
-          <div class="field-block"><label for="site-root">Root</label><input id="site-root" name="root" placeholder="dist/docs"></div>
-          <div class="field-block"><label for="site-domain">Domain</label><input id="site-domain" name="domain" placeholder="example.com"></div>
-          <div class="field-block"><label for="site-path">Path</label><input id="site-path" name="path" placeholder="/docs"></div>
-          <div class="field-block"><label for="site-deploy">Deploy</label><input id="site-deploy" name="deploy" value="server"></div>
-          <div class="field-block"><label for="site-port">Port</label><input id="site-port" name="port" placeholder="3000"></div>
-          <div class="field-block wide"><label for="site-build">Build command</label><input id="site-build" name="build" placeholder="bun run build"></div>
-          <div class="field-block wide"><label for="site-start">Start command</label><input id="site-start" name="start" placeholder="bun run start"></div>
-          <div class="form-actions"><button class="btn" type="submit">Add site</button><span id="site-add-msg" class="msg"></span></div>
+        <form class="form-grid" @submit.prevent="addSite()">
+          <div class="field-block"><label>Name</label><input placeholder="docs" :value="addName()" @input="addName.set($event.target.value)"></div>
+          <div class="field-block"><label>Root</label><input placeholder="dist/docs" :value="addRoot()" @input="addRoot.set($event.target.value)"></div>
+          <div class="field-block"><label>Domain</label><input placeholder="example.com" :value="addDomain()" @input="addDomain.set($event.target.value)"></div>
+          <div class="field-block"><label>Path</label><input placeholder="/docs" :value="addPath()" @input="addPath.set($event.target.value)"></div>
+          <div class="field-block"><label>Deploy</label><input :value="addDeploy()" @input="addDeploy.set($event.target.value)"></div>
+          <div class="field-block"><label>Port</label><input placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
+          <div class="field-block wide"><label>Build command</label><input placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
+          <div class="field-block wide"><label>Start command</label><input placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
+          <div class="form-actions"><button class="btn" type="submit">Add site</button><span class="msg" :class="addMsgKind()">{{ addMsg() }}</span></div>
         </form>
       </div>
     </div>
@@ -44,16 +100,7 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
         <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>
         <div class="cols">
           <div class="panel">
-            <div class="kv">
-              <span>route</span>
-              <b class="mono">
-                @if (site.href)
-                  <a href="{{ site.href }}">{{ site.route }}</a>
-                @else
-                  {{ site.route }}
-                @endif
-              </b>
-            </div>
+            <div class="kv"><span>route</span> <b class="mono">@if (site.href)<a href="{{ site.href }}">{{ site.route }}</a>@else{{ site.route }}@endif</b></div>
             <div class="kv"><span>kind</span> <b><span class="tag">{{ site.kind ?? site.type }}</span></b></div>
             <div class="kv"><span>runtime</span> <b class="mono">{{ site.runtime }}</b></div>
             <div class="kv"><span>tls</span> <b><span class="{{ site.tls === 'https' ? 'ok' : 'warn' }} pill">{{ site.tls }}</span></b></div>
@@ -71,151 +118,26 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px;">
-          <button class="btn sm" type="button" data-site-deploy="{{ site.name }}">Deploy</button>
-          <button class="btn ghost sm" type="button" data-site-edit="{{ site.name }}">Edit</button>
-          <button class="btn danger sm" type="button" data-site-remove="{{ site.name }}">Remove</button>
+          <button class="btn sm" type="button" @click="askDeploy('{{ site.name }}')">Deploy</button>
+          <button class="btn ghost sm" type="button" @click="toggleEdit('{{ site.name }}')">Edit</button>
+          <button class="btn danger sm" type="button" @click="askRemove('{{ site.name }}')">Remove</button>
         </div>
-        <form class="form-grid" data-site-edit-form="{{ site.name }}" hidden style="margin-top:14px;">
+        <form class="form-grid" style="margin-top:14px;" @show="editing() === '{{ site.name }}'" @submit.prevent="saveEdit('{{ site.name }}')">
           <div class="field-block">
             <label>TLS</label>
-            <select name="ssl">
+            <select :value="editSsl()" @change="editSsl.set($event.target.value)">
               <option value="">(unchanged)</option>
               <option value="letsencrypt">letsencrypt</option>
               <option value="false">disable</option>
             </select>
           </div>
-          <div class="field-block"><label>Domain</label><input name="domain" placeholder="{{ site.domain }}"></div>
-          <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea name="env" rows="3" placeholder="NODE_ENV=production"></textarea></div>
+          <div class="field-block"><label>Domain</label><input placeholder="{{ site.domain }}" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
+          <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
       </div>
     @endforeach
-    <pre id="site-op-output" class="action-output" hidden></pre>
+    @include('../partials/op-confirm')
   </div>
-  <script>
-    const siteForm = document.getElementById('site-add-form')
-    const siteMsg = document.getElementById('site-add-msg')
-    siteForm?.addEventListener('submit', async (event) => {
-      event.preventDefault()
-      const data = Object.fromEntries(new FormData(siteForm).entries())
-      if (siteMsg) {
-        siteMsg.className = 'msg'
-        siteMsg.textContent = 'Adding site...'
-      }
-      try {
-        const res = await fetch('/api/sites', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(data),
-        })
-        const body = await res.json()
-        if (!body.ok)
-          throw new Error(body.error || 'Could not add site')
-        if (siteMsg) {
-          siteMsg.className = 'msg ok'
-          siteMsg.textContent = `Added ${body.site}. Refreshing...`
-        }
-        window.setTimeout(() => window.location.reload(), 550)
-      }
-      catch (error) {
-        if (siteMsg) {
-          siteMsg.className = 'bad msg'
-          siteMsg.textContent = error?.message || String(error)
-        }
-      }
-    })
-
-    // Per-site management: deploy, edit (env/ssl/domain), remove.
-    const siteOutput = document.getElementById('site-op-output')
-    function showSiteOutput(text) {
-      if (!siteOutput)
-        return
-      siteOutput.hidden = false
-      siteOutput.textContent = text
-    }
-
-    for (const button of document.querySelectorAll('[data-site-deploy]')) {
-      button.addEventListener('click', async () => {
-        const name = button.dataset.siteDeploy
-        const typed = window.prompt(`Type "${name}" to deploy this site.`)
-        if (typed !== name)
-          return
-        button.disabled = true
-        showSiteOutput(`Deploying ${name}...`)
-        try {
-          const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, confirm: typed }) })
-          const body = await res.json()
-          showSiteOutput(`${body.ok ? 'OK' : 'FAILED'} ${body.command || ('deploy ' + name)}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}${body.error ? `\n${body.error}` : ''}`)
-        }
-        catch (error) {
-          showSiteOutput(`FAILED deploy ${name}\n\n${error?.message || error}`)
-        }
-        finally {
-          button.disabled = false
-        }
-      })
-    }
-
-    for (const button of document.querySelectorAll('[data-site-edit]')) {
-      button.addEventListener('click', () => {
-        const form = document.querySelector(`[data-site-edit-form="${button.dataset.siteEdit}"]`)
-        if (form)
-          form.hidden = !form.hidden
-      })
-    }
-
-    for (const button of document.querySelectorAll('[data-site-remove]')) {
-      button.addEventListener('click', async () => {
-        const name = button.dataset.siteRemove
-        const typed = window.prompt(`Type "${name}" to remove this site from cloud config.`)
-        if (typed !== name)
-          return
-        const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })
-        const body = await res.json()
-        if (body.ok) {
-          showSiteOutput(`Removed ${name} from cloud config. Run cloud deploy to apply.`)
-          window.setTimeout(() => window.location.reload(), 700)
-        }
-        else {
-          showSiteOutput(body.error || 'Could not remove site')
-        }
-      })
-    }
-
-    for (const form of document.querySelectorAll('[data-site-edit-form]')) {
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault()
-        const name = form.dataset.siteEditForm
-        const data = new FormData(form)
-        const payload = { name }
-        const ssl = data.get('ssl')
-        if (ssl === 'false')
-          payload.ssl = false
-        else if (ssl)
-          payload.ssl = { provider: ssl }
-        const domain = String(data.get('domain') || '').trim()
-        if (domain)
-          payload.domain = domain
-        const envText = String(data.get('env') || '').trim()
-        if (envText) {
-          payload.env = {}
-          for (const line of envText.split('\n')) {
-            const eq = line.indexOf('=')
-            if (eq > 0)
-              payload.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
-          }
-        }
-        const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-        const body = await res.json()
-        if (body.ok) {
-          showSiteOutput(`Updated ${name}. Run cloud deploy to apply.`)
-          window.setTimeout(() => window.location.reload(), 700)
-        }
-        else {
-          showSiteOutput(body.error || 'Could not update site')
-        }
-      })
-    }
-  </script>
 </body>
 </html>

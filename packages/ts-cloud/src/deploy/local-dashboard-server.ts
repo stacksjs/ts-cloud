@@ -149,17 +149,18 @@ function resolveDashboardMode(config: CloudConfig): 'server' | 'serverless' | 'h
 
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
   const mode = resolveDashboardMode(config)
+  // The nav renders a mode-aware view set + a server-rendered environment switcher.
+  const meta = { mode, environment, environments: Object.keys(config.environments ?? {}) }
   try {
     const data = mode === 'serverless'
       ? await resolveDashboardData(config, environment)
       : await resolveServerDashboardData(config, environment)
-    // The cockpit nav only shows the views relevant to the deployment mode.
-    return { ...(data ?? {}), mode }
+    return { ...(data ?? {}), ...meta }
   }
   catch {
     // A serverless config without a fully-defined app (or an unreachable box)
     // shouldn't crash the cockpit — fall back to the sample-rendered UI.
-    return { mode }
+    return { ...meta }
   }
 }
 
@@ -636,6 +637,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
           return json(await runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }))
+        }
+
+        // A page request with `?env=<name>` switches the active environment
+        // server-side (re-resolves data + actions and rebuilds the UI), so the
+        // nav's environment links work without any client JavaScript.
+        const requestedEnv = url.searchParams.get('env')
+        if (requestedEnv && availableEnvironments.includes(requestedEnv) && requestedEnv !== environment) {
+          environment = requestedEnv as EnvironmentType
+          actions = dashboardActions(environment)
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          const rebuilt = await buildLiveUi(cwd, latestData)
+          if (rebuilt)
+            activeUiRoot = rebuilt
         }
 
         return serveStatic(activeUiRoot as string, url.pathname)

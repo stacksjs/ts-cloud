@@ -4,11 +4,44 @@ import { renderDeploymentSparkline } from '../../src/charts.ts'
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
-const deployments = __d?.serverDeploymentsDetail ?? []
-const deploymentChart = renderDeploymentSparkline(deployments)
-const sites = Array.from(new Set(deployments.map(d => d.site).filter(Boolean)))
+const deploymentChart = renderDeploymentSparkline(__d?.serverDeploymentsDetail ?? [])
 const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
+</script>
+<script client>
+const deps = state([])
+const status = state('all')
+const site = state('all')
+const sites = derived(() => [...new Set(deps().map(d => d.site).filter(Boolean))])
+const filtered = derived(() => deps().filter(d =>
+  (status() === 'all' || d.status === status()) && (site() === 'all' || d.site === site())))
 function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
+async function refresh() {
+  try { const r = await fetch('/api/dashboard-data'); if (!r.ok) return; const x = await r.json(); if (Array.isArray(x.serverDeploymentsDetail)) deps.set(x.serverDeploymentsDetail) } catch {}
+}
+onMount(() => { refresh() })
+
+// Reactive operation runner (rollback) — typed-confirm bar + output.
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb, to) { pending.set({ operation, confirm, verb, to: to || null }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
+  try {
+    const payload = p.to ? { operation: p.operation, confirm: p.confirm, to: p.to } : { operation: p.operation, confirm: p.confirm }
+    const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -26,75 +59,46 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
         <div class="chart-panel subtle">
           {{{ deploymentChart }}}
         </div>
-        <div class="filters" data-deployment-filters>
+        <div class="filters">
           <div class="segmented" role="group" aria-label="Filter deployment status">
-            <button type="button" class="active" data-status="all">All</button>
-            <button type="button" data-status="success">Success</button>
-            <button type="button" data-status="failed">Failed</button>
+            <button type="button" :class="{ active: status() === 'all' }" @click="status.set('all')">All</button>
+            <button type="button" :class="{ active: status() === 'success' }" @click="status.set('success')">Success</button>
+            <button type="button" :class="{ active: status() === 'failed' }" @click="status.set('failed')">Failed</button>
           </div>
           <label class="select-filter">
             <span>Site</span>
-            <select id="deployment-site-filter">
+            <select :value="site()" @change="site.set($event.target.value)">
               <option value="all">All sites</option>
-              @foreach (sites as site)
-                <option value="{{ site }}">{{ site }}</option>
-              @endforeach
+              <template :for="s in sites()">
+                <option :value="s">{{ s }}</option>
+              </template>
             </select>
           </label>
         </div>
-        @if (deployments.length)
-          <table>
-            <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th><th>Action</th></tr></thead>
-            <tbody id="deployment-rows">
-              @foreach (deployments as d)
-                <tr data-status="{{ d.status }}" data-site="{{ d.site }}">
-                  <td class="mono">{{ d.sha }}</td>
-                  <td><b>{{ d.site }}</b></td>
-                  <td class="mono" style="color:var(--txt3)">{{ d.branch }}</td>
-                  <td><span class="pill {{ tone(d.status) }}">{{ d.status }}</span></td>
-                  <td class="mono" style="font-size:11px;color:var(--txt3)">{{ d.steps.join(' · ') }}</td>
-                  <td style="color:var(--txt2)">{{ d.by }}</td>
-                  <td class="mono">{{ d.took }}</td>
-                  <td style="color:var(--txt3)">{{ d.when }}</td>
-                  <td class="table-actions"><button class="btn danger sm" type="button" data-op="rollback:{{ d.site }}" data-confirm="{{ d.site }}" data-verb="roll back" data-to="{{ d.release }}">Roll back</button></td>
-                </tr>
-              @endforeach
-            </tbody>
-          </table>
-          <div id="deployment-filter-empty" class="compact empty" hidden><strong>No matches</strong><span>Try a different status or site filter.</span></div>
-        @else
-          <div class="empty"><strong>No deployments yet</strong><span>{{ deploymentsEmptyReason }}</span></div>
-        @endif
-        @include('../partials/op-runner')
+        <table>
+          <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th><th>Action</th></tr></thead>
+          <tbody>
+            <template :for="d in filtered()">
+              <tr>
+                <td class="mono">{{ d.sha }}</td>
+                <td><b>{{ d.site }}</b></td>
+                <td class="mono" style="color:var(--txt3)">{{ d.branch }}</td>
+                <td><span class="pill" :class="tone(d.status)">{{ d.status }}</span></td>
+                <td class="mono" style="font-size:11px;color:var(--txt3)">{{ d.steps.join(' · ') }}</td>
+                <td style="color:var(--txt2)">{{ d.by }}</td>
+                <td class="mono">{{ d.took }}</td>
+                <td style="color:var(--txt3)">{{ d.when }}</td>
+                <td class="table-actions"><button class="btn danger sm" type="button" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="empty" @show="deps().length === 0"><strong>No deployments yet</strong><span>{{ deploymentsEmptyReason }}</span></div>
+        <div class="compact empty" @show="deps().length > 0 && filtered().length === 0"><strong>No matches</strong><span>Try a different status or site filter.</span></div>
+        @include('../partials/op-confirm')
         <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
       </div>
     </div>
   </div>
-  <script>
-    const statusButtons = [...document.querySelectorAll('[data-status]')]
-    const siteFilter = document.getElementById('deployment-site-filter')
-    const rows = [...document.querySelectorAll('#deployment-rows tr')]
-    const empty = document.getElementById('deployment-filter-empty')
-    let status = 'all'
-    function applyDeploymentFilters() {
-      const site = siteFilter?.value || 'all'
-      let visible = 0
-      for (const row of rows) {
-        const keep = (status === 'all' || row.dataset.status === status) && (site === 'all' || row.dataset.site === site)
-        row.hidden = !keep
-        if (keep) visible++
-      }
-      if (empty)
-        empty.hidden = visible > 0
-    }
-    for (const button of statusButtons) {
-      button.addEventListener('click', () => {
-        status = button.dataset.status || 'all'
-        statusButtons.forEach(item => item.classList.toggle('active', item === button))
-        applyDeploymentFilters()
-      })
-    }
-    siteFilter?.addEventListener('change', applyDeploymentFilters)
-  </script>
 </body>
 </html>

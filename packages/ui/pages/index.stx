@@ -95,6 +95,37 @@ const resourceChart = renderResourceBars([
   { label: 'Disk', value: diskPct ?? 0, detail: metricsLive ? `${metrics.diskUsedGb ?? 0} / ${metrics.diskTotalGb ?? 0} GB` : 'Server probe unavailable' },
 ], { disabled: !metricsLive })
 </script>
+<script client>
+// Live at-a-glance metrics: poll /api/dashboard-data and bind the cards, health
+// pill, indicator, and service statuses reactively (no manual DOM).
+const data = state(null)
+const liveData = derived(() => { const d = data(); return !!d && d._serverReachable && !d.metricsUnavailable })
+function n(v, d) { const x = Number(v); return Number.isFinite(x) ? x : (d || 0) }
+function gbVal(mb) { return (n(mb) / 1024).toFixed(1) }
+function pctOf(which) {
+  const d = data(); const m = (d && d.systemMetrics) || {}
+  if (!liveData()) return null
+  if (which === 'load') return Math.min(100, Math.round((n(m.load) / Math.max(1, n(m.cpus, 1))) * 100))
+  if (which === 'mem') return Math.round((n(m.memUsedMb) / Math.max(1, n(m.memTotalMb))) * 100)
+  return Math.min(100, Math.round(n(m.diskUsedPct)))
+}
+const loadP = derived(() => pctOf('load'))
+const memP = derived(() => pctOf('mem'))
+const diskP = derived(() => pctOf('disk'))
+function pTone(p) { return p == null ? 'warn' : (p >= 90 ? 'bad' : (p >= 70 ? 'warn' : 'ok')) }
+function pDisp(p) { return p == null ? 'Unavailable' : p + '%' }
+function barCss(p) { return 'bar ' + pTone(p) }
+function barStyle(p) { return 'width: ' + (p == null ? 0 : p) + '%' }
+const cpuSub = derived(() => { const m = (data() && data().systemMetrics) || {}; return liveData() ? ' · ' + n(m.load) + '/' + n(m.cpus, 1) : 'probe unavailable' })
+const memSub = derived(() => { const m = (data() && data().systemMetrics) || {}; return liveData() ? ' · ' + gbVal(m.memUsedMb) + '/' + gbVal(m.memTotalMb) + ' GB' : 'probe unavailable' })
+const overallC = derived(() => { if (!liveData()) return 'warn'; const r = { ok: 0, warn: 1, bad: 2 }; return [pTone(loadP()), pTone(memP()), pTone(diskP())].sort((a, b) => r[b] - r[a])[0] })
+const overallWordC = derived(() => liveData() ? ({ ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallC()]) : 'probe unavailable')
+const indicator = derived(() => liveData() ? 'live' : 'snapshot')
+const servicesC = derived(() => (data() && data().services) || [])
+function svcTone(s) { return (s === 'running' || s === 'active') ? 'ok' : ((s === 'failed' || s === 'stopped') ? 'bad' : 'warn') }
+async function refresh() { try { const res = await fetch('/api/dashboard-data'); if (!res.ok) return; data.set(await res.json()) } catch {} }
+onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => clearInterval(id) })
+</script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
@@ -113,27 +144,27 @@ const resourceChart = renderResourceBars([
           <span>IP <b>{{ server.ip }}</b></span>
           <span>Uptime <b>{{ server.uptime }}</b></span>
           <span>CPUs <b>{{ metrics.cpus }}</b></span>
-          <span id="overall-health" class="pill {{ overallTone }}">{{ overallWord }}</span>
+          <span class="pill" :class="overallC()">{{ overallWordC() }}</span>
         </div>
       </div>
-      <div class="header-actions"><span id="live-indicator" class="env" title="Auto-refreshing every 10s">{{ metricsLive ? 'live' : 'snapshot' }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
+      <div class="header-actions"><span class="env" title="Auto-refreshing every 10s">{{ indicator() }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
     </header>
 
     <div class="grid cards">
-      <a class="panel" href="/server/metrics" data-metric="load">
+      <a class="panel" href="/server/metrics">
         <h3>CPU Load</h3>
-        <div class="stat"><span class="metric-val">{{ metricStat(loadPct, '') }}</span><small class="metric-sub">{{ metricSmall(cpuSmall) }}</small></div>
-        <div class="bar {{ metricsLive ? healthTone(loadPct) : 'warn' }}"><i style="width: {{ metricWidth(loadPct) }}%"></i></div>
+        <div class="stat">{{ pDisp(loadP()) }}<small>{{ cpuSub() }}</small></div>
+        <div :class="barCss(loadP())"><i :style="barStyle(loadP())"></i></div>
       </a>
-      <a class="panel" href="/server/metrics" data-metric="mem">
+      <a class="panel" href="/server/metrics">
         <h3>Memory</h3>
-        <div class="stat"><span class="metric-val">{{ metricStat(memPct, '') }}</span><small class="metric-sub">{{ metricSmall(memSmall) }}</small></div>
-        <div class="bar {{ metricsLive ? healthTone(memPct) : 'warn' }}"><i style="width: {{ metricWidth(memPct) }}%"></i></div>
+        <div class="stat">{{ pDisp(memP()) }}<small>{{ memSub() }}</small></div>
+        <div :class="barCss(memP())"><i :style="barStyle(memP())"></i></div>
       </a>
-      <a class="panel" href="/server/metrics" data-metric="disk">
+      <a class="panel" href="/server/metrics">
         <h3>Disk</h3>
-        <div class="stat"><span class="metric-val">{{ metricStat(diskPct, '') }}</span><small class="metric-sub">{{ metricSmall('') }}</small></div>
-        <div class="bar {{ metricsLive ? healthTone(diskPct) : 'warn' }}"><i style="width: {{ metricWidth(diskPct) }}%"></i></div>
+        <div class="stat">{{ pDisp(diskP()) }}<small></small></div>
+        <div :class="barCss(diskP())"><i :style="barStyle(diskP())"></i></div>
       </a>
       <a class="panel" href="/server/backups">
         <h3>Backups</h3>
@@ -174,9 +205,9 @@ const resourceChart = renderResourceBars([
       <h2>Services <span class="more"><a href="/server/services">View all →</a> <a href="/server/logs">Logs →</a> <a href="/server/security">Security →</a></span></h2>
       <div class="panel">
         <div class="svc">
-          @foreach (services as svc)
-            <div class="item">{{ svc.name }} <span class="pill {{ statusTone(svc.status) }}" data-service-pill="{{ svc.name }}">{{ svc.status }}</span></div>
-          @endforeach
+          <template :for="svc in servicesC()">
+            <div class="item">{{ svc.name }} <span class="pill" :class="svcTone(svc.status)">{{ svc.status }}</span></div>
+          </template>
         </div>
       </div>
     </div>
@@ -267,6 +298,5 @@ const resourceChart = renderResourceBars([
       </div>
     </div>
   </div>
-  @include('./partials/live-refresh')
 </body>
 </html>
