@@ -136,10 +136,17 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
 }
 
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
-  const data = config.infrastructure?.compute
-    ? await resolveServerDashboardData(config, environment)
-    : await resolveDashboardData(config, environment)
-  return data ?? {}
+  try {
+    const data = config.infrastructure?.compute
+      ? await resolveServerDashboardData(config, environment)
+      : await resolveDashboardData(config, environment)
+    return data ?? {}
+  }
+  catch {
+    // A serverless config without a fully-defined app (or an unreachable box)
+    // shouldn't crash the cockpit — fall back to the sample-rendered UI.
+    return {}
+  }
 }
 
 function resolveUiSourceDir(cwd: string): string | null {
@@ -320,7 +327,10 @@ function staticPath(uiRoot: string, pathname: string): string | null {
   if (normalized.startsWith('..') || normalized.includes('/../'))
     return null
   const base = join(uiRoot, normalized)
-  if (existsSync(base))
+  // A real file wins. A directory does NOT (e.g. `/serverless` must serve the
+  // sibling `serverless.html`, not the `serverless/` dir), so fall through to the
+  // `.html` and `index.html` resolutions when `base` is a directory.
+  if (existsSync(base) && !statSync(base).isDirectory())
     return base
   if (!extname(base) && existsSync(`${base}.html`))
     return `${base}.html`
@@ -347,16 +357,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const cliEntry = options.cliEntry ?? process.argv[1]
   await loadLocalEnv(cwd)
   const config = await loadCloudConfig()
-  const environment = selectedEnvironment(config as CloudConfig, options.environment)
-  const actions = dashboardActions(environment)
+  const availableEnvironments = Object.keys((config as CloudConfig).environments ?? {})
+  // The active environment is mutable: the cockpit can switch via POST /api/env,
+  // which re-resolves data, actions, and rebuilds the UI for the new environment.
+  let environment = selectedEnvironment(config as CloudConfig, options.environment)
+  let actions = dashboardActions(environment)
   const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
   let latestData = initialData
   const liveUiRoot = await buildLiveUi(cwd, initialData)
   const packagedUi = resolveUiSource(cwd)
-  const uiRoot = liveUiRoot ?? packagedUi?.uiRoot
+  let activeUiRoot = liveUiRoot ?? packagedUi?.uiRoot
 
-  if (!uiRoot)
+  if (!activeUiRoot)
     throw new Error('ts-cloud dashboard UI not found. Run `bun run build` in ts-cloud or reinstall the package.')
 
   const server = Bun.serve({
@@ -371,17 +384,31 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             ok: true,
             cwd,
             environment,
-            uiRoot,
+            environments: availableEnvironments,
+            uiRoot: activeUiRoot,
             liveData: !!liveUiRoot,
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
         }
 
-        if (url.pathname === '/serverless' || url.pathname.startsWith('/serverless/'))
-          return text('Serverless dashboard is hidden for now.', 404)
+        if (url.pathname === '/api/env' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const requested = String(body.env ?? '')
+          if (!availableEnvironments.includes(requested))
+            return json({ ok: false, error: `Unknown environment '${requested}'.`, environments: availableEnvironments }, 404)
+          if (requested !== environment) {
+            environment = requested as EnvironmentType
+            actions = dashboardActions(environment)
+            latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+            const rebuilt = await buildLiveUi(cwd, latestData)
+            if (rebuilt)
+              activeUiRoot = rebuilt
+          }
+          return json({ ok: true, environment, environments: availableEnvironments })
+        }
 
         if (url.pathname === '/api/config')
-          return json(sanitizeCloudConfig(config as CloudConfig))
+          return json({ ...sanitizeCloudConfig(config as CloudConfig), environment, environments: availableEnvironments })
 
         if (url.pathname === '/api/ssh-keys' && req.method === 'GET') {
           return json({
@@ -589,7 +616,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json(await runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }))
         }
 
-        return serveStatic(uiRoot, url.pathname)
+        return serveStatic(activeUiRoot as string, url.pathname)
       }
       catch (error: any) {
         if (options.verbose)

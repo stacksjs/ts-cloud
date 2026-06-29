@@ -6,6 +6,11 @@
     @else
       <a href="/">Server</a>
     @endif
+    @if ((active ?? '') === 'serverless')
+      <a href="/serverless" class="active">Serverless</a>
+    @else
+      <a href="/serverless">Serverless</a>
+    @endif
     @if ((active ?? '') === 'database')
       <a href="/server/database" class="active">Databases</a>
     @else
@@ -14,6 +19,40 @@
   </div>
   <div class="nav-meta">
     <span>{{ name ?? '' }}</span>
-    <span class="env">{{ env ?? '' }}</span>
+    <select id="env-switcher" class="env" aria-label="Environment" title="Switch environment">
+      <option>{{ env ?? '' }}</option>
+    </select>
   </div>
+  <script>
+    // Populate the environment switcher from /api/config and switch the active
+    // environment server-side (POST /api/env rebuilds the UI for it), then reload.
+    (function () {
+      const sel = document.getElementById('env-switcher')
+      if (!sel)
+        return
+      fetch('/api/config').then(r => r.json()).then((cfg) => {
+        const envs = cfg.environments || []
+        if (!envs.length)
+          return
+        const current = cfg.environment || envs[0]
+        sel.innerHTML = ''
+        for (const env of envs) {
+          const opt = document.createElement('option')
+          opt.value = env
+          opt.textContent = env
+          if (env === current)
+            opt.selected = true
+          sel.appendChild(opt)
+        }
+        sel.addEventListener('change', async () => {
+          sel.disabled = true
+          try {
+            await fetch('/api/env', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ env: sel.value }) })
+          }
+          catch {}
+          window.location.reload()
+        })
+      }).catch(() => {})
+    })()
+  </script>
 </nav>
