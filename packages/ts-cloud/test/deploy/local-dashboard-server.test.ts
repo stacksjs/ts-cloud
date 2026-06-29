@@ -28,6 +28,12 @@ describe('local dashboard server helpers', () => {
             onDemandTls: true,
             cdn: { secret: 'do-not-leak', frontedHosts: ['example.com'], originDomain: 'origin.example.com' },
           },
+          sshKeys: [
+            {
+              name: 'chris@macbook',
+              publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEFnZmFrZWtleWJvZHlmb3J0ZXN0b25seTEyMzQ chris@macbook',
+            },
+          ],
         },
       },
       sites: {
@@ -36,7 +42,10 @@ describe('local dashboard server helpers', () => {
     } as any)
 
     expect(sanitized.compute.proxy).toEqual({ engine: 'rpx', onDemandTls: true, cdn: true })
+    expect(sanitized.compute.sshKeys[0].name).toBe('chris@macbook')
+    expect(sanitized.compute.sshKeys[0].fingerprint.startsWith('SHA256:')).toBe(true)
     expect(JSON.stringify(sanitized)).not.toContain('do-not-leak')
+    expect(JSON.stringify(sanitized)).not.toContain('AAAAC3Nza')
     expect(sanitized.sites.app.domain).toBe('example.com')
   })
 })

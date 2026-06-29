@@ -11,6 +11,7 @@
     --bad: #f87171; --badbg: rgba(248,113,113,0.12); --warn: #fbbf24; --warnbg: rgba(251,191,36,0.12);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); min-height: 100%; }
   body {
     font-family: 'Inter', system-ui, sans-serif; color: var(--txt); min-height: 100vh;
     background: radial-gradient(1200px 600px at 80% -10%, rgba(91,140,255,0.12), transparent 60%), linear-gradient(160deg, var(--bg), var(--bg2));
@@ -110,6 +111,37 @@
   .field { display: flex; gap: 8px; margin-top: 12px; }
   .field input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px; padding: 9px 12px; color: var(--txt); font-family: inherit; font-size: 14px; }
   .field input:focus { outline: none; border-color: var(--accent); }
+  .empty { display: grid; place-items: center; gap: 6px; min-height: 132px; text-align: center; color: var(--txt3); border: 1px dashed rgba(255,255,255,0.12); border-radius: 14px; background: rgba(255,255,255,0.025); padding: 22px; }
+  .empty strong { color: var(--txt); font-size: 14px; }
+  .empty span { max-width: 540px; font-size: 13px; line-height: 1.5; }
+  .empty.compact { min-height: 74px; margin-top: 10px; padding: 14px; }
+  .form-grid { display: grid; grid-template-columns: minmax(180px, 0.7fr) minmax(280px, 1.4fr); gap: 14px; align-items: end; }
+  .field-block { display: flex; flex-direction: column; gap: 7px; }
+  .field-block.wide { grid-column: span 1; }
+  .field-block label, .select-filter span { color: var(--txt3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; }
+  .field-block input, .field-block textarea, .select-filter select {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px;
+    padding: 10px 12px; color: var(--txt); font-family: inherit; font-size: 14px;
+  }
+  .field-block textarea { resize: vertical; min-height: 92px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; }
+  .field-block input:focus, .field-block textarea:focus, .select-filter select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(91,140,255,0.12); }
+  .form-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .msg { color: var(--txt3); font-size: 13px; }
+  .msg.ok { color: var(--ok); }
+  .msg.bad { color: var(--bad); }
+  .table-actions { text-align: right; white-space: nowrap; }
+  .filters { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 16px 0; }
+  .segmented { display: inline-flex; padding: 4px; border: 1px solid var(--panel-br); background: rgba(255,255,255,0.035); border-radius: 12px; gap: 2px; }
+  .segmented button { appearance: none; border: 0; background: transparent; color: var(--txt2); border-radius: 9px; padding: 7px 12px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+  .segmented button.active { background: rgba(91,140,255,0.18); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(91,140,255,0.18); }
+  .select-filter { display: inline-flex; align-items: center; gap: 8px; }
+  .select-filter select { min-width: 150px; padding: 8px 10px; }
+  @media (max-width: 760px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .filters { align-items: stretch; }
+    .segmented, .select-filter, .select-filter select { width: 100%; }
+    .segmented button { flex: 1; }
+  }
 
   /* Honest action affordance: a copyable CLI command (static dashboard has no
     backend — the buttons would POST nowhere, so we show the exact command). */
@@ -124,6 +156,22 @@
   .key { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-top: 1px solid rgba(255,255,255,0.05); font-size: 14px; }
   .key:first-of-type { border-top: 0; }
   .key .fp { margin-left: auto; color: var(--txt3); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .chart-panel { overflow: hidden; }
+  .chart-panel.subtle { padding: 0; margin-bottom: 14px; background: transparent; border: 0; }
+  svg.chart { display: block; width: 100%; height: auto; min-height: 150px; }
+  svg.chart .chart-shell { fill: rgba(255,255,255,0.025); stroke: rgba(255,255,255,0.07); }
+  svg.chart .chart-grid { stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+  svg.chart .chart-axis, svg.chart .chart-label { fill: var(--txt3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  svg.chart .chart-value { fill: var(--txt); font-size: 12px; font-weight: 800; }
+  svg.chart .chart-empty-title { fill: var(--txt); font-size: 15px; font-weight: 800; }
+  svg.chart .chart-empty-sub { fill: var(--txt3); font-size: 12px; }
+  svg.chart .bar-mark.ok rect { fill: var(--ok); opacity: 0.85; }
+  svg.chart .bar-mark.warn rect { fill: var(--warn); opacity: 0.88; }
+  svg.chart .bar-mark.bad rect { fill: var(--bad); opacity: 0.9; }
+  svg.chart .spark-path { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 8px rgba(91,140,255,0.38)); }
+  svg.chart circle.ok { fill: var(--ok); }
+  svg.chart circle.bad { fill: var(--bad); }
+  svg.chart.disabled { opacity: 0.86; }
 
   /* ───────────── Health / vital signs (server metrics) ───────────── */
   /* Overall status banner — at-a-glance "is the box OK?" verdict. */
@@ -164,14 +212,16 @@
   .gauge.bad { --g: var(--bad); --gbg: var(--badbg); }
   .gauge .ghead { display: flex; align-items: center; gap: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--txt3); font-weight: 700; }
   .gauge .ghead svg { width: 15px; height: 15px; color: var(--g); }
-  .gauge .ring { position: relative; width: 172px; height: 172px; margin: 6px 0 2px; }
-  .gauge .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-  .gauge .ring .track { fill: none; stroke: rgba(255,255,255,0.07); stroke-width: 11; }
-  .gauge .ring .val {
-    fill: none; stroke: var(--g); stroke-width: 11; stroke-linecap: round;
-    filter: drop-shadow(0 0 7px var(--g)); transition: stroke-dashoffset .9s cubic-bezier(.34,.04,.2,1);
+  .gauge .ring {
+    position: relative; width: 172px; height: 172px; margin: 6px 0 2px; border-radius: 50%;
+    background: conic-gradient(var(--g) calc(var(--pct) * 1%), rgba(255,255,255,0.07) 0);
   }
-  .gauge .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .gauge .ring::after {
+    content: ''; position: absolute; inset: 15px; border-radius: 50%;
+    background: linear-gradient(160deg, rgba(20,28,52,0.98), rgba(14,20,40,0.98));
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.035);
+  }
+  .gauge .center { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .gauge .pct { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
   .gauge .pct sup { font-size: 17px; font-weight: 700; color: var(--txt2); margin-left: 1px; top: -0.7em; }
   .gauge .punit { font-size: 11px; color: var(--txt3); font-weight: 600; margin-top: 7px; text-transform: uppercase; letter-spacing: 0.07em; }

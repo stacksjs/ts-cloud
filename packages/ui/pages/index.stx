@@ -1,4 +1,6 @@
 <script server>
+import { renderDeploymentSparkline, renderResourceBars } from '../src/charts.ts'
+
 // ts-cloud Server dashboard. Real data is injected at build time via the
 // TSCLOUD_DASHBOARD_DATA env var (run `cloud dashboard:build`); the sample values
 // below render the design when nothing is injected. Each section drills into a
@@ -28,16 +30,23 @@ const metrics = __d?.systemMetrics ?? {
   memTotalMb: 7860,
   diskUsedPct: 38,
 }
-const memPct = Math.round((metrics.memUsedMb / metrics.memTotalMb) * 100)
-const loadPct = Math.min(100, Math.round((metrics.load / metrics.cpus) * 100))
-const diskPct = Math.min(100, Math.round(metrics.diskUsedPct))
+const hasLivePayload = !!__d
+const metricsLive = hasLivePayload ? !!__d?._serverReachable && !__d?.metricsUnavailable : true
+const memPct = metricsLive ? Math.round((metrics.memUsedMb / Math.max(1, metrics.memTotalMb)) * 100) : null
+const loadPct = metricsLive ? Math.min(100, Math.round((metrics.load / Math.max(1, metrics.cpus || 1)) * 100)) : null
+const diskPct = metricsLive ? Math.min(100, Math.round(metrics.diskUsedPct)) : null
 // Threshold tone: green < 70%, amber 70-90%, red >= 90% - shared with the
 // server health view (/server/metrics).
 function healthTone(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
 const ranks = { ok: 0, warn: 1, bad: 2 }
-const overallTone = [healthTone(loadPct), healthTone(memPct), healthTone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0]
-const overallWord = { ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallTone]
+const overallTone = metricsLive ? [healthTone(loadPct), healthTone(memPct), healthTone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0] : 'warn'
+const overallWord = metricsLive ? { ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallTone] : 'probe unavailable'
 const gb = mb => (mb / 1024).toFixed(1)
+const metricStat = (pct, detail) => metricsLive ? `${pct}%` : 'Unavailable'
+const metricSmall = detail => metricsLive ? detail : 'probe unavailable'
+const metricWidth = pct => metricsLive ? pct : 0
+const cpuSmall = ` · ${metrics.load}/${metrics.cpus}`
+const memSmall = ` · ${gb(metrics.memUsedMb)}/${gb(metrics.memTotalMb)} GB`
 
 const services = __d?.services ?? [
   { name: 'rpx-gateway', status: 'configured' },
@@ -61,6 +70,8 @@ const scheduler = __d?.serverScheduler ?? { enabled: true, lastRun: '36s ago' }
 
 const deployments = __d?.serverDeployments ?? [
 ]
+const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
+const deploymentChart = renderDeploymentSparkline(deployments)
 
 const backup = __d?.backup ?? { enabled: false, last: 'not configured', size: '0 MB', destination: 'off', retention: 0 }
 
@@ -72,6 +83,12 @@ function statusTone(status) {
   if (status === 'failed' || status === 'stopped') return 'bad'
   return 'warn'
 }
+
+const resourceChart = renderResourceBars([
+  { label: 'CPU', value: loadPct ?? 0, detail: metricsLive ? `${metrics.load} load / ${metrics.cpus} vCPU` : 'Server probe unavailable' },
+  { label: 'Memory', value: memPct ?? 0, detail: metricsLive ? `${gb(metrics.memUsedMb)} / ${gb(metrics.memTotalMb)} GB` : 'Server probe unavailable' },
+  { label: 'Disk', value: diskPct ?? 0, detail: metricsLive ? `${metrics.diskUsedGb ?? 0} / ${metrics.diskTotalGb ?? 0} GB` : 'Server probe unavailable' },
+], { disabled: !metricsLive })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -99,24 +116,34 @@ function statusTone(status) {
     <div class="grid cards">
       <a class="panel" href="/server/metrics">
         <h3>CPU Load</h3>
-        <div class="stat">{{ loadPct }}<small>% · {{ metrics.load }}/{{ metrics.cpus }}</small></div>
-        <div class="bar {{ healthTone(loadPct) }}"><i style="width: {{ loadPct }}%"></i></div>
+        <div class="stat">{{ metricStat(loadPct, '') }}<small>{{ metricSmall(cpuSmall) }}</small></div>
+        <div class="bar {{ metricsLive ? healthTone(loadPct) : 'warn' }}"><i style="width: {{ metricWidth(loadPct) }}%"></i></div>
       </a>
       <a class="panel" href="/server/metrics">
         <h3>Memory</h3>
-        <div class="stat">{{ memPct }}<small>% · {{ gb(metrics.memUsedMb) }}/{{ gb(metrics.memTotalMb) }} GB</small></div>
-        <div class="bar {{ healthTone(memPct) }}"><i style="width: {{ memPct }}%"></i></div>
+        <div class="stat">{{ metricStat(memPct, '') }}<small>{{ metricSmall(memSmall) }}</small></div>
+        <div class="bar {{ metricsLive ? healthTone(memPct) : 'warn' }}"><i style="width: {{ metricWidth(memPct) }}%"></i></div>
       </a>
       <a class="panel" href="/server/metrics">
         <h3>Disk</h3>
-        <div class="stat">{{ diskPct }}<small>%</small></div>
-        <div class="bar {{ healthTone(diskPct) }}"><i style="width: {{ diskPct }}%"></i></div>
+        <div class="stat">{{ metricStat(diskPct, '') }}<small>{{ metricSmall('') }}</small></div>
+        <div class="bar {{ metricsLive ? healthTone(diskPct) : 'warn' }}"><i style="width: {{ metricWidth(diskPct) }}%"></i></div>
       </a>
       <a class="panel" href="/server/backups">
         <h3>Backups</h3>
         <div class="stat">{{ backup.size }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">Last {{ backup.last }}</p>
       </a>
+    </div>
+
+    <div class="section">
+      <h2>Resource Shape <a class="more" href="/server/metrics">Open health →</a></h2>
+      <div class="chart-panel panel">
+        {{{ resourceChart }}}
+        @if (!metricsLive)
+          <p class="note">The dashboard has config/state data, but the live server probe did not return metrics.</p>
+        @endif
+      </div>
     </div>
 
     <div class="section">
@@ -133,15 +160,19 @@ function statusTone(status) {
     <div class="section">
       <h2>SSH Keys <a class="more" href="/server/ssh-keys">Manage →</a></h2>
       <div class="panel">
-        @foreach (sshKeys as key)
-          <div class="key">
-            <span class="ok pill"></span>
-            <b>{{ key.name }}</b>
-            <span style="color: var(--txt3); font-size: 12px">added {{ key.added }}</span>
-            <span class="fp">{{ key.fingerprint }}</span>
-          </div>
-        @endforeach
-        <p class="note">SSH keys are managed in <span class="mono">infrastructure.ssh</span> in your cloud.config and applied on the next <span class="mono">cloud deploy</span>.</p>
+        @if (sshKeys.length)
+          @foreach (sshKeys as key)
+            <div class="key">
+              <span class="ok pill"></span>
+              <b>{{ key.name }}</b>
+              <span style="color: var(--txt3); font-size: 12px">added {{ key.added }}</span>
+              <span class="fp">{{ key.fingerprint }}</span>
+            </div>
+          @endforeach
+        @else
+          <div class="compact empty"><strong>No SSH keys configured</strong><span>Add keys from the management page and apply them on the next deploy.</span></div>
+        @endif
+        <p class="note">SSH keys are managed in <span class="mono">infrastructure.compute.sshKeys</span> in your cloud config and applied on the next <span class="mono">cloud deploy</span>.</p>
       </div>
     </div>
 
@@ -179,14 +210,19 @@ function statusTone(status) {
       <div>
         <h2>Recent Deployments <a class="more" href="/server/deployments">View all →</a></h2>
         <div class="panel">
-          @foreach (deployments as d)
-            <div class="deploy">
-              <span class="pill {{ statusTone(d.status) }}">{{ d.status }}</span>
-              <span class="mono">{{ d.sha }}</span>
-              <span style="color: var(--txt2)">{{ d.site }} · {{ d.branch }}</span>
-              <span class="when">{{ d.when }} · {{ d.took }}</span>
-            </div>
-          @endforeach
+          {{{ deploymentChart }}}
+          @if (deployments.length)
+            @foreach (deployments as d)
+              <div class="deploy">
+                <span class="pill {{ statusTone(d.status) }}">{{ d.status }}</span>
+                <span class="mono">{{ d.sha }}</span>
+                <span style="color: var(--txt2)">{{ d.site }} · {{ d.branch }}</span>
+                <span class="when">{{ d.when }} · {{ d.took }}</span>
+              </div>
+            @endforeach
+          @else
+            <div class="compact empty"><strong>No recent deployments</strong><span>{{ deploymentsEmptyReason }}</span></div>
+          @endif
         </div>
       </div>
       <div>

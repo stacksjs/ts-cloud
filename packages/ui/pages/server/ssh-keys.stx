@@ -2,10 +2,8 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
-const sshKeys = __d?.sshKeys ?? [
-  { name: 'chris@macbook', fingerprint: 'SHA256:9Xk…q2A', type: 'ssh-ed25519', added: '14d ago' },
-  { name: 'ci-deploy', fingerprint: 'SHA256:b7P…m4Z', type: 'ssh-ed25519', added: '14d ago' },
-]
+const sshKeys = __d?.sshKeys ?? []
+const sshKeysJson = JSON.stringify(sshKeys).replace(/`/g, '\\`')
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -14,25 +12,137 @@ const sshKeys = __d?.sshKeys ?? [
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> SSH Keys</div>
-    <header class="page"><div><h1>SSH Keys</h1><p>Authorized keys for the box, applied during provisioning.</p></div></header>
+    <header class="page"><div><h1>SSH Keys</h1><p>Authorized keys for the box, stored declaratively and applied on the next deploy.</p></div></header>
     <div class="section">
+      <h2>Add key</h2>
+      <div class="panel">
+        <form id="ssh-key-form" class="form-grid">
+          <div class="field-block">
+            <label for="ssh-key-name">Name</label>
+            <input id="ssh-key-name" name="name" autocomplete="off" placeholder="chris@macbook" required>
+          </div>
+          <div class="field-block wide">
+            <label for="ssh-public-key">Public key</label>
+            <textarea id="ssh-public-key" name="publicKey" rows="4" placeholder="ssh-ed25519 AAAA... chris@macbook" required></textarea>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">Add key</button>
+            <span id="ssh-key-message" class="msg" role="status"></span>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="section">
+      <h2>Configured keys</h2>
       <div class="panel">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Added</th></tr></thead>
-          <tbody>
+          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Added</th><th></th></tr></thead>
+          <tbody id="ssh-keys-body">
             @foreach (sshKeys as k)
               <tr>
                 <td><b>{{ k.name }}</b></td>
                 <td class="mono" style="color:var(--txt3)">{{ k.type }}</td>
                 <td class="mono">{{ k.fingerprint }}</td>
                 <td style="color:var(--txt3)">{{ k.added }}</td>
+                <td class="table-actions"><button type="button" class="btn danger sm" data-remove-key="{{ k.name }}">Remove</button></td>
               </tr>
             @endforeach
           </tbody>
         </table>
-        <p class="note">Keys are declarative — add/remove them under <span class="mono">infrastructure.ssh</span> in cloud.config and run <span class="mono">cloud deploy</span>. Connect with <span class="mono">cloud server:ssh {{ server.name }}</span>.</p>
+        @if (sshKeys.length)
+          <div id="ssh-keys-empty" class="compact empty" hidden><strong>No SSH keys configured</strong><span>Add a public key above to update <span class="mono">infrastructure.compute.sshKeys</span>.</span></div>
+        @else
+          <div id="ssh-keys-empty" class="compact empty"><strong>No SSH keys configured</strong><span>Add a public key above to update <span class="mono">infrastructure.compute.sshKeys</span>.</span></div>
+        @endif
+        <p class="note">Keys are declarative: this page edits <span class="mono">infrastructure.compute.sshKeys</span> in cloud config. Run <span class="mono">cloud deploy</span> to apply changes to the box. Connect with <span class="mono">cloud server:ssh {{ server.name }}</span>.</p>
       </div>
     </div>
   </div>
+  <script type="module">
+    const initialKeys = JSON.parse(String.raw`{{{ sshKeysJson }}}`)
+    const body = document.getElementById('ssh-keys-body')
+    const empty = document.getElementById('ssh-keys-empty')
+    const form = document.getElementById('ssh-key-form')
+    const message = document.getElementById('ssh-key-message')
+
+    function esc(value) {
+      return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
+    }
+
+    function setMessage(text, kind = '') {
+      if (!message)
+        return
+      message.textContent = text
+      message.className = `msg ${kind}`.trim()
+    }
+
+    function renderKeys(keys) {
+      if (!body || !empty)
+        return
+      body.innerHTML = keys.map(key => `
+        <tr>
+          <td><b>${esc(key.name)}</b></td>
+          <td class="mono" style="color:var(--txt3)">${esc(key.type)}</td>
+          <td class="mono">${esc(key.fingerprint)}</td>
+          <td style="color:var(--txt3)">${esc(key.added)}</td>
+          <td class="table-actions"><button type="button" class="btn danger sm" data-remove-key="${esc(key.name)}">Remove</button></td>
+        </tr>
+      `).join('')
+      empty.hidden = keys.length > 0
+    }
+
+    async function loadKeys() {
+      const res = await fetch('/api/ssh-keys')
+      if (!res.ok)
+        throw new Error('Could not read SSH keys.')
+      const data = await res.json()
+      renderKeys(data.keys || [])
+    }
+
+    form?.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      setMessage('Saving...')
+      const formData = new FormData(form)
+      const res = await fetch('/api/ssh-keys', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.get('name'),
+          publicKey: formData.get('publicKey'),
+        }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.ok === false) {
+        setMessage(data.error || 'Could not add key.', 'bad')
+        return
+      }
+      renderKeys(data.keys || [])
+      form.reset()
+      setMessage('Saved to cloud config. Run cloud deploy to apply.', 'ok')
+    })
+
+    body?.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-remove-key]')
+      if (!button)
+        return
+      const name = button.dataset.removeKey
+      setMessage('Removing...')
+      const res = await fetch('/api/ssh-keys', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.ok === false) {
+        setMessage(data.error || 'Could not remove key.', 'bad')
+        return
+      }
+      renderKeys(data.keys || [])
+      setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
+    })
+
+    renderKeys(initialKeys)
+    loadKeys().catch(error => setMessage(error.message, 'bad'))
+  </script>
 </body>
 </html>

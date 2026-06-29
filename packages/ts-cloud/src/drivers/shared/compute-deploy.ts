@@ -22,6 +22,7 @@ import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-depl
 import { buildSiteServicesScript, siteHasServices } from './laravel-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
+import { buildDeployHistoryHeader } from './releases'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -234,7 +235,16 @@ export async function deploySiteRelease(
       })
     : []
   const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
-  const remoteScript = [...baseScript, ...staticVhost, ...staticSsl]
+  const remoteScript = [
+    ...buildDeployHistoryHeader(`/var/www/${siteName}`, {
+      releaseId: sha,
+      commit: sha,
+      branch: (site as any).branch ?? 'main',
+    }),
+    ...baseScript,
+    ...staticVhost,
+    ...staticSsl,
+  ]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)
   const result = await driver.runRemoteDeploy({

@@ -7,6 +7,9 @@
     "build": "stx build --pages pages --out dist --no-sitemap && bun -e \"require('node:fs').rmSync('dist/partials',{recursive:true,force:true})\"",
     "dev": "stx dev --pages pages"
   },
+  "dependencies": {
+    "@ts-charts/charts": "^0.2.0"
+  },
   "devDependencies": {
     "@stacksjs/stx": "^0.2.72"
   },

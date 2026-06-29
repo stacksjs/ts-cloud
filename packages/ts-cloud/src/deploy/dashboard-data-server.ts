@@ -2,15 +2,25 @@
  * Resolve REAL server-dashboard data for a provisioned compute box. Runs a small
  * metrics script over the active driver (SSM/SSH), parses the KEY=VALUE output,
  * and derives sites/SSH/workers from the cloud config. Everything is best-effort:
- * if no box is reachable it returns null and the dashboard renders sample data.
+ * if no box is reachable it returns config-derived data marked unavailable.
  */
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createCloudDriver } from '../drivers'
 import { resolveSiteKind } from './site-target'
+import { describeSshKeys } from './ssh-config-editor'
 
 const PROBED_SERVICES = ['nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
 const UNKNOWN = '-'
+
+interface LocalState {
+  provider?: string
+  serverName?: string
+  publicIp?: string
+  sshUser?: string
+}
 
 /** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
 function metricsScript(): string[] {
@@ -26,6 +36,7 @@ function metricsScript(): string[] {
     'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
     'echo "OS=$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")"',
     `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ] && echo "SVC=$s=$st"; done`,
+    'true',
   ]
 }
 
@@ -86,6 +97,38 @@ function configuredBackup(config: CloudConfig): Record<string, any> {
     retention: enabled ? (backup?.retentionCount ?? 5) : 0,
     last: enabled ? 'pending first run' : 'not configured',
     size: enabled ? UNKNOWN : '0 MB',
+  }
+}
+
+function configuredProvider(config: CloudConfig): string {
+  return (config.infrastructure?.compute as any)?.provider
+    ?? (config.cloud as any)?.provider
+    ?? (config as any).provider
+    ?? 'aws'
+}
+
+function configuredRegion(config: CloudConfig): string {
+  const provider = configuredProvider(config)
+  if (provider === 'hetzner') {
+    return (config.hetzner as any)?.location
+      ?? process.env.HCLOUD_LOCATION
+      ?? process.env.HETZNER_LOCATION
+      ?? 'fsn1'
+  }
+
+  return config.project.region ?? 'us-east-1'
+}
+
+function loadLocalState(config: CloudConfig, environment: EnvironmentType): LocalState | null {
+  const statePath = join(process.cwd(), '.ts-cloud', 'state', `${config.project.slug}-${environment}.json`)
+  if (!existsSync(statePath))
+    return null
+
+  try {
+    return JSON.parse(readFileSync(statePath, 'utf8')) as LocalState
+  }
+  catch {
+    return null
   }
 }
 
@@ -197,27 +240,109 @@ function configuredSites(config: CloudConfig): Array<Record<string, any>> {
   })
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll('\'', '\'\\\'\'')}'`
+}
+
+function sedReplacement(value: string): string {
+  return value.replace(/[\\&/]/g, '\\$&')
+}
+
+function deployHistoryScript(siteNames: string[]): string[] {
+  if (siteNames.length === 0)
+    return ['true']
+
+  return [
+    'set +e',
+    ...siteNames.map((siteName) => {
+      const historyPath = shellSingleQuote(`/var/www/${siteName}/.ts-cloud/deploy-history.log`)
+      const prefix = sedReplacement(siteName)
+      return `TS_CLOUD_HISTORY=${historyPath}; { [ -f "$TS_CLOUD_HISTORY" ] && tail -n 24 "$TS_CLOUD_HISTORY" | sed "s/^/DEPLOY=${prefix}\\t/"; } || true`
+    }),
+    'true',
+  ]
+}
+
+function relativeTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime()))
+    return iso || UNKNOWN
+  const seconds = Math.max(0, Math.round((Date.now() - date.getTime()) / 1000))
+  if (seconds < 60)
+    return `${seconds}s ago`
+  const minutes = Math.round(seconds / 60)
+  if (minutes < 60)
+    return `${minutes}m ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48)
+    return `${hours}h ago`
+  const days = Math.round(hours / 24)
+  return `${days}d ago`
+}
+
+export function parseDeployHistory(output: string, sites: Record<string, any> = {}): Array<Record<string, any>> {
+  const records: Array<Record<string, any>> = []
+
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.trim()
+    if (!line.startsWith('DEPLOY='))
+      continue
+
+    const parts = line.split('\t')
+    const site = parts[0]?.replace(/^DEPLOY=/, '') ?? ''
+    const [timestamp, releaseId, commit, status, rcPart] = parts.slice(1)
+    if (!site || !timestamp || !releaseId)
+      continue
+
+    const siteConfig = sites[site] ?? {}
+    const kind = resolveSiteKind(siteConfig)
+    const sha = (commit || releaseId).slice(0, 7)
+    records.push({
+      sha,
+      release: releaseId,
+      commit: commit || releaseId,
+      site,
+      branch: siteConfig.branch ?? (kind === 'server-static' ? 'build artifact' : 'main'),
+      status: status || 'unknown',
+      when: relativeTime(timestamp),
+      timestamp,
+      took: '-',
+      by: 'ts-cloud',
+      rc: rcPart?.replace(/^rc=/, '') ?? '',
+      steps: kind === 'server-static'
+        ? ['upload artifact', 'publish static files']
+        : ['upload artifact', 'restart service'],
+    })
+  }
+
+  return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+}
+
 export function resolveConfigOnlyServerDashboardData(config: CloudConfig, environment: EnvironmentType): Record<string, any> {
+  const state = loadLocalState(config, environment)
   const services = configuredServices(config)
   const sites = configuredSites(config)
+  const diskSize = Math.max(1, Number((config.infrastructure?.compute as any)?.disk?.size ?? 1))
   return {
     server: {
-      name: `${config.project.slug}-${environment}-app`,
-      provider: (config.infrastructure?.compute as any)?.provider ?? (config.cloud as any)?.provider ?? 'aws',
-      region: config.project.region ?? 'us-east-1',
-      ip: UNKNOWN,
+      name: state?.serverName ?? `${config.project.slug}-${environment}-app`,
+      provider: state?.provider ?? configuredProvider(config),
+      region: configuredRegion(config),
+      ip: state?.publicIp ?? UNKNOWN,
       os: 'Linux',
       uptime: UNKNOWN,
+      probeStatus: 'unavailable',
     },
     systemMetrics: {
       load: 0,
       cpus: Math.max(1, Number((config.infrastructure?.compute as any)?.instances ?? 1)),
       memUsedMb: 0,
-      memTotalMb: 1,
+      memTotalMb: 0,
       diskUsedPct: 0,
       diskUsedGb: 0,
-      diskTotalGb: Math.max(1, Number((config.infrastructure?.compute as any)?.disk?.size ?? 1)),
+      diskTotalGb: diskSize,
     },
+    metricsUnavailable: true,
     services,
     servicesDetail: services.map(s => ({ ...s, since: UNKNOWN, memMb: 0, auto: true })),
     backup: configuredBackup(config),
@@ -225,6 +350,8 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
     workers: configuredWorkers(config),
     serverScheduler: { enabled: false, lastRun: 'not configured' },
     serverDeployments: [],
+    serverDeploymentsDetail: [],
+    deploymentsEmptyReason: 'No deployment history has been recorded yet. Future server deploys will write /var/www/<site>/.ts-cloud/deploy-history.log.',
     sites,
     sitesDetail: sites.map((s) => {
       const site = (config.sites as any)?.[s.name] ?? {}
@@ -236,6 +363,9 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
         build: site.build,
       }
     }),
+    sshKeys: describeSshKeys((config.infrastructure?.compute as any)?.sshKeys ?? []),
+    _serverReachable: false,
+    _metricsStatus: 'unavailable',
   }
 }
 
@@ -251,8 +381,9 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
 
   let parsed: ReturnType<typeof parseBlock> | null = null
   let instanceCount = 0
+  let targets: any[] = []
   if (driver) try {
-    const targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
+    targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
     instanceCount = targets.length
     if (targets.length) {
       const result = await driver.runRemoteDeploy({
@@ -275,6 +406,9 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
   out.server.os = parsed?.OS || out.server.os
   out.server.uptime = parsed?.UPTIME || out.server.uptime
   if (parsed) {
+    out.server.probeStatus = 'live'
+    out.metricsUnavailable = false
+    out._metricsStatus = 'live'
     out.systemMetrics = {
       load: num(parsed.LOAD), cpus: num(parsed.CPUS, 1),
       memUsedMb: num(parsed.MEMUSED), memTotalMb: num(parsed.MEMTOTAL, 1),
@@ -286,10 +420,35 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
     }
   }
 
+  if (driver && targets.length) {
+    try {
+      const siteNames = Object.keys(config.sites ?? {})
+      const historyResult = await driver.runRemoteDeploy({
+        targets: [targets[0]],
+        commands: deployHistoryScript(siteNames),
+        comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
+        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+      })
+      const historyOutput = historyResult.perInstance?.[0]?.output ?? ''
+      const records = parseDeployHistory(historyOutput, config.sites as any)
+      out.serverDeployments = records.slice(0, 5)
+      out.serverDeploymentsDetail = records.slice(0, 50)
+      out.deploymentsEmptyReason = records.length
+        ? undefined
+        : 'No deployment history was found on the server yet. Deploy again to populate this timeline.'
+    }
+    catch {
+      out.deploymentsEmptyReason = 'Deployment history could not be read from the server.'
+    }
+  }
+  else if (driver && instanceCount === 0) {
+    out.deploymentsEmptyReason = 'No app server target was found for this environment.'
+  }
+
   // Sites + SSH keys are declarative — derive from config (no box needed).
-  const sshKeys = (config.infrastructure as any)?.ssh?.keys ?? (config.infrastructure as any)?.sshKeys
+  const sshKeys = (config.infrastructure?.compute as any)?.sshKeys ?? (config.infrastructure as any)?.ssh?.keys ?? (config.infrastructure as any)?.sshKeys
   if (Array.isArray(sshKeys) && sshKeys.length) {
-    out.sshKeys = sshKeys.map((k: any, i: number) => ({ name: k.name ?? `key-${i + 1}`, fingerprint: UNKNOWN, type: 'ssh', added: UNKNOWN }))
+    out.sshKeys = describeSshKeys(sshKeys)
   }
 
   out._serverReachable = instanceCount > 0 && !!parsed

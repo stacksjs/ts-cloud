@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseBlock, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
+import { parseBlock, parseDeployHistory, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
 
 describe('parseBlock (server metrics probe output)', () => {
   it('parses KEY=VALUE lines and SVC=name=status into services', () => {
@@ -59,6 +59,11 @@ describe('resolveConfigOnlyServerDashboardData', () => {
 
     expect(data.server.name).toBe('stacks-production-app')
     expect(data.server.provider).toBe('hetzner')
+    expect(data.server.region).toBe('fsn1')
+    expect(data._serverReachable).toBe(false)
+    expect(data.metricsUnavailable).toBe(true)
+    expect(data._metricsStatus).toBe('unavailable')
+    expect(data.systemMetrics.memTotalMb).toBe(0)
     expect(data.services).toEqual([{ name: 'rpx-gateway', status: 'configured' }])
     expect(data.servicesDetail[0].name).toBe('rpx-gateway')
     expect(data.backup).toMatchObject({ enabled: false, destination: 'off', retention: 0 })
@@ -106,5 +111,24 @@ describe('resolveConfigOnlyServerDashboardData', () => {
     ])
     expect(JSON.stringify(data.sites)).not.toContain('laravel')
     expect(JSON.stringify(data.sites)).not.toContain('"php"')
+  })
+})
+
+describe('parseDeployHistory', () => {
+  it('parses newest-first deploy history records by site', () => {
+    const output = [
+      'DEPLOY=docs\t2026-06-28T19:00:00Z\tabc1234\tabc1234\tsuccess\trc=0',
+      'noise',
+      'DEPLOY=main\t2026-06-28T20:00:00Z\tdef5678\tdef5678\tfailed\trc=1',
+    ].join('\n')
+
+    const records = parseDeployHistory(output, {
+      docs: { deploy: 'server', root: 'dist/docs' },
+      main: { start: 'bun server.ts', port: 3000 },
+    } as any)
+
+    expect(records.map(record => record.site)).toEqual(['main', 'docs'])
+    expect(records[0]).toMatchObject({ sha: 'def5678', status: 'failed', rc: '1', branch: 'main' })
+    expect(records[1]).toMatchObject({ sha: 'abc1234', status: 'success', branch: 'build artifact' })
   })
 })

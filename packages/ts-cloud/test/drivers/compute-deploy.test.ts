@@ -73,6 +73,8 @@ describe('deploySiteRelease', () => {
     })
     expect(deployCall.commands.join('\n')).toContain('aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"')
     expect(deployCall.commands.join('\n')).toContain('systemctl restart my-app-web.service')
+    expect(deployCall.commands.join('\n')).toContain('/var/www/web/.ts-cloud/deploy-history.log')
+    expect(deployCall.commands.join('\n')).toContain('ts_cloud_record_deploy')
   })
 
   it('uses local artifact fetch for hetzner driver', async () => {

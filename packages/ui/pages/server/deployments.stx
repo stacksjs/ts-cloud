@@ -1,13 +1,13 @@
 <script server>
+import { renderDeploymentSparkline } from '../../src/charts.ts'
+
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
-const deployments = __d?.serverDeploymentsDetail ?? [
-  { sha: 'a4d63d2', site: 'main', branch: 'main', status: 'success', when: '12m ago', took: '34s', by: 'chris', steps: ['composer install --no-dev', 'migrate --force', 'reload php-fpm'] },
-  { sha: '9557430', site: 'main', branch: 'main', status: 'success', when: '2h ago', took: '31s', by: 'ci', steps: ['composer install --no-dev', 'migrate --force'] },
-  { sha: 'c38fc09', site: 'docs', branch: 'main', status: 'success', when: '2h ago', took: '12s', by: 'ci', steps: ['bun run build'] },
-  { sha: '5a2b284', site: 'admin', branch: 'main', status: 'failed', when: '5h ago', took: '8s', by: 'ci', steps: ['composer install — failed'] },
-]
+const deployments = __d?.serverDeploymentsDetail ?? []
+const deploymentChart = renderDeploymentSparkline(deployments)
+const sites = Array.from(new Set(deployments.map(d => d.site).filter(Boolean)))
+const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
 function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <!DOCTYPE html>
@@ -18,31 +18,81 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Deployments</div>
     <header class="page">
-      <div><h1>Deployments</h1><p>Atomic releases deployed over SSM, newest first.</p></div>
+      <div><h1>Deployments</h1><p>Server release history, newest first.</p></div>
       <div class="cmds header-actions"><span class="accent cmd">cloud server:deploy {{ server.name }}</span></div>
     </header>
     <div class="section">
       <div class="panel">
-        <table>
-          <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th></tr></thead>
-          <tbody>
-            @foreach (deployments as d)
-              <tr>
-                <td class="mono">{{ d.sha }}</td>
-                <td><b>{{ d.site }}</b></td>
-                <td class="mono" style="color:var(--txt3)">{{ d.branch }}</td>
-                <td><span class="pill {{ tone(d.status) }}">{{ d.status }}</span></td>
-                <td class="mono" style="font-size:11px;color:var(--txt3)">{{ d.steps.join(' · ') }}</td>
-                <td style="color:var(--txt2)">{{ d.by }}</td>
-                <td class="mono">{{ d.took }}</td>
-                <td style="color:var(--txt3)">{{ d.when }}</td>
-              </tr>
-            @endforeach
-          </tbody>
-        </table>
+        <div class="chart-panel subtle">
+          {{{ deploymentChart }}}
+        </div>
+        <div class="filters" data-deployment-filters>
+          <div class="segmented" role="group" aria-label="Filter deployment status">
+            <button type="button" class="active" data-status="all">All</button>
+            <button type="button" data-status="success">Success</button>
+            <button type="button" data-status="failed">Failed</button>
+          </div>
+          <label class="select-filter">
+            <span>Site</span>
+            <select id="deployment-site-filter">
+              <option value="all">All sites</option>
+              @foreach (sites as site)
+                <option value="{{ site }}">{{ site }}</option>
+              @endforeach
+            </select>
+          </label>
+        </div>
+        @if (deployments.length)
+          <table>
+            <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th></tr></thead>
+            <tbody id="deployment-rows">
+              @foreach (deployments as d)
+                <tr data-status="{{ d.status }}" data-site="{{ d.site }}">
+                  <td class="mono">{{ d.sha }}</td>
+                  <td><b>{{ d.site }}</b></td>
+                  <td class="mono" style="color:var(--txt3)">{{ d.branch }}</td>
+                  <td><span class="pill {{ tone(d.status) }}">{{ d.status }}</span></td>
+                  <td class="mono" style="font-size:11px;color:var(--txt3)">{{ d.steps.join(' · ') }}</td>
+                  <td style="color:var(--txt2)">{{ d.by }}</td>
+                  <td class="mono">{{ d.took }}</td>
+                  <td style="color:var(--txt3)">{{ d.when }}</td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+          <div id="deployment-filter-empty" class="compact empty" hidden><strong>No matches</strong><span>Try a different status or site filter.</span></div>
+        @else
+          <div class="empty"><strong>No deployments yet</strong><span>{{ deploymentsEmptyReason }}</span></div>
+        @endif
         <p class="note">Inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
       </div>
     </div>
   </div>
+  <script>
+    const statusButtons = [...document.querySelectorAll('[data-status]')]
+    const siteFilter = document.getElementById('deployment-site-filter')
+    const rows = [...document.querySelectorAll('#deployment-rows tr')]
+    const empty = document.getElementById('deployment-filter-empty')
+    let status = 'all'
+    function applyDeploymentFilters() {
+      const site = siteFilter?.value || 'all'
+      let visible = 0
+      for (const row of rows) {
+        const keep = (status === 'all' || row.dataset.status === status) && (site === 'all' || row.dataset.site === site)
+        row.hidden = !keep
+        if (keep) visible++
+      }
+      if (empty)
+        empty.hidden = visible > 0
+    }
+    for (const button of statusButtons) {
+      button.addEventListener('click', () => {
+        status = button.dataset.status || 'all'
+        statusButtons.forEach(item => item.classList.toggle('active', item === button))
+        applyDeploymentFilters()
+      })
+    }
+    siteFilter?.addEventListener('change', applyDeploymentFilters)
+  </script>
 </body>
 </html>

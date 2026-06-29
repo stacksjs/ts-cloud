@@ -1,6 +1,6 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
@@ -9,6 +9,7 @@ import { loadCloudConfig } from '../config'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { resolveUiSource } from './management-dashboard'
+import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 
 export interface LocalDashboardServerOptions {
   host?: string
@@ -70,6 +71,60 @@ function selectedEnvironment(config: CloudConfig, requested?: EnvironmentType): 
     return requested
   const envs = Object.keys(config.environments ?? {}) as EnvironmentType[]
   return envs[0] ?? 'production'
+}
+
+async function loadLocalEnv(cwd: string): Promise<void> {
+  const candidates = [
+    join(here, '..', '..', '..', '..', '.env'),
+    join(cwd, '.env'),
+    join(cwd, '.env.local'),
+    join(cwd, '.env.production'),
+  ]
+
+  for (const file of candidates) {
+    if (!existsSync(file))
+      continue
+
+    const text = await readFile(file, 'utf8').catch(() => '')
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('='))
+        continue
+
+      const eq = trimmed.indexOf('=')
+      const key = trimmed.slice(0, eq).trim()
+      let value = trimmed.slice(eq + 1).trim()
+      if (!/^[A-Z_][A-Z0-9_]*$/i.test(key) || process.env[key] != null)
+        continue
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith('\'') && value.endsWith('\'')))
+        value = value.slice(1, -1)
+      process.env[key] = value
+    }
+  }
+}
+
+function resolveCloudConfigPath(cwd: string): string | null {
+  const candidates = [
+    join(cwd, 'config', 'cloud.ts'),
+    join(cwd, 'config', 'cloud.js'),
+    join(cwd, 'cloud.config.ts'),
+    join(cwd, 'cloud.config.js'),
+  ]
+  return candidates.find(file => existsSync(file)) ?? null
+}
+
+function computeSshKeys(config: CloudConfig): any[] {
+  return (config.infrastructure?.compute as any)?.sshKeys ?? []
+}
+
+function replaceComputeSshKeys(config: CloudConfig, keys: any[]): void {
+  const infrastructure = config.infrastructure ?? ((config as any).infrastructure = {})
+  const compute = infrastructure.compute ?? ((infrastructure as any).compute = {})
+  ;(compute as any).sshKeys = keys
+}
+
+async function readJsonBody(req: Request): Promise<Record<string, any>> {
+  return await req.json().catch(() => ({})) as Record<string, any>
 }
 
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
@@ -151,6 +206,12 @@ export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
               }
             : undefined,
           managedServices: config.infrastructure.compute.managedServices,
+          sshKeys: describeSshKeys(computeSshKeys(config)).map(key => ({
+            name: key.name,
+            type: key.type,
+            fingerprint: key.fingerprint,
+            added: key.added,
+          })),
         }
       : undefined,
     sites: Object.fromEntries(Object.entries(config.sites ?? {}).map(([name, site]: [string, any]) => [
@@ -266,9 +327,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const host = options.host ?? DEFAULT_HOST
   const port = options.port ?? DEFAULT_PORT
   const cliEntry = options.cliEntry ?? process.argv[1]
+  await loadLocalEnv(cwd)
   const config = await loadCloudConfig()
   const environment = selectedEnvironment(config as CloudConfig, options.environment)
   const actions = dashboardActions(environment)
+  const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
   const liveUiRoot = await buildLiveUi(cwd, initialData)
   const packagedUi = resolveUiSource(cwd)
@@ -297,6 +360,47 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/config')
           return json(sanitizeCloudConfig(config as CloudConfig))
+
+        if (url.pathname === '/api/ssh-keys' && req.method === 'GET') {
+          return json({
+            configPath,
+            keys: describeSshKeys(computeSshKeys(config as CloudConfig)),
+          })
+        }
+
+        if (url.pathname === '/api/ssh-keys' && req.method === 'POST') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const before = await readFile(configPath, 'utf8')
+          const currentKeys = computeSshKeys(config as CloudConfig)
+          const after = addSshKeyToCloudConfig({
+            configText: before,
+            name: String(body.name ?? ''),
+            publicKey: String(body.publicKey ?? ''),
+            existingKeys: currentKeys,
+          })
+          await writeFile(configPath, after)
+          replaceComputeSshKeys(config as CloudConfig, [...currentKeys, { name: String(body.name ?? '').trim(), publicKey: String(body.publicKey ?? '').trim().replace(/\s+/g, ' ') }])
+          return json({ ok: true, configPath, keys: describeSshKeys(computeSshKeys(config as CloudConfig)) })
+        }
+
+        if (url.pathname === '/api/ssh-keys' && req.method === 'DELETE') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const name = String(body.name ?? url.searchParams.get('name') ?? '')
+          const before = await readFile(configPath, 'utf8')
+          const currentKeys = computeSshKeys(config as CloudConfig)
+          const after = removeSshKeyFromCloudConfig({
+            configText: before,
+            name,
+            existingKeys: currentKeys,
+          })
+          await writeFile(configPath, after)
+          replaceComputeSshKeys(config as CloudConfig, currentKeys.filter(key => key.name !== name.trim()))
+          return json({ ok: true, configPath, keys: describeSshKeys(computeSshKeys(config as CloudConfig)) })
+        }
 
         if (url.pathname === '/api/actions')
           return json(actions)
