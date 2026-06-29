@@ -263,6 +263,42 @@ function deployHistoryScript(siteNames: string[]): string[] {
   ]
 }
 
+function serverLogUnits(config: CloudConfig): string[] {
+  const units = new Set<string>()
+  const compute = config.infrastructure?.compute as any
+
+  if (compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx')
+    units.add('rpx-gateway')
+  else
+    units.add('nginx')
+
+  for (const svc of configuredServices(config))
+    units.add(svc.name)
+
+  for (const [siteName, site] of Object.entries(config.sites ?? {}) as Array<[string, any]>) {
+    if (resolveSiteKind(site) === 'server-app')
+      units.add(`${config.project.slug}-${siteName}`)
+  }
+
+  return [...units].filter(Boolean)
+}
+
+function serverLogsScript(config: CloudConfig): string[] {
+  const units = serverLogUnits(config)
+  if (units.length === 0)
+    return ['true']
+
+  return [
+    'set +e',
+    ...units.map((unit) => {
+      const quoted = shellSingleQuote(unit)
+      const prefix = sedReplacement(unit)
+      return `journalctl -u ${quoted} --no-pager -n 80 -o short-iso 2>/dev/null | sed "s/^/LOG=${prefix}\\t/" || true`
+    }),
+    'true',
+  ]
+}
+
 function relativeTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime()))
@@ -278,6 +314,48 @@ function relativeTime(iso: string): string {
     return `${hours}h ago`
   const days = Math.round(hours / 24)
   return `${days}d ago`
+}
+
+function inferLogLevel(message: string): 'error' | 'warn' | 'info' {
+  if (/(?:error|failed|panic|fatal|exception|denied|unhealthy)/i.test(message))
+    return 'error'
+  if (/(?:warn|warning|retry|restart|deprecated|timeout)/i.test(message))
+    return 'warn'
+  return 'info'
+}
+
+export function parseServerLogs(output: string): Array<Record<string, any>> {
+  const records: Array<Record<string, any>> = []
+
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.trim()
+    if (!line.startsWith('LOG='))
+      continue
+
+    const tab = line.indexOf('\t')
+    if (tab < 0)
+      continue
+
+    const source = line.slice(4, tab)
+    const raw = line.slice(tab + 1)
+    const match = /^(\d{4}-\d{2}-\d{2}T[^\s]+)\s+(\S+)\s+(.*)$/.exec(raw)
+    const timestamp = match?.[1] ?? ''
+    const host = match?.[2] ?? ''
+    const message = (match?.[3] ?? raw).trim()
+    if (!message)
+      continue
+
+    records.push({
+      source,
+      timestamp,
+      when: timestamp ? relativeTime(timestamp) : UNKNOWN,
+      host,
+      message,
+      level: inferLogLevel(message),
+    })
+  }
+
+  return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 240)
 }
 
 export function parseDeployHistory(output: string, sites: Record<string, any> = {}): Array<Record<string, any>> {
@@ -352,6 +430,8 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
     serverDeployments: [],
     serverDeploymentsDetail: [],
     deploymentsEmptyReason: 'No deployment history has been recorded yet. Future server deploys will write /var/www/<site>/.ts-cloud/deploy-history.log.',
+    serverLogs: [],
+    serverLogsEmptyReason: 'Live server logs are unavailable until the dashboard can reach the compute box.',
     sites,
     sitesDetail: sites.map((s) => {
       const site = (config.sites as any)?.[s.name] ?? {}
@@ -443,6 +523,26 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
   }
   else if (driver && instanceCount === 0) {
     out.deploymentsEmptyReason = 'No app server target was found for this environment.'
+  }
+
+  if (driver && targets.length) {
+    try {
+      const logsResult = await driver.runRemoteDeploy({
+        targets: [targets[0]],
+        commands: serverLogsScript(config),
+        comment: `ts-cloud dashboard:server-logs ${config.project.slug}`,
+        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+      })
+      const logsOutput = logsResult.perInstance?.[0]?.output ?? ''
+      const records = parseServerLogs(logsOutput)
+      out.serverLogs = records
+      out.serverLogsEmptyReason = records.length
+        ? undefined
+        : 'No recent journal entries were found for the managed server units.'
+    }
+    catch {
+      out.serverLogsEmptyReason = 'Server logs could not be read from the box.'
+    }
   }
 
   // Sites + SSH keys are declarative — derive from config (no box needed).

@@ -147,7 +147,7 @@ const resourceChart = renderResourceBars([
     </div>
 
     <div class="section">
-      <h2>Services <a class="more" href="/server/services">View all →</a></h2>
+      <h2>Services <span class="more"><a href="/server/services">View all →</a> <a href="/server/logs">Logs →</a></span></h2>
       <div class="panel">
         <div class="svc">
           @foreach (services as svc)

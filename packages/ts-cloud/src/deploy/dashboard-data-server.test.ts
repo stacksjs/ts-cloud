@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseBlock, parseDeployHistory, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
+import { parseBlock, parseDeployHistory, parseServerLogs, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
 
 describe('parseBlock (server metrics probe output)', () => {
   it('parses KEY=VALUE lines and SVC=name=status into services', () => {
@@ -69,6 +69,7 @@ describe('resolveConfigOnlyServerDashboardData', () => {
     expect(data.backup).toMatchObject({ enabled: false, destination: 'off', retention: 0 })
     expect(data.backupHistory).toEqual([])
     expect(data.serverDeployments).toEqual([])
+    expect(data.serverLogs).toEqual([])
     expect(data.sites[0]).toMatchObject({ name: 'verygoodadblock', domain: 'verygoodadblock.org', type: 'static' })
     expect(JSON.stringify(data)).not.toContain('acme')
     expect(JSON.stringify(data)).not.toContain('nginx')
@@ -130,5 +131,23 @@ describe('parseDeployHistory', () => {
     expect(records.map(record => record.site)).toEqual(['main', 'docs'])
     expect(records[0]).toMatchObject({ sha: 'def5678', status: 'failed', rc: '1', branch: 'main' })
     expect(records[1]).toMatchObject({ sha: 'abc1234', status: 'success', branch: 'build artifact' })
+  })
+})
+
+describe('parseServerLogs', () => {
+  it('parses journalctl-prefixed log lines newest first with inferred levels', () => {
+    const output = [
+      'LOG=rpx-gateway\t2026-06-28T19:00:00+0000 stacks rpx[123]: route loaded',
+      'LOG=stacks-main\t2026-06-28T20:00:00+0000 stacks app[456]: failed to bind port',
+      'LOG=nginx\t2026-06-28T19:30:00+0000 stacks nginx[789]: warning duplicate server name',
+      'noise',
+    ].join('\n')
+
+    const records = parseServerLogs(output)
+
+    expect(records.map(record => record.source)).toEqual(['stacks-main', 'nginx', 'rpx-gateway'])
+    expect(records[0]).toMatchObject({ level: 'error', message: 'app[456]: failed to bind port' })
+    expect(records[1]).toMatchObject({ level: 'warn', message: 'nginx[789]: warning duplicate server name' })
+    expect(records[2]).toMatchObject({ level: 'info', message: 'rpx[123]: route loaded' })
   })
 })

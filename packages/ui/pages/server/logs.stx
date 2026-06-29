@@ -1,0 +1,99 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+
+const server = __d?.server ?? { name: 'stacks-production-app' }
+const logs = __d?.serverLogs ?? []
+const logsEmptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available yet.'
+const sources = Array.from(new Set(logs.map(log => log.source).filter(Boolean)))
+
+function tone(level) {
+  if (level === 'error') return 'bad'
+  if (level === 'warn') return 'warn'
+  return 'ok'
+}
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - Server logs' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Logs</div>
+    <header class="page">
+      <div>
+        <h1>Logs</h1>
+        <p>Recent journal entries from managed services on {{ server.name }}.</p>
+      </div>
+      <div class="cmds header-actions"><span class="accent cmd">cloud server:logs {{ server.name }}</span></div>
+    </header>
+
+    <div class="section">
+      <div class="panel">
+        <div class="filters" data-log-filters>
+          <div class="segmented" role="group" aria-label="Filter log level">
+            <button type="button" class="active" data-log-level="all">All</button>
+            <button type="button" data-log-level="error">Errors</button>
+            <button type="button" data-log-level="warn">Warnings</button>
+            <button type="button" data-log-level="info">Info</button>
+          </div>
+          <label class="select-filter">
+            <span>Source</span>
+            <select id="log-source-filter">
+              <option value="all">All sources</option>
+              @foreach (sources as source)
+                <option value="{{ source }}">{{ source }}</option>
+              @endforeach
+            </select>
+          </label>
+        </div>
+
+        @if (logs.length)
+          <div class="log-list" id="log-list">
+            @foreach (logs as log)
+              <article class="log-row {{ log.level }}" data-log-level="{{ log.level }}" data-log-source="{{ log.source }}">
+                <div class="log-meta">
+                  <span class="pill {{ tone(log.level) }}">{{ log.level }}</span>
+                  <span class="mono">{{ log.source }}</span>
+                  <span>{{ log.when }}</span>
+                </div>
+                <pre>{{ log.message }}</pre>
+              </article>
+            @endforeach
+          </div>
+          <div id="log-filter-empty" class="compact empty" hidden><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
+        @else
+          <div class="empty"><strong>No logs available</strong><span>{{ logsEmptyReason }}</span></div>
+        @endif
+        <p class="note">This page tails bounded <span class="mono">journalctl</span> output for managed units such as <span class="mono">rpx-gateway</span> and app services.</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    const levelButtons = [...document.querySelectorAll('[data-log-level]')]
+    const sourceFilter = document.getElementById('log-source-filter')
+    const rows = [...document.querySelectorAll('#log-list .log-row')]
+    const empty = document.getElementById('log-filter-empty')
+    let level = 'all'
+    function applyLogFilters() {
+      const source = sourceFilter?.value || 'all'
+      let visible = 0
+      for (const row of rows) {
+        const keep = (level === 'all' || row.dataset.logLevel === level) && (source === 'all' || row.dataset.logSource === source)
+        row.hidden = !keep
+        if (keep) visible++
+      }
+      if (empty)
+        empty.hidden = visible > 0
+    }
+    for (const button of levelButtons) {
+      button.addEventListener('click', () => {
+        level = button.dataset.logLevel || 'all'
+        levelButtons.forEach(item => item.classList.toggle('active', item === button))
+        applyLogFilters()
+      })
+    }
+    sourceFilter?.addEventListener('change', applyLogFilters)
+  </script>
+</body>
+</html>

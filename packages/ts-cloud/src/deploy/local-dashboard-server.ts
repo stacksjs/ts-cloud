@@ -1,5 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -317,6 +317,8 @@ async function serveStatic(uiRoot: string, pathname: string): Promise<Response> 
   const file = staticPath(uiRoot, pathname)
   if (!file)
     return text('Not found', 404)
+  if (statSync(file).isDirectory())
+    return text('Not found', 404)
   const body = await readFile(file)
   const type = contentTypes[extname(file)] ?? 'application/octet-stream'
   return new Response(body, { headers: { 'content-type': type } })
@@ -357,6 +359,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
         }
+
+        if (url.pathname === '/serverless' || url.pathname.startsWith('/serverless/'))
+          return text('Serverless dashboard is hidden for now.', 404)
 
         if (url.pathname === '/api/config')
           return json(sanitizeCloudConfig(config as CloudConfig))

@@ -61,7 +61,8 @@
 
   .section { margin-top: 30px; }
   .section > h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-  .section > h2 .more { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .section > h2 .more { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; font-size: 12px; font-weight: 600; color: var(--accent); }
+  .section > h2 .more a { color: var(--accent); }
   .cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
   @media (max-width: 880px) { .cols { grid-template-columns: 1fr; } }
 
@@ -106,6 +107,12 @@
   .logs { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.7; color: var(--txt2); max-height: 360px; overflow: auto; }
   .logs .ts { color: var(--txt3); }
   .logs .err { color: var(--bad); }
+  .log-list { display: grid; gap: 10px; max-height: 680px; overflow: auto; padding-right: 4px; }
+  .log-row { border: 1px solid rgba(255,255,255,0.07); border-radius: 12px; background: rgba(255,255,255,0.025); padding: 12px 14px; }
+  .log-row.warn { border-color: rgba(251,191,36,0.18); background: rgba(251,191,36,0.04); }
+  .log-row.error { border-color: rgba(248,113,113,0.2); background: rgba(248,113,113,0.045); }
+  .log-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: var(--txt3); font-size: 12px; margin-bottom: 9px; }
+  .log-row pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--txt2); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.55; }
   .note { color: var(--txt3); font-size: 12px; margin-top: 10px; }
   .row-actions { display: flex; gap: 8px; }
   .field { display: flex; gap: 8px; margin-top: 12px; }

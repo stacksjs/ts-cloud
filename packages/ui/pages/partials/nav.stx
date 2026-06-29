@@ -6,11 +6,6 @@
     @else
       <a href="/">Server</a>
     @endif
-    @if ((active ?? '') === 'serverless')
-      <a href="/serverless" class="active">Serverless</a>
-    @else
-      <a href="/serverless">Serverless</a>
-    @endif
   </div>
   <div class="nav-meta">
     <span>{{ name ?? '' }}</span>
