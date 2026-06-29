@@ -113,26 +113,26 @@ const resourceChart = renderResourceBars([
           <span>IP <b>{{ server.ip }}</b></span>
           <span>Uptime <b>{{ server.uptime }}</b></span>
           <span>CPUs <b>{{ metrics.cpus }}</b></span>
-          <span class="pill {{ overallTone }}">{{ overallWord }}</span>
+          <span id="overall-health" class="pill {{ overallTone }}">{{ overallWord }}</span>
         </div>
       </div>
-      <div class="header-actions"><a class="btn ghost" href="/server/actions">Operations</a></div>
+      <div class="header-actions"><span id="live-indicator" class="env" title="Auto-refreshing every 10s">{{ metricsLive ? 'live' : 'snapshot' }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
     </header>
 
     <div class="grid cards">
-      <a class="panel" href="/server/metrics">
+      <a class="panel" href="/server/metrics" data-metric="load">
         <h3>CPU Load</h3>
-        <div class="stat">{{ metricStat(loadPct, '') }}<small>{{ metricSmall(cpuSmall) }}</small></div>
+        <div class="stat"><span class="metric-val">{{ metricStat(loadPct, '') }}</span><small class="metric-sub">{{ metricSmall(cpuSmall) }}</small></div>
         <div class="bar {{ metricsLive ? healthTone(loadPct) : 'warn' }}"><i style="width: {{ metricWidth(loadPct) }}%"></i></div>
       </a>
-      <a class="panel" href="/server/metrics">
+      <a class="panel" href="/server/metrics" data-metric="mem">
         <h3>Memory</h3>
-        <div class="stat">{{ metricStat(memPct, '') }}<small>{{ metricSmall(memSmall) }}</small></div>
+        <div class="stat"><span class="metric-val">{{ metricStat(memPct, '') }}</span><small class="metric-sub">{{ metricSmall(memSmall) }}</small></div>
         <div class="bar {{ metricsLive ? healthTone(memPct) : 'warn' }}"><i style="width: {{ metricWidth(memPct) }}%"></i></div>
       </a>
-      <a class="panel" href="/server/metrics">
+      <a class="panel" href="/server/metrics" data-metric="disk">
         <h3>Disk</h3>
-        <div class="stat">{{ metricStat(diskPct, '') }}<small>{{ metricSmall('') }}</small></div>
+        <div class="stat"><span class="metric-val">{{ metricStat(diskPct, '') }}</span><small class="metric-sub">{{ metricSmall('') }}</small></div>
         <div class="bar {{ metricsLive ? healthTone(diskPct) : 'warn' }}"><i style="width: {{ metricWidth(diskPct) }}%"></i></div>
       </a>
       <a class="panel" href="/server/backups">
@@ -175,7 +175,7 @@ const resourceChart = renderResourceBars([
       <div class="panel">
         <div class="svc">
           @foreach (services as svc)
-            <div class="item">{{ svc.name }} <span class="pill {{ statusTone(svc.status) }}">{{ svc.status }}</span></div>
+            <div class="item">{{ svc.name }} <span class="pill {{ statusTone(svc.status) }}" data-service-pill="{{ svc.name }}">{{ svc.status }}</span></div>
           @endforeach
         </div>
       </div>
@@ -267,5 +267,6 @@ const resourceChart = renderResourceBars([
       </div>
     </div>
   </div>
+  @include('./partials/live-refresh')
 </body>
 </html>

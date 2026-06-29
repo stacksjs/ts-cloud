@@ -1,0 +1,70 @@
+<script>
+  // Live refresh: poll /api/dashboard-data and update the at-a-glance metrics in
+  // place (no reload), so the cockpit reflects the box without re-navigating.
+  (function () {
+    const REFRESH_MS = 10000
+    function num(v, d) { const n = Number(v); return Number.isFinite(n) ? n : (d || 0) }
+    function tone(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
+    function setCard(metric, pct, sub) {
+      const card = document.querySelector(`[data-metric="${metric}"]`)
+      if (!card)
+        return
+      const val = card.querySelector('.metric-val')
+      if (val)
+        val.textContent = pct == null ? 'Unavailable' : `${pct}%`
+      const subEl = card.querySelector('.metric-sub')
+      if (subEl && sub != null)
+        subEl.textContent = sub
+      const bar = card.querySelector('.bar')
+      const fill = card.querySelector('.bar > i')
+      if (bar)
+        bar.className = `bar ${pct == null ? 'warn' : tone(pct)}`
+      if (fill)
+        fill.style.width = `${pct == null ? 0 : pct}%`
+    }
+    async function refresh() {
+      let d
+      try {
+        const res = await fetch('/api/dashboard-data')
+        if (!res.ok)
+          return
+        d = await res.json()
+      }
+      catch {
+        return
+      }
+      const m = d.systemMetrics || {}
+      const live = !!d._serverReachable && !d.metricsUnavailable
+      const loadPct = live ? Math.min(100, Math.round((num(m.load) / Math.max(1, num(m.cpus, 1))) * 100)) : null
+      const memPct = live ? Math.round((num(m.memUsedMb) / Math.max(1, num(m.memTotalMb))) * 100) : null
+      const diskPct = live ? Math.min(100, Math.round(num(m.diskUsedPct))) : null
+      const gb = mb => (num(mb) / 1024).toFixed(1)
+      setCard('load', loadPct, live ? ` · ${num(m.load)}/${num(m.cpus, 1)}` : 'probe unavailable')
+      setCard('mem', memPct, live ? ` · ${gb(m.memUsedMb)}/${gb(m.memTotalMb)} GB` : 'probe unavailable')
+      setCard('disk', diskPct, live ? '' : 'probe unavailable')
+
+      const ranks = { ok: 0, warn: 1, bad: 2 }
+      const overall = live ? [tone(loadPct), tone(memPct), tone(diskPct)].sort((a, b) => ranks[b] - ranks[a])[0] : 'warn'
+      const word = live ? { ok: 'healthy', warn: 'elevated', bad: 'critical' }[overall] : 'probe unavailable'
+      const health = document.getElementById('overall-health')
+      if (health) {
+        health.className = `pill ${overall}`
+        health.textContent = word
+      }
+      const indicator = document.getElementById('live-indicator')
+      if (indicator)
+        indicator.textContent = live ? 'live' : 'snapshot'
+
+      for (const svc of (d.services || [])) {
+        const el = document.querySelector(`[data-service-pill="${svc.name}"]`)
+        if (el) {
+          const t = (svc.status === 'running' || svc.status === 'active') ? 'ok' : ((svc.status === 'failed' || svc.status === 'stopped') ? 'bad' : 'warn')
+          el.className = `pill ${t}`
+          el.textContent = svc.status
+        }
+      }
+    }
+    refresh()
+    setInterval(refresh, REFRESH_MS)
+  })()
+</script>
