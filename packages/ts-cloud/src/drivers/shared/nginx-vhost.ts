@@ -365,7 +365,6 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
   return [
     ...buildPantryBootstrapScript(),
     ...buildPantryInstallScript(['nginx.org']),
-    'if ! /opt/pantry/pantry/.bin/nginx -v >/dev/null 2>&1; then apt-get update -y && apt-get install -y nginx; fi',
     'mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled /var/log/nginx /var/lib/nginx/body /var/lib/nginx/proxy /var/lib/nginx/fastcgi /var/lib/nginx/uwsgi /var/lib/nginx/scgi',
     'getent passwd www-data >/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin www-data',
     'chown -R www-data:www-data /var/lib/nginx /var/log/nginx',
@@ -373,9 +372,9 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     `cat > ${NGINX_WRAPPER} <<'TS_CLOUD_NGINXBIN_EOF'`,
     '#!/bin/sh',
     `eval "$(cd ${projectDir} && pantry env 2>/dev/null)"`,
-    'NGINX_BIN=$(command -v nginx || true)',
-    'if [ -z "$NGINX_BIN" ] || ! "$NGINX_BIN" -v >/dev/null 2>&1; then NGINX_BIN=/usr/sbin/nginx; fi',
-    'if [ ! -x "$NGINX_BIN" ]; then NGINX_BIN=/opt/pantry/pantry/.bin/nginx; fi',
+    'NGINX_BIN=/opt/pantry/pantry/.bin/nginx',
+    'if [ ! -x "$NGINX_BIN" ]; then NGINX_BIN=$(command -v nginx || true); fi',
+    'if [ -z "$NGINX_BIN" ]; then echo "nginx binary not found; run pantry install nginx.org or install nginx explicitly" >&2; exit 1; fi',
     'exec "$NGINX_BIN" -c /etc/nginx/nginx.conf "$@"',
     'TS_CLOUD_NGINXBIN_EOF',
     `chmod +x ${NGINX_WRAPPER}`,
@@ -469,7 +468,6 @@ export function buildNginxServiceScript(projectDir = '/opt/pantry'): string[] {
     'WantedBy=multi-user.target',
     'TS_CLOUD_NGINXUNIT_EOF',
     'systemctl daemon-reload',
-    'systemctl disable --now nginx 2>/dev/null || true',
     'systemctl enable ts-cloud-nginx',
     // Start now if there is at least one site; otherwise it starts on first deploy.
     'ls /etc/nginx/sites-enabled/* >/dev/null 2>&1 && systemctl restart ts-cloud-nginx || true',

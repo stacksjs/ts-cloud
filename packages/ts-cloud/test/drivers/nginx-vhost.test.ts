@@ -13,17 +13,16 @@ describe('buildNginxServiceScript', () => {
     const script = buildNginxServiceScript().join('\n')
     expect(script).toContain('pantry install')
     expect(script).toContain('nginx.org')
-    expect(script).toContain('apt-get install -y nginx')
     // Wrapper runs the pantry nginx binary inside pantry env.
     expect(script).toContain('/usr/local/bin/ts-cloud-nginx')
     expect(script).toContain('pantry env')
-    expect(script).toContain('NGINX_BIN=/usr/sbin/nginx')
+    expect(script).toContain('NGINX_BIN=/opt/pantry/pantry/.bin/nginx')
+    expect(script).toContain('nginx binary not found')
     // Full nginx.conf includes the per-site vhosts and runs as www-data.
     expect(script).toContain('include /etc/nginx/sites-enabled/*;')
     expect(script).toContain('user www-data;')
     // systemd unit on the box (not apt's nginx service).
     expect(script).toContain('/etc/systemd/system/ts-cloud-nginx.service')
-    expect(script).toContain('systemctl disable --now nginx')
     expect(script).toContain('systemctl enable ts-cloud-nginx')
   })
 

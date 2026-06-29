@@ -282,6 +282,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       'WantedBy=multi-user.target',
     ].join('\n'), 'TS_CLOUD_RPX_UNIT_EOF'),
     'systemctl daemon-reload',
+    // Older ts-cloud/stacks boxes used bun-gateway.service for the same
+    // :80/:443 role. Retire managed predecessors so rpx can bind cleanly.
+    'systemctl disable --now bun-gateway.service 2>/dev/null || true',
+    'systemctl disable --now ts-cloud-nginx.service 2>/dev/null || true',
     `systemctl enable ${RPX_SERVICE_NAME}`,
     `systemctl restart ${RPX_SERVICE_NAME}`,
   ]

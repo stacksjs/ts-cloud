@@ -181,6 +181,8 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('/tmp/ts-cloud-rpx-install')
     expect(script).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
     expect(script).toContain('AmbientCapabilities=CAP_NET_BIND_SERVICE')
+    expect(script).toContain('systemctl disable --now bun-gateway.service')
+    expect(script).toContain('systemctl disable --now ts-cloud-nginx.service')
     expect(script).toContain(`systemctl enable ${RPX_SERVICE_NAME}`)
     expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
   })
