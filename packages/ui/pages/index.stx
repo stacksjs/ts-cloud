@@ -77,6 +77,11 @@ const backup = __d?.backup ?? { enabled: false, last: 'not configured', size: '0
 
 const sshKeys = __d?.sshKeys ?? [
 ]
+const diagnostics = __d?.diagnostics ?? []
+const activity = __d?.activity ?? []
+const security = __d?.security ?? { firewall: { status: 'configured' }, ports: [], tlsCertificates: [] }
+const failingChecks = diagnostics.filter(check => check.status === 'fail').length
+const warningChecks = diagnostics.filter(check => check.status === 'warn').length
 
 function statusTone(status) {
   if (status === 'running' || status === 'live' || status === 'success') return 'ok'
@@ -111,6 +116,7 @@ const resourceChart = renderResourceBars([
           <span class="pill {{ overallTone }}">{{ overallWord }}</span>
         </div>
       </div>
+      <div class="header-actions"><a class="btn ghost" href="/server/actions">Operations</a></div>
     </header>
 
     <div class="grid cards">
@@ -136,6 +142,24 @@ const resourceChart = renderResourceBars([
       </a>
     </div>
 
+    <div class="grid cards-3" style="margin-top:16px;">
+      <a class="panel" href="/server/security">
+        <h3>Security</h3>
+        <div class="stat"><span class="pill {{ statusTone(security.firewall.status === 'active' || security.firewall.status === 'configured' ? 'running' : 'configured') }}">{{ security.firewall.status }}</span></div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ security.ports.length }} listeners · {{ security.tlsCertificates.length }} certs</p>
+      </a>
+      <a class="panel" href="/server/diagnostics">
+        <h3>Diagnostics</h3>
+        <div class="stat">{{ failingChecks }}<small> fail</small></div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ warningChecks }} warnings</p>
+      </a>
+      <a class="panel" href="/server/activity">
+        <h3>Activity</h3>
+        <div class="stat">{{ activity.length }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">deploys, warnings, key changes</p>
+      </a>
+    </div>
+
     <div class="section">
       <h2>Resource Shape <a class="more" href="/server/metrics">Open health →</a></h2>
       <div class="chart-panel panel">
@@ -147,7 +171,7 @@ const resourceChart = renderResourceBars([
     </div>
 
     <div class="section">
-      <h2>Services <span class="more"><a href="/server/services">View all →</a> <a href="/server/logs">Logs →</a></span></h2>
+      <h2>Services <span class="more"><a href="/server/services">View all →</a> <a href="/server/logs">Logs →</a> <a href="/server/security">Security →</a></span></h2>
       <div class="panel">
         <div class="svc">
           @foreach (services as svc)

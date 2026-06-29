@@ -9,7 +9,7 @@ const services = __d?.servicesDetail ?? [
   { name: 'redis', status: 'running', since: '14d', memMb: 28, auto: true },
   { name: 'meilisearch', status: 'running', since: '6d', memMb: 96, auto: true },
 ]
-function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' ? 'bad' : 'warn') }
+function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' || s === 'failed' ? 'bad' : 'warn') }
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -18,11 +18,14 @@ function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' ? 'bad' : 'w
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Services</div>
-    <header class="page"><div><h1>Services</h1><p>systemd / pantry services managed on the box.</p></div></header>
+    <header class="page">
+      <div><h1>Services</h1><p>systemd / pantry services managed on the box.</p></div>
+      <div class="header-actions"><a class="btn ghost" href="/server/logs">View logs</a></div>
+    </header>
     <div class="section">
       <div class="panel">
         <table>
-          <thead><tr><th>Service</th><th>Status</th><th>Uptime</th><th>Memory</th><th>Autostart</th><th>Restart</th></tr></thead>
+          <thead><tr><th>Service</th><th>Status</th><th>Uptime</th><th>Memory</th><th>Autostart</th><th>Manage</th></tr></thead>
           <tbody>
             @foreach (services as s)
               <tr>
@@ -31,14 +34,54 @@ function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' ? 'bad' : 'w
                 <td style="color:var(--txt2)">{{ s.since }}</td>
                 <td>{{ s.memMb }} MB</td>
                 <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
-                <td><span class="cmd">cloud server:ssh {{ server.name }} -- systemctl restart {{ s.name }}</span></td>
+                <td>
+                  <div class="action-runner" data-service="{{ s.name }}">
+                    <button class="btn ghost sm" type="button" data-op="restart:{{ s.name }}">Restart</button>
+                    <button class="btn ghost sm" type="button" data-op="reload:{{ s.name }}">Reload</button>
+                  </div>
+                </td>
               </tr>
             @endforeach
           </tbody>
         </table>
+        <pre id="service-action-output" class="action-output" hidden></pre>
         <p class="note">Install software with <span class="mono">cloud server:recipe {{ server.name }} &lt;recipe&gt;</span>.</p>
       </div>
     </div>
   </div>
+  <script>
+    const serviceOutput = document.getElementById('service-action-output')
+    async function runServiceOperation(button) {
+      const operation = button.dataset.op
+      const service = operation.split(':').slice(1).join(':')
+      const confirmText = window.prompt(`Type "${service}" to ${operation.startsWith('reload:') ? 'reload' : 'restart'} this service.`)
+      if (confirmText !== service)
+        return
+      button.disabled = true
+      if (serviceOutput) {
+        serviceOutput.hidden = false
+        serviceOutput.textContent = `Running ${operation}...\n`
+      }
+      try {
+        const res = await fetch('/api/server/operations/run', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ operation, confirm: confirmText }),
+        })
+        const body = await res.json()
+        if (serviceOutput)
+          serviceOutput.textContent = `${body.ok ? 'OK' : 'FAILED'} ${body.command || operation}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}`
+      }
+      catch (error) {
+        if (serviceOutput)
+          serviceOutput.textContent = `FAILED ${operation}\n\n${error?.message || error}`
+      }
+      finally {
+        button.disabled = false
+      }
+    }
+    for (const button of document.querySelectorAll('[data-op]'))
+      button.addEventListener('click', () => runServiceOperation(button))
+  </script>
 </body>
 </html>

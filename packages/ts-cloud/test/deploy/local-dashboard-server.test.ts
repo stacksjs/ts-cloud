@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'bun:test'
 import {
   dashboardActions,
+  dashboardServerOperations,
   resolveDashboardAction,
+  resolveDashboardServerOperation,
   sanitizeCloudConfig,
 } from '../../src/deploy/local-dashboard-server'
 
@@ -12,6 +14,27 @@ describe('local dashboard server helpers', () => {
     expect(resolveDashboardAction('deploy', 'production' as any)?.confirm).toBe('deploy')
     expect(resolveDashboardAction('deploy', 'production' as any)?.mutates).toBe(true)
     expect(resolveDashboardAction('rm -rf', 'production' as any)).toBeUndefined()
+  })
+
+  it('builds only allowlisted systemd service operations', () => {
+    const data = {
+      servicesDetail: [
+        { name: 'rpx-gateway' },
+        { name: 'php8.3-fpm' },
+        { name: 'bad; rm -rf /' },
+      ],
+    }
+
+    const operations = dashboardServerOperations(data)
+
+    expect(operations.map(operation => operation.id)).toEqual([
+      'restart:rpx-gateway',
+      'reload:rpx-gateway',
+      'restart:php8.3-fpm',
+      'reload:php8.3-fpm',
+    ])
+    expect(resolveDashboardServerOperation('restart:php8.3-fpm', data)?.confirm).toBe('php8.3-fpm')
+    expect(resolveDashboardServerOperation('restart:bad; rm -rf /', data)).toBeUndefined()
   })
 
   it('sanitizes cloud config for the browser API', () => {

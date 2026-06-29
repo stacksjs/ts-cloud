@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { parseBlock, parseDeployHistory, parseServerLogs, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
+import { parseBlock, parseDeployHistory, parseServerLogs, parseServerSecurity, resolveConfigOnlyServerDashboardData } from './dashboard-data-server'
 
 describe('parseBlock (server metrics probe output)', () => {
   it('parses KEY=VALUE lines and SVC=name=status into services', () => {
@@ -11,7 +11,7 @@ describe('parseBlock (server metrics probe output)', () => {
       'DISKPCT=55',
       'UPTIME=99 days',
       'OS=Ubuntu 24.04 LTS',
-      'SVC=nginx=active',
+      'SVC=nginx=active=41943040=enabled=Sun 2026-06-28 10:00:00 UTC',
       'SVC=php8.3-fpm=active',
       'SVC=redis=failed',
     ].join('\n')
@@ -21,9 +21,9 @@ describe('parseBlock (server metrics probe output)', () => {
     expect(r.UPTIME).toBe('99 days')
     expect(r.OS).toBe('Ubuntu 24.04 LTS')
     expect(r.services).toEqual([
-      { name: 'nginx', status: 'active' },
-      { name: 'php8.3-fpm', status: 'active' },
-      { name: 'redis', status: 'failed' },
+      { name: 'nginx', status: 'active', memBytes: 41943040, enabled: 'enabled', since: 'Sun 2026-06-28 10:00:00 UTC' },
+      { name: 'php8.3-fpm', status: 'active', memBytes: 0, enabled: '-', since: '-' },
+      { name: 'redis', status: 'failed', memBytes: 0, enabled: '-', since: '-' },
     ])
   })
 
@@ -70,6 +70,9 @@ describe('resolveConfigOnlyServerDashboardData', () => {
     expect(data.backupHistory).toEqual([])
     expect(data.serverDeployments).toEqual([])
     expect(data.serverLogs).toEqual([])
+    expect(data.security.firewall.status).toBe('configured')
+    expect(data.diagnostics.some((check: any) => check.name === 'Live server probe')).toBe(true)
+    expect(data.activity).toEqual([])
     expect(data.sites[0]).toMatchObject({ name: 'verygoodadblock', domain: 'verygoodadblock.org', type: 'static' })
     expect(JSON.stringify(data)).not.toContain('acme')
     expect(JSON.stringify(data)).not.toContain('nginx')
@@ -112,6 +115,29 @@ describe('resolveConfigOnlyServerDashboardData', () => {
     ])
     expect(JSON.stringify(data.sites)).not.toContain('laravel')
     expect(JSON.stringify(data.sites)).not.toContain('"php"')
+  })
+})
+
+describe('parseServerSecurity', () => {
+  it('parses ports, ufw output, auth events, and certificate expiry', () => {
+    const output = [
+      'PORT=tcp\t0.0.0.0:443\tusers:(("rpx",pid=123,fd=7))',
+      'PORT=tcp\t127.0.0.1:3000\tusers:(("bun",pid=456,fd=12))',
+      'FIREWALL=Status: active',
+      'FIREWALL=[ 1] 22/tcp ALLOW IN Anywhere',
+      'AUTH=2026-06-28T21:00:00+0000 stacks sshd[999]: Accepted publickey for root',
+      'CERT=verygoodadblock.org\tJun 28 12:00:00 2099 GMT',
+    ].join('\n')
+
+    const security = parseServerSecurity(output)
+
+    expect(security.ports).toHaveLength(2)
+    expect(security.ports[0]).toMatchObject({ proto: 'tcp', listen: '0.0.0.0:443', processName: 'users:(("rpx",pid=123,fd=7))', exposure: 'public', tone: 'ok' })
+    expect(security.ports[1]).toMatchObject({ listen: '127.0.0.1:3000', exposure: 'loopback', tone: 'ok' })
+    expect(security.firewall).toMatchObject({ status: 'active', summary: 'ufw active' })
+    expect(security.firewall.rules[0]).toContain('22/tcp')
+    expect(security.authEvents[0]).toMatchObject({ level: 'info' })
+    expect(security.tlsCertificates[0]).toMatchObject({ domain: 'verygoodadblock.org', status: 'ok' })
   })
 })
 

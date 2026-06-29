@@ -1,0 +1,55 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'stacks-production-app' }
+const activity = __d?.activity ?? []
+const counts = {
+  deploy: activity.filter(item => item.type === 'deploy').length,
+  log: activity.filter(item => item.type === 'log').length,
+  ssh: activity.filter(item => item.type === 'ssh').length,
+}
+function tone(status) {
+  if (status === 'ok') return 'ok'
+  if (status === 'bad') return 'bad'
+  return 'warn'
+}
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - Activity' })</head>
+<body>
+  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Activity</div>
+    <header class="page">
+      <div><h1>Activity</h1><p>Deploys, warnings, errors, and access changes collected from local config and live logs.</p></div>
+      <div class="cmds header-actions"><span class="cmd">cloud deploy:history</span><span class="cmd">cloud server:logs {{ server.name }}</span></div>
+    </header>
+
+    <div class="grid cards-3">
+      <div class="panel"><h3>Deploy activity</h3><div class="stat">{{ counts.deploy }}</div></div>
+      <div class="panel"><h3>Warnings &amp; errors</h3><div class="stat">{{ counts.log }}</div></div>
+      <div class="panel"><h3>SSH key events</h3><div class="stat">{{ counts.ssh }}</div></div>
+    </div>
+
+    <div class="section">
+      <h2>Timeline</h2>
+      <div class="panel">
+        @if (activity.length)
+          <div class="timeline">
+            @foreach (activity as item)
+              <div class="timeline-row">
+                <div class="type"><span class="pill {{ tone(item.tone) }}">{{ item.type }}</span></div>
+                <div><div class="title">{{ item.title }}</div><div class="detail">{{ item.detail }}</div></div>
+                <div class="when">{{ item.when }}</div>
+              </div>
+            @endforeach
+          </div>
+        @else
+          <div class="empty"><strong>No activity yet</strong><span>Deploy history, warnings, and SSH key changes will appear here as the dashboard collects them.</span></div>
+        @endif
+      </div>
+    </div>
+  </div>
+</body>
+</html>

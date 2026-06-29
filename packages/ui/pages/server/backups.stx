@@ -32,21 +32,25 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
     <div class="section">
       <h2>Recent backups</h2>
       <div class="panel">
-        <table>
-          <thead><tr><th>Snapshot</th><th>Kind</th><th>Size</th><th>Status</th><th>When</th><th>Restore</th></tr></thead>
-          <tbody>
-            @foreach (history as b)
-              <tr>
-                <td class="mono">{{ b.id }}</td>
-                <td>{{ b.kind }}</td>
-                <td>{{ b.size }}</td>
-                <td><span class="pill {{ tone(b.status) }}">{{ b.status }}</span></td>
-                <td style="color:var(--txt3)">{{ b.when }}</td>
-                <td><span class="cmd">cloud server:snapshot:restore {{ server.name }} {{ b.id }}</span></td>
-              </tr>
-            @endforeach
-          </tbody>
-        </table>
+        @if (history.length)
+          <table>
+            <thead><tr><th>Snapshot</th><th>Kind</th><th>Size</th><th>Status</th><th>When</th><th>Restore</th></tr></thead>
+            <tbody>
+              @foreach (history as b)
+                <tr>
+                  <td class="mono">{{ b.id }}</td>
+                  <td>{{ b.kind }}</td>
+                  <td>{{ b.size }}</td>
+                  <td><span class="pill {{ tone(b.status) }}">{{ b.status }}</span></td>
+                  <td style="color:var(--txt3)">{{ b.when }}</td>
+                  <td><span class="cmd">cloud server:snapshot:restore {{ server.name }} {{ b.id }}</span></td>
+                </tr>
+              @endforeach
+            </tbody>
+          </table>
+        @else
+          <div class="empty"><strong>No backup history</strong><span>Snapshot history has not been collected yet. Create one with the command above, then restore entries will show here.</span></div>
+        @endif
       </div>
     </div>
   </div>

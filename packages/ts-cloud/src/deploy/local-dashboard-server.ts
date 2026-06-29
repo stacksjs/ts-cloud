@@ -6,9 +6,11 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
+import { createCloudDriver } from '../drivers'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { resolveUiSource } from './management-dashboard'
+import { addSiteToCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 
 export interface LocalDashboardServerOptions {
@@ -32,6 +34,14 @@ export interface DashboardAction {
   command: string[]
   mutates: boolean
   confirm?: string
+}
+
+export interface ServerOperation {
+  id: string
+  label: string
+  target: string
+  mutates: boolean
+  confirm: string
 }
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -121,6 +131,11 @@ function replaceComputeSshKeys(config: CloudConfig, keys: any[]): void {
   const infrastructure = config.infrastructure ?? ((config as any).infrastructure = {})
   const compute = infrastructure.compute ?? ((infrastructure as any).compute = {})
   ;(compute as any).sshKeys = keys
+}
+
+function replaceSiteConfig(config: CloudConfig, name: string, site: Record<string, any>): void {
+  const sites = config.sites ?? ((config as any).sites = {})
+  ;(sites as any)[name] = site
 }
 
 async function readJsonBody(req: Request): Promise<Record<string, any>> {
@@ -267,6 +282,37 @@ export function resolveDashboardAction(id: string, environment: EnvironmentType)
   return dashboardActions(environment).find(action => action.id === id)
 }
 
+function isSafeSystemdUnit(value: string): boolean {
+  return /^[A-Za-z0-9_.@:-]+$/.test(value)
+}
+
+export function dashboardServerOperations(data: Record<string, any>): ServerOperation[] {
+  const services = data.servicesDetail ?? data.services ?? []
+  return services
+    .map((service: any) => String(service.name ?? ''))
+    .filter((service: string) => service && isSafeSystemdUnit(service))
+    .flatMap((service: string) => [
+      {
+        id: `restart:${service}`,
+        label: `Restart ${service}`,
+        target: service,
+        mutates: true,
+        confirm: service,
+      },
+      {
+        id: `reload:${service}`,
+        label: `Reload ${service}`,
+        target: service,
+        mutates: true,
+        confirm: service,
+      },
+    ])
+}
+
+export function resolveDashboardServerOperation(id: string, data: Record<string, any>): ServerOperation | undefined {
+  return dashboardServerOperations(data).find(operation => operation.id === id)
+}
+
 function clampOutput(output: string): string {
   if (output.length <= MAX_OUTPUT_BYTES)
     return output
@@ -294,6 +340,37 @@ async function runAction(action: DashboardAction, options: Required<Pick<LocalDa
     ok: exitCode === 0,
     stdout: clampOutput(stdout),
     stderr: clampOutput(stderr),
+  }
+}
+
+async function runServerOperation(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  operation: ServerOperation,
+): Promise<Record<string, any>> {
+  const driver = createCloudDriver({ config })
+  const targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
+  if (!targets.length)
+    return { operation: operation.id, ok: false, error: 'No app server target was found for this environment.' }
+
+  const verb = operation.id.startsWith('reload:') ? 'reload' : 'restart'
+  const result = await driver.runRemoteDeploy({
+    targets: [targets[0]],
+    commands: [
+      'set -e',
+      `systemctl ${verb} ${operation.target}`,
+      `systemctl is-active ${operation.target}`,
+    ],
+    comment: `ts-cloud dashboard:${verb} ${operation.target}`,
+    tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+  })
+
+  return {
+    operation: operation.id,
+    command: `systemctl ${verb} ${operation.target}`,
+    ok: result.success,
+    stdout: clampOutput(result.perInstance?.[0]?.output ?? ''),
+    stderr: clampOutput(result.perInstance?.[0]?.error ?? result.error ?? ''),
   }
 }
 
@@ -335,6 +412,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const actions = dashboardActions(environment)
   const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
+  let latestData = initialData
   const liveUiRoot = await buildLiveUi(cwd, initialData)
   const packagedUi = resolveUiSource(cwd)
   const uiRoot = liveUiRoot ?? packagedUi?.uiRoot
@@ -407,11 +485,54 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: true, configPath, keys: describeSshKeys(computeSshKeys(config as CloudConfig)) })
         }
 
+        if (url.pathname === '/api/sites' && req.method === 'POST') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const siteName = String(body.name ?? '').trim()
+          const root = String(body.root ?? '').trim()
+          if (!siteName || !root)
+            return json({ ok: false, error: 'Site name and root are required.' }, 422)
+          const site = {
+            deploy: body.deploy === 'bucket' ? 'bucket' : 'server',
+            root,
+            path: String(body.path ?? '').trim() || undefined,
+            domain: String(body.domain ?? '').trim() || undefined,
+            build: String(body.build ?? '').trim() || undefined,
+            start: String(body.start ?? '').trim() || undefined,
+            port: body.port ? Number(body.port) : undefined,
+            type: String(body.type ?? '').trim() || undefined,
+          }
+          if (site.port !== undefined && (!Number.isInteger(site.port) || site.port < 1 || site.port > 65_535))
+            return json({ ok: false, error: 'Port must be a number between 1 and 65535.' }, 422)
+          const before = await readFile(configPath, 'utf8')
+          const after = addSiteToCloudConfig({
+            configText: before,
+            name: siteName,
+            root: site.root,
+            domain: site.domain,
+            path: site.path,
+            deploy: site.deploy as 'bucket' | 'server',
+            build: site.build,
+            start: site.start,
+            port: site.port,
+            type: site.type,
+          })
+          await writeFile(configPath, after)
+          replaceSiteConfig(config as CloudConfig, siteName, Object.fromEntries(Object.entries(site).filter(([, value]) => value !== undefined)))
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          return json({ ok: true, configPath, site: siteName, data: latestData })
+        }
+
         if (url.pathname === '/api/actions')
           return json(actions)
 
+        if (url.pathname === '/api/server/operations')
+          return json(dashboardServerOperations(latestData))
+
         if (url.pathname === '/api/dashboard-data') {
-          return json(await resolveLiveDashboardData(config as CloudConfig, environment))
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          return json(latestData)
         }
 
         if (url.pathname === '/api/actions/run' && req.method === 'POST') {
@@ -422,6 +543,16 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (action.mutates && body.confirm !== action.confirm)
             return json({ ok: false, error: `Type "${action.confirm}" to run this action.` }, 409)
           return json(await runAction(action, { cwd, cliEntry }))
+        }
+
+        if (url.pathname === '/api/server/operations/run' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { operation?: string, confirm?: string }
+          const operation = body.operation ? resolveDashboardServerOperation(body.operation, latestData) : undefined
+          if (!operation)
+            return json({ ok: false, error: 'Unknown or unavailable server operation.' }, 404)
+          if (operation.mutates && body.confirm !== operation.confirm)
+            return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
+          return json(await runServerOperation(config as CloudConfig, environment, operation))
         }
 
         return serveStatic(uiRoot, url.pathname)

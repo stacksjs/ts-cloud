@@ -12,7 +12,7 @@ import { createCloudDriver } from '../drivers'
 import { resolveSiteKind } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
 
-const PROBED_SERVICES = ['nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
+const PROBED_SERVICES = ['rpx-gateway', 'nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
 const UNKNOWN = '-'
 
 interface LocalState {
@@ -20,6 +20,14 @@ interface LocalState {
   serverName?: string
   publicIp?: string
   sshUser?: string
+}
+
+interface ProbedService {
+  name: string
+  status: string
+  memBytes?: number
+  enabled?: string
+  since?: string
 }
 
 /** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
@@ -35,18 +43,26 @@ function metricsScript(): string[] {
     'echo "DISKTOTG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$2);print $2}\')"',
     'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
     'echo "OS=$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")"',
-    `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ] && echo "SVC=$s=$st"; done`,
+    `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
     'true',
   ]
 }
 
-export function parseBlock(output: string): Record<string, string> & { services: Array<{ name: string, status: string }> } {
+export function parseBlock(output: string): Record<string, string> & { services: ProbedService[] } {
   const kv: any = { services: [] }
   for (const line of output.split('\n')) {
     const l = line.trim()
     if (l.startsWith('SVC=')) {
-      const [, name, status] = /^SVC=([^=]+)=(.+)$/.exec(l) ?? []
-      if (name) kv.services.push({ name, status })
+      const [, name, status, memBytes, enabled, since] = /^SVC=([^=]+)=([^=]+)(?:=([^=]*)(?:=([^=]*)(?:=(.*))?)?)?$/.exec(l) ?? []
+      if (name) {
+        kv.services.push({
+          name,
+          status,
+          memBytes: Number(memBytes || 0),
+          enabled: enabled || UNKNOWN,
+          since: since || UNKNOWN,
+        })
+      }
     }
     else {
       const eq = l.indexOf('=')
@@ -263,6 +279,27 @@ function deployHistoryScript(siteNames: string[]): string[] {
   ]
 }
 
+function siteDomains(config: CloudConfig): string[] {
+  return [...new Set(Object.values(config.sites ?? {})
+    .map((site: any) => site.domain)
+    .filter((domain): domain is string => typeof domain === 'string' && domain.length > 0))]
+}
+
+function securityScript(config: CloudConfig): string[] {
+  const domains = siteDomains(config)
+  return [
+    'set +e',
+    'if command -v ss >/dev/null 2>&1; then ss -H -lntup 2>/dev/null | while read -r proto _state _recv _send local _peer rest; do [ -n "$proto" ] && [ -n "$local" ] && printf "PORT=%s\\t%s\\t%s\\n" "$proto" "$local" "$rest"; done; fi',
+    'if command -v ufw >/dev/null 2>&1; then ufw status numbered 2>/dev/null | sed "s/^/FIREWALL=/"; else echo "FIREWALL=ufw unavailable"; fi',
+    'journalctl _COMM=sshd --no-pager -n 30 -o short-iso 2>/dev/null | sed "s/^/AUTH=/" || true',
+    ...domains.map((domain) => {
+      const quoted = shellSingleQuote(domain)
+      return `TS_CLOUD_DOMAIN=${quoted}; TS_CLOUD_EXPIRY=$(echo | timeout 8 openssl s_client -servername "$TS_CLOUD_DOMAIN" -connect "$TS_CLOUD_DOMAIN:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2-); [ -n "$TS_CLOUD_EXPIRY" ] && printf "CERT=%s\\t%s\\n" "$TS_CLOUD_DOMAIN" "$TS_CLOUD_EXPIRY" || printf "CERT=%s\\tunavailable\\n" "$TS_CLOUD_DOMAIN"`
+    }),
+    'true',
+  ]
+}
+
 function serverLogUnits(config: CloudConfig): string[] {
   const units = new Set<string>()
   const compute = config.infrastructure?.compute as any
@@ -358,6 +395,213 @@ export function parseServerLogs(output: string): Array<Record<string, any>> {
   return records.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 240)
 }
 
+function listenerExposure(listen: string): 'loopback' | 'private' | 'public' {
+  if (/^(?:127\.|localhost:|\[?::1\]?)/.test(listen))
+    return 'loopback'
+  if (/^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.|169\.254\.|\[?f[cd][0-9a-f:])/i.test(listen))
+    return 'private'
+  return 'public'
+}
+
+function portTone(listen: string): 'ok' | 'warn' | 'bad' {
+  const exposure = listenerExposure(listen)
+  if (exposure !== 'public')
+    return 'ok'
+  if (/:(?:22|80|443)$/.test(listen) || /^\*:(?:22|80|443)$/.test(listen))
+    return 'ok'
+  return 'warn'
+}
+
+function certStatus(daysRemaining: number | null): 'ok' | 'warn' | 'bad' {
+  if (daysRemaining == null)
+    return 'warn'
+  if (daysRemaining < 8)
+    return 'bad'
+  if (daysRemaining < 30)
+    return 'warn'
+  return 'ok'
+}
+
+export function parseServerSecurity(output: string): Record<string, any> {
+  const ports: Array<Record<string, any>> = []
+  const firewallLines: string[] = []
+  const authEvents: Array<Record<string, any>> = []
+  const tlsCertificates: Array<Record<string, any>> = []
+
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.trim()
+    if (line.startsWith('PORT=')) {
+      const [proto = '', listen = '', process = ''] = line.slice(5).split('\t')
+      if (proto && listen) {
+        ports.push({
+          proto,
+          listen,
+          processName: process || UNKNOWN,
+          exposure: listenerExposure(listen),
+          tone: portTone(listen),
+        })
+      }
+    }
+    else if (line.startsWith('FIREWALL=')) {
+      const value = line.slice(9).trim()
+      if (value)
+        firewallLines.push(value)
+    }
+    else if (line.startsWith('AUTH=')) {
+      const raw = line.slice(5)
+      const match = /^(\d{4}-\d{2}-\d{2}T[^\s]+)\s+(\S+)\s+(.*)$/.exec(raw)
+      const message = (match?.[3] ?? raw).trim()
+      if (message) {
+        authEvents.push({
+          timestamp: match?.[1] ?? '',
+          when: match?.[1] ? relativeTime(match[1]) : UNKNOWN,
+          host: match?.[2] ?? '',
+          message,
+          level: inferLogLevel(message),
+        })
+      }
+    }
+    else if (line.startsWith('CERT=')) {
+      const [domain = '', expiresRaw = ''] = line.slice(5).split('\t')
+      if (!domain)
+        continue
+      const expiresAt = new Date(expiresRaw)
+      const daysRemaining = Number.isNaN(expiresAt.getTime())
+        ? null
+        : Math.ceil((expiresAt.getTime() - Date.now()) / 86_400_000)
+      tlsCertificates.push({
+        domain,
+        expires: Number.isNaN(expiresAt.getTime()) ? expiresRaw || UNKNOWN : expiresAt.toISOString().slice(0, 10),
+        daysRemaining,
+        status: certStatus(daysRemaining),
+      })
+    }
+  }
+
+  const firewallEnabled = firewallLines.some(line => /Status:\s*active/i.test(line))
+  const firewallUnavailable = firewallLines.some(line => /unavailable/i.test(line))
+  return {
+    ports: ports.slice(0, 80),
+    firewall: {
+      status: firewallEnabled ? 'active' : (firewallUnavailable ? 'unavailable' : 'inactive'),
+      summary: firewallEnabled ? 'ufw active' : (firewallUnavailable ? 'ufw unavailable' : 'ufw inactive or not configured'),
+      rules: firewallLines.filter(line => line && !/^Status:/i.test(line)).slice(0, 60),
+    },
+    tlsCertificates,
+    authEvents: authEvents.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp))).slice(0, 30),
+  }
+}
+
+function configuredSecurity(config: CloudConfig): Record<string, any> {
+  const compute = config.infrastructure?.compute as any
+  const firewall = compute?.firewall ?? {}
+  const allowedPorts = [...new Set([22, 80, 443, ...(firewall.allowedPorts ?? [])])]
+  const domains = siteDomains(config)
+  return {
+    ports: allowedPorts.map(port => ({
+      proto: 'tcp',
+      listen: `0.0.0.0:${port}`,
+      processName: 'configured firewall',
+      exposure: 'public',
+      tone: [22, 80, 443].includes(Number(port)) ? 'ok' : 'warn',
+    })),
+    firewall: {
+      status: firewall.enabled === false ? 'disabled' : 'configured',
+      summary: firewall.enabled === false ? 'host firewall disabled in config' : 'host firewall configured declaratively',
+      rules: allowedPorts.map(port => `ALLOW ${port}/tcp`),
+    },
+    tlsCertificates: domains.map(domain => ({
+      domain,
+      expires: UNKNOWN,
+      daysRemaining: null,
+      status: 'warn',
+    })),
+    authEvents: [],
+  }
+}
+
+function diagnosticChecks(config: CloudConfig, data: Record<string, any>): Array<Record<string, any>> {
+  const security = data.security ?? configuredSecurity(config)
+  const live = !!data._serverReachable && !data.metricsUnavailable
+  const sites = data.sites ?? []
+  const shadowed = sites.filter((site: any) => site.status === 'shadowed')
+  const failedServices = (data.services ?? []).filter((service: any) => ['failed', 'stopped'].includes(service.status))
+  const expiringCerts = (security.tlsCertificates ?? []).filter((cert: any) => cert.status !== 'ok')
+  const sshKeys = data.sshKeys ?? []
+
+  return [
+    {
+      name: 'Live server probe',
+      status: live ? 'pass' : 'warn',
+      detail: live ? 'Metrics and remote checks are coming from the compute box.' : 'The dashboard is rendering config/state data until the box probe succeeds.',
+    },
+    {
+      name: 'Managed services',
+      status: failedServices.length ? 'fail' : 'pass',
+      detail: failedServices.length ? `${failedServices.length} service(s) need attention.` : `${(data.services ?? []).length} service(s) reported healthy or configured.`,
+    },
+    {
+      name: 'Route conflicts',
+      status: shadowed.length ? 'warn' : 'pass',
+      detail: shadowed.length ? `${shadowed.map((site: any) => site.name).join(', ')} is shadowed by an earlier route.` : `${sites.length} site route(s) are unshadowed.`,
+    },
+    {
+      name: 'SSH access',
+      status: sshKeys.length ? 'pass' : 'warn',
+      detail: sshKeys.length ? `${sshKeys.length} declarative authorized key(s) configured.` : 'No declarative SSH keys are configured.',
+    },
+    {
+      name: 'Firewall',
+      status: ['active', 'configured'].includes(security.firewall?.status) ? 'pass' : 'warn',
+      detail: security.firewall?.summary ?? 'Firewall status unavailable.',
+    },
+    {
+      name: 'TLS certificates',
+      status: expiringCerts.length ? 'warn' : 'pass',
+      detail: expiringCerts.length ? `${expiringCerts.length} certificate(s) need renewal visibility.` : `${(security.tlsCertificates ?? []).length} certificate(s) look healthy.`,
+    },
+  ]
+}
+
+function activityFeed(data: Record<string, any>): Array<Record<string, any>> {
+  const activity: Array<Record<string, any>> = []
+  for (const deploy of data.serverDeploymentsDetail ?? data.serverDeployments ?? []) {
+    activity.push({
+      type: 'deploy',
+      tone: deploy.status === 'failed' ? 'bad' : 'ok',
+      title: `${deploy.site} deployed ${deploy.sha}`,
+      detail: `${deploy.branch} · ${deploy.status}`,
+      when: deploy.when,
+      timestamp: deploy.timestamp,
+    })
+  }
+  for (const log of data.serverLogs ?? []) {
+    if (log.level === 'error' || log.level === 'warn') {
+      activity.push({
+        type: 'log',
+        tone: log.level === 'error' ? 'bad' : 'warn',
+        title: `${log.source} ${log.level}`,
+        detail: log.message,
+        when: log.when,
+        timestamp: log.timestamp,
+      })
+    }
+  }
+  for (const key of data.sshKeys ?? []) {
+    activity.push({
+      type: 'ssh',
+      tone: 'ok',
+      title: `${key.name} authorized`,
+      detail: key.fingerprint,
+      when: key.added ?? UNKNOWN,
+      timestamp: '',
+    })
+  }
+  return activity
+    .sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)))
+    .slice(0, 80)
+}
+
 export function parseDeployHistory(output: string, sites: Record<string, any> = {}): Array<Record<string, any>> {
   const records: Array<Record<string, any>> = []
 
@@ -401,7 +645,7 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
   const services = configuredServices(config)
   const sites = configuredSites(config)
   const diskSize = Math.max(1, Number((config.infrastructure?.compute as any)?.disk?.size ?? 1))
-  return {
+  const out: Record<string, any> = {
     server: {
       name: state?.serverName ?? `${config.project.slug}-${environment}-app`,
       provider: state?.provider ?? configuredProvider(config),
@@ -432,6 +676,8 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
     deploymentsEmptyReason: 'No deployment history has been recorded yet. Future server deploys will write /var/www/<site>/.ts-cloud/deploy-history.log.',
     serverLogs: [],
     serverLogsEmptyReason: 'Live server logs are unavailable until the dashboard can reach the compute box.',
+    security: configuredSecurity(config),
+    securityEmptyReason: 'Live security checks are unavailable until the dashboard can reach the compute box.',
     sites,
     sitesDetail: sites.map((s) => {
       const site = (config.sites as any)?.[s.name] ?? {}
@@ -441,12 +687,16 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
         root: kind === 'server-static' ? `/var/www/${s.name}` : `/var/www/${s.name}/current`,
         branch: kind === 'server-static' ? 'build artifact' : 'main',
         build: site.build,
+        envKeys: Object.keys(site.env ?? site.environment ?? {}),
       }
     }),
     sshKeys: describeSshKeys((config.infrastructure?.compute as any)?.sshKeys ?? []),
     _serverReachable: false,
     _metricsStatus: 'unavailable',
   }
+  out.diagnostics = diagnosticChecks(config, out)
+  out.activity = activityFeed(out)
+  return out
 }
 
 export async function resolveServerDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any> | null> {
@@ -496,7 +746,13 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
     }
     if (parsed.services.length) {
       out.services = parsed.services.map(s => ({ name: s.name, status: s.status === 'active' ? 'running' : s.status }))
-      out.servicesDetail = parsed.services.map(s => ({ name: s.name, status: s.status === 'active' ? 'running' : s.status, since: out.server.uptime, memMb: 0, auto: true }))
+      out.servicesDetail = parsed.services.map(s => ({
+        name: s.name,
+        status: s.status === 'active' ? 'running' : s.status,
+        since: s.since && s.since !== UNKNOWN ? s.since : out.server.uptime,
+        memMb: Math.max(0, Math.round(Number(s.memBytes ?? 0) / 1024 / 1024)),
+        auto: s.enabled ? !['disabled', 'static', 'masked'].includes(s.enabled) : true,
+      }))
     }
   }
 
@@ -545,6 +801,29 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
     }
   }
 
+  if (driver && targets.length) {
+    try {
+      const securityResult = await driver.runRemoteDeploy({
+        targets: [targets[0]],
+        commands: securityScript(config),
+        comment: `ts-cloud dashboard:security ${config.project.slug}`,
+        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+      })
+      const securityOutput = securityResult.perInstance?.[0]?.output ?? ''
+      const liveSecurity = parseServerSecurity(securityOutput)
+      const declaredSecurity = configuredSecurity(config)
+      if (!liveSecurity.ports.length)
+        liveSecurity.ports = declaredSecurity.ports
+      if (!liveSecurity.tlsCertificates.length)
+        liveSecurity.tlsCertificates = declaredSecurity.tlsCertificates
+      out.security = liveSecurity
+      out.securityEmptyReason = undefined
+    }
+    catch {
+      out.securityEmptyReason = 'Server security checks could not be read from the box.'
+    }
+  }
+
   // Sites + SSH keys are declarative — derive from config (no box needed).
   const sshKeys = (config.infrastructure?.compute as any)?.sshKeys ?? (config.infrastructure as any)?.ssh?.keys ?? (config.infrastructure as any)?.sshKeys
   if (Array.isArray(sshKeys) && sshKeys.length) {
@@ -552,5 +831,7 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
   }
 
   out._serverReachable = instanceCount > 0 && !!parsed
+  out.diagnostics = diagnosticChecks(config, out)
+  out.activity = activityFeed(out)
   return out
 }

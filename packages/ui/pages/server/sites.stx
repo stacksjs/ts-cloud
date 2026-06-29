@@ -19,7 +19,26 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Sites</div>
-    <header class="page"><div><h1>Sites</h1><p>Server routes served from the box, each deployed as an atomic release.</p></div></header>
+    <header class="page">
+      <div><h1>Sites</h1><p>Server routes served from the box, each deployed as an atomic release.</p></div>
+      <div class="cmds header-actions"><span class="accent cmd">cloud site:add &lt;name&gt;</span></div>
+    </header>
+    <div class="section">
+      <h2>Add site</h2>
+      <div class="panel">
+        <form id="site-add-form" class="form-grid">
+          <div class="field-block"><label for="site-name">Name</label><input id="site-name" name="name" placeholder="docs"></div>
+          <div class="field-block"><label for="site-root">Root</label><input id="site-root" name="root" placeholder="dist/docs"></div>
+          <div class="field-block"><label for="site-domain">Domain</label><input id="site-domain" name="domain" placeholder="example.com"></div>
+          <div class="field-block"><label for="site-path">Path</label><input id="site-path" name="path" placeholder="/docs"></div>
+          <div class="field-block"><label for="site-deploy">Deploy</label><input id="site-deploy" name="deploy" value="server"></div>
+          <div class="field-block"><label for="site-port">Port</label><input id="site-port" name="port" placeholder="3000"></div>
+          <div class="field-block wide"><label for="site-build">Build command</label><input id="site-build" name="build" placeholder="bun run build"></div>
+          <div class="field-block wide"><label for="site-start">Start command</label><input id="site-start" name="start" placeholder="bun run start"></div>
+          <div class="form-actions"><button class="btn" type="submit">Add site</button><span id="site-add-msg" class="msg"></span></div>
+        </form>
+      </div>
+    </div>
     @foreach (sites as site)
       <div class="section">
         <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>
@@ -43,13 +62,18 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
             <div class="kv"><span>web root</span> <b class="mono" style="font-size:11px">{{ site.root }}</b></div>
             <div class="kv"><span>source</span> <b class="mono">{{ site.branch }}</b></div>
             <div class="kv"><span>deploy</span> <b>{{ site.deploy }}</b></div>
+            @if (site.envKeys && site.envKeys.length)
+              <div class="kv"><span>env vars</span> <b class="mono">{{ site.envKeys.join(', ') }}</b></div>
+            @endif
             @if (site.shadowedBy)
               <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
             @endif
           </div>
         </div>
         <div class="cmds" style="margin-top:12px;">
-          <span class="accent cmd">cloud server:deploy {{ server.name }}</span>
+          <span class="accent cmd">cloud deploy --env production</span>
+          <span class="cmd">cloud deploy:history {{ site.name }}</span>
+          <span class="cmd">cloud deploy:rollback {{ site.name }}</span>
           @if (site.href)
             <span class="cmd">cloud server:ssl:install {{ site.domain }}</span>
           @endif
@@ -57,5 +81,38 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
       </div>
     @endforeach
   </div>
+  <script>
+    const siteForm = document.getElementById('site-add-form')
+    const siteMsg = document.getElementById('site-add-msg')
+    siteForm?.addEventListener('submit', async (event) => {
+      event.preventDefault()
+      const data = Object.fromEntries(new FormData(siteForm).entries())
+      if (siteMsg) {
+        siteMsg.className = 'msg'
+        siteMsg.textContent = 'Adding site...'
+      }
+      try {
+        const res = await fetch('/api/sites', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(data),
+        })
+        const body = await res.json()
+        if (!body.ok)
+          throw new Error(body.error || 'Could not add site')
+        if (siteMsg) {
+          siteMsg.className = 'msg ok'
+          siteMsg.textContent = `Added ${body.site}. Refreshing...`
+        }
+        window.setTimeout(() => window.location.reload(), 550)
+      }
+      catch (error) {
+        if (siteMsg) {
+          siteMsg.className = 'bad msg'
+          siteMsg.textContent = error?.message || String(error)
+        }
+      }
+    })
+  </script>
 </body>
 </html>
