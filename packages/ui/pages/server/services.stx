@@ -36,52 +36,22 @@ function tone(s) { return s === 'running' ? 'ok' : (s === 'stopped' || s === 'fa
                 <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
                 <td>
                   <div class="action-runner" data-service="{{ s.name }}">
-                    <button class="btn ghost sm" type="button" data-op="restart:{{ s.name }}">Restart</button>
-                    <button class="btn ghost sm" type="button" data-op="reload:{{ s.name }}">Reload</button>
+                    <button class="btn ghost sm" type="button" data-op="restart:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="restart">Restart</button>
+                    <button class="btn ghost sm" type="button" data-op="reload:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="reload">Reload</button>
+                    <button class="btn ghost sm" type="button" data-op="start:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="start">Start</button>
+                    <button class="btn danger sm" type="button" data-op="stop:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="stop">Stop</button>
+                    <button class="btn ghost sm" type="button" data-op="enable:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="enable">Enable</button>
+                    <button class="btn ghost sm" type="button" data-op="disable:{{ s.name }}" data-confirm="{{ s.name }}" data-verb="disable">Disable</button>
                   </div>
                 </td>
               </tr>
             @endforeach
           </tbody>
         </table>
-        <pre id="service-action-output" class="action-output" hidden></pre>
+        @include('../partials/op-runner')
         <p class="note">Install software with <span class="mono">cloud server:recipe {{ server.name }} &lt;recipe&gt;</span>.</p>
       </div>
     </div>
   </div>
-  <script>
-    const serviceOutput = document.getElementById('service-action-output')
-    async function runServiceOperation(button) {
-      const operation = button.dataset.op
-      const service = operation.split(':').slice(1).join(':')
-      const confirmText = window.prompt(`Type "${service}" to ${operation.startsWith('reload:') ? 'reload' : 'restart'} this service.`)
-      if (confirmText !== service)
-        return
-      button.disabled = true
-      if (serviceOutput) {
-        serviceOutput.hidden = false
-        serviceOutput.textContent = `Running ${operation}...\n`
-      }
-      try {
-        const res = await fetch('/api/server/operations/run', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ operation, confirm: confirmText }),
-        })
-        const body = await res.json()
-        if (serviceOutput)
-          serviceOutput.textContent = `${body.ok ? 'OK' : 'FAILED'} ${body.command || operation}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}`
-      }
-      catch (error) {
-        if (serviceOutput)
-          serviceOutput.textContent = `FAILED ${operation}\n\n${error?.message || error}`
-      }
-      finally {
-        button.disabled = false
-      }
-    }
-    for (const button of document.querySelectorAll('[data-op]'))
-      button.addEventListener('click', () => runServiceOperation(button))
-  </script>
 </body>
 </html>

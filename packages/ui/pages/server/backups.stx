@@ -30,11 +30,22 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
       </div>
     </div>
     <div class="section">
+      <h2>Run a backup</h2>
+      <div class="panel">
+        <div class="row-actions">
+          <button class="btn" type="button" data-op="backup:run" data-confirm="backup" data-verb="run a backup now">Run backup now</button>
+          <button class="btn danger" type="button" data-op="backup:restore" data-confirm="restore" data-verb="restore the latest backup">Restore latest backup</button>
+        </div>
+        @include('../partials/op-runner')
+        <p class="note">Backups dump the app database via ts-backups and upload to the configured destination. Restore replaces the live database from the most recent dump.</p>
+      </div>
+    </div>
+    <div class="section">
       <h2>Recent backups</h2>
       <div class="panel">
         @if (history.length)
           <table>
-            <thead><tr><th>Snapshot</th><th>Kind</th><th>Size</th><th>Status</th><th>When</th><th>Restore</th></tr></thead>
+            <thead><tr><th>Snapshot</th><th>Kind</th><th>Size</th><th>Status</th><th>When</th></tr></thead>
             <tbody>
               @foreach (history as b)
                 <tr>
@@ -43,13 +54,12 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
                   <td>{{ b.size }}</td>
                   <td><span class="pill {{ tone(b.status) }}">{{ b.status }}</span></td>
                   <td style="color:var(--txt3)">{{ b.when }}</td>
-                  <td><span class="cmd">cloud server:snapshot:restore {{ server.name }} {{ b.id }}</span></td>
                 </tr>
               @endforeach
             </tbody>
           </table>
         @else
-          <div class="empty"><strong>No backup history</strong><span>Snapshot history has not been collected yet. Create one with the command above, then restore entries will show here.</span></div>
+          <div class="empty"><strong>No backup history</strong><span>Snapshot history has not been collected yet. Run a backup above, then entries will show here.</span></div>
         @endif
       </div>
     </div>

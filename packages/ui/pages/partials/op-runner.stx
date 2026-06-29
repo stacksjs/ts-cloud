@@ -1,0 +1,44 @@
+<pre id="op-output" class="action-output" hidden></pre>
+<script>
+  // Shared runner for server operations (services, rollback, backups, workers,
+  // scheduler). Any element with [data-op] becomes a button that POSTs to
+  // /api/server/operations/run; [data-confirm] gates mutating ops with a typed
+  // confirmation and [data-verb] customizes the prompt wording.
+  const opOutput = document.getElementById('op-output')
+  async function runDashboardOp(button) {
+    const operation = button.dataset.op
+    const token = button.dataset.confirm || ''
+    const verb = button.dataset.verb || operation.split(':')[0]
+    let confirm = token
+    if (token) {
+      const typed = window.prompt(`Type "${token}" to ${verb}.`)
+      if (typed !== token)
+        return
+      confirm = typed
+    }
+    button.disabled = true
+    if (opOutput) {
+      opOutput.hidden = false
+      opOutput.textContent = `Running ${operation}...\n`
+    }
+    try {
+      const res = await fetch('/api/server/operations/run', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation, confirm, ...(button.dataset.to ? { to: button.dataset.to } : {}) }),
+      })
+      const body = await res.json()
+      if (opOutput)
+        opOutput.textContent = `${body.ok ? 'OK' : 'FAILED'} ${body.command || operation}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}${body.error ? `\n${body.error}` : ''}`
+    }
+    catch (error) {
+      if (opOutput)
+        opOutput.textContent = `FAILED ${operation}\n\n${error?.message || error}`
+    }
+    finally {
+      button.disabled = false
+    }
+  }
+  for (const button of document.querySelectorAll('[data-op]'))
+    button.addEventListener('click', () => runDashboardOp(button))
+</script>

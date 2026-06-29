@@ -37,7 +37,7 @@ function fmt(n) { n = Number(n ?? 0); return n >= 1000 ? `${(n / 1000).toFixed(n
                   <td style="color:var(--txt2)">{{ fmt(w.processed) }}</td>
                   <td>@if ((w.failed ?? 0) > 0)<span class="bad pill">{{ w.failed }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
                   <td><span class="pill {{ tone(w.status) }}">{{ w.status }}</span></td>
-                  <td><span class="cmd">cloud server:worker:restart {{ server.name }} {{ w.name }}</span></td>
+                  <td class="table-actions"><button class="btn ghost sm" type="button" data-op="worker:restart:{{ w.site ?? w.name }}" data-confirm="{{ w.site ?? w.name }}" data-verb="restart workers for">Restart</button></td>
                 </tr>
               @endforeach
             </tbody>
@@ -45,7 +45,8 @@ function fmt(n) { n = Number(n ?? 0); return n >= 1000 ? `${(n / 1000).toFixed(n
         @else
           <div class="empty"><strong>No queue workers</strong><span>Add worker definitions in your site config or with the worker command.</span></div>
         @endif
-        <p class="note">Add with <span class="mono">cloud server:worker:add {{ server.name }} &lt;queue&gt;</span>.</p>
+        @include('../partials/op-runner')
+        <p class="note">Restart gracefully signals <span class="mono">queue:restart</span> so workers finish the current job, then pick up the latest code.</p>
       </div>
     </div>
     <div class="cols section">

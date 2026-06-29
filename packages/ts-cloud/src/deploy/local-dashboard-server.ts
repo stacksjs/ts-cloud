@@ -6,9 +6,9 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { createCloudDriver } from '../drivers'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
+import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation } from './dashboard-operations'
 import { resolveUiSource } from './management-dashboard'
 import { addSiteToCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
@@ -34,14 +34,6 @@ export interface DashboardAction {
   command: string[]
   mutates: boolean
   confirm?: string
-}
-
-export interface ServerOperation {
-  id: string
-  label: string
-  target: string
-  mutates: boolean
-  confirm: string
 }
 
 const DEFAULT_HOST = '127.0.0.1'
@@ -290,37 +282,6 @@ export function resolveDashboardAction(id: string, environment: EnvironmentType)
   return dashboardActions(environment).find(action => action.id === id)
 }
 
-function isSafeSystemdUnit(value: string): boolean {
-  return /^[A-Za-z0-9_.@:-]+$/.test(value)
-}
-
-export function dashboardServerOperations(data: Record<string, any>): ServerOperation[] {
-  const services = data.servicesDetail ?? data.services ?? []
-  return services
-    .map((service: any) => String(service.name ?? ''))
-    .filter((service: string) => service && isSafeSystemdUnit(service))
-    .flatMap((service: string) => [
-      {
-        id: `restart:${service}`,
-        label: `Restart ${service}`,
-        target: service,
-        mutates: true,
-        confirm: service,
-      },
-      {
-        id: `reload:${service}`,
-        label: `Reload ${service}`,
-        target: service,
-        mutates: true,
-        confirm: service,
-      },
-    ])
-}
-
-export function resolveDashboardServerOperation(id: string, data: Record<string, any>): ServerOperation | undefined {
-  return dashboardServerOperations(data).find(operation => operation.id === id)
-}
-
 function clampOutput(output: string): string {
   if (output.length <= MAX_OUTPUT_BYTES)
     return output
@@ -348,37 +309,6 @@ async function runAction(action: DashboardAction, options: Required<Pick<LocalDa
     ok: exitCode === 0,
     stdout: clampOutput(stdout),
     stderr: clampOutput(stderr),
-  }
-}
-
-async function runServerOperation(
-  config: CloudConfig,
-  environment: EnvironmentType,
-  operation: ServerOperation,
-): Promise<Record<string, any>> {
-  const driver = createCloudDriver({ config })
-  const targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
-  if (!targets.length)
-    return { operation: operation.id, ok: false, error: 'No app server target was found for this environment.' }
-
-  const verb = operation.id.startsWith('reload:') ? 'reload' : 'restart'
-  const result = await driver.runRemoteDeploy({
-    targets: [targets[0]],
-    commands: [
-      'set -e',
-      `systemctl ${verb} ${operation.target}`,
-      `systemctl is-active ${operation.target}`,
-    ],
-    comment: `ts-cloud dashboard:${verb} ${operation.target}`,
-    tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-  })
-
-  return {
-    operation: operation.id,
-    command: `systemctl ${verb} ${operation.target}`,
-    ok: result.success,
-    stdout: clampOutput(result.perInstance?.[0]?.output ?? ''),
-    stderr: clampOutput(result.perInstance?.[0]?.error ?? result.error ?? ''),
   }
 }
 
@@ -536,7 +466,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json(actions)
 
         if (url.pathname === '/api/server/operations')
-          return json(dashboardServerOperations(latestData))
+          return json(buildDashboardOperations(config as CloudConfig, latestData))
 
         if (url.pathname === '/api/dashboard-data') {
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
@@ -554,13 +484,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/api/server/operations/run' && req.method === 'POST') {
-          const body = await req.json().catch(() => ({})) as { operation?: string, confirm?: string }
-          const operation = body.operation ? resolveDashboardServerOperation(body.operation, latestData) : undefined
+          const body = await req.json().catch(() => ({})) as { operation?: string, confirm?: string, to?: string }
+          const operation = body.operation ? resolveDashboardOperation(body.operation, config as CloudConfig, latestData) : undefined
           if (!operation)
             return json({ ok: false, error: 'Unknown or unavailable server operation.' }, 404)
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
-          return json(await runServerOperation(config as CloudConfig, environment, operation))
+          return json(await runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }))
         }
 
         return serveStatic(uiRoot, url.pathname)

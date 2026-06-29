@@ -44,7 +44,7 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
         </div>
         @if (deployments.length)
           <table>
-            <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th></tr></thead>
+            <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th><th>Action</th></tr></thead>
             <tbody id="deployment-rows">
               @foreach (deployments as d)
                 <tr data-status="{{ d.status }}" data-site="{{ d.site }}">
@@ -56,6 +56,7 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
                   <td style="color:var(--txt2)">{{ d.by }}</td>
                   <td class="mono">{{ d.took }}</td>
                   <td style="color:var(--txt3)">{{ d.when }}</td>
+                  <td class="table-actions"><button class="btn danger sm" type="button" data-op="rollback:{{ d.site }}" data-confirm="{{ d.site }}" data-verb="roll back" data-to="{{ d.release }}">Roll back</button></td>
                 </tr>
               @endforeach
             </tbody>
@@ -64,7 +65,8 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'wa
         @else
           <div class="empty"><strong>No deployments yet</strong><span>{{ deploymentsEmptyReason }}</span></div>
         @endif
-        <p class="note">Inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
+        @include('../partials/op-runner')
+        <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
       </div>
     </div>
   </div>

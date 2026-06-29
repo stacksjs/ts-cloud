@@ -148,17 +148,17 @@ function loadLocalState(config: CloudConfig, environment: EnvironmentType): Loca
   }
 }
 
-function configuredWorkers(config: CloudConfig): Array<{ name: string, processes: number, status: string }> {
+function configuredWorkers(config: CloudConfig): Array<{ name: string, site: string, processes: number, status: string }> {
   const sites = config.sites ?? {}
-  const workers: Array<{ name: string, processes: number, status: string }> = []
+  const workers: Array<{ name: string, site: string, processes: number, status: string }> = []
   for (const [siteName, site] of Object.entries(sites) as Array<[string, any]>) {
     const queues = site.queues ?? site.workers
     if (Array.isArray(queues)) {
       for (const queue of queues) {
         if (typeof queue === 'string')
-          workers.push({ name: `${siteName}:${queue}`, processes: 1, status: 'configured' })
+          workers.push({ name: `${siteName}:${queue}`, site: siteName, processes: 1, status: 'configured' })
         else if (queue?.name)
-          workers.push({ name: `${siteName}:${queue.name}`, processes: queue.processes ?? 1, status: 'configured' })
+          workers.push({ name: `${siteName}:${queue.name}`, site: siteName, processes: queue.processes ?? 1, status: 'configured' })
       }
     }
   }
