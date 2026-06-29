@@ -25,6 +25,7 @@ import {
   registerStackCommands,
   registerUtilsCommands,
   registerAnalyticsCommands,
+  registerDashboardCommands,
   // New infrastructure commands
   registerCdnCommands,
   registerStorageCommands,
@@ -131,6 +132,7 @@ registerTeamCommands(app)
 // Analytics & Tunnel
 registerAnalyticsCommands(app)
 registerTunnelCommands(app)
+registerDashboardCommands(app)
 
 // Utilities
 registerUtilsCommands(app, version)

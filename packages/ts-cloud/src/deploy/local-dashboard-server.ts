@@ -1,0 +1,329 @@
+import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, extname, join, normalize } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { loadCloudConfig } from '../config'
+import { resolveDashboardData } from './dashboard-data'
+import { resolveServerDashboardData } from './dashboard-data-server'
+import { resolveUiSource } from './management-dashboard'
+
+export interface LocalDashboardServerOptions {
+  host?: string
+  port?: number
+  cwd?: string
+  environment?: EnvironmentType
+  cliEntry?: string
+  verbose?: boolean
+}
+
+export interface LocalDashboardServer {
+  url: string
+  server: ReturnType<typeof Bun.serve>
+}
+
+export interface DashboardAction {
+  id: string
+  label: string
+  description: string
+  command: string[]
+  mutates: boolean
+  confirm?: string
+}
+
+const DEFAULT_HOST = '127.0.0.1'
+const DEFAULT_PORT = 7676
+const MAX_OUTPUT_BYTES = 64 * 1024
+const here = dirname(fileURLToPath(import.meta.url))
+
+const contentTypes: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+}
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data, null, 2), {
+    status,
+    headers: { 'content-type': 'application/json; charset=utf-8' },
+  })
+}
+
+function text(data: string, status = 200): Response {
+  return new Response(data, {
+    status,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  })
+}
+
+function selectedEnvironment(config: CloudConfig, requested?: EnvironmentType): EnvironmentType {
+  if (requested)
+    return requested
+  const envs = Object.keys(config.environments ?? {}) as EnvironmentType[]
+  return envs[0] ?? 'production'
+}
+
+async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
+  const data = config.infrastructure?.compute
+    ? await resolveServerDashboardData(config, environment)
+    : await resolveDashboardData(config, environment)
+  return data ?? {}
+}
+
+function resolveUiSourceDir(cwd: string): string | null {
+  const candidates = [
+    join(cwd, 'packages', 'ui'),
+    join(here, '..', '..', '..', 'ui'),
+    join(here, '..', '..', 'ui'),
+  ]
+  for (const dir of candidates) {
+    if (existsSync(join(dir, 'pages')) && existsSync(join(dir, 'package.json')))
+      return dir
+  }
+  return null
+}
+
+async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<string | null> {
+  const uiDir = resolveUiSourceDir(cwd)
+  if (!uiDir)
+    return null
+
+  const outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
+  const proc = Bun.spawn([
+    'bunx',
+    '--bun',
+    'stx',
+    'build',
+    '--pages',
+    'pages',
+    '--out',
+    outDir,
+    '--no-sitemap',
+    '--no-cache',
+  ], {
+    cwd: uiDir,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: {
+      ...process.env,
+      TSCLOUD_DASHBOARD_DATA: JSON.stringify(data),
+    },
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  if (exitCode !== 0)
+    throw new Error(`Failed to build live dashboard UI.\n${stdout}\n${stderr}`)
+
+  return outDir
+}
+
+export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
+  return {
+    project: {
+      name: config.project?.name,
+      slug: config.project?.slug,
+      region: config.project?.region,
+    },
+    provider: (config as any).provider,
+    environments: Object.keys(config.environments ?? {}),
+    compute: config.infrastructure?.compute
+      ? {
+          provider: (config.infrastructure.compute as any).provider,
+          runtime: config.infrastructure.compute.runtime,
+          webServer: config.infrastructure.compute.webServer,
+          proxy: config.infrastructure.compute.proxy
+            ? {
+                engine: config.infrastructure.compute.proxy.engine,
+                onDemandTls: config.infrastructure.compute.proxy.onDemandTls,
+                cdn: !!config.infrastructure.compute.proxy.cdn,
+              }
+            : undefined,
+          managedServices: config.infrastructure.compute.managedServices,
+        }
+      : undefined,
+    sites: Object.fromEntries(Object.entries(config.sites ?? {}).map(([name, site]: [string, any]) => [
+      name,
+      {
+        domain: site.domain,
+        path: site.path,
+        type: site.type,
+        deploy: site.deploy,
+        root: site.root,
+        port: site.port,
+        ssl: site.ssl,
+      },
+    ])),
+  }
+}
+
+export function dashboardActions(environment: EnvironmentType): DashboardAction[] {
+  return [
+    {
+      id: 'status',
+      label: 'Refresh Cloud Status',
+      description: 'Runs the local ts-cloud status checks against configured providers.',
+      command: ['status', '--env', environment],
+      mutates: false,
+    },
+    {
+      id: 'doctor',
+      label: 'Run Doctor',
+      description: 'Checks local tooling, credentials, and provider access.',
+      command: ['doctor'],
+      mutates: false,
+    },
+    {
+      id: 'security-scan',
+      label: 'Security Scan',
+      description: 'Runs the pre-deploy scanner from this checkout.',
+      command: ['deploy:security-scan', '--source', '.', '--fail-on', 'critical'],
+      mutates: false,
+    },
+    {
+      id: 'deploy',
+      label: 'Deploy Environment',
+      description: 'Deploys the selected environment from the local checkout.',
+      command: ['deploy', '--env', environment, '--yes'],
+      mutates: true,
+      confirm: 'deploy',
+    },
+  ]
+}
+
+export function resolveDashboardAction(id: string, environment: EnvironmentType): DashboardAction | undefined {
+  return dashboardActions(environment).find(action => action.id === id)
+}
+
+function clampOutput(output: string): string {
+  if (output.length <= MAX_OUTPUT_BYTES)
+    return output
+  return `${output.slice(0, MAX_OUTPUT_BYTES)}\n\n[output truncated]`
+}
+
+async function runAction(action: DashboardAction, options: Required<Pick<LocalDashboardServerOptions, 'cwd' | 'cliEntry'>>): Promise<Record<string, any>> {
+  const proc = Bun.spawn([process.execPath, options.cliEntry, ...action.command], {
+    cwd: options.cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+    env: process.env,
+  })
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+
+  return {
+    action: action.id,
+    command: ['cloud', ...action.command].join(' '),
+    exitCode,
+    ok: exitCode === 0,
+    stdout: clampOutput(stdout),
+    stderr: clampOutput(stderr),
+  }
+}
+
+function staticPath(uiRoot: string, pathname: string): string | null {
+  const clean = decodeURIComponent(pathname).replace(/^\/+/, '')
+  const wanted = clean === '' ? 'index.html' : clean
+  const normalized = normalize(wanted)
+  if (normalized.startsWith('..') || normalized.includes('/../'))
+    return null
+  const base = join(uiRoot, normalized)
+  if (existsSync(base))
+    return base
+  if (!extname(base) && existsSync(`${base}.html`))
+    return `${base}.html`
+  if (!extname(base) && existsSync(join(base, 'index.html')))
+    return join(base, 'index.html')
+  return null
+}
+
+async function serveStatic(uiRoot: string, pathname: string): Promise<Response> {
+  const file = staticPath(uiRoot, pathname)
+  if (!file)
+    return text('Not found', 404)
+  const body = await readFile(file)
+  const type = contentTypes[extname(file)] ?? 'application/octet-stream'
+  return new Response(body, { headers: { 'content-type': type } })
+}
+
+export async function startLocalDashboardServer(options: LocalDashboardServerOptions = {}): Promise<LocalDashboardServer> {
+  const cwd = options.cwd ?? process.cwd()
+  const host = options.host ?? DEFAULT_HOST
+  const port = options.port ?? DEFAULT_PORT
+  const cliEntry = options.cliEntry ?? process.argv[1]
+  const config = await loadCloudConfig()
+  const environment = selectedEnvironment(config as CloudConfig, options.environment)
+  const actions = dashboardActions(environment)
+  const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
+  const liveUiRoot = await buildLiveUi(cwd, initialData)
+  const packagedUi = resolveUiSource(cwd)
+  const uiRoot = liveUiRoot ?? packagedUi?.uiRoot
+
+  if (!uiRoot)
+    throw new Error('ts-cloud dashboard UI not found. Run `bun run build` in ts-cloud or reinstall the package.')
+
+  const server = Bun.serve({
+    hostname: host,
+    port,
+    async fetch(req) {
+      const url = new URL(req.url)
+
+      try {
+        if (url.pathname === '/api/health') {
+          return json({
+            ok: true,
+            cwd,
+            environment,
+            uiRoot,
+            liveData: !!liveUiRoot,
+            localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
+          })
+        }
+
+        if (url.pathname === '/api/config')
+          return json(sanitizeCloudConfig(config as CloudConfig))
+
+        if (url.pathname === '/api/actions')
+          return json(actions)
+
+        if (url.pathname === '/api/dashboard-data') {
+          return json(await resolveLiveDashboardData(config as CloudConfig, environment))
+        }
+
+        if (url.pathname === '/api/actions/run' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { action?: string, confirm?: string }
+          const action = body.action ? resolveDashboardAction(body.action, environment) : undefined
+          if (!action)
+            return json({ ok: false, error: 'Unknown dashboard action.' }, 404)
+          if (action.mutates && body.confirm !== action.confirm)
+            return json({ ok: false, error: `Type "${action.confirm}" to run this action.` }, 409)
+          return json(await runAction(action, { cwd, cliEntry }))
+        }
+
+        return serveStatic(uiRoot, url.pathname)
+      }
+      catch (error: any) {
+        if (options.verbose)
+          console.error(error)
+        return json({ ok: false, error: error?.message ?? String(error) }, 500)
+      }
+    },
+  })
+
+  return { server, url: `http://${host}:${server.port}/` }
+}

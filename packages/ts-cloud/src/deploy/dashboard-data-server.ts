@@ -45,17 +45,17 @@ export function parseBlock(output: string): Record<string, string> & { services:
 
 export async function resolveServerDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any> | null> {
   if (!config.infrastructure?.compute) return null
-  let driver: ReturnType<typeof createCloudDriver>
+  let driver: ReturnType<typeof createCloudDriver> | null = null
   try {
     driver = createCloudDriver({ config })
   }
   catch {
-    return null
+    driver = null
   }
 
   let parsed: ReturnType<typeof parseBlock> | null = null
   let instanceCount = 0
-  try {
+  if (driver) try {
     const targets = await driver.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
     instanceCount = targets.length
     if (targets.length) {

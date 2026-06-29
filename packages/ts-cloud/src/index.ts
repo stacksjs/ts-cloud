@@ -208,6 +208,17 @@ export {
   deploySiteRelease,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
+export {
+  dashboardActions,
+  resolveDashboardAction,
+  sanitizeCloudConfig,
+  startLocalDashboardServer,
+} from './deploy/local-dashboard-server'
+export type {
+  DashboardAction,
+  LocalDashboardServer,
+  LocalDashboardServerOptions,
+} from './deploy/local-dashboard-server'
 
 // Export DNS providers
 export {

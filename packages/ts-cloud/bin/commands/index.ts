@@ -21,6 +21,7 @@ export { registerComputeLifecycleCommands } from './compute-lifecycle'
 export { registerStackCommands } from './stack'
 export { registerUtilsCommands } from './utils'
 export { registerAnalyticsCommands } from './analytics'
+export { registerDashboardCommands } from './dashboard'
 
 // New infrastructure commands
 export { registerCdnCommands } from './cdn'
