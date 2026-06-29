@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.24...v0.5.25)
+
+### 🐛 Bug Fixes
+
+- **deploy**: isolate rpx global install ([538dc31](https://github.com/stacksjs/ts-cloud/commit/538dc31)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.25 ([0a74b91](https://github.com/stacksjs/ts-cloud/commit/0a74b91)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.23...v0.5.24)
 
 ### 🐛 Bug Fixes
