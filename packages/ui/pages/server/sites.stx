@@ -70,16 +70,27 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
             @endif
           </div>
         </div>
-        <div class="cmds" style="margin-top:12px;">
-          <span class="accent cmd">cloud deploy --env production</span>
-          <span class="cmd">cloud deploy:history {{ site.name }}</span>
-          <span class="cmd">cloud deploy:rollback {{ site.name }}</span>
-          @if (site.href)
-            <span class="cmd">cloud server:ssl:install {{ site.domain }}</span>
-          @endif
+        <div class="row-actions" style="margin-top:12px;">
+          <button class="btn sm" type="button" data-site-deploy="{{ site.name }}">Deploy</button>
+          <button class="btn ghost sm" type="button" data-site-edit="{{ site.name }}">Edit</button>
+          <button class="btn danger sm" type="button" data-site-remove="{{ site.name }}">Remove</button>
         </div>
+        <form class="form-grid" data-site-edit-form="{{ site.name }}" hidden style="margin-top:14px;">
+          <div class="field-block">
+            <label>TLS</label>
+            <select name="ssl">
+              <option value="">(unchanged)</option>
+              <option value="letsencrypt">letsencrypt</option>
+              <option value="false">disable</option>
+            </select>
+          </div>
+          <div class="field-block"><label>Domain</label><input name="domain" placeholder="{{ site.domain }}"></div>
+          <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea name="env" rows="3" placeholder="NODE_ENV=production"></textarea></div>
+          <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
+        </form>
       </div>
     @endforeach
+    <pre id="site-op-output" class="action-output" hidden></pre>
   </div>
   <script>
     const siteForm = document.getElementById('site-add-form')
@@ -113,6 +124,98 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
         }
       }
     })
+
+    // Per-site management: deploy, edit (env/ssl/domain), remove.
+    const siteOutput = document.getElementById('site-op-output')
+    function showSiteOutput(text) {
+      if (!siteOutput)
+        return
+      siteOutput.hidden = false
+      siteOutput.textContent = text
+    }
+
+    for (const button of document.querySelectorAll('[data-site-deploy]')) {
+      button.addEventListener('click', async () => {
+        const name = button.dataset.siteDeploy
+        const typed = window.prompt(`Type "${name}" to deploy this site.`)
+        if (typed !== name)
+          return
+        button.disabled = true
+        showSiteOutput(`Deploying ${name}...`)
+        try {
+          const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, confirm: typed }) })
+          const body = await res.json()
+          showSiteOutput(`${body.ok ? 'OK' : 'FAILED'} ${body.command || ('deploy ' + name)}\n\n${body.stdout || ''}${body.stderr ? `\n${body.stderr}` : ''}${body.error ? `\n${body.error}` : ''}`)
+        }
+        catch (error) {
+          showSiteOutput(`FAILED deploy ${name}\n\n${error?.message || error}`)
+        }
+        finally {
+          button.disabled = false
+        }
+      })
+    }
+
+    for (const button of document.querySelectorAll('[data-site-edit]')) {
+      button.addEventListener('click', () => {
+        const form = document.querySelector(`[data-site-edit-form="${button.dataset.siteEdit}"]`)
+        if (form)
+          form.hidden = !form.hidden
+      })
+    }
+
+    for (const button of document.querySelectorAll('[data-site-remove]')) {
+      button.addEventListener('click', async () => {
+        const name = button.dataset.siteRemove
+        const typed = window.prompt(`Type "${name}" to remove this site from cloud config.`)
+        if (typed !== name)
+          return
+        const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })
+        const body = await res.json()
+        if (body.ok) {
+          showSiteOutput(`Removed ${name} from cloud config. Run cloud deploy to apply.`)
+          window.setTimeout(() => window.location.reload(), 700)
+        }
+        else {
+          showSiteOutput(body.error || 'Could not remove site')
+        }
+      })
+    }
+
+    for (const form of document.querySelectorAll('[data-site-edit-form]')) {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault()
+        const name = form.dataset.siteEditForm
+        const data = new FormData(form)
+        const payload = { name }
+        const ssl = data.get('ssl')
+        if (ssl === 'false')
+          payload.ssl = false
+        else if (ssl)
+          payload.ssl = { provider: ssl }
+        const domain = String(data.get('domain') || '').trim()
+        if (domain)
+          payload.domain = domain
+        const envText = String(data.get('env') || '').trim()
+        if (envText) {
+          payload.env = {}
+          for (const line of envText.split('\n')) {
+            const eq = line.indexOf('=')
+            if (eq > 0)
+              payload.env[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+          }
+        }
+        const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+        const body = await res.json()
+        if (body.ok) {
+          showSiteOutput(`Updated ${name}. Run cloud deploy to apply.`)
+          window.setTimeout(() => window.location.reload(), 700)
+        }
+        else {
+          showSiteOutput(body.error || 'Could not update site')
+        }
+      })
+    }
   </script>
 </body>
 </html>

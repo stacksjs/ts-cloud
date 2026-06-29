@@ -10,7 +10,7 @@ import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation } from './dashboard-operations'
 import { resolveUiSource } from './management-dashboard'
-import { addSiteToCloudConfig } from './site-config-editor'
+import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 
 export interface LocalDashboardServerOptions {
@@ -460,6 +460,75 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           replaceSiteConfig(config as CloudConfig, siteName, Object.fromEntries(Object.entries(site).filter(([, value]) => value !== undefined)))
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
           return json({ ok: true, configPath, site: siteName, data: latestData })
+        }
+
+        if (url.pathname === '/api/sites' && req.method === 'DELETE') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const name = String(body.name ?? url.searchParams.get('name') ?? '').trim()
+          if (!name || !(config.sites as any)?.[name])
+            return json({ ok: false, error: `Site '${name}' was not found.` }, 404)
+          const before = await readFile(configPath, 'utf8')
+          await writeFile(configPath, removeSiteFromCloudConfig({ configText: before, name }))
+          delete (config.sites as Record<string, unknown>)[name]
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          return json({ ok: true, configPath, site: name, data: latestData })
+        }
+
+        if (url.pathname === '/api/sites' && req.method === 'PATCH') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const name = String(body.name ?? '').trim()
+          const existing = (config.sites as any)?.[name]
+          if (!name || !existing)
+            return json({ ok: false, error: `Site '${name}' was not found.` }, 404)
+          if (body.port !== undefined && body.port !== null && body.port !== '' && (!Number.isInteger(Number(body.port)) || Number(body.port) < 1 || Number(body.port) > 65_535))
+            return json({ ok: false, error: 'Port must be a number between 1 and 65535.' }, 422)
+
+          let text = await readFile(configPath, 'utf8')
+          const set = (key: string, valueText: string): void => {
+            text = setSitePropertyInCloudConfig({ configText: text, siteName: name, key, valueText })
+          }
+          if (body.ssl !== undefined) {
+            set('ssl', renderSslValue(body.ssl))
+            existing.ssl = body.ssl
+          }
+          if (body.env !== undefined && body.env && typeof body.env === 'object') {
+            set('env', renderEnvValue(body.env))
+            existing.env = body.env
+          }
+          for (const key of ['domain', 'path', 'build', 'start', 'type', 'root']) {
+            if (typeof body[key] === 'string' && body[key].trim()) {
+              set(key, renderStringValue(String(body[key]).trim()))
+              existing[key] = String(body[key]).trim()
+            }
+          }
+          if (body.port !== undefined && body.port !== null && body.port !== '') {
+            set('port', String(Number(body.port)))
+            existing.port = Number(body.port)
+          }
+          await writeFile(configPath, text)
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          return json({ ok: true, configPath, site: name, data: latestData })
+        }
+
+        if (url.pathname === '/api/sites/deploy' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const name = String(body.name ?? '').trim()
+          if (!name || !(config.sites as any)?.[name])
+            return json({ ok: false, error: `Site '${name}' was not found.` }, 404)
+          if (body.confirm !== name)
+            return json({ ok: false, error: `Type "${name}" to deploy this site.` }, 409)
+          const action: DashboardAction = {
+            id: `deploy:${name}`,
+            label: `Deploy ${name}`,
+            description: `Deploy the ${name} site for ${environment}.`,
+            command: ['deploy', '--env', environment, '--site', name, '--yes'],
+            mutates: true,
+          }
+          return json(await runAction(action, { cwd, cliEntry }))
         }
 
         if (url.pathname === '/api/actions')

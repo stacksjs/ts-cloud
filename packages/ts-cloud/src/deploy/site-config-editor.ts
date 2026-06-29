@@ -10,6 +10,10 @@ export interface AddSiteConfigInput {
   port?: number
   type?: string
   pathRewriteStyle?: 'directory' | 'flat'
+  /** Per-site environment variables. */
+  env?: Record<string, string>
+  /** TLS: `false` to disable, or `{ provider }` (e.g. letsencrypt). */
+  ssl?: boolean | { provider?: string }
 }
 
 export function addSiteToCloudConfig(input: AddSiteConfigInput): string {
@@ -36,6 +40,140 @@ export function addSiteToCloudConfig(input: AddSiteConfigInput): string {
   return `${before}${separator}${snippet}\n  ${after}`
 }
 
+export interface RemoveSiteInput {
+  configText: string
+  name: string
+}
+
+/** Remove a site (its whole `name: { ... }` entry) from the sites block. */
+export function removeSiteFromCloudConfig(input: RemoveSiteInput): string {
+  const name = normalizeSiteName(input.name)
+  const sites = findSitesObject(input.configText)
+  const span = findSiteSpan(input.configText, sites.start, sites.end, name)
+  if (!span)
+    throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
+
+  const text = input.configText
+  // Expand start back over the entry's leading indentation to the line start.
+  let start = span.nameStart
+  while (start > 0 && text[start - 1] !== '\n' && /\s/.test(text[start - 1]!)) start--
+  // Expand end over a trailing comma and the rest of that line (incl newline).
+  let end = span.end + 1
+  if (text[end] === ',') end++
+  while (end < text.length && text[end] !== '\n' && /\s/.test(text[end]!)) end++
+  if (text[end] === '\n') end++
+  return text.slice(0, start) + text.slice(end)
+}
+
+export interface UpdateSiteInput extends Omit<AddSiteConfigInput, 'configText'> {
+  configText: string
+}
+
+/**
+ * Replace a site's definition with a regenerated one carrying the merged fields.
+ * Implemented as remove + add so it reuses the validated insert path (the site
+ * moves to the end of the sites block, which keeps the config valid).
+ */
+export function updateSiteInCloudConfig(input: UpdateSiteInput): string {
+  const { configText, ...site } = input
+  const removed = removeSiteFromCloudConfig({ configText, name: site.name })
+  return addSiteToCloudConfig({ configText: removed, ...site })
+}
+
+/**
+ * Set (or insert) a single property on a site, preserving every other field —
+ * the safe path for editing `ssl`/`env` on a site that may also carry queues,
+ * auth, etc. `valueText` is raw TS (use {@link renderSslValue}/{@link renderEnvValue}).
+ */
+export function setSitePropertyInCloudConfig(input: { configText: string, siteName: string, key: string, valueText: string }): string {
+  const name = normalizeSiteName(input.siteName)
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(input.key))
+    throw new Error(`Invalid property key '${input.key}'`)
+  const sites = findSitesObject(input.configText)
+  const span = findSiteSpan(input.configText, sites.start, sites.end, name)
+  if (!span)
+    throw new Error(`Site '${name}' does not exist in cloud.config.ts`)
+
+  const text = input.configText
+  const braceStart = text.indexOf('{', span.nameStart)
+  const braceEnd = span.end
+  const body = text.slice(braceStart + 1, braceEnd)
+  const propMatch = new RegExp(`(^|[\\s,{])(${escapeRegExp(input.key)})\\s*:`, 'm').exec(body)
+
+  if (propMatch) {
+    const keyStart = braceStart + 1 + propMatch.index + propMatch[1].length
+    const colon = text.indexOf(':', keyStart)
+    const valueEnd = scanValueEnd(text, colon + 1, braceEnd)
+    return `${text.slice(0, keyStart)}${input.key}: ${input.valueText}${text.slice(valueEnd)}`
+  }
+
+  // Insert as the last property, keeping the object comma-valid.
+  const before = text.slice(0, braceEnd).trimEnd()
+  const sep = before.endsWith('{') || before.endsWith(',') ? '' : ','
+  return `${before}${sep}\n      ${input.key}: ${input.valueText},\n    ${text.slice(braceEnd)}`
+}
+
+export function renderSslValue(ssl: boolean | { provider?: string }): string {
+  if (ssl === false)
+    return 'false'
+  if (ssl === true)
+    return 'true'
+  return `{ provider: '${escapeSingle(ssl.provider || 'letsencrypt')}' }`
+}
+
+export function renderStringValue(value: string): string {
+  return `'${escapeSingle(value)}'`
+}
+
+export function renderEnvValue(env: Record<string, string>): string {
+  const entries = Object.entries(env).filter(([key]) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(key))
+  if (entries.length === 0)
+    return '{}'
+  return `{\n${entries.map(([key, value]) => `        ${key}: '${escapeSingle(String(value))}',`).join('\n')}\n      }`
+}
+
+/**
+ * Index just past a property value, starting after its colon: the terminating
+ * top-level comma, or the site's closing brace. Quote- and nesting-aware so
+ * object/array/string values are skipped whole.
+ */
+function scanValueEnd(text: string, start: number, limit: number): number {
+  let i = start
+  while (i < limit && /\s/.test(text[i]!)) i++
+  let depth = 0
+  let quote: string | undefined
+  let escaped = false
+  for (; i < limit; i++) {
+    const c = text[i]!
+    if (quote) {
+      if (escaped) { escaped = false; continue }
+      if (c === '\\') { escaped = true; continue }
+      if (c === quote) quote = undefined
+      continue
+    }
+    if (c === '"' || c === '\'' || c === '`') { quote = c; continue }
+    if (c === '{' || c === '[' || c === '(') { depth++; continue }
+    if (c === '}' || c === ']' || c === ')') {
+      if (depth === 0) return i
+      depth--
+      continue
+    }
+    if (c === ',' && depth === 0) return i
+  }
+  return limit
+}
+
+/** Locate a site's `name: { ... }` span within the sites object. */
+function findSiteSpan(configText: string, start: number, end: number, siteName: string): { nameStart: number, end: number } | null {
+  const body = configText.slice(start + 1, end)
+  const match = new RegExp(`(^|[\\s,{])(${escapeRegExp(siteName)})\\s*:\\s*\\{`, 'm').exec(body)
+  if (!match)
+    return null
+  const nameStart = start + 1 + match.index + match[1].length
+  const braceStart = configText.indexOf('{', nameStart)
+  return { nameStart, end: findMatchingBrace(configText, braceStart) }
+}
+
 export function renderSiteSnippet(input: Omit<AddSiteConfigInput, 'configText'>): string {
   const siteName = normalizeSiteName(input.name)
   const lines = [`    ${siteName}: {`]
@@ -49,9 +187,29 @@ export function renderSiteSnippet(input: Omit<AddSiteConfigInput, 'configText'>)
   pushString(lines, 'start', input.start)
   if (input.port !== undefined) lines.push(`      port: ${input.port},`)
   pushString(lines, 'pathRewriteStyle', input.pathRewriteStyle)
+  if (input.ssl !== undefined) {
+    if (input.ssl === false)
+      lines.push('      ssl: false,')
+    else if (input.ssl === true)
+      lines.push('      ssl: true,')
+    else
+      lines.push(`      ssl: { provider: '${escapeSingle(input.ssl.provider || 'letsencrypt')}' },`)
+  }
+  if (input.env && Object.keys(input.env).length > 0) {
+    lines.push('      env: {')
+    for (const [key, value] of Object.entries(input.env)) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) continue
+      lines.push(`        ${key}: '${escapeSingle(String(value))}',`)
+    }
+    lines.push('      },')
+  }
 
   lines.push('    },')
   return lines.join('\n')
+}
+
+function escapeSingle(value: string): string {
+  return value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), '\\\'')
 }
 
 function normalizeSiteName(name: string): string {
