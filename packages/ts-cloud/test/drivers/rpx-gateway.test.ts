@@ -178,6 +178,7 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('bun add -g @stacksjs/rpx@latest')
     expect(script).toContain(`mkdir -p /etc/rpx /etc/rpx/certs`)
     expect(script).toContain(`cat > ${RPX_LAUNCHER_PATH}`)
+    expect(script).toContain('/tmp/ts-cloud-rpx-install')
     expect(script).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
     expect(script).toContain('AmbientCapabilities=CAP_NET_BIND_SERVICE')
     expect(script).toContain(`systemctl enable ${RPX_SERVICE_NAME}`)

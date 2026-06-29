@@ -258,7 +258,7 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     'set -euo pipefail',
     `mkdir -p ${RPX_DIR} ${certsDir}`,
     // Install @stacksjs/rpx globally (idempotent — re-runs upgrade in place).
-    `${bunBin} add -g @stacksjs/rpx@${version}`,
+    `mkdir -p /tmp/ts-cloud-rpx-install && (cd /tmp/ts-cloud-rpx-install && ${bunBin} add -g @stacksjs/rpx@${version})`,
     // Write the generated gateway launcher (routes from the sites model).
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, launcher, 'TS_CLOUD_RPX_EOF'),
     // systemd unit: runs the launcher as root so it can bind :80/:443.
