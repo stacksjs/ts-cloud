@@ -3,7 +3,6 @@ let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
 const sshKeys = __d?.sshKeys ?? []
-const sshKeysJson = JSON.stringify(sshKeys).replace(/`/g, '\\`')
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -58,8 +57,7 @@ const sshKeysJson = JSON.stringify(sshKeys).replace(/`/g, '\\`')
       </div>
     </div>
   </div>
-  <script type="module">
-    const initialKeys = JSON.parse(String.raw`{{{ sshKeysJson }}}`)
+  <script>
     const body = document.getElementById('ssh-keys-body')
     const empty = document.getElementById('ssh-keys-empty')
     const form = document.getElementById('ssh-key-form')
@@ -141,7 +139,8 @@ const sshKeysJson = JSON.stringify(sshKeys).replace(/`/g, '\\`')
       setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
     })
 
-    renderKeys(initialKeys)
+    // The keys table is server-rendered (@foreach above); refresh it from the
+    // live API on load so the dashboard reflects the current cloud config.
     loadKeys().catch(error => setMessage(error.message, 'bad'))
   </script>
 </body>
