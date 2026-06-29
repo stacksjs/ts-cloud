@@ -39,7 +39,7 @@
     "zip:darwin-arm64": "zip -j bin/cloud-darwin-arm64.zip bin/cloud-darwin-arm64",
     "fresh": "bunx rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build && bun run compile:all && bun run zip",
-    "test": "bun test",
+    "test": "find test packages \\( -name '*.test.ts' -o -name '*.test.js' \\) -print | xargs bun test",
     "lint": "bunx --bun pickier .",
     "lint:fix": "bunx --bun pickier . --fix",
     "format": "bunx --bun pickier . --format",

@@ -1,17 +1,20 @@
 <script server>
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
-const server = __d?.server ?? { name: 'acme-production-app' }
+const server = __d?.server ?? { name: 'stacks-production-app' }
 const sites = __d?.sitesDetail ?? [
-  { name: 'main', domain: 'acme.com', type: 'laravel', php: '8.3', ssl: true, root: '/var/www/acme/current/public', branch: 'main', lastDeploy: '12m ago', status: 'live' },
-  { name: 'admin', domain: 'admin.acme.com', type: 'laravel', php: '8.3', ssl: true, root: '/var/www/admin/current/public', branch: 'main', lastDeploy: '12m ago', status: 'live' },
-  { name: 'docs', domain: 'docs.acme.com', type: 'static', php: '—', ssl: true, root: '/var/www/docs/dist', branch: 'main', lastDeploy: '2h ago', status: 'live' },
+  { name: 'main', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'stacks', runtime: 'bun', tls: 'https', deploy: 'service', root: '/var/www/main/current', branch: 'main', status: 'live' },
+  { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', tls: 'loopback', deploy: 'service', root: '/var/www/api/current', branch: 'main', status: 'live' },
+  { name: 'docs', route: 'stacksjs.com/docs', href: 'https://stacksjs.com/docs', kind: 'bunpress', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/docs', branch: 'build artifact', status: 'live' },
+  { name: 'blog', route: 'stacksjs.com/blog', href: 'https://stacksjs.com/blog', kind: 'bunpress blog', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/blog', branch: 'build artifact', status: 'live' },
+  { name: 'public', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'static', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/public', branch: 'build artifact', status: 'shadowed', shadowedBy: 'main' },
+  { name: 'verygoodadblock', route: 'verygoodadblock.org', href: 'https://verygoodadblock.org', kind: 'stx static', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/verygoodadblock', branch: 'build artifact', status: 'live' },
 ]
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — Sites' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - Sites' })</head>
 <body>
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
@@ -22,20 +25,34 @@ function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn'
         <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>
         <div class="cols">
           <div class="panel">
-            <div class="kv"><span>domain</span> <b class="mono"><a href="https://{{ site.domain }}">{{ site.domain }}</a></b></div>
-            <div class="kv"><span>type</span> <b><span class="tag">{{ site.type }}</span></b></div>
-            <div class="kv"><span>php</span> <b class="mono">{{ site.php }}</b></div>
-            <div class="kv"><span>ssl</span> <b>@if (site.ssl)<span class="ok pill">https</span>@else<span class="pill warn">http</span>@endif</b></div>
+            <div class="kv">
+              <span>route</span>
+              <b class="mono">
+                @if (site.href)
+                  <a href="{{ site.href }}">{{ site.route }}</a>
+                @else
+                  {{ site.route }}
+                @endif
+              </b>
+            </div>
+            <div class="kv"><span>kind</span> <b><span class="tag">{{ site.kind ?? site.type }}</span></b></div>
+            <div class="kv"><span>runtime</span> <b class="mono">{{ site.runtime }}</b></div>
+            <div class="kv"><span>tls</span> <b><span class="{{ site.tls === 'https' ? 'ok' : 'warn' }} pill">{{ site.tls }}</span></b></div>
           </div>
           <div class="panel">
             <div class="kv"><span>web root</span> <b class="mono" style="font-size:11px">{{ site.root }}</b></div>
-            <div class="kv"><span>branch</span> <b class="mono">{{ site.branch }}</b></div>
-            <div class="kv"><span>last deploy</span> <b>{{ site.lastDeploy }}</b></div>
+            <div class="kv"><span>source</span> <b class="mono">{{ site.branch }}</b></div>
+            <div class="kv"><span>deploy</span> <b>{{ site.deploy }}</b></div>
+            @if (site.shadowedBy)
+              <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
+            @endif
           </div>
         </div>
         <div class="cmds" style="margin-top:12px;">
           <span class="accent cmd">cloud server:deploy {{ server.name }}</span>
-          <span class="cmd">cloud server:ssl:install {{ site.domain }}</span>
+          @if (site.href)
+            <span class="cmd">cloud server:ssl:install {{ site.domain }}</span>
+          @endif
         </div>
       </div>
     @endforeach

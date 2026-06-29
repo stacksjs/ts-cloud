@@ -7,8 +7,10 @@
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
+import { resolveSiteKind } from './site-target'
 
 const PROBED_SERVICES = ['nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
+const UNKNOWN = '-'
 
 /** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
 function metricsScript(): string[] {
@@ -83,7 +85,7 @@ function configuredBackup(config: CloudConfig): Record<string, any> {
     destination: enabled ? (backup?.bucket ?? 'local') : 'off',
     retention: enabled ? (backup?.retentionCount ?? 5) : 0,
     last: enabled ? 'pending first run' : 'not configured',
-    size: enabled ? '—' : '0 MB',
+    size: enabled ? UNKNOWN : '0 MB',
   }
 }
 
@@ -104,16 +106,95 @@ function configuredWorkers(config: CloudConfig): Array<{ name: string, processes
   return workers
 }
 
+function normalizeSitePath(path: string | undefined): string {
+  if (!path || path === '')
+    return '/'
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+function siteRoute(site: any): { route: string, href?: string } {
+  const path = normalizeSitePath(site.path)
+  if (!site.domain)
+    return { route: 'internal' }
+  return {
+    route: path === '/' ? site.domain : `${site.domain}${path}`,
+    href: `https://${site.domain}${path === '/' ? '' : path}`,
+  }
+}
+
+function siteKindLabel(name: string, site: any): string {
+  const kind = resolveSiteKind(site)
+  const build = String(site.build ?? '').toLowerCase()
+  const start = String(site.start ?? '').toLowerCase()
+  if (name === 'main' || start.includes('buddy/src/cli.ts serve'))
+    return 'stacks'
+  if (name === 'api' || start.includes('/serve/api'))
+    return 'api'
+  if (build.includes('buildblog'))
+    return 'bunpress blog'
+  if (build.includes('bunpress'))
+    return 'bunpress'
+  if (build.includes('site:build') || build.includes('stx'))
+    return 'stx static'
+  if (kind === 'server-static')
+    return site.spa ? 'spa' : 'static'
+  if (kind === 'server-app')
+    return 'app'
+  if (kind === 'server-php')
+    return site.type ?? 'php'
+  return 'bucket'
+}
+
+function siteRuntime(site: any): string {
+  const kind = resolveSiteKind(site)
+  const command = `${site.start ?? ''} ${site.build ?? ''}`.toLowerCase()
+  if (kind === 'server-static')
+    return command.includes('bunpress') || command.includes('bun ') || command.includes('bunx ') ? 'static/bun' : 'static'
+  if (kind === 'server-app')
+    return command.includes('bun') ? 'bun' : 'node'
+  if (kind === 'server-php')
+    return `php ${site.php ?? site.phpVersion ?? '8.3'}`
+  return 'static'
+}
+
+function siteDeployLabel(site: any): string {
+  const kind = resolveSiteKind(site)
+  if (kind === 'server-app')
+    return 'service'
+  if (kind === 'server-static')
+    return 'server static'
+  if (kind === 'server-php')
+    return 'php release'
+  return 'bucket'
+}
+
 function configuredSites(config: CloudConfig): Array<Record<string, any>> {
-  return Object.entries(config.sites ?? {}).map(([name, s]: [string, any]) => ({
-    name,
-    domain: s.domain ?? '—',
-    type: s.type ?? (s.static || (s.deploy === 'server' && s.port == null) ? 'static' : 'laravel'),
-    php: s.php ?? s.phpVersion ?? '8.3',
-    ssl: s.ssl !== false,
-    status: 'live',
-    lastDeploy: '—',
-  }))
+  const seenRoutes = new Map<string, string>()
+  return Object.entries(config.sites ?? {}).map(([name, site]: [string, any]) => {
+    const path = normalizeSitePath(site.path)
+    const { route, href } = siteRoute(site)
+    const routeKey = site.domain ? `${site.domain}${path}` : ''
+    const shadowedBy = routeKey ? seenRoutes.get(routeKey) : undefined
+    if (routeKey && !shadowedBy)
+      seenRoutes.set(routeKey, name)
+
+    return {
+      name,
+      route,
+      href,
+      domain: site.domain ?? 'internal',
+      path,
+      kind: siteKindLabel(name, site),
+      type: siteKindLabel(name, site),
+      runtime: siteRuntime(site),
+      deploy: siteDeployLabel(site),
+      tls: site.domain ? (site.ssl === false ? 'http' : 'https') : 'loopback',
+      ssl: site.domain ? site.ssl !== false : false,
+      status: shadowedBy ? 'shadowed' : 'live',
+      shadowedBy,
+      lastDeploy: UNKNOWN,
+    }
+  })
 }
 
 export function resolveConfigOnlyServerDashboardData(config: CloudConfig, environment: EnvironmentType): Record<string, any> {
@@ -124,9 +205,9 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
       name: `${config.project.slug}-${environment}-app`,
       provider: (config.infrastructure?.compute as any)?.provider ?? (config.cloud as any)?.provider ?? 'aws',
       region: config.project.region ?? 'us-east-1',
-      ip: '—',
+      ip: UNKNOWN,
       os: 'Linux',
-      uptime: '—',
+      uptime: UNKNOWN,
     },
     systemMetrics: {
       load: 0,
@@ -138,14 +219,23 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
       diskTotalGb: Math.max(1, Number((config.infrastructure?.compute as any)?.disk?.size ?? 1)),
     },
     services,
-    servicesDetail: services.map(s => ({ ...s, since: '—', memMb: 0, auto: true })),
+    servicesDetail: services.map(s => ({ ...s, since: UNKNOWN, memMb: 0, auto: true })),
     backup: configuredBackup(config),
     backupHistory: [],
     workers: configuredWorkers(config),
     serverScheduler: { enabled: false, lastRun: 'not configured' },
     serverDeployments: [],
     sites,
-    sitesDetail: sites.map(s => ({ ...s, root: `/var/www/${s.name}/current`, branch: 'main' })),
+    sitesDetail: sites.map((s) => {
+      const site = (config.sites as any)?.[s.name] ?? {}
+      const kind = resolveSiteKind(site)
+      return {
+        ...s,
+        root: kind === 'server-static' ? `/var/www/${s.name}` : `/var/www/${s.name}/current`,
+        branch: kind === 'server-static' ? 'build artifact' : 'main',
+        build: site.build,
+      }
+    }),
   }
 }
 
@@ -199,7 +289,7 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
   // Sites + SSH keys are declarative — derive from config (no box needed).
   const sshKeys = (config.infrastructure as any)?.ssh?.keys ?? (config.infrastructure as any)?.sshKeys
   if (Array.isArray(sshKeys) && sshKeys.length) {
-    out.sshKeys = sshKeys.map((k: any, i: number) => ({ name: k.name ?? `key-${i + 1}`, fingerprint: '—', type: 'ssh', added: '—' }))
+    out.sshKeys = sshKeys.map((k: any, i: number) => ({ name: k.name ?? `key-${i + 1}`, fingerprint: UNKNOWN, type: 'ssh', added: UNKNOWN }))
   }
 
   out._serverReachable = instanceCount > 0 && !!parsed
