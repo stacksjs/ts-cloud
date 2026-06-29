@@ -2,6 +2,7 @@ import type { CloudConfig, CloudDriver, CloudProviderName } from '@ts-cloud/core
 import { resolveCloudProvider } from '@ts-cloud/core'
 import { AwsDriver } from './aws/driver'
 import { HetznerDriver } from './hetzner/driver'
+import { isBoxMode, LocalBoxDriver } from './local-box/driver'
 
 export interface CreateCloudDriverOptions {
   config: CloudConfig
@@ -10,8 +11,15 @@ export interface CreateCloudDriverOptions {
 
 /**
  * Create a cloud infrastructure driver from configuration.
+ *
+ * In box mode (`TS_CLOUD_DASHBOARD_BOX`), every driver resolves to the
+ * {@link LocalBoxDriver} so the on-box management dashboard runs its metrics
+ * scripts and operations against localhost instead of reaching out over SSH/SSM.
  */
 export function createCloudDriver(options: CreateCloudDriverOptions): CloudDriver {
+  if (isBoxMode())
+    return new LocalBoxDriver()
+
   const provider = options.provider ?? resolveCloudProvider(options.config)
 
   switch (provider) {

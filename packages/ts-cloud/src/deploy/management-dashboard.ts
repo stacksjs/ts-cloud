@@ -93,6 +93,8 @@ export function ensureManagementDashboard(
   const password = process.env.TS_CLOUD_UI_PASSWORD?.trim() || undefined
   const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
 
+  const live = truthy(process.env.TS_CLOUD_UI_LIVE)
+  const port = Number(process.env.TS_CLOUD_UI_PORT) || undefined
   const resolved = resolveManagementDashboardSite(config, environment ?? 'production', {
     uiRoot: ui.uiRoot,
     build: ui.build,
@@ -100,6 +102,8 @@ export function ensureManagementDashboard(
     username: process.env.TS_CLOUD_UI_USERNAME?.trim() || undefined,
     password,
     realm: process.env.TS_CLOUD_UI_REALM?.trim() || undefined,
+    live,
+    port,
   })
 
   if (!resolved) {

@@ -1,6 +1,7 @@
 export * from './factory'
 export { AwsDriver } from './aws/driver'
 export { HetznerDriver } from './hetzner/driver'
+export { isBoxMode, LocalBoxDriver } from './local-box/driver'
 export { HetznerClient, resolveHetznerApiToken } from './hetzner/client'
 export { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './hetzner/cloud-init'
 export {

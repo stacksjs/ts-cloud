@@ -8,13 +8,15 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--host <host>', 'Host to bind', { default: '127.0.0.1' })
     .option('--port <port>', 'Port to bind', { default: '7676' })
     .option('--env <environment>', 'Environment to manage')
+    .option('--box', 'Box mode: run on the provisioned server (operate on localhost)')
     .option('--open', 'Print the URL for opening in a browser')
     .option('--verbose', 'Print server errors')
-    .action(async (options?: { host?: string, port?: string, env?: string, open?: boolean, verbose?: boolean }) => {
+    .action(async (options?: { host?: string, port?: string, env?: string, box?: boolean, open?: boolean, verbose?: boolean }) => {
       const server = await startLocalDashboardServer({
         host: options?.host,
         port: Number(options?.port ?? 7676),
         environment: options?.env as any,
+        box: options?.box,
         verbose: options?.verbose,
       })
 

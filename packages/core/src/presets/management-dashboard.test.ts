@@ -61,4 +61,19 @@ describe('resolveManagementDashboardSite', () => {
   it('returns null when no domain can be resolved', () => {
     expect(resolveManagementDashboardSite(cfg({}), 'production', { uiRoot: 'packages/ui/dist' })).toBeNull()
   })
+
+  it('live mode builds a server-app (box-mode service) behind the proxy', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true, port: 7700, password: 's3cret' })
+    expect(r?.site.deploy).toBe('server')
+    expect(r?.site.type).toBeUndefined() // server-app, not static
+    expect(r?.site.start).toBe('cloud dashboard:serve --box --host 127.0.0.1 --port 7700')
+    expect(r?.site.port).toBe(7700)
+    expect(r?.site.auth).toEqual({ username: 'admin', password: 's3cret', realm: undefined })
+  })
+
+  it('live mode defaults the port to 7676', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true })
+    expect(r?.site.port).toBe(7676)
+    expect(r?.site.start).toContain('--port 7676')
+  })
 })

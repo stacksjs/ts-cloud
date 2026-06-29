@@ -26,6 +26,15 @@ export interface ManagementDashboardOptions {
   password?: string
   /** Browser auth realm. */
   realm?: string
+  /**
+   * Live mode: deploy the dashboard as a server-app (a `cloud dashboard:serve
+   * --box` service on the box) instead of static files, so it serves the
+   * project's LIVE data + a working control API on the server. The proxy routes
+   * the dashboard host to its loopback port (behind Basic auth).
+   */
+  live?: boolean
+  /** Loopback port for the live (box-mode) dashboard service. @default 7676 */
+  port?: number
 }
 
 /** The registrable apex (`acme.com`) of a hostname, naïvely the last two labels. */
@@ -91,6 +100,27 @@ export function resolveManagementDashboardSite(
   if (!domain)
     return null
 
+  const auth = opts.password
+    ? { auth: { username: opts.username || 'admin', password: opts.password, realm: opts.realm } }
+    : {}
+
+  if (opts.live) {
+    // Server-app: a box-mode dashboard service on a loopback port, fronted by the
+    // proxy (with Basic auth). Serves live data + the control API on the box.
+    const port = opts.port ?? 7676
+    const site: SiteConfig = {
+      root: opts.uiRoot,
+      deploy: 'server',
+      domain,
+      start: `cloud dashboard:serve --box --host 127.0.0.1 --port ${port}`,
+      port,
+      ssl: { provider: 'letsencrypt' },
+      ...(opts.build === false || opts.build === undefined ? {} : { build: opts.build }),
+      ...auth,
+    }
+    return { name: 'dashboard', site }
+  }
+
   const site: SiteConfig = {
     root: opts.uiRoot,
     deploy: 'server',
@@ -99,9 +129,7 @@ export function resolveManagementDashboardSite(
     ssl: { provider: 'letsencrypt' },
     ...(opts.build === false || opts.build === undefined ? {} : { build: opts.build }),
     // Auth only when a password is provided; otherwise serve without htpasswd.
-    ...(opts.password
-      ? { auth: { username: opts.username || 'admin', password: opts.password, realm: opts.realm } }
-      : {}),
+    ...auth,
   }
 
   return { name: 'dashboard', site }

@@ -21,6 +21,12 @@ export interface LocalDashboardServerOptions {
   environment?: EnvironmentType
   cliEntry?: string
   verbose?: boolean
+  /**
+   * Box mode: the dashboard runs ON the provisioned server. Data resolution and
+   * operations execute against localhost (the {@link LocalBoxDriver}) instead of
+   * reaching out over SSH/SSM.
+   */
+  box?: boolean
 }
 
 export interface LocalDashboardServer {
@@ -355,6 +361,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const host = options.host ?? DEFAULT_HOST
   const port = options.port ?? DEFAULT_PORT
   const cliEntry = options.cliEntry ?? process.argv[1]
+  // Box mode: route all driver work to the local machine for the rest of this
+  // process (set before any createCloudDriver call resolves a driver).
+  if (options.box)
+    process.env.TS_CLOUD_DASHBOARD_BOX = '1'
   await loadLocalEnv(cwd)
   const config = await loadCloudConfig()
   const availableEnvironments = Object.keys((config as CloudConfig).environments ?? {})
