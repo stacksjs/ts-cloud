@@ -1,13 +1,17 @@
 import type { ComputeProxyConfig, SiteConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
 import {
+  buildCertManagementCommands,
   buildRpxConfig,
   buildRpxProvisionScript,
+  certDomainsForConfig,
+  DEFAULT_ACME_WEBROOT,
   deriveRouteId,
   normalizeRoutePath,
   normalizeSiteRedirect,
   renderRpxLauncher,
   resolveRouteAuth,
+  RPX_CERT_RENEW_TIMER,
   RPX_LAUNCHER_PATH,
   RPX_SERVICE_NAME,
 } from '../../src/drivers/shared/rpx-gateway'
@@ -304,5 +308,53 @@ describe('buildRpxProvisionScript', () => {
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', maxUpstreamConns: 512 }, config }).join('\n')
     expect(script).toContain('Environment=RPX_MAX_UPSTREAM_CONNS=512')
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
+  })
+})
+
+describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
+  const tlsProxy: ComputeProxyConfig = { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' }
+
+  it('sets acmeChallengeWebroot in the config only when onDemandTls is enabled', () => {
+    expect(buildRpxConfig(sites, { proxy: tlsProxy }).acmeChallengeWebroot).toBe(DEFAULT_ACME_WEBROOT)
+    expect(buildRpxConfig(sites, { proxy: rpxProxy }).acmeChallengeWebroot).toBeUndefined()
+  })
+
+  it('honors a custom acmeWebroot', () => {
+    const config = buildRpxConfig(sites, { proxy: { engine: 'rpx', onDemandTls: true, acmeWebroot: '/srv/acme' } })
+    expect(config.acmeChallengeWebroot).toBe('/srv/acme')
+  })
+
+  it('certDomainsForConfig returns the routable FQDNs, skipping wildcards/host:port', () => {
+    const config = buildRpxConfig({
+      app: { domain: 'app.example.com', root: '.out', start: 'bun run x', port: 3000 },
+      site: { domain: 'example.com', deploy: 'server', root: 'dist' },
+      alt: { domain: 'alt.example.com', redirect: 'https://example.com' },
+    }, { proxy: tlsProxy })
+    const domains = certDomainsForConfig(config)
+    expect(domains).toContain('app.example.com')
+    expect(domains).toContain('example.com')
+    expect(domains).toContain('alt.example.com')
+  })
+
+  it('emits cert issuance + renewal timer when managed TLS is on', () => {
+    const config = buildRpxConfig(sites, { proxy: tlsProxy })
+    const cmds = buildCertManagementCommands({ proxy: tlsProxy, config })
+    const joined = cmds.join('\n')
+    expect(joined).toContain('@stacksjs/tlsx')
+    expect(joined).toContain('acme:issue')
+    expect(joined).toContain('acme:renew')
+    expect(joined).toContain('--webroot')
+    expect(joined).toContain(DEFAULT_ACME_WEBROOT)
+    expect(joined).toContain(RPX_CERT_RENEW_TIMER)
+    expect(joined).toContain('hello@stacksjs.com')
+    // The full provision script wires it in AFTER the gateway is (re)started.
+    const script = buildRpxProvisionScript({ proxy: tlsProxy, config }).join('\n')
+    expect(script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`)).toBeLessThan(script.indexOf('acme:renew'))
+  })
+
+  it('is a no-op without onDemandTls (no cert machinery in the script)', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    expect(buildCertManagementCommands({ proxy: rpxProxy, config })).toEqual([])
+    expect(buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')).not.toContain('acme:renew')
   })
 })

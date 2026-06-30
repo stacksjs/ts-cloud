@@ -2707,6 +2707,15 @@ export interface ComputeProxyConfig {
   /** Contact email for the ACME account when {@link onDemandTls} is enabled. */
   onDemandTlsEmail?: string
   /**
+   * Webroot the gateway serves ACME http-01 challenge tokens from on `:80` (and
+   * that the deploy-time issuance + renewal cron write tokens into). Only used
+   * when {@link onDemandTls} is enabled, where ts-cloud also installs a daily
+   * `tlsx acme:renew` timer so certs for every routed domain are issued on deploy
+   * and renewed before expiry — with no downtime (the running gateway answers the
+   * challenge). @default '/var/www/acme-challenge'
+   */
+  acmeWebroot?: string
+  /**
    * Put a CDN (CloudFront) in front of this self-hosted gateway. A CDN custom
    * origin can't be a bare IP and can't be one of the public aliases (it would
    * resolve back to the CDN — an infinite loop), so it needs a dedicated origin
