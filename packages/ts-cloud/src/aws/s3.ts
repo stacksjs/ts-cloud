@@ -100,9 +100,12 @@ export class S3Client {
     this.endpoint = options?.endpoint
     this.forcePathStyle = options?.forcePathStyle
     this.explicitCredentials = options?.credentials
+    // Pass the profile through config (NOT a pre-resolved Promise: resolveCredentials
+    // is async, so handing it to AWSClient as `credentials` broke signing — the
+    // explicit profile was effectively ignored / could surface InvalidAccessKeyId).
     this.client = new AWSClient(
-      options?.credentials ?? resolveCredentials(profile),
-      { endpoint: options?.endpoint, forcePathStyle: options?.forcePathStyle },
+      options?.credentials,
+      { profile, endpoint: options?.endpoint, forcePathStyle: options?.forcePathStyle },
     )
   }
 

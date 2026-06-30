@@ -39,6 +39,13 @@ export interface AWSClientConfig {
   cacheEnabled?: boolean
   defaultCacheTTL?: number
   /**
+   * Named profile in `~/.aws/credentials` to load static keys from. Falls back
+   * to `AWS_PROFILE` then `default`. Pass this instead of pre-resolving creds —
+   * the resolver is async, so handing the client a Promise silently breaks
+   * signing.
+   */
+  profile?: string
+  /**
    * Override the S3 endpoint host for S3-compatible providers (Backblaze B2,
    * Hetzner Object Storage). Host only, no scheme — e.g.
    * `s3.us-west-004.backblazeb2.com` or `fsn1.your-objectstorage.com`.
@@ -113,7 +120,8 @@ export class AWSClient {
   private xmlParser: XMLParser
 
   constructor(credentials?: AWSCredentials, config?: AWSClientConfig) {
-    this.credentials = credentials || this.loadCredentials()
+    // Config must be set before loadCredentials() so the file loader can honor
+    // config.profile.
     this.config = {
       maxRetries: 3,
       retryDelay: 1000,
@@ -121,6 +129,7 @@ export class AWSClient {
       defaultCacheTTL: 60000, // 1 minute
       ...config,
     }
+    this.credentials = credentials || this.loadCredentials()
     this.cache = new Map()
     this.xmlParser = new XMLParser({
       ignoreAttributes: false,
@@ -166,7 +175,7 @@ export class AWSClient {
    * Load credentials from ~/.aws/credentials file
    */
   private loadCredentialsFromFile(): AWSCredentials | null {
-    const profile = process.env.AWS_PROFILE || 'default'
+    const profile = this.config?.profile || process.env.AWS_PROFILE || 'default'
     const credentialsPath = process.env.AWS_SHARED_CREDENTIALS_FILE || join(homedir(), '.aws', 'credentials')
 
     if (!existsSync(credentialsPath)) {
