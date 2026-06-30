@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.28...v0.5.29)
+
+### 🚀 Features
+
+- **ui**: inline SVG favicon in the dashboard head ([8450780](https://github.com/stacksjs/ts-cloud/commit/8450780)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- AWSClient honors an explicit profile; S3Client uses it ([15fd973](https://github.com/stacksjs/ts-cloud/commit/15fd973)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.29 ([a733785](https://github.com/stacksjs/ts-cloud/commit/a733785)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.27...v0.5.28)
 
 ### 🐛 Bug Fixes
