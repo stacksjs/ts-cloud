@@ -190,36 +190,45 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
   if (!uiDir)
     return null
 
-  const outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
-  const proc = Bun.spawn([
-    'bunx',
-    '--bun',
-    'stx',
-    'build',
-    '--pages',
-    'pages',
-    '--out',
-    outDir,
-    '--no-sitemap',
-    '--no-cache',
-  ], {
-    cwd: uiDir,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: {
-      ...process.env,
-      TSCLOUD_DASHBOARD_DATA: JSON.stringify(data),
-    },
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  if (exitCode !== 0)
-    throw new Error(`Failed to build live dashboard UI.\n${stdout}\n${stderr}`)
-
-  return outDir
+  // Building the cockpit with data baked in is a best-effort *enhancement*. It
+  // needs the stx toolchain, which isn't guaranteed on a bare box (and `bunx
+  // stx` can't resolve when stx is scoped). On ANY failure we return null so the
+  // caller falls back to the shipped pre-built UI, which fetches the same data
+  // from /api/* at runtime — a build hiccup must never crash the cockpit.
+  try {
+    const outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
+    // Prefer a locally-installed stx bin (node_modules/.bin/stx) over `bunx stx`,
+    // which would try to fetch a non-existent bare `stx` package from the registry.
+    const localStx = join(uiDir, 'node_modules', '.bin', 'stx')
+    const cmd = existsSync(localStx)
+      ? [localStx, 'build', '--pages', 'pages', '--out', outDir, '--no-sitemap', '--no-cache']
+      : ['bunx', '--bun', '@stacksjs/stx', 'build', '--pages', 'pages', '--out', outDir, '--no-sitemap', '--no-cache']
+    const proc = Bun.spawn(cmd, {
+      cwd: uiDir,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: {
+        ...process.env,
+        TSCLOUD_DASHBOARD_DATA: JSON.stringify(data),
+      },
+    })
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ])
+    if (exitCode !== 0) {
+      if (process.env.TSCLOUD_DASHBOARD_VERBOSE)
+        console.warn(`ts-cloud dashboard: live UI build failed; serving the pre-built UI.\n${stdout}\n${stderr}`)
+      return null
+    }
+    return outDir
+  }
+  catch (err) {
+    if (process.env.TSCLOUD_DASHBOARD_VERBOSE)
+      console.warn(`ts-cloud dashboard: live UI build errored; serving the pre-built UI. ${(err as Error).message}`)
+    return null
+  }
 }
 
 export function sanitizeCloudConfig(config: CloudConfig): Record<string, any> {
