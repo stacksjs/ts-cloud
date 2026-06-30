@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.27...v0.5.28)
+
+### 🐛 Bug Fixes
+
+- live dashboard build is best-effort, falls back to prebuilt UI ([1896722](https://github.com/stacksjs/ts-cloud/commit/1896722)) _(by Chris <chrisbreuer93@gmail.com>)_
+- read CloudFront DistributionConfig from the /config response body ([36934b5](https://github.com/stacksjs/ts-cloud/commit/36934b5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.28 ([500f376](https://github.com/stacksjs/ts-cloud/commit/500f376)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.26...v0.5.27)
 
 ### 🚀 Features
