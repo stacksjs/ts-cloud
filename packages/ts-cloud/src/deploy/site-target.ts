@@ -7,8 +7,10 @@ import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
  *  - `'server-static'` — `server` + no `start` (has static `root`): a static
  *                        site built and shipped to `/var/www/<site>` on the box
  *                        (served by the operator's own proxy, e.g. rpx + tlsx).
+ *  - `'redirect'`      — gateway-only: `redirect` is set. Nothing is shipped;
+ *                        the gateway answers `domain` with an HTTP redirect.
  */
-export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php'
+export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php' | 'redirect'
 
 /** Site `type` values that deploy as a PHP/Laravel git-release site. */
 const PHP_SITE_TYPES: ReadonlySet<NonNullable<SiteConfig['type']>> = new Set([
@@ -55,6 +57,10 @@ export function resolveSiteDeployTarget(site: SiteConfig): SiteDeployTarget {
  * - `server` + no `start`         → `'server-static'`
  */
 export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
+  // A redirect-only site ships nothing — the gateway answers `domain` with a
+  // redirect. Wins over every other kind (`root`/`start`/`type` are ignored).
+  if (site.redirect)
+    return 'redirect'
   // PHP/Laravel sites always deploy to the box via git + atomic releases,
   // regardless of `deploy`/`start`.
   if (isPhpSite(site))
@@ -99,6 +105,29 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
 
     const target = resolveSiteDeployTarget(site)
     const kind = resolveSiteKind(site)
+
+    // A redirect-only site is gateway-only: it needs a `domain` to answer and a
+    // redirect target, but ships nothing (no `root`/`start`).
+    if (kind === 'redirect') {
+      if (!site.domain)
+        errors.push(`Site '${name}' is a redirect site but has no \`domain\` to redirect from.`)
+      const to = typeof site.redirect === 'string' ? site.redirect : site.redirect?.to
+      if (!to)
+        errors.push(`Site '${name}' is a redirect site but has no redirect target (\`redirect\` / \`redirect.to\`).`)
+      if (!computeConfigured) {
+        errors.push(
+          `Site '${name}' is a redirect site but no \`infrastructure.compute\` is configured to host the gateway that serves the redirect.`,
+        )
+      }
+      const serverOnly: string[] = []
+      if (site.start)
+        serverOnly.push('start')
+      if (site.root)
+        serverOnly.push('root')
+      if (serverOnly.length > 0)
+        warnings.push(`Site '${name}' is a redirect site but also sets ${serverOnly.join(', ')}. These are ignored.`)
+      continue
+    }
 
     // `deploy: 'server'` with neither `start` nor `root` is meaningless.
     if (target === 'server' && !site.start && !site.root) {

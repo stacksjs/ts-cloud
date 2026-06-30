@@ -5,6 +5,7 @@ import {
   buildRpxProvisionScript,
   deriveRouteId,
   normalizeRoutePath,
+  normalizeSiteRedirect,
   renderRpxLauncher,
   resolveRouteAuth,
   RPX_LAUNCHER_PATH,
@@ -158,6 +159,37 @@ describe('buildRpxConfig', () => {
       docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
     }, { proxy: rpxProxy, wwwRoot: '/srv/sites' })
     expect(config.proxies[0].static).toBe('/srv/sites/docs')
+  })
+
+  it('maps a redirect site to a redirect route (no upstream, no static)', () => {
+    const config = buildRpxConfig({
+      altApex: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
+      altWww: { domain: 'www.very-good-adblock.org', redirect: { to: 'https://verygoodadblock.org', status: 308, preservePath: false } },
+    }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' } })
+
+    const apex = config.proxies.find(r => r.to === 'very-good-adblock.org')!
+    expect(apex.redirect).toEqual({ to: 'https://verygoodadblock.org' })
+    expect(apex.from).toBeUndefined()
+    expect(apex.static).toBeUndefined()
+    expect(apex.id).toBe('very-good-adblock.org')
+
+    const www = config.proxies.find(r => r.to === 'www.very-good-adblock.org')!
+    expect(www.redirect).toEqual({ to: 'https://verygoodadblock.org', status: 308, preservePath: false })
+
+    // Redirect domains still get a cert via the on-demand allowlist.
+    expect(config.onDemandTls?.allowedSuffixes).toContain('very-good-adblock.org')
+    expect(config.onDemandTls?.allowedSuffixes).toContain('www.very-good-adblock.org')
+  })
+})
+
+describe('normalizeSiteRedirect', () => {
+  it('wraps a string shorthand and omits unset fields', () => {
+    expect(normalizeSiteRedirect('https://example.com')).toEqual({ to: 'https://example.com' })
+  })
+
+  it('keeps explicit status and preservePath', () => {
+    expect(normalizeSiteRedirect({ to: 'https://example.com', status: 302, preservePath: false }))
+      .toEqual({ to: 'https://example.com', status: 302, preservePath: false })
   })
 })
 

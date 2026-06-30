@@ -800,17 +800,44 @@ export interface SiteCacheConfig {
   cdn?: boolean
 }
 
+/**
+ * A redirect-only site target: the gateway answers the site's `domain` with an
+ * HTTP redirect to `to`, appending the request path + query by default so deep
+ * links survive.
+ */
+export interface SiteRedirectConfig {
+  /** Target base URL, e.g. `https://verygoodadblock.org` (a path prefix is allowed). */
+  to: string
+  /** HTTP status. Default `301` (permanent). */
+  status?: 301 | 302 | 307 | 308
+  /** Append the request path + query to `to`. Default `true`. */
+  preservePath?: boolean
+}
+
 export interface SiteConfig {
   /**
    * Directory to deploy.
    *  - For static sites: the built static files to upload to S3 (e.g., 'dist').
    *  - For SSR sites: the build output to tar+ship to EC2 (e.g., '.output').
+   *
+   * Optional: a redirect-only site (see {@link redirect}) ships nothing and so
+   * needs no `root`.
    */
-  root: string
+  root?: string
   /** Path prefix for deployment (usually '/') */
   path?: string
   /** Custom domain for the site (e.g., 'stage.easyotc.com') */
   domain?: string
+  /**
+   * Make this a **redirect-only site**: the reverse-proxy gateway answers this
+   * site's `domain` with an HTTP redirect to the target instead of deploying any
+   * app or static files. Use it to point an alternate/parked domain at its
+   * canonical host (e.g. `very-good-adblock.org` → `https://verygoodadblock.org`),
+   * just like a Forge "Redirect" site. Requires `domain`; `root`/`start` are not
+   * needed and are ignored. A bare string is shorthand for a permanent (301),
+   * path-preserving redirect.
+   */
+  redirect?: string | SiteRedirectConfig
   /**
    * S3 bucket name. Default: `{slug}-{environment}-site` for `main`,
    * else `{slug}-{environment}-{siteKey}`.

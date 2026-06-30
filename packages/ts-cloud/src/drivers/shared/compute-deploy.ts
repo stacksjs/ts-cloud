@@ -327,6 +327,10 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
       logger.warn(`Site '${name}' targets a bucket — skipping (handled by the static-site path, not compute).`)
       return false
     }
+    // Redirect-only sites ship nothing — they become a gateway redirect route in
+    // reloadRpxGateway. Nothing to build/upload here.
+    if (kind === 'redirect')
+      return false
     return true
   })
 

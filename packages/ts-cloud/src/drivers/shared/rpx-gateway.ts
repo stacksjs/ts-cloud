@@ -17,11 +17,34 @@
  * It replaces the old Caddyfile generation — pantry/stacks use rpx (their own
  * tooling), so the gateway is rpx, not Caddy.
  */
-import type { ComputeProxyConfig, SiteConfig } from '@ts-cloud/core'
+import type { ComputeProxyConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
 import { resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
 export const DEFAULT_RPX_CERTS_DIR = '/etc/rpx/certs'
+
+/** A normalized redirect target on an {@link RpxRoute} (see rpx's `redirect`). */
+export interface RpxRedirect {
+  to: string
+  status?: 301 | 302 | 307 | 308
+  preservePath?: boolean
+}
+
+/**
+ * Normalize a site's `redirect` (string shorthand or object) into the minimal
+ * {@link RpxRedirect} the gateway config carries. Optional fields are omitted
+ * when unset so rpx applies its own defaults (status `301`, path-preserving).
+ */
+export function normalizeSiteRedirect(input: string | SiteRedirectConfig): RpxRedirect {
+  if (typeof input === 'string')
+    return { to: input }
+  const out: RpxRedirect = { to: input.to }
+  if (input.status != null)
+    out.status = input.status
+  if (input.preservePath != null)
+    out.preservePath = input.preservePath
+  return out
+}
 
 /** A single rpx proxy route, mapped from one site. */
 export interface RpxRoute {
@@ -33,6 +56,12 @@ export interface RpxRoute {
   from?: string
   /** Absolute directory served for a `server-static` route (`/var/www/<name>`). */
   static?: string
+  /**
+   * Redirect target for a `redirect` site — the gateway answers `to` (the host)
+   * with an HTTP redirect here instead of proxying/serving. The request path +
+   * query are appended unless `preservePath` is `false`.
+   */
+  redirect?: RpxRedirect
   /** Strip `.html` and resolve clean URLs (set for static sites). */
   cleanUrls?: boolean
   /** SPA fallback for static sites. */
@@ -148,6 +177,14 @@ export function buildRpxConfig(
     const path = normalizeRoutePath(site.path)
     const id = deriveRouteId(site.domain, path)
     const auth = resolveRouteAuth(site)
+
+    if (kind === 'redirect') {
+      // Gateway-only redirect: answer `domain` with a Location to the target.
+      // `site.redirect` is guaranteed here (it's what makes the kind 'redirect').
+      proxies.push({ to: site.domain, path, redirect: normalizeSiteRedirect(site.redirect!), id, ...(auth ? { auth } : {}) })
+      domains.add(site.domain)
+      continue
+    }
 
     if (kind === 'server-app') {
       // A server-app must declare the port it listens on to be routable.

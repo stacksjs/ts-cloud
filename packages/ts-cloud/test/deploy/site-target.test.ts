@@ -50,6 +50,11 @@ describe('resolveSiteKind', () => {
   it('explicit deploy:bucket on a start site resolves to bucket', () => {
     expect(resolveSiteKind({ root: 'dist', start: 'bun run x', deploy: 'bucket' })).toBe('bucket')
   })
+
+  it('redirect (set redirect → gateway-only, wins over root/start)', () => {
+    expect(resolveSiteKind({ domain: 'alt.com', redirect: 'https://canonical.com' })).toBe('redirect')
+    expect(resolveSiteKind({ domain: 'alt.com', redirect: { to: 'https://canonical.com' }, root: 'dist', start: 'bun run x' })).toBe('redirect')
+  })
 })
 
 describe('validateDeploymentConfig', () => {
@@ -80,7 +85,6 @@ describe('validateDeploymentConfig', () => {
 
   it('errors when a server-static site has compute but no root', () => {
     const { errors } = validateDeploymentConfig(makeConfig({
-      // @ts-expect-error intentionally missing root to exercise validation
       docs: { domain: 'docs.example.com', deploy: 'server' },
     }, true))
     expect(errors.some(e => e.includes('docs') && e.includes('root'))).toBe(true)
@@ -95,7 +99,6 @@ describe('validateDeploymentConfig', () => {
 
   it('errors when a bucket site is missing root', () => {
     const { errors } = validateDeploymentConfig(makeConfig({
-      // @ts-expect-error intentionally missing root
       web: { domain: 'example.com' },
     }))
     expect(errors.some(e => e.includes('web') && e.includes('root'))).toBe(true)
@@ -103,7 +106,6 @@ describe('validateDeploymentConfig', () => {
 
   it("errors when deploy:'server' has neither start nor root", () => {
     const { errors } = validateDeploymentConfig(makeConfig({
-      // @ts-expect-error intentionally missing root
       x: { domain: 'x.example.com', deploy: 'server' },
     }, true))
     expect(errors.some(e => e.includes('neither'))).toBe(true)
@@ -144,5 +146,21 @@ describe('validateDeploymentConfig', () => {
     }, true))
     expect(errors).toEqual([])
     expect(warnings).toEqual([])
+  })
+
+  it('accepts a redirect site (domain + target, no root) with compute', () => {
+    const { errors } = validateDeploymentConfig(makeConfig({
+      alt: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
+    }, true))
+    expect(errors).toEqual([])
+  })
+
+  it('flags a redirect site missing a domain or target', () => {
+    const { errors } = validateDeploymentConfig(makeConfig({
+      noDomain: { redirect: 'https://x.com' },
+      noTarget: { domain: 'a.com', redirect: { to: '' } },
+    }, true))
+    expect(errors.some(e => e.includes('noDomain') && e.includes('domain'))).toBe(true)
+    expect(errors.some(e => e.includes('noTarget') && e.includes('target'))).toBe(true)
   })
 })
