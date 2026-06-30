@@ -2,12 +2,14 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'stacks-production-app' }
+const initialLogs = __d?.serverLogs ?? []
 const emptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available yet.'
 </script>
 <script client>
-// Reactive log viewer: fetches the live server logs, filters by level + source,
-// and auto-refreshes — all via signals + directives (no manual DOM).
-const logs = state([])
+// Reactive log viewer: seeded from build-time data (stx server→client bridge),
+// then filters by level + source and auto-refreshes — all via signals +
+// directives (no manual DOM).
+const logs = state(initialLogs)
 const level = state('all')
 const source = state('all')
 const sources = derived(() => [...new Set(logs().map(l => l.source).filter(Boolean))])

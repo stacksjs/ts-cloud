@@ -2,10 +2,13 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
+const initialKeys = __d?.sshKeys ?? []
 </script>
 <script client>
 // Reactive SSH key management — list + add + remove, via signals + directives.
-const keys = state([])
+// Seeded from build-time data (stx server→client bridge); load() reconciles
+// against the live cloud config (same describeSshKeys shape).
+const keys = state(initialKeys)
 const name = state('')
 const pub = state('')
 const message = state('')

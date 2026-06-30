@@ -94,11 +94,17 @@ const resourceChart = renderResourceBars([
   { label: 'Memory', value: memPct ?? 0, detail: metricsLive ? `${gb(metrics.memUsedMb)} / ${gb(metrics.memTotalMb)} GB` : 'Server probe unavailable' },
   { label: 'Disk', value: diskPct ?? 0, detail: metricsLive ? `${metrics.diskUsedGb ?? 0} / ${metrics.diskTotalGb ?? 0} GB` : 'Server probe unavailable' },
 ], { disabled: !metricsLive })
+
+// Expose the full payload to <script client> via the stx server→client bridge
+// (the `__d`/`$`-prefixed names are intentionally bridge-excluded).
+const initialData = __d ?? null
 </script>
 <script client>
-// Live at-a-glance metrics: poll /api/dashboard-data and bind the cards, health
-// pill, indicator, and service statuses reactively (no manual DOM).
-const data = state(null)
+// Live at-a-glance metrics: seeded from build-time data (stx server→client
+// bridge) so the cards render real numbers on first paint, then polled from
+// /api/dashboard-data — bind cards, health pill, indicator, and service
+// statuses reactively (no manual DOM).
+const data = state(initialData)
 const liveData = derived(() => { const d = data(); return !!d && d._serverReachable && !d.metricsUnavailable })
 function n(v, d) { const x = Number(v); return Number.isFinite(x) ? x : (d || 0) }
 function gbVal(mb) { return (n(mb) / 1024).toFixed(1) }

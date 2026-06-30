@@ -2,12 +2,14 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const app = __d?.app ?? { name: 'acme', env: 'production' }
+const initialLogs = __d?.serverlessLogs ?? []
 const emptyReason = __d?.serverlessLogsEmptyReason ?? 'No function logs are available yet.'
 </script>
 <script client>
 // Reactive aggregated CloudWatch logs across the functions, with level + function
-// filtering and auto-refresh — signals + directives only (no manual DOM).
-const logs = state([])
+// filtering and auto-refresh — seeded from build-time data (stx server→client
+// bridge), then live-refreshed. Signals + directives only (no manual DOM).
+const logs = state(initialLogs)
 const level = state('all')
 const source = state('all')
 const sources = derived(() => [...new Set(logs().map(l => l.source).filter(Boolean))])
