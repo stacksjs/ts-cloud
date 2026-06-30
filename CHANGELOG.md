@@ -1,3 +1,54 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.26...v0.5.27)
+
+### 🚀 Features
+
+- per-app gateway registry so independent app deploys compose ([6b31957](https://github.com/stacksjs/ts-cloud/commit/6b31957)) _(by Chris <chrisbreuer93@gmail.com>)_
+- zero-downtime atomic releases for server-app + server-static ([652fbb4](https://github.com/stacksjs/ts-cloud/commit/652fbb4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- managed TLS for the rpx gateway (issue on deploy + daily renewal) ([e6ffa3b](https://github.com/stacksjs/ts-cloud/commit/e6ffa3b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- redirect-only sites in the rpx gateway ([35564b1](https://github.com/stacksjs/ts-cloud/commit/35564b1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: seed reactive pages from build-time data via stx bridge ([a453b4f](https://github.com/stacksjs/ts-cloud/commit/a453b4f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: full logs — all server units + serverless logs, reactive ([8c83541](https://github.com/stacksjs/ts-cloud/commit/8c83541)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: mode-aware nav — hide serverless views on a server deploy ([4db785f](https://github.com/stacksjs/ts-cloud/commit/4db785f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: on-box backend — live dashboard runs as a service on the server ([f53939a](https://github.com/stacksjs/ts-cloud/commit/f53939a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: serverless view + multi-environment switcher ([e2e9897](https://github.com/stacksjs/ts-cloud/commit/e2e9897)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: database & user management ([ff20596](https://github.com/stacksjs/ts-cloud/commit/ff20596)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: live auto-refresh of the at-a-glance metrics ([385d4a9](https://github.com/stacksjs/ts-cloud/commit/385d4a9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: full site management (remove, edit, per-site deploy) ([3d4dfc5](https://github.com/stacksjs/ts-cloud/commit/3d4dfc5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: full server operations (lifecycle, rollback, backups, workers) ([583f4a7](https://github.com/stacksjs/ts-cloud/commit/583f4a7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: render live data from the local cockpit in any project ([73c91f8](https://github.com/stacksjs/ts-cloud/commit/73c91f8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: protect rpx-served sites with Basic auth ([f73e580](https://github.com/stacksjs/ts-cloud/commit/f73e580)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: auto-deploy the management dashboard from the shared compute path ([fe8d605](https://github.com/stacksjs/ts-cloud/commit/fe8d605)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: expand server management cockpit ([c8d3a89](https://github.com/stacksjs/ts-cloud/commit/c8d3a89)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: add server logs view ([17fe383](https://github.com/stacksjs/ts-cloud/commit/17fe383)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: add live metrics charts and ssh key management ([f36d8fa](https://github.com/stacksjs/ts-cloud/commit/f36d8fa)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: serve live local cloud UI ([7f50f01](https://github.com/stacksjs/ts-cloud/commit/7f50f01)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **dashboard**: restore SSH key management in the browser ([dccedc2](https://github.com/stacksjs/ts-cloud/commit/dccedc2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: stop dashboard config edits from corrupting cloud.config.ts ([edb0c75](https://github.com/stacksjs/ts-cloud/commit/edb0c75)) _(by Chris <chrisbreuer93@gmail.com>)_
+- install rpx gateway from isolated project ([6977dd7](https://github.com/stacksjs/ts-cloud/commit/6977dd7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: label server sites by route kind and runtime ([eaf5b4e](https://github.com/stacksjs/ts-cloud/commit/eaf5b4e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: render config server data locally ([f28a40e](https://github.com/stacksjs/ts-cloud/commit/f28a40e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: avoid package self import ([17c437e](https://github.com/stacksjs/ts-cloud/commit/17c437e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ♻️ Code Refactoring
+
+- **dashboard**: make all interactivity reactive (stx signals + directives) ([066b703](https://github.com/stacksjs/ts-cloud/commit/066b703)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🤖 Continuous Integration
+
+- gate pantry commit publishing ([16d7bc9](https://github.com/stacksjs/ts-cloud/commit/16d7bc9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.27 ([bf410dc](https://github.com/stacksjs/ts-cloud/commit/bf410dc)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: upgrade @stacksjs/stx to 0.2.73 ([456cbf6](https://github.com/stacksjs/ts-cloud/commit/456cbf6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.25...v0.5.26)
 
 ### 🐛 Bug Fixes
