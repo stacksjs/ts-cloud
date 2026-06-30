@@ -155,6 +155,7 @@ export class HetznerDriver implements CloudDriver {
       ? buildRpxProvisionScript({
           proxy: compute.proxy,
           config: buildRpxConfig(sites, { proxy: compute.proxy }),
+          slug: config.project.slug,
           bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })
       : undefined

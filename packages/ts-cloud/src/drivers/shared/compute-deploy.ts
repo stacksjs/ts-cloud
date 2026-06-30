@@ -417,7 +417,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   }
 
   logger.step(`Reloading rpx gateway with ${rpxConfig.proxies.length} route(s)...`)
-  const script = buildRpxProvisionScript({ proxy, config: rpxConfig })
+  const script = buildRpxProvisionScript({ proxy, config: rpxConfig, slug: config.project.slug })
   const result = await driver.runRemoteDeploy({
     targets,
     commands: script,

@@ -7,13 +7,15 @@ import {
   certDomainsForConfig,
   DEFAULT_ACME_WEBROOT,
   deriveRouteId,
+  mergeRpxFragments,
   normalizeRoutePath,
   normalizeSiteRedirect,
+  renderRpxAssembler,
   renderRpxLauncher,
   resolveRouteAuth,
-  RPX_CERT_RENEW_TIMER,
   RPX_LAUNCHER_PATH,
   RPX_SERVICE_NAME,
+  RPX_SITES_DIR,
 } from '../../src/drivers/shared/rpx-gateway'
 
 const rpxProxy: ComputeProxyConfig = { engine: 'rpx' }
@@ -262,8 +264,11 @@ describe('buildRpxProvisionScript', () => {
     const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
 
     expect(script).toContain('bun add @stacksjs/rpx@latest')
-    expect(script).toContain(`mkdir -p /etc/rpx /etc/rpx/certs`)
+    expect(script).toContain(`mkdir -p /etc/rpx /etc/rpx/sites.d /etc/rpx/certs`)
+    // Registry: this app's fragment + the stable assembler launcher.
+    expect(script).toContain(`cat > ${RPX_SITES_DIR}/app.json`)
     expect(script).toContain(`cat > ${RPX_LAUNCHER_PATH}`)
+    expect(script).toContain('rpx gateway assembler')
     expect(script).toContain('/opt/rpx-gateway')
     expect(script).toContain('ln -sfn /opt/rpx-gateway/node_modules /etc/rpx/node_modules')
     expect(script).toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
@@ -345,7 +350,8 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     expect(joined).toContain('acme:renew')
     expect(joined).toContain('--webroot')
     expect(joined).toContain(DEFAULT_ACME_WEBROOT)
-    expect(joined).toContain(RPX_CERT_RENEW_TIMER)
+    // Per-app renewal units (slug defaults to 'app').
+    expect(joined).toContain('rpx-cert-renew-app.timer')
     expect(joined).toContain('hello@stacksjs.com')
     // The full provision script wires it in AFTER the gateway is (re)started.
     const script = buildRpxProvisionScript({ proxy: tlsProxy, config }).join('\n')
@@ -356,5 +362,50 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     expect(buildCertManagementCommands({ proxy: rpxProxy, config })).toEqual([])
     expect(buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')).not.toContain('acme:renew')
+  })
+})
+
+describe('per-app gateway registry (independent deploys)', () => {
+  const appA = buildRpxConfig({
+    web: { domain: 'a.com', root: '.out', start: 'bun run a', port: 3000 },
+  }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'a@a.com' } })
+  const appB = buildRpxConfig({
+    site: { domain: 'b.com', deploy: 'server', root: 'dist' },
+  }, { proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'b@b.com' } })
+
+  it('writes only THIS app fragment + the assembler — not a full config launcher', () => {
+    const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', onDemandTls: true }, config: appA, slug: 'app-a' }).join('\n')
+    expect(script).toContain(`cat > ${RPX_SITES_DIR}/app-a.json`)
+    expect(script).toContain('"slug": "app-a"')
+    expect(script).toContain('"to": "a.com"')
+    // The launcher is the stable assembler, not app-a's baked-in config.
+    expect(script).toContain('rpx gateway assembler')
+    expect(script).not.toContain('"to": "b.com"')
+    // Per-app cert renewal unit named for this slug only.
+    expect(script).toContain('rpx-cert-renew-app-a.timer')
+  })
+
+  it('mergeRpxFragments composes two apps without dropping either app routes', () => {
+    const merged = mergeRpxFragments([appA, appB])
+    const hosts = merged.proxies.map(p => p.to)
+    expect(hosts).toContain('a.com')
+    expect(hosts).toContain('b.com')
+    expect(merged.onDemandTls?.allowedSuffixes).toContain('a.com')
+    expect(merged.onDemandTls?.allowedSuffixes).toContain('b.com')
+  })
+
+  it('mergeRpxFragments dedupes routes by id (first writer wins)', () => {
+    const dupe = buildRpxConfig({ web: { domain: 'a.com', root: '.out', start: 'bun run a2', port: 3000 } }, { proxy: { engine: 'rpx' } })
+    const merged = mergeRpxFragments([appA, dupe])
+    expect(merged.proxies.filter(p => p.to === 'a.com')).toHaveLength(1)
+  })
+
+  it('renderRpxAssembler reads the sites dir and starts the merged config', () => {
+    const asm = renderRpxAssembler()
+    expect(asm).toContain('readdirSync')
+    expect(asm).toContain(RPX_SITES_DIR)
+    expect(asm).toContain('startProxies(config)')
+    // Resilient: a malformed fragment is skipped, not fatal.
+    expect(asm).toContain('catch { continue }')
   })
 })
