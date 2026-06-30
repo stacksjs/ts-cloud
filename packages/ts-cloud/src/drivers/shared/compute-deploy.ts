@@ -198,12 +198,14 @@ export async function deploySiteRelease(
     ? buildStaticSiteDeployScript({
         siteName,
         artifactFetch,
+        releaseId: sha,
         preStartCommands: site.preStart,
       })
     : buildSiteDeployScript({
         siteName,
         slug,
         artifactFetch,
+        releaseId: sha,
         // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
         execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
         envEntries: site.env || {},
@@ -222,7 +224,7 @@ export async function deploySiteRelease(
         domain: site.domain!,
         aliases: site.aliases,
         type: site.type === 'spa' ? 'spa' : 'static',
-        appDir: `/var/www/${siteName}`,
+        appDir: `/var/www/${siteName}/current`,
         webDirectory: '',
         redirects: site.redirects,
         auth: site.auth && site.auth.enabled !== false && site.auth.password

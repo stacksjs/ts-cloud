@@ -3,6 +3,7 @@ import {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
+  buildStaticSiteDeployScript,
   resolveExecStart,
 } from '../../src/drivers/shared/deploy-script'
 
@@ -16,59 +17,88 @@ describe('resolveExecStart', () => {
   })
 })
 
-describe('buildSiteDeployScript', () => {
-  it('generates systemd unit and env file commands', () => {
-    const script = buildSiteDeployScript({
-      siteName: 'web',
-      slug: 'my-app',
-      artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
-      execStart: '/usr/local/bin/bun run server.ts',
-      envEntries: { NODE_ENV: 'production' },
-      port: 3000,
-    })
+describe('buildSiteDeployScript (zero-downtime atomic release)', () => {
+  const opts = {
+    siteName: 'web',
+    slug: 'my-app',
+    artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
+    releaseId: 'abc123',
+    execStart: '/usr/local/bin/bun run server.ts',
+    envEntries: { NODE_ENV: 'production' },
+    port: 3000,
+  }
 
+  it('unpacks into a release dir, links shared .env, and runs the service from current', () => {
+    const script = buildSiteDeployScript(opts)
+    const joined = script.join('\n')
     expect(script[0]).toBe('set -euo pipefail')
-    expect(script.join('\n')).toContain('cp "/var/ts-cloud/staging/release.tar.gz" /tmp/web-release.tar.gz')
-    expect(script.join('\n')).toContain('WorkingDirectory=/var/www/web')
-    expect(script.join('\n')).toContain('ExecStart=/usr/local/bin/bun run server.ts')
-    expect(script.join('\n')).toContain('Environment=PORT=3000')
-    expect(script.join('\n')).toContain('NODE_ENV="production"')
-    expect(script.join('\n')).toContain('systemctl restart my-app-web.service')
+    expect(joined).toContain('cp "/var/ts-cloud/staging/release.tar.gz" /tmp/web-release.tar.gz')
+    // Tarball goes into THIS release dir, never the live one.
+    expect(joined).toContain('tar xzf /tmp/web-release.tar.gz -C /var/www/web/releases/abc123')
+    // .env persists in shared/ and is symlinked into the release.
+    expect(joined).toContain('/var/www/web/shared/.env')
+    expect(joined).toContain('ln -sfn /var/www/web/shared/.env /var/www/web/releases/abc123/.env')
+    // The unit references the stable `current` symlink (identical every deploy).
+    expect(joined).toContain('WorkingDirectory=/var/www/web/current')
+    expect(joined).toContain('EnvironmentFile=/var/www/web/current/.env')
+    expect(joined).toContain('Environment=PORT=3000')
+    expect(joined).toContain('systemctl restart my-app-web.service')
   })
 
-  it('runs preStart commands in the app dir after extraction, before the unit starts', () => {
-    const script = buildSiteDeployScript({
-      siteName: 'web',
-      slug: 'my-app',
-      artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
-      execStart: '/usr/local/bin/bun run server.ts',
-      envEntries: { NODE_ENV: 'production' },
-      port: 3000,
-      preStartCommands: ['bun install --frozen-lockfile', 'bun run build'],
-    })
+  it('never wipes the live directory (no destructive find/rm of the docroot)', () => {
+    const joined = buildSiteDeployScript(opts).join('\n')
+    expect(joined).not.toContain('find /var/www/web -mindepth')
+  })
 
+  it('promotes the release atomically (mv -Tf) BEFORE restarting, and prunes old releases', () => {
+    const script = buildSiteDeployScript(opts)
     const joined = script.join('\n')
-    expect(joined).toContain('cd /var/www/web')
-    expect(joined).toContain('bun install --frozen-lockfile')
-    expect(joined).toContain('bun run build')
+    expect(joined).toContain('mv -Tf /var/www/web/current.tmp /var/www/web/current')
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const restartIdx = script.findIndex(l => l === 'systemctl restart my-app-web.service')
+    expect(activateIdx).toBeLessThan(restartIdx)
+    // Old releases pruned for rollback.
+    expect(joined).toContain('/var/www/web/releases/')
+    expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
+  })
 
-    // preStart must come after extraction + env write but before the unit write.
+  it('runs preStart in the new release dir after extraction, before activation', () => {
+    const script = buildSiteDeployScript({ ...opts, preStartCommands: ['bun install --frozen-lockfile', 'bun run build'] })
+    const joined = script.join('\n')
+    expect(joined).toContain('cd /var/www/web/releases/abc123')
     const extractIdx = script.findIndex(l => l.includes('tar xzf'))
     const installIdx = script.findIndex(l => l === 'bun install --frozen-lockfile')
-    const unitIdx = script.findIndex(l => l.includes('/etc/systemd/system/'))
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
     expect(extractIdx).toBeLessThan(installIdx)
-    expect(installIdx).toBeLessThan(unitIdx)
+    expect(installIdx).toBeLessThan(activateIdx)
+  })
+})
+
+describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
+  const opts = {
+    siteName: 'docs',
+    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', 'docs'),
+    releaseId: 'rel9',
+  }
+
+  it('unpacks into a release dir and swaps current atomically — no empty-docroot window, no restart', () => {
+    const script = buildStaticSiteDeployScript(opts)
+    const joined = script.join('\n')
+    expect(joined).toContain('tar xzf /tmp/docs-release.tar.gz -C /var/www/docs/releases/rel9')
+    expect(joined).toContain('mv -Tf /var/www/docs/current.tmp /var/www/docs/current')
+    // No destructive wipe of the live docroot, and no systemd (static).
+    expect(joined).not.toContain('find /var/www/docs -mindepth')
+    expect(joined).not.toContain('systemctl')
+    // Old releases pruned.
+    expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
   })
 
-  it('omits the preStart block entirely when no commands are given', () => {
-    const script = buildSiteDeployScript({
-      siteName: 'web',
-      slug: 'my-app',
-      artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
-      execStart: '/usr/local/bin/bun run server.ts',
-      envEntries: {},
-    })
-    expect(script.some(l => l.startsWith('cd /var/www/'))).toBe(false)
+  it('runs preStart (on-box build) in the release dir before the swap', () => {
+    const script = buildStaticSiteDeployScript({ ...opts, preStartCommands: ['bun run docs:build'] })
+    const buildIdx = script.findIndex(l => l === 'bun run docs:build')
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    expect(buildIdx).toBeGreaterThan(-1)
+    expect(buildIdx).toBeLessThan(activateIdx)
   })
 })
 

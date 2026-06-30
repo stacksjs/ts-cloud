@@ -203,12 +203,13 @@ export function buildRpxConfig(
       proxies.push({ to: site.domain, path, from: `localhost:${site.port}`, id, ...(auth ? { auth } : {}) })
     }
     else {
-      // server-static: served from /var/www/<name>. cleanUrls maps the SSG
-      // pathRewriteStyle; SPA mirrors the bucket path's spa flag.
+      // server-static: served from the atomic-release `current` symlink under
+      // /var/www/<name> (zero-downtime swaps — see buildStaticSiteDeployScript).
+      // cleanUrls maps the SSG pathRewriteStyle; SPA mirrors the bucket spa flag.
       proxies.push({
         to: site.domain,
         path,
-        static: `${wwwRoot}/${name}`,
+        static: `${wwwRoot}/${name}/current`,
         cleanUrls: site.pathRewriteStyle !== 'flat',
         spa: site.spa ?? false,
         ...(auth ? { auth } : {}),
