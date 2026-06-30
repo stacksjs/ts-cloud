@@ -418,9 +418,12 @@ export class CloudFrontClient {
     })
 
     const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
-    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+    // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
+    // parser yields the config directly as `body` (no wrapping key). Older code
+    // only looked for a `.DistributionConfig` wrapper and always threw.
+    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
 
-    if (!currentConfig) {
+    if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
     }
 
@@ -514,9 +517,12 @@ export class CloudFrontClient {
     })
 
     const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
-    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+    // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
+    // parser yields the config directly as `body` (no wrapping key). Older code
+    // only looked for a `.DistributionConfig` wrapper and always threw.
+    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
 
-    if (!currentConfig) {
+    if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
     }
 
@@ -1455,9 +1461,12 @@ export class CloudFrontClient {
     })
 
     const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
-    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+    // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
+    // parser yields the config directly as `body` (no wrapping key). Older code
+    // only looked for a `.DistributionConfig` wrapper and always threw.
+    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
 
-    if (!currentConfig) {
+    if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
     }
 
@@ -1546,9 +1555,12 @@ export class CloudFrontClient {
     })
 
     const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
-    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig
+    // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
+    // parser yields the config directly as `body` (no wrapping key). Older code
+    // only looked for a `.DistributionConfig` wrapper and always threw.
+    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
 
-    if (!currentConfig) {
+    if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
     }
 
