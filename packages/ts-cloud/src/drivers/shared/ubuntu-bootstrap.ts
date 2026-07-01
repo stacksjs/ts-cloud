@@ -108,6 +108,11 @@ ${servicesProvision.join('\n')}
 
     if (runtime === 'bun') {
       script += `
+# cloud-init runs this with \`set -u\` and NO $HOME set. bun's install.sh
+# dereferences $HOME even when BUN_INSTALL is set, so without this the install
+# aborts with "HOME: unbound variable" and /usr/local/bin/bun never appears —
+# breaking a from-scratch provision (adopting an existing box masked it).
+export HOME="\${HOME:-/root}"
 export BUN_INSTALL="/root/.bun"
 curl -fsSL https://bun.sh/install | bash${runtimeVersion === 'latest' ? '' : ` -s "bun-v${runtimeVersion}"`}
 ln -sf /root/.bun/bin/bun /usr/local/bin/bun
