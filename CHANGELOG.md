@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.29...v0.5.30)
+
+### 🐛 Bug Fixes
+
+- label redirect-only sites as redirect in the dashboard ([ab3e474](https://github.com/stacksjs/ts-cloud/commit/ab3e474)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.30 ([2a93718](https://github.com/stacksjs/ts-cloud/commit/2a93718)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.28...v0.5.29)
 
 ### 🚀 Features
