@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.31...v0.5.32)
+
+### 🚀 Features
+
+- **app-services**: driver-based, Stacks-first background services — run buddy schedule:run/queue:work for Stacks apps, Laravel (php artisan) becomes an opt-in driver (site.framework, php `type` implies laravel) ([91041c9](https://github.com/stacksjs/ts-cloud/commit/91041c9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.32 ([443c1e3](https://github.com/stacksjs/ts-cloud/commit/443c1e3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.30...v0.5.31)
 
 ### 🐛 Bug Fixes
