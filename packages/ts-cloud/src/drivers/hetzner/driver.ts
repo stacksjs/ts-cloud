@@ -28,7 +28,7 @@ import { buildMonitoringScript } from '../shared/monitoring'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { buildNotifierScript } from '../shared/notifications'
 import { buildHetznerFirewallRules } from './firewall-rules'
-import { matchesTsCloudLabels, resolveHetznerServerType, tsCloudLabels } from './instance-sizes'
+import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
@@ -568,15 +568,38 @@ export class HetznerDriver implements CloudDriver {
 
   async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
     const servers = await this.client.listServers()
-    return servers
-      .filter(server => matchesTsCloudLabels(server.labels, options.slug, options.environment, options.role || 'app'))
-      .map(server => ({
-        id: String(server.id),
-        name: server.name,
-        publicIp: server.public_net.ipv4?.ip,
-        privateIp: server.private_net?.[0]?.ip,
-        status: server.status,
-      }))
+    const role = options.role || 'app'
+    const toTarget = (server: HetznerServer): ComputeTarget => ({
+      id: String(server.id),
+      name: server.name,
+      publicIp: server.public_net.ipv4?.ip,
+      privateIp: server.private_net?.[0]?.ip,
+      status: server.status,
+    })
+
+    // 1) Exact match by this project's labels.
+    const exact = servers.filter(server =>
+      matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
+    )
+    if (exact.length > 0)
+      return exact.map(toTarget)
+
+    // 2) Adopt-on-rename (mirrors findExistingServer): when a project's slug
+    //    changed but the same box still serves it, target the unique ts-cloud
+    //    app server for this environment rather than reporting none — only when
+    //    unambiguous, so a release never ships to another project's server.
+    if (role === 'app') {
+      const candidates = servers.filter(server =>
+        server.status !== 'off'
+        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud'
+        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === options.environment
+        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
+      )
+      if (candidates.length === 1)
+        return candidates.map(toTarget)
+    }
+
+    return []
   }
 
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {
@@ -671,9 +694,38 @@ export class HetznerDriver implements CloudDriver {
    */
   private async findExistingServer(slug: string, environment: string, serverName: string): Promise<HetznerServer | undefined> {
     const servers = await this.client.listServers()
-    return servers.find(server =>
+
+    // 1) Exact match: this project's labels, or the derived server name.
+    const exact = servers.find(server =>
       matchesTsCloudLabels(server.labels, slug, environment, 'app') || server.name === serverName,
     )
+    if (exact)
+      return exact
+
+    // 2) Adopt-on-rename: a project's slug can change (e.g. `stacks` → `reveal`)
+    //    while the same box keeps serving it. Rather than provision a duplicate,
+    //    reuse an existing ts-cloud-managed *app* server for the SAME environment,
+    //    regardless of its `project` label — but only when it is unambiguous
+    //    (exactly one live candidate), so we never adopt another project's server.
+    const candidates = servers.filter(server =>
+      server.status !== 'off'
+      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud'
+      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
+      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
+    )
+    if (candidates.length === 1) {
+      const adopted = candidates[0]
+      const adoptedProject = adopted.labels?.[`${TS_CLOUD_LABEL_PREFIX}/project`] ?? 'unknown'
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ts-cloud] No server named '${serverName}' found; adopting existing ts-cloud app server `
+        + `'${adopted.name}' (project label '${adoptedProject}') for project '${slug}' — `
+        + `updating it in place instead of provisioning a new server.`,
+      )
+      return adopted
+    }
+
+    return undefined
   }
 
   /**
