@@ -183,6 +183,10 @@ function siteRoute(site: any): { route: string, href?: string } {
 
 function siteKindLabel(name: string, site: any): string {
   const kind = resolveSiteKind(site)
+  // A redirect ships nothing — label it as such rather than falling through to
+  // the 'bucket' default below (resolveSiteKind returns 'redirect' for these).
+  if (kind === 'redirect')
+    return 'redirect'
   const build = String(site.build ?? '').toLowerCase()
   const start = String(site.start ?? '').toLowerCase()
   if (name === 'main' || start.includes('buddy/src/cli.ts serve'))
@@ -206,6 +210,8 @@ function siteKindLabel(name: string, site: any): string {
 
 function siteRuntime(site: any): string {
   const kind = resolveSiteKind(site)
+  if (kind === 'redirect')
+    return '—'
   const command = `${site.start ?? ''} ${site.build ?? ''}`.toLowerCase()
   if (kind === 'server-static')
     return command.includes('bunpress') || command.includes('bun ') || command.includes('bunx ') ? 'static/bun' : 'static'
@@ -218,6 +224,8 @@ function siteRuntime(site: any): string {
 
 function siteDeployLabel(site: any): string {
   const kind = resolveSiteKind(site)
+  if (kind === 'redirect')
+    return 'redirect'
   if (kind === 'server-app')
     return 'service'
   if (kind === 'server-static')

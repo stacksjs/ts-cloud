@@ -145,6 +145,25 @@ describe('resolveConfigOnlyServerDashboardData', () => {
     expect(JSON.stringify(data.sites)).not.toContain('laravel')
     expect(JSON.stringify(data.sites)).not.toContain('"php"')
   })
+
+  it('labels redirect-only sites as redirect, not bucket', () => {
+    const data = resolveConfigOnlyServerDashboardData({
+      project: { name: 'Stacks', slug: 'stacks', region: 'us-east-1' },
+      cloud: { provider: 'hetzner' },
+      infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' } } },
+      sites: {
+        wwwRedirect: { domain: 'www.stacksjs.com', redirect: 'https://stacksjs.com' },
+      },
+    } as any, 'production' as any)
+
+    expect(data.sites[0]).toMatchObject({
+      name: 'wwwRedirect',
+      domain: 'www.stacksjs.com',
+      kind: 'redirect',
+      deploy: 'redirect',
+      runtime: '—',
+    })
+  })
 })
 
 describe('parseServerSecurity', () => {
