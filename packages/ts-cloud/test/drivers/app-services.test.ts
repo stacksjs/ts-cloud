@@ -5,9 +5,33 @@ import {
   queueUnitName,
   schedulerCronPath,
   siteHasServices,
-} from '../../src/drivers/shared/laravel-services'
+} from '../../src/drivers/shared/app-services'
 
 const base = { slug: 'acme', siteName: 'app' }
+
+describe('buildSiteServicesScript — Stacks (default framework)', () => {
+  it('runs bun buddy schedule:run for a site with no PHP type/framework', () => {
+    const site: SiteConfig = { root: '.', scheduler: true }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('/usr/local/bin/bun storage/framework/core/buddy/src/cli.ts schedule:run')
+    expect(script).not.toContain('php artisan')
+  })
+
+  it('runs bun buddy queue:work and wraps ExecStart with the bun env', () => {
+    const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work')
+    expect(script).toContain('--tries=5')
+    expect(script).toContain('BUN_INSTALL="/root/.bun"')
+    expect(script).not.toContain('pantry env')
+  })
+
+  it('honors an explicit framework: laravel override', () => {
+    const site: SiteConfig = { root: '.', framework: 'laravel', scheduler: true }
+    const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('php artisan schedule:run')
+  })
+})
 
 describe('buildSiteServicesScript — queue workers', () => {
   const site: SiteConfig = {

@@ -1,8 +1,12 @@
 /**
- * Generate the per-site runtime services for a Forge-style PHP box: queue
- * workers / Horizon (systemd), the Laravel scheduler (cron), and arbitrary
- * daemons (systemd). Reconciled on every deploy so units track the config —
- * units no longer in the config are stopped and removed.
+ * Generate the per-site runtime services for a server-app box: queue workers
+ * (systemd), the app scheduler (cron), and arbitrary daemons (systemd).
+ * Reconciled on every deploy so units track the config — units no longer in the
+ * config are stopped and removed.
+ *
+ * HOW the scheduler + queue workers are invoked (Stacks/Bun vs Laravel/PHP) is
+ * delegated to an {@link AppFrameworkDriver} selected by `site.framework`
+ * (Stacks-first default). This file only owns unit/cron plumbing + pruning.
  *
  * Unit naming (so a site's units can be globbed for pruning):
  *   <slug>-<site>-queue-<i>.service
@@ -13,26 +17,14 @@
  * so workers/daemons always run the live code; `queue:restart` (run by the
  * deploy's $RESTART_QUEUES macro) cycles them onto the new release.
  */
-import type { DaemonConfig, QueueWorkerConfig, SiteConfig } from '@ts-cloud/core'
-import { PANTRY_PROJECT_DIR } from './package-manager'
-
-/** Shell that loads pantry's env (PATH + LD_LIBRARY_PATH) for php/composer. */
-const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)"`
-
-/**
- * Wrap a command so a systemd unit / cron runs it inside pantry's environment
- * (php + its shared libs on PATH/LD_LIBRARY_PATH). systemd units have no shell
- * env, so the bare `php` and its libs are otherwise unresolved.
- */
-function pantryExec(cmd: string): string {
-  return `/bin/sh -lc '${PANTRY_ENV_EVAL}; exec ${cmd}'`
-}
+import type { SiteConfig } from '@ts-cloud/core'
+import { getAppFrameworkDriver, resolveSiteFramework } from './app-frameworks'
 
 export interface SiteServicesOptions {
   slug: string
   siteName: string
   site: SiteConfig
-  /** PHP version selecting the `phpX.Y` binary. @default '8.3' */
+  /** PHP version selecting the `phpX.Y` binary (Laravel only). @default '8.3' */
   phpVersion?: string
   /** Site base dir. @default `/var/www/<siteName>` */
   appBase?: string
@@ -57,28 +49,8 @@ export function queueUnitName(slug: string, siteName: string, index: number): st
   return `${slug}-${siteName}-queue-${index}`
 }
 
-export function daemonUnitName(slug: string, siteName: string, daemon: DaemonConfig, index: number): string {
+export function daemonUnitName(slug: string, siteName: string, daemon: { name?: string, command: string }, index: number): string {
   return `${slug}-${siteName}-daemon-${daemon.name ? slugify(daemon.name) : slugify(daemon.command).slice(0, 32) || String(index)}`
-}
-
-/** Build the `artisan queue:work`/`horizon` ExecStart for a worker. */
-function queueExecStart(worker: QueueWorkerConfig, phpBin: string, artisan: string): string {
-  if (worker.horizon)
-    return `${phpBin} ${artisan} horizon`
-
-  const flags = [
-    worker.connection || 'default',
-    `--queue=${worker.queue || 'default'}`,
-    `--sleep=${worker.sleep ?? 3}`,
-    `--tries=${worker.tries ?? 3}`,
-    `--timeout=${worker.timeout ?? 60}`,
-    `--memory=${worker.memory ?? 128}`,
-  ]
-  if (worker.maxJobs)
-    flags.push(`--max-jobs=${worker.maxJobs}`)
-  if (worker.maxTime)
-    flags.push(`--max-time=${worker.maxTime}`)
-  return `${phpBin} ${artisan} queue:work ${flags.join(' ')}`
 }
 
 /** A systemd unit file body. */
@@ -130,16 +102,16 @@ export function schedulerCronPath(slug: string, siteName: string): string {
  */
 export function buildSiteServicesScript(options: SiteServicesOptions): string[] {
   const { slug, siteName, site } = options
-  // pantry exposes a single `php` on PATH via `pantry env`; no versioned binary.
-  const phpBin = 'php'
   const base = options.appBase ?? `/var/www/${siteName}`
   const current = `${base}/current`
-  const artisan = `${current}/artisan`
+  const driver = getAppFrameworkDriver(resolveSiteFramework(site))
+  const ctx = { current }
 
   const out: string[] = []
   const desiredUnits: string[] = []
 
-  // Queue workers — one systemd unit per process.
+  // Queue workers — one systemd unit per process. The framework driver builds
+  // the worker command; the driver's exec wrapper supplies its runtime env.
   const queues = site.queues || []
   queues.forEach((worker, qIndex) => {
     const processes = Math.max(1, worker.processes ?? 1)
@@ -149,13 +121,13 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       out.push(...writeUnitScript(name, systemdUnit({
         description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
         workingDir: current,
-        execStart: pantryExec(queueExecStart(worker, phpBin, artisan)),
+        execStart: driver.wrapExec(driver.queueWorkerCommand(worker, ctx)),
         stopWaitSecs: worker.stopWaitSecs ?? 90,
       })))
     }
   })
 
-  // Daemons — one systemd unit per process.
+  // Daemons — one systemd unit per process, run under the framework's env.
   const daemons = site.daemons || []
   daemons.forEach((daemon, dIndex) => {
     const processes = Math.max(1, daemon.processes ?? 1)
@@ -165,7 +137,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       out.push(...writeUnitScript(name, systemdUnit({
         description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
         workingDir: daemon.directory || current,
-        execStart: pantryExec(daemon.command),
+        execStart: driver.wrapExec(daemon.command),
         restart: daemon.restart,
         user: daemon.user,
       })))
@@ -193,16 +165,16 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     out.push(`systemctl enable ${name}.service`, `systemctl restart ${name}.service`)
   }
 
-  // Laravel scheduler — a cron.d entry running schedule:run every minute, or
-  // removal of any prior entry when disabled. A heartbeat URL (healthchecks.io
-  // / Oh Dear style) is pinged only after a successful run, so the monitor
-  // alerts if the scheduler stops.
+  // Scheduler — a cron.d entry running the framework's `schedule:run` every
+  // minute, or removal of any prior entry when disabled. A heartbeat URL
+  // (healthchecks.io / Oh Dear style) is pinged only after a successful run, so
+  // the monitor alerts if the scheduler stops.
   const cronPath = schedulerCronPath(slug, siteName)
   const scheduler = site.scheduler
   const schedulerEnabled = scheduler === true || (typeof scheduler === 'object' && scheduler !== null)
   if (schedulerEnabled) {
     const heartbeat = typeof scheduler === 'object' && scheduler !== null ? scheduler : undefined
-    let command = `cd ${current} && ${PANTRY_ENV_EVAL} && ${phpBin} artisan schedule:run >> /dev/null 2>&1`
+    let command = driver.schedulerCommand(ctx)
     if (heartbeat?.heartbeatUrl) {
       const method = heartbeat.heartbeatMethod || 'GET'
       const methodFlag = method === 'GET' ? '' : `-X ${method} `

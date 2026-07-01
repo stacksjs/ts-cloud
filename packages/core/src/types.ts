@@ -1028,12 +1028,22 @@ export interface SiteConfig {
    */
   zeroDowntime?: boolean
 
-  /** Laravel queue workers to run for this site (systemd-managed). */
+  /**
+   * App framework for this site's background work (scheduler + queue workers),
+   * selecting how they're invoked (driver-based). Stacks-first: defaults to
+   * `'stacks'` (Bun — `buddy schedule:run` / `buddy queue:work`). Set
+   * `'laravel'` for PHP/Artisan (`php artisan schedule:run` / `queue:work` /
+   * Horizon).
+   * @default 'stacks'
+   */
+  framework?: 'stacks' | 'laravel'
+
+  /** Queue workers to run for this site (systemd-managed; invoked per {@link SiteConfig.framework}). */
   queues?: QueueWorkerConfig[]
 
   /**
-   * Run the Laravel scheduler for this site
-   * (`* * * * * php artisan schedule:run`). `true` enables it with defaults;
+   * Run the app scheduler for this site every minute (cron → `schedule:run`,
+   * invoked per {@link SiteConfig.framework}). `true` enables it with defaults;
    * pass a {@link SchedulerConfig} to attach heartbeat monitoring.
    */
   scheduler?: boolean | SchedulerConfig
