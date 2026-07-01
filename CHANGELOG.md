@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.33...v0.5.34)
+
+### 🐛 Bug Fixes
+
+- **app-services**: run Stacks daemons/scheduler with a bare ExecStart + systemd Environment= (no /bin/sh -lc wrapper) so systemctl restart over SSH doesn't hang the deploy ([0c2d59a](https://github.com/stacksjs/ts-cloud/commit/0c2d59a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.34 ([2c29114](https://github.com/stacksjs/ts-cloud/commit/2c29114)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.32...v0.5.33)
 
 ### 🐛 Bug Fixes
