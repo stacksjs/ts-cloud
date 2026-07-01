@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.30...v0.5.31)
+
+### 🐛 Bug Fixes
+
+- **hetzner**: adopt an existing ts-cloud app server on project-slug change instead of provisioning a duplicate (findExistingServer + findComputeTargets) ([37e1515](https://github.com/stacksjs/ts-cloud/commit/37e1515)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.31 ([434086a](https://github.com/stacksjs/ts-cloud/commit/434086a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.29...v0.5.30)
 
 ### 🐛 Bug Fixes
