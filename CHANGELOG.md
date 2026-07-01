@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.32...v0.5.33)
+
+### 🐛 Bug Fixes
+
+- **compute**: reconcile scheduler/queues/daemons for non-PHP (Stacks) sites too, and run the Stacks scheduler as an always-on daemon (schedule:run is long-lived) instead of cron ([38da395](https://github.com/stacksjs/ts-cloud/commit/38da395)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.33 ([142e96b](https://github.com/stacksjs/ts-cloud/commit/142e96b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.31...v0.5.32)
 
 ### 🚀 Features
