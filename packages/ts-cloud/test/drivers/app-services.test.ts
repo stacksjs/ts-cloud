@@ -10,11 +10,15 @@ import {
 const base = { slug: 'acme', siteName: 'app' }
 
 describe('buildSiteServicesScript — Stacks (default framework)', () => {
-  it('runs bun buddy schedule:run for a site with no PHP type/framework', () => {
+  it('runs the Stacks scheduler as an always-on systemd unit, not cron', () => {
     const site: SiteConfig = { root: '.', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
+    expect(script).toContain('/etc/systemd/system/acme-app-scheduler.service')
     expect(script).toContain('/usr/local/bin/bun storage/framework/core/buddy/src/cli.ts schedule:run')
+    expect(script).toContain('systemctl enable acme-app-scheduler.service')
     expect(script).not.toContain('php artisan')
+    // Stacks scheduler is a daemon → no cron.d entry.
+    expect(script).toContain(`rm -f ${schedulerCronPath('acme', 'app')}`)
   })
 
   it('runs bun buddy queue:work and wraps ExecStart with the bun env', () => {
@@ -26,10 +30,12 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     expect(script).not.toContain('pantry env')
   })
 
-  it('honors an explicit framework: laravel override', () => {
+  it('honors an explicit framework: laravel override (cron scheduler)', () => {
     const site: SiteConfig = { root: '.', framework: 'laravel', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain('php artisan schedule:run')
+    expect(script).toContain(`cat > ${schedulerCronPath('acme', 'app')}`)
+    expect(script).not.toContain('/etc/systemd/system/acme-app-scheduler.service')
   })
 })
 
@@ -60,7 +66,7 @@ describe('buildSiteServicesScript — queue workers', () => {
   })
 
   it('prunes stale units for the site', () => {
-    expect(script).toContain("grep -E '^acme-app-(queue|daemon)-.*\\.service$'")
+    expect(script).toContain("grep -E '^acme-app-((queue|daemon)-.*|scheduler)\\.service$'")
   })
 })
 

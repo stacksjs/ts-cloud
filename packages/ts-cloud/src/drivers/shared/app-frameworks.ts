@@ -44,9 +44,16 @@ export interface AppFrameworkDriver {
    */
   wrapExec: (command: string) => string
   /**
-   * The command cron runs every minute to fire due scheduled tasks. Includes
-   * its own env setup + output redirection; the reconciler may append a
-   * heartbeat ping with `&&`.
+   * How the app scheduler runs:
+   *  - `'cron'`   → `schedule:run` is one-shot; run it every minute via cron (Laravel).
+   *  - `'daemon'` → `schedule:run` is long-lived (holds in-process timers); run it
+   *                 as a single always-on systemd unit (Stacks).
+   */
+  readonly schedulerMode: 'cron' | 'daemon'
+  /**
+   * The scheduler command WITHOUT output redirection. For `'cron'` it is run
+   * from cron and sets up its own cwd/env; for `'daemon'` it becomes a unit's
+   * ExecStart (systemd supplies WorkingDirectory), so no `cd` is needed.
    */
   schedulerCommand: (ctx: FrameworkExecContext) => string
   /** `ExecStart` for a single queue-worker process. */
@@ -73,7 +80,10 @@ function bunEnvWrap(command: string): string {
 export const stacksDriver: AppFrameworkDriver = {
   id: 'stacks',
   wrapExec: bunEnvWrap,
-  schedulerCommand: ({ current }) => `cd ${current} && ${BUN_BIN} ${STACKS_CLI} schedule:run >> /dev/null 2>&1`,
+  // `buddy schedule:run` stays alive (in-process timers) → one always-on unit.
+  // systemd sets WorkingDirectory to the release dir, so the CLI path is relative.
+  schedulerMode: 'daemon',
+  schedulerCommand: () => `${BUN_BIN} ${STACKS_CLI} schedule:run`,
   queueWorkerCommand: (worker, { current }) => {
     const flags = [
       `--queue=${worker.queue || 'default'}`,
@@ -89,7 +99,9 @@ export const stacksDriver: AppFrameworkDriver = {
 export const laravelDriver: AppFrameworkDriver = {
   id: 'laravel',
   wrapExec: command => `/bin/sh -lc '${PANTRY_ENV_EVAL}; exec ${command}'`,
-  schedulerCommand: ({ current }) => `cd ${current} && ${PANTRY_ENV_EVAL} && php artisan schedule:run >> /dev/null 2>&1`,
+  // `php artisan schedule:run` is one-shot → run it every minute from cron.
+  schedulerMode: 'cron',
+  schedulerCommand: ({ current }) => `cd ${current} && ${PANTRY_ENV_EVAL} && php artisan schedule:run`,
   queueWorkerCommand: (worker, { current }) => {
     const artisan = `${current}/artisan`
     if (worker.horizon)

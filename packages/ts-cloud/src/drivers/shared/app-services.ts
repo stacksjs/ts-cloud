@@ -144,6 +144,22 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     }
   })
 
+  // Scheduler. Stacks-style (`schedulerMode: 'daemon'`) is a single always-on
+  // unit — `buddy schedule:run` holds in-process timers, so running it from cron
+  // would spawn a new long-lived process every minute. Laravel-style (`'cron'`)
+  // is emitted as a cron.d entry below instead.
+  const scheduler = site.scheduler
+  const schedulerEnabled = scheduler === true || (typeof scheduler === 'object' && scheduler !== null)
+  const schedulerUnit = `${slug}-${siteName}-scheduler`
+  if (schedulerEnabled && driver.schedulerMode === 'daemon') {
+    desiredUnits.push(schedulerUnit)
+    out.push(...writeUnitScript(schedulerUnit, systemdUnit({
+      description: `${siteName} scheduler (managed by ts-cloud)`,
+      workingDir: current,
+      execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
+    })))
+  }
+
   // Prune systemd units for this site that are no longer desired, then reload
   // and (re)start the desired set.
   const desiredList = desiredUnits.map(n => `${n}.service`).join(' ')
@@ -153,7 +169,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     // Escape regex metachars in slug/siteName and anchor to `.service` so a
     // sibling site whose name is a prefix (e.g. `app` vs `app-admin`) or a slug
     // with a `.`/`+` doesn't over-match and prune another site's units.
-    `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${reEscape(slug)}-${reEscape(siteName)}-(queue|daemon)-.*\\.service$' || true); do`,
+    `for unit in $(ls /etc/systemd/system/ 2>/dev/null | grep -E '^${reEscape(slug)}-${reEscape(siteName)}-((queue|daemon)-.*|scheduler)\\.service$' || true); do`,
     '  case " $TS_CLOUD_DESIRED " in',
     '    *" $unit "*) ;;',
     '    *) systemctl stop "$unit" 2>/dev/null || true; systemctl disable "$unit" 2>/dev/null || true; rm -f "/etc/systemd/system/$unit" ;;',
@@ -165,16 +181,14 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
     out.push(`systemctl enable ${name}.service`, `systemctl restart ${name}.service`)
   }
 
-  // Scheduler — a cron.d entry running the framework's `schedule:run` every
-  // minute, or removal of any prior entry when disabled. A heartbeat URL
-  // (healthchecks.io / Oh Dear style) is pinged only after a successful run, so
-  // the monitor alerts if the scheduler stops.
+  // Laravel-style scheduler: a cron.d entry running `schedule:run` every minute.
+  // A heartbeat URL (healthchecks.io / Oh Dear style) is pinged only after a
+  // successful run so the monitor alerts if the scheduler stops. Any stale cron
+  // is removed when the scheduler is off or runs as a daemon (handled above).
   const cronPath = schedulerCronPath(slug, siteName)
-  const scheduler = site.scheduler
-  const schedulerEnabled = scheduler === true || (typeof scheduler === 'object' && scheduler !== null)
-  if (schedulerEnabled) {
+  if (schedulerEnabled && driver.schedulerMode === 'cron') {
     const heartbeat = typeof scheduler === 'object' && scheduler !== null ? scheduler : undefined
-    let command = driver.schedulerCommand(ctx)
+    let command = `${driver.schedulerCommand(ctx)} >> /dev/null 2>&1`
     if (heartbeat?.heartbeatUrl) {
       const method = heartbeat.heartbeatMethod || 'GET'
       const methodFlag = method === 'GET' ? '' : `-X ${method} `

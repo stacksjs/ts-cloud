@@ -238,6 +238,15 @@ export async function deploySiteRelease(
       })
     : []
   const staticSsl = wantsNginxStatic ? buildSslScript(site) : []
+
+  // Reconcile background services (scheduler / queue workers / daemons) for
+  // non-PHP sites too — not just Laravel. The framework driver (app-services)
+  // renders the right commands for Stacks (bun) vs Laravel, so a Stacks
+  // server-app can run its scheduler + workers the same way.
+  const servicesScript = siteHasServices(site)
+    ? buildSiteServicesScript({ slug, siteName, site, appBase: `/var/www/${siteName}` })
+    : []
+
   const remoteScript = [
     ...buildDeployHistoryHeader(`/var/www/${siteName}`, {
       releaseId: sha,
@@ -247,6 +256,7 @@ export async function deploySiteRelease(
     ...baseScript,
     ...staticVhost,
     ...staticSsl,
+    ...servicesScript,
   ]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)
