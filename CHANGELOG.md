@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.34...v0.5.35)
+
+### 🐛 Bug Fixes
+
+- **bootstrap**: export HOME before installing bun — cloud-init runs under set -u without HOME, so bun's install.sh aborted with 'HOME: unbound variable' and a from-scratch provision never got /usr/local/bin/bun (adopting an existing box masked it) ([eb580fa](https://github.com/stacksjs/ts-cloud/commit/eb580fa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.5.35 ([bb0ee5c](https://github.com/stacksjs/ts-cloud/commit/bb0ee5c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.33...v0.5.34)
 
 ### 🐛 Bug Fixes
