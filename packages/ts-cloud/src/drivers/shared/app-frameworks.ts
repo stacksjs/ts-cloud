@@ -39,10 +39,14 @@ export interface FrameworkExecContext {
 export interface AppFrameworkDriver {
   readonly id: FrameworkId
   /**
-   * Wrap a bare command so a systemd unit / cron entry runs it with the
-   * framework's runtime on PATH (systemd units inherit no shell env).
+   * Wrap a command for a systemd unit / cron entry. Prefer a BARE command +
+   * {@link AppFrameworkDriver.execEnv} (like the app's own service) so starting
+   * a long-lived unit over SSH doesn't hold the deploy channel open; only wrap
+   * in a shell when the env must be computed at runtime (e.g. Laravel/pantry).
    */
   wrapExec: (command: string) => string
+  /** Static `Environment=` vars for a unit (systemd inherits no shell env). */
+  readonly execEnv?: Record<string, string>
   /**
    * How the app scheduler runs:
    *  - `'cron'`   → `schedule:run` is one-shot; run it every minute via cron (Laravel).
@@ -67,19 +71,17 @@ const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/n
 const BUN_BIN = '/usr/local/bin/bun'
 const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
 
-/** Ensure bun + its install dir are on PATH for a systemd/cron process. */
-function bunEnvWrap(command: string): string {
-  return `/bin/sh -lc 'export PATH="/usr/local/bin:$PATH"; export BUN_INSTALL="/root/.bun"; exec ${command}'`
-}
-
 /**
- * Stacks (Bun) — the default. The scheduler is cron-driven (`buddy schedule:run`
- * is one-shot); queue workers are long-running (`buddy queue:work`). bun lives
- * at an absolute path installed by the box bootstrap.
+ * Stacks (Bun) — the default. bun lives at an absolute path installed by the box
+ * bootstrap, so units use a BARE ExecStart (no shell wrapper) + `Environment=`
+ * for PATH/BUN_INSTALL — matching the app's own service. This matters: wrapping
+ * a long-lived unit in `/bin/sh -lc` makes `systemctl restart` over SSH hold the
+ * deploy channel open and hang the deploy.
  */
 export const stacksDriver: AppFrameworkDriver = {
   id: 'stacks',
-  wrapExec: bunEnvWrap,
+  wrapExec: command => command,
+  execEnv: { PATH: '/usr/local/bin:/usr/bin:/bin', BUN_INSTALL: '/root/.bun' },
   // `buddy schedule:run` stays alive (in-process timers) → one always-on unit.
   // systemd sets WorkingDirectory to the release dir, so the CLI path is relative.
   schedulerMode: 'daemon',

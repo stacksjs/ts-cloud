@@ -21,12 +21,14 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     expect(script).toContain(`rm -f ${schedulerCronPath('acme', 'app')}`)
   })
 
-  it('runs bun buddy queue:work and wraps ExecStart with the bun env', () => {
+  it('runs bun buddy queue:work with a bare ExecStart + Environment= (no shell wrapper)', () => {
     const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
-    expect(script).toContain('/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work')
+    expect(script).toContain('ExecStart=/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work')
     expect(script).toContain('--tries=5')
-    expect(script).toContain('BUN_INSTALL="/root/.bun"')
+    expect(script).toContain('Environment="BUN_INSTALL=/root/.bun"')
+    // No login-shell wrapper (that would hang `systemctl restart` over SSH).
+    expect(script).not.toContain('/bin/sh -lc')
     expect(script).not.toContain('pantry env')
   })
 

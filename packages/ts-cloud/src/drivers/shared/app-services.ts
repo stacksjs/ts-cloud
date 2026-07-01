@@ -61,6 +61,7 @@ function systemdUnit(opts: {
   restart?: string
   stopWaitSecs?: number
   user?: string
+  environment?: Record<string, string>
 }): string {
   const lines = [
     '[Unit]',
@@ -70,6 +71,7 @@ function systemdUnit(opts: {
     '[Service]',
     'Type=simple',
     `WorkingDirectory=${opts.workingDir}`,
+    ...Object.entries(opts.environment ?? {}).map(([k, v]) => `Environment="${k}=${v}"`),
     `ExecStart=${opts.execStart}`,
     `Restart=${opts.restart || 'always'}`,
     'RestartSec=5',
@@ -122,6 +124,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
         description: `${siteName} queue worker ${qIndex}.${p} (managed by ts-cloud)`,
         workingDir: current,
         execStart: driver.wrapExec(driver.queueWorkerCommand(worker, ctx)),
+        environment: driver.execEnv,
         stopWaitSecs: worker.stopWaitSecs ?? 90,
       })))
     }
@@ -138,6 +141,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
         description: `${siteName} daemon ${daemon.name || daemon.command} (managed by ts-cloud)`,
         workingDir: daemon.directory || current,
         execStart: driver.wrapExec(daemon.command),
+        environment: driver.execEnv,
         restart: daemon.restart,
         user: daemon.user,
       })))
@@ -157,6 +161,7 @@ export function buildSiteServicesScript(options: SiteServicesOptions): string[] 
       description: `${siteName} scheduler (managed by ts-cloud)`,
       workingDir: current,
       execStart: driver.wrapExec(driver.schedulerCommand(ctx)),
+      environment: driver.execEnv,
     })))
   }
 
