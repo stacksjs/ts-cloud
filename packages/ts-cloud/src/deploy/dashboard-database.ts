@@ -180,3 +180,56 @@ export async function createDatabaseUser(config: CloudConfig, environment: Envir
   const engine = resolveDbEngine(config)
   return runDb(config, environment, buildCreateUserScript(engine, input), `ts-cloud db:user ${input.username}`)
 }
+
+/** Where per-database dumps are written on the box. */
+export const DB_BACKUP_DIR = '/var/backups/ts-cloud/databases'
+
+/**
+ * Script that dumps a single database to a timestamped, gzipped file. The name
+ * is a validated SQL identifier (no shell metacharacters), so it is safe to
+ * embed directly. The timestamp is computed on the box.
+ */
+export function buildBackupScript(engine: DbEngine, name: string, destDir: string = DB_BACKUP_DIR): string[] {
+  const file = `${destDir}/${name}-$(date +%Y%m%d-%H%M%S).sql.gz`
+  const mkdir = `mkdir -p ${destDir}`
+  if (engine === 'postgres')
+    return [mkdir, `pg_dump -h 127.0.0.1 -p 5432 -U postgres ${name} | gzip > "${file}"`, `echo "BACKUP=${file}"`, `ls -l "${file}"`]
+  const sock = engine === 'mariadb' ? SOCKETS.mariadb : SOCKETS.mysql
+  return [mkdir, `mysqldump --socket=${sock} -u root ${name} | gzip > "${file}"`, `echo "BACKUP=${file}"`, `ls -l "${file}"`]
+}
+
+/** Script that lists the most recent dumps (newest first). */
+export function buildListBackupsScript(destDir: string = DB_BACKUP_DIR): string[] {
+  return [`ls -1t ${destDir}/*.sql.gz 2>/dev/null | head -50 | sed 's|^|BACKUP=|' || true`]
+}
+
+export function parseBackups(output: string): Array<{ file: string, database: string }> {
+  const out: Array<{ file: string, database: string }> = []
+  for (const rawLine of output.split('\n')) {
+    const line = rawLine.trim()
+    if (!line.startsWith('BACKUP='))
+      continue
+    const file = line.slice(7)
+    const base = file.split('/').pop() ?? file
+    const database = base.replace(/-\d{8}-\d{6}\.sql\.gz$/, '')
+    if (file)
+      out.push({ file, database })
+  }
+  return out
+}
+
+/** Dump a single database to a gzipped file on the box. */
+export async function backupDatabase(config: CloudConfig, environment: EnvironmentType, name: string): Promise<DbRunResult & { database: string }> {
+  if (!isValidDbIdentifier(name))
+    return { ok: false, error: 'Database name must be a valid identifier.', database: name }
+  const engine = resolveDbEngine(config)
+  const r = await runDb(config, environment, buildBackupScript(engine, name), `ts-cloud db:backup ${name}`)
+  return { ...r, database: name }
+}
+
+/** List the per-database dumps present on the box. */
+export async function listDatabaseBackups(config: CloudConfig, environment: EnvironmentType): Promise<DbRunResult & { backups: Array<{ file: string, database: string }> }> {
+  const r = await runDb(config, environment, buildListBackupsScript(), 'ts-cloud db:backups')
+  const backups = r.ok && r.stdout ? parseBackups(r.stdout) : []
+  return { ...r, backups }
+}

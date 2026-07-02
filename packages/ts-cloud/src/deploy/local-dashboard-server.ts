@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
-import { createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabases } from './dashboard-database'
+import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
@@ -699,6 +699,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (!isValidDbIdentifier(name))
             return json({ ok: false, error: 'Database name must be a valid identifier (letters, numbers, underscore; not starting with a digit).' }, 422)
           return json({ ...(await createDatabase(config as CloudConfig, environment, name)), name })
+        }
+
+        if (url.pathname === '/api/databases/backups' && req.method === 'GET')
+          return json(await listDatabaseBackups(config as CloudConfig, environment))
+
+        if (url.pathname === '/api/databases/backup' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const name = String(body.database ?? '').trim()
+          if (!isValidDbIdentifier(name))
+            return json({ ok: false, error: 'Database name must be a valid identifier.' }, 422)
+          if (body.confirm !== name)
+            return json({ ok: false, error: `Type "${name}" to back up this database.` }, 409)
+          return json(await backupDatabase(config as CloudConfig, environment, name))
         }
 
         if (url.pathname === '/api/databases/users' && req.method === 'POST') {

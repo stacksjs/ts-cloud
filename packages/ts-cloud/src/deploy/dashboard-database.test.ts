@@ -1,6 +1,6 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { buildCreateDatabaseScript, buildCreateUserScript, buildListScript, isValidDbIdentifier, parseDbList, resolveDbEngine } from './dashboard-database'
+import { buildBackupScript, buildCreateDatabaseScript, buildCreateUserScript, buildListScript, isValidDbIdentifier, parseBackups, parseDbList, resolveDbEngine } from './dashboard-database'
 
 describe('resolveDbEngine', () => {
   const cfg = (infra: any): CloudConfig => ({ project: { name: 'a', slug: 'a' }, infrastructure: infra } as any)
@@ -70,5 +70,21 @@ describe('buildListScript + parseDbList', () => {
     const parsed = parseDbList('DB=acme\nDB=acme\nDB=blog\nUSER=app\nrandom noise line\nUSER=app')
     expect(parsed.databases).toEqual(['acme', 'blog'])
     expect(parsed.users).toEqual(['app'])
+  })
+
+  it('builds a per-database dump script (mysqldump / pg_dump) to a timestamped file', () => {
+    const my = buildBackupScript('mysql', 'acme').join('\n')
+    expect(my).toContain('mysqldump --socket=')
+    expect(my).toContain('acme-$(date +%Y%m%d-%H%M%S).sql.gz')
+    const pg = buildBackupScript('postgres', 'acme').join('\n')
+    expect(pg).toContain('pg_dump -h 127.0.0.1 -p 5432 -U postgres acme')
+  })
+
+  it('parses BACKUP= lines into database + file, deriving the db from the filename', () => {
+    const parsed = parseBackups('BACKUP=/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz\nnoise\nBACKUP=/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz')
+    expect(parsed).toEqual([
+      { file: '/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz', database: 'acme' },
+      { file: '/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz', database: 'blog' },
+    ])
   })
 })
