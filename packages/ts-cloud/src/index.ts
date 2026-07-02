@@ -167,8 +167,17 @@ export {
   rollbackServerlessApp,
   runRemoteCommand,
   setMaintenance,
+  // Management-dashboard auto-deploy (inject the `dashboard.<apex>` site)
+  buildManagementDashboardArtifact,
+  DASHBOARD_CREDENTIALS_FILE,
+  ensureManagementDashboard,
+  MANAGEMENT_DASHBOARD_SITE,
+  resolveDashboardAuth,
+  resolveUiSource,
 } from './deploy'
 export type {
+  EnsureDashboardLogger,
+  ResolvedDashboardAuth,
   StaticSiteConfig,
   DeployResult,
   UploadOptions,

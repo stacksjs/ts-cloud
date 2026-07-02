@@ -39,3 +39,16 @@ export {
   type LocalDashboardServer,
   type LocalDashboardServerOptions,
 } from './local-dashboard-server'
+// Management-dashboard auto-deploy: injecting the `dashboard.<apex>` site so it
+// ships (behind auth) on every server deploy. Exported so orchestrators (e.g.
+// buddy) can inject it BEFORE provisioning, when rpx routes + DNS are derived.
+export {
+  buildManagementDashboardArtifact,
+  DASHBOARD_CREDENTIALS_FILE,
+  ensureManagementDashboard,
+  type EnsureDashboardLogger,
+  MANAGEMENT_DASHBOARD_SITE,
+  resolveDashboardAuth,
+  type ResolvedDashboardAuth,
+  resolveUiSource,
+} from './management-dashboard'
