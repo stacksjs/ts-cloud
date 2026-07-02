@@ -1,4 +1,5 @@
 import type { CloudConfig, SiteConfig, SiteDeployTarget } from '@ts-cloud/core'
+import { deploymentCoexistenceError } from '@ts-cloud/core'
 
 /**
  * The three resolved deployment kinds for a site:
@@ -94,6 +95,13 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
   const warnings: string[] = []
   const sites = config.sites || {}
   const computeConfigured = hasComputeConfigured(config)
+
+  // Server and serverless deployments are mutually exclusive: a project cannot
+  // declare both `infrastructure.compute` (server) and `environments.<env>.app`
+  // (serverless Lambda). Surface it up front as a hard error.
+  const coexistence = deploymentCoexistenceError(config)
+  if (coexistence)
+    errors.push(coexistence)
 
   // Track ports across server-app sites to catch collisions on a shared box.
   const portOwners = new Map<number, string>()

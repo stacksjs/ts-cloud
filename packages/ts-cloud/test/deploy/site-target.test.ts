@@ -67,6 +67,13 @@ describe('validateDeploymentConfig', () => {
     expect(warnings).toEqual([])
   })
 
+  it('errors when a project declares both a server and a serverless app (no coexistence)', () => {
+    const config = makeConfig({ web: { root: 'dist', domain: 'example.com' } }, true)
+    ;(config.environments as any).production.app = { kind: 'bun' }
+    const { errors } = validateDeploymentConfig(config)
+    expect(errors.some(e => /cannot be both a server and a serverless/i.test(e))).toBe(true)
+  })
+
   it('errors when a server-app site has no compute configured', () => {
     const { errors } = validateDeploymentConfig(makeConfig({
       app: { root: '.output', domain: 'app.example.com', start: 'bun run server.ts', port: 3000 },
