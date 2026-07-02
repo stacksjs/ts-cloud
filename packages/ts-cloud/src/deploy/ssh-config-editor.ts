@@ -160,7 +160,7 @@ function findPropertyArray(configText: string, start: number, end: number, prope
   return { propertyStart, start: arrayStart, end: findMatching(configText, arrayStart, '[', ']') }
 }
 
-function findMatching(text: string, start: number, open: string, close: string): number {
+export function findMatching(text: string, start: number, open: string, close: string): number {
   let depth = 0
   let quote: '"' | '\'' | '`' | undefined
   let escaped = false
