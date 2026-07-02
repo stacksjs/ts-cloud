@@ -132,6 +132,23 @@ export function renderEnvValue(env: Record<string, string>): string {
   return `{\n${entries.map(([key, value]) => `        ${key}: '${escapeSingle(String(value))}',`).join('\n')}\n      }`
 }
 
+/** A validated hostname (letters, digits, dots, hyphens; at least one dot). */
+export function isValidHostname(value: string): boolean {
+  return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(value.trim())
+}
+
+/** Render a site's `aliases` array (additional nginx `server_name` hostnames). */
+export function renderAliasesValue(aliases: string[]): string {
+  const list = [...new Set(aliases.map(a => a.trim().toLowerCase()).filter(Boolean))]
+  for (const host of list) {
+    if (!isValidHostname(host))
+      throw new Error(`Alias '${host}' is not a valid hostname.`)
+  }
+  if (list.length === 0)
+    return '[]'
+  return `[${list.map(a => `'${escapeSingle(a)}'`).join(', ')}]`
+}
+
 /**
  * Index just past a property value, starting after its colon: the terminating
  * top-level comma, or the site's closing brace. Quote- and nesting-aware so

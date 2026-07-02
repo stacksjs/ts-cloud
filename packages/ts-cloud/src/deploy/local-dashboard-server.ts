@@ -29,7 +29,7 @@ import {
   setServerlessSecret,
   updateFunctionConfig,
 } from './serverless-operations'
-import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
+import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 
 export interface LocalDashboardServerOptions {
@@ -646,6 +646,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (body.env !== undefined && body.env && typeof body.env === 'object') {
             set('env', renderEnvValue(body.env))
             existing.env = body.env
+          }
+          if (body.aliases !== undefined && Array.isArray(body.aliases)) {
+            const aliases = body.aliases.map((a: any) => String(a))
+            set('aliases', renderAliasesValue(aliases))
+            existing.aliases = aliases.map((a: string) => a.trim().toLowerCase()).filter(Boolean)
           }
           for (const key of ['domain', 'path', 'build', 'start', 'type', 'root', 'php']) {
             if (typeof body[key] === 'string' && body[key].trim()) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderEnvValue, renderSiteSnippet, renderSslValue, setSitePropertyInCloudConfig, updateSiteInCloudConfig } from '../../src/deploy/site-config-editor'
+import { addSiteToCloudConfig, isValidHostname, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderSiteSnippet, renderSslValue, setSitePropertyInCloudConfig, updateSiteInCloudConfig } from '../../src/deploy/site-config-editor'
 
 // Assert the rewritten config still parses as TypeScript so a malformed result
 // (e.g. a missing separating comma between sites) fails loudly.
@@ -201,5 +201,13 @@ describe('setSitePropertyInCloudConfig', () => {
 
   it('throws for an unknown site', () => {
     expect(() => setSitePropertyInCloudConfig({ configText: withExtras, siteName: 'nope', key: 'ssl', valueText: 'false' })).toThrow('does not exist')
+  })
+
+  it('renders a validated, deduped, lowercased aliases array', () => {
+    expect(renderAliasesValue([])).toBe('[]')
+    expect(renderAliasesValue(['WWW.Example.com', 'cdn.example.com', 'www.example.com'])).toBe("['www.example.com', 'cdn.example.com']")
+    expect(() => renderAliasesValue(['not a host'])).toThrow(/valid hostname/)
+    expect(isValidHostname('a.example.com')).toBe(true)
+    expect(isValidHostname('localhost')).toBe(false)
   })
 })

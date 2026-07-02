@@ -721,6 +721,8 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
         root: kind === 'server-static' ? `/var/www/${s.name}` : `/var/www/${s.name}/current`,
         branch: kind === 'server-static' ? 'build artifact' : 'main',
         build: site.build,
+        php: site.php ?? site.phpVersion,
+        aliases: Array.isArray(site.aliases) ? site.aliases : [],
         envKeys: Object.keys(site.env ?? site.environment ?? {}),
       }
     }),
