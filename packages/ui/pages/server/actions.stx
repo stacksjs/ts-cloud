@@ -32,6 +32,24 @@ async function runOp() {
   pending.set(null); typed.set('')
   await execAction(p.operation, p.confirm)
 }
+
+// Free-form server command runner (Forge-style). Runs on the app box over the
+// active driver; confirmation is required server-side (confirm: 'run').
+const serverCmd = state('')
+const cmdOut = state('')
+const cmdShown = state(false)
+const cmdBusy = state(false)
+async function runServerCmd() {
+  const c = serverCmd().trim()
+  if (!c) return
+  cmdBusy.set(true); cmdShown.set(true); cmdOut.set('Running ' + c + '...')
+  try {
+    const res = await fetch('/api/server/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm: 'run' }) })
+    const b = await res.json()
+    cmdOut.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || c) + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+  } catch (e) { cmdOut.set('FAILED ' + c + '\n\n' + ((e && e.message) || e)) }
+  finally { cmdBusy.set(false) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -53,6 +71,18 @@ async function runOp() {
         </div>
         @include('../partials/op-confirm')
         <p class="note">Mutating commands require typed confirmation. Output is clamped so the browser stays responsive.</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Run a command on the server</h2>
+      <div class="panel">
+        <div class="field">
+          <input :value="serverCmd()" @input="serverCmd.set($event.target.value)" @keydown.enter="runServerCmd()" placeholder="e.g. systemctl status rpx-gateway, or df -h" autocomplete="off">
+          <button class="btn" type="button" :disabled="cmdBusy()" @click="runServerCmd()">Run</button>
+        </div>
+        <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
+        <p class="note">Runs on the app box over the active driver (SSH/SSM). Use it for one-off recipes, service inspection, or installing software. Prefer declarative config for anything you want reproduced on the next deploy.</p>
       </div>
     </div>
   </div>

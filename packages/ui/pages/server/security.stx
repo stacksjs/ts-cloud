@@ -31,7 +31,7 @@ function certLabel(cert) {
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Security</div>
     <header class="page">
       <div><h1>Security</h1><p>Firewall state, listening ports, TLS expiry, and recent SSH auth events.</p></div>
-      <div class="cmds header-actions"><span class="accent cmd">cloud server:secure {{ server.name }}</span></div>
+      <div class="cmds header-actions"><a class="btn ghost sm" href="/server/firewall">Manage firewall →</a><span class="accent cmd">cloud server:secure {{ server.name }}</span></div>
     </header>
 
     <div class="grid cards-3">

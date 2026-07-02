@@ -10,7 +10,7 @@ const sites = __d?.sitesDetail ?? [
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <script client>
-// Reactive site management — add, per-site deploy/edit/remove — via signals +
+// Reactive site management - add, per-site deploy/edit/remove - via signals +
 // directives. Mutations re-render the server-built page (location.reload) once
 // the cloud config has changed.
 const addName = state(''); const addRoot = state(''); const addDomain = state(''); const addPath = state('')
@@ -53,12 +53,13 @@ async function runOp() {
 }
 
 // Inline per-site edit (TLS / domain / env).
-const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state('')
-function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set('') }
+const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state('')
+function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set('') }
 async function saveEdit(name) {
   const payload = { name }
   if (editSsl() === 'false') payload.ssl = false; else if (editSsl()) payload.ssl = { provider: editSsl() }
   if (editDomain()) payload.domain = editDomain()
+  if (editPhp()) payload.php = editPhp()
   if (editEnv()) { payload.env = {}; for (const line of editEnv().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.env[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
   opShown.set(true); opOutput.set('Updating ' + name + '...')
   try {
@@ -132,6 +133,16 @@ async function saveEdit(name) {
             </select>
           </div>
           <div class="field-block"><label>Domain</label><input placeholder="{{ site.domain }}" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
+          <div class="field-block">
+            <label>PHP version</label>
+            <select :value="editPhp()" @change="editPhp.set($event.target.value)">
+              <option value="">(unchanged)</option>
+              <option value="8.1">8.1</option>
+              <option value="8.2">8.2</option>
+              <option value="8.3">8.3</option>
+              <option value="8.4">8.4</option>
+            </select>
+          </div>
           <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
