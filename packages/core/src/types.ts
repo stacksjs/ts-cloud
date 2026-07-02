@@ -157,11 +157,13 @@ export interface ProjectConfig {
 
 /**
  * Deployment mode (optional)
- * @deprecated Mode is now auto-detected from your infrastructure configuration.
- * Simply define the resources you need (functions, servers, storage, etc.) and
- * ts-cloud will deploy them accordingly. No need to specify a mode.
+ * A project deploys as EITHER a server (`infrastructure.compute` - an EC2/Fargate
+ * box, Forge-style) OR serverless (`environments.<env>.app` - Lambda functions,
+ * Vapor-style). The two are mutually exclusive and cannot coexist in one project;
+ * ts-cloud auto-detects the mode from your config. Setting `mode` explicitly is
+ * optional and only pins the auto-detection.
  */
-export type DeploymentMode = 'server' | 'serverless' | 'hybrid'
+export type DeploymentMode = 'server' | 'serverless'
 
 export type EnvironmentType = 'production' | 'staging' | 'development'
 

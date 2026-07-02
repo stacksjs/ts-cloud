@@ -46,9 +46,8 @@
     },
     "mode": {
       "type": "string",
-      "description": "Deployment mode",
-      "enum": ["server", "serverless", "hybrid"],
-      "default": "serverless"
+      "description": "Deployment mode (server and serverless are mutually exclusive; auto-detected when omitted)",
+      "enum": ["server", "serverless"]
     },
     "environments": {
       "type": "object",

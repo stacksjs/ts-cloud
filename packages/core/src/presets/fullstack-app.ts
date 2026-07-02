@@ -24,7 +24,9 @@ export function createFullStackAppPreset(options: {
       slug,
       region: 'us-east-1',
     },
-    mode: 'hybrid',
+    // Static frontend (S3/CloudFront) + a Fargate backend: a server (compute)
+    // deployment, not a serverless Lambda app.
+    mode: 'server',
     environments: {
       production: {
         type: 'production',

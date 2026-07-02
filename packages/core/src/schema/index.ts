@@ -56,9 +56,9 @@ export function validateAgainstSchema(config: any): {
     errors.push(`Invalid region: ${config.project.region}. Must be one of: ${validRegions.join(', ')}`)
   }
 
-  // Validate mode if provided
-  if (config.mode && !['server', 'serverless', 'hybrid'].includes(config.mode)) {
-    errors.push('Invalid mode: must be one of server, serverless, or hybrid')
+  // Validate mode if provided (server and serverless are mutually exclusive)
+  if (config.mode && !['server', 'serverless'].includes(config.mode)) {
+    errors.push('Invalid mode: must be one of server or serverless')
   }
 
   return {

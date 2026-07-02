@@ -5,6 +5,9 @@
 // Core types
 export * from './types'
 
+// Deployment-mode detection (server vs serverless, mutually exclusive)
+export * from './deployment-mode'
+
 // Cloud drivers (provider abstraction)
 export * from './drivers'
 
