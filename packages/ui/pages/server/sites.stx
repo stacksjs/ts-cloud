@@ -53,13 +53,14 @@ async function runOp() {
 }
 
 // Inline per-site edit (TLS / domain / env).
-const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state('')
-function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set('') }
+const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state(''); const editAliases = state('')
+function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set(''); editAliases.set('') }
 async function saveEdit(name) {
   const payload = { name }
   if (editSsl() === 'false') payload.ssl = false; else if (editSsl()) payload.ssl = { provider: editSsl() }
   if (editDomain()) payload.domain = editDomain()
   if (editPhp()) payload.php = editPhp()
+  if (editAliases().trim()) payload.aliases = editAliases().split(/[\s,]+/).filter(Boolean)
   if (editEnv()) { payload.env = {}; for (const line of editEnv().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.env[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
   opShown.set(true); opOutput.set('Updating ' + name + '...')
   try {
@@ -113,6 +114,9 @@ async function saveEdit(name) {
             @if (site.envKeys && site.envKeys.length)
               <div class="kv"><span>env vars</span> <b class="mono">{{ site.envKeys.join(', ') }}</b></div>
             @endif
+            @if (site.aliases && site.aliases.length)
+              <div class="kv"><span>aliases</span> <b class="mono">{{ site.aliases.join(', ') }}</b></div>
+            @endif
             @if (site.shadowedBy)
               <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
             @endif
@@ -143,6 +147,7 @@ async function saveEdit(name) {
               <option value="8.4">8.4</option>
             </select>
           </div>
+          <div class="field-block wide"><label>Domain aliases (space or comma separated)</label><input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></div>
           <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
