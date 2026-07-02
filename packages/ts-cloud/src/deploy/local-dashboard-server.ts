@@ -31,6 +31,7 @@ import {
 } from './serverless-operations'
 import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
+import { createTerminalSession } from './terminal-session'
 
 export interface LocalDashboardServerOptions {
   host?: string
@@ -447,13 +448,47 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   if (!activeUiRoot)
     throw new Error('ts-cloud dashboard UI not found. Run `bun run build` in ts-cloud or reinstall the package.')
 
+  // Web-terminal sessions, one shell per open WebSocket connection.
+  const terminalSessions = new WeakMap<object, ReturnType<typeof createTerminalSession>>()
+  const terminalEnabled = process.env.TS_CLOUD_DASHBOARD_TERMINAL !== '0'
+
   const server = Bun.serve({
     hostname: host,
     port,
-    async fetch(req) {
+    websocket: {
+      open(ws) {
+        if (!terminalEnabled) {
+          ws.send('The web terminal is disabled (TS_CLOUD_DASHBOARD_TERMINAL=0).\r\n')
+          ws.close()
+          return
+        }
+        const session = createTerminalSession(chunk => ws.send(chunk), {
+          cwd,
+          onExit: () => { try { ws.close() } catch { /* already closed */ } },
+        })
+        terminalSessions.set(ws, session)
+        ws.send(`Connected to ${host === '127.0.0.1' ? 'localhost' : host} shell. This is a line-oriented shell (no full-screen apps).\r\n`)
+      },
+      message(ws, message) {
+        terminalSessions.get(ws)?.write(typeof message === 'string' ? message : new TextDecoder().decode(message))
+      },
+      close(ws) {
+        terminalSessions.get(ws)?.close()
+        terminalSessions.delete(ws)
+      },
+    },
+    async fetch(req, server) {
       const url = new URL(req.url)
 
       try {
+        if (url.pathname === '/api/terminal') {
+          if (!terminalEnabled)
+            return json({ ok: false, error: 'The web terminal is disabled.' }, 403)
+          if (server.upgrade(req))
+            return undefined
+          return text('WebSocket upgrade failed', 400)
+        }
+
         if (url.pathname === '/api/health') {
           return json({
             ok: true,
@@ -462,6 +497,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             environments: availableEnvironments,
             uiRoot: activeUiRoot,
             liveData: !!liveUiRoot,
+            terminal: terminalEnabled,
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
         }
