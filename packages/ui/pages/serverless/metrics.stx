@@ -28,6 +28,7 @@ function pct(v, max) { return Math.round((v / max) * 100) }
         <p>CloudWatch metrics across the function trio, last {{ window }}.</p>
       </div>
       <div class="header-actions">
+        <a class="btn ghost sm" href="/serverless/traces">Traces →</a>
         <a class="btn ghost sm" href="/serverless/alarms">Alarms →</a>
       </div>
     </header>

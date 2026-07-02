@@ -1,0 +1,88 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const app = __d?.app ?? { name: 'acme', env: 'production' }
+const initialTraces = __d?.traces ?? [
+  { id: '1-6630a1b2-abc123', method: 'GET', url: 'https://acme.com/', httpStatus: 200, responseMs: 84, durationMs: 86, status: 'ok' },
+  { id: '1-6630a1c4-def456', method: 'POST', url: 'https://acme.com/checkout', httpStatus: 500, responseMs: 240, durationMs: 512, status: 'fault' },
+  { id: '1-6630a1d9-9a0f21', method: 'GET', url: 'https://acme.com/api/orders', httpStatus: 429, responseMs: 12, durationMs: 12, status: 'throttle' },
+]
+</script>
+<script client>
+// X-Ray traces for the HTTP function, refreshed over /api/serverless/traces.
+const traces = state(initialTraces)
+const minutes = state(30)
+const note = state('')
+const loading = state(false)
+const filter = state('all')
+const shown = derived(() => traces().filter(t => filter() === 'all' || t.status === filter()))
+function tone(s) { return s === 'ok' ? 'ok' : (s === 'throttle' ? 'warn' : 'bad') }
+async function load() {
+  loading.set(true); note.set('')
+  try {
+    const r = await fetch('/api/serverless/traces?minutes=' + minutes())
+    const d = await r.json()
+    if (d.ok) { traces.set(d.traces || []); if (!(d.traces || []).length) note.set('No traces in the last ' + minutes() + ' minutes. Enable active tracing on the functions to populate this view.') }
+    else { note.set(d.error || 'Traces unavailable.') }
+  } catch (e) { note.set('Failed to load traces: ' + ((e && e.message) || e)) }
+  finally { loading.set(false) }
+}
+function setWindow(m) { minutes.set(m); load() }
+onMount(() => { load() })
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud · Traces' })</head>
+<body>
+  @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
+  <div class="wrap">
+    <div class="crumbs"><a href="/serverless">Serverless</a> <span class="sep">/</span> Traces</div>
+    <header class="page">
+      <div><h1>Traces</h1><p>Distributed traces from AWS X-Ray for the HTTP function, newest first.</p></div>
+      <div class="header-actions">
+        <button class="btn ghost sm" type="button" :disabled="loading()" @click="load()">Refresh</button>
+      </div>
+    </header>
+
+    <div class="section">
+      <div class="panel">
+        <div class="filters">
+          <div class="segmented" role="group" aria-label="Time window">
+            <button type="button" :class="{ active: minutes() === 15 }" @click="setWindow(15)">15m</button>
+            <button type="button" :class="{ active: minutes() === 30 }" @click="setWindow(30)">30m</button>
+            <button type="button" :class="{ active: minutes() === 60 }" @click="setWindow(60)">1h</button>
+            <button type="button" :class="{ active: minutes() === 180 }" @click="setWindow(180)">3h</button>
+          </div>
+          <div class="segmented" role="group" aria-label="Status filter">
+            <button type="button" :class="{ active: filter() === 'all' }" @click="filter.set('all')">All</button>
+            <button type="button" :class="{ active: filter() === 'ok' }" @click="filter.set('ok')">OK</button>
+            <button type="button" :class="{ active: filter() === 'error' }" @click="filter.set('error')">Error</button>
+            <button type="button" :class="{ active: filter() === 'fault' }" @click="filter.set('fault')">Fault</button>
+            <button type="button" :class="{ active: filter() === 'throttle' }" @click="filter.set('throttle')">Throttle</button>
+          </div>
+        </div>
+
+        <table @show="shown().length > 0">
+          <thead><tr><th>Trace</th><th>Method</th><th>URL</th><th>HTTP</th><th>Response</th><th>Duration</th><th>Status</th></tr></thead>
+          <tbody>
+            <template :for="t in shown()">
+              <tr>
+                <td class="mono" style="font-size:11px">{{ t.id }}</td>
+                <td class="mono">{{ t.method }}</td>
+                <td class="mono" style="font-size:11px;color:var(--txt2);max-width:420px;overflow:hidden;text-overflow:ellipsis">{{ t.url }}</td>
+                <td class="mono">{{ t.httpStatus }}</td>
+                <td class="mono">{{ t.responseMs }}ms</td>
+                <td class="mono">{{ t.durationMs }}ms</td>
+                <td><span class="pill" :class="tone(t.status)">{{ t.status }}</span></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="compact empty" @show="shown().length === 0"><strong>No traces</strong><span>{{ note() || 'No traces match this filter.' }}</span></div>
+        <p class="note" @show="note() !== '' && shown().length > 0">{{ note() }}</p>
+        <p class="note">Traces need active tracing enabled on the Lambda functions. Set tracing in your serverless app config and redeploy.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
