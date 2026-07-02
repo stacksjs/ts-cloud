@@ -53,14 +53,15 @@ async function runOp() {
 }
 
 // Inline per-site edit (TLS / domain / env).
-const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state(''); const editAliases = state('')
-function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set(''); editAliases.set('') }
+const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state(''); const editAliases = state(''); const editRedirects = state('')
+function toggleEdit(name) { editing.set(editing() === name ? '' : name); editSsl.set(''); editDomain.set(''); editEnv.set(''); editPhp.set(''); editAliases.set(''); editRedirects.set('') }
 async function saveEdit(name) {
   const payload = { name }
   if (editSsl() === 'false') payload.ssl = false; else if (editSsl()) payload.ssl = { provider: editSsl() }
   if (editDomain()) payload.domain = editDomain()
   if (editPhp()) payload.php = editPhp()
   if (editAliases().trim()) payload.aliases = editAliases().split(/[\s,]+/).filter(Boolean)
+  if (editRedirects().trim()) { payload.redirects = {}; for (const line of editRedirects().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.redirects[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
   if (editEnv()) { payload.env = {}; for (const line of editEnv().split('\n')) { const i = line.indexOf('='); if (i > 0) payload.env[line.slice(0, i).trim()] = line.slice(i + 1).trim() } }
   opShown.set(true); opOutput.set('Updating ' + name + '...')
   try {
@@ -117,6 +118,9 @@ async function saveEdit(name) {
             @if (site.aliases && site.aliases.length)
               <div class="kv"><span>aliases</span> <b class="mono">{{ site.aliases.join(', ') }}</b></div>
             @endif
+            @if (site.redirects && Object.keys(site.redirects).length)
+              <div class="kv"><span>redirects</span> <b class="mono">{{ Object.keys(site.redirects).length }}</b></div>
+            @endif
             @if (site.shadowedBy)
               <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
             @endif
@@ -148,6 +152,7 @@ async function saveEdit(name) {
             </select>
           </div>
           <div class="field-block wide"><label>Domain aliases (space or comma separated)</label><input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></div>
+          <div class="field-block wide"><label>Redirects (from = to per line)</label><textarea rows="2" placeholder="/old = /new" :value="editRedirects()" @input="editRedirects.set($event.target.value)"></textarea></div>
           <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
