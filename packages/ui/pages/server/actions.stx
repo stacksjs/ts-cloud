@@ -58,7 +58,10 @@ async function runServerCmd() {
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">
     <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Operations</div>
-    <header class="page"><div><h1>Operations</h1><p>Run allowlisted local cloud commands and inspect their output.</p></div></header>
+    <header class="page">
+      <div><h1>Operations</h1><p>Run allowlisted local cloud commands and inspect their output.</p></div>
+      <div class="header-actions"><a class="btn ghost sm" href="/server/terminal">Open terminal →</a></div>
+    </header>
 
     <div class="section">
       <h2>Run command</h2>
