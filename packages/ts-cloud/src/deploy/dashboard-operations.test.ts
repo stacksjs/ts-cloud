@@ -55,6 +55,16 @@ describe('buildDashboardOperations', () => {
     expect(ids).not.toContain('scheduler:run:web')
   })
 
+  it('labels the scheduler op per framework (Stacks daemon → restart, Laravel one-shot → run)', () => {
+    // `api` has no framework/type → Stacks-first default → the daemon is cycled.
+    expect(ops.find(o => o.id === 'scheduler:run:api')?.label).toBe('Restart scheduler (api)')
+
+    const laravel = buildDashboardOperations(config({
+      sites: { blog: { domain: 'acme.com', root: '.', type: 'laravel', scheduler: true } },
+    } as any), data)
+    expect(laravel.find(o => o.id === 'scheduler:run:blog')?.label).toBe('Run scheduler (blog)')
+  })
+
   it('offers backup run + restore when backups are enabled and a db exists', () => {
     expect(ids).toContain('backup:run')
     expect(ids).toContain('backup:restore')

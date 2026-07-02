@@ -9,6 +9,7 @@
  */
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
+import { resolveSiteFramework } from '../drivers/shared/app-frameworks'
 import { BACKUP_RUNNER_PATH } from '../drivers/shared/backups'
 import { restoreDatabaseBackup, rollbackComputeSite } from '../drivers/shared/compute-ops'
 import { PANTRY_PROJECT_DIR } from '../drivers/shared/package-manager'
@@ -104,12 +105,23 @@ export function buildDashboardOperations(config: CloudConfig, data: Record<strin
   for (const site of workerSites)
     ops.push({ id: `worker:restart:${site}`, label: `Restart workers (${site})`, group: 'worker', target: site, mutates: true, confirm: site })
 
-  // Scheduler run-now per site that declares a scheduler.
+  // Scheduler: Laravel runs `schedule:run` as a one-shot (so "run now" fires due
+  // tasks immediately); Stacks runs it as an always-on daemon (so the meaningful
+  // action is cycling the unit). The label reflects which one this site gets.
   for (const [name, site] of Object.entries(config.sites ?? {})) {
     if (!site || !isSafeSiteName(name))
       continue
-    if ((site as any).scheduler || (site as any).schedule)
-      ops.push({ id: `scheduler:run:${name}`, label: `Run scheduler (${name})`, group: 'scheduler', target: name, mutates: true, confirm: name })
+    if ((site as any).scheduler || (site as any).schedule) {
+      const laravel = resolveSiteFramework(site as any) === 'laravel'
+      ops.push({
+        id: `scheduler:run:${name}`,
+        label: `${laravel ? 'Run' : 'Restart'} scheduler (${name})`,
+        group: 'scheduler',
+        target: name,
+        mutates: true,
+        confirm: name,
+      })
+    }
   }
 
   // Backups: run-now always when scheduled backups are configured; restore only
@@ -145,6 +157,43 @@ function siteArtisanCommand(site: string, artisan: string): string[] {
     'set -uo pipefail',
     `[ -d ${current} ] || { echo "site ${site} has no current release" >&2; exit 1; }`,
     `cd ${current} && ${pantryEnvEval()} && php artisan ${artisan}`,
+  ]
+}
+
+/**
+ * Restart a site's queue workers, framework-aware:
+ *  - Laravel: `php artisan queue:restart` sends the graceful restart signal so
+ *    each worker finishes its current job then re-execs onto the live release.
+ *  - Stacks: `buddy queue:work` runs as systemd units (`<slug>-<site>-queue-*`),
+ *    so restart those units (systemctl expands the glob over loaded units).
+ */
+function workerRestartCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
+  if (framework === 'laravel')
+    return siteArtisanCommand(site, 'queue:restart')
+  const pattern = `${slug}-${site}-queue-*.service`
+  return [
+    'set -uo pipefail',
+    `units=$(systemctl list-units --type=service --all --no-legend '${pattern}' 2>/dev/null | awk '{print $1}')`,
+    `[ -n "$units" ] || { echo "no queue-worker units found for ${site} (${pattern})" >&2; exit 1; }`,
+    'systemctl restart $units',
+    `systemctl --no-legend --type=service list-units '${pattern}' 2>/dev/null || true`,
+  ]
+}
+
+/**
+ * Run/cycle a site's scheduler, framework-aware:
+ *  - Laravel: `php artisan schedule:run` is a one-shot that fires due tasks now.
+ *  - Stacks: the scheduler is an always-on daemon (`<slug>-<site>-scheduler`),
+ *    so cycle the unit to pick up the live release and reset its timers.
+ */
+function schedulerRunCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
+  if (framework === 'laravel')
+    return siteArtisanCommand(site, 'schedule:run')
+  const unit = `${slug}-${site}-scheduler.service`
+  return [
+    'set -uo pipefail',
+    `systemctl restart ${unit}`,
+    `systemctl is-active ${unit} 2>/dev/null || true`,
   ]
 }
 
@@ -215,12 +264,14 @@ export async function runDashboardOperation(
     command = `systemctl ${verb} ${operation.target}`
   }
   else if (operation.group === 'worker') {
-    commands = siteArtisanCommand(operation.target, 'queue:restart')
-    command = `queue:restart (${operation.target})`
+    const framework = resolveSiteFramework((config.sites?.[operation.target] ?? {}) as any)
+    commands = workerRestartCommand(framework, slug, operation.target)
+    command = framework === 'laravel' ? `queue:restart (${operation.target})` : `restart queue units (${operation.target})`
   }
   else if (operation.group === 'scheduler') {
-    commands = siteArtisanCommand(operation.target, 'schedule:run')
-    command = `schedule:run (${operation.target})`
+    const framework = resolveSiteFramework((config.sites?.[operation.target] ?? {}) as any)
+    commands = schedulerRunCommand(framework, slug, operation.target)
+    command = framework === 'laravel' ? `schedule:run (${operation.target})` : `restart scheduler (${operation.target})`
   }
   else if (operation.id === 'backup:run') {
     commands = backupRunCommand()
@@ -239,6 +290,49 @@ export async function runDashboardOperation(
   return {
     operation: operation.id,
     command,
+    ok: result.success,
+    stdout: clampOutput(result.perInstance?.[0]?.output ?? ''),
+    stderr: clampOutput(result.perInstance?.[0]?.error ?? result.error ?? ''),
+  }
+}
+
+/**
+ * Run an arbitrary shell command on the app box (Forge-style "run command" /
+ * recipe runner). The dashboard is behind Basic auth and the caller must type a
+ * confirmation, so this is an operator affordance, not an open endpoint. Output
+ * is bounded and errors are captured rather than thrown.
+ */
+export async function runServerShellCommand(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  command: string,
+): Promise<DashboardOperationResult> {
+  const trimmed = command.trim()
+  if (!trimmed)
+    return { operation: 'command', ok: false, error: 'A command is required.' }
+
+  let driver: ReturnType<typeof createCloudDriver>
+  try {
+    driver = createCloudDriver({ config })
+  }
+  catch (error: any) {
+    return { operation: 'command', ok: false, error: `Could not initialize the cloud driver: ${error?.message ?? error}` }
+  }
+
+  const slug = config.project.slug
+  const targets = await driver.findComputeTargets({ slug, environment, role: 'app' })
+  if (!targets.length)
+    return { operation: 'command', ok: false, error: 'No app server target was found for this environment.' }
+
+  const result = await driver.runRemoteDeploy({
+    targets: [targets[0]],
+    commands: ['set -o pipefail', trimmed],
+    comment: 'ts-cloud dashboard:command',
+    tags: { Project: slug, Environment: environment, Role: 'app' },
+  })
+  return {
+    operation: 'command',
+    command: trimmed,
     ok: result.success,
     stdout: clampOutput(result.perInstance?.[0]?.output ?? ''),
     stderr: clampOutput(result.perInstance?.[0]?.error ?? result.error ?? ''),
