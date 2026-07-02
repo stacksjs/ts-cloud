@@ -331,6 +331,21 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
     catch { /* waf optional */ }
   }
 
+  // ── Composed data-services list (for the serverless overview) ────────────────
+  // Flatten the individually-resolved managed data resources into one list the
+  // home page renders directly (Aurora, RDS Proxy, ElastiCache, EFS).
+  const dataServices: any[] = []
+  if (out.aurora)
+    dataServices.push({ name: 'Aurora Serverless v2', detail: `${out.aurora.id} · ${out.aurora.minAcu}-${out.aurora.maxAcu} ACU`, status: out.aurora.status })
+  if (out.proxy)
+    dataServices.push({ name: 'RDS Proxy', detail: out.proxy.name, status: out.proxy.status })
+  if (out.redis)
+    dataServices.push({ name: `ElastiCache (${out.redis.engine})`, detail: `${out.redis.node} · ${out.redis.hitRate}% hit rate`, status: out.redis.status })
+  if (out.efs)
+    dataServices.push({ name: 'EFS', detail: `${out.efs.mount} · ${out.efs.sizeMb} MB`, status: out.efs.status })
+  if (dataServices.length)
+    out.dataServices = dataServices
+
   // ── Scheduler tasks (Laravel `schedule:list` via the CLI function) ──────────-
   if (info.scheduler !== 'off' && app?.kind === 'php') {
     try {
