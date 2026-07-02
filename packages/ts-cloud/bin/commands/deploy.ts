@@ -20,7 +20,7 @@ import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
-import { resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
+import { deploymentCoexistenceError, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
 import { runConfigHook } from '../../src/deploy/hooks'
@@ -391,6 +391,19 @@ export function registerDeployCommands(app: CLI): void {
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
+
+        // Server and serverless are mutually exclusive. When the project is a
+        // serverless app (`environments.<env>.app`), `cloud deploy` routes to the
+        // Lambda pipeline automatically (the same work as `cloud deploy:serverless`)
+        // instead of the compute/infrastructure path below.
+        if (resolveDeploymentMode(config) === 'serverless') {
+          cli.step('Serverless project detected: deploying the Lambda application')
+          const { deployServerlessApp } = await import('../../src/deploy/serverless-app')
+          await deployServerlessApp(config, environment, {})
+          cli.success('Serverless deployment complete')
+          return
+        }
+
         const stackName = options?.stack || resolveProjectStackName(config, environment)
         const region = config.project.region || 'us-east-1'
         const deployInfrastructureStack = config.infrastructure?.deployStack !== false
@@ -732,6 +745,13 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
         const region = config.project.region || 'us-east-1'
 
+        const serverCoexistence = deploymentCoexistenceError(config)
+        if (serverCoexistence) {
+          cli.error(serverCoexistence)
+          process.exitCode = 1
+          return
+        }
+
         if (!config.infrastructure?.compute) {
           cli.error('No `infrastructure.compute` configured — nothing to deploy as a server.')
           cli.info('Add an EC2 compute block to cloud.config, or use `cloud deploy:serverless` for Lambda apps.')
@@ -776,6 +796,12 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       try {
         const config = await loadValidatedConfig()
         const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
+        const serverlessCoexistence = deploymentCoexistenceError(config)
+        if (serverlessCoexistence) {
+          cli.error(serverlessCoexistence)
+          process.exitCode = 1
+          return
+        }
         const { deployServerlessApp, redeployServerlessApp } = await import('../../src/deploy/serverless-app')
 
         if (options?.redeploy) {
