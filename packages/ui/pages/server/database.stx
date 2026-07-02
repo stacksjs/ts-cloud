@@ -42,7 +42,20 @@ async function createUser() {
   show((b.ok ? 'OK created user ' + (b.username || uName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
   if (b.ok) { uName.set(''); uPass.set(''); load() }
 }
-onMount(() => { load() })
+
+// Per-database backups: a gzipped dump written on the box, plus a live list.
+const backups = state([])
+async function loadBackups() {
+  try { const res = await fetch('/api/databases/backups'); const d = await res.json(); if (d.ok) backups.set(d.backups || []) } catch {}
+}
+async function backupDb(name) {
+  show('Backing up ' + name + '...')
+  const res = await fetch('/api/databases/backup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ database: name, confirm: name }) })
+  const b = await res.json()
+  show((b.ok ? 'OK backed up ' + (b.database || name) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+  if (b.ok) loadBackups()
+}
+onMount(() => { load(); loadBackups() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -95,11 +108,11 @@ onMount(() => { load() })
       <div>
         <h2>Databases</h2>
         <div class="panel">
-          <div class="svc">
-            <template :for="n in databases()"><span class="item">{{ n }}</span></template>
-            <span class="item" @show="databases().length === 0 && dbError() !== ''">{{ dbError() }}</span>
-            <span class="item" @show="databases().length === 0 && dbError() === ''">no databases</span>
-          </div>
+          <template :for="n in databases()">
+            <div class="kv"><span class="mono">{{ n }}</span> <button class="btn ghost sm" type="button" @click="backupDb(n)">Back up</button></div>
+          </template>
+          <span class="item" @show="databases().length === 0 && dbError() !== ''">{{ dbError() }}</span>
+          <span class="item" @show="databases().length === 0 && dbError() === ''">no databases</span>
         </div>
       </div>
       <div>
@@ -113,7 +126,17 @@ onMount(() => { load() })
         </div>
       </div>
     </div>
-    <p class="note">Lists are read live from the engine via the app server. Create operations run as root over the pantry socket; apps connect with the credentials you set here.</p>
+    <div class="section">
+      <h2>Backups</h2>
+      <div class="panel">
+        <template :for="b in backups()">
+          <div class="kv"><span class="mono">{{ b.database }}</span> <b class="mono" style="font-size:11px;color:var(--txt3)">{{ b.file }}</b></div>
+        </template>
+        <div class="compact empty" @show="backups().length === 0"><strong>No database dumps yet</strong><span>Use Back up on a database above to write a gzipped dump to the box.</span></div>
+      </div>
+    </div>
+
+    <p class="note">Lists are read live from the engine via the app server. Create operations run as root over the pantry socket; apps connect with the credentials you set here. Per-database dumps are written to <span class="mono">/var/backups/ts-cloud/databases</span>.</p>
   </div>
 </body>
 </html>
