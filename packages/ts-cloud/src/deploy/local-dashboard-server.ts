@@ -9,8 +9,26 @@ import { loadCloudConfig } from '../config'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabases } from './dashboard-database'
-import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation } from './dashboard-operations'
+import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
+import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
+import {
+  buildServerlessOperations,
+  configuredSecretIds,
+  controlScheduler,
+  createAlarm,
+  deleteAlarm,
+  deleteServerlessSecret,
+  listAlarms,
+  listDlqMessages,
+  purgeDlq,
+  redriveDlq,
+  resolveServerlessOperation,
+  runServerlessCommand,
+  runServerlessOperation,
+  setServerlessSecret,
+  updateFunctionConfig,
+} from './serverless-operations'
 import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 
@@ -137,13 +155,32 @@ function replaceSiteConfig(config: CloudConfig, name: string, site: Record<strin
   ;(sites as any)[name] = site
 }
 
+function computeFirewallPorts(config: CloudConfig): number[] {
+  return normalizePorts(((config.infrastructure?.compute as any)?.firewall?.allowedPorts ?? []) as number[])
+}
+
+function replaceFirewallPorts(config: CloudConfig, ports: number[]): void {
+  const infra = config.infrastructure ?? ((config as any).infrastructure = {})
+  const compute = (infra as any).compute ?? ((infra as any).compute = {})
+  const firewall = compute.firewall ?? (compute.firewall = {})
+  firewall.allowedPorts = ports
+}
+
 async function readJsonBody(req: Request): Promise<Record<string, any>> {
   return await req.json().catch(() => ({})) as Record<string, any>
 }
 
+/**
+ * Resolve which dashboard the project should land on. An explicit `mode` (on the
+ * config root, else on `infrastructure.compute`) always wins — a project that
+ * declares `mode: 'serverless'` gets the serverless cockpit even though it also
+ * carries a `compute` block (e.g. for its serverless ECS/Lambda sizing). Only
+ * when no mode is declared do we infer it from the presence of a compute box.
+ */
 function resolveDashboardMode(config: CloudConfig): 'server' | 'serverless' | 'hybrid' {
-  if ((config as any).mode === 'hybrid')
-    return 'hybrid'
+  const declared = (config as any).mode ?? (config.infrastructure?.compute as any)?.mode
+  if (declared === 'hybrid' || declared === 'server' || declared === 'serverless')
+    return declared
   return config.infrastructure?.compute ? 'server' : 'serverless'
 }
 
@@ -152,6 +189,16 @@ async function resolveLiveDashboardData(config: CloudConfig, environment: Enviro
   // The nav renders a mode-aware view set + a server-rendered environment switcher.
   const meta = { mode, environment, environments: Object.keys(config.environments ?? {}) }
   try {
+    // Hybrid projects run both a box and serverless functions — resolve both so
+    // the Server and Serverless tabs each render live data. A failing source
+    // only drops its own slice (each resolver is already best-effort internally).
+    if (mode === 'hybrid') {
+      const [serverData, serverlessData] = await Promise.all([
+        resolveServerDashboardData(config, environment).catch(() => null),
+        resolveDashboardData(config, environment).catch(() => null),
+      ])
+      return { ...(serverData ?? {}), ...(serverlessData ?? {}), ...meta }
+    }
     const data = mode === 'serverless'
       ? await resolveDashboardData(config, environment)
       : await resolveServerDashboardData(config, environment)
@@ -483,6 +530,47 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: true, configPath, keys: describeSshKeys(computeSshKeys(config as CloudConfig)) })
         }
 
+        // ── Host firewall (UFW) allowed ports ─────────────────────────────────
+        if (url.pathname === '/api/firewall' && req.method === 'GET')
+          return json({ configPath, alwaysOpen: [22, 80, 443], ports: computeFirewallPorts(config as CloudConfig) })
+
+        if (url.pathname === '/api/firewall' && req.method === 'POST') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const port = Number(body.port)
+          if (!isValidPort(port))
+            return json({ ok: false, error: 'Port must be an integer between 1 and 65535.' }, 422)
+          const current = computeFirewallPorts(config as CloudConfig)
+          const before = await readFile(configPath, 'utf8')
+          try {
+            await writeFile(configPath, addFirewallPort(before, port, current))
+          }
+          catch (error: any) {
+            return json({ ok: false, error: error?.message ?? String(error) }, 422)
+          }
+          const ports = normalizePorts([...current, port])
+          replaceFirewallPorts(config as CloudConfig, ports)
+          const apply = body.apply === false ? null : await runServerShellCommand(config as CloudConfig, environment, `ufw allow ${port}/tcp`).catch((e: any) => ({ ok: false, error: String(e?.message ?? e) }))
+          return json({ ok: true, configPath, ports, apply })
+        }
+
+        if (url.pathname === '/api/firewall' && req.method === 'DELETE') {
+          if (!configPath)
+            return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
+          const body = await readJsonBody(req)
+          const port = Number(body.port ?? url.searchParams.get('port'))
+          if (!isValidPort(port))
+            return json({ ok: false, error: 'Port must be an integer between 1 and 65535.' }, 422)
+          const current = computeFirewallPorts(config as CloudConfig)
+          const before = await readFile(configPath, 'utf8')
+          await writeFile(configPath, removeFirewallPort(before, port, current))
+          const ports = normalizePorts(current.filter(p => p !== port))
+          replaceFirewallPorts(config as CloudConfig, ports)
+          const apply = body.apply === false ? null : await runServerShellCommand(config as CloudConfig, environment, `ufw delete allow ${port}/tcp`).catch((e: any) => ({ ok: false, error: String(e?.message ?? e) }))
+          return json({ ok: true, configPath, ports, apply })
+        }
+
         if (url.pathname === '/api/sites' && req.method === 'POST') {
           if (!configPath)
             return json({ ok: false, error: 'No cloud config file was found in this checkout.' }, 404)
@@ -559,7 +647,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             set('env', renderEnvValue(body.env))
             existing.env = body.env
           }
-          for (const key of ['domain', 'path', 'build', 'start', 'type', 'root']) {
+          for (const key of ['domain', 'path', 'build', 'start', 'type', 'root', 'php']) {
             if (typeof body[key] === 'string' && body[key].trim()) {
               set(key, renderStringValue(String(body[key]).trim()))
               existing[key] = String(body[key]).trim()
@@ -646,6 +734,120 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
           return json(await runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }))
+        }
+
+        if (url.pathname === '/api/server/command' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { command?: string, confirm?: string }
+          if (body.confirm !== 'run')
+            return json({ ok: false, error: 'Type "run" to execute this command on the server.' }, 409)
+          return json(await runServerShellCommand(config as CloudConfig, environment, String(body.command ?? '')))
+        }
+
+        // ── Serverless (Vapor-style) mutating operations ──────────────────────
+        if (url.pathname === '/api/serverless/operations')
+          return json(buildServerlessOperations(config as CloudConfig, environment, latestData))
+
+        if (url.pathname === '/api/serverless/operations/run' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { operation?: string, confirm?: string, min?: number, max?: number }
+          const operation = body.operation ? resolveServerlessOperation(body.operation, config as CloudConfig, environment, latestData) : undefined
+          if (!operation)
+            return json({ ok: false, error: 'Unknown or unavailable serverless operation.' }, 404)
+          if (operation.mutates && body.confirm !== operation.confirm)
+            return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
+          const result = await runServerlessOperation(config as CloudConfig, environment, operation, { min: body.min, max: body.max })
+          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          return json(result)
+        }
+
+        if (url.pathname === '/api/serverless/command' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { command?: string, confirm?: string }
+          if (body.confirm !== 'run')
+            return json({ ok: false, error: 'Type "run" to execute this command.' }, 409)
+          return json(await runServerlessCommand(config as CloudConfig, environment, String(body.command ?? '')))
+        }
+
+        if (url.pathname === '/api/serverless/dlq' && req.method === 'GET') {
+          const max = Number(url.searchParams.get('max')) || 10
+          return json(await listDlqMessages(config as CloudConfig, environment, max))
+        }
+
+        if (url.pathname === '/api/serverless/dlq/redrive' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { confirm?: string, max?: number, targetQueue?: string }
+          if (body.confirm !== 'redrive')
+            return json({ ok: false, error: 'Type "redrive" to move messages back onto a source queue.' }, 409)
+          return json(await redriveDlq(config as CloudConfig, environment, { max: body.max, targetQueue: body.targetQueue }))
+        }
+
+        if (url.pathname === '/api/serverless/dlq/purge' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { confirm?: string }
+          if (body.confirm !== 'purge')
+            return json({ ok: false, error: 'Type "purge" to permanently discard every DLQ message.' }, 409)
+          return json(await purgeDlq(config as CloudConfig, environment))
+        }
+
+        if (url.pathname === '/api/serverless/secrets' && req.method === 'GET')
+          return json({ secrets: configuredSecretIds(config as CloudConfig, environment) })
+
+        if (url.pathname === '/api/serverless/secrets' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { secretId?: string, value?: string }
+          const secretId = String(body.secretId ?? '').trim()
+          if (!secretId)
+            return json({ ok: false, error: 'A secret id is required.' }, 422)
+          if (typeof body.value !== 'string' || body.value === '')
+            return json({ ok: false, error: 'A non-empty value is required.' }, 422)
+          return json(await setServerlessSecret(config as CloudConfig, environment, secretId, body.value))
+        }
+
+        if (url.pathname === '/api/serverless/secrets' && req.method === 'DELETE') {
+          const body = await req.json().catch(() => ({})) as { secretId?: string, confirm?: string }
+          const secretId = String(body.secretId ?? '').trim()
+          if (!secretId)
+            return json({ ok: false, error: 'A secret id is required.' }, 422)
+          if (body.confirm !== secretId)
+            return json({ ok: false, error: `Type "${secretId}" to delete this secret.` }, 409)
+          return json(await deleteServerlessSecret(config as CloudConfig, environment, secretId))
+        }
+
+        if (url.pathname === '/api/serverless/functions/config' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { mode?: string, memory?: number, timeout?: number, confirm?: string }
+          const mode = String(body.mode ?? '').trim()
+          if (body.confirm !== mode)
+            return json({ ok: false, error: `Type "${mode}" to update this function.` }, 409)
+          return json(await updateFunctionConfig(config as CloudConfig, environment, mode, { memory: body.memory, timeout: body.timeout }))
+        }
+
+        if (url.pathname === '/api/serverless/alarms' && req.method === 'GET')
+          return json(await listAlarms(config as CloudConfig, environment))
+
+        if (url.pathname === '/api/serverless/alarms' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { preset?: string, threshold?: number }
+          const preset = String(body.preset ?? '').trim()
+          const threshold = Number(body.threshold)
+          if (!preset)
+            return json({ ok: false, error: 'An alarm metric is required.' }, 422)
+          if (!Number.isFinite(threshold))
+            return json({ ok: false, error: 'A numeric threshold is required.' }, 422)
+          return json(await createAlarm(config as CloudConfig, environment, preset, threshold))
+        }
+
+        if (url.pathname === '/api/serverless/alarms' && req.method === 'DELETE') {
+          const body = await req.json().catch(() => ({})) as { name?: string, confirm?: string }
+          const name = String(body.name ?? '').trim()
+          if (!name)
+            return json({ ok: false, error: 'An alarm name is required.' }, 422)
+          if (body.confirm !== name)
+            return json({ ok: false, error: `Type "${name}" to delete this alarm.` }, 409)
+          return json(await deleteAlarm(config as CloudConfig, environment, name))
+        }
+
+        if (url.pathname === '/api/serverless/scheduler' && req.method === 'POST') {
+          const body = await req.json().catch(() => ({})) as { action?: string, confirm?: string }
+          const action = String(body.action ?? '').trim()
+          if (action !== 'enable' && action !== 'disable' && action !== 'run')
+            return json({ ok: false, error: 'Unknown scheduler action.' }, 422)
+          if (body.confirm !== action)
+            return json({ ok: false, error: `Type "${action}" to ${action} the scheduler.` }, 409)
+          return json(await controlScheduler(config as CloudConfig, environment, action))
         }
 
         // A page request with `?env=<name>` switches the active environment
