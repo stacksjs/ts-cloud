@@ -6,7 +6,7 @@ const app = __d?.app ?? { name: 'acme', env: 'production' }
 const functions = __d?.functionsDetail ?? [
   {
     key: 'http', name: 'acme-production-http', runtime: 'provided.al2023', arch: 'x86_64',
-    memory: 1024, timeout: 28, ephemeral: 512, version: '$LATEST', concurrency: '—',
+    memory: 1024, timeout: 28, ephemeral: 512, version: '$LATEST', concurrency: '-',
     invocations: 171200, errors: 21, throttles: 0, p50: 32, p95: 86, p99: 180, maxMem: 184,
     spark: [40, 52, 48, 61, 73, 66, 80, 72, 95, 88, 70, 64],
     env: ['APP_ENV', 'ASSET_URL', 'TSCLOUD_CACHE_TABLE', 'DB_HOST', 'QUEUE_CONNECTION'],
@@ -29,7 +29,7 @@ const functions = __d?.functionsDetail ?? [
   },
   {
     key: 'cli', name: 'acme-production-cli', runtime: 'provided.al2023', arch: 'x86_64',
-    memory: 1024, timeout: 900, ephemeral: 512, version: '$LATEST', concurrency: '—',
+    memory: 1024, timeout: 900, ephemeral: 512, version: '$LATEST', concurrency: '-',
     invocations: 1440, errors: 0, throttles: 0, p50: 800, p95: 1100, p99: 1400, maxMem: 312,
     spark: [2, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1],
     env: ['APP_ENV', 'TSCLOUD_SCHEDULER'],
@@ -41,11 +41,40 @@ const functions = __d?.functionsDetail ?? [
 ]
 
 function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+const modes = (__d?.functionsDetail ?? functions).map(f => f.key)
+const initialMode = modes[0] ?? 'http'
+</script>
+<script client>
+// Per-function config runs live against AWS through /api/serverless/functions/config.
+const mode = state(initialMode)
+const mem = state('1024')
+const to = state('28')
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function cancelOp() { pending.set(null) }
+function applyConfig() { const m = mode(); askOp(m, m, 'update the ' + m + ' function') }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Updating ' + p.operation + '...')
+  try {
+    const res = await fetch('/api/serverless/functions/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: p.operation, memory: Number(mem()), timeout: Number(to()), confirm: p.confirm }) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('../partials/head', { title: 'ts-cloud — Functions' })
+  @include('../partials/head', { title: 'ts-cloud · Functions' })
 </head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -55,7 +84,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
     <header class="page">
       <div>
         <h1>Functions</h1>
-        <p>The three Lambda functions sharing one artifact — HTTP, queue worker, and CLI/scheduler.</p>
+        <p>The three Lambda functions sharing one artifact - HTTP, queue worker, and CLI/scheduler.</p>
       </div>
     </header>
 
@@ -113,6 +142,35 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
         </div>
       </div>
     @endforeach
+
+    <div class="section">
+      <h2>Configure function</h2>
+      <div class="panel">
+        <div class="form-grid">
+          <div class="field-block">
+            <label>Function</label>
+            <select :value="mode()" @change="mode.set($event.target.value)">
+              @foreach (modes as m)
+                <option value="{{ m }}">{{ m }}</option>
+              @endforeach
+            </select>
+          </div>
+          <div class="field-block">
+            <label>Memory (MB)</label>
+            <input type="number" min="128" max="10240" :value="mem()" @input="mem.set($event.target.value)" placeholder="1024" autocomplete="off">
+          </div>
+          <div class="field-block">
+            <label>Timeout (s)</label>
+            <input type="number" min="1" max="900" :value="to()" @input="to.set($event.target.value)" placeholder="28" autocomplete="off">
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="button" @click="applyConfig()">Apply</button>
+          </div>
+        </div>
+        @include('../partials/op-confirm')
+        <p class="note">Memory is 128 to 10240 MB, timeout is 1 to 900 s. Changes are applied to the live function immediately via <span class="mono">cloud functions:config</span>.</p>
+      </div>
+    </div>
   </div>
 </body>
 </html>

@@ -7,11 +7,39 @@ const proxy = __d?.proxy ?? { name: 'acme-production-proxy', endpoint: 'acme-pro
 const redis = __d?.redis ?? { id: 'acme-production-redis', node: 'cache.t4g.micro', engine: 'redis 7.1', hitRate: 96.4, status: 'available' }
 const efs = __d?.efs ?? { id: 'fs-0abc', mount: '/mnt/local', sizeMb: 312, status: 'available' }
 function tone(s) { return s === 'available' ? 'ok' : 'warn' }
+const hasAurora = !!(__d?.aurora ?? true)
+const seedMin = aurora?.minAcu ?? 0.5
+const seedMax = aurora?.maxAcu ?? 4
+</script>
+<script client>
+// db:scale runs live against AWS through /api/serverless/operations/run.
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const scaleMin = state(String(seedMin ?? ''))
+const scaleMax = state(String(seedMax ?? ''))
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
+  try {
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm, min: Number(scaleMin()), max: Number(scaleMax()) }) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('../partials/head', { title: 'ts-cloud — Data' })
+  @include('../partials/head', { title: 'ts-cloud · Data' })
 </head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -20,7 +48,7 @@ function tone(s) { return s === 'available' ? 'ok' : 'warn' }
     <header class="page">
       <div>
         <h1>Data services</h1>
-        <p>Managed data attached to the functions over a private VPC — database, connection proxy, cache, and shared filesystem.</p>
+        <p>Managed data attached to the functions over a private VPC: database, connection proxy, cache, and shared filesystem.</p>
       </div>
     </header>
 
@@ -37,9 +65,34 @@ function tone(s) { return s === 'available' ? 'ok' : 'warn' }
           <h3>Capacity (ACU)</h3>
           <div class="stat">{{ aurora.currentAcu }} <small>now</small></div>
           <div class="bar"><i style="width: {{ Math.round((aurora.currentAcu / aurora.maxAcu) * 100) }}%"></i></div>
-          <p class="note">range {{ aurora.minAcu }}–{{ aurora.maxAcu }} ACU · rescale with <span class="mono">cloud serverless:db-scale {{ aurora.minAcu }} {{ aurora.maxAcu }}</span></p>
+          <p class="note">range {{ aurora.minAcu }} to {{ aurora.maxAcu }} ACU · rescale with <span class="mono">cloud serverless:db-scale {{ aurora.minAcu }} {{ aurora.maxAcu }}</span></p>
         </div>
       </div>
+    </div>
+
+    <div class="section">
+      <h2>Scale Aurora capacity</h2>
+      @if (hasAurora)
+        <div class="panel">
+          <div class="form-grid">
+            <div class="field-block">
+              <label>Min ACUs</label>
+              <input type="number" step="0.5" min="0.5" :value="scaleMin()" @input="scaleMin.set($event.target.value)" placeholder="{{ seedMin }}" autocomplete="off">
+            </div>
+            <div class="field-block">
+              <label>Max ACUs</label>
+              <input type="number" step="0.5" min="0.5" :value="scaleMax()" @input="scaleMax.set($event.target.value)" placeholder="{{ seedMax }}" autocomplete="off">
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn sm" type="button" @click="askOp('db:scale', 'scale', 'scale the Aurora cluster')">Scale</button>
+          </div>
+          @include('../partials/op-confirm')
+          <p class="note">Adjusts the Aurora Serverless v2 capacity range. New writes settle into the range within a few seconds.</p>
+        </div>
+      @else
+        <p class="note">Aurora Serverless is not attached to this app.</p>
+      @endif
     </div>
 
     <div class="cols section">

@@ -1,8 +1,9 @@
 <script server>
 // ts-cloud serverless (Vapor-style) dashboard. Real data is injected at build
-// time via the TSCLOUD_DASHBOARD_DATA env var (run `cloud dashboard:build`);
-// the sample values below render the design when nothing is injected. Each
-// section drills into a dedicated page under /serverless/*.
+// time via TSCLOUD_DASHBOARD_DATA (run `cloud dashboard:build`); the sample
+// values below render the design when nothing is injected. Sections drill into
+// dedicated pages under /serverless/*, and the header operations run live
+// against AWS via /api/serverless/*.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') }
 catch { __d = null }
@@ -23,24 +24,26 @@ const queues = __d?.queues ?? [
   { name: 'emails', visible: 4, inFlight: 1, processed: 9210, dlq: 1 },
 ]
 const scheduler = __d?.scheduler ?? { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
-const data = [
-  { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5–4 ACU', status: 'available' },
+const dataServices = __d?.dataServices ?? [
+  { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5-4 ACU', status: 'available' },
   { name: 'RDS Proxy', detail: 'acme-production-proxy', status: 'available' },
   { name: 'ElastiCache (redis)', detail: 'cache.t4g.micro', status: 'available' },
 ]
-const assets = { bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', assetUrl: 'https://d2x1.cloudfront.net/a4d63d2' }
-const waf = { enabled: true, rules: ['rate-limit', 'common', 'sqlInjection'], blocked24h: 318 }
-const deployments = [
+const assets = __d?.assetsInfo ?? { bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', assetUrl: 'https://d2x1.cloudfront.net/a4d63d2' }
+const waf = __d?.waf ?? { enabled: true, rules: ['rate-limit', 'common', 'sqlInjection'], blocked24h: 318 }
+const wafRules = __d?.wafRules ?? []
+const deployments = __d?.deploymentsDetail ?? [
   { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris' },
   { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci' },
   { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci' },
   { sha: '5a2b284', status: 'rolled-back', when: '1d ago', took: '12s', by: 'chris' },
 ]
-const secrets = [
+const secrets = (__d?.secretsList ?? [
   { key: 'APP_KEY', updated: '14d ago' },
   { key: 'DB_PASSWORD', updated: '14d ago' },
   { key: 'STRIPE_SECRET', updated: '3d ago' },
-]
+])
+const wafRuleText = waf.rules ? waf.rules.join(', ') : (wafRules.length ? wafRules.map(r => r.name).join(', ') : '-')
 function statusTone(status) {
   if (status === 'active' || status === 'available' || status === 'success' || status === 'on') return 'ok'
   if (status === 'failed' || status === 'stopped' || status === 'error') return 'bad'
@@ -48,11 +51,58 @@ function statusTone(status) {
   return 'warn'
 }
 function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : String(n) }
+// Bridge the initial maintenance flag into <script client>.
+const initialMaintenance = !!maintenance.enabled
+</script>
+<script client>
+// Live serverless operations: maintenance toggle, redeploy, and rollback run
+// against AWS through /api/serverless/operations/run. Mutating ops stage a
+// typed-confirm via the shared op-confirm bar, then stream their output.
+const maint = state(initialMaintenance)
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
+  try {
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
+    if (body.ok && p.operation === 'maintenance:on') maint.set(true)
+    if (body.ok && p.operation === 'maintenance:off') maint.set(false)
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
+
+// Command console (Vapor-style): invoke an app command through the CLI function.
+const appCmd = state('')
+const cmdOut = state('')
+const cmdShown = state(false)
+const cmdBusy = state(false)
+async function runAppCmd() {
+  const c = appCmd().trim()
+  if (!c) return
+  cmdBusy.set(true); cmdShown.set(true); cmdOut.set('Running ' + c + '...')
+  try {
+    const res = await fetch('/api/serverless/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm: 'run' }) })
+    const b = await res.json()
+    cmdOut.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || c) + '\n\n' + (b.stdout || '') + (b.error ? '\n' + b.error : ''))
+  } catch (e) { cmdOut.set('FAILED ' + c + '\n\n' + ((e && e.message) || e)) }
+  finally { cmdBusy.set(false) }
+}
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('./partials/head', { title: 'ts-cloud — Serverless' })
+  @include('./partials/head', { title: 'ts-cloud · Serverless' })
 </head>
 <body>
   @include('./partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -68,17 +118,18 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
           <span>Deployed <b>{{ app.deployedAt }}</b></span>
         </div>
       </div>
-      <div class="cmds header-actions">
-        @if (maintenance.enabled)
-          <span class="pill warn">maintenance</span>
-          <span class="cmd">cloud up --env {{ app.env }}</span>
-        @else
-          <span class="ok pill">live</span>
-          <span class="cmd">cloud down --env {{ app.env }}</span>
-        @endif
-        <span class="accent cmd">cloud deploy:serverless --env {{ app.env }}</span>
+      <div class="header-actions">
+        <span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>
+        <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', 'maintenance', 'enable maintenance mode')">Maintenance</button>
+        <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', 'live', 'bring the app back live')">Go live</button>
+        <button class="btn ghost sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
       </div>
     </header>
+
+    <div class="panel" style="margin-bottom:20px" @show="pending() !== null || opShown()">
+      @include('./partials/op-confirm')
+    </div>
 
     <div class="grid cards">
       <a class="panel" href="/serverless/metrics">
@@ -161,7 +212,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
         <h2>Firewall (WAF) <a class="more" href="/serverless/firewall">Details →</a></h2>
         <div class="panel">
           <div class="kv"><span>state</span> @if (waf.enabled)<span class="ok pill">on</span>@else<span class="pill warn">off</span>@endif</div>
-          <div class="kv"><span>rules</span> <span class="mono">{{ waf.rules.join(', ') }}</span></div>
+          <div class="kv"><span>rules</span> <span class="mono">{{ wafRuleText }}</span></div>
           <div class="kv"><span>blocked (24h)</span> <span>{{ fmt(waf.blocked24h) }}</span></div>
         </div>
       </div>
@@ -170,7 +221,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
     <div class="section">
       <h2>Data <a class="more" href="/serverless/data">View all →</a></h2>
       <div class="panel">
-        @foreach (data as d)
+        @foreach (dataServices as d)
           <div class="data-item">
             <b>{{ d.name }}</b>
             <span class="detail">{{ d.detail }}</span>
@@ -193,7 +244,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
             </div>
           @endforeach
           <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
-            <span class="cmd">cloud serverless:rollback --env {{ app.env }}</span>
+            <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back to previous</button>
           </div>
         </div>
       </div>
@@ -210,11 +261,23 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
           @foreach (secrets as s)
             <div class="secret">
               <b class="mono">{{ s.key }}</b>
-              <span style="color: var(--txt3); font-size: 12px">updated {{ s.updated }}</span>
+              <span style="color: var(--txt3); font-size: 12px">updated {{ s.updated ?? '-' }}</span>
               <span class="val">••••••••</span>
             </div>
           @endforeach
         </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Run a command</h2>
+      <div class="panel">
+        <div class="field">
+          <input :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="runAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off">
+          <button class="btn" type="button" :disabled="cmdBusy()" @click="runAppCmd()">Run</button>
+        </div>
+        <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
+        <p class="note">Invokes the app command through the CLI Lambda function (RequestResponse), the same path as <span class="mono">cloud command "..."</span>. Output is clamped.</p>
       </div>
     </div>
   </div>

@@ -16,7 +16,7 @@ function pct(v, max) { return Math.round((v / max) * 100) }
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('../partials/head', { title: 'ts-cloud — Metrics' })
+  @include('../partials/head', { title: 'ts-cloud · Metrics' })
 </head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -26,6 +26,9 @@ function pct(v, max) { return Math.round((v / max) * 100) }
       <div>
         <h1>Metrics</h1>
         <p>CloudWatch metrics across the function trio, last {{ window }}.</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn ghost sm" href="/serverless/alarms">Alarms →</a>
       </div>
     </header>
 

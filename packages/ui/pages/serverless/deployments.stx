@@ -10,10 +10,33 @@ const deployments = __d?.deploymentsDetail ?? [
 ]
 function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn' : 'bad') }
 </script>
+<script client>
+// Rollback + redeploy run live against AWS through /api/serverless/operations/run.
+const opOutput = state('')
+const opShown = state(false)
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
+const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
+function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function cancelOp() { pending.set(null) }
+async function runOp() {
+  const p = pending()
+  if (!p || typed() !== p.confirm) return
+  pending.set(null); typed.set('')
+  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
+  try {
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
+    const body = await res.json()
+    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
+  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
+}
+</script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('../partials/head', { title: 'ts-cloud — Deployments' })
+  @include('../partials/head', { title: 'ts-cloud · Deployments' })
 </head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -24,9 +47,9 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn'
         <h1>Deployments</h1>
         <p>Every deploy publishes an immutable artifact; activation is atomic and rollback flips back instantly.</p>
       </div>
-      <div class="cmds header-actions">
-        <span class="cmd">cloud serverless:rollback</span>
-        <span class="accent cmd">cloud deploy:serverless</span>
+      <div class="header-actions">
+        <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
       </div>
     </header>
 
@@ -40,7 +63,7 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn'
                 <td class="mono">{{ d.sha }}</td>
                 <td><span class="pill {{ tone(d.status) }}">{{ d.status }}</span></td>
                 <td class="mono">v{{ d.version }}</td>
-                <td class="mono" style="font-size:11px;color:var(--txt3)">@if (d.hooks.length === 0)—@else{{ d.hooks.join(' · ') }}@endif</td>
+                <td class="mono" style="font-size:11px;color:var(--txt3)">@if (d.hooks.length === 0)-@else{{ d.hooks.join(' · ') }}@endif</td>
                 <td style="color:var(--txt2)">{{ d.by }}</td>
                 <td class="mono">{{ d.took }}</td>
                 <td style="color:var(--txt3)">{{ d.when }}</td>
@@ -48,7 +71,8 @@ function tone(s) { return s === 'success' ? 'ok' : (s === 'rolled-back' ? 'warn'
             @endforeach
           </tbody>
         </table>
-        <p class="note">Re-activate the last build without rebuilding: <span class="mono">cloud deploy:serverless --redeploy</span></p>
+        @include('../partials/op-confirm')
+        <p class="note">Rollback restores the previous build's code and env and flips the live alias back instantly. Redeploy re-activates the current build without rebuilding.</p>
       </div>
     </div>
   </div>
