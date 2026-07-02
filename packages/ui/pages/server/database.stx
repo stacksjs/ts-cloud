@@ -4,7 +4,7 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const server = __d?.server ?? { name: 'acme-production-app' }
 </script>
 <script client>
-// Reactive database management — create databases/users, live lists.
+// Reactive database management - create databases/users, live lists.
 const engine = state('mysql')
 const databases = state([])
 const users = state([])
@@ -46,7 +46,7 @@ onMount(() => { load() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — Databases' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - Databases' })</head>
 <body>
   @include('../partials/nav', { active: 'database', name: server.name, env: 'production' })
   <div class="wrap">

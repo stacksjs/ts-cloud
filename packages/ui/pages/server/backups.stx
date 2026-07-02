@@ -35,7 +35,7 @@ async function runOp() {
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — Backups' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - Backups' })</head>
 <body>
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">

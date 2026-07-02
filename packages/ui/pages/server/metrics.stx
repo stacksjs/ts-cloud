@@ -35,7 +35,7 @@ const loadPerCpuNote = `${loadPerCpu} per core`
 const memTotalNote = `of ${memTotalGb} GB total`
 const diskTotalNote = `of ${m.diskTotalGb} GB total`
 
-// ── Threshold tone: green < 70%, amber 70–90%, red ≥ 90% ───────────────
+// ── Threshold tone: green < 70%, amber 70-90%, red ≥ 90% ───────────────
 function toneOf(p) { return p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok' }
 function word(p) { return p >= 90 ? 'Critical' : p >= 70 ? 'Elevated' : 'Healthy' }
 const cpuTone = toneOf(loadPct), memTone = toneOf(memPct), diskTone = toneOf(diskPct)
@@ -45,12 +45,12 @@ const ranks = { ok: 0, warn: 1, bad: 2 }
 const worst = [cpuTone, memTone, diskTone].sort((a, b) => ranks[b] - ranks[a])[0]
 const measuredOverall = {
   bad: { tone: 'bad', title: 'Action needed', note: 'One or more vitals are in the critical range.' },
-  warn: { tone: 'warn', title: 'Running warm', note: 'Resources are elevated — keep an eye on it.' },
+  warn: { tone: 'warn', title: 'Running warm', note: 'Resources are elevated - keep an eye on it.' },
   ok: { tone: 'ok', title: 'All systems healthy', note: 'CPU, memory, and disk are well within limits.' },
 }[worst]
 const overall = live ? measuredOverall : { tone: 'warn', title: 'Probe unavailable', note: unavailableNote }
 
-// One descriptor per gauge — rendered with @foreach below.
+// One descriptor per gauge - rendered with @foreach below.
 const gaugeCards = [
   { label: 'CPU Load', icon: 'cpu', tone: live ? cpuTone : 'warn', tag: live ? word(loadPct) : 'Unavailable', big: live ? loadPct : '-', pct: loadPct, unit: live ? 'of capacity' : 'probe offline', sub: live ? `${loadPerCpu} load / core · ${m.load} avg` : unavailableNote },
   { label: 'Memory', icon: 'mem', tone: live ? memTone : 'warn', tag: live ? word(memPct) : 'Unavailable', big: live ? memPct : '-', pct: memPct, unit: live ? 'memory used' : 'probe offline', sub: live ? `${memUsedGb} / ${memTotalGb} GB · ${memFreeGb} free` : unavailableNote },
@@ -63,7 +63,7 @@ const resourceChart = renderResourceBars([
   { label: 'Disk', value: diskPct, detail: live ? `${m.diskUsedGb} / ${m.diskTotalGb} GB` : unavailableNote },
 ], { disabled: !live })
 
-// ── Load trend (sample only — not part of the live metrics payload) ────
+// ── Load trend (sample only - not part of the live metrics payload) ────
 const loadTrend = __d?.loadTrend ?? [22, 28, 31, 26, 40, 38, 33, 45, 41, 30, 27, 35, 48, 52, 39, 33, 29, 44, 50, 47, 36, 31, 28, 34]
 const maxLoad = Math.max(...loadTrend, 1)
 const trendPeak = Math.max(...loadTrend)
@@ -72,7 +72,7 @@ function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — Server health' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - Server health' })</head>
 <body>
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">

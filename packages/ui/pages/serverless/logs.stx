@@ -7,7 +7,7 @@ const emptyReason = __d?.serverlessLogsEmptyReason ?? 'No function logs are avai
 </script>
 <script client>
 // Reactive aggregated CloudWatch logs across the functions, with level + function
-// filtering and auto-refresh — seeded from build-time data (stx server→client
+// filtering and auto-refresh - seeded from build-time data (stx server→client
 // bridge), then live-refreshed. Signals + directives only (no manual DOM).
 const logs = state(initialLogs)
 const level = state('all')
@@ -28,7 +28,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — Function logs' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - Function logs' })</head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
   <div class="wrap">

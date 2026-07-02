@@ -102,7 +102,7 @@ const initialData = __d ?? null
 <script client>
 // Live at-a-glance metrics: seeded from build-time data (stx server→client
 // bridge) so the cards render real numbers on first paint, then polled from
-// /api/dashboard-data — bind cards, health pill, indicator, and service
+// /api/dashboard-data - bind cards, health pill, indicator, and service
 // statuses reactively (no manual DOM).
 const data = state(initialData)
 const liveData = derived(() => { const d = data(); return !!d && d._serverReachable && !d.metricsUnavailable })

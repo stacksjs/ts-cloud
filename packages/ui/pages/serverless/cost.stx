@@ -17,7 +17,7 @@ const summary = __d?.costSummary ?? {
 const services = __d?.costServices ?? [
   { name: 'Lambda (compute)', usd: 41.20, note: 'GB-seconds across http/queue/cli' },
   { name: 'Provisioned concurrency', usd: 28.60, note: '2 envs always-warm' },
-  { name: 'Aurora Serverless v2', usd: 19.80, note: '0.5–4 ACU' },
+  { name: 'Aurora Serverless v2', usd: 19.80, note: '0.5-4 ACU' },
   { name: 'API Gateway (HTTP)', usd: 11.30, note: '4.7M requests' },
   { name: 'CloudFront + S3 assets', usd: 8.10, note: 'egress + storage' },
   { name: 'ElastiCache (redis)', usd: 6.40, note: 'cache.t4g.micro' },
@@ -46,7 +46,7 @@ const maxTrend = Math.max(...trend)
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
-  @include('../partials/head', { title: 'ts-cloud — Cost' })
+  @include('../partials/head', { title: 'ts-cloud - Cost' })
 </head>
 <body>
   @include('../partials/nav', { active: 'serverless', name: app.name, env: app.env })
@@ -55,7 +55,7 @@ const maxTrend = Math.max(...trend)
     <header class="page">
       <div>
         <h1>Cost analysis</h1>
-        <p>Spend by service and function — {{ period.label }}.</p>
+        <p>Spend by service and function - {{ period.label }}.</p>
       </div>
     </header>
 
@@ -137,7 +137,7 @@ const maxTrend = Math.max(...trend)
         <h2>Optimize</h2>
         <div class="panel">
           <p class="note" style="margin-top:0">Biggest lever: <b style="color:var(--txt)">{{ services[0].name }}</b> at ${{ services[0].usd.toFixed(2) }}.</p>
-          <p class="note">• Right-size memory — over-provisioned MB inflates GB-seconds.</p>
+          <p class="note">• Right-size memory - over-provisioned MB inflates GB-seconds.</p>
           <p class="note">• Drop unused <span class="mono">provisionedConcurrency</span> for ping-based <span class="mono">warm</span> if cold starts are tolerable.</p>
           <p class="note">• Tighten Aurora <span class="mono">db-scale</span> min ACU off-peak.</p>
           <p class="note">Full breakdown: <span class="mono">cloud cost --env {{ app.env }}</span></p>

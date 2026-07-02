@@ -5,7 +5,7 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 const initialKeys = __d?.sshKeys ?? []
 </script>
 <script client>
-// Reactive SSH key management — list + add + remove, via signals + directives.
+// Reactive SSH key management - list + add + remove, via signals + directives.
 // Seeded from build-time data (stx server→client bridge); load() reconciles
 // against the live cloud config (same describeSshKeys shape).
 const keys = state(initialKeys)
@@ -42,7 +42,7 @@ onMount(() => { load() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud — SSH Keys' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - SSH Keys' })</head>
 <body>
   @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
   <div class="wrap">

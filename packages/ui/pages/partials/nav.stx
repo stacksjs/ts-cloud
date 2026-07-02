@@ -1,7 +1,7 @@
 <script server>
 // Mode-aware, fully server-rendered nav. The deployment mode + environment list
 // are injected with the dashboard data; the environment switcher is plain links
-// (`?env=<name>`) the server handles — no client JavaScript needed.
+// (`?env=<name>`) the server handles - no client JavaScript needed.
 let __nav = null
 try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __nav = null }
 const navMode = __nav?.mode ?? 'server'

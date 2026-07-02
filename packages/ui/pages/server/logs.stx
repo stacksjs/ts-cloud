@@ -7,7 +7,7 @@ const emptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available 
 </script>
 <script client>
 // Reactive log viewer: seeded from build-time data (stx server→client bridge),
-// then filters by level + source and auto-refreshes — all via signals +
+// then filters by level + source and auto-refreshes - all via signals +
 // directives (no manual DOM).
 const logs = state(initialLogs)
 const level = state('all')
@@ -76,7 +76,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
 
-        <p class="note">Live <span class="mono">journalctl</span> for the web server, every managed service, and each app's service, <b>queue workers</b>, and daemons — plus the backup runner. Auto-refreshes every 8s.</p>
+        <p class="note">Live <span class="mono">journalctl</span> for the web server, every managed service, and each app's service, <b>queue workers</b>, and daemons - plus the backup runner. Auto-refreshes every 8s.</p>
       </div>
     </div>
   </div>
