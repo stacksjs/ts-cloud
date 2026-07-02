@@ -182,4 +182,13 @@ export class CloudWatchClient {
     ;(options.AlarmActions ?? []).forEach((a, i) => { params[`AlarmActions.member.${i + 1}`] = a })
     await this.query(params)
   }
+
+  /** Delete one or more metric alarms by name. */
+  async deleteAlarms(alarmNames: string[]): Promise<void> {
+    if (!alarmNames.length)
+      return
+    const params: Record<string, any> = { Action: 'DeleteAlarms' }
+    alarmNames.forEach((name, i) => { params[`AlarmNames.member.${i + 1}`] = name })
+    await this.query(params)
+  }
 }
