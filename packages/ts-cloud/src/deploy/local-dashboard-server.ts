@@ -21,6 +21,7 @@ import {
   deleteServerlessSecret,
   listAlarms,
   listDlqMessages,
+  listTraces,
   purgeDlq,
   redriveDlq,
   resolveServerlessOperation,
@@ -892,6 +893,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (body.confirm !== name)
             return json({ ok: false, error: `Type "${name}" to delete this alarm.` }, 409)
           return json(await deleteAlarm(config as CloudConfig, environment, name))
+        }
+
+        if (url.pathname === '/api/serverless/traces' && req.method === 'GET') {
+          const minutes = Number(url.searchParams.get('minutes')) || 30
+          return json(await listTraces(config as CloudConfig, environment, minutes))
         }
 
         if (url.pathname === '/api/serverless/scheduler' && req.method === 'POST') {

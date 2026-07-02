@@ -20,6 +20,7 @@ import { EventBridgeClient } from '../aws/eventbridge'
 import { LambdaClient } from '../aws/lambda'
 import { SecretsManagerClient } from '../aws/secrets-manager'
 import { SQSClient } from '../aws/sqs'
+import { XRayClient } from '../aws/xray'
 import { redeployServerlessApp, rollbackServerlessApp, runRemoteCommand, scaleServerlessDatabase, serverlessInfo, setMaintenance } from './serverless-app'
 
 export type ServerlessOperationGroup = 'deploy' | 'maintenance' | 'assets' | 'database' | 'queue'
@@ -497,6 +498,54 @@ export async function deleteAlarm(config: CloudConfig, environment: EnvironmentT
   }
   catch (error: any) {
     return { operation: 'alarm:delete', ok: false, error: clampOutput(error?.message ?? String(error)) }
+  }
+}
+
+// ── X-Ray distributed tracing ────────────────────────────────────────────────────
+
+export interface ShapedTrace {
+  id: string
+  durationMs: number
+  responseMs: number
+  status: 'ok' | 'error' | 'fault' | 'throttle'
+  method: string
+  url: string
+  httpStatus: number
+}
+
+function shapeTrace(s: any): ShapedTrace {
+  const status: ShapedTrace['status'] = s.HasFault ? 'fault' : s.HasError ? 'error' : s.HasThrottle ? 'throttle' : 'ok'
+  return {
+    id: String(s.Id ?? ''),
+    durationMs: Math.round((s.Duration ?? 0) * 1000),
+    responseMs: Math.round((s.ResponseTime ?? 0) * 1000),
+    status,
+    method: s.Http?.HttpMethod ?? '-',
+    url: s.Http?.HttpURL ?? '-',
+    httpStatus: s.Http?.HttpStatus ?? 0,
+  }
+}
+
+/**
+ * List recent X-Ray trace summaries for the app's HTTP function (falling back to
+ * all traces in the window when the service filter returns nothing). Requires
+ * tracing to be enabled on the functions; returns an empty, ok:false result with
+ * a hint otherwise.
+ */
+export async function listTraces(config: CloudConfig, environment: EnvironmentType, minutes = 30): Promise<{ ok: boolean, traces: ShapedTrace[], error?: string }> {
+  try {
+    const info = await serverlessInfo(config, environment)
+    const xray = new XRayClient(info.region)
+    const end = new Date()
+    const start = new Date(end.getTime() - Math.min(360, Math.max(1, minutes)) * 60_000)
+    const httpFn = `${info.slug}-${environment}-http`
+    let res = await xray.getTraceSummaries({ startTime: start, endTime: end, filterExpression: `service("${httpFn}")` })
+    if (!res.summaries.length)
+      res = await xray.getTraceSummaries({ startTime: start, endTime: end })
+    return { ok: true, traces: res.summaries.slice(0, 100).map(shapeTrace) }
+  }
+  catch (error: any) {
+    return { ok: false, traces: [], error: clampOutput(error?.message ?? String(error)) }
   }
 }
 
