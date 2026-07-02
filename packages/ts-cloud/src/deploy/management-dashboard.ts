@@ -5,11 +5,15 @@
  * Resolves the UI directory (the repo's local `packages/ui/`, else the prebuilt
  * UI that ships inside the installed package at `dist/ui`), derives a `dashboard.<apex>`
  * host, and injects it into `config.sites` as a server-static site. It is served
- * behind htpasswd ONLY when `TS_CLOUD_UI_PASSWORD` is set; when it is not, the
- * dashboard is served without auth (no password is invented).
+ * SECURE BY DEFAULT: the dashboard is served behind htpasswd on every deploy.
+ * The password is resolved as: `TS_CLOUD_UI_PASSWORD` when set, else a strong
+ * auto-generated one (persisted to `.ts-cloud/dashboard-credentials.json` so it
+ * stays stable across deploys and printed once in the deploy log). Serving the
+ * dashboard publicly is an explicit, deliberate opt-in via `TS_CLOUD_UI_PUBLIC`.
  *
  * Env:
- * - `TS_CLOUD_UI_PASSWORD`  htpasswd password (unset ⇒ no auth)
+ * - `TS_CLOUD_UI_PASSWORD`  htpasswd password (unset ⇒ auto-generated + saved)
+ * - `TS_CLOUD_UI_PUBLIC`    set truthy to serve WITHOUT auth (opt-out, insecure)
  * - `TS_CLOUD_UI_USERNAME`  htpasswd user (default `admin`)
  * - `TS_CLOUD_UI_DOMAIN`    explicit dashboard host (else `dashboard.<apex>`)
  * - `TS_CLOUD_UI_REALM`     browser auth realm
@@ -18,7 +22,8 @@
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,6 +31,61 @@ import { hasManagementDashboardSite, resolveManagementDashboardSite } from '@ts-
 
 /** Site key under which the management dashboard is auto-injected. */
 export const MANAGEMENT_DASHBOARD_SITE = 'dashboard'
+
+/** Where an auto-generated dashboard password is persisted (per project checkout). */
+export const DASHBOARD_CREDENTIALS_FILE: string = join('.ts-cloud', 'dashboard-credentials.json')
+
+/** A URL-safe, shell-safe strong password (base64url, no padding). */
+function generatePassword(): string {
+  return randomBytes(24).toString('base64url')
+}
+
+export interface ResolvedDashboardAuth {
+  /** The htpasswd password, or undefined when serving publicly (opt-out). */
+  password?: string
+  /** How the password was resolved: explicit env, generated+saved, or public. */
+  source: 'env' | 'generated' | 'public'
+}
+
+/**
+ * Resolve the dashboard's Basic-auth password (secure by default):
+ *  1. `TS_CLOUD_UI_PASSWORD` when set → use it verbatim.
+ *  2. `TS_CLOUD_UI_PUBLIC` truthy → serve with NO auth (deliberate opt-out).
+ *  3. Otherwise → reuse a previously-generated password from
+ *     `.ts-cloud/dashboard-credentials.json`, or generate + persist a new one.
+ *
+ * Persisting the generated password keeps htpasswd stable across deploys (so a
+ * saved credential keeps working) and lets the operator retrieve it locally.
+ */
+export function resolveDashboardAuth(cwd: string, username: string, logger: EnsureDashboardLogger): ResolvedDashboardAuth {
+  const explicit = process.env.TS_CLOUD_UI_PASSWORD?.trim()
+  if (explicit)
+    return { password: explicit, source: 'env' }
+  if (truthy(process.env.TS_CLOUD_UI_PUBLIC))
+    return { password: undefined, source: 'public' }
+
+  const file = join(cwd, DASHBOARD_CREDENTIALS_FILE)
+  try {
+    if (existsSync(file)) {
+      const saved = JSON.parse(readFileSync(file, 'utf8')) as { password?: string }
+      if (saved?.password)
+        return { password: saved.password, source: 'generated' }
+    }
+  }
+  catch { /* unreadable/corrupt credentials file — regenerate below */ }
+
+  const password = generatePassword()
+  try {
+    mkdirSync(dirname(file), { recursive: true })
+    writeFileSync(file, `${JSON.stringify({ username, password, generatedAt: new Date().toISOString() }, null, 2)}\n`)
+    chmodSync(file, 0o600)
+    logger.info(`Management dashboard: generated a password and saved it to ${DASHBOARD_CREDENTIALS_FILE} (user: ${username}, pass: ${password}). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`)
+  }
+  catch (error: any) {
+    logger.warn(`Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}`)
+  }
+  return { password, source: 'generated' }
+}
 
 export interface EnsureDashboardLogger {
   info: (msg: string) => void
@@ -90,7 +150,8 @@ export function ensureManagementDashboard(
     return config
   }
 
-  const password = process.env.TS_CLOUD_UI_PASSWORD?.trim() || undefined
+  const username = process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin'
+  const auth = resolveDashboardAuth(cwd, username, logger)
   const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
 
   const live = truthy(process.env.TS_CLOUD_UI_LIVE)
@@ -99,8 +160,8 @@ export function ensureManagementDashboard(
     uiRoot: ui.uiRoot,
     build: ui.build,
     domain: process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined,
-    username: process.env.TS_CLOUD_UI_USERNAME?.trim() || undefined,
-    password,
+    username,
+    password: auth.password,
     realm: process.env.TS_CLOUD_UI_REALM?.trim() || undefined,
     live,
     port,
@@ -112,7 +173,12 @@ export function ensureManagementDashboard(
   }
 
   config.sites = { ...(config.sites ?? {}), [resolved.name]: resolved.site }
-  logger.info(`Management dashboard → https://${resolved.site.domain} (${password ? 'htpasswd-protected' : 'NO AUTH — set TS_CLOUD_UI_PASSWORD'})`)
+  const authNote = auth.source === 'public'
+    ? 'NO AUTH — TS_CLOUD_UI_PUBLIC is set (dashboard is publicly reachable)'
+    : auth.source === 'env'
+      ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
+      : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
+  logger.info(`Management dashboard → https://${resolved.site.domain} (${authNote})`)
   return config
 }
 

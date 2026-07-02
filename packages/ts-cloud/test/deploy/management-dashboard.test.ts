@@ -1,6 +1,6 @@
 import type { CloudConfig } from '@stacksjs/ts-cloud'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, resolveUiSource } from '../../src/deploy/management-dashboard'
@@ -13,7 +13,7 @@ function cfg(): CloudConfig {
   } as unknown as CloudConfig
 }
 
-const ENV_KEYS = ['TS_CLOUD_UI_PASSWORD', 'TS_CLOUD_UI_USERNAME', 'TS_CLOUD_UI_DOMAIN', 'TS_CLOUD_UI_DISABLE', 'TS_CLOUD_UI_REALM']
+const ENV_KEYS = ['TS_CLOUD_UI_PASSWORD', 'TS_CLOUD_UI_PUBLIC', 'TS_CLOUD_UI_USERNAME', 'TS_CLOUD_UI_DOMAIN', 'TS_CLOUD_UI_DISABLE', 'TS_CLOUD_UI_REALM']
 afterEach(() => { for (const k of ENV_KEYS) delete process.env[k] })
 
 /** A temp project dir with a local packages/ui checkout so resolveUiSource finds it. */
@@ -55,9 +55,37 @@ describe('ensureManagementDashboard', () => {
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('injects WITHOUT auth when no password is set', () => {
+  it('auto-generates + persists a password when none is set (secure by default)', () => {
     const dir = repoCwd()
     try {
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      const auth = (c.sites as any).dashboard.auth
+      expect(auth?.username).toBe('admin')
+      expect(typeof auth?.password).toBe('string')
+      expect(auth.password.length).toBeGreaterThan(16)
+      // Persisted so the credential is stable across deploys and retrievable.
+      const credFile = join(dir, '.ts-cloud', 'dashboard-credentials.json')
+      expect(existsSync(credFile)).toBe(true)
+      const saved = JSON.parse(readFileSync(credFile, 'utf8'))
+      expect(saved.password).toBe(auth.password)
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('reuses the persisted password on a second deploy (stable htpasswd)', () => {
+    const dir = repoCwd()
+    try {
+      const first = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any).dashboard.auth.password
+      const second = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any).dashboard.auth.password
+      expect(second).toBe(first)
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('serves WITHOUT auth only when TS_CLOUD_UI_PUBLIC is explicitly set', () => {
+    const dir = repoCwd()
+    try {
+      process.env.TS_CLOUD_UI_PUBLIC = '1'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
       expect((c.sites as any).dashboard.auth).toBeUndefined()
     }

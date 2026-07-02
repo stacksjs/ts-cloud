@@ -580,13 +580,17 @@ assets/CDN, and secrets:
 
 ![ts-cloud Serverless dashboard](/images/dashboard-serverless.png)
 
-It is served behind HTTP Basic auth **only when `TS_CLOUD_UI_PASSWORD` is set**;
-if it is unset the dashboard is served without auth (and a warning is logged — set
-a password for any internet-facing box). Env knobs:
+It is **secure by default**: on every deploy the dashboard is served behind HTTP
+Basic auth. Set `TS_CLOUD_UI_PASSWORD` to pin your own password; if you don't, a
+strong one is generated, saved to `.ts-cloud/dashboard-credentials.json` (so it
+stays stable across deploys and you can read it back), and printed once in the
+deploy log. Serving the dashboard publicly is an explicit opt-in via
+`TS_CLOUD_UI_PUBLIC=1`. Env knobs:
 
 | Env | Purpose |
 | --- | --- |
-| `TS_CLOUD_UI_PASSWORD` | htpasswd password (unset ⇒ no auth) |
+| `TS_CLOUD_UI_PASSWORD` | htpasswd password (unset ⇒ auto-generated + saved) |
+| `TS_CLOUD_UI_PUBLIC`   | set truthy to serve WITHOUT auth (opt-out, insecure) |
 | `TS_CLOUD_UI_USERNAME` | htpasswd user (default `admin`) |
 | `TS_CLOUD_UI_DOMAIN`   | dashboard host (else `dashboard.<apex>`) |
 | `TS_CLOUD_UI_DISABLE`  | set truthy to skip auto-deploy |
