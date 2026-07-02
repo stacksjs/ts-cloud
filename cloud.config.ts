@@ -23,10 +23,10 @@ const config: CloudConfig = {
   },
 
   /**
-   * Deployment mode
-   * - 'server': Traditional EC2-based deployment (Forge-style)
-   * - 'serverless': Container/Lambda-based deployment (Vapor-style)
-   * - 'hybrid': Mix of both server and serverless
+   * Deployment mode (auto-detected from your config; set it to pin the choice).
+   * Server and serverless are mutually exclusive - a project is one or the other.
+   * - 'server': EC2/Fargate box deployment (Forge-style, `infrastructure.compute`)
+   * - 'serverless': Lambda functions (Vapor-style, `environments.<env>.app`)
    */
   mode: 'serverless',
 

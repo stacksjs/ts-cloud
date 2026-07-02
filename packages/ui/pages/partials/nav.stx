@@ -4,9 +4,10 @@
 // (`?env=<name>`) the server handles - no client JavaScript needed.
 let __nav = null
 try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __nav = null }
+// Server and serverless are mutually exclusive; the dashboard shows one or the other.
 const navMode = __nav?.mode ?? 'server'
-const showServer = navMode === 'server' || navMode === 'hybrid'
-const showServerless = navMode === 'serverless' || navMode === 'hybrid'
+const showServer = navMode === 'server'
+const showServerless = navMode === 'serverless'
 const navEnvs = __nav?.environments ?? []
 const navEnv = __nav?.environment ?? ''
 </script>

@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { resolveDeploymentMode } from '@ts-cloud/core'
 import { existsSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
@@ -173,34 +174,15 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
 }
 
 /**
- * Resolve which dashboard the project should land on. An explicit `mode` (on the
- * config root, else on `infrastructure.compute`) always wins — a project that
- * declares `mode: 'serverless'` gets the serverless cockpit even though it also
- * carries a `compute` block (e.g. for its serverless ECS/Lambda sizing). Only
- * when no mode is declared do we infer it from the presence of a compute box.
+ * Server and serverless are mutually exclusive; the shared core detector is the
+ * single source of truth (honors an explicit `config.mode`, else auto-detects a
+ * serverless app vs a compute box).
  */
-function resolveDashboardMode(config: CloudConfig): 'server' | 'serverless' | 'hybrid' {
-  const declared = (config as any).mode ?? (config.infrastructure?.compute as any)?.mode
-  if (declared === 'hybrid' || declared === 'server' || declared === 'serverless')
-    return declared
-  return config.infrastructure?.compute ? 'server' : 'serverless'
-}
-
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
-  const mode = resolveDashboardMode(config)
+  const mode = resolveDeploymentMode(config)
   // The nav renders a mode-aware view set + a server-rendered environment switcher.
   const meta = { mode, environment, environments: Object.keys(config.environments ?? {}) }
   try {
-    // Hybrid projects run both a box and serverless functions — resolve both so
-    // the Server and Serverless tabs each render live data. A failing source
-    // only drops its own slice (each resolver is already best-effort internally).
-    if (mode === 'hybrid') {
-      const [serverData, serverlessData] = await Promise.all([
-        resolveServerDashboardData(config, environment).catch(() => null),
-        resolveDashboardData(config, environment).catch(() => null),
-      ])
-      return { ...(serverData ?? {}), ...(serverlessData ?? {}), ...meta }
-    }
     const data = mode === 'serverless'
       ? await resolveDashboardData(config, environment)
       : await resolveServerDashboardData(config, environment)
@@ -208,7 +190,7 @@ async function resolveLiveDashboardData(config: CloudConfig, environment: Enviro
   }
   catch {
     // A serverless config without a fully-defined app (or an unreachable box)
-    // shouldn't crash the cockpit — fall back to the sample-rendered UI.
+    // shouldn't crash the cockpit; fall back to the sample-rendered UI.
     return { ...meta }
   }
 }

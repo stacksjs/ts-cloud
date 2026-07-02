@@ -6,7 +6,7 @@ import * as cli from '../../src/utils/cli'
 export function registerInitCommands(app: CLI): void {
   app
     .command('init', 'Initialize a new ts-cloud project')
-    .option('--mode <mode>', 'Deployment mode: server, serverless, or hybrid')
+    .option('--mode <mode>', 'Deployment mode: server or serverless')
     .option('--name <name>', 'Project name')
     .option('--region <region>', 'AWS Region')
     .action(async (options?: { mode?: string, name?: string, region?: string }) => {
@@ -27,7 +27,7 @@ export function registerInitCommands(app: CLI): void {
       // Get deployment mode
       const mode = options?.mode || await cli.select(
         'Select deployment mode',
-        ['serverless', 'server', 'hybrid'],
+        ['serverless', 'server'],
       )
 
       // Get AWS region
