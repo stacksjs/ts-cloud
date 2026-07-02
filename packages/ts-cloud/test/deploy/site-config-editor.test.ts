@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { addSiteToCloudConfig, isValidHostname, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderSiteSnippet, renderSslValue, setSitePropertyInCloudConfig, updateSiteInCloudConfig } from '../../src/deploy/site-config-editor'
+import { addSiteToCloudConfig, isValidHostname, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderRedirectsValue, renderSiteSnippet, renderSslValue, setSitePropertyInCloudConfig, updateSiteInCloudConfig } from '../../src/deploy/site-config-editor'
 
 // Assert the rewritten config still parses as TypeScript so a malformed result
 // (e.g. a missing separating comma between sites) fails loudly.
@@ -209,5 +209,12 @@ describe('setSitePropertyInCloudConfig', () => {
     expect(() => renderAliasesValue(['not a host'])).toThrow(/valid hostname/)
     expect(isValidHostname('a.example.com')).toBe(true)
     expect(isValidHostname('localhost')).toBe(false)
+  })
+
+  it('renders a redirects map with quoted from/to keys', () => {
+    expect(renderRedirectsValue({})).toBe('{}')
+    expect(renderRedirectsValue({ '/old': '/new', 'legacy.com': 'https://acme.com' })).toContain("'/old': '/new',")
+    expect(renderRedirectsValue({ '/old': '/new', 'legacy.com': 'https://acme.com' })).toContain("'legacy.com': 'https://acme.com',")
+    expect(renderRedirectsValue({ '  ': 'x', '/a': '  ' })).toBe('{}')
   })
 })

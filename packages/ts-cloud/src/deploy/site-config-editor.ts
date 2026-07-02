@@ -149,6 +149,16 @@ export function renderAliasesValue(aliases: string[]): string {
   return `[${list.map(a => `'${escapeSingle(a)}'`).join(', ')}]`
 }
 
+/** Render a site's `redirects` map (`from` path/host → `to` URL). Both are quoted strings. */
+export function renderRedirectsValue(redirects: Record<string, string>): string {
+  const entries = Object.entries(redirects)
+    .map(([from, to]) => [from.trim(), String(to).trim()] as const)
+    .filter(([from, to]) => from && to)
+  if (entries.length === 0)
+    return '{}'
+  return `{\n${entries.map(([from, to]) => `        '${escapeSingle(from)}': '${escapeSingle(to)}',`).join('\n')}\n      }`
+}
+
 /**
  * Index just past a property value, starting after its colon: the terminating
  * top-level comma, or the site's closing brace. Quote- and nesting-aware so

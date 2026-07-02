@@ -723,6 +723,7 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
         build: site.build,
         php: site.php ?? site.phpVersion,
         aliases: Array.isArray(site.aliases) ? site.aliases : [],
+        redirects: site.redirects && typeof site.redirects === 'object' ? site.redirects : {},
         envKeys: Object.keys(site.env ?? site.environment ?? {}),
       }
     }),

@@ -30,7 +30,7 @@ import {
   setServerlessSecret,
   updateFunctionConfig,
 } from './serverless-operations'
-import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
+import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderRedirectsValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 import { createTerminalSession } from './terminal-session'
 
@@ -688,6 +688,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const aliases = body.aliases.map((a: any) => String(a))
             set('aliases', renderAliasesValue(aliases))
             existing.aliases = aliases.map((a: string) => a.trim().toLowerCase()).filter(Boolean)
+          }
+          if (body.redirects !== undefined && body.redirects && typeof body.redirects === 'object') {
+            set('redirects', renderRedirectsValue(body.redirects))
+            existing.redirects = body.redirects
           }
           for (const key of ['domain', 'path', 'build', 'start', 'type', 'root', 'php']) {
             if (typeof body[key] === 'string' && body[key].trim()) {
