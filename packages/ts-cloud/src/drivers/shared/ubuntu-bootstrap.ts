@@ -114,6 +114,17 @@ ${servicesProvision.join('\n')}
 # breaking a from-scratch provision (adopting an existing box masked it).
 export HOME="\${HOME:-/root}"
 export BUN_INSTALL="/root/.bun"
+# bun.sh's installer references $HOME internally and runs under this
+# script's \`set -u\` (inherited by the piped bash) — cloud-init's runcmd
+# environment doesn't export HOME by default, so without this the
+# installer dies with "HOME: unbound variable" partway through (after
+# the binary is already downloaded, so it looks like a partial success)
+# and \`set -e\` aborts everything after it: the bun symlink, /var/www +
+# /var/ts-cloud dirs, and the whole rpx gateway install/systemd setup
+# never run. Confirmed against a real Hetzner box (stacksjs/status#1
+# Phase 9 e2e deploy) — cloud-init reported success with none of that
+# actually done.
+export HOME="\${HOME:-/root}"
 curl -fsSL https://bun.sh/install | bash${runtimeVersion === 'latest' ? '' : ` -s "bun-v${runtimeVersion}"`}
 ln -sf /root/.bun/bin/bun /usr/local/bin/bun
 echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
