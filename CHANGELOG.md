@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.6.0...v0.6.1)
+
+### 💅 Styles
+
+- **ui**: taste pass on the dashboard design system ([6ac621f](https://github.com/stacksjs/ts-cloud/commit/6ac621f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧪 Tests
+
+- **local-box**: clear TS_CLOUD_DASHBOARD_BOX before each test too ([b3933b1](https://github.com/stacksjs/ts-cloud/commit/b3933b1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.6.1 ([4e23dda](https://github.com/stacksjs/ts-cloud/commit/4e23dda)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.35...v0.6.0)
 
 ### 🚀 Features
