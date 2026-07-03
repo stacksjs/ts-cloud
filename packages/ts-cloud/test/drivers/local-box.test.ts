@@ -9,7 +9,11 @@ import { isBoxMode, LocalBoxDriver } from '../../src/drivers/local-box/driver'
 beforeEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
 afterEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
 
-const config = { project: { name: 'a', slug: 'acme', region: 'us-east-1' }, cloud: { provider: 'hetzner' } } as unknown as CloudConfig
+// `hetzner.apiToken` is required by HetznerDriver's constructor. Set it here
+// rather than relying on an ambient HCLOUD_TOKEN/HETZNER_API_TOKEN env var,
+// which isn't present in CI and made this config unusable for constructing a
+// real provider driver.
+const config = { project: { name: 'a', slug: 'acme', region: 'us-east-1' }, cloud: { provider: 'hetzner' }, hetzner: { apiToken: 'test-token' } } as unknown as CloudConfig
 
 describe('LocalBoxDriver', () => {
   const driver = new LocalBoxDriver()
