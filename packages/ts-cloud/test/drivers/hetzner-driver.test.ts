@@ -155,6 +155,37 @@ describe('HetznerDriver', () => {
     expect(state.firewallId).toBe(10)
   })
 
+  it('stages each site under a site-specific path so a shared SHA cannot collide', async () => {
+    const client = mockHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    // Capture the remote staging path scp targets, without touching the network.
+    const scpCalls: Array<{ localPath: string, remotePath: string }> = []
+    ;(driver as any).scpToHost = (_host: string, localPath: string, remotePath: string) => {
+      scpCalls.push({ localPath, remotePath })
+    }
+
+    const targets = [{ id: '42', publicIp: '203.0.113.10' } as any]
+    const sha = '8e04d7b53'
+    // Two distinct sites, SAME commit SHA — the real production case that
+    // cross-contaminated releases when the staging file dropped the site name.
+    const a = await driver.uploadRelease!({
+      config: baseConfig, environment: 'production', targets,
+      localPath: '/tmp/my-app-verygoodadblock.tar.gz', remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
+    })
+    const b = await driver.uploadRelease!({
+      config: baseConfig, environment: 'production', targets,
+      localPath: '/tmp/my-app-verygoodadblockWww.tar.gz', remoteKey: `releases/verygoodadblockWww/${sha}.tar.gz`,
+    })
+
+    // The two staging paths must differ (each carries its site name), so the
+    // second upload can never clobber the first's tarball before extraction.
+    expect(a.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblock-${sha}.tar.gz`)
+    expect(b.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblockWww-${sha}.tar.gz`)
+    expect(a.artifactRef).not.toBe(b.artifactRef)
+    expect(scpCalls.map(c => c.remotePath)).toEqual([a.artifactRef, b.artifactRef])
+  })
+
   it('does not provision a gateway by default (no proxy configured)', async () => {
     const createServer = mock(async () => ({
       server: {

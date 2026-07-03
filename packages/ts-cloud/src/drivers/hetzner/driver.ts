@@ -555,7 +555,13 @@ export class HetznerDriver implements CloudDriver {
       throw new Error('No Hetzner compute targets found for release upload')
     }
 
-    const remotePath = `/var/ts-cloud/staging/${options.remoteKey.split('/').pop()}`
+    // Keep the site in the staging filename. `remoteKey` is
+    // `releases/<siteName>/<sha>.tar.gz`; collapsing it to just `<sha>.tar.gz`
+    // made every site sharing a commit SHA (i.e. all of them, every deploy)
+    // upload to ONE staging file — a later site's upload clobbered an earlier
+    // site's tarball before its extract ran, cross-contaminating releases.
+    const stagingName = options.remoteKey.replace(/^releases\//, '').replace(/\//g, '-')
+    const remotePath = `/var/ts-cloud/staging/${stagingName}`
     for (const target of targets) {
       if (!target.publicIp) {
         throw new Error(`Target ${target.id} has no public IP for SCP upload`)
