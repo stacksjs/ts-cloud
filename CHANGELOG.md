@@ -1,3 +1,13 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.2...HEAD)
+
+### 🐛 Bug Fixes
+
+- **hetzner**: two bugs found during live bun-fleet e2e verification ([8596ad8](https://github.com/stacksjs/ts-cloud/commit/8596ad8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.1...HEAD)
 
 ### 🚀 Features
