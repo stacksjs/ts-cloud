@@ -125,7 +125,10 @@ describe('buildRpxConfig', () => {
     expect(config.productionCerts.certsDir).toBe('/etc/bun-gateway/certs')
     expect(config.onDemandTls?.enabled).toBe(true)
     expect(config.onDemandTls?.email).toBe('ops@stacksjs.com')
-    expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['app.other.com', 'stacksjs.com'])
+    // stacksjs.com is an apex domain, so its auto-added www redirect (see the
+    // 'auto-adds a www redirect' tests below) is on the allowlist too —
+    // app.other.com isn't apex (3 labels), so it gets no www counterpart.
+    expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['app.other.com', 'stacksjs.com', 'www.stacksjs.com'])
     expect(config.onDemandTls?.certsDir).toBe('/etc/bun-gateway/certs')
   })
 
@@ -186,6 +189,60 @@ describe('buildRpxConfig', () => {
     // Redirect domains still get a cert via the on-demand allowlist.
     expect(config.onDemandTls?.allowedSuffixes).toContain('very-good-adblock.org')
     expect(config.onDemandTls?.allowedSuffixes).toContain('www.very-good-adblock.org')
+  })
+
+  describe('auto-adds a www redirect', () => {
+    it('adds www.<domain> -> https://<domain> for an apex domain with no explicit www route', () => {
+      const config = buildRpxConfig({
+        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+      }, { proxy: rpxProxy })
+
+      const www = config.proxies.find(r => r.to === 'www.example.com')!
+      expect(www).toBeDefined()
+      expect(www.redirect).toEqual({ to: 'https://example.com' })
+      expect(www.from).toBeUndefined()
+      expect(www.static).toBeUndefined()
+    })
+
+    it('does not add a www route for a non-apex domain', () => {
+      const config = buildRpxConfig({
+        app: { domain: 'app.other.com', root: '.output', start: 'bun run app.ts', port: 4000 },
+      }, { proxy: rpxProxy })
+      expect(config.proxies.some(r => r.to.startsWith('www.'))).toBe(false)
+    })
+
+    it('does not duplicate an explicit www route already declared by another site', () => {
+      const config = buildRpxConfig({
+        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+        wwwRedirect: { domain: 'www.example.com', redirect: { to: 'https://example.com', status: 308 } },
+      }, { proxy: rpxProxy })
+
+      const wwwRoutes = config.proxies.filter(r => r.to === 'www.example.com')
+      expect(wwwRoutes).toHaveLength(1)
+      // The explicit site's own redirect config wins, untouched.
+      expect(wwwRoutes[0].redirect).toEqual({ to: 'https://example.com', status: 308 })
+    })
+
+    it('skips an already-www domain (no www.www.<domain>)', () => {
+      const config = buildRpxConfig({
+        site: { domain: 'www.example.com', deploy: 'server', root: 'dist' },
+      }, { proxy: rpxProxy })
+      expect(config.proxies.some(r => r.to.startsWith('www.www.'))).toBe(false)
+    })
+
+    it('is opted out with proxy.autoWww: false', () => {
+      const config = buildRpxConfig({
+        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+      }, { proxy: { engine: 'rpx', autoWww: false } })
+      expect(config.proxies.some(r => r.to === 'www.example.com')).toBe(false)
+    })
+
+    it('includes the auto-added www domain in the on-demand TLS allowlist', () => {
+      const config = buildRpxConfig({
+        main: { domain: 'example.com', deploy: 'server', root: 'dist' },
+      }, { proxy: { engine: 'rpx', onDemandTls: true } })
+      expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['example.com', 'www.example.com'])
+    })
   })
 })
 

@@ -2764,6 +2764,19 @@ export interface ComputeProxyConfig {
    * single-upstream route (rpx only load-balances a route with >1 upstream).
    */
   loadBalancer?: RpxLoadBalancerConfig
+  /**
+   * Auto-add a `www.<domain>` → `https://<domain>` redirect route for every
+   * apex domain (a bare `example.com`, not `sub.example.com` or an existing
+   * `www.example.com`) routed by this gateway — matching how the AWS/
+   * CloudFront path already aliases apex + www (see `migrate-site-stack.ts`'s
+   * `isApex`/`wwwDomain` handling). DNS reconciliation already creates both
+   * the apex and `www` A records (see `reconcileHetznerDns`), so without
+   * this the gateway only ever routes the apex and `www.<domain>` 404s even
+   * though DNS resolves it to the same box. Set `false` to opt out (e.g. a
+   * multi-tenant custom-domain deploy where `www.<domain>` might belong to
+   * someone else). @default true
+   */
+  autoWww?: boolean
 }
 
 /**

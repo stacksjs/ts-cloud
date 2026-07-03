@@ -248,6 +248,26 @@ function buildRpxConfigInternal(
     domains.add(site.domain)
   }
 
+  // Auto-add a `www.<domain>` -> `https://<domain>` redirect for every apex
+  // domain (2 labels, e.g. `example.com`) that doesn't already have an
+  // explicit `www.` route of its own. DNS reconciliation (reconcileHetznerDns)
+  // already creates both the apex and `www` A records pointing at this box —
+  // without a matching gateway route, `www.<domain>` resolves fine but 404s
+  // at the proxy, since rpx only ever knew about the literal `site.domain`
+  // string. Opt out per-deploy with `proxy.autoWww: false` (e.g. multi-tenant
+  // custom domains where `www.<domain>` might belong to someone else).
+  if (options.proxy.autoWww !== false) {
+    for (const domain of [...domains]) {
+      if (domain.split('.').length !== 2)
+        continue
+      const wwwDomain = `www.${domain}`
+      if (domains.has(wwwDomain))
+        continue
+      proxies.push({ to: wwwDomain, redirect: { to: `https://${domain}` }, id: deriveRouteId(wwwDomain) })
+      domains.add(wwwDomain)
+    }
+  }
+
   // Sort so routes group by domain and, within a domain, the most-specific path
   // comes first (cosmetic — rpx re-sorts longest-prefix-first at runtime).
   proxies.sort((a, b) => {
