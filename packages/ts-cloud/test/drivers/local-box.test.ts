@@ -1,8 +1,12 @@
 import type { CloudConfig } from '@ts-cloud/core'
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { createCloudDriver } from '../../src/drivers/factory'
 import { isBoxMode, LocalBoxDriver } from '../../src/drivers/local-box/driver'
 
+// `TS_CLOUD_DASHBOARD_BOX` is process-global. Clear it BEFORE and after each test
+// so a value leaked by another test file (order varies across CI runs) can never
+// flip the box-mode gate under us.
+beforeEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
 afterEach(() => { delete process.env.TS_CLOUD_DASHBOARD_BOX })
 
 const config = { project: { name: 'a', slug: 'acme', region: 'us-east-1' }, cloud: { provider: 'hetzner' } } as unknown as CloudConfig
