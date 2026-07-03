@@ -9,6 +9,11 @@ on:
 jobs:
   npm:
     runs-on: ubuntu-latest
+    # Release commits push three tags at once (vX.Y.Z plus the rolling vX.Y.x
+    # and vX.x.x aliases, all pointing at the same commit). Only run for the
+    # exact version tag so the two aliases don't trigger duplicate concurrent
+    # `npm publish` runs that race and fail with 403.
+    if: ${{ !endsWith(github.ref_name, '.x') }}
     permissions:
       contents: write
       id-token: write
