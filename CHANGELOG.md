@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.6.1...v0.6.2)
+
+### 🐛 Bug Fixes
+
+- **compute**: always regenerate rpx gateway from the full site model ([a7eb786](https://github.com/stacksjs/ts-cloud/commit/a7eb786)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.6.2 ([f857c02](https://github.com/stacksjs/ts-cloud/commit/f857c02)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.6.0...v0.6.1)
 
 ### 💅 Styles
