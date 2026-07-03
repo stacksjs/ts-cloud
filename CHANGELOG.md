@@ -1,3 +1,49 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.35...v0.6.0)
+
+### 🚀 Features
+
+- **dashboard**: export ensureManagementDashboard + helpers from the package ([ebfb3b4](https://github.com/stacksjs/ts-cloud/commit/ebfb3b4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: cloud deploy auto-routes serverless projects to Lambda ([b25ab0b](https://github.com/stacksjs/ts-cloud/commit/b25ab0b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: reject server+serverless coexistence up front ([7a18a52](https://github.com/stacksjs/ts-cloud/commit/7a18a52)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **core**: make server and serverless mutually exclusive (drop hybrid) ([f0848be](https://github.com/stacksjs/ts-cloud/commit/f0848be)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: redirects field on the site editor ([c30ea54](https://github.com/stacksjs/ts-cloud/commit/c30ea54)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: edit site redirects from the dashboard ([b138507](https://github.com/stacksjs/ts-cloud/commit/b138507)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: serverless traces page ([4210e22](https://github.com/stacksjs/ts-cloud/commit/4210e22)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: serverless X-Ray traces endpoint ([17e6fb5](https://github.com/stacksjs/ts-cloud/commit/17e6fb5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: add X-Ray client for trace summaries and batch traces ([b91de38](https://github.com/stacksjs/ts-cloud/commit/b91de38)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: web terminal page ([1aff2a4](https://github.com/stacksjs/ts-cloud/commit/1aff2a4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: web terminal over WebSocket ([dde4c3a](https://github.com/stacksjs/ts-cloud/commit/dde4c3a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: per-database backup + dumps list on the database page ([9bcf1c5](https://github.com/stacksjs/ts-cloud/commit/9bcf1c5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: per-database backups ([7d2a2c8](https://github.com/stacksjs/ts-cloud/commit/7d2a2c8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: domain aliases field on the site editor ([efb1854](https://github.com/stacksjs/ts-cloud/commit/efb1854)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: edit site domain aliases from the dashboard ([b8b57a9](https://github.com/stacksjs/ts-cloud/commit/b8b57a9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: server firewall manager, command runner, and PHP version ([060582c](https://github.com/stacksjs/ts-cloud/commit/060582c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: interactive serverless operations ([35150fe](https://github.com/stacksjs/ts-cloud/commit/35150fe)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: honor explicit mode + wire operation endpoints ([284e2d7](https://github.com/stacksjs/ts-cloud/commit/284e2d7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: serverless mutating operations module ([5b8671b](https://github.com/stacksjs/ts-cloud/commit/5b8671b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: firewall allowed-ports config editor ([8452582](https://github.com/stacksjs/ts-cloud/commit/8452582)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: add CloudWatch deleteAlarms ([749ba89](https://github.com/stacksjs/ts-cloud/commit/749ba89)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: compose a dataServices list for the serverless overview ([da47f08](https://github.com/stacksjs/ts-cloud/commit/da47f08)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: secure-by-default auth for the management dashboard ([365610e](https://github.com/stacksjs/ts-cloud/commit/365610e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **dashboard**: framework-aware worker/scheduler ops + server command runner ([f6935dc](https://github.com/stacksjs/ts-cloud/commit/f6935dc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ♻️ Code Refactoring
+
+- **dashboard**: resolve mode via the shared core detector ([d5611d6](https://github.com/stacksjs/ts-cloud/commit/d5611d6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.6.0 ([218cc26](https://github.com/stacksjs/ts-cloud/commit/218cc26)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: remove em-dashes from dashboard copy ([fefabe6](https://github.com/stacksjs/ts-cloud/commit/fefabe6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **scripts**: add Bun WebView dashboard screenshot tool ([55607a6](https://github.com/stacksjs/ts-cloud/commit/55607a6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.5.34...v0.5.35)
 
 ### 🐛 Bug Fixes
