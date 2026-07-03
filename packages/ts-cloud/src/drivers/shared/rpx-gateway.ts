@@ -17,7 +17,7 @@
  * It replaces the old Caddyfile generation — pantry/stacks use rpx (their own
  * tooling), so the gateway is rpx, not Caddy.
  */
-import type { ComputeProxyConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
+import type { ComputeProxyConfig, RpxLoadBalancerConfig, SiteConfig, SiteRedirectConfig } from '@ts-cloud/core'
 import { resolveSiteKind } from '../../deploy/site-target'
 
 /** Default directory on the box that holds real per-domain TLS certs. */
@@ -55,8 +55,14 @@ export interface RpxRoute {
   to: string
   /** Path prefix within the host this route owns (e.g. `/api`). Omitted = `/`. */
   path?: string
-  /** Upstream `host:port` for a `server-app` route. */
-  from?: string
+  /**
+   * Upstream(s) for a `server-app` route: a single `host:port` for a co-located
+   * (single-box) deploy, or an array of `host:port` — one per app box — when the
+   * route is fronted by a dedicated load-balancer box (see
+   * {@link buildRpxLbConfig}). rpx turns an array into a real load-balanced pool
+   * with automatic health-check failover (see rpx's `ProxyFrom`/`UpstreamTarget`).
+   */
+  from?: string | string[]
   /** Absolute directory served for a `server-static` route (`/var/www/<name>`). */
   static?: string
   /**
@@ -76,6 +82,12 @@ export interface RpxRoute {
    * rpx, the same way the nginx driver applies htpasswd.
    */
   auth?: { username: string, password: string, realm?: string }
+  /**
+   * Load-balancing strategy/health-check tuning for a multi-upstream `from`
+   * (see {@link ComputeProxyConfig.loadBalancer}). Only meaningful when `from`
+   * is an array — rpx ignores it for a single-upstream route.
+   */
+  loadBalancer?: RpxLoadBalancerConfig
   /** Stable id used when rpx registers the route. Derived from `to`+`path`. */
   id: string
 }
@@ -158,21 +170,30 @@ export function deriveRouteId(to: string, path?: string): string {
 }
 
 /**
- * Map the sites model to an rpx gateway config. Each non-bucket site with a
- * `domain` becomes a route:
- *  - `server-app`    → `{ to: domain, path, from: 'localhost:<port>' }`
- *  - `server-static` → `{ to: domain, path, static: '<wwwRoot>/<name>' }`
- *
- * Routes are grouped by domain so rpx's path-based routing can serve an app +
- * several static dirs under one host. Bucket sites and sites without a `domain`
- * (or a `server-app` without a `port`) are skipped.
+ * Resolve a `server-app` site's upstream `from` — either a single co-located
+ * `localhost:<port>` (the default, single-box behavior) or, when `appBoxes` is
+ * given (a load-balanced fleet), one `host:port` per app box using each box's
+ * private IP (falling back to its public IP when no private IP is available).
  */
-export function buildRpxConfig(
+function resolveServerAppFrom(port: number, appBoxes?: RpxLbAppBox[]): string | string[] {
+  if (!appBoxes || appBoxes.length === 0)
+    return `localhost:${port}`
+  return appBoxes.map(box => `${box.privateIp ?? box.publicIp}:${port}`)
+}
+
+/**
+ * Shared route-building core for {@link buildRpxConfig} and
+ * {@link buildRpxLbConfig}. `appBoxes` is undefined for the single-box path
+ * (unchanged behavior) or the fleet's app-box IPs for the LB path.
+ */
+function buildRpxConfigInternal(
   sites: Record<string, SiteConfig | undefined>,
   options: BuildRpxConfigOptions,
+  appBoxes?: RpxLbAppBox[],
 ): RpxGatewayConfig {
   const wwwRoot = (options.wwwRoot ?? '/var/www').replace(/\/+$/, '')
   const certsDir = options.proxy.certsDir ?? DEFAULT_RPX_CERTS_DIR
+  const loadBalancer = options.proxy.loadBalancer
 
   const proxies: RpxRoute[] = []
   const domains = new Set<string>()
@@ -200,7 +221,15 @@ export function buildRpxConfig(
       // A server-app must declare the port it listens on to be routable.
       if (typeof site.port !== 'number')
         continue
-      proxies.push({ to: site.domain, path, from: `localhost:${site.port}`, id, ...(auth ? { auth } : {}) })
+      const from = resolveServerAppFrom(site.port, appBoxes)
+      proxies.push({
+        to: site.domain,
+        path,
+        from,
+        id,
+        ...(auth ? { auth } : {}),
+        ...(Array.isArray(from) && loadBalancer ? { loadBalancer } : {}),
+      })
     }
     else {
       // server-static: served from the atomic-release `current` symlink under
@@ -262,6 +291,55 @@ export function buildRpxConfig(
   }
 
   return config
+}
+
+/**
+ * Map the sites model to an rpx gateway config. Each non-bucket site with a
+ * `domain` becomes a route:
+ *  - `server-app`    → `{ to: domain, path, from: 'localhost:<port>' }`
+ *  - `server-static` → `{ to: domain, path, static: '<wwwRoot>/<name>' }`
+ *
+ * Routes are grouped by domain so rpx's path-based routing can serve an app +
+ * several static dirs under one host. Bucket sites and sites without a `domain`
+ * (or a `server-app` without a `port`) are skipped.
+ *
+ * This is the single-box path: every `server-app` route always resolves to
+ * `localhost:<port>` — unchanged, byte-for-byte, from before load-balanced
+ * fleets existed. Use {@link buildRpxLbConfig} for a dedicated LB box fronting
+ * more than one app box.
+ */
+export function buildRpxConfig(
+  sites: Record<string, SiteConfig | undefined>,
+  options: BuildRpxConfigOptions,
+): RpxGatewayConfig {
+  return buildRpxConfigInternal(sites, options)
+}
+
+/** An app box's addresses, as known to the LB box building routes to it. */
+export interface RpxLbAppBox {
+  /** Private IP of the app box, reachable from the LB over the fleet's private network. Preferred. */
+  privateIp?: string
+  /** Public IP of the app box — used only when no private IP is available. */
+  publicIp?: string
+}
+
+/**
+ * Build the rpx gateway config for a **dedicated load-balancer box**: like
+ * {@link buildRpxConfig}, but every `server-app` route's `from` is an array of
+ * `host:port` — one per entry in `appBoxes` (private IP preferred, public IP as
+ * fallback) — instead of `localhost:<port>`. rpx turns that array into a real
+ * load-balanced pool with health-check failover (see rpx's `ProxyFrom`).
+ *
+ * `server-static`/`redirect` routes are unaffected (the LB box doesn't serve
+ * static files or own redirects itself in the primary bun-fleet flow — those
+ * kinds simply pass through unchanged if present in `sites`).
+ */
+export function buildRpxLbConfig(
+  sites: Record<string, SiteConfig | undefined>,
+  appBoxes: RpxLbAppBox[],
+  options: BuildRpxConfigOptions,
+): RpxGatewayConfig {
+  return buildRpxConfigInternal(sites, options, appBoxes)
 }
 
 /**

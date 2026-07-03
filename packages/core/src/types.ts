@@ -2215,6 +2215,19 @@ export interface ComputeConfig {
   servicesServer?: boolean | { size?: InstanceSize }
 
   /**
+   * Provision a **dedicated load-balancer box** (its own, typically
+   * smaller/cheaper instance) running only the rpx gateway in load-balancing
+   * mode, fronting the app server(s). Used by providers (e.g. Hetzner) whose
+   * fleet path load-balances via a real box running rpx rather than the
+   * provider's own native load-balancer product. `true` uses a small default
+   * size (e.g. `micro`); an object lets you pick the size explicitly. Only
+   * relevant when the fleet has more than one app server (see
+   * {@link appServers}/{@link instances}) — a single-app-server deploy never
+   * provisions this box.
+   */
+  loadBalancer?: boolean | { size?: InstanceSize }
+
+  /**
    * Mixed instance fleet for cost optimization
    * Allows combining different sizes and spot instances
    *
@@ -2741,6 +2754,33 @@ export interface ComputeProxyConfig {
    * `buildCloudFrontOriginConfig` for the matching AWS distribution config.
    */
   cdn?: CdnFrontConfig
+  /**
+   * Load-balancing tuning for a multi-upstream route (a `server-app` site
+   * fronted by more than one app box — see {@link ComputeConfig.appServers}/
+   * {@link ComputeConfig.instances}). Passed straight through to rpx's own
+   * `startProxies({ loadBalancer })` option, so `strategy`/`healthCheck` mirror
+   * rpx's `LoadBalancerConfig` shape exactly. Optional — rpx applies its own
+   * defaults (round-robin, a basic health check) when omitted. Ignored for a
+   * single-upstream route (rpx only load-balances a route with >1 upstream).
+   */
+  loadBalancer?: RpxLoadBalancerConfig
+}
+
+/**
+ * Mirrors rpx's own `LoadBalancerConfig` (see `@stacksjs/rpx`'s `types.ts`).
+ * Kept as a local, structurally-compatible type here so `@ts-cloud/core` does
+ * not take a runtime dependency on rpx just to describe this passthrough.
+ */
+export interface RpxLoadBalancerConfig {
+  strategy?: 'round-robin' | 'weighted-round-robin' | 'least-connections'
+  healthCheck?: {
+    enabled?: boolean
+    path?: string
+    interval?: number
+    timeout?: number
+    healthyThreshold?: number
+    unhealthyThreshold?: number
+  }
 }
 
 /** CDN-in-front-of-gateway configuration (see {@link ComputeProxyConfig.cdn}). */

@@ -16,6 +16,14 @@ export interface HetznerDriverState {
   loadBalancerId?: number
   servicesServerId?: number
   servicesPrivateIp?: string
+  /**
+   * Bun+rpx fleet (see `HetznerDriver`'s bun-fleet path): the dedicated rpx
+   * load-balancer box (role `lb`) and the N app boxes (role `app`) it fronts.
+   * Distinct from {@link loadBalancerId} (a Hetzner-native Load Balancer
+   * resource, used by the PHP fleet path) — this is a real server running rpx.
+   */
+  lbServerId?: number
+  appServerIds?: number[]
 }
 
 const STATE_DIR = '.ts-cloud/state'

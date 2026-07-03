@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   buildCertManagementCommands,
   buildRpxConfig,
+  buildRpxLbConfig,
   buildRpxProvisionScript,
   certDomainsForConfig,
   DEFAULT_ACME_WEBROOT,
@@ -185,6 +186,70 @@ describe('buildRpxConfig', () => {
     // Redirect domains still get a cert via the on-demand allowlist.
     expect(config.onDemandTls?.allowedSuffixes).toContain('very-good-adblock.org')
     expect(config.onDemandTls?.allowedSuffixes).toContain('www.very-good-adblock.org')
+  })
+})
+
+describe('buildRpxLbConfig', () => {
+  it('produces byte-for-byte the same output as buildRpxConfig for a single-box call site', () => {
+    // The existing single-box call site (buildRpxConfig with no app boxes) must
+    // remain completely unchanged — this pins that guarantee.
+    const single = buildRpxConfig(sites, { proxy: rpxProxy })
+    const viaLb = buildRpxLbConfig(sites, [], { proxy: rpxProxy })
+    expect(viaLb).toEqual(single)
+  })
+
+  it('resolves a server-app route to an array of host:port, one per app box (private IP preferred)', () => {
+    const appBoxes = [
+      { privateIp: '10.0.0.2', publicIp: '203.0.113.2' },
+      { privateIp: '10.0.0.3', publicIp: '203.0.113.3' },
+    ]
+    const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
+
+    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    expect(api.from).toEqual(['10.0.0.2:3000', '10.0.0.3:3000'])
+
+    const app2 = config.proxies.find(r => r.to === 'app.other.com')!
+    expect(app2.from).toEqual(['10.0.0.2:4000', '10.0.0.3:4000'])
+  })
+
+  it('falls back to an app box public IP when it has no private IP', () => {
+    const appBoxes = [
+      { privateIp: '10.0.0.2', publicIp: '203.0.113.2' },
+      { publicIp: '203.0.113.9' }, // no private IP — e.g. network attach failed
+    ]
+    const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
+    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    expect(api.from).toEqual(['10.0.0.2:3000', '203.0.113.9:3000'])
+  })
+
+  it('leaves server-static and redirect routes unaffected (no from array)', () => {
+    const appBoxes = [{ privateIp: '10.0.0.2' }]
+    const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
+    const docs = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/docs')!
+    expect(docs.static).toBe('/var/www/docs/current')
+    expect(docs.from).toBeUndefined()
+  })
+
+  it('passes through an optional loadBalancer strategy/health-check tuning onto multi-upstream routes only', () => {
+    const proxy: ComputeProxyConfig = {
+      engine: 'rpx',
+      loadBalancer: { strategy: 'least-connections', healthCheck: { path: '/healthz', interval: 5 } },
+    }
+    const appBoxes = [{ privateIp: '10.0.0.2' }, { privateIp: '10.0.0.3' }]
+    const config = buildRpxLbConfig(sites, appBoxes, { proxy })
+    const api = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!
+    expect(api.loadBalancer).toEqual({ strategy: 'least-connections', healthCheck: { path: '/healthz', interval: 5 } })
+
+    // A single-upstream (single-box) route never carries loadBalancer tuning.
+    const single = buildRpxConfig(sites, { proxy })
+    expect(single.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/api')!.loadBalancer).toBeUndefined()
+  })
+
+  it('skips a server-app without a port, same as buildRpxConfig', () => {
+    const config = buildRpxLbConfig({
+      noport: { domain: 'x.com', root: '.output', start: 'bun run s.ts' },
+    }, [{ privateIp: '10.0.0.2' }], { proxy: rpxProxy })
+    expect(config.proxies).toHaveLength(0)
   })
 })
 

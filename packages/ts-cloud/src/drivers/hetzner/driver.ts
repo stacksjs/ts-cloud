@@ -17,7 +17,8 @@ import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
-import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
+import type { RpxLbAppBox } from '../shared/rpx-gateway'
+import { buildRpxConfig, buildRpxLbConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { resolveFleetTopology } from '../shared/fleet'
 import { buildPhpProvisionScript } from '../shared/php-provision'
@@ -108,11 +109,25 @@ export class HetznerDriver implements CloudDriver {
     const stackName = resolveProjectStackName(config, environment)
     const serverName = `${slug}-${environment}-app`
 
-    // Fleet topology: a load-balanced multi-app deployment with a dedicated
-    // services box takes a separate provisioning path.
+    // Fleet topology: a load-balanced multi-app deployment takes a separate
+    // provisioning path. Which path depends on the runtime:
+    //  - PHP (Forge-style): `provisionFleet` — nginx/php-fpm app boxes fronted
+    //    by Hetzner's own native Load Balancer product.
+    //  - bun/node/deno: `provisionBunFleet` — app boxes running the runtime
+    //    directly, fronted by a dedicated box running the rpx gateway in
+    //    load-balancing mode (rpx v0.11.24+ multi-upstream routes).
+    // A bun app with an explicit `servicesServer` (dedicated DB/cache box, no
+    // multi-app-server requirement) is a secondary edge case: it still wants a
+    // dedicated services box (provider/runtime-agnostic infra), so we route it
+    // through the same bun-fleet path, which handles `dedicatedServices` too —
+    // see provisionBunFleet's services-box step.
+    const phpBox = compute.runtime === 'php' || !!compute.php
     const topology = resolveFleetTopology(compute)
-    if (topology.dedicatedServices || topology.appServers > 1)
-      return this.provisionFleet(options, topology)
+    if (topology.dedicatedServices || topology.appServers > 1) {
+      return phpBox
+        ? this.provisionFleet(options, topology)
+        : this.provisionBunFleet(options, topology)
+    }
 
     const existing = await readDriverState(stackName)
     if (existing?.serverId) {
@@ -436,6 +451,284 @@ export class HetznerDriver implements CloudDriver {
   }
 
   /**
+   * Provision a load-balanced **bun/node/deno** fleet: a private network, N
+   * app servers running the runtime directly (no local rpx gateway — the LB
+   * box reaches them over the private network), and ONE dedicated box running
+   * only the rpx gateway in load-balancing mode, fronting every `server-app`
+   * site's port across all app boxes (rpx v0.11.24+ multi-upstream routes with
+   * health-check failover — see {@link buildRpxLbConfig}).
+   *
+   * Mirrors {@link provisionFleet}'s idempotency/reconciliation/teardown
+   * patterns (reuse-by-label, create only the delta, destroy extras on
+   * scale-down), but fronts the app boxes with rpx instead of Hetzner's native
+   * Load Balancer product — this is the bun/rpx analogue of that PHP path.
+   *
+   * Edge case: a bun app that sets `compute.servicesServer` explicitly (wants
+   * a dedicated DB/cache box) but only ever runs one app server still lands
+   * here (see the `topology.dedicatedServices` dispatch condition) — in that
+   * case we still provision the dedicated services box (provider/runtime
+   * -agnostic infra, reusing the same PHP-fleet services-box mechanism is
+   * unnecessary since bun app servers need no PHP/nginx either way) but only
+   * stand up the rpx LB box when `topology.loadBalancer` is actually true
+   * (i.e. more than one app server, or `compute.server?.loadBalancer`).
+   */
+  private async provisionBunFleet(
+    options: ProvisionComputeOptions,
+    topology: ReturnType<typeof resolveFleetTopology>,
+  ): Promise<ComputeStackOutputs> {
+    const { config, environment } = options
+    const slug = config.project.slug
+    const compute = config.infrastructure!.compute!
+    const stackName = resolveProjectStackName(config, environment)
+    const serverType = resolveHetznerServerType(compute.size)
+    const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
+    const location = config.hetzner?.location || this.location
+    const baked = compute.bakedImage === true
+    const sites = config.sites || {}
+
+    // Idempotency: a prior bun fleet (by LB server label) → return its outputs.
+    const existingState = await readDriverState(stackName)
+    if (existingState?.lbServerId) {
+      const lb = await this.tryGetServer(existingState.lbServerId)
+      if (lb && lb.status !== 'off') {
+        return {
+          appPublicIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
+          loadBalancerIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
+          servicesPrivateIp: existingState.servicesPrivateIp,
+          deployStoragePath: '/var/ts-cloud/staging',
+          sshUser: this.sshUser,
+        }
+      }
+    }
+
+    const sshKeyId = await this.ensureSshKey(slug, environment, tsCloudLabels(slug, environment, 'app'))
+
+    // 1. Private network connecting the whole fleet.
+    const netName = `${slug}-${environment}-net`
+    const networks = await this.client.listNetworks().catch(() => [])
+    const network = networks.find(n => n.name === netName)
+      ?? await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') })
+
+    // 2. Firewalls. App servers: SSH + each site's app port, reachable only
+    //    from the private network (the LB reaches them privately) plus SSH
+    //    from anywhere (ts-cloud deploys over SSH). LB box: SSH + 80/443 from
+    //    anywhere (it's the public entry point). Services box (edge case):
+    //    SSH + DB/cache/search reachable only from the private network.
+    const sitePorts = this.collectUpstreamPorts(sites)
+    const { firewall: appFw } = await this.ensureFirewall(
+      `${slug}-${environment}-app-fw`,
+      tsCloudLabels(slug, environment, 'app'),
+      [
+        { direction: 'in', protocol: 'tcp', port: '22', source_ips: ['0.0.0.0/0', '::/0'] },
+        ...sitePorts.map(port => ({
+          direction: 'in' as const,
+          protocol: 'tcp' as const,
+          port: String(port),
+          source_ips: [network.ip_range],
+          description: `ts-cloud port ${port} (private, LB-only)`,
+        })),
+      ],
+    )
+    const { firewall: lbFw } = await this.ensureFirewall(
+      `${slug}-${environment}-lb-fw`,
+      tsCloudLabels(slug, environment, 'lb'),
+      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [] }),
+    )
+
+    // 3. Dedicated services box — edge case for a bun app that wants a shared
+    //    DB/cache off the app boxes. Reuses the same services-box mechanism as
+    //    the PHP fleet path (it's provider/runtime-agnostic infra: just MySQL/
+    //    Redis/Meilisearch on a box), since bun app servers need no PHP/nginx
+    //    either way.
+    const all = await this.client.listServers().catch(() => [])
+    const newServerIds: number[] = []
+    let servicesServerId: number | undefined
+    let servicesPrivateIp: string | undefined
+    if (topology.dedicatedServices) {
+      const { firewall: svcFw } = await this.ensureFirewall(
+        `${slug}-${environment}-services-fw`,
+        tsCloudLabels(slug, environment, 'services'),
+        [
+          { direction: 'in', protocol: 'tcp', port: '22', source_ips: ['0.0.0.0/0', '::/0'] },
+          { direction: 'in', protocol: 'tcp', port: '3306', source_ips: [network.ip_range] },
+          { direction: 'in', protocol: 'tcp', port: '5432', source_ips: [network.ip_range] },
+          { direction: 'in', protocol: 'tcp', port: '6379', source_ips: [network.ip_range] },
+          { direction: 'in', protocol: 'tcp', port: '7700', source_ips: [network.ip_range] },
+        ],
+      )
+      const servicesProvision = [
+        ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
+        ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
+        ...buildAutoUpdatesScript(true),
+        ...buildMonitoringScript(true),
+        ...buildAuthorizedKeysScript(compute.sshKeys),
+      ]
+      const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked }))
+      let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+      if (!svcServer) {
+        const { server, action } = await this.client.createServer({
+          name: `${slug}-${environment}-services`,
+          serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
+          image,
+          location,
+          userData: servicesUserData,
+          labels: tsCloudLabels(slug, environment, 'services'),
+          sshKeys: sshKeyId ? [sshKeyId] : undefined,
+          firewalls: [{ firewall: svcFw.id }],
+          networks: [network.id],
+        })
+        await this.client.waitForAction(action.id)
+        svcServer = await this.client.waitForServerRunning(server.id)
+        newServerIds.push(server.id)
+      }
+      servicesServerId = svcServer.id
+      servicesPrivateIp = svcServer.private_net?.[0]?.ip
+        ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
+    }
+
+    // 4. App servers — the runtime directly, NO local rpx gateway (the LB box
+    //    reaches them directly over the private network).
+    const appProvisionScripts = buildComputeProvisionScripts(config)
+    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({
+      runtime: appProvisionScripts.runtime,
+      runtimeVersion: appProvisionScripts.runtimeVersion,
+      systemPackages: compute.systemPackages,
+      database: config.infrastructure?.database,
+      servicesProvision: appProvisionScripts.servicesProvision,
+      baked,
+      // No rpxProvision: app boxes in fleet mode do not run their own gateway.
+    }))
+
+    // Reconcile the app-server set to the desired count: reuse existing ones,
+    // create only the delta, and destroy extras on scale-down (so stale boxes
+    // never end up in the LB's upstream list).
+    const existingApp = all.filter(s => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
+    const appServerIds: number[] = existingApp.map(s => s.id)
+    if (existingApp.length > topology.appServers) {
+      for (const extra of existingApp.slice(topology.appServers)) {
+        await this.client.deleteServer(extra.id).catch(() => {})
+        appServerIds.splice(appServerIds.indexOf(extra.id), 1)
+      }
+    }
+    for (let i = existingApp.length; i < topology.appServers; i++) {
+      const { server, action } = await this.client.createServer({
+        name: `${slug}-${environment}-app-${i + 1}`,
+        serverType,
+        image,
+        location,
+        userData: appUserData,
+        labels: tsCloudLabels(slug, environment, 'app'),
+        sshKeys: sshKeyId ? [sshKeyId] : undefined,
+        firewalls: [{ firewall: appFw.id }],
+        networks: [network.id],
+      })
+      await this.client.waitForAction(action.id)
+      appServerIds.push(server.id)
+      newServerIds.push(server.id)
+    }
+
+    // Wait for SSH + cloud-init on freshly-created app/services boxes before
+    // continuing, so neither the LB provisioning below nor a subsequent deploy
+    // races the bootstrap.
+    if (this.waitForBoot && newServerIds.length > 0) {
+      await Promise.all(newServerIds.map(async (id) => {
+        const running = await this.client.waitForServerRunning(id)
+        const ip = running.public_net.ipv4?.ip
+        if (ip) {
+          await this.waitForSshReady(ip)
+          await this.waitForCloudInit(ip)
+        }
+      }))
+    }
+
+    // Resolve every app box's private (preferred) or public IP for the LB's
+    // rpx config — re-fetch a reused box that wasn't already in `all` (or whose
+    // cached snapshot predates its network attachment, so `private_net` is
+    // still empty there) so the LB always gets a real, current address.
+    const appBoxes: RpxLbAppBox[] = []
+    for (const id of appServerIds) {
+      let server = all.find(s => s.id === id)
+      if (!server || !server.private_net?.[0]?.ip)
+        server = await this.client.getServer(id).catch(() => server)
+      appBoxes.push({ privateIp: server?.private_net?.[0]?.ip, publicIp: server?.public_net.ipv4?.ip })
+    }
+
+    // 5. Dedicated rpx load-balancer box — only when the topology calls for
+    //    one (a single app server needs no LB in front of it).
+    const lbName = `${slug}-${environment}-lb`
+    let lbId: number | undefined
+    let lbIp: string | undefined
+    if (topology.loadBalancer) {
+      let lbServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'lb'))
+      if (!lbServer) {
+        const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
+        const lbRpxProvision = buildRpxProvisionScript({
+          proxy: rpxProxy,
+          config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy }),
+          slug,
+          bunBin: appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+        })
+        const lbUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({
+          runtime: 'bun',
+          rpxProvision: lbRpxProvision,
+          baked: false, // the LB box is gateway-only; it always needs the runtime + rpx installed fresh.
+        }))
+        const lbSize = typeof compute.loadBalancer === 'object' ? compute.loadBalancer.size : undefined
+        const { server, action } = await this.client.createServer({
+          name: lbName,
+          serverType: resolveHetznerServerType(lbSize ?? 'micro'),
+          image,
+          location,
+          userData: lbUserData,
+          labels: tsCloudLabels(slug, environment, 'lb'),
+          sshKeys: sshKeyId ? [sshKeyId] : undefined,
+          firewalls: [{ firewall: lbFw.id }],
+          networks: [network.id],
+        })
+        await this.client.waitForAction(action.id)
+        lbServer = await this.client.waitForServerRunning(server.id)
+        if (this.waitForBoot) {
+          const ip = lbServer.public_net.ipv4?.ip
+          if (ip) {
+            await this.waitForSshReady(ip)
+            await this.waitForCloudInit(ip)
+          }
+        }
+      }
+      lbId = lbServer.id
+      lbIp = lbServer.public_net.ipv4?.ip
+    }
+
+    // Public endpoint: the LB if present, else the (single) app server's IP.
+    // Set BOTH appPublicIp and loadBalancerIp to the LB's IP so callers that
+    // only read appPublicIp (single-IP-reading call sites) keep working.
+    const appPublicIp = lbIp
+      ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
+
+    const state: HetznerDriverState = {
+      provider: 'hetzner',
+      stackName,
+      networkId: network.id,
+      lbServerId: lbId,
+      appServerIds,
+      servicesServerId,
+      servicesPrivateIp,
+      publicIp: appPublicIp,
+      deployStoragePath: '/var/ts-cloud/staging',
+      sshUser: this.sshUser,
+    }
+    await writeDriverState(stackName, state)
+
+    return {
+      appPublicIp,
+      loadBalancerIp: lbIp,
+      servicesPrivateIp,
+      deployStoragePath: '/var/ts-cloud/staging',
+      sshUser: this.sshUser,
+    }
+  }
+
+  /**
    * Tear down the compute — single server or full fleet (load balancer, all
    * app + services servers, firewalls, and the private network) — and clear
    * local state.
@@ -460,16 +753,24 @@ export class HetznerDriver implements CloudDriver {
       catch { /* surfaced by the leftover resource on the next run */ }
     }
 
-    // 2. All servers for this project/env (app + services roles), via state +
-    //    labels, deduped.
+    // 2. All servers for this project/env (app + services + lb roles), via
+    //    state + labels, deduped. `lb` here is the bun-fleet's dedicated rpx
+    //    box (a real server) — distinct from the PHP fleet's native Hetzner
+    //    Load Balancer resource already torn down in step 1.
     const allServers = await this.client.listServers().catch(() => [])
     const serverIds = new Set<number>()
     for (const s of allServers) {
-      if (matchesTsCloudLabels(s.labels, slug, environment, 'app') || matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+      if (
+        matchesTsCloudLabels(s.labels, slug, environment, 'app')
+        || matchesTsCloudLabels(s.labels, slug, environment, 'services')
+        || matchesTsCloudLabels(s.labels, slug, environment, 'lb')
+      )
         serverIds.add(s.id)
     }
     if (state?.serverId) serverIds.add(state.serverId)
     if (state?.servicesServerId) serverIds.add(state.servicesServerId)
+    if (state?.lbServerId) serverIds.add(state.lbServerId)
+    for (const id of state?.appServerIds ?? []) serverIds.add(id)
     for (const id of serverIds) {
       try {
         await this.client.deleteServer(id)
@@ -480,7 +781,7 @@ export class HetznerDriver implements CloudDriver {
 
     // 3. Firewalls (retry — can't delete until detached from deleting servers).
     const firewalls = await this.client.listFirewalls().catch(() => [])
-    for (const name of [`${slug}-${environment}-app-fw`, `${slug}-${environment}-services-fw`]) {
+    for (const name of [`${slug}-${environment}-app-fw`, `${slug}-${environment}-services-fw`, `${slug}-${environment}-lb-fw`]) {
       const fw = firewalls.find(f => f.name === name)
       if (!fw) continue
       for (let i = 0; i < 12; i++) {
@@ -523,7 +824,19 @@ export class HetznerDriver implements CloudDriver {
       const server = await this.client.getServer(state.serverId)
       return this.outputsFromState(state, server)
     }
-    // Fleet: no single serverId, but state carries the LB IP + services IP.
+    // Bun+rpx fleet: no single serverId, but a dedicated rpx LB server — refresh
+    // its public IP (state.publicIp may be stale) and surface it as both
+    // appPublicIp and loadBalancerIp.
+    if (state?.lbServerId) {
+      const lb = await this.tryGetServer(state.lbServerId)
+      const lbIp = lb?.public_net.ipv4?.ip ?? state.publicIp
+      return {
+        ...this.outputsFromState(state),
+        appPublicIp: lbIp,
+        loadBalancerIp: lbIp,
+      }
+    }
+    // PHP fleet: no single serverId, but state carries the LB IP + services IP.
     if (state?.loadBalancerId || state?.servicesPrivateIp) {
       return this.outputsFromState(state)
     }
