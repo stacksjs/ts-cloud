@@ -297,6 +297,13 @@ export interface DeployAllSitesOptions {
   logger?: ComputeDeployLogger
   /** Project root used to resolve/build the management dashboard UI. Defaults to `process.cwd()`. */
   cwd?: string
+  /**
+   * The FULL site model for regenerating the rpx gateway, distinct from `config`
+   * which may be narrowed to a single site for a partial deploy. The rpx gateway
+   * MUST always be reloaded with every route, so a single-site deploy can never
+   * drop the other sites' routes. Defaults to `config` when omitted.
+   */
+  rpxConfig?: CloudConfig
 }
 
 /**
@@ -316,6 +323,10 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   const hadDashboard = hasManagementDashboardSite(config)
   ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
   const injectedDashboard = !hadDashboard && hasManagementDashboardSite(config)
+  // Keep the rpx route source in sync so the gateway routes the dashboard too
+  // (it may be a different object than `config` on a single-site deploy).
+  if (options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
+    ensureManagementDashboard(options.rpxConfig, { cwd, logger: { info: () => {}, warn: () => {} } })
 
   // When WE injected the dashboard (e.g. a Stacks deploy that never built a
   // tarball for it), build its artifact internally. If that fails, drop the site
@@ -405,11 +416,14 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
  */
 export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<boolean> {
   const { config, environment, driver, logger = noopLogger } = options
-  const proxy = config.infrastructure?.compute?.proxy
+  // Always regenerate the gateway from the FULL site model (never a single-site
+  // subset), so a partial deploy can never drop the other sites' routes.
+  const routeSource = options.rpxConfig ?? config
+  const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
   if (proxy?.engine !== 'rpx')
     return true
 
-  const sites = config.sites || {}
+  const sites = routeSource.sites || {}
   const rpxConfig = buildRpxConfig(sites, { proxy })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')

@@ -214,6 +214,38 @@ describe('reloadRpxGateway', () => {
     expect(call.commands.join('\n')).toContain('rpx-gateway.service')
     expect(call.commands.join('\n')).toContain('localhost:3000')
   })
+
+  // Production-incident regression: a single-site deploy passes a `config`
+  // narrowed to that one site, but the rpx gateway MUST be regenerated from the
+  // FULL site model (`rpxConfig`) or it drops every other site's route.
+  it('regenerates the gateway from the full rpxConfig, never the narrowed config', async () => {
+    const full: CloudConfig = {
+      ...rpxConfig,
+      sites: {
+        web: rpxConfig.sites!.web,
+        api: { domain: 'api.example.com', port: 3008, root: '.output', start: 'bun run api.ts' },
+        docs: { domain: 'docs.example.com', port: 3001, root: '.output', start: 'bun run docs.ts' },
+      },
+    }
+    // Simulate `--site web`: config carries only the one site being shipped.
+    const narrowed: CloudConfig = { ...full, sites: { web: full.sites!.web } }
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const ok = await reloadRpxGateway({
+      config: narrowed,
+      rpxConfig: full,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => '/tmp/x.tar.gz',
+    })
+    expect(ok).toBe(true)
+    const script = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    // All three upstreams present — the other sites' routes are NOT dropped.
+    expect(script).toContain('localhost:3000')
+    expect(script).toContain('localhost:3008')
+    expect(script).toContain('localhost:3001')
+  })
 })
 
 describe('deployAllComputeSites with rpx gateway', () => {
