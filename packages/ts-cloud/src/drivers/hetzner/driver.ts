@@ -544,7 +544,14 @@ export class HetznerDriver implements CloudDriver {
     const newServerIds: number[] = []
     let servicesServerId: number | undefined
     let servicesPrivateIp: string | undefined
-    if (topology.dedicatedServices) {
+    // Unlike the PHP fleet path (which always needs a shared DB for multiple
+    // php-fpm boxes to point at), a bun/node/deno fleet has no such inherent
+    // requirement — plenty of bun apps are stateless or use an external
+    // managed database. Only stand up the dedicated services box when the
+    // caller actually asked for on-box services (`servicesServer` or
+    // `managedServices` explicitly set), not merely because `appServers > 1`.
+    const wantsServicesBox = !!compute.servicesServer || !!compute.managedServices
+    if (topology.dedicatedServices && wantsServicesBox) {
       const { firewall: svcFw } = await this.ensureFirewall(
         `${slug}-${environment}-services-fw`,
         tsCloudLabels(slug, environment, 'services'),

@@ -21,3 +21,5 @@ pantry
 
 # TypeScript incremental build cache (caused stale typecheck masking)
 *.tsbuildinfo
+
+.e2e-scratch/

@@ -14,6 +14,7 @@ export {
 export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from './shared/compute-deploy'
 export {
   buildRpxConfig,
+  buildRpxLbConfig,
   buildRpxProvisionScript,
   deriveRouteId,
   normalizeRoutePath,
@@ -27,6 +28,7 @@ export type {
   BuildRpxConfigOptions,
   BuildRpxProvisionOptions,
   RpxGatewayConfig,
+  RpxLbAppBox,
   RpxRoute,
 } from './shared/rpx-gateway'
 export {

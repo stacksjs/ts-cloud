@@ -298,4 +298,38 @@ describe('HetznerDriver bun+rpx fleet', () => {
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
     expect(servers.length).toBe(countAfterFirst)
   })
+
+  it('does NOT provision a dedicated services box for a plain bun fleet (no servicesServer/managedServices set)', async () => {
+    // Regression: unlike the PHP fleet path (which always needs a shared DB
+    // for multiple php-fpm boxes to point at), a bun fleet has no such
+    // inherent requirement. Found live during Hetzner e2e verification — a
+    // plain `{ appServers: 2 }` bun config was unexpectedly getting a 3rd
+    // "services" box, burning through the test account's server-count limit.
+    const { client, servers } = fakeHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    const servicesServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')
+    expect(servicesServers).toHaveLength(0)
+    // Exactly app (2) + lb (1) — no extra services box inflating the count.
+    expect(servers).toHaveLength(3)
+  })
+
+  it('DOES provision a dedicated services box when servicesServer is explicitly set', async () => {
+    const { client, servers } = fakeHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    const configWithServices: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: { ...baseConfig.infrastructure!.compute!, servicesServer: true },
+      },
+    }
+
+    await driver.provisionComputeInfrastructure!({ config: configWithServices, environment: 'production' })
+
+    const servicesServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')
+    expect(servicesServers).toHaveLength(1)
+  })
 })

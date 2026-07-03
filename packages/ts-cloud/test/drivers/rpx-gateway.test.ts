@@ -474,3 +474,18 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(asm).toContain('catch { continue }')
   })
 })
+
+describe('buildRpxLbConfig is on the package public export barrel', () => {
+  it('is importable from ../../src/drivers (not just the source module directly)', async () => {
+    // Regression: buildRpxLbConfig/RpxLbAppBox were added to rpx-gateway.ts
+    // but never added to packages/ts-cloud/src/drivers/index.ts's re-export
+    // list, so `import { buildRpxLbConfig } from '@stacksjs/ts-cloud/drivers'`
+    // (the intended consumer-facing path — see driver.ts's own import) failed
+    // at runtime despite typechecking fine against the internal source path
+    // every other test in this file uses. Caught during live e2e verification
+    // when a standalone script importing from the public barrel got
+    // `buildRpxLbConfig is not a function`.
+    const barrel = await import('../../src/drivers/index')
+    expect(typeof barrel.buildRpxLbConfig).toBe('function')
+  })
+})
