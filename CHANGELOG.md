@@ -1,3 +1,20 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.3...v0.7.4)
+
+### 🐛 Bug Fixes
+
+- **drivers**: pin compute targets from project state when label/tag scans miss (shared-box deploys) ([0e58f17](https://github.com/stacksjs/ts-cloud/commit/0e58f17)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **rpx-gateway**: auto-add a www redirect for apex domains ([6d373a2](https://github.com/stacksjs/ts-cloud/commit/6d373a2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ci**: skip Releaser run for rolling vX.Y.x/vX.x.x alias tags ([eb635cb](https://github.com/stacksjs/ts-cloud/commit/eb635cb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **test**: stop relying on ambient HCLOUD_TOKEN in box-mode gate test ([f89a6f5](https://github.com/stacksjs/ts-cloud/commit/f89a6f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.4 ([c8ec812](https://github.com/stacksjs/ts-cloud/commit/c8ec812)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.2...HEAD)
 
 ### 🐛 Bug Fixes
