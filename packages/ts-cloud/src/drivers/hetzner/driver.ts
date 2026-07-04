@@ -852,6 +852,7 @@ export class HetznerDriver implements CloudDriver {
       slug: options.config.project.slug,
       environment: options.environment,
       role: 'app',
+      stackName: resolveProjectStackName(options.config, options.environment),
     })
     const first = targets[0]
     return {
@@ -869,6 +870,7 @@ export class HetznerDriver implements CloudDriver {
           slug: options.config.project.slug,
           environment: options.environment,
           role: 'app',
+          stackName: resolveProjectStackName(options.config, options.environment),
         })
 
     if (targets.length === 0) {
@@ -910,7 +912,31 @@ export class HetznerDriver implements CloudDriver {
     if (exact.length > 0)
       return exact.map(toTarget)
 
-    // 2) Adopt-on-rename (mirrors findExistingServer): when a project's slug
+    // 2) State pinning: a project that rides a shared box records its server
+    //    in `.ts-cloud/state/<stack>.json`, but the box's labels belong to the
+    //    project that provisioned it (`ts-cloud/project` holds one value), so
+    //    the label scan above can't see it. Trust the state file's ids —
+    //    re-resolved via the API so a deleted server is never targeted and the
+    //    IP is always fresh. Without this, the moment a SECOND managed app
+    //    server appears in the account, step 3's uniqueness requirement fails
+    //    and shared-box projects lose their deploy target entirely.
+    if (role === 'app') {
+      const state = await readDriverState(options.stackName ?? `${options.slug}-${options.environment}`)
+      const pinnedIds = [state?.serverId, ...(state?.appServerIds ?? [])]
+        .filter((id): id is number => typeof id === 'number')
+      if (pinnedIds.length > 0) {
+        const pinned: HetznerServer[] = []
+        for (const id of pinnedIds) {
+          const server = servers.find(candidate => candidate.id === id) ?? await this.tryGetServer(id)
+          if (server && server.status !== 'off')
+            pinned.push(server)
+        }
+        if (pinned.length > 0)
+          return pinned.map(toTarget)
+      }
+    }
+
+    // 3) Adopt-on-rename (mirrors findExistingServer): when a project's slug
     //    changed but the same box still serves it, target the unique ts-cloud
     //    app server for this environment rather than reporting none — only when
     //    unambiguous, so a release never ships to another project's server.

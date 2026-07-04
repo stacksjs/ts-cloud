@@ -45,6 +45,13 @@ export interface FindComputeTargetsOptions {
   slug: string
   environment: EnvironmentType
   role?: string
+  /**
+   * Project stack name (`resolveProjectStackName(config, environment)`), used
+   * by drivers that can pin targets from local state when label/tag scans
+   * don't match — e.g. a project riding a shared box whose labels belong to
+   * another project. Defaults to `<slug>-<environment>` when omitted.
+   */
+  stackName?: string
 }
 
 export interface UploadReleaseOptions {

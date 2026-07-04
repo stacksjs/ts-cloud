@@ -11,8 +11,10 @@ import type {
   UploadReleaseResult,
 } from '@ts-cloud/core'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { CloudFormationClient } from '../../aws/cloudformation'
+import type { Instance } from '../../aws/ec2'
 import { EC2Client } from '../../aws/ec2'
 import { S3Client } from '../../aws/s3'
 import { SSMClient } from '../../aws/ssm'
@@ -26,6 +28,24 @@ import {
 
 export interface AwsDriverOptions {
   region?: string
+}
+
+/**
+ * Local-state pin (parity with the Hetzner driver's shared-box support): a
+ * project riding an instance whose tags belong to another project records
+ * `{ "instanceId": "i-..." }` in `.ts-cloud/state/<stack>.json`, and target
+ * lookups trust that record when the tag scan finds nothing. Exported for
+ * tests.
+ */
+export function readPinnedInstanceId(stackName: string): string | null {
+  try {
+    const raw = readFileSync(join(process.cwd(), '.ts-cloud/state', `${stackName}.json`), 'utf8')
+    const state = JSON.parse(raw) as { instanceId?: unknown }
+    return typeof state.instanceId === 'string' && state.instanceId.length > 0 ? state.instanceId : null
+  }
+  catch {
+    return null
+  }
 }
 
 export class AwsDriver implements CloudDriver {
@@ -252,9 +272,43 @@ export class AwsDriver implements CloudDriver {
     ]
 
     const result = await ec2.describeInstances({ Filters: filters })
-    const targets: ComputeTarget[] = []
+    const targets = this.reservationsToTargets(result.Reservations)
+    if (targets.length > 0 || (options.role || 'app') !== 'app')
+      return targets
 
-    for (const reservation of result.Reservations || []) {
+    // Tag scan found nothing. Parity with the Hetzner driver's state pinning:
+    // a project riding a shared instance (tagged for another project) records
+    // its instance id locally, or has it in its own CloudFormation stack
+    // outputs. Resolve by id — filtered to live instances, so a terminated
+    // pin is never targeted.
+    const stackName = options.stackName ?? `${options.slug}-${options.environment}`
+    let pinnedId = readPinnedInstanceId(stackName)
+    if (!pinnedId) {
+      try {
+        pinnedId = (await new CloudFormationClient(region).getStackOutputs(stackName)).appInstanceId ?? null
+      }
+      catch {
+        pinnedId = null // no stack (lightweight boot path) — nothing to pin from
+      }
+    }
+    if (!pinnedId)
+      return []
+
+    try {
+      const pinned = await ec2.describeInstances({
+        InstanceIds: [pinnedId],
+        Filters: [{ Name: 'instance-state-name', Values: ['running', 'pending'] }],
+      })
+      return this.reservationsToTargets(pinned.Reservations)
+    }
+    catch {
+      return [] // stale pin at a terminated/foreign instance
+    }
+  }
+
+  private reservationsToTargets(reservations?: { Instances?: Instance[] }[]): ComputeTarget[] {
+    const targets: ComputeTarget[] = []
+    for (const reservation of reservations || []) {
       for (const instance of reservation.Instances || []) {
         if (!instance.InstanceId) continue
         const nameTag = instance.Tags?.find(tag => tag.Key === 'Name')?.Value
@@ -267,7 +321,6 @@ export class AwsDriver implements CloudDriver {
         })
       }
     }
-
     return targets
   }
 

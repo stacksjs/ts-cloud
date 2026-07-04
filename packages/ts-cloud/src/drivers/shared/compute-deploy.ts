@@ -69,12 +69,13 @@ export async function deploySiteRelease(
     slug,
     environment,
     role: 'app',
+    stackName,
   })
 
   if (targets.length === 0) {
     const hint = driver.name === 'aws'
-      ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app.`
-      : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app.`
+      ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app, and .ts-cloud/state/${stackName}.json pins no live instance. For a shared box, record its instanceId there.`
+      : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app, and .ts-cloud/state/${stackName}.json pins no live server. For a shared box, record its serverId there.`
     return { success: false, error: hint }
   }
 
@@ -434,6 +435,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     slug: config.project.slug,
     environment,
     role: 'app',
+    stackName: resolveProjectStackName(config, environment),
   })
   if (targets.length === 0) {
     logger.warn('rpx gateway: no compute targets found — skipping gateway reload.')
