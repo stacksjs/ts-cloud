@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.6...v0.7.7)
+
+### 🚀 Features
+
+- **drivers**: provider-agnostic single-box provisioning (Hetzner + AWS EC2) ([22c395b](https://github.com/stacksjs/ts-cloud/commit/22c395b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.7 ([714c7c2](https://github.com/stacksjs/ts-cloud/commit/714c7c2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.5...v0.7.6)
 
 ### 🐛 Bug Fixes
