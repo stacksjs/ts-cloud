@@ -15,6 +15,22 @@ export type {
 export { buildSshArgs, scpUpload, sshExec, sshExecOrThrow, waitForCloudInit, waitForSsh } from './shared/remote-exec'
 export type { RemoteExecOptions, RemoteExecResult, WaitOptions } from './shared/remote-exec'
 export {
+  AwsBoxProvisioner,
+  buildBoxUserData,
+  createBoxProvisioner,
+  HetznerBoxProvisioner,
+  UBUNTU_2404_AMI_PARAM,
+} from './shared/box-provision'
+export type {
+  AwsBoxProvisionerOptions,
+  BoxPort,
+  BoxProviderName,
+  BoxProvisioner,
+  BoxSpec,
+  CreateBoxProvisionerOptions,
+  ProvisionedBox,
+} from './shared/box-provision'
+export {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
