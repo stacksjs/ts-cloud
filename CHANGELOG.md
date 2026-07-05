@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.5...v0.7.6)
+
+### 🐛 Bug Fixes
+
+- **build**: ship JS bundles for all subpath exports; re-export provisioning helpers from root ([b8f0ce5](https://github.com/stacksjs/ts-cloud/commit/b8f0ce5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.6 ([2c89313](https://github.com/stacksjs/ts-cloud/commit/2c89313)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.4...v0.7.5)
 
 ### 🚀 Features
