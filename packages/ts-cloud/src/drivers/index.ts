@@ -2,8 +2,18 @@ export * from './factory'
 export { AwsDriver } from './aws/driver'
 export { HetznerDriver } from './hetzner/driver'
 export { isBoxMode, LocalBoxDriver } from './local-box/driver'
-export { HetznerClient, resolveHetznerApiToken } from './hetzner/client'
+export { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './hetzner/client'
 export { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './hetzner/cloud-init'
+export { ensureFirewall, ensureServer, ensureSshKey, serverPublicIpv4 } from './hetzner/provision'
+export type {
+  EnsuredResource,
+  EnsuredServer,
+  EnsureFirewallOptions,
+  EnsureServerOptions,
+  EnsureSshKeyOptions,
+} from './hetzner/provision'
+export { buildSshArgs, scpUpload, sshExec, sshExecOrThrow, waitForCloudInit, waitForSsh } from './shared/remote-exec'
+export type { RemoteExecOptions, RemoteExecResult, WaitOptions } from './shared/remote-exec'
 export {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
