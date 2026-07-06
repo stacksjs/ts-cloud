@@ -212,6 +212,11 @@ export async function deploySiteRelease(
         envEntries: site.env || {},
         port: site.port,
         preStartCommands: site.preStart,
+        // Ported sites cut over with SO_REUSEPORT overlap + health gate by
+        // default; `zeroDowntime: false` opts back into stop/start. Portless
+        // sites (workers/schedulers) always stop/start — see the builder.
+        zeroDowntime: site.zeroDowntime !== false,
+        healthCheckPath: site.healthCheck?.path,
       })
 
   // A static site served on the box can be fronted by nginx (default) with

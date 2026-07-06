@@ -56,14 +56,48 @@ export interface BuildSiteDeployScriptOptions {
    * `node_modules`.
    */
   preStartCommands?: string[]
+  /**
+   * True zero-downtime cutover for ported sites: the new release runs as its
+   * own systemd instance (`<slug>-<site>@<releaseId>`) that binds the same
+   * port via SO_REUSEPORT while the old instance still serves, must pass a
+   * health gate, and only then is the old instance stopped. A release that
+   * crashes on boot fails the deploy with the old release still serving.
+   *
+   * Requires the app to bind with `reusePort` (Stacks' server does in
+   * production). Defaults to true when `port` is set; portless sites
+   * (queue workers, schedulers) always use the stop/start flow because two
+   * overlapping instances would double-process their work.
+   */
+  zeroDowntime?: boolean
+  /**
+   * HTTP path polled on `127.0.0.1:<port>` as part of the health gate (e.g.
+   * `/health`). Optional — without it the gate is "the instance stays
+   * active for {@link BuildSiteDeployScriptOptions.healthGateSeconds}".
+   */
+  healthCheckPath?: string
+  /**
+   * Seconds the new instance must stay active (and, with
+   * {@link BuildSiteDeployScriptOptions.healthCheckPath}, respond 2xx/3xx)
+   * before the old instance is stopped.
+   * @default 5
+   */
+  healthGateSeconds?: number
 }
 
 /**
  * Build the remote shell commands that install/refresh a server-app site on a
- * compute target with a **zero-downtime atomic release** (Envoyer-style): unpack
- * into `releases/<id>`, link the shared `.env`, build, then atomically repoint
- * `current` and restart the systemd service (which runs from `current`). Old
- * releases are pruned for rollback.
+ * compute target with an atomic release (Envoyer-style): unpack into
+ * `releases/<id>`, link the shared `.env`, build, then cut over.
+ *
+ * The cutover has two modes:
+ * - **zero-downtime** (default for ported sites): the new release starts as a
+ *   templated systemd instance that shares the port via SO_REUSEPORT with the
+ *   still-running old instance, must pass a health gate, and only then does
+ *   the old instance stop — no dropped connections, and a crash-on-boot
+ *   release fails the deploy with the old one still serving.
+ * - **restart** (portless sites, or `zeroDowntime: false`): the classic flip
+ *   `current` + `systemctl restart` — correct for workers/schedulers where two
+ *   overlapping instances would double-process work.
  */
 export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): string[] {
   const {
@@ -76,10 +110,14 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     port,
     keepReleases = DEFAULT_KEEP_RELEASES,
     preStartCommands = [],
+    healthCheckPath,
+    healthGateSeconds = 5,
   } = options
+  const zeroDowntime = options.zeroDowntime ?? port != null
   const base = options.appDir ?? `/var/www/${siteName}`
   const paths = releasePaths(base, releaseId)
-  const serviceName = `${slug}-${siteName}.service`
+  const unitBase = `${slug}-${siteName}`
+  const serviceName = `${unitBase}.service`
   const sharedPaths = ['.env']
 
   const envFile = formatEnvFile(envEntries)
@@ -92,7 +130,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     ? [`cd ${paths.release}`, ...preStartCommands]
     : []
 
-  return [
+  const stageRelease = [
     'set -euo pipefail',
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
@@ -107,6 +145,73 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     `chmod 600 ${paths.shared}/.env`,
     ...buildLinkSharedPaths(paths, sharedPaths),
     ...preStart,
+  ]
+
+  if (zeroDowntime && port != null) {
+    const instance = `${unitBase}@${releaseId}.service`
+    const gatePath = healthCheckPath
+      ? (healthCheckPath.startsWith('/') ? healthCheckPath : `/${healthCheckPath}`)
+      : null
+
+    // On gate failure the new instance is stopped and the deploy exits 1 —
+    // `current` has NOT been flipped and the old instance never stopped, so
+    // the box keeps serving the previous release untouched.
+    const failGate = `{ echo "[ts-cloud] release ${releaseId} failed its health gate — previous release keeps serving" >&2; journalctl -u ${instance} -n 50 --no-pager >&2 || true; systemctl stop ${instance} 2>/dev/null || true; exit 1; }`
+
+    return [
+      ...stageRelease,
+      // Templated unit: each release runs as its own instance pinned to its
+      // release dir (%i), so old + new can overlap on the same SO_REUSEPORT
+      // port during the cutover.
+      `cat > /etc/systemd/system/${unitBase}@.service <<'TS_CLOUD_UNIT_EOF'`,
+      '[Unit]',
+      `Description=${siteName} release %i (managed by ts-cloud)`,
+      'After=network.target',
+      '',
+      '[Service]',
+      'Type=simple',
+      `WorkingDirectory=${paths.releases}/%i`,
+      `ExecStart=${execStart}`,
+      'Restart=always',
+      'RestartSec=5',
+      `EnvironmentFile=${paths.releases}/%i/.env`,
+      `Environment=PORT=${port}`,
+      '',
+      '[Install]',
+      'WantedBy=multi-user.target',
+      'TS_CLOUD_UNIT_EOF',
+      'systemctl daemon-reload',
+      // Remember what is serving right now — retired only after the gate.
+      `TS_CLOUD_OLD_UNITS=$(systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" || true)`,
+      // Migration from the pre-templated layout: a release started before
+      // SO_REUSEPORT support can't share its port, so the very first
+      // zero-downtime deploy does one last stop-then-start cutover.
+      `if [ -f /etc/systemd/system/${serviceName} ] && systemctl is-active --quiet ${serviceName}; then echo "[ts-cloud] retiring pre-zero-downtime unit ${serviceName} (one-time restart cutover)"; systemctl stop ${serviceName}; fi`,
+      `systemctl start ${instance}`,
+      // Health gate: the instance must stay active for the whole window (a
+      // crash-on-boot lands in activating/auto-restart and fails is-active) …
+      `for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || ${failGate}; done`,
+      // … and, when configured, answer 2xx/3xx on the health path. (With both
+      // instances on the port the probe may hit either — combined with the
+      // is-active window that still catches dead-new and dead-port alike.)
+      ...(gatePath
+        ? [`curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:${port}${gatePath}" || ${failGate}`]
+        : []),
+      // Promote: flip `current` (tooling + gateway reference), persist across
+      // boots, then retire whatever served the previous release.
+      ...buildActivateRelease(paths),
+      `systemctl enable ${instance} 2>/dev/null || true`,
+      `for TS_CLOUD_U in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
+      // Drop enabled-but-stopped instances from older deploys and the legacy
+      // non-templated unit so only the live release starts at boot.
+      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
+      `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
+      ...buildPruneReleases(paths, keepReleases),
+    ]
+  }
+
+  return [
+    ...stageRelease,
     // The unit references the stable `current` symlink, so it's identical every
     // deploy — restart re-execs against whatever `current` points at.
     `cat > /etc/systemd/system/${serviceName} <<'TS_CLOUD_UNIT_EOF'`,

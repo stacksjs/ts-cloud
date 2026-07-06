@@ -136,27 +136,51 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
  * `to` set, points `current` at `releases/<to>`; otherwise picks the most recent
  * release that isn't the one `current` resolves to. Atomic (temp symlink + `mv
  * -T`), and a no-op-safe guard fails loudly if the target is missing rather than
- * leaving `current` dangling. The caller appends the engine reload
- * (php-fpm/queues) — see {@link import('./laravel-deploy')}.
+ * leaving `current` dangling.
+ *
+ * With `unitBase` set (e.g. `myapp-api`), the script also swaps the running
+ * systemd release instance for sites deployed zero-downtime style (templated
+ * `<unitBase>@<releaseId>` units pinned to their release dirs): it starts the
+ * instance for the rolled-back release — overlapping on the SO_REUSEPORT port —
+ * then stops the newer one, so even the rollback itself is zero-downtime. Sites
+ * on the legacy single unit just get a restart. The caller appends any engine
+ * reload (php-fpm/queues) — see {@link import('./laravel-deploy')}.
  */
-export function buildRollbackScript(paths: ReleasePaths, options: { to?: string } = {}): string[] {
-  if (options.to) {
-    const target = `${paths.releases}/${options.to}`
-    return [
-      `[ -d ${target} ] || { echo "rollback target ${target} not found" >&2; exit 1; }`,
-      `ln -sfn ${target} ${paths.current}.tmp`,
-      `mv -Tf ${paths.current}.tmp ${paths.current}`,
-    ]
-  }
+export function buildRollbackScript(paths: ReleasePaths, options: { to?: string, unitBase?: string } = {}): string[] {
+  const flip = options.to
+    ? [
+        `[ -d ${paths.releases}/${options.to} ] || { echo "rollback target ${paths.releases}/${options.to} not found" >&2; exit 1; }`,
+        `ln -sfn ${paths.releases}/${options.to} ${paths.current}.tmp`,
+        `mv -Tf ${paths.current}.tmp ${paths.current}`,
+      ]
+    : [
+        `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
+        // Newest release dir whose real path differs from current = the prior deploy.
+        `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do `
+        + '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
+        '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
+        `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
+        `mv -Tf ${paths.current}.tmp ${paths.current}`,
+        'echo "rolled back to $TS_CLOUD_PREV"',
+      ]
+
+  if (!options.unitBase)
+    return flip
+
+  const unitBase = options.unitBase
   return [
-    `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
-    // Newest release dir whose real path differs from current = the prior deploy.
-    `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do `
-    + '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
-    '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
-    `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
-    `mv -Tf ${paths.current}.tmp ${paths.current}`,
-    'echo "rolled back to $TS_CLOUD_PREV"',
+    ...flip,
+    // Which release does `current` resolve to now? Its dir name is the
+    // templated instance id.
+    `TS_CLOUD_RB_ID=$(basename "$(readlink -f ${paths.current})")`,
+    // Zero-downtime layout: start the rolled-back release's instance alongside
+    // the current one (SO_REUSEPORT), then retire everything else.
+    `if [ -f /etc/systemd/system/${unitBase}@.service ]; then `
+    + `systemctl start "${unitBase}@\${TS_CLOUD_RB_ID}.service"; sleep 2; `
+    + `systemctl is-active --quiet "${unitBase}@\${TS_CLOUD_RB_ID}.service" || { echo "rolled-back release failed to start" >&2; exit 1; }; `
+    + `systemctl enable "${unitBase}@\${TS_CLOUD_RB_ID}.service" 2>/dev/null || true; `
+    + `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; `
+    + `elif [ -f /etc/systemd/system/${unitBase}.service ]; then systemctl restart ${unitBase}.service; fi`,
   ]
 }
 

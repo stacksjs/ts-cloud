@@ -17,7 +17,7 @@ describe('resolveExecStart', () => {
   })
 })
 
-describe('buildSiteDeployScript (zero-downtime atomic release)', () => {
+describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
   const opts = {
     siteName: 'web',
     slug: 'my-app',
@@ -28,7 +28,7 @@ describe('buildSiteDeployScript (zero-downtime atomic release)', () => {
     port: 3000,
   }
 
-  it('unpacks into a release dir, links shared .env, and runs the service from current', () => {
+  it('unpacks into a release dir, links shared .env, and runs the release as its own templated instance', () => {
     const script = buildSiteDeployScript(opts)
     const joined = script.join('\n')
     expect(script[0]).toBe('set -euo pipefail')
@@ -38,11 +38,47 @@ describe('buildSiteDeployScript (zero-downtime atomic release)', () => {
     // .env persists in shared/ and is symlinked into the release.
     expect(joined).toContain('/var/www/web/shared/.env')
     expect(joined).toContain('ln -sfn /var/www/web/shared/.env /var/www/web/releases/abc123/.env')
-    // The unit references the stable `current` symlink (identical every deploy).
-    expect(joined).toContain('WorkingDirectory=/var/www/web/current')
-    expect(joined).toContain('EnvironmentFile=/var/www/web/current/.env')
+    // Templated unit pinned to its release dir so old + new can overlap.
+    expect(joined).toContain('/etc/systemd/system/my-app-web@.service')
+    expect(joined).toContain('WorkingDirectory=/var/www/web/releases/%i')
+    expect(joined).toContain('EnvironmentFile=/var/www/web/releases/%i/.env')
     expect(joined).toContain('Environment=PORT=3000')
-    expect(joined).toContain('systemctl restart my-app-web.service')
+    expect(joined).toContain('systemctl start my-app-web@abc123.service')
+    // No blunt restart of a shared unit in the zero-downtime path.
+    expect(joined).not.toContain('systemctl restart my-app-web.service')
+  })
+
+  it('health-gates the new instance BEFORE stopping the old one, and aborts without flipping current on failure', () => {
+    const script = buildSiteDeployScript(opts)
+    const startIdx = script.findIndex(l => l === 'systemctl start my-app-web@abc123.service')
+    const gateIdx = script.findIndex(l => l.includes('failed its health gate'))
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    expect(startIdx).toBeGreaterThan(-1)
+    expect(gateIdx).toBeGreaterThan(startIdx)
+    // Old instances captured before the new one starts, stopped only after the gate + flip.
+    const captureIdx = script.findIndex(l => l.startsWith('TS_CLOUD_OLD_UNITS='))
+    expect(captureIdx).toBeLessThan(startIdx)
+    expect(gateIdx).toBeLessThan(activateIdx)
+    expect(activateIdx).toBeLessThan(stopOldIdx)
+    // The failure path stops the NEW instance and exits nonzero (old keeps serving).
+    expect(script.join('\n')).toContain('systemctl stop my-app-web@abc123.service 2>/dev/null || true; exit 1')
+  })
+
+  it('polls the configured health path against the site port as part of the gate', () => {
+    const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
+    const joined = script.join('\n')
+    expect(joined).toContain('http://127.0.0.1:3000/health')
+    const curlIdx = script.findIndex(l => l.includes('curl -sf'))
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    expect(curlIdx).toBeGreaterThan(-1)
+    expect(curlIdx).toBeLessThan(activateIdx)
+  })
+
+  it('migrates off the legacy single unit with a one-time cutover and removes it', () => {
+    const joined = buildSiteDeployScript(opts).join('\n')
+    expect(joined).toContain('retiring pre-zero-downtime unit my-app-web.service')
+    expect(joined).toContain('rm -f /etc/systemd/system/my-app-web.service')
   })
 
   it('never wipes the live directory (no destructive find/rm of the docroot)', () => {
@@ -50,27 +86,56 @@ describe('buildSiteDeployScript (zero-downtime atomic release)', () => {
     expect(joined).not.toContain('find /var/www/web -mindepth')
   })
 
-  it('promotes the release atomically (mv -Tf) BEFORE restarting, and prunes old releases', () => {
+  it('prunes old releases after promotion', () => {
     const script = buildSiteDeployScript(opts)
-    const joined = script.join('\n')
-    expect(joined).toContain('mv -Tf /var/www/web/current.tmp /var/www/web/current')
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
-    const restartIdx = script.findIndex(l => l === 'systemctl restart my-app-web.service')
-    expect(activateIdx).toBeLessThan(restartIdx)
-    // Old releases pruned for rollback.
-    expect(joined).toContain('/var/www/web/releases/')
+    expect(script.join('\n')).toContain('mv -Tf /var/www/web/current.tmp /var/www/web/current')
     expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
   })
 
-  it('runs preStart in the new release dir after extraction, before activation', () => {
+  it('runs preStart in the new release dir after extraction, before the new instance starts', () => {
     const script = buildSiteDeployScript({ ...opts, preStartCommands: ['bun install --frozen-lockfile', 'bun run build'] })
     const joined = script.join('\n')
     expect(joined).toContain('cd /var/www/web/releases/abc123')
     const extractIdx = script.findIndex(l => l.includes('tar xzf'))
     const installIdx = script.findIndex(l => l === 'bun install --frozen-lockfile')
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const startIdx = script.findIndex(l => l === 'systemctl start my-app-web@abc123.service')
     expect(extractIdx).toBeLessThan(installIdx)
-    expect(installIdx).toBeLessThan(activateIdx)
+    expect(installIdx).toBeLessThan(startIdx)
+  })
+})
+
+describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime off)', () => {
+  const portless = {
+    siteName: 'worker',
+    slug: 'my-app',
+    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', 'worker'),
+    releaseId: 'abc123',
+    execStart: '/usr/local/bin/bun run worker.ts',
+    envEntries: {},
+  }
+
+  it('portless sites keep the single-unit restart flow (no overlap: double workers double-process)', () => {
+    const script = buildSiteDeployScript(portless)
+    const joined = script.join('\n')
+    expect(joined).toContain('WorkingDirectory=/var/www/worker/current')
+    expect(joined).toContain('systemctl restart my-app-worker.service')
+    expect(joined).not.toContain('my-app-worker@')
+    // Promote atomically BEFORE restarting.
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const restartIdx = script.findIndex(l => l === 'systemctl restart my-app-worker.service')
+    expect(activateIdx).toBeLessThan(restartIdx)
+  })
+
+  it('zeroDowntime: false opts a ported site back into the restart flow', () => {
+    const joined = buildSiteDeployScript({ ...portless, siteName: 'web', port: 3000, zeroDowntime: false }).join('\n')
+    expect(joined).toContain('systemctl restart my-app-web.service')
+    expect(joined).not.toContain('my-app-web@')
+  })
+
+  it('portless sites ignore zeroDowntime: true (overlap would double-process)', () => {
+    const joined = buildSiteDeployScript({ ...portless, zeroDowntime: true }).join('\n')
+    expect(joined).toContain('systemctl restart my-app-worker.service')
+    expect(joined).not.toContain('my-app-worker@')
   })
 })
 

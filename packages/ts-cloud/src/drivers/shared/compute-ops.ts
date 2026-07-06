@@ -73,7 +73,9 @@ export async function rollbackComputeSite(
   const paths = releasePaths(appBase, options.to || 'unused')
   const commands = [
     'set -uo pipefail',
-    ...buildRollbackScript(paths, options.to ? { to: options.to } : {}),
+    // unitBase lets the rollback swap the running templated release instance
+    // (zero-downtime layout); legacy single-unit sites just get a restart.
+    ...buildRollbackScript(paths, { ...(options.to ? { to: options.to } : {}), unitBase: `${ctx.slug}-${options.siteName}` }),
     // Pick up the rolled-back code: restart php-fpm + signal queue workers.
     `(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm) 2>/dev/null || true`,
     `(cd ${paths.current} && eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)" && php artisan queue:restart) 2>/dev/null || true`,
