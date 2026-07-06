@@ -2,6 +2,7 @@
   "name": "@ts-cloud/aws-types",
   "version": "0.7.7",
   "type": "module",
+  "sideEffects": false,
   "description": "AWS CloudFormation resource type definitions (without AWS SDK)",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
