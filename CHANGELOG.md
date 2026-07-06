@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.7...v0.7.8)
+
+### ⚡ Performance Improvements
+
+- declare packages side-effect free for consumer tree-shaking ([813d3ff](https://github.com/stacksjs/ts-cloud/commit/813d3ff)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.8 ([7719e30](https://github.com/stacksjs/ts-cloud/commit/7719e30)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.6...v0.7.7)
 
 ### 🚀 Features
