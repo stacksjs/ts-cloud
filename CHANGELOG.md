@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.9...v0.7.10)
+
+### 🚀 Features
+
+- **deploy**: true zero-downtime cutover for ported compute sites ([53fa4fc](https://github.com/stacksjs/ts-cloud/commit/53fa4fc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.10 ([01ffca7](https://github.com/stacksjs/ts-cloud/commit/01ffca7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.8...v0.7.9)
 
 ### 🧹 Chores
