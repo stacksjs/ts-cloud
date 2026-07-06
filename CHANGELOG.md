@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.8...v0.7.9)
+
+### 🧹 Chores
+
+- release v0.7.9 ([01b4e88](https://github.com/stacksjs/ts-cloud/commit/01b4e88)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### ⏪ Reverts
+
+- drop sideEffects:false — it corrupts Bun-bundled dist output ([fbd41d8](https://github.com/stacksjs/ts-cloud/commit/fbd41d8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.7...v0.7.8)
 
 ### ⚡ Performance Improvements
