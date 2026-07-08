@@ -1358,7 +1358,10 @@ export interface BucketConfig {
 
 export interface DatabaseConfig {
   type?: 'rds' | 'dynamodb'
-  engine?: 'postgres' | 'mysql' | 'mariadb'
+  // 'singlestore' is always an external managed cluster (SingleStore Helios) —
+  // there is no self-hosted pantry package, so ts-cloud only wires DB_* env for
+  // it (see buildManagedDbEnv), never installs/sets it up on-box.
+  engine?: 'postgres' | 'mysql' | 'mariadb' | 'singlestore'
   instanceType?: string
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -1376,8 +1379,13 @@ export interface DatabaseConfig {
   password?: string
   /** Hostname for a managed/external database (default `127.0.0.1` on-box). */
   host?: string
-  /** Port (defaults: mysql/mariadb 3306, postgres 5432). */
+  /** Port (defaults: mysql/mariadb/singlestore 3306, postgres 5432). */
   port?: number
+  /**
+   * Require TLS to the database. Defaults on for managed SingleStore (Helios),
+   * off for on-box engines. Set explicitly to override.
+   */
+  ssl?: boolean
   /**
    * Additional database users to create beyond the app {@link username}
    * (the Forge Database Users feature). Each can be granted full or read-only

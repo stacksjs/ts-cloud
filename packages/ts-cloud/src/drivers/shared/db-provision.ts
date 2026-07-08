@@ -212,7 +212,12 @@ export function buildDatabaseSetupScript(
 export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<string, string> {
   if (!database?.name)
     return {}
-  const connection = database.engine === 'postgres' ? 'pgsql' : 'mysql'
+  // SingleStore speaks the MySQL wire protocol on 3306, but keep DB_CONNECTION
+  // as 'singlestore' so the app's query builder selects the SingleStore driver
+  // (distributed DDL, isMysqlLike DML). Postgres → 'pgsql'; everything else →
+  // 'mysql'.
+  const isSingleStore = database.engine === 'singlestore'
+  const connection = database.engine === 'postgres' ? 'pgsql' : isSingleStore ? 'singlestore' : 'mysql'
   const port = database.port ?? (database.engine === 'postgres' ? 5432 : 3306)
   const env: Record<string, string> = {
     DB_CONNECTION: connection,
@@ -224,5 +229,9 @@ export function buildManagedDbEnv(database: DatabaseConfig | undefined): Record<
     env.DB_USERNAME = database.username
   if (database.password)
     env.DB_PASSWORD = database.password
+  // Managed SingleStore (Helios) requires TLS; default it on unless explicitly
+  // disabled via `database.ssl === false`.
+  if (isSingleStore && database.ssl !== false)
+    env.DB_SSL = 'true'
   return env
 }
