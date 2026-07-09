@@ -7,6 +7,17 @@ export interface CloudProviderConfig {
    * @default 'aws'
    */
   provider?: 'aws' | 'hetzner'
+
+  /**
+   * Attach this project's sites to a box owned by ANOTHER project instead of
+   * provisioning one. Set to the owner project's `project.slug` (e.g. `'stacks'`);
+   * the deploy targets the owner's `<slug>-<environment>-app` server, ships only
+   * this project's sites, and adds its own additive rpx `sites.d/<slug>.json`
+   * fragment + DNS — never touching the owner's box lifecycle, firewall, or other
+   * tenants. The owner provisions and manages the shared box; attachers only
+   * deploy onto it. Requires read access via the same `HCLOUD_TOKEN`.
+   */
+  attachTo?: string
 }
 
 /**
