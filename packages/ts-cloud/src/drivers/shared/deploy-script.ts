@@ -188,9 +188,19 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // zero-downtime deploy does one last stop-then-start cutover.
       `if [ -f /etc/systemd/system/${serviceName} ] && systemctl is-active --quiet ${serviceName}; then echo "[ts-cloud] retiring pre-zero-downtime unit ${serviceName} (one-time restart cutover)"; systemctl stop ${serviceName}; fi`,
       `systemctl start ${instance}`,
-      // Health gate: the instance must stay active for the whole window (a
-      // crash-on-boot lands in activating/auto-restart and fails is-active) …
-      `for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || ${failGate}; done`,
+      // Health gate (attempt 1): the instance must stay active for the whole
+      // window (a crash-on-boot lands in activating/auto-restart and fails
+      // is-active). When the app binds SO_REUSEPORT the new release overlaps
+      // the old on the shared port and this passes straight through — true
+      // zero downtime.
+      `TS_CLOUD_GATE_OK=1; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || { TS_CLOUD_GATE_OK=0; break; }; done`,
+      // Self-heal: if the new release could NOT stay up alongside the old one
+      // (typically because the app does not bind SO_REUSEPORT, so the old
+      // instance still held the port), retire the previous instances now and
+      // restart the new one. That trades a brief (~RestartSec) blip for a
+      // working deploy instead of a hard failure; a genuinely broken release
+      // still fails the retry gate and leaves the old release in place.
+      `if [ "\$TS_CLOUD_GATE_OK" -ne 1 ]; then echo "[ts-cloud] release ${releaseId} could not overlap the previous release (no SO_REUSEPORT?) — retiring old instances and retrying" >&2; for TS_CLOUD_RU in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_RU" 2>/dev/null || true; done; systemctl restart ${instance}; for TS_CLOUD_I in $(seq 1 ${Math.max(1, healthGateSeconds)}); do sleep 1; systemctl is-active --quiet ${instance} || ${failGate}; done; fi`,
       // … and, when configured, answer 2xx/3xx on the health path. (With both
       // instances on the port the probe may hit either — combined with the
       // is-active window that still catches dead-new and dead-port alike.)

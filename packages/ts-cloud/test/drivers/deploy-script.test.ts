@@ -65,6 +65,25 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(script.join('\n')).toContain('systemctl stop my-app-web@abc123.service 2>/dev/null || true; exit 1')
   })
 
+  it('self-heals when the new release cannot overlap the old (app without SO_REUSEPORT)', () => {
+    const script = buildSiteDeployScript(opts)
+    const joined = script.join('\n')
+    // First gate records whether the overlap held instead of aborting outright.
+    expect(joined).toContain('TS_CLOUD_GATE_OK=1')
+    // On overlap failure: retire the old instances, restart the new one, re-gate.
+    const healIdx = script.findIndex(l => l.includes('could not overlap the previous release'))
+    expect(healIdx).toBeGreaterThan(-1)
+    expect(script[healIdx]).toContain('systemctl restart my-app-web@abc123.service')
+    // The retry still aborts (exit 1) if the release is genuinely broken.
+    expect(script[healIdx]).toContain('exit 1')
+    // The self-heal loop uses its own var so it does not shadow the post-flip
+    // stop-old loop (which must still run only after `current` is promoted).
+    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    expect(healIdx).toBeLessThan(activateIdx)
+    expect(activateIdx).toBeLessThan(stopOldIdx)
+  })
+
   it('polls the configured health path against the site port as part of the gate', () => {
     const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
     const joined = script.join('\n')
