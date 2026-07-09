@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.11...v0.7.12)
+
+### 🚀 Features
+
+- **config**: add cloud.attachTo for shared-box multi-tenancy ([5a1fc2d](https://github.com/stacksjs/ts-cloud/commit/5a1fc2d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.12 ([a75f6a0](https://github.com/stacksjs/ts-cloud/commit/a75f6a0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.10...v0.7.11)
 
 ### 🚀 Features
