@@ -1,3 +1,27 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.10...v0.7.11)
+
+### 🚀 Features
+
+- **dashboard**: inject a per-apex dashboard site for every domain on deploy ([621012f](https://github.com/stacksjs/ts-cloud/commit/621012f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: resolve one management dashboard per apex domain ([fe6a9c1](https://github.com/stacksjs/ts-cloud/commit/fe6a9c1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **db**: support SingleStore as a managed database engine ([f846c4d](https://github.com/stacksjs/ts-cloud/commit/f846c4d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🐛 Bug Fixes
+
+- **deploy**: self-heal zero-downtime cutover without SO_REUSEPORT ([fc8e410](https://github.com/stacksjs/ts-cloud/commit/fc8e410)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: give each per-apex dashboard its own release tarball ([588cdc2](https://github.com/stacksjs/ts-cloud/commit/588cdc2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: skip redirect-only sites when deriving dashboards ([8f1e70f](https://github.com/stacksjs/ts-cloud/commit/8f1e70f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+### 🧹 Chores
+
+- release v0.7.11 ([8505db4](https://github.com/stacksjs/ts-cloud/commit/8505db4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: refresh bun.lock to pick up pickier 0.1.37 ([a43e56c](https://github.com/stacksjs/ts-cloud/commit/a43e56c)) _(by glennmichael123 <gtorregosa@gmail.com>)_
+
+### Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+- _glennmichael123 <gtorregosa@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.9...v0.7.10)
 
 ### 🚀 Features
