@@ -1,6 +1,6 @@
 import type { CloudConfig } from '../types'
 import { describe, expect, it } from 'bun:test'
-import { hasManagementDashboardSite, resolveDashboardDomain, resolveManagementDashboardSite } from './management-dashboard'
+import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveDashboardDomain, resolveDashboardDomains, resolveManagementDashboardSite, resolveManagementDashboardSites } from './management-dashboard'
 
 function cfg(partial: Partial<CloudConfig>): CloudConfig {
   return { project: { name: 'Acme', slug: 'acme' }, environments: {}, ...partial } as CloudConfig
@@ -75,5 +75,90 @@ describe('resolveManagementDashboardSite', () => {
     const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true })
     expect(r?.site.port).toBe(7676)
     expect(r?.site.start).toContain('--port 7676')
+  })
+})
+
+describe('resolveDashboardDomains (per-apex)', () => {
+  it('returns one dashboard host per distinct apex, order-preserving', () => {
+    const c = cfg({ sites: {
+      a: { root: 'dist', domain: 'ghostanalytics.org' } as any,
+      aApi: { root: 'dist', domain: 'api.ghostanalytics.org' } as any,
+      b: { root: 'dist', domain: 'bughq.org' } as any,
+      main: { root: 'dist', domain: 'stacksjs.com' } as any,
+    } })
+    expect(resolveDashboardDomains(c, 'production')).toEqual([
+      'dashboard.ghostanalytics.org',
+      'dashboard.bughq.org',
+      'dashboard.stacksjs.com',
+    ])
+  })
+
+  it('an explicit override collapses to a single host', () => {
+    const c = cfg({ sites: { a: { root: 'dist', domain: 'acme.com' } as any, b: { root: 'dist', domain: 'other.io' } as any } })
+    expect(resolveDashboardDomains(c, 'production', 'admin.acme.io')).toEqual(['admin.acme.io'])
+  })
+
+  it('is empty when no domain is configured', () => {
+    expect(resolveDashboardDomains(cfg({}), 'production')).toEqual([])
+  })
+
+  it('puts the project canonical domain (dns.domain) first, for a stable primary', () => {
+    const c = cfg({
+      infrastructure: { dns: { domain: 'stacksjs.com' } } as any,
+      sites: {
+        gh: { root: 'dist', domain: 'ghostanalytics.org' } as any,
+        bug: { root: 'dist', domain: 'bughq.org' } as any,
+        main: { root: 'dist', domain: 'stacksjs.com' } as any,
+      },
+    })
+    // dns.domain leads regardless of site declaration order → `dashboard` key is
+    // always dashboard.stacksjs.com, even on a `--site ghostanalytics` deploy.
+    expect(resolveDashboardDomains(c, 'production')).toEqual([
+      'dashboard.stacksjs.com',
+      'dashboard.ghostanalytics.org',
+      'dashboard.bughq.org',
+    ])
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.stacksjs.com')
+  })
+})
+
+describe('resolveManagementDashboardSites (per-apex)', () => {
+  const multi = cfg({ sites: {
+    a: { root: 'dist', domain: 'ghostanalytics.org' } as any,
+    b: { root: 'dist', domain: 'bughq.org' } as any,
+    main: { root: 'dist', domain: 'stacksjs.com' } as any,
+  } })
+
+  it('injects one static dashboard per apex, primary keyed `dashboard`', () => {
+    const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui', build: false, password: 's3cret' })
+    expect(sites.map(s => s.name)).toEqual(['dashboard', 'dashboard-bughq-org', 'dashboard-stacksjs-com'])
+    expect(sites.map(s => s.site.domain)).toEqual(['dashboard.ghostanalytics.org', 'dashboard.bughq.org', 'dashboard.stacksjs.com'])
+    // All share the same UI root + credentials.
+    expect(new Set(sites.map(s => s.site.root))).toEqual(new Set(['/pkg/dist/ui']))
+    for (const s of sites) {
+      expect(s.site.type).toBe('static')
+      expect(s.site.auth).toEqual({ username: 'admin', password: 's3cret', realm: undefined })
+    }
+  })
+
+  it('live mode stays single-host (one loopback port)', () => {
+    const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true })
+    expect(sites).toHaveLength(1)
+    expect(sites[0].name).toBe('dashboard')
+    expect(sites[0].site.domain).toBe('dashboard.ghostanalytics.org')
+  })
+
+  it('is empty when a dashboard is already configured by hand', () => {
+    const c = cfg({ sites: { dashboard: { root: 'packages/ui/dist', domain: 'd.acme.com' } as any, main: { root: 'dist', domain: 'acme.com' } as any } })
+    expect(resolveManagementDashboardSites(c, 'production', { uiRoot: 'packages/ui/dist' })).toEqual([])
+  })
+})
+
+describe('isManagementDashboardSiteName', () => {
+  it('matches the primary and per-apex keys, not app sites', () => {
+    expect(isManagementDashboardSiteName('dashboard')).toBe(true)
+    expect(isManagementDashboardSiteName('dashboard-bughq-org')).toBe(true)
+    expect(isManagementDashboardSiteName('main')).toBe(false)
+    expect(isManagementDashboardSiteName('ghostanalytics-api')).toBe(false)
   })
 })
