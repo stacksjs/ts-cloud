@@ -5,8 +5,11 @@ import type {
   DeploySiteReleaseResult,
   EnvironmentType,
 } from '@ts-cloud/core'
+import { copyFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
-import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, MANAGEMENT_DASHBOARD_SITE, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
@@ -341,7 +344,12 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // host. If the build fails, drop all injected dashboard sites so a UI build
   // hiccup can never block the real app deploy.
   let dashboardTarball: string | null = null
-  const dashboardSiteSet = new Set(injectedDashboardSites)
+  // Each injected dashboard host needs its OWN local tarball file: the release
+  // upload derives the staging filename per-site, so pointing several sites at
+  // one shared path left the per-apex hosts (dashboard-<other-domain>) without a
+  // staged tarball — only the primary `dashboard` landed, and the rest failed
+  // their `cp` from staging. Build once, then copy per site.
+  const dashboardTarballBySite = new Map<string, string>()
   if (injectedDashboardSites.length > 0) {
     dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, { cwd, slug, sha, logger: { info: logger.info, warn: logger.warn } })
     if (!dashboardTarball) {
@@ -350,7 +358,22 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
         if (config.sites)
           delete (config.sites as Record<string, unknown>)[name]
       }
-      dashboardSiteSet.clear()
+    }
+    else {
+      for (const name of injectedDashboardSites) {
+        if (name === MANAGEMENT_DASHBOARD_SITE) {
+          dashboardTarballBySite.set(name, dashboardTarball)
+          continue
+        }
+        try {
+          const copy = join(tmpdir(), `${slug}-${name}-${sha}.tar.gz`)
+          copyFileSync(dashboardTarball, copy)
+          dashboardTarballBySite.set(name, copy)
+        }
+        catch {
+          dashboardTarballBySite.set(name, dashboardTarball)
+        }
+      }
     }
   }
 
@@ -375,7 +398,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // Use the internally-built dashboard tarball when we injected it; otherwise the
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
   const tarballFor = (siteName: string): string =>
-    dashboardSiteSet.has(siteName) && dashboardTarball ? dashboardTarball : tarballForSite(siteName)
+    dashboardTarballBySite.get(siteName) ?? tarballForSite(siteName)
 
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
