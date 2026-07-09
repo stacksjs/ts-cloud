@@ -62,7 +62,11 @@ function collectDomains(
   if (environment && config.environments?.[environment]?.domain)
     candidates.push(config.environments[environment].domain!)
   for (const site of Object.values(config.sites ?? {})) {
-    const d = (site as { domain?: string | string[] } | undefined)?.domain
+    const s = site as { domain?: string | string[], redirect?: string } | undefined
+    // Redirect-only sites (a `redirect` target, e.g. www → apex) serve no app and
+    // get no dashboard — otherwise every alias would spawn a redundant cert.
+    if (!s || s.redirect) continue
+    const d = s.domain
     if (typeof d === 'string') candidates.push(d)
     else if (Array.isArray(d)) candidates.push(...d.filter((x): x is string => typeof x === 'string'))
   }

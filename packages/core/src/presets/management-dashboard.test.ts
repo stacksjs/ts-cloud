@@ -102,6 +102,15 @@ describe('resolveDashboardDomains (per-apex)', () => {
     expect(resolveDashboardDomains(cfg({}), 'production')).toEqual([])
   })
 
+  it('skips redirect-only sites (www aliases get no dashboard)', () => {
+    const c = cfg({ sites: {
+      main: { root: 'dist', domain: 'acme.com' } as any,
+      www: { domain: 'www.acme.com', redirect: 'https://acme.com' } as any,
+      alias: { domain: 'acme.io', redirect: 'https://acme.com' } as any,
+    } })
+    expect(resolveDashboardDomains(c, 'production')).toEqual(['dashboard.acme.com'])
+  })
+
   it('puts the project canonical domain (dns.domain) first, for a stable primary', () => {
     const c = cfg({
       infrastructure: { dns: { domain: 'stacksjs.com' } } as any,
