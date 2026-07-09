@@ -27,7 +27,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { hasManagementDashboardSite, resolveManagementDashboardSite } from '@ts-cloud/core'
+import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites } from '@ts-cloud/core'
 
 /** Site key under which the management dashboard is auto-injected. */
 export const MANAGEMENT_DASHBOARD_SITE = 'dashboard'
@@ -156,7 +156,9 @@ export function ensureManagementDashboard(
 
   const live = truthy(process.env.TS_CLOUD_UI_LIVE)
   const port = Number(process.env.TS_CLOUD_UI_PORT) || undefined
-  const resolved = resolveManagementDashboardSite(config, environment ?? 'production', {
+  // One dashboard per distinct apex domain (each site gets its own
+  // `dashboard.<apex>` host), all sharing this UI + these credentials.
+  const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
     uiRoot: ui.uiRoot,
     build: ui.build,
     domain: process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined,
@@ -167,19 +169,28 @@ export function ensureManagementDashboard(
     port,
   })
 
-  if (!resolved) {
+  if (resolved.length === 0) {
     logger.info('Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.')
     return config
   }
 
-  config.sites = { ...(config.sites ?? {}), [resolved.name]: resolved.site }
   const authNote = auth.source === 'public'
     ? 'NO AUTH — TS_CLOUD_UI_PUBLIC is set (dashboard is publicly reachable)'
     : auth.source === 'env'
       ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
       : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
-  logger.info(`Management dashboard → https://${resolved.site.domain} (${authNote})`)
+  const sites = { ...(config.sites ?? {}) }
+  for (const { name, site } of resolved) {
+    sites[name] = site
+    logger.info(`Management dashboard → https://${site.domain} (${authNote})`)
+  }
+  config.sites = sites
   return config
+}
+
+/** Names of the management-dashboard sites currently present in `config`. */
+export function managementDashboardSiteNames(config: CloudConfig): string[] {
+  return Object.keys(config.sites ?? {}).filter(isManagementDashboardSiteName)
 }
 
 export interface BuildDashboardArtifactOptions {

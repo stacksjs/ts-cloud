@@ -6,7 +6,7 @@ import type {
   EnvironmentType,
 } from '@ts-cloud/core'
 import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
-import { buildManagementDashboardArtifact, ensureManagementDashboard, MANAGEMENT_DASHBOARD_SITE } from '../../deploy/management-dashboard'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
@@ -328,22 +328,29 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // a no-op when the CLI already injected it or the user configured one.
   const hadDashboard = hasManagementDashboardSite(config)
   ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
-  const injectedDashboard = !hadDashboard && hasManagementDashboardSite(config)
-  // Keep the rpx route source in sync so the gateway routes the dashboard too
+  // The dashboard sites WE injected this deploy — one per apex domain (all share
+  // the same UI artifact). Empty when the user configured one by hand.
+  const injectedDashboardSites = hadDashboard ? [] : managementDashboardSiteNames(config)
+  // Keep the rpx route source in sync so the gateway routes every dashboard too
   // (it may be a different object than `config` on a single-site deploy).
   if (options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
     ensureManagementDashboard(options.rpxConfig, { cwd, logger: { info: () => {}, warn: () => {} } })
 
-  // When WE injected the dashboard (e.g. a Stacks deploy that never built a
-  // tarball for it), build its artifact internally. If that fails, drop the site
-  // entirely so a UI build hiccup can never block the real app deploy.
+  // When WE injected the dashboard(s) (e.g. a Stacks deploy that never built a
+  // tarball for it), build its artifact ONCE and reuse it for every per-apex
+  // host. If the build fails, drop all injected dashboard sites so a UI build
+  // hiccup can never block the real app deploy.
   let dashboardTarball: string | null = null
-  if (injectedDashboard) {
-    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[MANAGEMENT_DASHBOARD_SITE] as any, { cwd, slug, sha, logger: { info: logger.info, warn: logger.warn } })
+  const dashboardSiteSet = new Set(injectedDashboardSites)
+  if (injectedDashboardSites.length > 0) {
+    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, { cwd, slug, sha, logger: { info: logger.info, warn: logger.warn } })
     if (!dashboardTarball) {
-      logger.warn('Management dashboard: no artifact available — skipping dashboard site for this deploy.')
-      if (config.sites)
-        delete (config.sites as Record<string, unknown>)[MANAGEMENT_DASHBOARD_SITE]
+      logger.warn('Management dashboard: no artifact available — skipping dashboard site(s) for this deploy.')
+      for (const name of injectedDashboardSites) {
+        if (config.sites)
+          delete (config.sites as Record<string, unknown>)[name]
+      }
+      dashboardSiteSet.clear()
     }
   }
 
@@ -368,7 +375,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // Use the internally-built dashboard tarball when we injected it; otherwise the
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
   const tarballFor = (siteName: string): string =>
-    siteName === MANAGEMENT_DASHBOARD_SITE && dashboardTarball ? dashboardTarball : tarballForSite(siteName)
+    dashboardSiteSet.has(siteName) && dashboardTarball ? dashboardTarball : tarballForSite(siteName)
 
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
