@@ -6,7 +6,6 @@
     "composite": false,
     "declaration": true,
     "declarationMap": true,
-    "baseUrl": ".",
     "paths": {
       "@ts-cloud/aws-types": ["../aws-types/dist/index.d.ts"],
       "@ts-cloud/aws-types/*": ["../aws-types/dist/*"]

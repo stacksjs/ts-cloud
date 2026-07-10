@@ -72,7 +72,7 @@ describe('deploySiteRelease', () => {
       Role: 'app',
     })
     expect(deployCall.commands.join('\n')).toContain('aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"')
-    expect(deployCall.commands.join('\n')).toContain('systemctl restart my-app-web.service')
+    expect(deployCall.commands.join('\n')).toContain('systemctl start my-app-web@abc123.service')
     expect(deployCall.commands.join('\n')).toContain('/var/www/web/.ts-cloud/deploy-history.log')
     expect(deployCall.commands.join('\n')).toContain('ts_cloud_record_deploy')
   })

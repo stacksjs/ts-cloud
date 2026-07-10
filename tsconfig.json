@@ -20,7 +20,6 @@
     "verbatimModuleSyntax": true,
     "skipDefaultLibCheck": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
     "paths": {
       "@ts-cloud/core": ["./packages/core/src"],
       "@ts-cloud/core/*": ["./packages/core/src/*"],
