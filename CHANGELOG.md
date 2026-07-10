@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.12...v0.7.13)
+
+## 🐛 Bug Fixes
+
+- **security**: redact failed SSH deployment commands ([419f13a](https://github.com/stacksjs/ts-cloud/commit/419f13a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🤖 Continuous Integration
+
+- upgrade setup-bun action ([affe4ff](https://github.com/stacksjs/ts-cloud/commit/affe4ff)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.13 ([61c0c2b](https://github.com/stacksjs/ts-cloud/commit/61c0c2b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- upgrade to TypeScript 7 ([112ef58](https://github.com/stacksjs/ts-cloud/commit/112ef58)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.11...v0.7.12)
 
 ### 🚀 Features
