@@ -34,6 +34,31 @@ import { readDriverState, writeDriverState, type HetznerDriverState } from './st
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
 const SSH_MAX_BUFFER = 1024 * 1024 * 256
+const SSH_ERROR_OUTPUT_LIMIT = 8_000
+
+function sshErrorOutput(value: unknown): string {
+  const output = Buffer.isBuffer(value) ? value.toString('utf8') : typeof value === 'string' ? value : ''
+
+  return output
+    // Remote deploy scripts contain a here-document with the complete runtime
+    // environment. Never allow assignment values from command output into CI
+    // logs, even when a shell or child process happens to echo the script.
+    .replace(/(^|\n)([A-Z][A-Z0-9_]*=).*$/gm, '$1$2[redacted]')
+    .replace(/encrypted:[A-Za-z0-9+/=]+/g, 'encrypted:[redacted]')
+    .trim()
+    .slice(-SSH_ERROR_OUTPUT_LIMIT)
+}
+
+export function formatSshFailure(error: unknown): string {
+  const childError = error as { status?: number | null, signal?: string | null, stdout?: unknown, stderr?: unknown }
+  const status = typeof childError?.status === 'number' ? ` (exit ${childError.status})` : ''
+  const signal = childError?.signal ? ` (signal ${childError.signal})` : ''
+  const output = [sshErrorOutput(childError?.stderr), sshErrorOutput(childError?.stdout)]
+    .filter(Boolean)
+    .join('\n')
+
+  return `Remote SSH command failed${status}${signal}${output ? `\n${output}` : ''}`
+}
 
 export interface HetznerDriverOptions {
   apiToken?: string
@@ -1225,11 +1250,19 @@ export class HetznerDriver implements CloudDriver {
     // of files), and `tar` happily emits a warning line per oddity. With the
     // default 1MB maxBuffer, execSync kills the SSH child mid-deploy with
     // ENOBUFS, so give the remote command plenty of headroom.
-    return execSync(`ssh ${this.sshBaseArgs(host).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} '${escaped}'`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe'],
-      maxBuffer: SSH_MAX_BUFFER,
-    })
+    try {
+      return execSync(`ssh ${this.sshBaseArgs(host).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} '${escaped}'`, {
+        encoding: 'utf8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        maxBuffer: SSH_MAX_BUFFER,
+      })
+    }
+    catch (error) {
+      // Node's child-process error message embeds the complete command. The
+      // command includes the runtime environment here-document, so forwarding
+      // error.message would publish every deployment secret to CI logs.
+      throw new Error(formatSshFailure(error))
+    }
   }
 }
 

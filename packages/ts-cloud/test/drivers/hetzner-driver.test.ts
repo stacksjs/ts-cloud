@@ -1,6 +1,6 @@
 import { describe, expect, it, mock, beforeEach, afterEach } from 'bun:test'
 import type { CloudConfig } from '@ts-cloud/core'
-import { HetznerDriver } from '../../src/drivers/hetzner/driver'
+import { formatSshFailure, HetznerDriver } from '../../src/drivers/hetzner/driver'
 import { HetznerClient } from '../../src/drivers/hetzner/client'
 import { createCloudDriver } from '../../src/drivers/factory'
 import { driverStatePath } from '../../src/drivers/hetzner/state'
@@ -560,5 +560,23 @@ describe('HetznerDriver', () => {
     expect(capturedUserData).not.toContain('caddy')
     expect(capturedUserData).not.toContain('reverse_proxy')
     expect(capturedUserData).not.toContain('on_demand_tls')
+  })
+})
+
+describe('formatSshFailure', () => {
+  it('does not include the failed command or environment values', () => {
+    const message = formatSshFailure({
+      status: 1,
+      message: 'Command failed: ssh root@example APP_SECRET=do-not-log',
+      stderr: 'APP_SECRET=do-not-log\nservice failed its health gate',
+      stdout: 'TOKEN="also-secret"\nencrypted:abc123+/=',
+    })
+
+    expect(message).toContain('Remote SSH command failed (exit 1)')
+    expect(message).toContain('service failed its health gate')
+    expect(message).not.toContain('Command failed: ssh')
+    expect(message).not.toContain('do-not-log')
+    expect(message).not.toContain('also-secret')
+    expect(message).not.toContain('abc123')
   })
 })
