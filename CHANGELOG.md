@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.13...v0.7.14)
+
+## 🐛 Bug Fixes
+
+- complete deployment config types ([5d7c2ed](https://github.com/stacksjs/ts-cloud/commit/5d7c2ed)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.14 ([a4e027a](https://github.com/stacksjs/ts-cloud/commit/a4e027a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- modernize Bun package tooling ([40ccd83](https://github.com/stacksjs/ts-cloud/commit/40ccd83)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.12...v0.7.13)
 
 ## 🐛 Bug Fixes
