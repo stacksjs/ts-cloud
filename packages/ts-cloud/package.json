@@ -80,11 +80,11 @@
     "zip:windows-x64": "zip -j bin/cloud-windows-x64.zip bin/cloud-windows-x64.exe",
     "zip:darwin-x64": "zip -j bin/cloud-darwin-x64.zip bin/cloud-darwin-x64",
     "zip:darwin-arm64": "zip -j bin/cloud-darwin-arm64.zip bin/cloud-darwin-arm64",
-    "lint": "bunx --bun pickier lint .",
-    "lint:fix": "bunx --bun pickier lint . --fix",
-    "format": "bunx --bun pickier format .",
-    "format:fix": "bunx --bun pickier format . --write",
-    "fresh": "bunx rimraf node_modules/ bun.lock && bun i",
+    "lint": "bun x --bun pickier lint .",
+    "lint:fix": "bun x --bun pickier lint . --fix",
+    "format": "bun x --bun pickier format .",
+    "format:fix": "bun x --bun pickier format . --write",
+    "fresh": "bun x rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build",
     "test": "bun test"
   },
@@ -95,9 +95,9 @@
   },
   "devDependencies": {
     "bunfig": "^0.15.6",
-    "better-dx": "^0.2.12"
+    "better-dx": "^0.2.16"
   },
   "lint-staged": {
-    "*.{js,ts,json,yaml,yml,md}": "bunx --bun pickier lint --fix"
+    "*.{js,ts,json,yaml,yml,md}": "bun x --bun pickier lint --fix"
   }
 }

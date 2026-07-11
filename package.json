@@ -37,27 +37,27 @@
     "zip:windows-x64": "zip -j bin/cloud-windows-x64.zip bin/cloud-windows-x64.exe",
     "zip:darwin-x64": "zip -j bin/cloud-darwin-x64.zip bin/cloud-darwin-x64",
     "zip:darwin-arm64": "zip -j bin/cloud-darwin-arm64.zip bin/cloud-darwin-arm64",
-    "fresh": "bunx rimraf node_modules/ bun.lock && bun i",
+    "fresh": "bun x rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build && bun run compile:all && bun run zip",
     "test": "find test packages \\( -name '*.test.ts' -o -name '*.test.js' \\) -print | xargs bun test",
-    "lint": "bunx --bun pickier .",
-    "lint:fix": "bunx --bun pickier . --fix",
-    "format": "bunx --bun pickier . --format",
-    "format:fix": "bunx --bun pickier . --format --write",
-    "changelog": "bunx logsmith --verbose",
-    "changelog:generate": "bunx logsmith --output CHANGELOG.md",
-    "release": "bunx --bun bumpx prompt --recursive",
-    "release:patch": "bunx --bun bumpx patch --recursive",
-    "release:minor": "bunx --bun bumpx minor --recursive --commit --tag --push",
-    "publish:patch": "bunx --bun bumpx patch --recursive --commit --tag --push",
+    "lint": "bun x --bun pickier .",
+    "lint:fix": "bun x --bun pickier . --fix",
+    "format": "bun x --bun pickier . --format",
+    "format:fix": "bun x --bun pickier . --format --write",
+    "changelog": "bun x logsmith --verbose",
+    "changelog:generate": "bun x logsmith --output CHANGELOG.md",
+    "release": "bun x --bun bumpx prompt --recursive",
+    "release:patch": "bun x --bun bumpx patch --recursive --commit --tag --push --yes",
+    "release:minor": "bun x --bun bumpx minor --recursive --commit --tag --push",
+    "publish:patch": "bun x --bun bumpx patch --recursive --commit --tag --push",
     "dev:docs": "bun --bun bunpress dev docs",
     "build:docs": "bun --bun bunpress build docs",
     "preview:docs": "bun --bun bunpress preview docs",
-    "deploy:docs": "bunx bunpress deploy --domain ts-cloud.stacksjs.com",
+    "deploy:docs": "bun x bunpress deploy --domain ts-cloud.stacksjs.com",
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
-    "better-dx": "^0.2.15"
+    "better-dx": "^0.2.16"
   },
   "workspaces": [
     "packages/*"
@@ -65,10 +65,10 @@
   "git-hooks": {
     "pre-commit": {
       "staged-lint": {
-        "*.{js,ts,json,yaml,yml,md}": "bunx --bun pickier lint --fix"
+        "*.{js,ts,json,yaml,yml,md}": "bun x --bun pickier lint --fix"
       }
     },
-    "commit-msg": "bunx gitlint --edit .git/COMMIT_EDITMSG"
+    "commit-msg": "bun x gitlint --edit .git/COMMIT_EDITMSG"
   },
   "overrides": {
     "typescript": "^7.0.2"
