@@ -180,6 +180,10 @@ export type EnvironmentType = 'production' | 'staging' | 'development'
 
 export interface EnvironmentConfig {
   type: EnvironmentType
+  /** Git branch deployed when this environment is targeted. */
+  deployBranch?: string
+  /** Optional subdomain prefix used for non-production environments. */
+  domainPrefix?: string
   region?: string
   variables?: Record<string, string>
   /**
