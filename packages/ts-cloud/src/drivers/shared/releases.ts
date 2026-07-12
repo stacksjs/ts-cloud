@@ -201,6 +201,36 @@ export function buildPruneReleases(paths: ReleasePaths, keep: number = DEFAULT_K
   ]
 }
 
+/** Owner marker recording which project a site's base dir belongs to. */
+export function siteOwnerPath(base: string): string {
+  return `${deployMetaDir(base)}/owner`
+}
+
+/**
+ * Guard a site's base dir against cross-project deploys on a shared box
+ * (`attachTo`): the first deploy stamps `<base>/.ts-cloud/owner` with the
+ * project slug; a later deploy whose slug differs fails loudly instead of
+ * silently overwriting another tenant's releases. Two projects can only trip
+ * this by deriving the same site key (e.g. both claiming the same domain),
+ * which is a config conflict the operator must resolve — not one deploys
+ * should paper over. Emitted before anything mutates the dir.
+ */
+export function buildSiteOwnerGuard(base: string, slug: string): string[] {
+  const owner = siteOwnerPath(base)
+  return [
+    `if [ -f "${owner}" ]; then`,
+    `  TS_CLOUD_OWNER=$(cat "${owner}")`,
+    `  if [ "$TS_CLOUD_OWNER" != "${slug}" ]; then`,
+    `    echo "[ts-cloud] REFUSING deploy: ${base} belongs to project '$TS_CLOUD_OWNER', not '${slug}'. Another project on this box derives the same site key — give one of them a distinct site name/domain, or remove ${owner} to transfer ownership." >&2`,
+    '    exit 1',
+    '  fi',
+    'else',
+    `  mkdir -p "$(dirname "${owner}")"`,
+    `  printf '%s\\n' "${slug}" > "${owner}"`,
+    'fi',
+  ]
+}
+
 export interface DeployHistoryOptions {
   /** This deploy's release id. */
   releaseId: string

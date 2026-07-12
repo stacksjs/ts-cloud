@@ -328,6 +328,10 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect((config.sites as any).dashboard).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
     expect(allCommands.some(c => c.includes('/var/www/dashboard-example-com'))).toBe(true)
+    // Every site deploy is ownership-guarded so another attachTo tenant deriving
+    // the same site key is refused instead of overwriting releases.
+    expect(allCommands.some(c => c.includes('/var/www/web/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/dashboard-example-com/.ts-cloud/owner'))).toBe(true)
   }, 60_000)
 
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test'
+import { spawnSync } from 'node:child_process'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   buildActivateRelease,
   buildDeployHistoryHeader,
@@ -6,10 +10,12 @@ import {
   buildLinkSharedPaths,
   buildPruneReleases,
   buildRollbackScript,
+  buildSiteOwnerGuard,
   DEFAULT_SHARED_PATHS,
   deployHistoryPath,
   deployLogPath,
   releasePaths,
+  siteOwnerPath,
 } from '../../src/drivers/shared/releases'
 import { buildGitCheckoutScript } from '../../src/drivers/shared/git-deploy'
 
@@ -148,5 +154,49 @@ describe('buildDeployHistoryHeader', () => {
   it('paths live outside releases/ so they survive pruning', () => {
     expect(deployHistoryPath('/var/www/app/')).toBe('/var/www/app/.ts-cloud/deploy-history.log')
     expect(deployLogPath('/var/www/app', '20240601')).toBe('/var/www/app/.ts-cloud/deploys/20240601.log')
+  })
+})
+
+describe('buildSiteOwnerGuard', () => {
+  /** Run the generated guard script with bash against a real temp dir. */
+  function runGuard(base: string, slug: string): { status: number | null, stderr: string } {
+    const r = spawnSync('bash', ['-c', buildSiteOwnerGuard(base, slug).join('\n')], { encoding: 'utf8' })
+    return { status: r.status, stderr: r.stderr }
+  }
+
+  it('first deploy claims the dir by stamping the project slug', () => {
+    const base = mkdtempSync(join(tmpdir(), 'tscloud-owner-'))
+    try {
+      expect(runGuard(base, 'acme').status).toBe(0)
+      expect(readFileSync(siteOwnerPath(base), 'utf8').trim()).toBe('acme')
+    }
+    finally { rmSync(base, { recursive: true, force: true }) }
+  })
+
+  it('same project deploys again without friction', () => {
+    const base = mkdtempSync(join(tmpdir(), 'tscloud-owner-'))
+    try {
+      expect(runGuard(base, 'acme').status).toBe(0)
+      expect(runGuard(base, 'acme').status).toBe(0)
+    }
+    finally { rmSync(base, { recursive: true, force: true }) }
+  })
+
+  it('a DIFFERENT project is refused loudly instead of overwriting releases', () => {
+    const base = mkdtempSync(join(tmpdir(), 'tscloud-owner-'))
+    try {
+      expect(runGuard(base, 'acme').status).toBe(0)
+      const other = runGuard(base, 'intruder')
+      expect(other.status).toBe(1)
+      expect(other.stderr).toContain('REFUSING deploy')
+      expect(other.stderr).toContain(`belongs to project 'acme'`)
+      // The original owner marker is untouched.
+      expect(readFileSync(siteOwnerPath(base), 'utf8').trim()).toBe('acme')
+    }
+    finally { rmSync(base, { recursive: true, force: true }) }
+  })
+
+  it('stamps the marker under the site meta dir', () => {
+    expect(siteOwnerPath('/var/www/dashboard-acme-com')).toBe('/var/www/dashboard-acme-com/.ts-cloud/owner')
   })
 })

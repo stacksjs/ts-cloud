@@ -26,7 +26,7 @@ import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-depl
 import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
-import { buildDeployHistoryHeader } from './releases'
+import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
 import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -156,7 +156,7 @@ export async function deploySiteRelease(
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...deployScript, ...poolScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
+      commands: [...buildSiteOwnerGuard(appBase, slug), ...deployScript, ...poolScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })
@@ -262,6 +262,9 @@ export async function deploySiteRelease(
       commit: sha,
       branch: (site as any).branch ?? 'main',
     }),
+    // After the history header (so a refusal is still recorded), before
+    // anything touches the release layout.
+    ...buildSiteOwnerGuard(`/var/www/${siteName}`, slug),
     ...baseScript,
     ...staticVhost,
     ...staticSsl,
