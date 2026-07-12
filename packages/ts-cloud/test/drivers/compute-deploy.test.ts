@@ -322,9 +322,12 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     })
 
     expect(ok).toBe(true)
-    expect((config.sites as any).dashboard?.domain).toBe('dashboard.example.com')
+    // Domain-keyed site key — never the bare `dashboard`, which would collide
+    // across tenants sharing a box via attachTo.
+    expect((config.sites as any)['dashboard-example-com']?.domain).toBe('dashboard.example.com')
+    expect((config.sites as any).dashboard).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/dashboard-example-com'))).toBe(true)
   }, 60_000)
 
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {
@@ -341,7 +344,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     })
 
     expect(ok).toBe(true)
-    expect((config.sites as any).dashboard).toBeUndefined()
+    expect((config.sites as any)['dashboard-example-com']).toBeUndefined()
   })
 
   it('skips the dashboard gracefully (deploy still succeeds) when its UI cannot be built', async () => {
@@ -363,7 +366,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
 
     expect(ok).toBe(true)
     // Injected then dropped because the build failed → no dashboard left behind.
-    expect((config.sites as any).dashboard).toBeUndefined()
+    expect((config.sites as any)['dashboard-example-com']).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
     expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(false)
     rmSync(fakeRepo, { recursive: true, force: true })

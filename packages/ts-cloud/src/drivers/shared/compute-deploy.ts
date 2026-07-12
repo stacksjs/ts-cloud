@@ -9,7 +9,7 @@ import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
-import { buildManagementDashboardArtifact, ensureManagementDashboard, MANAGEMENT_DASHBOARD_SITE, managementDashboardSiteNames } from '../../deploy/management-dashboard'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
@@ -351,7 +351,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // their `cp` from staging. Build once, then copy per site.
   const dashboardTarballBySite = new Map<string, string>()
   if (injectedDashboardSites.length > 0) {
-    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, { cwd, slug, sha, logger: { info: logger.info, warn: logger.warn } })
+    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, { cwd, slug, sha, siteName: injectedDashboardSites[0], logger: { info: logger.info, warn: logger.warn } })
     if (!dashboardTarball) {
       logger.warn('Management dashboard: no artifact available — skipping dashboard site(s) for this deploy.')
       for (const name of injectedDashboardSites) {
@@ -361,7 +361,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
     }
     else {
       for (const name of injectedDashboardSites) {
-        if (name === MANAGEMENT_DASHBOARD_SITE) {
+        if (name === injectedDashboardSites[0]) {
           dashboardTarballBySite.set(name, dashboardTarball)
           continue
         }

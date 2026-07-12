@@ -29,7 +29,13 @@ import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites } from '@ts-cloud/core'
 
-/** Site key under which the management dashboard is auto-injected. */
+/**
+ * Legacy site key for the management dashboard. Auto-injected dashboards are
+ * now keyed per domain (`dashboard-<apex-dashed>`, see
+ * `managementDashboardSiteName` in `@ts-cloud/core`) so tenants sharing a box
+ * via `attachTo` never collide on `/var/www/dashboard`. This bare key remains
+ * only for hand-configured dashboards and pre-0.8 deploys.
+ */
 export const MANAGEMENT_DASHBOARD_SITE = 'dashboard'
 
 /** Where an auto-generated dashboard password is persisted (per project checkout). */
@@ -197,6 +203,8 @@ export interface BuildDashboardArtifactOptions {
   cwd?: string
   slug: string
   sha: string
+  /** Site key the tarball is staged under. @default MANAGEMENT_DASHBOARD_SITE */
+  siteName?: string
   logger?: EnsureDashboardLogger
 }
 
@@ -226,7 +234,7 @@ export function buildManagementDashboardArtifact(
       logger.warn(`Management dashboard: build output not found at ${root} — skipping dashboard artifact.`)
       return null
     }
-    const tarball = join(tmpdir(), `${options.slug}-${MANAGEMENT_DASHBOARD_SITE}-${options.sha}.tar.gz`)
+    const tarball = join(tmpdir(), `${options.slug}-${options.siteName ?? MANAGEMENT_DASHBOARD_SITE}-${options.sha}.tar.gz`)
     execSync(`tar czf "${tarball}" -C "${root}" .`, { stdio: 'inherit' })
     return tarball
   }

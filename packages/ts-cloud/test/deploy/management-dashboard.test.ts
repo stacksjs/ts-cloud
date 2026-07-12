@@ -48,7 +48,8 @@ describe('ensureManagementDashboard', () => {
     try {
       process.env.TS_CLOUD_UI_PASSWORD = 'hunter2'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      const d = (c.sites as any).dashboard
+      // Domain-keyed — the bare `dashboard` key would collide across attachTo tenants.
+      const d = (c.sites as any)['dashboard-acme-com']
       expect(d.domain).toBe('dashboard.acme.com')
       expect(d.auth).toEqual({ username: 'admin', password: 'hunter2', realm: undefined })
     }
@@ -59,7 +60,7 @@ describe('ensureManagementDashboard', () => {
     const dir = repoCwd()
     try {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      const auth = (c.sites as any).dashboard.auth
+      const auth = (c.sites as any)['dashboard-acme-com'].auth
       expect(auth?.username).toBe('admin')
       expect(typeof auth?.password).toBe('string')
       expect(auth.password.length).toBeGreaterThan(16)
@@ -75,8 +76,8 @@ describe('ensureManagementDashboard', () => {
   it('reuses the persisted password on a second deploy (stable htpasswd)', () => {
     const dir = repoCwd()
     try {
-      const first = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any).dashboard.auth.password
-      const second = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any).dashboard.auth.password
+      const first = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any)['dashboard-acme-com'].auth.password
+      const second = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any)['dashboard-acme-com'].auth.password
       expect(second).toBe(first)
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
@@ -87,7 +88,7 @@ describe('ensureManagementDashboard', () => {
     try {
       process.env.TS_CLOUD_UI_PUBLIC = '1'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      expect((c.sites as any).dashboard.auth).toBeUndefined()
+      expect((c.sites as any)['dashboard-acme-com'].auth).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
@@ -97,7 +98,7 @@ describe('ensureManagementDashboard', () => {
     try {
       process.env.TS_CLOUD_UI_DISABLE = '1'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      expect((c.sites as any).dashboard).toBeUndefined()
+      expect((c.sites as any)['dashboard-acme-com']).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
@@ -107,7 +108,7 @@ describe('ensureManagementDashboard', () => {
     try {
       process.env.TS_CLOUD_UI_DOMAIN = 'panel.acme.io'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      expect((c.sites as any).dashboard.domain).toBe('panel.acme.io')
+      expect((c.sites as any)['dashboard-panel-acme-io'].domain).toBe('panel.acme.io')
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
@@ -116,7 +117,7 @@ describe('ensureManagementDashboard', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tscloud-noui2-'))
     try {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      expect((c.sites as any).dashboard).toBeUndefined()
+      expect((c.sites as any)['dashboard-acme-com']).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
