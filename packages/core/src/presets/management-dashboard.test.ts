@@ -1,6 +1,6 @@
 import type { CloudConfig } from '../types'
 import { describe, expect, it } from 'bun:test'
-import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveDashboardDomain, resolveDashboardDomains, resolveManagementDashboardSite, resolveManagementDashboardSites } from './management-dashboard'
+import { hasManagementDashboardSite, isManagementDashboardSiteName, managementDashboardSiteName, resolveDashboardDomain, resolveDashboardDomains, resolveManagementDashboardSite, resolveManagementDashboardSites } from './management-dashboard'
 
 function cfg(partial: Partial<CloudConfig>): CloudConfig {
   return { project: { name: 'Acme', slug: 'acme' }, environments: {}, ...partial } as CloudConfig
@@ -37,7 +37,7 @@ describe('resolveManagementDashboardSite', () => {
 
   it('builds a server-static site with htpasswd when a password is given', () => {
     const r = resolveManagementDashboardSite(base, 'production', { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun run build', password: 's3cret' })
-    expect(r?.name).toBe('dashboard')
+    expect(r?.name).toBe('dashboard-acme-com')
     expect(r?.site.domain).toBe('dashboard.acme.com')
     expect(r?.site.type).toBe('static')
     expect(r?.site.deploy).toBe('server')
@@ -120,7 +120,7 @@ describe('resolveDashboardDomains (per-apex)', () => {
         main: { root: 'dist', domain: 'stacksjs.com' } as any,
       },
     })
-    // dns.domain leads regardless of site declaration order → `dashboard` key is
+    // dns.domain leads regardless of site declaration order → the primary is
     // always dashboard.stacksjs.com, even on a `--site ghostanalytics` deploy.
     expect(resolveDashboardDomains(c, 'production')).toEqual([
       'dashboard.stacksjs.com',
@@ -138,9 +138,9 @@ describe('resolveManagementDashboardSites (per-apex)', () => {
     main: { root: 'dist', domain: 'stacksjs.com' } as any,
   } })
 
-  it('injects one static dashboard per apex, primary keyed `dashboard`', () => {
+  it('injects one static dashboard per apex, every key domain-derived', () => {
     const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui', build: false, password: 's3cret' })
-    expect(sites.map(s => s.name)).toEqual(['dashboard', 'dashboard-bughq-org', 'dashboard-stacksjs-com'])
+    expect(sites.map(s => s.name)).toEqual(['dashboard-ghostanalytics-org', 'dashboard-bughq-org', 'dashboard-stacksjs-com'])
     expect(sites.map(s => s.site.domain)).toEqual(['dashboard.ghostanalytics.org', 'dashboard.bughq.org', 'dashboard.stacksjs.com'])
     // All share the same UI root + credentials.
     expect(new Set(sites.map(s => s.site.root))).toEqual(new Set(['/pkg/dist/ui']))
@@ -153,7 +153,7 @@ describe('resolveManagementDashboardSites (per-apex)', () => {
   it('live mode stays single-host (one loopback port)', () => {
     const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true })
     expect(sites).toHaveLength(1)
-    expect(sites[0].name).toBe('dashboard')
+    expect(sites[0].name).toBe('dashboard-ghostanalytics-org')
     expect(sites[0].site.domain).toBe('dashboard.ghostanalytics.org')
   })
 
@@ -164,10 +164,18 @@ describe('resolveManagementDashboardSites (per-apex)', () => {
 })
 
 describe('isManagementDashboardSiteName', () => {
-  it('matches the primary and per-apex keys, not app sites', () => {
+  it('matches the domain-keyed and legacy bare keys, not app sites', () => {
     expect(isManagementDashboardSiteName('dashboard')).toBe(true)
     expect(isManagementDashboardSiteName('dashboard-bughq-org')).toBe(true)
     expect(isManagementDashboardSiteName('main')).toBe(false)
     expect(isManagementDashboardSiteName('ghostanalytics-api')).toBe(false)
+  })
+})
+
+describe('managementDashboardSiteName', () => {
+  it('keys a dashboard host by its dashed apex — never the bare `dashboard`', () => {
+    expect(managementDashboardSiteName('dashboard.chrisbreuer.me')).toBe('dashboard-chrisbreuer-me')
+    expect(managementDashboardSiteName('dashboard.stacksjs.com')).toBe('dashboard-stacksjs-com')
+    expect(managementDashboardSiteName('admin.acme.io')).toBe('dashboard-admin-acme-io')
   })
 })

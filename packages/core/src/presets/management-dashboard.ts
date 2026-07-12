@@ -47,10 +47,10 @@ function apexOf(domain: string): string {
  * Collect the project's configured domains, in priority order: the project's
  * canonical domain first (`infrastructure.dns.domain`, then the environment
  * domain), then every site domain. Canonical-first is deliberate — it fixes the
- * PRIMARY dashboard (the bare `dashboard` site key, served from `/var/www/dashboard`)
- * to the project domain, so it stays stable no matter which `--site` a partial
- * deploy narrows to. `dashboard.*` hosts are skipped (a dashboard never gets its
- * own dashboard).
+ * PRIMARY dashboard (and its site key, e.g. `dashboard-stacksjs-com`) to the
+ * project domain, so it stays stable no matter which `--site` a partial deploy
+ * narrows to. `dashboard.*` hosts are skipped (a dashboard never gets its own
+ * dashboard).
  */
 function collectDomains(
   config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
@@ -124,27 +124,31 @@ export function hasManagementDashboardSite(config: Pick<CloudConfig, 'sites'>): 
   return Object.entries(config.sites ?? {}).some(([name, site]) => {
     if (!site) return false
     const root = (site as { root?: string }).root ?? ''
-    return name === 'dashboard' || root === 'ui/dist' || root.endsWith('/ui/dist') || root.endsWith('/dist/ui')
+    return isManagementDashboardSiteName(name) || root === 'ui/dist' || root.endsWith('/ui/dist') || root.endsWith('/dist/ui')
   })
 }
 
-/** Prefix under which non-primary per-apex dashboards are keyed. */
+/** Prefix under which every auto-injected dashboard is keyed. */
 export const MANAGEMENT_DASHBOARD_SITE_PREFIX = 'dashboard-'
 
 /**
- * The site key for a dashboard on `domain`. The first (primary) dashboard keeps
- * the bare `dashboard` key — stable service name, credentials, and artifact key.
- * Extra per-apex dashboards get `dashboard-<apex-dashed>` (e.g.
- * `dashboard-ghostanalytics-org`) so each is its own service + `/var/www` dir.
+ * The site key for a dashboard on `domain`: `dashboard-<apex-dashed>` (e.g.
+ * `dashboard-chrisbreuer-me`), so each dashboard is its own service +
+ * `/var/www` dir. Every dashboard is domain-keyed — including the primary —
+ * because a bare `dashboard` key collides on a shared multi-tenant box
+ * (`attachTo`): every attaching project would ship its dashboard release to
+ * the same `/var/www/dashboard/current`, silently overwriting the others.
  */
-function dashboardSiteName(domain: string, primary: boolean): string {
-  if (primary)
-    return 'dashboard'
+export function managementDashboardSiteName(domain: string): string {
   // `dashboard.acme.com` → `dashboard-acme-com`
   return MANAGEMENT_DASHBOARD_SITE_PREFIX + domain.replace(/^dashboard\./, '').replace(/\./g, '-')
 }
 
-/** Is `name` a management-dashboard site key (the primary or a per-apex one)? */
+/**
+ * Is `name` a management-dashboard site key? Matches the domain-keyed form
+ * (`dashboard-<apex-dashed>`) plus the bare `dashboard` key, which is how
+ * hand-configured dashboards and pre-0.8 deploys are keyed.
+ */
 export function isManagementDashboardSiteName(name: string): boolean {
   return name === 'dashboard' || name.startsWith(MANAGEMENT_DASHBOARD_SITE_PREFIX)
 }
@@ -190,12 +194,12 @@ export function resolveManagementDashboardSites(
       ...build,
       ...auth,
     }
-    return [{ name: 'dashboard', site }]
+    return [{ name: managementDashboardSiteName(domain), site }]
   }
 
   const domains = resolveDashboardDomains(config, environment, opts.domain)
-  return domains.map((domain, i) => ({
-    name: dashboardSiteName(domain, i === 0),
+  return domains.map(domain => ({
+    name: managementDashboardSiteName(domain),
     site: {
       root: opts.uiRoot,
       deploy: 'server',
