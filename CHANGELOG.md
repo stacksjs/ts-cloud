@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.14...v0.7.15)
+
+## 🚀 Features
+
+- **deploy**: guard site release dirs against cross-project deploys ([d35f0ee](https://github.com/stacksjs/ts-cloud/commit/d35f0ee)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **deploy**: stage injected dashboard artifacts under their domain-keyed sites ([0d5f979](https://github.com/stacksjs/ts-cloud/commit/0d5f979)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **core**: key injected management dashboards by domain, never bare 'dashboard' ([70b8de1](https://github.com/stacksjs/ts-cloud/commit/70b8de1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.15 ([a23e094](https://github.com/stacksjs/ts-cloud/commit/a23e094)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.13...v0.7.14)
 
 ## 🐛 Bug Fixes
