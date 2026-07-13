@@ -1223,10 +1223,24 @@ export class HetznerDriver implements CloudDriver {
     '-o', 'LogLevel=ERROR',
   ]
 
+  /**
+   * Keepalive + connect timeout for every ssh/scp. Without these a connection
+   * that stalls mid-transfer (a flaky network, an sshd hiccup) hangs the deploy
+   * FOREVER — execSync has no timeout, so a dead socket blocks the whole run.
+   * ServerAlive probes abort a silent connection after ~60s (15s × 4) so the
+   * transfer fails loudly (and, for scp, is retried) instead of wedging.
+   */
+  private static readonly SSH_KEEPALIVE_OPTS = [
+    '-o', 'ConnectTimeout=30',
+    '-o', 'ServerAliveInterval=15',
+    '-o', 'ServerAliveCountMax=4',
+  ]
+
   private sshBaseArgs(host: string, extra: string[] = []): string[] {
     return [
       '-i', this.sshPrivateKeyPath,
       ...HetznerDriver.SSH_HOST_KEY_OPTS,
+      ...HetznerDriver.SSH_KEEPALIVE_OPTS,
       '-o', 'BatchMode=yes',
       ...extra,
       `${this.sshUser}@${host}`,
@@ -1234,14 +1248,28 @@ export class HetznerDriver implements CloudDriver {
   }
 
   private scpToHost(host: string, localPath: string, remotePath: string): void {
-    execSync([
+    const cmd = [
       'scp',
       '-i', this.sshPrivateKeyPath,
       ...HetznerDriver.SSH_HOST_KEY_OPTS,
+      ...HetznerDriver.SSH_KEEPALIVE_OPTS,
       '-o', 'BatchMode=yes',
       localPath,
       `${this.sshUser}@${host}:${remotePath}`,
-    ].map(arg => `"${arg.replace(/"/g, '\\"')}"`).join(' '), { stdio: 'pipe', maxBuffer: SSH_MAX_BUFFER })
+    ].map(arg => `"${arg.replace(/"/g, '\\"')}"`).join(' ')
+    // Retry the transfer: scp overwrites its destination, so a re-upload is
+    // idempotent, and a single dropped connection shouldn't fail a whole deploy.
+    const attempts = 3
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        execSync(cmd, { stdio: 'pipe', maxBuffer: SSH_MAX_BUFFER })
+        return
+      }
+      catch (error) {
+        if (attempt === attempts)
+          throw new Error(formatSshFailure(error))
+      }
+    }
   }
 
   private sshExec(host: string, script: string): string {
