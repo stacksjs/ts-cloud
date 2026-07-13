@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   resolveSiteDeployTarget,
   resolveSiteKind,
+  siteInstallBase,
   validateDeploymentConfig,
 } from '../../src/deploy/site-target'
 
@@ -169,5 +170,22 @@ describe('validateDeploymentConfig', () => {
     }, true))
     expect(errors.some(e => e.includes('noDomain') && e.includes('domain'))).toBe(true)
     expect(errors.some(e => e.includes('noTarget') && e.includes('target'))).toBe(true)
+  })
+})
+
+describe('siteInstallBase', () => {
+  it('namespaces the install dir by project slug, mirroring the <slug>-<site> unit name', () => {
+    expect(siteInstallBase('bughq', 'main')).toBe('/var/www/bughq-main')
+    expect(siteInstallBase('ghostanalytics', 'main')).toBe('/var/www/ghostanalytics-main')
+  })
+
+  it('gives two projects with the SAME site name disjoint install dirs (the shared-box collision this prevents)', () => {
+    // Before: both a tenant and the box owner keyed a site `main` → both fought
+    // over /var/www/main, silently overwriting each other's releases.
+    const tenant = siteInstallBase('bughq', 'main')
+    const owner = siteInstallBase('stacks', 'main')
+    expect(tenant).not.toBe(owner)
+    expect(tenant.startsWith('/var/www/')).toBe(true)
+    expect(owner.startsWith('/var/www/')).toBe(true)
   })
 })

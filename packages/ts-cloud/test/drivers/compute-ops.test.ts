@@ -38,8 +38,8 @@ describe('rollbackComputeSite', () => {
     const driver = mockDriver()
     await rollbackComputeSite(ctx(driver), { siteName: 'main', to: 'r-42' })
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
-    expect(cmd).toContain('[ -d /var/www/main/releases/r-42 ]')
-    expect(cmd).toContain('mv -Tf /var/www/main/current.tmp /var/www/main/current')
+    expect(cmd).toContain('[ -d /var/www/acme-main/releases/r-42 ]')
+    expect(cmd).toContain('mv -Tf /var/www/acme-main/current.tmp /var/www/acme-main/current')
   })
 
   it('errors clearly when no servers are found', async () => {
@@ -56,7 +56,7 @@ describe('getComputeDeployHistory', () => {
     const res = await getComputeDeployHistory(ctx(driver), { siteName: 'main', limit: 5 })
     expect(res.success).toBe(true)
     const cmd = (driver.runRemoteDeploy as any).mock.calls[0][0].commands.join('\n')
-    expect(cmd).toContain('tail -n 5 /var/www/main/.ts-cloud/deploy-history.log')
+    expect(cmd).toContain('tail -n 5 /var/www/acme-main/.ts-cloud/deploy-history.log')
   })
 })
 

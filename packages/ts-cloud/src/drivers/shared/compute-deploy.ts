@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
-import { isPhpSite, resolveSiteKind } from '../../deploy/site-target'
+import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
   buildLocalArtifactFetch,
@@ -88,7 +88,7 @@ export async function deploySiteRelease(
   if (isPhpSite(site)) {
     const compute = config.infrastructure?.compute
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
-    const appBase = `/var/www/${siteName}`
+    const appBase = siteInstallBase(slug, siteName)
 
     // Auto-wire DB_* into the app's .env. In a fleet (dedicated services box),
     // point DB/Redis/Meilisearch at the services box's private IP; otherwise
@@ -198,9 +198,15 @@ export async function deploySiteRelease(
   // server-static sites are shipped to /var/www/<site> (no systemd); server-app
   // sites run as a systemd service.
   const kind = resolveSiteKind(site)
+  // Slug-namespaced install dir — the single source of truth for this site's
+  // on-disk release tree (see siteInstallBase). Every downstream path (systemd
+  // WorkingDirectory, rpx static root, ownership guard, deploy history) derives
+  // from it so a shared box never collides two projects on /var/www/<name>.
+  const appBase = siteInstallBase(slug, siteName)
   const baseScript = kind === 'server-static'
     ? buildStaticSiteDeployScript({
         siteName,
+        appDir: appBase,
         artifactFetch,
         releaseId: sha,
         preStartCommands: site.preStart,
@@ -208,6 +214,7 @@ export async function deploySiteRelease(
     : buildSiteDeployScript({
         siteName,
         slug,
+        appDir: appBase,
         artifactFetch,
         releaseId: sha,
         // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
@@ -233,7 +240,7 @@ export async function deploySiteRelease(
         domain: site.domain!,
         aliases: site.aliases,
         type: site.type === 'spa' ? 'spa' : 'static',
-        appDir: `/var/www/${siteName}/current`,
+        appDir: `${appBase}/current`,
         webDirectory: '',
         redirects: site.redirects,
         auth: site.auth && site.auth.enabled !== false && site.auth.password
@@ -253,18 +260,18 @@ export async function deploySiteRelease(
   // renders the right commands for Stacks (bun) vs Laravel, so a Stacks
   // server-app can run its scheduler + workers the same way.
   const servicesScript = siteHasServices(site)
-    ? buildSiteServicesScript({ slug, siteName, site, appBase: `/var/www/${siteName}` })
+    ? buildSiteServicesScript({ slug, siteName, site, appBase })
     : []
 
   const remoteScript = [
-    ...buildDeployHistoryHeader(`/var/www/${siteName}`, {
+    ...buildDeployHistoryHeader(appBase, {
       releaseId: sha,
       commit: sha,
       branch: (site as any).branch ?? 'main',
     }),
     // After the history header (so a refusal is still recorded), before
     // anything touches the release layout.
-    ...buildSiteOwnerGuard(`/var/www/${siteName}`, slug),
+    ...buildSiteOwnerGuard(appBase, slug),
     ...baseScript,
     ...staticVhost,
     ...staticSsl,
@@ -463,7 +470,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     return true
 
   const sites = routeSource.sites || {}
-  const rpxConfig = buildRpxConfig(sites, { proxy })
+  const rpxConfig = buildRpxConfig(sites, { proxy, slug: config.project.slug })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
     return true

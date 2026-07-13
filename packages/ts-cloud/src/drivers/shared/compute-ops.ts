@@ -12,6 +12,7 @@ import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
 import { buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
 import { buildServerRecipeScript } from './server-recipes'
+import { siteInstallBase } from '../../deploy/site-target'
 
 export interface ComputeOpsLogger {
   info(message: string): void
@@ -69,7 +70,7 @@ export async function rollbackComputeSite(
   if (targets.length === 0)
     return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.slug}/${ctx.environment}.` }
 
-  const appBase = `/var/www/${options.siteName}`
+  const appBase = siteInstallBase(ctx.slug, options.siteName)
   const paths = releasePaths(appBase, options.to || 'unused')
   const commands = [
     'set -uo pipefail',
@@ -108,7 +109,7 @@ export async function getComputeDeployHistory(
   if (targets.length === 0)
     return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.slug}/${ctx.environment}.` }
 
-  const history = deployHistoryPath(`/var/www/${options.siteName}`)
+  const history = deployHistoryPath(siteInstallBase(ctx.slug, options.siteName))
   const limit = Math.max(1, options.limit ?? 20)
   const commands = [
     `[ -f ${history} ] && tail -n ${limit} ${history} || echo "no deploy history for ${options.siteName}"`,

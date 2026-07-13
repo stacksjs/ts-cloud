@@ -85,12 +85,12 @@ describe('buildRpxConfig', () => {
     expect(api.static).toBeUndefined()
 
     const docs = stacks.find(r => r.path === '/docs')!
-    expect(docs.static).toBe('/var/www/docs/current')
+    expect(docs.static).toBe('/var/www/app-docs/current')
     expect(docs.from).toBeUndefined()
     expect(docs.cleanUrls).toBe(true)
 
     const root = stacks.find(r => r.path === undefined)!
-    expect(root.static).toBe('/var/www/public/current')
+    expect(root.static).toBe('/var/www/app-public/current')
   })
 
   it('groups routes by domain, most-specific path first', () => {
@@ -168,7 +168,7 @@ describe('buildRpxConfig', () => {
     const config = buildRpxConfig({
       docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
     }, { proxy: rpxProxy, wwwRoot: '/srv/sites' })
-    expect(config.proxies[0].static).toBe('/srv/sites/docs/current')
+    expect(config.proxies[0].static).toBe('/srv/sites/app-docs/current')
   })
 
   it('maps a redirect site to a redirect route (no upstream, no static)', () => {
@@ -283,7 +283,7 @@ describe('buildRpxLbConfig', () => {
     const appBoxes = [{ privateIp: '10.0.0.2' }]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
     const docs = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/docs')!
-    expect(docs.static).toBe('/var/www/docs/current')
+    expect(docs.static).toBe('/var/www/app-docs/current')
     expect(docs.from).toBeUndefined()
   })
 
@@ -349,7 +349,7 @@ describe('buildRpxConfig auth (dashboard protection)', () => {
     } as Record<string, SiteConfig>, { proxy: rpxProxy })
 
     const route = config.proxies.find(r => r.to === 'dashboard.acme.com')!
-    expect(route.static).toBe('/var/www/dashboard/current')
+    expect(route.static).toBe('/var/www/app-dashboard/current')
     expect(route.auth).toEqual({ username: 'admin', password: 's3cret', realm: 'ts-cloud' })
     // The credentials must survive serialization into the launcher.
     expect(renderRpxLauncher(config)).toContain('"password": "s3cret"')

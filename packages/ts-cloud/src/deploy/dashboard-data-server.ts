@@ -9,7 +9,7 @@ import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCloudDriver } from '../drivers'
-import { resolveSiteKind } from './site-target'
+import { resolveSiteKind, siteInstallBase } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
 
 const PROBED_SERVICES = ['rpx-gateway', 'nginx', 'php8.3-fpm', 'php8.2-fpm', 'mysql', 'mariadb', 'postgresql', 'redis', 'redis-server', 'meilisearch']
@@ -272,14 +272,14 @@ function sedReplacement(value: string): string {
   return value.replace(/[\\&/]/g, '\\$&')
 }
 
-function deployHistoryScript(siteNames: string[]): string[] {
+function deployHistoryScript(siteNames: string[], slug: string): string[] {
   if (siteNames.length === 0)
     return ['true']
 
   return [
     'set +e',
     ...siteNames.map((siteName) => {
-      const historyPath = shellSingleQuote(`/var/www/${siteName}/.ts-cloud/deploy-history.log`)
+      const historyPath = shellSingleQuote(`${siteInstallBase(slug, siteName)}/.ts-cloud/deploy-history.log`)
       const prefix = sedReplacement(siteName)
       return `TS_CLOUD_HISTORY=${historyPath}; { [ -f "$TS_CLOUD_HISTORY" ] && tail -n 24 "$TS_CLOUD_HISTORY" | sed "s/^/DEPLOY=${prefix}\\t/"; } || true`
     }),
@@ -718,7 +718,7 @@ export function resolveConfigOnlyServerDashboardData(config: CloudConfig, enviro
       const kind = resolveSiteKind(site)
       return {
         ...s,
-        root: kind === 'server-static' ? `/var/www/${s.name}` : `/var/www/${s.name}/current`,
+        root: kind === 'server-static' ? siteInstallBase(config.project.slug, s.name) : `${siteInstallBase(config.project.slug, s.name)}/current`,
         branch: kind === 'server-static' ? 'build artifact' : 'main',
         build: site.build,
         php: site.php ?? site.phpVersion,
@@ -798,7 +798,7 @@ export async function resolveServerDashboardData(config: CloudConfig, environmen
       const siteNames = Object.keys(config.sites ?? {})
       const historyResult = await driver.runRemoteDeploy({
         targets: [targets[0]],
-        commands: deployHistoryScript(siteNames),
+        commands: deployHistoryScript(siteNames, config.project.slug),
         comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
         tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
       })

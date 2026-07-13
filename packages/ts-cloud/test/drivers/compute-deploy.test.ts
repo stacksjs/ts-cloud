@@ -73,7 +73,7 @@ describe('deploySiteRelease', () => {
     })
     expect(deployCall.commands.join('\n')).toContain('aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"')
     expect(deployCall.commands.join('\n')).toContain('systemctl start my-app-web@abc123.service')
-    expect(deployCall.commands.join('\n')).toContain('/var/www/web/.ts-cloud/deploy-history.log')
+    expect(deployCall.commands.join('\n')).toContain('/var/www/my-app-web/.ts-cloud/deploy-history.log')
     expect(deployCall.commands.join('\n')).toContain('ts_cloud_record_deploy')
   })
 
@@ -327,11 +327,11 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect((config.sites as any)['dashboard-example-com']?.domain).toBe('dashboard.example.com')
     expect((config.sites as any).dashboard).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    expect(allCommands.some(c => c.includes('/var/www/dashboard-example-com'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-example-com'))).toBe(true)
     // Every site deploy is ownership-guarded so another attachTo tenant deriving
     // the same site key is refused instead of overwriting releases.
-    expect(allCommands.some(c => c.includes('/var/www/web/.ts-cloud/owner'))).toBe(true)
-    expect(allCommands.some(c => c.includes('/var/www/dashboard-example-com/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/my-app-web/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-example-com/.ts-cloud/owner'))).toBe(true)
   }, 60_000)
 
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {

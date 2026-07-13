@@ -147,6 +147,14 @@ export interface BuildRpxConfigOptions {
   proxy: ComputeProxyConfig
   /** Directory static sites are shipped to. @default '/var/www' */
   wwwRoot?: string
+  /**
+   * Project slug — server-static routes are served from the slug-namespaced
+   * install dir (`<wwwRoot>/<slug>-<name>/current`), matching where the deploy
+   * ships them (see {@link siteInstallBase}). Omitted ⇒ `app` (single-tenant
+   * back-compat). MUST be set on a shared box or static routes point at the
+   * wrong directory.
+   */
+  slug?: string
 }
 
 /**
@@ -192,6 +200,11 @@ function buildRpxConfigInternal(
   appBoxes?: RpxLbAppBox[],
 ): RpxGatewayConfig {
   const wwwRoot = (options.wwwRoot ?? '/var/www').replace(/\/+$/, '')
+  // Slug-namespaced install dir for server-static routes — must match the
+  // deploy's siteInstallBase(slug, name) so the route serves the dir the
+  // release was actually shipped to. Bare `<wwwRoot>/<name>` collided two
+  // projects' same-named static sites on a shared box.
+  const installSlug = options.slug ?? 'app'
   const certsDir = options.proxy.certsDir ?? DEFAULT_RPX_CERTS_DIR
   const loadBalancer = options.proxy.loadBalancer
 
@@ -238,7 +251,7 @@ function buildRpxConfigInternal(
       proxies.push({
         to: site.domain,
         path,
-        static: `${wwwRoot}/${name}/current`,
+        static: `${wwwRoot}/${installSlug}-${name}/current`,
         cleanUrls: site.pathRewriteStyle !== 'flat',
         spa: site.spa ?? false,
         ...(auth ? { auth } : {}),

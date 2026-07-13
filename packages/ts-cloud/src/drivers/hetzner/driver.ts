@@ -194,7 +194,7 @@ export class HetznerDriver implements CloudDriver {
     const rpxProvision = compute.proxy?.engine === 'rpx'
       ? buildRpxProvisionScript({
           proxy: compute.proxy,
-          config: buildRpxConfig(sites, { proxy: compute.proxy }),
+          config: buildRpxConfig(sites, { proxy: compute.proxy, slug: config.project.slug }),
           slug: config.project.slug,
           bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })
@@ -696,7 +696,7 @@ export class HetznerDriver implements CloudDriver {
         const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
         const lbRpxProvision = buildRpxProvisionScript({
           proxy: rpxProxy,
-          config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy }),
+          config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug }),
           slug,
           bunBin: appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
         })

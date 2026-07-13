@@ -13,6 +13,26 @@ import { deploymentCoexistenceError } from '@ts-cloud/core'
  */
 export type SiteDeployKind = 'bucket' | 'server-app' | 'server-static' | 'server-php' | 'redirect'
 
+/**
+ * On-disk base directory for a site's atomic release tree
+ * (`<base>/releases/<sha>` + `<base>/current`).
+ *
+ * Namespaced by the project **slug** so that on a shared / multi-tenant box
+ * (`cloud.attachTo`) two projects — or a tenant and the box owner — can never
+ * collide on the same `/var/www/<name>` path. A bare `/var/www/<siteName>`
+ * meant that e.g. every project with a `main` site fought over `/var/www/main`,
+ * silently overwriting each other's releases and round-robining stale responses
+ * on the shared port. This mirrors the systemd unit naming (`<slug>-<siteName>`)
+ * so a release directory and the service that runs it share one identity.
+ *
+ * MUST be the single source of truth for the install path — deploy, rpx routing
+ * (server-static), rollback/ops, and dashboard data all derive from it, so they
+ * can never diverge.
+ */
+export function siteInstallBase(slug: string, siteName: string): string {
+  return `/var/www/${slug}-${siteName}`
+}
+
 /** Site `type` values that deploy as a PHP/Laravel git-release site. */
 const PHP_SITE_TYPES: ReadonlySet<NonNullable<SiteConfig['type']>> = new Set([
   'laravel',

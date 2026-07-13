@@ -131,15 +131,15 @@ describe('Laravel end-to-end: app deploy', () => {
 
     const cmd = driver.runRemoteDeploy.mock.calls[0][0].commands.join('\n')
     // git clone into an atomic release
-    expect(cmd).toContain('git clone -q --depth 1 --branch main git@github.com:acme/app.git /var/www/main/releases/deadbeef')
-    expect(cmd).toContain('ln -sfn /var/www/main/shared/storage /var/www/main/releases/deadbeef/storage')
+    expect(cmd).toContain('git clone -q --depth 1 --branch main git@github.com:acme/app.git /var/www/acme-main/releases/deadbeef')
+    expect(cmd).toContain('ln -sfn /var/www/acme-main/shared/storage /var/www/acme-main/releases/deadbeef/storage')
     // Laravel build steps with the versioned php binary
     expect(cmd).toContain('composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev')
     expect(cmd).toContain('php artisan migrate --force')
     expect(cmd).toContain('pantry env')
     expect(cmd).toContain('php artisan config:cache')
     // atomic flip + queue restart
-    expect(cmd).toContain('mv -Tf /var/www/main/current.tmp /var/www/main/current')
+    expect(cmd).toContain('mv -Tf /var/www/acme-main/current.tmp /var/www/acme-main/current')
     expect(cmd).toContain('php artisan queue:restart || true')
     // nginx vhost + Let's Encrypt
     expect(cmd).toContain('/etc/nginx/sites-available/main')

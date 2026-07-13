@@ -13,7 +13,7 @@ import { resolveSiteFramework } from '../drivers/shared/app-frameworks'
 import { BACKUP_RUNNER_PATH } from '../drivers/shared/backups'
 import { restoreDatabaseBackup, rollbackComputeSite } from '../drivers/shared/compute-ops'
 import { PANTRY_PROJECT_DIR } from '../drivers/shared/package-manager'
-import { resolveSiteKind } from './site-target'
+import { resolveSiteKind, siteInstallBase } from './site-target'
 
 const SERVICE_VERBS = ['restart', 'reload', 'start', 'stop', 'enable', 'disable'] as const
 type ServiceVerb = (typeof SERVICE_VERBS)[number]
@@ -151,8 +151,8 @@ function pantryEnvEval(): string {
   return `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)"`
 }
 
-function siteArtisanCommand(site: string, artisan: string): string[] {
-  const current = `/var/www/${site}/current`
+function siteArtisanCommand(slug: string, site: string, artisan: string): string[] {
+  const current = `${siteInstallBase(slug, site)}/current`
   return [
     'set -uo pipefail',
     `[ -d ${current} ] || { echo "site ${site} has no current release" >&2; exit 1; }`,
@@ -169,7 +169,7 @@ function siteArtisanCommand(site: string, artisan: string): string[] {
  */
 function workerRestartCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
   if (framework === 'laravel')
-    return siteArtisanCommand(site, 'queue:restart')
+    return siteArtisanCommand(slug, site, 'queue:restart')
   const pattern = `${slug}-${site}-queue-*.service`
   return [
     'set -uo pipefail',
@@ -188,7 +188,7 @@ function workerRestartCommand(framework: 'stacks' | 'laravel', slug: string, sit
  */
 function schedulerRunCommand(framework: 'stacks' | 'laravel', slug: string, site: string): string[] {
   if (framework === 'laravel')
-    return siteArtisanCommand(site, 'schedule:run')
+    return siteArtisanCommand(slug, site, 'schedule:run')
   const unit = `${slug}-${site}-scheduler.service`
   return [
     'set -uo pipefail',
