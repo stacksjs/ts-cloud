@@ -17,6 +17,7 @@ import {
   RPX_LAUNCHER_PATH,
   RPX_SERVICE_NAME,
   RPX_SITES_DIR,
+  usesRpxProxy,
 } from '../../src/drivers/shared/rpx-gateway'
 
 const rpxProxy: ComputeProxyConfig = { engine: 'rpx' }
@@ -85,12 +86,32 @@ describe('buildRpxConfig', () => {
     expect(api.static).toBeUndefined()
 
     const docs = stacks.find(r => r.path === '/docs')!
-    expect(docs.static).toBe('/var/www/app-docs/current')
+    expect(docs.static).toMatchObject({ dir: '/var/www/app-docs/current' })
     expect(docs.from).toBeUndefined()
     expect(docs.cleanUrls).toBe(true)
 
     const root = stacks.find(r => r.path === undefined)!
-    expect(root.static).toBe('/var/www/app-public/current')
+    expect(root.static).toMatchObject({ dir: '/var/www/app-public/current' })
+  })
+
+  it('nests spa + pathRewriteStyle inside the static object (rpx ignores them at the route level)', () => {
+    // Regression: rpx's resolveStaticRoute reads `spa`/`pathRewriteStyle` ONLY
+    // from the object form of `static`; a bare string forces `spa:false`, which
+    // 404s every SPA deep link. A server-static SPA must therefore emit
+    // `static: { dir, spa: true, ... }`, not a string with sibling `spa`.
+    const spaSites: Record<string, SiteConfig> = {
+      app: { domain: 'everything.stacksjs.com', deploy: 'server', root: 'dist', spa: true },
+      flat: { domain: 'flat.example.com', deploy: 'server', root: 'dist', pathRewriteStyle: 'flat' },
+    }
+    const config = buildRpxConfig(spaSites, { proxy: rpxProxy })
+
+    const app = config.proxies.find(r => r.to === 'everything.stacksjs.com')!
+    expect(app.static).toMatchObject({ spa: true, pathRewriteStyle: 'directory' })
+    expect(typeof app.static).toBe('object')
+
+    const flat = config.proxies.find(r => r.to === 'flat.example.com')!
+    expect(flat.static).toMatchObject({ spa: false, pathRewriteStyle: 'flat' })
+    expect(flat.cleanUrls).toBe(false)
   })
 
   it('groups routes by domain, most-specific path first', () => {
@@ -168,7 +189,7 @@ describe('buildRpxConfig', () => {
     const config = buildRpxConfig({
       docs: { domain: 'd.com', deploy: 'server', root: 'dist' },
     }, { proxy: rpxProxy, wwwRoot: '/srv/sites' })
-    expect(config.proxies[0].static).toBe('/srv/sites/app-docs/current')
+    expect(config.proxies[0].static).toMatchObject({ dir: '/srv/sites/app-docs/current' })
   })
 
   it('maps a redirect site to a redirect route (no upstream, no static)', () => {
@@ -283,7 +304,7 @@ describe('buildRpxLbConfig', () => {
     const appBoxes = [{ privateIp: '10.0.0.2' }]
     const config = buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy })
     const docs = config.proxies.find(r => r.to === 'stacksjs.com' && r.path === '/docs')!
-    expect(docs.static).toBe('/var/www/app-docs/current')
+    expect(docs.static).toMatchObject({ dir: '/var/www/app-docs/current' })
     expect(docs.from).toBeUndefined()
   })
 
@@ -349,7 +370,7 @@ describe('buildRpxConfig auth (dashboard protection)', () => {
     } as Record<string, SiteConfig>, { proxy: rpxProxy })
 
     const route = config.proxies.find(r => r.to === 'dashboard.acme.com')!
-    expect(route.static).toBe('/var/www/app-dashboard/current')
+    expect(route.static).toMatchObject({ dir: '/var/www/app-dashboard/current' })
     expect(route.auth).toEqual({ username: 'admin', password: 's3cret', realm: 'ts-cloud' })
     // The credentials must survive serialization into the launcher.
     expect(renderRpxLauncher(config)).toContain('"password": "s3cret"')
@@ -544,5 +565,25 @@ describe('buildRpxLbConfig is on the package public export barrel', () => {
     // `buildRpxLbConfig is not a function`.
     const barrel = await import('../../src/drivers/index')
     expect(typeof barrel.buildRpxLbConfig).toBe('function')
+  })
+
+  describe('usesRpxProxy', () => {
+    it('is true when the proxy engine is rpx even without an explicit webServer', () => {
+      // Regression: setting `proxy.engine: 'rpx'` alone provisions the gateway,
+      // so the deploy must NOT also stand up nginx + certbot (races :80). Before
+      // this helper, only `webServer: 'rpx'` skipped nginx, so a proxy-only
+      // config hit "bind() to 0.0.0.0:80 failed (Address already in use)".
+      expect(usesRpxProxy({ proxy: { engine: 'rpx' } })).toBe(true)
+    })
+
+    it('is true when webServer is rpx', () => {
+      expect(usesRpxProxy({ webServer: 'rpx' })).toBe(true)
+    })
+
+    it('is false for nginx / unset / undefined', () => {
+      expect(usesRpxProxy({ webServer: 'nginx' })).toBe(false)
+      expect(usesRpxProxy({})).toBe(false)
+      expect(usesRpxProxy(undefined)).toBe(false)
+    })
   })
 })

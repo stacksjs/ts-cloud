@@ -13,6 +13,7 @@ import type { CloudConfig } from '@ts-cloud/core'
 import { buildServicesProvisionScript, buildDatabaseSetupScript } from './db-provision'
 import { buildPhpProvisionScript } from './php-provision'
 import { buildNginxServiceScript } from './nginx-vhost'
+import { usesRpxProxy } from './rpx-gateway'
 import { buildPantryBootstrapScript } from './package-manager'
 import { buildUfwScript } from './ufw'
 import { buildAutoUpdatesScript } from './maintenance'
@@ -48,7 +49,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   const needsPantry = phpBox || !!compute.managedServices
   const pantryBootstrap = needsPantry ? buildPantryBootstrapScript() : []
 
-  const useNginx = compute.webServer !== 'rpx'
+  const useNginx = !usesRpxProxy(compute)
   const phpProvision = phpBox
     ? [
         ...pantryBootstrap,

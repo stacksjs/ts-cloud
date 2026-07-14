@@ -18,7 +18,7 @@ import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './clie
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
-import { buildRpxConfig, buildRpxLbConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
+import { buildRpxConfig, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { resolveFleetTopology } from '../shared/fleet'
 import { buildPhpProvisionScript } from '../shared/php-provision'
@@ -380,7 +380,7 @@ export class HetznerDriver implements CloudDriver {
       versions: compute.php?.versions,
       default: compute.php?.default,
       extensions: compute.php?.extensions,
-      installNginx: compute.webServer !== 'rpx',
+      installNginx: !usesRpxProxy(compute),
       optimizeForProduction: compute.php?.optimizeForProduction,
       ini: compute.php?.ini,
     })

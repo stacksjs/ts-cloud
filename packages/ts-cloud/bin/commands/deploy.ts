@@ -470,10 +470,17 @@ export function registerDeployCommands(app: CLI): void {
           // run the deploy step — even with no user sites — so the management
           // dashboard is auto-deployed on every freshly started server.
           const ok = await deployAppToCompute(config, environment, region)
-          if (!ok)
+          if (!ok) {
             cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
-          else
+          }
+          else {
             cli.success(`App deployed to ${cloudProvider} compute`)
+            // Point each server-served site domain at the box. The S3 site path
+            // (deployStaticSitesWithExternalDns) skips deploy:'server' sites, so
+            // for a compute deploy DNS is reconciled here instead — additive
+            // UPSERTs only, opt-in via `infrastructure.dns.provider`.
+            await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+          }
           return
         }
 
@@ -1988,6 +1995,85 @@ async function loadEnvironmentFile(environment: string): Promise<(() => Promise<
       copyFileSync(envLocalBackup, `${cwd}/.env.local`)
       unlinkSync(envLocalBackup)
       cli.info('Restored .env.local')
+    }
+  }
+}
+
+/**
+ * Reconcile DNS A records for the sites served by a compute box (Hetzner or
+ * AWS server mode) so `everything.example.com → <box IP>` is created/updated as
+ * part of `cloud deploy` — no manual dashboard step.
+ *
+ * Opt-in: runs only when `infrastructure.dns.provider` is set. The S3/CloudFront
+ * site path already handles bucket-backed sites (and skips `deploy:'server'`
+ * sites), so this covers the complementary case — server-app and server-static
+ * sites shipped to the box. UPSERT-only; never deletes other records, so it is
+ * safe on a shared, multi-tenant zone.
+ */
+async function reconcileServerDns(
+  config: any,
+  appPublicIp: string | undefined,
+  dnsProviderName: string | undefined,
+): Promise<void> {
+  if (!dnsProviderName)
+    return // opt-in — no DNS provider configured, nothing to do
+
+  const sites = config.sites || {}
+  // Server-served sites: an explicit deploy:'server', or a legacy `start` site.
+  // Bucket sites (S3/CloudFront) are handled by deployStaticSitesWithExternalDns.
+  const domains = new Set<string>()
+  for (const site of Object.values<any>(sites)) {
+    if (!site?.domain || site.redirect)
+      continue
+    if (site.deploy === 'server' || site.start)
+      domains.add(site.domain)
+  }
+  if (domains.size === 0)
+    return
+  if (!appPublicIp) {
+    cli.warn('DNS: no app server IP resolved — skipping A-record reconciliation.')
+    return
+  }
+
+  let dnsConfig
+  try {
+    dnsConfig = resolveDnsProviderConfig(dnsProviderName)
+  }
+  catch (error) {
+    cli.warn(`DNS: ${error instanceof Error ? error.message : String(error)}`)
+    cli.info(`Point each site domain at ${appPublicIp} manually.`)
+    return
+  }
+  if (!dnsConfig) {
+    cli.warn(`DNS provider '${dnsProviderName}' is not configured — skipping A-record reconciliation.`)
+    cli.info(`Point each site domain at ${appPublicIp} manually.`)
+    return
+  }
+  // Let the zone id from cloud.config.ts stand in for AWS_HOSTED_ZONE_ID.
+  if (dnsConfig.provider === 'route53') {
+    const configHostedZoneId = config.infrastructure?.dns?.hostedZoneId
+    if (configHostedZoneId && !dnsConfig.hostedZoneId)
+      dnsConfig.hostedZoneId = configHostedZoneId
+  }
+
+  const dnsProvider = createDnsProvider(dnsConfig)
+  const configuredZone = config.infrastructure?.dns?.domain as string | undefined
+  cli.step(`Reconciling DNS: ${domains.size} A record(s) → ${appPublicIp} via ${dnsProviderName}...`)
+  for (const domain of domains) {
+    // The zone is the registrable apex (config `dns.domain` wins; otherwise the
+    // last two labels — good enough for `sub.example.com`).
+    const zone = configuredZone && domain.endsWith(configuredZone)
+      ? configuredZone
+      : domain.split('.').slice(-2).join('.')
+    try {
+      const res = await dnsProvider.upsertRecord(zone, { name: domain, type: 'A', content: appPublicIp, ttl: 300 })
+      if (res.success)
+        cli.success(`  ✓ ${domain} A → ${appPublicIp}`)
+      else
+        cli.warn(`  ⚠ ${domain}: ${res.message} — set the A record manually.`)
+    }
+    catch (error) {
+      cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the A record manually.`)
     }
   }
 }

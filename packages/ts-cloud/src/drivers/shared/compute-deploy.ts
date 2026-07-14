@@ -27,7 +27,7 @@ import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxProvisionScript } from './rpx-gateway'
+import { buildRpxConfig, buildRpxProvisionScript, usesRpxProxy } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -111,7 +111,7 @@ export async function deploySiteRelease(
     // nginx vhost (skipped when the operator fronts the box with rpx instead).
     // A `custom` cert is baked straight into the vhost; Let's Encrypt is layered
     // on afterwards by certbot, which rewrites the :80 block to add :443.
-    const useNginx = compute?.webServer !== 'rpx'
+    const useNginx = !usesRpxProxy(compute)
     const sslProvider = resolveSslProvider(site)
     const customCert = sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
       ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
@@ -233,7 +233,7 @@ export async function deploySiteRelease(
   // HTTP Basic auth + Let's Encrypt — this is how the ts-cloud UI is published
   // behind htpasswd. When the operator runs rpx instead, skip the vhost.
   const compute = config.infrastructure?.compute
-  const wantsNginxStatic = kind === 'server-static' && compute?.webServer !== 'rpx' && !!site.domain
+  const wantsNginxStatic = kind === 'server-static' && !usesRpxProxy(compute) && !!site.domain
   const staticVhost = wantsNginxStatic
     ? buildNginxVhostScript({
         siteName,

@@ -63,8 +63,15 @@ export interface RpxRoute {
    * with automatic health-check failover (see rpx's `ProxyFrom`/`UpstreamTarget`).
    */
   from?: string | string[]
-  /** Absolute directory served for a `server-static` route (`/var/www/<name>`). */
-  static?: string
+  /**
+   * Static serving for a `server-static` route. rpx reads `spa` and
+   * `pathRewriteStyle` ONLY from the object form (`{ dir, spa, pathRewriteStyle }`);
+   * a bare string disables both (rpx forces `spa: false`, `pathRewriteStyle:
+   * 'directory'`). So SPA fallback + flat-URL sites MUST use the object form —
+   * see `buildRpxConfig`. The string shorthand remains valid for a plain
+   * directory served with the route-level `cleanUrls`.
+   */
+  static?: string | { dir: string, spa?: boolean, pathRewriteStyle?: 'directory' | 'flat', maxAge?: number }
   /**
    * Redirect target for a `redirect` site — the gateway answers `to` (the host)
    * with an HTTP redirect here instead of proxying/serving. The request path +
@@ -247,13 +254,20 @@ function buildRpxConfigInternal(
     else {
       // server-static: served from the atomic-release `current` symlink under
       // /var/www/<name> (zero-downtime swaps — see buildStaticSiteDeployScript).
-      // cleanUrls maps the SSG pathRewriteStyle; SPA mirrors the bucket spa flag.
+      // `spa` + `pathRewriteStyle` MUST live inside the `static` object — rpx
+      // ignores them at the route level and forces `spa:false` for a bare-string
+      // `static`, which 404s every SPA deep link (e.g. an inspector at
+      // /grid/depth) instead of falling back to index.html. cleanUrls stays at
+      // the route level (rpx reads it there, as the .html-stripping redirect).
       proxies.push({
         to: site.domain,
         path,
-        static: `${wwwRoot}/${installSlug}-${name}/current`,
+        static: {
+          dir: `${wwwRoot}/${installSlug}-${name}/current`,
+          spa: site.spa ?? false,
+          pathRewriteStyle: site.pathRewriteStyle ?? 'directory',
+        },
         cleanUrls: site.pathRewriteStyle !== 'flat',
-        spa: site.spa ?? false,
         ...(auth ? { auth } : {}),
         id,
       })
@@ -392,6 +406,19 @@ const config = ${json} as const
 
 await startProxies(config as any)
 `
+}
+
+/**
+ * True when this compute is fronted by the rpx gateway — either explicitly
+ * (`webServer: 'rpx'`) or implicitly by opting into the rpx proxy engine
+ * (`proxy.engine: 'rpx'`). Setting `proxy.engine: 'rpx'` alone provisions and
+ * runs the gateway on :80/:443, so the deploy MUST NOT also stand up nginx +
+ * certbot for a site — that races the gateway for :80 and the certbot HTTP-01
+ * challenge fails with "Address already in use". Treating either signal as
+ * "rpx mode" keeps the nginx/SSL path and the gateway path from contradicting.
+ */
+export function usesRpxProxy(compute?: { webServer?: string, proxy?: { engine?: string } }): boolean {
+  return compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx'
 }
 
 /** Default install location for the gateway launcher + config on the box. */
