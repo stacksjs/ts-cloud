@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.22...v0.7.23)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: ship the resolved cloud config, not the config source ([96fb9f0](https://github.com/stacksjs/ts-cloud/commit/96fb9f0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.23 ([edca2b8](https://github.com/stacksjs/ts-cloud/commit/edca2b8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.21...v0.7.22)
 
 ## 🐛 Bug Fixes
