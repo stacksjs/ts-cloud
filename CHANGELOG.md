@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.19...v0.7.20)
+
+## 🐛 Bug Fixes
+
+- **ui**: stop showing members a server that does not exist ([9453391](https://github.com/stacksjs/ts-cloud/commit/9453391)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.20 ([9be9fb4](https://github.com/stacksjs/ts-cloud/commit/9be9fb4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: bump better-dx to 0.2.18 ([5e86f6b](https://github.com/stacksjs/ts-cloud/commit/5e86f6b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.18...v0.7.19)
 
 ## 🚀 Features
