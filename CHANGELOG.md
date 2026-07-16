@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.20...v0.7.21)
+
+## 🚀 Features
+
+- **dashboard**: rate-limit failed logins ([bc4f00e](https://github.com/stacksjs/ts-cloud/commit/bc4f00e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **dashboard**: stop site:settings from being root on a shared box ([a27392d](https://github.com/stacksjs/ts-cloud/commit/a27392d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.21 ([a16860b](https://github.com/stacksjs/ts-cloud/commit/a16860b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.19...v0.7.20)
 
 ## 🐛 Bug Fixes
