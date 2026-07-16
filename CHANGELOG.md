@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.23...v0.7.24)
+
+## 🐛 Bug Fixes
+
+- **deploy**: make --site actually narrow a compute deploy ([a4d15b7](https://github.com/stacksjs/ts-cloud/commit/a4d15b7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.24 ([14564db](https://github.com/stacksjs/ts-cloud/commit/14564db)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.22...v0.7.23)
 
 ## 🐛 Bug Fixes
