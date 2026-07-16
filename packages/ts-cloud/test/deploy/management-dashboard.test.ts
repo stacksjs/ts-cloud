@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { buildManagementDashboardArtifact, ensureManagementDashboard, resolveUiSource } from '../../src/deploy/management-dashboard'
+import { buildManagementDashboardArtifact, ensureManagementDashboard, LIVE_STAGE_DIR, resolveDashboardVersion, resolveUiSource } from '../../src/deploy/management-dashboard'
 
 function cfg(): CloudConfig {
   return {
@@ -13,15 +13,25 @@ function cfg(): CloudConfig {
   } as unknown as CloudConfig
 }
 
-const ENV_KEYS = ['TS_CLOUD_UI_PASSWORD', 'TS_CLOUD_UI_PUBLIC', 'TS_CLOUD_UI_USERNAME', 'TS_CLOUD_UI_DOMAIN', 'TS_CLOUD_UI_DISABLE', 'TS_CLOUD_UI_REALM']
+const ENV_KEYS = ['TS_CLOUD_UI_PASSWORD', 'TS_CLOUD_UI_PUBLIC', 'TS_CLOUD_UI_USERNAME', 'TS_CLOUD_UI_DOMAIN', 'TS_CLOUD_UI_DISABLE', 'TS_CLOUD_UI_REALM', 'TS_CLOUD_UI_STATIC', 'TS_CLOUD_UI_VERSION', 'TS_CLOUD_UI_PORT']
 afterEach(() => { for (const k of ENV_KEYS) delete process.env[k] })
 
-/** A temp project dir with a local packages/ui checkout so resolveUiSource finds it. */
+/**
+ * A temp project dir with a local packages/ui checkout (so resolveUiSource
+ * finds it) and a cloud config (so the live dashboard has something to ship).
+ */
 function repoCwd(): string {
   const dir = mkdtempSync(join(tmpdir(), 'tscloud-uirepo-'))
   mkdirSync(join(dir, 'packages', 'ui', 'pages'), { recursive: true })
   writeFileSync(join(dir, 'packages', 'ui', 'package.json'), '{"name":"@ts-cloud/ui"}')
+  writeFileSync(join(dir, 'cloud.config.ts'), 'export default { project: { name: "Acme", slug: "acme" } }\n')
   return dir
+}
+
+/** Static mode is now opt-in; these tests exercise that path. */
+function staticCwd(): string {
+  process.env.TS_CLOUD_UI_STATIC = '1'
+  return repoCwd()
 }
 
 describe('resolveUiSource', () => {
@@ -43,8 +53,8 @@ describe('resolveUiSource', () => {
 })
 
 describe('ensureManagementDashboard', () => {
-  it('injects the dashboard with htpasswd when TS_CLOUD_UI_PASSWORD is set', () => {
-    const dir = repoCwd()
+  it('injects the dashboard with htpasswd when TS_CLOUD_UI_PASSWORD is set (static mode)', () => {
+    const dir = staticCwd()
     try {
       process.env.TS_CLOUD_UI_PASSWORD = 'hunter2'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
@@ -56,8 +66,8 @@ describe('ensureManagementDashboard', () => {
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('auto-generates + persists a password when none is set (secure by default)', () => {
-    const dir = repoCwd()
+  it('auto-generates + persists a password when none is set (static mode)', () => {
+    const dir = staticCwd()
     try {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
       const auth = (c.sites as any)['dashboard-acme-com'].auth
@@ -73,8 +83,8 @@ describe('ensureManagementDashboard', () => {
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('reuses the persisted password on a second deploy (stable htpasswd)', () => {
-    const dir = repoCwd()
+  it('reuses the persisted password on a second deploy (static mode)', () => {
+    const dir = staticCwd()
     try {
       const first = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any)['dashboard-acme-com'].auth.password
       const second = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any)['dashboard-acme-com'].auth.password
@@ -83,8 +93,8 @@ describe('ensureManagementDashboard', () => {
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('serves WITHOUT auth only when TS_CLOUD_UI_PUBLIC is explicitly set', () => {
-    const dir = repoCwd()
+  it('serves WITHOUT auth only when TS_CLOUD_UI_PUBLIC is explicitly set (static mode)', () => {
+    const dir = staticCwd()
     try {
       process.env.TS_CLOUD_UI_PUBLIC = '1'
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
@@ -120,6 +130,109 @@ describe('ensureManagementDashboard', () => {
       expect((c.sites as any)['dashboard-acme-com']).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+describe('ensureManagementDashboard (live, the default)', () => {
+  it('injects a live service with no htpasswd in front of it', () => {
+    const dir = repoCwd()
+    try {
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      const d = (c.sites as any)['dashboard-acme-com']
+      expect(d.domain).toBe('dashboard.acme.com')
+      expect(d.port).toBe(7676)
+      expect(d.type).toBeUndefined()
+      // The dashboard authenticates itself; a shared Basic-auth password in
+      // front would block every collaborator at the door.
+      expect(d.auth).toBeUndefined()
+      expect(d.sharedPaths).toEqual(['.ts-cloud'])
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('ignores TS_CLOUD_UI_PASSWORD in live mode rather than half-applying it', () => {
+    const dir = repoCwd()
+    try {
+      process.env.TS_CLOUD_UI_PASSWORD = 'hunter2'
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      expect((c.sites as any)['dashboard-acme-com'].auth).toBeUndefined()
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('stages the project cloud config and a package.json for the box', () => {
+    const dir = repoCwd()
+    try {
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      const root = (c.sites as any)['dashboard-acme-com'].root as string
+      expect(root).toBe(LIVE_STAGE_DIR)
+
+      const stage = join(dir, root)
+      // The box resolves the same sites from this config.
+      expect(existsSync(join(stage, 'cloud.config.ts'))).toBe(true)
+      const pkg = JSON.parse(readFileSync(join(stage, 'package.json'), 'utf8'))
+      expect(pkg.dependencies['@stacksjs/ts-cloud']).toBeTruthy()
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('keeps the Stacks config layout so the box loader still finds it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-stackslayout-'))
+    try {
+      mkdirSync(join(dir, 'config'), { recursive: true })
+      writeFileSync(join(dir, 'config', 'cloud.ts'), 'export default {}\n')
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      expect(existsSync(join(dir, LIVE_STAGE_DIR, 'config', 'cloud.ts'))).toBe(true)
+      expect((c.sites as any)['dashboard-acme-com']).toBeTruthy()
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('skips the live dashboard when the project has no cloud config to ship', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-nocfg-'))
+    try {
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      expect((c.sites as any)['dashboard-acme-com']).toBeUndefined()
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('honors TS_CLOUD_UI_PORT', () => {
+    const dir = repoCwd()
+    try {
+      process.env.TS_CLOUD_UI_PORT = '7800'
+      const d = (ensureManagementDashboard(cfg(), { cwd: dir }).sites as any)['dashboard-acme-com']
+      expect(d.port).toBe(7800)
+      expect(d.start).toContain('--port 7800')
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('pins the ts-cloud version the box installs', () => {
+    const dir = repoCwd()
+    try {
+      process.env.TS_CLOUD_UI_VERSION = '0.7.21'
+      ensureManagementDashboard(cfg(), { cwd: dir })
+      const pkg = JSON.parse(readFileSync(join(dir, LIVE_STAGE_DIR, 'package.json'), 'utf8'))
+      expect(pkg.dependencies['@stacksjs/ts-cloud']).toBe('0.7.21')
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+describe('resolveDashboardVersion', () => {
+  it('defaults to a caret range on this package version, not `latest`', () => {
+    // A box should run a dashboard matching the CLI that deployed it, rather
+    // than drifting to whatever `latest` happens to be mid-deploy.
+    expect(resolveDashboardVersion()).toMatch(/^\^\d+\.\d+\.\d+/)
+  })
+
+  it('honors an explicit override', () => {
+    process.env.TS_CLOUD_UI_VERSION = 'next'
+    try {
+      expect(resolveDashboardVersion()).toBe('next')
+    }
+    finally { delete process.env.TS_CLOUD_UI_VERSION }
   })
 })
 

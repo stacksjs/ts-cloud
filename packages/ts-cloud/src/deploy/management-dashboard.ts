@@ -1,29 +1,40 @@
 /**
- * Auto-deploy of the ts-cloud management dashboard (the `@ts-cloud/ui` stx app)
- * on every server provision/deploy.
+ * Auto-deploy of the ts-cloud management dashboard on every server
+ * provision/deploy, so every box ships with a cockpit.
  *
- * Resolves the UI directory (the repo's local `packages/ui/`, else the prebuilt
- * UI that ships inside the installed package at `dist/ui`), derives a `dashboard.<apex>`
- * host, and injects it into `config.sites` as a server-static site. It is served
- * SECURE BY DEFAULT: the dashboard is served behind htpasswd on every deploy.
- * The password is resolved as: `TS_CLOUD_UI_PASSWORD` when set, else a strong
- * auto-generated one (persisted to `.ts-cloud/dashboard-credentials.json` so it
- * stays stable across deploys and printed once in the deploy log). Serving the
- * dashboard publicly is an explicit, deliberate opt-in via `TS_CLOUD_UI_PUBLIC`.
+ * **Live (the default).** The dashboard runs as a service on the box
+ * (`cloud dashboard:serve --box`) behind the proxy. It serves live data and the
+ * control API, and authenticates itself: a login page, sessions, and per-site
+ * collaborator grants. The release is tiny — the project's cloud config plus a
+ * `package.json` — and the box installs `@stacksjs/ts-cloud` from npm, which
+ * carries both the CLI and the UI it serves.
+ *
+ * On the first live deploy the box mints an admin and prints the password once
+ * into the deploy log. Users and the session key live in the site's shared
+ * `.ts-cloud/`, so they survive later deploys.
+ *
+ * **Static (`TS_CLOUD_UI_STATIC`).** The built UI shipped as files behind
+ * htpasswd. One shared password, all data baked in at build time, and therefore
+ * no collaborators. Kept for boxes that cannot run the service.
  *
  * Env:
+ * - `TS_CLOUD_UI_STATIC`    set truthy for the old static + htpasswd model
+ * - `TS_CLOUD_UI_DOMAIN`    explicit dashboard host (else `dashboard.<apex>`)
+ * - `TS_CLOUD_UI_PORT`      loopback port for the live service (default 7676)
+ * - `TS_CLOUD_UI_VERSION`   ts-cloud version the box installs (default: this one)
+ * - `TS_CLOUD_UI_DISABLE`   set truthy to skip auto-deploy
+ *
+ * Static mode only:
  * - `TS_CLOUD_UI_PASSWORD`  htpasswd password (unset ⇒ auto-generated + saved)
  * - `TS_CLOUD_UI_PUBLIC`    set truthy to serve WITHOUT auth (opt-out, insecure)
  * - `TS_CLOUD_UI_USERNAME`  htpasswd user (default `admin`)
- * - `TS_CLOUD_UI_DOMAIN`    explicit dashboard host (else `dashboard.<apex>`)
  * - `TS_CLOUD_UI_REALM`     browser auth realm
- * - `TS_CLOUD_UI_DISABLE`   set truthy to skip auto-deploy
  */
 
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -104,10 +115,91 @@ function truthy(v: string | undefined): boolean {
   return v != null && v !== '' && v !== '0' && v.toLowerCase() !== 'false'
 }
 
+/** Where the live dashboard's release is staged, inside the project checkout. */
+export const LIVE_STAGE_DIR: string = join('.ts-cloud', 'dashboard-release')
+
+/** Config files the live dashboard can read on the box, in load order. */
+const CONFIG_CANDIDATES: string[][] = [
+  ['config', 'cloud.ts'],
+  ['config', 'cloud.js'],
+  ['cloud.config.ts'],
+  ['cloud.config.js'],
+]
+
 /**
- * Resolve the UI source to ship. Prefers the repo's local `packages/ui/` (built
- * on the deploy machine), then the prebuilt UI bundled in the installed package.
- * Returns `{ uiRoot, build }` or null when no UI is available.
+ * The ts-cloud version the box should install. Reads this package's own version
+ * so a box runs a dashboard matching the CLI that deployed it, rather than
+ * drifting to whatever `latest` happens to be mid-deploy.
+ */
+export function resolveDashboardVersion(): string {
+  const explicit = process.env.TS_CLOUD_UI_VERSION?.trim()
+  if (explicit)
+    return explicit
+
+  const here = dirname(fileURLToPath(import.meta.url))
+  // Built layout is dist/deploy/, source layout is src/deploy/ — package.json
+  // sits two levels up from either.
+  for (const candidate of [join(here, '..', '..', 'package.json'), join(here, '..', 'package.json')]) {
+    try {
+      const pkg = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string, version?: string }
+      if (pkg.name === '@stacksjs/ts-cloud' && pkg.version)
+        return `^${pkg.version}`
+    }
+    catch { /* not this one — try the next */ }
+  }
+  return 'latest'
+}
+
+/**
+ * Stage the live dashboard's release: the project's cloud config (so the box
+ * can resolve the same sites) plus a `package.json` whose install pulls the CLI
+ * and UI from npm.
+ *
+ * Returns the staged directory relative to `cwd`, or null when the project has
+ * no cloud config to ship — without one the dashboard on the box would have
+ * nothing to describe.
+ */
+export function stageLiveDashboardRoot(cwd: string, logger: EnsureDashboardLogger): string | null {
+  const source = CONFIG_CANDIDATES.map(parts => join(cwd, ...parts)).find(file => existsSync(file))
+  if (!source) {
+    logger.warn('Management dashboard: no cloud config found to ship — skipping the live dashboard.')
+    return null
+  }
+
+  const stage = join(cwd, LIVE_STAGE_DIR)
+  try {
+    mkdirSync(stage, { recursive: true })
+    // Keep the filename the box's config loader looks for. `config/cloud.ts` is
+    // Stacks' layout; anything else is bunfig's `cloud.config.ts`.
+    const isStacksLayout = source.endsWith(join('config', 'cloud.ts')) || source.endsWith(join('config', 'cloud.js'))
+    if (isStacksLayout) {
+      mkdirSync(join(stage, 'config'), { recursive: true })
+      copyFileSync(source, join(stage, 'config', source.endsWith('.ts') ? 'cloud.ts' : 'cloud.js'))
+    }
+    else {
+      copyFileSync(source, join(stage, source.endsWith('.ts') ? 'cloud.config.ts' : 'cloud.config.js'))
+    }
+
+    const pkg = {
+      name: 'ts-cloud-dashboard',
+      private: true,
+      type: 'module',
+      dependencies: { '@stacksjs/ts-cloud': resolveDashboardVersion() },
+    }
+    writeFileSync(join(stage, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
+    return LIVE_STAGE_DIR
+  }
+  catch (error: any) {
+    logger.warn(`Management dashboard: could not stage the live release (${error?.message ?? error}) — skipping.`)
+    return null
+  }
+}
+
+/**
+ * Resolve the UI source to ship (STATIC mode only — the live dashboard gets its
+ * UI from the npm package it installs on the box). Prefers the repo's local
+ * `packages/ui/` (built on the deploy machine), then the prebuilt UI bundled in
+ * the installed package. Returns `{ uiRoot, build }` or null when unavailable.
  */
 export function resolveUiSource(cwd: string): { uiRoot: string, build: string | false } | null {
   // 1. Local checkout (repo dogfooding): build packages/ui → packages/ui/dist on the deploy host.
@@ -150,6 +242,39 @@ export function ensureManagementDashboard(
   if (hasManagementDashboardSite(config))
     return config
 
+  const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
+  const domain = process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined
+  const port = Number(process.env.TS_CLOUD_UI_PORT) || undefined
+  const sites = { ...(config.sites ?? {}) }
+
+  // Live is the default: the dashboard authenticates itself and can scope
+  // collaborators to their own sites. Static is an explicit step back.
+  if (!truthy(process.env.TS_CLOUD_UI_STATIC)) {
+    const uiRoot = stageLiveDashboardRoot(cwd, logger)
+    if (!uiRoot)
+      return config
+
+    const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
+      uiRoot,
+      build: false,
+      domain,
+      port,
+      live: true,
+    })
+    if (resolved.length === 0) {
+      logger.info('Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.')
+      return config
+    }
+
+    for (const { name, site } of resolved) {
+      sites[name] = site
+      logger.info(`Management dashboard → https://${site.domain} (sign in with your ts-cloud account; the first deploy prints an admin password once)`)
+    }
+    config.sites = sites
+    return config
+  }
+
+  // --- Static + htpasswd (opt-in) ---------------------------------------
   const ui = resolveUiSource(cwd)
   if (!ui) {
     logger.info('Management dashboard: UI not found (no local ui/ or packaged dist/ui) — skipping auto-deploy.')
@@ -158,20 +283,14 @@ export function ensureManagementDashboard(
 
   const username = process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin'
   const auth = resolveDashboardAuth(cwd, username, logger)
-  const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
-
-  const live = truthy(process.env.TS_CLOUD_UI_LIVE)
-  const port = Number(process.env.TS_CLOUD_UI_PORT) || undefined
-  // One dashboard per distinct apex domain (each site gets its own
-  // `dashboard.<apex>` host), all sharing this UI + these credentials.
   const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
     uiRoot: ui.uiRoot,
     build: ui.build,
-    domain: process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined,
+    domain,
     username,
     password: auth.password,
     realm: process.env.TS_CLOUD_UI_REALM?.trim() || undefined,
-    live,
+    live: false,
     port,
   })
 
@@ -185,7 +304,7 @@ export function ensureManagementDashboard(
     : auth.source === 'env'
       ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
       : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
-  const sites = { ...(config.sites ?? {}) }
+  logger.warn('Management dashboard: static mode — one shared password, and no per-site collaborators. Unset TS_CLOUD_UI_STATIC for the live dashboard.')
   for (const { name, site } of resolved) {
     sites[name] = site
     logger.info(`Management dashboard → https://${site.domain} (${authNote})`)

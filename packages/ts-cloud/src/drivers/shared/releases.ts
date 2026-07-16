@@ -62,10 +62,22 @@ export function releasePaths(base: string, releaseId: string): ReleasePaths {
   }
 }
 
-/** A shared path is a regular file (linked as a file) when it looks like `.env` or has a dot-extension. */
+/**
+ * Is a shared path a regular file (placeheld with `touch`) rather than a
+ * directory (`mkdir -p`)? Getting this wrong is quiet and nasty: a directory
+ * touched as a file makes the app's first write fail on the box, long after the
+ * deploy reported success.
+ *
+ * A file is either a known dotfile (`.env`, `.env.production`) or something
+ * with an extension (`database.sqlite`). Everything else is a directory —
+ * including dot-DIRECTORIES like `.ts-cloud`, which an earlier
+ * "starts with a dot ⇒ file" rule misread.
+ */
 function isFileSharedPath(p: string): boolean {
   const name = p.split('/').pop() || p
-  return name.startsWith('.') || /\.[a-z0-9]+$/i.test(name)
+  if (name === '.env' || name.startsWith('.env.'))
+    return true
+  return /\.[a-z0-9]+$/i.test(name)
 }
 
 /**

@@ -1047,7 +1047,12 @@ export interface SiteConfig {
    * Paths symlinked from the site's `shared/` directory into every release so
    * they persist across deploys (e.g. `storage`, uploaded files, a SQLite db).
    * `.env` is always shared and need not be listed.
-   * @default ['storage', '.env']
+   *
+   * A release is a fresh directory, so anything the app WRITES and must keep
+   * has to be listed here or the next deploy silently starts it from empty.
+   *
+   * Honored by both PHP/Laravel sites and server-app sites (`start`).
+   * @default ['storage', '.env'] for PHP sites; `['.env']` for server-app sites
    */
   sharedPaths?: string[]
 

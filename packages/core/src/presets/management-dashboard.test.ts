@@ -35,18 +35,68 @@ describe('resolveDashboardDomain', () => {
 describe('resolveManagementDashboardSite', () => {
   const base = cfg({ sites: { main: { root: 'dist', domain: 'acme.com' } as any } })
 
-  it('builds a server-static site with htpasswd when a password is given', () => {
-    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun run build', password: 's3cret' })
+  it('defaults to live: a box-mode service, not static files', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
     expect(r?.name).toBe('dashboard-acme-com')
     expect(r?.site.domain).toBe('dashboard.acme.com')
+    expect(r?.site.deploy).toBe('server')
+    expect(r?.site.type).toBeUndefined() // server-app, not static
+    expect(r?.site.port).toBe(7676)
+  })
+
+  /**
+   * The systemd unit runs `/usr/local/bin/bun <args>`, so a bare `cloud` would
+   * be resolved by bun as a FILE to execute and the service would never start.
+   * The entry has to be the installed module path.
+   */
+  it('starts the CLI by module path, runnable by `bun <args>`', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false, port: 7700 })
+    expect(r?.site.start).toBe('bun ./node_modules/@stacksjs/ts-cloud/dist/bin/cli.js dashboard:serve --box --host 127.0.0.1 --port 7700')
+    expect(r?.site.start).not.toMatch(/^bun cloud\b/)
+    expect(r?.site.port).toBe(7700)
+  })
+
+  it('installs the CLI on the box, so the artifact need not ship one', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    expect(r?.site.preStart).toEqual(['bun install --production --no-save'])
+  })
+
+  /**
+   * Users, grants and the session key are written by the running dashboard. A
+   * release is a fresh directory, so without a shared path every deploy would
+   * silently wipe every collaborator.
+   */
+  it('persists dashboard state across deploys', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    expect(r?.site.sharedPaths).toEqual(['.ts-cloud'])
+  })
+
+  /**
+   * htpasswd in front of the live dashboard would make every collaborator need
+   * the box's one shared password just to reach the login page — defeating the
+   * per-site grants it exists to provide.
+   */
+  it('never puts htpasswd in front of the live dashboard', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false, password: 's3cret', username: 'admin' })
+    expect(r?.site.auth).toBeUndefined()
+  })
+
+  it('health-gates the live service on its login page', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    expect(r?.site.healthCheck).toEqual({ path: '/login' })
+  })
+
+  it('builds a server-static site with htpasswd in static mode', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun run build', password: 's3cret', live: false })
+    expect(r?.name).toBe('dashboard-acme-com')
     expect(r?.site.type).toBe('static')
     expect(r?.site.deploy).toBe('server')
     expect(r?.site.build).toBe('cd packages/ui && bun run build')
     expect(r?.site.auth).toEqual({ username: 'admin', password: 's3cret', realm: undefined })
   })
 
-  it('serves WITHOUT auth when no password is provided', () => {
-    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui', build: false })
+  it('static mode serves WITHOUT auth when no password is provided', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui', build: false, live: false })
     expect(r?.site.auth).toBeUndefined()
     expect(r?.site.build).toBeUndefined()
     expect(r?.site.root).toBe('/pkg/dist/ui')
@@ -62,19 +112,16 @@ describe('resolveManagementDashboardSite', () => {
     expect(resolveManagementDashboardSite(cfg({}), 'production', { uiRoot: 'packages/ui/dist' })).toBeNull()
   })
 
-  it('live mode builds a server-app (box-mode service) behind the proxy', () => {
-    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true, port: 7700, password: 's3cret' })
-    expect(r?.site.deploy).toBe('server')
-    expect(r?.site.type).toBeUndefined() // server-app, not static
-    expect(r?.site.start).toBe('cloud dashboard:serve --box --host 127.0.0.1 --port 7700')
-    expect(r?.site.port).toBe(7700)
-    expect(r?.site.auth).toEqual({ username: 'admin', password: 's3cret', realm: undefined })
-  })
-
-  it('live mode defaults the port to 7676', () => {
-    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '/pkg/dist/ui-src', build: false, live: true })
-    expect(r?.site.port).toBe(7676)
-    expect(r?.site.start).toContain('--port 7676')
+  it('is single-host in live mode even with several apexes', () => {
+    // One control panel per box, many sites, per-site grants — a second host
+    // would collide on the loopback port.
+    const multi = cfg({ sites: {
+      a: { root: 'dist', domain: 'acme.com' } as any,
+      b: { root: 'dist', domain: 'other.io' } as any,
+    } })
+    const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    expect(sites).toHaveLength(1)
+    expect(sites[0].site.domain).toBe('dashboard.acme.com')
   })
 })
 
@@ -139,7 +186,9 @@ describe('resolveManagementDashboardSites (per-apex)', () => {
   } })
 
   it('injects one static dashboard per apex, every key domain-derived', () => {
-    const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui', build: false, password: 's3cret' })
+    // Per-apex fan-out is a static-mode feature: it is only serving the same
+    // files on each domain, so there is no port to collide on.
+    const sites = resolveManagementDashboardSites(multi, 'production', { uiRoot: '/pkg/dist/ui', build: false, password: 's3cret', live: false })
     expect(sites.map(s => s.name)).toEqual(['dashboard-ghostanalytics-org', 'dashboard-bughq-org', 'dashboard-stacksjs-com'])
     expect(sites.map(s => s.site.domain)).toEqual(['dashboard.ghostanalytics.org', 'dashboard.bughq.org', 'dashboard.stacksjs.com'])
     // All share the same UI root + credentials.

@@ -2,12 +2,26 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
 
 /**
  * Auto-deployed management dashboard (the `@ts-cloud/ui` stx app — the Server +
- * Serverless views). When a server is provisioned, ts-cloud injects this as a
- * server-static site so the dashboard ships automatically with every box.
+ * Serverless views). When a server is provisioned, ts-cloud injects this so the
+ * dashboard ships automatically with every box.
  *
- * It is served behind HTTP Basic auth (htpasswd) whose password comes from an
- * environment value (`TS_CLOUD_UI_PASSWORD`). If that value is NOT set, the
- * dashboard is served WITHOUT auth — no password is invented.
+ * Two models:
+ *
+ * **Live (the default).** The dashboard runs as a service on the box
+ * (`cloud dashboard:serve --box`) behind the proxy, and authenticates itself:
+ * a login page, sessions, and per-site collaborator grants. No htpasswd — the
+ * app is the authentication, and a shared Basic-auth password in front of it
+ * would defeat the point, since every collaborator would need the box's one
+ * password just to reach the login page.
+ *
+ * **Static (`TS_CLOUD_UI_STATIC`).** The built UI shipped as files behind
+ * htpasswd. One shared password, all data baked into the HTML at build time,
+ * and therefore **no collaborators** — whoever holds the password sees every
+ * site on the box. Kept for boxes that cannot run the service.
+ *
+ * Live mode is single-host by design: one control panel per box, many sites,
+ * per-site grants (the Forge/Coolify model). Static mode fans out one dashboard
+ * per apex, since it is only serving the same files on each domain.
  */
 
 export interface ManagementDashboardOptions {
@@ -17,25 +31,44 @@ export interface ManagementDashboardOptions {
   build?: string | false
   /** Explicit domain (e.g. from `TS_CLOUD_UI_DOMAIN`); else derived. */
   domain?: string
-  /** Basic-auth username. @default 'admin' */
+  /** Basic-auth username, static mode only. @default 'admin' */
   username?: string
   /**
-   * Basic-auth password. When empty/undefined the dashboard is served WITHOUT
-   * htpasswd (no default password is invented).
+   * Basic-auth password, static mode only. When empty/undefined the static
+   * dashboard is served WITHOUT htpasswd (no default password is invented).
+   * Ignored in live mode, where the app authenticates.
    */
   password?: string
-  /** Browser auth realm. */
+  /** Browser auth realm, static mode only. */
   realm?: string
   /**
-   * Live mode: deploy the dashboard as a server-app (a `cloud dashboard:serve
-   * --box` service on the box) instead of static files, so it serves the
-   * project's LIVE data + a working control API on the server. The proxy routes
-   * the dashboard host to its loopback port (behind Basic auth).
+   * Live mode: run the dashboard as a service on the box, serving live data,
+   * the control API, and its own login + collaborator model.
+   * @default true
    */
   live?: boolean
   /** Loopback port for the live (box-mode) dashboard service. @default 7676 */
   port?: number
+  /**
+   * ts-cloud version the box installs to run the dashboard. Defaults to the
+   * published range so a box always gets a dashboard matching this generation.
+   */
+  version?: string
 }
+
+/** Where the live dashboard keeps its users, session key and cache. */
+export const DASHBOARD_STATE_DIR = '.ts-cloud'
+
+/**
+ * The dashboard service's entry point inside its release dir. The CLI is
+ * installed from npm by the release's `bun install`, so this path exists on the
+ * box without the deploy having to ship a binary.
+ *
+ * Called through the module path rather than the `cloud` bin shim because the
+ * systemd unit runs `/usr/local/bin/bun <args>` directly — a bare `cloud` would
+ * be resolved by bun as a FILE to execute, and the service would never start.
+ */
+export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/cli.js'
 
 /** The registrable apex (`acme.com`) of a hostname, naïvely the last two labels. */
 function apexOf(domain: string): string {
@@ -177,22 +210,32 @@ export function resolveManagementDashboardSites(
     : {}
   const build = opts.build === false || opts.build === undefined ? {} : { build: opts.build }
 
-  if (opts.live) {
+  // Live is the default: one control panel per box, authenticating itself.
+  if (opts.live !== false) {
     const domain = resolveDashboardDomain(config, environment, opts.domain)
     if (!domain)
       return []
-    // Server-app: a box-mode dashboard service on a loopback port, fronted by the
-    // proxy (with Basic auth). Serves live data + the control API on the box.
+
     const port = opts.port ?? 7676
     const site: SiteConfig = {
+      // The release ships the project's cloud config + a package.json; the
+      // CLI (and the UI it serves) come from npm via `bun install` below, so
+      // the artifact stays tiny and the box always runs a real published build.
       root: opts.uiRoot,
       deploy: 'server',
       domain,
-      start: `cloud dashboard:serve --box --host 127.0.0.1 --port ${port}`,
+      preStart: ['bun install --production --no-save'],
+      start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
       port,
+      // Users, site grants and the session key live here. Without this every
+      // deploy would hand the box a fresh release dir and silently wipe every
+      // collaborator, forcing a new admin password each time.
+      sharedPaths: [DASHBOARD_STATE_DIR],
+      healthCheck: { path: '/login' },
       ssl: { provider: 'letsencrypt' },
-      ...build,
-      ...auth,
+      // Deliberately no `auth`: the dashboard authenticates itself. htpasswd in
+      // front would make every collaborator need the box's shared password just
+      // to see the login page, which is exactly what per-site grants replace.
     }
     return [{ name: managementDashboardSiteName(domain), site }]
   }

@@ -57,6 +57,13 @@ export interface BuildSiteDeployScriptOptions {
    */
   preStartCommands?: string[]
   /**
+   * Extra paths kept in `shared/` and symlinked into each release, so they
+   * survive a deploy. `.env` is always shared; anything the app WRITES and must
+   * keep (a state directory, a database file) has to be listed here or the next
+   * release silently starts from empty.
+   */
+  sharedPaths?: readonly string[]
+  /**
    * True zero-downtime cutover for ported sites: the new release runs as its
    * own systemd instance (`<slug>-<site>@<releaseId>`) that binds the same
    * port via SO_REUSEPORT while the old instance still serves, must pass a
@@ -118,7 +125,8 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const paths = releasePaths(base, releaseId)
   const unitBase = `${slug}-${siteName}`
   const serviceName = `${unitBase}.service`
-  const sharedPaths = ['.env']
+  // `.env` is always shared; a site adds anything else it writes and must keep.
+  const sharedPaths = [...new Set(['.env', ...(options.sharedPaths ?? [])])]
 
   const envFile = formatEnvFile(envEntries)
 

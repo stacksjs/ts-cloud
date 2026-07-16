@@ -222,6 +222,7 @@ export async function deploySiteRelease(
         envEntries: site.env || {},
         port: site.port,
         preStartCommands: site.preStart,
+        sharedPaths: site.sharedPaths,
         // Ported sites cut over with SO_REUSEPORT overlap + health gate by
         // default; `zeroDowntime: false` opts back into stop/start. Portless
         // sites (workers/schedulers) always stop/start — see the builder.
