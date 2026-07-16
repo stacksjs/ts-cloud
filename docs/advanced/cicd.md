@@ -125,8 +125,8 @@ jobs:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsDeploy
           aws-region: us-east-1
 
-      # configure-aws-credentials exports AWS_* into the environment,
-      # so cloud picks them up automatically.
+# configure-aws-credentials exports AWS_* into the environment,
+# so cloud picks them up automatically.
       - run: bunx cloud deploy --env production --yes
 ```
 

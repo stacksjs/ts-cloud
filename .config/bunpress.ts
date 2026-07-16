@@ -52,6 +52,7 @@ const config: BunPressConfig = {
         { text: 'AWS Resources', link: '/features/aws' },
         { text: 'Serverless (Vapor replacement)', link: '/features/serverless' },
         { text: 'Laravel (Forge replacement)', link: '/features/laravel' },
+        { text: 'Dashboard & Collaborators', link: '/features/dashboard-collaborators' },
         { text: 'State Management', link: '/features/state' },
         { text: 'Multi-Region', link: '/features/multi-region' },
         { text: 'Environments', link: '/features/environments' },

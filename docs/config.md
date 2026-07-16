@@ -26,9 +26,48 @@ what gets deployed:
 | `sites` | `Record<string, SiteConfig>` | Static sites + server-served app sites ([Site Deployment Targets](#site-deployment-targets)). |
 | `notifications` | `NotificationsConfig` | Slack/Discord/Telegram/email/webhook for deploy, SSL, health-check, backup events. |
 | `cloud` | `{ provider: 'aws' \| 'hetzner' }` | Compute provider. Defaults to AWS. |
-| `hetzner` | `HetznerConfig` | Hetzner Cloud settings when `cloud.provider` is `hetzner`. |
+| `hetzner` | `HetznerConfig` | Hetzner Cloud settings when `cloud.provider` is `hetzner` ([below](#hetzner)). |
 | `objectStorage` | `ObjectStorageConfig` | Object-storage provider (AWS S3, Backblaze B2, Hetzner) — independent of `cloud.provider`. |
 | `aws` | `AwsConfig` | AWS account/credential overrides. |
+
+## Hetzner
+
+Set `cloud.provider` to `hetzner` and configure the box under `hetzner`:
+
+```ts
+const config: CloudConfig = {
+  cloud: { provider: 'hetzner' },
+  hetzner: {
+    location: 'fsn1',            // fsn1 | nbg1 | hel1 | ash | hil
+    image: 'ubuntu-24.04',
+    sshUser: 'root',
+    sshPrivateKeyPath: '~/.ssh/id_ed25519',
+    // apiToken is a secret — leave it out and use HCLOUD_TOKEN
+  },
+}
+```
+
+### Where each setting comes from
+
+Every field is optional, and each resolves through the same chain:
+
+1. an explicit argument (a driver option)
+2. `cloud.config.ts` → `hetzner.*`
+3. the environment: `HCLOUD_*`, or the `HETZNER_*` alias
+4. the documented default
+
+**Config always wins over the environment**, for every field including the token. A stray shell export must not silently redirect a deploy to another datacenter or another Hetzner account. In practice the token is simply left out of `cloud.config.ts` — it is a secret and the file is checked in — so it comes from `HCLOUD_TOKEN`. That is a convention, not a different rule.
+
+| Field | Environment | Default |
+|---|---|---|
+| `apiToken` | `HCLOUD_TOKEN` / `HETZNER_API_TOKEN` | none — a missing token fails loudly |
+| `location` | `HCLOUD_LOCATION` | `fsn1` |
+| `image` | `HCLOUD_IMAGE` | `ubuntu-24.04` |
+| `sshUser` | `HCLOUD_SSH_USER` | `root` |
+| `sshPrivateKeyPath` | `HCLOUD_SSH_KEY` | `~/.ssh/id_ed25519` |
+| `sshPublicKeyPath` | `HCLOUD_SSH_PUBLIC_KEY` | `<sshPrivateKeyPath>.pub` |
+
+`infrastructure.compute.image` overrides `hetzner.image` when set: it is the provider-agnostic way to pin an image, and it is what a golden-image bake sets.
 
 ## Two app models
 
