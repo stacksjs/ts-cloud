@@ -1,3 +1,33 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.18...v0.7.19)
+
+## 🚀 Features
+
+- **ui**: add the Team page for inviting collaborators to sites ([755394e](https://github.com/stacksjs/ts-cloud/commit/755394e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: make the cockpit scope-aware and add sign-out ([782059a](https://github.com/stacksjs/ts-cloud/commit/782059a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: require a session and enforce per-site scope on every request ([c5ab7f1](https://github.com/stacksjs/ts-cloud/commit/c5ab7f1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: scope resolved data to the caller's sites ([508402e](https://github.com/stacksjs/ts-cloud/commit/508402e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: map every API route to a capability, failing closed ([4af52dd](https://github.com/stacksjs/ts-cloud/commit/4af52dd)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: add identity, sessions and per-site authorization model ([cb7e215](https://github.com/stacksjs/ts-cloud/commit/cb7e215)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **hetzner**: resolve every setting through one documented chain ([1d5c5ec](https://github.com/stacksjs/ts-cloud/commit/1d5c5ec)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📚 Documentation
+
+- cover the collaborator model and Hetzner config precedence ([91a8675](https://github.com/stacksjs/ts-cloud/commit/91a8675)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.19 ([5bb41b0](https://github.com/stacksjs/ts-cloud/commit/5bb41b0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: ignore the whole .ts-cloud state directory ([52c6ef0](https://github.com/stacksjs/ts-cloud/commit/52c6ef0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deps**: declare bun ^1.3.14 in deps.yaml ([487559f](https://github.com/stacksjs/ts-cloud/commit/487559f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **pkg**: add sideEffects:false to @ts-cloud/aws-types (publint) ([d9340ea](https://github.com/stacksjs/ts-cloud/commit/d9340ea)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.17...v0.7.18)
 
 ## 🧹 Chores
