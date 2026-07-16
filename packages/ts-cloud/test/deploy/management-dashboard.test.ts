@@ -123,7 +123,8 @@ describe('ensureManagementDashboard', () => {
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('does nothing when no UI is available', () => {
+  it('does nothing when no UI is available (static mode)', () => {
+    process.env.TS_CLOUD_UI_STATIC = '1'
     const dir = mkdtempSync(join(tmpdir(), 'tscloud-noui2-'))
     try {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
@@ -170,28 +171,50 @@ describe('ensureManagementDashboard (live, the default)', () => {
       const stage = join(dir, root)
       // The box resolves the same sites from this config.
       expect(existsSync(join(stage, 'cloud.config.ts'))).toBe(true)
+      // Inlined, not copied: a real config imports things that do not exist on the box.
+      const staged = readFileSync(join(stage, 'cloud.config.ts'), 'utf8')
+      expect(staged).not.toMatch(/^\s*import\s/m)
+      expect(staged).toContain('export default')
       const pkg = JSON.parse(readFileSync(join(stage, 'package.json'), 'utf8'))
       expect(pkg.dependencies['@stacksjs/ts-cloud']).toBeTruthy()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('keeps the Stacks config layout so the box loader still finds it', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'tscloud-stackslayout-'))
+  /**
+   * A real config imports things that do not exist on the box — Stacks' does
+   * `import { servers } from '~/cloud/servers'` — so the config is shipped as
+   * the already-resolved object, not as a copy of the source file.
+   */
+  it('inlines the resolved config, needing no config file on disk', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-nocfgfile-'))
     try {
-      mkdirSync(join(dir, 'config'), { recursive: true })
-      writeFileSync(join(dir, 'config', 'cloud.ts'), 'export default {}\n')
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
-      expect(existsSync(join(dir, LIVE_STAGE_DIR, 'config', 'cloud.ts'))).toBe(true)
+      expect((c.sites as any)['dashboard-acme-com']).toBeTruthy()
+
+      const staged = readFileSync(join(dir, LIVE_STAGE_DIR, 'cloud.config.ts'), 'utf8')
+      expect(staged).not.toMatch(/^\s*import\s/m)
+      expect(staged).toContain('export default')
+      expect(staged).toContain('acme.com')
+    }
+    finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+
+  it('needs no UI on the deploy host: the box installs it from npm', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-noui3-'))
+    try {
+      // No packages/ui here at all — live mode does not care.
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
       expect((c.sites as any)['dashboard-acme-com']).toBeTruthy()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }
   })
 
-  it('skips the live dashboard when the project has no cloud config to ship', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'tscloud-nocfg-'))
+  it('skips the live dashboard when the config has no project slug', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-noslug-'))
     try {
-      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      const broken = { ...cfg(), project: {} } as any
+      const c = ensureManagementDashboard(broken, { cwd: dir })
       expect((c.sites as any)['dashboard-acme-com']).toBeUndefined()
     }
     finally { rmSync(dir, { recursive: true, force: true }) }

@@ -351,9 +351,41 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect((config.sites as any)['dashboard-example-com']).toBeUndefined()
   })
 
-  it('skips the dashboard gracefully (deploy still succeeds) when its UI cannot be built', async () => {
+  it('deploys the dashboard as a live service by default', async () => {
+    const repo = mkdtempSync(join(tmpdir(), 'ts-cloud-liveui-'))
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const config = baseConfig()
+    const ok = await deployAllComputeSites({
+      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: repo,
+      tarballForSite: () => webTar,
+    })
+
+    expect(ok).toBe(true)
+    const dashboard = (config.sites as any)['dashboard-example-com']
+    expect(dashboard).toBeTruthy()
+    // A service, not static files behind htpasswd.
+    expect(dashboard.port).toBe(7676)
+    expect(dashboard.auth).toBeUndefined()
+
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
+    const dashboardCommands = allCommands.filter(c => c.includes('dashboard-example-com'))
+    expect(dashboardCommands.length).toBeGreaterThan(0)
+    const text = dashboardCommands.join('\n')
+    // Installs the CLI, runs it by module path, and keeps its state in shared/.
+    expect(text).toContain('bun install --production --no-save')
+    expect(text).toContain('node_modules/@stacksjs/ts-cloud/dist/bin/cli.js dashboard:serve --box')
+    expect(text).toContain('shared/.ts-cloud')
+    rmSync(repo, { recursive: true, force: true })
+  }, 60_000)
+
+  it('skips the dashboard gracefully (deploy still succeeds) when its UI cannot be built (static mode)', async () => {
     // A fake packages/ui (no real stx/deps) so injection happens but the build
     // fails — the dashboard must be dropped without failing the app deploy.
+    process.env.TS_CLOUD_UI_STATIC = '1'
     const fakeRepo = mkdtempSync(join(tmpdir(), 'ts-cloud-fakeui-'))
     mkdirSync(join(fakeRepo, 'packages', 'ui', 'pages'), { recursive: true })
     writeFileSync(join(fakeRepo, 'packages', 'ui', 'package.json'), '{"name":"@ts-cloud/ui"}')
@@ -374,5 +406,6 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
     expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(false)
     rmSync(fakeRepo, { recursive: true, force: true })
+    delete process.env.TS_CLOUD_UI_STATIC
   }, 60_000)
 })

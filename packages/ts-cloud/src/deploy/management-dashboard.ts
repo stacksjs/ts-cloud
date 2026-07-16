@@ -34,11 +34,12 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites } from '@ts-cloud/core'
+import { serializeDashboardConfig } from './dashboard-config-module'
 
 /**
  * Legacy site key for the management dashboard. Auto-injected dashboards are
@@ -118,14 +119,6 @@ function truthy(v: string | undefined): boolean {
 /** Where the live dashboard's release is staged, inside the project checkout. */
 export const LIVE_STAGE_DIR: string = join('.ts-cloud', 'dashboard-release')
 
-/** Config files the live dashboard can read on the box, in load order. */
-const CONFIG_CANDIDATES: string[][] = [
-  ['config', 'cloud.ts'],
-  ['config', 'cloud.js'],
-  ['cloud.config.ts'],
-  ['cloud.config.js'],
-]
-
 /**
  * The ts-cloud version the box should install. Reads this package's own version
  * so a box runs a dashboard matching the CLI that deployed it, rather than
@@ -151,34 +144,27 @@ export function resolveDashboardVersion(): string {
 }
 
 /**
- * Stage the live dashboard's release: the project's cloud config (so the box
- * can resolve the same sites) plus a `package.json` whose install pulls the CLI
- * and UI from npm.
+ * Stage the live dashboard's release: the RESOLVED cloud config inlined as a
+ * self-contained module, plus a `package.json` whose install pulls the CLI and
+ * UI from npm.
  *
- * Returns the staged directory relative to `cwd`, or null when the project has
- * no cloud config to ship — without one the dashboard on the box would have
- * nothing to describe.
+ * The config is serialized rather than copied because a real one imports things
+ * that do not exist on the box — Stacks' does `import { servers } from
+ * '~/cloud/servers'` — and the import would throw, leaving the dashboard with
+ * nothing to describe. Credentials are stripped on the way out.
+ *
+ * Returns the staged directory relative to `cwd`, or null when staging fails.
  */
-export function stageLiveDashboardRoot(cwd: string, logger: EnsureDashboardLogger): string | null {
-  const source = CONFIG_CANDIDATES.map(parts => join(cwd, ...parts)).find(file => existsSync(file))
-  if (!source) {
-    logger.warn('Management dashboard: no cloud config found to ship — skipping the live dashboard.')
+export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger: EnsureDashboardLogger): string | null {
+  if (!config?.project?.slug) {
+    logger.warn('Management dashboard: the cloud config has no project slug — skipping the live dashboard.')
     return null
   }
 
   const stage = join(cwd, LIVE_STAGE_DIR)
   try {
     mkdirSync(stage, { recursive: true })
-    // Keep the filename the box's config loader looks for. `config/cloud.ts` is
-    // Stacks' layout; anything else is bunfig's `cloud.config.ts`.
-    const isStacksLayout = source.endsWith(join('config', 'cloud.ts')) || source.endsWith(join('config', 'cloud.js'))
-    if (isStacksLayout) {
-      mkdirSync(join(stage, 'config'), { recursive: true })
-      copyFileSync(source, join(stage, 'config', source.endsWith('.ts') ? 'cloud.ts' : 'cloud.js'))
-    }
-    else {
-      copyFileSync(source, join(stage, source.endsWith('.ts') ? 'cloud.config.ts' : 'cloud.config.js'))
-    }
+    writeFileSync(join(stage, 'cloud.config.ts'), serializeDashboardConfig(config))
 
     const pkg = {
       name: 'ts-cloud-dashboard',
@@ -250,7 +236,9 @@ export function ensureManagementDashboard(
   // Live is the default: the dashboard authenticates itself and can scope
   // collaborators to their own sites. Static is an explicit step back.
   if (!truthy(process.env.TS_CLOUD_UI_STATIC)) {
-    const uiRoot = stageLiveDashboardRoot(cwd, logger)
+    // Staged before the dashboard site is injected, so the box's config
+    // describes the project's sites and not the dashboard itself.
+    const uiRoot = stageLiveDashboardRoot(config, cwd, logger)
     if (!uiRoot)
       return config
 
