@@ -26,9 +26,13 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
     case 'aws':
       return new AwsDriver({ region: options.config.project.region })
     case 'hetzner':
+      // Pass every `hetzner.*` field through: a field the factory forgets is a
+      // field the user can set and nothing reads. (`image` is resolved from the
+      // config directly, per-call, since compute.image can override it.)
       return new HetznerDriver({
         apiToken: options.config.hetzner?.apiToken,
         sshPrivateKeyPath: options.config.hetzner?.sshPrivateKeyPath,
+        sshPublicKeyPath: options.config.hetzner?.sshPublicKeyPath,
         sshUser: options.config.hetzner?.sshUser,
         location: options.config.hetzner?.location,
       })

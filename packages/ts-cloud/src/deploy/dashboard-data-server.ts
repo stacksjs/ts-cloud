@@ -9,6 +9,7 @@ import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createCloudDriver } from '../drivers'
+import { resolveHetznerLocation } from '../drivers/hetzner/config'
 import { resolveSiteKind, siteInstallBase } from './site-target'
 import { describeSshKeys } from './ssh-config-editor'
 
@@ -124,13 +125,10 @@ function configuredProvider(config: CloudConfig): string {
 }
 
 function configuredRegion(config: CloudConfig): string {
-  const provider = configuredProvider(config)
-  if (provider === 'hetzner') {
-    return (config.hetzner as any)?.location
-      ?? process.env.HCLOUD_LOCATION
-      ?? process.env.HETZNER_LOCATION
-      ?? 'fsn1'
-  }
+  // Resolve through the same chain the Hetzner driver uses, so the cockpit
+  // cannot report a location the box is not actually in.
+  if (configuredProvider(config) === 'hetzner')
+    return resolveHetznerLocation(config)
 
   return config.project.region ?? 'us-east-1'
 }

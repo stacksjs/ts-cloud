@@ -3,6 +3,9 @@
  * @see https://docs.hetzner.cloud/
  */
 
+import type { CloudConfig } from '@ts-cloud/core'
+import { resolveHetznerApiToken as resolveToken } from './config'
+
 const DEFAULT_API_URL = 'https://api.hetzner.cloud/v1'
 
 export interface HetznerApiErrorBody {
@@ -354,8 +357,15 @@ export class HetznerClient {
   }
 }
 
-export function resolveHetznerApiToken(configToken?: string): string {
-  const token = configToken || process.env.HCLOUD_TOKEN || process.env.HETZNER_API_TOKEN
+/**
+ * The Hetzner API token, or a clear error when none is configured.
+ *
+ * Resolution itself lives in {@link import('./config').resolveHetznerApiToken}
+ * so the driver, the client and the dashboard cannot drift apart on where a
+ * setting comes from.
+ */
+export function resolveHetznerApiToken(configToken?: string, config?: CloudConfig): string {
+  const token = resolveToken(configToken, config)
   if (!token) {
     throw new Error('Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.')
   }

@@ -53,18 +53,39 @@ export interface ObjectStorageConfig {
 }
 
 /**
- * Hetzner Cloud configuration
+ * Hetzner Cloud configuration.
+ *
+ * Every field is optional and falls back to an environment variable, then to a
+ * documented default. What is written here always wins over the environment: a
+ * stray shell export must not silently redirect a deploy to another datacenter
+ * or another account.
+ *
+ * Resolution lives in one place: `resolveHetznerSettings` in
+ * `@stacksjs/ts-cloud` (`drivers/hetzner/config.ts`).
  */
 export interface HetznerConfig {
-  /** Hetzner Cloud API token (falls back to HCLOUD_TOKEN / HETZNER_API_TOKEN) */
+  /**
+   * Hetzner Cloud API token. Normally left unset here and supplied via
+   * `HCLOUD_TOKEN` (or `HETZNER_API_TOKEN`), since it is a secret and this file
+   * is checked in. Never defaulted: a missing token fails loudly.
+   */
   apiToken?: string
-  /** Location slug, e.g. fsn1, nbg1, hel1 @default 'fsn1' */
+  /** Location slug, e.g. fsn1, nbg1, hel1. Env: `HCLOUD_LOCATION`. @default 'fsn1' */
   location?: string
-  /** Server image slug @default 'ubuntu-24.04' */
+  /**
+   * Server image slug. `infrastructure.compute.image` overrides this when set
+   * (it is the provider-agnostic way to pin an image). Env: `HCLOUD_IMAGE`.
+   * @default 'ubuntu-24.04'
+   */
   image?: string
-  /** Path to SSH private key used for deploy commands @default ~/.ssh/id_ed25519 */
+  /** Path to SSH private key used for deploy commands. Env: `HCLOUD_SSH_KEY`. @default '~/.ssh/id_ed25519' */
   sshPrivateKeyPath?: string
-  /** SSH user for deploy commands @default 'root' */
+  /**
+   * Path to the SSH public key uploaded to Hetzner. Env: `HCLOUD_SSH_PUBLIC_KEY`.
+   * @default `${sshPrivateKeyPath}.pub`
+   */
+  sshPublicKeyPath?: string
+  /** SSH user for deploy commands. Env: `HCLOUD_SSH_USER`. @default 'root' */
   sshUser?: string
 }
 
@@ -1799,7 +1820,7 @@ export interface ServerlessAppConfig {
   gatewayVersion?: 1 | 2
   /**
    * Cheap keep-warm count. Drives a scheduled EventBridge warmer rule that pings
-   * the function(s) every few minutes (the runtime short-circuits warmer pings).
+   * the function(_s) every few minutes (the runtime short-circuits warmer pings).
    * Reduces (does not eliminate) cold starts. For zero cold starts use
    * {@link provisionedConcurrency}. 0/undefined disables ping-warming.
    */

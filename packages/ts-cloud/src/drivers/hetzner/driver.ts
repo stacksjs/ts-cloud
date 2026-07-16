@@ -16,6 +16,7 @@ import type {
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
+import { resolveHetznerImage, resolveHetznerSettings } from './config'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import { buildRpxConfig, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
@@ -90,10 +91,6 @@ export interface HetznerDriverOptions {
   }
 }
 
-function expandHome(path: string): string {
-  return path.startsWith('~/') ? join(homedir(), path.slice(2)) : path
-}
-
 export class HetznerDriver implements CloudDriver {
   readonly name = 'hetzner' as const
   readonly usesCloudFormation = false
@@ -110,10 +107,19 @@ export class HetznerDriver implements CloudDriver {
     this.client = options.client ?? new HetznerClient({
       apiToken: resolveHetznerApiToken(options.apiToken),
     })
-    this.sshPrivateKeyPath = expandHome(options.sshPrivateKeyPath || process.env.HCLOUD_SSH_KEY || '~/.ssh/id_ed25519')
-    this.sshPublicKeyPath = expandHome(options.sshPublicKeyPath || process.env.HCLOUD_SSH_PUBLIC_KEY || `${this.sshPrivateKeyPath}.pub`)
-    this.sshUser = options.sshUser || process.env.HCLOUD_SSH_USER || 'root'
-    this.location = options.location || process.env.HCLOUD_LOCATION || 'fsn1'
+    // Every Hetzner setting resolves through one chain (see ./config), so the
+    // driver, the API client and the dashboard cannot disagree about where a
+    // box lives or which key reaches it.
+    const settings = resolveHetznerSettings(undefined, {
+      sshPrivateKeyPath: options.sshPrivateKeyPath,
+      sshPublicKeyPath: options.sshPublicKeyPath,
+      sshUser: options.sshUser,
+      location: options.location,
+    })
+    this.sshPrivateKeyPath = settings.sshPrivateKeyPath
+    this.sshPublicKeyPath = settings.sshPublicKeyPath
+    this.sshUser = settings.sshUser
+    this.location = settings.location
     this.waitForBoot = options.waitForBoot ?? true
     this.bootWait = {
       sshIntervalMs: options.bootWait?.sshIntervalMs ?? 5000,
@@ -222,7 +228,7 @@ export class HetznerDriver implements CloudDriver {
     const userData = wrapCloudInitUserData(bootstrap)
 
     const serverType = resolveHetznerServerType(compute.size)
-    const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
+    const image = resolveHetznerImage(config)
 
     const firewallName = `${slug}-${environment}-app-fw`
     const { firewall } = await this.ensureFirewall(firewallName, labels, buildHetznerFirewallRules({
@@ -288,7 +294,7 @@ export class HetznerDriver implements CloudDriver {
     const compute = config.infrastructure!.compute!
     const stackName = resolveProjectStackName(config, environment)
     const serverType = resolveHetznerServerType(compute.size)
-    const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
+    const image = resolveHetznerImage(config)
     const location = config.hetzner?.location || this.location
     const baked = compute.bakedImage === true
 
@@ -506,7 +512,7 @@ export class HetznerDriver implements CloudDriver {
     const compute = config.infrastructure!.compute!
     const stackName = resolveProjectStackName(config, environment)
     const serverType = resolveHetznerServerType(compute.size)
-    const image = compute.image || config.hetzner?.image || 'ubuntu-24.04'
+    const image = resolveHetznerImage(config)
     const location = config.hetzner?.location || this.location
     const baked = compute.bakedImage === true
     const sites = config.sites || {}
