@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { authorize, isBoxCapability } from './dashboard-auth'
-import { allRoutePolicies, routePolicy } from './dashboard-policy'
+import { allRoutePolicies, isPublicRoute, PUBLIC_ROUTES, routePolicy } from './dashboard-policy'
 
 const member = { role: 'member' as const, sites: { blog: 'owner' as const } }
 
@@ -92,7 +92,23 @@ describe('policy coverage', () => {
     // matching can't turn this into a vacuous pass.
     expect(routes.size).toBeGreaterThan(20)
 
-    const missing = [...routes].filter(route => !(route in policies))
+    const missing = [...routes].filter(route => !(route in policies) && !PUBLIC_ROUTES.has(route))
     expect(missing).toEqual([])
+  })
+
+  it('keeps the public surface to login and logout only', () => {
+    // Anything reachable without a session is worth noticing in review, so pin
+    // the exact set rather than asserting a count.
+    expect([...PUBLIC_ROUTES].sort()).toEqual(['POST /api/login', 'POST /api/logout'])
+    expect(isPublicRoute('POST', '/api/login')).toBe(true)
+    expect(isPublicRoute('GET', '/api/dashboard-data')).toBe(false)
+    expect(isPublicRoute('POST', '/api/server/command')).toBe(false)
+  })
+
+  it('never marks a public route as also policy-governed', () => {
+    // A route in both sets would be ambiguous: the gate skips public routes, so
+    // its policy would be silently dead.
+    for (const route of PUBLIC_ROUTES)
+      expect(route in allRoutePolicies()).toBe(false)
   })
 })

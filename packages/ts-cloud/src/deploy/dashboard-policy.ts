@@ -26,6 +26,22 @@ export interface RoutePolicy {
 /** Sentinel for unlisted routes: the most privileged capability. */
 const FAIL_CLOSED: RoutePolicy = { capability: 'box:shell' }
 
+/**
+ * Routes reachable with no session at all. These necessarily run before there
+ * is a user to authorize, so they are listed here explicitly — the set is
+ * deliberately tiny and should stay that way.
+ *
+ * `/login` (the page) is served by the same public path.
+ */
+export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
+  'POST /api/login',
+  'POST /api/logout',
+])
+
+export function isPublicRoute(method: string, pathname: string): boolean {
+  return PUBLIC_ROUTES.has(`${method.toUpperCase()} ${pathname}`)
+}
+
 const POLICIES: Record<string, RoutePolicy> = {
   // --- Any authenticated user -------------------------------------------
   // Health carries no tenant data. Dashboard data and config are scoped to the

@@ -1,0 +1,141 @@
+/**
+ * The login page.
+ *
+ * Served directly by the dashboard server rather than built with the rest of
+ * the stx UI: it has to render before there is a session, and the built pages
+ * are scope-specific (see the per-scope UI cache in `local-dashboard-server`).
+ * Keeping it self-contained also means a broken UI build still leaves a way in.
+ *
+ * It mirrors the cockpit's existing design tokens so the two don't read as
+ * different products.
+ */
+
+const STYLES = `
+  :root {
+    --bg: #0a0e15; --bg2: #0b0f18; --panel: rgba(255,255,255,0.03); --panel-br: rgba(255,255,255,0.072);
+    --txt: #e9edf5; --txt2: #94a1b8; --txt3: #5a6577;
+    --accent: #5a8be0; --accent-ink: #061019;
+    --bad: #f0736e; --badbg: rgba(240,115,110,0.11);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { background: var(--bg); min-height: 100%; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif; color: var(--txt); min-height: 100vh;
+    background:
+      radial-gradient(900px 460px at 88% -8%, rgba(90,139,224,0.06), transparent 62%),
+      linear-gradient(175deg, var(--bg), var(--bg2));
+    -webkit-font-smoothing: antialiased;
+    display: grid; place-items: center; padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 380px;
+    background: var(--panel); border: 1px solid var(--panel-br); border-radius: 16px;
+    padding: 32px; backdrop-filter: blur(6px);
+    animation: rise .5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: none } }
+  @media (prefers-reduced-motion: reduce) { .card { animation: none } }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; }
+  .brand .dot { width: 20px; height: 20px; border-radius: 6px; background: var(--accent); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35); }
+  h1 { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; margin-top: 22px; }
+  .sub { color: var(--txt2); font-size: 13.5px; margin-top: 5px; line-height: 1.5; }
+  form { margin-top: 24px; display: grid; gap: 14px; }
+  .field { display: flex; flex-direction: column; gap: 7px; }
+  label { color: var(--txt3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; }
+  input {
+    width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px;
+    padding: 10px 12px; color: var(--txt); font-family: inherit; font-size: 14px;
+  }
+  input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,139,224,0.12); }
+  button {
+    margin-top: 4px; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px;
+    padding: 11px 16px; font-weight: 700; font-size: 13.5px; cursor: pointer; font-family: inherit;
+    transition: filter .12s, transform .12s;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:active { transform: translateY(1px); }
+  button[disabled] { opacity: 0.6; cursor: default; }
+  .msg {
+    display: none; margin-top: 14px; padding: 10px 12px; border-radius: 10px;
+    background: var(--badbg); border: 1px solid rgba(240,115,110,0.22); color: var(--bad);
+    font-size: 13px; line-height: 1.45;
+  }
+  .msg.shown { display: block; }
+  .note { color: var(--txt3); font-size: 12px; margin-top: 20px; line-height: 1.5; }
+  .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--txt2); }
+`
+
+/**
+ * The page. `serverless` only picks the post-login landing route, matching the
+ * redirect the server already does for a serverless deployment.
+ */
+export function renderLoginPage(serverless = false): string {
+  const home = serverless ? '/serverless' : '/'
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · ts-cloud</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' rx='8' fill='%235a8be0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>${STYLES}</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="dot"></span> ts-cloud</div>
+    <h1>Sign in</h1>
+    <p class="sub">Manage the sites you have been given access to.</p>
+
+    <form id="login" autocomplete="on">
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required autofocus>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" id="submit">Sign in</button>
+    </form>
+
+    <p class="msg" id="msg" role="alert" aria-live="polite"></p>
+    <p class="note">Lost the first admin password? Delete <code>.ts-cloud/dashboard-users.json</code> on the deploy host and restart the dashboard to mint a new one.</p>
+  </main>
+
+<script>
+  const form = document.getElementById('login')
+  const msg = document.getElementById('msg')
+  const submit = document.getElementById('submit')
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    msg.classList.remove('shown')
+    submit.disabled = true
+    submit.textContent = 'Signing in...'
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value,
+        }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || !body.ok) throw new Error(body.error || 'Could not sign in.')
+      location.href = ${JSON.stringify(home)}
+    } catch (error) {
+      msg.textContent = (error && error.message) || String(error)
+      msg.classList.add('shown')
+      submit.disabled = false
+      submit.textContent = 'Sign in'
+      document.getElementById('password').value = ''
+      document.getElementById('password').focus()
+    }
+  })
+</script>
+</body>
+</html>`
+}

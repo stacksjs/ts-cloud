@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
 import { existsSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -7,10 +8,16 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
+import { authorize, hashPassword, verifyPassword } from './dashboard-auth'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
+import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
+import { renderLoginPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
+import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
+import { clearSessionCookie, createSessionToken, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
+import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
 import {
@@ -82,12 +89,18 @@ const contentTypes: Record<string, string> = {
   '.ico': 'image/x-icon',
 }
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8' },
+    headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
   })
 }
+
+/**
+ * Verified against when the username is unknown, so that a wrong username and a
+ * wrong password cost the same time. Without it, login timing enumerates users.
+ */
+const DUMMY_HASH: string = hashPassword('ts-cloud-dummy-password')
 
 function text(data: string, status = 200): Response {
   return new Response(data, {
@@ -424,16 +437,68 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
   let latestData = initialData
-  const liveUiRoot = await buildLiveUi(cwd, initialData)
   const packagedUi = resolveUiSource(cwd)
-  let activeUiRoot = liveUiRoot ?? packagedUi?.uiRoot
 
-  if (!activeUiRoot)
+  // The stx pages render their data at BUILD time (baked into the HTML), so a
+  // single shared build would hand every visitor every tenant's sites, logs and
+  // deploy history — API scoping alone would protect nothing. Instead we build
+  // one UI per distinct access scope and cache it. Users with identical grants
+  // share a build, so a box with a handful of collaborators builds a handful of
+  // times, not once per request.
+  const uiCache = new Map<string, string>()
+
+  const scopeKey = (user: DashboardUser): string => user.role === 'admin'
+    ? 'admin'
+    : `member:${Object.entries(user.sites).sort(([a], [b]) => a.localeCompare(b)).map(([site, role]) => `${site}=${role}`).join(',')}`
+
+  async function uiRootFor(user: DashboardUser): Promise<string | undefined> {
+    const key = scopeKey(user)
+    const cached = uiCache.get(key)
+    if (cached)
+      return cached
+
+    const scoped = scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug })
+    // A failed build falls back to the packaged UI, which ships no baked data
+    // (it renders its placeholder sample and hydrates from /api/*), so the
+    // fallback can't leak either.
+    const root = (await buildLiveUi(cwd, scoped)) ?? packagedUi?.uiRoot
+    if (root)
+      uiCache.set(key, root)
+    return root
+  }
+
+  // Prime the admin build and fail fast if there's no UI at all to serve.
+  const adminUiRoot = await uiRootFor({ username: '', passwordHash: '', role: 'admin', sites: {} })
+  if (!adminUiRoot)
     throw new Error('ts-cloud dashboard UI not found. Run `bun run build` in ts-cloud or reinstall the package.')
 
   // Web-terminal sessions, one shell per open WebSocket connection.
   const terminalSessions = new WeakMap<object, ReturnType<typeof createTerminalSession>>()
   const terminalEnabled = process.env.TS_CLOUD_DASHBOARD_TERMINAL !== '0'
+
+  // Authentication is on by default. It can be turned off for local work, but
+  // never in box mode: there the dashboard sits behind a public proxy, so
+  // disabling auth would expose a root shell to the internet.
+  const authDisabled = process.env.TS_CLOUD_DASHBOARD_AUTH === '0'
+  if (authDisabled && options.box)
+    throw new Error('TS_CLOUD_DASHBOARD_AUTH=0 is refused in box mode: the dashboard is internet-facing there, and disabling auth would expose a root shell.')
+  const authEnabled = !authDisabled
+
+  const secret = resolveSessionSecret(cwd)
+  const guard = createDashboardGuard({ cwd, enabled: authEnabled, secret })
+
+  if (authEnabled) {
+    const bootstrap = ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin')
+    if (bootstrap.generated) {
+      console.warn(`\n  ts-cloud dashboard: created the first admin.\n    username: ${bootstrap.generated.username}\n    password: ${bootstrap.generated.password}\n  Saved (hashed) to .ts-cloud/dashboard-users.json. This password is shown once.\n`)
+    }
+  }
+  else {
+    console.warn('  ts-cloud dashboard: authentication is DISABLED (TS_CLOUD_DASHBOARD_AUTH=0). Every request runs as an admin.')
+  }
+
+  // Cookies are marked Secure unless we're serving plain http on loopback.
+  const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
 
   const server = Bun.serve({
     hostname: host,
@@ -464,9 +529,62 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       const url = new URL(req.url)
 
       try {
+        // --- Public: the login endpoints and the login page itself ----------
+        if (url.pathname === '/api/login' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const username = String(body.username ?? '').trim()
+          const password = String(body.password ?? '')
+          const user = findUser(loadUsers(cwd), username)
+
+          // Verify against a dummy hash when the user is unknown, so a missing
+          // user and a wrong password take the same time and can't be told
+          // apart by an attacker enumerating usernames.
+          const hash = user?.passwordHash || DUMMY_HASH
+          const ok = verifyPassword(password, hash) && !!user
+          if (!ok)
+            return json({ ok: false, error: 'Incorrect username or password.' }, 401)
+
+          const token = createSessionToken(user!.username, secret)
+          return json({ ok: true, user: describeUser(user!) }, 200, {
+            'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),
+          })
+        }
+
+        if (url.pathname === '/api/logout' && req.method === 'POST') {
+          return json({ ok: true }, 200, { 'set-cookie': clearSessionCookie({ secure: cookieSecure }) })
+        }
+
+        if (url.pathname === '/login') {
+          return new Response(renderLoginPage(latestData?.mode === 'serverless'), {
+            headers: { 'content-type': 'text/html; charset=utf-8' },
+          })
+        }
+
+        // --- Everything else requires a session ----------------------------
+        const user = guard.resolveUser(req)
+        if (!user) {
+          // Browsers navigating get the login page; API callers get a 401 they
+          // can act on rather than a page they'd have to parse.
+          if (!url.pathname.startsWith('/api/') && req.headers.get('accept')?.includes('text/html'))
+            return new Response(null, { status: 302, headers: { location: '/login' } })
+          return json({ ok: false, error: 'Sign in to continue.' }, 401)
+        }
+
+        if (url.pathname === '/api/me')
+          return json({ ok: true, user: describeUser(user), authEnabled })
+
+        if (url.pathname.startsWith('/api/')) {
+          const site = await siteFromRequest(req, url.pathname)
+          const decision = guard.check(req, url.pathname, user, site)
+          if (!decision.ok)
+            return json({ ok: false, error: decision.error }, decision.status ?? 403)
+        }
+
         if (url.pathname === '/api/terminal') {
           if (!terminalEnabled)
             return json({ ok: false, error: 'The web terminal is disabled.' }, 403)
+          // The gate above already refused any non-admin, so an upgraded socket
+          // always belongs to someone entitled to a root shell.
           if (server.upgrade(req))
             return undefined
           return text('WebSocket upgrade failed', 400)
@@ -478,8 +596,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             cwd,
             environment,
             environments: availableEnvironments,
-            uiRoot: activeUiRoot,
-            liveData: !!liveUiRoot,
+            uiRoot: await uiRootFor(user),
+            liveData: uiCache.size > 0,
             terminal: terminalEnabled,
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
@@ -498,15 +616,17 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             environment = requested as EnvironmentType
             actions = dashboardActions(environment)
             latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-            const rebuilt = await buildLiveUi(cwd, latestData)
-            if (rebuilt)
-              activeUiRoot = rebuilt
+            // Every cached build is now stale — drop them so the next request
+            // per scope rebuilds against the new environment's data.
+            uiCache.clear()
           }
           return json({ ok: true, environment, environments: availableEnvironments })
         }
 
-        if (url.pathname === '/api/config')
-          return json({ ...sanitizeCloudConfig(config as CloudConfig), environment, environments: availableEnvironments })
+        if (url.pathname === '/api/config') {
+          const sanitized = { ...sanitizeCloudConfig(config as CloudConfig), environment, environments: availableEnvironments }
+          return json(scopeCloudConfig(sanitized, user))
+        }
 
         if (url.pathname === '/api/ssh-keys' && req.method === 'GET') {
           return json({
@@ -754,7 +874,52 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/dashboard-data') {
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-          return json(latestData)
+          return json(scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }))
+        }
+
+        // --- Collaborators -------------------------------------------------
+        if (url.pathname === '/api/users' && req.method === 'GET')
+          return json({ ok: true, users: loadUsers(cwd).map(describeUser) })
+
+        if (url.pathname === '/api/users' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const username = String(body.username ?? '').trim()
+          if (!isValidUsername(username))
+            return json({ ok: false, error: 'Username must be 2-32 characters: letters, numbers, dot, dash or underscore.' }, 422)
+
+          // Grants may only name sites that exist, and only with a known role.
+          const requested = (body.sites && typeof body.sites === 'object') ? body.sites as Record<string, string> : {}
+          const known = new Set(Object.keys((config as CloudConfig).sites ?? {}))
+          const sites: Record<string, 'owner' | 'collaborator'> = {}
+          for (const [site, role] of Object.entries(requested)) {
+            if (!known.has(site))
+              return json({ ok: false, error: `Site '${site}' was not found.` }, 404)
+            if (role !== 'owner' && role !== 'collaborator')
+              return json({ ok: false, error: `Unknown site role '${role}'. Use 'owner' or 'collaborator'.` }, 422)
+            sites[site] = role
+          }
+
+          const password = typeof body.password === 'string' && body.password.trim() ? body.password.trim() : undefined
+          if (password && password.length < 12)
+            return json({ ok: false, error: 'Password must be at least 12 characters.' }, 422)
+
+          const result = upsertMember(cwd, { username, password, name: typeof body.name === 'string' ? body.name : undefined, sites })
+          // Their grants changed, so any UI built for their old scope is stale.
+          uiCache.clear()
+          // The generated password is returned once, at creation, and never stored.
+          return json({ ok: true, user: describeUser(result.user), password: result.password })
+        }
+
+        if (url.pathname === '/api/users' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const username = String(body.username ?? '').trim()
+          if (username.toLowerCase() === user.username.toLowerCase())
+            return json({ ok: false, error: 'You cannot remove your own account.' }, 409)
+          const result = removeUser(cwd, username)
+          if (!result.ok)
+            return json(result, 409)
+          uiCache.clear()
+          return json({ ok: true, username })
         }
 
         if (url.pathname === '/api/actions/run' && req.method === 'POST') {
@@ -898,18 +1063,23 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         // A page request with `?env=<name>` switches the active environment
         // server-side (re-resolves data + actions and rebuilds the UI), so the
-        // nav's environment links work without any client JavaScript.
+        // nav's environment links work without any client JavaScript. This is
+        // process-wide state, so it carries the same capability as POST
+        // /api/env — a member must not be able to flip everyone's environment
+        // by editing a URL.
         const requestedEnv = url.searchParams.get('env')
-        if (requestedEnv && availableEnvironments.includes(requestedEnv) && requestedEnv !== environment) {
+        if (requestedEnv && availableEnvironments.includes(requestedEnv) && requestedEnv !== environment
+          && authorize({ user, capability: 'box:config' })) {
           environment = requestedEnv as EnvironmentType
           actions = dashboardActions(environment)
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-          const rebuilt = await buildLiveUi(cwd, latestData)
-          if (rebuilt)
-            activeUiRoot = rebuilt
+          uiCache.clear()
         }
 
-        return serveStatic(activeUiRoot as string, url.pathname)
+        const uiRoot = await uiRootFor(user)
+        if (!uiRoot)
+          return text('ts-cloud dashboard UI is unavailable.', 503)
+        return serveStatic(uiRoot, url.pathname)
       }
       catch (error: any) {
         if (options.verbose)

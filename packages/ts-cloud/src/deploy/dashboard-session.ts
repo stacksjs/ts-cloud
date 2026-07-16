@@ -20,7 +20,7 @@ export const SESSION_COOKIE = 'ts_cloud_session'
 export const SECRET_FILE: string = join('.ts-cloud', 'dashboard-secret')
 
 /** Eight hours: long enough to work through a deploy, short enough to expire. */
-export const SESSION_TTL_MS = 8 * 60 * 60 * 1000
+export const SESSION_TTL_MS: number = 8 * 60 * 60 * 1000
 
 export interface SessionPayload {
   /** Username the session belongs to. */
