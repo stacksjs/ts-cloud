@@ -944,7 +944,7 @@ export class HetznerDriver implements CloudDriver {
       return exact.map(toTarget)
 
     // 2) State pinning: a project that rides a shared box records its server
-    //    in `.ts-cloud/state/<stack>.json`, but the box's labels belong to the
+    //    in `storage/cloud/state/<stack>.json`, but the box's labels belong to the
     //    project that provisioned it (`ts-cloud/project` holds one value), so
     //    the label scan above can't see it. Trust the state file's ids —
     //    re-resolved via the API so a deleted server is never targeted and the

@@ -33,13 +33,13 @@ export interface AwsDriverOptions {
 /**
  * Local-state pin (parity with the Hetzner driver's shared-box support): a
  * project riding an instance whose tags belong to another project records
- * `{ "instanceId": "i-..." }` in `.ts-cloud/state/<stack>.json`, and target
+ * `{ "instanceId": "i-..." }` in `storage/cloud/state/<stack>.json`, and target
  * lookups trust that record when the tag scan finds nothing. Exported for
  * tests.
  */
 export function readPinnedInstanceId(stackName: string): string | null {
   try {
-    const raw = readFileSync(join(process.cwd(), '.ts-cloud/state', `${stackName}.json`), 'utf8')
+    const raw = readFileSync(join(process.cwd(), 'storage/cloud/state', `${stackName}.json`), 'utf8')
     const state = JSON.parse(raw) as { instanceId?: unknown }
     return typeof state.instanceId === 'string' && state.instanceId.length > 0 ? state.instanceId : null
   }

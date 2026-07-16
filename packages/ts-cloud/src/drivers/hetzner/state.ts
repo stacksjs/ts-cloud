@@ -26,7 +26,12 @@ export interface HetznerDriverState {
   appServerIds?: number[]
 }
 
-const STATE_DIR = '.ts-cloud/state'
+// Deploy state lives under the project's `storage/` tree (the Stacks storage
+// convention) rather than a hidden `.ts-cloud/` folder — and, unlike the
+// gitignored `storage/framework/`, `storage/cloud/` is meant to be COMMITTED so
+// CI (which never has a local .ts-cloud) can resolve the existing box by its
+// recorded serverId instead of trying to provision a new one.
+export const STATE_DIR = 'storage/cloud/state'
 
 export function driverStatePath(stackName: string): string {
   return join(process.cwd(), STATE_DIR, `${stackName}.json`)

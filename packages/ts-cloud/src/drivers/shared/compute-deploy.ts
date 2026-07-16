@@ -77,8 +77,8 @@ export async function deploySiteRelease(
 
   if (targets.length === 0) {
     const hint = driver.name === 'aws'
-      ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app, and .ts-cloud/state/${stackName}.json pins no live instance. For a shared box, record its instanceId there.`
-      : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app, and .ts-cloud/state/${stackName}.json pins no live server. For a shared box, record its serverId there.`
+      ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app, and storage/cloud/state/${stackName}.json pins no live instance. For a shared box, record its instanceId there.`
+      : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app, and storage/cloud/state/${stackName}.json pins no live server. For a shared box, record its serverId there.`
     return { success: false, error: hint }
   }
 

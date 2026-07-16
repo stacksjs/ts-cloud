@@ -134,7 +134,7 @@ function configuredRegion(config: CloudConfig): string {
 }
 
 function loadLocalState(config: CloudConfig, environment: EnvironmentType): LocalState | null {
-  const statePath = join(process.cwd(), '.ts-cloud', 'state', `${config.project.slug}-${environment}.json`)
+  const statePath = join(process.cwd(), 'storage', 'cloud', 'state', `${config.project.slug}-${environment}.json`)
   if (!existsSync(statePath))
     return null
 
