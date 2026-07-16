@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.26...v0.7.27)
+
+## 🐛 Bug Fixes
+
+- **rpx-gateway**: write gateway files atomically so overlapping deploys never drop a host ([ccf82f1](https://github.com/stacksjs/ts-cloud/commit/ccf82f1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.27 ([1b43007](https://github.com/stacksjs/ts-cloud/commit/1b43007)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.25...v0.7.26)
 
 ## 🐛 Bug Fixes
