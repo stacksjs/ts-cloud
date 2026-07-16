@@ -16,6 +16,7 @@ import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
 import { renderLoginPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
+import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { clearSessionCookie, createSessionToken, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
@@ -813,6 +814,27 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const existing = (config.sites as any)?.[name]
           if (!name || !existing)
             return json({ ok: false, error: `Site '${name}' was not found.` }, 404)
+
+          // A member owns their site's content, not the server it runs on.
+          // `build`/`start` are shell commands run as root at deploy time and
+          // `root` is a filesystem path, so those stay with the box owner —
+          // otherwise `site:settings` would quietly be root on a shared box.
+          if (user.role === 'member') {
+            const fields = checkMemberSiteFields(body)
+            if (!fields.ok)
+              return json({ ok: false, error: fields.error }, 403)
+
+            // Routing is theirs to set, but not to take from someone else.
+            const conflict = checkRouteConflict({
+              siteName: name,
+              body,
+              sites: (config.sites ?? {}) as Record<string, any>,
+              ownSites: Object.keys(user.sites),
+            })
+            if (!conflict.ok)
+              return json({ ok: false, error: conflict.error }, 409)
+          }
+
           if (body.port !== undefined && body.port !== null && body.port !== '' && (!Number.isInteger(Number(body.port)) || Number(body.port) < 1 || Number(body.port) > 65_535))
             return json({ ok: false, error: 'Port must be a number between 1 and 65535.' }, 422)
 
