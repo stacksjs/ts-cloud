@@ -122,7 +122,7 @@ describe('deploySiteRelease', () => {
           root: 'packages/ui/dist',
           deploy: 'server',
           type: 'static',
-          domain: 'dashboard.example.com',
+          domain: 'dashboard.my-app.example.com',
           auth: { username: 'admin', password: 's3cret' },
         },
       },
@@ -324,14 +324,14 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect(ok).toBe(true)
     // Domain-keyed site key — never the bare `dashboard`, which would collide
     // across tenants sharing a box via attachTo.
-    expect((config.sites as any)['dashboard-example-com']?.domain).toBe('dashboard.example.com')
+    expect((config.sites as any)['dashboard-my-app-example-com']?.domain).toBe('dashboard.my-app.example.com')
     expect((config.sites as any).dashboard).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-example-com'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-my-app-example-com'))).toBe(true)
     // Every site deploy is ownership-guarded so another attachTo tenant deriving
     // the same site key is refused instead of overwriting releases.
     expect(allCommands.some(c => c.includes('/var/www/my-app-web/.ts-cloud/owner'))).toBe(true)
-    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-example-com/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-my-app-example-com/.ts-cloud/owner'))).toBe(true)
   }, 60_000)
 
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {
@@ -348,7 +348,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     })
 
     expect(ok).toBe(true)
-    expect((config.sites as any)['dashboard-example-com']).toBeUndefined()
+    expect((config.sites as any)['dashboard-my-app-example-com']).toBeUndefined()
   })
 
   it('deploys the dashboard as a live service by default', async () => {
@@ -365,14 +365,14 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     })
 
     expect(ok).toBe(true)
-    const dashboard = (config.sites as any)['dashboard-example-com']
+    const dashboard = (config.sites as any)['dashboard-my-app-example-com']
     expect(dashboard).toBeTruthy()
     // A service, not static files behind htpasswd.
     expect(dashboard.port).toBe(7676)
     expect(dashboard.auth).toBeUndefined()
 
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    const dashboardCommands = allCommands.filter(c => c.includes('dashboard-example-com'))
+    const dashboardCommands = allCommands.filter(c => c.includes('dashboard-my-app-example-com'))
     expect(dashboardCommands.length).toBeGreaterThan(0)
     const text = dashboardCommands.join('\n')
     // Installs the CLI, runs it by module path, and keeps its state in shared/.
@@ -402,7 +402,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
 
     expect(ok).toBe(true)
     // Injected then dropped because the build failed → no dashboard left behind.
-    expect((config.sites as any)['dashboard-example-com']).toBeUndefined()
+    expect((config.sites as any)['dashboard-my-app-example-com']).toBeUndefined()
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
     expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(false)
     rmSync(fakeRepo, { recursive: true, force: true })

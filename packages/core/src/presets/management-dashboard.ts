@@ -77,6 +77,28 @@ function apexOf(domain: string): string {
 }
 
 /**
+ * The dashboard host for a domain the project serves.
+ *
+ * Collapses to `dashboard.<apex>` ONLY when the project actually owns the apex —
+ * i.e. it serves the bare apex domain among `ownedDomains`. A project that only
+ * serves a subdomain under someone else's apex (e.g. `everything.stacksjs.com`,
+ * where `stacksjs.com` belongs to a different project on the same box) must NOT
+ * collapse, or two projects would both claim `dashboard.stacksjs.com` and the
+ * first-loaded one silently shadows the other. Such a project gets a dashboard
+ * on its own subdomain instead: `dashboard.everything.stacksjs.com`.
+ */
+function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): string {
+  const apex = apexOf(domain)
+  if (apex === domain)
+    return `dashboard.${apex}`
+  for (const owned of ownedDomains) {
+    if (owned === apex)
+      return `dashboard.${apex}`
+  }
+  return `dashboard.${domain}`
+}
+
+/**
  * Collect the project's configured domains, in priority order: the project's
  * canonical domain first (`infrastructure.dns.domain`, then the environment
  * domain), then every site domain. Canonical-first is deliberate — it fixes the
@@ -121,10 +143,13 @@ export function resolveDashboardDomain(
   if (explicit)
     return explicit
 
-  const base = collectDomains(config, environment)[0]
+  const domains = collectDomains(config, environment)
+  const base = domains[0]
   if (!base)
     return null
-  return `dashboard.${apexOf(base)}`
+  // Pass the full owned set so the apex is only claimed when this project
+  // actually serves it (see dashboardHostFor).
+  return dashboardHostFor(base, domains)
 }
 
 /**
@@ -144,12 +169,16 @@ export function resolveDashboardDomains(
   if (explicit)
     return [explicit]
 
-  const apexes: string[] = []
-  for (const d of collectDomains(config, environment)) {
-    const apex = apexOf(d)
-    if (!apexes.includes(apex)) apexes.push(apex)
+  const domains = collectDomains(config, environment)
+  const hosts: string[] = []
+  for (const d of domains) {
+    // Only collapse to the apex when the project owns it; a subdomain under
+    // another project's apex gets its own `dashboard.<subdomain>` host so two
+    // projects on one box never collide on `dashboard.<apex>`.
+    const host = dashboardHostFor(d, domains)
+    if (!hosts.includes(host)) hosts.push(host)
   }
-  return apexes.map(apex => `dashboard.${apex}`)
+  return hosts
 }
 
 /** Does the config already define the management dashboard as a site? */

@@ -12,9 +12,19 @@ describe('resolveDashboardDomain', () => {
     expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.acme.com')
   })
 
-  it('reduces a deep host to its apex', () => {
-    const c = cfg({ sites: { api: { root: 'dist', domain: 'api.staging.acme.com' } as any } })
+  it('reduces a deep host to its apex when the project owns the apex', () => {
+    const c = cfg({ sites: {
+      main: { root: 'dist', domain: 'acme.com' } as any,
+      api: { root: 'dist', domain: 'api.staging.acme.com' } as any,
+    } })
     expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.acme.com')
+  })
+
+  it('keeps a deep host in full when the project does NOT own the apex', () => {
+    // Collapsing to dashboard.acme.com here would claim an apex owned by
+    // another project — the collision this rule prevents.
+    const c = cfg({ sites: { api: { root: 'dist', domain: 'api.staging.acme.com' } as any } })
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.api.staging.acme.com')
   })
 
   it('prefers an explicit override', () => {
@@ -29,6 +39,26 @@ describe('resolveDashboardDomain', () => {
 
   it('returns null when no domain is configured', () => {
     expect(resolveDashboardDomain(cfg({}), 'production')).toBeNull()
+  })
+
+  /**
+   * The `everything` project serves only `everything.stacksjs.com`. The apex
+   * `stacksjs.com` belongs to a DIFFERENT project on the same box, so this one
+   * must not claim `dashboard.stacksjs.com` — that collision let a stale route
+   * shadow the real dashboard.
+   */
+  it('does not collapse to an apex the project does not own', () => {
+    const c = cfg({ sites: { main: { root: 'dist', domain: 'everything.stacksjs.com' } as any } })
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.everything.stacksjs.com')
+  })
+
+  it('collapses to the apex when the project serves the bare apex', () => {
+    // Serving both the apex and a subdomain still yields one apex dashboard.
+    const c = cfg({ sites: {
+      main: { root: 'dist', domain: 'stacksjs.com' } as any,
+      api: { root: 'dist', domain: 'api.stacksjs.com' } as any,
+    } })
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.stacksjs.com')
   })
 })
 
@@ -157,6 +187,20 @@ describe('resolveDashboardDomains (per-apex)', () => {
 
   it('is empty when no domain is configured', () => {
     expect(resolveDashboardDomains(cfg({}), 'production')).toEqual([])
+  })
+
+  it('gives a subdomain-only project its own host, never the shared apex', () => {
+    const c = cfg({ sites: { main: { root: 'dist', domain: 'everything.stacksjs.com' } as any } })
+    expect(resolveDashboardDomains(c, 'production')).toEqual(['dashboard.everything.stacksjs.com'])
+  })
+
+  it('collapses subdomains under an apex the project DOES own', () => {
+    const c = cfg({ sites: {
+      main: { root: 'dist', domain: 'acme.com' } as any,
+      api: { root: 'dist', domain: 'api.acme.com' } as any,
+      cdn: { root: 'dist', domain: 'cdn.acme.com' } as any,
+    } })
+    expect(resolveDashboardDomains(c, 'production')).toEqual(['dashboard.acme.com'])
   })
 
   it('skips redirect-only sites (www aliases get no dashboard)', () => {
