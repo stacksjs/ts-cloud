@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.24...v0.7.25)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: opt out of the zero-downtime overlap it cannot satisfy ([44d4e84](https://github.com/stacksjs/ts-cloud/commit/44d4e84)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.25 ([373bd00](https://github.com/stacksjs/ts-cloud/commit/373bd00)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.23...v0.7.24)
 
 ## 🐛 Bug Fixes
