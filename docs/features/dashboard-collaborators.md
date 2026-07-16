@@ -1,6 +1,8 @@
 # Dashboard & Collaborators
 
-The management dashboard is the cockpit for a server: sites, deployments, logs, metrics, databases, firewall and a web terminal. It is deployed automatically with every server deploy, at `dashboard.<your-domain>`.
+The management dashboard is the cockpit for a server: sites, deployments, logs, metrics, databases, firewall and a web terminal. It is deployed automatically with every server deploy, at `dashboard.<your-domain>` — one control panel per box, however many sites it hosts.
+
+It runs as a service on the box and authenticates itself. The release ships your cloud config plus a `package.json`; the box installs `@stacksjs/ts-cloud` from npm (which carries both the CLI and the UI) and starts `cloud dashboard:serve --box` behind the proxy, with TLS from Let's Encrypt. Nothing else to configure.
 
 One box often hosts sites for more than one party. You own the server; other people own individual sites on it. The dashboard is built around that: you can invite someone to a single site, and they see that site and nothing else.
 
@@ -82,6 +84,8 @@ Both files are written `0600`, and neither belongs in git:
 | `.ts-cloud/dashboard-users.json` | Users, scrypt password hashes, site grants |
 | `.ts-cloud/dashboard-secret` | The session signing key. Rotating it signs everyone out. |
 
+On the box these live in the dashboard site's `shared/.ts-cloud/`, symlinked into each release, so a deploy never wipes your collaborators. On the deploy host they sit in your project checkout.
+
 Sessions are stateless signed cookies (`HttpOnly`, `SameSite=Lax`, `Secure` off loopback) and last 8 hours. The user is re-read from the store on every request, so a revoked grant applies immediately.
 
 Failed logins are rate-limited: 8 failures for the same username from the same address locks that pair out for 15 minutes. The counter is per username **and** address, so nobody can lock you out of your own box by failing logins against `admin`. It lives in memory, so restarting the dashboard clears it.
@@ -99,10 +103,19 @@ Failed logins are rate-limited: 8 failures for the same username from the same a
 | `TS_CLOUD_UI_PASSWORD` | The first admin's password (otherwise generated). |
 | `TS_CLOUD_UI_USERNAME` | The first admin's username. Default `admin`. |
 | `TS_CLOUD_UI_DOMAIN` | Dashboard host. Default `dashboard.<apex>`. |
+| `TS_CLOUD_UI_PORT` | Loopback port for the service. Default `7676`. |
+| `TS_CLOUD_UI_VERSION` | ts-cloud version the box installs. Defaults to the CLI doing the deploy. |
 | `TS_CLOUD_UI_DISABLE` | Skip deploying the dashboard. |
+| `TS_CLOUD_UI_STATIC` | Deploy the old static + htpasswd dashboard instead (see below). |
 | `TS_CLOUD_DASHBOARD_SECRET` | Session signing key. Generated and persisted if unset. |
 | `TS_CLOUD_DASHBOARD_TERMINAL` | `0` disables the web terminal. |
 | `TS_CLOUD_DASHBOARD_AUTH` | `0` disables authentication. Local development only — **refused in box mode**, where the dashboard is internet-facing and this would expose a root shell. |
+
+## Static mode (`TS_CLOUD_UI_STATIC`)
+
+The old model: the built UI shipped as files behind htpasswd, one dashboard per apex domain.
+
+It has **no collaborators**. There is one shared password, and every page's data is baked into the HTML at build time — so whoever holds the password sees every site on the box. Use it only where the box cannot run the service.
 
 ## Running it locally
 
