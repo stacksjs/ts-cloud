@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.25...v0.7.26)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: only claim dashboard.<apex> for an apex the project owns ([1f5dc3e](https://github.com/stacksjs/ts-cloud/commit/1f5dc3e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.26 ([a5f6db6](https://github.com/stacksjs/ts-cloud/commit/a5f6db6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.24...v0.7.25)
 
 ## 🐛 Bug Fixes
