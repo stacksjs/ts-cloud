@@ -89,7 +89,21 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
     // The installer needs curl + unzip; everything else comes from pantry.
     'command -v curl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y curl ca-certificates)',
     'command -v unzip >/dev/null 2>&1 || (apt-get update -y && apt-get install -y unzip)',
-    'command -v pantry >/dev/null 2>&1 || curl -fsSL https://pantry.dev | bash',
+    // Install the pantry CLI from its GitHub release. The old
+    // `curl -fsSL https://pantry.dev | bash` installer is DEAD — pantry.dev now
+    // 404s (and pantry.sh is just a landing page), and under `set -e` that 404
+    // aborted the ENTIRE bootstrap before bun/postgres/rpx were ever set up, so
+    // the deploy failed with "bun runtime did not appear". Platform-detect and
+    // fetch the matching release zip, mirroring the framework's ./bootstrap.
+    `command -v pantry >/dev/null 2>&1 || { `
+    + `OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m); `
+    + `case "$ARCH" in x86_64|amd64) ARCH=x64 ;; arm64|aarch64) ARCH=arm64 ;; esac; `
+    + `ZIP="pantry-\${OS}-\${ARCH}.zip"; `
+    + `if [ "\${PANTRY_VERSION:-latest}" = latest ]; then REL='latest/download'; else REL="download/v\${PANTRY_VERSION}"; fi; `
+    + `TMP=$(mktemp -d); `
+    + `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/home-lang/pantry/releases/\${REL}/\${ZIP}"; `
+    + `unzip -o "\${TMP}/\${ZIP}" -d ${PANTRY_INSTALL_DIR}; `
+    + `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"; }`,
     // The pantry CLI lives in PANTRY_INSTALL_DIR; put it on PATH for later steps.
     `export PATH="${PANTRY_INSTALL_DIR}:$PATH"`,
     `mkdir -p ${PANTRY_PROJECT_DIR}`,
