@@ -227,6 +227,13 @@ export function resolveManagementDashboardSites(
       preStart: ['bun install --production --no-save'],
       start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
       port,
+      // The zero-downtime cutover overlaps two instances on one port via
+      // SO_REUSEPORT. The dashboard's server does not bind that way, so the new
+      // instance would hit EADDRINUSE, fail, and only start after a retry that
+      // stops the old one. Stop-then-start is what actually happens either way —
+      // ask for it directly rather than through a guaranteed failure. A second
+      // of downtime on a control panel is not worth the complexity.
+      zeroDowntime: false,
       // Users, site grants and the session key live here. Without this every
       // deploy would hand the box a fresh release dir and silently wipe every
       // collaborator, forcing a new admin password each time.

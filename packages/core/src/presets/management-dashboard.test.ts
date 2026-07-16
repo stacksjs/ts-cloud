@@ -81,6 +81,16 @@ describe('resolveManagementDashboardSite', () => {
     expect(r?.site.auth).toBeUndefined()
   })
 
+  /**
+   * The zero-downtime cutover overlaps two instances on one port via
+   * SO_REUSEPORT, which the dashboard's server does not do — the new instance
+   * would hit EADDRINUSE and only start after a retry stops the old one.
+   */
+  it('opts out of the zero-downtime overlap it cannot satisfy', () => {
+    const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    expect(r?.site.zeroDowntime).toBe(false)
+  })
+
   it('health-gates the live service on its login page', () => {
     const r = resolveManagementDashboardSite(base, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
     expect(r?.site.healthCheck).toEqual({ path: '/login' })
