@@ -62,6 +62,13 @@ const showEnvSwitch = navEnvs.length > 1 && !isMember
         <a href="/server/database">Databases</a>
       @endif
     @endif
+    @if (!isMember)
+      @if ((active ?? '') === 'team')
+        <a href="/server/team" class="active">Team</a>
+      @else
+        <a href="/server/team">Team</a>
+      @endif
+    @endif
   </div>
   <div class="nav-meta">
     <span>{{ name ?? '' }}</span>

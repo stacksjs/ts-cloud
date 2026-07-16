@@ -388,6 +388,32 @@ async function runAction(action: DashboardAction, options: Required<Pick<LocalDa
   }
 }
 
+/**
+ * The only cockpit pages a member may open. Everything else is the box owner's
+ * view (host metrics, services, databases, firewall, the team page, the whole
+ * serverless surface), so a member is sent back to their sites.
+ *
+ * An allowlist rather than a blocklist: a page added later is box-only until
+ * someone deliberately decides otherwise.
+ */
+const MEMBER_PAGES: ReadonlySet<string> = new Set([
+  '/server/sites',
+  '/server/deployments',
+  '/server/logs',
+])
+
+export function isBoxOnlyPage(pathname: string): boolean {
+  // Assets (.css/.js/.svg/...) are shared chrome and carry no tenant data — the
+  // per-scope build already decides what's in the HTML.
+  const ext = extname(pathname)
+  if (ext && ext !== '.html')
+    return false
+  const clean = pathname.replace(/\.html$/, '').replace(/\/+$/, '') || '/'
+  if (clean === '/')
+    return false // handled earlier by the member redirect
+  return !MEMBER_PAGES.has(clean)
+}
+
 function staticPath(uiRoot: string, pathname: string): string | null {
   const clean = decodeURIComponent(pathname).replace(/^\/+/, '')
   const wanted = clean === '' ? 'index.html' : clean
@@ -1091,6 +1117,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
           uiCache.clear()
         }
+
+        // Members get the pages built for their scope; the rest of the cockpit
+        // is the box owner's. Their data is already withheld, so this is about
+        // not handing someone a page whose every request will 403 at them.
+        if (user.role === 'member' && isBoxOnlyPage(url.pathname))
+          return new Response(null, { status: 302, headers: { location: '/server/sites' } })
 
         const uiRoot = await uiRootFor(user)
         if (!uiRoot)

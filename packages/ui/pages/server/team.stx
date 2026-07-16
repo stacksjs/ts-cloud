@@ -1,0 +1,171 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'acme-production-app' }
+// Only the box owner reaches this page (the server refuses /api/users for
+// anyone else), so the site list here is always the full one.
+const siteNames = (__d?.sitesDetail ?? __d?.sites ?? [{ name: 'main' }, { name: 'docs' }]).map(s => s.name)
+</script>
+<script client>
+// Collaborator management: list, invite, revoke. A member holds a role per site
+// - 'owner' may also change that site's settings, 'collaborator' may view and
+// deploy it. Neither ever reaches the box itself (shell, SSH keys, firewall,
+// databases): those are the box owner's alone, because each of them is root on
+// a server that hosts other people's sites.
+const users = state([])
+const sites = state(siteNames)
+const username = state('')
+const displayName = state('')
+const grants = state({})
+const message = state('')
+const messageKind = state('')
+// Shown once after an invite - the password is generated server-side, hashed,
+// and never retrievable again.
+const issued = state(null)
+
+function setMessage(text, kind) { message.set(text); messageKind.set(kind || '') }
+function grantFor(site) { return grants()[site] || 'none' }
+function setGrant(site, role) {
+  const next = { ...grants() }
+  if (role === 'none') delete next[site]
+  else next[site] = role
+  grants.set(next)
+}
+function siteList(user) {
+  const entries = Object.entries(user.sites || {})
+  if (!entries.length) return '-'
+  return entries.map(([s, r]) => s + ' (' + r + ')').join(', ')
+}
+
+async function load() {
+  try {
+    const res = await fetch('/api/users')
+    if (!res.ok) throw new Error('Could not read the team.')
+    const data = await res.json()
+    users.set(data.users || [])
+  } catch (e) { setMessage((e && e.message) || 'Could not read the team.', 'bad') }
+}
+
+async function invite() {
+  setMessage('Saving...', ''); issued.set(null)
+  const payload = { username: username(), name: displayName(), sites: grants() }
+  const res = await fetch('/api/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not save.', 'bad'); return }
+  if (data.password) issued.set({ username: data.user.username, password: data.password })
+  setMessage(data.password ? 'Invited ' + data.user.username + '.' : 'Updated ' + data.user.username + '.', 'ok')
+  username.set(''); displayName.set(''); grants.set({})
+  load()
+}
+
+async function revoke(name) {
+  setMessage('Removing...', '')
+  const res = await fetch('/api/users', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: name }) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove.', 'bad'); return }
+  setMessage('Removed ' + name + '.', 'ok')
+  load()
+}
+
+onMount(() => { load() })
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - Team' })</head>
+<body>
+  @include('../partials/nav', { active: 'team', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Team</div>
+    <header class="page">
+      <div>
+        <h1>Team</h1>
+        <p>Invite people to individual sites. They see only the sites you grant them, and never the box.</p>
+      </div>
+    </header>
+
+    <div class="section">
+      <h2>Invite</h2>
+      <div class="panel">
+        <form class="form-grid" @submit.prevent="invite()">
+          <div class="field-block">
+            <label for="team-username">Username</label>
+            <input id="team-username" autocomplete="off" placeholder="dana" :value="username()" @input="username.set($event.target.value)" required>
+          </div>
+          <div class="field-block">
+            <label for="team-name">Display name</label>
+            <input id="team-name" autocomplete="off" placeholder="Dana Whitfield" :value="displayName()" @input="displayName.set($event.target.value)">
+          </div>
+          <div class="field-block wide">
+            <label>Site access</label>
+            <div class="grant-grid">
+              <template :for="s in sites()">
+                <div class="grant">
+                  <span class="mono">{{ s }}</span>
+                  <select :value="grantFor(s)" @change="setGrant(s, $event.target.value)">
+                    <option value="none">No access</option>
+                    <option value="collaborator">Collaborator - view and deploy</option>
+                    <option value="owner">Owner - view, deploy and edit settings</option>
+                  </select>
+                </div>
+              </template>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button class="btn" type="submit">Send invite</button>
+            <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
+          </div>
+        </form>
+
+        <div class="issued" @show="!!issued()">
+          <strong>Password for {{ issued()?.username }}</strong>
+          <code>{{ issued()?.password }}</code>
+          <span>Copy it now and send it over a channel you trust. It is stored hashed and cannot be shown again.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>People</h2>
+      <div class="panel">
+        <table>
+          <thead><tr><th>User</th><th>Role</th><th>Sites</th><th></th></tr></thead>
+          <tbody>
+            <template :for="u in users()">
+              <tr>
+                <td><b>{{ u.name }}</b><span class="mono uname">{{ u.username }}</span></td>
+                <td><span class="tag">{{ u.role === 'admin' ? 'box owner' : 'member' }}</span></td>
+                <td class="mono">{{ u.role === 'admin' ? 'every site' : siteList(u) }}</td>
+                <td class="table-actions"><button type="button" class="btn danger sm" @click="revoke(u.username)">Remove</button></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+        <div class="compact empty" @show="users().length === 0"><strong>No one invited yet</strong><span>Invite someone above to give them access to a site.</span></div>
+        <p class="note">Box owners reach everything on this server. Members reach only the sites listed here, and never the shell, SSH keys, firewall or databases. Access is checked on every request.</p>
+      </div>
+    </div>
+  </div>
+  <style>
+    .grant-grid { display: grid; gap: 10px; }
+    .grant { display: grid; grid-template-columns: minmax(120px, 0.4fr) 1fr; gap: 12px; align-items: center; }
+    .grant > span { color: var(--txt2); font-size: 13px; }
+    .grant select {
+      width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px;
+      padding: 9px 12px; color: var(--txt); font-family: inherit; font-size: 13.5px;
+    }
+    .grant select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,139,224,0.12); }
+    .issued {
+      display: grid; gap: 7px; margin-top: 16px; padding: 14px 16px;
+      border: 1px solid rgba(53,209,155,0.28); background: var(--okbg); border-radius: 12px;
+    }
+    .uname { margin-left: 8px; color: var(--txt3); }
+    .issued strong { font-size: 13px; color: var(--ok); }
+    .issued code {
+      font-family: var(--mono); font-size: 14px; color: var(--txt); user-select: all;
+      background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere;
+    }
+    .issued span { color: var(--txt2); font-size: 12px; line-height: 1.5; }
+    @media (max-width: 640px) { .grant { grid-template-columns: 1fr; gap: 6px; } }
+  </style>
+</body>
+</html>
