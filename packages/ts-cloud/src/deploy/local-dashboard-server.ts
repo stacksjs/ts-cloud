@@ -18,6 +18,7 @@ import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperat
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { clearSessionCookie, createSessionToken, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
+import { LoginThrottle } from './dashboard-throttle'
 import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
@@ -520,6 +521,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const secret = resolveSessionSecret(cwd)
   const guard = createDashboardGuard({ cwd, enabled: authEnabled, secret })
 
+  // The login is internet-facing and guards a box hosting other people's sites,
+  // so failed attempts are rate-limited. Pruned periodically so the counters
+  // cannot grow without bound; unref'd so it never holds the process open.
+  const throttle = new LoginThrottle()
+  const throttleSweep = setInterval(() => throttle.prune(), 5 * 60 * 1000)
+  throttleSweep.unref?.()
+
   if (authEnabled) {
     const bootstrap = ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin')
     if (bootstrap.generated) {
@@ -567,6 +575,17 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const body = await readJsonBody(req)
           const username = String(body.username ?? '').trim()
           const password = String(body.password ?? '')
+          const address = server.requestIP(req)?.address ?? 'unknown'
+
+          const gate = throttle.check(username, address)
+          if (!gate.allowed) {
+            return json(
+              { ok: false, error: `Too many failed attempts. Try again in ${Math.ceil((gate.retryAfterSeconds ?? 0) / 60)} minute(s).` },
+              429,
+              { 'retry-after': String(gate.retryAfterSeconds ?? 60) },
+            )
+          }
+
           const user = findUser(loadUsers(cwd), username)
 
           // Verify against a dummy hash when the user is unknown, so a missing
@@ -574,9 +593,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           // apart by an attacker enumerating usernames.
           const hash = user?.passwordHash || DUMMY_HASH
           const ok = verifyPassword(password, hash) && !!user
-          if (!ok)
+          if (!ok) {
+            throttle.recordFailure(username, address)
             return json({ ok: false, error: 'Incorrect username or password.' }, 401)
+          }
 
+          throttle.recordSuccess(username, address)
           const token = createSessionToken(user!.username, secret)
           return json({ ok: true, user: describeUser(user!) }, 200, {
             'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),

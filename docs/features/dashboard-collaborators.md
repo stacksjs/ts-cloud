@@ -84,6 +84,14 @@ Both files are written `0600`, and neither belongs in git:
 
 Sessions are stateless signed cookies (`HttpOnly`, `SameSite=Lax`, `Secure` off loopback) and last 8 hours. The user is re-read from the store on every request, so a revoked grant applies immediately.
 
+Failed logins are rate-limited: 8 failures for the same username from the same address locks that pair out for 15 minutes. The counter is per username **and** address, so nobody can lock you out of your own box by failing logins against `admin`. It lives in memory, so restarting the dashboard clears it.
+
+## What a site owner can change
+
+`site:settings` covers what belongs to the tenant — TLS, their app's env, redirects, and their own routing (domain, aliases, path). Routing is checked against other sites: claiming a host someone else already serves is refused.
+
+`build`, `start`, `root`, `port`, `type` and `php` stay with the box owner. `build` and `start` are shell commands the deploy runs on the box as root, and `root` is a filesystem path — handing any of them to a tenant would hand them the server, and every other tenant's site with it.
+
 ## Environment variables
 
 | Variable | Effect |
