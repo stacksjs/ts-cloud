@@ -57,7 +57,7 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
-    "better-dx": "^0.2.16"
+    "better-dx": "^0.2.18"
   },
   "workspaces": [
     "packages/*"
