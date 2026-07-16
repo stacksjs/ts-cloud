@@ -1,0 +1,98 @@
+import { describe, expect, it } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { authorize, isBoxCapability } from './dashboard-auth'
+import { allRoutePolicies, routePolicy } from './dashboard-policy'
+
+const member = { role: 'member' as const, sites: { blog: 'owner' as const } }
+
+describe('routePolicy', () => {
+  it('fails closed for an unlisted route', () => {
+    const policy = routePolicy('POST', '/api/some-future-route')
+    expect(policy.capability).toBe('box:shell')
+    // Which means a member is denied it.
+    expect(authorize({ user: member, capability: policy.capability, site: 'blog' })).toBe(false)
+  })
+
+  it('is method-sensitive', () => {
+    // Reading the site list is not the same as creating a site.
+    expect(routePolicy('POST', '/api/sites').capability).toBe('box:sites:create')
+    expect(routePolicy('DELETE', '/api/sites').capability).toBe('box:sites:delete')
+    expect(routePolicy('PATCH', '/api/sites').capability).toBe('site:settings')
+  })
+
+  it('is case-insensitive on the method', () => {
+    expect(routePolicy('get', '/api/health').capability).toBe(routePolicy('GET', '/api/health').capability)
+  })
+
+  it('keeps every shell-equivalent route admin-only', () => {
+    const rootRoutes = [
+      ['GET', '/api/terminal'],
+      ['POST', '/api/server/command'],
+      ['POST', '/api/server/operations/run'],
+      ['POST', '/api/actions/run'],
+      ['POST', '/api/ssh-keys'],
+      ['DELETE', '/api/ssh-keys'],
+      ['POST', '/api/firewall'],
+      ['POST', '/api/databases/users'],
+    ] as const
+
+    for (const [method, path] of rootRoutes) {
+      const policy = routePolicy(method, path)
+      expect(isBoxCapability(policy.capability)).toBe(true)
+      expect(authorize({ user: member, capability: policy.capability, site: 'blog' })).toBe(false)
+    }
+  })
+
+  it('only exposes site-scoped routes to members', () => {
+    for (const [route, policy] of Object.entries(allRoutePolicies())) {
+      if (policy.anyUser)
+        continue
+      const reachable = authorize({ user: member, capability: policy.capability, site: 'blog' })
+      if (reachable) {
+        // A member may only ever reach a site-scoped route, and it must know
+        // which site it applies to.
+        expect(isBoxCapability(policy.capability)).toBe(false)
+        expect(policy.siteFrom).toBe('body')
+      }
+      else {
+        expect(route).toBeTruthy()
+      }
+    }
+  })
+
+  it('gives every site-scoped policy a way to resolve its site', () => {
+    for (const policy of Object.values(allRoutePolicies())) {
+      if (!isBoxCapability(policy.capability) && !policy.anyUser)
+        expect(policy.siteFrom).toBe('body')
+    }
+  })
+})
+
+describe('policy coverage', () => {
+  /**
+   * The table is only a security boundary if it actually covers the server. Scan
+   * the handler for the routes it implements and assert each one was given a
+   * deliberate policy — an unlisted route still fails closed, but silently
+   * locking admins-only is a bug we want to hear about here, not in production.
+   */
+  it('has an entry for every route the dashboard server implements', () => {
+    const source = readFileSync(join(import.meta.dir, 'local-dashboard-server.ts'), 'utf8')
+    const policies = allRoutePolicies()
+
+    // `url.pathname === '/api/x' && req.method === 'POST'` → [path, method]
+    const routes = new Set<string>()
+    const re = /url\.pathname === '(\/api\/[^']*)'(?:\s*&&\s*req\.method === '([A-Z]+)')?/g
+    for (const match of source.matchAll(re)) {
+      const [, path, method] = match
+      routes.add(`${method ?? 'GET'} ${path}`)
+    }
+
+    // Sanity-check the scan itself found something, so a regex that stops
+    // matching can't turn this into a vacuous pass.
+    expect(routes.size).toBeGreaterThan(20)
+
+    const missing = [...routes].filter(route => !(route in policies))
+    expect(missing).toEqual([])
+  })
+})
