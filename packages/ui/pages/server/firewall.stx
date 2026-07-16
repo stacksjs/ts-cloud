@@ -81,7 +81,7 @@ onMount(() => { load() })
         <div class="port-grid">
           <template :for="p in alwaysOpen()">
             <div class="port-card">
-              <div class="top"><span class="tag">tcp</span><span class="pill ok">reserved</span></div>
+              <div class="top"><span class="tag">tcp</span><span class="ok pill">reserved</span></div>
               <div class="listen mono">{{ p }}</div>
               <div class="proc">Always allowed by ts-cloud</div>
             </div>

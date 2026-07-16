@@ -46,6 +46,13 @@
   .env-opt { padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--txt2); }
   .env-opt:hover { color: var(--txt); }
   .env-opt.active { background: var(--okbg); color: var(--ok); }
+  .signout { display: flex; }
+  .signout button {
+    appearance: none; border: 1px solid var(--panel-br); background: rgba(255,255,255,0.035);
+    color: var(--txt2); border-radius: 8px; padding: 5px 11px; font: inherit; font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: color .12s, border-color .12s;
+  }
+  .signout button:hover { color: var(--txt); border-color: rgba(255,255,255,0.16); }
 
   header.page { padding: 30px 0 22px; display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
   header.page h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; }

@@ -1,15 +1,25 @@
 <script server>
-// Mode-aware, fully server-rendered nav. The deployment mode + environment list
-// are injected with the dashboard data; the environment switcher is plain links
-// (`?env=<name>`) the server handles - no client JavaScript needed.
+// Mode- and scope-aware, fully server-rendered nav. The deployment mode,
+// environment list and viewer role are injected with the dashboard data; the
+// environment switcher is plain links (`?env=<name>`) the server handles - no
+// client JavaScript needed.
+//
+// The nav offers only what the viewer can actually reach. A member (a
+// collaborator invited to specific sites) has no box-level access, so the
+// server, database and environment-switching surfaces are not shown - the
+// server would refuse them anyway, and offering a link that 403s is worse than
+// not offering it. This is presentation only: access is enforced server-side.
 let __nav = null
 try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __nav = null }
 // Server and serverless are mutually exclusive; the dashboard shows one or the other.
 const navMode = __nav?.mode ?? 'server'
-const showServer = navMode === 'server'
-const showServerless = navMode === 'serverless'
+const isMember = (__nav?.viewer?.role ?? 'admin') === 'member'
+const showServer = navMode === 'server' && !isMember
+const showServerless = navMode === 'serverless' && !isMember
 const navEnvs = __nav?.environments ?? []
 const navEnv = __nav?.environment ?? ''
+// Only the box owner can switch the active environment (it is process-wide).
+const showEnvSwitch = navEnvs.length > 1 && !isMember
 </script>
 <nav>
   <div class="brand"><span class="dot"></span> ts-cloud</div>
@@ -28,6 +38,23 @@ const navEnv = __nav?.environment ?? ''
         <a href="/serverless">Serverless</a>
       @endif
     @endif
+    @if (isMember)
+      @if ((active ?? '') === 'sites')
+        <a href="/server/sites" class="active">Sites</a>
+      @else
+        <a href="/server/sites">Sites</a>
+      @endif
+      @if ((active ?? '') === 'deployments')
+        <a href="/server/deployments" class="active">Deployments</a>
+      @else
+        <a href="/server/deployments">Deployments</a>
+      @endif
+      @if ((active ?? '') === 'logs')
+        <a href="/server/logs" class="active">Logs</a>
+      @else
+        <a href="/server/logs">Logs</a>
+      @endif
+    @endif
     @if (showServer)
       @if ((active ?? '') === 'database')
         <a href="/server/database" class="active">Databases</a>
@@ -38,7 +65,7 @@ const navEnv = __nav?.environment ?? ''
   </div>
   <div class="nav-meta">
     <span>{{ name ?? '' }}</span>
-    @if (navEnvs.length > 1)
+    @if (showEnvSwitch)
       <span class="env-switch" title="Switch environment">
         @foreach (navEnvs as e)
           @if (e === navEnv)
@@ -51,5 +78,8 @@ const navEnv = __nav?.environment ?? ''
     @else
       <span class="env">{{ navEnv || env || '' }}</span>
     @endif
+    <form method="post" action="/api/logout" class="signout">
+      <button type="submit">Sign out</button>
+    </form>
   </div>
 </nav>

@@ -457,7 +457,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     if (cached)
       return cached
 
-    const scoped = scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug })
+    // `viewer` tells the nav which surfaces to offer. Only the ROLE is baked in,
+    // never the username: builds are shared by everyone with the same grants, so
+    // a name baked here would show up in someone else's page.
+    const scoped = {
+      ...scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }),
+      viewer: { role: user.role },
+    }
     // A failed build falls back to the packaged UI, which ships no baked data
     // (it renders its placeholder sample and hydrates from /api/*), so the
     // fallback can't leak either.
@@ -551,7 +557,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/api/logout' && req.method === 'POST') {
-          return json({ ok: true }, 200, { 'set-cookie': clearSessionCookie({ secure: cookieSecure }) })
+          const cookie = clearSessionCookie({ secure: cookieSecure })
+          // The nav signs out with a plain form post (no client JS), so send a
+          // browser back to the login page instead of a JSON body it would render.
+          if (req.headers.get('accept')?.includes('text/html'))
+            return new Response(null, { status: 302, headers: { 'location': '/login', 'set-cookie': cookie } })
+          return json({ ok: true }, 200, { 'set-cookie': cookie })
         }
 
         if (url.pathname === '/login') {
@@ -602,6 +613,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
           })
         }
+
+        // The home page is the box's own dashboard (host metrics, services,
+        // backups), which a member has no access to — land them on their sites.
+        if (url.pathname === '/' && user.role === 'member')
+          return new Response(null, { status: 302, headers: { location: '/server/sites' } })
 
         // A serverless deployment has no server home — land on the serverless view.
         if (url.pathname === '/' && latestData?.mode === 'serverless')
