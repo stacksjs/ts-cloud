@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.21...v0.7.22)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: deploy the live dashboard by default, with working auth ([b2751e4](https://github.com/stacksjs/ts-cloud/commit/b2751e4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📚 Documentation
+
+- describe the live dashboard as the deployed default ([d907d00](https://github.com/stacksjs/ts-cloud/commit/d907d00)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.22 ([9a209d8](https://github.com/stacksjs/ts-cloud/commit/9a209d8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.20...v0.7.21)
 
 ## 🚀 Features
