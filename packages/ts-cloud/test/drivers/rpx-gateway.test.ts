@@ -408,9 +408,12 @@ describe('buildRpxProvisionScript', () => {
 
     expect(script).toContain('bun add @stacksjs/rpx@latest')
     expect(script).toContain(`mkdir -p /etc/rpx /etc/rpx/sites.d /etc/rpx/certs`)
-    // Registry: this app's fragment + the stable assembler launcher.
-    expect(script).toContain(`cat > ${RPX_SITES_DIR}/app.json`)
-    expect(script).toContain(`cat > ${RPX_LAUNCHER_PATH}`)
+    // Registry: this app's fragment + the stable assembler launcher, both written
+    // atomically (temp + rename) so a concurrent assembler read can't see a
+    // half-written file.
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/app.json.XXXXXX"`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app.json`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_LAUNCHER_PATH}`)
     expect(script).toContain('rpx gateway assembler')
     expect(script).toContain('/opt/rpx-gateway')
     expect(script).toContain('ln -sfn /opt/rpx-gateway/node_modules /etc/rpx/node_modules')
@@ -427,6 +430,41 @@ describe('buildRpxProvisionScript', () => {
     const config = buildRpxConfig(sites, { proxy: { engine: 'rpx', version: '0.12.0' } })
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', version: '0.12.0' }, config }).join('\n')
     expect(script).toContain('bun add @stacksjs/rpx@0.12.0')
+  })
+
+  // Regression: a non-atomic `cat > sites.d/<slug>.json` truncates then streams,
+  // so an overlapping deploy's assembler read can catch a half-written fragment,
+  // fail to parse it, and drop that host from the routing table (→ transient
+  // 404). Every file write must go temp → rename instead.
+  it('writes every gateway file atomically (temp + rename), never streaming into the live path', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const lines = buildRpxProvisionScript({ proxy: rpxProxy, config })
+    const script = lines.join('\n')
+
+    // No `cat >` ever targets a real /etc/rpx path directly — only the temp var.
+    const directWrites = lines.filter(l => /^cat > (?!"\$__tsc_tmp")/.test(l.trim()))
+    expect(directWrites).toEqual([])
+
+    // The fragment + the launcher each land via an atomic rename from the temp.
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app.json`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_LAUNCHER_PATH}`)
+
+    // The temp name is derived from the target + a mktemp suffix, so it never
+    // ends in `.json` — the assembler's `*.json` filter ignores it mid-write.
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/app.json.XXXXXX"`)
+
+    // The launcher must be renamed into place BEFORE the gateway is (re)started,
+    // or the restart reads a stale/absent launcher.
+    expect(script.lastIndexOf(`mv -f "$__tsc_tmp" ${RPX_LAUNCHER_PATH}`))
+      .toBeLessThan(script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`))
+  })
+
+  // The generated assembler must announce a dropped host instead of silently
+  // skipping a malformed fragment (which used to 404 a whole app quietly).
+  it('generates an assembler that logs, not hides, a malformed fragment', () => {
+    const assembler = renderRpxAssembler()
+    expect(assembler).toContain('console.error')
+    expect(assembler).toContain('SKIPPING malformed fragment')
   })
 
   // A production gateway must bound stalled upstreams, or rpx's per-upstream
@@ -518,7 +556,7 @@ describe('per-app gateway registry (independent deploys)', () => {
 
   it('writes only THIS app fragment + the assembler — not a full config launcher', () => {
     const script = buildRpxProvisionScript({ proxy: { engine: 'rpx', onDemandTls: true }, config: appA, slug: 'app-a' }).join('\n')
-    expect(script).toContain(`cat > ${RPX_SITES_DIR}/app-a.json`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app-a.json`)
     expect(script).toContain('"slug": "app-a"')
     expect(script).toContain('"to": "a.com"')
     // The launcher is the stable assembler, not app-a's baked-in config.
@@ -548,8 +586,10 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(asm).toContain('readdirSync')
     expect(asm).toContain(RPX_SITES_DIR)
     expect(asm).toContain('startProxies(config)')
-    // Resilient: a malformed fragment is skipped, not fatal.
-    expect(asm).toContain('catch { continue }')
+    // Resilient: a malformed fragment is skipped (not fatal), but the skip is
+    // logged loud rather than swallowed silently.
+    expect(asm).toContain('continue')
+    expect(asm).toContain('SKIPPING malformed fragment')
   })
 })
 

@@ -519,7 +519,13 @@ let files = []
 try { files = readdirSync(dir).filter(n => n.endsWith('.json')).sort() } catch {}
 for (const f of files) {
   let frag
-  try { frag = JSON.parse(readFileSync(dir + '/' + f, 'utf8')) } catch { continue }
+  // Fragments are written atomically (temp + rename by ts-cloud), so a parse
+  // failure here means a genuinely corrupt fragment, not a mid-write read. Log
+  // it LOUD — a silent skip drops that app's whole host from the routing table,
+  // which then answers 404 until someone notices. We still continue so one bad
+  // fragment can't take every other app down, but the drop is now visible.
+  try { frag = JSON.parse(readFileSync(dir + '/' + f, 'utf8')) }
+  catch (err) { console.error('[rpx-assembler] SKIPPING malformed fragment ' + f + ' — its host(s) will 404 until fixed: ' + err); continue }
   for (const p of frag.proxies ?? []) {
     const key = p.id || (p.to + (p.path ?? ''))
     if (seen.has(key)) continue
@@ -553,12 +559,28 @@ await startProxies(config)
 /**
  * Embed a here-doc that writes `content` to `path` without the shell expanding
  * `$`/backticks (quoted heredoc delimiter).
+ *
+ * The write is ATOMIC: content streams into a unique temp file in the same
+ * directory, then a single `mv -f` renames it into place. `rename(2)` on one
+ * filesystem is atomic, so a concurrent reader — the rpx gateway assembler
+ * re-reading `sites.d/<slug>.json` during an overlapping deploy — never observes
+ * a truncated / half-written file. Without this, `cat > file` truncates then
+ * streams, and a reader that catches that window gets a parse error; the
+ * assembler's `catch { continue }` then silently drops that whole host from the
+ * routing table until the next reload, producing a transient 404 for the host.
+ * The temp name never ends in `.json`, so the assembler's `*.json` filter
+ * ignores it even mid-write. Perms are restored to 0644 (mktemp creates 0600) to
+ * match the previous `cat >`/umask behavior for the fragment, launcher, systemd
+ * units, and cert scripts this helper writes.
  */
 function writeFileHeredoc(path: string, content: string, delimiter: string): string[] {
   return [
-    `cat > ${path} <<'${delimiter}'`,
+    `__tsc_tmp="$(mktemp "${path}.XXXXXX")"`,
+    `cat > "$__tsc_tmp" <<'${delimiter}'`,
     content,
     delimiter,
+    `mv -f "$__tsc_tmp" ${path}`,
+    `chmod 0644 ${path}`,
   ]
 }
 
