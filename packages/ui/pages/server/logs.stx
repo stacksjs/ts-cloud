@@ -2,6 +2,9 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'stacks-production-app' }
+// Members see only their own sites' units; box-level CLI hints and the server
+// crumb are not theirs to act on.
+const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
 const initialLogs = __d?.serverLogs ?? []
 const emptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available yet.'
 </script>
@@ -30,15 +33,26 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
 <html lang="en" data-theme="dark">
 <head>@include('../partials/head', { title: 'ts-cloud - Server logs' })</head>
 <body>
-  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  @include('../partials/nav', { active: isMember ? 'logs' : 'server', name: server.name, env: 'production' })
   <div class="wrap">
-    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Logs</div>
+    @if (isMember)
+      <div class="crumbs">Logs</div>
+    @else
+      <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Logs</div>
+    @endif
     <header class="page">
-      <div>
-        <h1>Logs</h1>
-        <p>Live journal entries from every managed service on {{ server.name }}.</p>
-      </div>
-      <div class="cmds header-actions"><span class="accent cmd">cloud server:logs {{ server.name }}</span></div>
+      @if (isMember)
+        <div>
+          <h1>Logs</h1>
+          <p>Live journal entries from your sites and their queue workers.</p>
+        </div>
+      @else
+        <div>
+          <h1>Logs</h1>
+          <p>Live journal entries from every managed service on {{ server.name }}.</p>
+        </div>
+        <div class="cmds header-actions"><span class="accent cmd">cloud server:logs {{ server.name }}</span></div>
+      @endif
     </header>
 
     <div class="section">
@@ -76,7 +90,11 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
 
-        <p class="note">Live <span class="mono">journalctl</span> for the web server, every managed service, and each app's service, <b>queue workers</b>, and daemons - plus the backup runner. Auto-refreshes every 8s.</p>
+        @if (isMember)
+          <p class="note">Live <span class="mono">journalctl</span> for your sites' services, <b>queue workers</b> and daemons. Auto-refreshes every 8s.</p>
+        @else
+          <p class="note">Live <span class="mono">journalctl</span> for the web server, every managed service, and each app's service, <b>queue workers</b>, and daemons - plus the backup runner. Auto-refreshes every 8s.</p>
+        @endif
       </div>
     </div>
   </div>

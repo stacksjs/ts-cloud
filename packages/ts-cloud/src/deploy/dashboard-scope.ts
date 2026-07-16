@@ -74,6 +74,12 @@ export function scopeDashboardData(data: Record<string, any>, options: ScopeOpti
     environments: data.environments,
     scoped: true,
 
+    // Present but empty. The pages fall back to a sample server name when
+    // `server` is absent, which would show a member a box that does not exist —
+    // a fabricated name is worse than no name. An empty one renders as nothing,
+    // and still discloses none of the box's identity (ip, provider, os, uptime).
+    server: { name: '' },
+
     sites,
     sitesDetail,
     workers: (data.workers ?? []).filter((w: any) => allowedSet.has(w.site)),

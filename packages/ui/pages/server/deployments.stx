@@ -4,6 +4,9 @@ import { renderDeploymentSparkline } from '../../src/charts.ts'
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
+// Members reach this page for their own sites; box-level CLI hints and the
+// server crumb are not theirs to act on.
+const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
 const initialDeps = __d?.serverDeploymentsDetail ?? []
 const deploymentChart = renderDeploymentSparkline(initialDeps)
 const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
@@ -49,12 +52,20 @@ async function runOp() {
 <html lang="en" data-theme="dark">
 <head>@include('../partials/head', { title: 'ts-cloud - Deployments' })</head>
 <body>
-  @include('../partials/nav', { active: 'server', name: server.name, env: 'production' })
+  @include('../partials/nav', { active: isMember ? 'deployments' : 'server', name: server.name, env: 'production' })
   <div class="wrap">
-    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Deployments</div>
+    @if (isMember)
+      <div class="crumbs">Deployments</div>
+    @else
+      <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Deployments</div>
+    @endif
     <header class="page">
-      <div><h1>Deployments</h1><p>Server release history, newest first.</p></div>
-      <div class="cmds header-actions"><span class="accent cmd">cloud server:deploy {{ server.name }}</span></div>
+      @if (isMember)
+        <div><h1>Deployments</h1><p>Release history for your sites, newest first.</p></div>
+      @else
+        <div><h1>Deployments</h1><p>Server release history, newest first.</p></div>
+        <div class="cmds header-actions"><span class="accent cmd">cloud server:deploy {{ server.name }}</span></div>
+      @endif
     </header>
     <div class="section">
       <div class="panel">
@@ -98,7 +109,11 @@ async function runOp() {
         <div class="empty" @show="deps().length === 0"><strong>No deployments yet</strong><span>{{ deploymentsEmptyReason }}</span></div>
         <div class="compact empty" @show="deps().length > 0 && filtered().length === 0"><strong>No matches</strong><span>Try a different status or site filter.</span></div>
         @include('../partials/op-confirm')
-        <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
+        @if (isMember)
+          <p class="note">Roll back one of your sites to any prior release.</p>
+        @else
+          <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
+        @endif
       </div>
     </div>
   </div>

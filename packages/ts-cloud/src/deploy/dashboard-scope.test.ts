@@ -80,7 +80,6 @@ describe('scopeDashboardData', () => {
 
   it('drops the box-level surface for a member', () => {
     const scoped = scopeMember()
-    expect(scoped.server).toBeUndefined()
     expect(scoped.systemMetrics).toBeUndefined()
     expect(scoped.services).toBeUndefined()
     expect(scoped.sshKeys).toBeUndefined()
@@ -88,6 +87,15 @@ describe('scopeDashboardData', () => {
     expect(scoped.security.ports).toEqual([])
     expect(scoped.security.firewall).toBeNull()
     expect(scoped.security.authEvents).toEqual([])
+  })
+
+  it('blanks the box identity rather than omitting it, so no sample name is shown', () => {
+    // The pages fall back to a placeholder server name when `server` is absent,
+    // which would invent a box for the member.
+    const scoped = scopeMember()
+    expect(scoped.server).toEqual({ name: '' })
+    expect(JSON.stringify(scoped)).not.toContain('203.0.113.10')
+    expect(JSON.stringify(scoped)).not.toContain('hetzner')
   })
 
   it('keeps only the member\'s sites, workers and deployments', () => {
