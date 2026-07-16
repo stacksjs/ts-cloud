@@ -75,7 +75,7 @@ Lost it? Delete `.ts-cloud/dashboard-users.json` on the deploy host and restart 
 
 ## Where state lives
 
-All three files are `0600` and none of them belong in git:
+Both files are written `0600`, and neither belongs in git:
 
 | File | Holds |
 |---|---|

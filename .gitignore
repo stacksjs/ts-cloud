@@ -13,8 +13,11 @@ packages/ts-cloud/bin/cloud
 /docs/.bunpress
 .env
 bin/cloud
-# Auto-generated management-dashboard Basic-auth credentials (never commit)
-.ts-cloud/dashboard-credentials.json
+# Management-dashboard secrets (never commit): the legacy Basic-auth
+# credentials, the user store (scrypt password hashes + site grants), and the
+# session signing key. Ignore the whole local state directory - anything
+# ts-cloud writes there is per-machine, and some of it is a credential.
+.ts-cloud/
 /pantry
 pantry
 /ui/.stx
