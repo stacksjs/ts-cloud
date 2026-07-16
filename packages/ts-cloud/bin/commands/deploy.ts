@@ -68,14 +68,19 @@ function resolveReleaseSha(): string {
 
 /**
  * Forge-style compute app deploy via the active cloud driver.
+ *
+ * `onlySite` narrows what is BUILT and SHIPPED, not what is routed: the proxy
+ * config is still regenerated from the full site list (via `rpxConfig`), so a
+ * single-site deploy can never drop the other sites' routes.
  */
 async function deployAppToCompute(
   config: any,
   environment: 'production' | 'staging' | 'development',
   _region: string,
+  onlySite?: string,
 ): Promise<boolean> {
-  // Auto-deploy the management dashboard (Server + Serverless stx UI) alongside
-  // the app on every server box, behind htpasswd when TS_CLOUD_UI_PASSWORD is set.
+  // Auto-deploy the management dashboard (the stx cockpit) alongside the app on
+  // every server box.
   const { ensureManagementDashboard } = await import('../../src/deploy/management-dashboard')
   ensureManagementDashboard(config, { logger: { info: cli.info, warn: cli.warn } })
 
@@ -87,8 +92,17 @@ async function deployAppToCompute(
     return true
   }
 
+  if (onlySite && !sites[onlySite]) {
+    // Name the sites that exist — the dashboard is auto-injected, so a caller
+    // cannot know its key without being told.
+    cli.error(`Site '${onlySite}' was not found. Configured sites: ${allSites.map(([n]) => n).join(', ')}`)
+    return false
+  }
+
   const deployable = allSites.filter(([name, s]) => {
     if (!s)
+      return false
+    if (onlySite && name !== onlySite)
       return false
     const kind = resolveSiteKind(s)
     if (kind === 'bucket') {
@@ -98,6 +112,9 @@ async function deployAppToCompute(
     return true
   })
   if (deployable.length === 0) return true
+
+  if (onlySite)
+    cli.info(`Deploying only '${onlySite}'. Other sites keep their current release; proxy routes are still regenerated in full.`)
 
   const slug = config.project.slug
   const compute = config.infrastructure?.compute || {}
@@ -160,7 +177,11 @@ async function deployAppToCompute(
   if (!await runConfigHook(config, 'afterBuild', hookLogger)) return true
 
   const ok = await deployAllComputeSites({
-    config,
+    // Only the selected site is shipped...
+    config: onlySite ? { ...config, sites: Object.fromEntries(deployable) } : config,
+    // ...but the proxy still sees every site, so a single-site deploy can never
+    // drop the other sites' routes from the regenerated gateway config.
+    rpxConfig: onlySite ? config : undefined,
     environment,
     driver,
     sha,
@@ -322,7 +343,7 @@ export function registerDeployCommands(app: CLI): void {
     .command('deploy', 'Deploy infrastructure')
     .option('--stack <name>', 'Stack name')
     .option('--env <environment>', 'Environment to deploy to')
-    .option('--site <name>', 'Deploy specific site only')
+    .option('--site <name>', 'Deploy specific site only (routes are still regenerated in full)')
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
     .option('--skip-dns-verification', 'Skip DNS provider verification and record creation (use when DNS is already configured)')
     .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
@@ -469,7 +490,7 @@ export function registerDeployCommands(app: CLI): void {
           // Provision-then-deploy (no separate CloudFormation stack step). Always
           // run the deploy step — even with no user sites — so the management
           // dashboard is auto-deployed on every freshly started server.
-          const ok = await deployAppToCompute(config, environment, region)
+          const ok = await deployAppToCompute(config, environment, region, options?.site)
           if (!ok) {
             cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
           }
@@ -715,7 +736,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         // EC2 app deploy via SSM (Forge-style) — when `infrastructure.compute` is set,
         // deploy every configured site as a systemd service on the EC2 instance.
         if (config.infrastructure?.compute) {
-          await deployAppToCompute(config, environment, region)
+          await deployAppToCompute(config, environment, region, options?.site)
         }
 
         // When compute serves site domains via CloudFront, ensure POST/auth routes work
@@ -744,7 +765,8 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
   app
     .command('deploy:server', 'Deploy EC2 infrastructure')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .action(async (options?: { env?: string }) => {
+    .option('--site <name>', 'Deploy specific site only (routes are still regenerated in full)')
+    .action(async (options?: { env?: string, site?: string }) => {
       cli.header('Deploying Server Infrastructure')
 
       try {
@@ -770,7 +792,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         cli.info(`Environment: ${environment}`)
 
         // Forge-style EC2 deploy via SSM — the same real path used by `cloud deploy`.
-        const ok = await deployAppToCompute(config, environment, region)
+        const ok = await deployAppToCompute(config, environment, region, options?.site)
         if (!ok) {
           process.exitCode = 1
           return
