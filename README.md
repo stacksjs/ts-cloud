@@ -8,19 +8,130 @@
 
 # ts-cloud
 
-> Zero-dependency AWS infrastructure as TypeScript. Deploy production-ready cloud infrastructure without AWS SDK or CLI.
+> Zero-dependency cloud infrastructure as TypeScript. A driver-based system — deploy production-ready infrastructure to **AWS** or **Hetzner** with the same config, no cloud SDK or CLI required.
 
 ## Overview
 
-ts-cloud is a modern infrastructure-as-code framework that lets you define AWS infrastructure using TypeScript configuration files. Unlike AWS CDK or Terraform, ts-cloud:
+ts-cloud is a modern infrastructure-as-code framework that lets you define cloud infrastructure using TypeScript configuration files. Your config is provider-agnostic; a pluggable **cloud driver** translates it into provider-native API calls. Unlike AWS CDK or Terraform, ts-cloud:
 
-- **Zero AWS Dependencies** - No AWS SDK, no AWS CLI. Direct AWS API calls only.
-- **Type-Safe Configuration** - Full TypeScript types for all AWS resources
+- **Driver-Based Architecture** - One `CloudDriver` interface, swappable backends. AWS and Hetzner drivers ship in the box.
+- **Zero Cloud Dependencies** - No AWS SDK, no Hetzner SDK, no CLIs. Direct, signed HTTPS API calls only.
+- **Type-Safe Configuration** - Full TypeScript types for all resources
 - **Production-Ready Presets** - 13 battle-tested infrastructure templates
 - **Bun-Powered** - Lightning-fast builds and deployments
-- **CloudFormation Native** - Generate clean, reviewable CloudFormation templates
+- **CloudFormation Native** - The AWS driver generates clean, reviewable CloudFormation templates
+
+## Cloud Drivers
+
+Every provision, deploy, and teardown flows through the same `CloudDriver` interface — the CLI and your config never talk to a provider directly:
+
+```
+cloud.config.ts
+      │
+      ▼
+resolveCloudProvider(config)          createCloudDriver({ config })
+  cloud.provider, or auto-detected ───────────────►┌──────────────────────────┐
+  from hetzner credentials                         │        CloudDriver       │
+                                                   │                          │
+                                                   │  provisionCompute  /     │
+                                                   │  getComputeOutputs /     │
+                                                   │  uploadRelease     /     │
+                                                   │  runRemoteDeploy   /     │
+                                                   │  destroyCompute          │
+                                                   └────────────┬─────────────┘
+                                                                │
+                     ┌──────────────────────┬───────────────────┴──────┐
+                     ▼                      ▼                          ▼
+              ┌────────────┐        ┌──────────────┐           ┌─────────────┐
+              │ AwsDriver  │        │ HetznerDriver│           │LocalBoxDriver│
+              └────────────┘        └──────────────┘           └─────────────┘
+```
+
+| Driver | Compute | Deploys via | Release staging | Infrastructure model |
+|--------|---------|-------------|-----------------|----------------------|
+| `aws` | EC2 (CloudFormation stacks or a lightweight single-box boot) | SSM `AWS-RunShellScript` | S3 deploy bucket | Clean, reviewable CloudFormation templates |
+| `hetzner` | Hetzner Cloud servers, cloud firewalls, private networks, native load balancers | SSH + cloud-init bootstrap | `/var/ts-cloud/staging` on the box | Direct Hetzner Cloud API calls |
+| `local-box` | The machine ts-cloud runs on | Local shell | — | On-box management dashboard (box mode) |
+
+New providers implement the same interface (`packages/core/src/drivers/types.ts`) and register with the factory — DNS stays provider-agnostic via the separate `DnsProvider` abstraction (Cloudflare, Porkbun, GoDaddy, Route53).
+
+### Choosing a provider
+
+```typescript
+// cloud.config.ts
+export default {
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
+  cloud: {
+    provider: 'hetzner', // 'aws' (default) | 'hetzner'
+  },
+  // ...
+}
+```
+
+Resolution order: an explicit `cloud.provider` wins; otherwise a `hetzner.apiToken` in the config file selects the Hetzner driver; with neither, the AWS driver is used (backward compatible). The token itself is supplied at deploy time — `HCLOUD_TOKEN` / `HETZNER_API_TOKEN` in the environment, or `hetzner.apiToken` in the config.
+
+### Deploy to Hetzner
+
+Set the provider, supply a token, deploy:
+
+```bash
+export HCLOUD_TOKEN="your-hetzner-cloud-api-token"
+cloud deploy
+```
+
+```typescript
+// cloud.config.ts
+export default {
+  // ...
+  cloud: { provider: 'hetzner' },
+}
+```
+
+The Hetzner driver boots an Ubuntu 24.04 server behind a cloud firewall, registers your deploy SSH key, and provisions the stack over cloud-init (nginx, PHP-FPM, bun/node/deno runtimes, databases, caches — installed via [pantry](https://pantry.dev)). Fleets (a private network, dedicated services box, N app servers, and a load balancer) are first-class too. Server state is pinned in `storage/cloud/state/<stack>.json` — commit it, and CI reuses the same box instead of provisioning a new one.
+
+Optional config (all env-overridable):
+
+| Config | Env | Default |
+|--------|-----|---------|
+| `hetzner.apiToken` | `HCLOUD_TOKEN` / `HETZNER_API_TOKEN` | — (required) |
+| `hetzner.location` | `HCLOUD_LOCATION` | `fsn1` |
+| `hetzner.image` | `HCLOUD_IMAGE` | `ubuntu-24.04` |
+| `hetzner.sshPrivateKeyPath` | `HCLOUD_SSH_KEY` | `~/.ssh/id_ed25519` |
+| `hetzner.sshUser` | `HCLOUD_SSH_USER` | `root` |
+
+### Deploy to AWS
+
+AWS is the default driver — just standard credentials:
+
+```bash
+export AWS_ACCESS_KEY_ID="your-access-key"
+export AWS_SECRET_ACCESS_KEY="your-secret-key"
+export AWS_REGION="us-east-1"
+cloud deploy
+```
+
+Full infrastructure (VPC, ALB, RDS, ElastiCache, CloudFront, …) is generated as CloudFormation; the lightweight Forge-style path boots a single tagged EC2 box and deploys over SSM with releases staged in S3.
+
+### Programmatic drivers
+
+```typescript
+import { createCloudDriver } from 'ts-cloud'
+
+const driver = createCloudDriver({ config }) // AwsDriver | HetznerDriver (LocalBoxDriver in box mode)
+const outputs = await driver.getComputeOutputs({ config, environment: 'production' })
+// outputs.appPublicIp, outputs.appInstanceId, outputs.deployStoragePath, ...
+```
 
 ## Features
+
+### 🌩️ Multi-Cloud by Design
+
+One config, two production drivers today:
+
+- **AWS** - CloudFormation-generated stacks or a lightweight single-EC2 boot, SSM-based deploys, S3 release staging
+- **Hetzner** - Cloud servers + firewalls + private networks + load balancers over the Hetzner Cloud API, SSH deploys, cloud-init bootstrap
+
+See [Cloud Drivers](#cloud-drivers) for the architecture and per-provider setup.
 
 ### 🚀 Configuration Presets
 
@@ -72,14 +183,12 @@ cloud deploy:security-scan --source ./dist
 cloud deploy  # Scans automatically before deployment
 ```
 
-### ☁️ Direct AWS Integration
+### ☁️ Direct Provider Integration
 
-No SDK, no CLI - pure AWS Signature V4 API calls:
+No SDK, no CLI - pure signed HTTPS API calls against the providers themselves:
 
-- **CloudFormation** - CreateStack, UpdateStack, DeleteStack, DescribeStacks
-- **S3** - PutObject, multipart upload, sync directory
-- **CloudFront** - Cache invalidations with wait support
-- **Credentials** - Resolve from env vars, ~/.aws/credentials, or IAM roles
+- **AWS** - Signature V4 calls: CloudFormation (CreateStack, UpdateStack, DeleteStack, DescribeStacks), S3 (PutObject, multipart upload, sync directory), CloudFront (cache invalidations with wait support). Credentials resolve from env vars, ~/.aws/credentials, or IAM roles
+- **Hetzner** - Bearer-token Cloud API client with pagination, action polling, firewalls, private networks, load balancers, and SSH key management. Token resolves from `HCLOUD_TOKEN` / `HETZNER_API_TOKEN` or `hetzner.apiToken`
 
 ## Quick Start
 
@@ -115,6 +224,8 @@ That's it! You now have:
 - ✅ CloudFront CDN with HTTPS
 - ✅ Route53 DNS configuration
 - ✅ ACM SSL certificate
+
+The same config deploys to Hetzner by setting `cloud.provider: 'hetzner'` and exporting `HCLOUD_TOKEN` — see [Cloud Drivers](#cloud-drivers).
 
 ### More Examples
 
@@ -250,6 +361,21 @@ const cloudfront = new CloudFrontClient()
 await cloudfront.createInvalidation({
   distributionId: 'E1234567890',
   paths: ['/*'],
+})
+```
+
+### Direct Hetzner API Calls
+
+The Hetzner driver's Cloud API client is exported too:
+
+```typescript
+import { HetznerClient } from 'ts-cloud'
+
+const hcloud = new HetznerClient({ apiToken: process.env.HCLOUD_TOKEN! })
+const servers = await hcloud.listServers() // fully paginated
+const { firewall } = await hcloud.createFirewall({
+  name: 'web-fw',
+  rules: [{ direction: 'in', protocol: 'tcp', port: '443', source_ips: ['0.0.0.0/0', '::/0'] }],
 })
 ```
 
@@ -409,19 +535,20 @@ bun run typecheck
 
 ### How It Works
 
-1. **Configuration** - Define infrastructure in TypeScript
-2. **CloudFormation Generation** - Convert config to CloudFormation templates
-3. **AWS API Calls** - Direct HTTPS calls to AWS CloudFormation API
-4. **Deployment** - Create/update stacks with change sets
-5. **Monitoring** - Track deployment progress with real-time events
+1. **Configuration** - Define infrastructure in TypeScript (provider-agnostic)
+2. **Driver Resolution** - `resolveCloudProvider` picks `aws` or `hetzner` from your config; `createCloudDriver` builds the matching driver (cached per project)
+3. **Template / API Translation** - The AWS driver generates CloudFormation templates; the Hetzner driver composes Cloud API calls + cloud-init bootstraps
+4. **Deployment** - Create/update stacks with change sets (AWS), or provision servers/firewalls/networks directly (Hetzner)
+5. **Release Deploys** - Releases upload to provider staging (S3 / on-box) and roll out over SSM or SSH with zero-downtime cutovers
+6. **Monitoring** - Track deployment progress with real-time events
 
 ### No Dependencies
 
-ts-cloud uses **zero external dependencies** for AWS operations:
+ts-cloud uses **zero external dependencies** for cloud operations:
 
 - **AWS Signature V4** - Manual request signing for authentication
-- **Direct HTTPS** - Native `fetch()` for API calls
-- **Credentials** - Parse ~/.aws/credentials without SDK
+- **Direct HTTPS** - Native `fetch()` for AWS and Hetzner Cloud API calls
+- **Credentials** - Parse ~/.aws/credentials without SDK; bearer tokens for Hetzner
 - **CloudFormation** - XML/JSON parsing for responses
 
 This means:
@@ -429,7 +556,7 @@ This means:
 - ⚡ Faster startup and execution
 - 📦 Smaller bundle size
 - 🔒 Better security (no supply chain attacks)
-- 🎯 Full control over AWS interactions
+- 🎯 Full control over provider interactions
 
 ## Contributing
 
