@@ -11,6 +11,7 @@
  * directly (see nginx-vhost's `ssl` option), so certbot is not involved.
  */
 import type { SiteConfig, SslDnsConfig } from '@ts-cloud/core'
+import { NGINX_WRAPPER } from './nginx-vhost'
 
 /** Resolve the effective SSL provider for a site (Let's Encrypt by default when it has a domain). */
 export function resolveSslProvider(site: SiteConfig): 'letsencrypt' | 'custom' | 'none' {
@@ -121,7 +122,11 @@ export function buildCertbotIssueScript(options: CertbotIssueOptions): string[] 
     args.push('certonly')
   }
   else {
-    args.push('--nginx', options.redirect === false ? '--no-redirect' : '--redirect')
+    // certbot's nginx plugin shells out to an `nginx` binary on PATH (nginx -V,
+    // -t, reload). These boxes only carry the ts-cloud wrapper around the
+    // pantry-installed binary, so point certbot at it explicitly — otherwise
+    // issuance aborts with "Could not find a usable 'nginx' binary".
+    args.push('--nginx', `--nginx-ctl ${NGINX_WRAPPER}`, options.redirect === false ? '--no-redirect' : '--redirect')
   }
   if (options.email)
     args.push(`-m ${options.email}`)
