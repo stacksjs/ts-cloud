@@ -50,7 +50,7 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
   if (repository.strategy === 'tag') {
     if (repository.tag) {
       // git clone --branch accepts a tag name as well as a branch.
-      lines.push(`git clone -q --depth 1 --branch ${repository.tag} ${url} ${releaseDir}`)
+      lines.push(`git clone -q --depth 1 --branch ${shellQuote(repository.tag)} ${shellQuote(url)} ${releaseDir}`)
       lines.push(`printf '%s' ${shellQuote(repository.tag)} > ${releaseDir}/.ts-cloud-tag`)
     }
     else {
@@ -58,9 +58,9 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
       // Resolve the highest version tag matching the pattern on the remote, then
       // shallow-clone exactly that tag. `-v:refname` sorts semver-ish names.
       lines.push(
-        `TS_CLOUD_TAG="$(git ls-remote --tags --refs --sort=-v:refname ${url} ${shellQuote(`refs/tags/${pattern}`)} | head -n1 | sed 's#.*refs/tags/##')"`,
-        `test -n "$TS_CLOUD_TAG" || { echo "no tags matching ${pattern} found in ${url}" >&2; exit 1; }`,
-        `git clone -q --depth 1 --branch "$TS_CLOUD_TAG" ${url} ${releaseDir}`,
+        `TS_CLOUD_TAG="$(git ls-remote --tags --refs --sort=-v:refname ${shellQuote(url)} ${shellQuote(`refs/tags/${pattern}`)} | head -n1 | sed 's#.*refs/tags/##')"`,
+        `test -n "$TS_CLOUD_TAG" || { echo "no tags matching" ${shellQuote(pattern)} "found in" ${shellQuote(url)} >&2; exit 1; }`,
+        `git clone -q --depth 1 --branch "$TS_CLOUD_TAG" ${shellQuote(url)} ${releaseDir}`,
         `printf '%s' "$TS_CLOUD_TAG" > ${releaseDir}/.ts-cloud-tag`,
       )
     }
@@ -69,14 +69,14 @@ export function buildGitCheckoutScript(options: GitCheckoutOptions): string[] {
     // Reproducible deploy of an exact commit: init + fetch just that commit.
     lines.push(
       `git -C ${releaseDir} init -q`,
-      `git -C ${releaseDir} remote add origin ${url}`,
-      `git -C ${releaseDir} fetch -q --depth 1 origin ${commit}`,
+      `git -C ${releaseDir} remote add origin ${shellQuote(url)}`,
+      `git -C ${releaseDir} fetch -q --depth 1 origin ${shellQuote(commit)}`,
       `git -C ${releaseDir} checkout -q FETCH_HEAD`,
     )
   }
   else {
     lines.push(
-      `git clone -q --depth 1 --branch ${branch} ${url} ${releaseDir}`,
+      `git clone -q --depth 1 --branch ${shellQuote(branch)} ${shellQuote(url)} ${releaseDir}`,
     )
   }
 

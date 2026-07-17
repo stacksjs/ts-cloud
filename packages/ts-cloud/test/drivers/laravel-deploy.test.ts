@@ -41,7 +41,7 @@ describe('buildLaravelDeployScript', () => {
   const joined = script.join('\n')
 
   it('expands $CREATE_RELEASE into clone + link + cd', () => {
-    expect(joined).toContain('git clone -q --depth 1 --branch main git@github.com:acme/app.git /var/www/app/releases/rel1')
+    expect(joined).toContain('git clone -q --depth 1 --branch \'main\' \'git@github.com:acme/app.git\' /var/www/app/releases/rel1')
     expect(joined).toContain('ln -sfn /var/www/app/shared/storage /var/www/app/releases/rel1/storage')
     expect(joined).toContain('cd /var/www/app/releases/rel1')
   })

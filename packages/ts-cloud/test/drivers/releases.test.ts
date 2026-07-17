@@ -90,7 +90,7 @@ describe('buildGitCheckoutScript', () => {
       repository: { url: 'git@github.com:acme/app.git', branch: 'main' },
       releaseDir: paths.release,
     }).join('\n')
-    expect(script).toContain('git clone -q --depth 1 --branch main git@github.com:acme/app.git /var/www/app/releases/20240601120000')
+    expect(script).toContain('git clone -q --depth 1 --branch \'main\' \'git@github.com:acme/app.git\' /var/www/app/releases/20240601120000')
     expect(script).toContain('rev-parse HEAD > /var/www/app/releases/20240601120000/.ts-cloud-sha')
   })
 
@@ -100,7 +100,7 @@ describe('buildGitCheckoutScript', () => {
       releaseDir: paths.release,
       commit: 'abc1234',
     }).join('\n')
-    expect(script).toContain('fetch -q --depth 1 origin abc1234')
+    expect(script).toContain('fetch -q --depth 1 origin \'abc1234\'')
     expect(script).toContain('checkout -q FETCH_HEAD')
     expect(script).not.toContain('git clone')
   })
@@ -110,7 +110,7 @@ describe('buildGitCheckoutScript', () => {
       repository: { url: 'git@github.com:acme/app.git', strategy: 'tag', tag: 'v1.4.2' },
       releaseDir: paths.release,
     }).join('\n')
-    expect(script).toContain('git clone -q --depth 1 --branch v1.4.2 git@github.com:acme/app.git')
+    expect(script).toContain('git clone -q --depth 1 --branch \'v1.4.2\' \'git@github.com:acme/app.git\'')
     expect(script).toContain('.ts-cloud-tag')
   })
 
