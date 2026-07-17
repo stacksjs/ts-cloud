@@ -141,6 +141,10 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
 
   const stageRelease = [
     'set -euo pipefail',
+    // A failed deploy must not strand its half-built release dir: rollback
+    // picks the newest non-current dir and would activate this never-activated
+    // (broken) release. On any failure before activation, remove it.
+    `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
     // Unpack this deploy into its own release dir (never touches the live one).
@@ -315,6 +319,9 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
 
   return [
     'set -euo pipefail',
+    // Same stranded-release guard as buildSiteDeployScript: never let a failed
+    // deploy leave a release rollback could activate.
+    `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, []),
     `rm -rf ${paths.release}`,
