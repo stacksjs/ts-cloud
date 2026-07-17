@@ -134,7 +134,11 @@ export function buildDatabaseSetupScript(
             `\\connect ${pgIdent(db)}`,
             `GRANT USAGE ON SCHEMA public TO ${pgIdent(u.username)};`,
             `GRANT SELECT ON ALL TABLES IN SCHEMA public TO ${pgIdent(u.username)};`,
-            `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO ${pgIdent(u.username)};`,
+            // Default privileges bind to the CREATING role — without FOR ROLE
+            // they would only cover tables made by the superuser running this
+            // script, leaving every table the app role creates (migrations)
+            // invisible to the read-only user.
+            `ALTER DEFAULT PRIVILEGES FOR ROLE ${pgIdent(user)} IN SCHEMA public GRANT SELECT ON TABLES TO ${pgIdent(u.username)};`,
             '\\connect postgres',
           )
         }
