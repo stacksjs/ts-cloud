@@ -45,11 +45,15 @@ export function buildCertbotInstallScript(dns?: SslDnsConfig): string[] {
   return [
     'export DEBIAN_FRONTEND=noninteractive',
     installLine,
-    // Reload nginx after each successful renewal so the new cert is served.
+    // Reload nginx after each successful renewal so the new cert is served. The
+    // managed unit is ts-cloud-nginx (pantry nginx) — there is no nginx.service
+    // on these boxes, so reloading 'nginx' silently did nothing and the old
+    // cert kept being served until a manual restart. Fall back for apt-nginx
+    // boxes.
     'mkdir -p /etc/letsencrypt/renewal-hooks/deploy',
     'cat > /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh <<\'TS_CLOUD_HOOK_EOF\'',
     '#!/bin/sh',
-    'systemctl reload nginx',
+    'systemctl reload ts-cloud-nginx 2>/dev/null || systemctl reload nginx 2>/dev/null || true',
     'TS_CLOUD_HOOK_EOF',
     'chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh',
     // The apt package ships certbot.timer; make sure it's active.
