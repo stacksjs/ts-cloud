@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { deriveManagementDashboardPort } from '@ts-cloud/core'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, LIVE_STAGE_DIR, resolveDashboardVersion, resolveUiSource } from '../../src/deploy/management-dashboard'
 
 function cfg(): CloudConfig {
@@ -141,7 +142,7 @@ describe('ensureManagementDashboard (live, the default)', () => {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
       const d = (c.sites as any)['dashboard-acme-com']
       expect(d.domain).toBe('dashboard.acme.com')
-      expect(d.port).toBe(7676)
+      expect(d.port).toBe(deriveManagementDashboardPort('dashboard.acme.com'))
       expect(d.type).toBeUndefined()
       // The dashboard authenticates itself; a shared Basic-auth password in
       // front would block every collaborator at the door.

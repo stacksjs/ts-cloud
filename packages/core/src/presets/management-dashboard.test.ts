@@ -1,6 +1,6 @@
 import type { CloudConfig } from '../types'
 import { describe, expect, it } from 'bun:test'
-import { hasManagementDashboardSite, isManagementDashboardSiteName, managementDashboardSiteName, resolveDashboardDomain, resolveDashboardDomains, resolveManagementDashboardSite, resolveManagementDashboardSites } from './management-dashboard'
+import { DASHBOARD_PORT_BASE, DASHBOARD_PORT_SPAN, deriveManagementDashboardPort, hasManagementDashboardSite, isManagementDashboardSiteName, managementDashboardSiteName, resolveDashboardDomain, resolveDashboardDomains, resolveManagementDashboardSite, resolveManagementDashboardSites } from './management-dashboard'
 
 function cfg(partial: Partial<CloudConfig>): CloudConfig {
   return { project: { name: 'Acme', slug: 'acme' }, environments: {}, ...partial } as CloudConfig
@@ -71,7 +71,9 @@ describe('resolveManagementDashboardSite', () => {
     expect(r?.site.domain).toBe('dashboard.acme.com')
     expect(r?.site.deploy).toBe('server')
     expect(r?.site.type).toBeUndefined() // server-app, not static
-    expect(r?.site.port).toBe(7676)
+    // Port is derived per dashboard host (no longer a shared 7676), so two apps
+    // on one box can't collide.
+    expect(r?.site.port).toBe(deriveManagementDashboardPort('dashboard.acme.com'))
   })
 
   /**
@@ -84,6 +86,30 @@ describe('resolveManagementDashboardSite', () => {
     expect(r?.site.start).toBe('bun ./node_modules/@stacksjs/ts-cloud/dist/bin/cli.js dashboard:serve --box --host 127.0.0.1 --port 7700')
     expect(r?.site.start).not.toMatch(/^bun cloud\b/)
     expect(r?.site.port).toBe(7700)
+  })
+
+  // Regression: every dashboard used to default to 7676, so a second app on the
+  // same box crash-looped on EADDRINUSE and its domain silently served the first
+  // app's dashboard. The default port is now derived per dashboard host.
+  it('gives two apps on one box distinct, stable, in-band dashboard ports', () => {
+    const stacks = cfg({ sites: { main: { root: 'dist', domain: 'stacksjs.com' } as any } })
+    const chris = cfg({ sites: { main: { root: 'dist', domain: 'chrisbreuer.me' } as any } })
+    const a = resolveManagementDashboardSite(stacks, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+    const b = resolveManagementDashboardSite(chris, 'production', { uiRoot: '.ts-cloud/dashboard-release', build: false })
+
+    // Distinct hosts → distinct ports (no collision).
+    expect(a?.site.port).not.toBe(b?.site.port)
+    // Deterministic + stable across calls, and matches the exported helper.
+    expect(a?.site.port).toBe(deriveManagementDashboardPort('dashboard.stacksjs.com'))
+    expect(a?.site.port).toBe(deriveManagementDashboardPort('dashboard.stacksjs.com'))
+    // In-band: above app ports, below the Linux ephemeral range.
+    for (const p of [a?.site.port, b?.site.port]) {
+      expect(p).toBeGreaterThanOrEqual(DASHBOARD_PORT_BASE)
+      expect(p).toBeLessThan(DASHBOARD_PORT_BASE + DASHBOARD_PORT_SPAN)
+      expect(p).toBeLessThan(32768)
+    }
+    // The generated systemd start + rpx `from` port agree with site.port.
+    expect(a?.site.start).toContain(`--port ${a?.site.port}`)
   })
 
   it('installs the CLI on the box, so the artifact need not ship one', () => {

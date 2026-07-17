@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
+import { deriveManagementDashboardPort } from '@ts-cloud/core'
 import { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from '../../src/drivers/shared/compute-deploy'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -367,8 +368,9 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect(ok).toBe(true)
     const dashboard = (config.sites as any)['dashboard-my-app-example-com']
     expect(dashboard).toBeTruthy()
-    // A service, not static files behind htpasswd.
-    expect(dashboard.port).toBe(7676)
+    // A service, not static files behind htpasswd. Port is derived per dashboard
+    // host so two apps on one box never collide.
+    expect(dashboard.port).toBe(deriveManagementDashboardPort(dashboard.domain))
     expect(dashboard.auth).toBeUndefined()
 
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))

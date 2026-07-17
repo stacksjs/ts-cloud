@@ -47,7 +47,11 @@ export interface ManagementDashboardOptions {
    * @default true
    */
   live?: boolean
-  /** Loopback port for the live (box-mode) dashboard service. @default 7676 */
+  /**
+   * Loopback port for the live (box-mode) dashboard service. Defaults to a value
+   * derived per dashboard host via {@link deriveManagementDashboardPort} so two
+   * apps on one box never collide; set this (or `TS_CLOUD_UI_PORT`) to pin it.
+   */
   port?: number
   /**
    * ts-cloud version the box installs to run the dashboard. Defaults to the
@@ -74,6 +78,43 @@ export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/cli.j
 function apexOf(domain: string): string {
   const parts = domain.split('.').filter(Boolean)
   return parts.length <= 2 ? domain : parts.slice(-2).join('.')
+}
+
+/** 32-bit FNV-1a hash — deterministic, dependency-free, good spread for hostnames. */
+function fnv1a(str: string): number {
+  let h = 0x811C9DC5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
+/**
+ * Loopback port band for box-mode dashboards. Chosen to sit ABOVE the app port
+ * range projects use (3000s) and BELOW the Linux ephemeral range (32768+), so a
+ * derived dashboard port can neither clash with a project's own service nor with
+ * an outbound socket the box opens.
+ */
+export const DASHBOARD_PORT_BASE = 20000
+export const DASHBOARD_PORT_SPAN = 12000
+
+/**
+ * The loopback port for a tenant's box-mode dashboard, derived deterministically
+ * from its dashboard host.
+ *
+ * Every dashboard used to default to a single hard-coded port (7676), so two
+ * Stacks apps sharing a box both tried to bind it: the first won, the second
+ * crash-looped on EADDRINUSE, and — because its rpx route still pointed at that
+ * port — the second tenant's `dashboard.<domain>` silently served the FIRST
+ * tenant's dashboard. Deriving from the (globally unique) dashboard host gives
+ * each tenant its own port with no cross-tenant coordination, stays stable
+ * across deploys (same host → same port), and stays inside {@link
+ * DASHBOARD_PORT_BASE}..+{@link DASHBOARD_PORT_SPAN}. An explicit port (config
+ * `port` / `TS_CLOUD_UI_PORT`) still wins for anyone who wants to pin it.
+ */
+export function deriveManagementDashboardPort(dashboardHost: string): number {
+  return DASHBOARD_PORT_BASE + (fnv1a(dashboardHost) % DASHBOARD_PORT_SPAN)
 }
 
 /**
@@ -245,7 +286,7 @@ export function resolveManagementDashboardSites(
     if (!domain)
       return []
 
-    const port = opts.port ?? 7676
+    const port = opts.port ?? deriveManagementDashboardPort(domain)
     const site: SiteConfig = {
       // The release ships the project's cloud config + a package.json; the
       // CLI (and the UI it serves) come from npm via `bun install` below, so
