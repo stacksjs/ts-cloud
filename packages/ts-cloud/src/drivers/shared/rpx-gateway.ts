@@ -569,18 +569,19 @@ await startProxies(config)
  * assembler's `catch { continue }` then silently drops that whole host from the
  * routing table until the next reload, producing a transient 404 for the host.
  * The temp name never ends in `.json`, so the assembler's `*.json` filter
- * ignores it even mid-write. Perms are restored to 0644 (mktemp creates 0600) to
- * match the previous `cat >`/umask behavior for the fragment, launcher, systemd
- * units, and cert scripts this helper writes.
+ * ignores it even mid-write. Perms default to 0644 (mktemp creates 0600) to
+ * match the previous `cat >`/umask behavior; pass `mode` for files carrying
+ * credentials (route fragments hold basic-auth passwords + the origin-guard
+ * shared secret — on a multi-tenant box those must stay root-only).
  */
-function writeFileHeredoc(path: string, content: string, delimiter: string): string[] {
+function writeFileHeredoc(path: string, content: string, delimiter: string, mode = '0644'): string[] {
   return [
     `__tsc_tmp="$(mktemp "${path}.XXXXXX")"`,
     `cat > "$__tsc_tmp" <<'${delimiter}'`,
     content,
     delimiter,
     `mv -f "$__tsc_tmp" ${path}`,
-    `chmod 0644 ${path}`,
+    `chmod ${mode} ${path}`,
   ]
 }
 
@@ -747,8 +748,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     `rm -rf ${RPX_INSTALL_DIR}/node_modules ${RPX_INSTALL_DIR}/bun.lock ${RPX_INSTALL_DIR}/package.json`,
     `(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/rpx@${version})`,
     `ln -sfn ${RPX_INSTALL_DIR}/node_modules ${RPX_DIR}/node_modules`,
-    // Write THIS app's registry fragment (its routes only) ...
-    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF'),
+    // Write THIS app's registry fragment (its routes only) — root-only: it
+    // carries basic-auth passwords and the origin-guard shared secret, and the
+    // assembler runs as root so nothing else needs read access.
+    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
     // ... and the stable assembler launcher that merges every app's fragment.
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, assembler, 'TS_CLOUD_RPX_EOF'),
     // systemd unit: runs the launcher as root so it can bind :80/:443.
