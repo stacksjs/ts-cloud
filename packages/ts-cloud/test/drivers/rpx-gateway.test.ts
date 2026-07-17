@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   buildCertManagementCommands,
   buildRpxConfig,
+  buildRpxFragmentRefreshScript,
   buildRpxLbConfig,
   buildRpxProvisionScript,
   certDomainsForConfig,
@@ -497,6 +498,47 @@ describe('buildRpxProvisionScript', () => {
   })
 })
 
+describe('buildRpxFragmentRefreshScript', () => {
+  it('rewrites only this app fragment (atomically, root-only) and restarts the gateway', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const lines = buildRpxFragmentRefreshScript({ config, slug: 'my-app' })
+    const script = lines.join('\n')
+
+    // The fragment lands via the same atomic temp + rename the provision script
+    // uses, at the same path, with the same root-only perms (it carries secrets).
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/my-app.json.XXXXXX"`)
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/my-app.json`)
+    expect(script).toContain(`chmod 0600 ${RPX_SITES_DIR}/my-app.json`)
+    expect(script).toContain('"slug": "my-app"')
+    expect(script).toContain('"to": "stacksjs.com"')
+    // The restart re-runs the assembler, which re-merges every fragment.
+    expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
+
+    // A refresh — NOT a re-provision: no rpx/tlsx install, no launcher or unit
+    // rewrite, no cert machinery, no enable.
+    expect(script).not.toContain('bun add')
+    expect(script).not.toContain(RPX_LAUNCHER_PATH)
+    expect(script).not.toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
+    expect(script).not.toContain(`systemctl enable ${RPX_SERVICE_NAME}`)
+    expect(script).not.toContain('tlsx')
+  })
+
+  it('defaults the fragment slug to app and carries multi-upstream LB routes verbatim', () => {
+    const config = buildRpxLbConfig(sites, [
+      { privateIp: '10.0.0.11', publicIp: '203.0.113.11' },
+      { privateIp: '10.0.0.12', publicIp: '203.0.113.12' },
+    ], { proxy: rpxProxy, slug: 'my-app' })
+    const script = buildRpxFragmentRefreshScript({ config }).join('\n')
+
+    expect(script).toContain(`mv -f "$__tsc_tmp" ${RPX_SITES_DIR}/app.json`)
+    // Every app-box upstream survives the round trip — this is the content a
+    // fleet LB refresh exists to deliver.
+    expect(script).toContain('10.0.0.11:3000')
+    expect(script).toContain('10.0.0.12:3000')
+    expect(script).not.toContain('localhost:3000')
+  })
+})
+
 describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
   const tlsProxy: ComputeProxyConfig = { engine: 'rpx', onDemandTls: true, onDemandTlsEmail: 'hello@stacksjs.com' }
 
@@ -605,6 +647,7 @@ describe('buildRpxLbConfig is on the package public export barrel', () => {
     // `buildRpxLbConfig is not a function`.
     const barrel = await import('../../src/drivers/index')
     expect(typeof barrel.buildRpxLbConfig).toBe('function')
+    expect(typeof barrel.buildRpxFragmentRefreshScript).toBe('function')
   })
 
   describe('usesRpxProxy', () => {

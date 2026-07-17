@@ -787,3 +787,44 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     ...buildCertManagementCommands(options),
   ]
 }
+
+export interface BuildRpxFragmentRefreshOptions {
+  /** The gateway config this deploy resolved (single-box or LB multi-upstream). */
+  config: RpxGatewayConfig
+  /**
+   * This project's slug — the registry fragment is rewritten at
+   * `<sites.d>/<slug>.json`, exactly as in {@link buildRpxProvisionScript}.
+   * Defaults to `'app'`.
+   */
+  slug?: string
+}
+
+/**
+ * Build the shell commands that rewrite ONLY this app's rpx route fragment
+ * (`<sites.d>/<slug>.json`) and restart the gateway, so the running assembler
+ * re-merges every fragment and the new routes go live.
+ *
+ * Unlike {@link buildRpxProvisionScript} this does NOT reinstall rpx/tlsx,
+ * rewrite the assembler launcher, or touch the systemd unit — it is the cheap
+ * reload for a box whose gateway is already provisioned. That is exactly the
+ * bun-fleet load-balancer situation: the LB box is created once (cloud-init
+ * writes the fragment at first boot) but long outlives any single deploy, so
+ * its routes must be refreshed from the CURRENT sites model + CURRENT app-box
+ * upstreams on every provision/deploy — otherwise sites added later 404 and
+ * app-fleet scale changes never reach the gateway. The `systemctl restart`
+ * re-runs the stable assembler, which re-reads all of {@link RPX_SITES_DIR}.
+ */
+export function buildRpxFragmentRefreshScript(options: BuildRpxFragmentRefreshOptions): string[] {
+  const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
+  // Byte-identical fragment serialization to buildRpxProvisionScript, so a box
+  // cannot tell whether its fragment came from first boot or a later refresh.
+  const fragment = JSON.stringify({ slug, ...options.config }, null, 2)
+  return [
+    'set -euo pipefail',
+    `mkdir -p ${RPX_SITES_DIR}`,
+    // Root-only (0600), atomic temp+rename — same as the provision-time write:
+    // the fragment carries basic-auth passwords and the origin-guard secret.
+    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
+    `systemctl restart ${RPX_SERVICE_NAME}`,
+  ]
+}
