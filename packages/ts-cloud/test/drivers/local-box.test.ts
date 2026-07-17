@@ -25,6 +25,14 @@ describe('LocalBoxDriver', () => {
     expect(targets[0].publicIp).toBe('127.0.0.1')
   })
 
+  it('answers only app-role target queries — a local box has no separate lb/services box', async () => {
+    // The rpx fleet-LB reload first probes for 'lb' targets; localhost must not
+    // pose as one, or the gateway reload would take the fleet path on a plain box.
+    expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'app' })).toHaveLength(1)
+    expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'lb' })).toEqual([])
+    expect(await driver.findComputeTargets({ slug: 'acme', environment: 'production' as any, role: 'services' })).toEqual([])
+  })
+
   it('runs commands on the local machine and captures stdout + success', async () => {
     const result = await driver.runRemoteDeploy({ targets: [], commands: ['echo TS_CLOUD_LOCAL_OK', 'echo second'] })
     expect(result.success).toBe(true)

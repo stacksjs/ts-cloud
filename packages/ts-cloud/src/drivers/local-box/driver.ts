@@ -33,7 +33,13 @@ export class LocalBoxDriver implements CloudDriver {
     return { artifactRef: options.localPath }
   }
 
-  async findComputeTargets(_options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
+  async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
+    // A local box IS the app box — there is no separate lb/services box on the
+    // machine. Answer only app-role queries so role-specific callers (e.g. the
+    // rpx fleet-LB gateway reload, which first looks for 'lb' targets) don't
+    // mistake localhost for a dedicated load balancer.
+    if ((options.role || 'app') !== 'app')
+      return []
     return [{ id: 'localhost', name: 'localhost', publicIp: '127.0.0.1', status: 'running' }]
   }
 
