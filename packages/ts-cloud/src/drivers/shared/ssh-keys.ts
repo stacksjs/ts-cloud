@@ -21,31 +21,36 @@ export interface AuthorizedKeysOptions {
 
 /**
  * Build the commands that reconcile the managed key block in authorized_keys.
- * Strips any previous ts-cloud block, then appends the current set. Returns `[]`
- * when there are no keys to manage.
+ * Strips any previous ts-cloud block, then appends the current set. An empty
+ * key set still strips the block — removing your last key from the config must
+ * remove it from the box (e.g. revoking a compromised key).
  */
 export function buildAuthorizedKeysScript(keys: SshKeyConfig[] = [], options: AuthorizedKeysOptions = {}): string[] {
-  if (keys.length === 0)
-    return []
   const path = options.path ?? DEFAULT_AUTHORIZED_KEYS
   const dir = path.replace(/\/[^/]*$/, '')
 
-  const block = [
-    BLOCK_BEGIN,
-    ...keys.map(k => `${k.publicKey.trim()} ${k.name}`),
-    BLOCK_END,
-  ].join('\n')
-
-  return [
+  const lines = [
     `mkdir -p ${dir}`,
     `touch ${path}`,
     // Remove a prior managed block (sed range delete), keeping other keys.
     `sed -i '/^${escapeSed(BLOCK_BEGIN)}$/,/^${escapeSed(BLOCK_END)}$/d' ${path}`,
-    `cat >> ${path} <<'TS_CLOUD_KEYS_EOF'`,
-    block,
-    'TS_CLOUD_KEYS_EOF',
-    `chmod 600 ${path}`,
   ]
+
+  if (keys.length > 0) {
+    const block = [
+      BLOCK_BEGIN,
+      ...keys.map(k => `${k.publicKey.trim()} ${k.name}`),
+      BLOCK_END,
+    ].join('\n')
+    lines.push(
+      `cat >> ${path} <<'TS_CLOUD_KEYS_EOF'`,
+      block,
+      'TS_CLOUD_KEYS_EOF',
+      `chmod 600 ${path}`,
+    )
+  }
+
+  return lines
 }
 
 /** Escape a literal string for use in a sed `/.../` address. */

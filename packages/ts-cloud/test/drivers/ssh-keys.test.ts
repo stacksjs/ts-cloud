@@ -25,8 +25,11 @@ describe('buildAuthorizedKeysScript', () => {
     expect(script).toContain('/home/deploy/.ssh/authorized_keys')
   })
 
-  it('is empty with no keys', () => {
-    expect(buildAuthorizedKeysScript([])).toEqual([])
-    expect(buildAuthorizedKeysScript()).toEqual([])
+  it('still strips the managed block when the key list is emptied (key revocation)', () => {
+    const script = buildAuthorizedKeysScript([]).join('\n')
+    // The prior block is removed but nothing is appended.
+    expect(script).toContain('sed -i')
+    expect(script).not.toContain('TS_CLOUD_KEYS_EOF')
+    expect(buildAuthorizedKeysScript().join('\n')).toContain('sed -i')
   })
 })
