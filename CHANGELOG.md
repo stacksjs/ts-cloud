@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.29...v0.7.30)
+
+## 🐛 Bug Fixes
+
+- **deploy**: strip PORT* from shipped env so systemd owns the port ([03862ab](https://github.com/stacksjs/ts-cloud/commit/03862ab)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.30 ([d203d3f](https://github.com/stacksjs/ts-cloud/commit/d203d3f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.27...v0.7.28)
 
 ## 🐛 Bug Fixes
