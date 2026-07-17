@@ -4,12 +4,14 @@ import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import type {
   CloudDriver,
+  ComputeProxyConfig,
   ComputeStackOutputs,
   ComputeTarget,
   FindComputeTargetsOptions,
   ProvisionComputeOptions,
   RemoteDeployResult,
   RunRemoteDeployOptions,
+  SiteConfig,
   UploadReleaseOptions,
   UploadReleaseResult,
 } from '@ts-cloud/core'
@@ -19,7 +21,7 @@ import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './
 import { resolveHetznerImage, resolveHetznerSettings } from './config'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
-import { buildRpxConfig, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { resolveFleetTopology } from '../shared/fleet'
 import { buildPhpProvisionScript } from '../shared/php-provision'
@@ -527,6 +529,13 @@ export class HetznerDriver implements CloudDriver {
     if (existingState?.lbServerId) {
       const lb = await this.tryGetServer(existingState.lbServerId)
       if (lb && lb.status !== 'off') {
+        // The fleet itself is reused as-is, but the LB's gateway routes must
+        // still track the CURRENT sites model + CURRENT app boxes — its route
+        // fragment was last written at first boot, so a site added (or an
+        // upstream changed) since then would 404/502 without this refresh.
+        const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
+        const appTargets = await this.findComputeTargets({ slug, environment, role: 'app', stackName })
+        this.refreshLbRoutes(lb, sites, appTargets.map(t => ({ privateIp: t.privateIp, publicIp: t.publicIp })), rpxProxy, slug)
         return {
           appPublicIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
           loadBalancerIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
@@ -703,8 +712,10 @@ export class HetznerDriver implements CloudDriver {
     let lbIp: string | undefined
     if (topology.loadBalancer) {
       let lbServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'lb'))
+      // The LB box is an rpx gateway by definition in a bun fleet, even when the
+      // project never set `proxy.engine: 'rpx'` explicitly.
+      const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
       if (!lbServer) {
-        const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
         const lbRpxProvision = buildRpxProvisionScript({
           proxy: rpxProxy,
           config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug }),
@@ -737,6 +748,13 @@ export class HetznerDriver implements CloudDriver {
             await this.waitForCloudInit(ip)
           }
         }
+      }
+      else {
+        // Reused LB box: cloud-init only runs at first boot, so its route
+        // fragment still holds whatever sites/upstreams were current back then.
+        // Rewrite it from the just-reconciled fleet so added/removed sites and
+        // app-fleet scale changes actually reach the gateway.
+        this.refreshLbRoutes(lbServer, sites, appBoxes, rpxProxy, slug)
       }
       lbId = lbServer.id
       lbIp = lbServer.public_net.ipv4?.ip
@@ -1077,6 +1095,44 @@ export class HetznerDriver implements CloudDriver {
       // Stale state pointing at a deleted server — fall through to recreate.
       return null
     }
+  }
+
+  /**
+   * Rewrite a bun-fleet LB box's rpx route fragment (`sites.d/<slug>.json`)
+   * from the CURRENT sites model and the CURRENT app-box upstreams, then
+   * restart the gateway so the assembler re-merges. The LB box long outlives
+   * any single provision — without this refresh, the routes frozen at its
+   * first boot never learn about sites added/removed later or a changed
+   * app-fleet upstream set.
+   *
+   * App boxes without a routable address are dropped from the upstream list;
+   * when NO app box is routable the refresh is skipped entirely — rewriting
+   * the fragment with zero real upstreams would turn every route into a
+   * guaranteed 502, strictly worse than leaving the stale fragment in place.
+   * An SSH failure propagates: a deploy that cannot reach its LB to update
+   * routes must fail loudly, not silently serve stale ones.
+   */
+  private refreshLbRoutes(
+    lb: HetznerServer,
+    sites: Record<string, SiteConfig | undefined>,
+    appBoxes: RpxLbAppBox[],
+    proxy: ComputeProxyConfig,
+    slug: string,
+  ): void {
+    const ip = lb.public_net.ipv4?.ip
+    if (!ip) {
+      // eslint-disable-next-line no-console
+      console.warn(`[ts-cloud] LB server '${lb.name}' has no public IP — skipping the rpx route refresh; its routes may be stale.`)
+      return
+    }
+    const routable = appBoxes.filter(box => box.privateIp || box.publicIp)
+    if (routable.length === 0) {
+      // eslint-disable-next-line no-console
+      console.warn(`[ts-cloud] No routable app boxes found for LB '${lb.name}' — leaving its current rpx routes untouched.`)
+      return
+    }
+    const config = buildRpxLbConfig(sites, routable, { proxy, slug })
+    this.sshExec(ip, buildRpxFragmentRefreshScript({ config, slug }).join('\n'))
   }
 
   /**

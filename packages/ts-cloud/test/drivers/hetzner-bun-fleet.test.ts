@@ -222,6 +222,8 @@ describe('HetznerDriver bun+rpx fleet', () => {
     ]
     const { client, servers, deletedServerIds } = fakeHetznerClient(existing)
     const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
 
     // Desired count is 2 (baseConfig.appServers) — one existing app server must be destroyed.
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
@@ -233,6 +235,14 @@ describe('HetznerDriver bun+rpx fleet', () => {
     const lbServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'lb')
     expect(lbServers).toHaveLength(1)
     expect(lbServers[0].id).toBe(204)
+    // ... and its routes are refreshed to the SURVIVING upstreams — the
+    // destroyed box must drop out of the LB's pool immediately.
+    expect(sshExecMock).toHaveBeenCalledTimes(1)
+    const [host, script] = sshExecMock.mock.calls[0] as unknown as [string, string]
+    expect(host).toBe('203.0.113.204')
+    expect(script).toContain('10.0.0.201:3000')
+    expect(script).toContain('10.0.0.202:3000')
+    expect(script).not.toContain('10.0.0.203')
   })
 
   it('a single app server (appServers=1, no dedicatedServices) never provisions an LB box', async () => {
@@ -291,12 +301,120 @@ describe('HetznerDriver bun+rpx fleet', () => {
   it('re-running provision is idempotent (reuses the existing fleet, does not recreate)', async () => {
     const { client, servers } = fakeHetznerClient()
     const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
     const countAfterFirst = servers.length
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
     expect(servers.length).toBe(countAfterFirst)
+  })
+
+  it('refreshes the LB route fragment on every re-run so later sites + current upstreams reach the gateway', async () => {
+    const { client, servers } = fakeHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
+
+    // First boot: the fragment is written by the LB's cloud-init — no SSH refresh.
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+    expect(sshExecMock).not.toHaveBeenCalled()
+
+    // A later deploy adds a site. The fleet is reused via the early return, and
+    // without a route refresh api.my-app.example.com would 404 at the LB forever.
+    const configV2: CloudConfig = {
+      ...baseConfig,
+      sites: {
+        ...baseConfig.sites,
+        api: { domain: 'api.my-app.example.com', port: 3001, root: '.output', start: 'bun run api.ts' },
+      },
+    }
+    await driver.provisionComputeInfrastructure!({ config: configV2, environment: 'production' })
+
+    // The fleet itself was NOT recreated — but the LB got a fresh fragment.
+    expect(servers).toHaveLength(3)
+    expect(sshExecMock).toHaveBeenCalledTimes(1)
+    const [host, script] = sshExecMock.mock.calls[0] as unknown as [string, string]
+    const lbServer = servers.find(s => s.labels?.['ts-cloud/role'] === 'lb')!
+    expect(host).toBe(lbServer.public_net.ipv4.ip)
+    expect(script).toContain('/etc/rpx/sites.d/my-app.json')
+    expect(script).toContain('"slug": "my-app"')
+    expect(script).toContain('my-app.example.com')
+    expect(script).toContain('api.my-app.example.com')
+    // Multi-upstream routes point at the CURRENT app boxes' private IPs.
+    for (const app of servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')) {
+      expect(script).toContain(`${app.private_net[0].ip}:3000`)
+      expect(script).toContain(`${app.private_net[0].ip}:3001`)
+    }
+    expect(script).not.toContain('localhost:3000')
+    // A reload, not a reinstall: restart the gateway, leave the stack untouched.
+    expect(script).toContain('systemctl restart rpx-gateway.service')
+    expect(script).not.toContain('bun add @stacksjs/rpx')
+  })
+
+  it('refreshes the LB routes when the fleet is reused by label (lost local state)', async () => {
+    // The fleet exists in Hetzner but local state is gone (fresh CI checkout),
+    // so provisioning takes the full reconcile path and reuses every box by
+    // label. The reused LB's cloud-init ran long ago — its fragment is stale.
+    const existing = [
+      { id: 201, name: 'my-app-production-app-1', status: 'running', public_net: { ipv4: { ip: '203.0.113.201' } }, private_net: [{ ip: '10.0.0.201' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+      { id: 202, name: 'my-app-production-app-2', status: 'running', public_net: { ipv4: { ip: '203.0.113.202' } }, private_net: [{ ip: '10.0.0.202' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'app', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cx23' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+      { id: 204, name: 'my-app-production-lb', status: 'running', public_net: { ipv4: { ip: '203.0.113.204' } }, private_net: [{ ip: '10.0.0.204' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'lb', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cpx11' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+    ]
+    const { client, servers } = fakeHetznerClient(existing)
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
+
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    // No box was created — and the reused LB still got a fresh route fragment.
+    expect(servers).toHaveLength(3)
+    expect(sshExecMock).toHaveBeenCalledTimes(1)
+    const [host, script] = sshExecMock.mock.calls[0] as unknown as [string, string]
+    expect(host).toBe('203.0.113.204')
+    expect(script).toContain('10.0.0.201:3000')
+    expect(script).toContain('10.0.0.202:3000')
+    expect(script).toContain('systemctl restart rpx-gateway.service')
+    // State was rehydrated with the discovered fleet.
+    const state = JSON.parse(await Bun.file(driverStatePath(stackName)).text())
+    expect(state.lbServerId).toBe(204)
+    expect(state.appServerIds).toEqual([201, 202])
+  })
+
+  it('skips the route refresh (but still returns outputs) when no app box is routable', async () => {
+    // The LB is alive but every app box is gone. Refreshing would write an
+    // upstream-less fragment (every route 502s), so the stale fragment stays.
+    const existing = [
+      { id: 204, name: 'my-app-production-lb', status: 'running', public_net: { ipv4: { ip: '203.0.113.204' } }, private_net: [{ ip: '10.0.0.204' }], labels: { 'ts-cloud/project': 'my-app', 'ts-cloud/environment': 'production', 'ts-cloud/role': 'lb', 'ts-cloud/managed-by': 'ts-cloud' }, server_type: { name: 'cpx11' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } },
+    ]
+    const { client } = fakeHetznerClient(existing)
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
+    const statePath = driverStatePath(stackName)
+    await mkdir(dirname(statePath), { recursive: true })
+    await writeFile(statePath, JSON.stringify({ provider: 'hetzner', stackName, lbServerId: 204, appServerIds: [] }))
+
+    const outputs = await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+
+    expect(sshExecMock).not.toHaveBeenCalled()
+    expect(outputs.loadBalancerIp).toBe('203.0.113.204')
+  })
+
+  it('fails the provision loudly when the LB route refresh cannot be delivered', async () => {
+    // A deploy that cannot reach its LB to update routes must not silently
+    // serve stale ones — the SSH failure propagates and fails the provision.
+    const { client } = fakeHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const sshExecMock = mock(() => '')
+    ;(driver as any).sshExec = sshExecMock
+
+    await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
+    sshExecMock.mockImplementation(() => { throw new Error('ssh: connection refused') })
+    await expect(driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' }))
+      .rejects.toThrow('ssh: connection refused')
   })
 
   it('does NOT provision a dedicated services box for a plain bun fleet (no servicesServer/managedServices set)', async () => {
