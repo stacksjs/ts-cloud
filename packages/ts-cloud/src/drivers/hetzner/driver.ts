@@ -859,8 +859,12 @@ export class HetznerDriver implements CloudDriver {
     const stackName = resolveProjectStackName(options.config, options.environment)
     const state = await readDriverState(stackName)
     if (state?.serverId) {
-      const server = await this.client.getServer(state.serverId)
-      return this.outputsFromState(state, server)
+      // Tolerate a stale pin: a box deleted out-of-band makes getServer throw
+      // (404), which crashed every deploy instead of falling through to the
+      // label/state re-discovery below.
+      const server = await this.tryGetServer(state.serverId)
+      if (server)
+        return this.outputsFromState(state, server)
     }
     // Bun+rpx fleet: no single serverId, but a dedicated rpx LB server — refresh
     // its public IP (state.publicIp may be stale) and surface it as both
