@@ -71,20 +71,20 @@ describe('encodeUserData', () => {
 })
 
 describe('readPinnedInstanceId', () => {
-  it('reads a pinned instanceId from .ts-cloud/state/<stack>.json and rejects junk', async () => {
+  it('reads a pinned instanceId from storage/cloud/state/<stack>.json and rejects junk', async () => {
     const { readPinnedInstanceId } = await import('../../src/drivers/aws/driver')
     const { mkdir, rm, writeFile } = await import('node:fs/promises')
     const dir = `${process.cwd()}/.tmp-aws-pin-${Date.now()}`
     const cwd = process.cwd()
-    await mkdir(`${dir}/.ts-cloud/state`, { recursive: true })
+    await mkdir(`${dir}/storage/cloud/state`, { recursive: true })
     try {
       process.chdir(dir)
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-      await writeFile('.ts-cloud/state/acme-production.json', JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }))
+      await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }))
       expect(readPinnedInstanceId('acme-production')).toBe('i-0abc123')
-      await writeFile('.ts-cloud/state/acme-production.json', JSON.stringify({ instanceId: 42 }))
+      await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ instanceId: 42 }))
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-      await writeFile('.ts-cloud/state/acme-production.json', 'not json')
+      await writeFile('storage/cloud/state/acme-production.json', 'not json')
       expect(readPinnedInstanceId('acme-production')).toBeNull()
     }
     finally {
