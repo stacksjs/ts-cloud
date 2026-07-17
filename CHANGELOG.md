@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.27...v0.7.28)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: install pantry from its GitHub release, not the dead pantry.dev ([2b267ab](https://github.com/stacksjs/ts-cloud/commit/2b267ab)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ♻️ Code Refactoring
+
+- **state**: store deploy state under storage/cloud/state ([49ab22c](https://github.com/stacksjs/ts-cloud/commit/49ab22c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.28 ([47a96d3](https://github.com/stacksjs/ts-cloud/commit/47a96d3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.26...v0.7.27)
 
 ## 🐛 Bug Fixes
