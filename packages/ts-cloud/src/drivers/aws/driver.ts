@@ -350,7 +350,15 @@ export class AwsDriver implements CloudDriver {
         return { success: false, instanceCount: 0, perInstance: [], error: 'Failed to send SSM command' }
       }
 
-      return this.pollSsmCommand(ssm, sendResult.CommandId, options.targets.length)
+      return this.pollSsmCommand(
+        ssm,
+        sendResult.CommandId,
+        options.targets.length,
+        // Give the poller the caller's timeout (plus a grace margin so SSM's
+        // own TimedOut status lands first) instead of giving up at a hardcoded
+        // 10 minutes while a long deploy is legitimately still running.
+        ((options.timeoutSeconds || 600) + 30) * 1000,
+      )
     }
 
     if (!options.tags || Object.keys(options.tags).length === 0) {
@@ -377,9 +385,8 @@ export class AwsDriver implements CloudDriver {
     }
   }
 
-  private async pollSsmCommand(ssm: SSMClient, commandId: string, expectedCount: number): Promise<RemoteDeployResult> {
+  private async pollSsmCommand(ssm: SSMClient, commandId: string, expectedCount: number, maxWait = 600000): Promise<RemoteDeployResult> {
     const pollInterval = 3000
-    const maxWait = 600000
     const startTime = Date.now()
     const terminalStatuses = new Set(['Success', 'Failed', 'Cancelled', 'TimedOut'])
     let lastInvocations: Array<{ InstanceId: string, Status?: string, StandardOutputContent?: string, StandardErrorContent?: string }> = []
