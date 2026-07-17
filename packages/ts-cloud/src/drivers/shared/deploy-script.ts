@@ -229,8 +229,12 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       `systemctl enable ${instance} 2>/dev/null || true`,
       `for TS_CLOUD_U in \${TS_CLOUD_OLD_UNITS}; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
       // Drop enabled-but-stopped instances from older deploys and the legacy
-      // non-templated unit so only the live release starts at boot.
-      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${instance}\$" | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
+      // non-templated unit so only the live release starts at boot. The glob
+      // also matches the TEMPLATE file (`<base>@.service`) — never disable it:
+      // disabling a template removes every instance's enablement symlink,
+      // including the one for the release enabled above (nothing would start
+      // at boot).
+      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
       `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
       ...buildPruneReleases(paths, keepReleases),
     ]
