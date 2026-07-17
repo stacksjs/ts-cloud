@@ -268,7 +268,7 @@ export async function deploySiteRelease(
     ...buildDeployHistoryHeader(appBase, {
       releaseId: sha,
       commit: sha,
-      branch: (site as any).branch ?? 'main',
+      branch: site.repository?.branch ?? 'main',
     }),
     // After the history header (so a refusal is still recorded), before
     // anything touches the release layout.
