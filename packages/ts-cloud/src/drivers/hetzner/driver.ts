@@ -31,6 +31,7 @@ import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { buildNotifierScript } from '../shared/notifications'
+import { buildBackupProvisionScript } from '../shared/backups'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -596,7 +597,8 @@ export class HetznerDriver implements CloudDriver {
     // caller actually asked for on-box services (`servicesServer` or
     // `managedServices` explicitly set), not merely because `appServers > 1`.
     const wantsServicesBox = !!compute.servicesServer || !!compute.managedServices
-    if (topology.dedicatedServices && wantsServicesBox) {
+    const dedicatedServicesHere = topology.dedicatedServices && wantsServicesBox
+    if (dedicatedServicesHere) {
       const { firewall: svcFw } = await this.ensureFirewall(
         `${slug}-${environment}-services-fw`,
         tsCloudLabels(slug, environment, 'services'),
@@ -614,6 +616,15 @@ export class HetznerDriver implements CloudDriver {
         ...buildAutoUpdatesScript(true),
         ...buildMonitoringScript(true),
         ...buildAuthorizedKeysScript(compute.sshKeys),
+        // The database lives HERE, so its backups run here — the notifier first
+        // so the nightly backup cron can report failures. (On the app boxes a
+        // dump would hit an empty local MySQL — or none at all.)
+        ...(compute.backups?.enabled
+          ? [
+              ...buildNotifierScript(config.notifications),
+              ...buildBackupProvisionScript({ database: config.infrastructure?.appDatabase, backups: compute.backups }),
+            ]
+          : []),
       ]
       const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked }))
       let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
@@ -639,8 +650,20 @@ export class HetznerDriver implements CloudDriver {
     }
 
     // 4. App servers — the runtime directly, NO local rpx gateway (the LB box
-    //    reaches them directly over the private network).
-    const appProvisionScripts = buildComputeProvisionScripts(config)
+    //    reaches them directly over the private network). When a dedicated
+    //    services box carries the DB/cache/search, the app boxes must NOT also
+    //    install those engines locally (a second MySQL/Redis per app box that
+    //    nothing should ever use) nor the DB backups (they'd dump an empty
+    //    local database nightly) — strip both from the box provision; the
+    //    deploy wires DB/Redis/Meilisearch env at the services box's private
+    //    IP instead (see deploySiteRelease).
+    const appBoxCompute = dedicatedServicesHere
+      ? { ...compute, managedServices: undefined, backups: undefined }
+      : compute
+    const appProvisionScripts = buildComputeProvisionScripts({
+      ...config,
+      infrastructure: { ...config.infrastructure, compute: appBoxCompute },
+    })
     const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({
       runtime: appProvisionScripts.runtime,
       runtimeVersion: appProvisionScripts.runtimeVersion,

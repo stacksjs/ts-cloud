@@ -450,4 +450,46 @@ describe('HetznerDriver bun+rpx fleet', () => {
     const servicesServers = servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')
     expect(servicesServers).toHaveLength(1)
   })
+
+  it('app boxes do NOT duplicate the services stack (or its backups) when a dedicated services box exists', async () => {
+    // Regression: with managedServices set, EVERY app box used to install its
+    // own MySQL/Redis alongside the dedicated services box — engines nothing
+    // should ever use — and the nightly DB backup on an app box would have
+    // dumped that empty local database instead of the real one.
+    const configWithManaged: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: {
+          ...baseConfig.infrastructure!.compute!,
+          managedServices: { mysql: true, redis: true },
+          backups: { enabled: true },
+        },
+      },
+    }
+    const { client } = fakeHetznerClient()
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+
+    await driver.provisionComputeInfrastructure!({ config: configWithManaged, environment: 'production' })
+
+    const createServerCalls = (client.createServer as any).mock.calls as Array<[any]>
+    const appCalls = createServerCalls.filter(([opts]) => opts.labels?.['ts-cloud/role'] === 'app')
+    const svcCalls = createServerCalls.filter(([opts]) => opts.labels?.['ts-cloud/role'] === 'services')
+    expect(appCalls).toHaveLength(2)
+    expect(svcCalls).toHaveLength(1)
+
+    // The services box carries the engines, the backup runner, and the notifier
+    // the backup cron reports through.
+    const svcUserData: string = svcCalls[0][0].userData
+    expect(svcUserData).toContain('mysql.com')
+    expect(svcUserData).toContain('redis.io')
+    expect(svcUserData).toContain('ts-backups')
+    expect(svcUserData).toContain('ts-cloud-notify')
+
+    // App boxes carry none of it.
+    for (const [opts] of appCalls) {
+      expect(opts.userData).not.toContain('mysql.com')
+      expect(opts.userData).not.toContain('redis.io')
+      expect(opts.userData).not.toContain('ts-backups')
+    }
+  })
 })
