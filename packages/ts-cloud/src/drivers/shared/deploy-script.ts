@@ -151,6 +151,14 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     envFile,
     'TS_CLOUD_ENV_EOF',
     `chmod 600 ${paths.shared}/.env`,
+    // The DEPLOY owns the port (systemd `Environment=PORT` below is authoritative).
+    // Strip any committed PORT* from the app's env files so it can never leak
+    // back in: a scaffold's `.env.production` PORT=3000 otherwise makes a tenant
+    // app bind :3000 and SO_REUSEPORT-round-robin with the box owner's app on the
+    // shared box — the "stacksjs.com intermittently served another site" bug.
+    // Bun natively loads `.env`/`.env.<mode>`, so strip every env file here, not
+    // just the shared one.
+    `for TS_CLOUD_ENV in ${paths.shared}/.env ${paths.release}/.env ${paths.release}/.env.*; do [ -f "$TS_CLOUD_ENV" ] && sed -i -E '/^[[:space:]]*(PORT|PORT_BACKEND|PORT_ADMIN|PORT_FRONTEND)[[:space:]]*=/d' "$TS_CLOUD_ENV" 2>/dev/null || true; done`,
     ...buildLinkSharedPaths(paths, sharedPaths),
     ...preStart,
   ]
