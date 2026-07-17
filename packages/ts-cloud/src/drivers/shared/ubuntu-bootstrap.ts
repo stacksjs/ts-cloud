@@ -154,7 +154,9 @@ mkdir -p /var/www /var/ts-cloud/staging /var/ts-cloud/releases
 `
 
   if (caddyfile) {
-    const escaped = caddyfile.replace(/\$/g, '\\$')
+    // The heredoc below is QUOTED ('CADDY_CONFIG_EOF'), so the shell performs
+    // no expansion — write the content verbatim. Escaping `$` here would land
+    // a literal backslash in the file and break Caddy's {$ENV_VAR} placeholders.
     script += `
 ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')
 curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=\${ARCH}" -o /usr/local/bin/caddy
@@ -192,7 +194,7 @@ WantedBy=multi-user.target
 CADDY_UNIT_EOF
 
 cat > /etc/caddy/Caddyfile <<'CADDY_CONFIG_EOF'
-${escaped}
+${caddyfile}
 CADDY_CONFIG_EOF
 
 systemctl daemon-reload
