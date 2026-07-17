@@ -44,7 +44,9 @@ function sshErrorOutput(value: unknown): string {
     // Remote deploy scripts contain a here-document with the complete runtime
     // environment. Never allow assignment values from command output into CI
     // logs, even when a shell or child process happens to echo the script.
-    .replace(/(^|\n)([A-Z][A-Z0-9_]*=).*$/gm, '$1$2[redacted]')
+    // Cover any shell-legal identifier — lowercase keys (`database_url=…`),
+    // indented lines, and `export `-prefixed assignments leak just as badly.
+    .replace(/(^|\n)(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=).*$/gm, '$1$2[redacted]')
     .replace(/encrypted:[A-Za-z0-9+/=]+/g, 'encrypted:[redacted]')
     .trim()
     .slice(-SSH_ERROR_OUTPUT_LIMIT)
