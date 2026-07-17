@@ -9,7 +9,8 @@ function fakeClient(routes: Record<string, (body: any) => unknown>, calls: strin
     apiToken: 'test-token',
     fetchImpl: async (url, init) => {
       const method = init?.method ?? 'GET'
-      const path = url.replace('https://api.hetzner.cloud/v1', '')
+      // Strip the pagination query string so routes match the bare path.
+      const path = url.replace('https://api.hetzner.cloud/v1', '').split('?')[0]
       const key = `${method} ${path}`
       calls.push(key)
       const handler = routes[key]

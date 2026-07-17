@@ -68,7 +68,7 @@ describe('wrapCloudInitUserData', () => {
 describe('HetznerClient', () => {
   it('sends bearer auth and parses list servers response', async () => {
     const fetchImpl = mock(async (url: string, init?: RequestInit) => {
-      expect(url).toBe('https://api.hetzner.cloud/v1/servers')
+      expect(url).toBe('https://api.hetzner.cloud/v1/servers?per_page=50&page=1')
       expect(init?.method).toBe('GET')
       expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer test-token')
       return new Response(JSON.stringify({
@@ -89,6 +89,29 @@ describe('HetznerClient', () => {
     expect(servers).toHaveLength(1)
     expect(servers[0].id).toBe(42)
     expect(servers[0].public_net.ipv4?.ip).toBe('203.0.113.10')
+  })
+
+  it('follows meta.pagination until the last page', async () => {
+    const urls: string[] = []
+    const fetchImpl = mock(async (url: string) => {
+      urls.push(url)
+      if (url.includes('page=1')) {
+        return new Response(JSON.stringify({
+          servers: [{ id: 1, name: 'a', status: 'running', public_net: {}, server_type: { name: 'cx22' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } }],
+          meta: { pagination: { page: 1, per_page: 50, previous_page: null, next_page: 2, last_page: 2, total_entries: 2 } },
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({
+        servers: [{ id: 2, name: 'b', status: 'running', public_net: {}, server_type: { name: 'cx22' }, datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } } }],
+        meta: { pagination: { page: 2, per_page: 50, previous_page: 1, next_page: null, last_page: 2, total_entries: 2 } },
+      }), { status: 200 })
+    })
+
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl: fetchImpl as (url: string, init?: RequestInit) => Promise<Response> })
+    const servers = await client.listServers()
+    expect(servers.map(s => s.id)).toEqual([1, 2])
+    expect(urls).toHaveLength(2)
+    expect(urls[1]).toContain('page=2')
   })
 
   it('throws with API error message on failure', async () => {

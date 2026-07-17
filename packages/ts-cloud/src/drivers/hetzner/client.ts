@@ -178,9 +178,31 @@ export class HetznerClient {
     return data as T
   }
 
+  /**
+   * Fetch every page of a list endpoint. Hetzner paginates lists at 25 items by
+   * default (max 50/page) and follows `meta.pagination.next_page`; without this,
+   * an account with more than one page of resources silently truncates — target
+   * lookups miss the project's own servers, and find-or-create attempts a
+   * duplicate create (409) for firewalls/keys that already exist.
+   */
+  private async requestAll<K extends string, T>(path: string, key: K): Promise<T[]> {
+    const items: T[] = []
+    let page = 1
+    for (;;) {
+      const sep = path.includes('?') ? '&' : '?'
+      const data = await this.request<Record<K, T[]> & {
+        meta?: { pagination?: { next_page?: number | null } }
+      }>('GET', `${path}${sep}per_page=50&page=${page}`)
+      items.push(...(data[key] ?? []))
+      const next = data.meta?.pagination?.next_page
+      if (!next)
+        return items
+      page = next
+    }
+  }
+
   async listServers(): Promise<HetznerServer[]> {
-    const data = await this.request<{ servers: HetznerServer[] }>('GET', '/servers')
-    return data.servers
+    return this.requestAll<'servers', HetznerServer>('/servers', 'servers')
   }
 
   async getServer(id: number): Promise<HetznerServer> {
@@ -207,8 +229,7 @@ export class HetznerClient {
 
   // ── Private networks (fleet) ────────────────────────────────────────────
   async listNetworks(): Promise<HetznerNetwork[]> {
-    const data = await this.request<{ networks: HetznerNetwork[] }>('GET', '/networks')
-    return data.networks
+    return this.requestAll<'networks', HetznerNetwork>('/networks', 'networks')
   }
 
   async createNetwork(options: CreateNetworkOptions): Promise<HetznerNetwork> {
@@ -229,8 +250,7 @@ export class HetznerClient {
 
   // ── Load balancers (fleet) ──────────────────────────────────────────────
   async listLoadBalancers(): Promise<HetznerLoadBalancer[]> {
-    const data = await this.request<{ load_balancers: HetznerLoadBalancer[] }>('GET', '/load_balancers')
-    return data.load_balancers
+    return this.requestAll<'load_balancers', HetznerLoadBalancer>('/load_balancers', 'load_balancers')
   }
 
   async createLoadBalancer(options: CreateLoadBalancerOptions): Promise<HetznerLoadBalancer> {
@@ -274,8 +294,7 @@ export class HetznerClient {
   }
 
   async listFirewalls(): Promise<HetznerFirewall[]> {
-    const data = await this.request<{ firewalls: HetznerFirewall[] }>('GET', '/firewalls')
-    return data.firewalls
+    return this.requestAll<'firewalls', HetznerFirewall>('/firewalls', 'firewalls')
   }
 
   async createFirewall(options: CreateFirewallOptions): Promise<{ firewall: HetznerFirewall, actions: HetznerAction[] }> {
@@ -312,8 +331,7 @@ export class HetznerClient {
   }
 
   async listSshKeys(): Promise<HetznerSshKey[]> {
-    const data = await this.request<{ ssh_keys: HetznerSshKey[] }>('GET', '/ssh_keys')
-    return data.ssh_keys
+    return this.requestAll<'ssh_keys', HetznerSshKey>('/ssh_keys', 'ssh_keys')
   }
 
   async createSshKey(options: CreateSshKeyOptions): Promise<HetznerSshKey> {

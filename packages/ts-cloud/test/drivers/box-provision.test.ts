@@ -56,7 +56,8 @@ describe('HetznerBoxProvisioner', () => {
       apiToken: 't',
       fetchImpl: async (url, init) => {
         const method = init?.method ?? 'GET'
-        const path = url.replace('https://api.hetzner.cloud/v1', '')
+        // Strip the pagination query string so routes match the bare path.
+        const path = url.replace('https://api.hetzner.cloud/v1', '').split('?')[0]
         calls.push(`${method} ${path}`)
         const handler = routes[`${method} ${path}`]
         if (!handler)
