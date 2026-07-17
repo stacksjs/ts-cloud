@@ -99,7 +99,7 @@ describe('buildDatabaseSetupScript', () => {
     expect(script).toContain('CREATE ROLE "reporter" LOGIN PASSWORD \'ro\'')
     expect(script).toContain('GRANT CONNECT ON DATABASE "app" TO "reporter"')
     expect(script).toContain('GRANT SELECT ON ALL TABLES IN SCHEMA public TO "reporter"')
-    expect(script).toContain('ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO "reporter"')
+    expect(script).toContain('ALTER DEFAULT PRIVILEGES FOR ROLE "app" IN SCHEMA public GRANT SELECT ON TABLES TO "reporter"')
     expect(script).toContain('\\connect "app"')
   })
 
