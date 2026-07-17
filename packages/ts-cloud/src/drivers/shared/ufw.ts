@@ -21,7 +21,9 @@ export function buildUfwScript(firewall: ComputeFirewallConfig = {}): string[] {
     return []
 
   const ports = [...new Set([...UFW_BASE_PORTS, ...(firewall.allowedPorts || [])])]
-    .filter(p => p > 0)
+    // ufw errors out on an out-of-range port, which would abort the bootstrap
+    // under set -e mid-provision — drop invalid entries up front.
+    .filter(p => Number.isInteger(p) && p >= 1 && p <= 65535)
     .sort((a, b) => a - b)
 
   const lines = [
