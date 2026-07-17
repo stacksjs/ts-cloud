@@ -16,6 +16,7 @@ import {
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
+  releaseTarballTmpPath,
   resolveExecStart,
 } from './deploy-script'
 import { buildSslScript, resolveSslProvider } from './certbot'
@@ -191,9 +192,10 @@ export async function deploySiteRelease(
     targets,
   })
 
+  const tarballPath = releaseTarballTmpPath(slug, siteName, sha)
   const artifactFetch = driver.name === 'aws'
-    ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', siteName)
-    : buildLocalArtifactFetch(uploadResult.artifactRef, siteName)
+    ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', tarballPath)
+    : buildLocalArtifactFetch(uploadResult.artifactRef, tarballPath)
 
   // server-static sites are shipped to /var/www/<site> (no systemd); server-app
   // sites run as a systemd service.
@@ -206,6 +208,7 @@ export async function deploySiteRelease(
   const baseScript = kind === 'server-static'
     ? buildStaticSiteDeployScript({
         siteName,
+        slug,
         appDir: appBase,
         artifactFetch,
         releaseId: sha,

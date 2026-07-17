@@ -104,7 +104,7 @@ describe('deploySiteRelease', () => {
     })
 
     const deployCall = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
-    expect(deployCall.commands.join('\n')).toContain('cp "/var/ts-cloud/staging/web-abc.tar.gz" /tmp/web-release.tar.gz')
+    expect(deployCall.commands.join('\n')).toContain('cp "/var/ts-cloud/staging/web-abc.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
     expect(deployCall.commands.join('\n')).not.toContain('aws s3 cp')
   })
 

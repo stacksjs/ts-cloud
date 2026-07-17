@@ -125,6 +125,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   const paths = releasePaths(base, releaseId)
   const unitBase = `${slug}-${siteName}`
   const serviceName = `${unitBase}.service`
+  const tarball = releaseTarballTmpPath(slug, siteName, releaseId)
   // `.env` is always shared; a site adds anything else it writes and must keep.
   const sharedPaths = [...new Set(['.env', ...(options.sharedPaths ?? [])])]
 
@@ -145,7 +146,10 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // Unpack this deploy into its own release dir (never touches the live one).
     `rm -rf ${paths.release}`,
     `mkdir -p ${paths.release}`,
-    `tar xzf /tmp/${siteName}-release.tar.gz -C ${paths.release}`,
+    `tar xzf ${tarball} -C ${paths.release}`,
+    // Drop the staged tarball once extracted — don't leave a world-readable
+    // copy of the release (or a stale one for a later deploy to trip over).
+    `rm -f ${tarball}`,
     // Persist the .env in shared/ (survives releases) and link it into the release.
     `cat > ${paths.shared}/.env <<'TS_CLOUD_ENV_EOF'`,
     envFile,
@@ -273,6 +277,8 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
 
 export interface BuildStaticSiteDeployScriptOptions {
   siteName: string
+  /** Project slug — namespaces the staged tarball on shared boxes. */
+  slug?: string
   /** How the remote host obtains the release tarball */
   artifactFetch: string[]
   /** Site base dir holding `releases/`, `current`. Default `/var/www/<site>`. */
@@ -301,6 +307,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
   const { siteName, artifactFetch, releaseId, keepReleases = DEFAULT_KEEP_RELEASES, preStartCommands = [] } = options
   const base = options.appDir ?? `/var/www/${siteName}`
   const paths = releasePaths(base, releaseId)
+  const tarball = releaseTarballTmpPath(options.slug, siteName, releaseId)
 
   const preStart = preStartCommands.length > 0
     ? [`cd ${paths.release}`, ...preStartCommands]
@@ -312,7 +319,9 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
     ...buildEnsureReleaseLayout(paths, []),
     `rm -rf ${paths.release}`,
     `mkdir -p ${paths.release}`,
-    `tar xzf /tmp/${siteName}-release.tar.gz -C ${paths.release}`,
+    `tar xzf ${tarball} -C ${paths.release}`,
+    // Drop the staged tarball once extracted (see buildSiteDeployScript).
+    `rm -f ${tarball}`,
     ...preStart,
     // Promote atomically — the docroot (`current`) is never empty during the swap.
     ...buildActivateRelease(paths),
@@ -320,14 +329,26 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
   ]
 }
 
-export function buildAwsArtifactFetch(bucket: string, key: string, region: string, siteName: string): string[] {
+/**
+ * Box-local staging path for the uploaded release tarball. Namespaced by
+ * project slug + site + release id so two projects sharing a box (or two
+ * overlapping deploys of one site) never clobber each other's tarball between
+ * the fetch and the extract — the flat `/tmp/<site>-release.tar.gz` layout
+ * cross-contaminated releases on shared boxes.
+ */
+export function releaseTarballTmpPath(slug: string | undefined, siteName: string, releaseId: string): string {
+  const parts = [slug, siteName, releaseId].filter(Boolean).join('-')
+  return `/tmp/${parts}-release.tar.gz`
+}
+
+export function buildAwsArtifactFetch(bucket: string, key: string, region: string, destPath: string): string[] {
   return [
-    `aws s3 cp "s3://${bucket}/${key}" /tmp/${siteName}-release.tar.gz --region ${region}`,
+    `aws s3 cp "s3://${bucket}/${key}" ${destPath} --region ${region}`,
   ]
 }
 
-export function buildLocalArtifactFetch(localPath: string, siteName: string): string[] {
+export function buildLocalArtifactFetch(localPath: string, destPath: string): string[] {
   return [
-    `cp "${localPath}" /tmp/${siteName}-release.tar.gz`,
+    `cp "${localPath}" ${destPath}`,
   ]
 }

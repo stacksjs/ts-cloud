@@ -35,6 +35,7 @@ export {
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
+  releaseTarballTmpPath,
   resolveExecStart,
 } from './shared/deploy-script'
 export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from './shared/compute-deploy'

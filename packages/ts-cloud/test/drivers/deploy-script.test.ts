@@ -4,6 +4,7 @@ import {
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
+  releaseTarballTmpPath,
   resolveExecStart,
 } from '../../src/drivers/shared/deploy-script'
 
@@ -21,7 +22,7 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
   const opts = {
     siteName: 'web',
     slug: 'my-app',
-    artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', 'web'),
+    artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', '/tmp/my-app-web-abc123-release.tar.gz'),
     releaseId: 'abc123',
     execStart: '/usr/local/bin/bun run server.ts',
     envEntries: { NODE_ENV: 'production' },
@@ -32,9 +33,9 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     const script = buildSiteDeployScript(opts)
     const joined = script.join('\n')
     expect(script[0]).toBe('set -euo pipefail')
-    expect(joined).toContain('cp "/var/ts-cloud/staging/release.tar.gz" /tmp/web-release.tar.gz')
+    expect(joined).toContain('cp "/var/ts-cloud/staging/release.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
     // Tarball goes into THIS release dir, never the live one.
-    expect(joined).toContain('tar xzf /tmp/web-release.tar.gz -C /var/www/web/releases/abc123')
+    expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz -C /var/www/web/releases/abc123')
     // .env persists in shared/ and is symlinked into the release.
     expect(joined).toContain('/var/www/web/shared/.env')
     expect(joined).toContain('ln -sfn /var/www/web/shared/.env /var/www/web/releases/abc123/.env')
@@ -127,7 +128,7 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
   const portless = {
     siteName: 'worker',
     slug: 'my-app',
-    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', 'worker'),
+    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', '/tmp/my-app-worker-abc123-release.tar.gz'),
     releaseId: 'abc123',
     execStart: '/usr/local/bin/bun run worker.ts',
     envEntries: {},
@@ -161,14 +162,14 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
 describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
   const opts = {
     siteName: 'docs',
-    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', 'docs'),
+    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', '/tmp/docs-rel9-release.tar.gz'),
     releaseId: 'rel9',
   }
 
   it('unpacks into a release dir and swaps current atomically — no empty-docroot window, no restart', () => {
     const script = buildStaticSiteDeployScript(opts)
     const joined = script.join('\n')
-    expect(joined).toContain('tar xzf /tmp/docs-release.tar.gz -C /var/www/docs/releases/rel9')
+    expect(joined).toContain('tar xzf /tmp/docs-rel9-release.tar.gz -C /var/www/docs/releases/rel9')
     expect(joined).toContain('mv -Tf /var/www/docs/current.tmp /var/www/docs/current')
     // No destructive wipe of the live docroot, and no systemd (static).
     expect(joined).not.toContain('find /var/www/docs -mindepth')
@@ -188,9 +189,16 @@ describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
 
 describe('buildAwsArtifactFetch', () => {
   it('pulls tarball from S3 before extraction', () => {
-    expect(buildAwsArtifactFetch('my-app-production-deploy', 'releases/web/abc.tar.gz', 'us-east-1', 'web'))
+    expect(buildAwsArtifactFetch('my-app-production-deploy', 'releases/web/abc.tar.gz', 'us-east-1', '/tmp/my-app-web-abc-release.tar.gz'))
       .toEqual([
-        'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/web-release.tar.gz --region us-east-1',
+        'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/my-app-web-abc-release.tar.gz --region us-east-1',
       ])
+  })
+})
+
+describe('releaseTarballTmpPath', () => {
+  it('namespaces the staged tarball by slug, site, and release id (shared-box safe)', () => {
+    expect(releaseTarballTmpPath('my-app', 'web', 'abc123')).toBe('/tmp/my-app-web-abc123-release.tar.gz')
+    expect(releaseTarballTmpPath(undefined, 'docs', 'rel9')).toBe('/tmp/docs-rel9-release.tar.gz')
   })
 })
