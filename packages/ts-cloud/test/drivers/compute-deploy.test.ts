@@ -29,11 +29,17 @@ function createMockDriver(overrides: Partial<CloudDriver> = {}): CloudDriver {
       appPublicIp: '203.0.113.1',
     })),
     uploadRelease: mock(async () => ({ artifactRef: 's3://my-app-production-deploy/releases/web/abc.tar.gz' })),
-    findComputeTargets: mock(async () => [{
-      id: 'i-abc123',
-      publicIp: '203.0.113.1',
-      status: 'running',
-    }]),
+    // Role-aware like a real single-box driver: only the app role resolves —
+    // there is no dedicated lb box for the gateway-reload fleet probe to find.
+    findComputeTargets: mock(async (options?: { role?: string }) => {
+      if (options?.role && options.role !== 'app')
+        return []
+      return [{
+        id: 'i-abc123',
+        publicIp: '203.0.113.1',
+        status: 'running',
+      }]
+    }),
     runRemoteDeploy: mock(async () => ({
       success: true,
       instanceCount: 1,
@@ -246,6 +252,81 @@ describe('reloadRpxGateway', () => {
     expect(script).toContain('localhost:3000')
     expect(script).toContain('localhost:3008')
     expect(script).toContain('localhost:3001')
+  })
+
+  // Fleet regression: the reload used to run the single-box provision script on
+  // the APP targets — installing a pointless gateway on boxes designed to run
+  // none — while the dedicated LB box kept its first-boot routes forever.
+  it('refreshes the dedicated load balancer with the multi-upstream fragment when an lb target exists', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      findComputeTargets: mock(async (options?: { role?: string }) => {
+        if (options?.role === 'lb') {
+          return [{
+            id: '55',
+            name: 'my-app-production-lb',
+            publicIp: '203.0.113.55',
+            privateIp: '10.0.0.55',
+            status: 'running',
+          }]
+        }
+        return [
+          { id: '51', name: 'my-app-production-app-1', publicIp: '203.0.113.51', privateIp: '10.0.0.51', status: 'running' },
+          { id: '52', name: 'my-app-production-app-2', publicIp: '203.0.113.52', privateIp: '10.0.0.52', status: 'running' },
+        ]
+      }),
+    })
+
+    const ok = await reloadRpxGateway({
+      config: rpxConfig,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => '/tmp/x.tar.gz',
+    })
+
+    expect(ok).toBe(true)
+    expect(driver.runRemoteDeploy).toHaveBeenCalledTimes(1)
+    const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    // Only the LB box is targeted — never the app boxes.
+    expect(call.targets).toHaveLength(1)
+    expect(call.targets[0].id).toBe('55')
+    expect(call.tags).toEqual({ Project: 'my-app', Environment: 'production', Role: 'lb' })
+    const script = call.commands.join('\n')
+    // The LB's fragment is rewritten with one upstream per app box (private IPs).
+    expect(script).toContain('/etc/rpx/sites.d/my-app.json')
+    expect(script).toContain('10.0.0.51:3000')
+    expect(script).toContain('10.0.0.52:3000')
+    expect(script).not.toContain('localhost:3000')
+    expect(script).toContain('systemctl restart rpx-gateway.service')
+    // A reload, not a reinstall: the gateway stack itself is left untouched.
+    expect(script).not.toContain('bun add @stacksjs/rpx')
+    expect(script).not.toContain('/etc/systemd/system/rpx-gateway.service')
+  })
+
+  it('falls back to the single-box app-target reload when no lb target exists', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const ok = await reloadRpxGateway({
+      config: rpxConfig,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      tarballForSite: () => '/tmp/x.tar.gz',
+    })
+    expect(ok).toBe(true)
+    // The lb probe ran first (and found nothing on a single-box driver)…
+    const findCalls = (driver.findComputeTargets as ReturnType<typeof mock>).mock.calls.map(c => c[0])
+    expect(findCalls[0]).toMatchObject({ role: 'lb' })
+    expect(findCalls.some(c => c?.role === 'app')).toBe(true)
+    // …then the full provision script ran on the app targets, as before.
+    const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    expect(call.targets[0].id).toBe('i-abc123')
+    expect(call.tags.Role).toBe('app')
+    expect(call.commands.join('\n')).toContain('bun add @stacksjs/rpx')
+    expect(call.commands.join('\n')).toContain('localhost:3000')
   })
 })
 

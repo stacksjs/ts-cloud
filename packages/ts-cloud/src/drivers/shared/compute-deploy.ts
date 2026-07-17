@@ -28,7 +28,8 @@ import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxProvisionScript, usesRpxProxy } from './rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from './rpx-gateway'
+import type { RpxLbAppBox } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -460,9 +461,15 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
 
 /**
  * Regenerate the rpx gateway config from the sites model and (re)start the
- * gateway on the compute targets. No-op (returns `true`) unless
- * `compute.proxy.engine === 'rpx'`. Re-runnable: the provision script writes the
- * launcher + unit and `systemctl restart`s, which reloads the new routes.
+ * gateway. No-op (returns `true`) unless `compute.proxy.engine === 'rpx'`.
+ *
+ * Two shapes, resolved by probing for a dedicated load-balancer target:
+ *  - **Fleet** (bun-style: one rpx LB box fronts N gateway-less app boxes) —
+ *    rewrite ONLY the LB's route fragment with the multi-upstream LB config
+ *    ({@link buildRpxLbConfig} + {@link buildRpxFragmentRefreshScript}).
+ *  - **Single box** — the gateway is co-located with the app, so the full
+ *    provision script runs on the app targets. Re-runnable: it rewrites the
+ *    launcher + unit and `systemctl restart`s, reloading the new routes.
  */
 export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<boolean> {
   const { config, environment, driver, logger = noopLogger } = options
@@ -474,17 +481,64 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     return true
 
   const sites = routeSource.sites || {}
-  const rpxConfig = buildRpxConfig(sites, { proxy, slug: config.project.slug })
+  const slug = config.project.slug
+  const stackName = resolveProjectStackName(config, environment)
+
+  // Fleet path. Running the app-target provision script here (the old
+  // behavior) installed a pointless single-box gateway on every app box —
+  // which by design run NO gateway of their own — while the LB box that
+  // actually fronts the traffic kept its first-boot routes forever.
+  const lbTargets = await driver.findComputeTargets({
+    slug,
+    environment,
+    role: 'lb',
+    stackName,
+  })
+  if (lbTargets.length > 0) {
+    const appTargets = await driver.findComputeTargets({
+      slug,
+      environment,
+      role: 'app',
+      stackName,
+    })
+    const appBoxes: RpxLbAppBox[] = appTargets.map(t => ({ privateIp: t.privateIp, publicIp: t.publicIp }))
+    const lbConfig = buildRpxLbConfig(sites, appBoxes, { proxy, slug })
+    if (lbConfig.proxies.length === 0) {
+      logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
+      return true
+    }
+
+    logger.step(`Reloading the load balancer's rpx gateway with ${lbConfig.proxies.length} route(s)...`)
+    const result = await driver.runRemoteDeploy({
+      targets: lbTargets,
+      commands: buildRpxFragmentRefreshScript({ config: lbConfig, slug }),
+      comment: `ts-cloud rpx gateway reload ${slug}`,
+      tags: {
+        Project: slug,
+        Environment: environment,
+        Role: 'lb',
+      },
+    })
+
+    if (!result.success) {
+      logger.error(`rpx gateway reload failed: ${result.error || 'unknown error'}`)
+      return false
+    }
+    logger.success(`rpx gateway reloaded on ${result.instanceCount} load balancer(s)`)
+    return true
+  }
+
+  const rpxConfig = buildRpxConfig(sites, { proxy, slug })
   if (rpxConfig.proxies.length === 0) {
     logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
     return true
   }
 
   const targets = await driver.findComputeTargets({
-    slug: config.project.slug,
+    slug,
     environment,
     role: 'app',
-    stackName: resolveProjectStackName(config, environment),
+    stackName,
   })
   if (targets.length === 0) {
     logger.warn('rpx gateway: no compute targets found — skipping gateway reload.')
@@ -492,13 +546,13 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   }
 
   logger.step(`Reloading rpx gateway with ${rpxConfig.proxies.length} route(s)...`)
-  const script = buildRpxProvisionScript({ proxy, config: rpxConfig, slug: config.project.slug })
+  const script = buildRpxProvisionScript({ proxy, config: rpxConfig, slug })
   const result = await driver.runRemoteDeploy({
     targets,
     commands: script,
-    comment: `ts-cloud rpx gateway reload ${config.project.slug}`,
+    comment: `ts-cloud rpx gateway reload ${slug}`,
     tags: {
-      Project: config.project.slug,
+      Project: slug,
       Environment: environment,
       Role: 'app',
     },
