@@ -1187,11 +1187,15 @@ export class HetznerDriver implements CloudDriver {
     const start = Date.now()
     while (Date.now() - start < cloudInitTimeoutMs) {
       try {
-        const out = this.sshExec(host, 'cloud-init status --long 2>/dev/null || cloud-init status 2>/dev/null || echo status:\\ done')
-        if (/status:\s*done/.test(out))
-          return
+        // `cloud-init status` exits non-zero on error/degraded, so an `|| echo`
+        // fallback would print "done" right after the real status and mask a
+        // FAILED bootstrap as success. Probe once, tolerate the exit code, and
+        // only treat a missing cloud-init binary (baked image) as done.
+        const out = this.sshExec(host, `if command -v cloud-init >/dev/null 2>&1; then cloud-init status --long 2>/dev/null || true; else echo 'status: done'; fi`)
         if (/status:\s*error/.test(out))
           throw new Error(`cloud-init reported an error on ${host}:\n${out}`)
+        if (/status:\s*(?:done|degraded)/.test(out))
+          return
       }
       catch (err) {
         // SSH hiccup mid-boot — keep polling until the overall timeout.
