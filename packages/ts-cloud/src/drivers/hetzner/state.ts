@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 export interface HetznerDriverState {
@@ -50,5 +50,10 @@ export async function readDriverState(stackName: string): Promise<HetznerDriverS
 export async function writeDriverState(stackName: string, state: HetznerDriverState): Promise<void> {
   const path = driverStatePath(stackName)
   await mkdir(join(process.cwd(), STATE_DIR), { recursive: true })
-  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
+  // Atomic write: a crash mid-write would corrupt the JSON, and the reader's
+  // catch-all would then lose the pinned serverId (silently re-provisioning a
+  // duplicate box). Temp file + rename on the same filesystem is atomic.
+  const tmp = `${path}.${process.pid}.tmp`
+  await writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, 'utf8')
+  await rename(tmp, path)
 }
