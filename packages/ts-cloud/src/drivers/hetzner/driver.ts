@@ -160,6 +160,28 @@ export class HetznerDriver implements CloudDriver {
         : this.provisionBunFleet(options, topology)
     }
 
+    // Desired-access resources are reconciled on EVERY provision — `deploy`
+    // calls this each run, so a firewall rule change (new/removed site port,
+    // allowSsh flipped) or a rotated SSH key must apply to a reused box, not
+    // just a freshly created one. `ensureFirewall` syncs rules in place and
+    // `ensureSshKey` is find-or-create, so this is idempotent.
+    const labels = tsCloudLabels(slug, environment, 'app')
+    const sites = config.sites || {}
+
+    // ts-cloud does not run a reverse proxy on the box by default — the operator
+    // runs their own. Open the upstream app/site ports so the operator's proxy
+    // (or direct access) can reach each app. When `compute.proxy.engine` is set,
+    // ts-cloud provisions that gateway (rpx) on the box from the sites model.
+    const sitePorts = this.collectUpstreamPorts(sites)
+    const firewallName = `${slug}-${environment}-app-fw`
+    const { firewall } = await this.ensureFirewall(firewallName, labels, buildHetznerFirewallRules({
+      // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
+      // reachable. Only close it when the caller explicitly opts out.
+      allowSsh: compute.allowSsh !== false,
+      sitePorts,
+    }))
+    const sshKeyId = await this.ensureSshKey(slug, environment, labels)
+
     const existing = await readDriverState(stackName)
     if (existing?.serverId) {
       const server = await this.tryGetServer(existing.serverId)
@@ -171,7 +193,6 @@ export class HetznerDriver implements CloudDriver {
     // Idempotency: even without local state (e.g. CI ran on a fresh checkout),
     // a server may already exist from a prior deploy. Look it up by ts-cloud
     // labels before creating a duplicate, and rehydrate local state from it.
-    const labels = tsCloudLabels(slug, environment, 'app')
     const alreadyRunning = await this.findExistingServer(slug, environment, serverName)
     if (alreadyRunning && alreadyRunning.status !== 'off') {
       const rehydrated: HetznerDriverState = {
@@ -186,14 +207,6 @@ export class HetznerDriver implements CloudDriver {
       await writeDriverState(stackName, rehydrated)
       return this.outputsFromState(rehydrated, alreadyRunning)
     }
-
-    const sites = config.sites || {}
-
-    // ts-cloud does not run a reverse proxy on the box by default — the operator
-    // runs their own. Open the upstream app/site ports so the operator's proxy
-    // (or direct access) can reach each app. When `compute.proxy.engine` is set,
-    // ts-cloud provisions that gateway (rpx) on the box from the sites model.
-    const sitePorts = this.collectUpstreamPorts(sites)
 
     // Opt-in rpx gateway: generate the route config from the sites model and
     // install + start it on :80/:443 at first boot. Off by default.
@@ -229,16 +242,6 @@ export class HetznerDriver implements CloudDriver {
 
     const serverType = resolveHetznerServerType(compute.size)
     const image = resolveHetznerImage(config)
-
-    const firewallName = `${slug}-${environment}-app-fw`
-    const { firewall } = await this.ensureFirewall(firewallName, labels, buildHetznerFirewallRules({
-      // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
-      // reachable. Only close it when the caller explicitly opts out.
-      allowSsh: compute.allowSsh !== false,
-      sitePorts,
-    }))
-
-    const sshKeyId = await this.ensureSshKey(slug, environment, labels)
 
     const { server, action } = await this.client.createServer({
       name: serverName,
