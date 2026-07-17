@@ -281,7 +281,10 @@ export class AwsBoxProvisioner implements BoxProvisioner {
       MinCount: 1,
       MaxCount: 1,
       SecurityGroupIds: [groupId],
-      UserData: btoa(buildBoxUserData(spec)),
+      // btoa() only accepts Latin-1 — a bootstrap script with any non-Latin-1
+      // char (an emoji in an echo line) would kill provisioning with an
+      // InvalidCharacterError. Encode as UTF-8 first.
+      UserData: Buffer.from(buildBoxUserData(spec), 'utf8').toString('base64'),
       TagSpecifications: [{ ResourceType: 'instance', Tags: tags }],
     })
     const instanceId = result.Instances?.[0]?.InstanceId
