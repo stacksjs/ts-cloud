@@ -39,12 +39,29 @@ const serverCmd = state('')
 const cmdOut = state('')
 const cmdShown = state(false)
 const cmdBusy = state(false)
-async function runServerCmd() {
+// The API already requires a typed confirmation for shell commands — it answers
+// 'Type "run" to execute this command on the server.' The UI never implemented
+// that step and supplied the token itself, so the gate always passed and Enter
+// in the box ran arbitrary shell on the production server. Stage the command,
+// make the operator type the word, and send what they actually typed.
+const cmdPending = state(null)
+const cmdTyped = state('')
+const cmdCanRun = derived(() => cmdPending() !== null && cmdTyped().trim() === 'run')
+function askServerCmd() {
   const c = serverCmd().trim()
   if (!c) return
+  cmdPending.set(c); cmdTyped.set('')
+}
+function cancelServerCmd() { cmdPending.set(null); cmdTyped.set('') }
+
+async function runServerCmd() {
+  const c = cmdPending()
+  const confirm = cmdTyped().trim()
+  if (!c || confirm !== 'run') return
+  cmdPending.set(null); cmdTyped.set('')
   cmdBusy.set(true); cmdShown.set(true); cmdOut.set('Running ' + c + '...')
   try {
-    const res = await fetch('/api/server/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm: 'run' }) })
+    const res = await fetch('/api/server/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm }) })
     const b = await res.json()
     cmdOut.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || c) + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
   } catch (e) { cmdOut.set('FAILED ' + c + '\n\n' + ((e && e.message) || e)) }
@@ -81,8 +98,14 @@ async function runServerCmd() {
       <h2>Run a command on the server</h2>
       <div class="panel">
         <div class="field">
-          <input :value="serverCmd()" @input="serverCmd.set($event.target.value)" @keydown.enter="runServerCmd()" placeholder="e.g. systemctl status rpx-gateway, or df -h" autocomplete="off">
-          <button class="btn" type="button" :disabled="cmdBusy()" @click="runServerCmd()">Run</button>
+          <input :value="serverCmd()" @input="serverCmd.set($event.target.value)" @keydown.enter="askServerCmd()" placeholder="e.g. systemctl status rpx-gateway, or df -h" autocomplete="off" aria-label="Command to run on the server">
+          <button class="btn" type="button" :disabled="cmdBusy()" @click="askServerCmd()">Run</button>
+        </div>
+        <div class="op-confirm" @show="cmdPending() !== null" style="margin-top:14px">
+          <span>Type <b class="mono">run</b> to execute <b class="mono">{{ cmdPending() }}</b> on {{ server.name }}:</span>
+          <input class="op-confirm-input" :value="cmdTyped()" @input="cmdTyped.set($event.target.value)" @keydown.enter="runServerCmd()" placeholder="confirm" autocomplete="off" aria-label="Type run to confirm executing this command">
+          <button type="button" class="btn danger sm" :disabled="!cmdCanRun()" @click="runServerCmd()">Run command</button>
+          <button type="button" class="btn ghost sm" @click="cancelServerCmd()">Cancel</button>
         </div>
         <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
         <p class="note">Runs on the app box over the active driver (SSH/SSM). Use it for one-off recipes, service inspection, or installing software. Prefer declarative config for anything you want reproduced on the next deploy.</p>
