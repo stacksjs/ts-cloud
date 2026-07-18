@@ -84,6 +84,19 @@ export async function deploySiteRelease(
     return { success: false, error: hint }
   }
 
+  // Auto-wire DB_* / Redis / Meilisearch into the app's environment. In a fleet
+  // (dedicated services box), point at the services box's private IP; otherwise
+  // use the on-box/managed database host. This applies to PHP AND bun/node/deno
+  // server-apps alike — a fleet's app boxes run no local services, so without
+  // it a bun app would look for its database on localhost. Explicit site.env
+  // values always win.
+  const dbEnv = outputs.servicesPrivateIp
+    ? buildFleetServicesEnv(outputs.servicesPrivateIp, config.infrastructure?.appDatabase)
+    : buildManagedDbEnv(config.infrastructure?.appDatabase)
+  const envWithServices = Object.keys(dbEnv).length > 0
+    ? { ...dbEnv, ...(site.env || {}) }
+    : (site.env || {})
+
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the
   // new release, flips `current`, then nginx is (re)pointed at it.
@@ -92,14 +105,8 @@ export async function deploySiteRelease(
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
     const appBase = siteInstallBase(slug, siteName)
 
-    // Auto-wire DB_* into the app's .env. In a fleet (dedicated services box),
-    // point DB/Redis/Meilisearch at the services box's private IP; otherwise
-    // use the on-box/managed database host. Explicit site.env values win.
-    const dbEnv = outputs.servicesPrivateIp
-      ? buildFleetServicesEnv(outputs.servicesPrivateIp, config.infrastructure?.appDatabase)
-      : buildManagedDbEnv(config.infrastructure?.appDatabase)
     const siteWithEnv = Object.keys(dbEnv).length > 0
-      ? { ...site, env: { ...dbEnv, ...(site.env || {}) } }
+      ? { ...site, env: envWithServices }
       : site
 
     const deployScript = buildLaravelDeployScript({
@@ -223,7 +230,7 @@ export async function deploySiteRelease(
         releaseId: sha,
         // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
         execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
-        envEntries: site.env || {},
+        envEntries: envWithServices,
         port: site.port,
         preStartCommands: site.preStart,
         sharedPaths: site.sharedPaths,

@@ -176,6 +176,113 @@ describe('deploySiteRelease', () => {
     expect(result.success).toBe(false)
     expect(result.error).toContain('no EC2 instances tagged')
   })
+
+  it('wires DB/Redis/Meilisearch env at the services box private IP for bun fleet deploys', async () => {
+    // Regression: only PHP deploys got the fleet services env — a bun app on a
+    // fleet (whose app boxes run no local services) was left looking for its
+    // database on localhost.
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      getComputeOutputs: mock(async () => ({
+        deployStoragePath: '/var/ts-cloud/staging',
+        servicesPrivateIp: '10.0.0.99',
+      })),
+    })
+    const fleetConfig: CloudConfig = {
+      ...config,
+      infrastructure: {
+        appDatabase: { engine: 'mysql', name: 'appdb', username: 'app', password: 's3cret' },
+      },
+    }
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+
+    const result = await deploySiteRelease(driver, {
+      config: fleetConfig,
+      environment: 'production',
+      siteName: 'web',
+      site: fleetConfig.sites!.web,
+      slug: 'my-app',
+      sha: 'abc123',
+      runtime: 'bun',
+      localTarballPath: tarball,
+    })
+
+    expect(result.success).toBe(true)
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(commands).toContain('REDIS_HOST="10.0.0.99"')
+    expect(commands).toContain('MEILISEARCH_HOST="http://10.0.0.99:7700"')
+    expect(commands).toContain('DB_CONNECTION="mysql"')
+    expect(commands).toContain('DB_HOST="10.0.0.99"')
+    expect(commands).toContain('DB_DATABASE="appdb"')
+    expect(commands).toContain('DB_PASSWORD="s3cret"')
+  })
+
+  it('lets an explicit site.env value override the auto-wired services env', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      getComputeOutputs: mock(async () => ({
+        deployStoragePath: '/var/ts-cloud/staging',
+        servicesPrivateIp: '10.0.0.99',
+      })),
+    })
+    const overrideConfig: CloudConfig = {
+      ...config,
+      sites: {
+        web: { ...config.sites!.web, env: { REDIS_HOST: 'cache.internal' } },
+      },
+    }
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+
+    await deploySiteRelease(driver, {
+      config: overrideConfig,
+      environment: 'production',
+      siteName: 'web',
+      site: overrideConfig.sites!.web,
+      slug: 'my-app',
+      sha: 'abc123',
+      runtime: 'bun',
+      localTarballPath: tarball,
+    })
+
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(commands).toContain('REDIS_HOST="cache.internal"')
+    expect(commands).not.toContain('REDIS_HOST="10.0.0.99"')
+  })
+
+  it('wires the managed/on-box database env for bun apps when there is no services box', async () => {
+    const driver = createMockDriver()
+    const dbConfig: CloudConfig = {
+      ...config,
+      infrastructure: {
+        appDatabase: { engine: 'postgres', name: 'appdb' },
+      },
+    }
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+
+    await deploySiteRelease(driver, {
+      config: dbConfig,
+      environment: 'production',
+      siteName: 'web',
+      site: dbConfig.sites!.web,
+      slug: 'my-app',
+      sha: 'abc123',
+      runtime: 'bun',
+      localTarballPath: tarball,
+    })
+
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(commands).toContain('DB_CONNECTION="pgsql"')
+    expect(commands).toContain('DB_HOST="127.0.0.1"')
+    expect(commands).toContain('DB_PORT="5432"')
+  })
 })
 
 describe('reloadRpxGateway', () => {
