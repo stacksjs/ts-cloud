@@ -97,10 +97,16 @@ export function resolveDashboardAuth(cwd: string, username: string, logger: Ensu
     mkdirSync(dirname(file), { recursive: true })
     writeFileSync(file, `${JSON.stringify({ username, password, generatedAt: new Date().toISOString() }, null, 2)}\n`)
     chmodSync(file, 0o600)
-    logger.info(`Management dashboard: generated a password and saved it to ${DASHBOARD_CREDENTIALS_FILE} (user: ${username}, pass: ${password}). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`)
+    // Deliberately NOT logging the password: deploy output lands in CI logs,
+    // terminal scrollback and the systemd journal, all of which outlive the
+    // deploy and are readable by more people than the 0600 file is.
+    logger.info(`Management dashboard: generated a password for '${username}' and saved it to ${DASHBOARD_CREDENTIALS_FILE} (read it there — it is not printed). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`)
   }
   catch (error: any) {
-    logger.warn(`Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}`)
+    // Only place the password is still printed: persisting failed, so this log
+    // line is the operator's single copy. Say plainly that it is now in the log
+    // so they can rotate it once the underlying write problem is fixed.
+    logger.warn(`Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}\nThis password is now in your deploy log. Set TS_CLOUD_UI_PASSWORD to a value of your own and redeploy once ${DASHBOARD_CREDENTIALS_FILE} is writable.`)
   }
   return { password, source: 'generated' }
 }
