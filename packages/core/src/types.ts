@@ -2596,6 +2596,18 @@ export interface ComputeConfig {
   managedServices?: ComputeServicesConfig
 
   /**
+   * Application database created on the box's {@link managedServices} engine
+   * (role + schema, Forge-style).
+   *
+   * @deprecated Use the canonical {@link InfrastructureConfig.appDatabase}
+   * instead — same shape, one obvious home next to the other infrastructure
+   * declarations. This alias is still honored everywhere `appDatabase` is read
+   * (see `resolveAppDatabase`) so existing configs keep working; `appDatabase`
+   * wins when both are set.
+   */
+  database?: DatabaseConfig
+
+  /**
    * Host firewall (UFW). When enabled, only SSH + the listed ports are open.
    * On Hetzner this complements the cloud firewall; on a bare box it's the
    * primary firewall. @default { enabled: true } for PHP boxes

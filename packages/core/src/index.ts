@@ -8,6 +8,10 @@ export * from './types'
 // Deployment-mode detection (server vs serverless, mutually exclusive)
 export * from './deployment-mode'
 
+// Canonical app-database resolution (`infrastructure.appDatabase`, with the
+// deprecated `infrastructure.compute.database` alias honored).
+export * from './app-database'
+
 // Cloud drivers (provider abstraction)
 export * from './drivers'
 
