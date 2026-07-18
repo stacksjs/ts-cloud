@@ -397,8 +397,17 @@ describe('renderRpxLauncher', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     const launcher = renderRpxLauncher(config)
     expect(launcher).toContain(`import { startProxies } from '@stacksjs/rpx'`)
-    expect(launcher).toContain('startProxies(config')
+    expect(launcher).toContain('startProxies(')
     expect(launcher).toContain('"to": "stacksjs.com"')
+  })
+
+  // A production TLS failure looked like "nothing happens" because the gateway
+  // ran without verbose and rpx's issuance diagnostics never reached the
+  // journal. ts-cloud-installed gateways default verbose ON (env can opt out).
+  it('defaults verbose on, with an RPX_VERBOSE=false escape hatch', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const launcher = renderRpxLauncher(config)
+    expect(launcher).toContain(`verbose: process.env.RPX_VERBOSE !== 'false'`)
   })
 })
 
@@ -653,6 +662,26 @@ describe('per-app gateway registry (independent deploys)', () => {
     // logged loud rather than swallowed silently.
     expect(asm).toContain('continue')
     expect(asm).toContain('SKIPPING malformed fragment')
+  })
+
+  // The assembler is the /etc/rpx/gateway.ts every ts-cloud box runs. Without
+  // verbose, rpx's tlsx on-demand issuance diagnostics (refused/failed/adopted)
+  // never reach the systemd journal — a production TLS failure looked like
+  // "nothing happens". Default verbose ON, with an env escape hatch.
+  it('renderRpxAssembler defaults verbose on, with an RPX_VERBOSE=false escape hatch', () => {
+    const asm = renderRpxAssembler()
+    expect(asm).toContain(`verbose: process.env.RPX_VERBOSE !== 'false'`)
+    // The verbose flag lands inside the config passed to startProxies.
+    expect(asm.indexOf('verbose:')).toBeLessThan(asm.indexOf('startProxies(config)'))
+  })
+
+  it('the provisioned gateway launcher (/etc/rpx/gateway.ts) carries the verbose default', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+    expect(script).toContain(`verbose: process.env.RPX_VERBOSE !== 'false'`)
+    // Written as part of the launcher heredoc, before the unit starts it.
+    expect(script.indexOf(`verbose: process.env.RPX_VERBOSE !== 'false'`))
+      .toBeLessThan(script.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`))
   })
 })
 

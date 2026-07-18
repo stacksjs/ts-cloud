@@ -404,7 +404,9 @@ import { startProxies } from '@stacksjs/rpx'
 
 const config = ${json} as const
 
-await startProxies(config as any)
+// Verbose is the hard default for ts-cloud-installed gateways (RPX_VERBOSE=false
+// opts out) — without it rpx's TLS/routing diagnostics never reach the journal.
+await startProxies({ verbose: process.env.RPX_VERBOSE !== 'false', ...config } as any)
 `
 }
 
@@ -547,6 +549,12 @@ const config = {
   https: true,
   hostsManagement: false,
   cleanup: { hosts: false, certs: false },
+  // Verbose is the hard default for ts-cloud-installed gateways: without it,
+  // rpx's TLS/routing diagnostics (tlsx on-demand 'refused issuance',
+  // 'issuance failed', 'adopted existing on-disk cert') never reach the systemd
+  // journal and a production TLS failure looks like "nothing happens". Silence
+  // it by setting RPX_VERBOSE=false on the systemd unit.
+  verbose: process.env.RPX_VERBOSE !== 'false',
   ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir } } : {}),
   ...(acmeChallengeWebroot ? { acmeChallengeWebroot } : {}),
   ...(guard ? { originGuard: { header: guard.header, value: guard.value, hosts: [...guardHosts] } } : {}),
