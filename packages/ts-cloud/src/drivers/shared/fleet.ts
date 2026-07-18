@@ -13,6 +13,7 @@
  * shares one database/cache.
  */
 import type { CloudConfig, ComputeConfig, DatabaseConfig } from '@ts-cloud/core'
+import { resolveAppDatabase } from '@ts-cloud/core'
 import { buildBackupProvisionScript } from './backups'
 import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
 import { buildAutoUpdatesScript } from './maintenance'
@@ -82,15 +83,16 @@ export function buildFleetServicesEnv(servicesPrivateIp: string, database?: Data
  */
 export function buildFleetServicesBoxProvision(config: CloudConfig): string[] {
   const compute = config.infrastructure?.compute ?? {}
+  const appDatabase = resolveAppDatabase(config)
   return [
     ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
-    ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
+    ...buildDatabaseSetupScript(appDatabase, compute.managedServices ?? { mysql: true }),
     ...buildAutoUpdatesScript(true),
     ...buildMonitoringScript(true),
     ...buildAuthorizedKeysScript(compute.sshKeys),
     ...buildNotifierScript(config.notifications),
     ...(compute.backups?.enabled
-      ? [...buildBackupProvisionScript({ database: config.infrastructure?.appDatabase, backups: compute.backups })]
+      ? [...buildBackupProvisionScript({ database: appDatabase, backups: compute.backups })]
       : []),
   ]
 }

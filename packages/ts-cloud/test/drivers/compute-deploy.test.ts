@@ -599,3 +599,112 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     delete process.env.TS_CLOUD_UI_STATIC
   }, 60_000)
 })
+
+describe('deployAllComputeSites attach-mode database ensure', () => {
+  function attachConfig(database: 'canonical' | 'legacy' | 'none', attachTo?: string): CloudConfig {
+    const config: CloudConfig = {
+      project: { name: 'Training', slug: 'training', region: 'fsn1' },
+      cloud: attachTo ? { provider: 'hetzner', attachTo } : { provider: 'hetzner' },
+      environments: { production: { type: 'production' } },
+      sites: {
+        web: { domain: 'hq.training', port: 3000, root: '.output', start: 'bun run server.ts' },
+      },
+      infrastructure: {
+        compute: {
+          runtime: 'bun',
+          managedServices: { postgres: true },
+          // bughq's older shape — the deprecated alias.
+          ...(database === 'legacy'
+            ? { database: { engine: 'postgres' as const, name: 'training', username: 'training', password: 'pw' } }
+            : {}),
+        },
+        ...(database === 'canonical'
+          ? { appDatabase: { engine: 'postgres' as const, name: 'training', username: 'training', password: 'pw' } }
+          : {}),
+      },
+    }
+    return config
+  }
+
+  async function deploy(config: CloudConfig, driverOverrides: Partial<CloudDriver> = {}) {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false, ...driverOverrides })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+    process.env.TS_CLOUD_UI_DISABLE = '1'
+    let ok: boolean
+    try {
+      ok = await deployAllComputeSites({
+        config,
+        environment: 'production',
+        driver,
+        sha: 'abc',
+        runtime: 'bun',
+        tarballForSite: () => tarball,
+      })
+    }
+    finally { delete process.env.TS_CLOUD_UI_DISABLE }
+    return { ok, driver }
+  }
+
+  it('ensures the tenant role + database BEFORE shipping sites (canonical appDatabase)', async () => {
+    const { ok, driver } = await deploy(attachConfig('canonical', 'stacks'))
+    expect(ok).toBe(true)
+    const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+    // One ensure call + one site deploy call (no rpx configured → no reload).
+    expect(calls.length).toBe(2)
+    const ensure = calls[0][0]
+    const sql = ensure.commands.join('\n')
+    // Same idempotent script the provisioning path runs at first boot.
+    expect(sql).toContain('IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \'training\')')
+    expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
+    expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
+    expect(sql).toContain('psql -h 127.0.0.1 -p 5432 -U postgres')
+    expect(ensure.comment).toBe('ts-cloud ensure database training/training')
+    // The ensure strictly precedes the site deploy so the app's first boot
+    // already finds its database.
+    expect(calls[1][0].commands.join('\n')).toContain('systemctl start training-web@abc.service')
+  })
+
+  it('honors the deprecated infrastructure.compute.database alias (bughq shape)', async () => {
+    const { ok, driver } = await deploy(attachConfig('legacy', 'stacks'))
+    expect(ok).toBe(true)
+    const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+    expect(calls.length).toBe(2)
+    const sql = calls[0][0].commands.join('\n')
+    expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
+    expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
+  })
+
+  it('does NOT create databases on a self-provisioned deploy (no attachTo)', async () => {
+    const { ok, driver } = await deploy(attachConfig('canonical'))
+    expect(ok).toBe(true)
+    const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+    // Only the site deploy — cloud-init already ran the db setup at first boot.
+    expect(calls.length).toBe(1)
+    expect(calls[0][0].commands.join('\n')).not.toContain('CREATE DATABASE')
+  })
+
+  it('is a no-op in attach mode when no database is configured', async () => {
+    const { ok, driver } = await deploy(attachConfig('none', 'stacks'))
+    expect(ok).toBe(true)
+    const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+    expect(calls.length).toBe(1)
+    expect(calls[0][0].commands.join('\n')).not.toContain('CREATE DATABASE')
+  })
+
+  it('fails the deploy (shipping nothing) when the database ensure fails', async () => {
+    let call = 0
+    const { ok, driver } = await deploy(attachConfig('canonical', 'stacks'), {
+      runRemoteDeploy: mock(async () => {
+        call++
+        return call === 1
+          ? { success: false, instanceCount: 1, error: 'psql: connection refused', perInstance: [{ instanceId: '42', status: 'Failed', error: 'psql: connection refused' }] }
+          : { success: true, instanceCount: 1, perInstance: [{ instanceId: '42', status: 'Success' }] }
+      }),
+    })
+    expect(ok).toBe(false)
+    // The site deploy must never run after a failed ensure.
+    expect((driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.length).toBe(1)
+  })
+})

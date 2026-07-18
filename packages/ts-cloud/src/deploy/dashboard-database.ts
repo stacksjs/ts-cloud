@@ -5,6 +5,7 @@
  * path in {@link import('../drivers/shared/db-provision')}.
  */
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { resolveAppDatabase } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
 
 export type DbEngine = 'mysql' | 'mariadb' | 'postgres'
@@ -29,7 +30,7 @@ function normalizeEngine(engine: string | undefined): DbEngine {
 
 export function resolveDbEngine(config: CloudConfig): DbEngine {
   const compute = config.infrastructure?.compute as any
-  const declared = config.infrastructure?.appDatabase?.engine
+  const declared = resolveAppDatabase(config)?.engine
   if (declared)
     return normalizeEngine(declared)
   const managed = compute?.managedServices ?? {}

@@ -71,7 +71,9 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
   // For a generic golden image, bake the stack (runtime, php, nginx, services,
   // firewall, auto-updates, monitoring) but NOT project-specific state (ssh
   // keys, app DB, backups) — those are applied per-box at boot/deploy. We do
-  // that by stripping the project-specific config before composing.
+  // that by stripping the project-specific config before composing. Strip BOTH
+  // database keys (canonical `appDatabase` + the deprecated `compute.database`
+  // alias) or `resolveAppDatabase` would resurrect the app DB from the alias.
   const recipeConfig: CloudConfig = generic
     ? {
         ...config,
@@ -81,6 +83,7 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
           appDatabase: undefined,
           compute: {
             ...config.infrastructure?.compute,
+            database: undefined,
             sshKeys: undefined,
             backups: undefined,
           },

@@ -20,7 +20,7 @@ import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
 import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../src/security/pre-deploy-scanner'
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
-import { deploymentCoexistenceError, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
+import { deploymentCoexistenceError, resolveAppDatabase, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
 import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
 import { runConfigHook } from '../../src/deploy/hooks'
@@ -978,7 +978,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const { restoreDatabaseBackup } = await import('../../src/drivers/shared/compute-ops')
         const result = await restoreDatabaseBackup(
           { driver: createCloudDriver({ config }), slug: config.project.slug, environment, logger: cli },
-          { database: config.infrastructure?.appDatabase, from },
+          { database: resolveAppDatabase(config), from },
         )
         for (const inst of result.perInstance || [])
           cli.info(`  ${inst.instanceId}: ${inst.output?.trim() || inst.status}`)

@@ -10,6 +10,7 @@
  * so a baked image and a cold boot install exactly the same stack.
  */
 import type { CloudConfig } from '@ts-cloud/core'
+import { resolveAppDatabase } from '@ts-cloud/core'
 import { buildServicesProvisionScript, buildDatabaseSetupScript } from './db-provision'
 import { buildPhpProvisionScript } from './php-provision'
 import { buildNginxServiceScript } from './nginx-vhost'
@@ -68,6 +69,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
     : undefined
 
   const extras: string[] = []
+  const appDatabase = resolveAppDatabase(config)
   // pantry bootstrap for a services-only (non-PHP) box.
   if (!phpBox && needsPantry)
     extras.push(...pantryBootstrap)
@@ -76,7 +78,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   if (compute.managedServices) {
     extras.push(
       ...buildServicesProvisionScript(compute.managedServices),
-      ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices),
+      ...buildDatabaseSetupScript(appDatabase, compute.managedServices),
     )
   }
   extras.push(...buildUfwScript(compute.firewall ?? (phpBox ? { enabled: true } : { enabled: false })))
@@ -85,7 +87,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys))
   if (compute.backups?.enabled) {
     extras.push(...buildBackupProvisionScript({
-      database: config.infrastructure?.appDatabase,
+      database: appDatabase,
       backups: compute.backups,
     }))
   }

@@ -8,6 +8,7 @@
  * active driver (SSH/SSM), reusing the shared compute-ops builders.
  */
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { resolveAppDatabase } from '@ts-cloud/core'
 import { createCloudDriver } from '../drivers'
 import { resolveSiteFramework } from '../drivers/shared/app-frameworks'
 import { BACKUP_RUNNER_PATH } from '../drivers/shared/backups'
@@ -129,7 +130,7 @@ export function buildDashboardOperations(config: CloudConfig, data: Record<strin
   const backups = (config.infrastructure?.compute as any)?.backups
   if (backups?.enabled) {
     ops.push({ id: 'backup:run', label: 'Run backup now', group: 'backup', target: 'backup', mutates: true, confirm: 'backup' })
-    if (config.infrastructure?.appDatabase)
+    if (resolveAppDatabase(config))
       ops.push({ id: 'backup:restore', label: 'Restore latest DB backup', group: 'backup', target: 'database', mutates: true, confirm: 'restore', danger: true })
   }
 
@@ -248,7 +249,7 @@ export async function runDashboardOperation(
     return fromComputeOps(operation.id, `rollback ${operation.target}${to ? ` → ${to}` : ''}`, r)
   }
   if (operation.id === 'backup:restore') {
-    const r = await restoreDatabaseBackup(ctx, { database: config.infrastructure?.appDatabase })
+    const r = await restoreDatabaseBackup(ctx, { database: resolveAppDatabase(config) })
     return fromComputeOps(operation.id, 'db restore', r)
   }
 

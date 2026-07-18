@@ -8,7 +8,7 @@ import type {
 import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { hasManagementDashboardSite, resolveProjectStackName } from '@ts-cloud/core'
+import { hasManagementDashboardSite, resolveAppDatabase, resolveProjectStackName } from '@ts-cloud/core'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import {
@@ -20,7 +20,7 @@ import {
   resolveExecStart,
 } from './deploy-script'
 import { buildSslScript, resolveSslProvider } from './certbot'
-import { buildManagedDbEnv } from './db-provision'
+import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
 import { buildFleetServicesEnv } from './fleet'
 import { resolveNotifications, sendNotifications } from './notifications'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
@@ -91,8 +91,8 @@ export async function deploySiteRelease(
   // it a bun app would look for its database on localhost. Explicit site.env
   // values always win.
   const dbEnv = outputs.servicesPrivateIp
-    ? buildFleetServicesEnv(outputs.servicesPrivateIp, config.infrastructure?.appDatabase)
-    : buildManagedDbEnv(config.infrastructure?.appDatabase)
+    ? buildFleetServicesEnv(outputs.servicesPrivateIp, resolveAppDatabase(config))
+    : buildManagedDbEnv(resolveAppDatabase(config))
   const envWithServices = Object.keys(dbEnv).length > 0
     ? { ...dbEnv, ...(site.env || {}) }
     : (site.env || {})
@@ -338,6 +338,70 @@ export interface DeployAllSitesOptions {
 }
 
 /**
+ * Attach mode (`cloud.attachTo`): this project rides a box its OWNER provisioned,
+ * so no cloud-init of ours ever ran the on-box database setup — the tenant role
+ * and database simply do not exist unless someone creates them by hand. When the
+ * config declares on-box managed services plus an app database (via the canonical
+ * `infrastructure.appDatabase` or the deprecated `infrastructure.compute.database`
+ * alias), ensure both exist before the first site ships.
+ *
+ * This deliberately runs the SAME script the provisioning path splices into
+ * cloud-init ({@link buildDatabaseSetupScript}) — one code path, never a parallel
+ * mechanism. It is idempotent: a `DO` block guards the role (creating it, or
+ * syncing its password like a re-provision) and `\gexec` conditionally creates
+ * the database. It touches ONLY the configured tenant role/database (+ any
+ * configured extra users) against the box's co-located engine — never the engine
+ * install (the owner manages services), never another tenant's database.
+ *
+ * Returns `true` when there is nothing to ensure or the ensure succeeded.
+ */
+async function ensureAttachModeDatabase(
+  driver: CloudDriver,
+  options: DeployAllSitesOptions,
+  logger: ComputeDeployLogger,
+): Promise<boolean> {
+  const { config, environment } = options
+  if (!config.cloud?.attachTo)
+    return true
+  const compute = config.infrastructure?.compute
+  const database = resolveAppDatabase(config)
+  const commands = buildDatabaseSetupScript(database, compute?.managedServices ?? {})
+  if (commands.length === 0)
+    return true
+
+  const slug = config.project.slug
+  const stackName = resolveProjectStackName(config, environment)
+  const targets = await driver.findComputeTargets({
+    slug,
+    environment,
+    role: 'app',
+    stackName,
+  })
+  if (targets.length === 0) {
+    // No targets: the site deploy itself reports that error authoritatively.
+    return true
+  }
+
+  logger.step(`Ensuring database '${database?.name}' + role exist on the shared box...`)
+  const result = await driver.runRemoteDeploy({
+    targets,
+    commands,
+    comment: `ts-cloud ensure database ${slug}/${database?.name}`,
+    tags: {
+      Project: slug,
+      Environment: environment,
+      Role: 'app',
+    },
+  })
+  if (!result.success) {
+    logger.error(`Ensuring database '${database?.name}' failed: ${result.error || 'unknown error'}`)
+    return false
+  }
+  logger.success(`Database '${database?.name}' is ready on ${result.instanceCount} target(s)`)
+  return true
+}
+
+/**
  * Deploy every site that targets the compute server — both dynamic apps
  * (`server` + `start`, run as systemd services) and static sites (`server`
  * without `start`, shipped to `/var/www/<site>`). Bucket sites are skipped.
@@ -416,6 +480,13 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   })
 
   if (deployable.length === 0) return true
+
+  // Attach mode (`cloud.attachTo`): the shared box was provisioned by its OWNER,
+  // so no cloud-init of ours ever ran this project's on-box database setup — the
+  // tenant role + database would not exist unless someone created them by hand.
+  // Ensure them before the first site ships (idempotent; no-op otherwise).
+  if (!await ensureAttachModeDatabase(driver, options, logger))
+    return false
 
   // Use the internally-built dashboard tarball when we injected it; otherwise the
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
