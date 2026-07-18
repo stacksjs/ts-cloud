@@ -29,9 +29,11 @@ const msgOk = state(false)
 const busy = state(false)
 
 // Delete flow uses a typed-confirm (the alarm name) before firing.
-const pendingDelete = state(null)
-const typedDelete = state('')
-const canDelete = derived(() => { const p = pendingDelete(); return !!p && typedDelete() === p })
+const pending = state(null)
+const typed = state('')
+const canRun = derived(() => { const p = pending(); return !!p && typed() === p })
+const confirmTok = derived(() => pending() ?? '')
+const confirmVerb = derived(() => 'delete this alarm')
 
 function toneOf(s) { return s === 'ALARM' ? 'bad' : (s === 'OK' ? 'ok' : 'warn') }
 
@@ -60,12 +62,12 @@ async function createAlarm() {
   finally { busy.set(false) }
 }
 
-function askDelete(name) { pendingDelete.set(name); typedDelete.set('') }
-function cancelDelete() { pendingDelete.set(null); typedDelete.set('') }
-async function confirmDelete() {
-  const name = pendingDelete()
-  if (!name || typedDelete() !== name) return
-  pendingDelete.set(null); typedDelete.set('')
+function askDelete(name) { pending.set(name); typed.set('') }
+function cancelOp() { pending.set(null); typed.set('') }
+async function runOp() {
+  const name = pending()
+  if (!name || typed() !== name) return
+  pending.set(null); typed.set('')
   msg.set('Deleting ' + name + '...'); msgOk.set(false)
   try {
     const res = await fetch('/api/serverless/alarms', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, confirm: name }) })
@@ -115,12 +117,7 @@ async function confirmDelete() {
           </tbody>
         </table>
 
-        <div class="op-confirm" @show="pendingDelete() !== null" style="margin-top:14px">
-          <span>Type <b class="mono">{{ pendingDelete() }}</b> to delete this alarm:</span>
-          <input class="op-confirm-input" :value="typedDelete()" @input="typedDelete.set($event.target.value)" @keydown.enter="confirmDelete()" placeholder="confirm" autocomplete="off">
-          <button class="btn danger sm" :disabled="!canDelete()" @click="confirmDelete()">Delete</button>
-          <button class="btn ghost sm" @click="cancelDelete()">Cancel</button>
-        </div>
+        @include('../partials/op-confirm', { label: 'Delete', danger: true, output: false })
       </div>
     </div>
 

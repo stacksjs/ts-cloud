@@ -50,13 +50,15 @@ async function removePort(port) {
   setMessage('Removed port ' + port + ' from cloud config.' + applyLine(data.apply), 'ok')
 }
 
-// Remove runs through a typed-confirm bar: type the port number to confirm.
+// Remove runs through the shared typed-confirm bar: type the port number to
+// confirm. Names match the contract partials/op-confirm.stx binds to.
 const pending = state(null); const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? String(p) : '' })
+const confirmTok = derived(() => { const p = pending(); return p !== null ? String(p) : '' })
+const confirmVerb = derived(() => { const p = pending(); return p !== null ? 'remove port ' + p : '' })
 const canRun = derived(() => { const p = pending(); return p !== null && typed() === String(p) })
 function askRemove(port) { pending.set(port); typed.set('') }
-function cancelRemove() { pending.set(null); typed.set('') }
-async function runRemove() {
+function cancelOp() { pending.set(null); typed.set('') }
+async function runOp() {
   const p = pending(); if (p === null || typed() !== String(p)) return
   pending.set(null); typed.set('')
   await removePort(p)
@@ -120,12 +122,7 @@ onMount(() => { load() })
           </template>
         </div>
         <div class="compact empty" @show="ports().length === 0"><strong>No extra ports configured</strong><span>Only 22, 80, and 443 are open. Allow a port above to update <span class="mono">infrastructure.compute.firewall</span>.</span></div>
-        <div class="op-confirm panel" @show="pending() !== null">
-          <span>Type <b class="mono">{{ confirmTok() }}</b> to remove this port:</span>
-          <input class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runRemove()" placeholder="confirm" autocomplete="off">
-          <button class="btn sm" :disabled="!canRun()" @click="runRemove()">Run</button>
-          <button class="btn ghost sm" @click="cancelRemove()">Cancel</button>
-        </div>
+        @include('../partials/op-confirm', { label: 'Remove', danger: true, output: false })
         <p class="note">Ports are declarative: this page edits <span class="mono">infrastructure.compute.firewall</span> in cloud config and applies <span class="mono">ufw allow</span> / <span class="mono">ufw delete allow</span> live on the box. The full config is reconciled again on the next <span class="mono">cloud deploy</span>.</p>
       </div>
     </div>
