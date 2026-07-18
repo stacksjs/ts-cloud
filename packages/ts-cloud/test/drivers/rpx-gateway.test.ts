@@ -496,6 +496,27 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('Environment=RPX_MAX_UPSTREAM_CONNS=512')
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
   })
+
+  // A failed `bun add` must never gut the live gateway: the install is staged
+  // in a sibling dir and swapped in only on success (two atomic renames). The
+  // old wipe-then-install flow left the box uninstallable on a registry hiccup,
+  // so the next gateway restart (cert renewal, reboot) crashed the proxy.
+  it('stages the rpx install and swaps it in only after a successful add', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+
+    expect(script).toContain('(cd /opt/rpx-gateway.next && /usr/local/bin/bun add @stacksjs/rpx@latest)')
+    expect(script).toContain('mv /opt/rpx-gateway /opt/rpx-gateway.prev')
+    expect(script).toContain('mv /opt/rpx-gateway.next /opt/rpx-gateway')
+    // The live install is never wiped before the add.
+    expect(script).not.toContain('rm -rf /opt/rpx-gateway/node_modules')
+    // The add strictly precedes the swap…
+    expect(script.indexOf('bun add @stacksjs/rpx@latest'))
+      .toBeLessThan(script.indexOf('mv /opt/rpx-gateway /opt/rpx-gateway.prev'))
+    // …and stale staging dirs from an interrupted prior run are cleaned first.
+    expect(script.indexOf('rm -rf /opt/rpx-gateway.next /opt/rpx-gateway.prev'))
+      .toBeLessThan(script.indexOf('bun add @stacksjs/rpx@latest'))
+  })
 })
 
 describe('buildRpxFragmentRefreshScript', () => {

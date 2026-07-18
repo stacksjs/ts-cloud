@@ -745,8 +745,17 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     // Install @stacksjs/rpx into an isolated managed project. Bun's global
     // install state can inherit stale dependency metadata, while a clean local
     // project install is deterministic and keeps the gateway self-contained.
-    `rm -rf ${RPX_INSTALL_DIR}/node_modules ${RPX_INSTALL_DIR}/bun.lock ${RPX_INSTALL_DIR}/package.json`,
-    `(cd ${RPX_INSTALL_DIR} && ${bunBin} add @stacksjs/rpx@${version})`,
+    // The install is STAGED, then swapped in: the old flow wiped node_modules
+    // BEFORE `bun add`, so a failed add (registry hiccup) left the live gateway
+    // uninstallable — the next restart (cert renewal, box reboot) crashed the
+    // proxy. A failed add now aborts with the previous install untouched, and
+    // the swap itself is two renames on one filesystem.
+    `rm -rf ${RPX_INSTALL_DIR}.next ${RPX_INSTALL_DIR}.prev`,
+    `mkdir -p ${RPX_INSTALL_DIR}.next`,
+    `(cd ${RPX_INSTALL_DIR}.next && ${bunBin} add @stacksjs/rpx@${version})`,
+    `mv ${RPX_INSTALL_DIR} ${RPX_INSTALL_DIR}.prev`,
+    `mv ${RPX_INSTALL_DIR}.next ${RPX_INSTALL_DIR}`,
+    `rm -rf ${RPX_INSTALL_DIR}.prev`,
     `ln -sfn ${RPX_INSTALL_DIR}/node_modules ${RPX_DIR}/node_modules`,
     // Write THIS app's registry fragment (its routes only) — root-only: it
     // carries basic-auth passwords and the origin-guard shared secret, and the
