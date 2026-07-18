@@ -1,3 +1,61 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.30...v0.7.31)
+
+## 🚀 Features
+
+- **core**: canonical appDatabase resolution via resolveAppDatabase ([60539cc](https://github.com/stacksjs/ts-cloud/commit/60539cc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **gateway**: default the generated rpx launcher to verbose logging ([0570399](https://github.com/stacksjs/ts-cloud/commit/0570399)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: create the tenant database on attach-mode hetzner deploys ([214514e](https://github.com/stacksjs/ts-cloud/commit/214514e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: run fleet DB backups on the services box — PHP fleets included ([ab7641a](https://github.com/stacksjs/ts-cloud/commit/ab7641a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **gateway**: stage the rpx install and swap it in atomically ([2a6c15e](https://github.com/stacksjs/ts-cloud/commit/2a6c15e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: wire the services env for bun/node/deno deploys, not just PHP ([0ddeebd](https://github.com/stacksjs/ts-cloud/commit/0ddeebd)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: stop duplicating the services stack on bun-fleet app boxes ([bb44541](https://github.com/stacksjs/ts-cloud/commit/bb44541)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: reload the fleet load balancer's routes instead of installing gateways on app boxes ([63655ba](https://github.com/stacksjs/ts-cloud/commit/63655ba)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **local-box**: answer compute-target queries only for the app role ([8073c6b](https://github.com/stacksjs/ts-cloud/commit/8073c6b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: refresh the bun-fleet load balancer's rpx routes on every provision ([c63974d](https://github.com/stacksjs/ts-cloud/commit/c63974d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **gateway**: add an rpx route-fragment refresh for provisioned gateways ([85db05b](https://github.com/stacksjs/ts-cloud/commit/85db05b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: write driver state atomically ([d234ac0](https://github.com/stacksjs/ts-cloud/commit/d234ac0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: redact lowercase and exported env assignments from error output ([6b3803b](https://github.com/stacksjs/ts-cloud/commit/6b3803b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **gateway**: write rpx route fragments root-only (0600) ([3d5d0cb](https://github.com/stacksjs/ts-cloud/commit/3d5d0cb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: remove failed releases so rollback never activates them ([e1ceb95](https://github.com/stacksjs/ts-cloud/commit/e1ceb95)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: namespace staged release tarballs by slug and release id ([747c8f5](https://github.com/stacksjs/ts-cloud/commit/747c8f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **db**: grant postgres read-only defaults for the app role ([b248b6b](https://github.com/stacksjs/ts-cloud/commit/b248b6b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **firewall**: drop out-of-range ufw ports instead of aborting the bootstrap ([36744fc](https://github.com/stacksjs/ts-cloud/commit/36744fc)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: record the site's real branch in the deploy history ([8b70d92](https://github.com/stacksjs/ts-cloud/commit/8b70d92)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: base64-encode EC2 user data as UTF-8 ([46fe670](https://github.com/stacksjs/ts-cloud/commit/46fe670)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: honor the caller's timeout when polling SSM commands ([f71cf06](https://github.com/stacksjs/ts-cloud/commit/f71cf06)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: strip the managed authorized_keys block when the key list empties ([6b2e9a9](https://github.com/stacksjs/ts-cloud/commit/6b2e9a9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: stop escaping $ in the generated Caddyfile ([04545a0](https://github.com/stacksjs/ts-cloud/commit/04545a0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ssl**: point certbot at the ts-cloud nginx wrapper ([f452b91](https://github.com/stacksjs/ts-cloud/commit/f452b91)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ssl**: reload the ts-cloud-nginx unit after cert renewal ([10f0248](https://github.com/stacksjs/ts-cloud/commit/10f0248)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: reconcile firewall rules and ssh key on reused servers ([c281303](https://github.com/stacksjs/ts-cloud/commit/c281303)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: paginate cloud API list calls ([1ef279e](https://github.com/stacksjs/ts-cloud/commit/1ef279e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: tolerate a stale pinned server id in getComputeOutputs ([df4dbd1](https://github.com/stacksjs/ts-cloud/commit/df4dbd1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: fail provisioning when cloud-init reports an error ([ffa3e89](https://github.com/stacksjs/ts-cloud/commit/ffa3e89)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: shell-quote git url, branch, tag, and commit in clone scripts ([ab28ee9](https://github.com/stacksjs/ts-cloud/commit/ab28ee9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: never disable the templated unit when pruning stale instances ([2d58014](https://github.com/stacksjs/ts-cloud/commit/2d58014)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📚 Documentation
+
+- document the driver-based architecture and the AWS + Hetzner providers ([da13c7e](https://github.com/stacksjs/ts-cloud/commit/da13c7e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧪 Tests
+
+- **db**: expect the FOR ROLE default privileges grant ([bb14afb](https://github.com/stacksjs/ts-cloud/commit/bb14afb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: expect the shell-quoted git clone in the laravel e2e ([098bab7](https://github.com/stacksjs/ts-cloud/commit/098bab7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **provision**: assert the GitHub-release pantry installer ([3e5afbe](https://github.com/stacksjs/ts-cloud/commit/3e5afbe)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: read the pinned instance id from storage/cloud/state ([2acfbe3](https://github.com/stacksjs/ts-cloud/commit/2acfbe3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.31 ([c539ac0](https://github.com/stacksjs/ts-cloud/commit/c539ac0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.29...v0.7.30)
 
 ## 🐛 Bug Fixes
