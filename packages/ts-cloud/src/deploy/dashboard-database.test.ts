@@ -31,11 +31,19 @@ describe('buildCreateDatabaseScript', () => {
   it('mariadb uses the mariadb socket', () => {
     expect(buildCreateDatabaseScript('mariadb', 'acme').join('\n')).toContain('mariadb/mariadbd.sock')
   })
-  it('postgres: gexec-guarded CREATE DATABASE', () => {
+  it('postgres: gexec-guarded CREATE DATABASE over the local unix socket', () => {
+    // The pantry postgres pg_hba trusts the local socket but demands md5 over
+    // TCP loopback — admin commands must not pass -h 127.0.0.1.
     const cmds = buildCreateDatabaseScript('postgres', 'acme').join('\n')
-    expect(cmds).toContain('psql -h 127.0.0.1 -p 5432 -U postgres')
+    expect(cmds).toContain('psql -p 5432 -U postgres')
+    expect(cmds).not.toContain('psql -h')
     expect(cmds).toContain('CREATE DATABASE "acme"')
     expect(cmds).toContain('\\gexec')
+  })
+  it('postgres: an external database host keeps TCP with credentials', () => {
+    const external = { engine: 'postgres' as const, name: 'acme', host: 'db.example.com', username: 'admin', password: 's3cret' }
+    const cmds = buildCreateDatabaseScript('postgres', 'acme', external).join('\n')
+    expect(cmds).toContain(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w`)
   })
 })
 
@@ -76,8 +84,13 @@ describe('buildListScript + parseDbList', () => {
     const my = buildBackupScript('mysql', 'acme').join('\n')
     expect(my).toContain('mysqldump --socket=')
     expect(my).toContain('acme-$(date +%Y%m%d-%H%M%S).sql.gz')
+    // Local pantry engine: socket (no -h) — TCP loopback demands md5.
     const pg = buildBackupScript('postgres', 'acme').join('\n')
-    expect(pg).toContain('pg_dump -h 127.0.0.1 -p 5432 -U postgres acme')
+    expect(pg).toContain('pg_dump -p 5432 -U postgres acme')
+    expect(pg).not.toContain('pg_dump -h')
+    // External host: TCP with credentials.
+    const ext = buildBackupScript('postgres', 'acme', '/var/backups/ts-cloud/databases', { engine: 'postgres', name: 'acme', host: 'db.example.com', username: 'admin', password: 'pw' }).join('\n')
+    expect(ext).toContain(`PGPASSWORD='pw' pg_dump -h db.example.com -p 5432 -U admin -w acme`)
   })
 
   it('parses BACKUP= lines into database + file, deriving the db from the filename', () => {
