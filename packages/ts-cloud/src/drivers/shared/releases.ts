@@ -191,7 +191,7 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string,
     + `systemctl start "${unitBase}@\${TS_CLOUD_RB_ID}.service"; sleep 2; `
     + `systemctl is-active --quiet "${unitBase}@\${TS_CLOUD_RB_ID}.service" || { echo "rolled-back release failed to start" >&2; exit 1; }; `
     + `systemctl enable "${unitBase}@\${TS_CLOUD_RB_ID}.service" 2>/dev/null || true; `
-    + `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; `
+    + `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; `
     + `elif [ -f /etc/systemd/system/${unitBase}.service ]; then systemctl restart ${unitBase}.service; fi`,
   ]
 }

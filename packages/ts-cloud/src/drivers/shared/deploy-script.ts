@@ -242,7 +242,10 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // disabling a template removes every instance's enablement symlink,
       // including the one for the release enabled above (nothing would start
       // at boot).
-      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
+      // Brace-group the grep so `|| true` guards only the grep (an empty match
+      // list makes grep exit 1, which would otherwise fail the deploy under
+      // `set -euo pipefail` at the very last step, after the release is live).
+      `systemctl list-unit-files --plain --no-legend "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v -e "^${instance}\$" -e "^${unitBase}@\\.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done`,
       `if [ -f /etc/systemd/system/${serviceName} ]; then systemctl disable ${serviceName} 2>/dev/null || true; rm -f /etc/systemd/system/${serviceName}; systemctl daemon-reload; fi`,
       ...buildPruneReleases(paths, keepReleases),
     ]

@@ -112,6 +112,20 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
   })
 
+  it('guards the unit prune grep so an empty match list cannot fail the deploy under set -euo pipefail', () => {
+    const script = buildSiteDeployScript(opts)
+    const joined = script.join('\n')
+    // The prune pipeline wraps grep in a brace group so `|| true` guards only
+    // the grep — without it, grep exits 1 on "nothing to prune" and kills the
+    // script at the very last step, after the new release is already live.
+    expect(joined).toContain('| { grep -v -e "^my-app-web@abc123.service$" -e "^my-app-web@\\.service$" || true; } | while read -r TS_CLOUD_U')
+    // Every `grep -v` in the generated script is guarded against exit 1.
+    for (const line of script) {
+      if (line.includes('grep -v'))
+        expect(line).toContain('|| true')
+    }
+  })
+
   it('runs preStart in the new release dir after extraction, before the new instance starts', () => {
     const script = buildSiteDeployScript({ ...opts, preStartCommands: ['bun install --frozen-lockfile', 'bun run build'] })
     const joined = script.join('\n')

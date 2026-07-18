@@ -35,6 +35,19 @@ describe('buildRollbackScript', () => {
     expect(s).toContain('ln -sfn /var/www/app/releases/r-old /var/www/app/current.tmp')
     expect(s).toContain('mv -Tf /var/www/app/current.tmp /var/www/app/current')
   })
+
+  it('guards the retire-instances grep so an empty match list cannot fail the rollback under set -euo pipefail', () => {
+    const script = buildRollbackScript(paths, { unitBase: 'myapp-web' })
+    const joined = script.join('\n')
+    // The instance-retire pipeline wraps grep in a brace group so `|| true`
+    // guards only the grep — otherwise grep exits 1 when there is nothing to
+    // retire and fails the rollback after current has already flipped.
+    expect(joined).toContain('| { grep -v "^myapp-web@${TS_CLOUD_RB_ID}.service$" || true; } | while read -r TS_CLOUD_U')
+    for (const line of script) {
+      if (line.includes('grep -v'))
+        expect(line).toContain('|| true')
+    }
+  })
 })
 
 describe('releasePaths', () => {
