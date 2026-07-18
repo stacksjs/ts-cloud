@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.31...v0.7.32)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: connect cockpit postgres tools over the local socket ([aedc4d6](https://github.com/stacksjs/ts-cloud/commit/aedc4d6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: run local postgres admin commands over the unix socket ([f91ad26](https://github.com/stacksjs/ts-cloud/commit/f91ad26)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.32 ([48bf603](https://github.com/stacksjs/ts-cloud/commit/48bf603)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.30...v0.7.31)
 
 ## 🚀 Features
