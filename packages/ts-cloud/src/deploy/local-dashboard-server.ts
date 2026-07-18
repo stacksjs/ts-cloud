@@ -40,7 +40,7 @@ import {
   setServerlessSecret,
   updateFunctionConfig,
 } from './serverless-operations'
-import { addSiteToCloudConfig, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderRedirectsValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
+import { addSiteToCloudConfig, isValidHostname, removeSiteFromCloudConfig, renderAliasesValue, renderEnvValue, renderRedirectsValue, renderSslValue, renderStringValue, setSitePropertyInCloudConfig } from './site-config-editor'
 import { addSshKeyToCloudConfig, describeSshKeys, removeSshKeyFromCloudConfig } from './ssh-config-editor'
 import { createTerminalSession } from './terminal-session'
 
@@ -859,6 +859,15 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
           if (body.port !== undefined && body.port !== null && body.port !== '' && (!Number.isInteger(Number(body.port)) || Number(body.port) < 1 || Number(body.port) > 65_535))
             return json({ ok: false, error: 'Port must be a number between 1 and 65535.' }, 422)
+
+          // `domain` lands in the generated nginx `server_name`, so it must be a
+          // hostname and nothing else — an unvalidated value can close the
+          // server block and open an attacker-controlled one. `aliases` (same
+          // destination) has always been checked; this closes the gap for the
+          // primary domain. Validated before any write so a bad value can't
+          // leave the config half-edited.
+          if (typeof body.domain === 'string' && body.domain.trim() && !isValidHostname(body.domain.trim()))
+            return json({ ok: false, error: `Domain '${body.domain.trim()}' is not a valid hostname.` }, 422)
 
           let text = await readFile(configPath, 'utf8')
           const set = (key: string, valueText: string): void => {

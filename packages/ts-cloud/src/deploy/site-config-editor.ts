@@ -236,7 +236,16 @@ export function renderSiteSnippet(input: Omit<AddSiteConfigInput, 'configText'>)
 }
 
 function escapeSingle(value: string): string {
-  return value.replace(/\\/g, '\\\\').replaceAll(String.fromCharCode(39), '\\\'')
+  // Newlines matter as much as quotes here: these values land in single-quoted
+  // TS string literals in the shared, box-wide cloud.config.ts. A raw newline
+  // terminates the literal and leaves the file syntactically broken for every
+  // tenant that loads it. It also keeps line-oriented sinks downstream (heredoc
+  // delimiters in the deploy script) safe from values that span lines.
+  return value
+    .replace(/\\/g, '\\\\')
+    .replaceAll(String.fromCharCode(39), '\\\'')
+    .replace(/\r/g, '\\r')
+    .replace(/\n/g, '\\n')
 }
 
 function normalizeSiteName(name: string): string {

@@ -269,7 +269,24 @@ function vhostBody(options: NginxVhostOptions): string[] {
  * otherwise a single :80 block (certbot upgrades it for Let's Encrypt).
  */
 export function buildNginxVhost(options: NginxVhostOptions): string {
-  const serverNames = [options.domain, ...(options.aliases || [])].filter(Boolean).join(' ')
+  const hosts = [options.domain, ...(options.aliases || [])].filter(Boolean) as string[]
+  // Defense in depth: every token here is interpolated straight into a
+  // `server_name` directive, and nginx is whitespace-insensitive — so anything
+  // that isn't a bare hostname could close this block and open another. Callers
+  // validate too; refuse here as well so no future path can slip a directive in.
+  //
+  // Deliberately laxer than `isValidHostname` (which the dashboard API uses for
+  // user-supplied domains and which requires a dot): a single label is valid
+  // here because compute-deploy falls back to `site.domain || siteName`, so an
+  // internal site legitimately arrives as `main` or `docs`. What matters for
+  // safety is only that a token can't contain whitespace, `;`, `{` or `}`.
+  for (const host of hosts) {
+    if (!/^(?=.{1,253}$)(?:\*\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/i.test(host.trim()))
+      throw new Error(`Refusing to build a vhost: '${host}' is not a valid hostname.`)
+  }
+  if (!hosts.length)
+    throw new Error('Refusing to build a vhost: no server_name (domain) was given.')
+  const serverNames = hosts.join(' ')
   const body = vhostBody(options)
 
   if (options.ssl) {
