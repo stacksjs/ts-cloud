@@ -23,15 +23,13 @@ import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
-import { resolveFleetTopology } from '../shared/fleet'
+import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
 import { buildPhpProvisionScript } from '../shared/php-provision'
-import { buildServicesProvisionScript, buildDatabaseSetupScript } from '../shared/db-provision'
 import { buildUfwScript } from '../shared/ufw'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { buildNotifierScript } from '../shared/notifications'
-import { buildBackupProvisionScript } from '../shared/backups'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
@@ -349,14 +347,9 @@ export class HetznerDriver implements CloudDriver {
       ],
     )
 
-    // 3. Services box — DB/cache/search only (no php/nginx).
-    const servicesProvision = [
-      ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
-      ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
-      ...buildAutoUpdatesScript(true),
-      ...buildMonitoringScript(true),
-      ...buildAuthorizedKeysScript(compute.sshKeys),
-    ]
+    // 3. Services box — DB/cache/search only (no php/nginx). DB backups (when
+    //    enabled) run here, where the database lives — never on the app boxes.
+    const servicesProvision = buildFleetServicesBoxProvision(config)
     const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked }))
     // Idempotent: reuse an existing services box (by role label) rather than
     // creating a duplicate on re-run.
@@ -610,22 +603,7 @@ export class HetznerDriver implements CloudDriver {
           { direction: 'in', protocol: 'tcp', port: '7700', source_ips: [network.ip_range] },
         ],
       )
-      const servicesProvision = [
-        ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
-        ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
-        ...buildAutoUpdatesScript(true),
-        ...buildMonitoringScript(true),
-        ...buildAuthorizedKeysScript(compute.sshKeys),
-        // The database lives HERE, so its backups run here — the notifier first
-        // so the nightly backup cron can report failures. (On the app boxes a
-        // dump would hit an empty local MySQL — or none at all.)
-        ...(compute.backups?.enabled
-          ? [
-              ...buildNotifierScript(config.notifications),
-              ...buildBackupProvisionScript({ database: config.infrastructure?.appDatabase, backups: compute.backups }),
-            ]
-          : []),
-      ]
+      const servicesProvision = buildFleetServicesBoxProvision(config)
       const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked }))
       let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
       if (!svcServer) {

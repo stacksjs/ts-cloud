@@ -12,7 +12,13 @@
  * private network, and (required) a dedicated services box so every app server
  * shares one database/cache.
  */
-import type { ComputeConfig, DatabaseConfig } from '@ts-cloud/core'
+import type { CloudConfig, ComputeConfig, DatabaseConfig } from '@ts-cloud/core'
+import { buildBackupProvisionScript } from './backups'
+import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
+import { buildAutoUpdatesScript } from './maintenance'
+import { buildMonitoringScript } from './monitoring'
+import { buildNotifierScript } from './notifications'
+import { buildAuthorizedKeysScript } from './ssh-keys'
 
 export type FleetRole = 'app' | 'services' | 'lb'
 
@@ -62,4 +68,29 @@ export function buildFleetServicesEnv(servicesPrivateIp: string, database?: Data
       env.DB_PASSWORD = database.password
   }
   return env
+}
+
+/**
+ * Build the provision commands for a fleet's dedicated services box (DB /
+ * cache / search only — no app runtime, no gateway). Shared by the PHP fleet
+ * and the bun/node/deno fleet so the two paths can never drift: engine
+ * installs bound to the private network, the app database + user, box
+ * maintenance, the on-box notifier (so the monitoring cron can report — a
+ * no-op unless notifications are configured), and — when `compute.backups`
+ * is enabled — the nightly DB backup, which MUST run here (where the
+ * database lives), never on an app box.
+ */
+export function buildFleetServicesBoxProvision(config: CloudConfig): string[] {
+  const compute = config.infrastructure?.compute ?? {}
+  return [
+    ...buildServicesProvisionScript(compute.managedServices ?? { mysql: true, redis: true }, { bindPrivate: true }),
+    ...buildDatabaseSetupScript(config.infrastructure?.appDatabase, compute.managedServices ?? { mysql: true }),
+    ...buildAutoUpdatesScript(true),
+    ...buildMonitoringScript(true),
+    ...buildAuthorizedKeysScript(compute.sshKeys),
+    ...buildNotifierScript(config.notifications),
+    ...(compute.backups?.enabled
+      ? [...buildBackupProvisionScript({ database: config.infrastructure?.appDatabase, backups: compute.backups })]
+      : []),
+  ]
 }
