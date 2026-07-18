@@ -8,6 +8,7 @@
  * retention; ts-cloud handles the off-box copy.
  */
 import type { ComputeBackupConfig, DatabaseConfig } from '@ts-cloud/core'
+import { pgAdminCommand } from './db-provision'
 
 /** Where backups are written on the box before being synced off. */
 export const BACKUP_OUTPUT_DIR = '/var/backups/ts-cloud'
@@ -149,7 +150,9 @@ export interface BackupRestoreOptions {
  * Build the commands that restore a database from a ts-backups dump on the box.
  * With no `from`, the newest dump under {@link BACKUP_OUTPUT_DIR} matching the
  * database name is used. Handles plain `.sql` and gzipped `.sql.gz`. MySQL/
- * MariaDB restore over the root unix socket; Postgres via `psql -U postgres`.
+ * MariaDB restore over the root unix socket; Postgres over the local unix
+ * socket for a co-located engine, or TCP with credentials for an external
+ * host (see {@link pgAdminCommand}).
  * Returns `[]` when the database has no name.
  */
 export function buildBackupRestoreScript(database: DatabaseConfig | undefined, options: BackupRestoreOptions = {}): string[] {
@@ -161,7 +164,7 @@ export function buildBackupRestoreScript(database: DatabaseConfig | undefined, o
     ? `TS_CLOUD_DUMP="${options.from}"`
     : `TS_CLOUD_DUMP="$(find ${BACKUP_OUTPUT_DIR} -type f -name '*${name}*.sql' -o -type f -name '*${name}*.sql.gz' 2>/dev/null | xargs -r ls -1t 2>/dev/null | head -1)"`
   const client = isPg
-    ? `psql -h 127.0.0.1 -p ${database.port ?? 5432} -U postgres -d "${name}"`
+    ? `${pgAdminCommand(database)} -d "${name}"`
     : `mysql --socket=${engineSocket(database.engine)} -u root "${name}"`
   return [
     'set -uo pipefail',

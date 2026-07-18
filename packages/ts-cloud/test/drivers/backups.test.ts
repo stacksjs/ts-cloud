@@ -28,9 +28,15 @@ describe('buildBackupRestoreScript', () => {
       .toContain('mysql --socket=/var/lib/pantry/mariadb/mariadbd.sock')
   })
 
-  it('restores postgres via psql', () => {
-    expect(buildBackupRestoreScript({ engine: 'postgres', name: 'app' }).join('\n'))
-      .toContain('psql -h 127.0.0.1 -p 5432 -U postgres -d "app"')
+  it('restores postgres via psql over the local unix socket (pg_hba trust; TCP demands md5)', () => {
+    const s = buildBackupRestoreScript({ engine: 'postgres', name: 'app' }).join('\n')
+    expect(s).toContain('psql -p 5432 -U postgres -d "app"')
+    expect(s).not.toContain('psql -h')
+  })
+
+  it('restores an external postgres host over TCP with credentials', () => {
+    const s = buildBackupRestoreScript({ engine: 'postgres', name: 'app', host: 'db.example.com', username: 'admin', password: 's3cret' }).join('\n')
+    expect(s).toContain(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w -d "app"`)
   })
 
   it('restores a specific dump file when given', () => {

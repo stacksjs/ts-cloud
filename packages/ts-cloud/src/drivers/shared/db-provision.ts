@@ -6,12 +6,45 @@
  * install nothing and just wire `.env` — see {@link buildManagedDbEnv}.
  *
  * pantry services listen on TCP localhost ports (mysql/mariadb 3306, postgres
- * 5432, redis 6379, memcached 11211, meilisearch 7700); DB setup connects over
- * TCP, and the engine clients are on PATH via `pantry env`.
+ * 5432, redis 6379, memcached 11211, meilisearch 7700) and the engine clients
+ * are on PATH via `pantry env`. Admin commands (db setup, dumps, restores)
+ * connect over the engine's local unix socket — see {@link pgAdminCommand}.
  */
 import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
+
+/**
+ * True when the database is co-located with the box (the managed-services
+ * engine): no host configured, or an explicit loopback host. Anything else is
+ * an external/managed database reached over TCP.
+ */
+export function isLocalDatabase(database: DatabaseConfig | undefined): boolean {
+  return !database?.host || database.host === '127.0.0.1' || database.host === 'localhost'
+}
+
+/**
+ * Build the connection prefix for a postgres admin command (`psql`/`pg_dump`)
+ * run on the box.
+ *
+ * The pantry postgres pg_hba grants `trust` on the local unix socket but
+ * requires md5 password auth over TCP loopback — and the `postgres` superuser
+ * has no password — so against the co-located engine admin clients MUST use
+ * the socket: omit `-h` entirely and the pantry client uses its compiled-in
+ * default socket dir, which matches the server's by construction (verified
+ * on-box: `psql -U postgres` from root connects passwordless). Against an
+ * external/managed host, use TCP with the configured credentials
+ * (`PGPASSWORD` inline + `-w`, so a missing password fails fast instead of
+ * prompting forever).
+ */
+export function pgAdminCommand(database: DatabaseConfig | undefined, tool: 'psql' | 'pg_dump' = 'psql'): string {
+  const port = database?.port ?? 5432
+  if (isLocalDatabase(database))
+    return `${tool} -p ${port} -U postgres`
+  const user = database?.username || 'postgres'
+  const env = database?.password ? `PGPASSWORD='${database.password.replace(/'/g, `'\\''`)}' ` : ''
+  return `${env}${tool} -h ${database!.host} -p ${port} -U ${user} -w`
+}
 
 type ServiceSpec = boolean | { version?: string } | undefined
 
@@ -90,7 +123,7 @@ export function buildDatabaseSetupScript(
   if (!database?.name)
     return []
   // A managed/external DB is created out-of-band; nothing to do on the box.
-  if (database.host && database.host !== '127.0.0.1' && database.host !== 'localhost')
+  if (!isLocalDatabase(database))
     return []
 
   const name = database.name
@@ -102,13 +135,14 @@ export function buildDatabaseSetupScript(
   const useMysql = enabled(services.mysql) || database.engine === 'mysql'
 
   if (usePostgres && !useMysql && !useMariadb) {
-    // Create role + database via a psql heredoc over TCP. Identifiers are
-    // double-quoted (Postgres treats single-quoted as string literals, which is
-    // a syntax error for a role/db name); string literals (the password,
-    // existence-check comparisons) are single-quoted. Idempotent: a DO block
-    // guards the role, and `\gexec` conditionally creates the database (which
-    // can't run inside a DO block / transaction). The heredoc is quoted so the
-    // shell leaves the SQL untouched.
+    // Create role + database via a psql heredoc over the local unix socket
+    // (pg_hba `trust`; TCP loopback demands md5, which the superuser lacks —
+    // see pgAdminCommand). Identifiers are double-quoted (Postgres treats
+    // single-quoted as string literals, which is a syntax error for a role/db
+    // name); string literals (the password, existence-check comparisons) are
+    // single-quoted. Idempotent: a DO block guards the role, and `\gexec`
+    // conditionally creates the database (which can't run inside a DO block /
+    // transaction). The heredoc is quoted so the shell leaves the SQL untouched.
     const pgIdent = (v: string): string => `"${v.replace(/"/g, '""')}"`
     const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
     // Idempotently ensure a login role exists with the given password.
@@ -149,12 +183,14 @@ export function buildDatabaseSetupScript(
       return lines
     }
     const extraUsers = (database.users || [])
+    const pgPort = database.port ?? 5432
     return [
       pantryEnvActivation(),
       // The engine service was just started; wait until it accepts connections
-      // (first boot runs initdb, which takes a few seconds) before setup.
-      'for i in $(seq 1 30); do pg_isready -h 127.0.0.1 -p 5432 -q && break; sleep 2; done',
-      'psql -h 127.0.0.1 -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'',
+      // (first boot runs initdb, which takes a few seconds) before setup. Probe
+      // over the local socket (no -h), same trust path as the setup itself.
+      `for i in $(seq 1 30); do pg_isready -p ${pgPort} -q && break; sleep 2; done`,
+      `${pgAdminCommand(database)} <<'TS_CLOUD_PG_EOF'`,
       ...pgEnsureRole(user, pass),
       `SELECT 'CREATE DATABASE ${pgIdent(name)} OWNER ${pgIdent(user)}' `
       + `WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,

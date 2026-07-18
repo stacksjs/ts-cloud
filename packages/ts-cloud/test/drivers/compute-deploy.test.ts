@@ -659,7 +659,10 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     expect(sql).toContain('IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \'training\')')
     expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
     expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
-    expect(sql).toContain('psql -h 127.0.0.1 -p 5432 -U postgres')
+    // Local pantry engine: admin psql over the unix socket (pg_hba trust),
+    // never `-h 127.0.0.1` (TCP loopback demands md5, which postgres lacks).
+    expect(sql).toContain('psql -p 5432 -U postgres')
+    expect(sql).not.toContain('psql -h')
     expect(ensure.comment).toBe('ts-cloud ensure database training/training')
     // The ensure strictly precedes the site deploy so the app's first boot
     // already finds its database.

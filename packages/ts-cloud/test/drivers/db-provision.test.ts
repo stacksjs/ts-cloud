@@ -3,6 +3,8 @@ import {
   buildDatabaseSetupScript,
   buildManagedDbEnv,
   buildServicesProvisionScript,
+  isLocalDatabase,
+  pgAdminCommand,
 } from '../../src/drivers/shared/db-provision'
 
 describe('buildServicesProvisionScript', () => {
@@ -63,6 +65,20 @@ describe('buildDatabaseSetupScript', () => {
     expect(script).toContain('\\gexec')
   })
 
+  // The pantry postgres pg_hba trusts the local unix socket but demands md5
+  // over TCP loopback (and the postgres superuser has no password) — admin
+  // commands against the co-located engine must NOT pass -h 127.0.0.1.
+  it('connects the Postgres setup over the local unix socket, not TCP', () => {
+    const script = buildDatabaseSetupScript(
+      { name: 'app', username: 'app', password: 'pw' },
+      { postgres: true },
+    ).join('\n')
+    expect(script).toContain('psql -p 5432 -U postgres <<\'TS_CLOUD_PG_EOF\'')
+    expect(script).not.toContain('psql -h')
+    expect(script).toContain('pg_isready -p 5432 -q')
+    expect(script).not.toContain('pg_isready -h')
+  })
+
   it('creates extra MySQL users with read-only + full grants', () => {
     const script = buildDatabaseSetupScript(
       {
@@ -113,6 +129,52 @@ describe('buildDatabaseSetupScript', () => {
 
   it('skips when no database name is set', () => {
     expect(buildDatabaseSetupScript(undefined, { mysql: true })).toEqual([])
+  })
+})
+
+describe('isLocalDatabase', () => {
+  it('treats unset/loopback hosts as local, anything else as external', () => {
+    expect(isLocalDatabase(undefined)).toBe(true)
+    expect(isLocalDatabase({ name: 'app' })).toBe(true)
+    expect(isLocalDatabase({ name: 'app', host: '127.0.0.1' })).toBe(true)
+    expect(isLocalDatabase({ name: 'app', host: 'localhost' })).toBe(true)
+    expect(isLocalDatabase({ name: 'app', host: 'db.internal.example.com' })).toBe(false)
+    expect(isLocalDatabase({ name: 'app', host: '10.0.0.5' })).toBe(false)
+  })
+})
+
+describe('pgAdminCommand', () => {
+  // Regression: the pantry postgres pg_hba grants `trust` on the local unix
+  // socket but requires md5 over TCP loopback — and the postgres superuser has
+  // no password — so `-h 127.0.0.1` admin commands failed on the box.
+  it('uses the default local socket (no -h) for a co-located engine', () => {
+    expect(pgAdminCommand({ name: 'app' })).toBe('psql -p 5432 -U postgres')
+    expect(pgAdminCommand({ name: 'app', host: '127.0.0.1' })).toBe('psql -p 5432 -U postgres')
+    expect(pgAdminCommand({ name: 'app', host: 'localhost' })).toBe('psql -p 5432 -U postgres')
+    expect(pgAdminCommand(undefined)).toBe('psql -p 5432 -U postgres')
+  })
+
+  it('honors a custom local port', () => {
+    expect(pgAdminCommand({ name: 'app', port: 5433 })).toBe('psql -p 5433 -U postgres')
+  })
+
+  it('supports pg_dump for dump commands', () => {
+    expect(pgAdminCommand({ name: 'app' }, 'pg_dump')).toBe('pg_dump -p 5432 -U postgres')
+  })
+
+  it('keeps TCP with credentials for an external host', () => {
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin', password: 's3cret' }))
+      .toBe(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w`)
+  })
+
+  it('omits PGPASSWORD for an external host without a password (still never prompts)', () => {
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', username: 'admin' }))
+      .toBe('psql -h db.example.com -p 5432 -U admin -w')
+  })
+
+  it('escapes a single quote in the external password', () => {
+    expect(pgAdminCommand({ name: 'app', host: 'db.example.com', password: "a'b" }))
+      .toBe(`PGPASSWORD='a'\\''b' psql -h db.example.com -p 5432 -U postgres -w`)
   })
 })
 
