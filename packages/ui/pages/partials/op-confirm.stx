@@ -1,7 +1,9 @@
 <div class="op-confirm panel" @show="pending() !== null">
   <span>Type <b class="mono">{{ confirmTok() }}</b> to {{ confirmVerb() }}:</span>
-  <input class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off">
-  <button class="btn sm" :disabled="!canRun()" @click="runOp()">Run</button>
-  <button class="btn ghost sm" @click="cancelOp()">Cancel</button>
+  <input class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off" aria-label="Type the confirmation token to proceed">
+  <button type="button" class="btn sm{{ (danger ?? false) ? ' danger' : '' }}" :disabled="!canRun()" @click="runOp()">{{ label ?? 'Run' }}</button>
+  <button type="button" class="btn ghost sm" @click="cancelOp()">Cancel</button>
 </div>
+@if (output ?? true)
 <pre class="action-output op-output" @show="opShown()">{{ opOutput() }}</pre>
+@endif

@@ -67,19 +67,21 @@ async function revoke(name) {
   load()
 }
 
-// Removal runs through a typed-confirm bar (same pattern as firewall/secrets):
-// type the username to confirm. Revoking pulls someone's access to every site
-// on the box at once and invalidates their password, so it should never be one
-// misclick away.
-const pendingRevoke = state(null)
-const typedRevoke = state('')
-const canRevoke = derived(() => { const u = pendingRevoke(); return u !== null && typedRevoke() === String(u.username) })
-function askRevoke(user) { pendingRevoke.set(user); typedRevoke.set('') }
-function cancelRevoke() { pendingRevoke.set(null); typedRevoke.set('') }
-async function confirmRevoke() {
-  const u = pendingRevoke()
-  if (!u || typedRevoke() !== String(u.username)) return
-  pendingRevoke.set(null); typedRevoke.set('')
+// Removal runs through the shared typed-confirm bar: type the username to
+// confirm. Revoking pulls someone's access to every site on the box at once and
+// invalidates their password, so it should never be one misclick away. Names
+// match the contract partials/op-confirm.stx binds to.
+const pending = state(null)
+const typed = state('')
+const confirmTok = derived(() => { const u = pending(); return u ? String(u.username) : '' })
+const confirmVerb = derived(() => { const u = pending(); return u ? 'remove ' + u.name + ' from every site' : '' })
+const canRun = derived(() => { const u = pending(); return u !== null && typed() === String(u.username) })
+function askRevoke(user) { pending.set(user); typed.set('') }
+function cancelOp() { pending.set(null); typed.set('') }
+async function runOp() {
+  const u = pending()
+  if (!u || typed() !== String(u.username)) return
+  pending.set(null); typed.set('')
   await revoke(u.username)
 }
 
@@ -157,12 +159,7 @@ onMount(() => { load() })
           </tbody>
         </table>
         <div class="compact empty" @show="users().length === 0"><strong>No one invited yet</strong><span>Invite someone above to give them access to a site.</span></div>
-        <div class="op-confirm" @show="pendingRevoke() !== null" style="margin-top:14px">
-          <span>Type <b class="mono">{{ pendingRevoke()?.username }}</b> to remove <b>{{ pendingRevoke()?.name }}</b> from every site:</span>
-          <input class="op-confirm-input" :value="typedRevoke()" @input="typedRevoke.set($event.target.value)" @keydown.enter="confirmRevoke()" placeholder="confirm" autocomplete="off">
-          <button class="btn danger sm" :disabled="!canRevoke()" @click="confirmRevoke()">Remove</button>
-          <button class="btn ghost sm" @click="cancelRevoke()">Cancel</button>
-        </div>
+        @include('../partials/op-confirm', { label: 'Remove', danger: true, output: false })
         <p class="note">Box owners reach everything on this server. Members reach only the sites listed here, and never the shell, SSH keys, firewall or databases. Access is checked on every request.</p>
       </div>
     </div>
