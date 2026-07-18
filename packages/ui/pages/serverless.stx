@@ -87,12 +87,29 @@ const appCmd = state('')
 const cmdOut = state('')
 const cmdShown = state(false)
 const cmdBusy = state(false)
-async function runAppCmd() {
+// The API already requires a typed confirmation here ('Type "run" to execute
+// this command.'), but the UI supplied the token itself, so the gate always
+// passed and Enter ran an arbitrary app command (migrate:fresh, queue:flush)
+// against production. Stage it, make the operator type the word, send what they
+// actually typed.
+const cmdPending = state(null)
+const cmdTyped = state('')
+const cmdCanRun = derived(() => cmdPending() !== null && cmdTyped().trim() === 'run')
+function askAppCmd() {
   const c = appCmd().trim()
   if (!c) return
+  cmdPending.set(c); cmdTyped.set('')
+}
+function cancelAppCmd() { cmdPending.set(null); cmdTyped.set('') }
+
+async function runAppCmd() {
+  const c = cmdPending()
+  const confirm = cmdTyped().trim()
+  if (!c || confirm !== 'run') return
+  cmdPending.set(null); cmdTyped.set('')
   cmdBusy.set(true); cmdShown.set(true); cmdOut.set('Running ' + c + '...')
   try {
-    const res = await fetch('/api/serverless/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm: 'run' }) })
+    const res = await fetch('/api/serverless/command', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ command: c, confirm }) })
     const b = await res.json()
     cmdOut.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || c) + '\n\n' + (b.stdout || '') + (b.error ? '\n' + b.error : ''))
   } catch (e) { cmdOut.set('FAILED ' + c + '\n\n' + ((e && e.message) || e)) }
@@ -273,8 +290,14 @@ async function runAppCmd() {
       <h2>Run a command</h2>
       <div class="panel">
         <div class="field">
-          <input :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="runAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off">
-          <button class="btn" type="button" :disabled="cmdBusy()" @click="runAppCmd()">Run</button>
+          <input :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="askAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off" aria-label="App command to run">
+          <button class="btn" type="button" :disabled="cmdBusy()" @click="askAppCmd()">Run</button>
+        </div>
+        <div class="op-confirm" @show="cmdPending() !== null" style="margin-top:14px">
+          <span>Type <b class="mono">run</b> to execute <b class="mono">{{ cmdPending() }}</b> against production:</span>
+          <input class="op-confirm-input" :value="cmdTyped()" @input="cmdTyped.set($event.target.value)" @keydown.enter="runAppCmd()" placeholder="confirm" autocomplete="off" aria-label="Type run to confirm executing this command">
+          <button type="button" class="btn danger sm" :disabled="!cmdCanRun()" @click="runAppCmd()">Run command</button>
+          <button type="button" class="btn ghost sm" @click="cancelAppCmd()">Cancel</button>
         </div>
         <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
         <p class="note">Invokes the app command through the CLI Lambda function (RequestResponse), the same path as <span class="mono">cloud command "..."</span>. Output is clamped.</p>
