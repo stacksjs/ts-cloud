@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.32...v0.7.33)
+
+## 🐛 Bug Fixes
+
+- **deploy**: keep the unit prune pipeline from failing the script on empty match ([bc21a20](https://github.com/stacksjs/ts-cloud/commit/bc21a20)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.33 ([0587374](https://github.com/stacksjs/ts-cloud/commit/0587374)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.31...v0.7.32)
 
 ## 🐛 Bug Fixes
