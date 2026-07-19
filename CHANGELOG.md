@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.35...v0.7.36)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: preserve configured service ports ([2fcb981](https://github.com/stacksjs/ts-cloud/commit/2fcb981)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.36 ([5faf5bf](https://github.com/stacksjs/ts-cloud/commit/5faf5bf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.34...v0.7.35)
 
 ## 🐛 Bug Fixes

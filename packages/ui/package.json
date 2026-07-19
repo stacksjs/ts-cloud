@@ -13,5 +13,5 @@
   "devDependencies": {
     "@stacksjs/stx": "^0.2.73"
   },
-  "version": "0.7.35"
+  "version": "0.7.36"
 }
