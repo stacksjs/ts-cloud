@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.34...v0.7.35)
+
+## 🐛 Bug Fixes
+
+- **compute**: enforce resilience across providers ([25c4e58](https://github.com/stacksjs/ts-cloud/commit/25c4e58)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.35 ([75181c5](https://github.com/stacksjs/ts-cloud/commit/75181c5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.33...v0.7.34)
 
 ## 🐛 Bug Fixes
