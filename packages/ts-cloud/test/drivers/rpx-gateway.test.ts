@@ -506,6 +506,22 @@ describe('buildRpxProvisionScript', () => {
     expect(script.indexOf('RPX_MAX_UPSTREAM_CONNS')).toBeLessThan(script.indexOf('Restart=always'))
   })
 
+  it('contains gateway memory spikes inside the rpx cgroup', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const defaults = buildRpxProvisionScript({ proxy: rpxProxy, config }).join('\n')
+    expect(defaults).toContain('MemoryAccounting=true')
+    expect(defaults).toContain('MemoryHigh=512M')
+    expect(defaults).toContain('MemoryMax=768M')
+    expect(defaults).toContain('OOMPolicy=stop')
+
+    const custom = buildRpxProvisionScript({
+      proxy: { engine: 'rpx', memoryHigh: '640M', memoryMax: '896M' },
+      config,
+    }).join('\n')
+    expect(custom).toContain('MemoryHigh=640M')
+    expect(custom).toContain('MemoryMax=896M')
+  })
+
   // A failed `bun add` must never gut the live gateway: the install is staged
   // in a sibling dir and swapped in only on success (two atomic renames). The
   // old wipe-then-install flow left the box uninstallable on a registry hiccup,

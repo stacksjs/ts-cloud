@@ -746,6 +746,13 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
   const poolEnv = [`Environment=RPX_UPSTREAM_TIMEOUT=${upstreamTimeout}`]
   if (typeof proxy.maxUpstreamConns === 'number')
     poolEnv.push(`Environment=RPX_MAX_UPSTREAM_CONNS=${proxy.maxUpstreamConns}`)
+  // A shared app box can run many Bun tenants plus databases and search. Keep a
+  // gateway spike inside its own cgroup so global pressure cannot make the
+  // kernel choose the mail server or another unrelated service as the victim.
+  // The gateway normally stays well below 100M; these defaults leave ample
+  // burst room while remaining safe on a 4G host.
+  const memoryHigh = proxy.memoryHigh ?? '512M'
+  const memoryMax = proxy.memoryMax ?? '768M'
 
   return [
     'set -euo pipefail',
@@ -784,6 +791,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
       `WorkingDirectory=${RPX_INSTALL_DIR}`,
       `Environment=BUN_INSTALL=/root/.bun`,
       ...poolEnv,
+      'MemoryAccounting=true',
+      `MemoryHigh=${memoryHigh}`,
+      `MemoryMax=${memoryMax}`,
+      'OOMPolicy=stop',
       'Restart=always',
       'RestartSec=5',
       'LimitNOFILE=1048576',

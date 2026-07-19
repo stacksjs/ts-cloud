@@ -2480,6 +2480,18 @@ export interface ComputeConfig {
   }
 
   /**
+   * Swapfile size in GB, provisioned at first boot (cloud-init / UserData).
+   * Small shared boxes run several tenants + services with no swap at all, so
+   * a memory spike (deploy, `bun install`, on-box builds) leaves the kernel
+   * OOM killer picking victims box-wide. A modest swapfile — with a low
+   * `vm.swappiness` of 10 persisted via `/etc/sysctl.d` — gives the kernel
+   * headroom without trading responsiveness. The setup is idempotent and
+   * skipped when the box already has `/swapfile` active. Set `0` to disable
+   * (no swap provisioned). @default 2
+   */
+  swapGb?: number
+
+  /**
    * SSH key name for instance access
    */
   sshKey?: string
@@ -2784,6 +2796,24 @@ export interface ComputeProxyConfig {
    * upstream; omit to use rpx's built-in default (256).
    */
   maxUpstreamConns?: number
+  /**
+   * systemd `MemoryHigh` for the `rpx-gateway.service` unit — the soft limit at
+   * which the kernel starts reclaiming the gateway's memory (throttling it
+   * before the hard limit trips). On a shared, swap-light box this matters: the
+   * gateway's own cgroup is squeezed first instead of memory pressure building
+   * until the box-wide OOM killer picks an arbitrary victim (a tenant app,
+   * postgres). Accepts systemd size values (`512M`, `1G`, …). @default '512M'
+   */
+  memoryHigh?: string
+  /**
+   * systemd `MemoryMax` for the `rpx-gateway.service` unit — the hard limit.
+   * Crossing it invokes the OOM killer INSIDE the gateway's cgroup, so the
+   * gateway itself is the deliberate victim and the unit's `Restart=always`
+   * brings it right back — a controlled blip instead of the kernel killing a
+   * random co-tenant. Pair with {@link memoryHigh} (should be higher).
+   * @default '768M'
+   */
+  memoryMax?: string
   /**
    * Enable rpx on-demand TLS: lazily issue a real (Let's Encrypt) cert for an
    * approved host the first time it's needed. The site domains are used as the

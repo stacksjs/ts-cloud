@@ -240,6 +240,7 @@ export class HetznerDriver implements CloudDriver {
       servicesProvision: provision.servicesProvision,
       rpxProvision,
       baked,
+      swapGb: compute.swapGb,
     })
     const userData = wrapCloudInitUserData(bootstrap)
 
@@ -350,7 +351,7 @@ export class HetznerDriver implements CloudDriver {
     // 3. Services box — DB/cache/search only (no php/nginx). DB backups (when
     //    enabled) run here, where the database lives — never on the app boxes.
     const servicesProvision = buildFleetServicesBoxProvision(config)
-    const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked }))
+    const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked, swapGb: compute.swapGb }))
     // Idempotent: reuse an existing services box (by role label) rather than
     // creating a duplicate on re-run.
     const all = await this.client.listServers().catch(() => [])
@@ -391,7 +392,7 @@ export class HetznerDriver implements CloudDriver {
       optimizeForProduction: compute.php?.optimizeForProduction,
       ini: compute.php?.ini,
     })
-    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked }))
+    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked, swapGb: compute.swapGb }))
 
     // Reconcile the app-server set to the desired count: reuse existing ones,
     // create only the delta, and destroy extras on scale-down (so stale boxes
@@ -604,7 +605,7 @@ export class HetznerDriver implements CloudDriver {
         ],
       )
       const servicesProvision = buildFleetServicesBoxProvision(config)
-      const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked }))
+      const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked, swapGb: compute.swapGb }))
       let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
       if (!svcServer) {
         const { server, action } = await this.client.createServer({
@@ -649,6 +650,7 @@ export class HetznerDriver implements CloudDriver {
       database: config.infrastructure?.database,
       servicesProvision: appProvisionScripts.servicesProvision,
       baked,
+      swapGb: compute.swapGb,
       // No rpxProvision: app boxes in fleet mode do not run their own gateway.
     }))
 

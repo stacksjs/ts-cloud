@@ -13,6 +13,17 @@ import { buildUbuntuBootstrapScript } from '../../src/drivers/shared/ubuntu-boot
  * never ran, even though cloud-init itself reported success.
  */
 describe('buildUbuntuBootstrapScript', () => {
+  it('provisions bounded low-swappiness swap before install-heavy work', () => {
+    const script = buildUbuntuBootstrapScript({ runtime: 'bun' })
+    expect(script).toContain('fallocate -l 2G /swapfile')
+    expect(script).toContain('/swapfile none swap sw 0 0')
+    expect(script).toContain('vm.swappiness=10')
+    expect(script.indexOf('fallocate -l 2G /swapfile')).toBeLessThan(script.indexOf('apt-get'))
+
+    const disabled = buildUbuntuBootstrapScript({ runtime: 'bun', swapGb: 0 })
+    expect(disabled).not.toContain('/swapfile')
+  })
+
   it('exports HOME before piping bun.sh\'s installer, so its internal $HOME reference does not trip set -u', () => {
     const script = buildUbuntuBootstrapScript({ runtime: 'bun' })
 
