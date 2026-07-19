@@ -54,6 +54,36 @@ describe('buildAwsUserData', () => {
     expect(ud).not.toContain('php.net@8.3')
     expect(ud).toContain('mkdir -p /var/www')
   })
+
+  it('honors the provider-neutral swap setting', () => {
+    const configured: CloudConfig = {
+      ...phpConfig,
+      infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 4 } },
+    }
+    expect(buildAwsUserData(configured)).toContain('fallocate -l 4G /swapfile')
+
+    const disabled: CloudConfig = {
+      ...phpConfig,
+      infrastructure: { compute: { ...phpConfig.infrastructure!.compute, swapGb: 0 } },
+    }
+    expect(buildAwsUserData(disabled)).not.toContain('swapon /swapfile')
+  })
+
+  it('applies the shared rpx resource limits on AWS too', () => {
+    const configured: CloudConfig = {
+      ...phpConfig,
+      infrastructure: {
+        compute: {
+          ...phpConfig.infrastructure!.compute,
+          proxy: { engine: 'rpx', memoryHigh: '640M', memoryMax: '896M' },
+        },
+      },
+    }
+    const ud = buildAwsUserData(configured)
+    expect(ud).toContain('rpx-gateway.service')
+    expect(ud).toContain('MemoryHigh=640M')
+    expect(ud).toContain('MemoryMax=896M')
+  })
 })
 
 describe('resolveAwsImageId', () => {

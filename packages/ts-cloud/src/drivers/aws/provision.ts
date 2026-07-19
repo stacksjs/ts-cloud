@@ -10,6 +10,7 @@
  */
 import type { CloudConfig } from '@ts-cloud/core'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
+import { buildRpxConfig, buildRpxProvisionScript } from '../shared/rpx-gateway'
 import { buildUbuntuBootstrapScript } from '../shared/ubuntu-bootstrap'
 
 /**
@@ -53,6 +54,15 @@ export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
 export function buildAwsUserData(config: CloudConfig): string {
   const compute = config.infrastructure?.compute ?? {}
   const provision = buildComputeProvisionScripts(config)
+  const rpxProvision = compute.proxy?.engine === 'rpx'
+    ? buildRpxProvisionScript({
+        proxy: compute.proxy,
+        config: buildRpxConfig(config.sites ?? {}, { proxy: compute.proxy, slug: config.project.slug }),
+        slug: config.project.slug,
+        bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+      })
+    : undefined
+
   return buildUbuntuBootstrapScript({
     runtime: provision.runtime,
     runtimeVersion: provision.runtimeVersion,
@@ -60,7 +70,9 @@ export function buildAwsUserData(config: CloudConfig): string {
     database: config.infrastructure?.database,
     phpProvision: provision.phpProvision,
     servicesProvision: provision.servicesProvision,
+    rpxProvision,
     baked: compute.bakedImage === true,
+    swapGb: compute.swapGb,
   })
 }
 

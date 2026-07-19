@@ -2,6 +2,12 @@ import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
 
 export type CloudProviderName = 'aws' | 'hetzner'
 
+/**
+ * Exhaustive provider map. Provider-specific contract tests key off this type,
+ * so adding a provider without adding its resilience coverage is a type error.
+ */
+export type CloudProviderContract<T> = { [Provider in CloudProviderName]: T }
+
 export interface ComputeTarget {
   id: string
   name?: string
