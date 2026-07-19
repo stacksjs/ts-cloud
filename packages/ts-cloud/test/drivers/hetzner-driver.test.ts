@@ -510,6 +510,31 @@ describe('HetznerDriver', () => {
     expect(ports).toEqual(['22', '3000', '443', '80'])
   })
 
+  it('does not erase configured non-site service ports on an existing firewall', async () => {
+    const setFirewallRules = mock(async () => [])
+    const client = mockHetznerClient({
+      setFirewallRules,
+      listFirewalls: mock(async () => [{ id: 55, name: 'my-app-production-app-fw', rules: [] }]),
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const config: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: {
+          ...baseConfig.infrastructure!.compute,
+          firewall: { enabled: true, allowedPorts: [25, 143, 465, 587, 993] },
+        },
+      },
+    }
+
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    const rules = (setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>])[1]
+    expect(rules.map(rule => Number(rule.port)).sort((a, b) => a - b)).toEqual([
+      22, 25, 80, 143, 443, 465, 587, 993, 3000,
+    ])
+  })
+
   it('opens raw upstream ports for sites with an app port', async () => {
     const setFirewallRules = mock(async () => [])
     let createdRules: Array<{ port: string }> = []

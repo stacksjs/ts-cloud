@@ -12,4 +12,15 @@ describe('buildHetznerFirewallRules', () => {
     const rules = buildHetznerFirewallRules({ allowSsh: true, sitePorts: [] })
     expect(rules.some(rule => rule.port === '22')).toBe(true)
   })
+
+  it('keeps explicit operator-owned service ports during reconciliation', () => {
+    const rules = buildHetznerFirewallRules({
+      allowSsh: true,
+      sitePorts: [3000],
+      allowedPorts: [25, 143, 465, 587, 993, 8008, 8443],
+    })
+    expect(rules.map(rule => Number(rule.port)).sort((a, b) => a - b)).toEqual([
+      22, 25, 80, 143, 443, 465, 587, 993, 3000, 8008, 8443,
+    ])
+  })
 })

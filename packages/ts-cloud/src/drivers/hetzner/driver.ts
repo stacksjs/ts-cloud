@@ -182,6 +182,7 @@ export class HetznerDriver implements CloudDriver {
       // reachable. Only close it when the caller explicitly opts out.
       allowSsh: compute.allowSsh !== false,
       sitePorts,
+      allowedPorts: compute.firewall?.allowedPorts,
     }))
     const sshKeyId = await this.ensureSshKey(slug, environment, labels)
 
@@ -334,7 +335,7 @@ export class HetznerDriver implements CloudDriver {
     const { firewall: appFw } = await this.ensureFirewall(
       `${slug}-${environment}-app-fw`,
       tsCloudLabels(slug, environment, 'app'),
-      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [] }),
+      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [], allowedPorts: compute.firewall?.allowedPorts }),
     )
     const { firewall: svcFw } = await this.ensureFirewall(
       `${slug}-${environment}-services-fw`,
@@ -572,7 +573,7 @@ export class HetznerDriver implements CloudDriver {
     const { firewall: lbFw } = await this.ensureFirewall(
       `${slug}-${environment}-lb-fw`,
       tsCloudLabels(slug, environment, 'lb'),
-      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [] }),
+      buildHetznerFirewallRules({ allowSsh: true, sitePorts: [], allowedPorts: compute.firewall?.allowedPorts }),
     )
 
     // 3. Dedicated services box — edge case for a bun app that wants a shared
