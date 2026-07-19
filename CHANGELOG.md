@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.33...v0.7.34)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: contain shared host memory pressure ([a37fb8c](https://github.com/stacksjs/ts-cloud/commit/a37fb8c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.34 ([e8c2c82](https://github.com/stacksjs/ts-cloud/commit/e8c2c82)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.32...v0.7.33)
 
 ## 🐛 Bug Fixes
