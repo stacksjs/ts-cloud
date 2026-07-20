@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.36...v0.7.37)
+
+## 🐛 Bug Fixes
+
+- **deploy**: clean stale host data ([5deaeb0](https://github.com/stacksjs/ts-cloud/commit/5deaeb0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.37 ([5929654](https://github.com/stacksjs/ts-cloud/commit/5929654)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.35...v0.7.36)
 
 ## 🐛 Bug Fixes
