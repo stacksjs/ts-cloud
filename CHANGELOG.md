@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.46...v0.7.47)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: prune orphaned UI caches ([f6a6bb7](https://github.com/stacksjs/ts-cloud/commit/f6a6bb7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.47 ([a760bb1](https://github.com/stacksjs/ts-cloud/commit/a760bb1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.45...v0.7.46)
 
 ## 🐛 Bug Fixes
