@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import type { DnsRecordResult } from '../../src/dns/types'
 import { PorkbunProvider } from '../../src/dns/porkbun'
 
 const originalFetch = globalThis.fetch
@@ -28,6 +29,24 @@ describe('PorkbunProvider retries', () => {
     expect(result.success).toBe(true)
     expect(result.records).toHaveLength(1)
     expect(calls).toBe(2)
+  })
+
+  it('deletes a listed record directly by its Porkbun id', async () => {
+    const requests: string[] = []
+    globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+      requests.push(String(input))
+      return Response.json({ status: 'SUCCESS' })
+    }, { preconnect: originalFetch.preconnect })
+
+    const result = await new PorkbunProvider('api-key', 'secret-key').deleteRecord('example.com', {
+      id: '12345',
+      name: 'www.example.com',
+      type: 'A',
+      content: '192.0.2.1',
+    } as DnsRecordResult)
+
+    expect(result.success).toBe(true)
+    expect(requests).toEqual(['https://api.porkbun.com/api/json/v3/dns/delete/example.com/12345'])
   })
 
   it('does not retry permanent authorization failures', async () => {

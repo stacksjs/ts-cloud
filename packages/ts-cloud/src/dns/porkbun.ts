@@ -266,10 +266,19 @@ export class PorkbunProvider implements DnsProvider {
   async deleteRecord(domain: string, record: DnsRecord): Promise<DeleteRecordResult> {
     try {
       const rootDomain = this.getRootDomain(domain)
+
+      if ('id' in record && record.id) {
+        await this.request(`/dns/delete/${rootDomain}/${record.id}`)
+        return {
+          success: true,
+          message: 'Record deleted successfully',
+        }
+      }
+
       const subdomain = this.getSubdomain(record.name, rootDomain)
 
       // Find the record to delete
-      const existing = await this.listRecords(domain, record.type)
+      const existing = await this.listRecords(domain)
 
       if (!existing.success) {
         return {
