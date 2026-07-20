@@ -10,7 +10,7 @@ afterEach(() => {
 describe('PorkbunProvider retries', () => {
   it('retries transient API failures before returning records', async () => {
     let calls = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = Object.assign(async (..._args: Parameters<typeof fetch>) => {
       calls += 1
       if (calls === 1) {
         return new Response('temporarily unavailable', {
@@ -22,7 +22,7 @@ describe('PorkbunProvider retries', () => {
         status: 'SUCCESS',
         records: [{ id: '1', name: 'www.example.com', type: 'A', content: '192.0.2.1', ttl: '600' }],
       })
-    }
+    }, { preconnect: originalFetch.preconnect })
 
     const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
     expect(result.success).toBe(true)
@@ -32,10 +32,10 @@ describe('PorkbunProvider retries', () => {
 
   it('does not retry permanent authorization failures', async () => {
     let calls = 0
-    globalThis.fetch = async () => {
+    globalThis.fetch = Object.assign(async (..._args: Parameters<typeof fetch>) => {
       calls += 1
       return new Response('forbidden', { status: 403 })
-    }
+    }, { preconnect: originalFetch.preconnect })
 
     const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
     expect(result.success).toBe(false)
