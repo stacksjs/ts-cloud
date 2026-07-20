@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.41...v0.7.42)
+
+## 🐛 Bug Fixes
+
+- **dns**: retry transient Porkbun failures ([ea62fc9](https://github.com/stacksjs/ts-cloud/commit/ea62fc9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.42 ([58b3537](https://github.com/stacksjs/ts-cloud/commit/58b3537)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.40...v0.7.41)
 
 ## 🐛 Bug Fixes
