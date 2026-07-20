@@ -1,7 +1,7 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
-import { existsSync, rmSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -76,7 +76,44 @@ export interface DashboardAction {
 const DEFAULT_HOST = '127.0.0.1'
 const DEFAULT_PORT = 7676
 const MAX_OUTPUT_BYTES = 64 * 1024
+const DASHBOARD_TEMP_PREFIX = 'ts-cloud-dashboard-'
 const here = dirname(fileURLToPath(import.meta.url))
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  }
+  catch (error: any) {
+    return error?.code !== 'ESRCH'
+  }
+}
+
+export function pruneDashboardTempRoots(
+  root: string = tmpdir(),
+  running: (pid: number) => boolean = isProcessRunning,
+): number {
+  let removed = 0
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith(DASHBOARD_TEMP_PREFIX))
+      continue
+    const path = join(root, entry.name)
+    const owned = entry.name.match(/^ts-cloud-dashboard-(\d+)-/)
+    if (owned) {
+      const pid = Number(owned[1])
+      if (pid === process.pid || running(pid))
+        continue
+    }
+    else if (readdirSync(path).length > 0) {
+      // Legacy roots have no owner PID. Only an empty failed build is provably
+      // unused; successful legacy roots are left alone for a one-time audit.
+      continue
+    }
+    rmSync(path, { recursive: true, force: true })
+    removed += 1
+  }
+  return removed
+}
 
 const contentTypes: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -243,7 +280,7 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
   // from /api/* at runtime — a build hiccup must never crash the cockpit.
   let outDir: string | undefined
   try {
-    outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
+    outDir = mkdtempSync(join(tmpdir(), `${DASHBOARD_TEMP_PREFIX}${process.pid}-`))
     // Prefer a locally-installed stx bin (node_modules/.bin/stx) over `bunx stx`,
     // which would try to fetch a non-existent bare `stx` package from the registry.
     const localStx = join(uiDir, 'node_modules', '.bin', 'stx')
@@ -451,6 +488,7 @@ async function serveStatic(uiRoot: string, pathname: string): Promise<Response> 
 }
 
 export async function startLocalDashboardServer(options: LocalDashboardServerOptions = {}): Promise<LocalDashboardServer> {
+  pruneDashboardTempRoots()
   const cwd = options.cwd ?? process.cwd()
   const host = options.host ?? DEFAULT_HOST
   const port = options.port ?? DEFAULT_PORT
