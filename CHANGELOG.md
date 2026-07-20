@@ -1,3 +1,13 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.38...v0.7.39)
+
+## 🧹 Chores
+
+- release v0.7.39 ([5e37404](https://github.com/stacksjs/ts-cloud/commit/5e37404)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.37...v0.7.38)
 
 ## 🐛 Bug Fixes
