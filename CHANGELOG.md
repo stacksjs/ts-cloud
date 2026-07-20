@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.39...v0.7.40)
+
+## 🐛 Bug Fixes
+
+- **dns**: reconcile redirect site addresses ([51afbaa](https://github.com/stacksjs/ts-cloud/commit/51afbaa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.40 ([75b133b](https://github.com/stacksjs/ts-cloud/commit/75b133b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.38...v0.7.39)
 
 ## 🧹 Chores
