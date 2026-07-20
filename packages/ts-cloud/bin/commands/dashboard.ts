@@ -24,6 +24,13 @@ export function registerDashboardCommands(app: CLI): void {
       cli.success(`Serving ${server.url}`)
       cli.info('Use Ctrl+C to stop.')
 
-      await new Promise(() => {})
+      await new Promise<void>((resolve) => {
+        const stop = (): void => {
+          server.server.stop(true)
+          resolve()
+        }
+        process.once('SIGINT', stop)
+        process.once('SIGTERM', stop)
+      })
     })
 }

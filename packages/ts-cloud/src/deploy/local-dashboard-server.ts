@@ -1,7 +1,7 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
-import { existsSync, statSync } from 'node:fs'
+import { existsSync, rmSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -241,8 +241,9 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
   // stx` can't resolve when stx is scoped). On ANY failure we return null so the
   // caller falls back to the shipped pre-built UI, which fetches the same data
   // from /api/* at runtime — a build hiccup must never crash the cockpit.
+  let outDir: string | undefined
   try {
-    const outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
+    outDir = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-'))
     // Prefer a locally-installed stx bin (node_modules/.bin/stx) over `bunx stx`,
     // which would try to fetch a non-existent bare `stx` package from the registry.
     const localStx = join(uiDir, 'node_modules', '.bin', 'stx')
@@ -264,6 +265,7 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
       proc.exited,
     ])
     if (exitCode !== 0) {
+      rmSync(outDir, { recursive: true, force: true })
       if (process.env.TSCLOUD_DASHBOARD_VERBOSE)
         console.warn(`ts-cloud dashboard: live UI build failed; serving the pre-built UI.\n${stdout}\n${stderr}`)
       return null
@@ -271,6 +273,8 @@ async function buildLiveUi(cwd: string, data: Record<string, any>): Promise<stri
     return outDir
   }
   catch (err) {
+    if (outDir)
+      rmSync(outDir, { recursive: true, force: true })
     if (process.env.TSCLOUD_DASHBOARD_VERBOSE)
       console.warn(`ts-cloud dashboard: live UI build errored; serving the pre-built UI. ${(err as Error).message}`)
     return null
@@ -474,6 +478,17 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   // share a build, so a box with a handful of collaborators builds a handful of
   // times, not once per request.
   const uiCache = new Map<string, string>()
+  const uiBuilds = new Map<string, Promise<string | undefined>>()
+  const ownedUiRoots = new Set<string>()
+  let uiGeneration = 0
+
+  function clearUiCache(): void {
+    uiGeneration += 1
+    uiCache.clear()
+    for (const root of ownedUiRoots)
+      rmSync(root, { recursive: true, force: true })
+    ownedUiRoots.clear()
+  }
 
   const scopeKey = (user: DashboardUser): string => user.role === 'admin'
     ? 'admin'
@@ -484,21 +499,41 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     const cached = uiCache.get(key)
     if (cached)
       return cached
+    const pending = uiBuilds.get(key)
+    if (pending)
+      return pending
 
-    // `viewer` tells the nav which surfaces to offer. Only the ROLE is baked in,
-    // never the username: builds are shared by everyone with the same grants, so
-    // a name baked here would show up in someone else's page.
-    const scoped = {
-      ...scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }),
-      viewer: { role: user.role },
+    const generation = uiGeneration
+    const build = (async (): Promise<string | undefined> => {
+      // `viewer` tells the nav which surfaces to offer. Only the ROLE is baked in,
+      // never the username: builds are shared by everyone with the same grants, so
+      // a name baked here would show up in someone else's page.
+      const scoped = {
+        ...scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }),
+        viewer: { role: user.role },
+      }
+      // A failed build falls back to the packaged UI, which ships no baked data
+      // (it renders its placeholder sample and hydrates from /api/*), so the
+      // fallback can't leak either.
+      const liveRoot = await buildLiveUi(cwd, scoped)
+      if (liveRoot && generation !== uiGeneration) {
+        rmSync(liveRoot, { recursive: true, force: true })
+        return packagedUi?.uiRoot
+      }
+      if (liveRoot)
+        ownedUiRoots.add(liveRoot)
+      const root = liveRoot ?? packagedUi?.uiRoot
+      if (root)
+        uiCache.set(key, root)
+      return root
+    })()
+    uiBuilds.set(key, build)
+    try {
+      return await build
     }
-    // A failed build falls back to the packaged UI, which ships no baked data
-    // (it renders its placeholder sample and hydrates from /api/*), so the
-    // fallback can't leak either.
-    const root = (await buildLiveUi(cwd, scoped)) ?? packagedUi?.uiRoot
-    if (root)
-      uiCache.set(key, root)
-    return root
+    finally {
+      uiBuilds.delete(key)
+    }
   }
 
   // Prime the admin build and fail fast if there's no UI at all to serve.
@@ -683,7 +718,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
             // Every cached build is now stale — drop them so the next request
             // per scope rebuilds against the new environment's data.
-            uiCache.clear()
+            clearUiCache()
           }
           return json({ ok: true, environment, environments: availableEnvironments })
         }
@@ -1000,7 +1035,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
           const result = upsertMember(cwd, { username, password, name: typeof body.name === 'string' ? body.name : undefined, sites })
           // Their grants changed, so any UI built for their old scope is stale.
-          uiCache.clear()
+          clearUiCache()
           // The generated password is returned once, at creation, and never stored.
           return json({ ok: true, user: describeUser(result.user), password: result.password })
         }
@@ -1189,6 +1224,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       }
     },
   })
+
+  const stop = server.stop.bind(server)
+  server.stop = ((closeActiveConnections?: boolean) => {
+    clearInterval(throttleSweep)
+    clearUiCache()
+    return stop(closeActiveConnections)
+  }) as typeof server.stop
 
   return { server, url: `http://${host}:${server.port}/` }
 }
