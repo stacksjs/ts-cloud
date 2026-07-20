@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.45...v0.7.46)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: clean temporary UI builds ([2fa523d](https://github.com/stacksjs/ts-cloud/commit/2fa523d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.46 ([672a2f9](https://github.com/stacksjs/ts-cloud/commit/672a2f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.44...v0.7.45)
 
 ## 🐛 Bug Fixes
