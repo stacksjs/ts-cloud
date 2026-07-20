@@ -49,11 +49,14 @@ export async function removeStaleServerAddressRecords(
   hostname: string,
   desiredAddress: string,
 ): Promise<string[]> {
-  const listed = await provider.listRecords(zone, 'A')
+  // Retrieve the whole zone. Porkbun's retrieveByNameType endpoint treats a
+  // missing record name as an apex-only lookup, so listRecords(zone, 'A')
+  // silently hides duplicate subdomain records such as www.
+  const listed = await provider.listRecords(zone)
   if (!listed.success)
     return [`could not list A records: ${listed.message || 'unknown provider error'}`]
 
-  const matching = listed.records.filter(record => matchesHostname(record, zone, hostname))
+  const matching = listed.records.filter(record => record.type === 'A' && matchesHostname(record, zone, hostname))
   const desiredIndex = matching.findIndex(record => record.content === desiredAddress)
   if (matching.length <= 1 || desiredIndex === -1)
     return []

@@ -21,8 +21,12 @@ describe('removeStaleServerAddressRecords', () => {
       { id: '3', name: 'api', type: 'A', content: '49.12.8.203' },
     ]
     const deleted: DnsRecordResult[] = []
+    const listTypes: Array<string | undefined> = []
     const provider = {
-      listRecords: async () => ({ success: true, records }),
+      listRecords: async (_zone: string, type?: string) => {
+        listTypes.push(type)
+        return { success: true, records }
+      },
       deleteRecord: async (_zone: string, record: DnsRecord) => {
         deleted.push(record)
         return { success: true }
@@ -30,6 +34,7 @@ describe('removeStaleServerAddressRecords', () => {
     } as unknown as DnsProvider
 
     expect(await removeStaleServerAddressRecords(provider, 'example.com', 'www.example.com', '178.105.248.188')).toEqual([])
+    expect(listTypes).toEqual([undefined])
     expect(deleted).toEqual([{ id: '2', name: 'www', type: 'A', content: '49.12.8.203' }])
   })
 

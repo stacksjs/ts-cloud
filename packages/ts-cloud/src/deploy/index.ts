@@ -4,6 +4,7 @@
  */
 
 export * from './site-target'
+export * from './server-dns'
 export * from './static-site'
 export * from './static-site-external-dns'
 export * from './static-site-helper'
