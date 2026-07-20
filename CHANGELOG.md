@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.37...v0.7.38)
+
+## 🐛 Bug Fixes
+
+- **release**: use resilient Pantry releases ([3773578](https://github.com/stacksjs/ts-cloud/commit/3773578)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.38 ([836ccdb](https://github.com/stacksjs/ts-cloud/commit/836ccdb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.36...v0.7.37)
 
 ## 🐛 Bug Fixes
