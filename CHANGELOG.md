@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.43...v0.7.44)
+
+## 🐛 Bug Fixes
+
+- **dns**: delete Porkbun records by id ([0d3c589](https://github.com/stacksjs/ts-cloud/commit/0d3c589)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.44 ([4f256b3](https://github.com/stacksjs/ts-cloud/commit/4f256b3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.42...v0.7.43)
 
 ## 🧪 Tests
