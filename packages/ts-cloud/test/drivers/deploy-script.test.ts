@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import {
   buildAwsArtifactFetch,
+  buildHostCleanupScript,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
@@ -33,7 +34,7 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     const script = buildSiteDeployScript(opts)
     const joined = script.join('\n')
     expect(script[0]).toBe('set -euo pipefail')
-    expect(joined).toContain('cp "/var/ts-cloud/staging/release.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
+    expect(joined).toContain('mv "/var/ts-cloud/staging/release.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
     // Tarball goes into THIS release dir, never the live one.
     expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz -C /var/www/web/releases/abc123')
     // .env persists in shared/ and is symlinked into the release.
@@ -207,6 +208,18 @@ describe('buildAwsArtifactFetch', () => {
       .toEqual([
         'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/my-app-web-abc-release.tar.gz --region us-east-1',
       ])
+  })
+})
+
+describe('buildHostCleanupScript', () => {
+  it('bounds stale deploy data without touching active or rollback releases', () => {
+    const joined = buildHostCleanupScript().join('\n')
+    expect(joined).toContain('/var/ts-cloud/staging')
+    expect(joined).toContain('-mmin +60')
+    expect(joined).toContain('journalctl --vacuum-time=14d --vacuum-size=512M')
+    expect(joined).toContain('docker image prune --all --force --filter "until=168h"')
+    expect(joined).not.toContain('/var/www')
+    expect(joined).not.toContain('releases/')
   })
 })
 

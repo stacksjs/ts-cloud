@@ -32,6 +32,7 @@ export type {
 } from './shared/box-provision'
 export {
   buildAwsArtifactFetch,
+  buildHostCleanupScript,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,

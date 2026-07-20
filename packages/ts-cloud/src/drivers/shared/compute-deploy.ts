@@ -13,6 +13,7 @@ import { buildManagementDashboardArtifact, ensureManagementDashboard, management
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
 import {
   buildAwsArtifactFetch,
+  buildHostCleanupScript,
   buildLocalArtifactFetch,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
@@ -288,6 +289,7 @@ export async function deploySiteRelease(
     ...staticVhost,
     ...staticSsl,
     ...servicesScript,
+    ...buildHostCleanupScript(),
   ]
 
   logger.step(`Deploying to ${targets.length} target(s)...`)

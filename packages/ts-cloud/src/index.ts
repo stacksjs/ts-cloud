@@ -221,6 +221,7 @@ export {
   buildSshArgs,
   generateUbuntuAppCloudInit,
   wrapCloudInitUserData,
+  buildHostCleanupScript,
   buildSiteDeployScript,
   buildStaticSiteDeployScript,
   resolveExecStart,
