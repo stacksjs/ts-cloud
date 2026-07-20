@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join as pathJoin } from 'node:path'
 import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
 import { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
+import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
 import type { DnsProviderConfig } from '../../src/dns/types'
@@ -2040,16 +2041,9 @@ async function reconcileServerDns(
   if (!dnsProviderName)
     return // opt-in — no DNS provider configured, nothing to do
 
-  const sites = config.sites || {}
-  // Server-served sites: an explicit deploy:'server', or a legacy `start` site.
   // Bucket sites (S3/CloudFront) are handled by deployStaticSitesWithExternalDns.
-  const domains = new Set<string>()
-  for (const site of Object.values<any>(sites)) {
-    if (!site?.domain || site.redirect)
-      continue
-    if (site.deploy === 'server' || site.start)
-      domains.add(site.domain)
-  }
+  // Redirect-only sites still terminate on this box and therefore need DNS.
+  const domains = collectServerDnsDomains(config.sites || {})
   if (domains.size === 0)
     return
   if (!appPublicIp) {
@@ -2093,6 +2087,14 @@ async function reconcileServerDns(
         cli.success(`  ✓ ${domain} A → ${appPublicIp}`)
       else
         cli.warn(`  ⚠ ${domain}: ${res.message} — set the A record manually.`)
+
+      if (res.success) {
+        const cleanupWarnings = await removeStaleServerAddressRecords(dnsProvider, zone, domain, appPublicIp)
+        for (const warning of cleanupWarnings)
+          cli.warn(`  ⚠ ${domain}: ${warning}`)
+        if (cleanupWarnings.length === 0)
+          cli.info(`  ✓ ${domain}: stale duplicate A records reconciled`)
+      }
     }
     catch (error) {
       cli.warn(`  ⚠ ${domain}: ${error instanceof Error ? error.message : String(error)} — set the A record manually.`)
