@@ -1,0 +1,45 @@
+import { afterEach, describe, expect, it } from 'bun:test'
+import { PorkbunProvider } from '../../src/dns/porkbun'
+
+const originalFetch = globalThis.fetch
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
+
+describe('PorkbunProvider retries', () => {
+  it('retries transient API failures before returning records', async () => {
+    let calls = 0
+    globalThis.fetch = async () => {
+      calls += 1
+      if (calls === 1) {
+        return new Response('temporarily unavailable', {
+          status: 503,
+          headers: { 'retry-after': '0' },
+        })
+      }
+      return Response.json({
+        status: 'SUCCESS',
+        records: [{ id: '1', name: 'www.example.com', type: 'A', content: '192.0.2.1', ttl: '600' }],
+      })
+    }
+
+    const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
+    expect(result.success).toBe(true)
+    expect(result.records).toHaveLength(1)
+    expect(calls).toBe(2)
+  })
+
+  it('does not retry permanent authorization failures', async () => {
+    let calls = 0
+    globalThis.fetch = async () => {
+      calls += 1
+      return new Response('forbidden', { status: 403 })
+    }
+
+    const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('403')
+    expect(calls).toBe(1)
+  })
+})

@@ -14,6 +14,27 @@ import type {
 } from './types'
 
 const PORKBUN_API_URL = 'https://api.porkbun.com/api/json/v3'
+const PORKBUN_MAX_ATTEMPTS = 8
+
+function isRetryablePorkbunResponse(status: number, message = ''): boolean {
+  return status === 408
+    || status === 409
+    || status === 425
+    || status === 429
+    || status >= 500
+    || /rate limit|temporar|timed? ?out|try again/i.test(message)
+}
+
+async function waitForPorkbunRetry(attempt: number, response?: Response): Promise<void> {
+  const retryAfter = response?.headers.get('retry-after')
+  const retryAfterMs = retryAfter === null || retryAfter === undefined
+    ? undefined
+    : Number(retryAfter) * 1000
+  const delay = Number.isFinite(retryAfterMs)
+    ? Math.max(0, retryAfterMs as number)
+    : Math.min(1000 * 2 ** (attempt - 1), 30000)
+  await new Promise(resolve => setTimeout(resolve, delay))
+}
 
 interface PorkbunApiResponse {
   status: 'SUCCESS' | 'ERROR'
@@ -55,29 +76,51 @@ export class PorkbunProvider implements DnsProvider {
     endpoint: string,
     additionalBody: Record<string, any> = {},
   ): Promise<T> {
-    const response = await fetch(`${PORKBUN_API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        apikey: this.apiKey,
-        secretapikey: this.secretKey,
-        ...additionalBody,
-      }),
-    })
+    let lastError: unknown
+    for (let attempt = 1; attempt <= PORKBUN_MAX_ATTEMPTS; attempt += 1) {
+      let response: Response
+      try {
+        response = await fetch(`${PORKBUN_API_URL}${endpoint}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            apikey: this.apiKey,
+            secretapikey: this.secretKey,
+            ...additionalBody,
+          }),
+        })
+      }
+      catch (error) {
+        lastError = error
+        if (attempt === PORKBUN_MAX_ATTEMPTS)
+          throw error
+        await waitForPorkbunRetry(attempt)
+        continue
+      }
 
-    if (!response.ok) {
-      throw new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
+      if (!response.ok) {
+        lastError = new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
+        if (!isRetryablePorkbunResponse(response.status) || attempt === PORKBUN_MAX_ATTEMPTS)
+          throw lastError
+        await waitForPorkbunRetry(attempt, response)
+        continue
+      }
+
+      const data = await response.json() as T
+      if (data.status === 'ERROR') {
+        lastError = new Error(`Porkbun API error: ${data.message || 'Unknown error'}`)
+        if (!isRetryablePorkbunResponse(0, data.message) || attempt === PORKBUN_MAX_ATTEMPTS)
+          throw lastError
+        await waitForPorkbunRetry(attempt, response)
+        continue
+      }
+
+      return data
     }
 
-    const data = await response.json() as T
-
-    if (data.status === 'ERROR') {
-      throw new Error(`Porkbun API error: ${data.message || 'Unknown error'}`)
-    }
-
-    return data
+    throw lastError
   }
 
   /**
