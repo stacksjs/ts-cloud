@@ -39,6 +39,11 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create GitHub Release
-        uses: stacksjs/action-releaser@v1.2.9
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: home-lang/pantry/packages/action@main
+        with:
+          install: 'false'
+          release: 'true'
+          release-tag: ${{ github.ref_name }}
+          release-files: none
+          release-changelog: auto
+          release-token: ${{ secrets.GITHUB_TOKEN }}
