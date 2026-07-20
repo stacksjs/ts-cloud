@@ -15,6 +15,7 @@ import type {
 
 const PORKBUN_API_URL = 'https://api.porkbun.com/api/json/v3'
 const PORKBUN_MAX_ATTEMPTS = 8
+const PORKBUN_REQUEST_TIMEOUT_MS = 15_000
 
 function isRetryablePorkbunResponse(status: number, message = ''): boolean {
   return status === 408
@@ -63,10 +64,12 @@ export class PorkbunProvider implements DnsProvider {
   readonly name = 'porkbun'
   private apiKey: string
   private secretKey: string
+  private requestTimeoutMs: number
 
-  constructor(apiKey: string, secretKey: string) {
+  constructor(apiKey: string, secretKey: string, requestTimeoutMs: number = PORKBUN_REQUEST_TIMEOUT_MS) {
     this.apiKey = apiKey
     this.secretKey = secretKey
+    this.requestTimeoutMs = requestTimeoutMs
   }
 
   /**
@@ -79,6 +82,10 @@ export class PorkbunProvider implements DnsProvider {
     let lastError: unknown
     for (let attempt = 1; attempt <= PORKBUN_MAX_ATTEMPTS; attempt += 1) {
       let response: Response
+      const controller = new AbortController()
+      const timeout = setTimeout(() => {
+        controller.abort(new Error(`Porkbun API request timed out after ${this.requestTimeoutMs}ms`))
+      }, this.requestTimeoutMs)
       try {
         response = await fetch(`${PORKBUN_API_URL}${endpoint}`, {
           method: 'POST',
@@ -90,6 +97,7 @@ export class PorkbunProvider implements DnsProvider {
             secretapikey: this.secretKey,
             ...additionalBody,
           }),
+          signal: controller.signal,
         })
       }
       catch (error) {
@@ -98,6 +106,9 @@ export class PorkbunProvider implements DnsProvider {
           throw error
         await waitForPorkbunRetry(attempt)
         continue
+      }
+      finally {
+        clearTimeout(timeout)
       }
 
       if (!response.ok) {

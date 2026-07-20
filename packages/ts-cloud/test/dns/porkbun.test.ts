@@ -9,6 +9,29 @@ afterEach(() => {
 })
 
 describe('PorkbunProvider retries', () => {
+  it('times out a stalled request and retries it', async () => {
+    let calls = 0
+    globalThis.fetch = Object.assign(async (...args: Parameters<typeof fetch>) => {
+      calls += 1
+      if (calls > 1) {
+        return Response.json({
+          status: 'SUCCESS',
+          records: [],
+        })
+      }
+
+      const signal = args[1]?.signal
+      await new Promise((resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+      throw new Error('unreachable')
+    }, { preconnect: originalFetch.preconnect })
+
+    const result = await new PorkbunProvider('api-key', 'secret-key', 5).listRecords('example.com')
+    expect(result.success).toBe(true)
+    expect(calls).toBe(2)
+  })
+
   it('retries transient API failures before returning records', async () => {
     let calls = 0
     globalThis.fetch = Object.assign(async (..._args: Parameters<typeof fetch>) => {
