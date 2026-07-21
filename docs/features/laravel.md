@@ -97,19 +97,28 @@ repository: { url: '…', strategy: 'tag', tagPattern: 'v*' }
 
 ### Push-to-deploy (CI pipeline)
 
-ts-cloud deploys from your machine or CI (git-clone-on-server), so Forge's deploy
-webhook becomes a provider-native pipeline. Set the repo's `provider` and run
-`cloud quick-deploy` to scaffold a workflow that runs `cloud deploy` on every
-push to the deploy branch:
+ts-cloud deploys from your machine or CI, so Forge's deploy webhook becomes a
+provider-native pipeline. `cloud quick-deploy` detects GitHub, GitLab, or
+Bitbucket from the `origin` remote (with `site.repository.provider` as a fallback)
+and scaffolds a workflow that runs `cloud deploy` on every push to the target
+environment's `deployBranch`:
 
 ```ts
-repository: { url: 'git@github.com:acme/app.git', branch: 'main', provider: 'github' }
+environments: {
+  production: { type: 'production', deployBranch: 'main' },
+}
 ```
 
 ```sh
 cloud quick-deploy            # writes the CI file for the configured provider
 cloud quick-deploy --force    # overwrite an existing file
+cloud quick-deploy --site api --skip-dns-verification
 ```
+
+Use `--provider github|gitlab|bitbucket` when the origin remote is unavailable in
+the current checkout. `--site` limits the generated deploy command to one site;
+without it, the environment's configured sites deploy together. GitHub workflows
+use the Pantry setup action when `pantry.lock` exists and Bun otherwise.
 
 | `provider` | Generated file |
 | --- | --- |

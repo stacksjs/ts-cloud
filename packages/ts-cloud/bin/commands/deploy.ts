@@ -1028,15 +1028,34 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
   app
     .command('quick-deploy', 'Generate a push-to-deploy CI pipeline for your git provider (Forge Quick Deploy)')
     .option('--env <environment>', 'Environment to deploy on push', { default: 'production' })
+    .option('--provider <provider>', 'CI provider (github, gitlab, bitbucket); defaults to the origin remote')
+    .option('--site <site>', 'Deploy only this configured site')
+    .option('--skip-dns-verification', 'Generate a deploy that skips DNS verification and record creation')
     .option('--force', 'Overwrite an existing pipeline file')
-    .action(async (options?: { env?: string, force?: boolean }) => {
+    .action(async (options?: { env?: string, provider?: string, site?: string, skipDnsVerification?: boolean, force?: boolean }) => {
       cli.header('Quick Deploy (push-to-deploy)')
       try {
         const config = await loadValidatedConfig()
-        const { buildQuickDeployCi } = await import('../../src/deploy/quick-deploy')
-        const ci = buildQuickDeployCi(config, options?.env || 'production')
+        const { buildQuickDeployCi, inferQuickDeployProvider } = await import('../../src/deploy/quick-deploy')
+        const requestedProvider = options?.provider?.toLowerCase()
+        if (requestedProvider && !['github', 'gitlab', 'bitbucket'].includes(requestedProvider))
+          throw new Error(`Unsupported CI provider '${options?.provider}'. Use github, gitlab, or bitbucket.`)
+        let provider = requestedProvider as 'github' | 'gitlab' | 'bitbucket' | undefined
+        if (!provider) {
+          try {
+            const origin = execSync('git remote get-url origin', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+            provider = inferQuickDeployProvider(origin)
+          }
+          catch {}
+        }
+        const ci = buildQuickDeployCi(config, options?.env || 'production', {
+          provider,
+          site: options?.site,
+          skipDnsVerification: options?.skipDnsVerification,
+          setup: existsSync('pantry.lock') ? 'pantry' : 'bun',
+        })
         if (!ci) {
-          cli.warn('No site has a github/gitlab/bitbucket repository — set `sites.<name>.repository.provider` to generate a pipeline.')
+          cli.warn('Could not resolve a GitHub, GitLab, or Bitbucket provider from --provider, the origin remote, or a configured site repository.')
           process.exitCode = 1
           return
         }
