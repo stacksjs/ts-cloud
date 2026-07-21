@@ -56,6 +56,10 @@ export interface BuildCloudFrontOriginOptions {
   comment?: string
   /** `PriceClass_All` | `PriceClass_200` | `PriceClass_100`. @default 'PriceClass_All' */
   priceClass?: string
+  /** Enable CloudFront Origin Shield for the custom origin. @default false */
+  originShield?: boolean
+  /** AWS region used by Origin Shield. Required when {@link originShield} is enabled. */
+  originShieldRegion?: string
 }
 
 const ORIGIN_ID = 'origin'
@@ -93,6 +97,8 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     throw new Error('buildCloudFrontOriginConfig: at least one alias is required')
   if (aliases.includes(options.originDomain))
     throw new Error(`buildCloudFrontOriginConfig: originDomain ${options.originDomain} must not be one of the aliases (it would loop)`)
+  if (options.originShield && !options.originShieldRegion)
+    throw new Error('buildCloudFrontOriginConfig: originShieldRegion is required when originShield is enabled')
 
   const header = options.originSecretHeader ?? 'X-Origin-Verify'
   const customHeaders = options.originSecret
@@ -126,7 +132,9 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
         },
         ConnectionAttempts: 3,
         ConnectionTimeout: 10,
-        OriginShield: { Enabled: false },
+        OriginShield: options.originShield
+          ? { Enabled: true, OriginShieldRegion: options.originShieldRegion }
+          : { Enabled: false },
         OriginAccessControlId: '',
       }],
     },

@@ -1979,6 +1979,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           S3OriginConfig: {
             OriginAccessIdentity: '',
           },
+          OriginShield: cdnConfig.originShield
+            ? { Enabled: true, OriginShieldRegion: cdnConfig.originShieldRegion || region }
+            : { Enabled: false },
         }]
         const cacheBehaviors: any[] = []
         const extraDependsOn: string[] = []

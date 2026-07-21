@@ -66,6 +66,24 @@ describe('buildCloudFrontOriginConfig', () => {
     expect(buildCloudFrontOriginConfig(base).Origins.Items[0].CustomHeaders.Quantity).toBe(0)
   })
 
+  it('keeps Origin Shield disabled by default', () => {
+    expect(buildCloudFrontOriginConfig(base).Origins.Items[0].OriginShield).toEqual({ Enabled: false })
+  })
+
+  it('enables Origin Shield in the configured region', () => {
+    const origin = buildCloudFrontOriginConfig({
+      ...base,
+      originShield: true,
+      originShieldRegion: 'us-west-2',
+    }).Origins.Items[0]
+
+    expect(origin.OriginShield).toEqual({ Enabled: true, OriginShieldRegion: 'us-west-2' })
+  })
+
+  it('requires a region when Origin Shield is enabled', () => {
+    expect(() => buildCloudFrontOriginConfig({ ...base, originShield: true })).toThrow(/originShieldRegion/)
+  })
+
   it('uses the ACM cert for the viewer with sni-only', () => {
     const c = buildCloudFrontOriginConfig(base)
     expect(c.ViewerCertificate.ACMCertificateArn).toBe(base.viewerCertificateArn)

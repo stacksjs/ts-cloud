@@ -257,6 +257,31 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     expect(pathPatterns).toContain('/api/*')
   })
 
+  it('configures Origin Shield for standalone CDN origins', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        cdn: {
+          main: {
+            origin: 'my-app-production-site.s3.us-east-1.amazonaws.com',
+            originShield: true,
+            originShieldRegion: 'us-west-2',
+          },
+        },
+      },
+    })
+
+    const distribution = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::CloudFront::Distribution',
+    ) as any
+
+    expect(distribution.Properties.DistributionConfig.Origins[0].OriginShield).toEqual({
+      Enabled: true,
+      OriginShieldRegion: 'us-west-2',
+    })
+  })
+
   it('honors infrastructure.api.port for the public API CloudFront origin', () => {
     const template = generate({
       ...baseConfig,

@@ -413,6 +413,15 @@
           "type": "boolean",
           "default": true
         },
+        "originShield": {
+          "type": "boolean",
+          "description": "Enable CloudFront Origin Shield",
+          "default": false
+        },
+        "originShieldRegion": {
+          "type": "string",
+          "description": "AWS region used by CloudFront Origin Shield"
+        },
         "compress": {
           "type": "boolean",
           "description": "Enable automatic compression",

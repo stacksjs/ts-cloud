@@ -2900,6 +2900,10 @@ export interface CdnFrontConfig {
   secret?: string
   /** Header name carrying {@link secret}. @default 'X-Origin-Verify' */
   secretHeader?: string
+  /** Enable CloudFront Origin Shield for the gateway origin. @default false */
+  originShield?: boolean
+  /** AWS region used by Origin Shield. Required when {@link originShield} is enabled. */
+  originShieldRegion?: string
 }
 
 export interface DatabaseItemConfig {
@@ -2957,6 +2961,10 @@ export interface CdnItemConfig {
    * Enable CDN
    */
   enabled?: boolean
+  /** Enable CloudFront Origin Shield for this origin. @default false */
+  originShield?: boolean
+  /** AWS region used by Origin Shield. Defaults to the deployment region. */
+  originShieldRegion?: string
   /**
    * Cache policy configuration
    */
