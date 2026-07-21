@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.54...v0.7.55)
+
+## 🐛 Bug Fixes
+
+- **deploy**: honor DNS skip for server deploys ([2dbeaff](https://github.com/stacksjs/ts-cloud/commit/2dbeaff)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.55 ([c62d10a](https://github.com/stacksjs/ts-cloud/commit/c62d10a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.53...v0.7.54)
 
 ## 🐛 Bug Fixes
