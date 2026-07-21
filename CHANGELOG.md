@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.55...v0.7.56)
+
+## 🐛 Bug Fixes
+
+- **deploy**: scope AWS identity checks to AWS ([4143abb](https://github.com/stacksjs/ts-cloud/commit/4143abb)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.56 ([9b6697e](https://github.com/stacksjs/ts-cloud/commit/9b6697e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.54...v0.7.55)
 
 ## 🐛 Bug Fixes
