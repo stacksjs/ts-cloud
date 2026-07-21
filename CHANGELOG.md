@@ -1,3 +1,19 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.47...v0.7.48)
+
+## 🚀 Features
+
+- **sftp**: provision Transfer Family servers ([168df63](https://github.com/stacksjs/ts-cloud/commit/168df63)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **lambda**: support CloudWatch Lambda Insights ([873ffcb](https://github.com/stacksjs/ts-cloud/commit/873ffcb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cdn**: configure CloudFront Origin Shield ([e4933f9](https://github.com/stacksjs/ts-cloud/commit/e4933f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.48 ([2001162](https://github.com/stacksjs/ts-cloud/commit/2001162)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.46...v0.7.47)
 
 ## 🐛 Bug Fixes
