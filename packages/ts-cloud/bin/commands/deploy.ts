@@ -411,10 +411,12 @@ export function registerDeployCommands(app: CLI): void {
           return
         }
 
-        // Surface which AWS credentials and identity are about to be used
-        // (helps catch wrong-profile / wrong-account mistakes before any AWS calls)
-        const awsRegion = config.project?.region || 'us-east-1'
-        await reportAwsIdentity(awsRegion)
+        // Surface which AWS credentials and identity are about to be used, but
+        // only for AWS deployments. Hetzner must not require or probe AWS auth.
+        if (resolveCloudProvider(config) === 'aws') {
+          const awsRegion = config.project?.region || 'us-east-1'
+          await reportAwsIdentity(awsRegion)
+        }
 
         // Run security scan before deployment (unless skipped)
         if (!options?.skipSecurityScan) {
