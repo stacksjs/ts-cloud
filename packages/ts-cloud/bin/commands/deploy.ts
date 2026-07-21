@@ -529,7 +529,12 @@ export function registerDeployCommands(app: CLI): void {
             // (deployStaticSitesWithExternalDns) skips deploy:'server' sites, so
             // for a compute deploy DNS is reconciled here instead — additive
             // UPSERTs only, opt-in via `infrastructure.dns.provider`.
-            await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+            if (options?.skipDnsVerification) {
+              cli.info('DNS verification and record reconciliation skipped (--skip-dns-verification)')
+            }
+            else {
+              await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+            }
             const tlsOk = await renewRpxCertificates({
               config,
               environment,
