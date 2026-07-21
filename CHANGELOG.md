@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.51...v0.7.52)
+
+## 🐛 Bug Fixes
+
+- **deploy**: make quick deploy environment-aware ([14a4373](https://github.com/stacksjs/ts-cloud/commit/14a4373)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.52 ([0ea4351](https://github.com/stacksjs/ts-cloud/commit/0ea4351)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.50...v0.7.51)
 
 ## 🐛 Bug Fixes
