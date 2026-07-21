@@ -155,6 +155,68 @@ describe('HetznerDriver', () => {
     expect(state.firewallId).toBe(10)
   })
 
+  it('attaches to an owner project without provisioning tenant infrastructure', async () => {
+    const ownerServer = (id: number, role: 'app' | 'lb', ip: string) => ({
+      id,
+      name: `stacks-production-${role}`,
+      status: 'running',
+      public_net: { ipv4: { ip } },
+      private_net: [{ ip: `10.0.0.${id}` }],
+      labels: {
+        'ts-cloud/managed-by': 'ts-cloud',
+        'ts-cloud/project': 'stacks',
+        'ts-cloud/environment': 'production',
+        'ts-cloud/role': role,
+      },
+      server_type: { name: 'cx22' },
+      datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+    })
+    const createServer = mock(async () => { throw new Error('must not create a server') })
+    const createFirewall = mock(async () => { throw new Error('must not create a firewall') })
+    const createSshKey = mock(async () => { throw new Error('must not create an SSH key') })
+    const client = mockHetznerClient({
+      listServers: mock(async () => [
+        ownerServer(501, 'app', '203.0.113.50'),
+        ownerServer(502, 'lb', '203.0.113.51'),
+      ]),
+      createServer,
+      createFirewall,
+      createSshKey,
+    })
+    const driver = new HetznerDriver({ client, apiToken: 'test-token', waitForBoot: false })
+    const config: CloudConfig = {
+      ...baseConfig,
+      project: { ...baseConfig.project, slug: 'white-paper' },
+      cloud: { provider: 'hetzner', attachTo: 'stacks' },
+    }
+
+    const outputs = await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    expect(outputs.appInstanceId).toBe('501')
+    expect(outputs.appPublicIp).toBe('203.0.113.51')
+    expect(createServer).not.toHaveBeenCalled()
+    expect(createFirewall).not.toHaveBeenCalled()
+    expect(createSshKey).not.toHaveBeenCalled()
+
+    const attachedStack = 'white-paper-production'
+    const state = JSON.parse(await Bun.file(driverStatePath(attachedStack)).text())
+    expect(state.appServerIds).toEqual([501])
+    expect(state.lbServerId).toBe(502)
+
+    expect((await driver.findComputeTargets({
+      slug: 'white-paper',
+      environment: 'production',
+      role: 'app',
+      stackName: attachedStack,
+    })).map(target => target.id)).toEqual(['501'])
+    expect((await driver.findComputeTargets({
+      slug: 'white-paper',
+      environment: 'production',
+      role: 'lb',
+      stackName: attachedStack,
+    })).map(target => target.id)).toEqual(['502'])
+  })
+
   it('stages each site under a site-specific path so a shared SHA cannot collide', async () => {
     const client = mockHetznerClient()
     const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })

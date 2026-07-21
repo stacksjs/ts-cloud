@@ -140,6 +140,15 @@ export class HetznerDriver implements CloudDriver {
       throw new Error('infrastructure.compute is required to provision Hetzner compute')
     }
 
+    // An attached project is a tenant of an existing ts-cloud box. Resolve the
+    // owner's targets and pin them into this project's state before any of the
+    // normal provisioning/reconciliation work runs. In particular, an
+    // attacher must never create a firewall, SSH key, network, or server under
+    // its own slug: the owner remains the sole infrastructure lifecycle owner.
+    if (config.cloud?.attachTo) {
+      return this.attachToComputeInfrastructure(config.cloud.attachTo, config, environment)
+    }
+
     const stackName = resolveProjectStackName(config, environment)
     const serverName = `${slug}-${environment}-app`
 
@@ -982,9 +991,13 @@ export class HetznerDriver implements CloudDriver {
     //    IP is always fresh. Without this, the moment a SECOND managed app
     //    server appears in the account, step 3's uniqueness requirement fails
     //    and shared-box projects lose their deploy target entirely.
-    if (role === 'app') {
+    if (role === 'app' || role === 'lb' || role === 'services') {
       const state = await readDriverState(options.stackName ?? `${options.slug}-${options.environment}`)
-      const pinnedIds = [state?.serverId, ...(state?.appServerIds ?? [])]
+      const pinnedIds = [...new Set(role === 'app'
+        ? [state?.serverId, ...(state?.appServerIds ?? [])]
+        : role === 'lb'
+          ? [state?.lbServerId]
+          : [state?.servicesServerId])]
         .filter((id): id is number => typeof id === 'number')
       if (pinnedIds.length > 0) {
         const pinned: HetznerServer[] = []
@@ -1014,6 +1027,54 @@ export class HetznerDriver implements CloudDriver {
     }
 
     return []
+  }
+
+  /**
+   * Attach this project to compute owned by another ts-cloud project.
+   *
+   * The owner's Hetzner labels are the source of truth. We write a tenant-local
+   * state pin so all later deploy operations resolve the same app/LB targets,
+   * even when several unrelated managed boxes exist in the Hetzner project.
+   */
+  private async attachToComputeInfrastructure(
+    ownerSlug: string,
+    config: ProvisionComputeOptions['config'],
+    environment: ProvisionComputeOptions['environment'],
+  ): Promise<ComputeStackOutputs> {
+    const servers = await this.client.listServers()
+    const running = (role: 'app' | 'lb' | 'services') => servers.filter(server =>
+      server.status !== 'off'
+      && matchesTsCloudLabels(server.labels, ownerSlug, environment, role),
+    )
+
+    const appServers = running('app')
+    if (appServers.length === 0) {
+      throw new Error(
+        `Cannot attach '${config.project.slug}' to '${ownerSlug}': no running Hetzner app server is labeled for ${ownerSlug}/${environment}. Deploy the owner project first.`,
+      )
+    }
+
+    const lbServer = running('lb')[0]
+    const servicesServer = running('services')[0]
+    const primaryApp = appServers[0]
+    const publicGateway = lbServer ?? primaryApp
+    const stackName = resolveProjectStackName(config, environment)
+    const state: HetznerDriverState = {
+      provider: 'hetzner',
+      stackName,
+      serverId: primaryApp.id,
+      serverName: primaryApp.name,
+      appServerIds: appServers.map(server => server.id),
+      lbServerId: lbServer?.id,
+      servicesServerId: servicesServer?.id,
+      servicesPrivateIp: servicesServer?.private_net?.[0]?.ip,
+      publicIp: publicGateway.public_net.ipv4?.ip,
+      deployStoragePath: '/var/ts-cloud/staging',
+      sshUser: this.sshUser,
+    }
+    await writeDriverState(stackName, state)
+
+    return this.outputsFromState(state)
   }
 
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {
