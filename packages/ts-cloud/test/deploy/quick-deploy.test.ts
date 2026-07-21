@@ -9,10 +9,12 @@ function cfg(provider?: string, branch?: string): CloudConfig {
   } as unknown as CloudConfig
 }
 
-function environmentCfg(deployBranch: string): CloudConfig {
+function environmentCfg(deployBranch: string, provider: 'aws' | 'hetzner' = 'aws'): CloudConfig {
   return {
     project: { name: 'Acme', slug: 'acme' },
+    cloud: { provider },
     environments: { production: { type: 'production', deployBranch, domain: 'docs.example.com' } },
+    infrastructure: provider === 'hetzner' ? { compute: { runtime: 'bun' } } : undefined,
     sites: { docs: { root: 'dist' } },
   } as unknown as CloudConfig
 }
@@ -69,6 +71,26 @@ describe('buildQuickDeployCi', () => {
     expect(ci.content).toContain('home-lang/pantry/packages/action@main')
     expect(ci.content).not.toContain('bun install --frozen-lockfile')
     expect(ci.content).toContain('url: "https://docs.example.com"')
+    expect(ci.content).not.toContain('Configure deployment SSH key')
+  })
+
+  it('configures an SSH key for Hetzner compute deploys', () => {
+    const ci = buildQuickDeployCi(environmentCfg('main', 'hetzner'), 'production', {
+      provider: 'github',
+      sshPrivateKeySecret: 'PRODUCTION_SSH_KEY',
+    })!
+    expect(ci.content).toContain('name: Configure deployment SSH key')
+    expect(ci.content).toContain('SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}')
+    expect(ci.content).toContain('PRODUCTION_SSH_KEY is required for Hetzner compute deployments')
+    expect(ci.content).toContain('chmod 600 "$HOME/.ssh/id_ed25519"')
+    expect(ci.content).toContain('ssh-keygen -y -f "$HOME/.ssh/id_ed25519"')
+  })
+
+  it('rejects unsafe SSH secret names before interpolating workflow YAML', () => {
+    expect(() => buildQuickDeployCi(environmentCfg('main', 'hetzner'), 'production', {
+      provider: 'github',
+      sshPrivateKeySecret: 'KEY }} injected: true',
+    })).toThrow("Invalid SSH private key secret name 'KEY }} injected: true'")
   })
 
   it('infers supported providers from common git remote formats', () => {

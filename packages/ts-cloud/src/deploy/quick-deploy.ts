@@ -6,7 +6,7 @@
  * The provider can come from a configured site repository or from the CLI's
  * origin-remote detection, while the branch belongs to the target environment.
  */
-import type { CloudConfig } from '@ts-cloud/core'
+import { type CloudConfig, resolveCloudProvider } from '@ts-cloud/core'
 
 export type QuickDeployProvider = 'github' | 'gitlab' | 'bitbucket'
 
@@ -19,6 +19,8 @@ export interface QuickDeployOptions {
   skipDnsVerification?: boolean
   /** Dependency setup used by the generated GitHub Actions workflow. */
   setup?: 'bun' | 'pantry'
+  /** CI secret/variable containing the SSH private key for Hetzner deploys. */
+  sshPrivateKeySecret?: string
 }
 
 export interface QuickDeployFile {
@@ -99,6 +101,26 @@ export function buildQuickDeployCi(
         uses: home-lang/pantry/packages/action@main`
     : `      - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile`
+  const needsSshKey = resolveCloudProvider(config) === 'hetzner' && !!config.infrastructure?.compute
+  const sshPrivateKeySecret = options.sshPrivateKeySecret || 'SSH_PRIVATE_KEY'
+  if (!/^[A-Z_][A-Z0-9_]*$/i.test(sshPrivateKeySecret))
+    throw new Error(`Invalid SSH private key secret name '${sshPrivateKeySecret}'`)
+  const githubSshSetup = needsSshKey
+    ? `
+      - name: Configure deployment SSH key
+        env:
+          SSH_PRIVATE_KEY: \${{ secrets.${sshPrivateKeySecret} }}
+        run: |
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::${sshPrivateKeySecret} is required for Hetzner compute deployments"
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\\n' "$SSH_PRIVATE_KEY" | tr -d '\\r' > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" > "$HOME/.ssh/id_ed25519.pub"
+`
+    : ''
 
   if (provider === 'github') {
     return {
@@ -129,6 +151,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 ${githubSetup}
+${githubSshSetup}
       # Provide the provider credentials your config needs as repo secrets.
       - run: ${cmd}
         env:

@@ -118,7 +118,10 @@ cloud quick-deploy --site api --skip-dns-verification
 Use `--provider github|gitlab|bitbucket` when the origin remote is unavailable in
 the current checkout. `--site` limits the generated deploy command to one site;
 without it, the environment's configured sites deploy together. GitHub workflows
-use the Pantry setup action when `pantry.lock` exists and Bun otherwise.
+use the Pantry setup action when `pantry.lock` exists and Bun otherwise. Hetzner
+compute workflows also install the `SSH_PRIVATE_KEY` repository secret as the
+deployment key (and derive its public key for first-time provisioning); customize
+the secret name with `--ssh-key-secret <name>`.
 
 | `provider` | Generated file |
 | --- | --- |
@@ -362,7 +365,7 @@ cloud deploy:recipe clear-opcache ./recipes/clear-opcache.sh --user www-data
 | `cloud deploy:rollback [site] [--to <id>]` | Roll a site back to a previous release |
 | `cloud deploy:history [site] [--limit <n>]` | Show on-box deployment history |
 | `cloud deploy:recipe <name> <script> [--user <u>]` | Run a bash recipe across servers |
-| `cloud quick-deploy [--force]` | Scaffold a push-to-deploy CI pipeline |
+| `cloud quick-deploy [--force] [--ssh-key-secret <name>]` | Scaffold a push-to-deploy CI pipeline |
 | `cloud db:restore-backup [from]` | Restore the app database from a backup |
 
 ## Per-site options

@@ -126,8 +126,8 @@ async function deployAppToCompute(
   const hookLogger = { step: (m: string) => cli.step(m), error: (m: string) => cli.error(m) }
 
   // beforeDeploy / beforeBuild lifecycle hooks (run locally).
-  if (!await runConfigHook(config, 'beforeDeploy', hookLogger)) return true
-  if (!await runConfigHook(config, 'beforeBuild', hookLogger)) return true
+  if (!await runConfigHook(config, 'beforeDeploy', hookLogger)) return false
+  if (!await runConfigHook(config, 'beforeBuild', hookLogger)) return false
 
   for (const [siteName, site] of deployable) {
     const kind = resolveSiteKind(site)
@@ -147,13 +147,13 @@ async function deployAppToCompute(
       }
       catch (err: any) {
         cli.error(`Build failed for site '${siteName}': ${err.message}`)
-        return true
+        return false
       }
     }
 
     if (!existsSync(site.root)) {
       cli.error(`Build output not found at ${site.root} for site '${siteName}'`)
-      return true
+      return false
     }
 
     const tarballPath = pathJoin(tmpdir(), `${slug}-${siteName}-${sha}.tar.gz`)
@@ -168,14 +168,14 @@ async function deployAppToCompute(
     }
     catch (err: any) {
       cli.error(`Failed to package '${siteName}': ${err.message}`)
-      return true
+      return false
     }
 
     tarballs.set(siteName, tarballPath)
   }
 
   // afterBuild hook (run locally once all sites are built/packaged).
-  if (!await runConfigHook(config, 'afterBuild', hookLogger)) return true
+  if (!await runConfigHook(config, 'afterBuild', hookLogger)) return false
 
   const ok = await deployAllComputeSites({
     // Only the selected site is shipped...
@@ -202,8 +202,8 @@ async function deployAppToCompute(
   })
 
   // afterDeploy hook (run locally once the deploy succeeded).
-  if (ok)
-    await runConfigHook(config, 'afterDeploy', hookLogger)
+  if (ok && !await runConfigHook(config, 'afterDeploy', hookLogger))
+    return false
 
   return ok
 }
@@ -385,12 +385,14 @@ export function registerDeployCommands(app: CLI): void {
           cli.error('\n✗ Deployment configuration is invalid:')
           for (const e of deployErrors)
             cli.error(`  • ${e}`)
+          process.exitCode = 1
           return
         }
 
         if (options?.dryRun) {
           if (options.site && !config.sites?.[options.site]) {
             cli.error(`Site '${options.site}' was not found. Configured sites: ${Object.keys(config.sites || {}).join(', ') || 'none'}`)
+            process.exitCode = 1
             return
           }
           const deploymentMode = resolveDeploymentMode(config)
@@ -428,6 +430,7 @@ export function registerDeployCommands(app: CLI): void {
             cli.error('\n✗ Security scan failed - deployment blocked')
             cli.info('\nTo proceed anyway, use --skip-security-scan flag')
             cli.info('To change sensitivity, use --security-fail-on <severity>')
+            process.exitCode = 1
             return
           }
 
@@ -503,6 +506,7 @@ export function registerDeployCommands(app: CLI): void {
           const driver = createCloudDriver({ config, provider: cloudProvider })
           if (!driver.provisionComputeInfrastructure) {
             cli.error(`${cloudProvider} driver does not support compute provisioning`)
+            process.exitCode = 1
             return
           }
 
@@ -517,6 +521,7 @@ export function registerDeployCommands(app: CLI): void {
           const ok = await deployAppToCompute(config, environment, region, options?.site)
           if (!ok) {
             cli.error(`App deploy to ${cloudProvider} compute reported a failure`)
+            process.exitCode = 1
           }
           else {
             cli.success(`App deployed to ${cloudProvider} compute`)
@@ -533,6 +538,8 @@ export function registerDeployCommands(app: CLI): void {
             })
             if (!tlsOk)
               cli.error('App deployed, but rpx TLS certificate reconciliation failed')
+            if (!tlsOk)
+              process.exitCode = 1
           }
           return
         }
@@ -784,6 +791,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
       }
       catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
+        process.exitCode = 1
         if (error.stack) {
           cli.info('\nStack trace:')
           console.error(error.stack)
@@ -1031,8 +1039,9 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
     .option('--provider <provider>', 'CI provider (github, gitlab, bitbucket); defaults to the origin remote')
     .option('--site <site>', 'Deploy only this configured site')
     .option('--skip-dns-verification', 'Generate a deploy that skips DNS verification and record creation')
+    .option('--ssh-key-secret <name>', 'CI secret/variable containing the Hetzner deployment SSH private key', { default: 'SSH_PRIVATE_KEY' })
     .option('--force', 'Overwrite an existing pipeline file')
-    .action(async (options?: { env?: string, provider?: string, site?: string, skipDnsVerification?: boolean, force?: boolean }) => {
+    .action(async (options?: { env?: string, provider?: string, site?: string, skipDnsVerification?: boolean, sshKeySecret?: string, force?: boolean }) => {
       cli.header('Quick Deploy (push-to-deploy)')
       try {
         const config = await loadValidatedConfig()
@@ -1053,6 +1062,7 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
           site: options?.site,
           skipDnsVerification: options?.skipDnsVerification,
           setup: existsSync('pantry.lock') ? 'pantry' : 'bun',
+          sshPrivateKeySecret: options?.sshKeySecret,
         })
         if (!ci) {
           cli.warn('Could not resolve a GitHub, GitLab, or Bitbucket provider from --provider, the origin remote, or a configured site repository.')
@@ -1757,6 +1767,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
       }
       catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
+        process.exitCode = 1
       }
     })
 
@@ -1969,6 +1980,7 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
       }
       catch (error: any) {
         cli.error(`Deployment failed: ${error.message}`)
+        process.exitCode = 1
       }
     })
 }
@@ -2425,7 +2437,7 @@ Files: ${filesInfo}${installInfo}
 Your site is now live at https://${result.domain}`, 'green')
     }
 else {
-      cli.error(`\nDeployment failed: ${result.message}`)
+      throw new Error(result.message || `Site '${siteName}' deployment failed`)
     }
   }
 }
