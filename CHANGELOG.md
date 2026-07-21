@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.50...v0.7.51)
+
+## 🐛 Bug Fixes
+
+- **deploy**: reconcile TLS after DNS ([d9ba10d](https://github.com/stacksjs/ts-cloud/commit/d9ba10d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.51 ([98dba55](https://github.com/stacksjs/ts-cloud/commit/98dba55)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.49...v0.7.50)
 
 ## 🐛 Bug Fixes
