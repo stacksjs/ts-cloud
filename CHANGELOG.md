@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.49...v0.7.50)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: honor attached project ownership ([5537e9c](https://github.com/stacksjs/ts-cloud/commit/5537e9c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.50 ([5c6946e](https://github.com/stacksjs/ts-cloud/commit/5c6946e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.48...v0.7.49)
 
 ## 🐛 Bug Fixes
