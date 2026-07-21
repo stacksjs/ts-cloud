@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.52...v0.7.53)
+
+## 🐛 Bug Fixes
+
+- **deploy**: improve generated environment metadata ([cb39341](https://github.com/stacksjs/ts-cloud/commit/cb39341)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.53 ([453f351](https://github.com/stacksjs/ts-cloud/commit/453f351)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.51...v0.7.52)
 
 ## 🐛 Bug Fixes
