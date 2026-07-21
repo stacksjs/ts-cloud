@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.53...v0.7.54)
+
+## 🐛 Bug Fixes
+
+- **deploy**: fail CI and configure Hetzner SSH ([8a1e764](https://github.com/stacksjs/ts-cloud/commit/8a1e764)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.54 ([a0b11ed](https://github.com/stacksjs/ts-cloud/commit/a0b11ed)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.52...v0.7.53)
 
 ## 🐛 Bug Fixes
