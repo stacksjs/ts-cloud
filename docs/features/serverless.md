@@ -193,6 +193,30 @@ AWS publishes separate layer versions for each region and architecture, so
 `CloudWatchLambdaInsightsExecutionRolePolicy`. For image packaging, install the
 extension in the image instead of configuring `lambdaInsights`.
 
+## SFTP file transfer
+
+Provision an S3-backed AWS Transfer Family endpoint from the infrastructure
+configuration:
+
+```ts
+infrastructure: {
+  sftp: {
+    bucket: 'my-app-production-uploads',
+    users: {
+      deploy: {
+        sshPublicKeys: ['ssh-ed25519 AAAA... deploy@example.com'],
+        homeDirectory: 'incoming/deploy',
+      },
+    },
+  },
+}
+```
+
+ts-cloud creates the SFTP server, CloudWatch logging role, service-managed
+users, and a bucket-scoped IAM role for each user. Set `roleArn` on a user to
+bring an existing role, or set `endpointType: 'VPC'` with `endpointDetails` for
+a private endpoint.
+
 ```ts
 app: { kind: 'node', entry: 'src/server.ts', provisionedConcurrency: 2 }
 ```

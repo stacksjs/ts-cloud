@@ -379,6 +379,8 @@ export interface InfrastructureConfig {
   appDatabase?: DatabaseConfig
   cache?: CacheConfig
   cdn?: Record<string, CdnItemConfig & ResourceConditions> | CdnItemConfig
+  /** AWS Transfer Family SFTP server backed by S3. */
+  sftp?: SftpConfig
   /**
    * Elastic File System (EFS) configuration
    * For shared file storage across multiple instances
@@ -1490,6 +1492,24 @@ export interface CdnConfig {
   enabled?: boolean
   customDomain?: string
   certificateArn?: string
+}
+
+export interface SftpConfig {
+  bucket: string
+  users: Record<string, {
+    sshPublicKeys: string[]
+    homeDirectory?: string
+    roleArn?: string
+  }>
+  endpointType?: 'PUBLIC' | 'VPC'
+  endpointDetails?: {
+    vpcId: string
+    subnetIds: string[]
+    securityGroupIds?: string[]
+    addressAllocationIds?: string[]
+  }
+  securityPolicyName?: string
+  logging?: boolean
 }
 
 export interface DnsConfig {

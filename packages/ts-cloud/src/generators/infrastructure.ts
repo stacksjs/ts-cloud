@@ -25,6 +25,7 @@ import {
   Auth,
   Deployment,
   Redirects,
+  Sftp,
   Search,
   TemplateBuilder,
 } from '@ts-cloud/core'
@@ -76,6 +77,7 @@ export class InfrastructureGenerator {
         servers: { ...this.config.infrastructure?.servers, ...envInfra.servers },
         databases: { ...this.config.infrastructure?.databases, ...envInfra.databases },
         cdn: { ...this.config.infrastructure?.cdn, ...envInfra.cdn },
+        sftp: envInfra.sftp ?? this.config.infrastructure?.sftp,
         queues: { ...this.config.infrastructure?.queues, ...envInfra.queues },
         redirects: { ...this.config.infrastructure?.redirects, ...envInfra.redirects },
         realtime: { ...this.config.infrastructure?.realtime, ...envInfra.realtime },
@@ -1864,6 +1866,27 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           })
         }
       }
+    }
+
+    // ========================================
+    // SFTP (AWS Transfer Family)
+    // ========================================
+    if (this.mergedConfig.infrastructure?.sftp) {
+      const result = Sftp.create({
+        ...this.mergedConfig.infrastructure.sftp,
+        slug,
+        environment: env,
+      })
+      for (const [logicalId, resource] of Object.entries(result.resources))
+        this.builder.addResource(logicalId, resource)
+      this.builder.addOutput('SftpServerId', {
+        Value: { Ref: result.serverLogicalId },
+        Description: 'AWS Transfer Family SFTP server ID',
+      })
+      this.builder.addOutput('SftpEndpoint', {
+        Value: { 'Fn::Sub': `\${${result.serverLogicalId}}.server.transfer.\${AWS::Region}.amazonaws.com` },
+        Description: 'AWS Transfer Family SFTP endpoint',
+      })
     }
 
     // ========================================

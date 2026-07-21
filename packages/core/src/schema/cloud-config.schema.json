@@ -90,6 +90,9 @@
         "cdn": {
           "$ref": "#/definitions/cdn"
         },
+        "sftp": {
+          "$ref": "#/definitions/sftp"
+        },
         "functions": {
           "type": "object",
           "description": "Lambda functions configuration",
@@ -465,6 +468,38 @@
             "maxTTL": {
               "type": "number",
               "minimum": 0
+            }
+          }
+        }
+      }
+    },
+    "sftp": {
+      "type": "object",
+      "required": ["bucket", "users"],
+      "properties": {
+        "bucket": { "type": "string", "description": "S3 bucket backing the SFTP server" },
+        "endpointType": { "type": "string", "enum": ["PUBLIC", "VPC"], "default": "PUBLIC" },
+        "endpointDetails": {
+          "type": "object",
+          "required": ["vpcId", "subnetIds"],
+          "properties": {
+            "vpcId": { "type": "string" },
+            "subnetIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+            "securityGroupIds": { "type": "array", "items": { "type": "string" } },
+            "addressAllocationIds": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "securityPolicyName": { "type": "string" },
+        "logging": { "type": "boolean", "default": true },
+        "users": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["sshPublicKeys"],
+            "properties": {
+              "sshPublicKeys": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+              "homeDirectory": { "type": "string" },
+              "roleArn": { "type": "string" }
             }
           }
         }

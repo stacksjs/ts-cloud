@@ -282,6 +282,33 @@ describe('InfrastructureGenerator (compute-app mode)', () => {
     })
   })
 
+  it('provisions an S3-backed Transfer Family SFTP server', () => {
+    const template = generate({
+      ...baseConfig,
+      infrastructure: {
+        ...baseConfig.infrastructure!,
+        sftp: {
+          bucket: 'my-app-production-uploads',
+          users: {
+            deploy: { sshPublicKeys: ['ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest'] },
+          },
+        },
+      },
+    })
+
+    const server = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::Server',
+    ) as any
+    const user = Object.values(template.Resources).find(
+      (resource: any) => resource.Type === 'AWS::Transfer::User',
+    ) as any
+
+    expect(server.Properties.Protocols).toEqual(['SFTP'])
+    expect(server.Properties.IdentityProviderType).toBe('SERVICE_MANAGED')
+    expect(user.Properties.HomeDirectory).toBe('/my-app-production-uploads/deploy')
+    expect(template.Outputs.SftpEndpoint).toBeDefined()
+  })
+
   it('honors infrastructure.api.port for the public API CloudFront origin', () => {
     const template = generate({
       ...baseConfig,
