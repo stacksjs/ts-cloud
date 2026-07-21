@@ -175,6 +175,24 @@ Two strategies, pick by cost vs. guarantee:
   through, and every deploy publishes a new version and atomically flips the alias
   to it. AWS keeps N environments always-warm. You pay for the reserved capacity.
 
+## Lambda Insights
+
+Zip deployments can attach CloudWatch Lambda Insights to the HTTP, CLI, and
+queue functions with one app setting:
+
+```ts
+app: {
+  lambdaInsights: {
+    layerArn: 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64',
+  },
+}
+```
+
+AWS publishes separate layer versions for each region and architecture, so
+`layerArn` is explicit. ts-cloud attaches both the extension layer and the
+`CloudWatchLambdaInsightsExecutionRolePolicy`. For image packaging, install the
+extension in the image instead of configuring `lambdaInsights`.
+
 ```ts
 app: { kind: 'node', entry: 'src/server.ts', provisionedConcurrency: 2 }
 ```

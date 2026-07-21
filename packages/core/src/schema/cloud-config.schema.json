@@ -140,6 +140,14 @@
             "timeout": { "type": "number", "description": "HTTP request timeout in seconds" },
             "gatewayVersion": { "type": "number", "enum": [1, 2], "description": "API Gateway version (2 = HTTP API, 1 = REST)" },
             "warm": { "type": "number", "description": "Keep-warm / provisioned concurrency count" },
+            "lambdaInsights": {
+              "type": "object",
+              "description": "CloudWatch Lambda Insights extension configuration for zip deployments",
+              "required": ["layerArn"],
+              "properties": {
+                "layerArn": { "type": "string", "description": "Region- and architecture-specific Lambda Insights extension layer ARN" }
+              }
+            },
             "queues": { "description": "Queue names (true = single default queue, false = disabled)" },
             "scheduler": { "type": "string", "enum": ["off", "on", "sub-minute"], "description": "Task scheduler mode" },
             "build": { "type": "array", "items": { "type": "string" }, "description": "Commands run locally before packaging" },

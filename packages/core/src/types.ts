@@ -1845,6 +1845,17 @@ export interface ServerlessAppConfig {
   provisionedConcurrency?: number
   /** CloudWatch log retention (days) for all function log groups. @default 14 */
   logRetention?: number
+  /**
+   * Enable CloudWatch Lambda Insights for every function in the app.
+   *
+   * AWS publishes architecture- and region-specific extension layers, so the
+   * layer ARN stays explicit instead of ts-cloud pinning a version that can go
+   * stale. Zip deployments attach the layer and the required AWS managed role
+   * policy. Container-image deployments must bake the extension into the image.
+   */
+  lambdaInsights?: {
+    layerArn: string
+  }
 
   // ── CLI function (scheduler + on-demand command/deploy hooks) ─────────────
   /** CLI function memory in MB. @default 1024 */

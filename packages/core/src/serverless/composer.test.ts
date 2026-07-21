@@ -188,6 +188,43 @@ describe('composeServerlessAppTemplate', () => {
     expect(template.Resources.WarmerHttpRule0).toBeUndefined()
   })
 
+  it('attaches the Lambda Insights layer and execution policy to every zip function', () => {
+    const layerArn = 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64'
+    const { template } = compose({ kind: 'node', entry: 'a.ts', lambdaInsights: { layerArn } })
+
+    expect((template.Resources.AppRole as any).Properties.ManagedPolicyArns).toContain(
+      'arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy',
+    )
+    expect((template.Resources.HttpFunction as any).Properties.Layers).toContain(layerArn)
+    expect((template.Resources.CliFunction as any).Properties.Layers).toContain(layerArn)
+    expect((template.Resources.QueueFunction as any).Properties.Layers).toContain(layerArn)
+  })
+
+  it('preserves runtime layers when Lambda Insights is enabled', () => {
+    const layerArn = 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64'
+    const result = composeServerlessAppTemplate({
+      config,
+      environment: 'production',
+      handlers,
+      app: { kind: 'bun', lambdaInsights: { layerArn } },
+      runtimeLayers: ['arn:aws:lambda:us-east-1:123456789012:layer:bun:1'],
+    })
+
+    expect((result.template.Resources.HttpFunction as any).Properties.Layers).toEqual([
+      'arn:aws:lambda:us-east-1:123456789012:layer:bun:1',
+      layerArn,
+    ])
+  })
+
+  it('requires image deployments to bake in the Lambda Insights extension', () => {
+    expect(() => compose({
+      kind: 'node',
+      entry: 'a.ts',
+      packaging: 'image',
+      lambdaInsights: { layerArn: 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64' },
+    })).toThrow(/install the Lambda Insights extension in the image/)
+  })
+
   it('sets TSCLOUD_OCTANE on functions when octane is enabled', () => {
     const { template } = compose({ kind: 'php', octane: true })
     expect((template.Resources.HttpFunction as any).Properties.Environment.Variables.TSCLOUD_OCTANE).toBe('1')

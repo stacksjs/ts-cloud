@@ -85,6 +85,9 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   const hasQueue = queueNames.length > 0
   const logRetention = app.logRetention ?? 14
   const imageMode = app.packaging === 'image'
+  if (imageMode && app.lambdaInsights) {
+    throw new Error('serverless app: `lambdaInsights` layer attachment is only supported for zip packaging. Container images must install the Lambda Insights extension in the image.')
+  }
   const schedulerEnabled = (app.scheduler ?? 'on') !== 'off'
   const cacheEnabled = (app.cache?.driver ?? 'dynamodb') === 'dynamodb'
   const assetsEnabled = Boolean(app.assets)
@@ -157,6 +160,8 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   const managedPolicies = ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']
   if (app.vpc?.subnets?.length)
     managedPolicies.push('arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole')
+  if (app.lambdaInsights)
+    managedPolicies.push('arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy')
 
   resources.AppRole = {
     Type: 'AWS::IAM::Role',
@@ -234,6 +239,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     // Container-image functions set the handler/runtime via the image itself and
     // are pinned to a mode using an `IMAGE_CMD`-style override env var so all
     // three share one image. Zip functions use the layer + handler string.
+    const layers = [...(opts.runtimeLayers ?? []), ...(app.lambdaInsights ? [app.lambdaInsights.layerArn] : [])]
     const codeProps = imageMode
       ? {
           PackageType: 'Image',
@@ -246,7 +252,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           Runtime: runtime,
           Handler: handler,
           Code: { S3Bucket: Fn.ref('ArtifactBucket'), S3Key: Fn.ref('ArtifactKey') },
-          ...(opts.runtimeLayers?.length ? { Layers: opts.runtimeLayers } : {}),
+          ...(layers.length ? { Layers: [...new Set(layers)] } : {}),
         }
 
     resources[logicalId] = {
