@@ -90,6 +90,10 @@ export function buildQuickDeployCi(
   const cmd = deployCommand(environment, options)
   const yamlBranch = JSON.stringify(branch)
   const yamlEnvironment = JSON.stringify(environment)
+  const environmentUrl = environmentConfig?.domain
+    ? environmentConfig.domain.startsWith('http') ? environmentConfig.domain : `https://${environmentConfig.domain}`
+    : undefined
+  const githubEnvironmentUrl = environmentUrl ? `\n      url: ${JSON.stringify(environmentUrl)}` : ''
   const githubSetup = options.setup === 'pantry'
     ? `      - name: Setup Pantry
         uses: home-lang/pantry/packages/action@main`
@@ -121,7 +125,7 @@ jobs:
     if: github.ref_name == '${githubExpressionString(branch)}'
     runs-on: ubuntu-latest
     environment:
-      name: ${yamlEnvironment}
+      name: ${yamlEnvironment}${githubEnvironmentUrl}
     steps:
       - uses: actions/checkout@v6
 ${githubSetup}

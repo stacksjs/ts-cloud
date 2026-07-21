@@ -12,7 +12,7 @@ function cfg(provider?: string, branch?: string): CloudConfig {
 function environmentCfg(deployBranch: string): CloudConfig {
   return {
     project: { name: 'Acme', slug: 'acme' },
-    environments: { production: { type: 'production', deployBranch } },
+    environments: { production: { type: 'production', deployBranch, domain: 'docs.example.com' } },
     sites: { docs: { root: 'dist' } },
   } as unknown as CloudConfig
 }
@@ -68,6 +68,7 @@ describe('buildQuickDeployCi', () => {
     expect(ci.content).toContain('--yes')
     expect(ci.content).toContain('home-lang/pantry/packages/action@main')
     expect(ci.content).not.toContain('bun install --frozen-lockfile')
+    expect(ci.content).toContain('url: "https://docs.example.com"')
   })
 
   it('infers supported providers from common git remote formats', () => {

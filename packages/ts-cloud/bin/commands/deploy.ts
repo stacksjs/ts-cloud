@@ -2002,7 +2002,7 @@ async function loadEnvironmentFile(environment: string): Promise<(() => Promise<
       cli.warn(`No .env.${environment} found, falling back to .env`)
     }
     else {
-      cli.error(`No .env.${environment} or .env file found`)
+      cli.info(`No .env.${environment} or .env file found; using the existing process environment`)
     }
     return null
   }
