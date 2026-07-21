@@ -2003,7 +2003,13 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             OriginAccessIdentity: '',
           },
           OriginShield: cdnConfig.originShield
-            ? { Enabled: true, OriginShieldRegion: cdnConfig.originShieldRegion || region }
+            ? {
+                Enabled: true,
+                OriginShieldRegion: cdnConfig.originShieldRegion
+                  || this.mergedConfig.environments[env]?.region
+                  || this.mergedConfig.project.region
+                  || 'us-east-1',
+              }
             : { Enabled: false },
         }]
         const cacheBehaviors: any[] = []
