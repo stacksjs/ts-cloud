@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.48...v0.7.49)
+
+## 🐛 Bug Fixes
+
+- **cdn**: resolve Origin Shield deployment region ([9710630](https://github.com/stacksjs/ts-cloud/commit/9710630)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.49 ([e17d4e8](https://github.com/stacksjs/ts-cloud/commit/e17d4e8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.47...v0.7.48)
 
 ## 🚀 Features
