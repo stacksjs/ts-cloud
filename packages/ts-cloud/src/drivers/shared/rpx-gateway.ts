@@ -611,6 +611,11 @@ export const RPX_CERT_RENEW_SCRIPT = '/etc/rpx/renew-certs.sh'
 export const RPX_CERT_RENEW_SERVICE = 'rpx-cert-renew.service'
 export const RPX_CERT_RENEW_TIMER = 'rpx-cert-renew.timer'
 
+export function rpxCertRenewServiceName(slug: string): string {
+  const safeSlug = (slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
+  return `rpx-cert-renew-${safeSlug}.service`
+}
+
 /** The routable FQDNs in a gateway config — each terminates TLS so each needs a cert. */
 export function certDomainsForConfig(config: RpxGatewayConfig): string[] {
   const seen = new Set<string>()
@@ -653,7 +658,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   // app's deploy never touches another app's renewal (Forge-style independence).
   const slug = (options.slug || 'app').replace(/[^a-z0-9._-]+/gi, '-')
   const renewScriptPath = `${RPX_DIR}/renew-certs-${slug}.sh`
-  const renewServiceName = `rpx-cert-renew-${slug}.service`
+  const renewServiceName = rpxCertRenewServiceName(slug)
   const renewTimerName = `rpx-cert-renew-${slug}.timer`
 
   const renewScript = [

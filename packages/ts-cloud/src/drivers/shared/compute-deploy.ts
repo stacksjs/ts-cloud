@@ -29,7 +29,7 @@ import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from './rpx-gateway'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
 import type { RpxLbAppBox } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
@@ -643,5 +643,56 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     return false
   }
   logger.success(`rpx gateway reloaded on ${result.instanceCount} target(s)`)
+  return true
+}
+
+/**
+ * Request the first production certificates after DNS has been reconciled.
+ * Provisioning installs the per-project renewal unit, but ACME HTTP-01 cannot
+ * succeed until the domain points at the new box. This deliberately runs after
+ * DNS and targets the same gateway box selected by reloadRpxGateway.
+ */
+export async function renewRpxCertificates(
+  options: Pick<DeployAllSitesOptions, 'config' | 'environment' | 'driver' | 'logger' | 'rpxConfig'>,
+): Promise<boolean> {
+  const { config, environment, driver, logger = noopLogger } = options
+  const routeSource = options.rpxConfig ?? config
+  const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
+  if (proxy?.engine !== 'rpx' || !proxy.onDemandTls)
+    return true
+
+  const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug })
+  if (rpxConfig.proxies.length === 0)
+    return true
+
+  const slug = config.project.slug
+  const stackName = resolveProjectStackName(config, environment)
+  let role: 'lb' | 'app' = 'lb'
+  let targets = await driver.findComputeTargets({ slug, environment, role, stackName })
+  if (targets.length === 0) {
+    role = 'app'
+    targets = await driver.findComputeTargets({ slug, environment, role, stackName })
+  }
+  if (targets.length === 0) {
+    logger.warn('rpx TLS: no gateway targets found - skipping certificate issuance.')
+    return true
+  }
+
+  logger.step('Issuing rpx TLS certificates after DNS reconciliation...')
+  const result = await driver.runRemoteDeploy({
+    targets,
+    commands: [`systemctl start ${rpxCertRenewServiceName(slug)}`],
+    comment: `ts-cloud rpx TLS issuance ${slug}`,
+    tags: {
+      Project: slug,
+      Environment: environment,
+      Role: role,
+    },
+  })
+  if (!result.success) {
+    logger.error(`rpx TLS issuance failed: ${result.error || 'unknown error'}`)
+    return false
+  }
+  logger.success(`rpx TLS certificates reconciled on ${result.instanceCount} gateway target(s)`)
   return true
 }

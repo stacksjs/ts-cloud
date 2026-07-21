@@ -39,7 +39,7 @@ export {
   releaseTarballTmpPath,
   resolveExecStart,
 } from './shared/deploy-script'
-export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from './shared/compute-deploy'
+export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway, renewRpxCertificates } from './shared/compute-deploy'
 export {
   buildRpxConfig,
   buildRpxFragmentRefreshScript,

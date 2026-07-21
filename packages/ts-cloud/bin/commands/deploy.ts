@@ -23,7 +23,7 @@ import { PreDeployScanner, type ScanResult, type SecurityFinding } from '../../s
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { deploymentCoexistenceError, resolveAppDatabase, resolveDeploymentMode, resolveProjectStackName, resolveSiteBucketName, resolveSiteResourceName, resolveSiteStackName, resolveCloudProvider } from '@ts-cloud/core'
 import { createCloudDriver } from '../../src/drivers'
-import { deployAllComputeSites } from '../../src/drivers/shared/compute-deploy'
+import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
 
@@ -348,6 +348,7 @@ export function registerDeployCommands(app: CLI): void {
     .option('--skip-security-scan', 'Skip pre-deployment security scan')
     .option('--skip-dns-verification', 'Skip DNS provider verification and record creation (use when DNS is already configured)')
     .option('--security-fail-on <severity>', 'Security scan fail threshold (critical, high, medium, low)', { default: 'critical' })
+    .option('--dry-run', 'Show the deployment plan without making changes')
     .option('--yes', 'Skip confirmation prompts (non-interactive / CI)')
     .action(async (options?: {
       stack?: string
@@ -356,6 +357,7 @@ export function registerDeployCommands(app: CLI): void {
       skipSecurityScan?: boolean
       skipDnsVerification?: boolean
       securityFailOn?: 'critical' | 'high' | 'medium' | 'low'
+      dryRun?: boolean
       yes?: boolean
     }) => {
       cli.header('Deploying Infrastructure')
@@ -383,6 +385,27 @@ export function registerDeployCommands(app: CLI): void {
           cli.error('\n✗ Deployment configuration is invalid:')
           for (const e of deployErrors)
             cli.error(`  • ${e}`)
+          return
+        }
+
+        if (options?.dryRun) {
+          if (options.site && !config.sites?.[options.site]) {
+            cli.error(`Site '${options.site}' was not found. Configured sites: ${Object.keys(config.sites || {}).join(', ') || 'none'}`)
+            return
+          }
+          const deploymentMode = resolveDeploymentMode(config)
+          const stackName = options.stack || resolveProjectStackName(config, environment)
+          const cloudProvider = resolveCloudProvider(config)
+          const region = config.project.region || 'us-east-1'
+          const sites = options.site ? [options.site] : Object.keys(config.sites || {})
+          cli.header('Deployment Plan')
+          cli.info(`Cloud provider: ${cloudProvider}`)
+          cli.info(`Mode: ${deploymentMode}`)
+          cli.info(`Stack: ${stackName}`)
+          cli.info(`Region: ${region}`)
+          cli.info(`Environment: ${environment}`)
+          cli.info(`Sites: ${sites.length > 0 ? sites.join(', ') : 'none'}`)
+          cli.success('Dry run complete. No infrastructure, DNS, certificates, or application files were changed.')
           return
         }
 
@@ -502,6 +525,14 @@ export function registerDeployCommands(app: CLI): void {
             // for a compute deploy DNS is reconciled here instead — additive
             // UPSERTs only, opt-in via `infrastructure.dns.provider`.
             await reconcileServerDns(config, outputs.appPublicIp, dnsProvider)
+            const tlsOk = await renewRpxCertificates({
+              config,
+              environment,
+              driver,
+              logger: { info: cli.info, warn: cli.warn, error: cli.error, step: cli.step, success: cli.success },
+            })
+            if (!tlsOk)
+              cli.error('App deployed, but rpx TLS certificate reconciliation failed')
           }
           return
         }

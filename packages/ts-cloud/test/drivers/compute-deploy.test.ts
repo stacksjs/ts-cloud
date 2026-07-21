@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
 import { deriveManagementDashboardPort } from '@ts-cloud/core'
-import { deployAllComputeSites, deploySiteRelease, reloadRpxGateway } from '../../src/drivers/shared/compute-deploy'
+import { deployAllComputeSites, deploySiteRelease, reloadRpxGateway, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -435,6 +435,54 @@ describe('reloadRpxGateway', () => {
     expect(call.tags.Role).toBe('app')
     expect(call.commands.join('\n')).toContain('bun add @stacksjs/rpx')
     expect(call.commands.join('\n')).toContain('localhost:3000')
+  })
+})
+
+describe('renewRpxCertificates', () => {
+  const tlsConfig: CloudConfig = {
+    project: { name: 'App', slug: 'my-app', region: 'fsn1' },
+    environments: { production: { type: 'production' } },
+    sites: {
+      web: { domain: 'my-app.example.com', port: 3000, root: '.output', start: 'bun run server.ts' },
+    },
+    infrastructure: {
+      compute: { runtime: 'bun', proxy: { engine: 'rpx', onDemandTls: true } },
+    },
+  }
+
+  it('starts the project renewal unit on the single-box gateway', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const ok = await renewRpxCertificates({
+      config: tlsConfig,
+      environment: 'production',
+      driver,
+    })
+
+    expect(ok).toBe(true)
+    const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    expect(call.targets[0].id).toBe('i-abc123')
+    expect(call.commands).toEqual(['systemctl start rpx-cert-renew-my-app.service'])
+    expect(call.tags.Role).toBe('app')
+  })
+
+  it('uses the dedicated load balancer when one fronts the app fleet', async () => {
+    const driver = createMockDriver({
+      name: 'hetzner',
+      usesCloudFormation: false,
+      findComputeTargets: mock(async (options?: { role?: string }) => options?.role === 'lb'
+        ? [{ id: 'lb-1', publicIp: '203.0.113.10', status: 'running' }]
+        : [{ id: 'app-1', publicIp: '203.0.113.11', status: 'running' }]),
+    })
+    const ok = await renewRpxCertificates({
+      config: tlsConfig,
+      environment: 'production',
+      driver,
+    })
+
+    expect(ok).toBe(true)
+    const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    expect(call.targets[0].id).toBe('lb-1')
+    expect(call.tags.Role).toBe('lb')
   })
 })
 
