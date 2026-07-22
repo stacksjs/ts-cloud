@@ -136,3 +136,46 @@ export interface SourceConnectionStoreOptions {
   now?: () => Date
   id?: () => string
 }
+
+export interface SourceRepositoryPage {
+  repositories: Array<Omit<SourceRepository, 'id' | 'connectionId' | 'syncedAt'>>
+  nextCursor?: string
+}
+
+export interface SourceRef {
+  name: string
+  commitSha: string
+  protected?: boolean
+}
+
+export interface SourceRefPage {
+  refs: SourceRef[]
+  nextCursor?: string
+}
+
+export interface SourceWebhookRegistration {
+  providerWebhookId: string
+  active: boolean
+  events: string[]
+  url: string
+}
+
+export interface SourceConnectionTest {
+  ok: boolean
+  account?: string
+  scopes: string[]
+  message: string
+}
+
+export interface SourceProviderAdapter {
+  readonly provider: SourceProvider
+  readonly capabilities: SourceCapabilities
+  testConnection: () => Promise<SourceConnectionTest>
+  listRepositories: (input?: { cursor?: string, search?: string, limit?: number }) => Promise<SourceRepositoryPage>
+  listBranches: (repository: string, input?: { cursor?: string, limit?: number }) => Promise<SourceRefPage>
+  listTags: (repository: string, input?: { cursor?: string, limit?: number }) => Promise<SourceRefPage>
+  createWebhook: (repository: string, input: { url: string, secret: string, events: string[] }) => Promise<SourceWebhookRegistration>
+  listWebhooks: (repository: string) => Promise<SourceWebhookRegistration[]>
+  updateWebhook: (repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }) => Promise<SourceWebhookRegistration>
+  deleteWebhook: (repository: string, webhookId: string) => Promise<void>
+}
