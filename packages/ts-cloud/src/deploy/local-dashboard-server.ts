@@ -25,6 +25,7 @@ import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCo
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
 import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry, type RuntimeStreamSnapshot } from '../runtime'
 import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
+import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -380,6 +381,15 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/sources/deploy-keys',
   'DELETE /api/sources/deploy-keys',
   'PATCH /api/telemetry/settings',
+  'POST /api/health/checks',
+  'PATCH /api/health/checks',
+  'POST /api/alerts/rules',
+  'PATCH /api/alerts/rules',
+  'POST /api/alerts/silences',
+  'POST /api/notifications/channels',
+  'PATCH /api/notifications/channels',
+  'POST /api/notifications/routes',
+  'PATCH /api/notifications/routes',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -686,6 +696,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/operations/releases',
   '/operations/workloads',
   '/operations/observability',
+  '/operations/alerts',
   '/account/security',
   '/security',
   '/access-denied',
@@ -726,6 +737,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/operations/releases': 'deployments:read',
   '/operations/workloads': 'runtime:read',
   '/operations/observability': 'runtime:logs',
+  '/operations/alerts': 'runtime:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -944,6 +956,39 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const previewService = new PreviewEnvironmentService(controlPlane.store)
   const composeService = new ComposeApplicationService(controlPlane.store)
   const releaseService = new ReleaseService(controlPlane.store)
+  const alertStore = new AlertStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  const notificationRouter = new NotificationRouter(alertStore, {
+    emailImpl: async input => {
+      const { email } = await import('../aws/email')
+      return email.send(input)
+    },
+  })
+  const evaluateAlerts = async (environmentId?: string) => {
+    const evaluations = evaluateTelemetryAlertRules(alertStore, controlPlane.project.id, environmentId)
+    const deliveries = []
+    for (const evaluation of evaluations.filter(item => item.notify && item.alert)) deliveries.push(...await notificationRouter.deliverAll(notificationRouter.enqueue(controlPlane.organization.id, evaluation.alert!, evaluation.transition as 'firing'|'resolved')))
+    deliveries.push(...await notificationRouter.deliverAll(notificationRouter.enqueueRemindersAndEscalations(controlPlane.organization.id, alertStore.listAlerts(controlPlane.project.id, { environmentId, states: ['firing'] }))))
+    deliveries.push(...await notificationRouter.retryDue())
+    return { evaluations, deliveries }
+  }
+  let healthSweepRunning = false
+  const evaluateHealthChecks = async () => {
+    if (healthSweepRunning) return
+    healthSweepRunning = true
+    try {
+      for (const environmentRecord of controlPlane.environments.values()) for (const check of alertStore.listHealthChecks(controlPlane.project.id, environmentRecord.id).filter(item => item.enabled)) {
+        const latest = alertStore.listHealthResults(check.id, 1)[0]
+        if (latest && Date.now() - new Date(latest.checkedAt).getTime() < check.intervalSeconds * 1000) continue
+        const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check)
+        for (const evaluation of outcome.evaluations.filter(item => item.notify && item.alert)) await notificationRouter.deliverAll(notificationRouter.enqueue(controlPlane.organization.id, evaluation.alert!, evaluation.transition as 'firing'|'resolved'))
+      }
+    }
+    finally { healthSweepRunning = false }
+  }
+  const alertEvaluationSweep = setInterval(() => { for (const record of controlPlane.environments.values()) void evaluateAlerts(record.id).catch(error => console.error('ts-cloud alert evaluation failed:', error)) }, 60_000)
+  alertEvaluationSweep.unref?.()
+  const healthCheckSweep = setInterval(() => { void evaluateHealthChecks().catch(error => console.error('ts-cloud health check evaluation failed:', error)) }, 30_000)
+  healthCheckSweep.unref?.()
   previewService.cleanup()
   const previewCleanupSweep = setInterval(() => {
     try { previewService.cleanup() }
@@ -1000,7 +1045,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })) }) }, {
+      }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
         parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
         onError: error => console.error('ts-cloud deployment queue worker failed:', error),
       })
@@ -2997,6 +3042,59 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ...tracked.result, controlPlaneOperation: tracked.operation }, tracked.result.ok ? 200 : 409)
         }
 
+        if (url.pathname.startsWith('/api/health/') || url.pathname.startsWith('/api/alerts') || url.pathname.startsWith('/api/notifications/')) {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const resources = controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id)
+          const readableResources = user.role === 'admin' || (!!environmentRecord && mayAccessEnvironment(user, environmentRecord.id, 'runtime:read')) ? resources : resources.filter(resource => mayAccessResource(user, resource.id, 'runtime:read'))
+          const visibleResource = (resourceId?: string) => !resourceId || readableResources.some(resource => resource.id === resourceId)
+          const resolveResource = (value: unknown): string | undefined => { if (!value) return undefined; const resource = resources.find(item => item.id === value || item.slug === value); if (!resource) throw new Error('Alert resource was not found.'); if (!visibleResource(resource.id)) throw new Error('Alert resource is outside your authorized scope.'); return resource.id }
+          const actor = organizationPrincipal(user).actor
+
+          if (url.pathname === '/api/health/checks' && req.method === 'GET') return json({ ok: true, checks: alertStore.listHealthChecks(controlPlane.project.id, environmentRecord?.id).filter(check => visibleResource(check.resourceId)).map(check => ({ ...check, results: alertStore.listHealthResults(check.id, 20) })) })
+          if (url.pathname === '/api/health/checks' && req.method === 'POST') {
+            const body = await readJsonBody(req); const kind = String(body.kind ?? 'http') as import('../alerts').HealthCheckKind
+            if (kind === 'command' && user.role !== 'admin') return json({ ok: false, error: 'Command health checks require an administrator.' }, 403)
+            const config = { method: String(body.config?.method ?? 'GET').toUpperCase().slice(0, 10), path: body.config?.path ? String(body.config.path).slice(0, 500) : undefined, port: body.config?.port == null ? undefined : Number(body.config.port), command: Array.isArray(body.config?.command) ? body.config.command.map(String).slice(0, 20) : undefined, expectedStatuses: Array.isArray(body.config?.expectedStatuses) ? body.config.expectedStatuses.map(Number).filter(Number.isInteger).slice(0, 20) : undefined, expectedBody: body.config?.expectedBody ? String(body.config.expectedBody).slice(0, 500) : undefined }
+            return json({ ok: true, check: alertStore.createHealthCheck({ projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceId: resolveResource(body.resourceId ?? body.resource), name: String(body.name ?? ''), kind, target: String(body.target ?? ''), config, intervalSeconds: Number(body.intervalSeconds) || 60, timeoutSeconds: Number(body.timeoutSeconds) || 10, failureThreshold: Number(body.failureThreshold) || 3, recoveryThreshold: Number(body.recoveryThreshold) || 2, regions: Array.isArray(body.regions) ? body.regions.map(String) : ['local'], enabled: body.enabled !== false }) }, 201)
+          }
+          if (url.pathname === '/api/health/checks' && req.method === 'PATCH') { const body = await readJsonBody(req); const current = alertStore.getHealthCheck(String(body.id ?? '')); if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Health check was not found.' }, 404); return json({ ok: true, check: alertStore.setHealthCheckEnabled(current.id, body.enabled !== false) }) }
+          if (url.pathname === '/api/health/checks/test' && req.method === 'POST') {
+            const body = await readJsonBody(req); const check = alertStore.getHealthCheck(String(body.id ?? '')); if (!check || !visibleResource(check.resourceId)) return json({ ok: false, error: 'Health check was not found.' }, 404)
+            return json({ ok: true, productionIncidentCreated: false, result: await new HealthCheckRunner(alertStore).probe(check) })
+          }
+          if (url.pathname === '/api/health/checks/run' && req.method === 'POST') {
+            const body = await readJsonBody(req); const check = alertStore.getHealthCheck(String(body.id ?? '')); if (!check || !visibleResource(check.resourceId)) return json({ ok: false, error: 'Health check was not found.' }, 404)
+            const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); const deliveries = []
+            for (const evaluation of outcome.evaluations.filter(item => item.notify && item.alert)) { const queued = notificationRouter.enqueue(controlPlane.organization.id, evaluation.alert!, evaluation.transition as 'firing'|'resolved'); deliveries.push(...await notificationRouter.deliverAll(queued)) }
+            return json({ ok: true, ...outcome, deliveries })
+          }
+          if (url.pathname === '/api/alerts/rules' && req.method === 'GET') return json({ ok: true, rules: alertStore.listRules(controlPlane.project.id, environmentRecord?.id).filter(rule => visibleResource(rule.resourceId)) })
+          if (url.pathname === '/api/alerts/rules' && req.method === 'POST') {
+            const body = await readJsonBody(req); const healthCheck = body.healthCheckId ? alertStore.getHealthCheck(String(body.healthCheckId)) : undefined
+            if (body.healthCheckId && (!healthCheck || !visibleResource(healthCheck.resourceId))) return json({ ok: false, error: 'Health check was not found.' }, 404)
+            return json({ ok: true, rule: alertStore.createRule({ projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceId: resolveResource(body.resourceId ?? body.resource) ?? healthCheck?.resourceId, healthCheckId: healthCheck?.id, name: String(body.name ?? ''), signal: String(body.signal ?? (healthCheck ? 'health' : '')), operator: String(body.operator ?? (healthCheck ? 'unhealthy' : 'gt')) as any, threshold: body.threshold == null ? undefined : Number(body.threshold), recoveryThreshold: body.recoveryThreshold == null ? undefined : Number(body.recoveryThreshold), windowMs: Number(body.windowMs) || 300_000, consecutive: Number(body.consecutive) || healthCheck?.failureThreshold || 3, recoveryConsecutive: Number(body.recoveryConsecutive) || healthCheck?.recoveryThreshold || 2, noDataPolicy: ['ignore','pending','firing'].includes(String(body.noDataPolicy)) ? body.noDataPolicy : 'pending', severity: ['info','warning','critical'].includes(String(body.severity)) ? body.severity : 'warning', groupBy: Array.isArray(body.groupBy) ? body.groupBy.map(String) : [], labels: body.labels && typeof body.labels === 'object' ? body.labels : {}, enabled: body.enabled !== false }) }, 201)
+          }
+          if (url.pathname === '/api/alerts/rules' && req.method === 'PATCH') { const body = await readJsonBody(req); const current = alertStore.getRule(String(body.id ?? '')); if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Alert rule was not found.' }, 404); return json({ ok: true, rule: alertStore.setRuleEnabled(current.id, body.enabled !== false) }) }
+          if (url.pathname === '/api/alerts/evaluate' && req.method === 'POST') return json({ ok: true, ...(await evaluateAlerts(environmentRecord?.id)) })
+          if (url.pathname === '/api/alerts' && req.method === 'GET') return json({ ok: true, alerts: alertStore.listAlerts(controlPlane.project.id, { environmentId: environmentRecord?.id, states: url.searchParams.getAll('state').length ? url.searchParams.getAll('state') : undefined, limit: Number(url.searchParams.get('limit')) || 200 }).filter(alert => visibleResource(alert.resourceId)).map(alert => ({ ...alert, deliveries: alertStore.listDeliveries({ alertId: alert.id, limit: 50 }) })) })
+          if (url.pathname === '/api/alerts/action' && req.method === 'POST') {
+            const body = await readJsonBody(req); const current = alertStore.getAlert(String(body.id ?? '')); if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Alert was not found.' }, 404)
+            const action = String(body.action ?? ''); if (action === 'acknowledge') return json({ ok: true, alert: alertStore.acknowledge(current.id, actor?.id ?? '') }); if (action === 'assign') return json({ ok: true, alert: alertStore.assign(current.id, body.ownerActorId === 'me' ? actor?.id : body.ownerActorId ? String(body.ownerActorId) : undefined, actor?.id) }); if (action === 'silence') { if (user.role !== 'admin') return json({ ok: false, error: 'Silencing production alerts requires an administrator.' }, 403); const session = guard.resolveSession(req); if (authEnabled && (!session || !authentication.isRecentlyAuthenticated(session))) return json({ ok: false, error: 'Recent authentication is required to silence alerts.', stepUpRequired: true }, 401); return json({ ok: true, alert: alertStore.silenceAlert(current.id, String(body.until ?? ''), actor?.id) }) } return json({ ok: false, error: 'Action must be acknowledge, assign, or silence.' }, 422)
+          }
+          if (url.pathname === '/api/alerts/silences' && req.method === 'POST') { const body = await readJsonBody(req); return json({ ok: true, id: alertStore.createSilence({ projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceId: resolveResource(body.resourceId ?? body.resource), matcher: body.matcher, reason: String(body.reason ?? ''), startsAt: String(body.startsAt ?? new Date().toISOString()), endsAt: String(body.endsAt ?? ''), timezone: String(body.timezone ?? 'UTC'), actorId: actor?.id }) }, 201) }
+
+          if (url.pathname === '/api/notifications/channels' && req.method === 'GET') return json({ ok: true, channels: alertStore.listChannels(controlPlane.organization.id) })
+          if (url.pathname === '/api/notifications/channels' && req.method === 'POST') { const body = await readJsonBody(req); const kind = String(body.kind ?? '') as import('../alerts').NotificationChannelKind; const allowedConfig = kind === 'email' ? { to: body.config?.to, from: body.config?.from } : kind === 'telegram' ? { chatId: String(body.config?.chatId ?? '') } : {}; return json({ ok: true, channel: alertStore.createChannel({ organizationId: controlPlane.organization.id, name: String(body.name ?? ''), kind, config: allowedConfig, credential: body.credential ? String(body.credential) : undefined, actorId: actor?.id }) }, 201) }
+          if (url.pathname === '/api/notifications/channels' && req.method === 'PATCH') { const body = await readJsonBody(req); const id = String(body.id ?? ''); if (body.credential) return json({ ok: true, channel: alertStore.rotateChannel(id, String(body.credential)) }); const status = String(body.status ?? 'paused'); if (!['active','paused','disabled'].includes(status)) return json({ ok: false, error: 'Channel status must be active, paused, or disabled.' }, 422); return json({ ok: true, channel: alertStore.setChannelStatus(id, status as any) }) }
+          if (url.pathname === '/api/notifications/channels/test' && req.method === 'POST') { const body = await readJsonBody(req); return json({ ok: true, productionIncidentCreated: false, result: await notificationRouter.testChannel(String(body.id ?? '')) }) }
+          if (url.pathname === '/api/notifications/routes' && req.method === 'GET') return json({ ok: true, routes: alertStore.listRoutes(controlPlane.organization.id) })
+          if (url.pathname === '/api/notifications/routes' && req.method === 'POST') { const body = await readJsonBody(req); const channelIds = Array.isArray(body.channelIds) ? body.channelIds.map(String) : []; if (channelIds.some(id => alertStore.getChannel(id)?.organizationId !== controlPlane.organization.id)) return json({ ok: false, error: 'Route contains an unavailable channel.' }, 422); return json({ ok: true, route: alertStore.createRoute({ organizationId: controlPlane.organization.id, name: String(body.name ?? ''), priority: Number(body.priority) || 0, matcher: body.matcher && typeof body.matcher === 'object' ? body.matcher : {}, channelIds, quietHours: body.quietHours, groupWaitSeconds: Number(body.groupWaitSeconds) || 30, reminderSeconds: body.reminderSeconds == null ? undefined : Number(body.reminderSeconds), escalation: Array.isArray(body.escalation) ? body.escalation : [], enabled: body.enabled !== false }) }, 201) }
+          if (url.pathname === '/api/notifications/routes' && req.method === 'PATCH') { const body = await readJsonBody(req); const route = alertStore.getRoute(String(body.id ?? '')); if (!route || route.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Notification route was not found.' }, 404); return json({ ok: true, route: alertStore.setRouteEnabled(route.id, body.enabled !== false) }) }
+          if (url.pathname === '/api/notifications/routes/preview' && req.method === 'POST') { const body = await readJsonBody(req); const existing = body.alertId ? alertStore.getAlert(String(body.alertId)) : undefined; const preview = existing ?? { id: 'preview', ruleId: 'preview', projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceId: resolveResource(body.resourceId ?? body.resource), dedupKey: 'preview', groupKey: String(body.groupKey ?? 'default'), state: 'firing', severity: ['info','warning','critical'].includes(String(body.severity)) ? body.severity : 'warning', title: String(body.title ?? 'Rule preview'), evidence: {}, failureCount: 1, recoveryCount: 0, occurrenceCount: 1, firstSeenAt: new Date().toISOString(), lastSeenAt: new Date().toISOString(), firingAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as import('../alerts').Alert; return json({ ok: true, productionIncidentCreated: false, matches: notificationRouter.preview(controlPlane.organization.id, preview, String(body.eventType ?? 'firing')).map(item => ({ route: item.route, channels: item.channels, quiet: item.quiet })) }) }
+          if (url.pathname === '/api/notifications/deliveries' && req.method === 'GET') return json({ ok: true, deliveries: alertStore.listDeliveries({ alertId: url.searchParams.get('alertId') ?? undefined, states: url.searchParams.getAll('state'), limit: Number(url.searchParams.get('limit')) || 200 }) })
+          if (url.pathname === '/api/notifications/deliveries/retry' && req.method === 'POST') { const body = await readJsonBody(req); const current = alertStore.getDelivery(String(body.id ?? '')); if (!current) return json({ ok: false, error: 'Delivery was not found.' }, 404); alertStore.updateDelivery(current.id, { state: 'retrying', attempt: Math.max(0, current.attempt - 1), nextAttemptAt: new Date().toISOString() }); return json({ ok: true, delivery: await notificationRouter.deliver(current.id) }) }
+        }
+
         if (url.pathname.startsWith('/api/telemetry/')) {
           const environmentRecord = controlPlane.environments.get(environment)
           const telemetry = new TelemetryStore(controlPlane.store)
@@ -3429,6 +3527,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     clearInterval(mfaThrottleSweep)
     clearInterval(runtimeStreamSweep)
     clearInterval(previewCleanupSweep)
+    clearInterval(alertEvaluationSweep)
+    clearInterval(healthCheckSweep)
     clearUiCache()
     runtimeStreams.clear()
     queueWorker?.stop()
