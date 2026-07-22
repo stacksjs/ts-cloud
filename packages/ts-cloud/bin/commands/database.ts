@@ -3,7 +3,7 @@ import type { EnvironmentType } from '@ts-cloud/core'
 import type { DataAction, DataEngine, DataProvider, DataService, JsonValue } from '../../src'
 import * as output from '../../src/utils/cli'
 import { resolveAuthEncryptionKey } from '../../src/auth'
-import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, EncryptedDataSecretStore } from '../../src/data-services'
+import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter } from '../../src/data-services'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
 import { DurableOperationQueue } from '../../src/queue'
 import { loadValidatedConfig } from './shared'
@@ -113,6 +113,8 @@ async function context(environment?: string, serviceHint?: string) {
     aws_elasticache: new AwsElastiCacheDataAdapter(
       new AwsElastiCacheTransport(),
     ),
+    server: new ServerDataAdapter(new DockerDataTransport()),
+    container: new ContainerDataAdapter(new DockerDataTransport()),
   } as const
   return {
     config,

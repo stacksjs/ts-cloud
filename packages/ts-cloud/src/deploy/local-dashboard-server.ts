@@ -27,7 +27,7 @@ import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry
 import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
-import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, EncryptedDataSecretStore, type DataEngine, type DataProvider, type DataService } from '../data-services'
+import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -971,6 +971,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport()),
     aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport()),
     aws_elasticache: new AwsElastiCacheDataAdapter(new AwsElastiCacheTransport()),
+    server: new ServerDataAdapter(new DockerDataTransport()),
+    container: new ContainerDataAdapter(new DockerDataTransport()),
   } as const
   const resolveDataAdapter = (service: DataService) => dataAdapters[service.provider as keyof typeof dataAdapters]
   const jobStore = new JobStore(controlPlane.store)

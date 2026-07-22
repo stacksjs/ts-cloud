@@ -78,7 +78,7 @@ describe('data service capability model', () => {
       dataServiceCapabilities('postgres', 'aws_aurora').actions,
     ).toMatchObject({
       backup: { supported: true },
-      slow_queries: { supported: true },
+      slow_queries: { supported: false },
       delete: { destructive: true, downtime: 'required' },
     })
     expect(
@@ -87,6 +87,14 @@ describe('data service capability model', () => {
       backup: { supported: false },
       users: { supported: false },
       resize: { supported: true },
+    })
+    expect(
+      dataServiceCapabilities('postgres', 'container').actions,
+    ).toMatchObject({
+      databases: { supported: true },
+      logs: { supported: true },
+      expose: { supported: false },
+      version: { supported: false },
     })
   })
   it('generates secret-free connection guidance', () => {
