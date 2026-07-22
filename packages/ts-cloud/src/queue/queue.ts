@@ -300,12 +300,13 @@ export class DurableOperationQueue {
   }
 
   clearCompleted(input: { before?: string, actorId?: string, projectId?: string } = {}): number {
-    const before = input.before ?? this.now()
-    const bindings: SQLQueryBindings[] = [before]
+    const now = this.now()
+    const bindings: SQLQueryBindings[] = [now]
     const project = input.projectId ? 'AND o.project_id=?' : ''; if (input.projectId) bindings.push(input.projectId)
-    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id, o.project_id, o.correlation_id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state IN ('succeeded','failed','cancelled','timed_out') AND j.retention_until<=? ${project}`).all(...bindings)
+    const finished = input.before ? 'AND o.finished_at<=?' : ''; if (input.before) bindings.push(new Date(input.before).toISOString())
+    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id, o.project_id, o.correlation_id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state IN ('succeeded','failed','cancelled','timed_out') AND j.retention_until<=? ${project} ${finished}`).all(...bindings)
     for (const row of rows) {
-      this.controlPlane.appendEvent({ projectId: optional(row.project_id), actorId: input.actorId, correlationId: String(row.correlation_id), type: 'queue.history.cleared', level: 'warning', payload: { operationId: String(row.id), retainedUntil: before } })
+      this.controlPlane.appendEvent({ projectId: optional(row.project_id), actorId: input.actorId, correlationId: String(row.correlation_id), type: 'queue.history.cleared', level: 'warning', payload: { operationId: String(row.id), retentionCutoff: now } })
       this.controlPlane.database.run('DELETE FROM operations WHERE id=?', [String(row.id)])
     }
     return rows.length

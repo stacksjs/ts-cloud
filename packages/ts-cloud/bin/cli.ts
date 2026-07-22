@@ -47,6 +47,7 @@ import {
   registerStatusCommands,
   registerBackupCommands,
   registerApiCommands,
+  registerOperationQueueCommands,
   registerTunnelCommands,
 } from './commands'
 
@@ -118,6 +119,7 @@ registerAuditCommands(app)
 // Operations & Backup
 registerBackupCommands(app)
 registerApiCommands(app)
+registerOperationQueueCommands(app)
 
 // Cost & Resources
 registerCostCommands(app)
