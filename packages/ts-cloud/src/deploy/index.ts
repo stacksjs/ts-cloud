@@ -11,6 +11,7 @@ export * from './static-site'
 export * from './static-site-external-dns'
 export * from './static-site-helper'
 export * from './static-api-origin'
+export * from './fullstack-container'
 
 // Serverless application pipeline (Laravel-Vapor-equivalent) — orchestrator API.
 export {
