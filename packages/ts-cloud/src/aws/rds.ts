@@ -770,6 +770,49 @@ export class RDSClient {
     })
   }
 
+  /** Describe Aurora cluster snapshots, optionally by exact identifier. */
+  async describeDBClusterSnapshots(options: {
+    DBClusterIdentifier?: string
+    DBClusterSnapshotIdentifier?: string
+  } = {}): Promise<{ DBClusterSnapshots: Array<Record<string, any>> }> {
+    const params: Record<string, any> = {
+      Action: 'DescribeDBClusterSnapshots',
+      Version: '2014-10-31',
+      ...options,
+    }
+    const result = await this.client.request({
+      service: 'rds',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(buildQueryParams(params)).toString(),
+    })
+    const response = result.DescribeDBClusterSnapshotsResult || result
+    const snapshots = response.DBClusterSnapshots?.DBClusterSnapshot ?? response.DBClusterSnapshots ?? []
+    return { DBClusterSnapshots: Array.isArray(snapshots) ? snapshots : [snapshots] }
+  }
+
+  /** Delete one Aurora cluster snapshot managed by ts-cloud. */
+  async deleteDBClusterSnapshot(
+    snapshotIdentifier: string,
+  ): Promise<void> {
+    await this.client.request({
+      service: 'rds',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(
+        buildQueryParams({
+          Action: 'DeleteDBClusterSnapshot',
+          Version: '2014-10-31',
+          DBClusterSnapshotIdentifier: snapshotIdentifier,
+        }),
+      ).toString(),
+    })
+  }
+
   /** Delete an Aurora cluster with a final snapshot by default. */
   async deleteDBCluster(
     dbClusterIdentifier: string,

@@ -543,7 +543,11 @@ export function createBackupQueueHandlers(input: {
           : { healthy: true, mode: 'adapter' }
       if (health.healthy !== true)
         throw new Error('Restored target did not pass its configured health check.')
-      if (drill && source.cleanup) await source.cleanup(job.target, context)
+      if (drill && source.cleanup)
+        await source.cleanup(
+          { ...job.target, provider: point.manifest.provider ?? null },
+          context,
+        )
       input.store.updateJob(job.id, {
         status: 'succeeded',
         finishedAt: now().toISOString(),
@@ -558,18 +562,24 @@ export function createBackupQueueHandlers(input: {
         cleaned: drill,
       }
     } catch (error) {
-      const source = (() => {
+      const resolved = (() => {
         try {
-          return resolve(job).source
+          return resolve(job)
         } catch {
           return undefined
         }
       })(),
         message = error instanceof Error ? error.message : String(error)
       let cleanupRequired = false
-      if (drill && source?.cleanup) {
+      if (drill && resolved?.source.cleanup) {
         try {
-          await source.cleanup(job.target, context)
+          await resolved.source.cleanup(
+            {
+              ...job.target,
+              provider: resolved.point?.manifest.provider ?? null,
+            },
+            context,
+          )
         } catch {
           cleanupRequired = true
         }

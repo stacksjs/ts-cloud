@@ -474,7 +474,12 @@ export class BackupStore {
   ): RecoveryPoint {
     if (!/^sha256:[a-f0-9]{64}$/i.test(input.checksum))
       throw new Error('Recovery points require a SHA-256 checksum.')
-    if (!/^(s3|aws-backup|file):/.test(input.uri))
+    if (
+      typeof input.uri !== 'string' ||
+      !['s3:', 'aws-backup:', 'file:'].some((scheme) =>
+        input.uri.startsWith(scheme),
+      )
+    )
       throw new Error('Recovery point URI uses an unsupported destination scheme.')
     const id = crypto.randomUUID(),
       now = this.now().toISOString()
