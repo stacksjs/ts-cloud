@@ -1,0 +1,187 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const server = __d?.server ?? { name: 'ts-cloud' }
+</script>
+<script client>
+const accounts = state([])
+const project = state(null)
+const environments = state([])
+const resources = state([])
+const message = state('')
+const messageKind = state('')
+const reveal = state(null)
+const accountSlug = state('')
+const accountName = state('')
+const accountRole = state('deployer')
+const accountScopeType = state('environment')
+const accountScopeId = state('')
+const selectedAccount = state('')
+const tokenName = state('CI token')
+const tokenCapabilities = state(['project:read', 'deployments:read', 'deployments:create'])
+const tokenScopeType = state('environment')
+const tokenScopeId = state('')
+const tokenExpiry = state('')
+const password = state('')
+const mfaCode = state('')
+
+const capabilities = [
+  ['project:read', 'Read project and safe service metadata'],
+  ['deployments:read', 'Read deployment and operation history'],
+  ['deployments:create', 'Create or roll back deployments'],
+  ['runtime:read', 'Read runtime health'],
+  ['runtime:logs', 'Read scoped logs'],
+  ['audit:read', 'Read scoped audit events'],
+  ['backups:read', 'Read backup metadata'],
+  ['backups:create', 'Create backups'],
+]
+
+function setMessage(text, kind) { message.set(text); messageKind.set(kind || '') }
+function setScope(type, signal) {
+  if (type === 'organization') signal.set('')
+  else if (type === 'project') signal.set(project()?.id || '')
+  else if (type === 'environment') signal.set(environments()[0]?.id || '')
+  else signal.set(resources()[0]?.id || '')
+}
+function scopeLabel(scope) {
+  if (!scope || scope.type === 'organization') return 'Entire organization'
+  if (scope.type === 'project') return 'Project · ' + (project()?.name || scope.id)
+  if (scope.type === 'environment') return 'Environment · ' + (environments().find(item => item.id === scope.id)?.name || scope.id)
+  return 'Service · ' + (resources().find(item => item.id === scope.id)?.name || scope.id)
+}
+function tokenState(token) {
+  if (token.state === 'revoked') return 'Revoked'
+  if (token.state === 'expired') return 'Expired'
+  return 'Active'
+}
+function toggleCapability(value) {
+  tokenCapabilities.set(tokenCapabilities().includes(value) ? tokenCapabilities().filter(item => item !== value) : [...tokenCapabilities(), value])
+}
+async function load() {
+  try {
+    const [automationResponse, organizationResponse] = await Promise.all([fetch('/api/automation'), fetch('/api/organization')])
+    const automation = await automationResponse.json(); const organization = await organizationResponse.json()
+    if (!automationResponse.ok) throw new Error(automation.error || 'Could not load automation settings.')
+    if (!organizationResponse.ok) throw new Error(organization.error || 'Could not load organization scopes.')
+    accounts.set(automation.accounts || []); project.set(organization.project); environments.set(organization.environments || []); resources.set(organization.resources || [])
+    if (!accountScopeId()) setScope(accountScopeType(), accountScopeId)
+    if (!tokenScopeId()) setScope(tokenScopeType(), tokenScopeId)
+    if (!selectedAccount() && accounts().length) selectAccount(accounts()[0])
+  } catch (error) { setMessage(error?.message || 'Could not load automation settings.', 'bad') }
+}
+function selectAccount(item) {
+  selectedAccount.set(item.account.id)
+  tokenScopeType.set(item.membership?.scope?.type || 'organization')
+  tokenScopeId.set(item.membership?.scope?.id || '')
+}
+async function stepUp() {
+  const response = await fetch('/api/auth/step-up', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: password(), code: mfaCode() }) })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.error || 'Recent authentication is required.')
+}
+async function createAccount() {
+  setMessage('Creating service account…', '')
+  try {
+    await stepUp()
+    const response = await fetch('/api/automation/service-accounts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: accountSlug(), name: accountName(), roleTemplate: accountRole(), scopeType: accountScopeType(), scopeId: accountScopeId() }) })
+    const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Service account could not be created.')
+    accountSlug.set(''); accountName.set(''); password.set(''); mfaCode.set(''); setMessage('Service account created. Add a narrowly scoped token next.', 'ok'); await load(); selectedAccount.set(data.serviceAccount.id)
+  } catch (error) { setMessage(error?.message || 'Service account could not be created.', 'bad') }
+}
+async function createToken() {
+  setMessage('Creating one-time token…', '')
+  try {
+    await stepUp()
+    const expiresAt = tokenExpiry() ? new Date(tokenExpiry() + 'T23:59:59Z').toISOString() : undefined
+    const response = await fetch('/api/automation/tokens', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ serviceAccountId: selectedAccount(), name: tokenName(), capabilities: tokenCapabilities(), scopeType: tokenScopeType(), scopeId: tokenScopeId(), expiresAt }) })
+    const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'API token could not be created.')
+    reveal.set(data); password.set(''); mfaCode.set(''); setMessage('Token created. Copy it now; only the hash remains after this page changes.', 'ok'); load()
+  } catch (error) { setMessage(error?.message || 'API token could not be created.', 'bad') }
+}
+async function tokenAction(token, action) {
+  setMessage(action === 'rotate' ? 'Creating overlapping replacement…' : 'Revoking token…', '')
+  try {
+    await stepUp()
+    const response = await fetch(action === 'rotate' ? '/api/automation/tokens/rotate' : '/api/automation/tokens', { method: action === 'rotate' ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: token.id }) })
+    const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Token could not be updated.')
+    if (action === 'rotate') reveal.set(data)
+    password.set(''); mfaCode.set(''); setMessage(action === 'rotate' ? 'Replacement created. Update clients, then revoke the old token.' : 'Token revoked immediately.', 'ok'); load()
+  } catch (error) { setMessage(error?.message || 'Token could not be updated.', 'bad') }
+}
+async function disableAccount(item) {
+  try {
+    await stepUp()
+    const response = await fetch('/api/automation/service-accounts', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: item.account.id }) })
+    const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || 'Service account could not be disabled.')
+    password.set(''); mfaCode.set(''); setMessage('Service account, membership, and every token were disabled immediately.', 'ok'); load()
+  } catch (error) { setMessage(error?.message || 'Service account could not be disabled.', 'bad') }
+}
+function curlExample() {
+  if (!reveal()) return ''
+  return `curl -H "Authorization: Bearer ${reveal().secret}" ${location.origin}/api/v1/projects`
+}
+function cliExample() {
+  if (!reveal()) return ''
+  return `TS_CLOUD_API_URL=${location.origin} TS_CLOUD_API_TOKEN=${reveal().secret} cloud api:projects`
+}
+async function copy(value) { await navigator.clipboard.writeText(value); setMessage('Copied to clipboard.', 'ok') }
+
+onMount(() => { load() })
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - API & automation' })</head>
+<body>
+  @include('../partials/nav', { active: 'automation', name: server.name, env: 'production' })
+  <div class="wrap">
+    <div class="crumbs"><a href="/">Dashboard</a> <span class="sep">/</span> Organization <span class="sep">/</span> API &amp; automation</div>
+    <header class="page"><div><h1>API &amp; automation</h1><p>Create least-privilege machine identities for CI. Tokens never create browser sessions and cannot access outside their membership and token scope.</p></div><a class="btn ghost" href="/api/v1/openapi.json">OpenAPI 3.1</a></header>
+    <div class="msg automation-message" :class="messageKind()" role="status" aria-live="polite">{{ message() }}</div>
+
+    <div class="reveal panel" @show="!!reveal()">
+      <div><strong>Copy this token now</strong><span>The raw secret is shown once. Rotation keeps the old token active until you explicitly revoke it.</span></div>
+      <code>{{ reveal()?.secret }}</code><button class="btn sm" type="button" @click="copy(reveal()?.secret)">Copy token</button>
+      <label>curl</label><code>{{ curlExample() }}</code><button class="btn ghost sm" type="button" @click="copy(curlExample())">Copy curl</button>
+      <label>CLI</label><code>{{ cliExample() }}</code><button class="btn ghost sm" type="button" @click="copy(cliExample())">Copy CLI</button>
+      <button class="btn danger sm" type="button" @click="reveal.set(null)">I saved it; hide secret</button>
+    </div>
+
+    <div class="section"><h2>Service accounts</h2><div class="accounts"><template :for="item in accounts()"><article class="panel account" :class="selectedAccount() === item.account.id ? 'selected' : ''">
+      <button class="account-main" type="button" @click="selectAccount(item)"><span><strong>{{ item.account.name }}</strong><small>{{ item.account.slug }} · {{ item.membership?.roleTemplate }} · {{ scopeLabel(item.membership?.scope) }}</small></span><span class="tag">{{ item.account.state }}</span></button>
+      <div class="token-list"><template :for="token in item.tokens"><div class="token"><div><strong>{{ token.name }}</strong><code>{{ token.prefix }}</code><small>{{ tokenState(token) }} · expires {{ new Date(token.expiresAt).toLocaleDateString() }} · last used {{ token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : 'never' }}</small><small>{{ token.capabilities.join(', ') }} · {{ scopeLabel(token.scope) }}</small></div><div class="table-actions"><button class="btn ghost sm" type="button" @show="token.state === 'active'" @click="tokenAction(token, 'rotate')">Rotate</button><button class="btn danger sm" type="button" @show="token.state === 'active'" @click="tokenAction(token, 'revoke')">Revoke</button></div></div></template><div class="compact empty" @show="item.tokens.length === 0"><span>No tokens yet.</span></div></div>
+      <button class="btn danger sm" type="button" @show="item.account.state === 'active'" @click="disableAccount(item)">Disable account and tokens</button>
+    </article></template><div class="panel compact empty" @show="accounts().length === 0"><strong>No service accounts</strong><span>Create one for a CI system or external automation.</span></div></div></div>
+
+    <div class="section"><h2>Create service account</h2><div class="panel"><form class="form-grid" @submit.prevent="createAccount()">
+      <div class="field-block"><label for="account-name">Name</label><input id="account-name" :value="accountName()" @input="accountName.set($event.target.value)" placeholder="Production CI" required></div>
+      <div class="field-block"><label for="account-slug">Slug</label><input id="account-slug" :value="accountSlug()" @input="accountSlug.set($event.target.value)" pattern="[a-z0-9][a-z0-9-]{1,47}" placeholder="production-ci" required></div>
+      <div class="field-block"><label for="account-role">Maximum role</label><select id="account-role" :value="accountRole()" @change="accountRole.set($event.target.value)"><option value="viewer">Viewer</option><option value="auditor">Auditor</option><option value="deployer">Deployer</option><option value="operator">Operator</option><option value="admin">Admin</option></select><small>Service accounts can never be owners.</small></div>
+      <div class="field-block"><label for="account-scope">Maximum scope</label><select id="account-scope" :value="accountScopeType()" @change="accountScopeType.set($event.target.value); setScope($event.target.value, accountScopeId)"><option value="organization">Organization</option><option value="project">Current project</option><option value="environment">One environment</option><option value="resource">One service</option></select></div>
+      <div class="field-block" @show="accountScopeType() === 'environment'"><label for="account-environment">Environment</label><select id="account-environment" :value="accountScopeId()" @change="accountScopeId.set($event.target.value)"><template :for="environment in environments()"><option :value="environment.id">{{ environment.name }}</option></template></select></div>
+      <div class="field-block" @show="accountScopeType() === 'resource'"><label for="account-resource">Service</label><select id="account-resource" :value="accountScopeId()" @change="accountScopeId.set($event.target.value)"><template :for="resource in resources()"><option :value="resource.id">{{ resource.name }}</option></template></select></div>
+      <div class="form-actions"><button class="btn" type="submit">Create service account</button></div>
+    </form></div></div>
+
+    <div class="section"><h2>Create API token</h2><div class="panel"><form class="form-grid" @submit.prevent="createToken()">
+      <div class="field-block"><label for="token-account">Service account</label><select id="token-account" :value="selectedAccount()" @change="selectAccount(accounts().find(item => item.account.id === $event.target.value))" required><template :for="item in accounts()"><option :value="item.account.id" :disabled="item.account.state !== 'active'">{{ item.account.name }}</option></template></select></div>
+      <div class="field-block"><label for="token-name">Token name</label><input id="token-name" :value="tokenName()" @input="tokenName.set($event.target.value)" required></div>
+      <div class="field-block"><label for="token-expiry">Expiry</label><input id="token-expiry" type="date" :value="tokenExpiry()" @input="tokenExpiry.set($event.target.value)"><small>Defaults to 90 days; maximum one year.</small></div>
+      <div class="field-block"><label for="token-scope">Token scope</label><select id="token-scope" :value="tokenScopeType()" @change="tokenScopeType.set($event.target.value); setScope($event.target.value, tokenScopeId)"><option value="organization">Organization</option><option value="project">Current project</option><option value="environment">One environment</option><option value="resource">One service</option></select><small>Must be equal to or narrower than the service-account scope.</small></div>
+      <div class="field-block" @show="tokenScopeType() === 'environment'"><label>Environment</label><select :value="tokenScopeId()" @change="tokenScopeId.set($event.target.value)"><template :for="environment in environments()"><option :value="environment.id">{{ environment.name }}</option></template></select></div>
+      <div class="field-block" @show="tokenScopeType() === 'resource'"><label>Service</label><select :value="tokenScopeId()" @change="tokenScopeId.set($event.target.value)"><template :for="resource in resources()"><option :value="resource.id">{{ resource.name }}</option></template></select></div>
+      <fieldset class="capabilities"><legend>Explicit capabilities</legend><template :for="capability in capabilities"><label class="capability"><input type="checkbox" :checked="tokenCapabilities().includes(capability[0])" @change="toggleCapability(capability[0])"><span><b>{{ capability[0] }}</b><small>{{ capability[1] }}</small></span></label></template></fieldset>
+      <div class="form-actions"><button class="btn" type="submit" :disabled="!selectedAccount() || tokenCapabilities().length === 0">Create and reveal token</button></div>
+    </form></div></div>
+
+    <div class="section"><h2>Confirm sensitive changes</h2><div class="panel auth-grid"><div class="field-block"><label for="automation-password">Your password</label><input id="automation-password" type="password" autocomplete="current-password" :value="password()" @input="password.set($event.target.value)" required></div><div class="field-block"><label for="automation-code">Authenticator or recovery code</label><input id="automation-code" autocomplete="one-time-code" :value="mfaCode()" @input="mfaCode.set($event.target.value)"><small>Required when MFA is enabled. Used only for recent-auth confirmation.</small></div></div></div>
+  </div>
+  <style>
+    .automation-message{min-height:20px;margin-top:12px}.accounts{display:grid;gap:12px}.account{display:grid;gap:14px}.account.selected{border-color:var(--accent)}
+    .account-main{display:flex;justify-content:space-between;gap:12px;width:100%;text-align:left;background:none;border:0;color:inherit;cursor:pointer}.account-main span:first-child{display:grid;gap:4px}.account-main small,.token small{color:var(--txt3);font-size:12px;line-height:1.5}
+    .token-list{display:grid;gap:10px}.token{display:flex;justify-content:space-between;gap:14px;padding:12px;border:1px solid var(--panel-br);border-radius:10px}.token>div:first-child{display:grid;gap:4px;min-width:0}.token code{color:var(--txt2)}
+    .reveal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;margin-top:18px;border-color:rgba(53,209,155,.35)}.reveal>div,.reveal>code,.reveal>label{grid-column:1/-1}.reveal>div{display:grid;gap:4px}.reveal span{color:var(--txt2);font-size:12px}.reveal code{padding:10px;background:rgba(0,0,0,.25);border-radius:8px;overflow-wrap:anywhere;user-select:all}
+    .capabilities{grid-column:1/-1;border:1px solid var(--panel-br);border-radius:10px;padding:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.capabilities legend{padding:0 6px;color:var(--txt3);font-size:11px;font-weight:800;text-transform:uppercase}.capability{display:flex;gap:9px;align-items:flex-start;padding:9px}.capability input{width:auto;margin-top:3px}.capability span{display:grid;gap:2px}.capability small{color:var(--txt3);font-size:11px}.auth-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    @media(max-width:700px){.token{display:grid}.reveal,.capabilities,.auth-grid{grid-template-columns:1fr}.reveal>*{grid-column:1}}
+  </style>
+</body>
+</html>

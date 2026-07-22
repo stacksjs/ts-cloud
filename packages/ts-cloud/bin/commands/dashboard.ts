@@ -4,6 +4,8 @@ import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
 import { AuthenticationStore, discoverOidcProvider, resolveAuthEncryptionKey } from '../../src/auth'
+import { AutomationIdentityStore } from '../../src/automation'
+import { TsCloudClient } from '../../src/api'
 import * as cli from '../../src/utils/cli'
 import { startLocalDashboardServer } from '../../src/deploy/local-dashboard-server'
 
@@ -51,6 +53,13 @@ function resolveAuthIdentity(authentication: AuthenticationStore, value: string)
 
 function encryptedAuthentication(store: ControlPlaneStore, root?: string): AuthenticationStore {
   return new AuthenticationStore(store, { encryptionKey: resolveAuthEncryptionKey(resolve(root ?? process.cwd())) })
+}
+
+function apiClient(baseUrl?: string, tokenVariable = 'TS_CLOUD_API_TOKEN'): TsCloudClient {
+  const token = process.env[tokenVariable]?.trim()
+  if (!token)
+    throw new Error(`Set ${tokenVariable} to a one-time-issued API token.`)
+  return new TsCloudClient({ baseUrl: baseUrl ?? process.env.TS_CLOUD_API_URL ?? 'http://127.0.0.1:7676', token })
 }
 
 export function registerDashboardCommands(app: CLI): void {
@@ -500,5 +509,122 @@ export function registerDashboardCommands(app: CLI): void {
         cli.success(`Disabled ${provider.name}, cancelled pending sign-ins, and removed SSO enforcement.`)
       }
       finally { store.close() }
+    })
+
+  app
+    .command('api:service-accounts <organization>', 'List service accounts and safe token metadata')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((organizationValue: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        const automation = new AutomationIdentityStore(store)
+        cli.header(`${organization.name} service accounts`)
+        for (const account of automation.listServiceAccounts(organization.id, { includeDisabled: true })) {
+          cli.info(`${account.state}  ${account.slug}  ${account.name}  ${account.id}`)
+          for (const token of automation.listTokens(account.id, { includeInactive: true }))
+            cli.info(`  ${token.state}  ${token.prefix}  ${token.name}  expires=${token.expiresAt}  last-used=${token.lastUsedAt ?? 'never'}`)
+        }
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('api:service-account:create <organization> <slug>', 'Create a scoped service account')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--name <name>', 'Display name')
+    .option('--role <role>', 'admin, deployer, operator, viewer, or auditor', { default: 'deployer' })
+    .option('--scope <scope>', 'organization, project, environment, or resource', { default: 'organization' })
+    .option('--scope-id <id>', 'Required for non-organization scope')
+    .action((organizationValue: string, slug: string, options?: { path?: string, name?: string, role?: string, scope?: string, scopeId?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        const role = options?.role ?? 'deployer'
+        if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(role))
+          throw new Error('Service-account role cannot be owner and must be a supported role.')
+        const automation = new AutomationIdentityStore(store)
+        const created = automation.createServiceAccount({ organizationId: organization.id, slug, name: options?.name ?? slug, roleTemplate: role as any, scope: commandScope(options?.scope, options?.scopeId) })
+        cli.success(`Created ${created.serviceAccount.name} (${created.serviceAccount.id}) with ${created.membership.roleTemplate} access.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('api:token:create <organization> <account>', 'Create and reveal a scoped API token exactly once')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--name <name>', 'Token label', { default: 'CLI token' })
+    .option('--capabilities <list>', 'Comma-separated capabilities')
+    .option('--scope <scope>', 'organization, project, environment, or resource', { default: 'organization' })
+    .option('--scope-id <id>', 'Required for non-organization scope')
+    .option('--expires-days <days>', 'Expiry in days, maximum 365', { default: '90' })
+    .action((organizationValue: string, accountValue: string, options?: { path?: string, name?: string, capabilities?: string, scope?: string, scopeId?: string, expiresDays?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        const automation = new AutomationIdentityStore(store)
+        const account = automation.getServiceAccount(accountValue) ?? automation.getServiceAccountBySlug(organization.id, accountValue)
+        if (!account || account.organizationId !== organization.id)
+          throw new Error(`Service account '${accountValue}' was not found.`)
+        const capabilities = (options?.capabilities ?? '').split(',').map(value => value.trim()).filter(value => AUTHORIZATION_CAPABILITIES.includes(value as any)) as AuthorizationCapability[]
+        if (!capabilities.length)
+          throw new Error(`Pass --capabilities with one or more of: ${AUTHORIZATION_CAPABILITIES.join(', ')}`)
+        const days = Math.min(365, Math.max(1, Number(options?.expiresDays ?? 90)))
+        const issued = automation.createToken({ serviceAccountId: account.id, name: options?.name ?? 'CLI token', capabilities, scope: commandScope(options?.scope, options?.scopeId), expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() })
+        cli.success(`Created ${issued.token.prefix}; copy this secret now. It will not be shown again.`)
+        cli.info(issued.secret)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('api:token:rotate <token>', 'Create an overlapping replacement for an API token')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((tokenId: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const issued = new AutomationIdentityStore(store).rotateToken(tokenId)
+        cli.success(`Created overlapping replacement ${issued.token.prefix}; revoke the old token after rollout.`)
+        cli.info(issued.secret)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('api:token:revoke <token>', 'Immediately revoke an API token')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--confirm <token>', 'Type the token ID to confirm')
+    .action((tokenId: string, options?: { path?: string, confirm?: string }) => {
+      if (options?.confirm !== tokenId)
+        throw new Error(`Pass --confirm ${tokenId} to revoke this token.`)
+      const store = openControlPlane(options?.path)
+      try {
+        const token = new AutomationIdentityStore(store).revokeToken(tokenId)
+        cli.success(`Revoked ${token.prefix}; bearer requests stop immediately.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('api:projects', 'List projects through the public v1 API')
+    .option('--base-url <url>', 'Dashboard base URL')
+    .option('--token-env <name>', 'Environment variable containing the API token', { default: 'TS_CLOUD_API_TOKEN' })
+    .action(async (options?: { baseUrl?: string, tokenEnv?: string }) => {
+      const result = await apiClient(options?.baseUrl, options?.tokenEnv).listProjects()
+      for (const project of result.data)
+        cli.info(`${project.slug}  ${project.name}  ${project.id}`)
+    })
+
+  app
+    .command('api:deploy <project> <environment>', 'Queue a deployment through the public v1 API')
+    .option('--base-url <url>', 'Dashboard base URL')
+    .option('--token-env <name>', 'Environment variable containing the API token', { default: 'TS_CLOUD_API_TOKEN' })
+    .option('--service <id>', 'Optional service resource ID')
+    .option('--revision <revision>', 'Revision or release identifier')
+    .option('--idempotency-key <key>', 'Stable retry key')
+    .action(async (projectId: string, environmentId: string, options?: { baseUrl?: string, tokenEnv?: string, service?: string, revision?: string, idempotencyKey?: string }) => {
+      const key = options?.idempotencyKey ?? `cli-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
+      const result = await apiClient(options?.baseUrl, options?.tokenEnv).createDeployment({ projectId, environmentId, serviceId: options?.service, revision: options?.revision }, key)
+      cli.success(`${result.idempotentReplay ? 'Replayed' : 'Queued'} operation ${result.operation.id} (${result.operation.state}).`)
     })
 }

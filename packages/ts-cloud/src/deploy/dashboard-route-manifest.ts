@@ -28,6 +28,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'access.ssh', path: '/server/ssh-keys', label: 'SSH keys', group: 'infrastructure', modes: ['server'], adminOnly: true },
   { id: 'runtime.terminal', path: '/server/terminal', label: 'Terminal', group: 'infrastructure', modes: ['server'], adminOnly: true },
   { id: 'organization.people', path: '/server/team', label: 'People & access', group: 'organization', modes: ['server', 'serverless'], adminOnly: true, legacyPaths: ['/team'] },
+  { id: 'organization.automation', path: '/account/automation', label: 'API & automation', group: 'organization', modes: ['server', 'serverless'], adminOnly: true },
   { id: 'serverless.overview', path: '/serverless', label: 'Dashboard', group: 'overview', modes: ['serverless'], adminOnly: true },
   { id: 'serverless.deployments', path: '/serverless/deployments', label: 'Deployments', group: 'overview', modes: ['serverless'], adminOnly: true },
   { id: 'serverless.logs', path: '/serverless/logs', label: 'Logs', group: 'overview', modes: ['serverless'], adminOnly: true },

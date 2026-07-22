@@ -285,6 +285,11 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'DELETE /api/organization/grants',
   'POST /api/auth/oidc/providers',
   'PATCH /api/auth/oidc/providers',
+  'POST /api/automation/service-accounts',
+  'PATCH /api/automation/service-accounts',
+  'POST /api/automation/tokens',
+  'POST /api/automation/tokens/rotate',
+  'DELETE /api/automation/tokens',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -561,6 +566,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
   '/account/security': 'project:read',
+  '/account/automation': 'users:read',
   '/serverless': 'project:read',
   '/serverless/deployments': 'deployments:read',
   '/serverless/logs': 'runtime:logs',
@@ -1221,6 +1227,95 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const updated = authentication.setOidcProviderEnabled(provider.id, body.enabled === true)
           controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: principal.actor?.id, type: updated.enabled ? 'auth.oidc.provider.enabled' : 'auth.oidc.provider.disabled', payload: { providerId: provider.id } })
           return json({ ok: true, provider: updated })
+        }
+
+        if (url.pathname === '/api/automation' && req.method === 'GET') {
+          const accounts = automationIdentities.listServiceAccounts(controlPlane.organization.id, { includeDisabled: true }).map((account) => {
+            const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, account.actorId)
+            return { account, membership, tokens: automationIdentities.listTokens(account.id, { includeInactive: true }) }
+          })
+          return json({ accounts, apiBaseUrl: `${url.origin}/api/v1`, openApiUrl: `${url.origin}/api/v1/openapi.json`, tokenEnvironmentVariable: 'TS_CLOUD_API_TOKEN' })
+        }
+
+        if (url.pathname === '/api/automation/service-accounts' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const role = organizationRole(body.roleTemplate)
+          const scope = authorizationScope(body)
+          if (!principal.actor || !role || role === 'owner' || !scope)
+            return json({ ok: false, error: 'A non-owner role and valid organization scope are required.' }, 422)
+          try {
+            const created = automationIdentities.createServiceAccount({
+              organizationId: controlPlane.organization.id,
+              slug: String(body.slug ?? ''),
+              name: String(body.name ?? ''),
+              description: typeof body.description === 'string' ? body.description : undefined,
+              roleTemplate: role,
+              scope,
+              createdByActorId: principal.actor.id,
+            })
+            return json({ ok: true, ...created }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Service account could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/automation/service-accounts' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          const account = automationIdentities.getServiceAccount(String(body.id ?? ''))
+          if (!account || account.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Service account was not found.' }, 404)
+          return json({ ok: true, account: automationIdentities.disableServiceAccount(account.id) })
+        }
+
+        if (url.pathname === '/api/automation/tokens' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const account = automationIdentities.getServiceAccount(String(body.serviceAccountId ?? ''))
+          const scope = authorizationScope(body)
+          if (!principal.actor || !account || account.organizationId !== controlPlane.organization.id || !scope || !Array.isArray(body.capabilities))
+            return json({ ok: false, error: 'Service account, explicit capabilities, and valid scope are required.' }, 422)
+          try {
+            const issued = automationIdentities.createToken({
+              serviceAccountId: account.id,
+              name: String(body.name ?? 'API token'),
+              capabilities: body.capabilities.map(String) as AuthorizationCapability[],
+              scope,
+              expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : undefined,
+              createdByActorId: principal.actor.id,
+            })
+            return json({ ok: true, token: issued.token, secret: issued.secret, revealOnce: true }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'API token could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/automation/tokens/rotate' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const token = automationIdentities.getToken(String(body.id ?? ''))
+          const account = token ? automationIdentities.getServiceAccount(token.serviceAccountId) : undefined
+          if (!principal.actor || !token || account?.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'API token was not found.' }, 404)
+          try {
+            const issued = automationIdentities.rotateToken(token.id, principal.actor.id)
+            return json({ ok: true, token: issued.token, secret: issued.secret, revealOnce: true, overlap: true }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'API token could not be rotated.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/automation/tokens' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const token = automationIdentities.getToken(String(body.id ?? ''))
+          const account = token ? automationIdentities.getServiceAccount(token.serviceAccountId) : undefined
+          if (!token || account?.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'API token was not found.' }, 404)
+          return json({ ok: true, token: automationIdentities.revokeToken(token.id, principal.actor?.id) })
         }
 
         if (url.pathname === '/api/auth/sessions' && req.method === 'GET') {

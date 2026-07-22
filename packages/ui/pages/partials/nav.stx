@@ -121,6 +121,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
       <section class="nav-group">
         <h2>Organization</h2>
         <a class="{{ isActive('team') ? 'active' : '' }}" href="{{ envHref('/server/team') }}">People & access</a>
+        <a class="{{ isActive('automation') ? 'active' : '' }}" href="{{ envHref('/account/automation') }}">API & automation</a>
       </section>
     @endif
     <section class="nav-group">

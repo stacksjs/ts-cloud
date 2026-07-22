@@ -77,6 +77,12 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/auth/oidc/providers': { capability: 'users:read', scope: 'organization' },
   'POST /api/auth/oidc/providers': { capability: 'users:manage', scope: 'organization' },
   'PATCH /api/auth/oidc/providers': { capability: 'users:manage', scope: 'organization' },
+  'GET /api/automation': { capability: 'users:read', scope: 'organization' },
+  'POST /api/automation/service-accounts': { capability: 'users:manage', scope: 'organization' },
+  'PATCH /api/automation/service-accounts': { capability: 'users:manage', scope: 'organization' },
+  'POST /api/automation/tokens': { capability: 'users:manage', scope: 'organization' },
+  'POST /api/automation/tokens/rotate': { capability: 'users:manage', scope: 'organization' },
+  'DELETE /api/automation/tokens': { capability: 'users:manage', scope: 'organization' },
 
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },

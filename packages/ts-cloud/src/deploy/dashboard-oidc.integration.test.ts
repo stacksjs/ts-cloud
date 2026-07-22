@@ -152,5 +152,39 @@ describe('dashboard OIDC integration', () => {
     expect(await disabled.json()).toMatchObject({ provider: { enabled: false, enforceSso: false } })
     const unavailable = await dashboardFetch('/auth/oidc/workforce/start')
     expect(unavailable.headers.get('location')).toBe('/login?sso_error=start')
+
+    const organization = await (await dashboardFetch('/api/organization', { headers: { cookie: ownerCookie } })).json() as any
+    const environment = organization.environments[0]
+    const serviceAccountResponse = await dashboardFetch('/api/automation/service-accounts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
+      body: JSON.stringify({ slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scopeType: 'environment', scopeId: environment.id }),
+    })
+    expect(serviceAccountResponse.status).toBe(201)
+    const serviceAccount = await serviceAccountResponse.json() as any
+    const tokenResponse = await dashboardFetch('/api/automation/tokens', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
+      body: JSON.stringify({ serviceAccountId: serviceAccount.serviceAccount.id, name: 'CI token', capabilities: ['project:read', 'deployments:read', 'deployments:create'], scopeType: 'environment', scopeId: environment.id }),
+    })
+    expect(tokenResponse.status).toBe(201)
+    const token = await tokenResponse.json() as any
+    const bearer = { authorization: `Bearer ${token.secret}` }
+    const projects = await dashboardFetch('/api/v1/projects', { headers: bearer })
+    expect(await projects.json()).toMatchObject({ data: [{ id: organization.project.id }] })
+    const deployment = await dashboardFetch('/api/v1/deployments', {
+      method: 'POST',
+      headers: { ...bearer, 'content-type': 'application/json', 'idempotency-key': 'integration-build-123' },
+      body: JSON.stringify({ projectId: organization.project.id, environmentId: environment.id }),
+    })
+    expect(deployment.status).toBe(202)
+    expect(await deployment.json()).toMatchObject({ operation: { state: 'queued', kind: 'deployment.create', actorId: serviceAccount.serviceAccount.actorId } })
+    const revoked = await dashboardFetch('/api/automation/tokens', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
+      body: JSON.stringify({ id: token.token.id }),
+    })
+    expect(revoked.status).toBe(200)
+    expect((await dashboardFetch('/api/v1/projects', { headers: bearer })).status).toBe(401)
   }, 20_000)
 })
