@@ -57,14 +57,14 @@ export class CloudBlockVolumeDriver implements VolumeDriver {
   readonly type='ebs' as const
   constructor(readonly provider:string,private readonly transport:CloudVolumeTransport){}
   capabilities():VolumeCapabilities{return volumeCapabilities(['create','attach','detach','resize','snapshot','restore','delete','adopt','usage'],{resize:{supported:true,online:true,minimumBytes:1024**3}})}
-  discover(projectId:string,environmentId?:string){return this.transport.list(projectId,environmentId)}
-  create(volume:PersistentVolume){return this.transport.create({name:volume.name,projectId:volume.projectId,environmentId:volume.environmentId,capacityBytes:volume.capacityBytes,encrypted:volume.encrypted,filesystem:volume.filesystem})}
+  discover(projectId:string,environmentId?:string):Promise<VolumeDriverObservation[]>{return this.transport.list(projectId,environmentId)}
+  create(volume:PersistentVolume):Promise<VolumeDriverObservation>{return this.transport.create({name:volume.name,projectId:volume.projectId,environmentId:volume.environmentId,capacityBytes:volume.capacityBytes,encrypted:volume.encrypted,filesystem:volume.filesystem})}
   private resource(volume:PersistentVolume,attachment:VolumeAttachment):string{const resource=volume.resourceId===attachment.resourceId?volume.observedState.resourceProviderId:undefined;const value=typeof resource==='string'?resource:attachment.driverOptions.resourceProviderId;if(typeof value!=='string'||!value)throw new Error('Cloud attachment requires a reviewed resourceProviderId driver option.');return value}
-  attach(volume:PersistentVolume,attachment:VolumeAttachment){return this.transport.attach(volume.providerId!,this.resource(volume,attachment),attachment.targetPath,attachment.readOnly)}
-  detach(volume:PersistentVolume,attachment:VolumeAttachment,options:{force:boolean}){return this.transport.detach(volume.providerId!,this.resource(volume,attachment),options.force)}
-  resize(volume:PersistentVolume,capacityBytes:number){return this.transport.resize(volume.providerId!,capacityBytes)}
-  snapshot(volume:PersistentVolume,snapshot:VolumeSnapshot){return this.transport.snapshot(volume.providerId!,snapshot.name)}
-  restore(volume:PersistentVolume,snapshot:VolumeSnapshot,target:PersistentVolume){if(!snapshot.providerId)throw new Error('Cloud snapshot provider identity is unavailable.');return this.transport.restore(volume.providerId!,snapshot.providerId,target.name)}
-  delete(volume:PersistentVolume){return this.transport.delete(volume.providerId!)}
-  usage(volume:PersistentVolume){return this.transport.usage(volume.providerId!)}
+  attach(volume:PersistentVolume,attachment:VolumeAttachment):Promise<void>{return this.transport.attach(volume.providerId!,this.resource(volume,attachment),attachment.targetPath,attachment.readOnly)}
+  detach(volume:PersistentVolume,attachment:VolumeAttachment,options:{force:boolean}):Promise<void>{return this.transport.detach(volume.providerId!,this.resource(volume,attachment),options.force)}
+  resize(volume:PersistentVolume,capacityBytes:number):Promise<VolumeDriverObservation>{return this.transport.resize(volume.providerId!,capacityBytes)}
+  snapshot(volume:PersistentVolume,snapshot:VolumeSnapshot):Promise<{providerId?:string,sizeBytes?:number,checksum?:string}>{return this.transport.snapshot(volume.providerId!,snapshot.name)}
+  restore(volume:PersistentVolume,snapshot:VolumeSnapshot,target:PersistentVolume):Promise<VolumeDriverObservation>{if(!snapshot.providerId)throw new Error('Cloud snapshot provider identity is unavailable.');return this.transport.restore(volume.providerId!,snapshot.providerId,target.name)}
+  delete(volume:PersistentVolume):Promise<void>{return this.transport.delete(volume.providerId!)}
+  usage(volume:PersistentVolume):Promise<{usedBytes?:number,capacityBytes?:number}>{return this.transport.usage(volume.providerId!)}
 }
