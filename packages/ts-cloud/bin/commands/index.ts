@@ -52,6 +52,7 @@ export { registerStatusCommands } from './status'
 export { registerBackupCommands } from './backup'
 export { registerApiCommands } from './api'
 export { registerOperationQueueCommands } from './operation-queue'
+export { registerRuntimeCommands } from './runtime'
 export { registerTunnelCommands } from './tunnel'
 
 export { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
