@@ -3,6 +3,7 @@ import type { EnvironmentType } from '@ts-cloud/core'
 import type { LifecycleAction, RuntimeInventory, RuntimeWorkload } from '../../src/runtime'
 import { readFile, writeFile } from 'node:fs/promises'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { sanitizeControlPlaneValue } from '../../src/control-plane'
 import { DurableOperationQueue } from '../../src/queue'
 import { RuntimeOperationService } from '../../src/runtime'
 import * as output from '../../src/utils/cli'
@@ -97,7 +98,7 @@ async function durableRuntimeTask<T extends { ok: boolean, stdout?: string, stde
       resourceId: resource?.id,
       actorId: actor.id,
       kind,
-      input,
+      input: sanitizeControlPlaneValue(input),
       lockKey: resource ? `resource:${resource.id}` : `runtime:${workload.id}`,
       providerKey: workload.provider,
       maxAttempts: 1,
