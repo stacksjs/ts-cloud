@@ -24,6 +24,7 @@ import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
 import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry, type RuntimeStreamSnapshot } from '../runtime'
+import { TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -38,6 +39,7 @@ import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { LoginThrottle } from './dashboard-throttle'
+import { collectDashboardTelemetry } from './telemetry-collection'
 import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, updateUserPassword, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
@@ -2987,6 +2989,70 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             }),
           })
           return json({ ...tracked.result, controlPlaneOperation: tracked.operation }, tracked.result.ok ? 200 : 409)
+        }
+
+        if (url.pathname.startsWith('/api/telemetry/')) {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const telemetry = new TelemetryStore(controlPlane.store)
+          const allResources = controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id)
+          const readableResources = user.role === 'admin' ? allResources : allResources.filter(resource => mayAccessResource(user, resource.id, 'runtime:logs'))
+          const resourceIds = (value: unknown): string[] | undefined => {
+            const requested = (Array.isArray(value) ? value : String(value ?? '').split(',')).map(String).filter(Boolean)
+            if (!requested.length) return user.role === 'admin' ? undefined : readableResources.map(resource => resource.id)
+            const resolved = requested.map(item => readableResources.find(resource => resource.id === item || resource.slug === item)?.id).filter((item): item is string => !!item)
+            if (resolved.length !== requested.length) throw new Error('One or more telemetry resources are outside your authorized scope.')
+            return [...new Set(resolved)]
+          }
+          const queryFrom = (input: Record<string, any>): TelemetryQuery => {
+            const now = new Date()
+            const ranges: Record<string, number> = { '1h': 3_600_000, '6h': 6 * 3_600_000, '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 }
+            const to = String(input.to ?? now.toISOString())
+            const from = String(input.from ?? new Date(new Date(to).getTime() - (ranges[String(input.range ?? '1h')] ?? ranges['1h'])).toISOString())
+            const list = (value: unknown): string[] | undefined => { const values = (Array.isArray(value) ? value : String(value ?? '').split(',')).map(String).filter(Boolean); return values.length ? values : undefined }
+            const kinds = list(input.kinds)?.filter(kind => ['metric', 'log', 'trace', 'request', 'event'].includes(kind)) as TelemetryKind[] | undefined
+            return { projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceIds: resourceIds(input.resources), kinds, names: list(input.names), sources: list(input.sources), levels: list(input.levels), from, to, text: String(input.text ?? '') || undefined, traceId: String(input.traceId ?? '') || undefined, requestId: String(input.requestId ?? '') || undefined, deploymentId: String(input.deploymentId ?? '') || undefined, releaseId: String(input.releaseId ?? '') || undefined, workloadId: String(input.workloadId ?? '') || undefined, cursor: String(input.cursor ?? '') || undefined, limit: Number(input.limit) || undefined }
+          }
+          const urlInput = Object.fromEntries(url.searchParams.entries())
+          const collect = (force = false) => collectDashboardTelemetry({ controlPlane: controlPlane.store, projectId: controlPlane.project.id, environmentId: environmentRecord?.id, config: config as CloudConfig, environment, force })
+
+          if (url.pathname === '/api/telemetry/status' && req.method === 'GET') {
+            const collection = await collect(false)
+            return json({ ok: true, generatedAt: collection.generatedAt, cached: collection.cached, sources: collection.statuses, errors: collection.errors, retention: { rawDays: 30, downsampleAfterDays: 7, downsampleBucketMs: 3_600_000 }, estimatedMonthlyBytes: collection.statuses.reduce((sum, source) => sum + source.estimatedDailyBytes * 30, 0) })
+          }
+          if (url.pathname === '/api/telemetry/query' && req.method === 'GET') {
+            const collection = await collect(false)
+            return json({ ok: true, collection: { generatedAt: collection.generatedAt, cached: collection.cached }, ...telemetry.query(queryFrom(urlInput)) })
+          }
+          if (url.pathname === '/api/telemetry/series' && req.method === 'GET') {
+            const collection = await collect(false)
+            const aggregation = (['sum', 'avg', 'min', 'max', 'count', 'p50', 'p90', 'p95', 'p99'].includes(String(urlInput.aggregation)) ? urlInput.aggregation : 'avg') as TelemetryAggregation
+            const query = queryFrom({ ...urlInput, kinds: 'metric', limit: 5_000 })
+            const series = telemetry.series({ ...query, bucketMs: Number(urlInput.bucketMs) || 60_000, aggregation, timezone: String(urlInput.timezone ?? 'UTC'), compareFrom: urlInput.compareFrom, compareTo: urlInput.compareTo })
+            return json({ ok: true, collection: { generatedAt: collection.generatedAt, cached: collection.cached }, query: { aggregation, bucketMs: Number(urlInput.bucketMs) || 60_000, timezone: String(urlInput.timezone ?? 'UTC') }, series })
+          }
+          if (url.pathname === '/api/telemetry/refresh' && req.method === 'POST') return json({ ok: true, ...(await collect(true)) })
+          if (url.pathname === '/api/telemetry/export' && req.method === 'POST') {
+            const body = await readJsonBody(req); await collect(false)
+            const result = telemetry.query({ ...queryFrom(body), limit: Math.min(5_000, Number(body.limit) || 5_000), cursor: undefined })
+            const format = body.format === 'csv' ? 'csv' : 'json'
+            if (format === 'json') return new Response(JSON.stringify({ exportedAt: new Date().toISOString(), query: queryFrom(body), ...result }, null, 2), { headers: { 'content-disposition': 'attachment; filename="ts-cloud-telemetry.json"', 'content-type': 'application/json; charset=utf-8' } })
+            const columns = ['timestamp', 'kind', 'source', 'name', 'level', 'value', 'unit', 'message', 'traceId', 'requestId', 'deploymentId', 'releaseId', 'workloadId']
+            const csv = [columns.join(','), ...result.records.map(record => columns.map(column => `"${String((record as any)[column] ?? '').replaceAll('"', '""')}"`).join(','))].join('\n')
+            return new Response(csv, { headers: { 'content-disposition': 'attachment; filename="ts-cloud-telemetry.csv"', 'content-type': 'text/csv; charset=utf-8' } })
+          }
+          if (url.pathname === '/api/telemetry/saved-queries' && req.method === 'GET') {
+            const principal = organizationPrincipal(user)
+            return json({ ok: true, queries: telemetry.listSavedQueries(controlPlane.project.id, principal.actor?.id) })
+          }
+          if (url.pathname === '/api/telemetry/saved-queries' && req.method === 'POST') {
+            const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+            return json({ ok: true, query: telemetry.saveQuery(controlPlane.project.id, principal.actor?.id, String(body.name ?? ''), queryFrom(body.query ?? body)) }, 201)
+          }
+          if (url.pathname === '/api/telemetry/saved-queries' && req.method === 'DELETE') {
+            const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+            const removed = telemetry.deleteSavedQuery(controlPlane.project.id, principal.actor?.id, String(body.id ?? ''))
+            return json({ ok: removed }, removed ? 200 : 404)
+          }
         }
 
         if (url.pathname === '/api/databases' && req.method === 'GET')
