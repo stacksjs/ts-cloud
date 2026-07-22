@@ -94,8 +94,8 @@
     "@ts-cloud/core": "workspace:*"
   },
   "devDependencies": {
-    "better-dx": "^0.2.16",
-    "bunfig": "^0.15.6"
+    "better-dx": "^0.2.20",
+    "bunfig": "^0.15.15"
   },
   "lint-staged": {
     "*.{js,ts,json,yaml,yml,md}": "bun x --bun --package github:pickier/pickier#95de532 pickier run --mode lint --config ../../pickier.config.ts --fix --max-warnings 0"
