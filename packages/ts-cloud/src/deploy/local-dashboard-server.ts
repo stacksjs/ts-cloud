@@ -12,6 +12,8 @@ import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
 import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorization, completeOidcAuthorization, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
+import { AutomationIdentityStore } from '../automation'
+import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
@@ -762,6 +764,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const secret = resolveSessionSecret(cwd)
   const bootstrap = authEnabled ? ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin') : undefined
   const authentication = new AuthenticationStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  const automationIdentities = new AutomationIdentityStore(controlPlane.store)
   if (bootstrap) {
     synchronizeDashboardUsers(controlPlane, bootstrap.users)
     synchronizeDashboardIdentities(authentication, controlPlane, bootstrap.users)
@@ -804,6 +807,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
   const networkHint = (address: string): string => createHash('sha256').update(`${secret}:${address}`).digest('hex').slice(0, 16)
+  const apiV1 = createApiV1Handler({ controlPlane: controlPlane.store, identities: automationIdentities })
   const userAgentLabel = (req: Request): string | undefined => req.headers.get('user-agent')?.trim().slice(0, 256) || undefined
   const issueSession = (identityId: string, req: Request, address: string, authMethod: 'local' | 'oidc' = 'local') => authentication.createSession({
     identityId,
@@ -846,6 +850,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       const activeServer = runtimeServer ?? server
       const url = new URL(req.url)
       const oidcOrigin = resolveOidcDashboardOrigin(host, activeServer.port ?? port)
+      const apiResponse = await apiV1(req, networkHint(activeServer.requestIP(req)?.address ?? 'unknown'))
+      if (apiResponse)
+        return apiResponse
       const requestedEnvironment = url.searchParams.get('env')
       const environment = resolveDashboardEnvironment(availableEnvironments, defaultEnvironment, requestedEnvironment)
       let latestData = latestDataByEnvironment.get(environment)
