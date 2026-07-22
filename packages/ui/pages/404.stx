@@ -1,0 +1,18 @@
+<script server>
+const meta = { title: 'Page not found · ts-cloud' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('./partials/head', { title: meta.title })</head>
+<body>
+  @include('./partials/nav', { active: '', name: 'ts-cloud', env: 'production' })
+  <div class="wrap">
+    <div class="state-page">
+      <span class="state-code">404</span>
+      <h1>This resource is not here</h1>
+      <p>The link may be stale, the resource may have been deleted, or it may belong to another environment.</p>
+      <div class="state-actions"><a class="btn" href="/">Open dashboard</a><a class="btn ghost" href="/server/sites">Browse services</a></div>
+    </div>
+  </div>
+</body>
+</html>

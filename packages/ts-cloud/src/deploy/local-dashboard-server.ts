@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { authorize, hashPassword, verifyPassword } from './dashboard-auth'
+import { hashPassword, verifyPassword } from './dashboard-auth'
 import { initializeDashboardControlPlane, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
@@ -16,6 +16,7 @@ import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier
 import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
 import { renderLoginPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
+import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { clearSessionCookie, createSessionToken, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
@@ -150,10 +151,14 @@ function text(data: string, status = 200): Response {
 }
 
 function selectedEnvironment(config: CloudConfig, requested?: EnvironmentType): EnvironmentType {
-  if (requested)
+  if (requested && Object.hasOwn(config.environments ?? {}, requested))
     return requested
   const envs = Object.keys(config.environments ?? {}) as EnvironmentType[]
   return envs[0] ?? 'production'
+}
+
+export function resolveDashboardEnvironment(available: readonly string[], fallback: EnvironmentType, requested?: string | null): EnvironmentType {
+  return (requested && available.includes(requested) ? requested : fallback) as EnvironmentType
 }
 
 async function loadLocalEnv(cwd: string): Promise<void> {
@@ -234,7 +239,12 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
 async function resolveLiveDashboardData(config: CloudConfig, environment: EnvironmentType): Promise<Record<string, any>> {
   const mode = resolveDeploymentMode(config)
   // The nav renders a mode-aware view set + a server-rendered environment switcher.
-  const meta = { mode, environment, environments: Object.keys(config.environments ?? {}) }
+  const meta = {
+    mode,
+    environment,
+    environments: Object.keys(config.environments ?? {}),
+    project: { name: config.project.name, slug: config.project.slug, region: config.project.region },
+  }
   try {
     const data = mode === 'serverless'
       ? await resolveDashboardData(config, environment)
@@ -444,6 +454,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/sites',
   '/server/deployments',
   '/server/logs',
+  '/access-denied',
 ])
 
 export function isBoxOnlyPage(pathname: string): boolean {
@@ -479,8 +490,12 @@ function staticPath(uiRoot: string, pathname: string): string | null {
 
 async function serveStatic(uiRoot: string, pathname: string): Promise<Response> {
   const file = staticPath(uiRoot, pathname)
-  if (!file)
+  if (!file) {
+    const notFound = join(uiRoot, '404.html')
+    if (existsSync(notFound))
+      return new Response(await readFile(notFound), { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } })
     return text('Not found', 404)
+  }
   if (statSync(file).isDirectory())
     return text('Not found', 404)
   const body = await readFile(file)
@@ -505,13 +520,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     console.warn(`  ts-cloud dashboard: marked ${controlPlane.reconciliation.failed} orphaned operation(s) as failed after restart.`)
   }
   const availableEnvironments = Object.keys((config as CloudConfig).environments ?? {})
-  // The active environment is mutable: the cockpit can switch via POST /api/env,
-  // which re-resolves data, actions, and rebuilds the UI for the new environment.
-  let environment = selectedEnvironment(config as CloudConfig, options.environment)
-  let actions = dashboardActions(environment)
+  // Environment scope belongs to each URL/request, not this process. This is
+  // what lets two tabs safely inspect or operate on different environments.
+  const defaultEnvironment = selectedEnvironment(config as CloudConfig, options.environment)
   const configPath = resolveCloudConfigPath(cwd)
-  const initialData = await resolveLiveDashboardData(config as CloudConfig, environment)
-  let latestData = initialData
+  const initialData = await resolveLiveDashboardData(config as CloudConfig, defaultEnvironment)
+  const latestDataByEnvironment = new Map<EnvironmentType, Record<string, any>>([[defaultEnvironment, initialData]])
   const packagedUi = resolveUiSource(cwd)
 
   // The stx pages render their data at BUILD time (baked into the HTML), so a
@@ -533,12 +547,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     ownedUiRoots.clear()
   }
 
-  const scopeKey = (user: DashboardUser): string => user.role === 'admin'
+  const scopeKey = (user: DashboardUser, environment: EnvironmentType): string => `${environment}:${user.role === 'admin'
     ? 'admin'
-    : `member:${Object.entries(user.sites).sort(([a], [b]) => a.localeCompare(b)).map(([site, role]) => `${site}=${role}`).join(',')}`
+    : `member:${Object.entries(user.sites).sort(([a], [b]) => a.localeCompare(b)).map(([site, role]) => `${site}=${role}`).join(',')}`}`
 
-  async function uiRootFor(user: DashboardUser): Promise<string | undefined> {
-    const key = scopeKey(user)
+  async function uiRootFor(user: DashboardUser, environment: EnvironmentType): Promise<string | undefined> {
+    const key = scopeKey(user, environment)
     const cached = uiCache.get(key)
     if (cached)
       return cached
@@ -551,6 +565,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       // `viewer` tells the nav which surfaces to offer. Only the ROLE is baked in,
       // never the username: builds are shared by everyone with the same grants, so
       // a name baked here would show up in someone else's page.
+      const latestData = latestDataByEnvironment.get(environment)
+        ?? await resolveLiveDashboardData(config as CloudConfig, environment)
+      latestDataByEnvironment.set(environment, latestData)
       const scoped = {
         ...scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }),
         viewer: { role: user.role },
@@ -580,7 +597,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   }
 
   // Prime the admin build and fail fast if there's no UI at all to serve.
-  const adminUiRoot = await uiRootFor({ username: '', passwordHash: '', role: 'admin', sites: {} })
+  const adminUiRoot = await uiRootFor({ username: '', passwordHash: '', role: 'admin', sites: {} }, defaultEnvironment)
   if (!adminUiRoot)
     throw new Error('ts-cloud dashboard UI not found. Run `bun run build` in ts-cloud or reinstall the package.')
 
@@ -646,6 +663,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     },
     async fetch(req, server) {
       const url = new URL(req.url)
+      const requestedEnvironment = url.searchParams.get('env')
+      const environment = resolveDashboardEnvironment(availableEnvironments, defaultEnvironment, requestedEnvironment)
+      let latestData = latestDataByEnvironment.get(environment)
+      if (!latestData) {
+        latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+        latestDataByEnvironment.set(environment, latestData)
+      }
 
       try {
         // --- Public: the login endpoints and the login page itself ----------
@@ -693,7 +717,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/login') {
-          return new Response(renderLoginPage(latestData?.mode === 'serverless'), {
+          return new Response(renderLoginPage(initialData?.mode === 'serverless'), {
             headers: { 'content-type': 'text/html; charset=utf-8' },
           })
         }
@@ -735,7 +759,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             cwd,
             environment,
             environments: availableEnvironments,
-            uiRoot: await uiRootFor(user),
+            uiRoot: await uiRootFor(user, environment),
             liveData: uiCache.size > 0,
             terminal: terminalEnabled,
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
@@ -778,26 +802,22 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         // The home page is the box's own dashboard (host metrics, services,
         // backups), which a member has no access to — land them on their sites.
         if (url.pathname === '/' && user.role === 'member')
-          return new Response(null, { status: 302, headers: { location: '/server/sites' } })
+          return new Response(null, { status: 302, headers: { location: `/server/sites?env=${encodeURIComponent(environment)}` } })
 
         // A serverless deployment has no server home — land on the serverless view.
         if (url.pathname === '/' && latestData?.mode === 'serverless')
-          return new Response(null, { status: 302, headers: { location: '/serverless' } })
+          return new Response(null, { status: 302, headers: { location: `/serverless?env=${encodeURIComponent(environment)}` } })
+
+        const legacyRoute = resolveLegacyDashboardRoute(url.pathname)
+        if (legacyRoute)
+          return new Response(null, { status: 308, headers: { location: `${legacyRoute}?env=${encodeURIComponent(environment)}` } })
 
         if (url.pathname === '/api/env' && req.method === 'POST') {
           const body = await readJsonBody(req)
           const requested = String(body.env ?? '')
           if (!availableEnvironments.includes(requested))
             return json({ ok: false, error: `Unknown environment '${requested}'.`, environments: availableEnvironments }, 404)
-          if (requested !== environment) {
-            environment = requested as EnvironmentType
-            actions = dashboardActions(environment)
-            latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-            // Every cached build is now stale — drop them so the next request
-            // per scope rebuilds against the new environment's data.
-            clearUiCache()
-          }
-          return json({ ok: true, environment, environments: availableEnvironments })
+          return json({ ok: true, environment: requested, environments: availableEnvironments, href: `?env=${encodeURIComponent(requested)}` })
         }
 
         if (url.pathname === '/api/config') {
@@ -923,6 +943,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           await writeFile(configPath, after)
           replaceSiteConfig(config as CloudConfig, siteName, Object.fromEntries(Object.entries(site).filter(([, value]) => value !== undefined)))
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          latestDataByEnvironment.set(environment, latestData)
           return json({ ok: true, configPath, site: siteName, data: latestData })
         }
 
@@ -937,6 +958,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           await writeFile(configPath, removeSiteFromCloudConfig({ configText: before, name }))
           delete (config.sites as Record<string, unknown>)[name]
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          latestDataByEnvironment.set(environment, latestData)
           return json({ ok: true, configPath, site: name, data: latestData })
         }
 
@@ -1014,6 +1036,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           }
           await writeFile(configPath, text)
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          latestDataByEnvironment.set(environment, latestData)
           return json({ ok: true, configPath, site: name, data: latestData })
         }
 
@@ -1044,7 +1067,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/api/actions')
-          return json(actions)
+          return json(dashboardActions(environment))
 
         if (url.pathname === '/api/server/operations')
           return json(buildDashboardOperations(config as CloudConfig, latestData))
@@ -1090,6 +1113,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/dashboard-data') {
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          latestDataByEnvironment.set(environment, latestData)
           return json(scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }))
         }
 
@@ -1210,6 +1234,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             execute: () => runServerlessOperation(config as CloudConfig, environment, operation, { min: body.min, max: body.max }),
           })
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
+          latestDataByEnvironment.set(environment, latestData)
           return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
@@ -1309,28 +1334,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json(await controlScheduler(config as CloudConfig, environment, action))
         }
 
-        // A page request with `?env=<name>` switches the active environment
-        // server-side (re-resolves data + actions and rebuilds the UI), so the
-        // nav's environment links work without any client JavaScript. This is
-        // process-wide state, so it carries the same capability as POST
-        // /api/env — a member must not be able to flip everyone's environment
-        // by editing a URL.
-        const requestedEnv = url.searchParams.get('env')
-        if (requestedEnv && availableEnvironments.includes(requestedEnv) && requestedEnv !== environment
-          && authorize({ user, capability: 'box:config' })) {
-          environment = requestedEnv as EnvironmentType
-          actions = dashboardActions(environment)
-          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-          uiCache.clear()
-        }
-
         // Members get the pages built for their scope; the rest of the cockpit
         // is the box owner's. Their data is already withheld, so this is about
         // not handing someone a page whose every request will 403 at them.
         if (user.role === 'member' && isBoxOnlyPage(url.pathname))
-          return new Response(null, { status: 302, headers: { location: '/server/sites' } })
+          return new Response(null, { status: 302, headers: { location: `/access-denied?env=${encodeURIComponent(environment)}` } })
 
-        const uiRoot = await uiRootFor(user)
+        const uiRoot = await uiRootFor(user, environment)
         if (!uiRoot)
           return text('ts-cloud dashboard UI is unavailable.', 503)
         return serveStatic(uiRoot, url.pathname)

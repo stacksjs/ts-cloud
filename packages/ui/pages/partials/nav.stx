@@ -1,92 +1,183 @@
 <script server>
-// Mode- and scope-aware, fully server-rendered nav. The deployment mode,
-// environment list and viewer role are injected with the dashboard data; the
-// environment switcher is plain links (`?env=<name>`) the server handles - no
-// client JavaScript needed.
-//
-// The nav offers only what the viewer can actually reach. A member (a
-// collaborator invited to specific sites) has no box-level access, so the
-// server, database and environment-switching surfaces are not shown - the
-// server would refuse them anyway, and offering a link that 403s is worse than
-// not offering it. This is presentation only: access is enforced server-side.
 let __nav = null
 try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __nav = null }
-// Server and serverless are mutually exclusive; the dashboard shows one or the other.
+
 const navMode = __nav?.mode ?? 'server'
 const isMember = (__nav?.viewer?.role ?? 'admin') === 'member'
-const showServer = navMode === 'server' && !isMember
-const showServerless = navMode === 'serverless' && !isMember
 const navEnvs = __nav?.environments ?? []
-const navEnv = __nav?.environment ?? ''
-// Only the box owner can switch the active environment (it is process-wide).
-const showEnvSwitch = navEnvs.length > 1 && !isMember
+const navEnv = __nav?.environment ?? env ?? 'production'
+const navProject = __nav?.project?.name ?? __nav?.project?.slug ?? name ?? 'Project'
+const navProvider = __nav?.server?.provider ?? __nav?.provider ?? ''
+const navRegion = __nav?.server?.region ?? __nav?.project?.region ?? __nav?.region ?? ''
+const envHref = path => `${path}?env=${encodeURIComponent(navEnv)}`
+const isActive = (...keys) => keys.includes(active ?? '')
 </script>
-<nav>
-  <div class="brand"><span class="dot"></span> ts-cloud</div>
-  <div class="tabs">
-    @if (showServer)
-      @if ((active ?? '') === 'server')
-        <a href="/" class="active">Server</a>
-      @else
-        <a href="/">Server</a>
-      @endif
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+<button class="nav-toggle-button" type="button" aria-label="Open navigation" aria-controls="primary-navigation" aria-expanded="false"><span></span><span></span><span></span></button>
+<button class="nav-scrim" type="button" aria-label="Close navigation"></button>
+
+<aside class="app-sidebar" id="primary-navigation" aria-label="Primary navigation">
+  <a class="brand" href="{{ envHref(navMode === 'serverless' ? '/serverless' : '/') }}"><span class="dot"></span><span>ts-cloud</span></a>
+
+  <div class="sidebar-context">
+    <span class="context-label">Project</span>
+    <strong>{{ navProject }}</strong>
+    @if (navProvider || navRegion)
+      <span class="context-detail">{{ [navProvider, navRegion].filter(Boolean).join(' · ') }}</span>
     @endif
-    @if (showServerless)
-      @if ((active ?? '') === 'serverless')
-        <a href="/serverless" class="active">Serverless</a>
-      @else
-        <a href="/serverless">Serverless</a>
+  </div>
+
+  <div class="environment-picker" aria-label="Environment">
+    <span class="context-label">Environment</span>
+    <details>
+      <summary class="environment-current {{ navEnv === 'production' ? 'production' : '' }}">
+        <span>{{ navEnv === 'production' ? 'PROD' : 'ENV' }}</span>
+        <strong>{{ navEnv }}</strong>
+      </summary>
+      @if (navEnvs.length > 1)
+        <div class="environment-menu">
+          @foreach (navEnvs as e)
+            <a class="{{ e === navEnv ? 'active' : '' }}" href="?env={{ encodeURIComponent(e) }}">
+              <span>{{ e }}</span>@if (e === 'production')<small>Production</small>@else<small>Environment</small>@endif
+            </a>
+          @endforeach
+        </div>
       @endif
-    @endif
-    @if (isMember)
-      @if ((active ?? '') === 'sites')
-        <a href="/server/sites" class="active">Sites</a>
-      @else
-        <a href="/server/sites">Sites</a>
+    </details>
+  </div>
+
+  <div class="nav-groups">
+    @if (navMode === 'server')
+      @if (!isMember)
+        <section class="nav-group">
+          <h2>Overview</h2>
+          <a class="{{ isActive('server') ? 'active' : '' }}" href="{{ envHref('/') }}">Dashboard</a>
+          <a href="{{ envHref('/server/activity') }}">Activity</a>
+        </section>
       @endif
-      @if ((active ?? '') === 'deployments')
-        <a href="/server/deployments" class="active">Deployments</a>
-      @else
-        <a href="/server/deployments">Deployments</a>
+      <section class="nav-group">
+        <h2>Applications</h2>
+        <a class="{{ isActive('sites') ? 'active' : '' }}" href="{{ envHref('/server/sites') }}">Services</a>
+        <a class="{{ isActive('deployments') ? 'active' : '' }}" href="{{ envHref('/server/deployments') }}">Deployments</a>
+        <a class="{{ isActive('logs') ? 'active' : '' }}" href="{{ envHref('/server/logs') }}">Logs</a>
+      </section>
+      @if (!isMember)
+        <section class="nav-group">
+          <h2>Operations</h2>
+          <a href="{{ envHref('/server/metrics') }}">Metrics</a>
+          <a href="{{ envHref('/server/services') }}">Runtime services</a>
+          <a href="{{ envHref('/server/workers') }}">Workers & schedules</a>
+          <a href="{{ envHref('/server/backups') }}">Backups</a>
+          <a href="{{ envHref('/server/actions') }}">Run operations</a>
+        </section>
+        <section class="nav-group">
+          <h2>Infrastructure</h2>
+          <a class="{{ isActive('database') ? 'active' : '' }}" href="{{ envHref('/server/database') }}">Databases</a>
+          <a href="{{ envHref('/server/firewall') }}">Network & firewall</a>
+          <a href="{{ envHref('/server/security') }}">Security</a>
+          <a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>
+          <a href="{{ envHref('/server/terminal') }}">Terminal</a>
+        </section>
       @endif
-      @if ((active ?? '') === 'logs')
-        <a href="/server/logs" class="active">Logs</a>
-      @else
-        <a href="/server/logs">Logs</a>
-      @endif
-    @endif
-    @if (showServer)
-      @if ((active ?? '') === 'database')
-        <a href="/server/database" class="active">Databases</a>
-      @else
-        <a href="/server/database">Databases</a>
+    @else
+      @if (!isMember)
+        <section class="nav-group">
+          <h2>Overview</h2>
+          <a class="{{ isActive('serverless') ? 'active' : '' }}" href="{{ envHref('/serverless') }}">Dashboard</a>
+          <a href="{{ envHref('/serverless/deployments') }}">Deployments</a>
+          <a href="{{ envHref('/serverless/logs') }}">Logs</a>
+          <a href="{{ envHref('/serverless/metrics') }}">Metrics</a>
+          <a href="{{ envHref('/serverless/traces') }}">Traces</a>
+        </section>
+        <section class="nav-group">
+          <h2>Compute & data</h2>
+          <a href="{{ envHref('/serverless/functions') }}">Functions</a>
+          <a href="{{ envHref('/serverless/queues') }}">Queues</a>
+          <a href="{{ envHref('/serverless/scheduler') }}">Schedules</a>
+          <a href="{{ envHref('/serverless/data') }}">Data</a>
+          <a href="{{ envHref('/serverless/assets') }}">Assets</a>
+        </section>
+        <section class="nav-group">
+          <h2>Settings</h2>
+          <a href="{{ envHref('/serverless/secrets') }}">Environment & secrets</a>
+          <a href="{{ envHref('/serverless/firewall') }}">Network</a>
+          <a href="{{ envHref('/serverless/alarms') }}">Alerts</a>
+          <a href="{{ envHref('/serverless/cost') }}">Costs</a>
+        </section>
       @endif
     @endif
     @if (!isMember)
-      @if ((active ?? '') === 'team')
-        <a href="/server/team" class="active">Team</a>
-      @else
-        <a href="/server/team">Team</a>
-      @endif
+      <section class="nav-group">
+        <h2>Organization</h2>
+        <a class="{{ isActive('team') ? 'active' : '' }}" href="{{ envHref('/server/team') }}">People & access</a>
+      </section>
     @endif
   </div>
-  <div class="nav-meta">
-    <span>{{ name ?? '' }}</span>
-    @if (showEnvSwitch)
-      <span class="env-switch" title="Switch environment">
-        @foreach (navEnvs as e)
-          @if (e === navEnv)
-            <a class="active env-opt" href="?env={{ e }}">{{ e }}</a>
-          @else
-            <a class="env-opt" href="?env={{ e }}">{{ e }}</a>
-          @endif
-        @endforeach
-      </span>
-    @else
-      <span class="env">{{ navEnv || env || '' }}</span>
-    @endif
-    <form method="post" action="/api/logout" class="signout">
-      <button type="submit">Sign out</button>
-    </form>
+
+  <form method="post" action="/api/logout" class="signout">
+    <button type="submit">Sign out</button>
+  </form>
+</aside>
+
+<div class="context-bar" aria-label="Current scope">
+  <div class="context-breadcrumb">
+    <span>{{ navProject }}</span><i>/</i><strong>{{ navEnv }}</strong>
+    @if (navProvider || navRegion)<small>{{ [navProvider, navRegion].filter(Boolean).join(' · ') }}</small>@endif
   </div>
-</nav>
+  <span class="scope-safety {{ navEnv === 'production' ? 'production' : '' }}">{{ navEnv === 'production' ? 'Production scope' : `${navEnv} scope` }}</span>
+</div>
+
+<script>
+(() => {
+  const environment = new URLSearchParams(location.search).get('env')
+  const main = document.querySelector('.wrap')
+  if (main && !main.id) main.id = 'main-content'
+  const sidebar = document.querySelector('.app-sidebar')
+  const toggle = document.querySelector('.nav-toggle-button')
+  const scrim = document.querySelector('.nav-scrim')
+  const setMenu = (open) => {
+    document.body.classList.toggle('nav-open', open)
+    toggle?.setAttribute('aria-expanded', String(open))
+    toggle?.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation')
+  }
+  toggle?.addEventListener('click', () => setMenu(!document.body.classList.contains('nav-open')))
+  scrim?.addEventListener('click', () => { setMenu(false); toggle?.focus() })
+  for (const anchor of sidebar?.querySelectorAll('.nav-group a[href]') || []) {
+    const target = new URL(anchor.href, location.href)
+    anchor.classList.toggle('active', target.pathname === location.pathname)
+    if (target.pathname === location.pathname) anchor.setAttribute('aria-current', 'page')
+    else anchor.removeAttribute('aria-current')
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.body.classList.contains('nav-open')) {
+      setMenu(false)
+      toggle?.focus()
+    }
+  })
+  if (!environment) return
+
+  const scopedUrl = (value) => {
+    const url = new URL(value, location.href)
+    if (url.origin !== location.origin) return value
+    if (!url.searchParams.has('env')) url.searchParams.set('env', environment)
+    return url.href
+  }
+
+  const originalFetch = window.fetch.bind(window)
+  window.fetch = (input, init) => {
+    if (typeof input === 'string') return originalFetch(scopedUrl(input), init)
+    if (input instanceof URL) return originalFetch(new URL(scopedUrl(input.href)), init)
+    if (input instanceof Request) return originalFetch(new Request(scopedUrl(input.url), input), init)
+    return originalFetch(input, init)
+  }
+
+  document.addEventListener('click', (event) => {
+    const anchor = event.target.closest?.('a[href]')
+    if (!anchor || anchor.target || anchor.hasAttribute('download')) return
+    const href = anchor.getAttribute('href')
+    if (!href || href.startsWith('#') || href.startsWith('mailto:')) return
+    anchor.href = scopedUrl(href)
+  })
+})()
+</script>

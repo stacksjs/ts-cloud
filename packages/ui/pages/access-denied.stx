@@ -1,0 +1,18 @@
+<script server>
+const meta = { title: 'Access unavailable · ts-cloud' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('./partials/head', { title: meta.title })</head>
+<body>
+  @include('./partials/nav', { active: '', name: 'ts-cloud', env: 'production' })
+  <div class="wrap">
+    <div class="state-page">
+      <span class="state-code">Access</span>
+      <h1>This area is outside your current grant</h1>
+      <p>Your account is signed in, but this page requires box-level access. You can return to the services explicitly shared with you.</p>
+      <div class="state-actions"><a class="btn" href="/server/sites">Open my services</a><a class="btn ghost" href="/server/deployments">View deployments</a></div>
+    </div>
+  </div>
+</body>
+</html>
