@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 15
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 16
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -786,6 +786,28 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         UNIQUE(organization_id, name)
       );
       CREATE INDEX registry_connections_org_idx ON registry_connections(organization_id, status, name);
+    `,
+  },
+  {
+    version: 16,
+    name: 'inspected_application_artifacts',
+    sql: `
+      CREATE TABLE application_artifacts (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        filename TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        format TEXT NOT NULL,
+        entry_count INTEGER NOT NULL,
+        expanded_bytes INTEGER NOT NULL,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(project_id, sha256)
+      );
+      CREATE INDEX application_artifacts_project_idx ON application_artifacts(project_id, created_at DESC);
     `,
   },
 ]

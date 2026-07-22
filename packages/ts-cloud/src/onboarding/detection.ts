@@ -1,4 +1,6 @@
 import type { BuildStrategy, DetectionCandidate, DetectionEvidence, DetectionFile } from './types'
+import { lstatSync, readdirSync, readFileSync } from 'node:fs'
+import { relative, resolve, sep } from 'node:path'
 
 function fileMap(files: DetectionFile[]): Map<string, DetectionFile> {
   return new Map(files.map(file => [file.path.replace(/^\.\//, '').replace(/\\/g, '/'), file]))
@@ -40,4 +42,28 @@ export function detectApplication(files: DetectionFile[]): DetectionCandidate[] 
   if (!results.length && (byPath.has('index.html') || byPath.has('public/index.html'))) results.push(candidate('static', 'static', 0.78, [evidence(byPath.has('index.html') ? 'index.html' : 'public/index.html', 'A static HTML entrypoint is present.', .78)], { kind: 'static', publishDirectory: byPath.has('index.html') ? '.' : 'public' }, 'Publish the static directory without a runtime process.'))
   if (!results.length) results.push(candidate('unknown', 'buildpack', 0.2, [], { kind: 'buildpack', runtime: 'node' }, 'No supported framework signature was conclusive; choose commands and runtime manually.'))
   return results.sort((left, right) => right.confidence - left.confidence || left.framework.localeCompare(right.framework))
+}
+
+/** Metadata-only directory scan: no project code is imported or executed. */
+export function scanApplicationDirectory(root: string, options: { maxFiles?: number, maxContentBytes?: number } = {}): DetectionFile[] {
+  const absolute = resolve(root); const maxFiles = options.maxFiles ?? 10_000; const maxContentBytes = options.maxContentBytes ?? 256 * 1024; const files: DetectionFile[] = []
+  const readable = new Set(['Dockerfile', 'package.json', 'composer.json', 'index.html', 'public/index.html', 'bun.lock', 'bun.lockb', 'artisan'])
+  const visit = (directory: string) => {
+    for (const name of readdirSync(directory).sort()) {
+      if (name === '.git' || name === 'node_modules' || name === 'vendor' || name === '.ts-cloud') continue
+      const path = resolve(directory, name); const rel = relative(absolute, path).split(sep).join('/')
+      if (!rel || rel.startsWith('../')) throw new Error('Detection path escaped the application root')
+      const stat = lstatSync(path)
+      if (stat.isSymbolicLink()) throw new Error(`Detection refuses symbolic links: ${rel}`)
+      if (stat.isDirectory()) visit(path)
+      else if (stat.isFile()) {
+        if (files.length >= maxFiles) throw new Error('Application file-count limit exceeded')
+        const item: DetectionFile = { path: rel, size: stat.size }
+        if (readable.has(rel) && stat.size <= maxContentBytes) item.content = readFileSync(path, 'utf8')
+        files.push(item)
+      }
+    }
+  }
+  visit(absolute)
+  return files
 }

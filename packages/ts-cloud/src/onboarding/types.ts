@@ -111,3 +111,17 @@ export interface RegistryConnection {
 }
 
 export interface RegistryCredential { username?: string, password?: string, token?: string }
+
+export interface ApplicationArtifactRecord {
+  id: string
+  organizationId: string
+  projectId: string
+  filename: string
+  sha256: string
+  size: number
+  format: 'zip' | 'tar'
+  entryCount: number
+  expandedBytes: number
+  createdByActorId?: string
+  createdAt: string
+}

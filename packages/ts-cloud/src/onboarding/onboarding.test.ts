@@ -1,8 +1,12 @@
 import type { ApplicationDraftInput } from './types'
 import { describe, expect, it } from 'bun:test'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ControlPlaneStore } from '../control-plane'
 import { inspectApplicationArchive } from './archive'
-import { detectApplication } from './detection'
+import { ApplicationArtifactStore } from './artifact-store'
+import { detectApplication, scanApplicationDirectory } from './detection'
 import { migrateApplicationDraft } from './migrations'
 import { parseApplicationManifest, planApplication } from './plan'
 import { RegistryConnectionStore } from './registry'
@@ -29,6 +33,19 @@ describe('application detection', () => {
     expect(detectApplication([{ path: 'artisan' }, { path: 'composer.json', content: '{"require":{"laravel/framework":"^12"}}' }])[0]).toMatchObject({ framework: 'laravel', confidence: .98 })
     expect(detectApplication([{ path: 'composer.json', content: '{"require":{}}' }])[0]).toMatchObject({ framework: 'php' })
     expect(detectApplication([{ path: 'index.html' }])[0]).toMatchObject({ framework: 'static', strategy: 'static' })
+  })
+
+  it('scans metadata without executing code and rejects symlink traversal', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-detection-'))
+    try {
+      writeFileSync(join(root, 'package.json'), '{"scripts":{"start":"bun index.ts"}}')
+      writeFileSync(join(root, 'bun.lock'), '')
+      mkdirSync(join(root, 'node_modules')); writeFileSync(join(root, 'node_modules', 'ignored'), 'ignored')
+      expect(scanApplicationDirectory(root).map(file => file.path)).toEqual(['bun.lock', 'package.json'])
+      symlinkSync('/tmp', join(root, 'escape'))
+      expect(() => scanApplicationDirectory(root)).toThrow('refuses symbolic links')
+    }
+    finally { rmSync(root, { recursive: true, force: true }) }
   })
 
   it('keeps ambiguous evidence ranked and unsupported projects manually configurable', () => {
@@ -72,6 +89,21 @@ describe('application archive inspection', () => {
   it('accepts bounded safe ZIP and TAR entries without extracting them', () => {
     expect(inspectApplicationArchive(storedZip('dist/index.html'), 'site.zip')).toMatchObject({ format: 'zip', entries: 1, expandedBytes: 5, paths: ['dist/index.html'] })
     expect(inspectApplicationArchive(tar('public/index.html'), 'site.tar')).toMatchObject({ format: 'tar', entries: 1, paths: ['public/index.html'] })
+  })
+
+  it('stores inspected artifacts with restrictive permissions and deduplicates content', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-artifact-'))
+    try {
+      const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'artifacts', name: 'Artifacts' }); const project = controlPlane.createProject({ organizationId: organization.id, slug: 'app', name: 'App' }); const artifacts = new ApplicationArtifactStore(controlPlane, { cwd: root, id: () => 'artifact-1' })
+      const created = artifacts.create({ organizationId: organization.id, projectId: project.id, filename: 'site.zip', bytes: storedZip('dist/index.html') })
+      expect(created).toMatchObject({ filename: 'site.zip', format: 'zip', entryCount: 1 })
+      expect(artifacts.create({ organizationId: organization.id, projectId: project.id, filename: 'site.zip', bytes: storedZip('dist/index.html') }).id).toBe(created.id)
+      const raw = controlPlane.database.query<Record<string, string>, [string]>('SELECT storage_path FROM application_artifacts WHERE id=?').get(created.id)!
+      expect(statSync(raw.storage_path).mode & 0o777).toBe(0o600)
+      expect(() => artifacts.create({ organizationId: organization.id, projectId: project.id, filename: '../site.zip', bytes: storedZip('index.html') })).toThrow('must not contain a path')
+      controlPlane.close()
+    }
+    finally { chmodSync(root, 0o700); rmSync(root, { recursive: true, force: true }) }
   })
 
   it('rejects traversal, links, malformed formats, and expansion limits', () => {
