@@ -1,6 +1,7 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { AuthOidcRole, OidcFetch } from '../auth'
 import type { AuthorizationCapability, AuthorizationScope, OperationState, OrganizationRoleTemplate } from '../control-plane'
+import type { ReleaseDriverResolver } from '../release'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
 import { createHash } from 'node:crypto'
@@ -21,6 +22,7 @@ import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft,
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
+import { createReleaseQueueHandlers } from '../release'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -81,6 +83,8 @@ export interface LocalDashboardServerOptions {
   queueWorker?: boolean
   /** Maximum number of operations this process may execute in parallel. */
   queueParallelism?: number
+  /** Resolve the provider-specific immutable activation primitive for release jobs. */
+  releaseDriver?: ReleaseDriverResolver
 }
 
 export interface LocalDashboardServer {
@@ -872,7 +876,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const queueWorkerEnabled = options.queueWorker ?? process.env.NODE_ENV !== 'test'
   const queueSecrets = deploymentLogSecrets()
   const queueWorker = queueWorkerEnabled
-    ? new DurableQueueWorker(operationQueue, createDeploymentQueueHandlers({
+    ? new DurableQueueWorker(operationQueue, { ...createDeploymentQueueHandlers({
         store: controlPlane.store,
         execute: async (command, context) => {
           const operationInput = context.operation.input && typeof context.operation.input === 'object' && !Array.isArray(context.operation.input) ? context.operation.input as Record<string, any> : {}
@@ -919,7 +923,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), {
+      }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })) }) }, {
         parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
         onError: error => console.error('ts-cloud deployment queue worker failed:', error),
       })
