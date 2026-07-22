@@ -3,6 +3,8 @@ import type { EnvironmentType } from '@ts-cloud/core'
 import type { DataAction, DataEngine, DataProvider, DataService, JsonValue } from '../../src'
 import * as output from '../../src/utils/cli'
 import { resolveAuthEncryptionKey } from '../../src/auth'
+import { ElastiCacheClient } from '../../src/aws/elasticache'
+import { RDSClient } from '../../src/aws/rds'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter } from '../../src/data-services'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
 import { DurableOperationQueue } from '../../src/queue'
@@ -107,11 +109,12 @@ async function context(environment?: string, serviceHint?: string) {
       externalId: 'cli',
       displayName: 'ts-cloud CLI',
     }),
+  region = config.project?.region ?? 'us-east-1',
   adapters = {
-    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport()),
-    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport()),
+    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(new RDSClient(region))),
+    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport(new RDSClient(region))),
     aws_elasticache: new AwsElastiCacheDataAdapter(
-      new AwsElastiCacheTransport(),
+      new AwsElastiCacheTransport(new ElastiCacheClient(region)),
     ),
     server: new ServerDataAdapter(new DockerDataTransport()),
     container: new ContainerDataAdapter(new DockerDataTransport()),

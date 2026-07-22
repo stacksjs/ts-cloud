@@ -20,6 +20,8 @@ import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardH
 import { cloneSourceBinding, createSourceAdapter, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
+import { ElastiCacheClient } from '../aws/elasticache'
+import { RDSClient } from '../aws/rds'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
@@ -967,10 +969,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const dataServiceStore = new DataServiceStore(controlPlane.store)
   const dataServiceSecrets = new EncryptedDataSecretStore(controlPlane.store, resolveAuthEncryptionKey(cwd))
   const dataServiceLifecycle = new DataServiceLifecycle(dataServiceStore, operationQueue, dataServiceSecrets)
+  const dataServiceRegion = config.project?.region ?? 'us-east-1'
   const dataAdapters = {
-    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport()),
-    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport()),
-    aws_elasticache: new AwsElastiCacheDataAdapter(new AwsElastiCacheTransport()),
+    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(new RDSClient(dataServiceRegion))),
+    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport(new RDSClient(dataServiceRegion))),
+    aws_elasticache: new AwsElastiCacheDataAdapter(new AwsElastiCacheTransport(new ElastiCacheClient(dataServiceRegion))),
     server: new ServerDataAdapter(new DockerDataTransport()),
     container: new ContainerDataAdapter(new DockerDataTransport()),
   } as const

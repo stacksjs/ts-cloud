@@ -36,9 +36,36 @@ class Runtime implements DockerRuntime {
   async logs() {
     return 'bounded logs'
   }
+  async stats() {
+    return {
+      cpuPercent: '1.5%',
+      memoryUsage: '32MiB / 1GiB',
+      pids: 12,
+    }
+  }
 }
 
 describe('Docker data transport', () => {
+  it('observes bounded runtime health, endpoint, and metrics', async () => {
+    const runtime = new Runtime()
+    runtime.metadata = {
+      Config: {
+        Image: 'postgres:17-alpine',
+        Labels: { 'ts-cloud.engine': 'postgres' },
+      },
+      State: { Status: 'running', Health: { Status: 'healthy' } },
+      NetworkSettings: {
+        Ports: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '5432' }] },
+      },
+    }
+    expect(await new DockerDataTransport(runtime).observe('orders')).toMatchObject({
+      status: 'running',
+      healthy: 'healthy',
+      endpoint: '127.0.0.1',
+      port: 5432,
+      metrics: { cpuPercent: '1.5%', pids: 12 },
+    })
+  })
   it('provisions private Postgres without placing credentials in arguments', async () => {
     const runtime = new Runtime(),
       transport = new DockerDataTransport(runtime, '/tmp/ts-cloud-data-test')

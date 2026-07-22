@@ -17,6 +17,7 @@ export interface DockerRuntime {
   restart(name: string): Promise<void>
   remove(name: string): Promise<void>
   logs(name: string, lines: number): Promise<string>
+  stats(name: string): Promise<Record<string, JsonValue>>
 }
 
 async function docker(
@@ -98,6 +99,23 @@ export class BunDockerRuntime implements DockerRuntime {
     )
     return `${result.stdout}${result.stderr}`.slice(-256 * 1024)
   }
+  async stats(name: string): Promise<Record<string, JsonValue>> {
+    const result = await docker(
+      ['stats', '--no-stream', '--format', '{{json .}}', name],
+      undefined,
+      true,
+    )
+    if (result.code !== 0 || !result.stdout.trim()) return {}
+    const value = JSON.parse(result.stdout.trim()) as Record<string, unknown>
+    return {
+      cpuPercent: String(value.CPUPerc ?? ''),
+      memoryUsage: String(value.MemUsage ?? ''),
+      memoryPercent: String(value.MemPerc ?? ''),
+      networkIo: String(value.NetIO ?? ''),
+      blockIo: String(value.BlockIO ?? ''),
+      pids: Number(value.PIDs ?? 0),
+    }
+  }
 }
 
 const engineConfig: Record<
@@ -154,6 +172,7 @@ export class DockerDataTransport implements DataProviderTransport {
       inspect = await this.runtime.inspect(name)
     if (!inspect) throw new Error(`Data container ${name} was not found.`)
     const metadata = labels(inspect),
+      metrics = await this.runtime.stats(name),
       ports = inspect.NetworkSettings?.Ports ?? {},
       binding = Object.values(ports).flat().find(Boolean) as
         { HostIp?: string; HostPort?: string } | undefined
@@ -169,6 +188,7 @@ export class DockerDataTransport implements DataProviderTransport {
       port: binding?.HostPort ? Number(binding.HostPort) : null,
       image: inspect.Config?.Image ?? null,
       startedAt: inspect.State?.StartedAt ?? null,
+      metrics,
     }
   }
   async apply(input: Input, credential?: string): Promise<Input> {
