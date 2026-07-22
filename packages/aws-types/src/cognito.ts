@@ -2,7 +2,6 @@
  * AWS Cognito Types
  * CloudFormation resource types for Amazon Cognito
  */
-
 import type { CloudFormationResource } from './index'
 
 export interface CognitoUserPool extends CloudFormationResource {
@@ -163,19 +162,22 @@ export interface CognitoIdentityPoolRoleAttachment extends CloudFormationResourc
   Properties: {
     IdentityPoolId: string | { Ref: string }
     Roles?: Record<string, string>
-    RoleMappings?: Record<string, {
-      Type?: 'Token' | 'Rules'
-      AmbiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
-      IdentityProvider?: string
-      RulesConfiguration?: {
-        Rules?: Array<{
-          Claim?: string
-          MatchType?: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
-          Value?: string
-          RoleARN?: string
-        }>
+    RoleMappings?: Record<
+      string,
+      {
+        Type?: 'Token' | 'Rules'
+        AmbiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
+        IdentityProvider?: string
+        RulesConfiguration?: {
+          Rules?: Array<{
+            Claim?: string
+            MatchType?: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
+            Value?: string
+            RoleARN?: string
+          }>
+        }
       }
-    }>
+    >
   }
 }
 

@@ -1,8 +1,7 @@
 {
   "name": "@ts-cloud/aws-types",
-  "version": "0.7.56",
   "type": "module",
-  "sideEffects": false,
+  "version": "0.7.56",
   "description": "AWS CloudFormation resource type definitions (without AWS SDK)",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
@@ -14,6 +13,7 @@
   "bugs": {
     "url": "https://github.com/stacksjs/ts-cloud/issues"
   },
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

@@ -11,7 +11,8 @@ export interface CloudWatchAlarm extends CloudFormationResource {
     Period?: number
     EvaluationPeriods: number
     Threshold: number
-    ComparisonOperator: 'GreaterThanOrEqualToThreshold' | 'GreaterThanThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
+    ComparisonOperator:
+      'GreaterThanOrEqualToThreshold' | 'GreaterThanThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
     ActionsEnabled?: boolean
     AlarmActions?: string[]
     InsufficientDataActions?: string[]

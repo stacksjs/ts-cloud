@@ -47,7 +47,10 @@ export interface CloudFormationOutput {
 export interface IntrinsicFunctions {
   Ref: (logicalName: string) => { Ref: string }
   GetAtt: (logicalName: string, attributeName: string) => { 'Fn::GetAtt': [string, string] }
-  Sub: (template: string, variables?: Record<string, unknown>) => { 'Fn::Sub': string | [string, Record<string, unknown>] }
+  Sub: (
+    template: string,
+    variables?: Record<string, unknown>,
+  ) => { 'Fn::Sub': string | [string, Record<string, unknown>] }
   Join: (delimiter: string, values: unknown[]) => { 'Fn::Join': [string, unknown[]] }
   Select: (index: number, list: unknown[]) => { 'Fn::Select': [number, unknown[]] }
   Split: (delimiter: string, source: string) => { 'Fn::Split': [string, string] }

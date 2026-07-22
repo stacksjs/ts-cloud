@@ -2,7 +2,6 @@
  * AWS CodeDeploy Types
  * CloudFormation resource types for AWS CodeDeploy
  */
-
 import type { CloudFormationResource } from './index'
 
 export interface CodeDeployApplication extends CloudFormationResource {

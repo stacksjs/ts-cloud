@@ -2,7 +2,6 @@
  * AWS Systems Manager (SSM) Types
  * @see https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/AWS_SSM.html
  */
-
 import type { Tag } from './common'
 
 /**
@@ -66,7 +65,22 @@ export interface SSMDocument {
   Properties: {
     Name?: string
     Content: any
-    DocumentType?: 'Command' | 'Policy' | 'Automation' | 'Session' | 'Package' | 'ApplicationConfiguration' | 'ApplicationConfigurationSchema' | 'DeploymentStrategy' | 'ChangeCalendar' | 'Automation.ChangeTemplate' | 'ProblemAnalysis' | 'ProblemAnalysisTemplate' | 'CloudFormation' | 'ConformancePackTemplate' | 'QuickSetup'
+    DocumentType?:
+      | 'Command'
+      | 'Policy'
+      | 'Automation'
+      | 'Session'
+      | 'Package'
+      | 'ApplicationConfiguration'
+      | 'ApplicationConfigurationSchema'
+      | 'DeploymentStrategy'
+      | 'ChangeCalendar'
+      | 'Automation.ChangeTemplate'
+      | 'ProblemAnalysis'
+      | 'ProblemAnalysisTemplate'
+      | 'CloudFormation'
+      | 'ConformancePackTemplate'
+      | 'QuickSetup'
     DocumentFormat?: 'YAML' | 'JSON' | 'TEXT'
     TargetType?: string
     VersionName?: string
@@ -187,7 +201,17 @@ export interface SSMPatchBaseline {
   Properties: {
     Name: string
     Description?: string
-    OperatingSystem?: 'WINDOWS' | 'AMAZON_LINUX' | 'AMAZON_LINUX_2' | 'UBUNTU' | 'REDHAT_ENTERPRISE_LINUX' | 'SUSE' | 'CENTOS' | 'ORACLE_LINUX' | 'DEBIAN' | 'MACOS'
+    OperatingSystem?:
+      | 'WINDOWS'
+      | 'AMAZON_LINUX'
+      | 'AMAZON_LINUX_2'
+      | 'UBUNTU'
+      | 'REDHAT_ENTERPRISE_LINUX'
+      | 'SUSE'
+      | 'CENTOS'
+      | 'ORACLE_LINUX'
+      | 'DEBIAN'
+      | 'MACOS'
     ApprovedPatches?: string[]
     ApprovedPatchesComplianceLevel?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFORMATIONAL' | 'UNSPECIFIED'
     ApprovedPatchesEnableNonSecurity?: boolean

@@ -2,7 +2,6 @@
  * AWS AppSync Types
  * CloudFormation resource types for AWS AppSync (GraphQL)
  */
-
 import type { Tag } from './common'
 
 export interface GraphQLApi {
@@ -86,7 +85,14 @@ export interface DataSource {
   Properties: {
     ApiId: string | { Ref: string }
     Name: string
-    Type: 'AWS_LAMBDA' | 'AMAZON_DYNAMODB' | 'AMAZON_ELASTICSEARCH' | 'AMAZON_OPENSEARCH_SERVICE' | 'HTTP' | 'RELATIONAL_DATABASE' | 'NONE'
+    Type:
+      | 'AWS_LAMBDA'
+      | 'AMAZON_DYNAMODB'
+      | 'AMAZON_ELASTICSEARCH'
+      | 'AMAZON_OPENSEARCH_SERVICE'
+      | 'HTTP'
+      | 'RELATIONAL_DATABASE'
+      | 'NONE'
     ServiceRoleArn?: string | { Ref: string }
 
     // Lambda config (if Type = AWS_LAMBDA)

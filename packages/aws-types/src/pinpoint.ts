@@ -1,7 +1,6 @@
 /**
  * AWS Pinpoint CloudFormation Types
  */
-
 import type { ResourceBase, Tags } from './common'
 
 /**

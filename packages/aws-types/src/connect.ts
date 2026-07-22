@@ -1,7 +1,6 @@
 /**
  * AWS Amazon Connect CloudFormation Types
  */
-
 import type { ResourceBase, Tags } from './common'
 
 /**
@@ -75,7 +74,16 @@ export interface ConnectContactFlow extends ResourceBase {
   Properties: {
     InstanceArn: string
     Name: string
-    Type: 'CONTACT_FLOW' | 'CUSTOMER_QUEUE' | 'CUSTOMER_HOLD' | 'CUSTOMER_WHISPER' | 'AGENT_HOLD' | 'AGENT_WHISPER' | 'OUTBOUND_WHISPER' | 'AGENT_TRANSFER' | 'QUEUE_TRANSFER'
+    Type:
+      | 'CONTACT_FLOW'
+      | 'CUSTOMER_QUEUE'
+      | 'CUSTOMER_HOLD'
+      | 'CUSTOMER_WHISPER'
+      | 'AGENT_HOLD'
+      | 'AGENT_WHISPER'
+      | 'OUTBOUND_WHISPER'
+      | 'AGENT_TRANSFER'
+      | 'QUEUE_TRANSFER'
     Content: string
     Description?: string
     State?: 'ACTIVE' | 'ARCHIVED'
@@ -221,7 +229,19 @@ export interface ConnectTaskTemplate extends ResourceBase {
     Name: string
     Fields?: Array<{
       Id: { Name: string }
-      Type: 'NAME' | 'DESCRIPTION' | 'SCHEDULED_TIME' | 'QUICK_CONNECT' | 'URL' | 'NUMBER' | 'TEXT' | 'TEXT_AREA' | 'DATE_TIME' | 'BOOLEAN' | 'SINGLE_SELECT' | 'EMAIL'
+      Type:
+        | 'NAME'
+        | 'DESCRIPTION'
+        | 'SCHEDULED_TIME'
+        | 'QUICK_CONNECT'
+        | 'URL'
+        | 'NUMBER'
+        | 'TEXT'
+        | 'TEXT_AREA'
+        | 'DATE_TIME'
+        | 'BOOLEAN'
+        | 'SINGLE_SELECT'
+        | 'EMAIL'
       Description?: string
       SingleSelectOptions?: string[]
     }>
