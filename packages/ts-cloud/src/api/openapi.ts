@@ -1,4 +1,4 @@
-export const API_VERSION = '1.3.0'
+export const API_VERSION = '1.4.0'
 
 export function openApiDocument(): Record<string, unknown> {
   const error = {
@@ -44,6 +44,12 @@ export function openApiDocument(): Record<string, unknown> {
         delete: { operationId: 'disconnectRegistryConnection', summary: 'Disconnect and erase registry credentials', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string' } } } } } }, responses: { '200': { description: 'Credentials erased and connection disconnected.' }, default: { $ref: '#/components/responses/Error' } } },
       },
       '/api/v1/queue': { get: { operationId: 'listQueue', summary: 'List authorized durable operations and blocking metadata', parameters: [{ name: 'projectId', in: 'query', schema: { type: 'string' } }, { name: 'state', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'] } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/QueueOperation' }) } },
+      '/api/v1/preview-definitions': { get: { operationId: 'listPreviewDefinitions', summary: 'List preview policies', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createPreviewDefinition', summary: 'Configure bounded preview policy', responses: { '200': { description: 'Preview definition created.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/previews': { get: { operationId: 'listPreviews', summary: 'List authorized persistent previews', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createPreview', summary: 'Create or update one immutable preview identity', responses: { '200': { description: 'Preview deployment queued.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/previews/{previewId}/destroy': { post: { operationId: 'destroyPreview', summary: 'Confirm tagged preview teardown', responses: { '200': { description: 'Teardown queued.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/previews/{previewId}/extend': { post: { operationId: 'extendPreview', summary: 'Extend preview TTL', responses: { '200': { description: 'Expiry extended.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/previews/{previewId}/rebuild': { post: { operationId: 'rebuildPreview', summary: 'Rebuild the exact recorded commit', responses: { '200': { description: 'Rebuild queued.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/previews/cleanup': { post: { operationId: 'cleanupPreviews', summary: 'Dry-run or queue TTL/keep-count teardown', responses: { '200': { description: 'Cleanup plan or operations.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/queue/settings': {
         get: { operationId: 'getQueueSettings', summary: 'Get effective concurrency limits', responses: { '200': { description: 'Queue concurrency settings.' }, default: { $ref: '#/components/responses/Error' } } },
         patch: { operationId: 'updateQueueSettings', summary: 'Confirm and audit production concurrency changes', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confirm', 'concurrency'], properties: { confirm: { const: 'update queue limits' }, concurrency: { $ref: '#/components/schemas/QueueConcurrency' } } } } } }, responses: { '200': { description: 'Updated effective limits.' }, default: { $ref: '#/components/responses/Error' } } },

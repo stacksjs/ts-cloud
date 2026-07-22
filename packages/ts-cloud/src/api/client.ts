@@ -1,5 +1,6 @@
 import type { ApplicationArtifactRecord, ApplicationDraftRecord, RegistryConnection } from '../onboarding'
 import type { QueueConcurrencyLimits } from '../queue'
+import type { CreatePreviewDefinitionInput, PreviewDefinition, PreviewInstance } from '../preview'
 import type { ApiApplicationCreateRequest, ApiApplicationCreateResponse, ApiApplicationDetectionRequest, ApiApplicationDetectionResponse, ApiApplicationDraftCreateRequest, ApiApplicationDraftUpdateRequest, ApiApplicationPlanRequest, ApiApplicationPlanResponse, ApiDeploymentRequest, ApiOperationLogsResponse, ApiOperationResponse, ApiPage, ApiQueueOperation, ApiQueueSettingsResponse, ApiRegistryConnectionCreateRequest, ApiRegistryConnectionUpdateRequest } from './types'
 
 export interface TsCloudClientOptions {
@@ -120,4 +121,12 @@ export class TsCloudClient {
   updateQueueSettings(concurrency: Partial<QueueConcurrencyLimits>): Promise<ApiQueueSettingsResponse> {
     return this.request('/api/v1/queue/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'update queue limits', concurrency }) })
   }
+
+  listPreviews(projectId?: string): Promise<ApiPage<PreviewInstance>> { return this.request(`/api/v1/previews${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`) }
+  listPreviewDefinitions(projectId: string): Promise<ApiPage<PreviewDefinition>> { return this.request(`/api/v1/preview-definitions?projectId=${encodeURIComponent(projectId)}`) }
+  createPreviewDefinition(input: CreatePreviewDefinitionInput): Promise<{ definition: PreviewDefinition, requestId: string }> { return this.request('/api/v1/preview-definitions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }) }
+  createPreview(input: { definitionId: string, repository?: string, branch: string, pullRequestNumber?: number, fork?: boolean, commitSha: string }): Promise<{ preview: PreviewInstance, operation: ApiOperationResponse['operation'], requestId: string }> { return this.request('/api/v1/previews', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }) }
+  destroyPreview(previewId: string, confirm: string): Promise<{ operation: ApiOperationResponse['operation'], requestId: string }> { return this.request(`/api/v1/previews/${encodeURIComponent(previewId)}/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm }) }) }
+  extendPreview(previewId: string, hours: number): Promise<{ preview: PreviewInstance, requestId: string }> { return this.request(`/api/v1/previews/${encodeURIComponent(previewId)}/extend`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hours }) }) }
+  rebuildPreview(previewId: string): Promise<{ operation: ApiOperationResponse['operation'], requestId: string }> { return this.request(`/api/v1/previews/${encodeURIComponent(previewId)}/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }) }
 }

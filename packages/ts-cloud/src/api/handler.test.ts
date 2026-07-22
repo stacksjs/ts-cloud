@@ -6,6 +6,7 @@ import { SourceConnectionStore } from '../source'
 import { TsCloudClient } from './client'
 import { createApiV1Handler } from './handler'
 import { openApiDocument } from './openapi'
+import { PreviewEnvironmentStore } from '../preview'
 
 function fixture(rateLimit = 120) {
   const controlPlane = new ControlPlaneStore({ path: ':memory:' })
@@ -219,9 +220,25 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   }, 3_000)
 
+  it('creates, lists, extends, rebuilds, and confirms preview teardown at resource scope', async () => {
+    const { controlPlane, project, production, productionService, call } = fixture()
+    const previews = new PreviewEnvironmentStore(controlPlane)
+    const policy = previews.createDefinition({ projectId: project.id, resourceId: productionService.id, baseEnvironmentId: production.id, domainPattern: 'https://{name}.preview.example.com' })
+    const created = await (await call('/api/v1/previews', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ definitionId: policy.id, repository: 'acme/web', branch: 'feature/api', pullRequestNumber: 12, commitSha: 'a'.repeat(40) }) })).json() as any
+    expect(created).toMatchObject({ preview: { status: 'queued', pullRequestNumber: 12, commitSha: 'a'.repeat(40) }, operation: { kind: 'preview.create', state: 'queued' } })
+    const listed = await (await call(`/api/v1/previews?projectId=${project.id}`)).json() as any
+    expect(listed.data).toMatchObject([{ id: created.preview.id, latestOperationId: created.operation.id }])
+    const extended = await (await call(`/api/v1/previews/${created.preview.id}/extend`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hours: 6 }) })).json() as any
+    expect(new Date(extended.preview.expiresAt).getTime()).toBeGreaterThan(new Date(created.preview.expiresAt).getTime())
+    expect(await (await call(`/api/v1/previews/${created.preview.id}/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json()).toMatchObject({ operation: { kind: 'preview.update' } })
+    expect((await call(`/api/v1/previews/${created.preview.id}/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'wrong' }) })).status).toBe(409)
+    expect(await (await call(`/api/v1/previews/${created.preview.id}/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: created.preview.name }) })).json()).toMatchObject({ operation: { kind: 'preview.destroy' } })
+    controlPlane.close()
+  })
+
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
     expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })

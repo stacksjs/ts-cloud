@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, webhookEndpoint } from '../source'
 import { applyApplicationDraft, detectApplication, planApplication } from '../onboarding'
 import { DurableOperationQueue } from '../queue'
+import { PreviewEnvironmentService } from '../preview'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
@@ -54,6 +55,7 @@ function page<T extends Record<string, unknown>>(items: T[], url: URL, requestId
 export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Request, networkHint?: string) => Promise<Response | undefined> {
   const service = new AutomationApiService(options.controlPlane, options.identities)
   const queue = new DurableOperationQueue(options.controlPlane)
+  const previews = new PreviewEnvironmentService(options.controlPlane)
   const windows = new Map<string, { start: number, count: number }>()
   const now = options.now ?? (() => new Date())
   const limit = options.rateLimit ?? 120
@@ -97,6 +99,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       const projectEnvironments = /^\/api\/v1\/projects\/([^/]+)\/environments$/.exec(url.pathname)
       const operationLogs = /^\/api\/v1\/operations\/([^/]+)\/logs(?:\/(stream))?$/.exec(url.pathname)
       const operationAction = /^\/api\/v1\/operations\/([^/]+)\/(cancel|retry)$/.exec(url.pathname)
+      const previewAction = /^\/api\/v1\/previews\/([^/]+)\/(destroy|extend|rebuild)$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
       else if (request.method === 'GET' && projectEnvironments)
@@ -109,6 +112,51 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       }
       else if (request.method === 'GET' && url.pathname === '/api/v1/operations')
         body = page(service.listOperations(principal, url.searchParams.get('projectId') ?? undefined), url, requestId)
+      else if (request.method === 'GET' && url.pathname === '/api/v1/previews') {
+        const projectId = url.searchParams.get('projectId') ?? undefined
+        const values = previews.previews.listInstances({ projectId }).filter((preview) => { try { service.authorize(principal, 'deployments:read', { type: 'resource', id: preview.resourceId }); return true } catch { return false } }).map(preview => ({ ...preview } as Record<string, unknown>))
+        body = page(values, url, requestId)
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/preview-definitions') {
+        const projectId = url.searchParams.get('projectId')
+        if (!projectId) throw new ApiServiceError('validation_error', 'projectId is required.', 422)
+        service.authorize(principal, 'project:read', { type: 'project', id: projectId })
+        body = page(previews.previews.listDefinitions(projectId).map(value => ({ ...value } as Record<string, unknown>)), url, requestId)
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/preview-definitions') {
+        const input = await readBody()
+        service.authorize(principal, 'config:write', { type: 'resource', id: String(input.resourceId ?? '') })
+        body = { definition: previews.previews.createDefinition({ ...input, projectId: String(input.projectId ?? ''), resourceId: String(input.resourceId ?? ''), baseEnvironmentId: String(input.baseEnvironmentId ?? ''), domainPattern: String(input.domainPattern ?? ''), createdByActorId: principal.actor.id }), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/previews') {
+        const input = await readBody(); const policy = previews.previews.getDefinition(String(input.definitionId ?? ''))
+        if (!policy) throw new ApiServiceError('not_found', 'Preview definition was not found.', 404)
+        service.authorize(principal, 'deployments:create', { type: 'resource', id: policy.resourceId })
+        const persisted = previews.previews.upsert({ definitionId: policy.id, sourceProvider: 'api', repository: typeof input.repository === 'string' ? input.repository : 'api', branch: String(input.branch ?? ''), pullRequestNumber: Number(input.pullRequestNumber) || undefined, fork: input.fork === true, commitSha: String(input.commitSha ?? ''), createdByActorId: principal.actor.id })
+        body = { preview: persisted.preview, operation: service.operation(previews.enqueueDeploy(persisted.preview, { created: persisted.created, actorId: principal.actor.id })), requestId }
+      }
+      else if (request.method === 'POST' && previewAction) {
+        const preview = previews.previews.getInstance(decodeURIComponent(previewAction[1])); if (!preview) throw new ApiServiceError('not_found', 'Preview was not found.', 404)
+        const input = await readBody(); const action = previewAction[2]
+        if (action === 'destroy') {
+          service.authorize(principal, 'deployments:cancel', { type: 'resource', id: preview.resourceId })
+          if (input.confirm !== preview.name) throw new ApiServiceError('confirmation_required', `Type ${preview.name} to confirm preview teardown.`, 409)
+          body = { operation: service.operation(previews.enqueueDestroy(preview, 'api', principal.actor.id)), requestId }
+        }
+        else if (action === 'extend') {
+          service.authorize(principal, 'deployments:create', { type: 'resource', id: preview.resourceId })
+          body = { preview: previews.previews.extend(preview.id, Number(input.hours)), requestId }
+        }
+        else {
+          service.authorize(principal, 'deployments:create', { type: 'resource', id: preview.resourceId })
+          body = { operation: service.operation(previews.enqueueDeploy(preview, { actorId: principal.actor.id, reason: 'manual_rebuild' })), requestId }
+        }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/previews/cleanup') {
+        service.authorize(principal, 'automation:manage', { type: 'organization' }); const input = await readBody()
+        if (!input.dryRun && input.confirm !== 'cleanup previews') throw new ApiServiceError('confirmation_required', 'Type cleanup previews to confirm preview cleanup.', 409)
+        body = { ...previews.cleanup({ dryRun: input.dryRun === true, maxAgeHours: Number(input.maxAgeHours) || undefined, keepCount: Number(input.keepCount) || undefined, actorId: principal.actor.id }), requestId }
+      }
       else if (request.method === 'GET' && url.pathname === '/api/v1/queue') {
         const projectId = url.searchParams.get('projectId') ?? undefined
         const state = url.searchParams.get('state') as any
