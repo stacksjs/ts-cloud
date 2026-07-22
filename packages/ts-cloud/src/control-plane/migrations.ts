@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 21
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 22
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1059,6 +1059,55 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         UNIQUE(project_id, actor_id, name)
       ) STRICT;
       CREATE INDEX telemetry_saved_queries_actor_idx ON telemetry_saved_queries(project_id, actor_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 22,
+    name: 'health_alerting_notifications',
+    sql: `
+      CREATE TABLE health_checks (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('http','tcp','command')), target TEXT NOT NULL, config TEXT NOT NULL DEFAULT '{}', interval_seconds INTEGER NOT NULL CHECK (interval_seconds BETWEEN 10 AND 86400), timeout_seconds INTEGER NOT NULL CHECK (timeout_seconds BETWEEN 1 AND 300),
+        failure_threshold INTEGER NOT NULL CHECK (failure_threshold BETWEEN 1 AND 100), recovery_threshold INTEGER NOT NULL CHECK (recovery_threshold BETWEEN 1 AND 100), regions TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX health_checks_scope_idx ON health_checks(project_id, environment_id, resource_id, enabled, updated_at DESC);
+      CREATE TABLE health_results (
+        id TEXT PRIMARY KEY, check_id TEXT NOT NULL REFERENCES health_checks(id) ON DELETE CASCADE, status TEXT NOT NULL CHECK (status IN ('healthy','unhealthy','no_data')), agent TEXT NOT NULL, region TEXT, status_code INTEGER, message TEXT, timings TEXT NOT NULL DEFAULT '{}', checked_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX health_results_check_idx ON health_results(check_id, checked_at DESC);
+
+      CREATE TABLE alert_rules (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE, health_check_id TEXT REFERENCES health_checks(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, signal TEXT NOT NULL, operator TEXT NOT NULL CHECK (operator IN ('gt','gte','lt','lte','eq','unhealthy')), threshold REAL, recovery_threshold REAL, window_ms INTEGER NOT NULL, consecutive INTEGER NOT NULL CHECK (consecutive BETWEEN 1 AND 100), recovery_consecutive INTEGER NOT NULL CHECK (recovery_consecutive BETWEEN 1 AND 100), no_data_policy TEXT NOT NULL CHECK (no_data_policy IN ('ignore','pending','firing')),
+        severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')), group_by TEXT NOT NULL DEFAULT '[]', labels TEXT NOT NULL DEFAULT '{}', enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX alert_rules_scope_idx ON alert_rules(project_id, environment_id, resource_id, enabled, updated_at DESC);
+      CREATE TABLE alerts (
+        id TEXT PRIMARY KEY, rule_id TEXT NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        dedup_key TEXT NOT NULL UNIQUE, group_key TEXT NOT NULL, state TEXT NOT NULL CHECK (state IN ('pending','firing','resolved','silenced')), severity TEXT NOT NULL, title TEXT NOT NULL, evidence TEXT NOT NULL DEFAULT '{}', failure_count INTEGER NOT NULL DEFAULT 0, recovery_count INTEGER NOT NULL DEFAULT 0, occurrence_count INTEGER NOT NULL DEFAULT 1,
+        owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, acknowledged_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, acknowledged_at TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL, firing_at TEXT, resolved_at TEXT, silenced_until TEXT, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX alerts_scope_state_idx ON alerts(project_id, environment_id, resource_id, state, severity, updated_at DESC);
+      CREATE TABLE alert_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, alert_id TEXT NOT NULL REFERENCES alerts(id) ON DELETE CASCADE, type TEXT NOT NULL, actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, payload TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX alert_events_alert_idx ON alert_events(alert_id, sequence);
+      CREATE TABLE alert_silences (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE, matcher TEXT NOT NULL DEFAULT '{}', reason TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, timezone TEXT NOT NULL, created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, created_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX alert_silences_scope_idx ON alert_silences(project_id, starts_at, ends_at);
+
+      CREATE TABLE notification_channels (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, name TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('slack','discord','teams','telegram','email','webhook')), config TEXT NOT NULL DEFAULT '{}', credential_ciphertext TEXT, credential_fingerprint TEXT, status TEXT NOT NULL CHECK (status IN ('active','paused','failing','disabled')), version INTEGER NOT NULL DEFAULT 1, last_tested_at TEXT, last_error TEXT, created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(organization_id, name)
+      ) STRICT;
+      CREATE TABLE notification_routes (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, name TEXT NOT NULL, priority INTEGER NOT NULL DEFAULT 0, matcher TEXT NOT NULL DEFAULT '{}', channel_ids TEXT NOT NULL DEFAULT '[]', quiet_hours TEXT, group_wait_seconds INTEGER NOT NULL DEFAULT 30, reminder_seconds INTEGER, escalation TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX notification_routes_org_idx ON notification_routes(organization_id, enabled, priority DESC);
+      CREATE TABLE notification_deliveries (
+        id TEXT PRIMARY KEY, alert_id TEXT REFERENCES alerts(id) ON DELETE CASCADE, channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE, route_id TEXT REFERENCES notification_routes(id) ON DELETE SET NULL, event_type TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL CHECK (state IN ('pending','delivered','retrying','failed','dead')), attempt INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3, next_attempt_at TEXT, response_status INTEGER, error TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, delivered_at TEXT
+      ) STRICT;
+      CREATE INDEX notification_deliveries_state_idx ON notification_deliveries(state, next_attempt_at, updated_at);
     `,
   },
 ]
