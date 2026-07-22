@@ -1,12 +1,36 @@
 {
   "compilerOptions": {
     "target": "esnext",
-    "lib": ["esnext"],
+    "lib": [
+      "esnext"
+    ],
     "moduleDetection": "force",
     "module": "esnext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@ts-cloud/core": [
+        "./packages/core/src"
+      ],
+      "@ts-cloud/core/*": [
+        "./packages/core/src/*"
+      ],
+      "@ts-cloud/aws-types": [
+        "./packages/aws-types/src"
+      ],
+      "@ts-cloud/aws-types/*": [
+        "./packages/aws-types/src/*"
+      ],
+      "@stacksjs/ts-cloud": [
+        "./packages/ts-cloud/src"
+      ],
+      "@stacksjs/ts-cloud/*": [
+        "./packages/ts-cloud/src/*"
+      ]
+    },
     "resolveJsonModule": true,
-    "types": ["bun"],
+    "types": [
+      "bun"
+    ],
     "allowImportingTsExtensions": true,
     "strict": true,
     "strictNullChecks": true,
@@ -19,15 +43,15 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "skipDefaultLibCheck": true,
-    "skipLibCheck": true,
-    "paths": {
-      "@ts-cloud/core": ["./packages/core/src"],
-      "@ts-cloud/core/*": ["./packages/core/src/*"],
-      "@ts-cloud/aws-types": ["./packages/aws-types/src"],
-      "@ts-cloud/aws-types/*": ["./packages/aws-types/src/*"],
-      "@stacksjs/ts-cloud": ["./packages/ts-cloud/src"],
-      "@stacksjs/ts-cloud/*": ["./packages/ts-cloud/src/*"]
-    }
+    "skipLibCheck": true
   },
-  "exclude": ["docs", "dist", "**/dist", "node_modules", "benchmarks", "bunpress.ts", "pantry"]
+  "exclude": [
+    "docs",
+    "dist",
+    "**/dist",
+    "node_modules",
+    "benchmarks",
+    "bunpress.ts",
+    "pantry"
+  ]
 }

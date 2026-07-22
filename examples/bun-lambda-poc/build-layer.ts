@@ -42,8 +42,7 @@ async function main(): Promise<void> {
   const url = `https://github.com/oven-sh/bun/releases/download/bun-v${bunVersion}/${bunTarget}.zip`
   console.log(`Downloading ${url}`)
   const res = await fetch(url)
-  if (!res.ok)
-    throw new Error(`Download failed: ${res.status} ${res.statusText} (${url})`)
+  if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText} (${url})`)
   await Bun.write(`${work}/${bunTarget}.zip`, await res.arrayBuffer())
 
   // 2. Extract the bun binary.

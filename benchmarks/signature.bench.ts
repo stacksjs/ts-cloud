@@ -3,15 +3,14 @@
  *
  * Compares AWS Signature V4 signing performance
  */
-
-import { bench, group, run, summary } from 'mitata'
-import { AwsV4Signer } from 'aws4fetch'
-import { SignatureV4 } from '@smithy/signature-v4'
-import { HttpRequest } from '@smithy/protocol-http'
 import { Sha256 } from '@aws-crypto/sha256-js'
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3'
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { signRequest, signRequestAsync, clearSigningKeyCache, createPresignedUrl, createPresignedUrlAsync, detectServiceRegion } from '../packages/core/src/aws/signature'
+import { HttpRequest } from '@smithy/protocol-http'
+import { SignatureV4 } from '@smithy/signature-v4'
+import { AwsV4Signer } from 'aws4fetch'
+import { bench, group, run, summary } from 'mitata'
+import { createPresignedUrl, createPresignedUrlAsync, detectServiceRegion, signRequest, signRequestAsync } from '../packages/core/src/aws/signature'
 
 // Test credentials (fake)
 const credentials = {

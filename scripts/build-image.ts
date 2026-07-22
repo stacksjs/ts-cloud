@@ -34,7 +34,9 @@ async function main(): Promise<void> {
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, recipe, { mode: 0o755 })
   // eslint-disable-next-line no-console
-  console.log(`Wrote golden-image bake recipe → ${out}\n\nNext:\n  packer build images/packer/hetzner.pkr.hcl   # Hetzner snapshot\n  packer build images/packer/aws.pkr.hcl       # AWS AMI\nThen set compute.image + compute.bakedImage:true in cloud.config.ts`)
+  console.log(
+    `Wrote golden-image bake recipe → ${out}\n\nNext:\n  packer build images/packer/hetzner.pkr.hcl   # Hetzner snapshot\n  packer build images/packer/aws.pkr.hcl       # AWS AMI\nThen set compute.image + compute.bakedImage:true in cloud.config.ts`,
+  )
 }
 
 main().catch((err) => {

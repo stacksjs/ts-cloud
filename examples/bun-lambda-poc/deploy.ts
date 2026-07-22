@@ -33,7 +33,7 @@ function flag(name: string, fallback: string): string {
 }
 
 const REGION = process.env.AWS_REGION ?? 'us-east-1'
-const ARCH = (flag('arch', process.env.ARCH ?? 'arm64')) as 'arm64' | 'x86_64'
+const ARCH = flag('arch', process.env.ARCH ?? 'arm64') as 'arm64' | 'x86_64'
 const NAME = process.env.FN_NAME ?? 'bun-poc-api'
 const ROLE_NAME = `${NAME}-exec`
 const LAYER_NAME = `bun-runtime-${ARCH}`
@@ -47,7 +47,7 @@ const iam = new IAMClient(REGION)
 const s3 = new S3Client(REGION)
 const sts = new STSClient(REGION)
 
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 async function main(): Promise<void> {
   if (!(await Bun.file(layerZip).exists()))
@@ -88,18 +88,19 @@ async function main(): Promise<void> {
     const role = await iam.getRole({ RoleName: ROLE_NAME })
     roleArn = role.Arn
     console.log(`Using existing role ${roleArn}`)
-  }
-  catch {
+  } catch {
     console.log(`Creating role ${ROLE_NAME}`)
     const role = await iam.createRole({
       RoleName: ROLE_NAME,
       AssumeRolePolicyDocument: JSON.stringify({
         Version: '2012-10-17',
-        Statement: [{
-          Effect: 'Allow',
-          Principal: { Service: 'lambda.amazonaws.com' },
-          Action: 'sts:AssumeRole',
-        }],
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: { Service: 'lambda.amazonaws.com' },
+            Action: 'sts:AssumeRole',
+          },
+        ],
       }),
       Description: 'Execution role for the Bun-on-Lambda PoC',
     })
@@ -121,8 +122,7 @@ async function main(): Promise<void> {
   let exists = true
   try {
     await lambda.getFunction(NAME)
-  }
-  catch {
+  } catch {
     exists = false
   }
 
@@ -136,8 +136,7 @@ async function main(): Promise<void> {
       Handler: 'index.fetch',
       Layers: [layerArn],
     })
-  }
-  else {
+  } else {
     console.log(`Creating function ${NAME}`)
     // New roles can briefly fail to assume; retry a few times.
     for (let attempt = 1; ; attempt++) {
@@ -155,10 +154,8 @@ async function main(): Promise<void> {
           Description: 'Bun-on-Lambda PoC (issue #117)',
         })
         break
-      }
-      catch (err: any) {
-        if (attempt >= 5 || !/assume|role/i.test(String(err?.message)))
-          throw err
+      } catch (err: any) {
+        if (attempt >= 5 || !/assume|role/i.test(String(err?.message))) throw err
         console.log(`  role not assumable yet (attempt ${attempt}), retrying...`)
         await sleep(5000)
       }
@@ -169,8 +166,7 @@ async function main(): Promise<void> {
   let url: string | undefined
   try {
     url = (await lambda.getFunctionUrl(NAME))?.FunctionUrl
-  }
-  catch {
+  } catch {
     const created = await lambda.createFunctionUrl({
       FunctionName: NAME,
       AuthType: 'NONE',
