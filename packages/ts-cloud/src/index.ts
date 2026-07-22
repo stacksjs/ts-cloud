@@ -1,4 +1,5 @@
 export * from './config'
+export * from './auth'
 export * from './control-plane'
 export * from './generators'
 
