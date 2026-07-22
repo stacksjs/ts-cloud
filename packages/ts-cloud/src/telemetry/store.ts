@@ -12,6 +12,7 @@ import type {
   TelemetrySeries,
   TelemetrySeriesPoint,
   TelemetrySeriesQuery,
+  TelemetryTailResult,
 } from './model'
 import { pathTemplate, redactTelemetryText, redactTelemetryValue, type TelemetryRedactionOptions } from './redaction'
 
@@ -62,7 +63,7 @@ function cursor(value?: string): { timestamp: string, id: string } | undefined {
   catch { throw new Error('Telemetry cursor is invalid.') }
 }
 
-function nextCursor(record?: TelemetryRecord): string | undefined {
+export function telemetryCursor(record?: Pick<TelemetryRecord, 'timestamp' | 'id'>): string | undefined {
   return record ? Buffer.from(JSON.stringify({ timestamp: record.timestamp, id: record.id })).toString('base64url') : undefined
 }
 
@@ -158,7 +159,28 @@ export class TelemetryStore {
       const times = [...new Set(items.map(item => new Date(item.timestamp).getTime()))].sort((a, b) => a - b)
       return times.slice(1).flatMap((time, index) => time - times[index] > gapThreshold ? [{ from: new Date(times[index]).toISOString(), to: new Date(time).toISOString(), source }] : [])
     })
-    return { records, nextCursor: truncated ? nextCursor(records.at(-1)) : undefined, truncated, scannedRange: { from: from.toISOString(), to: to.toISOString() }, sources, gaps }
+    return { records, nextCursor: truncated ? telemetryCursor(records.at(-1)) : undefined, truncated, scannedRange: { from: from.toISOString(), to: to.toISOString() }, sources, gaps }
+  }
+
+  tail(input: TelemetryQuery, after?: string): TelemetryTailResult {
+    const { from, to } = range(input)
+    const limit = Math.min(1_000, Math.max(1, Math.floor(input.limit ?? 200)))
+    const clauses = ['project_id=?', 'timestamp>=?', 'timestamp<?']
+    const bindings: SQLQueryBindings[] = [input.projectId, from.toISOString(), to.toISOString()]
+    const addScalar = (column: string, value?: string) => { if (value) { clauses.push(`${column}=?`); bindings.push(value) } }
+    const addList = (column: string, values?: string[]) => {
+      const bounded = [...new Set(values ?? [])].slice(0, 100)
+      if (bounded.length) { clauses.push(`${column} IN (${bounded.map(() => '?').join(',')})`); bindings.push(...bounded) }
+    }
+    addScalar('environment_id', input.environmentId); addList('resource_id', input.resourceIds); addList('kind', input.kinds); addList('name', input.names)
+    addList('source', input.sources); addList('level', input.levels); addScalar('trace_id', input.traceId); addScalar('request_id', input.requestId)
+    addScalar('deployment_id', input.deploymentId); addScalar('release_id', input.releaseId); addScalar('workload_id', input.workloadId)
+    if (input.text) { clauses.push('(message LIKE ? OR name LIKE ?)'); bindings.push(`%${input.text.slice(0, 256)}%`, `%${input.text.slice(0, 256)}%`) }
+    const position = cursor(after)
+    if (position) { clauses.push('(timestamp>? OR (timestamp=? AND id>?))'); bindings.push(position.timestamp, position.timestamp, position.id) }
+    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT * FROM telemetry_records WHERE ${clauses.join(' AND ')} ORDER BY timestamp ASC, id ASC LIMIT ?`).all(...bindings, limit + 1)
+    const records = rows.slice(0, limit).map(mapRecord)
+    return { records, cursor: telemetryCursor(records.at(-1)) ?? after, truncated: rows.length > limit }
   }
 
   series(input: TelemetrySeriesQuery): TelemetrySeries[] {
@@ -192,16 +214,19 @@ export class TelemetryStore {
     })
   }
 
-  status(projectId: string, environmentId?: string, retentionDays = 30): TelemetryCollectionStatus[] {
+  status(projectId: string, environmentId?: string, retentionDays = 30, samplingRate = 1, resourceIds?: string[]): TelemetryCollectionStatus[] {
     const bindings: SQLQueryBindings[] = [projectId]
     const environment = environmentId ? ' AND environment_id=?' : ''
     if (environmentId) bindings.push(environmentId)
-    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT source, MAX(observed_at) latest, SUM(ingested_bytes) bytes, COUNT(*) count, MIN(observed_at) first FROM telemetry_records WHERE project_id=?${environment} GROUP BY source`).all(...bindings)
+    const boundedResources = [...new Set(resourceIds ?? [])].slice(0, 100)
+    const resources = resourceIds ? ` AND resource_id IN (${boundedResources.map(() => '?').join(',') || "''"})` : ''
+    bindings.push(...boundedResources)
+    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT source, MAX(observed_at) latest, SUM(ingested_bytes) bytes, COUNT(*) count, MIN(observed_at) first FROM telemetry_records WHERE project_id=?${environment}${resources} GROUP BY source`).all(...bindings)
     const now = this.now().getTime()
     return rows.map((row) => {
       const latest = String(row.latest); const lagSeconds = Math.max(0, Math.floor((now - new Date(latest).getTime()) / 1000))
       const spanDays = Math.max(1, (new Date(latest).getTime() - new Date(String(row.first)).getTime()) / 86_400_000)
-      return { source: String(row.source), freshness: lagSeconds <= 120 ? 'live' : lagSeconds <= 600 ? 'stale' : 'unavailable', lastObservedAt: latest, lagSeconds, samplingRate: 1, retentionDays, estimatedDailyBytes: Math.round(Number(row.bytes) / spanDays) }
+      return { source: String(row.source), freshness: lagSeconds <= 120 ? 'live' : lagSeconds <= 600 ? 'stale' : 'unavailable', lastObservedAt: latest, lagSeconds, samplingRate, retentionDays, estimatedDailyBytes: Math.round(Number(row.bytes) / spanDays) }
     })
   }
 

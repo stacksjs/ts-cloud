@@ -24,7 +24,7 @@ import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
 import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry, type RuntimeStreamSnapshot } from '../runtime'
-import { TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
+import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -39,7 +39,8 @@ import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { LoginThrottle } from './dashboard-throttle'
-import { collectDashboardTelemetry } from './telemetry-collection'
+import { collectDashboardTelemetry, invalidateDashboardTelemetryCache } from './telemetry-collection'
+import { resolveTelemetryResourceIds } from './telemetry-access'
 import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, updateUserPassword, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
@@ -378,6 +379,7 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'DELETE /api/sources/connections',
   'POST /api/sources/deploy-keys',
   'DELETE /api/sources/deploy-keys',
+  'PATCH /api/telemetry/settings',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -2999,14 +3001,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const environmentRecord = controlPlane.environments.get(environment)
           const telemetry = new TelemetryStore(controlPlane.store)
           const allResources = controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id)
-          const readableResources = user.role === 'admin' ? allResources : allResources.filter(resource => mayAccessResource(user, resource.id, 'runtime:logs'))
-          const resourceIds = (value: unknown): string[] | undefined => {
-            const requested = (Array.isArray(value) ? value : String(value ?? '').split(',')).map(String).filter(Boolean)
-            if (!requested.length) return user.role === 'admin' ? undefined : readableResources.map(resource => resource.id)
-            const resolved = requested.map(item => readableResources.find(resource => resource.id === item || resource.slug === item)?.id).filter((item): item is string => !!item)
-            if (resolved.length !== requested.length) throw new Error('One or more telemetry resources are outside your authorized scope.')
-            return [...new Set(resolved)]
-          }
+          const telemetryReadCapability: AuthorizationCapability = ['/api/telemetry/query', '/api/telemetry/tail', '/api/telemetry/export', '/api/telemetry/saved-queries', '/api/telemetry/refresh'].includes(url.pathname) ? 'runtime:logs' : 'runtime:read'
+          const environmentWide = user.role === 'admin' || (!!environmentRecord && mayAccessEnvironment(user, environmentRecord.id, telemetryReadCapability))
+          const readableResources = environmentWide ? allResources : allResources.filter(resource => mayAccessResource(user, resource.id, telemetryReadCapability))
+          const resourceIds = (value: unknown): string[] | undefined => resolveTelemetryResourceIds(readableResources, environmentWide, value)
           const queryFrom = (input: Record<string, any>): TelemetryQuery => {
             const now = new Date()
             const ranges: Record<string, number> = { '1h': 3_600_000, '6h': 6 * 3_600_000, '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 }
@@ -3021,11 +3019,56 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
           if (url.pathname === '/api/telemetry/status' && req.method === 'GET') {
             const collection = await collect(false)
-            return json({ ok: true, generatedAt: collection.generatedAt, cached: collection.cached, sources: collection.statuses, errors: collection.errors, retention: { rawDays: 30, downsampleAfterDays: 7, downsampleBucketMs: 3_600_000 }, estimatedMonthlyBytes: collection.statuses.reduce((sum, source) => sum + source.estimatedDailyBytes * 30, 0) })
+            const scopedStatuses = environmentWide ? collection.statuses : telemetry.status(controlPlane.project.id, environmentRecord?.id, collection.policy.rawDays, collection.policy.samplingRate, readableResources.map(resource => resource.id))
+            const estimatedMonthlyBytes = scopedStatuses.reduce((sum, source) => sum + source.estimatedDailyBytes * 30, 0)
+            return json({ ok: true, generatedAt: collection.generatedAt, cached: collection.cached, sources: scopedStatuses, errors: environmentWide ? collection.errors : [], policy: collection.policy, retention: { rawDays: collection.policy.rawDays, downsampleAfterDays: collection.policy.downsampleAfterDays, downsampleBucketMs: collection.policy.downsampleBucketMs, maxRecords: collection.policy.maxRecords }, estimatedMonthlyBytes, estimatedMonthlyCostUsd: telemetryEstimatedMonthlyCost(estimatedMonthlyBytes, collection.policy), costEstimateConfigured: collection.policy.estimatedStorageUsdPerGbMonth > 0 })
+          }
+          if (url.pathname === '/api/telemetry/settings' && req.method === 'GET') return json({ ok: true, policy: loadTelemetryPolicy(controlPlane.store, controlPlane.project.id) })
+          if (url.pathname === '/api/telemetry/settings' && req.method === 'PATCH') {
+            const policy = saveTelemetryPolicy(controlPlane.store, controlPlane.project.id, await readJsonBody(req))
+            invalidateDashboardTelemetryCache(controlPlane.project.id)
+            return json({ ok: true, policy })
           }
           if (url.pathname === '/api/telemetry/query' && req.method === 'GET') {
             const collection = await collect(false)
             return json({ ok: true, collection: { generatedAt: collection.generatedAt, cached: collection.cached }, ...telemetry.query(queryFrom(urlInput)) })
+          }
+          if (url.pathname === '/api/telemetry/tail' && req.method === 'GET') {
+            await collect(false)
+            const encoder = new TextEncoder()
+            const initialTo = new Date()
+            const baseQuery = queryFrom({ ...urlInput, kinds: urlInput.kinds || 'log,request,event,trace', from: urlInput.from || new Date(initialTo.getTime() - 120_000).toISOString(), to: initialTo.toISOString(), limit: Math.min(1_000, Number(urlInput.limit) || 200), cursor: undefined })
+            let position = req.headers.get('last-event-id') || String(urlInput.cursor ?? '') || undefined
+            let timer: ReturnType<typeof setInterval> | undefined
+            let ended = false; let polling = false
+            const stream = new ReadableStream<Uint8Array>({
+              start(controller) {
+                const close = () => { if (ended) return; ended = true; if (timer) clearInterval(timer); req.signal.removeEventListener('abort', close); try { controller.close() } catch {} }
+                const poll = async () => {
+                  if (ended || polling) return
+                  polling = true
+                  try {
+                    const result = telemetry.tail({ ...baseQuery, to: new Date(Date.now() + 1_000).toISOString() }, position)
+                    for (const record of result.records) {
+                      position = telemetryCursor(record) ?? position
+                      controller.enqueue(encoder.encode(`id: ${position ?? ''}\nevent: record\ndata: ${JSON.stringify(record)}\n\n`))
+                    }
+                    if (result.cursor) position = result.cursor
+                  }
+                  catch (error) { controller.enqueue(encoder.encode(`event: error\ndata: ${JSON.stringify({ message: error instanceof Error ? error.message : String(error) })}\n\n`)) }
+                  finally { polling = false }
+                }
+                void poll()
+                timer = setInterval(() => {
+                  void poll()
+                  if (!ended) controller.enqueue(encoder.encode(`event: heartbeat\ndata: ${JSON.stringify({ cursor: position, at: new Date().toISOString() })}\n\n`))
+                }, 5_000)
+                timer.unref?.()
+                req.signal.addEventListener('abort', close, { once: true })
+              },
+              cancel() { ended = true; if (timer) clearInterval(timer) },
+            })
+            return new Response(stream, { headers: { 'cache-control': 'no-cache, no-transform', 'connection': 'keep-alive', 'content-type': 'text/event-stream; charset=utf-8', 'x-accel-buffering': 'no' } })
           }
           if (url.pathname === '/api/telemetry/series' && req.method === 'GET') {
             const collection = await collect(false)

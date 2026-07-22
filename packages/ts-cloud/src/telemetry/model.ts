@@ -77,6 +77,12 @@ export interface TelemetryQueryResult {
   gaps: Array<{ from: string, to: string, source?: string }>
 }
 
+export interface TelemetryTailResult {
+  records: TelemetryRecord[]
+  cursor?: string
+  truncated: boolean
+}
+
 export interface TelemetrySeriesQuery extends TelemetryQuery {
   bucketMs: number
   aggregation: TelemetryAggregation
@@ -108,6 +114,14 @@ export interface TelemetryRetentionPolicy {
   downsampleAfterDays: number
   downsampleBucketMs: number
   maxRecords: number
+}
+
+export interface TelemetryPolicy extends TelemetryRetentionPolicy {
+  samplingRate: number
+  collectLogs: boolean
+  collectTraces: boolean
+  collectRequestAnalytics: boolean
+  estimatedStorageUsdPerGbMonth: number
 }
 
 export interface TelemetryCollectionStatus {

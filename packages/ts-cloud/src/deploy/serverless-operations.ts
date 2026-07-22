@@ -505,6 +505,7 @@ export async function deleteAlarm(config: CloudConfig, environment: EnvironmentT
 
 export interface ShapedTrace {
   id: string
+  timestamp?: string
   durationMs: number
   responseMs: number
   status: 'ok' | 'error' | 'fault' | 'throttle'
@@ -517,6 +518,7 @@ function shapeTrace(s: any): ShapedTrace {
   const status: ShapedTrace['status'] = s.HasFault ? 'fault' : s.HasError ? 'error' : s.HasThrottle ? 'throttle' : 'ok'
   return {
     id: String(s.Id ?? ''),
+    timestamp: Number.isFinite(Number(s.StartTime)) ? new Date(Number(s.StartTime) * 1000).toISOString() : undefined,
     durationMs: Math.round((s.Duration ?? 0) * 1000),
     responseMs: Math.round((s.ResponseTime ?? 0) * 1000),
     status,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { telemetryRecordsFromLog } from './telemetry-collection'
+import { TelemetryCollectionCache, telemetryRecordsFromLog } from './telemetry-collection'
 
 describe('telemetry log correlation', () => {
   it('derives request golden signals without retaining query values or bodies', () => {
@@ -9,5 +9,18 @@ describe('telemetry log correlation', () => {
     expect(records.filter(record => record.kind === 'metric').map(record => record.name)).toEqual(['request.duration', 'request.count', 'request.error'])
     expect(records.every(record => !Object.hasOwn(record, 'body'))).toBeTrue()
     expect(records[0].message).not.toContain('must not become')
+  })
+})
+
+describe('telemetry provider cache', () => {
+  it('deduplicates expensive reads, expires by source TTL, and supports explicit refresh', async () => {
+    let now = 1_000; let calls = 0
+    const cache = new TelemetryCollectionCache<number>(() => now)
+    const load = async () => ++calls
+    expect(await cache.getOrCreate('aws', 300_000, false, load)).toEqual({ value: 1, cached: false })
+    expect(await cache.getOrCreate('aws', 300_000, false, load)).toEqual({ value: 1, cached: true })
+    expect(await cache.getOrCreate('aws', 300_000, true, load)).toEqual({ value: 2, cached: false })
+    now += 300_001
+    expect(await cache.getOrCreate('aws', 300_000, false, load)).toEqual({ value: 3, cached: false })
   })
 })

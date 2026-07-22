@@ -32,6 +32,16 @@ describe('telemetry safety and persistence', () => {
     expect(new Set([...first.records, ...second.records].map(item => item.id)).size).toBe(3)
   })
 
+  it('resumes forward live-tail cursors without replaying delivered records', () => {
+    const { project, environment, resource, telemetry } = fixture()
+    telemetry.append({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, kind: 'log', source: 'journald', name: 'api.log', timestamp: '2026-07-21T11:01:00Z', message: 'first' })
+    const first = telemetry.tail({ projectId: project.id, environmentId: environment.id, resourceIds: [resource.id], kinds: ['log'], from: '2026-07-21T11:00:00Z', to: '2026-07-21T12:00:00Z' })
+    telemetry.append({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, kind: 'log', source: 'journald', name: 'api.log', timestamp: '2026-07-21T11:02:00Z', message: 'second' })
+    const resumed = telemetry.tail({ projectId: project.id, environmentId: environment.id, resourceIds: [resource.id], kinds: ['log'], from: '2026-07-21T11:00:00Z', to: '2026-07-21T12:00:00Z' }, first.cursor)
+    expect(first.records.map(item => item.message)).toEqual(['first'])
+    expect(resumed.records.map(item => item.message)).toEqual(['second'])
+  })
+
   it('saves bounded actor-scoped queries without allowing project changes', () => {
     const { controlPlane, project, environment, telemetry } = fixture()
     const actor = controlPlane.createActor({ kind: 'user', externalId: 'user:chris', displayName: 'Chris' })
@@ -50,6 +60,15 @@ describe('telemetry aggregation and time semantics', () => {
     const [series] = telemetry.series({ projectId: project.id, environmentId: environment.id, kinds: ['metric'], names: ['request.duration'], from: '2026-07-21T11:00:00Z', to: '2026-07-21T11:03:00Z', bucketMs: 60_000, aggregation: 'p95', timezone: 'UTC' })
     expect(telemetryPercentile([10, 20, 30, 40, 100], 95)).toBe(100)
     expect(series.points.map(point => ({ value: point.value, gap: point.gap }))).toEqual([{ value: 100, gap: false }, { value: undefined, gap: true }, { value: undefined, gap: true }])
+  })
+
+  it('aligns a comparison period to the current bucket sequence', () => {
+    const { project, environment, telemetry } = fixture()
+    telemetry.append({ projectId: project.id, environmentId: environment.id, kind: 'metric', source: 'host', name: 'traffic.requests', timestamp: '2026-07-21T11:00:10Z', value: 20 })
+    telemetry.append({ projectId: project.id, environmentId: environment.id, kind: 'metric', source: 'host', name: 'traffic.requests', timestamp: '2026-07-21T10:00:10Z', value: 10 })
+    const [series] = telemetry.series({ projectId: project.id, environmentId: environment.id, names: ['traffic.requests'], from: '2026-07-21T11:00:00Z', to: '2026-07-21T11:01:00Z', compareFrom: '2026-07-21T10:00:00Z', compareTo: '2026-07-21T10:01:00Z', bucketMs: 60_000, aggregation: 'sum' })
+    expect(series.points[0].value).toBe(20)
+    expect(series.comparison?.[0].value).toBe(10)
   })
 
   it('labels DST fallback buckets with distinct timezone offsets', () => {

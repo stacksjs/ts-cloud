@@ -7,6 +7,7 @@ import { AWSClient } from './client'
 
 export interface TraceSummary {
   Id?: string
+  StartTime?: number
   Duration?: number
   ResponseTime?: number
   HasError?: boolean

@@ -30,6 +30,13 @@ describe('routePolicy', () => {
     expect(routePolicy('POST', '/api/releases/action')).toMatchObject({ capability: 'deployments:create', anyUser: true })
   })
 
+  it('keeps telemetry reads, live tail, exports, and policy changes capability-gated', () => {
+    expect(routePolicy('GET', '/api/telemetry/query').capability).toBe('runtime:logs')
+    expect(routePolicy('GET', '/api/telemetry/tail').capability).toBe('runtime:logs')
+    expect(routePolicy('POST', '/api/telemetry/export').capability).toBe('runtime:logs')
+    expect(routePolicy('PATCH', '/api/telemetry/settings')).toMatchObject({ capability: 'config:write', scope: 'organization' })
+  })
+
   it('keeps every shell-equivalent route admin-only', () => {
     const rootRoutes = [
       ['GET', '/api/terminal'],
