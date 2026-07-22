@@ -3199,6 +3199,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const operationId = body.operationId ? String(body.operationId) : undefined
             if (provider === 'server' && (!operationId || !schedulableOperations.some(item => item.id === operationId)))
               return json({ ok: false, error: 'Server jobs require an allowlisted operation target.' }, 422)
+            const providerCapability = jobProviderCapability({ provider, expression: String(body.expression ?? ''), flexibleMinutes: Number(body.flexibleMinutes) || 0, missedRunPolicy: body.missedRunPolicy === 'catch_up' ? 'catch_up' : 'skip', overlapPolicy: ['allow', 'forbid', 'replace'].includes(String(body.overlapPolicy)) ? body.overlapPolicy : 'forbid' })
+            if (!providerCapability.supported) return json({ ok: false, error: providerCapability.notes.join(' ') }, 422)
             const resource = body.resourceId ? resources.find(item => item.id === body.resourceId || item.slug === body.resourceId) : undefined
             if (body.resourceId && (!resource || !visibleResource(resource.id)))
               return json({ ok: false, error: 'Job resource was not found.' }, 404)
@@ -3231,7 +3233,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
                 reconciliationStatus: 'pending',
               })
               audit('created', { jobId: created.id, provider: created.provider, expression: created.normalizedExpression }, created.resourceId)
-              return json({ ok: true, job: created, capability: jobProviderCapability(created) }, 201)
+              return json({ ok: true, job: created, capability: providerCapability }, 201)
             }
             catch (error) {
               return json({ ok: false, error: error instanceof Error ? error.message : 'Scheduled job could not be created.' }, 422)

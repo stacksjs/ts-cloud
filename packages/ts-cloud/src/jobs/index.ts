@@ -1,5 +1,6 @@
 export * from './model'
 export * from './adapters'
+export * from './provider-adapters'
 export * from './reconcile'
 export * from './schedule'
 export * from './service'

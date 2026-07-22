@@ -4,11 +4,14 @@ import { DurableOperationQueue, DurableQueueWorker } from '../queue'
 import {
   createJobQueueHandlers,
   eventBridgeScheduleInput,
+  EventBridgeJobAdapter,
+  JobProviderReconciler,
   JobService,
   JobStore,
   nextScheduleRuns,
   previewSchedule,
   renderServerCron,
+  ServerCronJobAdapter,
   synchronizeConfiguredJobs,
 } from '.'
 
@@ -344,5 +347,47 @@ describe('serverless config reconciliation', () => {
       processes: 4,
       timeoutSeconds: 180,
     })
+  })
+})
+
+describe('provider reconciliation adapters', () => {
+  it('applies root-owned server cron once and then observes stable state', async () => {
+    const target = fixture()
+    const job = target.create({ timezone: 'UTC', expression: '*/5 * * * *' })
+    const files = new Map<string, string>()
+    let writes = 0
+    const adapter = new ServerCronJobAdapter({
+      read: async path => files.get(path),
+      writeRootOwned: async (path, content) => {
+        writes++
+        files.set(path, content)
+      },
+      removeRootOwned: async path => { files.delete(path) },
+    })
+    const reconciler = new JobProviderReconciler(target.store)
+    expect(await reconciler.reconcile(job, adapter)).toMatchObject({ reconciliationStatus: 'in_sync', observedState: { applied: true } })
+    expect(writes).toBe(1)
+    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({ reconciliationStatus: 'in_sync' })
+    expect(writes).toBe(1)
+  })
+
+  it('plans or applies EventBridge drift through an injected provider transport', async () => {
+    const target = fixture()
+    const job = target.create({ provider: 'eventbridge', timezone: 'UTC', expression: 'rate(5 minutes)', target: { kind: 'serverless_scheduler', action: 'run' } })
+    const schedules = new Map<string, Record<string, any>>()
+    let puts = 0
+    const adapter = new EventBridgeJobAdapter({
+      get: async name => schedules.get(name),
+      put: async (input) => {
+        puts++
+        schedules.set(String(input.Name), input)
+      },
+      remove: async name => { schedules.delete(name) },
+    })
+    const reconciler = new JobProviderReconciler(target.store)
+    expect(await reconciler.reconcile(job, adapter, { apply: false })).toMatchObject({ reconciliationStatus: 'unavailable', observedState: { applyRequired: true } })
+    expect(puts).toBe(0)
+    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({ reconciliationStatus: 'in_sync', observedState: { applied: true } })
+    expect(puts).toBe(1)
   })
 })

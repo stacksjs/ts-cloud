@@ -4,7 +4,7 @@ import type { JsonValue, ScheduledJob } from '../../src'
 import { resolveDeploymentMode } from '@ts-cloud/core'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation } from '../../src/deploy/dashboard-operations'
-import { JobService, JobStore, nextScheduleRuns, previewSchedule, synchronizeConfiguredJobs } from '../../src/jobs'
+import { jobProviderCapability, JobService, JobStore, nextScheduleRuns, previewSchedule, synchronizeConfiguredJobs } from '../../src/jobs'
 import { DurableOperationQueue } from '../../src/queue'
 import * as output from '../../src/utils/cli'
 import { loadValidatedConfig } from './shared'
@@ -120,6 +120,9 @@ export function registerJobCommands(app: CLI): void {
         target = { kind: 'dashboard_operation', operationId: operation.id }
       }
       else target = { kind: 'serverless_scheduler', action: 'run' }
+      const provider = mode === 'server' ? 'server' : 'eventbridge'
+      const capability = jobProviderCapability({ provider, expression, flexibleMinutes: Number(options.flexibleMinutes) || 0, missedRunPolicy: (options.missed ?? 'skip') as ScheduledJob['missedRunPolicy'], overlapPolicy: (options.overlap ?? 'forbid') as ScheduledJob['overlapPolicy'] })
+      if (!capability.supported) throw new Error(capability.notes.join(' '))
       const resource = options.resource ? value.resources.find(item => item.id === options.resource || item.slug === options.resource) : undefined
       if (options.resource && !resource) throw new Error(`Resource ${options.resource} was not found in ${value.env}`)
       const job = value.store.create({
@@ -128,7 +131,7 @@ export function registerJobCommands(app: CLI): void {
         environmentId: value.environmentRecord.id,
         resourceId: resource?.id,
         name,
-        provider: mode === 'server' ? 'server' : 'eventbridge',
+        provider,
         expression,
         timezone: options.timezone ?? 'UTC',
         startsAt: options.startsAt,
