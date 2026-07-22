@@ -168,6 +168,13 @@ export interface SourceConnectionTest {
   message: string
 }
 
+export interface SourceCommitStatus {
+  state: 'pending' | 'success' | 'failure' | 'error'
+  url?: string
+  description: string
+  context?: string
+}
+
 export interface SourceProviderAdapter {
   readonly provider: SourceProvider
   readonly capabilities: SourceCapabilities
@@ -179,4 +186,5 @@ export interface SourceProviderAdapter {
   listWebhooks: (repository: string) => Promise<SourceWebhookRegistration[]>
   updateWebhook: (repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }) => Promise<SourceWebhookRegistration>
   deleteWebhook: (repository: string, webhookId: string) => Promise<void>
+  setCommitStatus: (repository: string, commitSha: string, status: SourceCommitStatus) => Promise<void>
 }

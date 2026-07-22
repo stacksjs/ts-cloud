@@ -16,7 +16,7 @@ import { AutomationIdentityStore } from '../automation'
 import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
-import { cloneSourceBinding, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
+import { cloneSourceBinding, createSourceAdapter, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
@@ -875,28 +875,41 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const source = operationInput.source && typeof operationInput.source === 'object' ? operationInput.source as Record<string, any> : undefined
           let actionCwd = cwd
           let checkoutRoot: string | undefined
-          if (source?.bindingId && source?.connectionId && source?.commitSha) {
-            const binding = sourceConnections.getBinding(String(source.bindingId))
-            const connection = sourceConnections.getConnection(String(source.connectionId))
-            if (!binding || !connection || binding.connectionId !== connection.id) throw new Error('Queued source binding is no longer available')
-            const repository = binding.repositoryId ? sourceConnections.getRepository(binding.repositoryId) : sourceConnections.listRepositories(connection.id).find(item => item.fullName.toLowerCase() === binding.repositoryFullName.toLowerCase())
-            let remote = repository?.cloneUrl
-            if (!remote && connection.provider === 'generic_ssh') remote = `git@${new URL(connection.host).hostname}:${binding.repositoryFullName}.git`
-            if (!remote) remote = new URL(`/${binding.repositoryFullName}.git`, connection.host.endsWith('/') ? connection.host : `${connection.host}/`).href
-            const deployKeyRecord = binding.deployKeyId ? sourceConnections.getDeployKey(binding.deployKeyId) : undefined
-            const deployKey = deployKeyRecord && binding.deployKeyId ? { ...deployKeyRecord, privateKey: sourceConnections.getDeployPrivateKey(binding.deployKeyId) } : undefined
-            checkoutRoot = mkdtempSync(join(tmpdir(), 'ts-cloud-queued-source-'))
-            context.log(`Checking out immutable source commit ${source.commitSha}.`, { stream: 'system' })
-            const cloned = await cloneSourceBinding({ remote, binding, destination: join(checkoutRoot, 'checkout'), ref: String(source.branch ?? binding.defaultBranch), commitSha: String(source.commitSha) }, { credential: sourceConnections.getCredential(connection.id), deployKey })
-            actionCwd = cloned.directory
-          }
+          let publishStatus: ((state: 'pending' | 'success' | 'failure' | 'error', description: string) => Promise<void>) | undefined
           try {
-            return await runDashboardAction(command, {
+            if (source?.bindingId && source?.connectionId && source?.commitSha) {
+              const binding = sourceConnections.getBinding(String(source.bindingId))
+              const connection = sourceConnections.getConnection(String(source.connectionId))
+              if (!binding || !connection || binding.connectionId !== connection.id) throw new Error('Queued source binding is no longer available')
+              const repository = binding.repositoryId ? sourceConnections.getRepository(binding.repositoryId) : sourceConnections.listRepositories(connection.id).find(item => item.fullName.toLowerCase() === binding.repositoryFullName.toLowerCase())
+              let remote = repository?.cloneUrl
+              if (!remote && connection.provider === 'generic_ssh') remote = `git@${new URL(connection.host).hostname}:${binding.repositoryFullName}.git`
+              if (!remote) remote = new URL(`/${binding.repositoryFullName}.git`, connection.host.endsWith('/') ? connection.host : `${connection.host}/`).href
+              const deployKeyRecord = binding.deployKeyId ? sourceConnections.getDeployKey(binding.deployKeyId) : undefined
+              const deployKey = deployKeyRecord && binding.deployKeyId ? { ...deployKeyRecord, privateKey: sourceConnections.getDeployPrivateKey(binding.deployKeyId) } : undefined
+              if (['github', 'gitlab', 'bitbucket', 'gitea'].includes(connection.provider) && command.target.previewId) {
+                const adapter = createSourceAdapter(connection, sourceConnections.getCredential(connection.id))
+                const preview = previewService.previews.getInstance(command.target.previewId)
+                publishStatus = async (state, description) => { try { await adapter.setCommitStatus(binding.repositoryFullName, String(source.commitSha), { state, url: preview?.url, description }) } catch (error) { context.log(`Could not publish source status: ${error instanceof Error ? error.message : String(error)}`, { stream: 'stderr' }) } }
+                await publishStatus('pending', `Preview deployment started for ${String(source.commitSha).slice(0, 12)}`)
+              }
+              checkoutRoot = mkdtempSync(join(tmpdir(), 'ts-cloud-queued-source-'))
+              context.log(`Checking out immutable source commit ${source.commitSha}.`, { stream: 'system' })
+              const cloned = await cloneSourceBinding({ remote, binding, destination: join(checkoutRoot, 'checkout'), ref: String(source.branch ?? binding.defaultBranch), commitSha: String(source.commitSha) }, { credential: sourceConnections.getCredential(connection.id), deployKey })
+              actionCwd = cloned.directory
+            }
+            const result = await runDashboardAction(command, {
               cwd: actionCwd,
               cliEntry,
               signal: context.signal,
               onOutput: (stream, chunk) => context.log(chunk, { stream, step: 'execute', secrets: queueSecrets }),
             }) as { ok: boolean, exitCode: number, command?: string, stderr?: string }
+            await publishStatus?.(result.ok ? 'success' : 'failure', result.ok ? `Preview is ready at ${String(source?.commitSha).slice(0, 12)}` : `Preview deployment failed at ${String(source?.commitSha).slice(0, 12)}`)
+            return result
+          }
+          catch (error) {
+            await publishStatus?.('error', `Preview deployment could not complete at ${String(source?.commitSha).slice(0, 12)}`)
+            throw error
           }
           finally {
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })

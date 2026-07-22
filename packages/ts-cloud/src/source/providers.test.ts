@@ -21,6 +21,7 @@ function hostedFixture(provider: 'github' | 'gitlab' | 'bitbucket' | 'gitea'): {
     const path = url.pathname
     if (path.endsWith('/user')) return response(provider === 'gitlab' ? { username: 'chris' } : { login: 'chris', username: 'chris' }, provider === 'github' ? { headers: { 'x-oauth-scopes': 'repo:read, metadata:read' } } : {})
     if (method === 'DELETE') return response(undefined, { status: 204 })
+    if (path.includes('/statuses/') || path.includes('/statuses/build/')) return response({ ok: true })
     if (provider === 'github') {
       if (path.endsWith('/user/repos')) return response([{ id: 1, full_name: 'acme/web', clone_url: 'https://github.com/acme/web.git', default_branch: 'main', visibility: 'private' }])
       if (path.endsWith('/branches')) return response([{ name: 'main', commit: { sha: 'a'.repeat(40) }, protected: true }])
@@ -71,6 +72,10 @@ for (const provider of ['github', 'gitlab', 'bitbucket', 'gitea'] as const) {
       expect(await adapter.updateWebhook('acme/web', created.providerWebhookId, { url: 'https://cloud.example/hooks/source', secret: 'rotated-webhook-value', events: ['push'] })).toMatchObject({ active: true })
       await adapter.deleteWebhook('acme/web', created.providerWebhookId)
       expect(requests.some(request => request.method === 'DELETE')).toBe(true)
+      await adapter.setCommitStatus('acme/web', 'c'.repeat(40), { state: 'success', url: 'https://pr-4.preview.example.com', description: 'Preview deployed at exact commit' })
+      const status = requests.at(-1)!
+      expect(status.body).toMatchObject(provider === 'bitbucket' ? { state: 'SUCCESSFUL', key: 'ts-cloud-preview' } : { description: expect.stringContaining('exact commit') })
+      expect(status.url.pathname).toContain('c'.repeat(40))
       expect(JSON.stringify(requests.map(request => request.url.href))).not.toContain('fixture-token')
     })
   })

@@ -1,4 +1,4 @@
-import type { SourceCapabilities, SourceConnection, SourceConnectionTest, SourceCredential, SourceProvider, SourceProviderAdapter, SourceRefPage, SourceRepositoryPage, SourceWebhookRegistration } from './types'
+import type { SourceCapabilities, SourceCommitStatus, SourceConnection, SourceConnectionTest, SourceCredential, SourceProvider, SourceProviderAdapter, SourceRefPage, SourceRepositoryPage, SourceWebhookRegistration } from './types'
 import { createSign } from 'node:crypto'
 
 export class SourceProviderError extends Error {
@@ -107,6 +107,7 @@ abstract class HostedSourceAdapter implements SourceProviderAdapter {
   abstract listWebhooks(repository: string): Promise<SourceWebhookRegistration[]>
   abstract updateWebhook(repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration>
   async deleteWebhook(repository: string, webhookId: string): Promise<void> { await this.request(this.webhookPath(repository, webhookId), { method: 'DELETE' }) }
+  abstract setCommitStatus(repository: string, commitSha: string, status: SourceCommitStatus): Promise<void>
   protected abstract webhookPath(repository: string, webhookId?: string): string
 }
 
@@ -160,6 +161,7 @@ export class GithubSourceAdapter extends HostedSourceAdapter {
   async createWebhook(repository: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GithubHook>(this.webhookPath(repository), { method: 'POST', body: JSON.stringify({ name: 'web', active: true, events: input.events, config: { url: webhookUrl(input.url), content_type: 'json', secret: input.secret, insecure_ssl: '0' } }), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
   async listWebhooks(repository: string): Promise<SourceWebhookRegistration[]> { const { data } = await this.request<GithubHook[]>(this.webhookPath(repository)); return data.map(value => this.hook(value)) }
   async updateWebhook(repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GithubHook>(this.webhookPath(repository, webhookId), { method: 'PATCH', body: JSON.stringify({ active: true, events: input.events, config: { url: webhookUrl(input.url), content_type: 'json', secret: input.secret, insecure_ssl: '0' } }), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
+  async setCommitStatus(repository: string, commitSha: string, status: SourceCommitStatus): Promise<void> { await this.request(`/repos/${repositoryName(repository)}/statuses/${encodeURIComponent(commitSha)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: status.state, target_url: status.url, description: status.description.slice(0, 140), context: status.context ?? 'ts-cloud/preview' }) }) }
 }
 
 interface GitlabRepo { id: number, path_with_namespace: string, http_url_to_repo: string, default_branch?: string, visibility?: string, archived?: boolean }
@@ -181,6 +183,7 @@ export class GitlabSourceAdapter extends HostedSourceAdapter {
   async createWebhook(repository: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GitlabHook>(this.webhookPath(repository), { method: 'POST', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
   async listWebhooks(repository: string): Promise<SourceWebhookRegistration[]> { const { data } = await this.request<GitlabHook[]>(this.webhookPath(repository)); return data.map(value => this.hook(value)) }
   async updateWebhook(repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GitlabHook>(this.webhookPath(repository, webhookId), { method: 'PUT', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
+  async setCommitStatus(repository: string, commitSha: string, status: SourceCommitStatus): Promise<void> { const state = status.state === 'failure' || status.state === 'error' ? 'failed' : status.state; await this.request(`/projects/${encodeURIComponent(repositoryName(repository))}/statuses/${encodeURIComponent(commitSha)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state, target_url: status.url, description: status.description.slice(0, 255), name: status.context ?? 'ts-cloud/preview' }) }) }
 }
 
 interface BitbucketRepo { uuid: string, full_name: string, links: { clone: Array<{ name: string, href: string }> }, mainbranch?: { name: string }, is_private?: boolean }
@@ -203,6 +206,7 @@ export class BitbucketSourceAdapter extends HostedSourceAdapter {
   async createWebhook(repository: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<BitbucketHook>(this.webhookPath(repository), { method: 'POST', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
   async listWebhooks(repository: string): Promise<SourceWebhookRegistration[]> { const { data } = await this.request<BitbucketPage<BitbucketHook>>(this.webhookPath(repository)); return data.values.map(value => this.hook(value)) }
   async updateWebhook(repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<BitbucketHook>(this.webhookPath(repository, webhookId), { method: 'PUT', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
+  async setCommitStatus(repository: string, commitSha: string, status: SourceCommitStatus): Promise<void> { const state = status.state === 'success' ? 'SUCCESSFUL' : status.state === 'pending' ? 'INPROGRESS' : 'FAILED'; await this.request(`/repositories/${repositoryName(repository)}/commit/${encodeURIComponent(commitSha)}/statuses/build/ts-cloud-preview`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state, key: 'ts-cloud-preview', name: status.context ?? 'ts-cloud/preview', url: status.url, description: status.description.slice(0, 255) }) }) }
 }
 
 interface GiteaRepo { id: number, full_name: string, clone_url: string, default_branch?: string, private?: boolean, archived?: boolean }
@@ -225,6 +229,7 @@ export class GiteaSourceAdapter extends HostedSourceAdapter {
   async createWebhook(repository: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GiteaHook>(this.webhookPath(repository), { method: 'POST', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
   async listWebhooks(repository: string): Promise<SourceWebhookRegistration[]> { const { data } = await this.request<GiteaHook[]>(this.webhookPath(repository)); return data.map(value => this.hook(value)) }
   async updateWebhook(repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }): Promise<SourceWebhookRegistration> { const { data } = await this.request<GiteaHook>(this.webhookPath(repository, webhookId), { method: 'PATCH', body: this.body(input), headers: { 'Content-Type': 'application/json' } }); return this.hook(data) }
+  async setCommitStatus(repository: string, commitSha: string, status: SourceCommitStatus): Promise<void> { await this.request(`/repos/${repositoryName(repository)}/statuses/${encodeURIComponent(commitSha)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state: status.state, target_url: status.url, description: status.description.slice(0, 140), context: status.context ?? 'ts-cloud/preview' }) }) }
 }
 
 export function createSourceAdapter(connection: SourceConnection, credential?: SourceCredential, options: SourceAdapterOptions = {}): SourceProviderAdapter {
