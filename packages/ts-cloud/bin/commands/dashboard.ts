@@ -2,11 +2,11 @@ import type { CLI } from '@stacksjs/clapp'
 import type { AuthorizationCapability, AuthorizationEffect, AuthorizationScope, ControlPlaneSnapshot, OrganizationRoleTemplate } from '../../src/control-plane'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
+import * as cli from '../../src/utils/cli'
+import { TsCloudClient } from '../../src/api'
 import { AuthenticationStore, discoverOidcProvider, resolveAuthEncryptionKey } from '../../src/auth'
 import { AutomationIdentityStore } from '../../src/automation'
-import { TsCloudClient } from '../../src/api'
-import * as cli from '../../src/utils/cli'
+import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
 import { startLocalDashboardServer } from '../../src/deploy/local-dashboard-server'
 
 function openControlPlane(path?: string): ControlPlaneStore {
@@ -22,21 +22,23 @@ function printControlPlaneHealth(store: ControlPlaneStore): void {
   cli.info(`Journal: ${health.journalMode}`)
   cli.info(`Size: ${health.databaseBytes.toLocaleString()} bytes`)
   cli.info(`Last backup: ${health.lastBackupAt ?? 'never'}`)
-  cli.info(`Operations: ${Object.entries(health.operations).map(([state, count]) => `${state}=${count}`).join(', ')}`)
+  cli.info(
+    `Operations: ${Object.entries(health.operations)
+      .map(([state, count]) => `${state}=${count}`)
+      .join(', ')}`,
+  )
   cli.info(`Pending/retryable: ${health.pendingRetryableOperations}`)
 }
 
 function resolveOrganization(store: ControlPlaneStore, value: string) {
   const organization = store.getOrganization(value) ?? store.getOrganizationBySlug(value)
-  if (!organization)
-    throw new Error(`Organization '${value}' was not found.`)
+  if (!organization) throw new Error(`Organization '${value}' was not found.`)
   return organization
 }
 
 function commandScope(type?: string, id?: string): AuthorizationScope {
   const scopeType = type ?? 'organization'
-  if (scopeType === 'organization')
-    return { type: 'organization' }
+  if (scopeType === 'organization') return { type: 'organization' }
   if (!['project', 'environment', 'resource'].includes(scopeType) || !id)
     throw new Error('Scoped access requires --scope project|environment|resource and --scope-id <id>.')
   return { type: scopeType as 'project' | 'environment' | 'resource', id }
@@ -46,8 +48,7 @@ function resolveAuthIdentity(authentication: AuthenticationStore, value: string)
   const identity = value.includes('@')
     ? authentication.getIdentityByEmail(value)
     : authentication.getIdentityByUsername(value)
-  if (!identity)
-    throw new Error(`Authentication identity '${value}' was not found.`)
+  if (!identity) throw new Error(`Authentication identity '${value}' was not found.`)
   return identity
 }
 
@@ -57,8 +58,7 @@ function encryptedAuthentication(store: ControlPlaneStore, root?: string): Authe
 
 function apiClient(baseUrl?: string, tokenVariable = 'TS_CLOUD_API_TOKEN'): TsCloudClient {
   const token = process.env[tokenVariable]?.trim()
-  if (!token)
-    throw new Error(`Set ${tokenVariable} to a one-time-issued API token.`)
+  if (!token) throw new Error(`Set ${tokenVariable} to a one-time-issued API token.`)
   return new TsCloudClient({ baseUrl: baseUrl ?? process.env.TS_CLOUD_API_URL ?? 'http://127.0.0.1:7676', token })
 }
 
@@ -71,28 +71,37 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--box', 'Box mode: run on the provisioned server (operate on localhost)')
     .option('--open', 'Print the URL for opening in a browser')
     .option('--verbose', 'Print server errors')
-    .action(async (options?: { host?: string, port?: string, env?: string, box?: boolean, open?: boolean, verbose?: boolean }) => {
-      const server = await startLocalDashboardServer({
-        host: options?.host,
-        port: Number(options?.port ?? 7676),
-        environment: options?.env as any,
-        box: options?.box,
-        verbose: options?.verbose,
-      })
+    .action(
+      async (options?: {
+        host?: string
+        port?: string
+        env?: string
+        box?: boolean
+        open?: boolean
+        verbose?: boolean
+      }) => {
+        const server = await startLocalDashboardServer({
+          host: options?.host,
+          port: Number(options?.port ?? 7676),
+          environment: options?.env as any,
+          box: options?.box,
+          verbose: options?.verbose,
+        })
 
-      cli.header('ts-cloud Local Dashboard')
-      cli.success(`Serving ${server.url}`)
-      cli.info('Use Ctrl+C to stop.')
+        cli.header('ts-cloud Local Dashboard')
+        cli.success(`Serving ${server.url}`)
+        cli.info('Use Ctrl+C to stop.')
 
-      await new Promise<void>((resolve) => {
-        const stop = (): void => {
-          server.server.stop(true)
-          resolve()
-        }
-        process.once('SIGINT', stop)
-        process.once('SIGTERM', stop)
-      })
-    })
+        await new Promise<void>((resolve) => {
+          const stop = (): void => {
+            server.server.stop(true)
+            resolve()
+          }
+          process.once('SIGINT', stop)
+          process.once('SIGTERM', stop)
+        })
+      },
+    )
 
   app
     .command('control-plane:status', 'Inspect local control-plane storage health')
@@ -101,8 +110,7 @@ export function registerDashboardCommands(app: CLI): void {
       const store = openControlPlane(options?.path)
       try {
         printControlPlaneHealth(store)
-      }
-      finally {
+      } finally {
         store.close()
       }
     })
@@ -115,8 +123,7 @@ export function registerDashboardCommands(app: CLI): void {
       try {
         const backup = store.createBackup('cli')
         cli.success(`Backup written to ${backup}`)
-      }
-      finally {
+      } finally {
         store.close()
       }
     })
@@ -132,8 +139,7 @@ export function registerDashboardCommands(app: CLI): void {
         writeFileSync(output, `${JSON.stringify(store.exportSnapshot(), null, 2)}\n`, { mode: 0o600 })
         chmodSync(output, 0o600)
         cli.success(`Control-plane snapshot exported to ${output}`)
-      }
-      finally {
+      } finally {
         store.close()
       }
     })
@@ -142,7 +148,7 @@ export function registerDashboardCommands(app: CLI): void {
     .command('control-plane:import <file>', 'Import a portable control-plane snapshot')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--replace', 'Replace existing control-plane records')
-    .action((file: string, options?: { path?: string, replace?: boolean }) => {
+    .action((file: string, options?: { path?: string; replace?: boolean }) => {
       const input = resolve(file)
       const snapshot = JSON.parse(readFileSync(input, 'utf8')) as ControlPlaneSnapshot
       const store = openControlPlane(options?.path)
@@ -150,10 +156,8 @@ export function registerDashboardCommands(app: CLI): void {
         const backup = options?.replace ? store.createBackup('pre-import') : undefined
         store.importSnapshot(snapshot, { replace: options?.replace })
         cli.success(`Imported control-plane snapshot from ${input}`)
-        if (backup)
-          cli.info(`Previous state backed up to ${backup}`)
-      }
-      finally {
+        if (backup) cli.info(`Previous state backed up to ${backup}`)
+      } finally {
         store.close()
       }
     })
@@ -164,7 +168,7 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--event-days <days>', 'Retain event history for this many days', { default: '90' })
     .option('--operation-days <days>', 'Retain terminal operations for this many days', { default: '365' })
     .option('--no-vacuum', 'Delete expired records without reclaiming file space')
-    .action((options?: { path?: string, eventDays?: string, operationDays?: string, vacuum?: boolean }) => {
+    .action((options?: { path?: string; eventDays?: string; operationDays?: string; vacuum?: boolean }) => {
       const store = openControlPlane(options?.path)
       try {
         const result = store.compact({
@@ -173,10 +177,8 @@ export function registerDashboardCommands(app: CLI): void {
           vacuum: options?.vacuum !== false,
         })
         cli.success(`Removed ${result.deletedEvents} event(s) and ${result.deletedOperations} terminal operation(s).`)
-        if (result.vacuumed)
-          cli.info('Database file compacted.')
-      }
-      finally {
+        if (result.vacuumed) cli.info('Database file compacted.')
+      } finally {
         store.close()
       }
     })
@@ -190,27 +192,33 @@ export function registerDashboardCommands(app: CLI): void {
         cli.header('Organizations')
         for (const organization of store.listOrganizations())
           cli.info(`${organization.slug}  ${organization.name}  ${organization.id}`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('organization:members <organization>', 'List memberships and scoped grants')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--all', 'Include revoked memberships')
-    .action((organizationValue: string, options?: { path?: string, all?: boolean }) => {
+    .action((organizationValue: string, options?: { path?: string; all?: boolean }) => {
       const store = openControlPlane(options?.path)
       try {
         const organization = resolveOrganization(store, organizationValue)
         cli.header(`${organization.name} members`)
         for (const membership of store.listMemberships(organization.id, { includeRevoked: options?.all })) {
           const actor = store.getActor(membership.actorId)
-          cli.info(`${actor?.displayName ?? membership.actorId}  ${membership.roleTemplate}  ${membership.scope.type}:${membership.scope.id ?? organization.slug}  ${membership.status}  ${membership.id}`)
+          cli.info(
+            `${actor?.displayName ?? membership.actorId}  ${membership.roleTemplate}  ${membership.scope.type}:${membership.scope.id ?? organization.slug}  ${membership.status}  ${membership.id}`,
+          )
           for (const grant of store.listGrants(membership.id))
-            cli.info(`  ${grant.effect} ${grant.capability} @ ${grant.scope.type}:${grant.scope.id ?? organization.slug}`)
+            cli.info(
+              `  ${grant.effect} ${grant.capability} @ ${grant.scope.type}:${grant.scope.id ?? organization.slug}`,
+            )
         }
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -221,25 +229,34 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--scope-id <id>', 'Project, environment, or resource ID')
     .option('--days <days>', 'Invitation lifetime in days', { default: '7' })
     .option('--base-url <url>', 'Dashboard URL used to print the acceptance link', { default: 'http://127.0.0.1:7676' })
-    .action((organizationValue: string, email: string, options?: { path?: string, role?: string, scope?: string, scopeId?: string, days?: string, baseUrl?: string }) => {
-      const store = openControlPlane(options?.path)
-      try {
-        const organization = resolveOrganization(store, organizationValue)
-        if (!['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(options?.role ?? 'viewer'))
-          throw new Error('Unknown role template.')
-        const created = store.createInvitation({
-          organizationId: organization.id,
-          email,
-          roleTemplate: (options?.role ?? 'viewer') as OrganizationRoleTemplate,
-          scope: commandScope(options?.scope, options?.scopeId),
-          expiresInMs: Number(options?.days ?? 7) * 86_400_000,
-        })
-        cli.success(`Invitation created for ${created.invitation.email}; expires ${created.invitation.expiresAt}`)
-        cli.info(`${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/accept-invitation?token=${encodeURIComponent(created.token)}`)
-        cli.info('This token is shown once. Resending revokes it and creates a new token.')
-      }
-      finally { store.close() }
-    })
+    .action(
+      (
+        organizationValue: string,
+        email: string,
+        options?: { path?: string; role?: string; scope?: string; scopeId?: string; days?: string; baseUrl?: string },
+      ) => {
+        const store = openControlPlane(options?.path)
+        try {
+          const organization = resolveOrganization(store, organizationValue)
+          if (!['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(options?.role ?? 'viewer'))
+            throw new Error('Unknown role template.')
+          const created = store.createInvitation({
+            organizationId: organization.id,
+            email,
+            roleTemplate: (options?.role ?? 'viewer') as OrganizationRoleTemplate,
+            scope: commandScope(options?.scope, options?.scopeId),
+            expiresInMs: Number(options?.days ?? 7) * 86_400_000,
+          })
+          cli.success(`Invitation created for ${created.invitation.email}; expires ${created.invitation.expiresAt}`)
+          cli.info(
+            `${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/accept-invitation?token=${encodeURIComponent(created.token)}`,
+          )
+          cli.info('This token is shown once. Resending revokes it and creates a new token.')
+        } finally {
+          store.close()
+        }
+      },
+    )
 
   app
     .command('organization:invitations <organization>', 'List invitation states without exposing tokens')
@@ -250,9 +267,12 @@ export function registerDashboardCommands(app: CLI): void {
         const organization = resolveOrganization(store, organizationValue)
         cli.header(`${organization.name} invitations`)
         for (const invitation of store.listInvitations(organization.id))
-          cli.info(`${invitation.email}  ${invitation.roleTemplate}  ${invitation.scope.type}:${invitation.scope.id ?? organization.slug}  ${invitation.state}  ${invitation.id}`)
+          cli.info(
+            `${invitation.email}  ${invitation.roleTemplate}  ${invitation.scope.type}:${invitation.scope.id ?? organization.slug}  ${invitation.state}  ${invitation.id}`,
+          )
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -263,8 +283,9 @@ export function registerDashboardCommands(app: CLI): void {
       try {
         const invitation = store.revokeInvitation(id)
         cli.success(`Invitation ${invitation.id} is ${invitation.state}.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -273,39 +294,49 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--effect <effect>', 'allow|deny', { default: 'allow' })
     .option('--scope <scope>', 'organization|project|environment|resource', { default: 'organization' })
     .option('--scope-id <id>', 'Project, environment, or resource ID')
-    .action((organizationValue: string, membership: string, capabilityValue: string, options?: { path?: string, effect?: string, scope?: string, scopeId?: string }) => {
-      const store = openControlPlane(options?.path)
-      try {
-        const organization = resolveOrganization(store, organizationValue)
-        if (!AUTHORIZATION_CAPABILITIES.includes(capabilityValue as AuthorizationCapability))
-          throw new Error(`Unknown capability '${capabilityValue}'.`)
-        if (options?.effect !== undefined && !['allow', 'deny'].includes(options.effect))
-          throw new Error('Effect must be allow or deny.')
-        const grant = store.upsertGrant({
-          organizationId: organization.id,
-          membershipId: membership,
-          effect: (options?.effect ?? 'allow') as AuthorizationEffect,
-          capability: capabilityValue as AuthorizationCapability,
-          scope: commandScope(options?.scope, options?.scopeId),
-        })
-        cli.success(`${grant.effect} ${grant.capability} added at ${grant.scope.type}:${grant.scope.id ?? organization.slug}.`)
-      }
-      finally { store.close() }
-    })
+    .action(
+      (
+        organizationValue: string,
+        membership: string,
+        capabilityValue: string,
+        options?: { path?: string; effect?: string; scope?: string; scopeId?: string },
+      ) => {
+        const store = openControlPlane(options?.path)
+        try {
+          const organization = resolveOrganization(store, organizationValue)
+          if (!AUTHORIZATION_CAPABILITIES.includes(capabilityValue as AuthorizationCapability))
+            throw new Error(`Unknown capability '${capabilityValue}'.`)
+          if (options?.effect !== undefined && !['allow', 'deny'].includes(options.effect))
+            throw new Error('Effect must be allow or deny.')
+          const grant = store.upsertGrant({
+            organizationId: organization.id,
+            membershipId: membership,
+            effect: (options?.effect ?? 'allow') as AuthorizationEffect,
+            capability: capabilityValue as AuthorizationCapability,
+            scope: commandScope(options?.scope, options?.scopeId),
+          })
+          cli.success(
+            `${grant.effect} ${grant.capability} added at ${grant.scope.type}:${grant.scope.id ?? organization.slug}.`,
+          )
+        } finally {
+          store.close()
+        }
+      },
+    )
 
   app
     .command('organization:revoke-member <membership>', 'Revoke a membership and invalidate its sessions')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--confirm <id>', 'Type the membership ID to confirm')
-    .action((membership: string, options?: { path?: string, confirm?: string }) => {
-      if (options?.confirm !== membership)
-        throw new Error(`Pass --confirm ${membership} to revoke this membership.`)
+    .action((membership: string, options?: { path?: string; confirm?: string }) => {
+      if (options?.confirm !== membership) throw new Error(`Pass --confirm ${membership} to revoke this membership.`)
       const store = openControlPlane(options?.path)
       try {
         const revoked = store.revokeMembership(membership)
         cli.success(`Membership ${revoked.id} revoked; session version is now ${revoked.sessionVersion}.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -317,26 +348,34 @@ export function registerDashboardCommands(app: CLI): void {
         const authentication = new AuthenticationStore(store)
         cli.header('Authentication identities')
         for (const identity of authentication.listIdentities())
-          cli.info(`${identity.username}  ${identity.email ?? 'no-email'}  ${identity.disabledAt ? 'disabled' : 'active'}  ${identity.id}`)
+          cli.info(
+            `${identity.username}  ${identity.email ?? 'no-email'}  ${identity.disabledAt ? 'disabled' : 'active'}  ${identity.id}`,
+          )
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('auth:reset-link <identity>', 'Create a one-time password reset link for offline recovery')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--base-url <url>', 'Dashboard URL used to print the reset link', { default: 'http://127.0.0.1:7676' })
-    .action((identityValue: string, options?: { path?: string, baseUrl?: string }) => {
+    .action((identityValue: string, options?: { path?: string; baseUrl?: string }) => {
       const store = openControlPlane(options?.path)
       try {
         const authentication = new AuthenticationStore(store)
         const identity = resolveAuthIdentity(authentication, identityValue)
         authentication.revokeActionTokens(identity.id, 'password_reset')
         const created = authentication.createActionToken(identity.id, 'password_reset')
-        cli.success(`Created a one-time reset link for ${identity.username}; it expires ${created.actionToken.expiresAt}.`)
-        cli.info(`${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(created.token)}`)
+        cli.success(
+          `Created a one-time reset link for ${identity.username}; it expires ${created.actionToken.expiresAt}.`,
+        )
+        cli.info(
+          `${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(created.token)}`,
+        )
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -349,16 +388,19 @@ export function registerDashboardCommands(app: CLI): void {
         const identity = resolveAuthIdentity(authentication, identityValue)
         cli.header(`${identity.username} sessions`)
         for (const session of authentication.listSessions(identity.id, { includeInactive: true }))
-          cli.info(`${session.state}  ${session.authMethod}  ${session.userAgent ?? 'unknown-device'}  ${session.lastUsedAt}  ${session.id}`)
+          cli.info(
+            `${session.state}  ${session.authMethod}  ${session.userAgent ?? 'unknown-device'}  ${session.lastUsedAt}  ${session.id}`,
+          )
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('auth:revoke-sessions <identity>', 'Revoke every dashboard session for an identity')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--confirm <identity>', 'Type the username or email to confirm')
-    .action((identityValue: string, options?: { path?: string, confirm?: string }) => {
+    .action((identityValue: string, options?: { path?: string; confirm?: string }) => {
       if (options?.confirm !== identityValue)
         throw new Error(`Pass --confirm ${identityValue} to revoke these sessions.`)
       const store = openControlPlane(options?.path)
@@ -366,20 +408,19 @@ export function registerDashboardCommands(app: CLI): void {
         const authentication = new AuthenticationStore(store)
         const identity = resolveAuthIdentity(authentication, identityValue)
         const sessions = authentication.listSessions(identity.id)
-        for (const session of sessions)
-          authentication.revokeSession(identity.id, session.id)
+        for (const session of sessions) authentication.revokeSession(identity.id, session.id)
         cli.success(`Revoked ${sessions.length} session(s) for ${identity.username}.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('auth:disable-mfa <identity>', 'Disable MFA through the offline administrative recovery path')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--confirm <identity>', 'Type the username or email to confirm')
-    .action((identityValue: string, options?: { path?: string, confirm?: string }) => {
-      if (options?.confirm !== identityValue)
-        throw new Error(`Pass --confirm ${identityValue} to disable MFA.`)
+    .action((identityValue: string, options?: { path?: string; confirm?: string }) => {
+      if (options?.confirm !== identityValue) throw new Error(`Pass --confirm ${identityValue} to disable MFA.`)
       const store = openControlPlane(options?.path)
       try {
         const authentication = new AuthenticationStore(store)
@@ -388,8 +429,9 @@ export function registerDashboardCommands(app: CLI): void {
         for (const session of authentication.listSessions(identity.id))
           authentication.revokeSession(identity.id, session.id)
         cli.success(`Disabled MFA and revoked active sessions for ${identity.username}.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -402,12 +444,14 @@ export function registerDashboardCommands(app: CLI): void {
         const authentication = encryptedAuthentication(store)
         cli.header(`${organization.name} OIDC providers`)
         const providers = authentication.listOidcProviders(organization.id, { includeDisabled: true })
-        if (providers.length === 0)
-          cli.info('No providers configured.')
+        if (providers.length === 0) cli.info('No providers configured.')
         for (const provider of providers)
-          cli.info(`${provider.enabled ? 'enabled' : 'disabled'}  ${provider.slug}  ${provider.issuer}  role=${provider.defaultRole}  enforce=${provider.enforceSso}`)
+          cli.info(
+            `${provider.enabled ? 'enabled' : 'disabled'}  ${provider.slug}  ${provider.issuer}  role=${provider.defaultRole}  enforce=${provider.enforceSso}`,
+          )
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -417,78 +461,97 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--name <name>', 'Provider label shown on the sign-in page')
     .option('--issuer <url>', 'Exact OIDC issuer URL')
     .option('--client-id <id>', 'OIDC client ID')
-    .option('--secret-env <name>', 'Environment variable containing the client secret', { default: 'TS_CLOUD_OIDC_CLIENT_SECRET' })
+    .option('--secret-env <name>', 'Environment variable containing the client secret', {
+      default: 'TS_CLOUD_OIDC_CLIENT_SECRET',
+    })
     .option('--domains <domains>', 'Comma-separated verified email domains')
     .option('--scopes <scopes>', 'Comma-separated scopes (openid is always included)', { default: 'email,profile' })
-    .option('--default-role <role>', 'Role for provisioned users: admin, deployer, operator, viewer, or auditor', { default: 'viewer' })
+    .option('--default-role <role>', 'Role for provisioned users: admin, deployer, operator, viewer, or auditor', {
+      default: 'viewer',
+    })
     .option('--enforce-sso', 'Require SSO for matching non-owner local accounts')
     .option('--disabled', 'Save the provider disabled')
-    .action((organizationValue: string, slug: string, options?: {
-      path?: string
-      authRoot?: string
-      name?: string
-      issuer?: string
-      clientId?: string
-      secretEnv?: string
-      domains?: string
-      scopes?: string
-      defaultRole?: string
-      enforceSso?: boolean
-      disabled?: boolean
-    }) => {
-      const store = openControlPlane(options?.path)
-      try {
-        const organization = resolveOrganization(store, organizationValue)
-        const authentication = encryptedAuthentication(store, options?.authRoot)
-        const existing = authentication.getOidcProviderBySlug(slug)
-        const secretVariable = options?.secretEnv ?? 'TS_CLOUD_OIDC_CLIENT_SECRET'
-        const clientSecret = process.env[secretVariable]?.trim()
-        if (!existing && !clientSecret)
-          throw new Error(`Set ${secretVariable} to the client secret before creating this provider.`)
-        const allowedDomains = (options?.domains ?? existing?.allowedDomains.join(',') ?? '').split(',').map(value => value.trim()).filter(Boolean)
-        const defaultRole = options?.defaultRole ?? existing?.defaultRole ?? 'viewer'
-        if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(defaultRole))
-          throw new Error('Default role must be admin, deployer, operator, viewer, or auditor.')
-        const provider = authentication.upsertOidcProvider({
-          id: existing?.id,
-          organizationId: organization.id,
-          slug,
-          name: options?.name ?? existing?.name ?? slug,
-          issuer: options?.issuer ?? existing?.issuer ?? '',
-          clientId: options?.clientId ?? existing?.clientId ?? '',
-          clientSecret,
-          allowedDomains,
-          scopes: (options?.scopes ?? existing?.scopes.join(',') ?? 'email,profile').split(',').map(value => value.trim()).filter(Boolean),
-          defaultRole: defaultRole as 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor',
-          enforceSso: options?.enforceSso ?? existing?.enforceSso ?? false,
-          enabled: options?.disabled ? false : existing?.enabled ?? true,
-        })
-        cli.success(`${provider.name} saved as ${provider.enabled ? 'enabled' : 'disabled'} with encrypted credentials.`)
-        cli.info(`Callback path: /auth/oidc/${provider.slug}/callback`)
-        if (provider.enforceSso)
-          cli.info(`Offline recovery: cloud auth:oidc:disable ${provider.slug} --confirm ${provider.slug}`)
-      }
-      finally { store.close() }
-    })
+    .action(
+      (
+        organizationValue: string,
+        slug: string,
+        options?: {
+          path?: string
+          authRoot?: string
+          name?: string
+          issuer?: string
+          clientId?: string
+          secretEnv?: string
+          domains?: string
+          scopes?: string
+          defaultRole?: string
+          enforceSso?: boolean
+          disabled?: boolean
+        },
+      ) => {
+        const store = openControlPlane(options?.path)
+        try {
+          const organization = resolveOrganization(store, organizationValue)
+          const authentication = encryptedAuthentication(store, options?.authRoot)
+          const existing = authentication.getOidcProviderBySlug(slug)
+          const secretVariable = options?.secretEnv ?? 'TS_CLOUD_OIDC_CLIENT_SECRET'
+          const clientSecret = process.env[secretVariable]?.trim()
+          if (!existing && !clientSecret)
+            throw new Error(`Set ${secretVariable} to the client secret before creating this provider.`)
+          const allowedDomains = (options?.domains ?? existing?.allowedDomains.join(',') ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean)
+          const defaultRole = options?.defaultRole ?? existing?.defaultRole ?? 'viewer'
+          if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(defaultRole))
+            throw new Error('Default role must be admin, deployer, operator, viewer, or auditor.')
+          const provider = authentication.upsertOidcProvider({
+            id: existing?.id,
+            organizationId: organization.id,
+            slug,
+            name: options?.name ?? existing?.name ?? slug,
+            issuer: options?.issuer ?? existing?.issuer ?? '',
+            clientId: options?.clientId ?? existing?.clientId ?? '',
+            clientSecret,
+            allowedDomains,
+            scopes: (options?.scopes ?? existing?.scopes.join(',') ?? 'email,profile')
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean),
+            defaultRole: defaultRole as 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor',
+            enforceSso: options?.enforceSso ?? existing?.enforceSso ?? false,
+            enabled: options?.disabled ? false : (existing?.enabled ?? true),
+          })
+          cli.success(
+            `${provider.name} saved as ${provider.enabled ? 'enabled' : 'disabled'} with encrypted credentials.`,
+          )
+          cli.info(`Callback path: /auth/oidc/${provider.slug}/callback`)
+          if (provider.enforceSso)
+            cli.info(`Offline recovery: cloud auth:oidc:disable ${provider.slug} --confirm ${provider.slug}`)
+        } finally {
+          store.close()
+        }
+      },
+    )
 
   app
     .command('auth:oidc:test <slug>', 'Validate OIDC discovery for a configured provider')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--auth-root <path>', 'Directory containing .ts-cloud/auth-encryption-key')
-    .action(async (slug: string, options?: { path?: string, authRoot?: string }) => {
+    .action(async (slug: string, options?: { path?: string; authRoot?: string }) => {
       const store = openControlPlane(options?.path)
       try {
         const authentication = encryptedAuthentication(store, options?.authRoot)
         const provider = authentication.getOidcProviderBySlug(slug)
-        if (!provider)
-          throw new Error(`OIDC provider '${slug}' was not found.`)
+        if (!provider) throw new Error(`OIDC provider '${slug}' was not found.`)
         const discovery = await discoverOidcProvider(provider)
         cli.success(`${provider.name} discovery is valid and issuer-bound.`)
         cli.info(`Authorization: ${discovery.authorization_endpoint}`)
         cli.info(`Token: ${discovery.token_endpoint}`)
         cli.info(`JWKS: ${discovery.jwks_uri}`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -496,19 +559,18 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--auth-root <path>', 'Directory containing .ts-cloud/auth-encryption-key')
     .option('--confirm <slug>', 'Type the provider slug to confirm')
-    .action((slug: string, options?: { path?: string, authRoot?: string, confirm?: string }) => {
-      if (options?.confirm !== slug)
-        throw new Error(`Pass --confirm ${slug} to disable this provider.`)
+    .action((slug: string, options?: { path?: string; authRoot?: string; confirm?: string }) => {
+      if (options?.confirm !== slug) throw new Error(`Pass --confirm ${slug} to disable this provider.`)
       const store = openControlPlane(options?.path)
       try {
         const authentication = encryptedAuthentication(store, options?.authRoot)
         const provider = authentication.getOidcProviderBySlug(slug)
-        if (!provider)
-          throw new Error(`OIDC provider '${slug}' was not found.`)
+        if (!provider) throw new Error(`OIDC provider '${slug}' was not found.`)
         authentication.setOidcProviderEnabled(provider.id, false)
         cli.success(`Disabled ${provider.name}, cancelled pending sign-ins, and removed SSO enforcement.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -523,10 +585,13 @@ export function registerDashboardCommands(app: CLI): void {
         for (const account of automation.listServiceAccounts(organization.id, { includeDisabled: true })) {
           cli.info(`${account.state}  ${account.slug}  ${account.name}  ${account.id}`)
           for (const token of automation.listTokens(account.id, { includeInactive: true }))
-            cli.info(`  ${token.state}  ${token.prefix}  ${token.name}  expires=${token.expiresAt}  last-used=${token.lastUsedAt ?? 'never'}`)
+            cli.info(
+              `  ${token.state}  ${token.prefix}  ${token.name}  expires=${token.expiresAt}  last-used=${token.lastUsedAt ?? 'never'}`,
+            )
         }
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
@@ -536,19 +601,34 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--role <role>', 'admin, deployer, operator, viewer, or auditor', { default: 'deployer' })
     .option('--scope <scope>', 'organization, project, environment, or resource', { default: 'organization' })
     .option('--scope-id <id>', 'Required for non-organization scope')
-    .action((organizationValue: string, slug: string, options?: { path?: string, name?: string, role?: string, scope?: string, scopeId?: string }) => {
-      const store = openControlPlane(options?.path)
-      try {
-        const organization = resolveOrganization(store, organizationValue)
-        const role = options?.role ?? 'deployer'
-        if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(role))
-          throw new Error('Service-account role cannot be owner and must be a supported role.')
-        const automation = new AutomationIdentityStore(store)
-        const created = automation.createServiceAccount({ organizationId: organization.id, slug, name: options?.name ?? slug, roleTemplate: role as any, scope: commandScope(options?.scope, options?.scopeId) })
-        cli.success(`Created ${created.serviceAccount.name} (${created.serviceAccount.id}) with ${created.membership.roleTemplate} access.`)
-      }
-      finally { store.close() }
-    })
+    .action(
+      (
+        organizationValue: string,
+        slug: string,
+        options?: { path?: string; name?: string; role?: string; scope?: string; scopeId?: string },
+      ) => {
+        const store = openControlPlane(options?.path)
+        try {
+          const organization = resolveOrganization(store, organizationValue)
+          const role = options?.role ?? 'deployer'
+          if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(role))
+            throw new Error('Service-account role cannot be owner and must be a supported role.')
+          const automation = new AutomationIdentityStore(store)
+          const created = automation.createServiceAccount({
+            organizationId: organization.id,
+            slug,
+            name: options?.name ?? slug,
+            roleTemplate: role as any,
+            scope: commandScope(options?.scope, options?.scopeId),
+          })
+          cli.success(
+            `Created ${created.serviceAccount.name} (${created.serviceAccount.id}) with ${created.membership.roleTemplate} access.`,
+          )
+        } finally {
+          store.close()
+        }
+      },
+    )
 
   app
     .command('api:token:create <organization> <account>', 'Create and reveal a scoped API token exactly once')
@@ -558,24 +638,49 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--scope <scope>', 'organization, project, environment, or resource', { default: 'organization' })
     .option('--scope-id <id>', 'Required for non-organization scope')
     .option('--expires-days <days>', 'Expiry in days, maximum 365', { default: '90' })
-    .action((organizationValue: string, accountValue: string, options?: { path?: string, name?: string, capabilities?: string, scope?: string, scopeId?: string, expiresDays?: string }) => {
-      const store = openControlPlane(options?.path)
-      try {
-        const organization = resolveOrganization(store, organizationValue)
-        const automation = new AutomationIdentityStore(store)
-        const account = automation.getServiceAccount(accountValue) ?? automation.getServiceAccountBySlug(organization.id, accountValue)
-        if (!account || account.organizationId !== organization.id)
-          throw new Error(`Service account '${accountValue}' was not found.`)
-        const capabilities = (options?.capabilities ?? '').split(',').map(value => value.trim()).filter(value => AUTHORIZATION_CAPABILITIES.includes(value as any)) as AuthorizationCapability[]
-        if (!capabilities.length)
-          throw new Error(`Pass --capabilities with one or more of: ${AUTHORIZATION_CAPABILITIES.join(', ')}`)
-        const days = Math.min(365, Math.max(1, Number(options?.expiresDays ?? 90)))
-        const issued = automation.createToken({ serviceAccountId: account.id, name: options?.name ?? 'CLI token', capabilities, scope: commandScope(options?.scope, options?.scopeId), expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString() })
-        cli.success(`Created ${issued.token.prefix}; copy this secret now. It will not be shown again.`)
-        cli.info(issued.secret)
-      }
-      finally { store.close() }
-    })
+    .action(
+      (
+        organizationValue: string,
+        accountValue: string,
+        options?: {
+          path?: string
+          name?: string
+          capabilities?: string
+          scope?: string
+          scopeId?: string
+          expiresDays?: string
+        },
+      ) => {
+        const store = openControlPlane(options?.path)
+        try {
+          const organization = resolveOrganization(store, organizationValue)
+          const automation = new AutomationIdentityStore(store)
+          const account =
+            automation.getServiceAccount(accountValue) ??
+            automation.getServiceAccountBySlug(organization.id, accountValue)
+          if (!account || account.organizationId !== organization.id)
+            throw new Error(`Service account '${accountValue}' was not found.`)
+          const capabilities = (options?.capabilities ?? '')
+            .split(',')
+            .map((value) => value.trim())
+            .filter((value) => AUTHORIZATION_CAPABILITIES.includes(value as any)) as AuthorizationCapability[]
+          if (!capabilities.length)
+            throw new Error(`Pass --capabilities with one or more of: ${AUTHORIZATION_CAPABILITIES.join(', ')}`)
+          const days = Math.min(365, Math.max(1, Number(options?.expiresDays ?? 90)))
+          const issued = automation.createToken({
+            serviceAccountId: account.id,
+            name: options?.name ?? 'CLI token',
+            capabilities,
+            scope: commandScope(options?.scope, options?.scopeId),
+            expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
+          })
+          cli.success(`Created ${issued.token.prefix}; copy this secret now. It will not be shown again.`)
+          cli.info(issued.secret)
+        } finally {
+          store.close()
+        }
+      },
+    )
 
   app
     .command('api:token:rotate <token>', 'Create an overlapping replacement for an API token')
@@ -586,33 +691,33 @@ export function registerDashboardCommands(app: CLI): void {
         const issued = new AutomationIdentityStore(store).rotateToken(tokenId)
         cli.success(`Created overlapping replacement ${issued.token.prefix}; revoke the old token after rollout.`)
         cli.info(issued.secret)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('api:token:revoke <token>', 'Immediately revoke an API token')
     .option('--path <path>', 'Use a non-default control-plane database')
     .option('--confirm <token>', 'Type the token ID to confirm')
-    .action((tokenId: string, options?: { path?: string, confirm?: string }) => {
-      if (options?.confirm !== tokenId)
-        throw new Error(`Pass --confirm ${tokenId} to revoke this token.`)
+    .action((tokenId: string, options?: { path?: string; confirm?: string }) => {
+      if (options?.confirm !== tokenId) throw new Error(`Pass --confirm ${tokenId} to revoke this token.`)
       const store = openControlPlane(options?.path)
       try {
         const token = new AutomationIdentityStore(store).revokeToken(tokenId)
         cli.success(`Revoked ${token.prefix}; bearer requests stop immediately.`)
+      } finally {
+        store.close()
       }
-      finally { store.close() }
     })
 
   app
     .command('api:projects', 'List projects through the public v1 API')
     .option('--base-url <url>', 'Dashboard base URL')
     .option('--token-env <name>', 'Environment variable containing the API token', { default: 'TS_CLOUD_API_TOKEN' })
-    .action(async (options?: { baseUrl?: string, tokenEnv?: string }) => {
+    .action(async (options?: { baseUrl?: string; tokenEnv?: string }) => {
       const result = await apiClient(options?.baseUrl, options?.tokenEnv).listProjects()
-      for (const project of result.data)
-        cli.info(`${project.slug}  ${project.name}  ${project.id}`)
+      for (const project of result.data) cli.info(`${project.slug}  ${project.name}  ${project.id}`)
     })
 
   app
@@ -622,9 +727,20 @@ export function registerDashboardCommands(app: CLI): void {
     .option('--service <id>', 'Optional service resource ID')
     .option('--revision <revision>', 'Revision or release identifier')
     .option('--idempotency-key <key>', 'Stable retry key')
-    .action(async (projectId: string, environmentId: string, options?: { baseUrl?: string, tokenEnv?: string, service?: string, revision?: string, idempotencyKey?: string }) => {
-      const key = options?.idempotencyKey ?? `cli-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
-      const result = await apiClient(options?.baseUrl, options?.tokenEnv).createDeployment({ projectId, environmentId, serviceId: options?.service, revision: options?.revision }, key)
-      cli.success(`${result.idempotentReplay ? 'Replayed' : 'Queued'} operation ${result.operation.id} (${result.operation.state}).`)
-    })
+    .action(
+      async (
+        projectId: string,
+        environmentId: string,
+        options?: { baseUrl?: string; tokenEnv?: string; service?: string; revision?: string; idempotencyKey?: string },
+      ) => {
+        const key = options?.idempotencyKey ?? `cli-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`
+        const result = await apiClient(options?.baseUrl, options?.tokenEnv).createDeployment(
+          { projectId, environmentId, serviceId: options?.service, revision: options?.revision },
+          key,
+        )
+        cli.success(
+          `${result.idempotentReplay ? 'Replayed' : 'Queued'} operation ${result.operation.id} (${result.operation.state}).`,
+        )
+      },
+    )
 }

@@ -27,19 +27,15 @@ export function registerDomainCommands(app: CLI): void {
         }
 
         // Format domains for table display
-        const domainRows = domains.map(d => [
+        const domainRows = domains.map((d) => [
           d,
           'Active',
           '-',
           providerName.charAt(0).toUpperCase() + providerName.slice(1),
         ])
 
-        cli.table(
-          ['Domain', 'Status', 'SSL', 'Provider'],
-          domainRows,
-        )
-      }
-      catch (error) {
+        cli.table(['Domain', 'Status', 'SSL', 'Provider'], domainRows)
+      } catch (error) {
         cli.error(`Failed to list domains: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
@@ -65,21 +61,18 @@ export function registerDomainCommands(app: CLI): void {
           cli.info('\nThe domain is ready to use. You can now:')
           cli.info(`  - Add DNS records: cloud dns:add ${domain} A 192.168.1.1`)
           cli.info(`  - Generate SSL: cloud domain:ssl ${domain}`)
-        }
-        else {
+        } else {
           spinner.warn(`Domain ${domain} is not available in ${providerName}`)
           cli.info('\nTo add this domain:')
           if (providerName === 'route53') {
             cli.info('  - Create a hosted zone in Route53 for this domain')
             cli.info('  - Update nameservers at your registrar to point to Route53')
-          }
-          else {
+          } else {
             cli.info(`  - Ensure the domain is registered with ${providerName}`)
             cli.info('  - Enable API access for the domain in your provider dashboard')
           }
         }
-      }
-      catch (error) {
+      } catch (error) {
         cli.error(`Failed to check domain: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
@@ -89,7 +82,7 @@ export function registerDomainCommands(app: CLI): void {
     .option('--provider <provider>', 'DNS provider for validation: porkbun, godaddy, or route53')
     .option('--region <region>', 'AWS region for ACM (default: us-east-1 for CloudFront compatibility)')
     .option('--wait', 'Wait for certificate validation to complete')
-    .action(async (domain: string, options?: { provider?: string, region?: string, wait?: boolean }) => {
+    .action(async (domain: string, options?: { provider?: string; region?: string; wait?: boolean }) => {
       cli.header(`Generating SSL Certificate for ${domain}`)
 
       try {
@@ -118,8 +111,7 @@ export function registerDomainCommands(app: CLI): void {
 
         if (result.isNew) {
           spinner.succeed('Certificate requested and validation records created')
-        }
-        else {
+        } else {
           spinner.succeed('Found existing valid certificate')
         }
 
@@ -132,17 +124,14 @@ export function registerDomainCommands(app: CLI): void {
           cli.info('  - CloudFront distributions')
           cli.info('  - Application Load Balancers')
           cli.info('  - API Gateway custom domains')
-        }
-        else if (result.status === 'pending') {
+        } else if (result.status === 'pending') {
           cli.info('\nDNS validation records have been created.')
           cli.info('Certificate validation may take a few more minutes.')
           cli.info(`\nCheck status with: cloud domain:verify ${domain}`)
-        }
-        else {
+        } else {
           cli.error('\nCertificate validation failed. Check ACM console for details.')
         }
-      }
-      catch (error) {
+      } catch (error) {
         cli.error(`Failed to generate SSL: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
@@ -190,15 +179,14 @@ export function registerDomainCommands(app: CLI): void {
         try {
           const certsResult = await acm.listCertificates()
           const domainCert = certsResult.CertificateSummaryList.find(
-            c => c.DomainName === domain || c.DomainName === `*.${domain}`,
+            (c) => c.DomainName === domain || c.DomainName === `*.${domain}`,
           )
           if (domainCert) {
             certArn = domainCert.CertificateArn || ''
             const details = await acm.describeCertificate({ CertificateArn: certArn })
             sslStatus = details.Status || 'Unknown'
           }
-        }
-        catch {
+        } catch {
           // ACM not accessible or no certs
         }
 
@@ -226,8 +214,7 @@ export function registerDomainCommands(app: CLI): void {
             cli.info(`  - ${type}: ${count}`)
           }
         }
-      }
-      catch (error) {
+      } catch (error) {
         cli.error(`Failed to verify domain: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
@@ -236,7 +223,7 @@ export function registerDomainCommands(app: CLI): void {
     .command('dns:records <domain>', 'List DNS records for a domain')
     .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--type <type>', 'Filter by record type (A, AAAA, CNAME, TXT, MX, etc.)')
-    .action(async (domain: string, options?: { provider?: string, type?: string }) => {
+    .action(async (domain: string, options?: { provider?: string; type?: string }) => {
       cli.header(`DNS Records for ${domain}`)
 
       try {
@@ -253,7 +240,7 @@ export function registerDomainCommands(app: CLI): void {
         // Filter by type if specified
         if (options?.type) {
           const filterType = options.type.toUpperCase()
-          records = records.filter(r => r.type.toUpperCase() === filterType)
+          records = records.filter((r) => r.type.toUpperCase() === filterType)
           cli.info(`Filtered to ${records.length} ${filterType} record(s)`)
         }
 
@@ -263,19 +250,15 @@ export function registerDomainCommands(app: CLI): void {
         }
 
         // Format records for table display
-        const recordRows = records.map(r => [
+        const recordRows = records.map((r) => [
           r.type,
           r.name || '@',
           r.content.length > 50 ? `${r.content.substring(0, 47)}...` : r.content,
           String(r.ttl || 300),
         ])
 
-        cli.table(
-          ['Type', 'Name', 'Value', 'TTL'],
-          recordRows,
-        )
-      }
-      catch (error) {
+        cli.table(['Type', 'Name', 'Value', 'TTL'], recordRows)
+      } catch (error) {
         cli.error(`Failed to list records: ${error instanceof Error ? error.message : String(error)}`)
       }
     })
@@ -285,50 +268,56 @@ export function registerDomainCommands(app: CLI): void {
     .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--name <name>', 'Record name (subdomain)', { default: '@' })
     .option('--ttl <seconds>', 'Time to live in seconds', { default: '300' })
-    .action(async (domain: string, type: string, value: string, options?: { provider?: string, name?: string, ttl?: string }) => {
-      cli.header(`Adding DNS Record`)
+    .action(
+      async (
+        domain: string,
+        type: string,
+        value: string,
+        options?: { provider?: string; name?: string; ttl?: string },
+      ) => {
+        cli.header(`Adding DNS Record`)
 
-      try {
-        const provider = getDnsProvider(options?.provider)
-        const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
+        try {
+          const provider = getDnsProvider(options?.provider)
+          const providerName = resolveDnsProviderConfig(options?.provider)?.provider || 'unknown'
 
-        const name = options?.name || '@'
-        const ttl = Number.parseInt(options?.ttl || '300', 10)
-        const recordType = type.toUpperCase() as 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
+          const name = options?.name || '@'
+          const ttl = Number.parseInt(options?.ttl || '300', 10)
+          const recordType = type.toUpperCase() as 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
 
-        cli.info(`Provider: ${providerName}`)
-        cli.info(`Domain: ${domain}`)
-        cli.info(`Type: ${recordType}`)
-        cli.info(`Name: ${name}`)
-        cli.info(`Value: ${value}`)
-        cli.info(`TTL: ${ttl}`)
+          cli.info(`Provider: ${providerName}`)
+          cli.info(`Domain: ${domain}`)
+          cli.info(`Type: ${recordType}`)
+          cli.info(`Name: ${name}`)
+          cli.info(`Value: ${value}`)
+          cli.info(`TTL: ${ttl}`)
 
-        const spinner = new cli.Spinner(`Adding record via ${providerName}...`)
-        spinner.start()
+          const spinner = new cli.Spinner(`Adding record via ${providerName}...`)
+          spinner.start()
 
-        await provider.createRecord(domain, {
-          type: recordType,
-          name: name === '@' ? '' : name,
-          content: value,
-          ttl,
-        })
+          await provider.createRecord(domain, {
+            type: recordType,
+            name: name === '@' ? '' : name,
+            content: value,
+            ttl,
+          })
 
-        spinner.succeed('DNS record added successfully')
+          spinner.succeed('DNS record added successfully')
 
-        cli.success('\nRecord created!')
-        cli.info('\nNote: DNS changes may take a few minutes to propagate')
-      }
-      catch (error) {
-        cli.error(`Failed to add record: ${error instanceof Error ? error.message : String(error)}`)
-      }
-    })
+          cli.success('\nRecord created!')
+          cli.info('\nNote: DNS changes may take a few minutes to propagate')
+        } catch (error) {
+          cli.error(`Failed to add record: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      },
+    )
 
   app
     .command('dns:delete <domain> <type>', 'Delete DNS record')
     .option('--provider <provider>', 'DNS provider: porkbun, godaddy, cloudflare, or route53')
     .option('--name <name>', 'Record name (subdomain)', { default: '@' })
     .option('--value <value>', 'Record value (required for multi-value records)')
-    .action(async (domain: string, type: string, options?: { provider?: string, name?: string, value?: string }) => {
+    .action(async (domain: string, type: string, options?: { provider?: string; name?: string; value?: string }) => {
       cli.header(`Deleting DNS Record`)
 
       try {
@@ -349,9 +338,8 @@ export function registerDomainCommands(app: CLI): void {
 
         const result = await provider.listRecords(domain)
         const allRecords = result.records || []
-        const matchingRecords = allRecords.filter(r =>
-          r.type.toUpperCase() === recordType
-          && (r.name === name || r.name === '' && name === '@'),
+        const matchingRecords = allRecords.filter(
+          (r) => r.type.toUpperCase() === recordType && (r.name === name || (r.name === '' && name === '@')),
         )
 
         if (matchingRecords.length === 0) {
@@ -370,7 +358,7 @@ export function registerDomainCommands(app: CLI): void {
         }
 
         const recordToDelete = options?.value
-          ? matchingRecords.find(r => r.content === options.value) || matchingRecords[0]
+          ? matchingRecords.find((r) => r.content === options.value) || matchingRecords[0]
           : matchingRecords[0]
 
         cli.info(`Value: ${recordToDelete.content}`)
@@ -389,8 +377,7 @@ export function registerDomainCommands(app: CLI): void {
 
         spinner.succeed('DNS record deleted successfully')
         cli.success('\nRecord deleted!')
-      }
-      catch (error) {
+      } catch (error) {
         cli.error(`Failed to delete record: ${error instanceof Error ? error.message : String(error)}`)
       }
     })

@@ -155,8 +155,7 @@ export function registerBackupCommands(app: CLI): void {
             vault.EncryptionKeyArn ? 'Yes' : 'Default',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list vaults: ${error.message}`)
         process.exit(1)
       }
@@ -196,8 +195,7 @@ export function registerBackupCommands(app: CLI): void {
             plan.CreationDate ? new Date(plan.CreationDate).toLocaleDateString() : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list backup plans: ${error.message}`)
         process.exit(1)
       }
@@ -241,8 +239,7 @@ export function registerBackupCommands(app: CLI): void {
             point.Lifecycle?.DeleteAfterDays ? `${point.Lifecycle.DeleteAfterDays} days` : 'Indefinite',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list recovery points: ${error.message}`)
         process.exit(1)
       }
@@ -278,8 +275,7 @@ export function registerBackupCommands(app: CLI): void {
         spinner.succeed('Vault created')
 
         cli.success(`\nVault: ${vaultName}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create vault: ${error.message}`)
         process.exit(1)
       }
@@ -292,64 +288,68 @@ export function registerBackupCommands(app: CLI): void {
     .option('--schedule <cron>', 'Backup schedule (cron expression)', { default: 'cron(0 5 ? * * *)' })
     .option('--retention <days>', 'Retention period in days', { default: '30' })
     .option('--lifecycle-cold <days>', 'Move to cold storage after days')
-    .action(async (planName: string, options: {
-      region: string
-      vault: string
-      schedule: string
-      retention: string
-      lifecycleCold?: string
-    }) => {
-      cli.header('Create Backup Plan')
+    .action(
+      async (
+        planName: string,
+        options: {
+          region: string
+          vault: string
+          schedule: string
+          retention: string
+          lifecycleCold?: string
+        },
+      ) => {
+        cli.header('Create Backup Plan')
 
-      try {
-        const backup = await getBackupClient(options.region)
+        try {
+          const backup = await getBackupClient(options.region)
 
-        cli.info(`Plan Name: ${planName}`)
-        cli.info(`Vault: ${options.vault}`)
-        cli.info(`Schedule: ${options.schedule}`)
-        cli.info(`Retention: ${options.retention} days`)
+          cli.info(`Plan Name: ${planName}`)
+          cli.info(`Vault: ${options.vault}`)
+          cli.info(`Schedule: ${options.schedule}`)
+          cli.info(`Retention: ${options.retention} days`)
 
-        const confirmed = await cli.confirm('\nCreate this backup plan?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
+          const confirmed = await cli.confirm('\nCreate this backup plan?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Creating backup plan...')
+          spinner.start()
+
+          const lifecycle: any = {
+            DeleteAfterDays: Number.parseInt(options.retention),
+          }
+
+          if (options.lifecycleCold) {
+            lifecycle.MoveToColdStorageAfterDays = Number.parseInt(options.lifecycleCold)
+          }
+
+          const result = await backup.createBackupPlan({
+            BackupPlanName: planName,
+            Rules: [
+              {
+                RuleName: `${planName}-daily`,
+                TargetBackupVaultName: options.vault,
+                ScheduleExpression: options.schedule,
+                StartWindowMinutes: 60,
+                CompletionWindowMinutes: 180,
+                Lifecycle: lifecycle,
+              },
+            ],
+          })
+
+          spinner.succeed('Backup plan created')
+
+          cli.success(`\nPlan ID: ${result.BackupPlanId}`)
+          cli.info('\nNote: Add resource selections with `cloud backup:add-selection`')
+        } catch (error: any) {
+          cli.error(`Failed to create backup plan: ${error.message}`)
+          process.exit(1)
         }
-
-        const spinner = new cli.Spinner('Creating backup plan...')
-        spinner.start()
-
-        const lifecycle: any = {
-          DeleteAfterDays: Number.parseInt(options.retention),
-        }
-
-        if (options.lifecycleCold) {
-          lifecycle.MoveToColdStorageAfterDays = Number.parseInt(options.lifecycleCold)
-        }
-
-        const result = await backup.createBackupPlan({
-          BackupPlanName: planName,
-          Rules: [
-            {
-              RuleName: `${planName}-daily`,
-              TargetBackupVaultName: options.vault,
-              ScheduleExpression: options.schedule,
-              StartWindowMinutes: 60,
-              CompletionWindowMinutes: 180,
-              Lifecycle: lifecycle,
-            },
-          ],
-        })
-
-        spinner.succeed('Backup plan created')
-
-        cli.success(`\nPlan ID: ${result.BackupPlanId}`)
-        cli.info('\nNote: Add resource selections with `cloud backup:add-selection`')
-      }
-      catch (error: any) {
-        cli.error(`Failed to create backup plan: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('backup:add-selection <planId>', 'Add resources to a backup plan')
@@ -359,70 +359,76 @@ export function registerBackupCommands(app: CLI): void {
     .option('--resource <arn>', 'Resource ARN to backup')
     .option('--tag-key <key>', 'Tag key for resource selection')
     .option('--tag-value <value>', 'Tag value for resource selection')
-    .action(async (planId: string, options: {
-      region: string
-      name?: string
-      role?: string
-      resource?: string
-      tagKey?: string
-      tagValue?: string
-    }) => {
-      cli.header('Add Backup Selection')
+    .action(
+      async (
+        planId: string,
+        options: {
+          region: string
+          name?: string
+          role?: string
+          resource?: string
+          tagKey?: string
+          tagValue?: string
+        },
+      ) => {
+        cli.header('Add Backup Selection')
 
-      try {
-        if (!options.role) {
-          cli.error('--role is required (IAM role ARN for AWS Backup)')
-          return
+        try {
+          if (!options.role) {
+            cli.error('--role is required (IAM role ARN for AWS Backup)')
+            return
+          }
+
+          if (!options.resource && !options.tagKey) {
+            cli.error('Specify --resource or --tag-key/--tag-value')
+            return
+          }
+
+          const backup = await getBackupClient(options.region)
+
+          const selectionName = options.name || `selection-${Date.now()}`
+
+          const selection: any = {
+            SelectionName: selectionName,
+            IamRoleArn: options.role,
+          }
+
+          if (options.resource) {
+            selection.Resources = [options.resource]
+            cli.info(`Resource: ${options.resource}`)
+          }
+
+          if (options.tagKey && options.tagValue) {
+            selection.ListOfTags = [
+              {
+                ConditionType: 'STRINGEQUALS',
+                ConditionKey: options.tagKey,
+                ConditionValue: options.tagValue,
+              },
+            ]
+            cli.info(`Tag: ${options.tagKey}=${options.tagValue}`)
+          }
+
+          const confirmed = await cli.confirm('\nAdd this selection?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Adding selection...')
+          spinner.start()
+
+          const result = await backup.createBackupSelection(planId, selection)
+
+          spinner.succeed('Selection added')
+
+          cli.success(`\nSelection ID: ${result.SelectionId}`)
+        } catch (error: any) {
+          cli.error(`Failed to add selection: ${error.message}`)
+          process.exit(1)
         }
-
-        if (!options.resource && !options.tagKey) {
-          cli.error('Specify --resource or --tag-key/--tag-value')
-          return
-        }
-
-        const backup = await getBackupClient(options.region)
-
-        const selectionName = options.name || `selection-${Date.now()}`
-
-        const selection: any = {
-          SelectionName: selectionName,
-          IamRoleArn: options.role,
-        }
-
-        if (options.resource) {
-          selection.Resources = [options.resource]
-          cli.info(`Resource: ${options.resource}`)
-        }
-
-        if (options.tagKey && options.tagValue) {
-          selection.ListOfTags = [{
-            ConditionType: 'STRINGEQUALS',
-            ConditionKey: options.tagKey,
-            ConditionValue: options.tagValue,
-          }]
-          cli.info(`Tag: ${options.tagKey}=${options.tagValue}`)
-        }
-
-        const confirmed = await cli.confirm('\nAdd this selection?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Adding selection...')
-        spinner.start()
-
-        const result = await backup.createBackupSelection(planId, selection)
-
-        spinner.succeed('Selection added')
-
-        cli.success(`\nSelection ID: ${result.SelectionId}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to add selection: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('backup:start <resourceArn>', 'Start an on-demand backup')
@@ -463,8 +469,7 @@ export function registerBackupCommands(app: CLI): void {
 
         cli.success(`\nJob ID: ${result.BackupJobId}`)
         cli.info('Use `cloud backup:jobs` to check status')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to start backup: ${error.message}`)
         process.exit(1)
       }
@@ -515,8 +520,7 @@ export function registerBackupCommands(app: CLI): void {
 
         cli.success(`\nJob ID: ${result.RestoreJobId}`)
         cli.info('Use `cloud backup:restore-jobs` to check status')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to start restore: ${error.message}`)
         process.exit(1)
       }
@@ -561,8 +565,7 @@ export function registerBackupCommands(app: CLI): void {
             job.BackupSizeInBytes ? formatBytes(job.BackupSizeInBytes) : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list backup jobs: ${error.message}`)
         process.exit(1)
       }
@@ -607,8 +610,7 @@ export function registerBackupCommands(app: CLI): void {
             job.CompletionDate ? new Date(job.CompletionDate).toLocaleString() : '-',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list restore jobs: ${error.message}`)
         process.exit(1)
       }
@@ -660,13 +662,11 @@ export function registerBackupCommands(app: CLI): void {
             if (selections.BackupSelectionsList && selections.BackupSelectionsList.length > 0) {
               cli.info(`  Selections: ${selections.BackupSelectionsList.length}`)
             }
-          }
-          catch {
+          } catch {
             cli.info('  (Unable to load plan details)')
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get schedule: ${error.message}`)
         process.exit(1)
       }

@@ -13,7 +13,7 @@ export function registerComputeLifecycleCommands(app: CLI): void {
     .command('destroy', 'Destroy the single-server compute (instance + firewall)')
     .option('--env <env>', 'Environment', { default: 'production' })
     .option('--force', 'Skip the confirmation prompt')
-    .action(async (options?: { env?: string, force?: boolean }) => {
+    .action(async (options?: { env?: string; force?: boolean }) => {
       cli.header('Destroy Compute')
       const config = await loadValidatedConfig()
       const environment = (options?.env || 'production') as 'production' | 'staging' | 'development'
@@ -25,7 +25,9 @@ export function registerComputeLifecycleCommands(app: CLI): void {
         return
       }
 
-      cli.warn(`This terminates the ${provider} server for ${config.project.slug}/${environment} and deletes its firewall.`)
+      cli.warn(
+        `This terminates the ${provider} server for ${config.project.slug}/${environment} and deletes its firewall.`,
+      )
       if (!options?.force) {
         const ok = await cli.confirm('This is irreversible. Continue?', false)
         if (!ok) {
@@ -39,12 +41,9 @@ export function registerComputeLifecycleCommands(app: CLI): void {
       try {
         const { destroyed } = await driver.destroyCompute({ config, environment })
         spinner.succeed('Compute destroyed')
-        if (destroyed.length > 0)
-          destroyed.forEach(d => cli.info(`  removed ${d}`))
-        else
-          cli.info('Nothing to destroy (no matching resources found)')
-      }
-      catch (error: unknown) {
+        if (destroyed.length > 0) destroyed.forEach((d) => cli.info(`  removed ${d}`))
+        else cli.info('Nothing to destroy (no matching resources found)')
+      } catch (error: unknown) {
         spinner.fail('Teardown failed')
         cli.error(error instanceof Error ? error.message : String(error))
       }

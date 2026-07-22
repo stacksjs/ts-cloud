@@ -1,7 +1,7 @@
 import type { CLI } from '@stacksjs/clapp'
 import type { MigrateEndpoint, ObjectStorageProvider } from '../../src'
-import { migrateObjectStorage } from '../../src'
 import * as cli from '../../src/utils/cli'
+import { migrateObjectStorage } from '../../src'
 
 const PROVIDERS: ObjectStorageProvider[] = ['aws', 'backblaze', 'hetzner']
 
@@ -24,7 +24,7 @@ interface MigrateStorageOptions {
 }
 
 /** Parse a `provider:bucket` spec into its parts, validating the provider. */
-function parseEndpointSpec(spec: string, label: string): { provider: ObjectStorageProvider, bucket: string } {
+function parseEndpointSpec(spec: string, label: string): { provider: ObjectStorageProvider; bucket: string } {
   const idx = spec.indexOf(':')
   if (idx === -1) {
     throw new Error(`--${label} must be in the form <provider:bucket> (e.g. aws:my-bucket), got "${spec}"`)
@@ -41,9 +41,11 @@ function parseEndpointSpec(spec: string, label: string): { provider: ObjectStora
 }
 
 function csv(value?: string): string[] | undefined {
-  if (!value)
-    return undefined
-  const parts = value.split(',').map(s => s.trim()).filter(Boolean)
+  if (!value) return undefined
+  const parts = value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
   return parts.length > 0 ? parts : undefined
 }
 
@@ -96,13 +98,10 @@ export function registerMigrateCommands(app: CLI): void {
 
         cli.info(`Source:      ${from.provider}:${from.bucket}${options.fromPrefix ? `/${options.fromPrefix}` : ''}`)
         cli.info(`Destination: ${to.provider}:${to.bucket}${options.toPrefix ? `/${options.toPrefix}` : ''}`)
-        if (include)
-          cli.info(`Include:     ${include.join(', ')}`)
-        if (exclude)
-          cli.info(`Exclude:     ${exclude.join(', ')}`)
+        if (include) cli.info(`Include:     ${include.join(', ')}`)
+        if (exclude) cli.info(`Exclude:     ${exclude.join(', ')}`)
         cli.info(`Concurrency: ${concurrency}`)
-        if (options.dryRun)
-          cli.warn('Dry run — no objects will be written')
+        if (options.dryRun) cli.warn('Dry run — no objects will be written')
         if (options.deleteExtraneous && !options.dryRun)
           cli.warn('Delete-extraneous ON — destination keys not in the source will be removed')
 
@@ -138,51 +137,44 @@ export function registerMigrateCommands(app: CLI): void {
           for (const item of result.plan.slice(0, 50)) {
             cli.info(`  ${item.key}  ->  ${item.destKey}  (${cli.formatBytes(item.size)})`)
           }
-          if (result.plan.length > 50)
-            cli.info(`  ... and ${result.plan.length - 50} more`)
+          if (result.plan.length > 50) cli.info(`  ... and ${result.plan.length - 50} more`)
         }
 
         if (result.excludedKeys.length > 0) {
           cli.info(`\nEXCLUDED ${result.excludedKeys.length} key(s) (deliberately not migrated):`)
-          for (const key of result.excludedKeys.slice(0, 50))
-            cli.info(`  ${key}`)
-          if (result.excludedKeys.length > 50)
-            cli.info(`  ... and ${result.excludedKeys.length - 50} more`)
+          for (const key of result.excludedKeys.slice(0, 50)) cli.info(`  ${key}`)
+          if (result.excludedKeys.length > 50) cli.info(`  ... and ${result.excludedKeys.length - 50} more`)
         }
 
         if (result.deleted.length > 0) {
           cli.warn(`\nDeleted ${result.deleted.length} extraneous destination key(s):`)
-          for (const key of result.deleted.slice(0, 50))
-            cli.warn(`  ${key}`)
+          for (const key of result.deleted.slice(0, 50)) cli.warn(`  ${key}`)
         }
 
         cli.info('\nSummary:')
         if (options.dryRun) {
           cli.info(`  would copy:  ${result.plan?.length ?? 0}`)
-        }
-        else {
+        } else {
           cli.success(`  copied:      ${result.copied} (${cli.formatBytes(result.bytesCopied)})`)
           cli.info(`  skipped:     ${result.skipped} (already present)`)
         }
         cli.info(`  excluded:    ${result.excluded}`)
-        if (result.deleted.length > 0)
-          cli.info(`  deleted:     ${result.deleted.length}`)
+        if (result.deleted.length > 0) cli.info(`  deleted:     ${result.deleted.length}`)
 
         if (result.errors.length > 0) {
           cli.error(`  errors:      ${result.errors.length}`)
-          for (const err of result.errors.slice(0, 20))
-            cli.error(`    ${err.key}: ${err.message}`)
+          for (const err of result.errors.slice(0, 20)) cli.error(`    ${err.key}: ${err.message}`)
         }
 
         if (result.verification) {
           const v = result.verification
           if (v.ok) {
             cli.success(`\nVerification PASSED — ${v.matched} object(s) present at destination with matching sizes`)
-          }
-          else {
-            cli.error(`\nVerification FAILED — ${v.missing.length} missing, ${v.sizeMismatches.length} size mismatch(es)`)
-            for (const key of v.missing.slice(0, 20))
-              cli.error(`  missing: ${key}`)
+          } else {
+            cli.error(
+              `\nVerification FAILED — ${v.missing.length} missing, ${v.sizeMismatches.length} size mismatch(es)`,
+            )
+            for (const key of v.missing.slice(0, 20)) cli.error(`  missing: ${key}`)
             for (const m of v.sizeMismatches.slice(0, 20))
               cli.error(`  size:    ${m.key} expected ${m.expected} got ${m.actual}`)
           }
@@ -191,8 +183,7 @@ export function registerMigrateCommands(app: CLI): void {
         if (result.errors.length > 0 || result.verification?.ok === false) {
           process.exit(1)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Migration failed: ${error.message}`)
         process.exit(1)
       }

@@ -9,7 +9,7 @@ export function registerInitCommands(app: CLI): void {
     .option('--mode <mode>', 'Deployment mode: server or serverless')
     .option('--name <name>', 'Project name')
     .option('--region <region>', 'AWS Region')
-    .action(async (options?: { mode?: string, name?: string, region?: string }) => {
+    .action(async (options?: { mode?: string; name?: string; region?: string }) => {
       cli.header('Initializing ts-cloud Project')
 
       // Check if already initialized
@@ -22,19 +22,21 @@ export function registerInitCommands(app: CLI): void {
       }
 
       // Get project name
-      const projectName = options?.name || await cli.prompt('Project name', 'my-app')
+      const projectName = options?.name || (await cli.prompt('Project name', 'my-app'))
 
       // Get deployment mode
-      const mode = options?.mode || await cli.select(
-        'Select deployment mode',
-        ['serverless', 'server'],
-      )
+      const mode = options?.mode || (await cli.select('Select deployment mode', ['serverless', 'server']))
 
       // Get AWS region
-      const region = options?.region || await cli.select(
-        'Select AWS region',
-        ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1'],
-      )
+      const region =
+        options?.region ||
+        (await cli.select('Select AWS region', [
+          'us-east-1',
+          'us-west-2',
+          'eu-west-1',
+          'eu-central-1',
+          'ap-southeast-1',
+        ]))
 
       // Create cloud.config.ts
       const spinner = new cli.Spinner('Creating configuration file...')
@@ -71,14 +73,17 @@ export default defineConfig({
 
       // Create .gitignore
       if (!existsSync('.gitignore')) {
-        await writeFile('.gitignore', `.env
+        await writeFile(
+          '.gitignore',
+          `.env
 .env.*
 node_modules/
 dist/
 cloudformation/
 *.log
 .DS_Store
-`)
+`,
+        )
         cli.success('Created .gitignore')
       }
 
@@ -88,33 +93,30 @@ cloudformation/
         cli.success('Created cloudformation/ directory')
       }
 
-      cli.box(`ts-cloud project initialized!
+      cli.box(
+        `ts-cloud project initialized!
 
 Next steps:
   1. Edit cloud.config.ts to configure your infrastructure
   2. Run 'cloud generate' to create CloudFormation templates
-  3. Run 'cloud deploy' to deploy your infrastructure`, 'green')
+  3. Run 'cloud deploy' to deploy your infrastructure`,
+        'green',
+      )
     })
 
-  app
-    .command('init:server', 'Initialize server-based (EC2) project')
-    .action(async () => {
-      cli.header('Initializing Server-Based Project')
-      // Delegate to init with mode
-      await app.parse(['init', '--mode', 'server'])
-    })
+  app.command('init:server', 'Initialize server-based (EC2) project').action(async () => {
+    cli.header('Initializing Server-Based Project')
+    // Delegate to init with mode
+    await app.parse(['init', '--mode', 'server'])
+  })
 
-  app
-    .command('init:serverless', 'Initialize serverless (Fargate/Lambda) project')
-    .action(async () => {
-      cli.header('Initializing Serverless Project')
-      await app.parse(['init', '--mode', 'serverless'])
-    })
+  app.command('init:serverless', 'Initialize serverless (Fargate/Lambda) project').action(async () => {
+    cli.header('Initializing Serverless Project')
+    await app.parse(['init', '--mode', 'serverless'])
+  })
 
-  app
-    .command('init:hybrid', 'Initialize hybrid project')
-    .action(async () => {
-      cli.header('Initializing Hybrid Project')
-      await app.parse(['init', '--mode', 'hybrid'])
-    })
+  app.command('init:hybrid', 'Initialize hybrid project').action(async () => {
+    cli.header('Initializing Hybrid Project')
+    await app.parse(['init', '--mode', 'hybrid'])
+  })
 }

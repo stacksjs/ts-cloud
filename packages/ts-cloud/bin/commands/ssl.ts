@@ -22,7 +22,7 @@ export function registerSslCommands(app: CLI): void {
         if (result.CertificateSummaryList.length === 0) {
           spinner.succeed('No certificates found')
           cli.info(`\nNo SSL certificates found in region ${region}`)
-          cli.info('Use \'cloud domain:ssl <domain>\' to request a new certificate')
+          cli.info("Use 'cloud domain:ssl <domain>' to request a new certificate")
           return
         }
 
@@ -51,24 +51,14 @@ export function registerSslCommands(app: CLI): void {
           const typeDisplay = cert.Type === 'AMAZON_ISSUED' ? 'Amazon Issued' : cert.Type || 'Unknown'
           const inUse = cert.Status === 'ISSUED' ? 'Available' : cert.Status || 'Unknown'
 
-          return [
-            cert.DomainName,
-            cert.Status || 'Unknown',
-            expiry,
-            typeDisplay,
-            inUse,
-          ]
+          return [cert.DomainName, cert.Status || 'Unknown', expiry, typeDisplay, inUse]
         })
 
-        cli.table(
-          ['Domain', 'Status', 'Expiry', 'Type', 'State'],
-          tableData,
-        )
+        cli.table(['Domain', 'Status', 'Expiry', 'Type', 'State'], tableData)
 
         cli.info('\nACM certificates are automatically renewed by AWS')
         cli.info(`Region: ${region}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Failed to fetch certificates')
         cli.error(error.message)
       }
@@ -96,7 +86,7 @@ export function registerSslCommands(app: CLI): void {
         if (!cert) {
           spinner.fail('Certificate not found')
           cli.error(`No certificate found for domain: ${domain}`)
-          cli.info('Use \'cloud domain:ssl <domain>\' to request a new certificate')
+          cli.info("Use 'cloud domain:ssl <domain>' to request a new certificate")
           return
         }
 
@@ -129,8 +119,7 @@ export function registerSslCommands(app: CLI): void {
         if (cert.SubjectAlternativeNames && cert.SubjectAlternativeNames.length > 1) {
           cli.info(`  - SANs: ${cert.SubjectAlternativeNames.join(', ')}`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail('Failed to check certificate')
         cli.error(error.message)
       }

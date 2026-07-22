@@ -1,9 +1,60 @@
 import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
 import { unsupportedCommand } from './capability-command'
-async function docker(args:string[]):Promise<{ok:boolean;exitCode:number;command:string;stderr:string}>{const child=Bun.spawn(['docker',...args],{stdin:'inherit',stdout:'inherit',stderr:'pipe'}),[exitCode,stderr]=await Promise.all([child.exited,new Response(child.stderr).text()]);return{ok:exitCode===0,exitCode,command:['docker',...args].join(' '),stderr:stderr.trim()}}
-export function registerContainerCommands(app:CLI):void{
-  app.command('container:build','Build a Docker image').option('--tag <tag>','Image tag',{default:'latest'}).option('--file <dockerfile>','Dockerfile',{default:'Dockerfile'}).option('--dry-run','Print the exact command').option('--json','Print result JSON').action(async(options:any)=>{const args=['build','--file',options.file??'Dockerfile','--tag',options.tag??'latest','.'];if(options.dryRun){console.log(`docker ${args.join(' ')}`);return}const result=await docker(args);if(options.json)console.log(JSON.stringify(result));if(!result.ok){cli.error(result.stderr||`docker exited ${result.exitCode}`);process.exitCode=result.exitCode}else cli.success(`Built ${options.tag??'latest'}.`)})
-  app.command('container:push','Push an already-tagged image').option('--image <image>','Full registry image reference').option('--dry-run','Print command').option('--json','Print JSON').action(async(options:any)=>{if(!options.image){cli.error('--image with a full registry reference is required; credentials must come from docker credential helpers.');process.exitCode=2;return}if(options.dryRun){console.log(`docker push ${options.image}`);return}const result=await docker(['push',options.image]);if(options.json)console.log(JSON.stringify(result));if(!result.ok){cli.error(result.stderr);process.exitCode=result.exitCode}else cli.success(`Pushed ${options.image}.`)})
-  app.command('container:deploy','Deploy a container image').action(async()=>unsupportedCommand('container:deploy',{message:'Direct ECS mutation is not registered as a shared release driver.',nextAction:'Import the image as an application and use the immutable release deployment workflow.'}))
+
+async function docker(args: string[]): Promise<{ ok: boolean; exitCode: number; command: string; stderr: string }> {
+  const child = Bun.spawn(['docker', ...args], { stdin: 'inherit', stdout: 'inherit', stderr: 'pipe' }),
+    [exitCode, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()])
+  return { ok: exitCode === 0, exitCode, command: ['docker', ...args].join(' '), stderr: stderr.trim() }
+}
+export function registerContainerCommands(app: CLI): void {
+  app
+    .command('container:build', 'Build a Docker image')
+    .option('--tag <tag>', 'Image tag', { default: 'latest' })
+    .option('--file <dockerfile>', 'Dockerfile', { default: 'Dockerfile' })
+    .option('--dry-run', 'Print the exact command')
+    .option('--json', 'Print result JSON')
+    .action(async (options: any) => {
+      const args = ['build', '--file', options.file ?? 'Dockerfile', '--tag', options.tag ?? 'latest', '.']
+      if (options.dryRun) {
+        console.log(`docker ${args.join(' ')}`)
+        return
+      }
+      const result = await docker(args)
+      if (options.json) console.log(JSON.stringify(result))
+      if (!result.ok) {
+        cli.error(result.stderr || `docker exited ${result.exitCode}`)
+        process.exitCode = result.exitCode
+      } else cli.success(`Built ${options.tag ?? 'latest'}.`)
+    })
+  app
+    .command('container:push', 'Push an already-tagged image')
+    .option('--image <image>', 'Full registry image reference')
+    .option('--dry-run', 'Print command')
+    .option('--json', 'Print JSON')
+    .action(async (options: any) => {
+      if (!options.image) {
+        cli.error(
+          '--image with a full registry reference is required; credentials must come from docker credential helpers.',
+        )
+        process.exitCode = 2
+        return
+      }
+      if (options.dryRun) {
+        console.log(`docker push ${options.image}`)
+        return
+      }
+      const result = await docker(['push', options.image])
+      if (options.json) console.log(JSON.stringify(result))
+      if (!result.ok) {
+        cli.error(result.stderr)
+        process.exitCode = result.exitCode
+      } else cli.success(`Pushed ${options.image}.`)
+    })
+  app.command('container:deploy', 'Deploy a container image').action(async () =>
+    unsupportedCommand('container:deploy', {
+      message: 'Direct ECS mutation is not registered as a shared release driver.',
+      nextAction: 'Import the image as an application and use the immutable release deployment workflow.',
+    }),
+  )
 }

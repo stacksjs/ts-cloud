@@ -1,12 +1,12 @@
 import type { CLI } from '@stacksjs/clapp'
-import { unsupportedCommand } from './capability-command'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import * as cli from '../../src/utils/cli'
-import { InfrastructureGenerator } from '../../src/generators/infrastructure'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
-import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../../src/validation/template'
+import { InfrastructureGenerator } from '../../src/generators/infrastructure'
+import { validateResourceLimits, validateTemplate, validateTemplateSize } from '../../src/validation/template'
+import { unsupportedCommand } from './capability-command'
 import { loadValidatedConfig } from './shared'
 
 export function registerGenerateCommands(app: CLI): void {
@@ -16,7 +16,7 @@ export function registerGenerateCommands(app: CLI): void {
     .option('--output <path>', 'Output directory for templates', { default: 'cloudformation' })
     .option('--format <format>', 'Output format: json or yaml', { default: 'json' })
     .option('--module <module>', 'Generate specific module only')
-    .action(async (options?: { output?: string, format?: string, module?: string }) => {
+    .action(async (options?: { output?: string; format?: string; module?: string }) => {
       cli.header('Generating CloudFormation Templates')
 
       const spinner = new cli.Spinner('Loading configuration...')
@@ -59,28 +59,19 @@ export function registerGenerateCommands(app: CLI): void {
         const limitsValidation = validateResourceLimits(template)
 
         // Show errors
-        const allErrors = [
-          ...validation.errors,
-          ...sizeValidation.errors,
-          ...limitsValidation.errors,
-        ]
+        const allErrors = [...validation.errors, ...sizeValidation.errors, ...limitsValidation.errors]
 
         if (allErrors.length > 0) {
           cli.error('Template validation failed:')
           for (const error of allErrors) {
             cli.error(`  - ${error.path}: ${error.message}`)
           }
-        }
-        else {
+        } else {
           cli.success('Template validated successfully')
         }
 
         // Show warnings
-        const allWarnings = [
-          ...validation.warnings,
-          ...sizeValidation.warnings,
-          ...limitsValidation.warnings,
-        ]
+        const allWarnings = [...validation.warnings, ...sizeValidation.warnings, ...limitsValidation.warnings]
 
         if (allWarnings.length > 0) {
           for (const warning of allWarnings) {
@@ -115,25 +106,25 @@ export function registerGenerateCommands(app: CLI): void {
         cli.info(`\nNext steps:
   1. Review the generated templates in ${outputDir}/
   2. Run 'cloud deploy' to deploy your infrastructure`)
-      }
-      catch (error) {
+      } catch (error) {
         spinner.fail('Failed to generate templates')
         cli.error(error instanceof Error ? error.message : 'Unknown error')
       }
     })
 
-  app
-    .command('generate:preview', 'Preview what will be generated')
-    .action(async () => {
-      unsupportedCommand('generate:preview',{message:'The legacy preview renderer has no stable output contract.',nextAction:'Run `cloud generate` into a temporary output directory and inspect the generated templates.'})
+  app.command('generate:preview', 'Preview what will be generated').action(async () => {
+    unsupportedCommand('generate:preview', {
+      message: 'The legacy preview renderer has no stable output contract.',
+      nextAction: 'Run `cloud generate` into a temporary output directory and inspect the generated templates.',
     })
+  })
 
   app
     .command('diff', 'Show diff between local config and deployed stack')
     .alias('generate:diff')
     .option('--stack <name>', 'Stack name to compare against')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .action(async (options?: { stack?: string, env?: string }) => {
+    .action(async (options?: { stack?: string; env?: string }) => {
       cli.header('Infrastructure Diff')
 
       try {
@@ -167,8 +158,7 @@ export function registerGenerateCommands(app: CLI): void {
           if (result.TemplateBody) {
             existingTemplate = JSON.parse(result.TemplateBody)
           }
-        }
-        catch (error: any) {
+        } catch (error: any) {
           if (error.message?.includes('does not exist')) {
             cli.warn(`Stack "${stackName}" does not exist yet`)
             cli.info('\nThis will be a new deployment with the following resources:')
@@ -272,8 +262,7 @@ export function registerGenerateCommands(app: CLI): void {
         cli.info(`  - Modify: ${modified.length}`)
 
         cli.info('\nRun `cloud deploy` to apply these changes')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Diff failed: ${error.message}`)
       }
     })

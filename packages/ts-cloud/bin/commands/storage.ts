@@ -1,14 +1,44 @@
 import type { CLI } from '@stacksjs/clapp'
+import type { VolumeInventoryItem } from '../../src/storage'
 import { readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import * as cli from '../../src/utils/cli'
 import { S3Client } from '../../src/aws/s3'
-import { loadValidatedConfig } from './shared'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
-import { DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore, type VolumeInventoryItem } from '../../src/storage'
+import { DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore } from '../../src/storage'
+import { loadValidatedConfig } from './shared'
 
-async function volumeContext(environment?:string){const config=await loadValidatedConfig(),controlPlane=initializeDashboardControlPlane(process.cwd(),config),env=environment??Object.keys(config.environments??{})[0]??'production',environmentRecord=controlPlane.environments.get(env as any);if(!environmentRecord){controlPlane.store.close();throw new Error(`Environment ${env} was not found.`)}const actor=controlPlane.store.getActorByExternalId('system','cli')??controlPlane.store.createActor({kind:'system',externalId:'cli',displayName:'ts-cloud CLI'}),store=new VolumeStore(controlPlane.store),service=new VolumeService(store,[new DockerNamedVolumeDriver(),new ServerPathVolumeDriver(join(process.cwd(),'.ts-cloud','volumes'))]);return{controlPlane,environmentRecord,actor,store,service}}
-export function volumeRows(items:VolumeInventoryItem[]):string[][]{return items.map(item=>[item.name,`${item.provider}/${item.type}`,item.status,item.capacityBytes==null?'—':formatBytes(item.capacityBytes),item.usedBytes==null?'—':formatBytes(item.usedBytes),String(item.attachments.filter(value=>value.observedState==='attached').length),item.backupState,item.orphaned?'orphan':'managed'])}
+async function volumeContext(environment?: string) {
+  const config = await loadValidatedConfig(),
+    controlPlane = initializeDashboardControlPlane(process.cwd(), config),
+    env = environment ?? Object.keys(config.environments ?? {})[0] ?? 'production',
+    environmentRecord = controlPlane.environments.get(env as any)
+  if (!environmentRecord) {
+    controlPlane.store.close()
+    throw new Error(`Environment ${env} was not found.`)
+  }
+  const actor =
+      controlPlane.store.getActorByExternalId('system', 'cli') ??
+      controlPlane.store.createActor({ kind: 'system', externalId: 'cli', displayName: 'ts-cloud CLI' }),
+    store = new VolumeStore(controlPlane.store),
+    service = new VolumeService(store, [
+      new DockerNamedVolumeDriver(),
+      new ServerPathVolumeDriver(join(process.cwd(), '.ts-cloud', 'volumes')),
+    ])
+  return { controlPlane, environmentRecord, actor, store, service }
+}
+export function volumeRows(items: VolumeInventoryItem[]): string[][] {
+  return items.map((item) => [
+    item.name,
+    `${item.provider}/${item.type}`,
+    item.status,
+    item.capacityBytes == null ? '—' : formatBytes(item.capacityBytes),
+    item.usedBytes == null ? '—' : formatBytes(item.usedBytes),
+    String(item.attachments.filter((value) => value.observedState === 'attached').length),
+    item.backupState,
+    item.orphaned ? 'orphan' : 'managed',
+  ])
+}
 
 export function registerStorageCommands(app: CLI): void {
   app
@@ -38,13 +68,12 @@ export function registerStorageCommands(app: CLI): void {
 
         cli.table(
           ['Name', 'Created'],
-          buckets.map(bucket => [
+          buckets.map((bucket) => [
             bucket.Name || 'N/A',
             bucket.CreationDate ? new Date(bucket.CreationDate).toLocaleDateString() : 'N/A',
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list buckets: ${error.message}`)
         process.exit(1)
       }
@@ -99,8 +128,7 @@ export function registerStorageCommands(app: CLI): void {
         cli.success(`\nBucket: ${name}`)
         cli.info(`Region: ${options.region}`)
         cli.info(`URL: s3://${name}`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create bucket: ${error.message}`)
         process.exit(1)
       }
@@ -137,8 +165,7 @@ export function registerStorageCommands(app: CLI): void {
         await s3.deleteBucket(name)
 
         spinner.succeed('Bucket deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete bucket: ${error.message}`)
         process.exit(1)
       }
@@ -149,128 +176,127 @@ export function registerStorageCommands(app: CLI): void {
     .option('--prefix <prefix>', 'S3 key prefix')
     .option('--delete', 'Delete files in S3 that are not in source')
     .option('--dry-run', 'Show what would be synced without making changes')
-    .action(async (source: string, bucket: string, options: { prefix?: string; delete?: boolean; dryRun?: boolean }) => {
-      cli.header('Sync to S3')
+    .action(
+      async (source: string, bucket: string, options: { prefix?: string; delete?: boolean; dryRun?: boolean }) => {
+        cli.header('Sync to S3')
 
-      try {
-        const s3 = new S3Client('us-east-1')
+        try {
+          const s3 = new S3Client('us-east-1')
 
-        cli.info(`Source: ${source}`)
-        cli.info(`Destination: s3://${bucket}/${options.prefix || ''}`)
+          cli.info(`Source: ${source}`)
+          cli.info(`Destination: s3://${bucket}/${options.prefix || ''}`)
 
-        if (options.dryRun) {
-          cli.info('Dry run mode - no changes will be made')
-        }
+          if (options.dryRun) {
+            cli.info('Dry run mode - no changes will be made')
+          }
 
-        const spinner = new cli.Spinner('Scanning files...')
-        spinner.start()
+          const spinner = new cli.Spinner('Scanning files...')
+          spinner.start()
 
-        // Get all local files
-        const localFiles: { path: string; key: string; size: number }[] = []
+          // Get all local files
+          const localFiles: { path: string; key: string; size: number }[] = []
 
-        function scanDirectory(dir: string, baseDir: string) {
-          const entries = readdirSync(dir, { withFileTypes: true })
-          for (const entry of entries) {
-            const fullPath = join(dir, entry.name)
-            if (entry.isDirectory()) {
-              scanDirectory(fullPath, baseDir)
-            }
-            else {
-              const relativePath = relative(baseDir, fullPath)
-              const key = options.prefix ? `${options.prefix}/${relativePath}` : relativePath
-              const stats = statSync(fullPath)
-              localFiles.push({ path: fullPath, key, size: stats.size })
+          function scanDirectory(dir: string, baseDir: string) {
+            const entries = readdirSync(dir, { withFileTypes: true })
+            for (const entry of entries) {
+              const fullPath = join(dir, entry.name)
+              if (entry.isDirectory()) {
+                scanDirectory(fullPath, baseDir)
+              } else {
+                const relativePath = relative(baseDir, fullPath)
+                const key = options.prefix ? `${options.prefix}/${relativePath}` : relativePath
+                const stats = statSync(fullPath)
+                localFiles.push({ path: fullPath, key, size: stats.size })
+              }
             }
           }
-        }
 
-        scanDirectory(source, source)
+          scanDirectory(source, source)
 
-        spinner.succeed(`Found ${localFiles.length} local file(s)`)
+          spinner.succeed(`Found ${localFiles.length} local file(s)`)
 
-        if (localFiles.length === 0) {
-          cli.info('No files to sync')
-          return
-        }
+          if (localFiles.length === 0) {
+            cli.info('No files to sync')
+            return
+          }
 
-        // Show preview
-        cli.info('\nFiles to sync:')
-        for (const file of localFiles.slice(0, 10)) {
-          cli.info(`  ${file.key} (${(file.size / 1024).toFixed(2)} KB)`)
-        }
-        if (localFiles.length > 10) {
-          cli.info(`  ... and ${localFiles.length - 10} more`)
-        }
+          // Show preview
+          cli.info('\nFiles to sync:')
+          for (const file of localFiles.slice(0, 10)) {
+            cli.info(`  ${file.key} (${(file.size / 1024).toFixed(2)} KB)`)
+          }
+          if (localFiles.length > 10) {
+            cli.info(`  ... and ${localFiles.length - 10} more`)
+          }
 
-        if (options.dryRun) {
-          cli.info('\nDry run complete - no changes made')
-          return
-        }
+          if (options.dryRun) {
+            cli.info('\nDry run complete - no changes made')
+            return
+          }
 
-        const confirmed = await cli.confirm('\nSync these files?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
+          const confirmed = await cli.confirm('\nSync these files?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
 
-        const uploadSpinner = new cli.Spinner('Uploading files...')
-        uploadSpinner.start()
+          const uploadSpinner = new cli.Spinner('Uploading files...')
+          uploadSpinner.start()
 
-        let uploaded = 0
-        for (const file of localFiles) {
-          uploadSpinner.text = `Uploading ${file.key}... (${uploaded + 1}/${localFiles.length})`
+          let uploaded = 0
+          for (const file of localFiles) {
+            uploadSpinner.text = `Uploading ${file.key}... (${uploaded + 1}/${localFiles.length})`
 
-          const fileContent = Bun.file(file.path)
-          const buffer = await fileContent.arrayBuffer()
+            const fileContent = Bun.file(file.path)
+            const buffer = await fileContent.arrayBuffer()
 
-          await s3.putObject({
-            bucket: bucket,
-            key: file.key,
-            body: Buffer.from(buffer),
-            contentType: getContentType(file.key),
-          })
+            await s3.putObject({
+              bucket: bucket,
+              key: file.key,
+              body: Buffer.from(buffer),
+              contentType: getContentType(file.key),
+            })
 
-          uploaded++
-        }
+            uploaded++
+          }
 
-        uploadSpinner.succeed(`Uploaded ${uploaded} file(s)`)
+          uploadSpinner.succeed(`Uploaded ${uploaded} file(s)`)
 
-        // Delete remote files not in source if requested
-        if (options.delete) {
-          const deleteSpinner = new cli.Spinner('Checking for files to delete...')
-          deleteSpinner.start()
+          // Delete remote files not in source if requested
+          if (options.delete) {
+            const deleteSpinner = new cli.Spinner('Checking for files to delete...')
+            deleteSpinner.start()
 
-          const remoteResult = await s3.listObjects({
-            bucket,
-            prefix: options.prefix,
-          })
+            const remoteResult = await s3.listObjects({
+              bucket,
+              prefix: options.prefix,
+            })
 
-          const localKeys = new Set(localFiles.map(f => f.key))
-          const toDelete = remoteResult.objects
-            .filter((obj: any) => obj.Key && !localKeys.has(obj.Key))
-            .map((obj: any) => obj.Key!)
+            const localKeys = new Set(localFiles.map((f) => f.key))
+            const toDelete = remoteResult.objects
+              .filter((obj: any) => obj.Key && !localKeys.has(obj.Key))
+              .map((obj: any) => obj.Key!)
 
-          if (toDelete.length > 0) {
-            deleteSpinner.text = `Deleting ${toDelete.length} remote file(s)...`
+            if (toDelete.length > 0) {
+              deleteSpinner.text = `Deleting ${toDelete.length} remote file(s)...`
 
-            for (const key of toDelete) {
-              await s3.deleteObject(bucket, key)
+              for (const key of toDelete) {
+                await s3.deleteObject(bucket, key)
+              }
+
+              deleteSpinner.succeed(`Deleted ${toDelete.length} remote file(s)`)
+            } else {
+              deleteSpinner.succeed('No files to delete')
             }
+          }
 
-            deleteSpinner.succeed(`Deleted ${toDelete.length} remote file(s)`)
-          }
-          else {
-            deleteSpinner.succeed('No files to delete')
-          }
+          cli.success('\nSync complete!')
+        } catch (error: any) {
+          cli.error(`Failed to sync: ${error.message}`)
+          process.exit(1)
         }
-
-        cli.success('\nSync complete!')
-      }
-      catch (error: any) {
-        cli.error(`Failed to sync: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('storage:policy <bucket>', 'Show or set bucket policy')
@@ -355,18 +381,15 @@ export function registerStorageCommands(app: CLI): void {
 
           cli.info('\nBucket Policy:')
           console.log(JSON.stringify(result || {}, null, 2))
-        }
-        catch (err: any) {
+        } catch (err: any) {
           if (err.message?.includes('NoSuchBucketPolicy')) {
             spinner.succeed('No policy set')
             cli.info('This bucket has no policy configured.')
-          }
-          else {
+          } else {
             throw err
           }
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to manage policy: ${error.message}`)
         process.exit(1)
       }
@@ -402,7 +425,7 @@ export function registerStorageCommands(app: CLI): void {
 
         cli.table(
           ['Key', 'Size', 'Last Modified'],
-          objects.map(obj => [
+          objects.map((obj) => [
             obj.Key || 'N/A',
             formatBytes(obj.Size || 0),
             obj.LastModified ? new Date(obj.LastModified).toLocaleString() : 'N/A',
@@ -412,25 +435,279 @@ export function registerStorageCommands(app: CLI): void {
         if (result.nextContinuationToken) {
           cli.info(`\nMore objects available. Use --limit to see more.`)
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list objects: ${error.message}`)
         process.exit(1)
       }
     })
 
-  const volumeCommand=(name:string,description:string)=>app.command(name,description).option('--env <environment>','Dashboard environment')
-  volumeCommand('volume:list','List persistent volumes, consumers, usage, and protection').option('--json','Print structured JSON').action(async(options:{env?:string,json?:boolean})=>{const value=await volumeContext(options.env);try{const items=value.store.inventory(value.controlPlane.project.id,value.environmentRecord.id);if(options.json)console.log(JSON.stringify(items,null,2));else cli.table(['Name','Driver','Status','Capacity','Used','Consumers','Backup','Ownership'],volumeRows(items))}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:show <name>','Inspect a persistent volume and its dependency graph').option('--json','Print structured JSON').action(async(name:string,options:{env?:string,json?:boolean})=>{const value=await volumeContext(options.env);try{const item=value.store.inventory(value.controlPlane.project.id,value.environmentRecord.id).find(volume=>volume.id===name||volume.name===name);if(!item)throw new Error(`Volume ${name} was not found.`);if(options.json)console.log(JSON.stringify(item,null,2));else{cli.table(['Property','Value'],[['ID',item.id],['Driver',`${item.provider}/${item.type}`],['Provider ID',item.providerId??'—'],['Status',item.status],['Capacity',item.capacityBytes==null?'—':formatBytes(item.capacityBytes)],['Used',item.usedBytes==null?'—':formatBytes(item.usedBytes)],['Backup',item.backupState]]);cli.table(['Resource','Target','Mode','State'],item.attachments.map(mount=>[mount.resourceId,mount.targetPath,mount.readOnly?'read only':'read/write',mount.observedState]))}}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:create <name>','Create a stable named or managed-path volume').option('--driver <driver>','docker or server',{default:'docker'}).option('--capacity-bytes <bytes>','Advisory capacity in bytes').option('--encrypted','Request provider encryption').action(async(name:string,options:{env?:string,driver?:string,capacityBytes?:string,encrypted?:boolean})=>{const value=await volumeContext(options.env);try{const server=options.driver==='server';if(!server&&options.driver!=='docker')throw new Error('--driver must be docker or server.');const result=value.service.create({organizationId:value.controlPlane.organization.id,projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id,name,provider:server?'server':'docker',type:server?'server_path':'docker',capacityBytes:options.capacityBytes?Number(options.capacityBytes):undefined,encrypted:!!options.encrypted,actorId:value.actor.id});cli.success(`Volume create queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:attach <volume> <resource> <target>','Validate and attach a volume to a workload').option('--read-only','Mount read only').option('--uid <uid>','Filesystem UID').option('--gid <gid>','Filesystem GID').option('--mode <mode>','Octal mode').action(async(volumeName:string,resourceName:string,target:string,options:{env?:string,readOnly?:boolean,uid?:string,gid?:string,mode?:string})=>{const value=await volumeContext(options.env);try{const volume=value.store.list({projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id}).find(item=>item.id===volumeName||item.name===volumeName),resource=value.controlPlane.store.listResources(value.controlPlane.project.id,value.environmentRecord.id).find(item=>item.id===resourceName||item.slug===resourceName);if(!volume||!resource)throw new Error('Volume or resource was not found in the selected environment.');const result=value.service.attach(volume.id,{resourceId:resource.id,targetPath:target,readOnly:!!options.readOnly,uid:options.uid?Number(options.uid):undefined,gid:options.gid?Number(options.gid):undefined,mode:options.mode,actorId:value.actor.id});cli.success(`Volume attachment queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:detach <volume> <attachment>','Drain, unmount, and detach a volume consumer').option('--force','Force after exact confirmation').option('--confirm <text>','Exact force-detach confirmation').action(async(volumeName:string,attachmentId:string,options:{env?:string,force?:boolean,confirm?:string})=>{const value=await volumeContext(options.env);try{const volume=value.store.list({projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id}).find(item=>item.id===volumeName||item.name===volumeName);if(!volume)throw new Error('Volume was not found.');const result=value.service.detach(volume.id,attachmentId,{drained:true,unmounted:true,force:!!options.force,confirmation:options.confirm,actorId:value.actor.id});cli.success(`Volume detach queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:resize <volume> <bytes>','Grow a capable persistent volume').option('--drained','Confirm offline workload drain').action(async(volumeName:string,bytes:string,options:{env?:string,drained?:boolean})=>{const value=await volumeContext(options.env);try{const volume=value.store.list({projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id}).find(item=>item.id===volumeName||item.name===volumeName);if(!volume)throw new Error('Volume was not found.');const result=value.service.resize(volume.id,Number(bytes),{drained:!!options.drained,actorId:value.actor.id});cli.success(`Volume resize queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:snapshot <volume>','Create a provider snapshot when supported').action(async(volumeName:string,options:{env?:string})=>{const value=await volumeContext(options.env);try{const volume=value.store.list({projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id}).find(item=>item.id===volumeName||item.name===volumeName);if(!volume)throw new Error('Volume was not found.');const result=value.service.snapshot(volume.id,{actorId:value.actor.id});cli.success(`Volume snapshot queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:restore <snapshot> <name>','Restore a snapshot into a replacement volume').action(async(snapshotId:string,name:string,options:{env?:string})=>{const value=await volumeContext(options.env);try{const result=value.service.restore(snapshotId,{name,actorId:value.actor.id});cli.success(`Volume restore queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:discover','Discover provider volumes without adopting or deleting them').action(async(options:{env?:string})=>{const value=await volumeContext(options.env);try{const items=await value.service.discover({organizationId:value.controlPlane.organization.id,projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id,actorId:value.actor.id});cli.success(`Discovered ${items.filter(item=>item.status==='orphaned').length} orphan volume(s).`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:adopt <volume> <name>','Adopt a discovered orphan under a managed name').action(async(volumeId:string,name:string,options:{env?:string})=>{const value=await volumeContext(options.env);try{value.service.adopt(volumeId,{name,actorId:value.actor.id});cli.success(`Adopted ${name}.`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
-  volumeCommand('volume:delete <volume>','Permanently delete a detached volume').option('--confirm <name>','Exact volume name').option('--without-backup','Explicitly override the recent-backup gate').option('--backup-confirm <text>','Exact backup override confirmation').action(async(volumeName:string,options:{env?:string,confirm?:string,withoutBackup?:boolean,backupConfirm?:string})=>{const value=await volumeContext(options.env);try{const volume=value.store.list({projectId:value.controlPlane.project.id,environmentId:value.environmentRecord.id}).find(item=>item.id===volumeName||item.name===volumeName);if(!volume)throw new Error('Volume was not found.');const result=value.service.delete(volume.id,{recentAuthAt:new Date().toISOString(),confirmation:options.confirm,backupOverride:!!options.withoutBackup,backupOverrideConfirmation:options.backupConfirm,actorId:value.actor.id});cli.success(`Volume deletion queued: ${result.operation.id}`)}catch(error){cli.error(error instanceof Error?error.message:String(error))}finally{value.controlPlane.store.close()}})
+  const volumeCommand = (name: string, description: string) =>
+    app.command(name, description).option('--env <environment>', 'Dashboard environment')
+  volumeCommand('volume:list', 'List persistent volumes, consumers, usage, and protection')
+    .option('--json', 'Print structured JSON')
+    .action(async (options: { env?: string; json?: boolean }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const items = value.store.inventory(value.controlPlane.project.id, value.environmentRecord.id)
+        if (options.json) console.log(JSON.stringify(items, null, 2))
+        else
+          cli.table(
+            ['Name', 'Driver', 'Status', 'Capacity', 'Used', 'Consumers', 'Backup', 'Ownership'],
+            volumeRows(items),
+          )
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    })
+  volumeCommand('volume:show <name>', 'Inspect a persistent volume and its dependency graph')
+    .option('--json', 'Print structured JSON')
+    .action(async (name: string, options: { env?: string; json?: boolean }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const item = value.store
+          .inventory(value.controlPlane.project.id, value.environmentRecord.id)
+          .find((volume) => volume.id === name || volume.name === name)
+        if (!item) throw new Error(`Volume ${name} was not found.`)
+        if (options.json) console.log(JSON.stringify(item, null, 2))
+        else {
+          cli.table(
+            ['Property', 'Value'],
+            [
+              ['ID', item.id],
+              ['Driver', `${item.provider}/${item.type}`],
+              ['Provider ID', item.providerId ?? '—'],
+              ['Status', item.status],
+              ['Capacity', item.capacityBytes == null ? '—' : formatBytes(item.capacityBytes)],
+              ['Used', item.usedBytes == null ? '—' : formatBytes(item.usedBytes)],
+              ['Backup', item.backupState],
+            ],
+          )
+          cli.table(
+            ['Resource', 'Target', 'Mode', 'State'],
+            item.attachments.map((mount) => [
+              mount.resourceId,
+              mount.targetPath,
+              mount.readOnly ? 'read only' : 'read/write',
+              mount.observedState,
+            ]),
+          )
+        }
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    })
+  volumeCommand('volume:create <name>', 'Create a stable named or managed-path volume')
+    .option('--driver <driver>', 'docker or server', { default: 'docker' })
+    .option('--capacity-bytes <bytes>', 'Advisory capacity in bytes')
+    .option('--encrypted', 'Request provider encryption')
+    .action(
+      async (name: string, options: { env?: string; driver?: string; capacityBytes?: string; encrypted?: boolean }) => {
+        const value = await volumeContext(options.env)
+        try {
+          const server = options.driver === 'server'
+          if (!server && options.driver !== 'docker') throw new Error('--driver must be docker or server.')
+          const result = value.service.create({
+            organizationId: value.controlPlane.organization.id,
+            projectId: value.controlPlane.project.id,
+            environmentId: value.environmentRecord.id,
+            name,
+            provider: server ? 'server' : 'docker',
+            type: server ? 'server_path' : 'docker',
+            capacityBytes: options.capacityBytes ? Number(options.capacityBytes) : undefined,
+            encrypted: !!options.encrypted,
+            actorId: value.actor.id,
+          })
+          cli.success(`Volume create queued: ${result.operation.id}`)
+        } catch (error) {
+          cli.error(error instanceof Error ? error.message : String(error))
+        } finally {
+          value.controlPlane.store.close()
+        }
+      },
+    )
+  volumeCommand('volume:attach <volume> <resource> <target>', 'Validate and attach a volume to a workload')
+    .option('--read-only', 'Mount read only')
+    .option('--uid <uid>', 'Filesystem UID')
+    .option('--gid <gid>', 'Filesystem GID')
+    .option('--mode <mode>', 'Octal mode')
+    .action(
+      async (
+        volumeName: string,
+        resourceName: string,
+        target: string,
+        options: { env?: string; readOnly?: boolean; uid?: string; gid?: string; mode?: string },
+      ) => {
+        const value = await volumeContext(options.env)
+        try {
+          const volume = value.store
+              .list({ projectId: value.controlPlane.project.id, environmentId: value.environmentRecord.id })
+              .find((item) => item.id === volumeName || item.name === volumeName),
+            resource = value.controlPlane.store
+              .listResources(value.controlPlane.project.id, value.environmentRecord.id)
+              .find((item) => item.id === resourceName || item.slug === resourceName)
+          if (!volume || !resource) throw new Error('Volume or resource was not found in the selected environment.')
+          const result = value.service.attach(volume.id, {
+            resourceId: resource.id,
+            targetPath: target,
+            readOnly: !!options.readOnly,
+            uid: options.uid ? Number(options.uid) : undefined,
+            gid: options.gid ? Number(options.gid) : undefined,
+            mode: options.mode,
+            actorId: value.actor.id,
+          })
+          cli.success(`Volume attachment queued: ${result.operation.id}`)
+        } catch (error) {
+          cli.error(error instanceof Error ? error.message : String(error))
+        } finally {
+          value.controlPlane.store.close()
+        }
+      },
+    )
+  volumeCommand('volume:detach <volume> <attachment>', 'Drain, unmount, and detach a volume consumer')
+    .option('--force', 'Force after exact confirmation')
+    .option('--confirm <text>', 'Exact force-detach confirmation')
+    .action(
+      async (
+        volumeName: string,
+        attachmentId: string,
+        options: { env?: string; force?: boolean; confirm?: string },
+      ) => {
+        const value = await volumeContext(options.env)
+        try {
+          const volume = value.store
+            .list({ projectId: value.controlPlane.project.id, environmentId: value.environmentRecord.id })
+            .find((item) => item.id === volumeName || item.name === volumeName)
+          if (!volume) throw new Error('Volume was not found.')
+          const result = value.service.detach(volume.id, attachmentId, {
+            drained: true,
+            unmounted: true,
+            force: !!options.force,
+            confirmation: options.confirm,
+            actorId: value.actor.id,
+          })
+          cli.success(`Volume detach queued: ${result.operation.id}`)
+        } catch (error) {
+          cli.error(error instanceof Error ? error.message : String(error))
+        } finally {
+          value.controlPlane.store.close()
+        }
+      },
+    )
+  volumeCommand('volume:resize <volume> <bytes>', 'Grow a capable persistent volume')
+    .option('--drained', 'Confirm offline workload drain')
+    .action(async (volumeName: string, bytes: string, options: { env?: string; drained?: boolean }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const volume = value.store
+          .list({ projectId: value.controlPlane.project.id, environmentId: value.environmentRecord.id })
+          .find((item) => item.id === volumeName || item.name === volumeName)
+        if (!volume) throw new Error('Volume was not found.')
+        const result = value.service.resize(volume.id, Number(bytes), {
+          drained: !!options.drained,
+          actorId: value.actor.id,
+        })
+        cli.success(`Volume resize queued: ${result.operation.id}`)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    })
+  volumeCommand('volume:snapshot <volume>', 'Create a provider snapshot when supported').action(
+    async (volumeName: string, options: { env?: string }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const volume = value.store
+          .list({ projectId: value.controlPlane.project.id, environmentId: value.environmentRecord.id })
+          .find((item) => item.id === volumeName || item.name === volumeName)
+        if (!volume) throw new Error('Volume was not found.')
+        const result = value.service.snapshot(volume.id, { actorId: value.actor.id })
+        cli.success(`Volume snapshot queued: ${result.operation.id}`)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    },
+  )
+  volumeCommand('volume:restore <snapshot> <name>', 'Restore a snapshot into a replacement volume').action(
+    async (snapshotId: string, name: string, options: { env?: string }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const result = value.service.restore(snapshotId, { name, actorId: value.actor.id })
+        cli.success(`Volume restore queued: ${result.operation.id}`)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    },
+  )
+  volumeCommand('volume:discover', 'Discover provider volumes without adopting or deleting them').action(
+    async (options: { env?: string }) => {
+      const value = await volumeContext(options.env)
+      try {
+        const items = await value.service.discover({
+          organizationId: value.controlPlane.organization.id,
+          projectId: value.controlPlane.project.id,
+          environmentId: value.environmentRecord.id,
+          actorId: value.actor.id,
+        })
+        cli.success(`Discovered ${items.filter((item) => item.status === 'orphaned').length} orphan volume(s).`)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    },
+  )
+  volumeCommand('volume:adopt <volume> <name>', 'Adopt a discovered orphan under a managed name').action(
+    async (volumeId: string, name: string, options: { env?: string }) => {
+      const value = await volumeContext(options.env)
+      try {
+        value.service.adopt(volumeId, { name, actorId: value.actor.id })
+        cli.success(`Adopted ${name}.`)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+      } finally {
+        value.controlPlane.store.close()
+      }
+    },
+  )
+  volumeCommand('volume:delete <volume>', 'Permanently delete a detached volume')
+    .option('--confirm <name>', 'Exact volume name')
+    .option('--without-backup', 'Explicitly override the recent-backup gate')
+    .option('--backup-confirm <text>', 'Exact backup override confirmation')
+    .action(
+      async (
+        volumeName: string,
+        options: { env?: string; confirm?: string; withoutBackup?: boolean; backupConfirm?: string },
+      ) => {
+        const value = await volumeContext(options.env)
+        try {
+          const volume = value.store
+            .list({ projectId: value.controlPlane.project.id, environmentId: value.environmentRecord.id })
+            .find((item) => item.id === volumeName || item.name === volumeName)
+          if (!volume) throw new Error('Volume was not found.')
+          const result = value.service.delete(volume.id, {
+            recentAuthAt: new Date().toISOString(),
+            confirmation: options.confirm,
+            backupOverride: !!options.withoutBackup,
+            backupOverrideConfirmation: options.backupConfirm,
+            actorId: value.actor.id,
+          })
+          cli.success(`Volume deletion queued: ${result.operation.id}`)
+        } catch (error) {
+          cli.error(error instanceof Error ? error.message : String(error))
+        } finally {
+          value.controlPlane.store.close()
+        }
+      },
+    )
 }
 
 function getContentType(filename: string): string {

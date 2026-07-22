@@ -1,6 +1,6 @@
 import type { CLI } from '@stacksjs/clapp'
-import { SecretsManagerClient } from '../../src/aws/secrets-manager'
 import * as cli from '../../src/utils/cli'
+import { SecretsManagerClient } from '../../src/aws/secrets-manager'
 import { loadValidatedConfig } from './shared'
 
 /**
@@ -8,7 +8,7 @@ import { loadValidatedConfig } from './shared'
  * match the names the serverless deploy orchestrator resolves into Lambda env vars
  * (see ServerlessAppConfig.secrets).
  */
-async function ctx(env?: string): Promise<{ region: string, prefix: string }> {
+async function ctx(env?: string): Promise<{ region: string; prefix: string }> {
   const config = await loadValidatedConfig()
   const environment = env || 'production'
   return {
@@ -36,10 +36,12 @@ export function registerSecretsCommands(app: CLI): void {
         }
         cli.table(
           ['Key', 'Last Changed'],
-          SecretList.map(s => [(s.Name ?? '').replace(`${prefix}/`, ''), (s as any).LastChangedDate ?? (s as any).LastAccessedDate ?? '-']),
+          SecretList.map((s) => [
+            (s.Name ?? '').replace(`${prefix}/`, ''),
+            (s as any).LastChangedDate ?? (s as any).LastAccessedDate ?? '-',
+          ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list secrets: ${error.message}`)
         process.exitCode = 1
       }
@@ -59,14 +61,12 @@ export function registerSecretsCommands(app: CLI): void {
         // Update if it exists, otherwise create.
         try {
           await sm.putSecretValue({ SecretId: secretId, SecretString: value })
-        }
-        catch {
+        } catch {
           await sm.createSecret({ Name: secretId, SecretString: value })
         }
         spinner.succeed(`Secret ${key} stored (${secretId})`)
         cli.warn('Redeploy for the new value to take effect in running functions.')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         spinner.fail(`Failed to store secret: ${error.message}`)
         process.exitCode = 1
       }
@@ -81,8 +81,7 @@ export function registerSecretsCommands(app: CLI): void {
         const sm = new SecretsManagerClient(region)
         const value = await sm.getSecretValue({ SecretId: `${prefix}/${key}` })
         cli.info(value.SecretString ?? '')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to read secret: ${error.message}`)
         process.exitCode = 1
       }
@@ -92,14 +91,13 @@ export function registerSecretsCommands(app: CLI): void {
     .command('secrets:delete <key>', 'Delete a secret')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--force', 'Delete immediately without a recovery window')
-    .action(async (key: string, options?: { env?: string, force?: boolean }) => {
+    .action(async (key: string, options?: { env?: string; force?: boolean }) => {
       try {
         const { region, prefix } = await ctx(options?.env)
         const sm = new SecretsManagerClient(region)
         await sm.deleteSecret({ SecretId: `${prefix}/${key}`, ForceDeleteWithoutRecovery: options?.force })
         cli.success(`Secret ${key} deleted`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete secret: ${error.message}`)
         process.exitCode = 1
       }

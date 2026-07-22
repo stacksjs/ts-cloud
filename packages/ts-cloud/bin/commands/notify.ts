@@ -31,13 +31,12 @@ export function registerNotifyCommands(app: CLI): void {
 
         cli.table(
           ['Topic ARN', 'Name'],
-          topics.map(t => {
+          topics.map((t) => {
             const name = t.TopicArn?.split(':').pop() || 'N/A'
             return [t.TopicArn || 'N/A', name]
           }),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list topics: ${error.message}`)
         process.exit(1)
       }
@@ -90,8 +89,7 @@ export function registerNotifyCommands(app: CLI): void {
         cli.success(`\nTopic ARN: ${result.TopicArn}`)
         cli.info('\nTo subscribe:')
         cli.info(`  cloud notify:subscribe ${result.TopicArn} --email user@example.com`)
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to create topic: ${error.message}`)
         process.exit(1)
       }
@@ -121,8 +119,7 @@ export function registerNotifyCommands(app: CLI): void {
         await sns.deleteTopic(topicArn)
 
         spinner.succeed('Topic deleted')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to delete topic: ${error.message}`)
         process.exit(1)
       }
@@ -137,90 +134,88 @@ export function registerNotifyCommands(app: CLI): void {
     .option('--lambda <functionArn>', 'Lambda function ARN')
     .option('--https <url>', 'HTTPS endpoint URL')
     .option('--filter <json>', 'Filter policy JSON')
-    .action(async (topicArn: string, options: {
-      region: string
-      email?: string
-      sms?: string
-      sqs?: string
-      lambda?: string
-      https?: string
-      filter?: string
-    }) => {
-      cli.header('Subscribe to SNS Topic')
+    .action(
+      async (
+        topicArn: string,
+        options: {
+          region: string
+          email?: string
+          sms?: string
+          sqs?: string
+          lambda?: string
+          https?: string
+          filter?: string
+        },
+      ) => {
+        cli.header('Subscribe to SNS Topic')
 
-      try {
-        const sns = new SNSClient(options.region)
+        try {
+          const sns = new SNSClient(options.region)
 
-        let protocol: string
-        let endpoint: string
+          let protocol: string
+          let endpoint: string
 
-        if (options.email) {
-          protocol = 'email'
-          endpoint = options.email
-        }
-        else if (options.sms) {
-          protocol = 'sms'
-          endpoint = options.sms
-        }
-        else if (options.sqs) {
-          protocol = 'sqs'
-          endpoint = options.sqs
-        }
-        else if (options.lambda) {
-          protocol = 'lambda'
-          endpoint = options.lambda
-        }
-        else if (options.https) {
-          protocol = 'https'
-          endpoint = options.https
-        }
-        else {
-          cli.error('Specify a subscription type: --email, --sms, --sqs, --lambda, or --https')
-          return
-        }
-
-        cli.info(`Topic: ${topicArn}`)
-        cli.info(`Protocol: ${protocol}`)
-        cli.info(`Endpoint: ${endpoint}`)
-
-        const confirmed = await cli.confirm('\nCreate this subscription?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Creating subscription...')
-        spinner.start()
-
-        const params: any = {
-          TopicArn: topicArn,
-          Protocol: protocol,
-          Endpoint: endpoint,
-        }
-
-        if (options.filter) {
-          params.Attributes = {
-            FilterPolicy: options.filter,
+          if (options.email) {
+            protocol = 'email'
+            endpoint = options.email
+          } else if (options.sms) {
+            protocol = 'sms'
+            endpoint = options.sms
+          } else if (options.sqs) {
+            protocol = 'sqs'
+            endpoint = options.sqs
+          } else if (options.lambda) {
+            protocol = 'lambda'
+            endpoint = options.lambda
+          } else if (options.https) {
+            protocol = 'https'
+            endpoint = options.https
+          } else {
+            cli.error('Specify a subscription type: --email, --sms, --sqs, --lambda, or --https')
+            return
           }
-        }
 
-        const result = await sns.subscribe(params)
+          cli.info(`Topic: ${topicArn}`)
+          cli.info(`Protocol: ${protocol}`)
+          cli.info(`Endpoint: ${endpoint}`)
 
-        spinner.succeed('Subscription created')
+          const confirmed = await cli.confirm('\nCreate this subscription?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
 
-        if (result.SubscriptionArn === 'pending confirmation') {
-          cli.info('\nSubscription is pending confirmation.')
-          cli.info('The subscriber will receive a confirmation message.')
+          const spinner = new cli.Spinner('Creating subscription...')
+          spinner.start()
+
+          const params: any = {
+            TopicArn: topicArn,
+            Protocol: protocol,
+            Endpoint: endpoint,
+          }
+
+          if (options.filter) {
+            params.Attributes = {
+              FilterPolicy: options.filter,
+            }
+          }
+
+          const result = await sns.subscribe(params)
+
+          spinner.succeed('Subscription created')
+
+          if (result.SubscriptionArn === 'pending confirmation') {
+            cli.info('\nSubscription is pending confirmation.')
+            cli.info('The subscriber will receive a confirmation message.')
+          } else {
+            cli.success(`\nSubscription ARN: ${result.SubscriptionArn}`)
+          }
+        } catch (error: any) {
+          cli.error(`Failed to subscribe: ${error.message}`)
+          process.exit(1)
         }
-        else {
-          cli.success(`\nSubscription ARN: ${result.SubscriptionArn}`)
-        }
-      }
-      catch (error: any) {
-        cli.error(`Failed to subscribe: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('notify:unsubscribe <subscriptionArn>', 'Unsubscribe from an SNS topic')
@@ -245,8 +240,7 @@ export function registerNotifyCommands(app: CLI): void {
         await sns.unsubscribe(subscriptionArn)
 
         spinner.succeed('Unsubscribed')
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to unsubscribe: ${error.message}`)
         process.exit(1)
       }
@@ -276,15 +270,14 @@ export function registerNotifyCommands(app: CLI): void {
 
         cli.table(
           ['Protocol', 'Endpoint', 'Status', 'Subscription ARN'],
-          subscriptions.map(s => [
+          subscriptions.map((s) => [
             s.Protocol || 'N/A',
             s.Endpoint || 'N/A',
             s.SubscriptionArn === 'PendingConfirmation' ? 'Pending' : 'Confirmed',
             (s.SubscriptionArn || 'N/A').substring(0, 50),
           ]),
         )
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to list subscriptions: ${error.message}`)
         process.exit(1)
       }
@@ -299,82 +292,84 @@ export function registerNotifyCommands(app: CLI): void {
     .option('--json', 'Send as JSON message structure')
     .option('--group <id>', 'Message group ID (for FIFO topics)')
     .option('--dedup <id>', 'Deduplication ID (for FIFO topics)')
-    .action(async (topicArn: string, options: {
-      region: string
-      message?: string
-      subject?: string
-      file?: string
-      json?: boolean
-      group?: string
-      dedup?: string
-    }) => {
-      cli.header('Publish to SNS Topic')
+    .action(
+      async (
+        topicArn: string,
+        options: {
+          region: string
+          message?: string
+          subject?: string
+          file?: string
+          json?: boolean
+          group?: string
+          dedup?: string
+        },
+      ) => {
+        cli.header('Publish to SNS Topic')
 
-      try {
-        const sns = new SNSClient(options.region)
+        try {
+          const sns = new SNSClient(options.region)
 
-        let messageBody: string
+          let messageBody: string
 
-        if (options.file) {
-          const file = Bun.file(options.file)
-          messageBody = await file.text()
+          if (options.file) {
+            const file = Bun.file(options.file)
+            messageBody = await file.text()
+          } else if (options.message) {
+            messageBody = options.message
+          } else {
+            messageBody = await cli.prompt('Message')
+          }
+
+          if (!messageBody) {
+            cli.error('Message is required')
+            return
+          }
+
+          cli.info(`Topic: ${topicArn}`)
+          cli.info(`Message length: ${messageBody.length} characters`)
+
+          const confirmed = await cli.confirm('\nPublish this message?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Publishing message...')
+          spinner.start()
+
+          const params: any = {
+            TopicArn: topicArn,
+            Message: messageBody,
+          }
+
+          if (options.subject) {
+            params.Subject = options.subject
+          }
+
+          if (options.json) {
+            params.MessageStructure = 'json'
+          }
+
+          if (options.group) {
+            params.MessageGroupId = options.group
+          }
+
+          if (options.dedup) {
+            params.MessageDeduplicationId = options.dedup
+          }
+
+          const result = await sns.publish(params)
+
+          spinner.succeed('Message published')
+
+          cli.success(`\nMessage ID: ${result.MessageId}`)
+        } catch (error: any) {
+          cli.error(`Failed to publish message: ${error.message}`)
+          process.exit(1)
         }
-        else if (options.message) {
-          messageBody = options.message
-        }
-        else {
-          messageBody = await cli.prompt('Message')
-        }
-
-        if (!messageBody) {
-          cli.error('Message is required')
-          return
-        }
-
-        cli.info(`Topic: ${topicArn}`)
-        cli.info(`Message length: ${messageBody.length} characters`)
-
-        const confirmed = await cli.confirm('\nPublish this message?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Publishing message...')
-        spinner.start()
-
-        const params: any = {
-          TopicArn: topicArn,
-          Message: messageBody,
-        }
-
-        if (options.subject) {
-          params.Subject = options.subject
-        }
-
-        if (options.json) {
-          params.MessageStructure = 'json'
-        }
-
-        if (options.group) {
-          params.MessageGroupId = options.group
-        }
-
-        if (options.dedup) {
-          params.MessageDeduplicationId = options.dedup
-        }
-
-        const result = await sns.publish(params)
-
-        spinner.succeed('Message published')
-
-        cli.success(`\nMessage ID: ${result.MessageId}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to publish message: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('notify:sms <phoneNumber>', 'Send an SMS message directly')
@@ -382,66 +377,70 @@ export function registerNotifyCommands(app: CLI): void {
     .option('--message <text>', 'Message body')
     .option('--sender <id>', 'Sender ID or short code')
     .option('--type <type>', 'Message type (Transactional or Promotional)', { default: 'Transactional' })
-    .action(async (phoneNumber: string, options: {
-      region: string
-      message?: string
-      sender?: string
-      type: string
-    }) => {
-      cli.header('Send SMS')
+    .action(
+      async (
+        phoneNumber: string,
+        options: {
+          region: string
+          message?: string
+          sender?: string
+          type: string
+        },
+      ) => {
+        cli.header('Send SMS')
 
-      try {
-        const sns = new SNSClient(options.region)
+        try {
+          const sns = new SNSClient(options.region)
 
-        const messageBody = options.message || await cli.prompt('Message')
+          const messageBody = options.message || (await cli.prompt('Message'))
 
-        if (!messageBody) {
-          cli.error('Message is required')
-          return
-        }
-
-        cli.info(`To: ${phoneNumber}`)
-        cli.info(`Message: ${messageBody}`)
-        cli.info(`Type: ${options.type}`)
-
-        const confirmed = await cli.confirm('\nSend this SMS?', true)
-        if (!confirmed) {
-          cli.info('Operation cancelled')
-          return
-        }
-
-        const spinner = new cli.Spinner('Sending SMS...')
-        spinner.start()
-
-        const params: any = {
-          PhoneNumber: phoneNumber,
-          Message: messageBody,
-          MessageAttributes: {
-            'AWS.SNS.SMS.SMSType': {
-              DataType: 'String',
-              StringValue: options.type,
-            },
-          },
-        }
-
-        if (options.sender) {
-          params.MessageAttributes['AWS.SNS.SMS.SenderID'] = {
-            DataType: 'String',
-            StringValue: options.sender,
+          if (!messageBody) {
+            cli.error('Message is required')
+            return
           }
+
+          cli.info(`To: ${phoneNumber}`)
+          cli.info(`Message: ${messageBody}`)
+          cli.info(`Type: ${options.type}`)
+
+          const confirmed = await cli.confirm('\nSend this SMS?', true)
+          if (!confirmed) {
+            cli.info('Operation cancelled')
+            return
+          }
+
+          const spinner = new cli.Spinner('Sending SMS...')
+          spinner.start()
+
+          const params: any = {
+            PhoneNumber: phoneNumber,
+            Message: messageBody,
+            MessageAttributes: {
+              'AWS.SNS.SMS.SMSType': {
+                DataType: 'String',
+                StringValue: options.type,
+              },
+            },
+          }
+
+          if (options.sender) {
+            params.MessageAttributes['AWS.SNS.SMS.SenderID'] = {
+              DataType: 'String',
+              StringValue: options.sender,
+            }
+          }
+
+          const result = await sns.publish(params)
+
+          spinner.succeed('SMS sent')
+
+          cli.success(`\nMessage ID: ${result.MessageId}`)
+        } catch (error: any) {
+          cli.error(`Failed to send SMS: ${error.message}`)
+          process.exit(1)
         }
-
-        const result = await sns.publish(params)
-
-        spinner.succeed('SMS sent')
-
-        cli.success(`\nMessage ID: ${result.MessageId}`)
-      }
-      catch (error: any) {
-        cli.error(`Failed to send SMS: ${error.message}`)
-        process.exit(1)
-      }
-    })
+      },
+    )
 
   app
     .command('notify:topic:attributes <topicArn>', 'Show topic attributes')
@@ -480,8 +479,7 @@ export function registerNotifyCommands(app: CLI): void {
         if (attrs.Policy) {
           cli.info('\nAccess Policy: Configured')
         }
-      }
-      catch (error: any) {
+      } catch (error: any) {
         cli.error(`Failed to get attributes: ${error.message}`)
         process.exit(1)
       }

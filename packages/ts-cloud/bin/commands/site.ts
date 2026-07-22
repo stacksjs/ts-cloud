@@ -1,8 +1,8 @@
+import type { CLI } from '@stacksjs/clapp'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import type { CLI } from '@stacksjs/clapp'
-import { addSiteToCloudConfig } from '../../src/deploy/site-config-editor'
 import * as cli from '../../src/utils/cli'
+import { addSiteToCloudConfig } from '../../src/deploy/site-config-editor'
 
 interface SiteAddOptions {
   config?: string
@@ -68,8 +68,7 @@ export function registerSiteCommands(app: CLI): void {
 
         await writeFile(configPath, updated)
         cli.success(`Added site '${name}' to ${configPath}`)
-      }
-      catch (error) {
+      } catch (error) {
         cli.error(error instanceof Error ? error.message : String(error))
       }
     })
