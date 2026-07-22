@@ -168,7 +168,7 @@ async function restartWorker(item) {
 <head>@include('../partials/head', { title: 'ts-cloud · Workers & schedules' })</head>
 <body>
 @include('../partials/nav', { active: 'jobs', env: 'production' })
-<main class="wrap jobs-wrap" id="main-content">
+<main class="jobs-wrap wrap" id="main-content">
   <div class="crumbs">Operations <span class="sep">/</span> Workers &amp; schedules</div>
   <header class="page">
     <div><h1>Workers &amp; schedules</h1><p>One control plane for cron, EventBridge schedules, recurring operations, queue workers, retries, and execution evidence.</p></div>
@@ -190,17 +190,17 @@ async function restartWorker(item) {
     <div>
       <div class="filters panel"><input aria-label="Search schedules" type="search" placeholder="Search name, expression, timezone" @input="search.set($event.currentTarget.value)"><select aria-label="Filter provider" @change="providerFilter.set($event.currentTarget.value)"><option value="all">All providers</option><option value="server">Server cron</option><option value="eventbridge">EventBridge</option><option value="platform">Platform</option></select><select aria-label="Filter state" @change="statusFilter.set($event.currentTarget.value)"><option value="all">All states</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option></select></div>
       <div class="cards-list">
-        <template :for="item in filteredJobs()"><article class="panel job-card">
+        <template :for="item in filteredJobs()"><article class="job-card panel">
           <div class="job-title"><div><span class="pill" :class="item.enabled?'ok':'warn'">{{ item.enabled?'enabled':'disabled' }}</span><span class="pill">{{ item.provider }}</span><span class="pill" :class="tone(item.reconciliationStatus)">{{ item.reconciliationStatus }}</span><h2>{{ item.name }}</h2></div><div class="actions"><button class="btn ghost sm" :disabled="busy()" @click="jobAction(item,'run')">Run now</button><button class="btn ghost sm" @click="showHistory(item)">History</button><button class="btn ghost sm" @click="editJob(item)">Edit</button><button class="btn ghost sm" @click="jobAction(item,item.enabled?'disable':'enable')">{{ item.enabled?'Disable':'Enable' }}</button><button class="btn danger sm" @show="item.origin!=='config'" @click="jobAction(item,'delete')">Delete</button></div></div>
           <div class="job-grid"><div><small>Schedule</small><code>{{ item.expression }}</code><span>{{ item.timezone }}</span></div><div><small>Next run</small><b>{{ when(item.nextRunAt) }}</b><span>Last {{ when(item.lastExecution?.finishedAt || item.lastScheduledFor) }}</span></div><div><small>Target</small><b>{{ item.target.operationId || item.target.action || item.target.functionName || item.target.kind }}</b><span>{{ item.origin }} · owner {{ item.ownerActorId || 'configuration' }}</span></div><div><small>Policies</small><b>{{ item.overlapPolicy }} overlap · {{ item.missedRunPolicy }}</b><span>{{ item.retryPolicy.maxAttempts }} attempts · {{ item.timeoutSeconds }}s timeout</span></div></div>
           <div class="run-preview"><small>Next five</small><span>{{ item.preview?.nextRuns?.map(when).join(' · ') || 'No run in active window' }}</span></div>
           <p class="bad note" @show="!!item.lastExecution?.error">{{ item.lastExecution.error }}</p>
         </article></template>
-        <div class="panel empty" @show="!filteredJobs().length"><strong>No schedules match</strong><span>Create a recurring operation or adjust the filters. Empty means no provider execution will occur.</span></div>
+        <div class="empty panel" @show="!filteredJobs().length"><strong>No schedules match</strong><span>Create a recurring operation or adjust the filters. Empty means no provider execution will occur.</span></div>
       </div>
     </div>
 
-    <form class="panel editor" @submit="createJob($event)" @input="queuePreview($event.currentTarget)">
+    <form class="editor panel" @submit="createJob($event)" @input="queuePreview($event.currentTarget)">
       <h2>New schedule</h2><p class="note">Provider: <b>{{ mode()==='serverless'?'EventBridge Scheduler':'server cron' }}</b>. Targets are constrained to safe, configured operations.</p>
       <label>Name<input name="name" required maxlength="120" placeholder="Nightly backup verification"></label>
       <label>Preset<select @change="setPreset($event)"><option value="">Custom</option><option value="every_minute">Every minute</option><option value="hourly">Hourly</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="rate(5 minutes)">Every 5 minutes</option></select></label>
@@ -223,12 +223,12 @@ async function restartWorker(item) {
 
   <section @show="tab()==='workers'" class="cards-list">
     <template :for="item in workers()"><article class="panel worker-card"><div><span class="pill">{{ item.provider }}</span><span class="pill" :class="tone(item.observedState?.status || item.reconciliationStatus)">{{ item.observedState?.status || item.reconciliationStatus }}</span><h2>{{ item.name }}</h2></div><div class="job-grid"><div><small>Queue</small><b>{{ item.queue }}</b><span>{{ item.processes }} processes</span></div><div><small>Current job</small><b>{{ item.observedState?.currentJob || 'idle / unavailable' }}</b><span>{{ item.observedState?.processed || 0 }} processed</span></div><div><small>Failures</small><b>{{ item.observedState?.failures || 0 }}</b><span>{{ item.timeoutSeconds }}s timeout</span></div><div><small>Lifecycle</small><b>{{ item.restartPolicy }}</b><span>{{ item.origin }} · {{ item.reconciliationStatus }}</span></div></div><div class="actions"><button class="btn ghost sm" @show="item.provider==='systemd'" @click="restartWorker(item)">Graceful restart</button><span class="note" @show="item.provider!=='systemd'">Scaling and restarts remain provider/config managed for this worker.</span></div></article></template>
-    <div class="panel empty" @show="!workers().length"><strong>No workers configured</strong><span>Add site queues or serverless queue definitions, then reconcile configuration.</span></div>
+    <div class="empty panel" @show="!workers().length"><strong>No workers configured</strong><span>Add site queues or serverless queue definitions, then reconcile configuration.</span></div>
   </section>
 
   <section @show="tab()==='history'">
-    <div class="panel empty" @show="!selectedJob()"><strong>Select a schedule</strong><span>Open History from a schedule to inspect attempts, retry state, duration, output, and redacted logs.</span></div>
-    <div @show="!!selectedJob()"><header class="history-head"><div><h2>{{ selectedJob()?.name }}</h2><p class="note">At-least-once execution evidence; retries reuse the durable operation and preserve every log line.</p></div><button class="btn sm" @click="jobAction(selectedJob(),'run')">Run again</button></header><div class="cards-list"><template :for="item in history()"><article class="panel execution"><div class="execution-head"><span class="pill" :class="tone(item.status)">{{ item.status }}</span><b>{{ when(item.scheduledFor) }}</b><span>{{ item.trigger }} · attempt {{ item.attempt }} · {{ duration(item) }}</span></div><p class="bad note" @show="!!item.error">{{ item.error }}</p><pre @show="item.logs?.length">{{ item.logs?.map(log=>'['+log.stream+'] '+log.message).join('\n') }}</pre><pre @show="Object.keys(item.output||{}).length">{{ JSON.stringify(item.output,null,2) }}</pre></article></template><div class="panel empty" @show="!history().length"><strong>No executions</strong><span>Run the schedule manually or wait for its next due time.</span></div></div></div>
+    <div class="empty panel" @show="!selectedJob()"><strong>Select a schedule</strong><span>Open History from a schedule to inspect attempts, retry state, duration, output, and redacted logs.</span></div>
+    <div @show="!!selectedJob()"><header class="history-head"><div><h2>{{ selectedJob()?.name }}</h2><p class="note">At-least-once execution evidence; retries reuse the durable operation and preserve every log line.</p></div><button class="btn sm" @click="jobAction(selectedJob(),'run')">Run again</button></header><div class="cards-list"><template :for="item in history()"><article class="execution panel"><div class="execution-head"><span class="pill" :class="tone(item.status)">{{ item.status }}</span><b>{{ when(item.scheduledFor) }}</b><span>{{ item.trigger }} · attempt {{ item.attempt }} · {{ duration(item) }}</span></div><p class="bad note" @show="!!item.error">{{ item.error }}</p><pre @show="item.logs?.length">{{ item.logs?.map(log=>'['+log.stream+'] '+log.message).join('\n') }}</pre><pre @show="Object.keys(item.output||{}).length">{{ JSON.stringify(item.output,null,2) }}</pre></article></template><div class="empty panel" @show="!history().length"><strong>No executions</strong><span>Run the schedule manually or wait for its next due time.</span></div></div></div>
   </section>
 </main>
 <style>

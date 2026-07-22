@@ -136,9 +136,9 @@ onMount(() => { load() })
   <div class="wrap">
     <div class="crumbs"><a href="/">Dashboard</a> <span class="sep">/</span> Organization <span class="sep">/</span> API &amp; automation</div>
     <header class="page"><div><h1>API &amp; automation</h1><p>Create least-privilege machine identities for CI. Tokens never create browser sessions and cannot access outside their membership and token scope.</p></div><a class="btn ghost" href="/api/v1/openapi.json">OpenAPI 3.1</a></header>
-    <div class="msg automation-message" :class="messageKind()" role="status" aria-live="polite">{{ message() }}</div>
+    <div class="automation-message msg" :class="messageKind()" role="status" aria-live="polite">{{ message() }}</div>
 
-    <div class="reveal panel" @show="!!reveal()">
+    <div class="panel reveal" @show="!!reveal()">
       <div><strong>Copy this token now</strong><span>The raw secret is shown once. Rotation keeps the old token active until you explicitly revoke it.</span></div>
       <code>{{ reveal()?.secret }}</code><button class="btn sm" type="button" @click="copy(reveal()?.secret)">Copy token</button>
       <label>curl</label><code>{{ curlExample() }}</code><button class="btn ghost sm" type="button" @click="copy(curlExample())">Copy curl</button>
@@ -146,11 +146,11 @@ onMount(() => { load() })
       <button class="btn danger sm" type="button" @click="reveal.set(null)">I saved it; hide secret</button>
     </div>
 
-    <div class="section"><h2>Service accounts</h2><div class="accounts"><template :for="item in accounts()"><article class="panel account" :class="selectedAccount() === item.account.id ? 'selected' : ''">
+    <div class="section"><h2>Service accounts</h2><div class="accounts"><template :for="item in accounts()"><article class="account panel" :class="selectedAccount() === item.account.id ? 'selected' : ''">
       <button class="account-main" type="button" @click="selectAccount(item)"><span><strong>{{ item.account.name }}</strong><small>{{ item.account.slug }} · {{ item.membership?.roleTemplate }} · {{ scopeLabel(item.membership?.scope) }}</small><small>Created {{ new Date(item.account.createdAt).toLocaleDateString() }} by {{ item.createdBy?.displayName || 'offline administrator' }}</small></span><span class="tag">{{ item.account.state }}</span></button>
       <div class="token-list"><template :for="token in item.tokens"><div class="token"><div><strong>{{ token.name }}</strong><code>{{ token.prefix }}</code><small>{{ tokenState(token) }} · created {{ new Date(token.createdAt).toLocaleDateString() }} by {{ token.createdBy?.displayName || 'offline administrator' }} · expires {{ new Date(token.expiresAt).toLocaleDateString() }} · last used {{ token.lastUsedAt ? new Date(token.lastUsedAt).toLocaleString() : 'never' }}</small><small>{{ token.capabilities.join(', ') }} · {{ scopeLabel(token.scope) }}</small></div><div class="table-actions"><button class="btn ghost sm" type="button" @show="token.state === 'active'" @click="tokenAction(token, 'rotate')">Rotate</button><button class="btn danger sm" type="button" @show="token.state === 'active'" @click="tokenAction(token, 'revoke')">Revoke</button></div></div></template><div class="compact empty" @show="item.tokens.length === 0"><span>No tokens yet.</span></div></div>
       <button class="btn danger sm" type="button" @show="item.account.state === 'active'" @click="disableAccount(item)">Disable account and tokens</button>
-    </article></template><div class="panel compact empty" @show="accounts().length === 0"><strong>No service accounts</strong><span>Create one for a CI system or external automation.</span></div></div></div>
+    </article></template><div class="compact empty panel" @show="accounts().length === 0"><strong>No service accounts</strong><span>Create one for a CI system or external automation.</span></div></div></div>
 
     <div class="section"><h2>Create service account</h2><div class="panel"><form class="form-grid" @submit.prevent="createAccount()">
       <div class="field-block"><label for="account-name">Name</label><input id="account-name" :value="accountName()" @input="accountName.set($event.target.value)" placeholder="Production CI" required></div>
@@ -173,7 +173,7 @@ onMount(() => { load() })
       <div class="form-actions"><button class="btn" type="submit" :disabled="!selectedAccount() || tokenCapabilities().length === 0">Create and reveal token</button></div>
     </form></div></div>
 
-    <div class="section"><h2>Confirm sensitive changes</h2><div class="panel auth-grid"><div class="field-block"><label for="automation-password">Your password</label><input id="automation-password" type="password" autocomplete="current-password" :value="password()" @input="password.set($event.target.value)" required></div><div class="field-block"><label for="automation-code">Authenticator or recovery code</label><input id="automation-code" autocomplete="one-time-code" :value="mfaCode()" @input="mfaCode.set($event.target.value)"><small>Required when MFA is enabled. Used only for recent-auth confirmation.</small></div></div></div>
+    <div class="section"><h2>Confirm sensitive changes</h2><div class="auth-grid panel"><div class="field-block"><label for="automation-password">Your password</label><input id="automation-password" type="password" autocomplete="current-password" :value="password()" @input="password.set($event.target.value)" required></div><div class="field-block"><label for="automation-code">Authenticator or recovery code</label><input id="automation-code" autocomplete="one-time-code" :value="mfaCode()" @input="mfaCode.set($event.target.value)"><small>Required when MFA is enabled. Used only for recent-auth confirmation.</small></div></div></div>
   </div>
   <style>
     .automation-message{min-height:20px;margin-top:12px}.accounts{display:grid;gap:12px}.account{display:grid;gap:14px}.account.selected{border-color:var(--accent)}

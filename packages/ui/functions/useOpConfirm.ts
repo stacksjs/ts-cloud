@@ -16,9 +16,9 @@ export interface OperationResult {
 
 type Signal<T> = (() => T) & { set: (value: T) => void }
 
-declare function state<T>(value: T): Signal<T>
-declare function derived<T>(value: () => T): Signal<T>
-declare function useRef<T = HTMLElement>(name: string): { current: T | null }
+declare function state<T>(_value: T): Signal<T>
+declare function derived<T>(_value: () => T): Signal<T>
+declare function useRef<T = HTMLElement>(_name: string): { current: T | null }
 
 const DANGEROUS_OPERATION = /(?:^|:)(?:delete|disable|destroy|purge|remove|restore|rollback|stop)(?::|$)/i
 
@@ -40,11 +40,18 @@ export function useOpConfirm(execute: (operation: OperationConfirmation) => Prom
   const confirmInput = useRef<HTMLInputElement>('opConfirmInput')
   const confirmTok = derived(() => pending()?.confirm ?? '')
   const confirmVerb = derived(() => pending()?.verb ?? '')
-  const confirmDanger = derived(() => pending() ? operationIsDangerous(pending()!) : false)
+  const confirmDanger = derived(() => (pending() ? operationIsDangerous(pending()!) : false))
   const confirmLabel = derived(() => pending()?.label ?? (confirmDanger() ? 'Confirm operation' : 'Run operation'))
   const canRun = derived(() => !!pending() && !busy() && typed() === pending()!.confirm)
 
-  function askOp(operation: string, confirm: string, verb: string, to?: string | null, apiConfirm?: string, options: Partial<OperationConfirmation> = {}) {
+  function askOp(
+    operation: string,
+    confirm: string,
+    verb: string,
+    to?: string | null,
+    apiConfirm?: string,
+    options: Partial<OperationConfirmation> = {},
+  ) {
     pending.set({ ...options, operation, confirm, verb, to: to ?? null, apiConfirm: apiConfirm || confirm })
     typed.set('')
     confirmInput.current?.focus()
@@ -68,14 +75,26 @@ export function useOpConfirm(execute: (operation: OperationConfirmation) => Prom
       opOutput.set(typeof result === 'string' ? result : result.output)
       pending.set(null)
       typed.set('')
-    }
-    catch (error) {
+    } catch (error) {
       opOutput.set(`FAILED ${operation.operation}\n\n${error instanceof Error ? error.message : String(error)}`)
-    }
-    finally {
+    } finally {
       busy.set(false)
     }
   }
 
-  return { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp }
+  return {
+    opOutput,
+    opShown,
+    pending,
+    typed,
+    busy,
+    confirmTok,
+    confirmVerb,
+    confirmDanger,
+    confirmLabel,
+    canRun,
+    askOp,
+    cancelOp,
+    runOp,
+  }
 }

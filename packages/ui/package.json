@@ -1,6 +1,7 @@
 {
   "name": "@ts-cloud/ui",
   "type": "module",
+  "version": "0.7.56",
   "private": true,
   "description": "ts-cloud management dashboard (stx). Served behind HTTP Basic auth.",
   "scripts": {
@@ -12,6 +13,5 @@
   },
   "devDependencies": {
     "@stacksjs/stx": "^0.2.73"
-  },
-  "version": "0.7.56"
+  }
 }

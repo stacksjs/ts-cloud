@@ -47,14 +47,14 @@ const environment = __d?.environment ?? 'production'
       <div class="source-actions"><button class="btn ghost" id="refresh-sources" type="button">Refresh</button><button class="btn" id="add-connection" type="button">Add connection</button></div>
     </header>
 
-    <div class="source-stats section" aria-label="Git integration summary">
+    <div class="section source-stats" aria-label="Git integration summary">
       <div class="panel source-stat"><span class="note">Connections</span><strong id="connection-count">—</strong><small>Provider credentials</small></div>
       <div class="panel source-stat"><span class="note">Repositories</span><strong id="repository-count">—</strong><small>Authorized sources</small></div>
       <div class="panel source-stat"><span class="note">Auto deploy</span><strong id="binding-count">—</strong><small>Active bindings</small></div>
       <div class="panel source-stat"><span class="note">Needs attention</span><strong id="unhealthy-count">—</strong><small>Connections or hooks</small></div>
     </div>
 
-    <div class="source-layout section">
+    <div class="section source-layout">
       <main class="source-stack">
         <section>
           <div class="section-heading"><div><h2>Connections</h2><p class="note">Credentials stay encrypted and are never returned to this page.</p></div></div>
@@ -66,7 +66,7 @@ const environment = __d?.environment ?? 'production'
           <div class="repository-list" id="repository-list"><div class="empty-source">No repositories synchronized yet.</div></div>
         </section>
       </main>
-      <aside class="source-stack source-sidebar">
+      <aside class="source-sidebar source-stack">
         <section class="panel"><div class="section-heading"><div><h2>Application bindings</h2><p class="note">Branch, tag, root, and watched-path rules.</p></div></div><div class="binding-list" id="binding-list"><div class="note">No source bindings.</div></div></section>
         <section class="panel"><div class="section-heading"><div><h2>Webhook delivery</h2><p class="note">Verified, replay-safe event history.</p></div></div><div class="webhook-list" id="webhook-list"><div class="note">No webhooks configured.</div></div></section>
       </aside>

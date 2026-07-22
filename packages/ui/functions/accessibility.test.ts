@@ -20,7 +20,13 @@ describe('dashboard accessibility invariants', () => {
   })
 
   it('keeps terminal, site refresh, and pollers inside stx composables', async () => {
-    for (const file of ['server/terminal.stx', 'server/sites.stx', 'index.stx', 'server/logs.stx', 'serverless/logs.stx']) {
+    for (const file of [
+      'server/terminal.stx',
+      'server/sites.stx',
+      'index.stx',
+      'server/logs.stx',
+      'serverless/logs.stx',
+    ]) {
       const html = await source(file)
       expect(html, file).not.toMatch(/document\.|location\.reload|setInterval\(|new WebSocket/)
     }

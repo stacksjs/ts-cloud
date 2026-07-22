@@ -61,15 +61,15 @@ const environment = __d?.environment ?? 'production'
       </div>
     </header>
 
-    <div class="severity-grid section" aria-label="Open findings by severity">
-      <div class="panel severity-card critical"><span class="note">Critical</span><strong class="severity-value" data-severity="critical">—</strong><small>Immediate action</small></div>
-      <div class="panel severity-card high"><span class="note">High</span><strong class="severity-value" data-severity="high">—</strong><small>Prioritize remediation</small></div>
-      <div class="panel severity-card medium"><span class="note">Medium</span><strong class="severity-value" data-severity="medium">—</strong><small>Review and schedule</small></div>
-      <div class="panel severity-card low"><span class="note">Low</span><strong class="severity-value" data-severity="low">—</strong><small>Defense in depth</small></div>
-      <div class="panel severity-card info"><span class="note">Waived</span><strong class="severity-value" id="waived-count">—</strong><small>Expires automatically</small></div>
+    <div class="section severity-grid" aria-label="Open findings by severity">
+      <div class="critical panel severity-card"><span class="note">Critical</span><strong class="severity-value" data-severity="critical">—</strong><small>Immediate action</small></div>
+      <div class="high panel severity-card"><span class="note">High</span><strong class="severity-value" data-severity="high">—</strong><small>Prioritize remediation</small></div>
+      <div class="medium panel severity-card"><span class="note">Medium</span><strong class="severity-value" data-severity="medium">—</strong><small>Review and schedule</small></div>
+      <div class="low panel severity-card"><span class="note">Low</span><strong class="severity-value" data-severity="low">—</strong><small>Defense in depth</small></div>
+      <div class="info panel severity-card"><span class="note">Waived</span><strong class="severity-value" id="waived-count">—</strong><small>Expires automatically</small></div>
     </div>
 
-    <div class="security-layout section">
+    <div class="section security-layout">
       <main>
         <div class="section-heading"><div><h2>Findings</h2><p class="note">Repeated observations update one lifecycle and preserve recurrence history.</p></div></div>
         <div class="filter-bar" aria-label="Finding filters">

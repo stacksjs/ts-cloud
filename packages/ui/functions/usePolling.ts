@@ -1,8 +1,11 @@
 type Signal<T> = (() => T) & { set: (value: T) => void }
-declare function state<T>(value: T): Signal<T>
-declare function derived<T>(value: () => T): Signal<T>
-declare function onMount(callback: () => void | (() => void)): void
-declare function useInterval(interval: number, options?: { immediate?: boolean }): { subscribe: (callback: () => void) => () => void, pause: () => void }
+declare function state<T>(_value: T): Signal<T>
+declare function derived<T>(_value: () => T): Signal<T>
+declare function onMount(_callback: () => void | (() => void)): void
+declare function useInterval(
+  _interval: number,
+  _options?: { immediate?: boolean },
+): { subscribe: (callback: () => void) => () => void; pause: () => void }
 
 export type PollingState = 'loading' | 'live' | 'stale'
 
@@ -11,7 +14,9 @@ export function usePolling(task: () => Promise<void>, intervalMs: number) {
   const pollingState = state<PollingState>('loading')
   const pollingError = state('')
   const lastUpdatedAt = state<Date | null>(null)
-  const pollingLabel = derived(() => pollingState() === 'live' ? 'live' : pollingState() === 'stale' ? 'stale' : 'loading')
+  const pollingLabel = derived(() =>
+    pollingState() === 'live' ? 'live' : pollingState() === 'stale' ? 'stale' : 'loading',
+  )
 
   async function refresh() {
     try {
@@ -19,8 +24,7 @@ export function usePolling(task: () => Promise<void>, intervalMs: number) {
       pollingState.set('live')
       pollingError.set('')
       lastUpdatedAt.set(new Date())
-    }
-    catch (error) {
+    } catch (error) {
       pollingState.set('stale')
       pollingError.set(error instanceof Error ? error.message : String(error))
     }
@@ -28,6 +32,8 @@ export function usePolling(task: () => Promise<void>, intervalMs: number) {
 
   const interval = useInterval(intervalMs)
   interval.subscribe(refresh)
-  onMount(() => { refresh() })
+  onMount(() => {
+    refresh()
+  })
   return { pollingState, pollingError, pollingLabel, lastUpdatedAt, refresh }
 }

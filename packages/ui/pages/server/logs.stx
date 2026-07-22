@@ -90,7 +90,7 @@ const { pollingState, pollingError, pollingLabel } = usePolling(async () => {
         </div>
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
-        <p class="note bad" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
+        <p class="bad note" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
 
         @if (isMember)
           <p class="note">Live <span class="mono">journalctl</span> for your sites' services, <b>queue workers</b> and daemons. Auto-refreshes every 8s.</p>

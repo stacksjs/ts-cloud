@@ -166,7 +166,7 @@ async function copy(value, label) {
 <head>@include('../partials/head', { title: 'ts-cloud · Data services' })</head>
 <body>
 @include('../partials/nav', { active: 'data-services', env: 'production' })
-<main class="wrap data-wrap" id="main-content">
+<main class="data-wrap wrap" id="main-content">
   <div class="crumbs">Infrastructure <span class="sep">/</span> Data services</div>
   <header class="page">
     <div><h1>Data services</h1><p>Provision, adopt, connect, observe, back up, rotate, upgrade, resize, and retire databases and caches from one lifecycle.</p></div>
@@ -182,7 +182,7 @@ async function copy(value, label) {
     <article class="panel"><b>Dependency redeploys</b><strong>{{ services().reduce((sum,item)=>sum+(item.dependencies||[]).filter(dep=>dep.requiresRedeploy).length,0) }}</strong><small>after credential rotation</small></article>
   </section>
 
-  <form class="panel create-grid" @show="createOpen()" @submit="createService($event)">
+  <form class="create-grid panel" @show="createOpen()" @submit="createService($event)">
     <div class="wide"><h2>Create or adopt a service</h2><p class="note">Private networking, encryption, deletion protection, and seven-day backup retention are the managed defaults. Previewing never mutates production.</p></div>
     <label>Name<input name="name" required pattern="[a-z0-9][a-z0-9-]{1,62}" placeholder="orders-db"></label>
     <label>Engine<select name="engine" required><option value="postgres">PostgreSQL</option><option value="mysql">MySQL</option><option value="mariadb">MariaDB</option><option value="redis">Redis</option><option value="mongodb">MongoDB</option><option value="libsql">libSQL</option></select></label>
@@ -212,10 +212,10 @@ async function copy(value, label) {
         <div class="actions"><button class="btn ghost sm" @click="runAction(item,'observe')">Refresh status</button><button class="btn ghost sm" @click="runAction(item,'backup')" :disabled="!item.capabilities.actions.backup.supported">Back up</button><button class="btn ghost sm" @click="runAction(item,'restart')">Restart</button><button class="btn ghost sm" @click="runAction(item,'rotate')" :disabled="!item.capabilities.actions.rotate.supported">Rotate credential</button><button class="btn danger sm" @click="runAction(item,'delete')">Retire</button></div>
         <p class="bad note" @show="!!item.observedState?.error">{{ item.observedState.error }}</p>
       </article></template>
-      <div class="panel empty" @show="!filtered().length"><strong>No matching data services</strong><span>Create a managed service or adopt an existing provider resource read-only.</span></div>
+      <div class="empty panel" @show="!filtered().length"><strong>No matching data services</strong><span>Create a managed service or adopt an existing provider resource read-only.</span></div>
     </section>
 
-    <aside class="panel detail" @show="!!selected()">
+    <aside class="detail panel" @show="!!selected()">
       <div class="detail-head"><div><small>Selected service</small><h2>{{ selected()?.name }}</h2></div><button class="btn ghost sm" aria-label="Close details" @click="selected.set(null)">Close</button></div>
       <div class="capability"><h3>Lifecycle operations</h3><p class="note">Every operation is capability-checked and previewed before a durable production job is created.</p><div class="operation-picker"><template :for="entry in Object.entries(selected()?.capabilities?.actions || {}).filter(([action])=>action!=='create'&&action!=='connect')"><button class="btn ghost sm" :class="{active:operationAction()===entry[0]}" :disabled="!entry[1].supported" :title="entry[1].explanation" @click="chooseAction(entry[0])">{{ actionLabels[entry[0]] || entry[0] }}</button></template></div>
         <form class="operation-form" @submit="runConfiguredAction($event)">

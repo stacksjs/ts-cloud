@@ -1,9 +1,12 @@
 type Signal<T> = (() => T) & { set: (value: T) => void }
-declare function state<T>(value: T): Signal<T>
-declare function derived<T>(value: () => T): Signal<T>
-declare function effect(callback: () => void): void
-declare function useRef<T = HTMLElement>(name: string): { current: T | null }
-declare function useWebSocket(url: string, options?: Record<string, unknown>): {
+declare function state<T>(_value: T): Signal<T>
+declare function derived<T>(_value: () => T): Signal<T>
+declare function effect(_callback: () => void): void
+declare function useRef<T = HTMLElement>(_name: string): { current: T | null }
+declare function useWebSocket(
+  url: string,
+  _options?: Record<string, unknown>,
+): {
   status: Signal<'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'>
   send: (data: string) => void
   close: () => void
@@ -21,9 +24,16 @@ export function useTerminal(path = '/api/terminal') {
     reconnect: true,
     maxReconnects: 10,
     reconnectDelay: 1000,
-    onMessage(data: unknown) { buf.set((buf() + String(data)).slice(-40000)) },
+    onMessage(data: unknown) {
+      buf.set((buf() + String(data)).slice(-40000))
+    },
   })
-  const status = derived(() => ({ CONNECTING: 'connecting', OPEN: 'connected', CLOSING: 'disconnecting', CLOSED: 'disconnected' })[socket.status()] || 'error')
+  const status = derived(
+    () =>
+      ({ CONNECTING: 'connecting', OPEN: 'connected', CLOSING: 'disconnecting', CLOSED: 'disconnected' })[
+        socket.status()
+      ] || 'error',
+  )
 
   effect(() => {
     buf()
@@ -37,8 +47,16 @@ export function useTerminal(path = '/api/terminal') {
     socket.send(command + '\n')
     cmd.set('')
   }
-  function reconnect() { socket.close(); buf.set(''); socket.connect() }
-  function clearOut() { buf.set('') }
-  function statusTone(value: string) { return value === 'connected' ? 'ok' : value === 'disconnected' || value === 'error' ? 'bad' : 'warn' }
+  function reconnect() {
+    socket.close()
+    buf.set('')
+    socket.connect()
+  }
+  function clearOut() {
+    buf.set('')
+  }
+  function statusTone(value: string) {
+    return value === 'connected' ? 'ok' : value === 'disconnected' || value === 'error' ? 'bad' : 'warn'
+  }
   return { buf, cmd, status, send, reconnect, clearOut, statusTone }
 }

@@ -75,7 +75,7 @@ const { pollingState, pollingError, pollingLabel } = usePolling(async () => {
         </div>
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or function filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
-        <p class="note bad" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
+        <p class="bad note" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
 
         <p class="note">Live CloudWatch logs (REPORT/START/END boilerplate stripped) across <span class="mono">http</span>, <span class="mono">queue</span>, <span class="mono">cli</span> and scheduler functions. Auto-refreshes every 8s.</p>
       </div>
