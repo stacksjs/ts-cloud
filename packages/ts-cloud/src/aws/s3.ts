@@ -387,7 +387,8 @@ export class S3Client {
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
       const host = this.s3VirtualHost(options.bucket)
-      const url = `https://${host}/${encodedKey}`
+      const canonicalUri = this.forcePathStyle ? `/${options.bucket}/${encodedKey}` : `/${encodedKey}`
+      const url = `https://${host}${canonicalUri}`
 
       const now = new Date()
       const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -419,7 +420,7 @@ export class S3Client {
 
       const canonicalRequest = [
         'PUT',
-        `/${encodedKey}`,
+        canonicalUri,
         '',
         canonicalHeaders,
         signedHeaders,
@@ -1957,7 +1958,9 @@ catch (e: any) {
   async uploadPart(bucket: string, key: string, uploadId: string, partNumber: number, body: Uint8Array | Buffer): Promise<{ ETag: string }> {
     const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
     const host = this.s3VirtualHost(bucket)
-    const url = `https://${host}/${key}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
+    const encodedKey = key.split('/').map(segment => encodeURIComponent(segment)).join('/')
+    const canonicalUri = this.forcePathStyle ? `/${bucket}/${encodedKey}` : `/${encodedKey}`
+    const url = `https://${host}${canonicalUri}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
 
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -1987,7 +1990,7 @@ catch (e: any) {
 
     const canonicalRequest = [
       'PUT',
-      `/${key}`,
+      canonicalUri,
       `partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`,
       canonicalHeaders,
       signedHeaders,
