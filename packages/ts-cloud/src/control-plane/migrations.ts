@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 17
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 18
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -859,6 +859,91 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX operation_jobs_retention_idx ON operation_jobs(retention_until);
       CREATE INDEX operation_logs_operation_idx ON operation_logs(operation_id, sequence);
       CREATE INDEX operation_locks_expiry_idx ON operation_locks(lease_expires_at);
+    `,
+  },
+  {
+    version: 18,
+    name: 'preview_environments',
+    sql: `
+      CREATE TABLE preview_definitions (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        base_environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        branch_rule TEXT,
+        domain_pattern TEXT NOT NULL,
+        ttl_hours INTEGER NOT NULL DEFAULT 24 CHECK (ttl_hours BETWEEN 1 AND 720),
+        keep_count INTEGER NOT NULL DEFAULT 10 CHECK (keep_count BETWEEN 1 AND 100),
+        public_access INTEGER NOT NULL DEFAULT 0 CHECK (public_access IN (0, 1)),
+        authentication_required INTEGER NOT NULL DEFAULT 1 CHECK (authentication_required IN (0, 1)),
+        allow_forks INTEGER NOT NULL DEFAULT 0 CHECK (allow_forks IN (0, 1)),
+        inherited_secrets TEXT NOT NULL DEFAULT '[]',
+        resource_overrides TEXT NOT NULL DEFAULT '{}',
+        database_strategy TEXT NOT NULL DEFAULT 'disabled' CHECK (database_strategy IN ('disabled', 'isolated', 'snapshot', 'shared_read_only')),
+        max_monthly_cost REAL NOT NULL DEFAULT 25 CHECK (max_monthly_cost >= 0),
+        max_cpu REAL NOT NULL DEFAULT 1 CHECK (max_cpu > 0),
+        max_memory_mb INTEGER NOT NULL DEFAULT 1024 CHECK (max_memory_mb > 0),
+        cleanup_on_close INTEGER NOT NULL DEFAULT 1 CHECK (cleanup_on_close IN (0, 1)),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(project_id, resource_id)
+      ) STRICT;
+
+      CREATE TABLE preview_instances (
+        id TEXT PRIMARY KEY,
+        definition_id TEXT NOT NULL REFERENCES preview_definitions(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        base_environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+        identity_key TEXT NOT NULL,
+        source_provider TEXT,
+        repository TEXT,
+        branch TEXT NOT NULL,
+        pull_request_number INTEGER,
+        fork INTEGER NOT NULL DEFAULT 0 CHECK (fork IN (0, 1)),
+        commit_sha TEXT NOT NULL,
+        name TEXT NOT NULL,
+        stack_name TEXT NOT NULL,
+        url TEXT,
+        status TEXT NOT NULL CHECK (status IN ('queued', 'deploying', 'active', 'updating', 'destroying', 'destroyed', 'failed', 'cleanup_failed')),
+        expires_at TEXT NOT NULL,
+        latest_operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        cost_estimate REAL,
+        desired_state TEXT NOT NULL DEFAULT '{}',
+        observed_state TEXT NOT NULL DEFAULT '{}',
+        teardown_error TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        destroyed_at TEXT,
+        UNIQUE(definition_id, identity_key),
+        UNIQUE(project_id, name),
+        UNIQUE(project_id, stack_name)
+      ) STRICT;
+
+      CREATE TABLE preview_resources (
+        id TEXT PRIMARY KEY,
+        preview_id TEXT NOT NULL REFERENCES preview_instances(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        provider_resource_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        tags TEXT NOT NULL,
+        observed_state TEXT NOT NULL DEFAULT '{}',
+        discovered_at TEXT NOT NULL,
+        deleted_at TEXT,
+        UNIQUE(preview_id, provider, provider_resource_id)
+      ) STRICT;
+
+      CREATE INDEX preview_definitions_project_idx ON preview_definitions(project_id, enabled, resource_id);
+      CREATE INDEX preview_instances_project_idx ON preview_instances(project_id, status, expires_at);
+      CREATE INDEX preview_instances_pr_idx ON preview_instances(repository, pull_request_number, status);
+      CREATE INDEX preview_instances_expiry_idx ON preview_instances(expires_at, status);
+      CREATE INDEX preview_resources_preview_idx ON preview_resources(preview_id, deleted_at);
+      CREATE INDEX preview_resources_provider_idx ON preview_resources(provider, provider_resource_id);
     `,
   },
 ]
