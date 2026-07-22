@@ -35,6 +35,7 @@ import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, pr
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, synchronizeConfiguredConfiguration, type ConfigurationScope } from '../configuration'
+import { createVolumeQueueHandlers, DockerNamedVolumeDriver, VolumeService, VolumeStore } from '../storage'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -431,6 +432,14 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/configuration/transfer',
   'POST /api/configuration/bulk',
   'DELETE /api/configuration',
+  'POST /api/volumes',
+  'POST /api/volumes/attach',
+  'POST /api/volumes/detach',
+  'POST /api/volumes/resize',
+  'POST /api/volumes/snapshot',
+  'POST /api/volumes/adopt',
+  'POST /api/volumes/discover',
+  'DELETE /api/volumes',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -767,6 +776,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/metrics': 'runtime:read',
   '/server/services': 'runtime:read',
   '/data/backups': 'backups:read',
+  '/data/volumes': 'data:read',
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
@@ -1053,6 +1063,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     backupSources[policy.resourceKind as keyof typeof backupSources]
   const resolveBackupDestination = (destination: BackupDestination) =>
     destination.provider === 'aws_backup' ? undefined : backupDestination
+  const volumeStore = new VolumeStore(controlPlane.store)
+  const volumeDrivers = [new DockerNamedVolumeDriver()]
+  const volumeService = new VolumeService(volumeStore, volumeDrivers, operationQueue)
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -1205,7 +1218,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
         if (!policy.healthCheckId) return { healthy: true, mode: 'adapter' }
         const check = alertStore.getHealthCheck(policy.healthCheckId)
         if (!check || check.projectId !== policy.projectId) return { healthy: false, error: 'Configured restore health check was not found.' }
@@ -3649,6 +3662,56 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (!entry || entry.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Configuration entry was not found.' }, 404, noStore)
             try { return json({ ok: true, mutation: await configurationService.remove({ entryId: entry.id, expectedVersion: Number(body.expectedVersion), confirmed: String(body.confirm ?? '') === entry.key, actorId: organizationPrincipal(user).actor?.id }) }, 200, noStore) }
             catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409, noStore) }
+          }
+        }
+
+        if (url.pathname.startsWith('/api/volumes')) {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const actorId = organizationPrincipal(user).actor?.id
+          const fail = (error: unknown, status = 409) => json({ ok: false, error: error instanceof Error ? error.message : String(error) }, status, { 'cache-control': 'no-store' })
+          if (url.pathname === '/api/volumes' && req.method === 'GET') {
+            const volumes = volumeStore.inventory(controlPlane.project.id, environmentRecord?.id)
+            const resources = controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id).map(item => ({ id: item.id, name: item.name, slug: item.slug, kind: item.kind, provider: item.provider, providerId: item.providerId }))
+            return json({ ok: true, volumes, resources, operations: operationQueue.list({ projectId: controlPlane.project.id, limit: 100 }).filter(item => item.operation.kind.startsWith('volume.')), recoveryPoints: backupStore.listRecoveryPoints(controlPlane.project.id).filter(item => item.kind === 'volume'), providers: volumeDrivers.map(driver => ({ provider: driver.provider, type: driver.type, capabilities: driver.capabilities() })) }, 200, { 'cache-control': 'no-store' })
+          }
+          if (url.pathname === '/api/volumes' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.create({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, environmentId: environmentRecord?.id, resourceId: body.resourceId ? String(body.resourceId) : undefined, name: String(body.name ?? ''), provider: String(body.provider ?? 'docker'), type: body.type === 'docker' ? 'docker' : body.type, capacityBytes: body.capacityBytes == null ? undefined : Number(body.capacityBytes), filesystem: body.filesystem ? String(body.filesystem) : undefined, encrypted: body.encrypted === true, desiredState: body.desiredState && typeof body.desiredState === 'object' ? body.desiredState : {}, actorId }) }, 202, { 'cache-control': 'no-store' }) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes/attach' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.attach(String(body.volumeId ?? ''), { resourceId: String(body.resourceId ?? ''), targetPath: String(body.targetPath ?? ''), readOnly: body.readOnly === true, uid: body.uid == null ? undefined : Number(body.uid), gid: body.gid == null ? undefined : Number(body.gid), mode: body.mode ? String(body.mode) : undefined, propagation: body.propagation, driverOptions: body.driverOptions && typeof body.driverOptions === 'object' ? body.driverOptions : {}, actorId }) }, 202) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes/detach' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.detach(String(body.volumeId ?? ''), String(body.attachmentId ?? ''), { force: body.force === true, drained: body.drained === true, unmounted: body.unmounted === true, confirmation: body.confirmation ? String(body.confirmation) : undefined, actorId }) }, 202) }
+            catch (error) { return fail(error) }
+          }
+          if (url.pathname === '/api/volumes/resize' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.resize(String(body.volumeId ?? ''), Number(body.capacityBytes), { drained: body.drained === true, actorId }) }, 202) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes/snapshot' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.snapshot(String(body.volumeId ?? ''), { name: body.name ? String(body.name) : undefined, actorId }) }, 202) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes/discover' && req.method === 'POST') {
+            try { return json({ ok: true, volumes: await volumeService.discover({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, environmentId: environmentRecord?.id, actorId }) }) }
+            catch (error) { return fail(error, 502) }
+          }
+          if (url.pathname === '/api/volumes/adopt' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, volume: volumeService.adopt(String(body.volumeId ?? ''), { name: String(body.name ?? ''), actorId }) }) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes' && req.method === 'DELETE') {
+            const body = await readJsonBody(req), session = guard.resolveSession(req)
+            try { return json({ ok: true, ...volumeService.delete(String(body.volumeId ?? ''), { recentAuthAt: !authEnabled || session && authentication.isRecentlyAuthenticated(session) ? new Date().toISOString() : undefined, confirmation: body.confirmation ? String(body.confirmation) : undefined, backupOverride: body.backupOverride === true, backupOverrideConfirmation: body.backupOverrideConfirmation ? String(body.backupOverrideConfirmation) : undefined, actorId }) }, 202) }
+            catch (error) { return fail(error) }
           }
         }
 

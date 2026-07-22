@@ -86,6 +86,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
           @if (canView('config:read'))<a class="{{ isActive('configuration') ? 'active' : '' }}" href="{{ envHref('/operations/configuration') }}">Environment &amp; secrets</a>@endif
           @if (canView('backups:read'))<a class="{{ isActive('backups') ? 'active' : '' }}" href="{{ envHref('/data/backups') }}">Backups &amp; recovery</a>@endif
+          @if (canView('data:read'))<a class="{{ isActive('volumes') ? 'active' : '' }}" href="{{ envHref('/data/volumes') }}">Persistent volumes</a>@endif
           @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
       @endif
@@ -93,6 +94,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         <section class="nav-group">
           <h2>Infrastructure</h2>
           @if (canView('data:read'))<a class="{{ isActive('data-services') ? 'active' : '' }}" href="{{ envHref('/data/services') }}">Data services</a>@endif
+          @if (canView('data:read'))<a class="{{ isActive('volumes') ? 'active' : '' }}" href="{{ envHref('/data/volumes') }}">Persistent volumes</a>@endif
           @if (canView('fleet:read'))<a href="{{ envHref('/server/firewall') }}">Network & firewall</a><a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>@endif
           @if (canView('security:read'))<a href="{{ envHref('/security') }}">Security posture</a>@endif
           @if (canView('runtime:terminal'))<a href="{{ envHref('/server/terminal') }}">Terminal</a>@endif
