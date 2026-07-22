@@ -71,6 +71,18 @@ case "$*" in *rev-parse*) printf '${'f'.repeat(40)}\n';; *clone*--filter=blob:no
     finally { rmSync(fake.directory, { recursive: true, force: true }) }
   })
 
+  it('fetches, checks out, and verifies the exact immutable webhook commit', async () => {
+    const sha = 'd'.repeat(40)
+    const fake = executable(`
+case "$*" in *fetch*origin*${sha}*) exit 0;; *checkout*--detach*${sha}*) exit 0;; *rev-parse*) printf '${sha}\n';; *clone*) exit 0;; *) exit 25;; esac
+`)
+    try {
+      expect(await cloneSourceBinding({ remote: 'https://git.example/acme/web.git', binding: binding(), destination: join(fake.directory, 'exact'), ref: 'feature', commitSha: sha }, { executable: fake.path })).toMatchObject({ commitSha: sha })
+      expect(cloneSourceBinding({ remote: 'https://git.example/acme/web.git', binding: binding(), destination: join(fake.directory, 'moving'), ref: 'feature', commitSha: 'main' }, { executable: fake.path })).rejects.toThrow('immutable')
+    }
+    finally { rmSync(fake.directory, { recursive: true, force: true }) }
+  })
+
   it('bounds hung Git processes and rejects secret-bearing remotes and unsafe refs', async () => {
     const fake = executable('sleep 2')
     try {

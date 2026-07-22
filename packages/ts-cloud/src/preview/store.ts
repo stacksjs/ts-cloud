@@ -96,4 +96,5 @@ export class PreviewEnvironmentStore {
     return resource(row)
   }
   listResources(previewId: string): PreviewResource[] { return this.controlPlane.database.query<Row, [string]>('SELECT * FROM preview_resources WHERE preview_id=? ORDER BY kind, provider_resource_id').all(previewId).map(resource) }
+  markResourcesDeleted(previewId: string): number { const preview = this.getInstance(previewId); if (!preview) throw new Error(`Preview ${previewId} was not found`); return this.controlPlane.database.run('UPDATE preview_resources SET deleted_at=? WHERE preview_id=? AND deleted_at IS NULL', [this.now().toISOString(), previewId]).changes }
 }

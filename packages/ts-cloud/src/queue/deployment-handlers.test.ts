@@ -3,6 +3,7 @@ import type { QueueExecutionContext } from './types'
 import { ControlPlaneStore } from '../control-plane'
 import { DurableOperationQueue } from './queue'
 import { createDeploymentQueueHandlers, resolveQueuedDeploymentCommand } from './deployment-handlers'
+import { PreviewEnvironmentStore } from '../preview'
 
 const stores: ControlPlaneStore[] = []
 afterEach(() => { for (const store of stores.splice(0)) store.close() })
@@ -43,5 +44,26 @@ describe('deployment queue handlers', () => {
     const result = await queue.runOne(handlers)
     expect(result).toMatchObject({ terminalState: 'succeeded', operation: { id: queued.operation.id, output: { exitCode: 0, environment: 'production', resource: 'web' } } })
     expect(queue.view(queued.operation.id)?.job.currentStep).toBe('finalize')
+  })
+
+  it('runs isolated preview stacks through create, update, and idempotent destroy states', async () => {
+    const target = setup()
+    const previews = new PreviewEnvironmentStore(target.store)
+    const policy = previews.createDefinition({ projectId: target.project.id, resourceId: target.resource.id, baseEnvironmentId: target.environment.id, domainPattern: 'https://{name}.preview.example.com' })
+    const preview = previews.upsert({ definitionId: policy.id, repository: 'acme/web', branch: 'feature', pullRequestNumber: 4, commitSha: 'a'.repeat(40) }).preview
+    const queue = new DurableOperationQueue(target.store)
+    const create = queue.enqueue({ projectId: target.project.id, environmentId: target.environment.id, resourceId: target.resource.id, kind: 'preview.create', input: { previewId: preview.id }, lockKey: `preview:${preview.id}` })
+    const commands: string[][] = []
+    const handlers = createDeploymentQueueHandlers({ store: target.store, execute: async command => { commands.push(command.command); return { ok: true, exitCode: 0, command: `cloud ${command.command.join(' ')}` } } })
+    expect(await queue.runOne(handlers)).toMatchObject({ terminalState: 'succeeded', operation: { id: create.operation.id } })
+    expect(commands[0]).toEqual(['deploy', '--stack', preview.stackName, '--env', 'production', '--yes', '--skip-dns-verification', '--site', 'web'])
+    expect(previews.getInstance(preview.id)).toMatchObject({ status: 'active', observedState: { exactCommitSha: 'a'.repeat(40), providerStatus: 'deployed' } })
+    expect(previews.listResources(preview.id)).toMatchObject([{ providerResourceId: preview.stackName, deletedAt: undefined }])
+
+    const destroy = queue.enqueue({ projectId: target.project.id, environmentId: target.environment.id, resourceId: target.resource.id, kind: 'preview.destroy', input: { previewId: preview.id }, lockKey: `preview:${preview.id}` })
+    expect(await queue.runOne(handlers)).toMatchObject({ terminalState: 'succeeded', operation: { id: destroy.operation.id } })
+    expect(commands[1]).toEqual(['stack:delete', preview.stackName, '--yes'])
+    expect(previews.getInstance(preview.id)?.status).toBe('destroyed')
+    expect(previews.listResources(preview.id)[0]?.deletedAt).toBeString()
   })
 })

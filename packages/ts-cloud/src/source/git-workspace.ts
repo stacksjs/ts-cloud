@@ -96,7 +96,7 @@ export async function discoverGitRefs(remoteValue: string, options: GitTransport
 }
 
 /** Clone/fetch is argv-only, timeout-bounded, non-interactive, and never embeds credentials in the remote URL. */
-export async function cloneSourceBinding(input: { remote: string, binding: SourceBinding, destination: string, ref?: string, sparsePaths?: string[] }, options: GitTransportOptions = {}): Promise<ClonedSource> {
+export async function cloneSourceBinding(input: { remote: string, binding: SourceBinding, destination: string, ref?: string, commitSha?: string, sparsePaths?: string[] }, options: GitTransportOptions = {}): Promise<ClonedSource> {
   const remote = validateRemote(input.remote, options.deployKey)
   const destination = resolve(input.destination)
   const reference = input.ref?.trim() || input.binding.defaultBranch
@@ -113,7 +113,13 @@ export async function cloneSourceBinding(input: { remote: string, binding: Sourc
     await runGit(['-C', destination, 'sparse-checkout', 'set', '--cone', '--', ...sparsePaths], remote, options)
     await runGit(['-C', destination, 'checkout', '--force'], remote, options)
   }
+  if (input.commitSha) {
+    if (!/^[a-f0-9]{40,64}$/i.test(input.commitSha)) throw new Error('Expected source commit must be an immutable 40-64 character SHA')
+    await runGit(['-C', destination, 'fetch', '--no-tags', '--depth', '1', 'origin', input.commitSha], remote, options)
+    await runGit(['-C', destination, 'checkout', '--detach', '--force', input.commitSha], remote, options)
+  }
   const commitSha = (await runGit(['-C', destination, 'rev-parse', 'HEAD'], remote, options)).trim()
   if (!/^[a-f0-9]{40,64}$/i.test(commitSha)) throw new Error('Git clone did not produce a valid commit SHA')
+  if (input.commitSha && commitSha.toLowerCase() !== input.commitSha.toLowerCase()) throw new Error(`Git checkout resolved ${commitSha} instead of the requested immutable commit`)
   return { directory: input.binding.monorepoRoot === '.' ? destination : join(destination, input.binding.monorepoRoot), commitSha }
 }

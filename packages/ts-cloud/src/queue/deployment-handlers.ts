@@ -1,6 +1,7 @@
 import type { ControlPlaneOperation, ControlPlaneStore, JsonValue } from '../control-plane'
 import type { QueueExecutionContext, QueueOperationHandler } from './types'
 import { RetryableOperationError } from './types'
+import { PreviewEnvironmentStore } from '../preview'
 
 export const DEPLOYMENT_QUEUE_KINDS = [
   'deployment.create',
@@ -8,6 +9,9 @@ export const DEPLOYMENT_QUEUE_KINDS = [
   'application.create',
   'deploy.source',
   'deploy.preview',
+  'preview.create',
+  'preview.update',
+  'preview.destroy',
 ] as const
 
 export interface QueuedDeploymentCommand {
@@ -16,7 +20,7 @@ export interface QueuedDeploymentCommand {
   description: string
   command: string[]
   mutates: true
-  target: { environment: string, resource?: string }
+  target: { environment: string, resource?: string, previewId?: string }
 }
 
 export interface QueuedDeploymentResult {
@@ -41,6 +45,14 @@ export function resolveQueuedDeploymentCommand(store: ControlPlaneStore, operati
     throw new Error(`Resource ${operation.resourceId} was not found in the queued deployment scope`)
 
   const input = record(operation.input)
+  if (operation.kind.startsWith('preview.')) {
+    const previewId = typeof input.previewId === 'string' ? input.previewId : undefined
+    const preview = previewId ? new PreviewEnvironmentStore(store).getInstance(previewId) : undefined
+    if (!preview) throw new Error(`Preview ${previewId ?? '(missing)'} was not found for queued ${operation.kind}`)
+    if (preview.projectId !== operation.projectId || preview.resourceId !== operation.resourceId) throw new Error('Queued preview does not match the operation scope')
+    if (operation.kind === 'preview.destroy') return { id: `queue:${operation.id}`, label: 'Destroy preview', description: `Destroy ${preview.name}.`, command: ['stack:delete', preview.stackName, '--yes'], mutates: true, target: { environment: environment.slug, resource: resource?.slug, previewId: preview.id } }
+    return { id: `queue:${operation.id}`, label: operation.kind === 'preview.create' ? 'Create preview' : 'Update preview', description: `Deploy ${preview.name} at ${preview.commitSha}.`, command: ['deploy', '--stack', preview.stackName, '--env', environment.slug, '--yes', '--skip-dns-verification', ...(resource ? ['--site', resource.slug] : [])], mutates: true, target: { environment: environment.slug, resource: resource?.slug, previewId: preview.id } }
+  }
   if (operation.kind === 'deployment.rollback') {
     const command = ['deploy:rollback']
     if (resource)
@@ -75,13 +87,29 @@ export function createDeploymentQueueHandlers(input: {
   const handler: QueueOperationHandler = async (context) => {
     context.checkpoint('prepare', 'Resolving the persisted deployment target.')
     const command = resolveQueuedDeploymentCommand(input.store, context.operation)
+    const previews = command.target.previewId ? new PreviewEnvironmentStore(input.store) : undefined
+    if (previews && command.target.previewId) previews.transition(command.target.previewId, context.operation.kind === 'preview.destroy' ? 'destroying' : context.operation.kind === 'preview.update' ? 'updating' : 'deploying', { operationId: context.operation.id })
     context.log(`Target: ${command.target.resource ?? 'all resources'} in ${command.target.environment}.`, { stream: 'system' })
     context.throwIfCancellationRequested()
     context.checkpoint('execute', `Running cloud ${command.command.join(' ')}.`)
     const result = await input.execute(command, context)
-    if (!result.ok)
+    if (!result.ok) {
+      if (previews && command.target.previewId) previews.transition(command.target.previewId, context.operation.kind === 'preview.destroy' ? 'cleanup_failed' : 'failed', { operationId: context.operation.id, teardownError: context.operation.kind === 'preview.destroy' ? result.stderr?.trim() || `Process exited with ${result.exitCode}` : undefined })
       throw executionError(result)
+    }
     context.throwIfCancellationRequested()
+    if (previews && command.target.previewId) {
+      const preview = previews.getInstance(command.target.previewId)!
+      if (context.operation.kind === 'preview.destroy') {
+        previews.markResourcesDeleted(preview.id)
+        previews.transition(preview.id, 'destroyed', { operationId: context.operation.id, observedState: { reconciledResourceIds: previews.listResources(preview.id).map(item => item.providerResourceId), exactCommitSha: preview.commitSha } })
+      }
+      else {
+        const provider = input.store.getResource(preview.resourceId)?.provider ?? 'default'
+        previews.recordResource({ previewId: preview.id, provider, providerResourceId: preview.stackName, kind: 'stack', tags: { 'ts-cloud:preview': preview.id, 'ts-cloud:project': preview.projectId, 'ts-cloud:expires-at': preview.expiresAt }, observedState: { command: result.command ?? null, exactCommitSha: preview.commitSha } })
+        previews.transition(preview.id, 'active', { operationId: context.operation.id, observedState: { url: preview.url ?? null, stackName: preview.stackName, exactCommitSha: preview.commitSha, providerStatus: 'deployed' } })
+      }
+    }
     context.checkpoint('finalize', 'Deployment command completed; persisting the terminal result.')
     return { command: result.command ?? `cloud ${command.command.join(' ')}`, exitCode: result.exitCode, environment: command.target.environment, resource: command.target.resource ?? null }
   }

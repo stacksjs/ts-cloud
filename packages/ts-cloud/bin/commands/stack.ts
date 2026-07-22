@@ -138,7 +138,8 @@ export function registerStackCommands(app: CLI): void {
 
   app
     .command('stack:delete STACK_NAME', 'Delete a CloudFormation stack')
-    .action(async (stackName: string) => {
+    .option('--yes', 'Skip the confirmation prompt')
+    .action(async (stackName: string, options?: { yes?: boolean }) => {
       cli.header(`Delete Stack: ${stackName}`)
 
       try {
@@ -147,7 +148,7 @@ export function registerStackCommands(app: CLI): void {
 
         cli.warn('This will permanently delete the stack and all its resources!')
 
-        const confirmed = await cli.confirm('\nAre you sure you want to delete this stack?', false)
+        const confirmed = options?.yes || await cli.confirm('\nAre you sure you want to delete this stack?', false)
         if (!confirmed) {
           cli.info('Deletion cancelled')
           return
