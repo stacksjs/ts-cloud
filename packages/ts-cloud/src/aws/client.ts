@@ -80,21 +80,34 @@ export function resolveS3Endpoint(options: {
   endpoint?: string
   /** Force path-style addressing (bucket in path) instead of virtual-hosted. */
   forcePathStyle?: boolean
-}): { host: string; path: string } {
-  const base = options.endpoint || `s3.${options.region}.amazonaws.com`
+}): { protocol: 'http' | 'https'; host: string; path: string } {
+  const rawEndpoint = options.endpoint || `s3.${options.region}.amazonaws.com`
+  const parsed = new URL(/^https?:\/\//i.test(rawEndpoint) ? rawEndpoint : `https://${rawEndpoint}`)
+  if (
+    (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+    (parsed.pathname !== '/' && parsed.pathname !== '') ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('S3 endpoint must be an HTTP(S) origin without a path')
+  }
+  const protocol = parsed.protocol.slice(0, -1) as 'http' | 'https'
+  const base = parsed.host
 
   // No bucket scope: ListBuckets, or the bucket is already encoded in the path.
   if (!options.bucket) {
-    return { host: base, path: options.path }
+    return { protocol, host: base, path: options.path }
   }
 
   if (options.forcePathStyle) {
     const path = options.path === '/' ? `/${options.bucket}` : `/${options.bucket}${options.path}`
-    return { host: base, path }
+    return { protocol, host: base, path }
   }
 
   // Virtual-hosted style — the AWS default, also supported by B2 and Hetzner.
-  return { host: `${options.bucket}.${base}`, path: options.path }
+  return { protocol, host: `${options.bucket}.${base}`, path: options.path }
 }
 
 export interface AWSError extends Error {
@@ -456,6 +469,7 @@ export class AWSClient {
     let { path } = options
 
     let host: string
+    let protocol: 'http' | 'https' = 'https'
     if (service === 's3') {
       // Virtual-hosted style by default; endpoint override + path-style for
       // S3-compatible providers (Backblaze B2, Hetzner). Reassigns `path` so the
@@ -467,6 +481,7 @@ export class AWSClient {
         endpoint: this.config.endpoint,
         forcePathStyle: this.config.forcePathStyle,
       })
+      protocol = resolved.protocol
       host = resolved.host
       path = resolved.path
     } else if (service === 'cloudfront') {
@@ -490,7 +505,7 @@ export class AWSClient {
       host = `${service}.${region}.amazonaws.com`
     }
 
-    let url = `https://${host}${path}`
+    let url = `${protocol}://${host}${path}`
 
     if (queryParams && Object.keys(queryParams).length > 0) {
       const queryString = Object.keys(queryParams)

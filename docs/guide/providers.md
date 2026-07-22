@@ -115,7 +115,7 @@ const config: CloudConfig = {
 | --- | --- | --- |
 | `provider` | `'aws'`, `'backblaze'`, or `'hetzner'` | `'aws'` |
 | `region` | Region / location slug | aws: `us-east-1`, backblaze: `us-west-004`, hetzner: `fsn1` |
-| `endpoint` | Endpoint host override (no scheme), e.g. `s3.us-west-004.backblazeb2.com` | provider's standard endpoint |
+| `endpoint` | HTTP(S) endpoint origin or host, e.g. `https://<account>.r2.cloudflarestorage.com` | provider's standard endpoint |
 | `forcePathStyle` | Use path-style addressing (bucket in path) | `false` (virtual-hosted) |
 
 Credentials are resolved from provider-specific environment variables when not supplied programmatically:
@@ -145,6 +145,25 @@ const s3 = createObjectStorageClient({
 })
 await s3.putObject({ bucket: 'my-bucket', key: 'a.txt', body: 'hi' })
 ```
+
+The client also accepts an options object directly. Use virtual-hosted addressing for R2 and path-style addressing for local MinIO:
+
+```typescript
+const r2 = new S3Client({
+  region: 'auto',
+  endpoint: 'https://<account-id>.r2.cloudflarestorage.com',
+  credentials: { accessKeyId, secretAccessKey },
+})
+
+const minio = new S3Client({
+  region: 'us-east-1',
+  endpoint: 'http://127.0.0.1:9000',
+  forcePathStyle: true,
+  credentials: { accessKeyId, secretAccessKey },
+})
+```
+
+The selected endpoint and addressing style are shared by object reads/writes, multipart uploads, and presigned URLs. Signature V4 always signs the exact host and canonical path sent over the wire. Endpoint URLs must be origins without a path, query, or fragment.
 
 For how providers are wired internally — and why there is no user-facing "custom provider" plugin API — see [Custom Providers](/advanced/providers).
 

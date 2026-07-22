@@ -6,7 +6,7 @@ import * as crypto from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { AWSClient } from './client'
+import { AWSClient, resolveS3Endpoint } from './client'
 import { resolveCredentials } from './credentials'
 
 /**
@@ -67,9 +67,13 @@ export interface S3Object {
  * S3-compatible provider (Backblaze B2, Hetzner Object Storage).
  */
 export interface S3ClientOptions {
+  /** AWS region used for signing. Defaults to `us-east-1`. */
+  region?: string
+  /** Named AWS credential profile. */
+  profile?: string
   /**
-   * Endpoint host override (no scheme) for S3-compatible providers, e.g.
-   * `s3.us-west-004.backblazeb2.com` or `fsn1.your-objectstorage.com`.
+   * HTTP(S) endpoint origin or host for S3-compatible providers, e.g.
+   * `https://<account>.r2.cloudflarestorage.com` or `fsn1.your-objectstorage.com`.
    */
   endpoint?: string
   /** Force path-style addressing instead of virtual-hosted. Defaults to virtual-hosted. */
@@ -90,22 +94,32 @@ export class S3Client {
   private region: string
   private explicitProfile?: string
   private endpoint?: string
+  private endpointProtocol: 'http' | 'https' = 'https'
   private forcePathStyle?: boolean
   private explicitCredentials?: { accessKeyId: string; secretAccessKey: string; sessionToken?: string }
 
-  constructor(region: string = 'us-east-1', profile?: string, options?: S3ClientOptions) {
+  constructor(region?: string, profile?: string, options?: S3ClientOptions)
+  constructor(options?: S3ClientOptions)
+  constructor(regionOrOptions: string | S3ClientOptions = 'us-east-1', profile?: string, options?: S3ClientOptions) {
+    const resolvedOptions = typeof regionOrOptions === 'string' ? options : regionOrOptions
+    const region = typeof regionOrOptions === 'string' ? regionOrOptions : (regionOrOptions.region ?? 'us-east-1')
+    const resolvedProfile = typeof regionOrOptions === 'string' ? profile : regionOrOptions.profile
+    const endpoint = resolvedOptions?.endpoint
+      ? resolveS3Endpoint({ region, path: '/', endpoint: resolvedOptions.endpoint })
+      : undefined
     this.region = region
-    this.explicitProfile = profile
-    this.endpoint = options?.endpoint
-    this.forcePathStyle = options?.forcePathStyle
-    this.explicitCredentials = options?.credentials
+    this.explicitProfile = resolvedProfile
+    this.endpoint = endpoint?.host
+    this.endpointProtocol = endpoint?.protocol ?? 'https'
+    this.forcePathStyle = resolvedOptions?.forcePathStyle
+    this.explicitCredentials = resolvedOptions?.credentials
     // Pass the profile through config (NOT a pre-resolved Promise: resolveCredentials
     // is async, so handing it to AWSClient as `credentials` broke signing — the
     // explicit profile was effectively ignored / could surface InvalidAccessKeyId).
-    this.client = new AWSClient(options?.credentials, {
-      profile,
-      endpoint: options?.endpoint,
-      forcePathStyle: options?.forcePathStyle,
+    this.client = new AWSClient(resolvedOptions?.credentials, {
+      profile: resolvedProfile,
+      endpoint: resolvedOptions?.endpoint,
+      forcePathStyle: resolvedOptions?.forcePathStyle,
     })
   }
 
@@ -138,6 +152,14 @@ export class S3Client {
    */
   private s3VirtualHost(bucket: string): string {
     return this.forcePathStyle ? this.s3BaseHost() : `${bucket}.${this.s3BaseHost()}`
+  }
+
+  private objectPath(bucket: string, encodedKey: string): string {
+    return this.forcePathStyle ? `/${bucket}/${encodedKey}` : `/${encodedKey}`
+  }
+
+  private objectUrl(bucket: string, encodedKey: string): string {
+    return `${this.endpointProtocol}://${this.s3VirtualHost(bucket)}${this.objectPath(bucket, encodedKey)}`
   }
 
   /**
@@ -388,8 +410,8 @@ export class S3Client {
       // Let's use Bun's fetch which handles Buffer natively
       const { accessKeyId, secretAccessKey, sessionToken } = this.getCredentials()
       const host = this.s3VirtualHost(options.bucket)
-      const canonicalUri = this.forcePathStyle ? `/${options.bucket}/${encodedKey}` : `/${encodedKey}`
-      const url = `https://${host}${canonicalUri}`
+      const canonicalUri = this.objectPath(options.bucket, encodedKey)
+      const url = this.objectUrl(options.bucket, encodedKey)
 
       const now = new Date()
       const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -481,7 +503,8 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'GET',
-      path: `/${bucket}/${encodedKey}`,
+      path: `/${encodedKey}`,
+      bucket,
       rawResponse: true,
     })
 
@@ -512,8 +535,8 @@ export class S3Client {
       .split('/')
       .map((seg) => encodeURIComponent(seg))
       .join('/')
-    const canonicalUri = this.forcePathStyle ? `/${bucket}/${encodedKey}` : `/${encodedKey}`
-    const url = `https://${host}${canonicalUri}`
+    const canonicalUri = this.objectPath(bucket, encodedKey)
+    const url = this.objectUrl(bucket, encodedKey)
 
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -627,7 +650,8 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'DELETE',
-      path: `/${bucket}/${encodedKey}`,
+      path: `/${encodedKey}`,
+      bucket,
     })
   }
 
@@ -846,7 +870,7 @@ export class S3Client {
 
     const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
 
-    const url = `https://${host}${canonicalUri}?${canonicalQuerystring}`
+    const url = `${this.endpointProtocol}://${host}${canonicalUri}?${canonicalQuerystring}`
 
     const response = await fetch(url, {
       method: 'PUT',
@@ -930,7 +954,7 @@ export class S3Client {
 
     const authHeader = `${algorithm} Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
 
-    const url = `https://${host}${canonicalUri}?${canonicalQuerystring}`
+    const url = `${this.endpointProtocol}://${host}${canonicalUri}?${canonicalQuerystring}`
 
     const response = await fetch(url, {
       method: 'GET',
@@ -1877,7 +1901,7 @@ export class S3Client {
 
     const canonicalRequest = [
       'GET',
-      `/${encodedKey}`,
+      this.objectPath(bucket, encodedKey),
       queryParams.toString(),
       `host:${host}\n`,
       'host',
@@ -1899,7 +1923,7 @@ export class S3Client {
 
     queryParams.append('X-Amz-Signature', signature)
 
-    return `https://${host}/${encodedKey}?${queryParams.toString()}`
+    return `${this.endpointProtocol}://${host}${this.objectPath(bucket, encodedKey)}?${queryParams.toString()}`
   }
 
   /**
@@ -1928,7 +1952,7 @@ export class S3Client {
 
     const canonicalRequest = [
       'PUT',
-      `/${encodedKey}`,
+      this.objectPath(bucket, encodedKey),
       queryParams.toString(),
       `content-type:${contentType}\nhost:${host}\n`,
       'content-type;host',
@@ -1950,7 +1974,7 @@ export class S3Client {
 
     queryParams.append('X-Amz-Signature', signature)
 
-    return `https://${host}/${encodedKey}?${queryParams.toString()}`
+    return `${this.endpointProtocol}://${host}${this.objectPath(bucket, encodedKey)}?${queryParams.toString()}`
   }
 
   /**
@@ -1974,11 +1998,17 @@ export class S3Client {
       }
     }
 
+    const encodedKey = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
+
     const result = await this.client.request({
       service: 's3',
       region: this.region,
       method: 'POST',
-      path: `/${bucket}/${key}`,
+      path: `/${encodedKey}`,
+      bucket,
       queryParams: { uploads: '' },
       headers,
     })
@@ -2002,8 +2032,8 @@ export class S3Client {
       .split('/')
       .map((segment) => encodeURIComponent(segment))
       .join('/')
-    const canonicalUri = this.forcePathStyle ? `/${bucket}/${encodedKey}` : `/${encodedKey}`
-    const url = `https://${host}${canonicalUri}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
+    const canonicalUri = this.objectPath(bucket, encodedKey)
+    const url = `${this.objectUrl(bucket, encodedKey)}?partNumber=${partNumber}&uploadId=${encodeURIComponent(uploadId)}`
 
     const now = new Date()
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '')
@@ -2083,6 +2113,10 @@ export class S3Client {
     uploadId: string,
     parts: Array<{ PartNumber: number; ETag: string }>,
   ): Promise<void> {
+    const encodedKey = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
     const partsXml = parts
       .sort((a, b) => a.PartNumber - b.PartNumber)
       .map((p) => `<Part><PartNumber>${p.PartNumber}</PartNumber><ETag>${p.ETag}</ETag></Part>`)
@@ -2095,7 +2129,8 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'POST',
-      path: `/${bucket}/${key}`,
+      path: `/${encodedKey}`,
+      bucket,
       queryParams: { uploadId },
       headers: { 'Content-Type': 'application/xml' },
       body,
@@ -2106,11 +2141,16 @@ export class S3Client {
    * Abort multipart upload
    */
   async abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void> {
+    const encodedKey = key
+      .split('/')
+      .map((segment) => encodeURIComponent(segment))
+      .join('/')
     await this.client.request({
       service: 's3',
       region: this.region,
       method: 'DELETE',
-      path: `/${bucket}/${key}`,
+      path: `/${encodedKey}`,
+      bucket,
       queryParams: { uploadId },
     })
   }
@@ -2123,7 +2163,8 @@ export class S3Client {
       service: 's3',
       region: this.region,
       method: 'GET',
-      path: `/${bucket}`,
+      path: '/',
+      bucket,
       queryParams: { uploads: '' },
     })
 
@@ -2257,12 +2298,11 @@ export class S3Client {
 
     // Canonical request — encode the key so reserved chars like `+` survive
     // strict S3 backends; the URL below reuses this same encoded path (see putObject).
-    const canonicalUri =
-      '/' +
-      key
-        .split('/')
-        .map((seg) => encodeURIComponent(seg))
-        .join('/')
+    const encodedKey = key
+      .split('/')
+      .map((seg) => encodeURIComponent(seg))
+      .join('/')
+    const canonicalUri = this.objectPath(bucket, encodedKey)
     const canonicalHeaders = `host:${host}\n`
     const signedHeaders = 'host'
     const payloadHash = 'UNSIGNED-PAYLOAD'
@@ -2292,7 +2332,7 @@ export class S3Client {
     const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex')
 
     // Build presigned URL
-    const presignedUrl = `https://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`
+    const presignedUrl = `${this.endpointProtocol}://${host}${canonicalUri}?${canonicalQuerystring}&X-Amz-Signature=${signature}`
 
     return presignedUrl
   }
