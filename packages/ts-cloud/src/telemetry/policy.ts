@@ -27,8 +27,11 @@ function boolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback
 }
 
-export function normalizeTelemetryPolicy(input: unknown, base: TelemetryPolicy = { ...DEFAULT_TELEMETRY_POLICY }): TelemetryPolicy {
-  const value = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+export function normalizeTelemetryPolicy(
+  input: unknown,
+  base: TelemetryPolicy = { ...DEFAULT_TELEMETRY_POLICY },
+): TelemetryPolicy {
+  const value = input && typeof input === 'object' && !Array.isArray(input) ? (input as Record<string, unknown>) : {}
   const rawDays = integer(value.rawDays, base.rawDays, 1, 3650)
   const downsampleAfterDays = integer(value.downsampleAfterDays, base.downsampleAfterDays, 1, rawDays)
   return {
@@ -40,11 +43,18 @@ export function normalizeTelemetryPolicy(input: unknown, base: TelemetryPolicy =
     collectLogs: boolean(value.collectLogs, base.collectLogs),
     collectTraces: boolean(value.collectTraces, base.collectTraces),
     collectRequestAnalytics: boolean(value.collectRequestAnalytics, base.collectRequestAnalytics),
-    estimatedStorageUsdPerGbMonth: number(value.estimatedStorageUsdPerGbMonth, base.estimatedStorageUsdPerGbMonth, 0, 10_000),
+    estimatedStorageUsdPerGbMonth: number(
+      value.estimatedStorageUsdPerGbMonth,
+      base.estimatedStorageUsdPerGbMonth,
+      0,
+      10_000,
+    ),
   }
 }
 
-export function telemetryPolicyKey(projectId: string): string { return `telemetry.policy:${projectId}` }
+export function telemetryPolicyKey(projectId: string): string {
+  return `telemetry.policy:${projectId}`
+}
 
 export function loadTelemetryPolicy(store: ControlPlaneStore, projectId: string): TelemetryPolicy {
   return normalizeTelemetryPolicy(store.getSetting(telemetryPolicyKey(projectId)))
@@ -57,5 +67,5 @@ export function saveTelemetryPolicy(store: ControlPlaneStore, projectId: string,
 }
 
 export function telemetryEstimatedMonthlyCost(estimatedMonthlyBytes: number, policy: TelemetryPolicy): number {
-  return Number(((Math.max(0, estimatedMonthlyBytes) / (1024 ** 3)) * policy.estimatedStorageUsdPerGbMonth).toFixed(4))
+  return Number(((Math.max(0, estimatedMonthlyBytes) / 1024 ** 3) * policy.estimatedStorageUsdPerGbMonth).toFixed(4))
 }

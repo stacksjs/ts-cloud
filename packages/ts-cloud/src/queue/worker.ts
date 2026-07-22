@@ -1,5 +1,5 @@
-import type { QueueOperationHandler, QueueRunResult } from './types'
 import type { DurableOperationQueue } from './queue'
+import type { QueueOperationHandler, QueueRunResult } from './types'
 
 export interface DurableQueueWorkerOptions {
   parallelism?: number
@@ -9,8 +9,7 @@ export interface DurableQueueWorkerOptions {
 }
 
 function bounded(value: number | undefined, fallback: number, maximum: number): number {
-  if (!Number.isFinite(value))
-    return fallback
+  if (!Number.isFinite(value)) return fallback
   return Math.min(maximum, Math.max(1, Math.floor(value!)))
 }
 
@@ -38,11 +37,12 @@ export class DurableQueueWorker {
     this.onError = options.onError
   }
 
-  get active(): boolean { return this.running }
+  get active(): boolean {
+    return this.running
+  }
 
   start(): this {
-    if (this.running)
-      return this
+    if (this.running) return this
     this.running = true
     this.lanes = Array.from({ length: this.parallelism }, () => this.runLane())
     return this
@@ -66,9 +66,8 @@ export class DurableQueueWorker {
     const results: QueueRunResult[] = []
     while (true) {
       const batch = await Promise.all(Array.from({ length: this.parallelism }, () => this.queue.runOne(this.handlers)))
-      results.push(...batch.filter(result => result.handled))
-      if (!batch.some(result => result.handled))
-        return results
+      results.push(...batch.filter((result) => result.handled))
+      if (!batch.some((result) => result.handled)) return results
     }
   }
 
@@ -87,14 +86,12 @@ export class DurableQueueWorker {
     while (this.running) {
       try {
         const result = await this.queue.runOne(this.handlers)
-        if (!this.running)
-          break
+        if (!this.running) break
         if (result.handled) {
           this.onResult?.(result)
           continue
         }
-      }
-      catch (error) {
+      } catch (error) {
         this.onError?.(error)
       }
       await this.wait()

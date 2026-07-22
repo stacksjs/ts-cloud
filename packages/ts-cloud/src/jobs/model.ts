@@ -1,25 +1,9 @@
 import type { JsonValue } from '../control-plane'
 
 export type JobProvider = 'server' | 'eventbridge' | 'lambda' | 'platform'
-export type JobTrigger =
-  | 'scheduled'
-  | 'manual'
-  | 'catch_up'
-  | 'external'
-  | 'retry'
-export type JobExecutionStatus =
-  | 'queued'
-  | 'running'
-  | 'succeeded'
-  | 'failed'
-  | 'skipped'
-  | 'dead'
-export type ReconciliationStatus =
-  | 'pending'
-  | 'in_sync'
-  | 'drifted'
-  | 'unsupported'
-  | 'unavailable'
+export type JobTrigger = 'scheduled' | 'manual' | 'catch_up' | 'external' | 'retry'
+export type JobExecutionStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped' | 'dead'
+export type ReconciliationStatus = 'pending' | 'in_sync' | 'drifted' | 'unsupported' | 'unavailable'
 export interface JobTarget {
   kind: 'dashboard_operation' | 'serverless_scheduler' | 'lambda' | 'platform'
   operationId?: string

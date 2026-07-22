@@ -3,11 +3,188 @@ import { ControlPlaneStore } from '../control-plane'
 import { ReleaseService } from './service'
 import { ReleaseStore } from './store'
 import { releaseStrategyCapabilities } from './strategy'
-const stores: ControlPlaneStore[]=[]; afterEach(()=>{for(const store of stores.splice(0))store.close()})
-function setup(){let now=new Date('2026-07-21T12:00:00.000Z');const store=new ControlPlaneStore({path:':memory:',now:()=>now});stores.push(store);const organization=store.createOrganization({slug:'release-org',name:'Release Org'});const project=store.createProject({organizationId:organization.id,slug:'web',name:'Web'});const staging=store.createEnvironment({projectId:project.id,slug:'staging',name:'Staging',kind:'staging'});const production=store.createEnvironment({projectId:project.id,slug:'production',name:'Production',kind:'production'});const stagingResource=store.createResource({projectId:project.id,environmentId:staging.id,kind:'application',slug:'web',name:'Web'});const productionResource=store.createResource({projectId:project.id,environmentId:production.id,kind:'application',slug:'web',name:'Web'});return{store,organization,project,staging,production,stagingResource,productionResource,releases:new ReleaseStore(store),advance:(hours:number)=>{now=new Date(now.getTime()+hours*3600000)}}}
-const digest=(value:string)=>`sha256:${value.repeat(64).slice(0,64)}`
-describe('unified releases',()=>{
-  it('promotes the same verified artifact without rebuild and records config provenance',()=>{const t=setup();const artifact=t.releases.registerArtifact({organizationId:t.organization.id,digest:digest('a'),kind:'container',uri:`oci:registry.example/web@${digest('a')}`,size:123,provenance:{builder:'ci'}});const staging=t.releases.create({organizationId:t.organization.id,projectId:t.project.id,environmentId:t.staging.id,resourceId:t.stagingResource.id,artifactId:artifact.id,kind:'container',sourceSha:'b'.repeat(40),config:{APP_ENV:'staging',API_TOKEN:{secretRef:'API_TOKEN'}},manifest:{image:artifact.digest},strategy:'blue_green',healthGate:{protocol:'http',path:'/health',timeoutSeconds:5,intervalSeconds:5,healthyThreshold:2,unhealthyThreshold:2}});t.releases.transition(staging.id,'activating',{message:'green ready',trafficPercent:0});t.releases.transition(staging.id,'active',{message:'healthy',trafficPercent:100});const promoted=t.releases.promote(staging.id,{targetEnvironmentId:t.production.id,targetResourceId:t.productionResource.id,config:{APP_ENV:'production',API_TOKEN:{secretRef:'API_TOKEN'}},approvalRequired:true});expect(promoted).toMatchObject({artifactId:artifact.id,promotedFromReleaseId:staging.id,status:'awaiting_approval'});expect(t.releases.compare(staging.id,promoted.id)).toMatchObject({artifactChanged:false,sourceChanged:false,configChanged:true})})
-  it('restores the prior active release after a failed health gate and bounds ambiguity',()=>{const t=setup();const artifact1=t.releases.registerArtifact({organizationId:t.organization.id,digest:digest('1'),kind:'container',uri:'oci:one',size:1});const artifact2=t.releases.registerArtifact({organizationId:t.organization.id,digest:digest('2'),kind:'container',uri:'oci:two',size:1});const create=(artifactId:string)=>t.releases.create({organizationId:t.organization.id,projectId:t.project.id,environmentId:t.production.id,resourceId:t.productionResource.id,artifactId,kind:'container',config:{},manifest:{},strategy:'rolling',replicas:2,healthGate:{protocol:'http',path:'/health',timeoutSeconds:5,intervalSeconds:5,healthyThreshold:2,unhealthyThreshold:2}});const first=create(artifact1.id);t.releases.transition(first.id,'activating',{message:'start'});t.releases.transition(first.id,'active',{message:'healthy'});const next=create(artifact2.id);const service=new ReleaseService(t.store);service.enqueueActivation(next);const failed=service.completeHealthGate(next.id,{healthy:false,health:{checks:2},message:'readiness failed'});expect(failed).toMatchObject({release:{status:'failed'},rollbackOperation:{kind:'release.rollback',input:{targetReleaseId:first.id,automatic:true}}});expect(t.releases.transitions(next.id).map(value=>value.toStatus)).toEqual(['built','activating','failed'])})
-  it('exposes only supported strategies and protects retention/pinning/rollback requirements',()=>{expect(releaseStrategyCapabilities({kind:'static',hasHealthGate:false}).filter(value=>value.supported).map(value=>value.strategy)).toEqual(['atomic']);expect(releaseStrategyCapabilities({kind:'compose',hasHealthGate:true,replicas:1}).find(value=>value.strategy==='rolling')).toMatchObject({supported:false,explanation:expect.stringContaining('at least two')});const t=setup();const artifact=t.releases.registerArtifact({organizationId:t.organization.id,digest:digest('c'),kind:'static',uri:'s3://bucket/key',size:1});const release=t.releases.create({organizationId:t.organization.id,projectId:t.project.id,environmentId:t.production.id,resourceId:t.productionResource.id,artifactId:artifact.id,kind:'static',config:{},manifest:{},strategy:'atomic'});t.releases.pin(release.id,true,'legal hold');t.advance(1000);expect(t.releases.retentionCandidates({before:new Date('2026-08-01'),keepPerResource:1})).toEqual([])})
+const stores: ControlPlaneStore[] = []
+afterEach(() => {
+  for (const store of stores.splice(0)) store.close()
+})
+function setup() {
+  let now = new Date('2026-07-21T12:00:00.000Z')
+  const store = new ControlPlaneStore({ path: ':memory:', now: () => now })
+  stores.push(store)
+  const organization = store.createOrganization({ slug: 'release-org', name: 'Release Org' })
+  const project = store.createProject({ organizationId: organization.id, slug: 'web', name: 'Web' })
+  const staging = store.createEnvironment({ projectId: project.id, slug: 'staging', name: 'Staging', kind: 'staging' })
+  const production = store.createEnvironment({
+    projectId: project.id,
+    slug: 'production',
+    name: 'Production',
+    kind: 'production',
+  })
+  const stagingResource = store.createResource({
+    projectId: project.id,
+    environmentId: staging.id,
+    kind: 'application',
+    slug: 'web',
+    name: 'Web',
+  })
+  const productionResource = store.createResource({
+    projectId: project.id,
+    environmentId: production.id,
+    kind: 'application',
+    slug: 'web',
+    name: 'Web',
+  })
+  return {
+    store,
+    organization,
+    project,
+    staging,
+    production,
+    stagingResource,
+    productionResource,
+    releases: new ReleaseStore(store),
+    advance: (hours: number) => {
+      now = new Date(now.getTime() + hours * 3600000)
+    },
+  }
+}
+const digest = (value: string) => `sha256:${value.repeat(64).slice(0, 64)}`
+describe('unified releases', () => {
+  it('promotes the same verified artifact without rebuild and records config provenance', () => {
+    const t = setup()
+    const artifact = t.releases.registerArtifact({
+      organizationId: t.organization.id,
+      digest: digest('a'),
+      kind: 'container',
+      uri: `oci:registry.example/web@${digest('a')}`,
+      size: 123,
+      provenance: { builder: 'ci' },
+    })
+    const staging = t.releases.create({
+      organizationId: t.organization.id,
+      projectId: t.project.id,
+      environmentId: t.staging.id,
+      resourceId: t.stagingResource.id,
+      artifactId: artifact.id,
+      kind: 'container',
+      sourceSha: 'b'.repeat(40),
+      config: { APP_ENV: 'staging', API_TOKEN: { secretRef: 'API_TOKEN' } },
+      manifest: { image: artifact.digest },
+      strategy: 'blue_green',
+      healthGate: {
+        protocol: 'http',
+        path: '/health',
+        timeoutSeconds: 5,
+        intervalSeconds: 5,
+        healthyThreshold: 2,
+        unhealthyThreshold: 2,
+      },
+    })
+    t.releases.transition(staging.id, 'activating', { message: 'green ready', trafficPercent: 0 })
+    t.releases.transition(staging.id, 'active', { message: 'healthy', trafficPercent: 100 })
+    const promoted = t.releases.promote(staging.id, {
+      targetEnvironmentId: t.production.id,
+      targetResourceId: t.productionResource.id,
+      config: { APP_ENV: 'production', API_TOKEN: { secretRef: 'API_TOKEN' } },
+      approvalRequired: true,
+    })
+    expect(promoted).toMatchObject({
+      artifactId: artifact.id,
+      promotedFromReleaseId: staging.id,
+      status: 'awaiting_approval',
+    })
+    expect(t.releases.compare(staging.id, promoted.id)).toMatchObject({
+      artifactChanged: false,
+      sourceChanged: false,
+      configChanged: true,
+    })
+  })
+  it('restores the prior active release after a failed health gate and bounds ambiguity', () => {
+    const t = setup()
+    const artifact1 = t.releases.registerArtifact({
+      organizationId: t.organization.id,
+      digest: digest('1'),
+      kind: 'container',
+      uri: 'oci:one',
+      size: 1,
+    })
+    const artifact2 = t.releases.registerArtifact({
+      organizationId: t.organization.id,
+      digest: digest('2'),
+      kind: 'container',
+      uri: 'oci:two',
+      size: 1,
+    })
+    const create = (artifactId: string) =>
+      t.releases.create({
+        organizationId: t.organization.id,
+        projectId: t.project.id,
+        environmentId: t.production.id,
+        resourceId: t.productionResource.id,
+        artifactId,
+        kind: 'container',
+        config: {},
+        manifest: {},
+        strategy: 'rolling',
+        replicas: 2,
+        healthGate: {
+          protocol: 'http',
+          path: '/health',
+          timeoutSeconds: 5,
+          intervalSeconds: 5,
+          healthyThreshold: 2,
+          unhealthyThreshold: 2,
+        },
+      })
+    const first = create(artifact1.id)
+    t.releases.transition(first.id, 'activating', { message: 'start' })
+    t.releases.transition(first.id, 'active', { message: 'healthy' })
+    const next = create(artifact2.id)
+    const service = new ReleaseService(t.store)
+    service.enqueueActivation(next)
+    const failed = service.completeHealthGate(next.id, {
+      healthy: false,
+      health: { checks: 2 },
+      message: 'readiness failed',
+    })
+    expect(failed).toMatchObject({
+      release: { status: 'failed' },
+      rollbackOperation: { kind: 'release.rollback', input: { targetReleaseId: first.id, automatic: true } },
+    })
+    expect(t.releases.transitions(next.id).map((value) => value.toStatus)).toEqual(['built', 'activating', 'failed'])
+  })
+  it('exposes only supported strategies and protects retention/pinning/rollback requirements', () => {
+    expect(
+      releaseStrategyCapabilities({ kind: 'static', hasHealthGate: false })
+        .filter((value) => value.supported)
+        .map((value) => value.strategy),
+    ).toEqual(['atomic'])
+    expect(
+      releaseStrategyCapabilities({ kind: 'compose', hasHealthGate: true, replicas: 1 }).find(
+        (value) => value.strategy === 'rolling',
+      ),
+    ).toMatchObject({ supported: false, explanation: expect.stringContaining('at least two') })
+    const t = setup()
+    const artifact = t.releases.registerArtifact({
+      organizationId: t.organization.id,
+      digest: digest('c'),
+      kind: 'static',
+      uri: 's3://bucket/key',
+      size: 1,
+    })
+    const release = t.releases.create({
+      organizationId: t.organization.id,
+      projectId: t.project.id,
+      environmentId: t.production.id,
+      resourceId: t.productionResource.id,
+      artifactId: artifact.id,
+      kind: 'static',
+      config: {},
+      manifest: {},
+      strategy: 'atomic',
+    })
+    t.releases.pin(release.id, true, 'legal hold')
+    t.advance(1000)
+    expect(t.releases.retentionCandidates({ before: new Date('2026-08-01'), keepPerResource: 1 })).toEqual([])
+  })
 })

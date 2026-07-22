@@ -54,7 +54,7 @@ export interface OperationLogEntry {
 export interface QueueOperationView {
   operation: ControlPlaneOperation
   job: OperationJob
-  approximatePosition?: { ahead: number, precision: 'bounded' }
+  approximatePosition?: { ahead: number; precision: 'bounded' }
 }
 
 export interface QueueLogInput {
@@ -82,16 +82,29 @@ export interface QueueRunResult {
   requeued?: boolean
 }
 
-export interface QueueRecoveryResult { requeued: number, failed: number, cancelled: number }
+export interface QueueRecoveryResult {
+  requeued: number
+  failed: number
+  cancelled: number
+}
 
 export class QueueCancellationError extends Error {
-  constructor() { super('Operation cancellation was requested') }
+  constructor() {
+    super('Operation cancellation was requested')
+  }
 }
 
 export class QueueTimeoutError extends Error {
-  constructor(public readonly timeoutSeconds: number) { super(`Operation exceeded its ${timeoutSeconds}s timeout`) }
+  constructor(public readonly timeoutSeconds: number) {
+    super(`Operation exceeded its ${timeoutSeconds}s timeout`)
+  }
 }
 
 export class RetryableOperationError extends Error {
-  constructor(message: string, public readonly errorClass: string) { super(message) }
+  constructor(
+    message: string,
+    public readonly errorClass: string,
+  ) {
+    super(message)
+  }
 }

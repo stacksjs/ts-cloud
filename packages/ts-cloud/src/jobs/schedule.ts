@@ -40,17 +40,10 @@ function validateTimezone(value: string): string {
   }
 }
 
-function fieldNumber(
-  value: string,
-  names: Record<string, number>,
-  minimum: number,
-  maximum: number,
-): number {
+function fieldNumber(value: string, names: Record<string, number>, minimum: number, maximum: number): number {
   const resolved = names[value.toUpperCase()] ?? Number(value)
   if (!Number.isInteger(resolved) || resolved < minimum || resolved > maximum)
-    throw new Error(
-      `Schedule field value ${value} is outside ${minimum}-${maximum}.`,
-    )
+    throw new Error(`Schedule field value ${value} is outside ${minimum}-${maximum}.`)
   return resolved
 }
 
@@ -65,9 +58,7 @@ function parseField(
   const values = new Set<number>()
   for (const item of source.split(',')) {
     const [range, stepText] = item.split('/')
-    const step = stepText
-      ? fieldNumber(stepText, {}, 1, maximum - minimum + 1)
-      : 1
+    const step = stepText ? fieldNumber(stepText, {}, 1, maximum - minimum + 1) : 1
     let start: number
     let end: number
     if (range === '*') {
@@ -83,9 +74,7 @@ function parseField(
     }
     if (end < start) throw new Error('Schedule ranges must be ascending.')
     for (let value = start; value <= end; value += step)
-      values.add(
-        transform ? transform(value) : value === 7 && maximum === 7 ? 0 : value,
-      )
+      values.add(transform ? transform(value) : value === 7 && maximum === 7 ? 0 : value)
   }
   return values
 }
@@ -128,14 +117,10 @@ function localParts(
 }
 
 function cronFields(expression: string) {
-  const inner = expression.startsWith('cron(')
-    ? expression.slice(5, -1).trim()
-    : expression.trim()
+  const inner = expression.startsWith('cron(') ? expression.slice(5, -1).trim() : expression.trim()
   const parts = inner.split(/\s+/)
   if (parts.length !== 5 && parts.length !== 6)
-    throw new Error(
-      'Cron schedules require five standard fields or six EventBridge fields.',
-    )
+    throw new Error('Cron schedules require five standard fields or six EventBridge fields.')
   const [minute, hour, day, month, weekday, year] = parts
   const eventBridge = parts.length === 6
   return {
@@ -156,10 +141,7 @@ function cronFields(expression: string) {
   }
 }
 
-function matchesCron(
-  parts: ReturnType<typeof localParts>,
-  fields: ReturnType<typeof cronFields>,
-): boolean {
+function matchesCron(parts: ReturnType<typeof localParts>, fields: ReturnType<typeof cronFields>): boolean {
   const basic =
     (!fields.minute || fields.minute.has(parts.minute)) &&
     (!fields.hour || fields.hour.has(parts.hour)) &&
@@ -168,18 +150,11 @@ function matchesCron(
   if (!basic) return false
   const day = !fields.day || fields.day.has(parts.day)
   const weekday = !fields.weekday || fields.weekday.has(parts.weekday)
-  return fields.dayWildcard
-    ? weekday
-    : fields.weekdayWildcard
-      ? day
-      : day || weekday
+  return fields.dayWildcard ? weekday : fields.weekdayWildcard ? day : day || weekday
 }
 
 function rateMilliseconds(expression: string): number | undefined {
-  const match =
-    /^rate\(\s*(\d+)\s+(minute|minutes|hour|hours|day|days)\s*\)$/i.exec(
-      expression,
-    )
+  const match = /^rate\(\s*(\d+)\s+(minute|minutes|hour|hours|day|days)\s*\)$/i.exec(expression)
   if (!match) return undefined
   const amount = Number(match[1])
   if (amount < 1) throw new Error('Rate amount must be positive.')
@@ -220,28 +195,19 @@ export function normalizeScheduleExpression(value: string): {
   cronFields(expression)
   return {
     original,
-    normalized: expression.startsWith('cron(')
-      ? expression
-      : `cron(${expression})`,
+    normalized: expression.startsWith('cron(') ? expression : `cron(${expression})`,
     kind: 'cron',
     description: `Cron ${expression.replace(/^cron\(|\)$/g, '')}`,
   }
 }
 
-export function nextScheduleRuns(
-  expression: string,
-  zone: string,
-  from: Date = new Date(),
-  count = 5,
-): string[] {
+export function nextScheduleRuns(expression: string, zone: string, from: Date = new Date(), count = 5): string[] {
   const parsed = normalizeScheduleExpression(expression)
   const validatedZone = validateTimezone(zone)
   const amount = Math.min(20, Math.max(1, count))
   const duration = rateMilliseconds(parsed.normalized)
   if (duration)
-    return Array.from({ length: amount }, (_, index) =>
-      new Date(from.getTime() + duration * (index + 1)).toISOString(),
-    )
+    return Array.from({ length: amount }, (_, index) => new Date(from.getTime() + duration * (index + 1)).toISOString())
   const fields = cronFields(parsed.normalized)
   const runs: string[] = []
   const seen = new Set<string>()
@@ -256,19 +222,11 @@ export function nextScheduleRuns(
     cursor = new Date(cursor.getTime() + 60_000)
     iterations++
   }
-  if (runs.length < amount)
-    throw new Error(
-      'Schedule produced no runs within the bounded preview horizon.',
-    )
+  if (runs.length < amount) throw new Error('Schedule produced no runs within the bounded preview horizon.')
   return runs
 }
 
-export function previewSchedule(
-  expression: string,
-  zone = 'UTC',
-  from: Date = new Date(),
-  count = 5,
-): SchedulePreview {
+export function previewSchedule(expression: string, zone = 'UTC', from: Date = new Date(), count = 5): SchedulePreview {
   const parsed = normalizeScheduleExpression(expression)
   const nextRuns = nextScheduleRuns(parsed.normalized, zone, from, count)
   const notes =
@@ -276,9 +234,7 @@ export function previewSchedule(
       ? [
           'Server cron and EventBridge use the same wall-clock preview; provider-specific extensions are retained only when supported.',
         ]
-      : [
-          'Rate schedules use elapsed-time intervals and are not shifted by DST.',
-        ]
+      : ['Rate schedules use elapsed-time intervals and are not shifted by DST.']
   return {
     ...parsed,
     timezone: validateTimezone(zone),

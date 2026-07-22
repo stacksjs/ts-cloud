@@ -58,8 +58,18 @@ export class RuntimeStreamRegistry {
     this.sweep()
     const at = this.now().toISOString()
     const record: RuntimeStreamRecord = {
-      id: randomUUID(), workloadId, kind, state: 'open', chunks: [], cursor: 0, droppedBytes: 0,
-      bufferedBytes: 0, createdAt: at, updatedAt: at, abort: new AbortController(), listeners: new Set(),
+      id: randomUUID(),
+      workloadId,
+      kind,
+      state: 'open',
+      chunks: [],
+      cursor: 0,
+      droppedBytes: 0,
+      bufferedBytes: 0,
+      createdAt: at,
+      updatedAt: at,
+      abort: new AbortController(),
+      listeners: new Set(),
     }
     this.records.set(record.id, record)
     return this.snapshot(record, 0)
@@ -73,7 +83,10 @@ export class RuntimeStreamRegistry {
     const record = this.records.get(id)
     if (!record || record.state !== 'open' || !data) return record ? this.snapshot(record, record.cursor) : undefined
     const bytes = Buffer.from(data)
-    const bounded = bytes.byteLength > this.maxBufferBytes ? bytes.subarray(bytes.byteLength - this.maxBufferBytes).toString('utf8') : data
+    const bounded =
+      bytes.byteLength > this.maxBufferBytes
+        ? bytes.subarray(bytes.byteLength - this.maxBufferBytes).toString('utf8')
+        : data
     const chunk: RuntimeStreamChunk = { cursor: ++record.cursor, stream, data: bounded, at: this.now().toISOString() }
     record.chunks.push(chunk)
     record.bufferedBytes += Buffer.byteLength(bounded)
@@ -95,7 +108,11 @@ export class RuntimeStreamRegistry {
     return this.snapshot(record, Math.max(0, Math.floor(after)))
   }
 
-  close(id: string, state: Exclude<RuntimeStreamState, 'open'> = 'complete', error?: string): RuntimeStreamSnapshot | undefined {
+  close(
+    id: string,
+    state: Exclude<RuntimeStreamState, 'open'> = 'complete',
+    error?: string,
+  ): RuntimeStreamSnapshot | undefined {
     const record = this.records.get(id)
     if (!record || record.state !== 'open') return record ? this.snapshot(record, record.cursor) : undefined
     record.state = state
@@ -112,7 +129,11 @@ export class RuntimeStreamRegistry {
     return this.close(id, 'cancelled')
   }
 
-  subscribe(id: string, workloadId: string, listener: (snapshot: RuntimeStreamSnapshot) => void): (() => void) | undefined {
+  subscribe(
+    id: string,
+    workloadId: string,
+    listener: (snapshot: RuntimeStreamSnapshot) => void,
+  ): (() => void) | undefined {
     const record = this.records.get(id)
     if (!record || record.workloadId !== workloadId) return undefined
     record.listeners.add(listener)
@@ -140,9 +161,17 @@ export class RuntimeStreamRegistry {
     const first = record.chunks[0]?.cursor ?? record.cursor + 1
     const reset = after > 0 && after < first - 1
     return {
-      id: record.id, workloadId: record.workloadId, kind: record.kind, state: record.state,
-      chunks: record.chunks.filter(chunk => reset || chunk.cursor > after), cursor: record.cursor,
-      reset, droppedBytes: record.droppedBytes, createdAt: record.createdAt, updatedAt: record.updatedAt, error: record.error,
+      id: record.id,
+      workloadId: record.workloadId,
+      kind: record.kind,
+      state: record.state,
+      chunks: record.chunks.filter((chunk) => reset || chunk.cursor > after),
+      cursor: record.cursor,
+      reset,
+      droppedBytes: record.droppedBytes,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      error: record.error,
     }
   }
 

@@ -1,16 +1,331 @@
-import type { ControlPlaneStore,JsonValue } from '../control-plane'
-import type { RegionalExecution,RegionalOperationKind,RegionalTarget,RegionalTopology,RegionalTrafficRoute,ReplicationChannel } from './types'
-type Row=Record<string,unknown>;const parse=<T>(v:unknown,d:T):T=>{try{return JSON.parse(String(v))}catch{return d}},opt=(v:unknown)=>v==null?undefined:String(v)
-const topology=(r:Row):RegionalTopology=>({id:String(r.id),organizationId:String(r.organization_id),projectId:String(r.project_id),environmentId:opt(r.environment_id),name:String(r.name),hostname:String(r.hostname),homeRegion:String(r.home_region),regions:parse(r.regions,[]),trafficPolicy:String(r.traffic_policy) as RegionalTopology['trafficPolicy'],dataPolicy:parse(r.data_policy,{replicate:[],maxLagSeconds:60,retainOnDestroy:true}),status:String(r.status) as RegionalTopology['status'],activeRegion:String(r.active_region),revision:opt(r.revision),version:Number(r.version),createdAt:String(r.created_at),updatedAt:String(r.updated_at)})
-const target=(r:Row):RegionalTarget=>({id:String(r.id),topologyId:String(r.topology_id),region:String(r.region),role:String(r.role) as RegionalTarget['role'],provider:String(r.provider),stackId:opt(r.stack_id),stackRevision:opt(r.stack_revision),status:String(r.status) as RegionalTarget['status'],health:parse(r.health,{}),lastHealthyAt:opt(r.last_healthy_at),version:Number(r.version),createdAt:String(r.created_at),updatedAt:String(r.updated_at)})
-const channel=(r:Row):ReplicationChannel=>({id:String(r.id),topologyId:String(r.topology_id),kind:String(r.kind) as ReplicationChannel['kind'],sourceRegion:String(r.source_region),targetRegion:String(r.target_region),config:parse(r.config,{}),status:String(r.status) as ReplicationChannel['status'],checkpoint:opt(r.checkpoint),lagSeconds:r.lag_seconds==null?undefined:Number(r.lag_seconds),lastVerifiedAt:opt(r.last_verified_at),version:Number(r.version),createdAt:String(r.created_at),updatedAt:String(r.updated_at)})
-const route=(r:Row):RegionalTrafficRoute=>({id:String(r.id),topologyId:String(r.topology_id),hostname:String(r.hostname),dnsProvider:String(r.dns_provider),cdnEnabled:Number(r.cdn_enabled)===1,wafEnabled:Number(r.waf_enabled)===1,weights:parse(r.weights,{}),desiredWeights:parse(r.desired_weights,{}),status:String(r.status) as RegionalTrafficRoute['status'],providerState:parse(r.provider_state,{}),version:Number(r.version),createdAt:String(r.created_at),updatedAt:String(r.updated_at)})
-const execution=(r:Row):RegionalExecution=>({id:String(r.id),topologyId:String(r.topology_id),operationId:opt(r.operation_id),kind:String(r.kind) as RegionalOperationKind,requestedRegion:opt(r.requested_region),revision:opt(r.revision),plan:parse(r.plan,[]),currentStep:opt(r.current_step),completedSteps:parse(r.completed_steps,[]),status:String(r.status) as RegionalExecution['status'],error:opt(r.error),createdAt:String(r.created_at),updatedAt:String(r.updated_at)})
-export class RegionStore{constructor(readonly control:ControlPlaneStore,private now:()=>Date=()=>new Date(),private id:()=>string=()=>crypto.randomUUID()){}
-create(input:{organizationId:string;projectId:string;environmentId?:string;name:string;hostname:string;regions:RegionalTopology['regions'];trafficPolicy:RegionalTopology['trafficPolicy'];dataPolicy:RegionalTopology['dataPolicy'];dnsProvider?:string;cdnEnabled?:boolean;wafEnabled?:boolean}):RegionalTopology{return this.control.transaction(()=>{if(input.regions.length<2||new Set(input.regions.map(v=>v.region)).size!==input.regions.length||input.regions.filter(v=>v.role==='primary').length!==1)throw new Error('A topology requires unique regions and exactly one primary.');const primary=input.regions.find(v=>v.role==='primary')!,id=this.id(),at=this.now().toISOString();this.control.database.run("INSERT INTO regional_topologies (id,organization_id,project_id,environment_id,name,hostname,home_region,regions,traffic_policy,data_policy,status,active_region,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)",[id,input.organizationId,input.projectId,input.environmentId??null,input.name,input.hostname,primary.region,JSON.stringify(input.regions),input.trafficPolicy,JSON.stringify(input.dataPolicy),primary.region,at,at]);for(const item of input.regions)this.control.database.run("INSERT INTO regional_targets (id,topology_id,region,role,provider,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)",[this.id(),id,item.region,item.role,item.provider,at,at]);for(const kind of input.dataPolicy.replicate)for(const source of input.regions)for(const destination of input.regions.filter(v=>v.region!==source.region))this.control.database.run("INSERT INTO regional_replication_channels (id,topology_id,kind,source_region,target_region,config,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'pending',?,?)",[this.id(),id,kind,source.region,destination.region,'{}',at,at]);const weights=Object.fromEntries(input.regions.map(v=>[v.region,v.region===primary.region?100:0]));this.control.database.run("INSERT INTO regional_traffic_routes (id,topology_id,hostname,dns_provider,cdn_enabled,waf_enabled,weights,desired_weights,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?, 'pending',?,?)",[this.id(),id,input.hostname,input.dnsProvider??'route53',input.cdnEnabled?1:0,input.wafEnabled?1:0,JSON.stringify(weights),JSON.stringify(weights),at,at]);return this.get(id)!})}
-get(id:string):RegionalTopology|undefined{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_topologies WHERE id=?').get(id);return row?topology(row):undefined}list(projectId:string):RegionalTopology[]{return this.control.database.query<Row,[string]>('SELECT * FROM regional_topologies WHERE project_id=? ORDER BY name').all(projectId).map(topology)}targets(id:string):RegionalTarget[]{return this.control.database.query<Row,[string]>('SELECT * FROM regional_targets WHERE topology_id=? ORDER BY role,region').all(id).map(target)}channels(id:string):ReplicationChannel[]{return this.control.database.query<Row,[string]>('SELECT * FROM regional_replication_channels WHERE topology_id=? ORDER BY kind,target_region').all(id).map(channel)}route(id:string):RegionalTrafficRoute|undefined{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_traffic_routes WHERE topology_id=?').get(id);return row?route(row):undefined}
-updateTopology(id:string,patch:Partial<Pick<RegionalTopology,'status'|'activeRegion'|'revision'|'regions'>>):RegionalTopology{const v=this.get(id);if(!v)throw new Error('Regional topology was not found.');const n={...v,...patch},at=this.now().toISOString();this.control.database.run('UPDATE regional_topologies SET status=?,active_region=?,revision=?,regions=?,version=version+1,updated_at=? WHERE id=?',[n.status,n.activeRegion,n.revision??null,JSON.stringify(n.regions),at,id]);return this.get(id)!}
-updateTarget(id:string,patch:Partial<Pick<RegionalTarget,'role'|'stackId'|'stackRevision'|'status'|'health'|'lastHealthyAt'>>):RegionalTarget{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_targets WHERE id=?').get(id);if(!row)throw new Error('Regional target was not found.');const v=target(row),n={...v,...patch},at=this.now().toISOString();this.control.database.run('UPDATE regional_targets SET role=?,stack_id=?,stack_revision=?,status=?,health=?,last_healthy_at=?,version=version+1,updated_at=? WHERE id=?',[n.role,n.stackId??null,n.stackRevision??null,n.status,JSON.stringify(n.health),n.lastHealthyAt??null,at,id]);return target(this.control.database.query<Row,[string]>('SELECT * FROM regional_targets WHERE id=?').get(id)!)}
-updateChannel(id:string,patch:Partial<Pick<ReplicationChannel,'status'|'checkpoint'|'lagSeconds'|'lastVerifiedAt'>>):ReplicationChannel{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_replication_channels WHERE id=?').get(id);if(!row)throw new Error('Replication channel was not found.');const v=channel(row),n={...v,...patch},at=this.now().toISOString();this.control.database.run('UPDATE regional_replication_channels SET status=?,checkpoint=?,lag_seconds=?,last_verified_at=?,version=version+1,updated_at=? WHERE id=?',[n.status,n.checkpoint??null,n.lagSeconds??null,n.lastVerifiedAt??null,at,id]);return channel(this.control.database.query<Row,[string]>('SELECT * FROM regional_replication_channels WHERE id=?').get(id)!)}
-updateRoute(id:string,patch:Partial<Pick<RegionalTrafficRoute,'weights'|'desiredWeights'|'status'|'providerState'>>):RegionalTrafficRoute{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_traffic_routes WHERE id=?').get(id);if(!row)throw new Error('Traffic route was not found.');const v=route(row),n={...v,...patch},at=this.now().toISOString();this.control.database.run('UPDATE regional_traffic_routes SET weights=?,desired_weights=?,status=?,provider_state=?,version=version+1,updated_at=? WHERE id=?',[JSON.stringify(n.weights),JSON.stringify(n.desiredWeights),n.status,JSON.stringify(n.providerState),at,id]);return route(this.control.database.query<Row,[string]>('SELECT * FROM regional_traffic_routes WHERE id=?').get(id)!)}
-createExecution(input:{topologyId:string;operationId?:string;kind:RegionalOperationKind;requestedRegion?:string;revision?:string;plan:string[]}):RegionalExecution{const id=this.id(),at=this.now().toISOString();this.control.database.run("INSERT INTO regional_executions (id,topology_id,operation_id,kind,requested_region,revision,plan,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'queued',?,?)",[id,input.topologyId,input.operationId??null,input.kind,input.requestedRegion??null,input.revision??null,JSON.stringify(input.plan),at,at]);return this.execution(id)!}execution(id:string):RegionalExecution|undefined{const row=this.control.database.query<Row,[string]>('SELECT * FROM regional_executions WHERE id=?').get(id);return row?execution(row):undefined}executions(id:string):RegionalExecution[]{return this.control.database.query<Row,[string]>('SELECT * FROM regional_executions WHERE topology_id=? ORDER BY created_at DESC').all(id).map(execution)}updateExecution(id:string,patch:Partial<Pick<RegionalExecution,'operationId'|'currentStep'|'completedSteps'|'status'|'error'>>):RegionalExecution{const v=this.execution(id);if(!v)throw new Error('Regional execution was not found.');const n={...v,...patch},at=this.now().toISOString();this.control.database.run('UPDATE regional_executions SET operation_id=?,current_step=?,completed_steps=?,status=?,error=?,updated_at=? WHERE id=?',[n.operationId??null,n.currentStep??null,JSON.stringify(n.completedSteps),n.status,n.error??null,at,id]);return this.execution(id)!}}
+import type { ControlPlaneStore, JsonValue } from '../control-plane'
+import type { RegionalExecution, RegionalOperationKind, RegionalTarget, RegionalTopology, RegionalTrafficRoute, ReplicationChannel } from './types'
+
+type Row = Record<string, unknown>
+const parse = <T>(v: unknown, d: T): T => {
+    try {
+      return JSON.parse(String(v))
+    } catch {
+      return d
+    }
+  },
+  opt = (v: unknown) => (v == null ? undefined : String(v))
+const topology = (r: Row): RegionalTopology => ({
+  id: String(r.id),
+  organizationId: String(r.organization_id),
+  projectId: String(r.project_id),
+  environmentId: opt(r.environment_id),
+  name: String(r.name),
+  hostname: String(r.hostname),
+  homeRegion: String(r.home_region),
+  regions: parse(r.regions, []),
+  trafficPolicy: String(r.traffic_policy) as RegionalTopology['trafficPolicy'],
+  dataPolicy: parse(r.data_policy, { replicate: [], maxLagSeconds: 60, retainOnDestroy: true }),
+  status: String(r.status) as RegionalTopology['status'],
+  activeRegion: String(r.active_region),
+  revision: opt(r.revision),
+  version: Number(r.version),
+  createdAt: String(r.created_at),
+  updatedAt: String(r.updated_at),
+})
+const target = (r: Row): RegionalTarget => ({
+  id: String(r.id),
+  topologyId: String(r.topology_id),
+  region: String(r.region),
+  role: String(r.role) as RegionalTarget['role'],
+  provider: String(r.provider),
+  stackId: opt(r.stack_id),
+  stackRevision: opt(r.stack_revision),
+  status: String(r.status) as RegionalTarget['status'],
+  health: parse(r.health, {}),
+  lastHealthyAt: opt(r.last_healthy_at),
+  version: Number(r.version),
+  createdAt: String(r.created_at),
+  updatedAt: String(r.updated_at),
+})
+const channel = (r: Row): ReplicationChannel => ({
+  id: String(r.id),
+  topologyId: String(r.topology_id),
+  kind: String(r.kind) as ReplicationChannel['kind'],
+  sourceRegion: String(r.source_region),
+  targetRegion: String(r.target_region),
+  config: parse(r.config, {}),
+  status: String(r.status) as ReplicationChannel['status'],
+  checkpoint: opt(r.checkpoint),
+  lagSeconds: r.lag_seconds == null ? undefined : Number(r.lag_seconds),
+  lastVerifiedAt: opt(r.last_verified_at),
+  version: Number(r.version),
+  createdAt: String(r.created_at),
+  updatedAt: String(r.updated_at),
+})
+const route = (r: Row): RegionalTrafficRoute => ({
+  id: String(r.id),
+  topologyId: String(r.topology_id),
+  hostname: String(r.hostname),
+  dnsProvider: String(r.dns_provider),
+  cdnEnabled: Number(r.cdn_enabled) === 1,
+  wafEnabled: Number(r.waf_enabled) === 1,
+  weights: parse(r.weights, {}),
+  desiredWeights: parse(r.desired_weights, {}),
+  status: String(r.status) as RegionalTrafficRoute['status'],
+  providerState: parse(r.provider_state, {}),
+  version: Number(r.version),
+  createdAt: String(r.created_at),
+  updatedAt: String(r.updated_at),
+})
+const execution = (r: Row): RegionalExecution => ({
+  id: String(r.id),
+  topologyId: String(r.topology_id),
+  operationId: opt(r.operation_id),
+  kind: String(r.kind) as RegionalOperationKind,
+  requestedRegion: opt(r.requested_region),
+  revision: opt(r.revision),
+  plan: parse(r.plan, []),
+  currentStep: opt(r.current_step),
+  completedSteps: parse(r.completed_steps, []),
+  status: String(r.status) as RegionalExecution['status'],
+  error: opt(r.error),
+  createdAt: String(r.created_at),
+  updatedAt: String(r.updated_at),
+})
+export class RegionStore {
+  constructor(
+    readonly control: ControlPlaneStore,
+    private now: () => Date = () => new Date(),
+    private id: () => string = () => crypto.randomUUID(),
+  ) {}
+  create(input: {
+    organizationId: string
+    projectId: string
+    environmentId?: string
+    name: string
+    hostname: string
+    regions: RegionalTopology['regions']
+    trafficPolicy: RegionalTopology['trafficPolicy']
+    dataPolicy: RegionalTopology['dataPolicy']
+    dnsProvider?: string
+    cdnEnabled?: boolean
+    wafEnabled?: boolean
+  }): RegionalTopology {
+    return this.control.transaction(() => {
+      if (
+        input.regions.length < 2 ||
+        new Set(input.regions.map((v) => v.region)).size !== input.regions.length ||
+        input.regions.filter((v) => v.role === 'primary').length !== 1
+      )
+        throw new Error('A topology requires unique regions and exactly one primary.')
+      const primary = input.regions.find((v) => v.role === 'primary')!,
+        id = this.id(),
+        at = this.now().toISOString()
+      this.control.database.run(
+        "INSERT INTO regional_topologies (id,organization_id,project_id,environment_id,name,hostname,home_region,regions,traffic_policy,data_policy,status,active_region,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,'draft',?,?,?)",
+        [
+          id,
+          input.organizationId,
+          input.projectId,
+          input.environmentId ?? null,
+          input.name,
+          input.hostname,
+          primary.region,
+          JSON.stringify(input.regions),
+          input.trafficPolicy,
+          JSON.stringify(input.dataPolicy),
+          primary.region,
+          at,
+          at,
+        ],
+      )
+      for (const item of input.regions)
+        this.control.database.run(
+          "INSERT INTO regional_targets (id,topology_id,region,role,provider,status,created_at,updated_at) VALUES (?,?,?,?,?,'pending',?,?)",
+          [this.id(), id, item.region, item.role, item.provider, at, at],
+        )
+      for (const kind of input.dataPolicy.replicate)
+        for (const source of input.regions)
+          for (const destination of input.regions.filter((v) => v.region !== source.region))
+            this.control.database.run(
+              "INSERT INTO regional_replication_channels (id,topology_id,kind,source_region,target_region,config,status,created_at,updated_at) VALUES (?,?,?,?,?,?,'pending',?,?)",
+              [this.id(), id, kind, source.region, destination.region, '{}', at, at],
+            )
+      const weights = Object.fromEntries(input.regions.map((v) => [v.region, v.region === primary.region ? 100 : 0]))
+      this.control.database.run(
+        "INSERT INTO regional_traffic_routes (id,topology_id,hostname,dns_provider,cdn_enabled,waf_enabled,weights,desired_weights,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?, 'pending',?,?)",
+        [
+          this.id(),
+          id,
+          input.hostname,
+          input.dnsProvider ?? 'route53',
+          input.cdnEnabled ? 1 : 0,
+          input.wafEnabled ? 1 : 0,
+          JSON.stringify(weights),
+          JSON.stringify(weights),
+          at,
+          at,
+        ],
+      )
+      return this.get(id)!
+    })
+  }
+  get(id: string): RegionalTopology | undefined {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM regional_topologies WHERE id=?').get(id)
+    return row ? topology(row) : undefined
+  }
+  list(projectId: string): RegionalTopology[] {
+    return this.control.database
+      .query<Row, [string]>('SELECT * FROM regional_topologies WHERE project_id=? ORDER BY name')
+      .all(projectId)
+      .map(topology)
+  }
+  targets(id: string): RegionalTarget[] {
+    return this.control.database
+      .query<Row, [string]>('SELECT * FROM regional_targets WHERE topology_id=? ORDER BY role,region')
+      .all(id)
+      .map(target)
+  }
+  channels(id: string): ReplicationChannel[] {
+    return this.control.database
+      .query<Row, [string]>(
+        'SELECT * FROM regional_replication_channels WHERE topology_id=? ORDER BY kind,target_region',
+      )
+      .all(id)
+      .map(channel)
+  }
+  route(id: string): RegionalTrafficRoute | undefined {
+    const row = this.control.database
+      .query<Row, [string]>('SELECT * FROM regional_traffic_routes WHERE topology_id=?')
+      .get(id)
+    return row ? route(row) : undefined
+  }
+  updateTopology(
+    id: string,
+    patch: Partial<Pick<RegionalTopology, 'status' | 'activeRegion' | 'revision' | 'regions'>>,
+  ): RegionalTopology {
+    const v = this.get(id)
+    if (!v) throw new Error('Regional topology was not found.')
+    const n = { ...v, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE regional_topologies SET status=?,active_region=?,revision=?,regions=?,version=version+1,updated_at=? WHERE id=?',
+      [n.status, n.activeRegion, n.revision ?? null, JSON.stringify(n.regions), at, id],
+    )
+    return this.get(id)!
+  }
+  updateTarget(
+    id: string,
+    patch: Partial<Pick<RegionalTarget, 'role' | 'stackId' | 'stackRevision' | 'status' | 'health' | 'lastHealthyAt'>>,
+  ): RegionalTarget {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM regional_targets WHERE id=?').get(id)
+    if (!row) throw new Error('Regional target was not found.')
+    const v = target(row),
+      n = { ...v, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE regional_targets SET role=?,stack_id=?,stack_revision=?,status=?,health=?,last_healthy_at=?,version=version+1,updated_at=? WHERE id=?',
+      [
+        n.role,
+        n.stackId ?? null,
+        n.stackRevision ?? null,
+        n.status,
+        JSON.stringify(n.health),
+        n.lastHealthyAt ?? null,
+        at,
+        id,
+      ],
+    )
+    return target(this.control.database.query<Row, [string]>('SELECT * FROM regional_targets WHERE id=?').get(id)!)
+  }
+  updateChannel(
+    id: string,
+    patch: Partial<Pick<ReplicationChannel, 'status' | 'checkpoint' | 'lagSeconds' | 'lastVerifiedAt'>>,
+  ): ReplicationChannel {
+    const row = this.control.database
+      .query<Row, [string]>('SELECT * FROM regional_replication_channels WHERE id=?')
+      .get(id)
+    if (!row) throw new Error('Replication channel was not found.')
+    const v = channel(row),
+      n = { ...v, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE regional_replication_channels SET status=?,checkpoint=?,lag_seconds=?,last_verified_at=?,version=version+1,updated_at=? WHERE id=?',
+      [n.status, n.checkpoint ?? null, n.lagSeconds ?? null, n.lastVerifiedAt ?? null, at, id],
+    )
+    return channel(
+      this.control.database.query<Row, [string]>('SELECT * FROM regional_replication_channels WHERE id=?').get(id)!,
+    )
+  }
+  updateRoute(
+    id: string,
+    patch: Partial<Pick<RegionalTrafficRoute, 'weights' | 'desiredWeights' | 'status' | 'providerState'>>,
+  ): RegionalTrafficRoute {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM regional_traffic_routes WHERE id=?').get(id)
+    if (!row) throw new Error('Traffic route was not found.')
+    const v = route(row),
+      n = { ...v, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE regional_traffic_routes SET weights=?,desired_weights=?,status=?,provider_state=?,version=version+1,updated_at=? WHERE id=?',
+      [JSON.stringify(n.weights), JSON.stringify(n.desiredWeights), n.status, JSON.stringify(n.providerState), at, id],
+    )
+    return route(
+      this.control.database.query<Row, [string]>('SELECT * FROM regional_traffic_routes WHERE id=?').get(id)!,
+    )
+  }
+  createExecution(input: {
+    topologyId: string
+    operationId?: string
+    kind: RegionalOperationKind
+    requestedRegion?: string
+    revision?: string
+    plan: string[]
+  }): RegionalExecution {
+    const id = this.id(),
+      at = this.now().toISOString()
+    this.control.database.run(
+      "INSERT INTO regional_executions (id,topology_id,operation_id,kind,requested_region,revision,plan,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'queued',?,?)",
+      [
+        id,
+        input.topologyId,
+        input.operationId ?? null,
+        input.kind,
+        input.requestedRegion ?? null,
+        input.revision ?? null,
+        JSON.stringify(input.plan),
+        at,
+        at,
+      ],
+    )
+    return this.execution(id)!
+  }
+  execution(id: string): RegionalExecution | undefined {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM regional_executions WHERE id=?').get(id)
+    return row ? execution(row) : undefined
+  }
+  executions(id: string): RegionalExecution[] {
+    return this.control.database
+      .query<Row, [string]>('SELECT * FROM regional_executions WHERE topology_id=? ORDER BY created_at DESC')
+      .all(id)
+      .map(execution)
+  }
+  updateExecution(
+    id: string,
+    patch: Partial<Pick<RegionalExecution, 'operationId' | 'currentStep' | 'completedSteps' | 'status' | 'error'>>,
+  ): RegionalExecution {
+    const v = this.execution(id)
+    if (!v) throw new Error('Regional execution was not found.')
+    const n = { ...v, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE regional_executions SET operation_id=?,current_step=?,completed_steps=?,status=?,error=?,updated_at=? WHERE id=?',
+      [
+        n.operationId ?? null,
+        n.currentStep ?? null,
+        JSON.stringify(n.completedSteps),
+        n.status,
+        n.error ?? null,
+        at,
+        id,
+      ],
+    )
+    return this.execution(id)!
+  }
+}

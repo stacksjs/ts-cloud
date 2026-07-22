@@ -86,46 +86,27 @@ afterEach(() => {
 
 describe('schedule parsing and provider capabilities', () => {
   it('normalizes presets, rate expressions, and standard/EventBridge cron', () => {
-    expect(
-      previewSchedule('hourly', 'UTC', new Date('2026-01-01T00:00:00Z'), 2),
-    ).toMatchObject({
+    expect(previewSchedule('hourly', 'UTC', new Date('2026-01-01T00:00:00Z'), 2)).toMatchObject({
       normalized: 'cron(0 * * * *)',
       nextRuns: ['2026-01-01T01:00:00.000Z', '2026-01-01T02:00:00.000Z'],
     })
-    expect(
-      nextScheduleRuns(
-        'rate(5 minutes)',
-        'UTC',
-        new Date('2026-01-01T00:00:00Z'),
-        2,
-      ),
-    ).toEqual(['2026-01-01T00:05:00.000Z', '2026-01-01T00:10:00.000Z'])
-    expect(
-      nextScheduleRuns(
-        'cron(0 9 ? * 2 2026)',
-        'UTC',
-        new Date('2026-01-04T00:00:00Z'),
-        1,
-      )[0],
-    ).toBe('2026-01-05T09:00:00.000Z')
+    expect(nextScheduleRuns('rate(5 minutes)', 'UTC', new Date('2026-01-01T00:00:00Z'), 2)).toEqual([
+      '2026-01-01T00:05:00.000Z',
+      '2026-01-01T00:10:00.000Z',
+    ])
+    expect(nextScheduleRuns('cron(0 9 ? * 2 2026)', 'UTC', new Date('2026-01-04T00:00:00Z'), 1)[0]).toBe(
+      '2026-01-05T09:00:00.000Z',
+    )
   })
   it('skips nonexistent spring wall time and does not double-run repeated fall wall time', () => {
-    expect(
-      nextScheduleRuns(
-        '30 2 * * *',
-        'America/Los_Angeles',
-        new Date('2026-03-08T08:00:00Z'),
-        2,
-      ),
-    ).toEqual(['2026-03-09T09:30:00.000Z', '2026-03-10T09:30:00.000Z'])
-    expect(
-      nextScheduleRuns(
-        '30 1 * * *',
-        'America/Los_Angeles',
-        new Date('2026-11-01T07:00:00Z'),
-        2,
-      ),
-    ).toEqual(['2026-11-01T08:30:00.000Z', '2026-11-02T09:30:00.000Z'])
+    expect(nextScheduleRuns('30 2 * * *', 'America/Los_Angeles', new Date('2026-03-08T08:00:00Z'), 2)).toEqual([
+      '2026-03-09T09:30:00.000Z',
+      '2026-03-10T09:30:00.000Z',
+    ])
+    expect(nextScheduleRuns('30 1 * * *', 'America/Los_Angeles', new Date('2026-11-01T07:00:00Z'), 2)).toEqual([
+      '2026-11-01T08:30:00.000Z',
+      '2026-11-02T09:30:00.000Z',
+    ])
   })
   it('renders provider-specific desired state without pretending unsupported semantics match', () => {
     const target = fixture(),
@@ -133,12 +114,10 @@ describe('schedule parsing and provider capabilities', () => {
     expect(renderServerCron(job)).toMatchObject({
       path: `/etc/cron.d/ts-cloud-${job.id}`,
     })
-    expect(renderServerCron(job).content).toContain(
-      'CRON_TZ=America/Los_Angeles',
+    expect(renderServerCron(job).content).toContain('CRON_TZ=America/Los_Angeles')
+    expect(() => renderServerCron({ ...job, expression: 'cron(30 2 ? * 2 *)' })).toThrow(
+      'EventBridge six-field cron extensions',
     )
-    expect(() =>
-      renderServerCron({ ...job, expression: 'cron(30 2 ? * 2 *)' }),
-    ).toThrow('EventBridge six-field cron extensions')
     expect(
       eventBridgeScheduleInput({
         ...job,
@@ -220,22 +199,17 @@ describe('durable job execution', () => {
         missedRunPolicy: 'catch_up',
         overlapPolicy: 'allow',
       })
-    target.controlPlane.database.run(
-      'UPDATE scheduled_jobs SET next_run_at=? WHERE id=?',
-      ['2026-03-07T08:01:00Z', job.id],
-    )
+    target.controlPlane.database.run('UPDATE scheduled_jobs SET next_run_at=? WHERE id=?', [
+      '2026-03-07T08:01:00Z',
+      job.id,
+    ])
     target.setNow('2026-03-07T08:04:30Z')
     const executions = new JobService(target.store, {
       queue: new DurableOperationQueue(target.controlPlane, {
         now: target.now,
       }),
     }).tick(target.now())
-    expect(executions.map((item) => item.trigger)).toEqual([
-      'scheduled',
-      'catch_up',
-      'catch_up',
-      'catch_up',
-    ])
+    expect(executions.map((item) => item.trigger)).toEqual(['scheduled', 'catch_up', 'catch_up', 'catch_up'])
     expect(target.store.get(job.id)?.nextRunAt).toBe('2026-03-07T08:05:00.000Z')
   })
 })
@@ -273,21 +247,21 @@ describe('config reconciliation', () => {
       workers: 1,
       drifted: 0,
     })
-    expect(target.store.list(target.project.id, { environmentId: target.environment.id }).map(item => item.version)).toEqual(firstJobs.map(item => item.version))
-    expect(target.store.listWorkers(target.project.id, target.environment.id).map(item => item.version)).toEqual(firstWorkers.map(item => item.version))
+    expect(
+      target.store.list(target.project.id, { environmentId: target.environment.id }).map((item) => item.version),
+    ).toEqual(firstJobs.map((item) => item.version))
+    expect(target.store.listWorkers(target.project.id, target.environment.id).map((item) => item.version)).toEqual(
+      firstWorkers.map((item) => item.version),
+    )
     expect(
       target.store.list(target.project.id, {
         environmentId: target.environment.id,
       }),
     ).toHaveLength(2)
-    expect(
-      target.store.listWorkers(target.project.id, target.environment.id),
-    ).toMatchObject([{ queue: 'emails', processes: 2, origin: 'config' }])
-    const result = synchronizeConfiguredJobs(
-      target.store,
-      { project: { slug: 'app' }, sites: {} } as any,
-      scope,
-    )
+    expect(target.store.listWorkers(target.project.id, target.environment.id)).toMatchObject([
+      { queue: 'emails', processes: 2, origin: 'config' },
+    ])
+    const result = synchronizeConfiguredJobs(target.store, { project: { slug: 'app' }, sites: {} } as any, scope)
     expect(result.drifted).toBe(3)
     expect(
       target.store.list(target.project.id, {
@@ -333,10 +307,7 @@ describe('serverless config reconciliation', () => {
       target: { kind: 'serverless_scheduler' },
       missedRunPolicy: 'catch_up',
     })
-    const workers = target.store.listWorkers(
-      target.project.id,
-      target.environment.id,
-    )
+    const workers = target.store.listWorkers(target.project.id, target.environment.id)
     expect(workers.find((item) => item.queue === 'emails')).toMatchObject({
       provider: 'lambda',
       processes: 1,
@@ -357,37 +328,57 @@ describe('provider reconciliation adapters', () => {
     const files = new Map<string, string>()
     let writes = 0
     const adapter = new ServerCronJobAdapter({
-      read: async path => files.get(path),
+      read: async (path) => files.get(path),
       writeRootOwned: async (path, content) => {
         writes++
         files.set(path, content)
       },
-      removeRootOwned: async path => { files.delete(path) },
+      removeRootOwned: async (path) => {
+        files.delete(path)
+      },
     })
     const reconciler = new JobProviderReconciler(target.store)
-    expect(await reconciler.reconcile(job, adapter)).toMatchObject({ reconciliationStatus: 'in_sync', observedState: { applied: true } })
+    expect(await reconciler.reconcile(job, adapter)).toMatchObject({
+      reconciliationStatus: 'in_sync',
+      observedState: { applied: true },
+    })
     expect(writes).toBe(1)
-    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({ reconciliationStatus: 'in_sync' })
+    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({
+      reconciliationStatus: 'in_sync',
+    })
     expect(writes).toBe(1)
   })
 
   it('plans or applies EventBridge drift through an injected provider transport', async () => {
     const target = fixture()
-    const job = target.create({ provider: 'eventbridge', timezone: 'UTC', expression: 'rate(5 minutes)', target: { kind: 'serverless_scheduler', action: 'run' } })
+    const job = target.create({
+      provider: 'eventbridge',
+      timezone: 'UTC',
+      expression: 'rate(5 minutes)',
+      target: { kind: 'serverless_scheduler', action: 'run' },
+    })
     const schedules = new Map<string, Record<string, any>>()
     let puts = 0
     const adapter = new EventBridgeJobAdapter({
-      get: async name => schedules.get(name),
+      get: async (name) => schedules.get(name),
       put: async (input) => {
         puts++
         schedules.set(String(input.Name), input)
       },
-      remove: async name => { schedules.delete(name) },
+      remove: async (name) => {
+        schedules.delete(name)
+      },
     })
     const reconciler = new JobProviderReconciler(target.store)
-    expect(await reconciler.reconcile(job, adapter, { apply: false })).toMatchObject({ reconciliationStatus: 'unavailable', observedState: { applyRequired: true } })
+    expect(await reconciler.reconcile(job, adapter, { apply: false })).toMatchObject({
+      reconciliationStatus: 'unavailable',
+      observedState: { applyRequired: true },
+    })
     expect(puts).toBe(0)
-    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({ reconciliationStatus: 'in_sync', observedState: { applied: true } })
+    expect(await reconciler.reconcile(target.store.get(job.id)!, adapter)).toMatchObject({
+      reconciliationStatus: 'in_sync',
+      observedState: { applied: true },
+    })
     expect(puts).toBe(1)
   })
 })

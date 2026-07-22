@@ -2,44 +2,330 @@ import type { ControlPlaneStore, JsonValue } from '../control-plane'
 import type { CapacityPool, CapacityVector, PlacementDecision, PlacementRequirements, PoolBackend, PoolPurpose, RemoteBuild, WorkloadPlacement } from './types'
 
 type Row = Record<string, unknown>
-const parse = <T>(value: unknown, fallback: T): T => { try { return JSON.parse(String(value)) as T } catch { return fallback } }
-const optional = (value: unknown): string | undefined => value == null ? undefined : String(value)
+const parse = <T>(value: unknown, fallback: T): T => {
+  try {
+    return JSON.parse(String(value)) as T
+  } catch {
+    return fallback
+  }
+}
+const optional = (value: unknown): string | undefined => (value == null ? undefined : String(value))
 export const zeroCapacity = (): CapacityVector => ({ cpu: 0, memoryBytes: 0, diskBytes: 0, gpu: 0 })
 export const capacity = (value: Partial<CapacityVector> = {}): CapacityVector => ({ ...zeroCapacity(), ...value })
 
 function pool(row: Row): CapacityPool {
-  return { id: String(row.id), organizationId: String(row.organization_id), projectId: String(row.project_id), name: String(row.name), purpose: String(row.purpose) as PoolPurpose, backend: String(row.backend) as PoolBackend, region: optional(row.region), architecture: optional(row.architecture), labels: parse(row.labels, {}), requiredServerLabels: parse(row.required_server_labels, {}), toleratedTaints: parse(row.tolerated_taints, []), capacity: capacity(parse(row.capacity, {})), reserved: parse(row.reserved, {}), maxWorkloads: Number(row.max_workloads), costWeight: Number(row.cost_weight), spreadKey: optional(row.spread_key), concurrency: Number(row.concurrency), ephemeralWorkspaces: Number(row.ephemeral_workspaces) === 1, allowProductionSecrets: Number(row.allow_production_secrets) === 1, status: String(row.status) as CapacityPool['status'], version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    projectId: String(row.project_id),
+    name: String(row.name),
+    purpose: String(row.purpose) as PoolPurpose,
+    backend: String(row.backend) as PoolBackend,
+    region: optional(row.region),
+    architecture: optional(row.architecture),
+    labels: parse(row.labels, {}),
+    requiredServerLabels: parse(row.required_server_labels, {}),
+    toleratedTaints: parse(row.tolerated_taints, []),
+    capacity: capacity(parse(row.capacity, {})),
+    reserved: parse(row.reserved, {}),
+    maxWorkloads: Number(row.max_workloads),
+    costWeight: Number(row.cost_weight),
+    spreadKey: optional(row.spread_key),
+    concurrency: Number(row.concurrency),
+    ephemeralWorkspaces: Number(row.ephemeral_workspaces) === 1,
+    allowProductionSecrets: Number(row.allow_production_secrets) === 1,
+    status: String(row.status) as CapacityPool['status'],
+    version: Number(row.version),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
 }
 function placement(row: Row): WorkloadPlacement {
-  return { id: String(row.id), projectId: String(row.project_id), environmentId: optional(row.environment_id), resourceId: String(row.resource_id), releaseId: optional(row.release_id), poolId: String(row.pool_id), serverId: optional(row.server_id), purpose: String(row.purpose) as PoolPurpose, requirements: parse(row.requirements, {} as PlacementRequirements), decision: parse(row.decision, {} as PlacementDecision), stateful: Number(row.stateful) === 1, autoReschedule: Number(row.auto_reschedule) === 1, status: String(row.status) as WorkloadPlacement['status'], version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    environmentId: optional(row.environment_id),
+    resourceId: String(row.resource_id),
+    releaseId: optional(row.release_id),
+    poolId: String(row.pool_id),
+    serverId: optional(row.server_id),
+    purpose: String(row.purpose) as PoolPurpose,
+    requirements: parse(row.requirements, {} as PlacementRequirements),
+    decision: parse(row.decision, {} as PlacementDecision),
+    stateful: Number(row.stateful) === 1,
+    autoReschedule: Number(row.auto_reschedule) === 1,
+    status: String(row.status) as WorkloadPlacement['status'],
+    version: Number(row.version),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
 }
 function build(row: Row): RemoteBuild {
-  return { id: String(row.id), projectId: String(row.project_id), resourceId: optional(row.resource_id), poolId: String(row.pool_id), placementId: optional(row.placement_id), operationId: optional(row.operation_id), sourceSha: String(row.source_sha), buildSpec: parse(row.build_spec, {}), credentialPolicy: parse(row.credential_policy, { productionSecrets: false, shortLivedTokenExpiresAt: '' }), workspace: optional(row.workspace), cacheKey: optional(row.cache_key), artifactUri: optional(row.artifact_uri), artifactDigest: optional(row.artifact_digest), status: String(row.status) as RemoteBuild['status'], cleanupAt: optional(row.cleanup_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+  return {
+    id: String(row.id),
+    projectId: String(row.project_id),
+    resourceId: optional(row.resource_id),
+    poolId: String(row.pool_id),
+    placementId: optional(row.placement_id),
+    operationId: optional(row.operation_id),
+    sourceSha: String(row.source_sha),
+    buildSpec: parse(row.build_spec, {}),
+    credentialPolicy: parse(row.credential_policy, { productionSecrets: false, shortLivedTokenExpiresAt: '' }),
+    workspace: optional(row.workspace),
+    cacheKey: optional(row.cache_key),
+    artifactUri: optional(row.artifact_uri),
+    artifactDigest: optional(row.artifact_digest),
+    status: String(row.status) as RemoteBuild['status'],
+    cleanupAt: optional(row.cleanup_at),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
 }
 
 export class PlacementStore {
-  constructor(readonly control: ControlPlaneStore, private now:()=>Date = () => new Date(), private id:()=>string = () => crypto.randomUUID()) {}
+  constructor(
+    readonly control: ControlPlaneStore,
+    private now: () => Date = () => new Date(),
+    private id: () => string = () => crypto.randomUUID(),
+  ) {}
   createPool(input: Omit<CapacityPool, 'id' | 'reserved' | 'version' | 'createdAt' | 'updatedAt'>): CapacityPool {
-    const id = this.id(), at = this.now().toISOString()
-    this.control.database.run('INSERT INTO capacity_pools (id,organization_id,project_id,name,purpose,backend,region,architecture,labels,required_server_labels,tolerated_taints,capacity,reserved,max_workloads,cost_weight,spread_key,concurrency,ephemeral_workspaces,allow_production_secrets,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id,input.organizationId,input.projectId,input.name,input.purpose,input.backend,input.region??null,input.architecture??null,JSON.stringify(input.labels),JSON.stringify(input.requiredServerLabels),JSON.stringify(input.toleratedTaints),JSON.stringify(capacity(input.capacity)),'{}',input.maxWorkloads,input.costWeight,input.spreadKey??null,input.concurrency,input.ephemeralWorkspaces?1:0,input.allowProductionSecrets?1:0,input.status,at,at])
+    const id = this.id(),
+      at = this.now().toISOString()
+    this.control.database.run(
+      'INSERT INTO capacity_pools (id,organization_id,project_id,name,purpose,backend,region,architecture,labels,required_server_labels,tolerated_taints,capacity,reserved,max_workloads,cost_weight,spread_key,concurrency,ephemeral_workspaces,allow_production_secrets,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [
+        id,
+        input.organizationId,
+        input.projectId,
+        input.name,
+        input.purpose,
+        input.backend,
+        input.region ?? null,
+        input.architecture ?? null,
+        JSON.stringify(input.labels),
+        JSON.stringify(input.requiredServerLabels),
+        JSON.stringify(input.toleratedTaints),
+        JSON.stringify(capacity(input.capacity)),
+        '{}',
+        input.maxWorkloads,
+        input.costWeight,
+        input.spreadKey ?? null,
+        input.concurrency,
+        input.ephemeralWorkspaces ? 1 : 0,
+        input.allowProductionSecrets ? 1 : 0,
+        input.status,
+        at,
+        at,
+      ],
+    )
     return this.getPool(id)!
   }
-  getPool(id: string): CapacityPool | undefined { const row = this.control.database.query<Row,[string]>('SELECT * FROM capacity_pools WHERE id=?').get(id); return row ? pool(row) : undefined }
-  listPools(projectId: string): CapacityPool[] { return this.control.database.query<Row,[string]>('SELECT * FROM capacity_pools WHERE project_id=? ORDER BY name').all(projectId).map(pool) }
-  updatePool(id: string, patch: Partial<Pick<CapacityPool,'status'|'reserved'|'capacity'|'concurrency'>>): CapacityPool {
-    const current=this.getPool(id); if(!current) throw new Error('Capacity pool was not found.'); const next={...current,...patch},at=this.now().toISOString()
-    this.control.database.run('UPDATE capacity_pools SET status=?,reserved=?,capacity=?,concurrency=?,version=version+1,updated_at=? WHERE id=?',[next.status,JSON.stringify(next.reserved),JSON.stringify(next.capacity),next.concurrency,at,id]); return this.getPool(id)!
+  getPool(id: string): CapacityPool | undefined {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM capacity_pools WHERE id=?').get(id)
+    return row ? pool(row) : undefined
   }
-  addMember(poolId: string, serverId: string, override: Partial<CapacityVector> = {}): void { const at=this.now().toISOString(); this.control.database.run("INSERT INTO capacity_pool_members (pool_id,server_id,capacity_override,status,created_at,updated_at) VALUES (?,?,?,'active',?,?) ON CONFLICT(pool_id,server_id) DO UPDATE SET capacity_override=excluded.capacity_override,status='active',updated_at=excluded.updated_at",[poolId,serverId,JSON.stringify(override),at,at]) }
-  members(poolId:string): Array<{serverId:string,status:string,capacityOverride:Partial<CapacityVector>}> { return this.control.database.query<Row,[string]>('SELECT * FROM capacity_pool_members WHERE pool_id=? ORDER BY server_id').all(poolId).map(row=>({serverId:String(row.server_id),status:String(row.status),capacityOverride:parse(row.capacity_override,{})})) }
-  memberStatus(poolId:string,serverId:string,status:'active'|'draining'|'offline'):void { this.control.database.run('UPDATE capacity_pool_members SET status=?,updated_at=? WHERE pool_id=? AND server_id=?',[status,this.now().toISOString(),poolId,serverId]) }
-  listPlacements(projectId:string, statuses?:WorkloadPlacement['status'][]):WorkloadPlacement[]{const rows=this.control.database.query<Row,[string]>('SELECT * FROM workload_placements WHERE project_id=? ORDER BY created_at,id').all(projectId).map(placement);return statuses?.length?rows.filter(item=>statuses.includes(item.status)):rows}
-  getPlacement(id:string):WorkloadPlacement|undefined{const row=this.control.database.query<Row,[string]>('SELECT * FROM workload_placements WHERE id=?').get(id);return row?placement(row):undefined}
-  activeUsage(poolId:string,serverId?:string):{resources:CapacityVector,count:number}{const rows=this.control.database.query<Row,[string,string]>('SELECT l.resources,l.server_id FROM capacity_leases l WHERE l.pool_id=? AND l.state=\'active\' AND l.expires_at>?').all(poolId,this.now().toISOString());const selected=serverId?rows.filter(row=>String(row.server_id)===serverId):rows;return{resources:selected.reduce<CapacityVector>((sum,row)=>{const value=capacity(parse<Partial<CapacityVector>>(row.resources,{}));for(const key of Object.keys(sum) as (keyof CapacityVector)[])sum[key]+=value[key];return sum},zeroCapacity()),count:selected.length}}
-  expireLeases():number{return this.control.database.run("UPDATE capacity_leases SET state='expired',updated_at=? WHERE state='active' AND expires_at<=?",[this.now().toISOString(),this.now().toISOString()]).changes}
-  reserve(input:{projectId:string;environmentId?:string;resourceId:string;releaseId?:string;requirements:PlacementRequirements;decision:PlacementDecision}):WorkloadPlacement{return this.control.transaction(()=>{this.expireLeases();const id=this.id(),leaseId=this.id(),at=this.now().toISOString(),expires=new Date(this.now().getTime()+(input.requirements.leaseSeconds??300)*1000).toISOString();this.control.database.run('INSERT INTO workload_placements (id,project_id,environment_id,resource_id,release_id,pool_id,server_id,purpose,requirements,decision,stateful,auto_reschedule,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,\'reserved\',?,?)',[id,input.projectId,input.environmentId??null,input.resourceId,input.releaseId??null,input.decision.poolId,input.decision.serverId??null,input.requirements.purpose,JSON.stringify(input.requirements),JSON.stringify(input.decision),input.requirements.stateful?1:0,input.requirements.autoReschedule&&!input.requirements.stateful?1:0,at,at]);this.control.database.run("INSERT INTO capacity_leases (id,placement_id,pool_id,server_id,resources,state,expires_at,created_at,updated_at) VALUES (?,?,?,?,?,'active',?,?,?)",[leaseId,id,input.decision.poolId,input.decision.serverId??null,JSON.stringify(capacity(input.requirements.resources)),expires,at,at]);return this.getPlacement(id)!})}
-  transitionPlacement(id:string,status:WorkloadPlacement['status']):WorkloadPlacement{const current=this.getPlacement(id);if(!current)throw new Error('Placement was not found.');const at=this.now().toISOString();this.control.database.run('UPDATE workload_placements SET status=?,version=version+1,updated_at=? WHERE id=?',[status,at,id]);if(['released','failed','blocked'].includes(status))this.control.database.run("UPDATE capacity_leases SET state='released',updated_at=? WHERE placement_id=? AND state='active'",[at,id]);return this.getPlacement(id)!}
-  createBuild(input:{projectId:string;resourceId?:string;poolId:string;placementId?:string;operationId?:string;sourceSha:string;buildSpec:JsonValue;tokenExpiresAt:string}):RemoteBuild{const id=this.id(),at=this.now().toISOString();this.control.database.run("INSERT INTO remote_builds (id,project_id,resource_id,pool_id,placement_id,operation_id,source_sha,build_spec,credential_policy,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?)",[id,input.projectId,input.resourceId??null,input.poolId,input.placementId??null,input.operationId??null,input.sourceSha,JSON.stringify(input.buildSpec),JSON.stringify({productionSecrets:false,shortLivedTokenExpiresAt:input.tokenExpiresAt}),at,at]);return this.getBuild(id)!}
-  getBuild(id:string):RemoteBuild|undefined{const row=this.control.database.query<Row,[string]>('SELECT * FROM remote_builds WHERE id=?').get(id);return row?build(row):undefined}
-  updateBuild(id:string,patch:Partial<Pick<RemoteBuild,'status'|'operationId'|'workspace'|'cacheKey'|'artifactUri'|'artifactDigest'|'cleanupAt'>>):RemoteBuild{const current=this.getBuild(id);if(!current)throw new Error('Remote build was not found.');const next={...current,...patch},at=this.now().toISOString();this.control.database.run('UPDATE remote_builds SET operation_id=?,workspace=?,cache_key=?,artifact_uri=?,artifact_digest=?,status=?,cleanup_at=?,updated_at=? WHERE id=?',[next.operationId??null,next.workspace??null,next.cacheKey??null,next.artifactUri??null,next.artifactDigest??null,next.status,next.cleanupAt??null,at,id]);return this.getBuild(id)!}
+  listPools(projectId: string): CapacityPool[] {
+    return this.control.database
+      .query<Row, [string]>('SELECT * FROM capacity_pools WHERE project_id=? ORDER BY name')
+      .all(projectId)
+      .map(pool)
+  }
+  updatePool(
+    id: string,
+    patch: Partial<Pick<CapacityPool, 'status' | 'reserved' | 'capacity' | 'concurrency'>>,
+  ): CapacityPool {
+    const current = this.getPool(id)
+    if (!current) throw new Error('Capacity pool was not found.')
+    const next = { ...current, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE capacity_pools SET status=?,reserved=?,capacity=?,concurrency=?,version=version+1,updated_at=? WHERE id=?',
+      [next.status, JSON.stringify(next.reserved), JSON.stringify(next.capacity), next.concurrency, at, id],
+    )
+    return this.getPool(id)!
+  }
+  addMember(poolId: string, serverId: string, override: Partial<CapacityVector> = {}): void {
+    const at = this.now().toISOString()
+    this.control.database.run(
+      "INSERT INTO capacity_pool_members (pool_id,server_id,capacity_override,status,created_at,updated_at) VALUES (?,?,?,'active',?,?) ON CONFLICT(pool_id,server_id) DO UPDATE SET capacity_override=excluded.capacity_override,status='active',updated_at=excluded.updated_at",
+      [poolId, serverId, JSON.stringify(override), at, at],
+    )
+  }
+  members(poolId: string): Array<{ serverId: string; status: string; capacityOverride: Partial<CapacityVector> }> {
+    return this.control.database
+      .query<Row, [string]>('SELECT * FROM capacity_pool_members WHERE pool_id=? ORDER BY server_id')
+      .all(poolId)
+      .map((row) => ({
+        serverId: String(row.server_id),
+        status: String(row.status),
+        capacityOverride: parse(row.capacity_override, {}),
+      }))
+  }
+  memberStatus(poolId: string, serverId: string, status: 'active' | 'draining' | 'offline'): void {
+    this.control.database.run(
+      'UPDATE capacity_pool_members SET status=?,updated_at=? WHERE pool_id=? AND server_id=?',
+      [status, this.now().toISOString(), poolId, serverId],
+    )
+  }
+  listPlacements(projectId: string, statuses?: WorkloadPlacement['status'][]): WorkloadPlacement[] {
+    const rows = this.control.database
+      .query<Row, [string]>('SELECT * FROM workload_placements WHERE project_id=? ORDER BY created_at,id')
+      .all(projectId)
+      .map(placement)
+    return statuses?.length ? rows.filter((item) => statuses.includes(item.status)) : rows
+  }
+  getPlacement(id: string): WorkloadPlacement | undefined {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM workload_placements WHERE id=?').get(id)
+    return row ? placement(row) : undefined
+  }
+  activeUsage(poolId: string, serverId?: string): { resources: CapacityVector; count: number } {
+    const rows = this.control.database
+      .query<Row, [string, string]>(
+        "SELECT l.resources,l.server_id FROM capacity_leases l WHERE l.pool_id=? AND l.state='active' AND l.expires_at>?",
+      )
+      .all(poolId, this.now().toISOString())
+    const selected = serverId ? rows.filter((row) => String(row.server_id) === serverId) : rows
+    return {
+      resources: selected.reduce<CapacityVector>((sum, row) => {
+        const value = capacity(parse<Partial<CapacityVector>>(row.resources, {}))
+        for (const key of Object.keys(sum) as (keyof CapacityVector)[]) sum[key] += value[key]
+        return sum
+      }, zeroCapacity()),
+      count: selected.length,
+    }
+  }
+  expireLeases(): number {
+    return this.control.database.run(
+      "UPDATE capacity_leases SET state='expired',updated_at=? WHERE state='active' AND expires_at<=?",
+      [this.now().toISOString(), this.now().toISOString()],
+    ).changes
+  }
+  reserve(input: {
+    projectId: string
+    environmentId?: string
+    resourceId: string
+    releaseId?: string
+    requirements: PlacementRequirements
+    decision: PlacementDecision
+  }): WorkloadPlacement {
+    return this.control.transaction(() => {
+      this.expireLeases()
+      const id = this.id(),
+        leaseId = this.id(),
+        at = this.now().toISOString(),
+        expires = new Date(this.now().getTime() + (input.requirements.leaseSeconds ?? 300) * 1000).toISOString()
+      this.control.database.run(
+        "INSERT INTO workload_placements (id,project_id,environment_id,resource_id,release_id,pool_id,server_id,purpose,requirements,decision,stateful,auto_reschedule,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'reserved',?,?)",
+        [
+          id,
+          input.projectId,
+          input.environmentId ?? null,
+          input.resourceId,
+          input.releaseId ?? null,
+          input.decision.poolId,
+          input.decision.serverId ?? null,
+          input.requirements.purpose,
+          JSON.stringify(input.requirements),
+          JSON.stringify(input.decision),
+          input.requirements.stateful ? 1 : 0,
+          input.requirements.autoReschedule && !input.requirements.stateful ? 1 : 0,
+          at,
+          at,
+        ],
+      )
+      this.control.database.run(
+        "INSERT INTO capacity_leases (id,placement_id,pool_id,server_id,resources,state,expires_at,created_at,updated_at) VALUES (?,?,?,?,?,'active',?,?,?)",
+        [
+          leaseId,
+          id,
+          input.decision.poolId,
+          input.decision.serverId ?? null,
+          JSON.stringify(capacity(input.requirements.resources)),
+          expires,
+          at,
+          at,
+        ],
+      )
+      return this.getPlacement(id)!
+    })
+  }
+  transitionPlacement(id: string, status: WorkloadPlacement['status']): WorkloadPlacement {
+    const current = this.getPlacement(id)
+    if (!current) throw new Error('Placement was not found.')
+    const at = this.now().toISOString()
+    this.control.database.run('UPDATE workload_placements SET status=?,version=version+1,updated_at=? WHERE id=?', [
+      status,
+      at,
+      id,
+    ])
+    if (['released', 'failed', 'blocked'].includes(status))
+      this.control.database.run(
+        "UPDATE capacity_leases SET state='released',updated_at=? WHERE placement_id=? AND state='active'",
+        [at, id],
+      )
+    return this.getPlacement(id)!
+  }
+  createBuild(input: {
+    projectId: string
+    resourceId?: string
+    poolId: string
+    placementId?: string
+    operationId?: string
+    sourceSha: string
+    buildSpec: JsonValue
+    tokenExpiresAt: string
+  }): RemoteBuild {
+    const id = this.id(),
+      at = this.now().toISOString()
+    this.control.database.run(
+      "INSERT INTO remote_builds (id,project_id,resource_id,pool_id,placement_id,operation_id,source_sha,build_spec,credential_policy,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?)",
+      [
+        id,
+        input.projectId,
+        input.resourceId ?? null,
+        input.poolId,
+        input.placementId ?? null,
+        input.operationId ?? null,
+        input.sourceSha,
+        JSON.stringify(input.buildSpec),
+        JSON.stringify({ productionSecrets: false, shortLivedTokenExpiresAt: input.tokenExpiresAt }),
+        at,
+        at,
+      ],
+    )
+    return this.getBuild(id)!
+  }
+  getBuild(id: string): RemoteBuild | undefined {
+    const row = this.control.database.query<Row, [string]>('SELECT * FROM remote_builds WHERE id=?').get(id)
+    return row ? build(row) : undefined
+  }
+  updateBuild(
+    id: string,
+    patch: Partial<
+      Pick<
+        RemoteBuild,
+        'status' | 'operationId' | 'workspace' | 'cacheKey' | 'artifactUri' | 'artifactDigest' | 'cleanupAt'
+      >
+    >,
+  ): RemoteBuild {
+    const current = this.getBuild(id)
+    if (!current) throw new Error('Remote build was not found.')
+    const next = { ...current, ...patch },
+      at = this.now().toISOString()
+    this.control.database.run(
+      'UPDATE remote_builds SET operation_id=?,workspace=?,cache_key=?,artifact_uri=?,artifact_digest=?,status=?,cleanup_at=?,updated_at=? WHERE id=?',
+      [
+        next.operationId ?? null,
+        next.workspace ?? null,
+        next.cacheKey ?? null,
+        next.artifactUri ?? null,
+        next.artifactDigest ?? null,
+        next.status,
+        next.cleanupAt ?? null,
+        at,
+        id,
+      ],
+    )
+    return this.getBuild(id)!
+  }
 }

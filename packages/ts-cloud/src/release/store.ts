@@ -4,44 +4,462 @@ import { createHash } from 'node:crypto'
 import { sanitizeControlPlaneValue } from '../control-plane'
 import { assertReleaseStrategy } from './strategy'
 
-type Row = Record<string, unknown>; const DIGEST = /^sha256:[a-f0-9]{64}$/; const SHA = /^[a-f0-9]{40,64}$/i
-function optional(value: unknown): string | undefined { return typeof value === 'string' && value ? value : undefined }
-function json<T>(value: unknown, fallback: T): T { try { return JSON.parse(String(value)) as T } catch { return fallback } }
-function artifact(row: Row): ReleaseArtifact { return { id: String(row.id), organizationId: String(row.organization_id), digest: String(row.digest), kind: String(row.kind) as ReleaseDeployableKind, uri: String(row.uri), size: Number(row.size), mediaType: String(row.media_type), provenance: json(row.provenance, {}), attestation: json(row.attestation, {}), verifiedAt: String(row.verified_at), createdAt: String(row.created_at) } }
-function release(row: Row): ReleaseRecord { return { id: String(row.id), organizationId: String(row.organization_id), projectId: String(row.project_id), environmentId: String(row.environment_id), resourceId: String(row.resource_id), artifactId: String(row.artifact_id), kind: String(row.kind) as ReleaseDeployableKind, sourceSha: optional(row.source_sha), configHash: String(row.config_hash), manifest: json(row.manifest, {}), provenance: json(row.provenance, {}), strategy: String(row.strategy) as ReleaseStrategy, status: String(row.status) as ReleaseStatus, healthGate: row.health_gate == null ? undefined : json(row.health_gate, undefined), hooks: json(row.hooks, { migrations: 'none', preActivate: [], postActivate: [] }), drainSeconds: Number(row.drain_seconds), graceSeconds: Number(row.grace_seconds), automaticRollback: Number(row.automatic_rollback) === 1, rollbackAttempts: Number(row.rollback_attempts), previousReleaseId: optional(row.previous_release_id), promotedFromReleaseId: optional(row.promoted_from_release_id), actorId: optional(row.actor_id), trigger: String(row.trigger), pinned: Number(row.pinned) === 1, pinReason: optional(row.pin_reason), activatedAt: optional(row.activated_at), failedAt: optional(row.failed_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) } }
-function transition(row: Row): ReleaseTransition { return { sequence: Number(row.sequence), id: String(row.id), releaseId: String(row.release_id), fromStatus: optional(row.from_status) as ReleaseStatus | undefined, toStatus: String(row.to_status) as ReleaseStatus, trafficPercent: row.traffic_percent == null ? undefined : Number(row.traffic_percent), health: json(row.health, {}), message: String(row.message), operationId: optional(row.operation_id), createdAt: String(row.created_at) } }
-function deepDiff(before: any, after: any): ReleaseCompare['manifestChanges'] { const changes: ReleaseCompare['manifestChanges'] = []; const walk = (path: string, left: any, right: any) => { if (JSON.stringify(left) === JSON.stringify(right)) return; if (left && right && typeof left === 'object' && typeof right === 'object' && !Array.isArray(left) && !Array.isArray(right)) { for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) walk(path ? `${path}.${key}` : key, left[key], right[key]); return } changes.push({ path, ...(left !== undefined ? { before: left } : {}), ...(right !== undefined ? { after: right } : {}) }) }; walk('', before, after); return changes }
+type Row = Record<string, unknown>
+const DIGEST = /^sha256:[a-f0-9]{64}$/
+const SHA = /^[a-f0-9]{40,64}$/i
+function optional(value: unknown): string | undefined {
+  return typeof value === 'string' && value ? value : undefined
+}
+function json<T>(value: unknown, fallback: T): T {
+  try {
+    return JSON.parse(String(value)) as T
+  } catch {
+    return fallback
+  }
+}
+function artifact(row: Row): ReleaseArtifact {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    digest: String(row.digest),
+    kind: String(row.kind) as ReleaseDeployableKind,
+    uri: String(row.uri),
+    size: Number(row.size),
+    mediaType: String(row.media_type),
+    provenance: json(row.provenance, {}),
+    attestation: json(row.attestation, {}),
+    verifiedAt: String(row.verified_at),
+    createdAt: String(row.created_at),
+  }
+}
+function release(row: Row): ReleaseRecord {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    projectId: String(row.project_id),
+    environmentId: String(row.environment_id),
+    resourceId: String(row.resource_id),
+    artifactId: String(row.artifact_id),
+    kind: String(row.kind) as ReleaseDeployableKind,
+    sourceSha: optional(row.source_sha),
+    configHash: String(row.config_hash),
+    manifest: json(row.manifest, {}),
+    provenance: json(row.provenance, {}),
+    strategy: String(row.strategy) as ReleaseStrategy,
+    status: String(row.status) as ReleaseStatus,
+    healthGate: row.health_gate == null ? undefined : json(row.health_gate, undefined),
+    hooks: json(row.hooks, { migrations: 'none', preActivate: [], postActivate: [] }),
+    drainSeconds: Number(row.drain_seconds),
+    graceSeconds: Number(row.grace_seconds),
+    automaticRollback: Number(row.automatic_rollback) === 1,
+    rollbackAttempts: Number(row.rollback_attempts),
+    previousReleaseId: optional(row.previous_release_id),
+    promotedFromReleaseId: optional(row.promoted_from_release_id),
+    actorId: optional(row.actor_id),
+    trigger: String(row.trigger),
+    pinned: Number(row.pinned) === 1,
+    pinReason: optional(row.pin_reason),
+    activatedAt: optional(row.activated_at),
+    failedAt: optional(row.failed_at),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+function transition(row: Row): ReleaseTransition {
+  return {
+    sequence: Number(row.sequence),
+    id: String(row.id),
+    releaseId: String(row.release_id),
+    fromStatus: optional(row.from_status) as ReleaseStatus | undefined,
+    toStatus: String(row.to_status) as ReleaseStatus,
+    trafficPercent: row.traffic_percent == null ? undefined : Number(row.traffic_percent),
+    health: json(row.health, {}),
+    message: String(row.message),
+    operationId: optional(row.operation_id),
+    createdAt: String(row.created_at),
+  }
+}
+function deepDiff(before: any, after: any): ReleaseCompare['manifestChanges'] {
+  const changes: ReleaseCompare['manifestChanges'] = []
+  const walk = (path: string, left: any, right: any) => {
+    if (JSON.stringify(left) === JSON.stringify(right)) return
+    if (
+      left &&
+      right &&
+      typeof left === 'object' &&
+      typeof right === 'object' &&
+      !Array.isArray(left) &&
+      !Array.isArray(right)
+    ) {
+      for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort())
+        walk(path ? `${path}.${key}` : key, left[key], right[key])
+      return
+    }
+    changes.push({
+      path,
+      ...(left !== undefined ? { before: left } : {}),
+      ...(right !== undefined ? { after: right } : {}),
+    })
+  }
+  walk('', before, after)
+  return changes
+}
 
 export class ReleaseStore {
-  private readonly now: () => Date; private readonly id: () => string
-  constructor(readonly controlPlane: ControlPlaneStore, options: { now?: () => Date, id?: () => string } = {}) { this.now = options.now ?? (() => new Date()); this.id = options.id ?? (() => crypto.randomUUID()) }
-  registerArtifact(input: { organizationId: string, digest: string, kind: ReleaseDeployableKind, uri: string, size: number, mediaType?: string, provenance?: JsonValue, attestation?: JsonValue }): ReleaseArtifact {
-    if (!DIGEST.test(input.digest) || !/^(s3|https|oci|file):/.test(input.uri) || !Number.isInteger(input.size) || input.size < 0) throw new Error('Artifact requires a SHA-256 digest, supported immutable URI, and non-negative byte size')
-    const existing = this.controlPlane.database.query<Row, [string, string]>('SELECT * FROM release_artifacts WHERE organization_id=? AND digest=?').get(input.organizationId, input.digest); if (existing) return artifact(existing)
-    const id = this.id(); const now = this.now().toISOString(); this.controlPlane.database.run(`INSERT INTO release_artifacts (id, organization_id, digest, kind, uri, size, media_type, provenance, attestation, verified_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.organizationId, input.digest, input.kind, input.uri, input.size, input.mediaType ?? 'application/octet-stream', JSON.stringify(sanitizeControlPlaneValue(input.provenance ?? {})), JSON.stringify(sanitizeControlPlaneValue(input.attestation ?? {})), now, now]); return this.getArtifact(id)!
+  private readonly now: () => Date
+  private readonly id: () => string
+  constructor(
+    readonly controlPlane: ControlPlaneStore,
+    options: { now?: () => Date; id?: () => string } = {},
+  ) {
+    this.now = options.now ?? (() => new Date())
+    this.id = options.id ?? (() => crypto.randomUUID())
   }
-  getArtifact(id: string): ReleaseArtifact | undefined { const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM release_artifacts WHERE id=?').get(id); return row ? artifact(row) : undefined }
-  create(input: { organizationId: string, projectId: string, environmentId: string, resourceId: string, artifactId: string, kind: ReleaseDeployableKind, sourceSha?: string, config: JsonValue, manifest: JsonValue, provenance?: JsonValue, strategy: ReleaseStrategy, healthGate?: ReleaseHealthGate, hooks?: ReleaseHookCompatibility, drainSeconds?: number, graceSeconds?: number, automaticRollback?: boolean, promotedFromReleaseId?: string, actorId?: string, trigger?: string, approvalRequired?: boolean, replicas?: number }): ReleaseRecord {
-    const artifactValue = this.getArtifact(input.artifactId); const resource = this.controlPlane.getResource(input.resourceId); const environment = this.controlPlane.listEnvironments(input.projectId).find(item => item.id === input.environmentId)
-    if (!artifactValue || artifactValue.organizationId !== input.organizationId || artifactValue.kind !== input.kind) throw new Error('Release artifact does not match the organization and deployable kind')
-    if (!resource || resource.projectId !== input.projectId || resource.environmentId !== input.environmentId || !environment) throw new Error('Release target scope does not match the resource')
+  registerArtifact(input: {
+    organizationId: string
+    digest: string
+    kind: ReleaseDeployableKind
+    uri: string
+    size: number
+    mediaType?: string
+    provenance?: JsonValue
+    attestation?: JsonValue
+  }): ReleaseArtifact {
+    if (
+      !DIGEST.test(input.digest) ||
+      !/^(?:s3|https|oci|file):/.test(input.uri) ||
+      !Number.isInteger(input.size) ||
+      input.size < 0
+    )
+      throw new Error('Artifact requires a SHA-256 digest, supported immutable URI, and non-negative byte size')
+    const existing = this.controlPlane.database
+      .query<Row, [string, string]>('SELECT * FROM release_artifacts WHERE organization_id=? AND digest=?')
+      .get(input.organizationId, input.digest)
+    if (existing) return artifact(existing)
+    const id = this.id()
+    const now = this.now().toISOString()
+    this.controlPlane.database.run(
+      `INSERT INTO release_artifacts (id, organization_id, digest, kind, uri, size, media_type, provenance, attestation, verified_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.organizationId,
+        input.digest,
+        input.kind,
+        input.uri,
+        input.size,
+        input.mediaType ?? 'application/octet-stream',
+        JSON.stringify(sanitizeControlPlaneValue(input.provenance ?? {})),
+        JSON.stringify(sanitizeControlPlaneValue(input.attestation ?? {})),
+        now,
+        now,
+      ],
+    )
+    return this.getArtifact(id)!
+  }
+  getArtifact(id: string): ReleaseArtifact | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM release_artifacts WHERE id=?').get(id)
+    return row ? artifact(row) : undefined
+  }
+  create(input: {
+    organizationId: string
+    projectId: string
+    environmentId: string
+    resourceId: string
+    artifactId: string
+    kind: ReleaseDeployableKind
+    sourceSha?: string
+    config: JsonValue
+    manifest: JsonValue
+    provenance?: JsonValue
+    strategy: ReleaseStrategy
+    healthGate?: ReleaseHealthGate
+    hooks?: ReleaseHookCompatibility
+    drainSeconds?: number
+    graceSeconds?: number
+    automaticRollback?: boolean
+    promotedFromReleaseId?: string
+    actorId?: string
+    trigger?: string
+    approvalRequired?: boolean
+    replicas?: number
+  }): ReleaseRecord {
+    const artifactValue = this.getArtifact(input.artifactId)
+    const resource = this.controlPlane.getResource(input.resourceId)
+    const environment = this.controlPlane
+      .listEnvironments(input.projectId)
+      .find((item) => item.id === input.environmentId)
+    if (!artifactValue || artifactValue.organizationId !== input.organizationId || artifactValue.kind !== input.kind)
+      throw new Error('Release artifact does not match the organization and deployable kind')
+    if (
+      !resource ||
+      resource.projectId !== input.projectId ||
+      resource.environmentId !== input.environmentId ||
+      !environment
+    )
+      throw new Error('Release target scope does not match the resource')
     if (input.sourceSha && !SHA.test(input.sourceSha)) throw new Error('Release source must be an immutable commit SHA')
-    assertReleaseStrategy({ kind: input.kind, provider: resource.provider, hasHealthGate: !!input.healthGate, replicas: input.replicas }, input.strategy)
-    const safeConfig = sanitizeControlPlaneValue(input.config); const configHash = createHash('sha256').update(JSON.stringify(safeConfig)).digest('hex'); const previous = this.active(input.resourceId); const id = this.id(); const now = this.now().toISOString(); const status = input.approvalRequired ? 'awaiting_approval' : 'built'; const hooks = input.hooks ?? { migrations: 'none', preActivate: [], postActivate: [] }
-    this.controlPlane.database.run(`INSERT INTO releases (id, organization_id, project_id, environment_id, resource_id, artifact_id, kind, source_sha, config_hash, manifest, provenance, strategy, status, health_gate, hooks, drain_seconds, grace_seconds, automatic_rollback, previous_release_id, promoted_from_release_id, actor_id, trigger, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.organizationId, input.projectId, input.environmentId, input.resourceId, input.artifactId, input.kind, input.sourceSha ?? null, configHash, JSON.stringify(sanitizeControlPlaneValue(input.manifest)), JSON.stringify(sanitizeControlPlaneValue(input.provenance ?? {})), input.strategy, status, input.healthGate ? JSON.stringify(input.healthGate) : null, JSON.stringify(hooks), Math.max(0, Math.min(3600, Math.floor(input.drainSeconds ?? 30))), Math.max(0, Math.min(3600, Math.floor(input.graceSeconds ?? 30))), input.automaticRollback === false ? 0 : 1, previous?.id ?? null, input.promotedFromReleaseId ?? null, input.actorId ?? null, input.trigger ?? 'manual', now, now])
-    this.recordTransition(id, undefined, status, { message: input.promotedFromReleaseId ? 'Immutable artifact promoted without rebuild.' : 'Immutable release record created.' }); return this.get(id)!
+    assertReleaseStrategy(
+      { kind: input.kind, provider: resource.provider, hasHealthGate: !!input.healthGate, replicas: input.replicas },
+      input.strategy,
+    )
+    const safeConfig = sanitizeControlPlaneValue(input.config)
+    const configHash = createHash('sha256').update(JSON.stringify(safeConfig)).digest('hex')
+    const previous = this.active(input.resourceId)
+    const id = this.id()
+    const now = this.now().toISOString()
+    const status = input.approvalRequired ? 'awaiting_approval' : 'built'
+    const hooks = input.hooks ?? { migrations: 'none', preActivate: [], postActivate: [] }
+    this.controlPlane.database.run(
+      `INSERT INTO releases (id, organization_id, project_id, environment_id, resource_id, artifact_id, kind, source_sha, config_hash, manifest, provenance, strategy, status, health_gate, hooks, drain_seconds, grace_seconds, automatic_rollback, previous_release_id, promoted_from_release_id, actor_id, trigger, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.organizationId,
+        input.projectId,
+        input.environmentId,
+        input.resourceId,
+        input.artifactId,
+        input.kind,
+        input.sourceSha ?? null,
+        configHash,
+        JSON.stringify(sanitizeControlPlaneValue(input.manifest)),
+        JSON.stringify(sanitizeControlPlaneValue(input.provenance ?? {})),
+        input.strategy,
+        status,
+        input.healthGate ? JSON.stringify(input.healthGate) : null,
+        JSON.stringify(hooks),
+        Math.max(0, Math.min(3600, Math.floor(input.drainSeconds ?? 30))),
+        Math.max(0, Math.min(3600, Math.floor(input.graceSeconds ?? 30))),
+        input.automaticRollback === false ? 0 : 1,
+        previous?.id ?? null,
+        input.promotedFromReleaseId ?? null,
+        input.actorId ?? null,
+        input.trigger ?? 'manual',
+        now,
+        now,
+      ],
+    )
+    this.recordTransition(id, undefined, status, {
+      message: input.promotedFromReleaseId
+        ? 'Immutable artifact promoted without rebuild.'
+        : 'Immutable release record created.',
+    })
+    return this.get(id)!
   }
-  get(id: string): ReleaseRecord | undefined { const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM releases WHERE id=?').get(id); return row ? release(row) : undefined }
-  list(input: { projectId?: string, environmentId?: string, resourceId?: string, status?: ReleaseStatus } = {}): ReleaseRecord[] { return this.controlPlane.database.query<Row, []>('SELECT * FROM releases ORDER BY created_at DESC, rowid DESC').all().map(release).filter(item => (!input.projectId || item.projectId === input.projectId) && (!input.environmentId || item.environmentId === input.environmentId) && (!input.resourceId || item.resourceId === input.resourceId) && (!input.status || item.status === input.status)) }
-  active(resourceId: string): ReleaseRecord | undefined { return this.list({ resourceId, status: 'active' })[0] }
-  transitions(releaseId: string): ReleaseTransition[] { return this.controlPlane.database.query<Row, [string]>('SELECT * FROM release_transitions WHERE release_id=? ORDER BY sequence').all(releaseId).map(transition) }
-  private recordTransition(releaseId: string, fromStatus: ReleaseStatus | undefined, toStatus: ReleaseStatus, input: { message: string, trafficPercent?: number, health?: JsonValue, operationId?: string }): void { this.controlPlane.database.run(`INSERT INTO release_transitions (id, release_id, from_status, to_status, traffic_percent, health, message, operation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [this.id(), releaseId, fromStatus ?? null, toStatus, input.trafficPercent ?? null, JSON.stringify(sanitizeControlPlaneValue(input.health ?? {})), input.message.slice(0, 1000), input.operationId ?? null, this.now().toISOString()]) }
-  progress(id: string, input: { message: string, trafficPercent?: number, health?: JsonValue, operationId?: string }): ReleaseTransition { const current = this.get(id); if (!current) throw new Error(`Release ${id} was not found`); this.recordTransition(id, current.status, current.status, input); return this.transitions(id).at(-1)! }
-  transition(id: string, toStatus: ReleaseStatus, input: { message: string, trafficPercent?: number, health?: JsonValue, operationId?: string } ): ReleaseRecord { const current = this.get(id); if (!current) throw new Error(`Release ${id} was not found`); const allowed: Record<ReleaseStatus, ReleaseStatus[]> = { built: ['awaiting_approval', 'activating', 'failed'], awaiting_approval: ['built', 'failed'], activating: ['active', 'failed', 'rolled_back'], active: ['superseded', 'failed', 'rolled_back'], failed: ['activating', 'rolled_back'], rolled_back: ['activating'], superseded: ['activating'] }; if (!allowed[current.status].includes(toStatus)) throw new Error(`Invalid release transition ${current.status} → ${toStatus}`); const now = this.now().toISOString(); if (toStatus === 'active') { const prior = this.active(current.resourceId); if (prior && prior.id !== id) { this.controlPlane.database.run(`UPDATE releases SET status='superseded', updated_at=? WHERE id=?`, [now, prior.id]); this.recordTransition(prior.id, 'active', 'superseded', { message: `Superseded by ${id}.`, operationId: input.operationId }) } } this.controlPlane.database.run(`UPDATE releases SET status=?, rollback_attempts=rollback_attempts+?, activated_at=CASE WHEN ?='active' THEN ? ELSE activated_at END, failed_at=CASE WHEN ?='failed' THEN ? ELSE failed_at END, updated_at=? WHERE id=?`, [toStatus, toStatus === 'rolled_back' ? 1 : 0, toStatus, now, toStatus, now, now, id]); this.recordTransition(id, current.status, toStatus, input); return this.get(id)! }
-  approve(id: string, input: { actorId: string, decision: 'approved' | 'rejected', comment?: string }): ReleaseRecord { const current = this.get(id); if (!current || current.status !== 'awaiting_approval') throw new Error('Release is not awaiting approval'); const approvalId = this.id(); const now = this.now().toISOString(); this.controlPlane.database.run(`INSERT INTO release_approvals (id, release_id, environment_id, decision, actor_id, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, [approvalId, id, current.environmentId, input.decision, input.actorId, input.comment?.slice(0, 1000) ?? null, now]); return this.transition(id, input.decision === 'approved' ? 'built' : 'failed', { message: input.decision === 'approved' ? 'Environment gate approved.' : 'Environment gate rejected.' }) }
-  approvals(id: string): ReleaseApproval[] { return this.controlPlane.database.query<Row, [string]>('SELECT * FROM release_approvals WHERE release_id=? ORDER BY created_at').all(id).map(row => ({ id: String(row.id), releaseId: String(row.release_id), environmentId: String(row.environment_id), decision: String(row.decision) as ReleaseApproval['decision'], actorId: String(row.actor_id), comment: optional(row.comment), createdAt: String(row.created_at) })) }
-  promote(sourceId: string, input: { targetEnvironmentId: string, targetResourceId: string, config: JsonValue, strategy?: ReleaseStrategy, healthGate?: ReleaseHealthGate, actorId?: string, approvalRequired?: boolean }): ReleaseRecord { const source = this.get(sourceId); if (!source || !['active', 'superseded'].includes(source.status)) throw new Error('Only a tested active/superseded release can be promoted'); return this.create({ organizationId: source.organizationId, projectId: source.projectId, environmentId: input.targetEnvironmentId, resourceId: input.targetResourceId, artifactId: source.artifactId, kind: source.kind, sourceSha: source.sourceSha, config: input.config, manifest: source.manifest, provenance: source.provenance, strategy: input.strategy ?? source.strategy, healthGate: input.healthGate ?? source.healthGate, hooks: source.hooks, drainSeconds: source.drainSeconds, graceSeconds: source.graceSeconds, automaticRollback: source.automaticRollback, promotedFromReleaseId: source.id, actorId: input.actorId, trigger: 'promotion', approvalRequired: input.approvalRequired }) }
-  compare(leftId: string, rightId: string): ReleaseCompare { const left = this.get(leftId); const right = this.get(rightId); if (!left || !right) throw new Error('Both releases are required for comparison'); return { artifactChanged: left.artifactId !== right.artifactId, sourceChanged: left.sourceSha !== right.sourceSha, configChanged: left.configHash !== right.configHash, manifestChanges: deepDiff(left.manifest, right.manifest), dataCaveat: right.hooks.migrations === 'none' ? 'No database migration is recorded.' : `Database hooks are ${right.hooks.migrations}; release rollback does not roll back data.` } }
-  pin(id: string, pinned: boolean, reason?: string): ReleaseRecord { const current = this.get(id); if (!current) throw new Error('Release was not found'); this.controlPlane.database.run('UPDATE releases SET pinned=?, pin_reason=?, updated_at=? WHERE id=?', [pinned ? 1 : 0, pinned ? reason?.slice(0, 500) ?? 'operator' : null, this.now().toISOString(), id]); return this.get(id)! }
-  retentionCandidates(input: { before: Date, keepPerResource?: number }): ReleaseRecord[] { const keep = Math.max(1, Math.min(100, Math.floor(input.keepPerResource ?? 10))); const grouped = new Map<string, ReleaseRecord[]>(); for (const item of this.list()) { const values = grouped.get(item.resourceId) ?? []; values.push(item); grouped.set(item.resourceId, values) } return [...grouped.values()].flatMap(values => values.slice(keep)).filter(item => new Date(item.createdAt) < input.before && !item.pinned && !['active', 'activating', 'awaiting_approval'].includes(item.status) && !this.list().some(candidate => candidate.previousReleaseId === item.id && ['active', 'activating'].includes(candidate.status))) }
+  get(id: string): ReleaseRecord | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM releases WHERE id=?').get(id)
+    return row ? release(row) : undefined
+  }
+  list(
+    input: { projectId?: string; environmentId?: string; resourceId?: string; status?: ReleaseStatus } = {},
+  ): ReleaseRecord[] {
+    return this.controlPlane.database
+      .query<Row, []>('SELECT * FROM releases ORDER BY created_at DESC, rowid DESC')
+      .all()
+      .map(release)
+      .filter(
+        (item) =>
+          (!input.projectId || item.projectId === input.projectId) &&
+          (!input.environmentId || item.environmentId === input.environmentId) &&
+          (!input.resourceId || item.resourceId === input.resourceId) &&
+          (!input.status || item.status === input.status),
+      )
+  }
+  active(resourceId: string): ReleaseRecord | undefined {
+    return this.list({ resourceId, status: 'active' })[0]
+  }
+  transitions(releaseId: string): ReleaseTransition[] {
+    return this.controlPlane.database
+      .query<Row, [string]>('SELECT * FROM release_transitions WHERE release_id=? ORDER BY sequence')
+      .all(releaseId)
+      .map(transition)
+  }
+  private recordTransition(
+    releaseId: string,
+    fromStatus: ReleaseStatus | undefined,
+    toStatus: ReleaseStatus,
+    input: { message: string; trafficPercent?: number; health?: JsonValue; operationId?: string },
+  ): void {
+    this.controlPlane.database.run(
+      `INSERT INTO release_transitions (id, release_id, from_status, to_status, traffic_percent, health, message, operation_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        this.id(),
+        releaseId,
+        fromStatus ?? null,
+        toStatus,
+        input.trafficPercent ?? null,
+        JSON.stringify(sanitizeControlPlaneValue(input.health ?? {})),
+        input.message.slice(0, 1000),
+        input.operationId ?? null,
+        this.now().toISOString(),
+      ],
+    )
+  }
+  progress(
+    id: string,
+    input: { message: string; trafficPercent?: number; health?: JsonValue; operationId?: string },
+  ): ReleaseTransition {
+    const current = this.get(id)
+    if (!current) throw new Error(`Release ${id} was not found`)
+    this.recordTransition(id, current.status, current.status, input)
+    return this.transitions(id).at(-1)!
+  }
+  transition(
+    id: string,
+    toStatus: ReleaseStatus,
+    input: { message: string; trafficPercent?: number; health?: JsonValue; operationId?: string },
+  ): ReleaseRecord {
+    const current = this.get(id)
+    if (!current) throw new Error(`Release ${id} was not found`)
+    const allowed: Record<ReleaseStatus, ReleaseStatus[]> = {
+      built: ['awaiting_approval', 'activating', 'failed'],
+      awaiting_approval: ['built', 'failed'],
+      activating: ['active', 'failed', 'rolled_back'],
+      active: ['superseded', 'failed', 'rolled_back'],
+      failed: ['activating', 'rolled_back'],
+      rolled_back: ['activating'],
+      superseded: ['activating'],
+    }
+    if (!allowed[current.status].includes(toStatus))
+      throw new Error(`Invalid release transition ${current.status} → ${toStatus}`)
+    const now = this.now().toISOString()
+    if (toStatus === 'active') {
+      const prior = this.active(current.resourceId)
+      if (prior && prior.id !== id) {
+        this.controlPlane.database.run(`UPDATE releases SET status='superseded', updated_at=? WHERE id=?`, [
+          now,
+          prior.id,
+        ])
+        this.recordTransition(prior.id, 'active', 'superseded', {
+          message: `Superseded by ${id}.`,
+          operationId: input.operationId,
+        })
+      }
+    }
+    this.controlPlane.database.run(
+      `UPDATE releases SET status=?, rollback_attempts=rollback_attempts+?, activated_at=CASE WHEN ?='active' THEN ? ELSE activated_at END, failed_at=CASE WHEN ?='failed' THEN ? ELSE failed_at END, updated_at=? WHERE id=?`,
+      [toStatus, toStatus === 'rolled_back' ? 1 : 0, toStatus, now, toStatus, now, now, id],
+    )
+    this.recordTransition(id, current.status, toStatus, input)
+    return this.get(id)!
+  }
+  approve(id: string, input: { actorId: string; decision: 'approved' | 'rejected'; comment?: string }): ReleaseRecord {
+    const current = this.get(id)
+    if (!current || current.status !== 'awaiting_approval') throw new Error('Release is not awaiting approval')
+    const approvalId = this.id()
+    const now = this.now().toISOString()
+    this.controlPlane.database.run(
+      `INSERT INTO release_approvals (id, release_id, environment_id, decision, actor_id, comment, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        approvalId,
+        id,
+        current.environmentId,
+        input.decision,
+        input.actorId,
+        input.comment?.slice(0, 1000) ?? null,
+        now,
+      ],
+    )
+    return this.transition(id, input.decision === 'approved' ? 'built' : 'failed', {
+      message: input.decision === 'approved' ? 'Environment gate approved.' : 'Environment gate rejected.',
+    })
+  }
+  approvals(id: string): ReleaseApproval[] {
+    return this.controlPlane.database
+      .query<Row, [string]>('SELECT * FROM release_approvals WHERE release_id=? ORDER BY created_at')
+      .all(id)
+      .map((row) => ({
+        id: String(row.id),
+        releaseId: String(row.release_id),
+        environmentId: String(row.environment_id),
+        decision: String(row.decision) as ReleaseApproval['decision'],
+        actorId: String(row.actor_id),
+        comment: optional(row.comment),
+        createdAt: String(row.created_at),
+      }))
+  }
+  promote(
+    sourceId: string,
+    input: {
+      targetEnvironmentId: string
+      targetResourceId: string
+      config: JsonValue
+      strategy?: ReleaseStrategy
+      healthGate?: ReleaseHealthGate
+      actorId?: string
+      approvalRequired?: boolean
+    },
+  ): ReleaseRecord {
+    const source = this.get(sourceId)
+    if (!source || !['active', 'superseded'].includes(source.status))
+      throw new Error('Only a tested active/superseded release can be promoted')
+    return this.create({
+      organizationId: source.organizationId,
+      projectId: source.projectId,
+      environmentId: input.targetEnvironmentId,
+      resourceId: input.targetResourceId,
+      artifactId: source.artifactId,
+      kind: source.kind,
+      sourceSha: source.sourceSha,
+      config: input.config,
+      manifest: source.manifest,
+      provenance: source.provenance,
+      strategy: input.strategy ?? source.strategy,
+      healthGate: input.healthGate ?? source.healthGate,
+      hooks: source.hooks,
+      drainSeconds: source.drainSeconds,
+      graceSeconds: source.graceSeconds,
+      automaticRollback: source.automaticRollback,
+      promotedFromReleaseId: source.id,
+      actorId: input.actorId,
+      trigger: 'promotion',
+      approvalRequired: input.approvalRequired,
+    })
+  }
+  compare(leftId: string, rightId: string): ReleaseCompare {
+    const left = this.get(leftId)
+    const right = this.get(rightId)
+    if (!left || !right) throw new Error('Both releases are required for comparison')
+    return {
+      artifactChanged: left.artifactId !== right.artifactId,
+      sourceChanged: left.sourceSha !== right.sourceSha,
+      configChanged: left.configHash !== right.configHash,
+      manifestChanges: deepDiff(left.manifest, right.manifest),
+      dataCaveat:
+        right.hooks.migrations === 'none'
+          ? 'No database migration is recorded.'
+          : `Database hooks are ${right.hooks.migrations}; release rollback does not roll back data.`,
+    }
+  }
+  pin(id: string, pinned: boolean, reason?: string): ReleaseRecord {
+    const current = this.get(id)
+    if (!current) throw new Error('Release was not found')
+    this.controlPlane.database.run('UPDATE releases SET pinned=?, pin_reason=?, updated_at=? WHERE id=?', [
+      pinned ? 1 : 0,
+      pinned ? (reason?.slice(0, 500) ?? 'operator') : null,
+      this.now().toISOString(),
+      id,
+    ])
+    return this.get(id)!
+  }
+  retentionCandidates(input: { before: Date; keepPerResource?: number }): ReleaseRecord[] {
+    const keep = Math.max(1, Math.min(100, Math.floor(input.keepPerResource ?? 10)))
+    const grouped = new Map<string, ReleaseRecord[]>()
+    for (const item of this.list()) {
+      const values = grouped.get(item.resourceId) ?? []
+      values.push(item)
+      grouped.set(item.resourceId, values)
+    }
+    return [...grouped.values()]
+      .flatMap((values) => values.slice(keep))
+      .filter(
+        (item) =>
+          new Date(item.createdAt) < input.before &&
+          !item.pinned &&
+          !['active', 'activating', 'awaiting_approval'].includes(item.status) &&
+          !this.list().some(
+            (candidate) =>
+              candidate.previousReleaseId === item.id && ['active', 'activating'].includes(candidate.status),
+          ),
+      )
+  }
 }

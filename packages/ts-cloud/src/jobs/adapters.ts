@@ -14,14 +14,7 @@ export interface JobProviderCapability {
   notes: string[]
 }
 export function jobProviderCapability(
-  job: Pick<
-    ScheduledJob,
-    | 'provider'
-    | 'expression'
-    | 'flexibleMinutes'
-    | 'missedRunPolicy'
-    | 'overlapPolicy'
-  >,
+  job: Pick<ScheduledJob, 'provider' | 'expression' | 'flexibleMinutes' | 'missedRunPolicy' | 'overlapPolicy'>,
 ): JobProviderCapability {
   const parsed = normalizeScheduleExpression(job.expression),
     fields = parsed.normalized.slice(5, -1).trim().split(/\s+/),
@@ -82,9 +75,7 @@ export function jobProviderCapability(
       catchUp: true,
       replaceOverlap: true,
     },
-    notes: [
-      'The durable control-plane worker enforces all configured policies.',
-    ],
+    notes: ['The durable control-plane worker enforces all configured policies.'],
   }
 }
 export function renderServerCron(job: ScheduledJob): {
@@ -107,19 +98,12 @@ function eventBridgeExpression(expression: string): string {
   if (fields.length === 6) return parsed.normalized
   const [minute, hour, day, month, weekday] = fields
   const awsWeekday =
-    weekday === '*'
-      ? '?'
-      : weekday.replace(
-          /(^|[,-])0(?=$|[,-])/g,
-          (_match, prefix: string) => `${prefix}1`,
-        )
+    weekday === '*' ? '?' : weekday.replace(/(^|[,-])0(?=$|[,-])/g, (_match, prefix: string) => `${prefix}1`)
   return day === '*' && weekday !== '*'
     ? `cron(${minute} ${hour} ? ${month} ${awsWeekday} *)`
     : `cron(${minute} ${hour} ${day} ${month} ? *)`
 }
-export function eventBridgeScheduleInput(
-  job: ScheduledJob,
-): Record<string, JsonValue> {
+export function eventBridgeScheduleInput(job: ScheduledJob): Record<string, JsonValue> {
   const capability = jobProviderCapability(job)
   if (!capability.supported) throw new Error(capability.notes.join(' '))
   return {
@@ -157,7 +141,6 @@ export function reconcileJobObservation(
   const expression = String(observed.expression ?? ''),
     enabled = observed.enabled
   const drift =
-    (expression && expression !== job.normalizedExpression) ||
-    (typeof enabled === 'boolean' && enabled !== job.enabled)
+    (expression && expression !== job.normalizedExpression) || (typeof enabled === 'boolean' && enabled !== job.enabled)
   return { status: drift ? 'drifted' : 'in_sync', observedState: observed }
 }

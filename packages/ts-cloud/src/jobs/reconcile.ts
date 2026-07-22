@@ -1,10 +1,5 @@
 import type { CloudConfig, ServerlessAppConfig } from '@ts-cloud/core'
-import type {
-  ControlPlaneEnvironment,
-  ControlPlaneOrganization,
-  ControlPlaneProject,
-  ControlPlaneResource,
-} from '../control-plane'
+import type { ControlPlaneEnvironment, ControlPlaneOrganization, ControlPlaneProject, ControlPlaneResource } from '../control-plane'
 import { JobStore } from './store'
 
 interface ReconciliationScope {
@@ -14,19 +9,12 @@ interface ReconciliationScope {
   resources: ControlPlaneResource[]
 }
 
-function serverlessQueues(
-  app: ServerlessAppConfig,
-): Array<{ queue: string; processes: number }> {
-  if (app.queues === true)
-    return [{ queue: 'default', processes: app.queueConcurrency ?? 1 }]
+function serverlessQueues(app: ServerlessAppConfig): Array<{ queue: string; processes: number }> {
+  if (app.queues === true) return [{ queue: 'default', processes: app.queueConcurrency ?? 1 }]
   if (!Array.isArray(app.queues)) return []
   return app.queues.map((item) => {
-    if (typeof item === 'string')
-      return { queue: item, processes: app.queueConcurrency ?? 1 }
-    const [queue, concurrency] = Object.entries(item)[0] ?? [
-      'default',
-      app.queueConcurrency ?? 1,
-    ]
+    if (typeof item === 'string') return { queue: item, processes: app.queueConcurrency ?? 1 }
+    const [queue, concurrency] = Object.entries(item)[0] ?? ['default', app.queueConcurrency ?? 1]
     return { queue, processes: concurrency }
   })
 }
@@ -42,9 +30,7 @@ export function synchronizeConfiguredJobs(
 ): { jobs: number; workers: number; drifted: number } {
   const seenJobs = new Set<string>()
   const seenWorkers = new Set<string>()
-  const resourceBySlug = new Map(
-    scope.resources.map((item) => [item.slug, item]),
-  )
+  const resourceBySlug = new Map(scope.resources.map((item) => [item.slug, item]))
   let jobs = 0
   let workers = 0
 
@@ -207,31 +193,19 @@ export function synchronizeConfiguredJobs(
   let drifted = 0
   for (const item of store
     .list(scope.project.id, { environmentId: scope.environment.id })
-    .filter(
-      (item) =>
-        item.origin === 'config' &&
-        item.sourceKey &&
-        !seenJobs.has(item.sourceKey),
-    )) {
+    .filter((item) => item.origin === 'config' && item.sourceKey && !seenJobs.has(item.sourceKey))) {
     store.reconcile(item.id, 'drifted', {
       ...item.observedState,
-      reason:
-        'Definition is no longer present in configuration; retained for non-destructive review.',
+      reason: 'Definition is no longer present in configuration; retained for non-destructive review.',
     })
     drifted++
   }
   for (const item of store
     .listWorkers(scope.project.id, scope.environment.id)
-    .filter(
-      (item) =>
-        item.origin === 'config' &&
-        item.sourceKey &&
-        !seenWorkers.has(item.sourceKey),
-    )) {
+    .filter((item) => item.origin === 'config' && item.sourceKey && !seenWorkers.has(item.sourceKey))) {
     store.reconcileWorker(item.id, 'drifted', {
       ...item.observedState,
-      reason:
-        'Definition is no longer present in configuration; retained for non-destructive review.',
+      reason: 'Definition is no longer present in configuration; retained for non-destructive review.',
     })
     drifted++
   }

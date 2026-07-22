@@ -2,8 +2,8 @@ import type { JsonValue } from '../control-plane'
 import type { QueueExecutionContext, QueueOperationHandler } from '../queue'
 import type { JobExecution, JobTarget, JobTrigger, ScheduledJob } from './model'
 import { DurableOperationQueue, RetryableOperationError } from '../queue'
-import { JobStore } from './store'
 import { nextScheduleRuns } from './schedule'
+import { JobStore } from './store'
 
 export interface JobExecutorResult {
   ok: boolean
@@ -25,13 +25,8 @@ export class JobService {
   ) {
     this.queue = options.queue ?? new DurableOperationQueue(store.controlPlane)
   }
-  enqueue(
-    job: ScheduledJob,
-    input: { trigger: JobTrigger; scheduledFor?: string; actorId?: string },
-  ): JobExecution {
-    const scheduledFor = new Date(
-        input.scheduledFor ?? this.store.now(),
-      ).toISOString(),
+  enqueue(job: ScheduledJob, input: { trigger: JobTrigger; scheduledFor?: string; actorId?: string }): JobExecution {
+    const scheduledFor = new Date(input.scheduledFor ?? this.store.now()).toISOString(),
       key = `${job.id}:${input.trigger === 'manual' ? crypto.randomUUID() : scheduledFor}`
     const active = this.store.activeExecution(job.id)
     if (active && job.overlapPolicy === 'forbid')
@@ -65,10 +60,7 @@ export class JobService {
       kind: 'job.execute',
       input: { jobId: job.id, executionId: execution.id },
       idempotencyKey: `job-execution:${execution.id}`,
-      lockKey:
-        job.overlapPolicy === 'allow'
-          ? `job-execution:${execution.id}`
-          : `job:${job.id}`,
+      lockKey: job.overlapPolicy === 'allow' ? `job-execution:${execution.id}` : `job:${job.id}`,
       maxAttempts: job.retryPolicy.maxAttempts,
       timeoutSeconds: job.timeoutSeconds,
       retryClasses: ['job_transient'],
@@ -80,12 +72,7 @@ export class JobService {
     const queued: JobExecution[] = []
     for (const job of this.store.due(at.toISOString())) {
       const due = job.nextRunAt!,
-        next = nextScheduleRuns(
-          job.normalizedExpression,
-          job.timezone,
-          at,
-          1,
-        )[0]
+        next = nextScheduleRuns(job.normalizedExpression, job.timezone, at, 1)[0]
       if (job.missedRunPolicy === 'catch_up') {
         let cursor = due,
           count = 0
@@ -96,18 +83,10 @@ export class JobService {
               scheduledFor: cursor,
             }),
           )
-          cursor = nextScheduleRuns(
-            job.normalizedExpression,
-            job.timezone,
-            new Date(cursor),
-            1,
-          )[0]
+          cursor = nextScheduleRuns(job.normalizedExpression, job.timezone, new Date(cursor), 1)[0]
           count++
         }
-      } else
-        queued.push(
-          this.enqueue(job, { trigger: 'scheduled', scheduledFor: due }),
-        )
+      } else queued.push(this.enqueue(job, { trigger: 'scheduled', scheduledFor: due }))
       this.store.markScheduled(job.id, due, next)
     }
     return queued
@@ -119,42 +98,33 @@ export function createJobQueueHandlers(input: {
 }): Record<string, QueueOperationHandler> {
   const handler: QueueOperationHandler = async (context) => {
     const record =
-      context.operation.input &&
-      typeof context.operation.input === 'object' &&
-      !Array.isArray(context.operation.input)
+      context.operation.input && typeof context.operation.input === 'object' && !Array.isArray(context.operation.input)
         ? (context.operation.input as Record<string, JsonValue>)
         : {}
     const job = input.store.get(String(record.jobId ?? ''))
     const execution = input.store.getExecution(String(record.executionId ?? ''))
-    if (!job || !execution)
-      throw new Error('Scheduled job execution is no longer available.')
+    if (!job || !execution) throw new Error('Scheduled job execution is no longer available.')
     input.store.transitionExecution(execution.id, 'running', {
       attempt: context.operation.attempt,
     })
     context.checkpoint('execute', `Running ${job.name} on ${job.provider}.`)
-    context.log(
-      `Trigger ${execution.trigger}; scheduled for ${execution.scheduledFor}; semantics at-least-once.`,
-      { stream: 'system' },
-    )
+    context.log(`Trigger ${execution.trigger}; scheduled for ${execution.scheduledFor}; semantics at-least-once.`, {
+      stream: 'system',
+    })
     const result = await input.executor(job, job.target, context)
     if (result.stdout) context.log(result.stdout, { stream: 'stdout' })
     if (result.stderr) context.log(result.stderr, { stream: 'stderr' })
     if (!result.ok) {
       input.store.transitionExecution(
         execution.id,
-        context.operation.attempt >= job.retryPolicy.maxAttempts
-          ? 'dead'
-          : 'failed',
+        context.operation.attempt >= job.retryPolicy.maxAttempts ? 'dead' : 'failed',
         {
           attempt: context.operation.attempt,
           error: result.stderr ?? 'Job execution failed.',
         },
       )
       if (result.retryable)
-        throw new RetryableOperationError(
-          result.stderr ?? 'Scheduled job failed transiently.',
-          'job_transient',
-        )
+        throw new RetryableOperationError(result.stderr ?? 'Scheduled job failed transiently.', 'job_transient')
       throw new Error(result.stderr ?? 'Scheduled job failed.')
     }
     input.store.transitionExecution(execution.id, 'succeeded', {

@@ -1,34 +1,425 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { ControlPlaneStore } from '../control-plane'
 import { TelemetryStore } from '../telemetry'
-import { AlertEvaluator, AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter, isQuietHours, type AlertRule } from '.'
+import {
+  AlertEvaluator,
+  AlertStore,
+  evaluateTelemetryAlertRules,
+  HealthCheckRunner,
+  NotificationRouter,
+  isQuietHours,
+  type AlertRule,
+} from '.'
 
-const stores:ControlPlaneStore[]=[]
-function fixture(){const controlPlane=new ControlPlaneStore({path:':memory:'});stores.push(controlPlane);const organization=controlPlane.createOrganization({slug:'acme',name:'Acme'}),project=controlPlane.createProject({organizationId:organization.id,slug:'app',name:'App'}),environment=controlPlane.createEnvironment({projectId:project.id,slug:'production',name:'Production',kind:'production'}),resource=controlPlane.createResource({projectId:project.id,environmentId:environment.id,kind:'application',slug:'api',name:'API'});return{controlPlane,organization,project,environment,resource,store:new AlertStore(controlPlane,{encryptionKey:'test-key',now:()=>new Date('2026-07-21T12:00:00Z')})}}
-afterEach(()=>{for(const store of stores.splice(0))store.close()})
-function rule(store:AlertStore,input:Partial<Omit<AlertRule,'id'|'version'|'createdAt'|'updatedAt'>>={}):AlertRule{return store.createRule({projectId:String(input.projectId),environmentId:input.environmentId,resourceId:input.resourceId,healthCheckId:input.healthCheckId,name:'API unhealthy',signal:'health',operator:'unhealthy',windowMs:300000,consecutive:2,recoveryConsecutive:2,noDataPolicy:'pending',severity:'critical',groupBy:['region'],labels:{team:'platform'},enabled:true,...input})}
+const stores: ControlPlaneStore[] = []
+function fixture() {
+  const controlPlane = new ControlPlaneStore({ path: ':memory:' })
+  stores.push(controlPlane)
+  const organization = controlPlane.createOrganization({ slug: 'acme', name: 'Acme' }),
+    project = controlPlane.createProject({ organizationId: organization.id, slug: 'app', name: 'App' }),
+    environment = controlPlane.createEnvironment({
+      projectId: project.id,
+      slug: 'production',
+      name: 'Production',
+      kind: 'production',
+    }),
+    resource = controlPlane.createResource({
+      projectId: project.id,
+      environmentId: environment.id,
+      kind: 'application',
+      slug: 'api',
+      name: 'API',
+    })
+  return {
+    controlPlane,
+    organization,
+    project,
+    environment,
+    resource,
+    store: new AlertStore(controlPlane, { encryptionKey: 'test-key', now: () => new Date('2026-07-21T12:00:00Z') }),
+  }
+}
+afterEach(() => {
+  for (const store of stores.splice(0)) store.close()
+})
+function rule(
+  store: AlertStore,
+  input: Partial<Omit<AlertRule, 'id' | 'version' | 'createdAt' | 'updatedAt'>> = {},
+): AlertRule {
+  return store.createRule({
+    projectId: String(input.projectId),
+    environmentId: input.environmentId,
+    resourceId: input.resourceId,
+    healthCheckId: input.healthCheckId,
+    name: 'API unhealthy',
+    signal: 'health',
+    operator: 'unhealthy',
+    windowMs: 300000,
+    consecutive: 2,
+    recoveryConsecutive: 2,
+    noDataPolicy: 'pending',
+    severity: 'critical',
+    groupBy: ['region'],
+    labels: { team: 'platform' },
+    enabled: true,
+    ...input,
+  })
+}
 
-describe('alert evaluation lifecycle',()=>{
-  it('moves pending to firing, applies hysteresis, deduplicates observations, and resolves after recovery',()=>{const {store,project,environment,resource}=fixture(),configured=rule(store,{projectId:project.id,environmentId:environment.id,resourceId:resource.id}),evaluator=new AlertEvaluator(store)
-    expect(evaluator.evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:00:00Z',group:{region:'us'}}).transition).toBe('pending')
-    const firing=evaluator.evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:01:00Z',group:{region:'us'}});expect(firing.transition).toBe('firing');expect(firing.notify).toBeTrue()
-    expect(evaluator.evaluate(configured,{status:'healthy',timestamp:'2026-07-21T11:02:00Z',group:{region:'us'}}).alert?.state).toBe('firing')
-    const resolved=evaluator.evaluate(configured,{status:'healthy',timestamp:'2026-07-21T11:03:00Z',group:{region:'us'}});expect(resolved.transition).toBe('resolved');expect(resolved.notify).toBeTrue();expect(store.listAlerts(project.id)).toHaveLength(1)
+describe('alert evaluation lifecycle', () => {
+  it('moves pending to firing, applies hysteresis, deduplicates observations, and resolves after recovery', () => {
+    const { store, project, environment, resource } = fixture(),
+      configured = rule(store, { projectId: project.id, environmentId: environment.id, resourceId: resource.id }),
+      evaluator = new AlertEvaluator(store)
+    expect(
+      evaluator.evaluate(configured, {
+        status: 'unhealthy',
+        timestamp: '2026-07-21T11:00:00Z',
+        group: { region: 'us' },
+      }).transition,
+    ).toBe('pending')
+    const firing = evaluator.evaluate(configured, {
+      status: 'unhealthy',
+      timestamp: '2026-07-21T11:01:00Z',
+      group: { region: 'us' },
+    })
+    expect(firing.transition).toBe('firing')
+    expect(firing.notify).toBeTrue()
+    expect(
+      evaluator.evaluate(configured, { status: 'healthy', timestamp: '2026-07-21T11:02:00Z', group: { region: 'us' } })
+        .alert?.state,
+    ).toBe('firing')
+    const resolved = evaluator.evaluate(configured, {
+      status: 'healthy',
+      timestamp: '2026-07-21T11:03:00Z',
+      group: { region: 'us' },
+    })
+    expect(resolved.transition).toBe('resolved')
+    expect(resolved.notify).toBeTrue()
+    expect(store.listAlerts(project.id)).toHaveLength(1)
   })
-  it('keeps no-data pending and supports explicit silences without losing recovery',()=>{const {store,project,environment}=fixture(),configured=rule(store,{projectId:project.id,environmentId:environment.id,consecutive:1}),evaluator=new AlertEvaluator(store);store.createSilence({projectId:project.id,environmentId:environment.id,matcher:{region:'us'},reason:'maintenance',startsAt:'2026-07-21T10:00:00Z',endsAt:'2026-07-21T13:00:00Z',timezone:'UTC'})
-    expect(evaluator.evaluate(configured,{status:'no_data',timestamp:'2026-07-21T11:00:00Z',group:{region:'us'}}).alert?.state).toBe('pending')
-    expect(evaluator.evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:01:00Z',group:{region:'us'}}).transition).toBe('silenced')
+  it('keeps no-data pending and supports explicit silences without losing recovery', () => {
+    const { store, project, environment } = fixture(),
+      configured = rule(store, { projectId: project.id, environmentId: environment.id, consecutive: 1 }),
+      evaluator = new AlertEvaluator(store)
+    store.createSilence({
+      projectId: project.id,
+      environmentId: environment.id,
+      matcher: { region: 'us' },
+      reason: 'maintenance',
+      startsAt: '2026-07-21T10:00:00Z',
+      endsAt: '2026-07-21T13:00:00Z',
+      timezone: 'UTC',
+    })
+    expect(
+      evaluator.evaluate(configured, { status: 'no_data', timestamp: '2026-07-21T11:00:00Z', group: { region: 'us' } })
+        .alert?.state,
+    ).toBe('pending')
+    expect(
+      evaluator.evaluate(configured, {
+        status: 'unhealthy',
+        timestamp: '2026-07-21T11:01:00Z',
+        group: { region: 'us' },
+      }).transition,
+    ).toBe('silenced')
   })
-  it('uses a separate recovery threshold for metric hysteresis',()=>{const {store,project}=fixture(),configured=rule(store,{projectId:project.id,operator:'gt',threshold:90,recoveryThreshold:80,consecutive:1,recoveryConsecutive:1}),evaluator=new AlertEvaluator(store);expect(evaluator.evaluate(configured,{value:95,timestamp:'2026-07-21T11:00:00Z'}).alert?.state).toBe('firing');expect(evaluator.evaluate(configured,{value:85,timestamp:'2026-07-21T11:01:00Z'}).alert?.state).toBe('firing');expect(evaluator.evaluate(configured,{value:75,timestamp:'2026-07-21T11:02:00Z'}).alert?.state).toBe('resolved')})
-  it('evaluates normalized telemetry in the configured window with evidence',()=>{const {controlPlane,store,project,environment,resource}=fixture(),now=new Date('2026-07-21T12:00:00Z'),telemetry=new TelemetryStore(controlPlane,{now:()=>now});telemetry.append({projectId:project.id,environmentId:environment.id,resourceId:resource.id,kind:'metric',source:'runtime',name:'http.error_rate',timestamp:'2026-07-21T11:59:00Z',value:12,unit:'percent'});rule(store,{projectId:project.id,environmentId:environment.id,resourceId:resource.id,name:'High errors',signal:'http.error_rate',operator:'gt',threshold:5,consecutive:1});const evaluation=evaluateTelemetryAlertRules(store,project.id,environment.id,now)[0];expect(evaluation.transition).toBe('firing');expect(evaluation.alert?.evidence).toMatchObject({signal:'http.error_rate',sampleCount:1,source:'runtime'})})
+  it('uses a separate recovery threshold for metric hysteresis', () => {
+    const { store, project } = fixture(),
+      configured = rule(store, {
+        projectId: project.id,
+        operator: 'gt',
+        threshold: 90,
+        recoveryThreshold: 80,
+        consecutive: 1,
+        recoveryConsecutive: 1,
+      }),
+      evaluator = new AlertEvaluator(store)
+    expect(evaluator.evaluate(configured, { value: 95, timestamp: '2026-07-21T11:00:00Z' }).alert?.state).toBe('firing')
+    expect(evaluator.evaluate(configured, { value: 85, timestamp: '2026-07-21T11:01:00Z' }).alert?.state).toBe('firing')
+    expect(evaluator.evaluate(configured, { value: 75, timestamp: '2026-07-21T11:02:00Z' }).alert?.state).toBe(
+      'resolved',
+    )
+  })
+  it('evaluates normalized telemetry in the configured window with evidence', () => {
+    const { controlPlane, store, project, environment, resource } = fixture(),
+      now = new Date('2026-07-21T12:00:00Z'),
+      telemetry = new TelemetryStore(controlPlane, { now: () => now })
+    telemetry.append({
+      projectId: project.id,
+      environmentId: environment.id,
+      resourceId: resource.id,
+      kind: 'metric',
+      source: 'runtime',
+      name: 'http.error_rate',
+      timestamp: '2026-07-21T11:59:00Z',
+      value: 12,
+      unit: 'percent',
+    })
+    rule(store, {
+      projectId: project.id,
+      environmentId: environment.id,
+      resourceId: resource.id,
+      name: 'High errors',
+      signal: 'http.error_rate',
+      operator: 'gt',
+      threshold: 5,
+      consecutive: 1,
+    })
+    const evaluation = evaluateTelemetryAlertRules(store, project.id, environment.id, now)[0]
+    expect(evaluation.transition).toBe('firing')
+    expect(evaluation.alert?.evidence).toMatchObject({ signal: 'http.error_rate', sampleCount: 1, source: 'runtime' })
+  })
 })
 
-describe('notification routing and delivery',()=>{
-  it('encrypts credentials, groups one delivery, signs webhooks, and deduplicates replay',async()=>{const {store,organization,project}=fixture(),channel=store.createChannel({organizationId:organization.id,name:'Pager',kind:'webhook',credential:JSON.stringify({url:'https://hooks.example.test/alerts',signingSecret:'secret'})});expect(JSON.stringify(store.controlPlane.exportSnapshot())).not.toContain('hooks.example.test');const route=store.createRoute({organizationId:organization.id,name:'Critical',priority:10,matcher:{severities:['critical']},channelIds:[channel.id],groupWaitSeconds:0,escalation:[],template:'{{severity}} {{title}} {{event}}',rateLimitPerMinute:60,enabled:true});const configured=rule(store,{projectId:project.id,consecutive:1}),alert=new AlertEvaluator(store).evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:00:00Z'}).alert!;let headers:Record<string,string>={},posted='';const router=new NotificationRouter(store,{fetchImpl:async(_url,init)=>{headers=init.headers;posted=init.body;return{ok:true,status:202}},now:()=>new Date('2026-07-21T12:00:00Z')});const first=router.enqueue(organization.id,alert,'firing'),second=router.enqueue(organization.id,alert,'firing');expect(first[0].id).toBe(second[0].id);expect(first[0].routeId).toBe(route.id);expect((await router.deliver(first[0].id)).state).toBe('delivered');expect(posted).toContain('CRITICAL API unhealthy firing');expect(headers['x-ts-cloud-signature']).toStartWith('v1=');expect(headers['x-ts-cloud-timestamp']).toBe('1784635200')})
-  it('retries transient failure, surfaces permanent failure, and test sends no incident',async()=>{const {store,organization}=fixture(),channel=store.createChannel({organizationId:organization.id,name:'Slack',kind:'slack',credential:'https://hooks.example.test/slack'});let calls=0,now=new Date('2026-07-21T12:00:00Z');const router=new NotificationRouter(store,{fetchImpl:async()=>++calls===1?{ok:false,status:503}:calls===3?{ok:false,status:400}:{ok:true,status:200},now:()=>now});const delivery=store.createDelivery({channelId:channel.id,eventType:'test-retry',idempotencyKey:'retry',payload:{event:'test'}});expect((await router.deliver(delivery.id)).state).toBe('retrying');now=new Date(now.getTime()+31_000);expect((await router.deliver(delivery.id)).state).toBe('delivered');const permanent=store.createDelivery({channelId:channel.id,eventType:'permanent',idempotencyKey:'permanent',payload:{event:'test'}});expect((await router.deliver(permanent.id)).state).toBe('dead');const before=store.listAlerts('missing').length;expect((await router.testChannel(channel.id)).ok).toBeTrue();expect(store.listAlerts('missing')).toHaveLength(before)})
-  it('handles overnight quiet hours in a named timezone across DST dates',()=>{const route={quietHours:{timezone:'America/Los_Angeles',start:'22:00',end:'06:00',weekdays:[0]},matcher:{},channelIds:[],escalation:[],id:'r',organizationId:'o',name:'q',priority:0,groupWaitSeconds:0,rateLimitPerMinute:60,enabled:true,version:1,createdAt:'',updatedAt:''};expect(isQuietHours(route,new Date('2026-11-01T08:30:00Z'))).toBeTrue();expect(isQuietHours(route,new Date('2026-11-01T20:00:00Z'))).toBeFalse()})
-  it('honors group wait and emits deduplicated reminder and escalation slots',async()=>{const {store,organization,project}=fixture(),primary=store.createChannel({organizationId:organization.id,name:'Primary',kind:'webhook',credential:'https://hooks.example.test/primary'}),secondary=store.createChannel({organizationId:organization.id,name:'Secondary',kind:'webhook',credential:'https://hooks.example.test/secondary'});store.createRoute({organizationId:organization.id,name:'Escalate',priority:10,matcher:{eventTypes:['firing','reminder','escalation']},channelIds:[primary.id],groupWaitSeconds:60,reminderSeconds:120,escalation:[{afterSeconds:180,channelIds:[secondary.id]}],rateLimitPerMinute:60,enabled:true});const configured=rule(store,{projectId:project.id,consecutive:1}),alert=new AlertEvaluator(store).evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:56:00Z'}).alert!;let now=new Date('2026-07-21T12:00:00Z'),calls=0;const router=new NotificationRouter(store,{fetchImpl:async()=>{calls++;return{ok:true,status:200}},now:()=>now});const grouped=router.enqueue(organization.id,alert,'firing');expect((await router.deliver(grouped[0].id)).state).toBe('pending');now=new Date('2026-07-21T12:01:01Z');expect((await router.retryDue())[0].state).toBe('delivered');const first=router.enqueueRemindersAndEscalations(organization.id,[alert]),second=router.enqueueRemindersAndEscalations(organization.id,[alert]);expect(first.map(item=>item.id)).toEqual(second.map(item=>item.id));expect(new Set(first.map(item=>item.eventType))).toEqual(new Set(['reminder','escalation']));await router.deliverAll(first);expect(calls).toBe(3)})
-  it('rate limits storms while always preserving terminal resolution delivery',()=>{const {store,organization,project}=fixture(),channel=store.createChannel({organizationId:organization.id,name:'Limited',kind:'webhook',credential:'https://hooks.example.test/limited'});store.createRoute({organizationId:organization.id,name:'One per minute',priority:1,matcher:{},channelIds:[channel.id],groupWaitSeconds:0,escalation:[],rateLimitPerMinute:1,enabled:true});const configured=rule(store,{projectId:project.id,consecutive:1}),alert=new AlertEvaluator(store).evaluate(configured,{status:'unhealthy',timestamp:'2026-07-21T11:59:00Z'}).alert!,router=new NotificationRouter(store,{now:()=>new Date('2026-07-21T12:00:00Z')});expect(router.enqueue(organization.id,alert,'firing')).toHaveLength(1);const another=store.saveAlert({...alert,id:crypto.randomUUID(),dedupKey:crypto.randomUUID(),updatedAt:'2026-07-21T12:00:00Z'},'firing');expect(router.enqueue(organization.id,another,'firing')).toHaveLength(0);const resolved=store.saveAlert({...another,state:'resolved',resolvedAt:'2026-07-21T12:00:00Z'},'resolved');expect(router.enqueue(organization.id,resolved,'resolved')).toHaveLength(1)})
+describe('notification routing and delivery', () => {
+  it('encrypts credentials, groups one delivery, signs webhooks, and deduplicates replay', async () => {
+    const { store, organization, project } = fixture(),
+      channel = store.createChannel({
+        organizationId: organization.id,
+        name: 'Pager',
+        kind: 'webhook',
+        credential: JSON.stringify({ url: 'https://hooks.example.test/alerts', signingSecret: 'secret' }),
+      })
+    expect(JSON.stringify(store.controlPlane.exportSnapshot())).not.toContain('hooks.example.test')
+    const route = store.createRoute({
+      organizationId: organization.id,
+      name: 'Critical',
+      priority: 10,
+      matcher: { severities: ['critical'] },
+      channelIds: [channel.id],
+      groupWaitSeconds: 0,
+      escalation: [],
+      template: '{{severity}} {{title}} {{event}}',
+      rateLimitPerMinute: 60,
+      enabled: true,
+    })
+    const configured = rule(store, { projectId: project.id, consecutive: 1 }),
+      alert = new AlertEvaluator(store).evaluate(configured, {
+        status: 'unhealthy',
+        timestamp: '2026-07-21T11:00:00Z',
+      }).alert!
+    let headers: Record<string, string> = {},
+      posted = ''
+    const router = new NotificationRouter(store, {
+      fetchImpl: async (_url, init) => {
+        headers = init.headers
+        posted = init.body
+        return { ok: true, status: 202 }
+      },
+      now: () => new Date('2026-07-21T12:00:00Z'),
+    })
+    const first = router.enqueue(organization.id, alert, 'firing'),
+      second = router.enqueue(organization.id, alert, 'firing')
+    expect(first[0].id).toBe(second[0].id)
+    expect(first[0].routeId).toBe(route.id)
+    expect((await router.deliver(first[0].id)).state).toBe('delivered')
+    expect(posted).toContain('CRITICAL API unhealthy firing')
+    expect(headers['x-ts-cloud-signature']).toStartWith('v1=')
+    expect(headers['x-ts-cloud-timestamp']).toBe('1784635200')
+  })
+  it('retries transient failure, surfaces permanent failure, and test sends no incident', async () => {
+    const { store, organization } = fixture(),
+      channel = store.createChannel({
+        organizationId: organization.id,
+        name: 'Slack',
+        kind: 'slack',
+        credential: 'https://hooks.example.test/slack',
+      })
+    let calls = 0,
+      now = new Date('2026-07-21T12:00:00Z')
+    const router = new NotificationRouter(store, {
+      fetchImpl: async () =>
+        ++calls === 1
+          ? { ok: false, status: 503 }
+          : calls === 3
+            ? { ok: false, status: 400 }
+            : { ok: true, status: 200 },
+      now: () => now,
+    })
+    const delivery = store.createDelivery({
+      channelId: channel.id,
+      eventType: 'test-retry',
+      idempotencyKey: 'retry',
+      payload: { event: 'test' },
+    })
+    expect((await router.deliver(delivery.id)).state).toBe('retrying')
+    now = new Date(now.getTime() + 31_000)
+    expect((await router.deliver(delivery.id)).state).toBe('delivered')
+    const permanent = store.createDelivery({
+      channelId: channel.id,
+      eventType: 'permanent',
+      idempotencyKey: 'permanent',
+      payload: { event: 'test' },
+    })
+    expect((await router.deliver(permanent.id)).state).toBe('dead')
+    const before = store.listAlerts('missing').length
+    expect((await router.testChannel(channel.id)).ok).toBeTrue()
+    expect(store.listAlerts('missing')).toHaveLength(before)
+  })
+  it('handles overnight quiet hours in a named timezone across DST dates', () => {
+    const route = {
+      quietHours: { timezone: 'America/Los_Angeles', start: '22:00', end: '06:00', weekdays: [0] },
+      matcher: {},
+      channelIds: [],
+      escalation: [],
+      id: 'r',
+      organizationId: 'o',
+      name: 'q',
+      priority: 0,
+      groupWaitSeconds: 0,
+      rateLimitPerMinute: 60,
+      enabled: true,
+      version: 1,
+      createdAt: '',
+      updatedAt: '',
+    }
+    expect(isQuietHours(route, new Date('2026-11-01T08:30:00Z'))).toBeTrue()
+    expect(isQuietHours(route, new Date('2026-11-01T20:00:00Z'))).toBeFalse()
+  })
+  it('honors group wait and emits deduplicated reminder and escalation slots', async () => {
+    const { store, organization, project } = fixture(),
+      primary = store.createChannel({
+        organizationId: organization.id,
+        name: 'Primary',
+        kind: 'webhook',
+        credential: 'https://hooks.example.test/primary',
+      }),
+      secondary = store.createChannel({
+        organizationId: organization.id,
+        name: 'Secondary',
+        kind: 'webhook',
+        credential: 'https://hooks.example.test/secondary',
+      })
+    store.createRoute({
+      organizationId: organization.id,
+      name: 'Escalate',
+      priority: 10,
+      matcher: { eventTypes: ['firing', 'reminder', 'escalation'] },
+      channelIds: [primary.id],
+      groupWaitSeconds: 60,
+      reminderSeconds: 120,
+      escalation: [{ afterSeconds: 180, channelIds: [secondary.id] }],
+      rateLimitPerMinute: 60,
+      enabled: true,
+    })
+    const configured = rule(store, { projectId: project.id, consecutive: 1 }),
+      alert = new AlertEvaluator(store).evaluate(configured, {
+        status: 'unhealthy',
+        timestamp: '2026-07-21T11:56:00Z',
+      }).alert!
+    let now = new Date('2026-07-21T12:00:00Z'),
+      calls = 0
+    const router = new NotificationRouter(store, {
+      fetchImpl: async () => {
+        calls++
+        return { ok: true, status: 200 }
+      },
+      now: () => now,
+    })
+    const grouped = router.enqueue(organization.id, alert, 'firing')
+    expect((await router.deliver(grouped[0].id)).state).toBe('pending')
+    now = new Date('2026-07-21T12:01:01Z')
+    expect((await router.retryDue())[0].state).toBe('delivered')
+    const first = router.enqueueRemindersAndEscalations(organization.id, [alert]),
+      second = router.enqueueRemindersAndEscalations(organization.id, [alert])
+    expect(first.map((item) => item.id)).toEqual(second.map((item) => item.id))
+    expect(new Set(first.map((item) => item.eventType))).toEqual(new Set(['reminder', 'escalation']))
+    await router.deliverAll(first)
+    expect(calls).toBe(3)
+  })
+  it('rate limits storms while always preserving terminal resolution delivery', () => {
+    const { store, organization, project } = fixture(),
+      channel = store.createChannel({
+        organizationId: organization.id,
+        name: 'Limited',
+        kind: 'webhook',
+        credential: 'https://hooks.example.test/limited',
+      })
+    store.createRoute({
+      organizationId: organization.id,
+      name: 'One per minute',
+      priority: 1,
+      matcher: {},
+      channelIds: [channel.id],
+      groupWaitSeconds: 0,
+      escalation: [],
+      rateLimitPerMinute: 1,
+      enabled: true,
+    })
+    const configured = rule(store, { projectId: project.id, consecutive: 1 }),
+      alert = new AlertEvaluator(store).evaluate(configured, {
+        status: 'unhealthy',
+        timestamp: '2026-07-21T11:59:00Z',
+      }).alert!,
+      router = new NotificationRouter(store, { now: () => new Date('2026-07-21T12:00:00Z') })
+    expect(router.enqueue(organization.id, alert, 'firing')).toHaveLength(1)
+    const another = store.saveAlert(
+      { ...alert, id: crypto.randomUUID(), dedupKey: crypto.randomUUID(), updatedAt: '2026-07-21T12:00:00Z' },
+      'firing',
+    )
+    expect(router.enqueue(organization.id, another, 'firing')).toHaveLength(0)
+    const resolved = store.saveAlert({ ...another, state: 'resolved', resolvedAt: '2026-07-21T12:00:00Z' }, 'resolved')
+    expect(router.enqueue(organization.id, resolved, 'resolved')).toHaveLength(1)
+  })
 })
 
-describe('synthetic outage journey',()=>{it('records check evidence through acknowledgement and recovery without a fake test incident',async()=>{const {controlPlane,store,organization,project,environment,resource}=fixture(),actor=controlPlane.createActor({kind:'user',externalId:'user:oncall',displayName:'On-call'}),check=store.createHealthCheck({projectId:project.id,environmentId:environment.id,resourceId:resource.id,name:'API',kind:'http',target:'https://api.example.test/health',config:{expectedStatuses:[200]},intervalSeconds:60,timeoutSeconds:5,failureThreshold:2,recoveryThreshold:1,regions:['local'],enabled:true}),configured=rule(store,{projectId:project.id,environmentId:environment.id,resourceId:resource.id,healthCheckId:check.id}),channel=store.createChannel({organizationId:organization.id,name:'Ops',kind:'discord',credential:'https://hooks.example.test/discord'});store.createRoute({organizationId:organization.id,name:'All alerts',priority:0,matcher:{},channelIds:[channel.id],groupWaitSeconds:0,escalation:[],rateLimitPerMinute:60,enabled:true});let healthy=false;const runner=new HealthCheckRunner(store,{fetchImpl:async()=>new Response('',{status:healthy?200:503}),lookupImpl:async()=>({address:'127.0.0.1',family:4}),now:()=>new Date(healthy?'2026-07-21T11:03:00Z':'2026-07-21T11:00:00Z')});await runner.runAndEvaluate(check);const outage=await runner.runAndEvaluate(check),alert=outage.evaluations[0].alert!;expect(alert.state).toBe('firing');store.acknowledge(alert.id,actor.id);healthy=true;await runner.runAndEvaluate(check);const recovery=await runner.runAndEvaluate(check);expect(recovery.evaluations[0].alert?.state).toBe('resolved');expect(store.getAlert(alert.id)?.acknowledgedByActorId).toBe(actor.id)})})
+describe('synthetic outage journey', () => {
+  it('records check evidence through acknowledgement and recovery without a fake test incident', async () => {
+    const { controlPlane, store, organization, project, environment, resource } = fixture(),
+      actor = controlPlane.createActor({ kind: 'user', externalId: 'user:oncall', displayName: 'On-call' }),
+      check = store.createHealthCheck({
+        projectId: project.id,
+        environmentId: environment.id,
+        resourceId: resource.id,
+        name: 'API',
+        kind: 'http',
+        target: 'https://api.example.test/health',
+        config: { expectedStatuses: [200] },
+        intervalSeconds: 60,
+        timeoutSeconds: 5,
+        failureThreshold: 2,
+        recoveryThreshold: 1,
+        regions: ['local'],
+        enabled: true,
+      }),
+      configured = rule(store, {
+        projectId: project.id,
+        environmentId: environment.id,
+        resourceId: resource.id,
+        healthCheckId: check.id,
+      }),
+      channel = store.createChannel({
+        organizationId: organization.id,
+        name: 'Ops',
+        kind: 'discord',
+        credential: 'https://hooks.example.test/discord',
+      })
+    store.createRoute({
+      organizationId: organization.id,
+      name: 'All alerts',
+      priority: 0,
+      matcher: {},
+      channelIds: [channel.id],
+      groupWaitSeconds: 0,
+      escalation: [],
+      rateLimitPerMinute: 60,
+      enabled: true,
+    })
+    let healthy = false
+    const runner = new HealthCheckRunner(store, {
+      fetchImpl: async () => new Response('', { status: healthy ? 200 : 503 }),
+      lookupImpl: async () => ({ address: '127.0.0.1', family: 4 }),
+      now: () => new Date(healthy ? '2026-07-21T11:03:00Z' : '2026-07-21T11:00:00Z'),
+    })
+    await runner.runAndEvaluate(check)
+    const outage = await runner.runAndEvaluate(check),
+      alert = outage.evaluations[0].alert!
+    expect(alert.state).toBe('firing')
+    store.acknowledge(alert.id, actor.id)
+    healthy = true
+    await runner.runAndEvaluate(check)
+    const recovery = await runner.runAndEvaluate(check)
+    expect(recovery.evaluations[0].alert?.state).toBe('resolved')
+    expect(store.getAlert(alert.id)?.acknowledgedByActorId).toBe(actor.id)
+  })
+})

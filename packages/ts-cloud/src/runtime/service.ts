@@ -1,15 +1,18 @@
 import type { CloudConfig, CloudDriver, ComputeTarget, EnvironmentType } from '@ts-cloud/core'
-import { resolveCloudProvider, resolveDeploymentMode } from '@ts-cloud/core'
 import type { ECSClient, LambdaClient } from '../aws'
+import type { RuntimeDiscoveryAdapter, RuntimeDiscoveryContext, RuntimeInventory } from './model'
+import { resolveCloudProvider, resolveDeploymentMode } from '@ts-cloud/core'
 import { ECSClient as LiveECSClient, LambdaClient as LiveLambdaClient } from '../aws'
 import { createCloudDriver } from '../drivers'
 import { ecsWorkloads, lambdaWorkloads } from './adapters/aws'
 import { DockerDiscoveryAdapter } from './adapters/docker'
 import { SystemdDiscoveryAdapter } from './adapters/systemd'
 import { discoverRuntimeInventory } from './inventory'
-import type { RuntimeDiscoveryAdapter, RuntimeDiscoveryContext, RuntimeInventory } from './model'
 
-interface EcsReader extends Pick<ECSClient, 'listClusters' | 'listServices' | 'describeServices' | 'listTasks' | 'describeTasks'> {
+interface EcsReader extends Pick<
+  ECSClient,
+  'listClusters' | 'listServices' | 'describeServices' | 'listTasks' | 'describeTasks'
+> {
   describeTaskDefinition?: ECSClient['describeTaskDefinition']
 }
 interface LambdaReader extends Pick<LambdaClient, 'listFunctions'> {}
@@ -29,7 +32,7 @@ function systemdDiscoveryScript(): string[] {
   return [
     'set -uo pipefail',
     'command -v systemctl >/dev/null 2>&1 || { echo "systemctl is unavailable" >&2; exit 127; }',
-    'systemctl list-units --type=service --all --plain --no-legend 2>/dev/null | awk \'{print $1}\' | while IFS= read -r unit; do',
+    "systemctl list-units --type=service --all --plain --no-legend 2>/dev/null | awk '{print $1}' | while IFS= read -r unit; do",
     '  [ -n "$unit" ] || continue',
     '  clean() { printf "%s" "$1" | tr "\\t\\r\\n" "   "; }',
     '  load=$(systemctl show "$unit" -p LoadState --value 2>/dev/null || true)',
@@ -66,17 +69,24 @@ function targetAdapter(
   environment: EnvironmentType,
 ): RuntimeDiscoveryAdapter {
   const id = `${provider}:${target.id}`
-  const read = async (): Promise<string> => commandOutput(await driver.runRemoteDeploy({
-    targets: [target],
-    commands: provider === 'systemd' ? systemdDiscoveryScript() : dockerDiscoveryScript(),
-    timeoutSeconds: 30,
-    comment: `ts-cloud runtime discovery:${provider}`,
-    tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-  }), id)
+  const read = async (): Promise<string> =>
+    commandOutput(
+      await driver.runRemoteDeploy({
+        targets: [target],
+        commands: provider === 'systemd' ? systemdDiscoveryScript() : dockerDiscoveryScript(),
+        timeoutSeconds: 30,
+        comment: `ts-cloud runtime discovery:${provider}`,
+        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+      }),
+      id,
+    )
   return provider === 'systemd' ? new SystemdDiscoveryAdapter(read, id) : new DockerDiscoveryAdapter(read, id)
 }
 
-async function collectPages<T>(read: (nextToken?: string) => Promise<{ items: T[], nextToken?: string }>, maxPages = 100): Promise<T[]> {
+async function collectPages<T>(
+  read: (nextToken?: string) => Promise<{ items: T[]; nextToken?: string }>,
+  maxPages = 100,
+): Promise<T[]> {
   const items: T[] = []
   let nextToken: string | undefined
   for (let page = 0; page < maxPages; page++) {
@@ -91,10 +101,13 @@ async function collectPages<T>(read: (nextToken?: string) => Promise<{ items: T[
 export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
   readonly id = 'ecs:aws'
   readonly provider = 'ecs' as const
-  constructor(private readonly client: EcsReader, private readonly prefix: string) {}
+  constructor(
+    private readonly client: EcsReader,
+    private readonly prefix: string,
+  ) {}
 
   async discover(context: RuntimeDiscoveryContext): Promise<import('./model').RuntimeWorkload[]> {
-    const clusters = await collectPages(async nextToken => {
+    const clusters = await collectPages(async (nextToken) => {
       const page = await this.client.listClusters({ nextToken, maxResults: 100 })
       return { items: page.clusterArns ?? [], nextToken: page.nextToken }
     })
@@ -102,16 +115,21 @@ export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
     const tasks = []
     const taskDefinitions: any[] = []
     for (const cluster of clusters) {
-      const serviceArns = (await collectPages(async nextToken => {
-        const page = await this.client.listServices(cluster, { nextToken, maxResults: 100 })
-        return { items: page.serviceArns ?? [], nextToken: page.nextToken }
-      })).filter(arn => arn.split('/').at(-1)?.startsWith(this.prefix))
+      const serviceArns = (
+        await collectPages(async (nextToken) => {
+          const page = await this.client.listServices(cluster, { nextToken, maxResults: 100 })
+          return { items: page.serviceArns ?? [], nextToken: page.nextToken }
+        })
+      ).filter((arn) => arn.split('/').at(-1)?.startsWith(this.prefix))
       for (let index = 0; index < serviceArns.length; index += 10) {
-        const described = await this.client.describeServices({ cluster, services: serviceArns.slice(index, index + 10) })
+        const described = await this.client.describeServices({
+          cluster,
+          services: serviceArns.slice(index, index + 10),
+        })
         services.push(...(described.services ?? []))
       }
-      for (const service of services.filter(item => item.clusterArn === cluster || !item.clusterArn)) {
-        const taskArns = await collectPages(async nextToken => {
+      for (const service of services.filter((item) => item.clusterArn === cluster || !item.clusterArn)) {
+        const taskArns = await collectPages(async (nextToken) => {
           const page = await this.client.listTasks(cluster, service.serviceName, { nextToken, maxResults: 100 })
           return { items: page.taskArns ?? [], nextToken: page.nextToken }
         })
@@ -122,7 +140,9 @@ export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
       }
     }
     if (this.client.describeTaskDefinition) {
-      for (const arn of [...new Set(services.map(service => service.taskDefinition).filter((value): value is string => !!value))]) {
+      for (const arn of [
+        ...new Set(services.map((service) => service.taskDefinition).filter((value): value is string => !!value)),
+      ]) {
         const described = await this.client.describeTaskDefinition(arn)
         if (described.taskDefinition) taskDefinitions.push(described.taskDefinition)
       }
@@ -134,12 +154,17 @@ export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
 export class LambdaRuntimeAdapter implements RuntimeDiscoveryAdapter {
   readonly id = 'lambda:aws'
   readonly provider = 'lambda' as const
-  constructor(private readonly client: LambdaReader, private readonly prefix: string) {}
+  constructor(
+    private readonly client: LambdaReader,
+    private readonly prefix: string,
+  ) {}
   async discover(context: RuntimeDiscoveryContext): Promise<import('./model').RuntimeWorkload[]> {
-    const functions = (await collectPages(async Marker => {
-      const page = await this.client.listFunctions({ Marker, MaxItems: 50 })
-      return { items: page.Functions ?? [], nextToken: page.NextMarker }
-    })).filter(fn => fn.FunctionName?.startsWith(this.prefix))
+    const functions = (
+      await collectPages(async (Marker) => {
+        const page = await this.client.listFunctions({ Marker, MaxItems: 50 })
+        return { items: page.Functions ?? [], nextToken: page.NextMarker }
+      })
+    ).filter((fn) => fn.FunctionName?.startsWith(this.prefix))
     return lambdaWorkloads(functions, context, this.id)
   }
 }
@@ -179,12 +204,21 @@ export async function resolveRuntimeInventory(
   const context = { project: config.project.slug, environment }
   try {
     return await discoverRuntimeInventory(await createRuntimeAdapters(config, environment, dependencies), context)
-  }
-  catch (error: any) {
+  } catch (error: any) {
     return {
       generatedAt: new Date().toISOString(),
       workloads: [],
-      sources: [{ id: 'runtime:bootstrap', provider: resolveCloudProvider(config) === 'aws' ? 'ecs' : 'systemd', status: 'error', discoveredAt: new Date().toISOString(), staleAfterSeconds: 60, itemCount: 0, message: String(error?.message ?? error).slice(0, 500) }],
+      sources: [
+        {
+          id: 'runtime:bootstrap',
+          provider: resolveCloudProvider(config) === 'aws' ? 'ecs' : 'systemd',
+          status: 'error',
+          discoveredAt: new Date().toISOString(),
+          staleAfterSeconds: 60,
+          itemCount: 0,
+          message: String(error?.message ?? error).slice(0, 500),
+        },
+      ],
       degraded: true,
     }
   }

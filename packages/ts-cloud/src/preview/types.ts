@@ -1,7 +1,8 @@
 import type { JsonValue } from '../control-plane'
 
 export type PreviewDatabaseStrategy = 'disabled' | 'isolated' | 'snapshot' | 'shared_read_only'
-export type PreviewStatus = 'queued' | 'deploying' | 'active' | 'updating' | 'destroying' | 'destroyed' | 'failed' | 'cleanup_failed'
+export type PreviewStatus =
+  'queued' | 'deploying' | 'active' | 'updating' | 'destroying' | 'destroyed' | 'failed' | 'cleanup_failed'
 
 export interface PreviewDefinition {
   id: string

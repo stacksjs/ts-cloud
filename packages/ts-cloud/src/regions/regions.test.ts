@@ -1,11 +1,135 @@
-import { afterEach,describe,expect,it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 import { ControlPlaneStore } from '../control-plane'
 import { DurableQueueWorker } from '../queue'
-import { createRegionQueueHandlers,RegionService,RegionStore } from './index'
+import { createRegionQueueHandlers, RegionService, RegionStore } from './index'
 import type { RegionalProviderDriver } from './index'
-const controls:ControlPlaneStore[]=[];afterEach(()=>{while(controls.length)controls.pop()!.close()})
-class Driver implements RegionalProviderDriver{provider='aws';events:string[]=[];lag=1;traffic:Record<string,number>={};retained:boolean[]=[];async applyStack({target,revision}:any){this.events.push(`apply:${target.region}:${revision}`);return{stackId:`stack-${target.region}`}}async deleteStack({target,retainData}:any){this.events.push(`delete:${target.region}`);this.retained.push(retainData)}async health({target}:any){return{healthy:true,evidence:{stack:target.stackId}}}async configureReplication({channel}:any){this.events.push(`replicate:${channel.kind}:${channel.sourceRegion}:${channel.targetRegion}`);return{checkpoint:'configured',lagSeconds:this.lag}}async verifyReplication(){return{healthy:this.lag<60,checkpoint:'verified',lagSeconds:this.lag}}async applyTraffic({weights}:any){this.traffic=weights;this.events.push(`traffic:${JSON.stringify(weights)}`);return{providerState:{changeId:'change-1'}}}}
-function fixture(){const control=new ControlPlaneStore({path:':memory:'});controls.push(control);const organization=control.createOrganization({slug:'acme',name:'Acme'}),project=control.createProject({organizationId:organization.id,slug:'cloud',name:'Cloud'}),environment=control.createEnvironment({projectId:project.id,slug:'production',name:'Production',kind:'production'}),store=new RegionStore(control),service=new RegionService(store),driver=new Driver(),topology=service.create({organizationId:organization.id,projectId:project.id,environmentId:environment.id,name:'global-api',hostname:'api.example.com',regions:[{region:'us-west-2',role:'primary',provider:'aws'},{region:'us-east-1',role:'secondary',provider:'aws'}],trafficPolicy:'active_passive',dataPolicy:{replicate:['s3','dynamodb','secrets'],maxLagSeconds:30,retainOnDestroy:true},dnsProvider:'route53',cdnEnabled:true,wafEnabled:true});return{control,organization,project,environment,store,service,driver,topology,worker:()=>new DurableQueueWorker(service.queue,createRegionQueueHandlers(store,[driver]))}}
-describe('multi-region orchestration',()=>{it('rolls out secondary first, verifies bidirectional replication, then activates traffic',async()=>{const target=fixture();target.service.enqueue({topologyId:target.topology.id,kind:'rollout',revision:'sha256:release-001',manifest:{stack:'api'}});expect(await target.worker().drain()).toMatchObject([{terminalState:'succeeded'}]);expect(target.driver.events.slice(0,2)).toEqual(['apply:us-east-1:sha256:release-001','apply:us-west-2:sha256:release-001']);expect(target.store.channels(target.topology.id)).toHaveLength(6);expect(target.store.channels(target.topology.id).every(item=>item.status==='in_sync')).toBe(true);expect(target.store.get(target.topology.id)).toMatchObject({status:'ready',activeRegion:'us-west-2',revision:'sha256:release-001'});expect(target.driver.traffic).toEqual({'us-west-2':100,'us-east-1':0})})
-it('fails over and back only after health and replication gates',async()=>{const target=fixture();target.service.enqueue({topologyId:target.topology.id,kind:'rollout',revision:'release-001'});await target.worker().drain();target.service.enqueue({topologyId:target.topology.id,kind:'failover',targetRegion:'us-east-1'});expect(await target.worker().drain()).toMatchObject([{terminalState:'succeeded'}]);expect(target.store.get(target.topology.id)).toMatchObject({status:'failed_over',activeRegion:'us-east-1'});expect(target.driver.traffic).toEqual({'us-west-2':0,'us-east-1':100});target.service.enqueue({topologyId:target.topology.id,kind:'failback',targetRegion:'us-west-2'});expect(await target.worker().drain()).toMatchObject([{terminalState:'succeeded'}]);expect(target.store.get(target.topology.id)).toMatchObject({status:'ready',activeRegion:'us-west-2'})})
-it('blocks stale failover before traffic mutation and retains data on destroy',async()=>{const target=fixture();target.service.enqueue({topologyId:target.topology.id,kind:'rollout',revision:'release-001'});await target.worker().drain();const before={...target.driver.traffic};target.driver.lag=90;target.service.enqueue({topologyId:target.topology.id,kind:'failover',targetRegion:'us-east-1'});expect(await target.worker().drain()).toMatchObject([{terminalState:'failed'}]);expect(target.driver.traffic).toEqual(before);target.driver.lag=1;expect(()=>target.service.enqueue({topologyId:target.topology.id,kind:'destroy',confirmation:'wrong'})).toThrow('Exact');target.service.enqueue({topologyId:target.topology.id,kind:'destroy',confirmation:'global-api'});expect(await target.worker().drain()).toMatchObject([{terminalState:'succeeded'}]);expect(target.store.get(target.topology.id)?.status).toBe('destroyed');expect(target.driver.retained).toEqual([true,true])})})
+const controls: ControlPlaneStore[] = []
+afterEach(() => {
+  while (controls.length) controls.pop()!.close()
+})
+class Driver implements RegionalProviderDriver {
+  provider = 'aws'
+  events: string[] = []
+  lag = 1
+  traffic: Record<string, number> = {}
+  retained: boolean[] = []
+  async applyStack({ target, revision }: any) {
+    this.events.push(`apply:${target.region}:${revision}`)
+    return { stackId: `stack-${target.region}` }
+  }
+  async deleteStack({ target, retainData }: any) {
+    this.events.push(`delete:${target.region}`)
+    this.retained.push(retainData)
+  }
+  async health({ target }: any) {
+    return { healthy: true, evidence: { stack: target.stackId } }
+  }
+  async configureReplication({ channel }: any) {
+    this.events.push(`replicate:${channel.kind}:${channel.sourceRegion}:${channel.targetRegion}`)
+    return { checkpoint: 'configured', lagSeconds: this.lag }
+  }
+  async verifyReplication() {
+    return { healthy: this.lag < 60, checkpoint: 'verified', lagSeconds: this.lag }
+  }
+  async applyTraffic({ weights }: any) {
+    this.traffic = weights
+    this.events.push(`traffic:${JSON.stringify(weights)}`)
+    return { providerState: { changeId: 'change-1' } }
+  }
+}
+function fixture() {
+  const control = new ControlPlaneStore({ path: ':memory:' })
+  controls.push(control)
+  const organization = control.createOrganization({ slug: 'acme', name: 'Acme' }),
+    project = control.createProject({ organizationId: organization.id, slug: 'cloud', name: 'Cloud' }),
+    environment = control.createEnvironment({
+      projectId: project.id,
+      slug: 'production',
+      name: 'Production',
+      kind: 'production',
+    }),
+    store = new RegionStore(control),
+    service = new RegionService(store),
+    driver = new Driver(),
+    topology = service.create({
+      organizationId: organization.id,
+      projectId: project.id,
+      environmentId: environment.id,
+      name: 'global-api',
+      hostname: 'api.example.com',
+      regions: [
+        { region: 'us-west-2', role: 'primary', provider: 'aws' },
+        { region: 'us-east-1', role: 'secondary', provider: 'aws' },
+      ],
+      trafficPolicy: 'active_passive',
+      dataPolicy: { replicate: ['s3', 'dynamodb', 'secrets'], maxLagSeconds: 30, retainOnDestroy: true },
+      dnsProvider: 'route53',
+      cdnEnabled: true,
+      wafEnabled: true,
+    })
+  return {
+    control,
+    organization,
+    project,
+    environment,
+    store,
+    service,
+    driver,
+    topology,
+    worker: () => new DurableQueueWorker(service.queue, createRegionQueueHandlers(store, [driver])),
+  }
+}
+describe('multi-region orchestration', () => {
+  it('rolls out secondary first, verifies bidirectional replication, then activates traffic', async () => {
+    const target = fixture()
+    target.service.enqueue({
+      topologyId: target.topology.id,
+      kind: 'rollout',
+      revision: 'sha256:release-001',
+      manifest: { stack: 'api' },
+    })
+    expect(await target.worker().drain()).toMatchObject([{ terminalState: 'succeeded' }])
+    expect(target.driver.events.slice(0, 2)).toEqual([
+      'apply:us-east-1:sha256:release-001',
+      'apply:us-west-2:sha256:release-001',
+    ])
+    expect(target.store.channels(target.topology.id)).toHaveLength(6)
+    expect(target.store.channels(target.topology.id).every((item) => item.status === 'in_sync')).toBe(true)
+    expect(target.store.get(target.topology.id)).toMatchObject({
+      status: 'ready',
+      activeRegion: 'us-west-2',
+      revision: 'sha256:release-001',
+    })
+    expect(target.driver.traffic).toEqual({ 'us-west-2': 100, 'us-east-1': 0 })
+  })
+  it('fails over and back only after health and replication gates', async () => {
+    const target = fixture()
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'rollout', revision: 'release-001' })
+    await target.worker().drain()
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'failover', targetRegion: 'us-east-1' })
+    expect(await target.worker().drain()).toMatchObject([{ terminalState: 'succeeded' }])
+    expect(target.store.get(target.topology.id)).toMatchObject({ status: 'failed_over', activeRegion: 'us-east-1' })
+    expect(target.driver.traffic).toEqual({ 'us-west-2': 0, 'us-east-1': 100 })
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'failback', targetRegion: 'us-west-2' })
+    expect(await target.worker().drain()).toMatchObject([{ terminalState: 'succeeded' }])
+    expect(target.store.get(target.topology.id)).toMatchObject({ status: 'ready', activeRegion: 'us-west-2' })
+  })
+  it('blocks stale failover before traffic mutation and retains data on destroy', async () => {
+    const target = fixture()
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'rollout', revision: 'release-001' })
+    await target.worker().drain()
+    const before = { ...target.driver.traffic }
+    target.driver.lag = 90
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'failover', targetRegion: 'us-east-1' })
+    expect(await target.worker().drain()).toMatchObject([{ terminalState: 'failed' }])
+    expect(target.driver.traffic).toEqual(before)
+    target.driver.lag = 1
+    expect(() =>
+      target.service.enqueue({ topologyId: target.topology.id, kind: 'destroy', confirmation: 'wrong' }),
+    ).toThrow('Exact')
+    target.service.enqueue({ topologyId: target.topology.id, kind: 'destroy', confirmation: 'global-api' })
+    expect(await target.worker().drain()).toMatchObject([{ terminalState: 'succeeded' }])
+    expect(target.store.get(target.topology.id)?.status).toBe('destroyed')
+    expect(target.driver.retained).toEqual([true, true])
+  })
+})

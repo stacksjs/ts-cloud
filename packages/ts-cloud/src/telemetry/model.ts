@@ -41,7 +41,10 @@ export interface TelemetryRecord extends TelemetryCorrelation {
   ingestedBytes: number
 }
 
-export interface AppendTelemetryInput extends Omit<TelemetryRecord, 'id' | 'observedAt' | 'sampled' | 'attributes' | 'ingestedBytes'> {
+export interface AppendTelemetryInput extends Omit<
+  TelemetryRecord,
+  'id' | 'observedAt' | 'sampled' | 'attributes' | 'ingestedBytes'
+> {
   id?: string
   observedAt?: string
   sampled?: boolean
@@ -72,9 +75,9 @@ export interface TelemetryQueryResult {
   records: TelemetryRecord[]
   nextCursor?: string
   truncated: boolean
-  scannedRange: { from: string, to: string }
-  sources: Array<{ source: string, latestAt: string, freshness: TelemetryFreshness, count: number }>
-  gaps: Array<{ from: string, to: string, source?: string }>
+  scannedRange: { from: string; to: string }
+  sources: Array<{ source: string; latestAt: string; freshness: TelemetryFreshness; count: number }>
+  gaps: Array<{ from: string; to: string; source?: string }>
 }
 
 export interface TelemetryTailResult {

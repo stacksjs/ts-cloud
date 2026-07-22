@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import { ControlPlaneStore } from '../control-plane'
-import { ensureDefaultSecurityPolicies, productionChangeReview, recordPreDeploySecretScan, recordSkippedSecretScan, securityScope } from './integration'
+import {
+  ensureDefaultSecurityPolicies,
+  productionChangeReview,
+  recordPreDeploySecretScan,
+  recordSkippedSecretScan,
+  securityScope,
+} from './integration'
 import { SecurityPostureStore } from './posture-store'
 
 function fixture(kind: 'production' | 'staging' = 'production') {
@@ -19,7 +25,13 @@ describe('deployment security integration', () => {
     expect(policy).toMatchObject({ scannerFailMode: 'closed', requiredScanners: ['source-secrets'] })
     recordSkippedSecretScan(f.posture, f.scope)
     expect(productionChangeReview(f.posture, { scope: f.scope }).decision.outcome).toBe('block')
-    recordPreDeploySecretScan(f.posture, f.scope, { passed: true, findings: [], scannedFiles: 42, duration: 12, summary: { critical: 0, high: 0, medium: 0, low: 0 } })
+    recordPreDeploySecretScan(f.posture, f.scope, {
+      passed: true,
+      findings: [],
+      scannedFiles: 42,
+      duration: 12,
+      summary: { critical: 0, high: 0, medium: 0, low: 0 },
+    })
     expect(productionChangeReview(f.posture, { scope: f.scope }).decision.outcome).toBe('allow')
   })
 

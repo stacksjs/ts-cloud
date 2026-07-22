@@ -1,7 +1,8 @@
 export type WorkloadProvider = 'systemd' | 'docker' | 'oci' | 'ecs' | 'lambda'
 export type WorkloadKind = 'service' | 'container' | 'task' | 'function' | 'process'
 export type WorkloadStatus = 'starting' | 'running' | 'degraded' | 'stopping' | 'stopped' | 'failed' | 'unknown'
-export type LifecycleAction = 'start' | 'stop' | 'restart' | 'redeploy' | 'scale' | 'logs' | 'exec' | 'inspect' | 'files'
+export type LifecycleAction =
+  'start' | 'stop' | 'restart' | 'redeploy' | 'scale' | 'logs' | 'exec' | 'inspect' | 'files'
 
 export interface RuntimeLink {
   project?: string
@@ -26,7 +27,7 @@ export interface RuntimeNetwork {
   name?: string
   mode?: string
   addresses?: string[]
-  ports?: Array<{ container?: number, host?: number, protocol?: string, address?: string }>
+  ports?: Array<{ container?: number; host?: number; protocol?: string; address?: string }>
 }
 
 export interface RuntimeMount {
@@ -135,12 +136,15 @@ export interface RuntimeDiscoveryAdapter {
 }
 
 export function runtimeId(provider: WorkloadProvider, source: string, nativeId: string): string {
-  return [provider, source, nativeId].map(value => encodeURIComponent(value)).join(':')
+  return [provider, source, nativeId].map((value) => encodeURIComponent(value)).join(':')
 }
 
 export function unsupportedCapabilities(reason: string): LifecycleCapabilities {
-  return Object.fromEntries((['start', 'stop', 'restart', 'redeploy', 'scale', 'logs', 'exec', 'inspect', 'files'] as LifecycleAction[])
-    .map(action => [action, { supported: false, reason }])) as LifecycleCapabilities
+  return Object.fromEntries(
+    (['start', 'stop', 'restart', 'redeploy', 'scale', 'logs', 'exec', 'inspect', 'files'] as LifecycleAction[]).map(
+      (action) => [action, { supported: false, reason }],
+    ),
+  ) as LifecycleCapabilities
 }
 
 export function capabilities(

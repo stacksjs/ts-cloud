@@ -1,10 +1,67 @@
-import { createHash,createPublicKey,verify } from 'node:crypto'
 import type { PlatformUpdateDocument } from './types'
-export function canonicalJson(value:unknown):string{if(value===null||typeof value!=='object')return JSON.stringify(value);if(Array.isArray(value))return`[${value.map(canonicalJson).join(',')}]`;return`{${Object.keys(value as object).sort().map(key=>`${JSON.stringify(key)}:${canonicalJson((value as Record<string,unknown>)[key])}`).join(',')}}`}
-export const manifestDigest=(document:PlatformUpdateDocument):string=>createHash('sha256').update(canonicalJson(document)).digest('hex')
-export const documentDigest=(value:unknown):string=>createHash('sha256').update(canonicalJson(value)).digest('hex')
-export const publicKeyFingerprint=(pem:string):string=>createHash('sha256').update(createPublicKey(pem).export({type:'spki',format:'der'})).digest('hex')
-export function verifyUpdateSignature(document:PlatformUpdateDocument,signature:string,publicKeyPem:string):boolean{try{return verify(null,Buffer.from(canonicalJson(document)),createPublicKey(publicKeyPem),Buffer.from(signature,'base64'))}catch{return false}}
-const version=(input:string):number[]=>input.replace(/^v/,'').split(/[.-]/).slice(0,3).map(value=>Number(value)||0)
-const compare=(left:string,right:string):number=>{const a=version(left),b=version(right);for(let i=0;i<3;i++){const delta=(a[i]??0)-(b[i]??0);if(delta)return delta}return 0}
-export function updateCompatibility(document:PlatformUpdateDocument,input:{schemaVersion:number;currentVersion:string;platform:string;architecture:string}):{compatible:boolean;reasons:string[]}{const reasons:string[]=[];if(input.schemaVersion<document.minimumSchema)reasons.push(`schema ${input.schemaVersion} is below ${document.minimumSchema}`);if(input.schemaVersion>document.maximumSchema)reasons.push(`schema ${input.schemaVersion} is above ${document.maximumSchema}`);if(document.minimumVersion&&compare(input.currentVersion,document.minimumVersion)<0)reasons.push(`platform ${input.currentVersion} is below ${document.minimumVersion}`);if(compare(document.version,input.currentVersion)<=0)reasons.push(`version ${document.version} is not newer than ${input.currentVersion}`);if(!document.artifacts.some(item=>item.platform===input.platform&&item.architecture===input.architecture))reasons.push(`no artifact for ${input.platform}/${input.architecture}`);return{compatible:reasons.length===0,reasons}}
+import { createHash, createPublicKey, verify } from 'node:crypto'
+
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`
+  return `{${Object.keys(value as object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson((value as Record<string, unknown>)[key])}`)
+    .join(',')}}`
+}
+export const manifestDigest = (document: PlatformUpdateDocument): string =>
+  createHash('sha256').update(canonicalJson(document)).digest('hex')
+export const documentDigest = (value: unknown): string =>
+  createHash('sha256').update(canonicalJson(value)).digest('hex')
+export const publicKeyFingerprint = (pem: string): string =>
+  createHash('sha256')
+    .update(createPublicKey(pem).export({ type: 'spki', format: 'der' }))
+    .digest('hex')
+export function verifyUpdateSignature(
+  document: PlatformUpdateDocument,
+  signature: string,
+  publicKeyPem: string,
+): boolean {
+  try {
+    return verify(
+      null,
+      Buffer.from(canonicalJson(document)),
+      createPublicKey(publicKeyPem),
+      Buffer.from(signature, 'base64'),
+    )
+  } catch {
+    return false
+  }
+}
+const version = (input: string): number[] =>
+  input
+    .replace(/^v/, '')
+    .split(/[.-]/)
+    .slice(0, 3)
+    .map((value) => Number(value) || 0)
+const compare = (left: string, right: string): number => {
+  const a = version(left),
+    b = version(right)
+  for (let i = 0; i < 3; i++) {
+    const delta = (a[i] ?? 0) - (b[i] ?? 0)
+    if (delta) return delta
+  }
+  return 0
+}
+export function updateCompatibility(
+  document: PlatformUpdateDocument,
+  input: { schemaVersion: number; currentVersion: string; platform: string; architecture: string },
+): { compatible: boolean; reasons: string[] } {
+  const reasons: string[] = []
+  if (input.schemaVersion < document.minimumSchema)
+    reasons.push(`schema ${input.schemaVersion} is below ${document.minimumSchema}`)
+  if (input.schemaVersion > document.maximumSchema)
+    reasons.push(`schema ${input.schemaVersion} is above ${document.maximumSchema}`)
+  if (document.minimumVersion && compare(input.currentVersion, document.minimumVersion) < 0)
+    reasons.push(`platform ${input.currentVersion} is below ${document.minimumVersion}`)
+  if (compare(document.version, input.currentVersion) <= 0)
+    reasons.push(`version ${document.version} is not newer than ${input.currentVersion}`)
+  if (!document.artifacts.some((item) => item.platform === input.platform && item.architecture === input.architecture))
+    reasons.push(`no artifact for ${input.platform}/${input.architecture}`)
+  return { compatible: reasons.length === 0, reasons }
+}

@@ -48,7 +48,7 @@ export interface PlacementDecision {
   eligible: boolean
   reasons: string[]
   available: CapacityVector
-  score: { fit: number, spread: number, cost: number }
+  score: { fit: number; spread: number; cost: number }
 }
 
 export interface WorkloadPlacement {
@@ -79,7 +79,7 @@ export interface RemoteBuild {
   operationId?: string
   sourceSha: string
   buildSpec: JsonValue
-  credentialPolicy: { productionSecrets: false, shortLivedTokenExpiresAt: string }
+  credentialPolicy: { productionSecrets: false; shortLivedTokenExpiresAt: string }
   workspace?: string
   cacheKey?: string
   artifactUri?: string
@@ -92,6 +92,11 @@ export interface RemoteBuild {
 
 export interface RemoteBuildDriver {
   backend: PoolBackend
-  run(input: { build: RemoteBuild, pool: CapacityPool, signal: AbortSignal, log(message: string): void }): Promise<{ artifactUri: string, artifactDigest: string, cacheKey?: string }>
-  cleanup(input: { build: RemoteBuild, pool: CapacityPool }): Promise<void>
+  run(input: {
+    build: RemoteBuild
+    pool: CapacityPool
+    signal: AbortSignal
+    log(message: string): void
+  }): Promise<{ artifactUri: string; artifactDigest: string; cacheKey?: string }>
+  cleanup(input: { build: RemoteBuild; pool: CapacityPool }): Promise<void>
 }

@@ -1,18 +1,99 @@
+import type { FleetDriver, FleetServer, ServerFacts, ServerProvider } from './index'
 import { createHash } from 'node:crypto'
-import type { FleetDriver,FleetServer,ServerFacts,ServerProvider } from './index'
-export interface FleetSshTransport { scan(endpoint:string,port:number):Promise<{algorithm:string;key:string}>; exec(server:FleetServer,command:string):Promise<{code:number;stdout:string;stderr:string}> }
-const run=async(command:string[]):Promise<{code:number;stdout:string;stderr:string}>=>{const child=Bun.spawn(command,{stdout:'pipe',stderr:'pipe'}),[code,stdout,stderr]=await Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);return{code,stdout,stderr}}
-export class SystemFleetSshTransport implements FleetSshTransport {
-  async scan(endpoint:string,port:number):Promise<{algorithm:string;key:string}>{const result=await run(['ssh-keyscan','-T','10','-p',String(port),'-t','ed25519',endpoint]),fields=result.stdout.split('\n').find(line=>line&&!line.startsWith('#'))?.trim().split(/\s+/);if(result.code!==0||!fields?.[1]||!fields[2])throw new Error(`SSH host-key scan failed: ${result.stderr.trim()||'no key returned'}`);return{algorithm:fields[1],key:fields[2]}}
-  async exec(server:FleetServer,command:string):Promise<{code:number;stdout:string;stderr:string}>{if(server.trustState!=='pinned')throw new Error('SSH host key must be pinned before remote execution.');return run(['ssh','-p',String(server.sshPort),'-o','BatchMode=yes','-o','StrictHostKeyChecking=yes','-o','ConnectTimeout=10',`${server.sshUser}@${server.endpoint}`,command])}
+
+export interface FleetSshTransport {
+  scan(endpoint: string, port: number): Promise<{ algorithm: string; key: string }>
+  exec(server: FleetServer, command: string): Promise<{ code: number; stdout: string; stderr: string }>
 }
-const fingerprint=(key:string):string=>`SHA256:${createHash('sha256').update(Buffer.from(key,'base64')).digest('base64').replace(/=+$/,'')}`
-const FACTS=`set -eu; printf '{'; printf '"os":"%s",' "$(. /etc/os-release 2>/dev/null; printf %s "\${PRETTY_NAME:-Linux}")"; printf '"arch":"%s",' "$(uname -m)"; printf '"cpuCores":%s,' "$(getconf _NPROCESSORS_ONLN)"; printf '"memoryBytes":%s,' "$(awk '/MemTotal/{print $2*1024}' /proc/meminfo)"; printf '"diskBytes":%s,' "$(df -B1 / | awk 'NR==2{print $2}')"; printf '"diskFreeBytes":%s,' "$(df -B1 / | awk 'NR==2{print $4}')"; printf '"dnsOk":'; getent hosts example.com >/dev/null && printf true || printf false; printf ',"timeSkewSeconds":0,"tools":{"curl":"'; command -v curl >/dev/null && printf installed; printf '","tar":"'; command -v tar >/dev/null && printf installed; printf '"},"privilege":"'; sudo -n true >/dev/null 2>&1 && printf sudo || printf user; printf '"}'`
+const run = async (command: string[]): Promise<{ code: number; stdout: string; stderr: string }> => {
+  const child = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' }),
+    [code, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+  return { code, stdout, stderr }
+}
+export class SystemFleetSshTransport implements FleetSshTransport {
+  async scan(endpoint: string, port: number): Promise<{ algorithm: string; key: string }> {
+    const result = await run(['ssh-keyscan', '-T', '10', '-p', String(port), '-t', 'ed25519', endpoint]),
+      fields = result.stdout
+        .split('\n')
+        .find((line) => line && !line.startsWith('#'))
+        ?.trim()
+        .split(/\s+/)
+    if (result.code !== 0 || !fields?.[1] || !fields[2])
+      throw new Error(`SSH host-key scan failed: ${result.stderr.trim() || 'no key returned'}`)
+    return { algorithm: fields[1], key: fields[2] }
+  }
+  async exec(server: FleetServer, command: string): Promise<{ code: number; stdout: string; stderr: string }> {
+    if (server.trustState !== 'pinned') throw new Error('SSH host key must be pinned before remote execution.')
+    return run([
+      'ssh',
+      '-p',
+      String(server.sshPort),
+      '-o',
+      'BatchMode=yes',
+      '-o',
+      'StrictHostKeyChecking=yes',
+      '-o',
+      'ConnectTimeout=10',
+      `${server.sshUser}@${server.endpoint}`,
+      command,
+    ])
+  }
+}
+const fingerprint = (key: string): string =>
+  `SHA256:${createHash('sha256').update(Buffer.from(key, 'base64')).digest('base64').replace(/=+$/, '')}`
+const FACTS = `set -eu; printf '{'; printf '"os":"%s",' "$(. /etc/os-release 2>/dev/null; printf %s "\${PRETTY_NAME:-Linux}")"; printf '"arch":"%s",' "$(uname -m)"; printf '"cpuCores":%s,' "$(getconf _NPROCESSORS_ONLN)"; printf '"memoryBytes":%s,' "$(awk '/MemTotal/{print $2*1024}' /proc/meminfo)"; printf '"diskBytes":%s,' "$(df -B1 / | awk 'NR==2{print $2}')"; printf '"diskFreeBytes":%s,' "$(df -B1 / | awk 'NR==2{print $4}')"; printf '"dnsOk":'; getent hosts example.com >/dev/null && printf true || printf false; printf ',"timeSkewSeconds":0,"tools":{"curl":"'; command -v curl >/dev/null && printf installed; printf '","tar":"'; command -v tar >/dev/null && printf installed; printf '"},"privilege":"'; sudo -n true >/dev/null 2>&1 && printf sudo || printf user; printf '"}'`
 export class SshFleetDriver implements FleetDriver {
-  constructor(readonly provider:ServerProvider,private transport:FleetSshTransport=new SystemFleetSshTransport(),private discoverer?:FleetDriver['discover']){}
-  discover(projectId:string):ReturnType<FleetDriver['discover']>{return this.discoverer?.(projectId)??Promise.resolve([])}
-  async test(server:FleetServer):ReturnType<FleetDriver['test']>{try{const key=await this.transport.scan(server.endpoint,server.sshPort);return{reachable:true,hostKeyAlgorithm:key.algorithm,hostKeyFingerprint:fingerprint(key.key),latencyMs:0}}catch{return{reachable:false,hostKeyAlgorithm:'unknown',hostKeyFingerprint:'',latencyMs:0}}}
-  async validate(server:FleetServer):Promise<ServerFacts>{const result=await this.transport.exec(server,FACTS);if(result.code!==0)throw new Error(`Fleet validation failed: ${result.stderr.trim()||result.code}`);try{return JSON.parse(result.stdout)}catch{throw new Error('Fleet validation returned malformed facts.')}}
-  async bootstrap(server:FleetServer,steps:string[]):ReturnType<FleetDriver['bootstrap']>{const result=await this.transport.exec(server,`sudo -n ts-cloud-agent bootstrap --version 1 --steps ${steps.length}`);if(result.code!==0)throw new Error(`Fleet bootstrap failed: ${result.stderr.trim()||result.code}`);return{version:'1'}}
-  capabilities():FleetServer['capabilities']{return{document:{supported:true,reason:'fleet-capabilities/v1; sha256:driver-contract'},validate:{supported:true},bootstrap:{supported:true},heartbeat:{supported:true},drain:{supported:true},archive:{supported:true},terminate:{supported:false,reason:'Inventory removal never terminates provider infrastructure.'}}}
+  constructor(
+    readonly provider: ServerProvider,
+    private transport: FleetSshTransport = new SystemFleetSshTransport(),
+    private discoverer?: FleetDriver['discover'],
+  ) {}
+  discover(projectId: string): ReturnType<FleetDriver['discover']> {
+    return this.discoverer?.(projectId) ?? Promise.resolve([])
+  }
+  async test(server: FleetServer): ReturnType<FleetDriver['test']> {
+    try {
+      const key = await this.transport.scan(server.endpoint, server.sshPort)
+      return {
+        reachable: true,
+        hostKeyAlgorithm: key.algorithm,
+        hostKeyFingerprint: fingerprint(key.key),
+        latencyMs: 0,
+      }
+    } catch {
+      return { reachable: false, hostKeyAlgorithm: 'unknown', hostKeyFingerprint: '', latencyMs: 0 }
+    }
+  }
+  async validate(server: FleetServer): Promise<ServerFacts> {
+    const result = await this.transport.exec(server, FACTS)
+    if (result.code !== 0) throw new Error(`Fleet validation failed: ${result.stderr.trim() || result.code}`)
+    try {
+      return JSON.parse(result.stdout)
+    } catch {
+      throw new Error('Fleet validation returned malformed facts.')
+    }
+  }
+  async bootstrap(server: FleetServer, steps: string[]): ReturnType<FleetDriver['bootstrap']> {
+    const result = await this.transport.exec(
+      server,
+      `sudo -n ts-cloud-agent bootstrap --version 1 --steps ${steps.length}`,
+    )
+    if (result.code !== 0) throw new Error(`Fleet bootstrap failed: ${result.stderr.trim() || result.code}`)
+    return { version: '1' }
+  }
+  capabilities(): FleetServer['capabilities'] {
+    return {
+      document: { supported: true, reason: 'fleet-capabilities/v1; sha256:driver-contract' },
+      validate: { supported: true },
+      bootstrap: { supported: true },
+      heartbeat: { supported: true },
+      drain: { supported: true },
+      archive: { supported: true },
+      terminate: { supported: false, reason: 'Inventory removal never terminates provider infrastructure.' },
+    }
+  }
 }
