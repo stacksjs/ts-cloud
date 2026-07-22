@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 31
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 32
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1300,4 +1300,16 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX volume_snapshots_inventory_idx ON volume_snapshots(volume_id,status,created_at DESC);
     `,
   },
+  { version: 32, name: 'provider_neutral_fleet', sql: `
+    CREATE TABLE fleet_servers (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, provider TEXT NOT NULL CHECK(provider IN ('aws','hetzner','ssh')), provider_id TEXT, region TEXT, zone TEXT, endpoint TEXT NOT NULL, ssh_user TEXT NOT NULL, ssh_port INTEGER NOT NULL CHECK(ssh_port BETWEEN 1 AND 65535), credential_ref TEXT NOT NULL,
+      host_key_algorithm TEXT, host_key_fingerprint TEXT, pending_host_key TEXT, roles TEXT NOT NULL, labels TEXT NOT NULL DEFAULT '{}', taints TEXT NOT NULL DEFAULT '[]', capacity TEXT NOT NULL DEFAULT '{}', usage TEXT NOT NULL DEFAULT '{}', capabilities TEXT NOT NULL DEFAULT '{}',
+      status TEXT NOT NULL CHECK(status IN ('pending','validating','ready','degraded','unreachable','draining','drained','archived')), trust_state TEXT NOT NULL CHECK(trust_state IN ('unverified','pinned','rotation_pending','blocked')), validation TEXT NOT NULL DEFAULT '{}', bootstrap_version TEXT, heartbeat_at TEXT, last_seen_at TEXT, archived_at TEXT,
+      version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,name)
+    ) STRICT;
+    CREATE UNIQUE INDEX fleet_servers_provider_identity ON fleet_servers(organization_id,provider,provider_id) WHERE provider_id IS NOT NULL AND archived_at IS NULL;
+    CREATE INDEX fleet_servers_status ON fleet_servers(project_id,status,heartbeat_at);
+    CREATE TABLE fleet_bootstrap_plans (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES fleet_servers(id) ON DELETE CASCADE, plan_version TEXT NOT NULL, facts_hash TEXT NOT NULL, steps TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('preview','queued','running','succeeded','failed')), operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  ` },
 ]

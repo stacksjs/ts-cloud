@@ -14,6 +14,7 @@ export type { Alert, AlertEvaluation, AlertRule, AlertSample, AlertSeverity, Ale
 export * from './jobs'
 export * from './data-services'
 export * from './storage'
+export * from './fleet'
 export * from './generators'
 
 // Validation exports - functions
