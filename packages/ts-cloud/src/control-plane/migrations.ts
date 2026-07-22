@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 18
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 19
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -944,6 +944,50 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX preview_instances_expiry_idx ON preview_instances(expires_at, status);
       CREATE INDEX preview_resources_preview_idx ON preview_resources(preview_id, deleted_at);
       CREATE INDEX preview_resources_provider_idx ON preview_resources(provider, provider_resource_id);
+    `,
+  },
+  {
+    version: 19,
+    name: 'compose_applications',
+    sql: `
+      CREATE TABLE compose_applications (
+        id TEXT PRIMARY KEY,
+        resource_id TEXT NOT NULL UNIQUE REFERENCES resources(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('draft', 'ready', 'deploying', 'running', 'stopped', 'degraded', 'failed', 'deleting', 'deleted')),
+        source_kind TEXT NOT NULL CHECK (source_kind IN ('compose', 'template')),
+        source_hash TEXT NOT NULL,
+        redacted_source TEXT NOT NULL,
+        manifest TEXT NOT NULL,
+        diagnostics TEXT NOT NULL DEFAULT '[]',
+        template_id TEXT,
+        template_version TEXT,
+        latest_operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        UNIQUE(project_id, environment_id, slug)
+      ) STRICT;
+
+      CREATE TABLE compose_service_states (
+        application_id TEXT NOT NULL REFERENCES compose_applications(id) ON DELETE CASCADE,
+        service_name TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'starting', 'running', 'stopped', 'unhealthy', 'failed', 'unknown')),
+        replicas INTEGER NOT NULL DEFAULT 0 CHECK (replicas >= 0),
+        healthy_replicas INTEGER NOT NULL DEFAULT 0 CHECK (healthy_replicas >= 0),
+        latest_operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        observed_state TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(application_id, service_name)
+      ) STRICT;
+
+      CREATE INDEX compose_applications_scope_idx ON compose_applications(project_id, environment_id, status, updated_at);
+      CREATE INDEX compose_service_states_status_idx ON compose_service_states(application_id, status, service_name);
     `,
   },
 ]

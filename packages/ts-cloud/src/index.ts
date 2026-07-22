@@ -5,6 +5,7 @@ export * from './api'
 export * from './control-plane'
 export * from './security'
 export * from './preview'
+export * from './compose'
 export * from './generators'
 
 // Validation exports - functions
