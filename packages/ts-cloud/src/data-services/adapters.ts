@@ -39,6 +39,7 @@ abstract class TransportAdapter implements DataServiceAdapter {
         highAvailability: service.highAvailability,
         publicExposure: service.publicExposure,
         allowedCidrs: service.allowedCidrs,
+        username: service.desiredState.username ?? 'app',
         desiredState: service.desiredState,
       },
       credential,
