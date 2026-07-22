@@ -38,6 +38,7 @@ describe('routePolicy', () => {
       ['DELETE', '/api/ssh-keys'],
       ['POST', '/api/firewall'],
       ['POST', '/api/databases/users'],
+      ['POST', '/api/compose/shell'],
     ] as const
 
     for (const [method, path] of rootRoutes) {

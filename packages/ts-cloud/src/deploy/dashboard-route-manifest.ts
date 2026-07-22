@@ -19,6 +19,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'logs.list', path: '/server/logs', label: 'Logs', group: 'applications', modes: ['server'], adminOnly: false, legacyPaths: ['/logs'] },
   { id: 'sources.integrations', path: '/integrations', label: 'Git integrations', group: 'applications', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'applications.create', path: '/applications/new', label: 'Create application', group: 'applications', modes: ['server', 'serverless'], adminOnly: false },
+  { id: 'applications.compose', path: '/applications/compose', label: 'Compose applications', group: 'applications', modes: ['server'], adminOnly: false },
   { id: 'operations.queue', path: '/operations/queue', label: 'Deployment queue', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'operations.previews', path: '/operations/previews', label: 'Preview environments', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'metrics.overview', path: '/server/metrics', label: 'Metrics', group: 'operations', modes: ['server'], adminOnly: true },

@@ -121,6 +121,19 @@ const POLICIES: Record<string, RoutePolicy> = {
   'PATCH /api/onboarding/registries': { capability: 'applications:manage' },
   'DELETE /api/onboarding/registries': { capability: 'applications:manage' },
   'POST /api/onboarding/apply': { capability: 'applications:manage' },
+  'GET /api/compose': { capability: 'applications:read', anyUser: true },
+  'POST /api/compose/preview': { capability: 'applications:manage', anyUser: true },
+  'POST /api/compose/import': { capability: 'applications:manage', anyUser: true },
+  'POST /api/compose/template': { capability: 'applications:manage', anyUser: true },
+  'POST /api/compose/action': { capability: 'project:read', anyUser: true },
+  'POST /api/compose/logs': { capability: 'runtime:logs', anyUser: true },
+  'POST /api/compose/shell': { capability: 'runtime:terminal', scope: 'organization' },
+  // Coverage aliases produced by the compact paired-route handlers; the server
+  // accepts POST only, so these remain unreachable but explicit and fail-safe.
+  'GET /api/compose/import': { capability: 'applications:manage' },
+  'GET /api/compose/template': { capability: 'applications:manage' },
+  'GET /api/compose/logs': { capability: 'runtime:logs' },
+  'GET /api/compose/shell': { capability: 'runtime:terminal', scope: 'organization' },
 
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },

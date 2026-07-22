@@ -20,6 +20,7 @@ import { cloneSourceBinding, createSourceAdapter, listSourceReferences, processS
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
+import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -605,6 +606,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/logs',
   '/integrations',
   '/applications/new',
+  '/applications/compose',
   '/operations/queue',
   '/operations/previews',
   '/account/security',
@@ -641,6 +643,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/security': 'security:read',
   '/integrations': 'sources:read',
   '/applications/new': 'applications:read',
+  '/applications/compose': 'applications:read',
   '/operations/queue': 'deployments:read',
   '/operations/previews': 'deployments:read',
   '/server/ssh-keys': 'fleet:read',
@@ -859,6 +862,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
+  const composeService = new ComposeApplicationService(controlPlane.store)
   previewService.cleanup()
   const previewCleanupSweep = setInterval(() => {
     try { previewService.cleanup() }
@@ -994,6 +998,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     if (user.role === 'admin') return true
     const principal = organizationPrincipal(user); if (!principal.membership) return false
     const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'resource', id: resourceId })
+    return !!target && authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
+  }
+  const mayAccessEnvironment = (user: DashboardUser, environmentId: string, capability: AuthorizationCapability): boolean => {
+    if (user.role === 'admin') return true
+    const principal = organizationPrincipal(user); if (!principal.membership) return false
+    const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'environment', id: environmentId })
     return !!target && authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
   }
 
@@ -2108,6 +2118,37 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const definitions = previewService.previews.listDefinitions(controlPlane.project.id).filter(item => mayAccessResource(user, item.resourceId, 'project:read'))
           const resources = controlPlane.store.listResources(controlPlane.project.id).filter(item => item.kind === 'application' && mayAccessResource(user, item.id, 'project:read')).map(item => ({ id: item.id, slug: item.slug, name: item.name, environmentId: item.environmentId }))
           return json({ previews, definitions, resources, environments: [...controlPlane.environments.values()] })
+        }
+        if (url.pathname === '/api/compose' && req.method === 'GET') {
+          const applications = composeService.applications.list({ projectId: controlPlane.project.id }).filter(item => mayAccessResource(user, item.resourceId, 'applications:read')).map(item => ({ ...item, services: composeService.applications.services(item.id) }))
+          return json({ applications, templates: listComposeTemplates(), environments: [...controlPlane.environments.values()] })
+        }
+        if (url.pathname === '/api/compose/preview' && req.method === 'POST') {
+          const body = await readJsonBody(req); const environmentId = String(body.environmentId ?? '')
+          if (!mayAccessEnvironment(user, environmentId, 'applications:manage')) return json({ ok: false, error: 'Environment was not found in this scope.' }, 404)
+          try { return json({ ok: true, result: composeService.applications.preview(String(body.source ?? ''), { name: String(body.name ?? ''), slug: typeof body.slug === 'string' ? body.slug : undefined, projectId: controlPlane.project.id, environmentId }) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Compose could not be parsed.' }, 422) }
+        }
+        if ((url.pathname === '/api/compose/import' || url.pathname === '/api/compose/template') && req.method === 'POST') {
+          const body = await readJsonBody(req); const environmentId = String(body.environmentId ?? '')
+          if (!mayAccessEnvironment(user, environmentId, 'applications:manage')) return json({ ok: false, error: 'Environment was not found in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try { const result = url.pathname.endsWith('/template') ? composeService.applications.fromTemplate(String(body.templateId ?? ''), body.inputs && typeof body.inputs === 'object' ? body.inputs : {}, { name: String(body.name ?? ''), projectId: controlPlane.project.id, environmentId, version: typeof body.templateVersion === 'string' ? body.templateVersion : undefined, createdByActorId: actor.id }) : composeService.applications.import(String(body.source ?? ''), { name: String(body.name ?? ''), slug: typeof body.slug === 'string' ? body.slug : undefined, projectId: controlPlane.project.id, environmentId, createdByActorId: actor.id }); return json({ ok: true, application: result.application, diagnostics: result.parsed.diagnostics }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Compose application could not be saved.' }, 422) }
+        }
+        if (url.pathname === '/api/compose/action' && req.method === 'POST') {
+          const body = await readJsonBody(req); const application = composeService.applications.get(String(body.id ?? '')); const action = String(body.action ?? '') as 'deploy' | 'redeploy' | 'start' | 'stop' | 'scale' | 'delete'
+          const capability: AuthorizationCapability = action === 'delete' || action === 'stop' ? 'deployments:cancel' : 'deployments:create'
+          if (!application || !mayAccessResource(user, application.resourceId, capability)) return json({ ok: false, error: 'Compose application was not found in this scope.' }, 404)
+          try { const actor = ensureDashboardActor(controlPlane.store, user); return json({ ok: true, operation: composeService.enqueue(application, action, { actorId: actor.id, service: typeof body.service === 'string' ? body.service : undefined, replicas: Number.isFinite(Number(body.replicas)) ? Number(body.replicas) : undefined, removeVolumes: body.removeVolumes === true, confirmation: typeof body.confirm === 'string' ? body.confirm : undefined }) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Compose operation could not be queued.' }, 409) }
+        }
+        if ((url.pathname === '/api/compose/logs' || url.pathname === '/api/compose/shell') && req.method === 'POST') {
+          const body = await readJsonBody(req); const application = composeService.applications.get(String(body.id ?? '')); const shell = url.pathname.endsWith('/shell'); const capability: AuthorizationCapability = shell ? 'runtime:terminal' : 'runtime:logs'
+          if (!application || !mayAccessResource(user, application.resourceId, capability)) return json({ ok: false, error: 'Compose service was not found in this scope.' }, 404)
+          const serviceName = String(body.service ?? ''); if (!application.manifest.spec.services[serviceName]) return json({ ok: false, error: 'Compose service was not found.' }, 404)
+          if (shell && body.confirm !== serviceName) return json({ ok: false, error: `Type "${serviceName}" to run a service command.` }, 409)
+          const environmentSlug = controlPlane.store.listEnvironments(application.projectId).find(item => item.id === application.environmentId)?.slug as EnvironmentType | undefined
+          if (!environmentSlug) return json({ ok: false, error: 'Compose environment was not found.' }, 404)
+          const command = shell ? buildComposeShellCommand(application.manifest, serviceName, Array.isArray(body.command) ? body.command.map(String) : ['sh']) : buildComposeLogsCommand(application.manifest, serviceName, Number(body.lines) || 200)
+          return json(await runServerShellCommand(config as CloudConfig, environmentSlug, command))
         }
         if (url.pathname === '/api/previews/definitions' && req.method === 'POST') {
           const body = await readJsonBody(req); const resourceId = String(body.resourceId ?? '')

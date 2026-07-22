@@ -71,6 +71,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('runtime:logs'))<a class="{{ isActive('logs') ? 'active' : '' }}" href="{{ envHref('/server/logs') }}">Logs</a>@endif
         @if (canView('sources:read'))<a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>@endif
         @if (canView('applications:read'))<a class="{{ isActive('application-create') ? 'active' : '' }}" href="{{ envHref('/applications/new') }}">Create application</a>@endif
+        @if (canView('applications:read'))<a class="{{ isActive('compose-applications') ? 'active' : '' }}" href="{{ envHref('/applications/compose') }}">Compose applications</a>@endif
       </section>
       @if (canView('deployments:read') || canView('runtime:read') || canView('automation:read') || canView('backups:read') || canView('runtime:restart'))
         <section class="nav-group">
