@@ -14,11 +14,20 @@ const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment his
 <script client>
 // Seeded from build-time data (stx server→client bridge), then live-refreshed.
 const deps = state(initialDeps)
-const status = state('all')
-const site = state('all')
+const initialFilters = new URLSearchParams(location.search)
+const status = state(initialFilters.get('status') || 'all')
+const site = state(initialFilters.get('site') || 'all')
 const sites = derived(() => [...new Set(deps().map(d => d.site).filter(Boolean))])
 const filtered = derived(() => deps().filter(d =>
   (status() === 'all' || d.status === status()) && (site() === 'all' || d.site === site())))
+function setFilter(name, value, signal) {
+  signal.set(value)
+  const url = new URL(location.href)
+  if (value === 'all') url.searchParams.delete(name)
+  else url.searchParams.set(name, value)
+  history.replaceState(null, '', url)
+  window.dispatchEvent(new Event('ts-cloud:filters-changed'))
+}
 function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 async function refresh() {
   try { const r = await fetch('/api/dashboard-data'); if (!r.ok) return; const x = await r.json(); if (Array.isArray(x.serverDeploymentsDetail)) deps.set(x.serverDeploymentsDetail) } catch {}
@@ -74,13 +83,13 @@ async function runOp() {
         </div>
         <div class="filters">
           <div class="segmented" role="group" aria-label="Filter deployment status">
-            <button type="button" :class="{ active: status() === 'all' }" @click="status.set('all')">All</button>
-            <button type="button" :class="{ active: status() === 'success' }" @click="status.set('success')">Success</button>
-            <button type="button" :class="{ active: status() === 'failed' }" @click="status.set('failed')">Failed</button>
+            <button type="button" :class="{ active: status() === 'all' }" @click="setFilter('status', 'all', status)">All</button>
+            <button type="button" :class="{ active: status() === 'success' }" @click="setFilter('status', 'success', status)">Success</button>
+            <button type="button" :class="{ active: status() === 'failed' }" @click="setFilter('status', 'failed', status)">Failed</button>
           </div>
           <label class="select-filter">
             <span>Site</span>
-            <select :value="site()" @change="site.set($event.target.value)">
+            <select :value="site()" @change="setFilter('site', $event.target.value, site)">
               <option value="all">All sites</option>
               <template :for="s in sites()">
                 <option :value="s">{{ s }}</option>

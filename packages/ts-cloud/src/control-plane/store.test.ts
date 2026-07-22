@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { controlPlaneMigrations } from './migrations'
+import { searchControlPlane } from './search'
 import { ControlPlaneStore, sanitizeControlPlaneValue } from './store'
 import { InvalidOperationTransitionError, OptimisticConcurrencyError } from './types'
 
@@ -69,7 +70,11 @@ describe('ControlPlaneStore schema and persistence', () => {
     database.run('DROP INDEX operations_lease_idx')
     database.run('DROP INDEX operations_project_idx')
     database.run('DROP INDEX operations_queue_idx')
-    database.run('DELETE FROM schema_migrations WHERE version = 2')
+    database.run('DROP TABLE resource_tags')
+    database.run('DROP TABLE tags')
+    database.run('DROP TABLE saved_filters')
+    database.run('DROP TABLE navigation_items')
+    database.run('DELETE FROM schema_migrations WHERE version > 1')
     database.run('PRAGMA user_version = 1')
     database.close()
 
@@ -77,13 +82,13 @@ describe('ControlPlaneStore schema and persistence', () => {
     const backup = migrated.getSetting('storage.last_backup') as { path: string }
     expect(existsSync(backup.path)).toBe(true)
     expect(backup.path.startsWith(`${path}.v1.`)).toBe(true)
-    expect(migrated.health().schemaVersion).toBe(2)
+    expect(migrated.health().schemaVersion).toBe(3)
     expect(existsSync(parent)).toBe(true)
     migrated.close()
   })
 
   it('keeps migration numbering contiguous', () => {
-    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2])
+    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2, 3])
   })
 })
 
@@ -155,6 +160,10 @@ describe('ControlPlaneStore safety and portability', () => {
     source.createResource({ projectId: project.id, kind: 'database', slug: 'primary', name: 'Primary' })
     source.createOperation({ projectId: project.id, kind: 'backup' })
     source.setSetting('ui.theme', 'system')
+    const tag = source.upsertTag(project.id, 'customer-facing', '#35d19b')
+    source.assignTag(source.listResources(project.id)[0].id, tag.id)
+    source.saveFilter('dashboard:chris', 'Production databases', 'databases.list', { environment: 'production' })
+    source.setFavorite('dashboard:chris', 'resource', source.listResources(project.id)[0].id, true)
     const snapshot = source.exportSnapshot()
 
     const target = new ControlPlaneStore({ path: ':memory:' })
@@ -164,10 +173,31 @@ describe('ControlPlaneStore safety and portability', () => {
       resources: [{ slug: 'primary' }],
       operations: [{ kind: 'backup', state: 'queued' }],
       settings: { 'ui.theme': 'system' },
+      tags: [{ name: 'customer-facing' }],
+      savedFilters: [{ name: 'Production databases' }],
+      navigationItems: [{ favorite: true }],
     })
     expect(() => target.importSnapshot(snapshot)).toThrow('not empty')
     source.close()
     target.close()
+  })
+
+  it('persists tags, saved filters, favorites, and recent navigation per user', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    const project = store.createProject({ slug: 'acme', name: 'Acme' })
+    const resource = store.createResource({ projectId: project.id, kind: 'application', slug: 'web', name: 'Web' })
+    const tag = store.upsertTag(project.id, 'Customer Facing', '#35D19B')
+    store.assignTag(resource.id, tag.id)
+    expect(store.listResourceTags(project.id)[0].tag.normalizedName).toBe('customer-facing')
+
+    const filter = store.saveFilter('dashboard:chris', 'Prod', 'services.list', { env: 'production' })
+    expect(store.listSavedFilters('dashboard:chris')).toEqual([filter])
+    expect(() => store.saveFilter('dashboard:chris', 'Unsafe', 'javascript:alert(1)', {})).toThrow('local route')
+    store.recordNavigation('dashboard:chris', 'resource', resource.id)
+    store.recordNavigation('dashboard:chris', 'resource', resource.id)
+    store.setFavorite('dashboard:chris', 'resource', resource.id, true)
+    expect(store.listNavigation('dashboard:chris', { favoritesOnly: true })[0]).toMatchObject({ favorite: true, visitCount: 2 })
+    store.close()
   })
 
   it('compacts expired terminal history but preserves queued work', () => {
@@ -183,6 +213,74 @@ describe('ControlPlaneStore safety and portability', () => {
     expect(result.deletedOperations).toBe(1)
     expect(store.getOperation(oldTerminal.id)).toBeUndefined()
     expect(store.getOperation(queued.id)?.state).toBe('queued')
+    store.close()
+  })
+})
+
+describe('control-plane search', () => {
+  it('finds safe service metadata, tags, and deployment SHAs without indexing secrets', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    const project = store.createProject({ slug: 'acme', name: 'Acme Cloud' })
+    const environment = store.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' })
+    const resource = store.createResource({
+      projectId: project.id,
+      environmentId: environment.id,
+      kind: 'application',
+      slug: 'billing-api',
+      name: 'Billing API',
+      provider: 'hetzner',
+      desiredState: { domain: 'billing.acme.test', env: { DATABASE_PASSWORD: 'never-index-this' } },
+    })
+    const tag = store.upsertTag(project.id, 'payments')
+    store.assignTag(resource.id, tag.id)
+    store.createResource({
+      projectId: project.id,
+      environmentId: environment.id,
+      kind: 'server',
+      slug: 'primary-server',
+      name: 'Primary compute',
+      desiredState: { label: 'edge-west-1' },
+    })
+    store.createResource({ projectId: project.id, environmentId: environment.id, kind: 'database', slug: 'orders', name: 'Orders database' })
+    store.createOperation({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, kind: 'deploy.release', input: { sha: 'abc123def', token: 'also-never-index-this' } })
+
+    expect(searchControlPlane(store, { projectId: project.id, query: 'billing.acme' })[0]).toMatchObject({ type: 'service', title: 'Billing API' })
+    expect(searchControlPlane(store, { projectId: project.id, query: 'payments' })[0]).toMatchObject({ type: 'service' })
+    expect(searchControlPlane(store, { projectId: project.id, query: 'edge-west' })[0]).toMatchObject({ type: 'server', title: 'Primary compute' })
+    expect(searchControlPlane(store, { projectId: project.id, query: 'orders database' })[0]).toMatchObject({ type: 'database' })
+    expect(searchControlPlane(store, { projectId: project.id, query: 'abc123' })[0]).toMatchObject({ type: 'deployment' })
+    expect(searchControlPlane(store, { projectId: project.id, query: 'never-index-this' })).toEqual([])
+    expect(searchControlPlane(store, { projectId: project.id, query: 'also-never-index-this' })).toEqual([])
+    store.close()
+  })
+
+  it('does not leak ungranted resources or project-wide activity', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    const project = store.createProject({ slug: 'acme', name: 'Acme' })
+    store.createResource({ projectId: project.id, kind: 'application', slug: 'public', name: 'Public Site' })
+    store.createResource({ projectId: project.id, kind: 'application', slug: 'private-admin', name: 'Private Admin' })
+    store.createOperation({ projectId: project.id, kind: 'deploy.private-admin', input: { sha: 'secretsha' } })
+
+    const allowed = new Set(['public'])
+    expect(searchControlPlane(store, { projectId: project.id, query: 'public', allowedResourceSlugs: allowed })).toHaveLength(1)
+    expect(searchControlPlane(store, { projectId: project.id, query: 'private', allowedResourceSlugs: allowed })).toEqual([])
+    expect(searchControlPlane(store, { projectId: project.id, query: 'secretsha', allowedResourceSlugs: allowed })).toEqual([])
+    store.close()
+  })
+
+  it('searches ten thousand resources within the local interaction budget', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    const project = store.createProject({ slug: 'scale', name: 'Scale' })
+    store.transaction(() => {
+      for (let index = 0; index < 10_000; index++) {
+        store.createResource({ projectId: project.id, kind: 'application', slug: `service-${index}`, name: `Service ${index}` })
+      }
+    })
+    const started = performance.now()
+    const results = searchControlPlane(store, { projectId: project.id, query: 'Service 9876' })
+    const elapsed = performance.now() - started
+    expect(results[0]).toMatchObject({ title: 'Service 9876' })
+    expect(elapsed).toBeLessThan(500)
     store.close()
   })
 })

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
+import { searchControlPlane } from '../control-plane'
 import { hashPassword, verifyPassword } from './dashboard-auth'
 import { initializeDashboardControlPlane, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -797,6 +798,71 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               limit: Number(url.searchParams.get('limit')) || 200,
             }),
           })
+        }
+
+        if (url.pathname === '/api/search') {
+          const query = String(url.searchParams.get('q') ?? '').trim().slice(0, 128)
+          const allowedResourceSlugs = user.role === 'member' ? new Set(Object.keys(user.sites)) : undefined
+          const results = query
+            ? searchControlPlane(controlPlane.store, {
+                projectId: controlPlane.project.id,
+                query,
+                allowedResourceSlugs,
+                limit: Number(url.searchParams.get('limit')) || 20,
+              })
+            : []
+          return json({ query, results, stale: false })
+        }
+
+        if (url.pathname === '/api/search/preferences' && req.method === 'GET') {
+          const actorKey = `dashboard:${user.username.toLowerCase()}`
+          return json({
+            savedFilters: controlPlane.store.listSavedFilters(actorKey),
+            navigation: controlPlane.store.listNavigation(actorKey),
+          })
+        }
+
+        if (url.pathname === '/api/search/preferences' && req.method === 'POST') {
+          const actorKey = `dashboard:${user.username.toLowerCase()}`
+          const body = await readJsonBody(req)
+          const action = String(body.action ?? '')
+          if (action === 'save-filter') {
+            return json({ savedFilter: controlPlane.store.saveFilter(actorKey, String(body.name ?? ''), String(body.routeId ?? ''), (body.query ?? {}) as Record<string, any>) })
+          }
+          if (action === 'favorite') {
+            return json({ navigation: controlPlane.store.setFavorite(actorKey, String(body.entityType ?? ''), String(body.entityId ?? ''), body.favorite !== false) })
+          }
+          if (action === 'visit') {
+            return json({ navigation: controlPlane.store.recordNavigation(actorKey, String(body.entityType ?? ''), String(body.entityId ?? '')) })
+          }
+          return json({ ok: false, error: 'Unknown search preference action.' }, 422)
+        }
+
+        if (url.pathname === '/api/search/preferences' && req.method === 'DELETE') {
+          const actorKey = `dashboard:${user.username.toLowerCase()}`
+          const body = await readJsonBody(req)
+          return json({ ok: controlPlane.store.deleteSavedFilter(actorKey, String(body.id ?? '')) })
+        }
+
+        if (url.pathname === '/api/tags' && req.method === 'GET') {
+          return json({
+            tags: controlPlane.store.listTags(controlPlane.project.id),
+            assignments: controlPlane.store.listResourceTags(controlPlane.project.id),
+          })
+        }
+
+        if (url.pathname === '/api/tags' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const tag = controlPlane.store.upsertTag(controlPlane.project.id, String(body.name ?? ''), String(body.color ?? '#5a8be0'))
+          if (body.resourceId)
+            controlPlane.store.assignTag(String(body.resourceId), tag.id)
+          return json({ tag }, 201)
+        }
+
+        if (url.pathname === '/api/tags' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          controlPlane.store.removeTag(String(body.resourceId ?? ''), String(body.tagId ?? ''))
+          return json({ ok: true })
         }
 
         // The home page is the box's own dashboard (host metrics, services,

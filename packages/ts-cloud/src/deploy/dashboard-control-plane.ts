@@ -82,20 +82,46 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
     })
     environments.set(slug, environment)
 
-    const existingResources = new Set(store.listResources(project.id, environment.id).map(resource => `${resource.kind}:${resource.slug}`))
-    for (const [siteSlug, site] of Object.entries(config.sites ?? {})) {
-      if (existingResources.has(`application:${siteSlug}`))
-        continue
-      store.createResource({
+    const existingResources = new Map(store.listResources(project.id, environment.id).map(resource => [`${resource.kind}:${resource.slug}`, resource]))
+    const syncResource = (kind: string, slug: string, name: string, desiredState: JsonValue) => {
+      const key = `${kind}:${slug}`
+      const found = existingResources.get(key)
+      const safeState = sanitizeControlPlaneValue(desiredState)
+      if (found) {
+        if (found.name !== name || stableJson(found.desiredState) !== stableJson(safeState))
+          existingResources.set(key, store.updateResource(found.id, found.version, { name, desiredState: safeState }))
+        return
+      }
+      const resource = store.createResource({
         projectId: project.id,
         environmentId: environment.id,
-        kind: 'application',
-        slug: siteSlug,
-        name: siteSlug,
-        desiredState: sanitizeControlPlaneValue(site),
+        kind,
+        slug,
+        name,
+        provider: config.cloud?.provider,
+        desiredState: safeState,
         metadata: { source: 'cloud-config' },
       })
+      existingResources.set(key, resource)
     }
+
+    for (const [siteSlug, site] of Object.entries(config.sites ?? {})) {
+      syncResource('application', siteSlug, siteSlug, site as JsonValue)
+    }
+
+    const infrastructure = config.infrastructure
+    if (infrastructure?.compute) {
+      syncResource('server', `${project.slug}-server`, project.name, {
+        ...(sanitizeControlPlaneValue(infrastructure.compute) as Record<string, JsonValue>),
+        label: project.name,
+      })
+    }
+    for (const [databaseSlug, database] of Object.entries(infrastructure?.databases ?? {}))
+      syncResource('database', databaseSlug, databaseSlug, database as JsonValue)
+    if (infrastructure?.appDatabase)
+      syncResource('database', 'application-database', 'Application database', infrastructure.appDatabase as unknown as JsonValue)
+    else if (infrastructure?.database)
+      syncResource('database', 'application-database', 'Application database', { engine: infrastructure.database })
   }
 
   const reconciliation = store.reconcileOrphanedOperations({ policy: 'fail' })

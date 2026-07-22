@@ -50,9 +50,16 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/dashboard-data': { capability: 'site:read', anyUser: true },
   'GET /api/config': { capability: 'site:read', anyUser: true },
   'GET /api/me': { capability: 'site:read', anyUser: true },
+  'GET /api/search': { capability: 'site:read', anyUser: true },
+  'GET /api/search/preferences': { capability: 'site:read', anyUser: true },
+  'POST /api/search/preferences': { capability: 'site:read', anyUser: true },
+  'DELETE /api/search/preferences': { capability: 'site:read', anyUser: true },
 
   'GET /api/control-plane/operations': { capability: 'box:read' },
   'GET /api/control-plane/events': { capability: 'box:read' },
+  'GET /api/tags': { capability: 'box:read' },
+  'POST /api/tags': { capability: 'box:config' },
+  'DELETE /api/tags': { capability: 'box:config' },
 
   // --- Site-scoped: a member may reach their own sites -------------------
   'POST /api/sites/deploy': { capability: 'site:deploy', siteFrom: 'body' },

@@ -47,6 +47,10 @@ const isActive = (...keys) => keys.includes(active ?? '')
     </details>
   </div>
 
+  <button class="command-trigger" type="button" aria-keyshortcuts="Meta+K Control+K">
+    <span>Search resources</span><kbd>⌘ K</kbd>
+  </button>
+
   <div class="nav-groups">
     @if (navMode === 'server')
       @if (!isMember)
@@ -120,10 +124,44 @@ const isActive = (...keys) => keys.includes(active ?? '')
   </form>
 </aside>
 
+<dialog class="command-palette" aria-labelledby="command-title">
+  <div class="command-search">
+    <span aria-hidden="true">⌕</span>
+    <input type="search" placeholder="Search services, domains, deployments…" aria-label="Search resources" autocomplete="off">
+    <button type="button" class="command-close" aria-label="Close search">Esc</button>
+  </div>
+  <h2 id="command-title" class="sr-only">Search resources and navigation</h2>
+  <div class="command-status" role="status">Start typing to search this project.</div>
+  <section class="saved-views" aria-labelledby="saved-views-title">
+    <div class="saved-views-heading">
+      <h3 id="saved-views-title">Saved views</h3>
+      <form class="save-view-form">
+        <label class="sr-only" for="save-view-name">Saved view name</label>
+        <input id="save-view-name" maxlength="64" placeholder="Name this view" autocomplete="off">
+        <button type="submit">Save current filters</button>
+      </form>
+    </div>
+    <div class="saved-view-list"></div>
+  </section>
+  @if (!isMember)
+    <form class="tag-result-form">
+      <label for="tag-result-name">Tag selected resource</label>
+      <input id="tag-result-name" maxlength="32" placeholder="customer-facing" pattern="[A-Za-z0-9][A-Za-z0-9 -]{0,31}" autocomplete="off">
+      <input class="tag-color" type="color" value="#5a8be0" aria-label="Tag color">
+      <button type="submit">Add tag</button>
+    </form>
+  @endif
+  <div class="command-results" role="listbox" aria-label="Search results"></div>
+  <footer><span>↑ ↓ navigate</span><span>Enter open</span><span>Esc close</span></footer>
+</dialog>
+
 <div class="context-bar" aria-label="Current scope">
-  <div class="context-breadcrumb">
-    <span>{{ navProject }}</span><i>/</i><strong>{{ navEnv }}</strong>
-    @if (navProvider || navRegion)<small>{{ [navProvider, navRegion].filter(Boolean).join(' · ') }}</small>@endif
+  <div class="context-path">
+    <div class="context-breadcrumb">
+      <span>{{ navProject }}</span><i>/</i><strong>{{ navEnv }}</strong>
+      @if (navProvider || navRegion)<small>{{ [navProvider, navRegion].filter(Boolean).join(' · ') }}</small>@endif
+    </div>
+    <div class="context-filters" aria-label="Active filters"></div>
   </div>
   <span class="scope-safety {{ navEnv === 'production' ? 'production' : '' }}">{{ navEnv === 'production' ? 'Production scope' : `${navEnv} scope` }}</span>
 </div>
@@ -131,6 +169,12 @@ const isActive = (...keys) => keys.includes(active ?? '')
 <script>
 (() => {
   const environment = new URLSearchParams(location.search).get('env')
+  const scopedUrl = (value) => {
+    const url = new URL(value, location.href)
+    if (url.origin !== location.origin || !environment) return value
+    if (!url.searchParams.has('env')) url.searchParams.set('env', environment)
+    return url.href
+  }
   const main = document.querySelector('.wrap')
   if (main && !main.id) main.id = 'main-content'
   const sidebar = document.querySelector('.app-sidebar')
@@ -155,14 +199,243 @@ const isActive = (...keys) => keys.includes(active ?? '')
       toggle?.focus()
     }
   })
-  if (!environment) return
 
-  const scopedUrl = (value) => {
-    const url = new URL(value, location.href)
-    if (url.origin !== location.origin) return value
-    if (!url.searchParams.has('env')) url.searchParams.set('env', environment)
-    return url.href
+  const palette = document.querySelector('.command-palette')
+  const commandTrigger = document.querySelector('.command-trigger')
+  const commandInput = palette?.querySelector('input[type="search"]')
+  const commandResults = palette?.querySelector('.command-results')
+  const commandStatus = palette?.querySelector('.command-status')
+  const commandClose = palette?.querySelector('.command-close')
+  const savedViews = palette?.querySelector('.saved-views')
+  const savedViewList = palette?.querySelector('.saved-view-list')
+  const saveViewForm = palette?.querySelector('.save-view-form')
+  const saveViewName = palette?.querySelector('#save-view-name')
+  const tagResultForm = palette?.querySelector('.tag-result-form')
+  const tagResultName = palette?.querySelector('#tag-result-name')
+  const tagResultColor = palette?.querySelector('.tag-color')
+  const contextFilters = document.querySelector('.context-filters')
+  let searchTimer
+  let selectedResult = -1
+  let favoriteKeys = new Set()
+
+  const preferenceRequest = (body, method = 'POST') => fetch('/api/search/preferences', {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const renderFilterChips = () => {
+    contextFilters?.replaceChildren()
+    const ignored = new Set(['env', 'project'])
+    for (const [key, value] of new URLSearchParams(location.search)) {
+      if (ignored.has(key) || !value) continue
+      const chip = document.createElement('button')
+      chip.type = 'button'
+      chip.className = 'filter-chip'
+      chip.textContent = `${key}: ${value} ×`
+      chip.setAttribute('aria-label', `Remove ${key} filter ${value}`)
+      chip.addEventListener('click', () => {
+        const url = new URL(location.href)
+        url.searchParams.delete(key, value)
+        location.assign(url)
+      })
+      contextFilters?.append(chip)
+    }
   }
+
+  const renderSavedViews = (filters) => {
+    savedViewList?.replaceChildren()
+    for (const filter of filters) {
+      const row = document.createElement('div')
+      row.className = 'saved-view-row'
+      const link = document.createElement('a')
+      const url = new URL(filter.routeId || '/', location.origin)
+      if (url.origin !== location.origin) continue
+      for (const [key, value] of Object.entries(filter.query || {})) url.searchParams.set(key, String(value))
+      link.href = scopedUrl(url.href)
+      link.textContent = filter.name
+      const remove = document.createElement('button')
+      remove.type = 'button'
+      remove.textContent = 'Remove'
+      remove.setAttribute('aria-label', `Remove saved view ${filter.name}`)
+      remove.addEventListener('click', async () => {
+        const response = await preferenceRequest({ id: filter.id }, 'DELETE')
+        if (response.ok) row.remove()
+      })
+      row.append(link, remove)
+      savedViewList?.append(row)
+    }
+    savedViews?.classList.toggle('empty', filters.length === 0)
+  }
+
+  const loadPreferences = async () => {
+    try {
+      const response = await fetch('/api/search/preferences')
+      if (!response.ok) return
+      const data = await response.json()
+      favoriteKeys = new Set((data.navigation || []).filter(item => item.favorite).map(item => `${item.entityType}:${item.entityId}`))
+      renderSavedViews(data.savedFilters || [])
+    } catch {}
+  }
+
+  const closePalette = () => {
+    palette?.close()
+    commandTrigger?.focus()
+  }
+  const openPalette = () => {
+    if (!palette?.open) palette?.showModal()
+    commandInput?.focus()
+    loadPreferences()
+  }
+  const selectResult = (index) => {
+    const links = [...(commandResults?.querySelectorAll('a[role="option"]') || [])]
+    if (!links.length) return
+    selectedResult = Math.max(0, Math.min(index, links.length - 1))
+    links.forEach((link, position) => link.classList.toggle('selected', position === selectedResult))
+    links[selectedResult]?.scrollIntoView({ block: 'nearest' })
+    const selectedType = links[selectedResult]?.dataset.entityType
+    const taggable = ['service', 'server', 'database'].includes(selectedType)
+    tagResultForm?.querySelector('button')?.toggleAttribute('disabled', !taggable)
+  }
+  const appendHighlighted = (parent, value, query) => {
+    const text = String(value || '')
+    const wanted = query.trim().toLowerCase()
+    const index = wanted ? text.toLowerCase().indexOf(wanted) : -1
+    if (index < 0) { parent.textContent = text; return }
+    parent.append(document.createTextNode(text.slice(0, index)))
+    const mark = document.createElement('mark')
+    mark.textContent = text.slice(index, index + wanted.length)
+    parent.append(mark, document.createTextNode(text.slice(index + wanted.length)))
+  }
+  const renderResults = (results) => {
+    commandResults.replaceChildren()
+    selectedResult = -1
+    if (!results.length) {
+      commandStatus.textContent = commandInput.value.trim() ? 'No matching resources in your current access scope.' : 'Start typing to search this project.'
+      return
+    }
+    commandStatus.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`
+    const groups = new Map()
+    for (const result of results) {
+      if (!groups.has(result.type)) {
+        const group = document.createElement('section')
+        group.className = 'command-group'
+        group.setAttribute('role', 'group')
+        group.setAttribute('aria-label', `${result.type} results`)
+        const heading = document.createElement('h3')
+        heading.textContent = `${result.type}s`
+        group.append(heading)
+        groups.set(result.type, group)
+        commandResults.append(group)
+      }
+      const row = document.createElement('div')
+      row.className = 'command-result-row'
+      const link = document.createElement('a')
+      link.href = scopedUrl(result.href)
+      link.setAttribute('role', 'option')
+      link.dataset.entityType = result.type
+      link.dataset.entityId = result.id
+      const type = document.createElement('span')
+      type.className = 'command-type'
+      type.textContent = result.type
+      const copy = document.createElement('span')
+      copy.className = 'command-copy'
+      const title = document.createElement('strong')
+      appendHighlighted(title, result.title, commandInput.value)
+      const subtitle = document.createElement('small')
+      appendHighlighted(subtitle, [result.subtitle, result.environment, result.provider, ...(result.tags || []).map(tag => `#${tag.name}`)].filter(Boolean).join(' · '), commandInput.value)
+      copy.append(title, subtitle)
+      link.append(type, copy)
+      link.addEventListener('click', () => {
+        fetch('/api/search/preferences', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'visit', entityType: result.type, entityId: result.id }) }).catch(() => {})
+      })
+      const favorite = document.createElement('button')
+      const favoriteKey = `${result.type}:${result.id}`
+      const setFavoriteLabel = () => {
+        const active = favoriteKeys.has(favoriteKey)
+        favorite.textContent = active ? '★' : '☆'
+        favorite.setAttribute('aria-label', `${active ? 'Remove' : 'Add'} ${result.title} ${active ? 'from' : 'to'} favorites`)
+        favorite.classList.toggle('active', active)
+      }
+      favorite.type = 'button'
+      favorite.className = 'favorite-result'
+      setFavoriteLabel()
+      favorite.addEventListener('click', async () => {
+        const active = !favoriteKeys.has(favoriteKey)
+        const response = await preferenceRequest({ action: 'favorite', entityType: result.type, entityId: result.id, favorite: active })
+        if (!response.ok) return
+        if (active) favoriteKeys.add(favoriteKey)
+        else favoriteKeys.delete(favoriteKey)
+        setFavoriteLabel()
+      })
+      row.append(link, favorite)
+      groups.get(result.type).append(row)
+    }
+    selectResult(0)
+  }
+  const search = () => {
+    clearTimeout(searchTimer)
+    const query = commandInput?.value.trim() || ''
+    if (!query) { renderResults([]); return }
+    commandStatus.textContent = 'Searching…'
+    searchTimer = setTimeout(async () => {
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+        const data = await response.json()
+        renderResults(response.ok ? (data.results || []) : [])
+      }
+      catch { commandStatus.textContent = 'Search is temporarily unavailable.' }
+    }, 120)
+  }
+
+  commandTrigger?.addEventListener('click', openPalette)
+  commandClose?.addEventListener('click', closePalette)
+  commandInput?.addEventListener('input', search)
+  commandInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') { event.preventDefault(); closePalette() }
+    else if (event.key === 'ArrowDown') { event.preventDefault(); selectResult(selectedResult + 1) }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); selectResult(selectedResult - 1) }
+    else if (event.key === 'Enter' && selectedResult >= 0) {
+      event.preventDefault()
+      commandResults.querySelectorAll('a[role="option"]')[selectedResult]?.click()
+    }
+  })
+  saveViewForm?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const name = saveViewName?.value.trim()
+    if (!name) { saveViewName?.focus(); return }
+    const query = Object.fromEntries(new URLSearchParams(location.search))
+    const response = await preferenceRequest({ action: 'save-filter', name, routeId: location.pathname, query })
+    if (!response.ok) { commandStatus.textContent = 'Could not save this view.'; return }
+    saveViewName.value = ''
+    await loadPreferences()
+    commandStatus.textContent = `Saved view “${name}”.`
+  })
+  tagResultForm?.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    const selected = commandResults.querySelectorAll('a[role="option"]')[selectedResult]
+    const name = tagResultName?.value.trim()
+    if (!selected?.dataset.entityId || !name) { tagResultName?.focus(); return }
+    const response = await fetch('/api/tags', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resourceId: selected.dataset.entityId, name, color: tagResultColor?.value || '#5a8be0' }),
+    })
+    if (!response.ok) { commandStatus.textContent = 'Could not assign that tag.'; return }
+    tagResultName.value = ''
+    const subtitle = selected.querySelector('small')
+    if (subtitle && !subtitle.textContent.includes(`#${name}`)) subtitle.append(document.createTextNode(` · #${name}`))
+    commandStatus.textContent = `Tagged ${selected.querySelector('strong')?.textContent || 'resource'} with #${name}.`
+  })
+  palette?.addEventListener('cancel', (event) => { event.preventDefault(); closePalette() })
+  document.addEventListener('keydown', (event) => {
+    const shortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k'
+    const slash = event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)
+    if (shortcut || slash) { event.preventDefault(); openPalette() }
+  })
+  renderFilterChips()
+  window.addEventListener('ts-cloud:filters-changed', renderFilterChips)
+  if (!environment) return
 
   const originalFetch = window.fetch.bind(window)
   window.fetch = (input, init) => {

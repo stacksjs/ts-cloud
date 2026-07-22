@@ -243,6 +243,39 @@ export interface ControlPlaneSnapshot {
   operations: ControlPlaneOperation[]
   events: ControlPlaneEvent[]
   settings: Record<string, JsonValue>
+  tags: ControlPlaneTag[]
+  resourceTags: Array<{ resourceId: ControlPlaneId, tagId: ControlPlaneId, createdAt: string }>
+  savedFilters: SavedFilter[]
+  navigationItems: NavigationPreference[]
+}
+
+export interface ControlPlaneTag {
+  id: ControlPlaneId
+  projectId: ControlPlaneId
+  name: string
+  normalizedName: string
+  color: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SavedFilter {
+  id: ControlPlaneId
+  actorKey: string
+  name: string
+  routeId: string
+  query: Record<string, JsonValue>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface NavigationPreference {
+  actorKey: string
+  entityType: string
+  entityId: string
+  favorite: boolean
+  lastVisitedAt: string
+  visitCount: number
 }
 
 export interface ControlPlaneStoreOptions {

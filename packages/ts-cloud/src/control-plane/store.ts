@@ -11,6 +11,7 @@ import type {
   ControlPlaneResource,
   ControlPlaneSnapshot,
   ControlPlaneStoreOptions,
+  ControlPlaneTag,
   CreateActorInput,
   CreateEnvironmentInput,
   CreateOperationInput,
@@ -21,7 +22,9 @@ import type {
   JsonValue,
   OperationListOptions,
   OperationState,
+  NavigationPreference,
   ReconcileResult,
+  SavedFilter,
   TransitionOperationInput,
   UpdateProjectInput,
   UpdateResourceInput,
@@ -160,6 +163,27 @@ function mapEvent(row: Row): ControlPlaneEvent {
     operationId: optionalString(row.operation_id), resourceId: optionalString(row.resource_id), actorId: optionalString(row.actor_id),
     correlationId: String(row.correlation_id), type: String(row.type), level: String(row.level) as ControlPlaneEvent['level'],
     payload: parseJson(row.payload), createdAt: String(row.created_at),
+  }
+}
+
+function mapTag(row: Row): ControlPlaneTag {
+  return {
+    id: String(row.id), projectId: String(row.project_id), name: String(row.name), normalizedName: String(row.normalized_name),
+    color: String(row.color), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function mapSavedFilter(row: Row): SavedFilter {
+  return {
+    id: String(row.id), actorKey: String(row.actor_key), name: String(row.name), routeId: String(row.route_id),
+    query: parseJson(row.query) as Record<string, JsonValue>, createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function mapNavigationPreference(row: Row): NavigationPreference {
+  return {
+    actorKey: String(row.actor_key), entityType: String(row.entity_type), entityId: String(row.entity_id),
+    favorite: Number(row.favorite) === 1, lastVisitedAt: String(row.last_visited_at), visitCount: Number(row.visit_count),
   }
 }
 
@@ -573,6 +597,107 @@ export class ControlPlaneStore {
     return row ? parseJson(row.value) : undefined
   }
 
+  upsertTag(projectId: string, name: string, color: string = '#5a8be0'): ControlPlaneTag {
+    const normalizedName = name.trim().toLowerCase().replace(/\s+/g, '-')
+    if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(normalizedName))
+      throw new Error('Tag names must contain 1-32 letters, numbers, or dashes')
+    if (!/^#[0-9a-f]{6}$/i.test(color))
+      throw new Error('Tag colors must be six-digit hex colors')
+    const now = this.now()
+    const existing = this.database.query<Row, [string, string]>('SELECT * FROM tags WHERE project_id = ? AND normalized_name = ?').get(projectId, normalizedName)
+    if (existing) {
+      run(this.database, 'UPDATE tags SET name = ?, color = ?, updated_at = ? WHERE id = ?', [name.trim(), color.toLowerCase(), now, String(existing.id)])
+      return mapTag(this.database.query<Row, [string]>('SELECT * FROM tags WHERE id = ?').get(String(existing.id))!)
+    }
+    const id = this.idFn()
+    run(this.database,
+      'INSERT INTO tags (id, project_id, name, normalized_name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, projectId, name.trim(), normalizedName, color.toLowerCase(), now, now],
+    )
+    return mapTag(this.database.query<Row, [string]>('SELECT * FROM tags WHERE id = ?').get(id)!)
+  }
+
+  listTags(projectId: string): ControlPlaneTag[] {
+    return this.database.query<Row, [string]>('SELECT * FROM tags WHERE project_id = ? ORDER BY normalized_name').all(projectId).map(mapTag)
+  }
+
+  assignTag(resourceId: string, tagId: string): void {
+    const tag = this.database.query<Row, [string, string]>(
+      'SELECT tags.id FROM tags JOIN resources ON resources.project_id = tags.project_id WHERE tags.id = ? AND resources.id = ?',
+    ).get(tagId, resourceId)
+    if (!tag)
+      throw new Error('The tag and resource must belong to the same project')
+    run(this.database, 'INSERT OR IGNORE INTO resource_tags (resource_id, tag_id, created_at) VALUES (?, ?, ?)', [resourceId, tagId, this.now()])
+  }
+
+  removeTag(resourceId: string, tagId: string): void {
+    run(this.database, 'DELETE FROM resource_tags WHERE resource_id = ? AND tag_id = ?', [resourceId, tagId])
+  }
+
+  listResourceTags(projectId: string): Array<{ resourceId: string, tag: ControlPlaneTag }> {
+    const rows = this.database.query<Row, [string]>(
+      `SELECT resource_tags.resource_id, tags.* FROM resource_tags JOIN tags ON tags.id = resource_tags.tag_id
+      WHERE tags.project_id = ? ORDER BY tags.normalized_name`,
+    ).all(projectId)
+    return rows.map(row => ({ resourceId: String(row.resource_id), tag: mapTag(row) }))
+  }
+
+  saveFilter(actorKey: string, name: string, routeId: string, query: Record<string, JsonValue>): SavedFilter {
+    const trimmed = name.trim()
+    if (!trimmed || trimmed.length > 64)
+      throw new Error('Saved filter names must contain 1-64 characters')
+    if (!routeId || routeId.length > 160 || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(routeId))
+      throw new Error('Saved filter routes must be local route IDs or paths')
+    const serializedQuery = json(query)
+    if (serializedQuery.length > 8192)
+      throw new Error('Saved filter queries must be smaller than 8 KB')
+    const existing = this.database.query<Row, [string, string]>('SELECT * FROM saved_filters WHERE actor_key = ? AND name = ?').get(actorKey, trimmed)
+    const now = this.now()
+    if (existing) {
+      run(this.database, 'UPDATE saved_filters SET route_id = ?, query = ?, updated_at = ? WHERE id = ?', [routeId, serializedQuery, now, String(existing.id)])
+      return mapSavedFilter(this.database.query<Row, [string]>('SELECT * FROM saved_filters WHERE id = ?').get(String(existing.id))!)
+    }
+    const id = this.idFn()
+    run(this.database, 'INSERT INTO saved_filters (id, actor_key, name, route_id, query, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)', [id, actorKey, trimmed, routeId, serializedQuery, now, now])
+    return mapSavedFilter(this.database.query<Row, [string]>('SELECT * FROM saved_filters WHERE id = ?').get(id)!)
+  }
+
+  listSavedFilters(actorKey: string): SavedFilter[] {
+    return this.database.query<Row, [string]>('SELECT * FROM saved_filters WHERE actor_key = ? ORDER BY updated_at DESC, name').all(actorKey).map(mapSavedFilter)
+  }
+
+  deleteSavedFilter(actorKey: string, id: string): boolean {
+    return run(this.database, 'DELETE FROM saved_filters WHERE actor_key = ? AND id = ?', [actorKey, id]).changes === 1
+  }
+
+  recordNavigation(actorKey: string, entityType: string, entityId: string): NavigationPreference {
+    const now = this.now()
+    run(this.database,
+      `INSERT INTO navigation_items (actor_key, entity_type, entity_id, last_visited_at) VALUES (?, ?, ?, ?)
+      ON CONFLICT(actor_key, entity_type, entity_id) DO UPDATE SET last_visited_at = excluded.last_visited_at, visit_count = visit_count + 1`,
+      [actorKey, entityType, entityId, now],
+    )
+    return mapNavigationPreference(this.database.query<Row, [string, string, string]>('SELECT * FROM navigation_items WHERE actor_key = ? AND entity_type = ? AND entity_id = ?').get(actorKey, entityType, entityId)!)
+  }
+
+  setFavorite(actorKey: string, entityType: string, entityId: string, favorite: boolean): NavigationPreference {
+    const now = this.now()
+    run(this.database,
+      `INSERT INTO navigation_items (actor_key, entity_type, entity_id, favorite, last_visited_at) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(actor_key, entity_type, entity_id) DO UPDATE SET favorite = excluded.favorite`,
+      [actorKey, entityType, entityId, favorite ? 1 : 0, now],
+    )
+    return mapNavigationPreference(this.database.query<Row, [string, string, string]>('SELECT * FROM navigation_items WHERE actor_key = ? AND entity_type = ? AND entity_id = ?').get(actorKey, entityType, entityId)!)
+  }
+
+  listNavigation(actorKey: string, options: { favoritesOnly?: boolean, limit?: number } = {}): NavigationPreference[] {
+    const favorite = options.favoritesOnly ? 'AND favorite = 1' : ''
+    const limit = Math.min(100, Math.max(1, options.limit ?? 20))
+    return this.database.query<Row, [string, number]>(
+      `SELECT * FROM navigation_items WHERE actor_key = ? ${favorite} ORDER BY favorite DESC, last_visited_at DESC LIMIT ?`,
+    ).all(actorKey, limit).map(mapNavigationPreference)
+  }
+
   compact(options: { eventRetentionDays?: number, operationRetentionDays?: number, vacuum?: boolean } = {}): CompactResult {
     const eventCutoff = new Date(this.nowFn().getTime() - (options.eventRetentionDays ?? 90) * 86_400_000).toISOString()
     const operationCutoff = new Date(this.nowFn().getTime() - (options.operationRetentionDays ?? 365) * 86_400_000).toISOString()
@@ -640,6 +765,10 @@ export class ControlPlaneStore {
       operations: this.database.query<Row, []>('SELECT * FROM operations ORDER BY id').all().map(mapOperation),
       events: this.database.query<Row, []>('SELECT * FROM events ORDER BY sequence').all().map(mapEvent),
       settings,
+      tags: this.database.query<Row, []>('SELECT * FROM tags ORDER BY id').all().map(mapTag),
+      resourceTags: this.database.query<Row, []>('SELECT * FROM resource_tags ORDER BY resource_id, tag_id').all().map(row => ({ resourceId: String(row.resource_id), tagId: String(row.tag_id), createdAt: String(row.created_at) })),
+      savedFilters: this.database.query<Row, []>('SELECT * FROM saved_filters ORDER BY id').all().map(mapSavedFilter),
+      navigationItems: this.database.query<Row, []>('SELECT * FROM navigation_items ORDER BY actor_key, entity_type, entity_id').all().map(mapNavigationPreference),
     }
   }
 
@@ -655,6 +784,10 @@ export class ControlPlaneStore {
       if (populated && !options.replace)
         throw new Error('Control plane is not empty; pass replace: true to import this snapshot')
       if (options.replace) {
+        this.database.run('DELETE FROM resource_tags')
+        this.database.run('DELETE FROM tags')
+        this.database.run('DELETE FROM saved_filters')
+        this.database.run('DELETE FROM navigation_items')
         this.database.run('DELETE FROM events')
         this.database.run('DELETE FROM operations')
         this.database.run('DELETE FROM resources')
@@ -714,6 +847,20 @@ export class ControlPlaneStore {
       }
       for (const [key, value] of Object.entries(snapshot.settings))
         run(this.database, 'INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)', [key, json(value), this.now()])
+      for (const item of snapshot.tags ?? []) {
+        run(this.database, 'INSERT INTO tags (id, project_id, name, normalized_name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [item.id, item.projectId, item.name, item.normalizedName, item.color, item.createdAt, item.updatedAt])
+      }
+      for (const item of snapshot.resourceTags ?? [])
+        run(this.database, 'INSERT INTO resource_tags (resource_id, tag_id, created_at) VALUES (?, ?, ?)', [item.resourceId, item.tagId, item.createdAt])
+      for (const item of snapshot.savedFilters ?? []) {
+        run(this.database, 'INSERT INTO saved_filters (id, actor_key, name, route_id, query, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [item.id, item.actorKey, item.name, item.routeId, json(item.query), item.createdAt, item.updatedAt])
+      }
+      for (const item of snapshot.navigationItems ?? []) {
+        run(this.database, 'INSERT INTO navigation_items (actor_key, entity_type, entity_id, favorite, last_visited_at, visit_count) VALUES (?, ?, ?, ?, ?, ?)',
+          [item.actorKey, item.entityType, item.entityId, item.favorite ? 1 : 0, item.lastVisitedAt, item.visitCount])
+      }
     })
   }
 }

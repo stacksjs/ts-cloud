@@ -8,3 +8,5 @@ export {
   sanitizeControlPlaneValue,
 } from './store'
 export * from './types'
+export { searchControlPlane } from './search'
+export type { ControlPlaneSearchOptions, ControlPlaneSearchResult, ControlPlaneSearchResultType } from './search'

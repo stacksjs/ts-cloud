@@ -37,6 +37,23 @@ describe('dashboard control plane', () => {
     second.store.close()
   })
 
+  it('indexes configured compute and databases in every environment', () => {
+    root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-control-'))
+    const configured = config()
+    configured.cloud = { provider: 'aws' }
+    configured.infrastructure = {
+      compute: { instances: 1, instanceType: 't3.small' },
+      databases: { orders: { engine: 'postgres' } },
+    } as CloudConfig['infrastructure']
+
+    const controlPlane = initializeDashboardControlPlane(root, configured)
+    const resources = controlPlane.store.listResources(controlPlane.project.id)
+    expect(resources.filter(resource => resource.kind === 'server')).toHaveLength(2)
+    expect(resources.filter(resource => resource.kind === 'database')).toHaveLength(2)
+    expect(resources.find(resource => resource.kind === 'server')).toMatchObject({ provider: 'aws', name: 'Acme' })
+    controlPlane.store.close()
+  })
+
   it('persists actor attribution and a bounded operation summary', async () => {
     root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-control-'))
     const controlPlane = initializeDashboardControlPlane(root, config())

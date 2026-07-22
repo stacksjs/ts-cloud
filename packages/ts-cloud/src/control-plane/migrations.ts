@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 2
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 3
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -134,6 +134,55 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX events_resource_idx ON events(resource_id, sequence DESC);
       CREATE INDEX events_correlation_idx ON events(correlation_id, sequence ASC);
       CREATE INDEX resources_environment_idx ON resources(environment_id, kind, slug);
+    `,
+  },
+  {
+    version: 3,
+    name: 'resource_discovery_preferences',
+    sql: `
+      CREATE TABLE tags (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        normalized_name TEXT NOT NULL,
+        color TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(project_id, normalized_name)
+      ) STRICT;
+
+      CREATE TABLE resource_tags (
+        resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(resource_id, tag_id)
+      ) STRICT;
+
+      CREATE TABLE saved_filters (
+        id TEXT PRIMARY KEY,
+        actor_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        route_id TEXT NOT NULL,
+        query TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(actor_key, name)
+      ) STRICT;
+
+      CREATE TABLE navigation_items (
+        actor_key TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1)),
+        last_visited_at TEXT NOT NULL,
+        visit_count INTEGER NOT NULL DEFAULT 1 CHECK (visit_count > 0),
+        PRIMARY KEY(actor_key, entity_type, entity_id)
+      ) STRICT;
+
+      CREATE INDEX tags_project_idx ON tags(project_id, normalized_name);
+      CREATE INDEX resource_tags_tag_idx ON resource_tags(tag_id, resource_id);
+      CREATE INDEX saved_filters_actor_idx ON saved_filters(actor_key, updated_at DESC);
+      CREATE INDEX navigation_actor_idx ON navigation_items(actor_key, favorite DESC, last_visited_at DESC);
     `,
   },
 ]
