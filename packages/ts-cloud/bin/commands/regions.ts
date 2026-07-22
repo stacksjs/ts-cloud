@@ -35,6 +35,13 @@ const regions = (input: string) =>
     const [region, provider = 'aws'] = value.split(':')
     return { region: String(region), provider, role: index === 0 ? ('primary' as const) : ('secondary' as const) }
   })
+export const replicationKinds = (input: string): Array<'s3' | 'dynamodb' | 'secrets'> => {
+  const allowed = new Set(['s3', 'dynamodb', 'secrets'])
+  const values = input.split(',').map((value) => value.trim())
+  const unsupported = values.find((value) => !allowed.has(value))
+  if (unsupported) throw new Error(`Unsupported replication kind: ${unsupported}`)
+  return values as Array<'s3' | 'dynamodb' | 'secrets'>
+}
 export function registerRegionCommands(app: CLI): void {
   app
     .command('region:list', 'List regional topology, traffic, and replication health')
@@ -82,7 +89,7 @@ export function registerRegionCommands(app: CLI): void {
           regions: regions(options.regions),
           trafficPolicy: 'active_passive',
           dataPolicy: {
-            replicate: String(options.replicate).split(','),
+            replicate: replicationKinds(String(options.replicate)),
             maxLagSeconds: Number(options.maxLag),
             retainOnDestroy: true,
           },

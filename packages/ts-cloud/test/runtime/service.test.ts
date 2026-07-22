@@ -32,7 +32,7 @@ describe('AWS runtime adapters', () => {
     const adapter = new EcsRuntimeAdapter(
       {
         async listClusters(input) {
-          return input.nextToken ? { clusterArns: ['cluster-b'] } : { clusterArns: ['cluster-a'], nextToken: 'next' }
+          return input?.nextToken ? { clusterArns: ['cluster-b'] } : { clusterArns: ['cluster-a'], nextToken: 'next' }
         },
         async listServices(cluster) {
           return { serviceArns: [`arn/service/${cluster}/acme-production-api`, `arn/service/${cluster}/foreign-api`] }
@@ -93,7 +93,7 @@ describe('live server runtime discovery', () => {
       project: { name: 'Acme', slug: 'acme', region: 'us-east-1' },
       cloud: { provider: 'hetzner' },
       mode: 'server',
-      environments: { production: {} },
+      environments: { production: { type: 'production' } },
     } as CloudConfig
     const adapters = await createRuntimeAdapters(config, 'production', { driver })
     expect(adapters.map((item) => item.id)).toEqual(['systemd:i-one', 'docker:i-one', 'systemd:i-two', 'docker:i-two'])

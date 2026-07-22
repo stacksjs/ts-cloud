@@ -17,7 +17,7 @@ describe('recovery CLI inventory', () => {
           held: true,
           pinned: false,
           manifest: { credential: 'must-not-render' },
-        } as RecoveryPoint,
+        } as unknown as RecoveryPoint,
       ],
       [{ id: 'policy-1', name: 'orders-hourly' } as BackupPolicy],
     )

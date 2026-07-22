@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { DataService } from '../../src'
-import { dataActionChanges, dataServiceRows } from './database'
+import { dataActionChanges, dataServiceRows, operationTargetsService } from './database'
 
 describe('data-service CLI helpers', () => {
   it('serializes lifecycle changes without credential values', () => {
@@ -41,5 +41,11 @@ describe('data-service CLI helpers', () => {
     const serialized = JSON.stringify(dataServiceRows([service]))
     expect(serialized).toContain('orders-db')
     expect(serialized).not.toContain('secret://')
+  })
+
+  it('matches queue operations through the public operation envelope', () => {
+    expect(operationTargetsService({ serviceId: 'data-1', action: 'backup' }, 'data-1')).toBeTrue()
+    expect(operationTargetsService({ serviceId: 'data-2' }, 'data-1')).toBeFalse()
+    expect(operationTargetsService(null, 'data-1')).toBeFalse()
   })
 })

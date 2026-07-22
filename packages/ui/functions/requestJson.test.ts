@@ -11,7 +11,7 @@ describe('dashboard request parsing', () => {
     globalThis.fetch = (() =>
       Promise.resolve(
         new Response(JSON.stringify({ ok: false, error: 'Port is reserved.' }), { status: 409 }),
-      )) as typeof fetch
+      )) as unknown as typeof fetch
     await expect(requestJson('/api/firewall')).rejects.toEqual(
       new DashboardRequestError('Port is reserved.', 409, { ok: false, error: 'Port is reserved.' }),
     )
@@ -19,7 +19,7 @@ describe('dashboard request parsing', () => {
 
   it('turns an HTML proxy response into a bounded useful error', async () => {
     globalThis.fetch = (() =>
-      Promise.resolve(new Response('<h1>Bad gateway</h1><p>upstream unavailable</p>', { status: 502 }))) as typeof fetch
+      Promise.resolve(new Response('<h1>Bad gateway</h1><p>upstream unavailable</p>', { status: 502 }))) as unknown as typeof fetch
     await expect(requestJson('/api/databases')).rejects.toThrow('Bad gateway upstream unavailable')
   })
 })

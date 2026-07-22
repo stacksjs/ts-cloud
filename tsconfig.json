@@ -52,6 +52,7 @@
     "node_modules",
     "benchmarks",
     "bunpress.ts",
+    "pickier.config.ts",
     "pantry"
   ]
 }

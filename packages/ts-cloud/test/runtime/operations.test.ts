@@ -6,7 +6,7 @@ const config = {
   project: { name: 'Acme', slug: 'acme', region: 'us-east-1' },
   cloud: { provider: 'hetzner' },
   mode: 'server',
-  environments: { production: {} },
+  environments: { production: { type: 'production' } },
 } as CloudConfig
 const base: RuntimeWorkload = {
   id: 'systemd:box:api',

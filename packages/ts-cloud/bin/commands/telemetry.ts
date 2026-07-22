@@ -24,7 +24,7 @@ interface TelemetryOptions {
 
 export function telemetryWindow(
   options: Pick<TelemetryOptions, 'from' | 'to' | 'range'>,
-  now = new Date(),
+  now: Date = new Date(),
 ): { from: string; to: string } {
   const to = options.to ? new Date(options.to) : now
   if (!Number.isFinite(to.getTime())) throw new Error('--to must be a valid ISO-8601 instant')

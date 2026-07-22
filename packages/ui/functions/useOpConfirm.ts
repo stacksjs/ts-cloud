@@ -14,7 +14,37 @@ export interface OperationResult {
   ok?: boolean
 }
 
-type Signal<T> = (() => T) & { set: (value: T) => void }
+export type Signal<T> = (() => T) & { set: (value: T) => void }
+
+interface HTMLElement {
+  focus: () => void
+  scrollIntoView: (options?: { behavior?: string; block?: string }) => void
+}
+
+type HTMLInputElement = HTMLElement
+
+export interface OperationConfirmationController {
+  opOutput: Signal<string>
+  opShown: Signal<boolean>
+  pending: Signal<OperationConfirmation | null>
+  typed: Signal<string>
+  busy: Signal<boolean>
+  confirmTok: Signal<string>
+  confirmVerb: Signal<string>
+  confirmDanger: Signal<boolean>
+  confirmLabel: Signal<string>
+  canRun: Signal<boolean>
+  askOp: (
+    operation: string,
+    confirm: string,
+    verb: string,
+    to?: string | null,
+    apiConfirm?: string,
+    options?: Partial<OperationConfirmation>,
+  ) => void
+  cancelOp: () => void
+  runOp: () => Promise<void>
+}
 
 declare function state<T>(_value: T): Signal<T>
 declare function derived<T>(_value: () => T): Signal<T>
@@ -31,7 +61,9 @@ export function operationIsDangerous(operation: Pick<OperationConfirmation, 'ope
  * the API request; this composable owns staging, exact-token validation,
  * in-flight locking, focus, output, cancellation, and error presentation.
  */
-export function useOpConfirm(execute: (operation: OperationConfirmation) => Promise<string | OperationResult>) {
+export function useOpConfirm(
+  execute: (operation: OperationConfirmation) => Promise<string | OperationResult>,
+): OperationConfirmationController {
   const opOutput = state('')
   const opShown = state(false)
   const pending = state<OperationConfirmation | null>(null)

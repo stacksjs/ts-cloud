@@ -169,6 +169,10 @@ export function dataServiceRows(services: DataService[]): string[][] {
   ])
 }
 
+export function operationTargetsService(input: JsonValue, serviceId: string): boolean {
+  return input !== null && typeof input === 'object' && !Array.isArray(input) && input.serviceId === serviceId
+}
+
 export function dataActionChanges(options: DataCommandOptions): Record<string, JsonValue> {
   const changes: Record<string, JsonValue> = {}
   if (options.plan) changes.plan = options.plan
@@ -401,7 +405,7 @@ export function registerDatabaseCommands(app: CLI): void {
               })),
               operations: value.queue
                 .list({ projectId: service.projectId, limit: 250 })
-                .filter((item) => item.input.serviceId === service.id),
+                .filter((item) => operationTargetsService(item.operation.input, service.id)),
             }
             output.info(JSON.stringify(safe, null, 2))
             if (options.reveal) {

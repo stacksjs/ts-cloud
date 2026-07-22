@@ -1,10 +1,17 @@
-type Signal<T> = (() => T) & { set: (value: T) => void }
+export type Signal<T> = (() => T) & { set: (value: T) => void }
+
+interface HTMLElement {
+  scrollTop: number
+  scrollHeight: number
+}
+
+declare const location: { protocol: string; host: string }
 declare function state<T>(_value: T): Signal<T>
 declare function derived<T>(_value: () => T): Signal<T>
 declare function effect(_callback: () => void): void
 declare function useRef<T = HTMLElement>(_name: string): { current: T | null }
 declare function useWebSocket(
-  url: string,
+  _url: string,
   _options?: Record<string, unknown>,
 ): {
   status: Signal<'CONNECTING' | 'OPEN' | 'CLOSING' | 'CLOSED'>
@@ -13,13 +20,23 @@ declare function useWebSocket(
   connect: () => void
 }
 
+export interface TerminalController {
+  buf: Signal<string>
+  cmd: Signal<string>
+  status: Signal<string>
+  send: () => void
+  reconnect: () => void
+  clearOut: () => void
+  statusTone: (value: string) => 'ok' | 'bad' | 'warn'
+}
+
 /** Terminal transport and viewport behavior, isolated from the stx template. */
-export function useTerminal(path = '/api/terminal') {
+export function useTerminal(path: string = '/api/terminal'): TerminalController {
   const buf = state('')
   const cmd = state('')
   const output = useRef<HTMLElement>('terminalOutput')
-  const protocol = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${protocol}//${globalThis.location.host}${path}`
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = `${protocol}//${location.host}${path}`
   const socket = useWebSocket(url, {
     reconnect: true,
     maxReconnects: 10,
@@ -55,7 +72,7 @@ export function useTerminal(path = '/api/terminal') {
   function clearOut() {
     buf.set('')
   }
-  function statusTone(value: string) {
+  function statusTone(value: string): 'ok' | 'bad' | 'warn' {
     return value === 'connected' ? 'ok' : value === 'disconnected' || value === 'error' ? 'bad' : 'warn'
   }
   return { buf, cmd, status, send, reconnect, clearOut, statusTone }
