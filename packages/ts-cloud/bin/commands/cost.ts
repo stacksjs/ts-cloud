@@ -4,6 +4,7 @@ import { CostExplorerClient } from '../../src/aws/cost-explorer'
 import { cacheLocation, clearCache } from '../../src/aws/cost-explorer-cache'
 import { S3Client } from '../../src/aws/s3'
 import { compareServiceCosts, egressUsageCosts, monthToDateRange, percentChange, projectedMonthlyCost, rollingComparisonRange } from '../../src/cost/reporting'
+import { ResourceInventoryClient } from '../../src/cost/resource-inventory'
 
 const S3_SERVICE_NAME = 'Amazon Simple Storage Service'
 
@@ -281,9 +282,34 @@ export function registerCostCommands(app: CLI): void {
     .command('resources', 'List all resources')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--type <type>', 'Resource type (ec2, rds, s3, lambda, etc.)')
-    .action(() => {
-      cli.warn('`resources` is not yet implemented against real AWS data.')
-      cli.info('Tracking: https://github.com/stacksjs/ts-cloud/issues/110')
+    .option('--region <region>', 'AWS region for regional resources')
+    .action(async (options?: { profile?: string; type?: string; region?: string }) => {
+      cli.header(`AWS Resources${options?.profile ? ` (profile: ${options.profile})` : ''}`)
+      const spinner = new cli.Spinner('Discovering tagged and untagged resources...')
+      spinner.start()
+      const inventory = new ResourceInventoryClient(options?.profile, options?.region)
+      try {
+        const result = await inventory.discover({ type: options?.type })
+        spinner.stop()
+        if (result.resources.length === 0) cli.info('No matching resources were discovered.')
+        else {
+          cli.table(
+            ['Type', 'Name', 'Region', 'State', 'Monthly cost'],
+            result.resources.map((resource) => [
+              `${resource.service}:${resource.type}`,
+              resource.name,
+              resource.region ?? 'global',
+              resource.state ?? 'unknown',
+              '— (requires CUR resource IDs)',
+            ]),
+          )
+          cli.info(`\n${result.resources.length} resource${result.resources.length === 1 ? '' : 's'} discovered.`)
+        }
+        for (const warning of result.warnings) cli.warn(warning)
+      } catch (error) {
+        spinner.stop()
+        cli.error(`Resource discovery failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
     })
 
   app

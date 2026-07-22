@@ -64,6 +64,21 @@ cloud cost:egress --days 7 --profile stacks
 
 Cost Explorer usage types identify the transfer category, not the workload or destination that caused it. Correlating a line item to destination IP, port, or instance requires VPC Flow Logs; the command states this boundary explicitly instead of inventing attribution.
 
+## Resource inventory
+
+`cloud resources` combines the Resource Groups Tagging API with direct EC2, RDS, Lambda, and S3 discovery. The union includes untagged resources, deduplicates provider records, and keeps working with explicit partial-coverage warnings when one optional permission is unavailable.
+
+```sh
+cloud resources
+cloud resources --profile stacks --region us-west-2
+cloud resources --type ec2
+cloud resources --type lambda
+```
+
+The monthly-cost column remains unavailable unless Cost and Usage Reports resource IDs are enabled for the account. ts-cloud displays that prerequisite instead of attributing service-level spend to individual resources.
+
+Additional inventory permissions are `tag:GetResources`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, and `s3:ListAllMyBuckets`. Only `tag:GetResources` is needed for the cross-service baseline; the direct calls fill gaps and untagged resources.
+
 ### What it does
 
 - Calls `ce:GetCostAndUsage` for the last fully-closed month, grouping by `SERVICE` with `UnblendedCost`.
@@ -138,7 +153,6 @@ The cost reporting commands above use real Cost Explorer data. Resource discover
 
 | Command | Tracking |
 |---|---|
-| `resources` (Resource Groups Tagging API) | [#110](https://github.com/stacksjs/ts-cloud/issues/110) |
 | `resources:unused` (CloudWatch idle detection) | [#111](https://github.com/stacksjs/ts-cloud/issues/111) |
 | `optimize` (RI/savings recommendations) | [#112](https://github.com/stacksjs/ts-cloud/issues/112) |
 
