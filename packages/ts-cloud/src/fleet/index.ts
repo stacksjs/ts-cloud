@@ -1,5 +1,6 @@
 import type { ControlPlaneStore,JsonValue } from '../control-plane'
 export * from './ssh-driver'
+export * from './queue'
 import { DurableOperationQueue } from '../queue'
 export type ServerProvider='aws'|'hetzner'|'ssh';export type ServerRole='application'|'build'|'worker'|'monitoring'|'backup'|'control_plane'
 export interface ServerFacts{os?:string;arch?:string;cpuCores?:number;memoryBytes?:number;diskBytes?:number;diskFreeBytes?:number;dnsOk?:boolean;timeSkewSeconds?:number;tools?:Record<string,string>;ports?:number[];privilege?:string;proxyVersion?:string;runtimeVersions?:Record<string,string>;firewall?:string;network?:Record<string,JsonValue>}

@@ -36,7 +36,7 @@ import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, Aw
 import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, synchronizeConfiguredConfiguration, type ConfigurationScope } from '../configuration'
 import { createVolumeQueueHandlers, DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore } from '../storage'
-import { FleetService, FleetStore, SshFleetDriver } from '../fleet'
+import { createFleetQueueHandlers, FleetService, FleetStore, SshFleetDriver } from '../fleet'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -1225,7 +1225,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createFleetQueueHandlers(fleetStore, fleetService.drivers), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
         if (!policy.healthCheckId) return { healthy: true, mode: 'adapter' }
         const check = alertStore.getHealthCheck(policy.healthCheckId)
         if (!check || check.projectId !== policy.projectId) return { healthy: false, error: 'Configured restore health check was not found.' }
