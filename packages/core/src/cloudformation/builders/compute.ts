@@ -68,6 +68,7 @@ export interface ComputeConfig {
       type?: 'application'
       customDomain?: { domain?: string, certificateArn?: string }
       originVerifyHeader?: { name: string, value: string }
+      deletionProtection?: boolean
     }
   }
   services?: Array<{
@@ -533,7 +534,7 @@ function addFargateResources(
     IpAddressType: 'ipv4',
     Subnets: [Fn.ref('PublicSubnet1'), Fn.ref('PublicSubnet2')],
     SecurityGroups: [Fn.ref('ALBSecurityGroup')],
-    LoadBalancerAttributes: [{ Key: 'routing.http.drop_invalid_header_fields.enabled', Value: 'true' }, { Key: 'deletion_protection.enabled', Value: 'true' }],
+    LoadBalancerAttributes: [{ Key: 'routing.http.drop_invalid_header_fields.enabled', Value: 'true' }, { Key: 'deletion_protection.enabled', Value: String(config.loadBalancer?.deletionProtection === true) }],
     Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${serviceName}-alb`) }],
   }, { dependsOn: ['PublicSubnet1', 'PublicSubnet2', 'ALBSecurityGroup'] })
 

@@ -130,6 +130,8 @@ function addRedisCluster(
       dependsOn: config.parameterGroup
         ? ['CacheSubnetGroup', 'CacheSecurityGroup', 'CacheParameterGroup']
         : ['CacheSubnetGroup', 'CacheSecurityGroup'],
+      deletionPolicy: 'Snapshot',
+      updateReplacePolicy: 'Snapshot',
     })
 
     // Output
@@ -174,6 +176,8 @@ function addRedisCluster(
       dependsOn: config.parameterGroup
         ? ['CacheSubnetGroup', 'CacheSecurityGroup', 'CacheParameterGroup']
         : ['CacheSubnetGroup', 'CacheSecurityGroup'],
+      deletionPolicy: 'Snapshot',
+      updateReplacePolicy: 'Snapshot',
     })
 
     // Output

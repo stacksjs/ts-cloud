@@ -153,7 +153,7 @@ function addRDSInstance(
     Tags: [
       { Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-secret') },
     ],
-  })
+  }, { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' })
 
   // RDS Instance
   const dbProperties: Record<string, any> = {
@@ -191,6 +191,7 @@ function addRDSInstance(
   builder.addResource(logicalId, 'AWS::RDS::DBInstance', dbProperties, {
     dependsOn: ['DBSubnetGroup', 'DBSecurityGroup', 'DBSecret'],
     deletionPolicy: 'Snapshot',
+    updateReplacePolicy: 'Snapshot',
   })
 
   // Attach secret to RDS instance

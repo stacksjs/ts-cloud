@@ -27,6 +27,7 @@ describe('Fargate CloudFormation resources', () => {
     expect(result.Resources.AppTargetGroup?.Properties?.HealthCheckPath).toBe('/api/health')
     expect(result.Resources.AppHttpsListener?.Properties?.SslPolicy).toContain('TLS13')
     expect(result.Resources.AppHttpsListener?.Properties?.DefaultActions[0].Type).toBe('fixed-response')
+    expect(result.Resources.AppLoadBalancer?.Properties?.LoadBalancerAttributes).toContainEqual({ Key: 'deletion_protection.enabled', Value: 'false' })
     expect(result.Resources.AppOriginVerifyRule?.Properties?.Conditions[0].HttpHeaderConfig).toEqual({ HttpHeaderName: 'X-Origin-Verify', Values: ['long-random-value'] })
     expect(result.Resources.AppService?.Properties?.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp).toBe('DISABLED')
     expect(result.Resources.AppService?.Properties?.LoadBalancers[0]).toEqual({ ContainerName: 'api', ContainerPort: 3000, TargetGroupArn: { Ref: 'AppTargetGroup' } })

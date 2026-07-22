@@ -50,7 +50,7 @@ function addQueue(
       Tags: [
         { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}-dlq`) },
       ],
-    })
+    }, { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' })
 
     dlqArn = Fn.getAtt(dlqLogicalId, 'Arn')
   }
@@ -84,6 +84,8 @@ function addQueue(
 
   builder.addResource(logicalId, 'AWS::SQS::Queue', queueProperties, {
     dependsOn: config.deadLetterQueue ? `${logicalId}DLQ` : undefined,
+    deletionPolicy: 'Retain',
+    updateReplacePolicy: 'Retain',
   })
 
   // Queue Policy (allow common AWS services to send messages)

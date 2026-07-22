@@ -2445,6 +2445,7 @@ export interface ComputeConfig {
         name?: string
         value?: string
       }
+      deletionProtection?: boolean
     }
   }
 
