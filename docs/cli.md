@@ -110,6 +110,17 @@ See [Releases, promotion, and rollback](/features/releases) for immutable identi
 
 See [Add a private API to an existing static site](/features/static-site-api-origin) for the architecture, permissions, confirmation boundary, payload constraint, verification procedure, and rollback order.
 
+## Existing static site with a full-stack backend
+
+| Command | Purpose |
+|---|---|
+| `cloud container:artifact <repository>` | Build and publish a context-hashed, scan-on-push ECR image and return its immutable digest URI. |
+| `cloud deploy:fullstack <distribution> <alias> …` | Read-only account, stack, artifact, managed-service, DNS, cost-driver, and routing plan. |
+| `cloud deploy:fullstack … --apply --confirm '<distribution>:/api/*:<stack>'` | Provision ECS/ALB/RDS/Redis/SQS and route the isolated path only after origin health passes. |
+| `cloud deploy:fullstack:cost` | Estimate each always-on backend component with explicit exclusions. |
+
+See [Full-stack container backend for an existing static site](/features/existing-static-fullstack) for the application contract, immutable artifact flow, network and secret boundaries, external DNS, deployment rollback, data retention, and cost baseline.
+
 ## Durable operations
 
 | Command | Description |
