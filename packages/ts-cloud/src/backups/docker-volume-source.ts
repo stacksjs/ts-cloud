@@ -2,6 +2,7 @@ import type { JsonValue } from '../control-plane'
 import type { QueueExecutionContext } from '../queue'
 import type { BackupPolicy, RecoveryPoint } from './model'
 import type { BackupSourceAdapter, BackupSourceResult } from './service'
+import { compressBackup, decompressBackup } from './filesystem-source'
 
 const validVolume = /^[A-Za-z0-9][A-Za-z0-9_.-]{1,127}$/
 
@@ -128,15 +129,18 @@ export class DockerVolumeBackupSource implements BackupSourceAdapter {
       throw new Error('Volume backups require a valid named-volume resource identifier.')
     if (!(await this.runtime.exists(volume)))
       throw new Error(`Volume ${volume} was not found.`)
-    const body = await this.runtime.export(volume),
+    const gzip = await this.runtime.export(volume),
+      tar = Buffer.from(Bun.gunzipSync(Uint8Array.from(gzip))),
+      compression = policy.compression ?? 'gzip',
+      body = compression === 'gzip' ? gzip : compressBackup(tar, compression),
       timestamp = String(context.operation?.id ?? new Date().toISOString()).replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
     return {
       mode: 'object',
-      key: `${policy.projectId}/volumes/${volume}/${timestamp}.tar.gz`,
+      key: `${policy.projectId}/volumes/${volume}/${timestamp}.tar${compression === 'none' ? '' : compression === 'gzip' ? '.gz' : '.zst'}`,
       body,
-      contentType: 'application/gzip',
+      contentType: compression === 'gzip' ? 'application/gzip' : compression === 'zstd' ? 'application/zstd' : 'application/x-tar',
       toolVersion: 'alpine-tar',
-      manifest: { format: 'docker-volume-tar-gzip-v1', sourceVolume: volume },
+      manifest: { format: 'docker-volume-tar-v1', archive: 'tar', compression, sourceVolume: volume },
     }
   }
   async restore(
@@ -159,7 +163,11 @@ export class DockerVolumeBackupSource implements BackupSourceAdapter {
       throw new Error('An in-place volume restore must target the source volume.')
     if (target.inPlace === true && !exists)
       throw new Error('The in-place target volume was not found.')
-    await this.runtime.import(targetVolume, body, target.inPlace === true)
+    const compression = String(point.manifest.compression ?? 'gzip') as BackupPolicy['compression'],
+      gzip = compression === 'gzip'
+        ? Buffer.from(body)
+        : Buffer.from(Bun.gzipSync(Uint8Array.from(decompressBackup(body, compression))))
+    await this.runtime.import(targetVolume, gzip, target.inPlace === true)
     const health = await this.runtime.probe(targetVolume)
     return { volumeName: targetVolume, healthy: true, ...health }
   }

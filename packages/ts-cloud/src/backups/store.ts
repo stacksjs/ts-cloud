@@ -289,10 +289,26 @@ export class BackupStore {
   ): BackupPolicy {
     if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(input.name))
       throw new Error('Backup policy names must be lowercase slugs.')
-    if (!input.resourceId && !input.dataServiceId)
+    if (
+      !input.resourceId &&
+      !input.dataServiceId &&
+      !['control_plane', 'infrastructure'].includes(input.resourceKind)
+    )
       throw new Error('A backup policy requires a resource or data service target.')
-    if (!this.getDestination(input.destinationId))
+    const destination = this.getDestination(input.destinationId)
+    if (!destination || destination.projectId !== input.projectId)
       throw new Error('Backup destination was not found.')
+    if (
+      input.resourceKind === 'control_plane' &&
+      destination.encryption === 'provider'
+    )
+      throw new Error('Control-plane backups require client-side destination encryption.')
+    if (
+      ['logical_database', 'volume', 'files', 'control_plane'].includes(
+        input.resourceKind,
+      ) && destination.provider === 'aws_backup'
+    )
+      throw new Error(`${input.resourceKind} backups require an object-storage destination.`)
     const expression = normalizeScheduleExpression(input.schedule),
       nextRunAt = nextScheduleRuns(
         expression.normalized,

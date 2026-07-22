@@ -30,6 +30,12 @@ describe('backup recovery control plane', () => {
     expect(() => validateBackupDestination({ ...base, endpoint: 'http://minio.internal/' })).toThrow('HTTPS')
   })
 
+  it('requires client encryption for project-scoped control-plane backups', () => {
+    const target = fixture(), providerOnly = target.backups.createDestination({ organizationId: target.organization.id, projectId: target.project.id, name: 'provider-only', provider: 'aws_s3', endpointPolicy: 'public_https', bucket: 'acme', prefix: '', forcePathStyle: false, encryption: 'provider', immutability: {}, status: 'healthy' }), encrypted = target.backups.createDestination({ organizationId: target.organization.id, projectId: target.project.id, name: 'encrypted', provider: 'aws_s3', endpointPolicy: 'public_https', bucket: 'acme', prefix: '', forcePathStyle: false, encryption: 'both', encryptionKeyRef: 'secret://backup/key', immutability: {}, status: 'healthy' }), input = { organizationId: target.organization.id, projectId: target.project.id, environmentId: target.environment.id, destinationId: providerOnly.id, name: 'control-daily', resourceKind: 'control_plane' as const, schedule: 'daily', timezone: 'UTC', retention: { keepLast: 7 }, compression: 'none' as const, encryption: 'both' as const, includePatterns: [], excludePatterns: [], expectedRpoMinutes: 1440, expectedRtoMinutes: 120, enabled: true }
+    expect(() => target.backups.createPolicy(input)).toThrow('client-side')
+    expect(target.backups.createPolicy({ ...input, destinationId: encrypted.id })).toMatchObject({ resourceKind: 'control_plane', resourceId: undefined, dataServiceId: undefined })
+  })
+
   it('schedules policies, detects missed RPO, tracks verification, and enforces safe retention', () => {
     const target = fixture(),
       destination = target.backups.createDestination({

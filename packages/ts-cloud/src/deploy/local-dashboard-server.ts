@@ -30,7 +30,7 @@ import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEst
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
-import { AwsDatabaseBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, createBackupQueueHandlers, DockerVolumeBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
+import { AwsDatabaseBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -1012,6 +1012,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     managed_database: new AwsDatabaseBackupSource(dataServiceStore, rdsClient),
     logical_database: new LogicalDatabaseBackupSource(dataServiceStore, dataServiceSecrets),
     volume: new DockerVolumeBackupSource(),
+    files: new FilesystemBackupSource(cwd),
+    control_plane: new ControlPlaneBackupSource(controlPlane.store, cwd),
   } as const
   const resolveBackupSource = (policy: BackupPolicy) =>
     backupSources[policy.resourceKind as keyof typeof backupSources]
@@ -3653,6 +3655,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Logical database policies require an on-box data service.' }, 422)
           if (resourceKind === 'volume' && (!resource || !/^[A-Za-z0-9][A-Za-z0-9_.-]{1,127}$/.test(String(body.volumeName ?? ''))))
             return json({ ok: false, error: 'Volume policies require a scoped resource and valid volumeName.' }, 422)
+          const includePatterns = Array.isArray(body.includePatterns) ? body.includePatterns.map(String).filter(Boolean) : []
+          if (resourceKind === 'files' && (!resource || !includePatterns.length))
+            return json({ ok: false, error: 'File policies require a scoped resource and at least one project-relative include path.' }, 422)
+          if (resourceKind === 'control_plane' && destination.encryption === 'provider')
+            return json({ ok: false, error: 'Control-plane policies require a destination with client-side encryption.' }, 422)
           try {
             const policy = backupStore.createPolicy({
               organizationId: controlPlane.organization.id,
@@ -3669,8 +3676,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               compression: ['none', 'gzip', 'zstd'].includes(String(body.compression)) ? body.compression : 'gzip',
               encryption: ['destination', 'client_side', 'both'].includes(String(body.encryption)) ? body.encryption : 'destination',
               includePatterns: resourceKind === 'volume'
-                ? [String(body.volumeName), ...(Array.isArray(body.includePatterns) ? body.includePatterns.map(String) : [])]
-                : Array.isArray(body.includePatterns) ? body.includePatterns.map(String) : [],
+                ? [String(body.volumeName), ...includePatterns]
+                : includePatterns,
               excludePatterns: Array.isArray(body.excludePatterns) ? body.excludePatterns.map(String) : [],
               expectedRpoMinutes: Math.max(1, Number(body.expectedRpoMinutes) || 1440),
               expectedRtoMinutes: Math.max(1, Number(body.expectedRtoMinutes) || 120),

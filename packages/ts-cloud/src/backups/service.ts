@@ -40,9 +40,18 @@ export interface BackupSourceAdapter {
     point: RecoveryPoint,
     context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>>
+  verify?(
+    point: RecoveryPoint,
+    body: Uint8Array,
+    context: QueueExecutionContext,
+  ): Promise<Record<string, JsonValue>>
   restore(
     point: RecoveryPoint,
     body: Uint8Array | undefined,
+    target: Record<string, JsonValue>,
+    context: QueueExecutionContext,
+  ): Promise<Record<string, JsonValue>>
+  validateHealth?(
     target: Record<string, JsonValue>,
     context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>>
@@ -212,7 +221,11 @@ export class BackupCoordinator {
     return {
       point,
       mode: input.mode,
-      target: input.target,
+      target: {
+        ...input.target,
+        inPlace: input.mode === 'in_place',
+        restoreMode: input.mode,
+      },
       warnings:
         input.mode === 'in_place'
           ? [
@@ -537,7 +550,14 @@ export function createBackupQueueHandlers(input: {
             checksum: point.checksum,
             manifest: point.manifest as StoredBackup['manifest'],
           })
-          evidence = { bytes: body.length, checksum: point.checksum }
+          const sourceEvidence = source.verify
+            ? await source.verify(point, body, context)
+            : {}
+          evidence = {
+            bytes: body.length,
+            checksum: point.checksum,
+            ...sourceEvidence,
+          }
         } else if (source.verifyExternal)
           evidence = await source.verifyExternal(point, context)
         else
@@ -612,9 +632,18 @@ export function createBackupQueueHandlers(input: {
           })
         : undefined
       const restored = await source.restore(point, body, job.target, context),
-        health = input.validateHealth
+        adapterHealth = source.validateHealth
+          ? await source.validateHealth({ ...job.target, ...restored }, context)
+          : { healthy: true, mode: 'adapter' },
+        configuredHealth = input.validateHealth
           ? await input.validateHealth(policy, job.target)
-          : { healthy: true, mode: 'adapter' }
+          : { healthy: true, mode: 'not_configured' },
+        health = {
+          ...adapterHealth,
+          healthy:
+            adapterHealth.healthy === true && configuredHealth.healthy === true,
+          configured: configuredHealth,
+        }
       if (health.healthy !== true)
         throw new Error('Restored target did not pass its configured health check.')
       if (drill && source.cleanup)

@@ -10,11 +10,11 @@ class Runtime implements DockerVolumeRuntime {
     return this.volumes.has(name)
   }
   async export(name: string) {
-    return this.volumes.get(name)!
+    return Bun.gzipSync(Uint8Array.from(this.volumes.get(name)!))
   }
   async import(name: string, archive: Uint8Array, replace = false) {
     this.imports.push({ name, replace })
-    this.volumes.set(name, archive)
+    this.volumes.set(name, Bun.gunzipSync(Uint8Array.from(archive)))
   }
   async remove(name: string) {
     this.volumes.delete(name)
@@ -66,11 +66,11 @@ describe('Docker volume backup source', () => {
         manifest: { sourceVolume: 'orders-data' },
       } as unknown as RecoveryPoint
     await expect(
-      source.restore(point, new Uint8Array([4]), { volumeName: 'orders-data' }, {} as any),
+      source.restore(point, Bun.gzipSync(new Uint8Array([4])), { volumeName: 'orders-data' }, {} as any),
     ).rejects.toThrow('distinct target')
     await source.restore(
       point,
-      new Uint8Array([4]),
+      Bun.gzipSync(new Uint8Array([4])),
       { volumeName: 'orders-data', inPlace: true },
       {} as any,
     )

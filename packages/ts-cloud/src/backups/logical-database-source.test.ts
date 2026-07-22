@@ -103,6 +103,7 @@ describe('logical database backup source', () => {
       { targetId: 'orders-drill' },
       {} as any,
     )
+    expect(Buffer.from(calls[0].body as Uint8Array).toString()).toBe('-- dump')
     expect(calls[0]).toMatchObject({
       sourceId: service.id,
       targetId: 'orders-drill',

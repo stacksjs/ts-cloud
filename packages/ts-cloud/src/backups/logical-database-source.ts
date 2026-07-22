@@ -5,6 +5,7 @@ import type { BackupPolicy, RecoveryPoint } from './model'
 import type { BackupSourceAdapter, BackupSourceResult } from './service'
 import { DockerDataTransport } from '../data-services'
 import { DataServiceStore } from '../data-services/store'
+import { compressBackup, decompressBackup } from './filesystem-source'
 
 export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
   constructor(
@@ -24,12 +25,14 @@ export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
     if (!['container', 'server'].includes(service.provider))
       throw new Error('Logical database backups require an on-box data service.')
     const dump = await this.transport.exportLogicalBackup(service.id),
+      compression = policy.compression ?? 'none',
+      body = compressBackup(dump.body, compression),
       timestamp = String(context.operation?.id ?? new Date().toISOString()).replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
     return {
       mode: 'object',
-      key: `${policy.projectId}/databases/${service.id}/${timestamp}.sql`,
-      body: dump.body,
-      contentType: 'application/sql',
+      key: `${policy.projectId}/databases/${service.id}/${timestamp}.sql${compression === 'none' ? '' : compression === 'gzip' ? '.gz' : '.zst'}`,
+      body,
+      contentType: compression === 'gzip' ? 'application/gzip' : compression === 'zstd' ? 'application/zstd' : 'application/sql',
       engineVersion: dump.engineVersion,
       toolVersion: 'engine-native',
       manifest: {
@@ -38,6 +41,7 @@ export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
         engine: dump.engine,
         database: dump.database,
         username: dump.username,
+        compression,
       },
     }
   }
@@ -65,7 +69,7 @@ export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
     return this.transport.restoreLogicalBackup({
       sourceId,
       targetId,
-      body,
+      body: decompressBackup(body, String(point.manifest.compression ?? 'none') as BackupPolicy['compression']),
       credential,
       inPlace,
     })
