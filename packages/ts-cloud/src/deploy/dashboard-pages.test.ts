@@ -3,7 +3,7 @@ import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest, resolveO
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
-    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/operations/releases', '/security', '/account/security'])
+    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/operations/releases', '/operations/jobs', '/security', '/account/security'])
       expect(isBoxOnlyPage(page)).toBe(false)
   })
 
@@ -86,11 +86,12 @@ describe('canOpenDashboardPage', () => {
     const operator = {
       role: 'member' as const,
       sites: {},
-      capabilities: ['project:read', 'runtime:read', 'runtime:logs', 'backups:read', 'runtime:restart'] as const,
+      capabilities: ['project:read', 'runtime:read', 'runtime:logs', 'backups:read', 'runtime:restart', 'automation:read'] as const,
       organizationSource: 'invitation',
     }
     expect(canOpenDashboardPage('/server/metrics', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/server/backups', operator as any)).toBe(true)
+    expect(canOpenDashboardPage('/operations/jobs', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/account/security', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/server/terminal', operator as any)).toBe(false)
     expect(canOpenDashboardPage('/server/some-future-page', operator as any)).toBe(false)

@@ -83,7 +83,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
           @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
-          @if (canView('automation:read'))<a href="{{ envHref('/server/workers') }}">Workers & schedules</a>@endif
+          @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
           @if (canView('backups:read'))<a href="{{ envHref('/server/backups') }}">Backups</a>@endif
           @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
@@ -112,7 +112,6 @@ const isActive = (...keys) => keys.includes(active ?? '')
           <h2>Compute & data</h2>
           @if (canView('config:read'))<a href="{{ envHref('/serverless/functions') }}">Functions</a>@endif
           @if (canView('data:read'))<a href="{{ envHref('/serverless/queues') }}">Queues</a><a href="{{ envHref('/serverless/data') }}">Data</a>@endif
-          @if (canView('automation:read'))<a href="{{ envHref('/serverless/scheduler') }}">Schedules</a>@endif
           @if (canView('project:read'))<a href="{{ envHref('/serverless/assets') }}">Assets</a>@endif
         </section>
       @endif
@@ -139,7 +138,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('sources:read'))<a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>@endif
       </section>
     @endif
-    @if (navMode === 'serverless' && (canView('deployments:read') || canView('runtime:read')))
+    @if (navMode === 'serverless' && (canView('deployments:read') || canView('runtime:read') || canView('automation:read')))
       <section class="nav-group">
         <h2>Operations</h2>
         @if (canView('deployments:read'))<a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>@endif
@@ -148,6 +147,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
         @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
         @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
+        @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
       </section>
     @endif
     @if (canView('users:read'))
