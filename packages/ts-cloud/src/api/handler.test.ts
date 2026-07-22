@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { AutomationIdentityStore } from '../automation'
 import { ControlPlaneStore } from '../control-plane'
+import { ApplicationDraftStore, RegistryConnectionStore } from '../onboarding'
 import { SourceConnectionStore } from '../source'
 import { TsCloudClient } from './client'
 import { createApiV1Handler } from './handler'
@@ -16,11 +17,13 @@ function fixture(rateLimit = 120) {
   controlPlane.createResource({ projectId: project.id, environmentId: staging.id, kind: 'application', slug: 'web-staging', name: 'Staging Web' })
   const identities = new AutomationIdentityStore(controlPlane)
   const sources = new SourceConnectionStore(controlPlane, { encryptionKey: 'api-fixture-key' })
+  const applicationDrafts = new ApplicationDraftStore(controlPlane)
+  const registryConnections = new RegistryConnectionStore(controlPlane, { encryptionKey: 'api-registry-fixture-key' })
   const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scope: { type: 'environment', id: production.id } }).serviceAccount
-  const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create'], scope: { type: 'environment', id: production.id } })
-  const handler = createApiV1Handler({ controlPlane, identities, sources, rateLimit })
+  const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create', 'applications:read', 'applications:manage'], scope: { type: 'environment', id: production.id } })
+  const handler = createApiV1Handler({ controlPlane, identities, sources, applications: { drafts: applicationDrafts, registries: registryConnections }, rateLimit })
   const call = (path: string, init: RequestInit = {}, token = issued.secret) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } })) as Promise<Response>
-  return { controlPlane, organization, project, production, staging, productionService, identities, sources, account, issued, handler, call }
+  return { controlPlane, organization, project, production, staging, productionService, identities, sources, applicationDrafts, registryConnections, account, issued, handler, call }
 }
 
 describe('/api/v1 contract', () => {
@@ -88,6 +91,7 @@ describe('/api/v1 contract', () => {
     const mockFetch = (async (input: string | URL | Request, init?: RequestInit) => handler(new Request(String(input), init)) as Promise<Response>) as typeof fetch
     const client = new TsCloudClient({ baseUrl: 'https://cloud.acme.test', token: issued.secret, fetch: mockFetch })
     expect((await client.listProjects()).data[0].id).toBe(project.id)
+    expect((await client.detectApplication({ files: [{ path: 'package.json', content: '{"scripts":{"start":"bun server.ts"}}' }, { path: 'bun.lock' }] })).candidates[0]).toMatchObject({ framework: 'bun' })
     const deployed = await client.createDeployment({ projectId: project.id, environmentId: production.id, serviceId: productionService.id }, 'client-build-123')
     expect(deployed.operation).toMatchObject({ state: 'queued', resourceId: productionService.id })
     controlPlane.close()
@@ -116,6 +120,58 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('plans, resumes, and idempotently creates applications without returning secrets', async () => {
+    const { controlPlane, organization, project, production, identities, handler } = fixture()
+    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'application-automation', name: 'Application Automation', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
+    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Applications', capabilities: ['applications:read', 'applications:manage'], scope: { type: 'organization' } })
+    const call = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
+    const detected = await (await call('/api/v1/application-detections', { method: 'POST', body: JSON.stringify({ files: [{ path: 'package.json', content: '{"scripts":{"start":"bun run server.ts"}}' }, { path: 'bun.lock' }] }) })).json() as any
+    expect(detected.candidates[0]).toMatchObject({ framework: 'bun', strategy: 'server', confidence: expect.any(Number) })
+    const draftInput = {
+      schemaVersion: 1,
+      name: 'API Worker',
+      slug: 'api-worker',
+      projectId: project.id,
+      environmentId: production.id,
+      source: { kind: 'local', root: '.' },
+      build: { kind: 'server', runtime: 'bun', startCommand: 'bun run server.ts' },
+      runtime: { architecture: 'arm64', port: 3000, target: 'server', healthCheck: { protocol: 'http', path: '/health' } },
+      environment: { NODE_ENV: 'production', DATABASE_URL: { secretRef: 'DATABASE_URL' } },
+      requiredSecretNames: ['DATABASE_URL'],
+    }
+    const planned = await (await call('/api/v1/application-plans', { method: 'POST', body: JSON.stringify({ draft: draftInput, suppliedSecretNames: ['DATABASE_URL'] }) })).json() as any
+    expect(planned.plan).toMatchObject({ valid: true, missingSecrets: [], manifest: { spec: { build: { kind: 'server' } } } })
+    const createdResponse = await call('/api/v1/application-drafts', { method: 'POST', body: JSON.stringify({ projectId: project.id, name: 'API draft', draft: draftInput, step: 'review', suppliedSecretNames: ['DATABASE_URL'] }) })
+    expect(createdResponse.status).toBe(201)
+    const created = await createdResponse.json() as any
+    expect(created.draft).toMatchObject({ status: 'ready', version: 1, suppliedSecretNames: ['DATABASE_URL'] })
+    expect(JSON.stringify(created)).not.toContain('database-password')
+    const listed = await (await call(`/api/v1/application-drafts?projectId=${project.id}`)).json() as any
+    expect(listed.data).toMatchObject([{ id: created.draft.id, step: 'review' }])
+    const before = controlPlane.listResources(project.id, production.id).length
+    const wrong = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-wrong-target' }, body: JSON.stringify({ draftId: created.draft.id, version: 1, confirmEnvironment: 'staging' }) })
+    expect(wrong.status).toBe(422)
+    expect(controlPlane.listResources(project.id, production.id)).toHaveLength(before)
+    const request = { draftId: created.draft.id, version: 1, confirmEnvironment: 'production' }
+    const applied = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-create-1' }, body: JSON.stringify(request) })
+    const appliedBody = await applied.json() as any
+    expect(applied.status).toBe(202)
+    expect(appliedBody).toMatchObject({ resource: { slug: 'api-worker' }, operation: { kind: 'application.create', state: 'queued' }, plan: { valid: true }, idempotentReplay: false })
+    const replay = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-create-1' }, body: JSON.stringify(request) })
+    expect(replay.headers.get('idempotent-replayed')).toBe('true')
+    expect(await replay.json()).toMatchObject({ operation: { id: appliedBody.operation.id }, idempotentReplay: true })
+    expect(controlPlane.listOperations({ projectId: project.id }).filter(item => item.kind === 'application.create')).toHaveLength(1)
+
+    const registryResponse = await call('/api/v1/registry-connections', { method: 'POST', body: JSON.stringify({ provider: 'ghcr', name: 'Private images', host: 'ghcr.io', username: 'acme', token: 'registry-super-secret' }) })
+    const registry = await registryResponse.json() as any
+    expect(registryResponse.status).toBe(201)
+    expect(registry.registry).toMatchObject({ credentialConfigured: true, status: 'pending' })
+    expect(JSON.stringify(registry)).not.toContain('registry-super-secret')
+    const disconnected = await call('/api/v1/registry-connections', { method: 'DELETE', body: JSON.stringify({ id: registry.registry.id }) })
+    expect(await disconnected.json()).toMatchObject({ registry: { status: 'disconnected', credentialConfigured: false } })
+    controlPlane.close()
+  })
+
   it('authenticates event streams and closes them after token revocation', async () => {
     const { controlPlane, organization, production, identities, handler } = fixture()
     const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'event-relay', name: 'Event Relay', roleTemplate: 'admin', scope: { type: 'environment', id: production.id } }).serviceAccount
@@ -131,8 +187,10 @@ describe('/api/v1 contract', () => {
 
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
+    expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
+    expect(document.components.schemas.RegistryConnectionRequest.properties.token).toMatchObject({ writeOnly: true })
   })
 })

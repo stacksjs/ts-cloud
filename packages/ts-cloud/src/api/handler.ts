@@ -1,8 +1,11 @@
 import type { ApiTokenPrincipal, AutomationIdentityStore } from '../automation'
 import type { ControlPlaneStore } from '../control-plane'
 import type { SourceConnectionStore } from '../source'
+import type { ApplicationArtifactStore, ApplicationDraftStore, RegistryConnectionStore } from '../onboarding'
 import type { ApiDeploymentRequest, ApiErrorEnvelope, ApiPage } from './types'
+import { createHash } from 'node:crypto'
 import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, webhookEndpoint } from '../source'
+import { applyApplicationDraft, detectApplication, planApplication } from '../onboarding'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
@@ -10,6 +13,7 @@ interface ApiV1HandlerOptions {
   controlPlane: ControlPlaneStore
   identities: AutomationIdentityStore
   sources?: SourceConnectionStore
+  applications?: { drafts: ApplicationDraftStore, artifacts?: ApplicationArtifactStore, registries: RegistryConnectionStore }
   now?: () => Date
   rateLimit?: number
 }
@@ -124,6 +128,83 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
         const connection = options.sources.getConnection(connectionId)
         if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
         body = await listSourceReferences(options.sources, { connectionId, repository: url.searchParams.get('repository') ?? '', repositoryId: url.searchParams.get('repositoryId') ?? undefined, type: url.searchParams.get('type') === 'tags' ? 'tags' : 'branches', cursor: url.searchParams.get('cursor') ?? undefined, deployKeyId: url.searchParams.get('deployKeyId') ?? undefined })
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/application-detections') {
+        service.authorize(principal, 'applications:manage', principal.token.scope)
+        const input = await readBody(); if (!Array.isArray(input.files) || input.files.length > 10_000) throw new ApiServiceError('validation_error', 'files must contain at most 10,000 entries.', 422)
+        body = { candidates: detectApplication(input.files.map((item: any) => ({ path: String(item.path ?? ''), size: Number(item.size ?? 0), content: typeof item.content === 'string' ? item.content.slice(0, 256 * 1024) : undefined }))), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/application-plans') {
+        service.authorize(principal, 'applications:manage', principal.token.scope)
+        const input = await readBody(); body = { plan: planApplication(input.draft, Array.isArray(input.suppliedSecretNames) ? input.suppliedSecretNames.map(String) : []), requestId }
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/application-drafts') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404)
+        const projectId = url.searchParams.get('projectId') ?? ''; service.authorize(principal, 'applications:read', { type: 'project', id: projectId })
+        body = page(options.applications.drafts.list(projectId) as unknown as Array<Record<string, unknown>>, url, requestId, ['updatedAt', 'id'])
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/application-drafts') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404)
+        const input = await readBody(); const projectId = String(input.projectId ?? input.draft?.projectId ?? ''); service.authorize(principal, 'applications:manage', { type: 'project', id: projectId }); const project = options.controlPlane.getProject(projectId)
+        if (!project || project.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Project was not found.', 404)
+        const draft = options.applications.drafts.create({ organizationId: project.organizationId, projectId, name: String(input.name ?? input.draft?.name ?? 'Application draft'), draft: { ...input.draft, projectId }, step: input.step, suppliedSecretNames: Array.isArray(input.suppliedSecretNames) ? input.suppliedSecretNames.map(String) : [], actorId: principal.actor.id })
+        return response({ draft, requestId }, 201, requestId, rateHeaders)
+      }
+      else if (request.method === 'PATCH' && url.pathname === '/api/v1/application-drafts') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404)
+        const input = await readBody(); const current = options.applications.drafts.get(String(input.id ?? '')); if (!current) throw new ApiServiceError('not_found', 'Application draft was not found.', 404); service.authorize(principal, 'applications:manage', { type: 'project', id: current.projectId })
+        body = { draft: options.applications.drafts.update(current.id, Number(input.version), { draft: { ...input.draft, projectId: current.projectId }, step: input.step, suppliedSecretNames: Array.isArray(input.suppliedSecretNames) ? input.suppliedSecretNames.map(String) : undefined, actorId: principal.actor.id }), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/applications') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404)
+        const idempotencyKey = request.headers.get('idempotency-key') ?? ''
+        if (!idempotencyKey) throw new ApiServiceError('idempotency_required', 'Idempotency-Key is required for application creation.', 428)
+        if (!/^[A-Za-z0-9._:-]{8,128}$/.test(idempotencyKey)) throw new ApiServiceError('validation_error', 'Idempotency-Key must contain 8-128 safe characters.', 422)
+        const input = await readBody()
+        const current = options.applications.drafts.get(String(input.draftId ?? ''))
+        if (!current) throw new ApiServiceError('not_found', 'Application draft was not found.', 404)
+        service.authorize(principal, 'applications:manage', { type: 'project', id: current.projectId })
+        const requestHash = createHash('sha256').update(`POST\n/api/v1/applications\n${JSON.stringify(input)}`).digest('hex')
+        const existing = options.identities.getIdempotency(principal.token.id, idempotencyKey)
+        if (existing) {
+          if (existing.requestHash !== requestHash) throw new ApiServiceError('idempotency_conflict', 'Idempotency-Key was already used for another request.', 409)
+          const operation = existing.operationId ? options.controlPlane.getOperation(existing.operationId) : undefined
+          const resource = operation?.resourceId ? options.controlPlane.getResource(operation.resourceId) : undefined
+          if (!operation || !resource) throw new ApiServiceError('idempotency_unavailable', 'The original application operation is no longer available.', 409)
+          return response({ resource, operation: service.operation(operation), plan: planApplication(current.input, current.suppliedSecretNames), idempotentReplay: true, requestId }, 202, requestId, { ...rateHeaders, 'idempotent-replayed': 'true' })
+        }
+        const result = applyApplicationDraft({ controlPlane: options.controlPlane, drafts: options.applications.drafts, draftId: current.id, expectedVersion: Number(input.version), confirmEnvironment: String(input.confirmEnvironment ?? ''), actorId: principal.actor.id })
+        options.identities.saveIdempotency({ tokenId: principal.token.id, key: idempotencyKey, requestHash, operationId: result.operation.id, responseStatus: 202, responseBody: { draftId: current.id } })
+        return response({ resource: result.resource, operation: service.operation(result.operation), plan: result.plan, idempotentReplay: false, requestId }, 202, requestId, rateHeaders)
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/registry-connections') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404); service.authorize(principal, 'applications:read', principal.token.scope)
+        body = page(options.applications.registries.list(principal.serviceAccount.organizationId) as unknown as Array<Record<string, unknown>>, url, requestId, ['createdAt', 'id'])
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/registry-connections') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404); service.authorize(principal, 'applications:manage', { type: 'organization' }); const input = await readBody()
+        const registry = options.applications.registries.create({ organizationId: principal.serviceAccount.organizationId, provider: input.provider, name: String(input.name ?? 'Container registry'), host: String(input.host ?? ''), credential: input.token || input.password ? { username: typeof input.username === 'string' ? input.username : undefined, password: typeof input.password === 'string' ? input.password : undefined, token: typeof input.token === 'string' ? input.token : undefined } : undefined, credentialExpiresAt: typeof input.credentialExpiresAt === 'string' ? input.credentialExpiresAt : undefined, actorId: principal.actor.id })
+        return response({ registry, requestId }, 201, requestId, rateHeaders)
+      }
+      else if (request.method === 'PATCH' && url.pathname === '/api/v1/registry-connections') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404); service.authorize(principal, 'applications:manage', { type: 'organization' }); const input = await readBody(); const registry = options.applications.registries.get(String(input.id ?? ''))
+        if (!registry || registry.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Registry connection was not found.', 404)
+        if (input.action === 'test') body = { registry: await options.applications.registries.test(registry.id, { image: typeof input.image === 'string' ? input.image : undefined }), requestId }
+        else if (input.action === 'rotate') body = { registry: options.applications.registries.rotate(registry.id, { username: input.username, password: input.password, token: input.token }, { expiresAt: input.expiresAt, actorId: principal.actor.id }), requestId }
+        else throw new ApiServiceError('validation_error', 'action must be test or rotate.', 422)
+      }
+      else if (request.method === 'DELETE' && url.pathname === '/api/v1/registry-connections') {
+        if (!options.applications) throw new ApiServiceError('not_found', 'Application onboarding is unavailable.', 404); service.authorize(principal, 'applications:manage', { type: 'organization' }); const input = await readBody(); const registry = options.applications.registries.get(String(input.id ?? ''))
+        if (!registry || registry.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Registry connection was not found.', 404)
+        body = { registry: options.applications.registries.disconnect(registry.id, principal.actor.id), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/application-artifacts') {
+        if (!options.applications?.artifacts) throw new ApiServiceError('not_found', 'Application artifact storage is unavailable.', 404)
+        const projectId = request.headers.get('x-project-id') ?? ''; service.authorize(principal, 'applications:manage', { type: 'project', id: projectId }); const project = options.controlPlane.getProject(projectId); if (!project || project.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Project was not found.', 404)
+        const declared = Number(request.headers.get('content-length') ?? 0)
+        if (declared > 100 * 1024 * 1024) throw new ApiServiceError('payload_too_large', 'Artifact exceeds 100 MB.', 413)
+        const artifact = options.applications.artifacts.create({ organizationId: project.organizationId, projectId, filename: request.headers.get('x-artifact-filename') ?? 'application.zip', bytes: new Uint8Array(await request.arrayBuffer()), actorId: principal.actor.id })
+        return response({ artifact, requestId }, 201, requestId, rateHeaders)
       }
       else if (request.method === 'POST' && url.pathname === '/api/v1/source/connections') {
         if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
@@ -252,8 +333,8 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
     catch (error) {
       if (error instanceof ApiServiceError)
         return failure(error.code, error.message, error.status, requestId, error.details as ApiErrorEnvelope['error']['details'], rateHeaders)
-      if (url.pathname.startsWith('/api/v1/source/'))
-        return failure('validation_error', error instanceof Error ? error.message : 'Source request could not be completed.', 422, requestId, undefined, rateHeaders)
+      if (url.pathname.startsWith('/api/v1/source/') || url.pathname.startsWith('/api/v1/application') || url.pathname === '/api/v1/registry-connections')
+        return failure('validation_error', error instanceof Error ? error.message : 'Integration request could not be completed.', 422, requestId, undefined, rateHeaders)
       return failure('internal_error', 'The API request could not be completed.', 500, requestId, undefined, rateHeaders)
     }
   }

@@ -845,7 +845,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
   const networkHint = (address: string): string => createHash('sha256').update(`${secret}:${address}`).digest('hex').slice(0, 16)
-  const apiV1 = createApiV1Handler({ controlPlane: controlPlane.store, identities: automationIdentities, sources: sourceConnections })
+  const apiV1 = createApiV1Handler({
+    controlPlane: controlPlane.store,
+    identities: automationIdentities,
+    sources: sourceConnections,
+    applications: { drafts: applicationDrafts, artifacts: applicationArtifacts, registries: registryConnections },
+  })
   const userAgentLabel = (req: Request): string | undefined => req.headers.get('user-agent')?.trim().slice(0, 256) || undefined
   const issueSession = (identityId: string, req: Request, address: string, authMethod: 'local' | 'oidc' = 'local') => authentication.createSession({
     identityId,

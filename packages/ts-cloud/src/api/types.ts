@@ -1,4 +1,5 @@
 import type { ControlPlaneId, JsonValue } from '../control-plane'
+import type { ApplicationDraftInput, ApplicationDraftRecord, ApplicationPlan, DetectionCandidate, DetectionFile, RegistryConnection } from '../onboarding'
 
 export interface ApiErrorEnvelope {
   error: {
@@ -37,3 +38,16 @@ export interface ApiOperationResponse {
   idempotentReplay: boolean
   requestId: string
 }
+
+export interface ApiApplicationDetectionRequest { files: DetectionFile[] }
+export interface ApiApplicationDetectionResponse { candidates: DetectionCandidate[], requestId: string }
+export interface ApiApplicationPlanRequest { draft: ApplicationDraftInput, suppliedSecretNames?: string[] }
+export interface ApiApplicationPlanResponse { plan: ApplicationPlan, requestId: string }
+export interface ApiApplicationDraftCreateRequest { projectId: ControlPlaneId, name?: string, draft: ApplicationDraftInput, step?: ApplicationDraftRecord['step'], suppliedSecretNames?: string[] }
+export interface ApiApplicationDraftUpdateRequest { id: ControlPlaneId, version: number, draft: ApplicationDraftInput, step: ApplicationDraftRecord['step'], suppliedSecretNames?: string[] }
+export interface ApiApplicationCreateRequest { draftId: ControlPlaneId, version: number, confirmEnvironment: string }
+export interface ApiApplicationCreateResponse { resource: Record<string, unknown>, operation: ApiOperationResponse['operation'], plan: ApplicationPlan, idempotentReplay: boolean, requestId: string }
+export interface ApiRegistryConnectionCreateRequest { provider: RegistryConnection['provider'], name: string, host: string, username?: string, password?: string, token?: string, credentialExpiresAt?: string }
+export type ApiRegistryConnectionUpdateRequest =
+  | { id: ControlPlaneId, action: 'test', image?: string }
+  | { id: ControlPlaneId, action: 'rotate', username?: string, password?: string, token?: string, expiresAt?: string }

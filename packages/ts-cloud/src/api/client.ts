@@ -1,4 +1,5 @@
-import type { ApiDeploymentRequest, ApiOperationResponse, ApiPage } from './types'
+import type { ApplicationArtifactRecord, ApplicationDraftRecord, RegistryConnection } from '../onboarding'
+import type { ApiApplicationCreateRequest, ApiApplicationCreateResponse, ApiApplicationDetectionRequest, ApiApplicationDetectionResponse, ApiApplicationDraftCreateRequest, ApiApplicationDraftUpdateRequest, ApiApplicationPlanRequest, ApiApplicationPlanResponse, ApiDeploymentRequest, ApiOperationResponse, ApiPage, ApiRegistryConnectionCreateRequest, ApiRegistryConnectionUpdateRequest } from './types'
 
 export interface TsCloudClientOptions {
   baseUrl: string
@@ -45,5 +46,49 @@ export class TsCloudClient {
 
   createDeployment(input: ApiDeploymentRequest, idempotencyKey: string): Promise<ApiOperationResponse> {
     return this.request('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify(input) })
+  }
+
+  detectApplication(input: ApiApplicationDetectionRequest): Promise<ApiApplicationDetectionResponse> {
+    return this.request('/api/v1/application-detections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  planApplication(input: ApiApplicationPlanRequest): Promise<ApiApplicationPlanResponse> {
+    return this.request('/api/v1/application-plans', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  listApplicationDrafts(projectId: string): Promise<ApiPage<ApplicationDraftRecord>> {
+    return this.request(`/api/v1/application-drafts?projectId=${encodeURIComponent(projectId)}`)
+  }
+
+  createApplicationDraft(input: ApiApplicationDraftCreateRequest): Promise<{ draft: ApplicationDraftRecord, requestId: string }> {
+    return this.request('/api/v1/application-drafts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  updateApplicationDraft(input: ApiApplicationDraftUpdateRequest): Promise<{ draft: ApplicationDraftRecord, requestId: string }> {
+    return this.request('/api/v1/application-drafts', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  createApplication(input: ApiApplicationCreateRequest, idempotencyKey: string): Promise<ApiApplicationCreateResponse> {
+    return this.request('/api/v1/applications', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify(input) })
+  }
+
+  uploadApplicationArtifact(projectId: string, filename: string, body: Blob | ArrayBuffer): Promise<{ artifact: ApplicationArtifactRecord, requestId: string }> {
+    return this.request('/api/v1/application-artifacts', { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-project-id': projectId, 'x-artifact-filename': filename }, body })
+  }
+
+  listRegistryConnections(): Promise<ApiPage<RegistryConnection>> {
+    return this.request('/api/v1/registry-connections')
+  }
+
+  createRegistryConnection(input: ApiRegistryConnectionCreateRequest): Promise<{ registry: RegistryConnection, requestId: string }> {
+    return this.request('/api/v1/registry-connections', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  updateRegistryConnection(input: ApiRegistryConnectionUpdateRequest): Promise<{ registry: RegistryConnection, requestId: string }> {
+    return this.request('/api/v1/registry-connections', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+  }
+
+  disconnectRegistryConnection(id: string): Promise<{ registry: RegistryConnection, requestId: string }> {
+    return this.request('/api/v1/registry-connections', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
   }
 }
