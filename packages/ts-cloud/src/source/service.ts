@@ -53,7 +53,7 @@ export async function listSourceReferences(sources: SourceConnectionStore, input
     return input.type === 'tags' ? adapter.listTags(input.repository, input) : adapter.listBranches(input.repository, input)
   }
   const repository = input.repositoryId ? sources.getRepository(input.repositoryId) : sources.listRepositories(connection.id).find(item => item.fullName === input.repository)
-  if (!repository) throw new Error('Generic repository metadata was not found')
+  if (!repository || repository.connectionId !== connection.id) throw new Error('Generic repository metadata was not found')
   const key = input.deployKeyId ? sources.getDeployKey(input.deployKeyId) : undefined
   if (key && key.connectionId !== connection.id) throw new Error('Deploy key does not belong to this connection')
   const refs = await discoverGitRefs(repository.cloneUrl, { credential: sources.getCredential(connection.id), deployKey: key ? { ...key, privateKey: sources.getDeployPrivateKey(key.id) } : undefined })

@@ -202,6 +202,8 @@ export class SourceConnectionStore {
   }
 
   createDeployKey(input: { connectionId: string, name: string, publicKey: string, privateKey: string, host: string, hostKey: string, actorId?: string }): SourceDeployKey {
+    const connection = this.getConnection(input.connectionId)
+    if (!connection || connection.status === 'disconnected' || !connection.capabilities.deployKeys) throw new Error('An active deploy-key capable source connection is required')
     if (!/^ssh-(?:ed25519|rsa)\s+[A-Za-z0-9+/=]+/.test(input.publicKey.trim())) throw new Error('A valid SSH public key is required')
     if (!/BEGIN (?:OPENSSH|RSA) PRIVATE KEY/.test(input.privateKey)) throw new Error('A valid SSH private key is required')
     if (!/^(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+)\s+[A-Za-z0-9+/=]+/.test(input.hostKey.trim())) throw new Error('A pinned SSH host key is required')
@@ -210,13 +212,28 @@ export class SourceConnectionStore {
     const hostFingerprint = `sha256:${hash(input.hostKey.trim())}`
     this.run(`INSERT INTO source_deploy_keys (id, connection_id, name, public_key, public_key_fingerprint, private_key_ciphertext, host, host_key, host_key_fingerprint, created_by_actor_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, input.connectionId, normalizeName(input.name), input.publicKey.trim(), publicFingerprint, this.encrypt(input.privateKey), input.host.trim().toLowerCase(), input.hostKey.trim(), hostFingerprint, input.actorId ?? null, now, now])
-    const connection = this.getConnection(input.connectionId)!
     this.controlPlane.appendEvent({ organizationId: connection.organizationId, actorId: input.actorId, type: 'source.deploy_key.created', payload: { connectionId: input.connectionId, deployKeyId: id, publicFingerprint, hostFingerprint } })
     return mapDeployKey(this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_deploy_keys WHERE id = ?').get(id)!)
   }
   getDeployKey(id: string): SourceDeployKey | undefined {
     const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_deploy_keys WHERE id = ?').get(id)
     return row ? mapDeployKey(row) : undefined
+  }
+  listDeployKeys(connectionId: string): SourceDeployKey[] {
+    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_deploy_keys WHERE connection_id = ? ORDER BY name, created_at').all(connectionId).map(mapDeployKey)
+  }
+  revokeDeployKey(id: string, actorId?: string): { affectedBindings: SourceBinding[] } {
+    const key = this.getDeployKey(id)
+    const connection = key ? this.getConnection(key.connectionId) : undefined
+    if (!key || !connection) throw new Error('Deploy key was not found')
+    const affectedBindings = this.listBindings({ connectionId: connection.id }).filter(binding => binding.deployKeyId === id)
+    const now = this.now()
+    this.controlPlane.database.transaction(() => {
+      this.run(`UPDATE source_bindings SET deploy_key_id=NULL, status='disabled', auto_deploy=0, disabled_reason='Source deploy key was revoked', version=version+1, updated_at=? WHERE deploy_key_id=?`, [now, id])
+      this.run('DELETE FROM source_deploy_keys WHERE id=?', [id])
+    })()
+    this.controlPlane.appendEvent({ organizationId: connection.organizationId, actorId, type: 'source.deploy_key.revoked', level: 'warning', payload: { connectionId: connection.id, deployKeyId: id, affectedBindingIds: affectedBindings.map(binding => binding.id) } })
+    return { affectedBindings }
   }
   getDeployPrivateKey(id: string): string {
     const row = this.controlPlane.database.query<Row, [string]>('SELECT private_key_ciphertext FROM source_deploy_keys WHERE id = ?').get(id)
@@ -227,6 +244,7 @@ export class SourceConnectionStore {
   createBinding(input: { projectId: string, environmentId?: string, resourceId?: string, connectionId: string, repositoryId?: string, repositoryFullName: string, defaultBranch?: string, branchRule?: string, tagRule?: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, cloneDepth?: number, deployKeyId?: string, autoDeploy?: boolean, pullRequestPreviews?: boolean, actorId?: string }): SourceBinding {
     const connection = this.getConnection(input.connectionId)
     if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    if (input.repositoryId && this.getRepository(input.repositoryId)?.connectionId !== connection.id) throw new Error('Repository does not belong to this connection')
     if (input.deployKeyId && this.getDeployKey(input.deployKeyId)?.connectionId !== connection.id) throw new Error('Deploy key does not belong to this connection')
     const id = this.idFn(); const now = this.now()
     this.run(`INSERT INTO source_bindings (id, project_id, environment_id, resource_id, connection_id, repository_id, repository_full_name, default_branch, branch_rule, tag_rule, monorepo_root, include_paths, exclude_paths, submodules, clone_depth, deploy_key_id, auto_deploy, pull_request_previews, status, created_by_actor_id, created_at, updated_at)
@@ -261,6 +279,7 @@ export class SourceConnectionStore {
   createWebhook(input: { connectionId: string, repositoryId?: string, repositoryFullName: string, events?: string[], endpointToken?: string, secret?: string }): { webhook: SourceWebhook, secret: string } {
     const connection = this.getConnection(input.connectionId)
     if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    if (input.repositoryId && this.getRepository(input.repositoryId)?.connectionId !== connection.id) throw new Error('Repository does not belong to this connection')
     const id = this.idFn(); const now = this.now(); const endpointToken = input.endpointToken ?? randomBytes(24).toString('base64url'); const secret = input.secret ?? randomBytes(32).toString('base64url')
     const events = [...new Set(input.events ?? ['push', 'pull_request'])].filter(value => ['push', 'pull_request'].includes(value))
     if (!events.length) throw new Error('At least one supported webhook event is required')
