@@ -336,6 +336,16 @@ const POLICIES: Record<string, RoutePolicy> = {
   'POST /api/configuration/bulk': { capability: 'config:write' },
   'POST /api/configuration/reveal': { capability: 'secrets:read' },
   'DELETE /api/configuration': { capability: 'config:write' },
+  'GET /api/volumes': { capability: 'data:read' },
+  'POST /api/volumes': { capability: 'data:admin' },
+  'POST /api/volumes/attach': { capability: 'data:admin' },
+  'POST /api/volumes/detach': { capability: 'data:admin' },
+  'POST /api/volumes/resize': { capability: 'data:admin' },
+  'POST /api/volumes/snapshot': { capability: 'backups:create' },
+  'POST /api/volumes/restore': { capability: 'backups:restore' },
+  'POST /api/volumes/adopt': { capability: 'data:admin' },
+  'POST /api/volumes/discover': { capability: 'data:read' },
+  'DELETE /api/volumes': { capability: 'data:admin' },
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },
