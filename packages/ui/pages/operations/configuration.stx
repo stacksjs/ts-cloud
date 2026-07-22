@@ -1,0 +1,159 @@
+<script client>
+const entries = state([])
+const effectiveEntries = state([])
+const scopeProject = state(null)
+const environments = state([])
+const resources = state([])
+const previews = state([])
+const warnings = state([])
+const configurationHash = state('')
+const tab = state('variable')
+const scopeType = state('environment')
+const scopeId = state('')
+const search = state('')
+const effective = state(true)
+const selected = state([])
+const notice = state('')
+const error = state('')
+const busy = state(false)
+const plan = state(null)
+const editorOpen = state(false)
+const importOpen = state(false)
+const dotenvSource = state('')
+const secretKeys = state('')
+const currentEnv = new URLSearchParams(location.search).get('env') || 'production'
+
+function endpoint(path) { return `${path}${path.includes('?') ? '&' : '?'}env=${encodeURIComponent(currentEnv)}` }
+async function api(path, options) {
+  const response = await fetch(endpoint(path), options)
+  const type = response.headers.get('content-type') || ''
+  const body = type.includes('json') ? await response.json() : await response.text()
+  if (!response.ok || body?.ok === false) { const failure = new Error(body?.error || 'Request failed.'); failure.stepUpRequired = body?.stepUpRequired; throw failure }
+  return body
+}
+function scopeContext() {
+  const type = scopeType(), id = scopeId()
+  const resource = resources().find(item => item.id === id)
+  const preview = previews().find(item => item.id === id)
+  return { scopeType: type, scopeId: id, environmentId: type === 'environment' ? id : resource?.environmentId || preview?.environmentId, resourceId: type === 'service' ? id : preview?.resourceId }
+}
+function chooseDefault(type, data = { project: scopeProject(), environments: environments(), resources: resources(), previews: previews() }) {
+  if (type === 'project') return data.project?.id || ''
+  if (type === 'environment') return data.environments.find(item => item.slug === currentEnv)?.id || data.environments[0]?.id || ''
+  if (type === 'service') { const env = data.environments.find(item => item.slug === currentEnv); return data.resources.find(item => !env || item.environmentId === env.id)?.id || data.resources[0]?.id || '' }
+  return data.previews[0]?.id || ''
+}
+function changeScope(type) { scopeType.set(type); scopeId.set(chooseDefault(type)); selected.set([]); void load() }
+async function load() {
+  busy.set(true)
+  try {
+    const context = scopeId() ? scopeContext() : { scopeType: scopeType(), scopeId: '' }
+    const query = new URLSearchParams()
+    query.set('scopeType', context.scopeType); if (context.scopeId) query.set('scopeId', context.scopeId); if (context.environmentId) query.set('environmentId', context.environmentId); if (context.resourceId) query.set('resourceId', context.resourceId); if (search()) query.set('search', search())
+    const result = await api(`/api/configuration?${query}`)
+    scopeProject.set(result.scopes?.project || null); environments.set(result.scopes?.environments || []); resources.set(result.scopes?.resources || []); previews.set(result.scopes?.previews || [])
+    if (!scopeId()) { const id = chooseDefault(scopeType(), result.scopes); scopeId.set(id); if (id) return await load() }
+    entries.set(result.entries || []); effectiveEntries.set(result.effectiveEntries || []); warnings.set(result.warnings || []); configurationHash.set(result.configurationHash || ''); error.set('')
+  }
+  catch (cause) { error.set(cause.message) }
+  finally { busy.set(false) }
+}
+function shown() { return (effective() ? effectiveEntries() : entries()).filter(item => item.kind === tab()) }
+function selectTab(value) { tab.set(value); selected.set([]); void load() }
+function toggle(id) { selected.set(selected().includes(id) ? selected().filter(value => value !== id) : [...selected(), id]) }
+function allSelected() { const ids = shown().filter(item => !item.inherited).map(item => item.id); selected.set(ids.length && ids.every(id => selected().includes(id)) ? [] : ids) }
+function when(value) { return value ? new Date(value).toLocaleString() : 'Never' }
+function scopeLabel(entry) {
+  if (entry.scope.type === 'project') return 'Project'
+  if (entry.scope.type === 'environment') return environments().find(item => item.id === entry.scope.id)?.name || 'Environment'
+  if (entry.scope.type === 'service') return resources().find(item => item.id === entry.scope.id)?.name || 'Service'
+  return previews().find(item => item.id === entry.scope.id)?.name || 'Preview'
+}
+function formData(form) { return Object.fromEntries(new FormData(form)) }
+async function previewChange(form) {
+  const value = formData(form), context = scopeContext()
+  try { plan.set((await api('/api/configuration/plan', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...context, values: { [value.key]: value.value || value.reference || '' } }) })).plan); error.set('') }
+  catch (cause) { error.set(cause.message) }
+}
+async function save(event) {
+  event.preventDefault(); busy.set(true); plan.set(null)
+  const form = event.currentTarget, value = formData(form), existing = entries().find(item => item.key === value.key), confirm = existing ? window.prompt(`Type ${value.key} to replace this ${tab()}.`) || '' : ''
+  if (existing && confirm !== value.key) { busy.set(false); return }
+  try {
+    const result = await api('/api/configuration', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ ...scopeContext(), key: value.key, kind: tab(), value: value.backend === 'external' ? undefined : value.value, reference: value.backend === 'external' ? value.reference : undefined, backend: tab() === 'secret' ? value.backend : undefined, required: value.required === 'on', expectedVersion: existing?.version, confirm }) })
+    notice.set(`${value.key} ${existing ? 'updated' : 'created'}. ${result.mutation.affectedResourceIds.length} service(s) need deployment.`); form.reset(); editorOpen.set(false); await load()
+  }
+  catch (cause) { error.set(cause.stepUpRequired ? `${cause.message} Verify your session under Sign-in & security, then retry.` : cause.message) }
+  finally { busy.set(false) }
+}
+async function reveal(item) {
+  try { const result = await api('/api/configuration/reveal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: item.id }) }); await navigator.clipboard.writeText(result.value); notice.set(`${item.key} copied. Clipboard access was audited.`); error.set('') }
+  catch (cause) { error.set(cause.stepUpRequired ? `${cause.message} Verify your session, then retry.` : cause.message) }
+}
+async function removeEntry(item) {
+  const confirm = window.prompt(`Type ${item.key} to delete it. Dependent services may require redeployment.`) || ''; if (confirm !== item.key) return
+  try { await api('/api/configuration', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: item.id, expectedVersion: item.version, confirm }) }); notice.set(`${item.key} deleted.`); await load() }
+  catch (cause) { error.set(cause.message) }
+}
+async function bulkDelete() {
+  if (!selected().length || (window.prompt('Type bulk to delete the selected entries.') || '') !== 'bulk') return
+  try { const result = await api('/api/configuration/bulk', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ids: selected(), action: 'delete', confirm: 'bulk' }) }); notice.set(`Deleted ${result.removed.length} entries.`); selected.set([]); await load() }
+  catch (cause) { error.set(cause.message) }
+}
+async function transfer(item) {
+  const targetScopeType = window.prompt('Destination scope: project, environment, service, or preview', item.scope.type === 'service' ? 'environment' : 'service') || ''
+  if (!['project', 'environment', 'service', 'preview'].includes(targetScopeType)) return
+  const options = targetScopeType === 'project' ? [scopeProject()] : targetScopeType === 'environment' ? environments() : targetScopeType === 'service' ? resources() : previews()
+  const hint = options.map(value => `${value.name || value.slug}: ${value.id}`).join('\n')
+  const targetScopeId = window.prompt(`Destination id:\n${hint}`, options[0]?.id || '') || ''; if (!targetScopeId) return
+  const mode = window.confirm('Move instead of copy? OK moves; Cancel copies.') ? 'move' : 'copy'
+  const confirm = window.prompt(`Type ${item.key} to ${mode} it.`) || ''; if (confirm !== item.key) return
+  try { await api('/api/configuration/transfer', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ id: item.id, targetScopeType, targetScopeId, mode, confirm }) }); notice.set(`${item.key} ${mode === 'move' ? 'moved' : 'copied'}.`); await load() }
+  catch (cause) { error.set(cause.message) }
+}
+async function importDotenv(event) {
+  event.preventDefault(); busy.set(true)
+  try {
+    const result = await api('/api/configuration/import', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify({ ...scopeContext(), source: dotenvSource(), secretKeys: secretKeys().split(',').map(value => value.trim()).filter(Boolean), confirm: 'import' }) })
+    notice.set(`Imported ${result.mutation.added.length} new and ${result.mutation.changed.length} changed entries.`); dotenvSource.set(''); secretKeys.set(''); importOpen.set(false); await load()
+  }
+  catch (cause) { error.set(cause.message) }
+  finally { busy.set(false) }
+}
+async function exportVariables() { try { const response = await fetch(endpoint(`/api/configuration/export?${new URLSearchParams(scopeContext())}`)); if (!response.ok) throw new Error('Export failed.'); const blob = await response.blob(), anchor = document.createElement('a'); anchor.href = URL.createObjectURL(blob); anchor.download = 'ts-cloud.env'; anchor.click(); URL.revokeObjectURL(anchor.href) } catch (cause) { error.set(cause.message) } }
+let searchTimer
+function searchChanged(value) { search.set(value); clearTimeout(searchTimer); searchTimer = setTimeout(() => void load(), 250) }
+onMount(() => { void load() })
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud · Environment & secrets' })</head>
+<body>
+@include('../partials/nav', { active: 'configuration', env: 'production' })
+<main class="wrap configuration-wrap" id="main-content">
+  <div class="crumbs">Operations <span class="sep">/</span> Environment &amp; secrets</div>
+  <header class="page"><div><h1>Environment &amp; secrets</h1><p>Manage inherited runtime configuration across project, environment, service, and preview scopes from one deploy-safe control plane.</p></div><div class="header-actions"><button class="btn ghost" @click="importOpen.set(!importOpen())">Import .env</button><button class="btn ghost" @click="exportVariables()">Export variables</button><button class="btn" @click="editorOpen.set(!editorOpen())">New {{ tab() }}</button></div></header>
+
+  <p class="notice" role="status" @show="!!notice()">{{ notice() }}</p><p class="notice bad" role="alert" @show="!!error()">{{ error() }}</p>
+  <section class="scope-bar panel" aria-label="Configuration scope">
+    <div><span class="eyebrow">Scope</span><div class="segmented"><button :class="{active:scopeType()==='project'}" @click="changeScope('project')">Project</button><button :class="{active:scopeType()==='environment'}" @click="changeScope('environment')">Environment</button><button :class="{active:scopeType()==='service'}" @click="changeScope('service')">Service</button><button :class="{active:scopeType()==='preview'}" @click="changeScope('preview')">Preview</button></div></div>
+    <label @show="scopeType()==='project'"><span>Target</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><option :value="scopeProject()?.id">{{ scopeProject()?.name || 'Project' }}</option></select></label>
+    <label @show="scopeType()==='environment'"><span>Target environment</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in environments()"><option :value="item.id">{{ item.name || item.slug }}</option></template></select></label>
+    <label @show="scopeType()==='service'"><span>Target service</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in resources()"><option :value="item.id">{{ item.name || item.slug }}</option></template></select></label>
+    <label @show="scopeType()==='preview'"><span>Target preview</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in previews()"><option :value="item.id">{{ item.name }} · {{ item.status }}</option></template></select></label>
+    <div class="scope-health"><span class="pill" :class="warnings().length?'warn':'ok'">{{ warnings().length ? warnings().length+' warning(s)' : 'references healthy' }}</span><code :title="configurationHash()">{{ configurationHash().slice(0,18) || 'not resolved' }}</code></div>
+  </section>
+
+  <section class="panel import-panel" @show="importOpen()"><div><h2>Import dotenv</h2><p class="note">Paste or upload content. Conflicting duplicates stop the import; the preview and audit trail contain key names only.</p></div><form @submit="importDotenv($event)"><label>Dotenv content<textarea required rows="8" class="mono" :value="dotenvSource()" @input="dotenvSource.set($event.currentTarget.value)" placeholder="PUBLIC_URL=https://example.com&#10;DATABASE_URL=..."></textarea></label><label>Secret keys <input :value="secretKeys()" @input="secretKeys.set($event.currentTarget.value)" placeholder="DATABASE_URL, API_TOKEN"><span>Comma-separated. All other keys are plaintext variables and may be exported.</span></label><button class="btn" :disabled="busy()">Validate &amp; import</button></form></section>
+
+  <section class="panel editor-panel" @show="editorOpen()"><form @submit="save($event)"><div><h2>Set {{ tab() }}</h2><p class="note">Existing production values require typed confirmation. Secret values are write-only.</p></div><label>Key<input name="key" required pattern="[A-Za-z_][A-Za-z0-9_]*" placeholder="DATABASE_URL" autocomplete="off"></label><label @show="tab()==='secret'">Backend<select name="backend"><option value="local_encrypted">Encrypted local/box</option><option value="aws_secrets_manager">AWS Secrets Manager</option><option value="aws_ssm">AWS SSM Parameter Store</option><option value="external">External reference</option></select></label><label class="wide">{{ tab()==='secret'?'Value (write-only)':'Value' }}<textarea name="value" rows="3" :type="tab()==='secret'?'password':'text'" placeholder="Value, including multiline content"></textarea></label><label class="wide" @show="tab()==='secret'">External reference<input name="reference" placeholder="vault://team/app/token"><span>Used only when External reference is selected.</span></label><label class="check"><input name="required" type="checkbox"> Required at deployment</label><div class="actions"><button class="btn ghost" type="button" @click="previewChange($event.currentTarget.form)">Preview key diff</button><button class="btn" type="submit" :disabled="busy()">Save {{ tab() }}</button></div></form><div class="change-plan" @show="!!plan()"><h3>Change preview</h3><p><b>{{ plan()?.added.length || 0 }}</b> add · <b>{{ plan()?.changed.length || 0 }}</b> change · <b>{{ plan()?.removed.length || 0 }}</b> remove · <b>{{ plan()?.affectedResourceIds.length || 0 }}</b> affected services</p><code>{{ [...(plan()?.added||[]),...(plan()?.changed||[]),...(plan()?.removed||[])].join(', ') }}</code></div></section>
+
+  <nav class="tabs" aria-label="Configuration kind"><button :class="{active:tab()==='variable'}" @click="selectTab('variable')">Variables <span>{{ entries().filter(item=>item.kind==='variable').length }}</span></button><button :class="{active:tab()==='secret'}" @click="selectTab('secret')">Secrets <span>{{ entries().filter(item=>item.kind==='secret').length }}</span></button></nav>
+  <section class="table-tools panel"><input type="search" placeholder="Search keys" aria-label="Search configuration" @input="searchChanged($event.currentTarget.value)"><label class="check"><input type="checkbox" :checked="effective()" @change="effective.set($event.currentTarget.checked)"> Show inherited effective values</label><span class="spacer"></span><button class="btn danger sm" @show="selected().length" @click="bulkDelete()">Delete {{ selected().length }} selected</button><button class="btn ghost sm" @click="load()">Refresh</button></section>
+  <section class="panel config-table"><table><thead><tr><th><input type="checkbox" aria-label="Select all" @change="allSelected()"></th><th>Key</th><th>Scope &amp; precedence</th><th>{{ tab()==='secret'?'Backend':'Value' }}</th><th>Use &amp; rotation</th><th class="table-actions">Actions</th></tr></thead><tbody><template :for="item in shown()"><tr><td><input type="checkbox" :checked="selected().includes(item.id)" :disabled="item.inherited" :aria-label="'Select '+item.key" @change="toggle(item.id)"></td><td><div class="key-cell"><code>{{ item.key }}</code><span class="pill" @show="item.required">required</span><span class="pill warn" @show="item.inherited">inherited</span><span class="pill" @show="item.overridden">overrides</span></div></td><td><b>{{ scopeLabel(item) }}</b><small>{{ item.scope.type }} · v{{ item.version }}</small></td><td><div @show="item.kind==='secret'"><b>{{ item.backend || 'restricted' }}</b><small>{{ item.backendVersion ? 'backend v'+item.backendVersion : 'metadata hidden' }}</small><code @show="!!item.reference">{{ item.reference }}</code></div><code class="value-preview" @show="item.kind==='variable'">{{ item.value }}</code></td><td><b>{{ item.rotatedAt ? 'Rotated '+when(item.rotatedAt) : 'Not rotated' }}</b><small>Last used {{ when(item.lastUsedAt) }}</small><small>Updated {{ when(item.updatedAt) }}</small></td><td class="table-actions"><div class="row-actions"><button class="btn ghost sm" @show="item.kind==='secret'" @click="reveal(item)">Reveal &amp; copy</button><button class="btn ghost sm" @show="!item.inherited" @click="transfer(item)">Move / copy</button><button class="btn danger sm" @show="!item.inherited" @click="removeEntry(item)">Delete</button></div></td></tr></template><tr @show="!shown().length"><td colspan="6"><div class="compact empty"><strong>No {{ tab() }}s at this scope</strong><span>Create one here, import dotenv, or enable the inherited view.</span></div></td></tr></tbody></table></section>
+  <aside class="warning-list" @show="warnings().length"><h2>Deployment warnings</h2><template :for="warning in warnings()"><p class="notice warn"><code>{{ warning.key || 'scope' }}</code> {{ warning.message }}</p></template></aside>
+</main>
+<style>
+.configuration-wrap{max-width:1500px}.scope-bar{display:grid;grid-template-columns:1.4fr 1fr auto;gap:24px;align-items:end}.eyebrow,.scope-bar label span{display:block;color:var(--txt3);font-size:12px;margin-bottom:8px;text-transform:uppercase;letter-spacing:.08em}.segmented{display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:8px;width:max-content}.segmented button{border:0;background:transparent;color:var(--txt3);padding:8px 12px;border-radius:6px}.segmented button.active{background:var(--panel2);color:var(--txt)}.scope-bar select{min-width:240px;background:var(--bg)!important;color:var(--txt)!important;border:1px solid var(--line)!important}.scope-health{display:flex;flex-direction:column;align-items:flex-end;gap:8px}.import-panel,.editor-panel{margin-top:18px;padding:22px;display:grid;grid-template-columns:minmax(240px,.7fr) minmax(420px,1.3fr);gap:28px}.import-panel form,.editor-panel form{display:grid;grid-template-columns:1fr 1fr;gap:14px}.import-panel label:first-child,.wide{grid-column:1/-1}.editor-panel>form>div:first-child{grid-column:1/-1}.editor-panel label,.import-panel label{display:flex;flex-direction:column;gap:7px}.editor-panel label span,.import-panel label span{color:var(--txt3);font-size:12px}.change-plan{border-left:1px solid var(--line);padding-left:24px}.tabs{display:flex;gap:4px;margin-top:22px;border-bottom:1px solid var(--line)}.tabs button{border:0;background:transparent;color:var(--txt3);padding:12px 16px;border-bottom:2px solid transparent}.tabs button.active{color:var(--txt);border-bottom-color:var(--accent)}.tabs button span{opacity:.6}.table-tools{display:flex;gap:16px;align-items:center;padding:12px 16px;border-radius:0}.table-tools input[type=search]{max-width:360px}.spacer{flex:1}.config-table{overflow:auto;border-top-left-radius:0;border-top-right-radius:0}.config-table table{min-width:1100px}.config-table td{vertical-align:top}.config-table td:nth-child(3),.config-table td:nth-child(4),.config-table td:nth-child(5){display:table-cell}.config-table td b,.config-table td small,.config-table td code{display:block;margin-bottom:5px}.key-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.key-cell code{font-weight:700;margin:0}.value-preview{max-width:320px;white-space:pre-wrap;overflow-wrap:anywhere}.row-actions{flex-wrap:wrap}.warning-list{margin-top:20px}.check{display:flex!important;flex-direction:row!important;align-items:center;gap:8px!important}.actions{display:flex;gap:10px;align-items:end}@media(max-width:900px){.scope-bar,.import-panel,.editor-panel{grid-template-columns:1fr}.scope-health{align-items:flex-start}.import-panel form,.editor-panel form{grid-template-columns:1fr}.config-table{overflow-x:auto}}
+</style>
+</body></html>

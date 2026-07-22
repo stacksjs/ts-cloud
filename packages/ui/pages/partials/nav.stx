@@ -84,6 +84,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
           @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
+          @if (canView('config:read'))<a class="{{ isActive('configuration') ? 'active' : '' }}" href="{{ envHref('/operations/configuration') }}">Environment &amp; secrets</a>@endif
           @if (canView('backups:read'))<a class="{{ isActive('backups') ? 'active' : '' }}" href="{{ envHref('/data/backups') }}">Backups &amp; recovery</a>@endif
           @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
@@ -119,7 +120,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
       @if (canView('secrets:read') || canView('fleet:read') || canView('runtime:read'))
         <section class="nav-group">
           <h2>Settings</h2>
-          @if (canView('secrets:read'))<a href="{{ envHref('/serverless/secrets') }}">Environment & secrets</a>@endif
+          @if (canView('config:read'))<a class="{{ isActive('configuration') ? 'active' : '' }}" href="{{ envHref('/operations/configuration') }}">Environment &amp; secrets</a>@endif
           @if (canView('fleet:read'))<a href="{{ envHref('/serverless/firewall') }}">Network</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/serverless/alarms') }}">Alerts</a>@endif
           @if (canView('project:read'))<a href="{{ envHref('/serverless/cost') }}">Costs</a>@endif
