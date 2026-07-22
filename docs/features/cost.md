@@ -99,6 +99,28 @@ cloud resources:unused --type ec2
 
 Missing CloudWatch data is treated as insufficient evidence, never as zero activity. Each candidate includes the exact signal and a provider-appropriate recommendation. When Cost and Usage Reports resource IDs are enabled, the command groups Cost Explorer by `RESOURCE_ID` and totals known monthly savings; otherwise savings are explicitly shown as unavailable.
 
+## Optimization recommendations
+
+`cloud optimize` combines the resource inventory, the unused-resource checks, 30-day CloudWatch utilization, and Cost Explorer line items into an ordered action list. Every row includes the source signal, current cost, projected cost, and estimated monthly savings.
+
+```sh
+cloud optimize
+cloud optimize --profile stacks --region us-east-1
+cloud optimize --type ec2
+cloud optimize --include-commitments
+```
+
+The conservative default covers:
+
+- unused resources, using the exact checks described above;
+- EC2 and RDS right-sizing when 30-day average CPU is below 20%;
+- S3 lifecycle candidates when Standard storage is at least 5 GiB and has fewer than 9,000 requests over 90 days; and
+- account-level CloudFront compression and cache-policy review when Cost Explorer reports billed transfer usage types.
+
+Commitment recommendations are opt-in because they can create long-lived financial obligations. `--include-commitments` shows running EC2 and available RDS workloads with at least 20% average CPU as candidates for a one-year RI or Savings Plan comparison; the command never purchases a commitment.
+
+Projected values are directional scenarios, not provider quotes: 40% for a one-size right-sizing scenario, 30% for commitment comparison, 25% for storage transitions, and 20% for CloudFront transfer reduction. Validate memory, peaks, retrieval charges, workload seasonality, current AWS pricing, and existing commitments before acting. Resource cost columns require Cost and Usage Reports resource IDs; without them the source signal and recommendation remain available while all three cost fields are explicitly `—`.
+
 ### What it does
 
 - Calls `ce:GetCostAndUsage` for the last fully-closed month, grouping by `SERVICE` with `UnblendedCost`.
@@ -166,14 +188,6 @@ _Profile: `stacks`_
 
 **Total: $307.63 across 19 services**
 ```
-
-## Status of resource commands
-
-The cost reporting commands above use real Cost Explorer data. Resource discovery and recommendation commands remain guarded until their provider inventory and CloudWatch signal paths are complete:
-
-| Command | Tracking |
-|---|---|
-| `optimize` (RI/savings recommendations) | [#112](https://github.com/stacksjs/ts-cloud/issues/112) |
 
 ## See also
 

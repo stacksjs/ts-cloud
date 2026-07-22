@@ -2,7 +2,7 @@ import type { MetricDatapoint } from '../aws/cloudwatch'
 import type { CloudResource, ResourceInventoryResult } from './resource-inventory'
 import { CloudWatchClient } from '../aws/cloudwatch'
 import { CostExplorerClient } from '../aws/cost-explorer'
-import { rollingComparisonRange } from './reporting'
+import { egressUsageCosts, rollingComparisonRange } from './reporting'
 import { ResourceInventoryClient } from './resource-inventory'
 
 export interface ResourceSignals {
@@ -12,6 +12,7 @@ export interface ResourceSignals {
   invocations?: number
   objectCount?: number
   requests?: number
+  storageBytes?: number
   cacheHitRate?: number
 }
 
@@ -20,6 +21,133 @@ export interface IdleResourceFinding {
   signal: string
   recommendation: string
   monthlySavings: number | null
+}
+
+export type OptimizationCategory = 'unused' | 'right-size' | 'commitment' | 'storage' | 'cdn'
+
+export interface OptimizationRecommendation {
+  category: OptimizationCategory
+  resource: CloudResource
+  recommendation: string
+  sourceSignal: string
+  currentCost: number | null
+  projectedCost: number | null
+  monthlySavings: number | null
+}
+
+export interface OptimizationResult {
+  recommendations: OptimizationRecommendation[]
+  inventory: ResourceInventoryResult
+  savingsAvailable: boolean
+  warnings: string[]
+}
+
+function estimate(currentCost: number | null, reduction: number): {
+  currentCost: number | null
+  projectedCost: number | null
+  monthlySavings: number | null
+} {
+  if (currentCost == null) return { currentCost: null, projectedCost: null, monthlySavings: null }
+  const monthlySavings = currentCost * reduction
+  return { currentCost, projectedCost: currentCost - monthlySavings, monthlySavings }
+}
+
+export function resourceOptimizationRecommendations(
+  resource: CloudResource,
+  signals: ResourceSignals,
+  currentCost: number | null,
+  includeCommitments: boolean = false,
+): OptimizationRecommendation[] {
+  const idle = evaluateIdleResource(resource, signals, currentCost)
+  if (idle) {
+    return [
+      {
+        category: 'unused',
+        resource,
+        recommendation: idle.recommendation,
+        sourceSignal: idle.signal,
+        ...estimate(currentCost, 1),
+      },
+    ]
+  }
+
+  if (
+    ((resource.service === 'ec2' && resource.type === 'instance') ||
+      (resource.service === 'rds' && resource.type === 'db')) &&
+    signals.cpuAverage != null &&
+    signals.cpuAverage < 20
+  ) {
+    return [
+      {
+        category: 'right-size',
+        resource,
+        recommendation: 'Validate memory, network, and peak demand, then test one smaller instance class.',
+        sourceSignal: `${resource.service.toUpperCase()} 30-day average CPU ${signals.cpuAverage.toFixed(1)}% (<20%)`,
+        ...estimate(currentCost, 0.4),
+      },
+    ]
+  }
+
+  if (
+    includeCommitments &&
+    ((resource.service === 'ec2' && resource.type === 'instance' && resource.state === 'running') ||
+      (resource.service === 'rds' && resource.type === 'db' && resource.state === 'available')) &&
+    signals.cpuAverage != null &&
+    signals.cpuAverage >= 20
+  ) {
+    return [
+      {
+        category: 'commitment',
+        resource,
+        recommendation: 'Compare a one-year no-upfront commitment against this steady workload before purchasing.',
+        sourceSignal: `${resource.service.toUpperCase()} remained active with 30-day average CPU ${signals.cpuAverage.toFixed(1)}%`,
+        ...estimate(currentCost, 0.3),
+      },
+    ]
+  }
+
+  if (
+    resource.service === 's3' &&
+    signals.storageBytes != null &&
+    signals.storageBytes >= 5 * 1024 ** 3 &&
+    signals.requests != null &&
+    signals.requests < 9000
+  ) {
+    const storageGiB = signals.storageBytes / 1024 ** 3
+    return [
+      {
+        category: 'storage',
+        resource,
+        recommendation: 'Review object age and retrieval needs, then add Intelligent-Tiering or Glacier lifecycle rules.',
+        sourceSignal: `${storageGiB.toFixed(1)} GiB stored with ${signals.requests.toFixed(0)} requests over 90 days`,
+        ...estimate(currentCost, 0.25),
+      },
+    ]
+  }
+
+  return []
+}
+
+export function cloudFrontOptimizationRecommendation(
+  monthlyTransferCost: number,
+  usageTypes: string[],
+): OptimizationRecommendation | null {
+  if (monthlyTransferCost <= 0 || usageTypes.length === 0) return null
+  return {
+    category: 'cdn',
+    resource: {
+      arn: 'arn:aws:cloudfront::account:distribution/account-wide',
+      service: 'cloudfront',
+      type: 'distribution',
+      id: 'account-wide',
+      name: 'account-wide transfer',
+      tags: {},
+      metadata: {},
+    },
+    recommendation: 'Enable compression and review cache policies, TTLs, and origin cache headers for high-transfer paths.',
+    sourceSignal: `30-day Cost Explorer transfer line items: ${usageTypes.slice(0, 3).join(', ')}`,
+    ...estimate(monthlyTransferCost, 0.2),
+  }
 }
 
 function average(points: MetricDatapoint[]): number | undefined {
@@ -159,12 +287,14 @@ export class ResourceOptimizationService {
       }
     }
     if (resource.service === 'rds' && resource.type === 'db') {
-      const [connectionsAverage, readIops, writeIops] = await Promise.all([
+      const [cpuAverage, connectionsAverage, readIops, writeIops] = await Promise.all([
+        this.metric(cloudwatch, resource, 'AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', 30, 'Average'),
         this.metric(cloudwatch, resource, 'AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', 14, 'Average'),
         this.metric(cloudwatch, resource, 'AWS/RDS', 'ReadIOPS', 'DBInstanceIdentifier', 14, 'Average'),
         this.metric(cloudwatch, resource, 'AWS/RDS', 'WriteIOPS', 'DBInstanceIdentifier', 14, 'Average'),
       ])
       return {
+        cpuAverage,
         connectionsAverage,
         iopsAverage: readIops != null && writeIops != null ? readIops + writeIops : undefined,
       }
@@ -175,13 +305,16 @@ export class ResourceOptimizationService {
       }
     }
     if (resource.service === 's3') {
-      const [objectCount, requests] = await Promise.all([
+      const [objectCount, requests, storageBytes] = await Promise.all([
         this.metric(cloudwatch, resource, 'AWS/S3', 'NumberOfObjects', 'BucketName', 90, 'Average', [
           { Name: 'StorageType', Value: 'AllStorageTypes' },
         ]),
         this.metric(cloudwatch, resource, 'AWS/S3', 'AllRequests', 'BucketName', 90, 'Sum'),
+        this.metric(cloudwatch, resource, 'AWS/S3', 'BucketSizeBytes', 'BucketName', 90, 'Average', [
+          { Name: 'StorageType', Value: 'StandardStorage' },
+        ]),
       ])
-      return { objectCount, requests }
+      return { objectCount, requests, storageBytes }
     }
     if (resource.service === 'elasticache' && resource.type.includes('cluster')) {
       const [connectionsAverage, cacheHitRate] = await Promise.all([
@@ -208,6 +341,30 @@ export class ResourceOptimizationService {
     }
   }
 
+  private resourceCost(costs: Map<string, number>, resource: CloudResource): number | null {
+    return costs.get(resource.id) ?? costs.get(resource.arn) ?? null
+  }
+
+  private async cloudFrontTransfer(): Promise<{ cost: number; usageTypes: string[] }> {
+    try {
+      const range = rollingComparisonRange(30).current
+      const usage = await this.costs.getCostByDimension({
+        start: range.start,
+        end: range.end,
+        dimension: 'USAGE_TYPE',
+        granularity: 'DAILY',
+        filter: { Dimensions: { Key: 'SERVICE', Values: ['Amazon CloudFront'] } },
+      })
+      const transfer = egressUsageCosts(usage)
+      return {
+        cost: transfer.reduce((total, item) => total + item.amount, 0),
+        usageTypes: transfer.map((item) => item.key),
+      }
+    } catch {
+      return { cost: 0, usageTypes: [] }
+    }
+  }
+
   async unused(options?: { type?: string }): Promise<{
     findings: IdleResourceFinding[]
     inventory: ResourceInventoryResult
@@ -217,16 +374,66 @@ export class ResourceOptimizationService {
     const findings = (
       await Promise.all(
         inventory.resources.map(async (resource) => {
-          const immediate = evaluateIdleResource(resource, {}, costs.get(resource.id) ?? null)
+          const cost = this.resourceCost(costs, resource)
+          const immediate = evaluateIdleResource(resource, {}, cost)
           if (immediate) return immediate
           try {
-            return evaluateIdleResource(resource, await this.signals(resource), costs.get(resource.id) ?? null)
+            return evaluateIdleResource(resource, await this.signals(resource), cost)
           } catch {
             return null
           }
         }),
       )
     ).filter((finding): finding is IdleResourceFinding => finding !== null)
-    return { findings, inventory, savingsAvailable: costs.size > 0 }
+    return { findings, inventory, savingsAvailable: findings.some((finding) => finding.monthlySavings != null) }
+  }
+
+  async optimize(options?: { type?: string; includeCommitments?: boolean }): Promise<OptimizationResult> {
+    const includeCloudFront = !options?.type || ['cloudfront', 'cdn'].includes(options.type.toLowerCase())
+    const [inventory, costs, cloudFront] = await Promise.all([
+      this.inventory.discover({ type: options?.type }),
+      this.resourceCosts(),
+      includeCloudFront ? this.cloudFrontTransfer() : Promise.resolve({ cost: 0, usageTypes: [] }),
+    ])
+    const recommendations: OptimizationRecommendation[] = []
+    const warnings = [...inventory.warnings]
+
+    for (const resource of inventory.resources) {
+      const currentCost = this.resourceCost(costs, resource)
+      const immediate = resourceOptimizationRecommendations(resource, {}, currentCost, options?.includeCommitments)
+      if (immediate.length > 0) {
+        recommendations.push(...immediate)
+        continue
+      }
+      try {
+        recommendations.push(
+          ...resourceOptimizationRecommendations(
+            resource,
+            await this.signals(resource),
+            currentCost,
+            options?.includeCommitments,
+          ),
+        )
+      } catch (error) {
+        warnings.push(
+          `CloudWatch metrics unavailable for ${resource.service}:${resource.type}/${resource.name}: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
+    const cloudFrontRecommendation = cloudFrontOptimizationRecommendation(cloudFront.cost, cloudFront.usageTypes)
+    if (cloudFrontRecommendation) recommendations.push(cloudFrontRecommendation)
+    recommendations.sort(
+      (a, b) =>
+        (b.monthlySavings ?? -1) - (a.monthlySavings ?? -1) ||
+        a.category.localeCompare(b.category) ||
+        a.resource.name.localeCompare(b.resource.name),
+    )
+    return {
+      recommendations,
+      inventory,
+      savingsAvailable: recommendations.some((recommendation) => recommendation.monthlySavings != null),
+      warnings,
+    }
   }
 }

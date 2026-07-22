@@ -353,8 +353,49 @@ export function registerCostCommands(app: CLI): void {
   app
     .command('optimize', 'Suggest cost optimizations')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .action(() => {
-      cli.warn('`optimize` is not yet implemented against real AWS data.')
-      cli.info('Tracking: https://github.com/stacksjs/ts-cloud/issues/112')
-    })
+    .option('--type <type>', 'Limit analysis to one resource type')
+    .option('--region <region>', 'AWS region for regional resources')
+    .option('--include-commitments', 'Include estimated RI and Savings Plan candidates')
+    .action(
+      async (options?: { profile?: string; type?: string; region?: string; includeCommitments?: boolean }) => {
+        cli.header(`AWS Cost Optimizations${options?.profile ? ` (profile: ${options.profile})` : ''}`)
+        const spinner = new cli.Spinner('Combining inventory, CloudWatch signals, and Cost Explorer line items...')
+        spinner.start()
+        try {
+          const result = await new ResourceOptimizationService(options?.profile, options?.region).optimize({
+            type: options?.type,
+            includeCommitments: options?.includeCommitments,
+          })
+          spinner.stop()
+          if (result.recommendations.length === 0) {
+            cli.info('No resources met the conservative optimization thresholds.')
+          } else {
+            cli.table(
+              ['Category', 'Resource', 'Current', 'Projected', 'Savings', 'Source signal', 'Recommendation'],
+              result.recommendations.map((recommendation) => [
+                recommendation.category,
+                `${recommendation.resource.service}:${recommendation.resource.type}/${recommendation.resource.name}`,
+                recommendation.currentCost == null ? '—' : formatUSD(recommendation.currentCost),
+                recommendation.projectedCost == null ? '—' : formatUSD(recommendation.projectedCost),
+                recommendation.monthlySavings == null ? '—' : formatUSD(recommendation.monthlySavings),
+                recommendation.sourceSignal,
+                recommendation.recommendation,
+              ]),
+            )
+            const knownSavings = result.recommendations.reduce(
+              (total, recommendation) => total + (recommendation.monthlySavings ?? 0),
+              0,
+            )
+            cli.info(
+              `\nEstimated monthly savings: ${result.savingsAvailable ? formatUSD(knownSavings) : 'unavailable (enable CUR resource IDs)'}`,
+            )
+          }
+          for (const warning of result.warnings) cli.warn(warning)
+          cli.info('Estimates are directional; validate workload peaks and current AWS pricing before applying changes.')
+        } catch (error) {
+          spinner.stop()
+          cli.error(`Optimization analysis failed: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      },
+    )
 }
