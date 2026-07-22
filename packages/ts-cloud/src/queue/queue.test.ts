@@ -39,6 +39,16 @@ describe('durable operation queue', () => {
     restartedStore.close()
   })
 
+  it('preserves insertion order when queued timestamps are identical', () => {
+    const now = new Date('2026-07-21T12:00:00.000Z')
+    const store = new ControlPlaneStore({ path: ':memory:', now: () => now }); const target = scope(store)
+    const queue = new DurableOperationQueue(store, { workerId: 'fifo-worker', now: () => now, limits: { environment: 4 } })
+    const first = queue.enqueue({ projectId: target.project.id, environmentId: target.environment.id, resourceId: target.first.id, kind: 'deployment.create' })
+    queue.enqueue({ projectId: target.project.id, environmentId: target.environment.id, resourceId: target.second.id, kind: 'deployment.rollback' })
+    expect(queue.claimNext()?.operation.id).toBe(first.operation.id)
+    store.close()
+  })
+
   it('persists ordered cursor logs with redaction and truncation before storage', () => {
     const store = new ControlPlaneStore({ path: ':memory:' }); const target = scope(store); let id = 0
     const queue = new DurableOperationQueue(store, { id: () => `log-${++id}` })

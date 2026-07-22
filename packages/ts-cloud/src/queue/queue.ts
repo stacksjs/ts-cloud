@@ -145,7 +145,7 @@ export class DurableOperationQueue {
   claimNext(kinds?: readonly string[]): QueueOperationView | undefined {
     const now = this.now()
     const kindSql = kinds?.length ? `AND o.kind IN (${kinds.map(() => '?').join(',')})` : ''
-    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? ${kindSql} ORDER BY o.priority DESC, o.created_at ASC, o.id ASC LIMIT 100`).all(now, ...(kinds ?? []))
+    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? ${kindSql} ORDER BY o.priority DESC, o.created_at ASC, o.rowid ASC LIMIT 100`).all(now, ...(kinds ?? []))
     for (const row of rows) {
       const claimed = this.claim(String(row.id))
       if (claimed) return claimed
