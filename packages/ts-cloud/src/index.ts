@@ -6,6 +6,7 @@ export * from './control-plane'
 export * from './security'
 export * from './preview'
 export * from './compose'
+export * from './release'
 export * from './generators'
 
 // Validation exports - functions

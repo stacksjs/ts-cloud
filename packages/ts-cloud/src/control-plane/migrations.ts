@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 19
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 20
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -988,6 +988,20 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
 
       CREATE INDEX compose_applications_scope_idx ON compose_applications(project_id, environment_id, status, updated_at);
       CREATE INDEX compose_service_states_status_idx ON compose_service_states(application_id, status, service_name);
+    `,
+  },
+  {
+    version: 20,
+    name: 'unified_releases',
+    sql: `
+      CREATE TABLE release_artifacts (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, digest TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('static','compute','serverless_zip','serverless_image','container','compose')), uri TEXT NOT NULL, size INTEGER NOT NULL CHECK (size >= 0), media_type TEXT NOT NULL, provenance TEXT NOT NULL DEFAULT '{}', attestation TEXT NOT NULL DEFAULT '{}', verified_at TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(organization_id, digest));
+      CREATE TABLE releases (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, artifact_id TEXT NOT NULL REFERENCES release_artifacts(id) ON DELETE RESTRICT, kind TEXT NOT NULL CHECK (kind IN ('static','compute','serverless_zip','serverless_image','container','compose')), source_sha TEXT, config_hash TEXT NOT NULL, manifest TEXT NOT NULL, provenance TEXT NOT NULL DEFAULT '{}', strategy TEXT NOT NULL CHECK (strategy IN ('atomic','rolling','blue_green','canary')), status TEXT NOT NULL CHECK (status IN ('built','awaiting_approval','activating','active','failed','rolled_back','superseded')), health_gate TEXT, hooks TEXT NOT NULL DEFAULT '{}', drain_seconds INTEGER NOT NULL DEFAULT 30, grace_seconds INTEGER NOT NULL DEFAULT 30, automatic_rollback INTEGER NOT NULL DEFAULT 1 CHECK (automatic_rollback IN (0,1)), rollback_attempts INTEGER NOT NULL DEFAULT 0, previous_release_id TEXT REFERENCES releases(id) ON DELETE SET NULL, promoted_from_release_id TEXT REFERENCES releases(id) ON DELETE SET NULL, actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, trigger TEXT NOT NULL, pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)), pin_reason TEXT, activated_at TEXT, failed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+      CREATE TABLE release_transitions (sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, release_id TEXT NOT NULL REFERENCES releases(id) ON DELETE CASCADE, from_status TEXT, to_status TEXT NOT NULL, traffic_percent REAL, health TEXT NOT NULL DEFAULT '{}', message TEXT NOT NULL, operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, created_at TEXT NOT NULL);
+      CREATE TABLE release_approvals (id TEXT PRIMARY KEY, release_id TEXT NOT NULL REFERENCES releases(id) ON DELETE CASCADE, environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE, decision TEXT NOT NULL CHECK (decision IN ('approved','rejected')), actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT, comment TEXT, created_at TEXT NOT NULL);
+      CREATE INDEX releases_scope_idx ON releases(project_id, environment_id, resource_id, created_at DESC);
+      CREATE INDEX releases_active_idx ON releases(resource_id, status, activated_at DESC);
+      CREATE INDEX releases_artifact_idx ON releases(artifact_id, status);
+      CREATE INDEX release_transitions_release_idx ON release_transitions(release_id, sequence);
     `,
   },
 ]
