@@ -3,7 +3,7 @@ import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest, resolveO
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
-    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/account/security'])
+    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/security', '/account/security'])
       expect(isBoxOnlyPage(page)).toBe(false)
   })
 

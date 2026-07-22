@@ -79,12 +79,12 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
       @endif
-      @if (canView('data:read') || canView('fleet:read') || canView('audit:read') || canView('runtime:terminal'))
+      @if (canView('data:read') || canView('fleet:read') || canView('security:read') || canView('runtime:terminal'))
         <section class="nav-group">
           <h2>Infrastructure</h2>
           @if (canView('data:read'))<a class="{{ isActive('database') ? 'active' : '' }}" href="{{ envHref('/server/database') }}">Databases</a>@endif
           @if (canView('fleet:read'))<a href="{{ envHref('/server/firewall') }}">Network & firewall</a><a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>@endif
-          @if (canView('audit:read'))<a href="{{ envHref('/server/security') }}">Security</a>@endif
+          @if (canView('security:read'))<a href="{{ envHref('/security') }}">Security posture</a>@endif
           @if (canView('runtime:terminal'))<a href="{{ envHref('/server/terminal') }}">Terminal</a>@endif
         </section>
       @endif
@@ -116,6 +116,12 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('project:read'))<a href="{{ envHref('/serverless/cost') }}">Costs</a>@endif
         </section>
       @endif
+    @endif
+    @if (navMode === 'serverless' && canView('security:read'))
+      <section class="nav-group">
+        <h2>Security</h2>
+        <a class="{{ isActive('security-posture') ? 'active' : '' }}" href="{{ envHref('/security') }}">Posture & policy</a>
+      </section>
     @endif
     @if (canView('users:read'))
       <section class="nav-group">

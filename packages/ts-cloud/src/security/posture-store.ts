@@ -471,7 +471,7 @@ export class SecurityPostureStore {
       startedAt: this.now(), completedAt: this.now(), durationMs: 0,
     }))
     const evaluatedScans = [...latest, ...missing]
-    const degraded = evaluatedScans.filter(run => DEGRADED_CHECKS.has(run.status))
+    const degraded = evaluatedScans.filter(run => resolvedPolicy.requiredScanners.includes(run.scannerId) && DEGRADED_CHECKS.has(run.status))
     const scannerVersions = Object.fromEntries(evaluatedScans.map(run => [run.scannerId, run.scannerVersion]))
     const unavailableBlocks = resolvedPolicy.scannerFailMode === 'closed' && degraded.length > 0
     const outcome: SecurityDeployDecision['outcome'] = blockers.length || unavailableBlocks ? 'block' : warnings.length || degraded.length ? 'warn' : 'allow'

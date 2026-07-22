@@ -24,7 +24,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'operations.run', path: '/server/actions', label: 'Run operations', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'databases.list', path: '/server/database', label: 'Databases', group: 'infrastructure', modes: ['server'], adminOnly: true, legacyPaths: ['/database', '/databases'] },
   { id: 'network.firewall', path: '/server/firewall', label: 'Network & firewall', group: 'infrastructure', modes: ['server'], adminOnly: true },
-  { id: 'security.posture', path: '/server/security', label: 'Security', group: 'infrastructure', modes: ['server'], adminOnly: true },
+  { id: 'security.posture', path: '/security', label: 'Security posture', group: 'infrastructure', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/server/security'] },
   { id: 'access.ssh', path: '/server/ssh-keys', label: 'SSH keys', group: 'infrastructure', modes: ['server'], adminOnly: true },
   { id: 'runtime.terminal', path: '/server/terminal', label: 'Terminal', group: 'infrastructure', modes: ['server'], adminOnly: true },
   { id: 'organization.people', path: '/server/team', label: 'People & access', group: 'organization', modes: ['server', 'serverless'], adminOnly: true, legacyPaths: ['/team'] },

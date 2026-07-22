@@ -74,7 +74,7 @@ describe('SecurityPostureStore finding lifecycle', () => {
   it('supports ownership, comments, sensitive exports, and degraded scanner states', () => {
     const f = fixture()
     const scope = { organizationId: f.organization.id, projectId: f.project.id, environmentId: f.environment.id }
-    const policy = f.posture.createPolicy({ ...scope, name: 'Fail closed', scannerFailMode: 'closed', rules: [{ minimumSeverity: 'high', action: 'block' }] })
+    const policy = f.posture.createPolicy({ ...scope, name: 'Fail closed', scannerFailMode: 'closed', requiredScanners: ['tls'], rules: [{ minimumSeverity: 'high', action: 'block' }] })
     const scan = f.posture.recordScan({ ...scope, scannerId: 'tls', scannerVersion: '1', status: 'unavailable', error: 'token=not-for-logs' })
     expect(scan.run.error).not.toContain('not-for-logs')
     expect(f.posture.evaluateGate({ ...scope, policyId: policy.id }).outcome).toBe('block')

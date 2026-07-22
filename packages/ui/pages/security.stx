@@ -1,0 +1,264 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const mode = __d?.mode ?? 'server'
+const project = __d?.project ?? { name: 'Project' }
+const environment = __d?.environment ?? 'production'
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('./partials/head', { title: 'ts-cloud - Security posture' })
+  <style>
+    .security-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px; align-items:start }
+    .security-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px }
+    .posture-score { font-size:2.5rem; line-height:1; font-weight:760; letter-spacing:-.05em }
+    .severity-grid { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px }
+    .severity-card { border-left:3px solid var(--line); min-height:110px }
+    .severity-card.critical { border-color:#ff5f68 }.severity-card.high { border-color:#f39b52 }.severity-card.medium { border-color:#e4c35e }.severity-card.low { border-color:#65a2ee }.severity-card.info { border-color:#8290a4 }
+    .severity-value { display:block; font-size:1.8rem; font-weight:720; margin-top:12px }
+    .security-layout { display:grid; grid-template-columns:minmax(0,2fr) minmax(290px,1fr); gap:18px; align-items:start }
+    .security-sidebar { display:grid; gap:18px; position:sticky; top:20px }
+    .filter-bar { display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,minmax(130px,.4fr)); gap:8px; margin-bottom:12px }
+    .filter-bar input,.filter-bar select,.finding-actions select,#policy-form input,#policy-form select,.security-dialog input,.security-dialog textarea { width:100%; min-width:0; background:rgba(255,255,255,.045); border:1px solid var(--panel-br); border-radius:8px; padding:9px 10px; color:var(--txt); font:inherit }
+    .filter-bar input:focus,.filter-bar select:focus,.finding-actions select:focus,#policy-form input:focus,#policy-form select:focus,.security-dialog input:focus,.security-dialog textarea:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(90,139,224,.12) }
+    .finding-list,.scanner-list,.decision-list { display:grid; gap:10px }
+    .finding { border:1px solid var(--line); border-radius:10px; padding:16px; background:var(--panel); display:grid; gap:12px }
+    .finding-head { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:start }
+    .severity-dot { width:10px; height:10px; border-radius:50%; margin-top:6px; background:#8290a4 }
+    .severity-dot.critical { background:#ff5f68 }.severity-dot.high { background:#f39b52 }.severity-dot.medium { background:#e4c35e }.severity-dot.low { background:#65a2ee }
+    .finding h3 { margin:0; font-size:1rem }.finding p { margin:3px 0 0 }
+    .finding-meta { display:flex; gap:7px; flex-wrap:wrap; color:var(--muted); font-size:.78rem }
+    .finding-actions { display:flex; flex-wrap:wrap; align-items:center; gap:7px }
+    .finding-actions select { width:auto; min-width:150px }
+    .remediation { border-left:2px solid var(--accent); padding-left:10px; color:var(--muted) }
+    .evidence { white-space:pre-wrap; overflow-wrap:anywhere; max-height:150px; overflow:auto; font-size:.75rem; color:var(--muted) }
+    .scanner-row,.decision-row { border:1px solid var(--line); border-radius:8px; padding:12px; display:grid; gap:5px }
+    .scanner-top,.decision-top { display:flex; justify-content:space-between; gap:10px; align-items:center }
+    .policy-rules { display:grid; gap:7px; margin:12px 0 }
+    .policy-rule { display:grid; grid-template-columns:1fr 1fr; gap:7px }
+    #policy-form { display:grid; gap:10px } #policy-form label,.policy-rule label,.security-dialog label { display:grid; gap:6px; color:var(--txt3); font-size:.72rem; font-weight:750; letter-spacing:.04em }
+    #policy-form label input,#policy-form label select,.security-dialog label input,.security-dialog label textarea { color:var(--txt); font-weight:450; letter-spacing:0 }
+    .status-line { min-height:1.3em; color:var(--muted); margin-top:8px }
+    dialog.security-dialog { width:min(560px,calc(100vw - 32px)); border:1px solid var(--line); border-radius:12px; background:var(--panel); color:inherit; padding:22px }
+    dialog.security-dialog::backdrop { background:rgba(0,0,0,.68) }
+    dialog.security-dialog form { display:grid; gap:12px }.dialog-actions { display:flex; justify-content:flex-end; gap:8px }
+    .empty-security { padding:28px; text-align:center; border:1px dashed var(--line); border-radius:10px; color:var(--muted) }
+    @media (max-width:900px) { .security-layout,.security-hero { grid-template-columns:1fr }.security-sidebar { position:static }.security-actions { justify-content:flex-start }.severity-grid { grid-template-columns:repeat(2,1fr) }.filter-bar { grid-template-columns:1fr 1fr } }
+    @media (max-width:560px) { .severity-grid,.filter-bar { grid-template-columns:1fr }.finding-head { grid-template-columns:auto minmax(0,1fr) }.finding-head > :last-child { grid-column:2 } }
+  </style>
+</head>
+<body>
+  @include('./partials/nav', { active: 'security-posture', name: project.name, env: environment })
+  <div class="wrap" id="main-content">
+    <div class="crumbs"><a href="{{ mode === 'serverless' ? '/serverless' : '/' }}">{{ project.name }}</a> <span class="sep">/</span> Security posture</div>
+    <header class="page security-hero">
+      <div><h1>Security posture</h1><p>Findings, supply-chain checks, policy gates, and time-limited exceptions for <strong>{{ environment }}</strong>.</p></div>
+      <div class="security-actions">
+        <button class="btn ghost" id="export-posture" type="button">Export report</button>
+        <button class="btn ghost" id="review-change" type="button">Review production change</button>
+        <button class="btn" id="run-scans" type="button">Run checks</button>
+      </div>
+    </header>
+
+    <div class="severity-grid section" aria-label="Open findings by severity">
+      <div class="panel severity-card critical"><span class="note">Critical</span><strong class="severity-value" data-severity="critical">—</strong><small>Immediate action</small></div>
+      <div class="panel severity-card high"><span class="note">High</span><strong class="severity-value" data-severity="high">—</strong><small>Prioritize remediation</small></div>
+      <div class="panel severity-card medium"><span class="note">Medium</span><strong class="severity-value" data-severity="medium">—</strong><small>Review and schedule</small></div>
+      <div class="panel severity-card low"><span class="note">Low</span><strong class="severity-value" data-severity="low">—</strong><small>Defense in depth</small></div>
+      <div class="panel severity-card info"><span class="note">Waived</span><strong class="severity-value" id="waived-count">—</strong><small>Expires automatically</small></div>
+    </div>
+
+    <div class="security-layout section">
+      <main>
+        <div class="section-heading"><div><h2>Findings</h2><p class="note">Repeated observations update one lifecycle and preserve recurrence history.</p></div></div>
+        <div class="filter-bar" aria-label="Finding filters">
+          <input id="finding-search" type="search" placeholder="Search title, resource, scanner…" aria-label="Search findings">
+          <select id="severity-filter" aria-label="Severity"><option value="">All severities</option><option>critical</option><option>high</option><option>medium</option><option>low</option><option>info</option></select>
+          <select id="status-filter" aria-label="Status"><option value="">All statuses</option><option>open</option><option>acknowledged</option><option>waived</option><option>resolved</option></select>
+          <select id="scanner-filter" aria-label="Scanner"><option value="">All scanners</option></select>
+        </div>
+        <div class="finding-list" id="finding-list"><div class="empty-security">Loading security findings…</div></div>
+      </main>
+
+      <aside class="security-sidebar">
+        <section class="panel">
+          <div class="scanner-top"><h2>Deploy policy</h2><span class="pill" id="policy-version">—</span></div>
+          <form id="policy-form">
+            <label>Name<input name="name" maxlength="100" required></label>
+            <label>Scanner outage behavior<select name="scannerFailMode"><option value="closed">Fail closed</option><option value="open">Fail open with warning</option></select></label>
+            <label>Required scanners<input name="requiredScanners" placeholder="source-secrets, trivy-image"></label>
+            <div class="policy-rules">
+              <div class="policy-rule"><label>Critical<select name="critical"><option value="block">Block</option><option value="warn">Warn</option><option value="record">Record</option></select></label><label>High<select name="high"><option value="block">Block</option><option value="warn">Warn</option><option value="record">Record</option></select></label></div>
+              <div class="policy-rule"><label>Medium<select name="medium"><option value="warn">Warn</option><option value="block">Block</option><option value="record">Record</option></select></label><label>Low<select name="low"><option value="record">Record</option><option value="warn">Warn</option><option value="block">Block</option></select></label></div>
+            </div>
+            <button class="btn sm" type="submit">Save policy</button>
+            <p class="status-line" id="policy-status" role="status"></p>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="scanner-top"><h2>Scanner health</h2><span class="pill" id="last-scan">—</span></div>
+          <div class="scanner-list" id="scanner-list"><div class="note">Loading checks…</div></div>
+        </section>
+
+        <section class="panel">
+          <h2>Recent decisions</h2>
+          <div class="decision-list" id="decision-list"><div class="note">No policy decisions yet.</div></div>
+        </section>
+      </aside>
+    </div>
+    <p class="status-line" id="page-status" role="status"></p>
+  </div>
+
+  <dialog class="security-dialog" id="waiver-dialog">
+    <form id="waiver-form">
+      <div><h2>Time-limited waiver</h2><p class="note" id="waiver-finding-title"></p></div>
+      <input type="hidden" name="findingId">
+      <label>Reason<textarea name="reason" minlength="8" maxlength="1000" rows="4" required placeholder="Why is accepting this risk necessary, and what is the remediation plan?"></textarea></label>
+      <label>Tracking link<input name="referenceUrl" type="url" placeholder="https://tickets.example/SEC-123"></label>
+      <label>Expires<input name="expiresAt" type="datetime-local" required></label>
+      <p class="note">Creating a waiver requires recent authentication and is recorded in the organization audit log.</p>
+      <div class="dialog-actions"><button class="btn ghost" type="button" data-close-dialog>Cancel</button><button class="btn" type="submit">Create waiver</button></div>
+      <p class="status-line" id="waiver-status" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog class="security-dialog" id="comment-dialog">
+    <form id="comment-form">
+      <div><h2>Add finding note</h2><p class="note" id="comment-finding-title"></p></div>
+      <input type="hidden" name="findingId">
+      <label>Note<textarea name="body" minlength="2" maxlength="4000" rows="4" required></textarea></label>
+      <label>Reference link<input name="referenceUrl" type="url" placeholder="https://tickets.example/SEC-123"></label>
+      <div class="dialog-actions"><button class="btn ghost" type="button" data-close-dialog>Cancel</button><button class="btn" type="submit">Save note</button></div>
+      <p class="status-line" id="comment-status" role="status"></p>
+    </form>
+  </dialog>
+
+  <script>
+    const state = { data: null }
+    const pageStatus = document.querySelector('#page-status')
+    const findingList = document.querySelector('#finding-list')
+    const scannerList = document.querySelector('#scanner-list')
+    const decisionList = document.querySelector('#decision-list')
+    const policyForm = document.querySelector('#policy-form')
+
+    async function request(path, options = {}) {
+      const response = await fetch(path, { credentials: 'same-origin', ...options })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const error = new Error(body.error || `Request failed (${response.status})`)
+        error.stepUpRequired = body.stepUpRequired
+        throw error
+      }
+      return body
+    }
+    function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node }
+    function formatDate(value) { if (!value) return 'never'; const date = new Date(value); return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString() }
+    function statusTone(value) { return value === 'passed' || value === 'allow' || value === 'resolved' ? 'ok' : value === 'failed' || value === 'block' || value === 'critical' ? 'bad' : 'warn' }
+    function activePolicy() { return state.data?.policies?.find(policy => policy.environmentId === state.data.scope.environmentId) || state.data?.policies?.[0] }
+
+    function renderSummary() {
+      for (const severity of ['critical', 'high', 'medium', 'low']) document.querySelector(`[data-severity="${severity}"]`).textContent = state.data.summary.open[severity] || 0
+      document.querySelector('#waived-count').textContent = state.data.summary.waived || 0
+      document.querySelector('#last-scan').textContent = state.data.summary.lastScannedAt ? formatDate(state.data.summary.lastScannedAt) : 'not run'
+    }
+
+    function renderPolicy() {
+      const policy = activePolicy()
+      if (!policy) return
+      policyForm.elements.name.value = policy.name
+      policyForm.elements.scannerFailMode.value = policy.scannerFailMode
+      policyForm.elements.requiredScanners.value = policy.requiredScanners.join(', ')
+      for (const severity of ['critical', 'high', 'medium', 'low']) {
+        const rule = policy.rules.filter(rule => !rule.scannerId && ['info','low','medium','high','critical'].indexOf(severity) >= ['info','low','medium','high','critical'].indexOf(rule.minimumSeverity)).sort((a,b) => ['record','warn','block'].indexOf(b.action) - ['record','warn','block'].indexOf(a.action))[0]
+        if (rule) policyForm.elements[severity].value = rule.action
+      }
+      document.querySelector('#policy-version').textContent = `v${policy.version} · fail ${policy.scannerFailMode}`
+    }
+
+    function renderScanners() {
+      scannerList.replaceChildren()
+      const latest = new Map()
+      for (const scan of state.data.scans) if (!latest.has(scan.scannerId)) latest.set(scan.scannerId, scan)
+      const policy = activePolicy()
+      for (const required of policy?.requiredScanners || []) if (!latest.has(required)) latest.set(required, { scannerId: required, scannerVersion: 'unavailable', status: 'unavailable', error: 'Required check has not run.' })
+      if (!latest.size) { scannerList.append(element('div', 'note', 'No scanner results yet.')); return }
+      for (const scan of latest.values()) {
+        const row = element('div', 'scanner-row')
+        const top = element('div', 'scanner-top'); top.append(element('strong', '', scan.scannerId), element('span', `pill ${statusTone(scan.status)}`, scan.status)); row.append(top)
+        row.append(element('div', 'finding-meta', `version ${scan.scannerVersion} · ${formatDate(scan.completedAt)} · ${scan.findingsCount || 0} findings`))
+        if (scan.error) row.append(element('p', 'note', scan.error))
+        scannerList.append(row)
+      }
+    }
+
+    function findingMatches(finding) {
+      const query = document.querySelector('#finding-search').value.trim().toLowerCase()
+      const severity = document.querySelector('#severity-filter').value
+      const status = document.querySelector('#status-filter').value
+      const scanner = document.querySelector('#scanner-filter').value
+      return (!query || [finding.title, finding.subject, finding.scannerId, finding.ruleId, finding.description].join(' ').toLowerCase().includes(query)) && (!severity || finding.severity === severity) && (!status || finding.status === status) && (!scanner || finding.scannerId === scanner)
+    }
+
+    function renderFindings() {
+      findingList.replaceChildren()
+      const findings = state.data.findings.filter(findingMatches)
+      if (!findings.length) { findingList.append(element('div', 'empty-security', 'No findings match these filters.')); return }
+      for (const finding of findings) {
+        const card = element('article', 'finding')
+        const head = element('div', 'finding-head'); head.append(element('span', `severity-dot ${finding.severity}`))
+        const title = element('div'); title.append(element('h3', '', finding.title), element('p', 'note', finding.description)); head.append(title)
+        head.append(element('span', `pill ${statusTone(finding.status)}`, `${finding.severity} · ${finding.status}`)); card.append(head)
+        card.append(element('div', 'finding-meta', `${finding.scannerId} ${finding.scannerVersion} · ${finding.subject} · first ${formatDate(finding.firstSeenAt)} · last ${formatDate(finding.lastSeenAt)} · recurred ${finding.recurrenceCount}×`))
+        if (finding.remediation) card.append(element('div', 'remediation', finding.remediation))
+        const details = element('details'); details.append(element('summary', '', 'Sanitized evidence')); details.append(element('pre', 'evidence', JSON.stringify(finding.evidence, null, 2))); card.append(details)
+        const actions = element('div', 'finding-actions')
+        if (finding.status !== 'resolved' && finding.status !== 'acknowledged') {
+          const acknowledge = element('button', 'btn ghost sm', 'Acknowledge'); acknowledge.type = 'button'; acknowledge.onclick = () => updateFinding(finding.id, { action: 'acknowledge' }); actions.append(acknowledge)
+        }
+        const owners = element('select'); owners.setAttribute('aria-label', 'Finding owner'); owners.append(new Option('Unassigned', ''))
+        for (const actor of state.data.actors || []) owners.append(new Option(actor.displayName, actor.id, false, actor.id === finding.ownerActorId))
+        const assign = element('button', 'btn ghost sm', 'Assign'); assign.type = 'button'; assign.onclick = () => updateFinding(finding.id, { action: 'assign', ownerActorId: owners.value }); actions.append(owners, assign)
+        const note = element('button', 'btn ghost sm', 'Add note'); note.type = 'button'; note.onclick = () => openComment(finding); actions.append(note)
+        if (finding.status !== 'resolved') { const waive = element('button', 'btn ghost sm', 'Waive…'); waive.type = 'button'; waive.onclick = () => openWaiver(finding); actions.append(waive) }
+        card.append(actions); findingList.append(card)
+      }
+    }
+
+    function renderDecisions() {
+      decisionList.replaceChildren()
+      if (!state.data.decisions.length) { decisionList.append(element('div', 'note', 'No policy decisions yet.')); return }
+      for (const decision of state.data.decisions.slice(0, 8)) {
+        const row = element('div', 'decision-row'); const top = element('div', 'decision-top'); top.append(element('strong', '', formatDate(decision.createdAt)), element('span', `pill ${statusTone(decision.outcome)}`, decision.outcome)); row.append(top)
+        row.append(element('p', 'note', decision.explanation), element('div', 'finding-meta', `policy v${decision.policyVersion} · ${Object.entries(decision.scannerVersions).map(([key,value]) => `${key} ${value}`).join(' · ')}`)); decisionList.append(row)
+      }
+    }
+
+    function populateScannerFilter() {
+      const select = document.querySelector('#scanner-filter'); const current = select.value
+      select.replaceChildren(new Option('All scanners', ''))
+      for (const scanner of [...new Set(state.data.findings.map(finding => finding.scannerId))].sort()) select.append(new Option(scanner, scanner))
+      select.value = current
+    }
+
+    async function load() {
+      state.data = await request(`/api/security/posture${location.search}`)
+      renderSummary(); renderPolicy(); renderScanners(); populateScannerFilter(); renderFindings(); renderDecisions()
+    }
+    async function updateFinding(id, body) { try { await request('/api/security/findings', { method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({ id, ...body }) }); await load() } catch (error) { pageStatus.textContent = error.message } }
+    function openWaiver(finding) { const dialog = document.querySelector('#waiver-dialog'); const form = document.querySelector('#waiver-form'); form.reset(); form.elements.findingId.value = finding.id; document.querySelector('#waiver-finding-title').textContent = finding.title; const expiry = new Date(Date.now() + 24*60*60*1000); form.elements.expiresAt.value = expiry.toISOString().slice(0,16); dialog.showModal() }
+    function openComment(finding) { const dialog = document.querySelector('#comment-dialog'); const form = document.querySelector('#comment-form'); form.reset(); form.elements.findingId.value = finding.id; document.querySelector('#comment-finding-title').textContent = finding.title; dialog.showModal() }
+
+    for (const selector of ['#finding-search','#severity-filter','#status-filter','#scanner-filter']) document.querySelector(selector).addEventListener('input', renderFindings)
+    for (const button of document.querySelectorAll('[data-close-dialog]')) button.addEventListener('click', () => button.closest('dialog').close())
+    document.querySelector('#run-scans').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; pageStatus.textContent = 'Running local checks…'; try { await request(`/api/security/scan${location.search}`, { method:'POST' }); pageStatus.textContent = 'Checks complete.'; await load() } catch (error) { pageStatus.textContent = error.message } finally { button.disabled = false } })
+    document.querySelector('#review-change').addEventListener('click', async () => { pageStatus.textContent = 'Evaluating the current production-change policy…'; try { const result = await request(`/api/security/review${location.search}`, { method:'POST' }); pageStatus.textContent = `${result.decision.outcome.toUpperCase()}: ${result.decision.explanation}`; await load() } catch (error) { pageStatus.textContent = error.message } })
+    document.querySelector('#export-posture').addEventListener('click', async () => { try { const report = await request('/api/security/export'); const url = URL.createObjectURL(new Blob([JSON.stringify(report,null,2)], {type:'application/json'})); const link = document.createElement('a'); link.href=url; link.download=`ts-cloud-security-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url) } catch (error) { pageStatus.textContent=error.message } })
+    policyForm.addEventListener('submit', async event => { event.preventDefault(); const policy = activePolicy(); const data = new FormData(policyForm); const body = { id:policy.id, version:policy.version, name:data.get('name'), scannerFailMode:data.get('scannerFailMode'), requiredScanners:String(data.get('requiredScanners')||'').split(',').map(value=>value.trim()).filter(Boolean), rules:['critical','high','medium','low'].map(minimumSeverity=>({minimumSeverity,action:data.get(minimumSeverity)})) }; const status=document.querySelector('#policy-status'); try { await request('/api/security/policies',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(body)}); status.textContent='Policy saved and audited.'; await load() } catch(error) { status.textContent=error.stepUpRequired ? `${error.message} Confirm your identity under Sign-in & security, then retry.` : error.message } })
+    document.querySelector('#waiver-form').addEventListener('submit', async event => { event.preventDefault(); const form=event.currentTarget; const data=new FormData(form); const policy=activePolicy(); const status=document.querySelector('#waiver-status'); try { await request('/api/security/waivers',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({findingId:data.get('findingId'),policyId:policy?.id,reason:data.get('reason'),referenceUrl:data.get('referenceUrl')||undefined,expiresAt:new Date(String(data.get('expiresAt'))).toISOString()})}); form.closest('dialog').close(); await load() } catch(error) { status.textContent=error.stepUpRequired ? `${error.message} Confirm your identity under Sign-in & security, then retry.` : error.message } })
+    document.querySelector('#comment-form').addEventListener('submit', async event => { event.preventDefault(); const form=event.currentTarget; const data=new FormData(form); const status=document.querySelector('#comment-status'); try { await request('/api/security/comments',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({findingId:data.get('findingId'),body:data.get('body'),referenceUrl:data.get('referenceUrl')||undefined})}); form.closest('dialog').close(); await load() } catch(error) { status.textContent=error.message } })
+    load().catch(error => { pageStatus.textContent=error.message; findingList.replaceChildren(element('div','empty-security','Security posture could not be loaded.')) })
+  </script>
+</body>
+</html>

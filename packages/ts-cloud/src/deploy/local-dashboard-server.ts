@@ -538,6 +538,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/deployments',
   '/server/logs',
   '/account/security',
+  '/security',
   '/access-denied',
 ])
 
@@ -566,7 +567,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
-  '/server/security': 'audit:read',
+  '/server/security': 'security:read',
   '/security': 'security:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
@@ -1341,6 +1342,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             policies: securityPosture.listPolicies(scope.organizationId).filter(policy => !policy.environmentId || policy.environmentId === scope.environmentId),
             waivers: findings.flatMap(finding => securityPosture.listWaivers(finding.id)),
             decisions: securityPosture.listDecisions(scope.environmentId, 50),
+            actors: controlPlane.store.listMemberships(controlPlane.organization.id).map(membership => controlPlane.store.getActor(membership.actorId)).filter(Boolean),
           })
         }
 
