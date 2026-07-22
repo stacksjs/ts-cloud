@@ -380,7 +380,9 @@ describe('Permissions Module', () => {
     it('should provide AWS managed policy ARNs', () => {
       expect(Permissions.ManagedPolicies.AdministratorAccess).toBe('arn:aws:iam::aws:policy/AdministratorAccess')
       expect(Permissions.ManagedPolicies.S3FullAccess).toBe('arn:aws:iam::aws:policy/AmazonS3FullAccess')
-      expect(Permissions.ManagedPolicies.LambdaBasicExecutionRole).toBe('arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole')
+      expect(Permissions.ManagedPolicies.LambdaBasicExecutionRole).toBe(
+        'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
+      )
     })
   })
 

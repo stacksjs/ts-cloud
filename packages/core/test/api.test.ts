@@ -291,7 +291,9 @@ describe('API Gateway Module', () => {
       })
 
       expect(authorizer.Properties.Type).toBe('COGNITO_USER_POOLS')
-      expect(authorizer.Properties.ProviderARNs).toEqual(['arn:aws:cognito-idp:us-east-1:123456789:userpool/us-east-1_ABC123'])
+      expect(authorizer.Properties.ProviderARNs).toEqual([
+        'arn:aws:cognito-idp:us-east-1:123456789:userpool/us-east-1_ABC123',
+      ])
     })
 
     it('should support custom TTL', () => {
@@ -448,7 +450,10 @@ describe('API Gateway Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect((result.Resources[logicalId]!.Properties as { CorsConfiguration: { AllowOrigins: string[] } }).CorsConfiguration.AllowOrigins).toHaveLength(2)
+      expect(
+        (result.Resources[logicalId]!.Properties as { CorsConfiguration: { AllowOrigins: string[] } }).CorsConfiguration
+          .AllowOrigins,
+      ).toHaveLength(2)
     })
 
     it('should create WebSocket API', () => {

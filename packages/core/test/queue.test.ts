@@ -178,68 +178,63 @@ describe('Queue Module', () => {
       expect(rule.Properties!.Targets).toHaveLength(1)
       expect(rule.Properties!.Targets![0].Arn).toBe('arn:aws:ecs:us-east-1:123456789:cluster/my-cluster')
       expect(rule.Properties!.Targets![0].RoleArn).toBe('arn:aws:iam::123456789:role/ecsEventsRole')
-      expect(rule.Properties!.Targets![0].EcsParameters?.TaskDefinitionArn).toBe('arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1')
+      expect(rule.Properties!.Targets![0].EcsParameters?.TaskDefinitionArn).toBe(
+        'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
+      )
       expect(rule.Properties!.Targets![0].EcsParameters?.LaunchType).toBe('FARGATE')
-      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.Subnets).toEqual(['subnet-1', 'subnet-2'])
-      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.SecurityGroups).toEqual(['sg-123'])
+      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.Subnets).toEqual([
+        'subnet-1',
+        'subnet-2',
+      ])
+      expect(
+        rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.SecurityGroups,
+      ).toEqual(['sg-123'])
       expect(logicalId).toBeDefined()
     })
 
     it('should support public IP assignment', () => {
-      const { rule } = Queue.scheduleEcsTask(
-        'cron(0 2 * * ? *)',
-        'arn:aws:iam::123456789:role/ecsEventsRole',
-        {
-          slug: 'my-app',
-          environment: 'production',
-          taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
-          clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
-          subnets: ['subnet-1'],
-          assignPublicIp: true,
-        },
-      )
+      const { rule } = Queue.scheduleEcsTask('cron(0 2 * * ? *)', 'arn:aws:iam::123456789:role/ecsEventsRole', {
+        slug: 'my-app',
+        environment: 'production',
+        taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
+        clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
+        subnets: ['subnet-1'],
+        assignPublicIp: true,
+      })
 
-      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.AssignPublicIp).toBe('ENABLED')
+      expect(rule.Properties!.Targets![0].EcsParameters?.NetworkConfiguration?.awsvpcConfiguration.AssignPublicIp).toBe(
+        'ENABLED',
+      )
     })
 
     it('should support custom task count', () => {
-      const { rule } = Queue.scheduleEcsTask(
-        'cron(0 2 * * ? *)',
-        'arn:aws:iam::123456789:role/ecsEventsRole',
-        {
-          slug: 'my-app',
-          environment: 'production',
-          taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
-          clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
-          subnets: ['subnet-1'],
-          taskCount: 3,
-        },
-      )
+      const { rule } = Queue.scheduleEcsTask('cron(0 2 * * ? *)', 'arn:aws:iam::123456789:role/ecsEventsRole', {
+        slug: 'my-app',
+        environment: 'production',
+        taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
+        clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
+        subnets: ['subnet-1'],
+        taskCount: 3,
+      })
 
       expect(rule.Properties!.Targets![0].EcsParameters?.TaskCount).toBe(3)
     })
 
     it('should support container overrides', () => {
-      const { rule } = Queue.scheduleEcsTask(
-        'cron(0 2 * * ? *)',
-        'arn:aws:iam::123456789:role/ecsEventsRole',
-        {
-          slug: 'my-app',
-          environment: 'production',
-          taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
-          clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
-          subnets: ['subnet-1'],
-          containerOverrides: [
-            {
-              name: 'app',
-              environment: [
-                { name: 'ENV', value: 'production' },
-              ],
-              command: ['npm', 'run', 'job'],
-            },
-          ],
-        },
-      )
+      const { rule } = Queue.scheduleEcsTask('cron(0 2 * * ? *)', 'arn:aws:iam::123456789:role/ecsEventsRole', {
+        slug: 'my-app',
+        environment: 'production',
+        taskDefinitionArn: 'arn:aws:ecs:us-east-1:123456789:task-definition/my-task:1',
+        clusterArn: 'arn:aws:ecs:us-east-1:123456789:cluster/my-cluster',
+        subnets: ['subnet-1'],
+        containerOverrides: [
+          {
+            name: 'app',
+            environment: [{ name: 'ENV', value: 'production' }],
+            command: ['npm', 'run', 'job'],
+          },
+        ],
+      })
 
       expect(rule.Properties!.Targets![0].Input).toBeDefined()
       const input = JSON.parse(rule.Properties!.Targets![0].Input!)

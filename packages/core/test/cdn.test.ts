@@ -107,9 +107,7 @@ describe('CDN Module', () => {
         ],
       })
 
-      expect(
-        distribution.Properties.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations,
-      ).toHaveLength(1)
+      expect(distribution.Properties.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations).toHaveLength(1)
       expect(
         distribution.Properties.DistributionConfig.DefaultCacheBehavior.LambdaFunctionAssociations?.[0].EventType,
       ).toBe('origin-request')
@@ -129,8 +127,8 @@ describe('CDN Module', () => {
 
       const errorResponses = distribution.Properties.DistributionConfig.CustomErrorResponses
       expect(errorResponses).toHaveLength(2)
-      expect(errorResponses?.find(r => r.ErrorCode === 404)?.ResponseCode).toBe(200)
-      expect(errorResponses?.find(r => r.ErrorCode === 403)?.ResponseCode).toBe(200)
+      expect(errorResponses?.find((r) => r.ErrorCode === 404)?.ResponseCode).toBe(200)
+      expect(errorResponses?.find((r) => r.ErrorCode === 403)?.ResponseCode).toBe(200)
     })
   })
 

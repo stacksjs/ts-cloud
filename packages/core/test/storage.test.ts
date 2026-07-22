@@ -154,7 +154,9 @@ describe('Storage Module', () => {
       expect(updated.Properties?.NotificationConfiguration).toBeDefined()
       expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations).toHaveLength(1)
       expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Event).toBe('s3:ObjectCreated:*')
-      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Function).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessUpload')
+      expect(updated.Properties?.NotificationConfiguration?.LambdaConfigurations?.[0].Function).toBe(
+        'arn:aws:lambda:us-east-1:123456789:function:ProcessUpload',
+      )
     })
 
     it('should add Lambda notification with prefix filter', () => {
@@ -270,7 +272,10 @@ describe('Storage Module', () => {
     })
 
     it('should create onImageUpload notification config', () => {
-      const config = Storage.Notifications.onImageUpload('arn:aws:lambda:us-east-1:123456789:function:ProcessImage', 'uploads/')
+      const config = Storage.Notifications.onImageUpload(
+        'arn:aws:lambda:us-east-1:123456789:function:ProcessImage',
+        'uploads/',
+      )
 
       expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessImage')
       expect(config.events).toContain('s3:ObjectCreated:*')
@@ -292,7 +297,10 @@ describe('Storage Module', () => {
     })
 
     it('should create onFolderUpload notification config', () => {
-      const config = Storage.Notifications.onFolderUpload('arn:aws:lambda:us-east-1:123456789:function:ProcessFolder', 'uploads')
+      const config = Storage.Notifications.onFolderUpload(
+        'arn:aws:lambda:us-east-1:123456789:function:ProcessFolder',
+        'uploads',
+      )
 
       expect(config.functionArn).toBe('arn:aws:lambda:us-east-1:123456789:function:ProcessFolder')
       expect(config.events).toContain('s3:ObjectCreated:*')
@@ -300,7 +308,10 @@ describe('Storage Module', () => {
     })
 
     it('should handle folder paths with trailing slash', () => {
-      const config = Storage.Notifications.onFolderUpload('arn:aws:lambda:us-east-1:123456789:function:Process', 'uploads/')
+      const config = Storage.Notifications.onFolderUpload(
+        'arn:aws:lambda:us-east-1:123456789:function:Process',
+        'uploads/',
+      )
 
       expect(config.filter?.prefix).toBe('uploads/')
     })
@@ -372,8 +383,8 @@ describe('Storage Module', () => {
         environment: 'production',
       })
 
-      const { vault, plan, selection, role, vaultLogicalId, planLogicalId, selectionLogicalId, roleLogicalId }
-        = Storage.createBackupPlan({
+      const { vault, plan, selection, role, vaultLogicalId, planLogicalId, selectionLogicalId, roleLogicalId } =
+        Storage.createBackupPlan({
           name: 's3-backup',
           slug: 'my-app',
           environment: 'production',
@@ -397,8 +408,12 @@ describe('Storage Module', () => {
       expect(selectionLogicalId).toBe('MyAppProductionBackupSelectionS3Backup')
 
       expect(role.Type).toBe('AWS::IAM::Role')
-      expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup')
-      expect(role.Properties.ManagedPolicyArns).toContain('arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores')
+      expect(role.Properties.ManagedPolicyArns).toContain(
+        'arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup',
+      )
+      expect(role.Properties.ManagedPolicyArns).toContain(
+        'arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores',
+      )
       expect(roleLogicalId).toBe('MyAppProductionBackupRoleS3Backup')
     })
 

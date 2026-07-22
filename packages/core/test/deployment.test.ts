@@ -167,9 +167,7 @@ describe('deployment Module - Deployment Group', () => {
       environment,
       serviceRoleArn,
       loadBalancerInfo: {
-        targetGroupInfoList: [
-          { name: 'my-target-group' },
-        ],
+        targetGroupInfoList: [{ name: 'my-target-group' }],
       },
     })
 
@@ -192,7 +190,9 @@ describe('deployment Module - Deployment Group', () => {
     })
 
     expect(deploymentGroup.Properties?.BlueGreenDeploymentConfiguration).toBeDefined()
-    expect(deploymentGroup.Properties?.BlueGreenDeploymentConfiguration?.TerminateBlueInstancesOnDeploymentSuccess?.Action).toBe('TERMINATE')
+    expect(
+      deploymentGroup.Properties?.BlueGreenDeploymentConfiguration?.TerminateBlueInstancesOnDeploymentSuccess?.Action,
+    ).toBe('TERMINATE')
   })
 })
 
@@ -354,14 +354,8 @@ describe('deployment Module - Use Cases', () => {
   })
 
   test('should create Lambda canary deployment stack', () => {
-    const {
-      application,
-      appId,
-      deploymentConfig,
-      configId,
-      deploymentGroup,
-      groupId,
-    } = Deployment.UseCases.lambdaCanaryDeployment(slug, environment, serviceRoleArn, 20, 10)
+    const { application, appId, deploymentConfig, configId, deploymentGroup, groupId } =
+      Deployment.UseCases.lambdaCanaryDeployment(slug, environment, serviceRoleArn, 20, 10)
 
     expect(application.Type).toBe('AWS::CodeDeploy::Application')
     expect(application.Properties?.ComputePlatform).toBe('Lambda')
@@ -477,14 +471,8 @@ describe('deployment Module - Integration with TemplateBuilder', () => {
   test('should create Lambda canary deployment in template', () => {
     const builder = new TemplateBuilder()
 
-    const {
-      application,
-      appId,
-      deploymentConfig,
-      configId,
-      deploymentGroup,
-      groupId,
-    } = Deployment.UseCases.lambdaCanaryDeployment(slug, environment, serviceRoleArn)
+    const { application, appId, deploymentConfig, configId, deploymentGroup, groupId } =
+      Deployment.UseCases.lambdaCanaryDeployment(slug, environment, serviceRoleArn)
 
     builder.addResource(appId, application)
     builder.addResource(configId, deploymentConfig)

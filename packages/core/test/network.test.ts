@@ -82,7 +82,7 @@ describe('Network Module', () => {
       })
 
       expect(subnet.Properties.MapPublicIpOnLaunch).toBe(false)
-      const typeTag = subnet.Properties.Tags?.find(t => t.Key === 'Type')
+      const typeTag = subnet.Properties.Tags?.find((t) => t.Key === 'Type')
       expect(typeTag?.Value).toBe('isolated')
     })
   })
@@ -134,47 +134,33 @@ describe('Network Module', () => {
       expect(logicalId).toBeDefined()
 
       // Check cost warning tag
-      const warningTag = natGateway.Properties.Tags?.find(t => t.Key === 'Warning')
+      const warningTag = natGateway.Properties.Tags?.find((t) => t.Key === 'Warning')
       expect(warningTag?.Value).toContain('charges')
     })
   })
 
   describe('createRouteTable', () => {
     it('should create a public route table', () => {
-      const { routeTable, logicalId } = Network.createRouteTable(
-        'my-app',
-        'production',
-        'vpc-id',
-        'public',
-      )
+      const { routeTable, logicalId } = Network.createRouteTable('my-app', 'production', 'vpc-id', 'public')
 
       expect(routeTable.Type).toBe('AWS::EC2::RouteTable')
       expect(routeTable.Properties.VpcId).toMatchObject({ Ref: 'vpc-id' })
-      const typeTag = routeTable.Properties.Tags?.find(t => t.Key === 'Type')
+      const typeTag = routeTable.Properties.Tags?.find((t) => t.Key === 'Type')
       expect(typeTag?.Value).toBe('public')
       expect(logicalId).toBeDefined()
     })
 
     it('should create a private route table', () => {
-      const { routeTable } = Network.createRouteTable(
-        'my-app',
-        'production',
-        'vpc-id',
-        'private',
-      )
+      const { routeTable } = Network.createRouteTable('my-app', 'production', 'vpc-id', 'private')
 
-      const typeTag = routeTable.Properties.Tags?.find(t => t.Key === 'Type')
+      const typeTag = routeTable.Properties.Tags?.find((t) => t.Key === 'Type')
       expect(typeTag?.Value).toBe('private')
     })
   })
 
   describe('createRoute', () => {
     it('should create a route to Internet Gateway', () => {
-      const { route, logicalId } = Network.createRoute(
-        'rt-id',
-        '0.0.0.0/0',
-        { type: 'igw', logicalId: 'igw-id' },
-      )
+      const { route, logicalId } = Network.createRoute('rt-id', '0.0.0.0/0', { type: 'igw', logicalId: 'igw-id' })
 
       expect(route.Type).toBe('AWS::EC2::Route')
       expect(route.Properties.RouteTableId).toMatchObject({ Ref: 'rt-id' })
@@ -185,22 +171,14 @@ describe('Network Module', () => {
     })
 
     it('should create a route to NAT Gateway', () => {
-      const { route } = Network.createRoute(
-        'rt-id',
-        '0.0.0.0/0',
-        { type: 'nat', logicalId: 'nat-id' },
-      )
+      const { route } = Network.createRoute('rt-id', '0.0.0.0/0', { type: 'nat', logicalId: 'nat-id' })
 
       expect(route.Properties.NatGatewayId).toMatchObject({ Ref: 'nat-id' })
       expect(route.Properties.GatewayId).toBeUndefined()
     })
 
     it('should create a route to EC2 instance', () => {
-      const { route } = Network.createRoute(
-        'rt-id',
-        '10.1.0.0/16',
-        { type: 'instance', logicalId: 'instance-id' },
-      )
+      const { route } = Network.createRoute('rt-id', '10.1.0.0/16', { type: 'instance', logicalId: 'instance-id' })
 
       expect(route.Properties.InstanceId).toMatchObject({ Ref: 'instance-id' })
       expect(route.Properties.GatewayId).toBeUndefined()
@@ -210,10 +188,7 @@ describe('Network Module', () => {
 
   describe('associateSubnetWithRouteTable', () => {
     it('should create subnet route table association', () => {
-      const { association, logicalId } = Network.associateSubnetWithRouteTable(
-        'subnet-id',
-        'rt-id',
-      )
+      const { association, logicalId } = Network.associateSubnetWithRouteTable('subnet-id', 'rt-id')
 
       expect(association.Type).toBe('AWS::EC2::SubnetRouteTableAssociation')
       expect(association.Properties.SubnetId).toMatchObject({ Ref: 'subnet-id' })
@@ -282,8 +257,7 @@ describe('Network Module', () => {
     })
 
     it('should throw error for too small VPC CIDR', () => {
-      expect(() => Network.calculateSubnetCidrs('10.0.0.0/28', 3, 3))
-        .toThrow('too small')
+      expect(() => Network.calculateSubnetCidrs('10.0.0.0/28', 3, 3)).toThrow('too small')
     })
   })
 

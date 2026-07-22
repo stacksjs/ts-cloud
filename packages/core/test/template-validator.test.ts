@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import type { CloudFormationTemplate } from '@ts-cloud/aws-types'
-import {
-  validateTemplate,
-  validateTemplateSize,
-  validateResourceLimits,
-} from '../src/template-validator'
+import { validateTemplate, validateTemplateSize, validateResourceLimits } from '../src/template-validator'
 
 describe('Template Validator', () => {
   describe('validateTemplate', () => {
@@ -38,7 +34,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.path === 'AWSTemplateFormatVersion')).toBe(true)
+      expect(result.errors.some((e) => e.path === 'AWSTemplateFormatVersion')).toBe(true)
     })
 
     it('should require correct AWSTemplateFormatVersion', () => {
@@ -53,9 +49,9 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e =>
-        e.path === 'AWSTemplateFormatVersion' && e.message.includes('2010-09-09'),
-      )).toBe(true)
+      expect(result.errors.some((e) => e.path === 'AWSTemplateFormatVersion' && e.message.includes('2010-09-09'))).toBe(
+        true,
+      )
     })
 
     it('should require at least one resource', () => {
@@ -66,9 +62,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e =>
-        e.path === 'Resources' && e.message.includes('at least one'),
-      )).toBe(true)
+      expect(result.errors.some((e) => e.path === 'Resources' && e.message.includes('at least one'))).toBe(true)
     })
 
     it('should validate logical ID format', () => {
@@ -83,7 +77,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('alphanumeric'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('alphanumeric'))).toBe(true)
     })
 
     it('should require resource Type', () => {
@@ -98,7 +92,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('Type is required'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('Type is required'))).toBe(true)
     })
 
     it('should validate resource Type format', () => {
@@ -113,7 +107,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('AWS::'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('AWS::'))).toBe(true)
     })
 
     it('should validate DeletionPolicy values', () => {
@@ -129,7 +123,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('DeletionPolicy'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('DeletionPolicy'))).toBe(true)
     })
 
     it('should warn about missing DeletionPolicy on data resources', () => {
@@ -146,9 +140,9 @@ describe('Template Validator', () => {
       }
 
       const result = validateTemplate(template)
-      expect(result.warnings.some(w =>
-        w.message.includes('DeletionPolicy') && w.message.includes('data loss'),
-      )).toBe(true)
+      expect(result.warnings.some((w) => w.message.includes('DeletionPolicy') && w.message.includes('data loss'))).toBe(
+        true,
+      )
     })
 
     it('should detect invalid Ref', () => {
@@ -166,7 +160,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('non-existent'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('non-existent'))).toBe(true)
     })
 
     it('should allow valid Ref to resource', () => {
@@ -246,7 +240,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('GetAtt'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('GetAtt'))).toBe(true)
     })
 
     it('should detect circular dependencies', () => {
@@ -266,7 +260,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('Circular dependency'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('Circular dependency'))).toBe(true)
     })
 
     it('should detect circular dependencies via Ref', () => {
@@ -288,7 +282,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('Circular'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('Circular'))).toBe(true)
     })
 
     it('should validate parameter Type', () => {
@@ -309,9 +303,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e =>
-        e.path.includes('Parameters') && e.message.includes('Type'),
-      )).toBe(true)
+      expect(result.errors.some((e) => e.path.includes('Parameters') && e.message.includes('Type'))).toBe(true)
     })
 
     it('should validate output Value', () => {
@@ -332,9 +324,7 @@ describe('Template Validator', () => {
 
       const result = validateTemplate(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e =>
-        e.path.includes('Outputs') && e.message.includes('Value'),
-      )).toBe(true)
+      expect(result.errors.some((e) => e.path.includes('Outputs') && e.message.includes('Value'))).toBe(true)
     })
 
     it('should warn about missing encryption on S3', () => {
@@ -349,7 +339,7 @@ describe('Template Validator', () => {
       }
 
       const result = validateTemplate(template)
-      expect(result.warnings.some(w => w.message.includes('encryption'))).toBe(true)
+      expect(result.warnings.some((w) => w.message.includes('encryption'))).toBe(true)
     })
 
     it('should warn about missing encryption on RDS', () => {
@@ -364,7 +354,7 @@ describe('Template Validator', () => {
       }
 
       const result = validateTemplate(template)
-      expect(result.warnings.some(w => w.message.includes('encryption'))).toBe(true)
+      expect(result.warnings.some((w) => w.message.includes('encryption'))).toBe(true)
     })
 
     it('should info about missing tags', () => {
@@ -379,7 +369,7 @@ describe('Template Validator', () => {
       }
 
       const result = validateTemplate(template)
-      expect(result.info.some(i => i.message.includes('Tags'))).toBe(true)
+      expect(result.info.some((i) => i.message.includes('Tags'))).toBe(true)
     })
 
     it('should info about missing description', () => {
@@ -393,7 +383,7 @@ describe('Template Validator', () => {
       }
 
       const result = validateTemplate(template)
-      expect(result.info.some(i => i.path === 'Description')).toBe(true)
+      expect(result.info.some((i) => i.path === 'Description')).toBe(true)
     })
   })
 
@@ -436,7 +426,7 @@ describe('Template Validator', () => {
       const templateJson = JSON.stringify(largeTemplate)
       const result = validateTemplateSize(templateJson)
 
-      expect(result.warnings.some(w => w.message.includes('50 KB'))).toBe(true)
+      expect(result.warnings.some((w) => w.message.includes('50 KB'))).toBe(true)
     })
 
     it('should error for templates over 450KB', () => {
@@ -463,7 +453,7 @@ describe('Template Validator', () => {
       const result = validateTemplateSize(templateJson)
 
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('450 KB'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('450 KB'))).toBe(true)
     })
   })
 
@@ -507,7 +497,7 @@ describe('Template Validator', () => {
 
       const result = validateResourceLimits(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('500'))).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('500'))).toBe(true)
     })
 
     it('should error for too many parameters', () => {
@@ -530,7 +520,7 @@ describe('Template Validator', () => {
 
       const result = validateResourceLimits(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('200') && e.path === 'Parameters')).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('200') && e.path === 'Parameters')).toBe(true)
     })
 
     it('should error for too many outputs', () => {
@@ -553,7 +543,7 @@ describe('Template Validator', () => {
 
       const result = validateResourceLimits(template)
       expect(result.valid).toBe(false)
-      expect(result.errors.some(e => e.message.includes('200') && e.path === 'Outputs')).toBe(true)
+      expect(result.errors.some((e) => e.message.includes('200') && e.path === 'Outputs')).toBe(true)
     })
   })
 })

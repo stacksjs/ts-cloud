@@ -153,8 +153,8 @@ describe('Database Module', () => {
         slug: 'my-app',
         environment: 'production',
         parameters: {
-          'shared_buffers': '256MB',
-          'max_connections': '200',
+          shared_buffers: '256MB',
+          max_connections: '200',
         },
       })
 

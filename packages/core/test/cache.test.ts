@@ -238,7 +238,7 @@ describe('Cache Module', () => {
         environment: 'production',
         parameters: {
           'maxmemory-policy': 'allkeys-lru',
-          'timeout': '300',
+          timeout: '300',
         },
       })
 
@@ -271,7 +271,7 @@ describe('Cache Module', () => {
         slug: 'my-app',
         environment: 'production',
         parameters: {
-          'max_item_size': '10485760',
+          max_item_size: '10485760',
         },
       })
 

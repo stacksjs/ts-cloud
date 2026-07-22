@@ -157,16 +157,12 @@ describe('workflow Module - Task States', () => {
   })
 
   test('should create a DynamoDB PutItem task state', () => {
-    const task = Workflow.createDynamoDBTask(
-      'PutItem',
-      'my-table',
-      {
-        Item: {
-          id: { S: 'test-id' },
-          name: { S: 'Test' },
-        },
+    const task = Workflow.createDynamoDBTask('PutItem', 'my-table', {
+      Item: {
+        id: { S: 'test-id' },
+        name: { S: 'Test' },
       },
-    )
+    })
 
     expect(task.Resource).toBe('arn:aws:states:::dynamodb:putItem')
   })
@@ -349,12 +345,7 @@ describe('workflow Module - Error Handling', () => {
   })
 
   test('should create custom retry policy', () => {
-    const retry = Workflow.RetryPolicies.custom(
-      ['CustomError'],
-      5,
-      10,
-      1.8,
-    )
+    const retry = Workflow.RetryPolicies.custom(['CustomError'], 5, 10, 1.8)
 
     expect(retry.ErrorEquals).toEqual(['CustomError'])
     expect(retry.IntervalSeconds).toBe(5)
@@ -383,14 +374,11 @@ describe('workflow Module - Error Handling', () => {
   })
 
   test('should apply retry and catch to task', () => {
-    const task = Workflow.createLambdaTask(
-      'arn:aws:lambda:us-east-1:123456789012:function:my-function',
-      {
-        retry: [Workflow.RetryPolicies.standard()],
-        catch: [Workflow.CatchPolicies.all('ErrorHandler')],
-        end: true,
-      },
-    )
+    const task = Workflow.createLambdaTask('arn:aws:lambda:us-east-1:123456789012:function:my-function', {
+      retry: [Workflow.RetryPolicies.standard()],
+      catch: [Workflow.CatchPolicies.all('ErrorHandler')],
+      end: true,
+    })
 
     expect(task.Retry).toHaveLength(1)
     expect(task.Catch).toHaveLength(1)
@@ -436,7 +424,7 @@ describe('workflow Module - Common Patterns', () => {
 
     expect(definition.StartAt).toBe('Parallel')
     expect(definition.States.Parallel.Type).toBe('Parallel')
-    const parallelState = definition.States.Parallel as { Type: 'Parallel', Branches: unknown[], End: boolean }
+    const parallelState = definition.States.Parallel as { Type: 'Parallel'; Branches: unknown[]; End: boolean }
     expect(parallelState.Branches).toHaveLength(2)
     expect(parallelState.End).toBe(true)
   })
@@ -453,25 +441,18 @@ describe('workflow Module - Common Patterns', () => {
 
     expect(definition.StartAt).toBe('Map')
     expect(definition.States.Map.Type).toBe('Map')
-    const mapState = definition.States.Map as { Type: 'Map', Iterator: unknown, MaxConcurrency: number, End: boolean }
+    const mapState = definition.States.Map as { Type: 'Map'; Iterator: unknown; MaxConcurrency: number; End: boolean }
     expect(mapState.Iterator).toEqual(itemProcessor)
     expect(mapState.MaxConcurrency).toBe(10)
     expect(mapState.End).toBe(true)
   })
 
   test('should create error handling workflow pattern', () => {
-    const mainTask = Workflow.createLambdaTask(
-      'arn:aws:lambda:us-east-1:123456789012:function:my-function',
-    )
+    const mainTask = Workflow.createLambdaTask('arn:aws:lambda:us-east-1:123456789012:function:my-function')
 
     const errorHandler = Workflow.createFailState('ProcessingError', 'Failed to process')
 
-    const definition = Workflow.Patterns.withErrorHandling(
-      slug,
-      environment,
-      mainTask,
-      errorHandler,
-    )
+    const definition = Workflow.Patterns.withErrorHandling(slug, environment, mainTask, errorHandler)
 
     expect(definition.StartAt).toBe('Main')
     const mainState = definition.States.Main as { Catch?: Array<{ Next: string }> }
@@ -535,10 +516,9 @@ describe('workflow Module - Integration with TemplateBuilder', () => {
           {
             StartAt: 'ProcessItem',
             States: {
-              ProcessItem: Workflow.createLambdaTask(
-                'arn:aws:lambda:us-east-1:123456789012:function:processor',
-                { end: true },
-              ),
+              ProcessItem: Workflow.createLambdaTask('arn:aws:lambda:us-east-1:123456789012:function:processor', {
+                end: true,
+              }),
             },
           },
           {
@@ -546,20 +526,18 @@ describe('workflow Module - Integration with TemplateBuilder', () => {
             next: 'CheckResults',
           },
         ),
-        CheckResults: Workflow.createChoiceState(
-          [
-            {
-              Variable: '$.success',
-              BooleanEquals: true,
-              Next: 'Success',
-            },
-            {
-              Variable: '$.success',
-              BooleanEquals: false,
-              Next: 'Failed',
-            },
-          ],
-        ),
+        CheckResults: Workflow.createChoiceState([
+          {
+            Variable: '$.success',
+            BooleanEquals: true,
+            Next: 'Success',
+          },
+          {
+            Variable: '$.success',
+            BooleanEquals: false,
+            Next: 'Failed',
+          },
+        ]),
         Success: Workflow.createSucceedState(),
         Failed: Workflow.createFailState('ProcessingFailed', 'Items failed to process'),
       },
@@ -578,9 +556,7 @@ describe('workflow Module - Integration with TemplateBuilder', () => {
     builder.addResource(logicalId, stateMachine)
 
     const template = builder.build()
-    const parsedDefinition = JSON.parse(
-      template.Resources[logicalId]!.Properties!.DefinitionString as string,
-    )
+    const parsedDefinition = JSON.parse(template.Resources[logicalId]!.Properties!.DefinitionString as string)
 
     expect(parsedDefinition.States.Initialize.Type).toBe('Pass')
     expect(parsedDefinition.States.Wait.Type).toBe('Wait')

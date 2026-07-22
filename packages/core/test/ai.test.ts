@@ -14,8 +14,12 @@ describe('AI Module', () => {
       expect(role.Properties.AssumeRolePolicyDocument.Statement[0].Principal.Service).toBe('lambda.amazonaws.com')
       expect(role.Properties!.Policies).toHaveLength(1)
       expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/*')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain(
+        'bedrock:InvokeModelWithResponseStream',
+      )
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain(
+        'arn:aws:bedrock:*::foundation-model/*',
+      )
       expect(logicalId).toBeDefined()
     })
 
@@ -27,8 +31,12 @@ describe('AI Module', () => {
       })
 
       expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toHaveLength(2)
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0')
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain('arn:aws:bedrock:*::foundation-model/amazon.titan-text-express-v1')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain(
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0',
+      )
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Resource).toContain(
+        'arn:aws:bedrock:*::foundation-model/amazon.titan-text-express-v1',
+      )
     })
 
     it('should disable streaming when requested', () => {
@@ -39,7 +47,9 @@ describe('AI Module', () => {
       })
 
       expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toEqual(['bedrock:InvokeModel'])
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).not.toContain('bedrock:InvokeModelWithResponseStream')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).not.toContain(
+        'bedrock:InvokeModelWithResponseStream',
+      )
     })
 
     it('should support custom role name', () => {
@@ -78,7 +88,9 @@ describe('AI Module', () => {
 
       expect(policy.Properties.PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
       expect(policy.Properties.PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelAsync')
-      expect(policy.Properties.PolicyDocument.Statement[0].Action).not.toContain('bedrock:InvokeModelWithResponseStream')
+      expect(policy.Properties.PolicyDocument.Statement[0].Action).not.toContain(
+        'bedrock:InvokeModelWithResponseStream',
+      )
     })
 
     it('should support specific models', () => {
@@ -149,7 +161,9 @@ describe('AI Module', () => {
       expect(role.Properties!.Policies).toHaveLength(1)
       expect(role.Properties!.Policies![0].PolicyName).toBe('bedrock-permissions')
       expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModel')
-      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain('bedrock:InvokeModelWithResponseStream')
+      expect(role.Properties!.Policies![0].PolicyDocument.Statement[0].Action).toContain(
+        'bedrock:InvokeModelWithResponseStream',
+      )
     })
 
     it('should add Bedrock permissions without streaming', () => {
@@ -265,7 +279,9 @@ describe('AI Module', () => {
       const result = template.build()
 
       expect(Object.keys(result.Resources)).toHaveLength(1)
-      expect((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).toHaveLength(5)
+      expect(
+        (result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[],
+      ).toHaveLength(5)
     })
 
     it('should create standalone Bedrock policy', () => {
@@ -289,10 +305,7 @@ describe('AI Module', () => {
     it('should create role with multiple model groups', () => {
       const template = new TemplateBuilder('Multi-Model Bedrock')
 
-      const allModels = [
-        ...AI.ModelGroups.TextModels,
-        ...AI.ModelGroups.EmbeddingModels,
-      ]
+      const allModels = [...AI.ModelGroups.TextModels, ...AI.ModelGroups.EmbeddingModels]
 
       const { role, logicalId } = AI.enableBedrockForLambda({
         slug: 'my-app',
@@ -304,7 +317,10 @@ describe('AI Module', () => {
 
       const result = template.build()
 
-      expect(((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[]).length).toBeGreaterThan(1)
+      expect(
+        ((result.Resources[logicalId]!.Properties!.Policies as any)[0].PolicyDocument.Statement[0].Resource as string[])
+          .length,
+      ).toBeGreaterThan(1)
     })
 
     it('should generate valid JSON template', () => {
