@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 26
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 27
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1174,6 +1174,37 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       ) STRICT;
+    `,
+  },
+  {
+    version: 27,
+    name: 'backup_recovery_control_plane',
+    sql: `
+      CREATE TABLE backup_destinations (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('aws_s3','s3_compatible','aws_backup')), endpoint TEXT, endpoint_policy TEXT NOT NULL CHECK (endpoint_policy IN ('public_https','allow_private')), bucket TEXT, prefix TEXT NOT NULL DEFAULT '', region TEXT, force_path_style INTEGER NOT NULL DEFAULT 0 CHECK (force_path_style IN (0,1)), credential_ref TEXT,
+        encryption TEXT NOT NULL CHECK (encryption IN ('provider','client_side','both')), encryption_key_ref TEXT, immutability TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL CHECK (status IN ('untested','healthy','failing','disabled')), last_tested_at TEXT, last_success_at TEXT, last_failure_at TEXT, last_error TEXT,
+        version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,name)
+      ) STRICT;
+      CREATE INDEX backup_destinations_health_idx ON backup_destinations(project_id,status,last_tested_at);
+      CREATE TABLE backup_policies (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE, data_service_id TEXT REFERENCES data_services(id) ON DELETE CASCADE, destination_id TEXT NOT NULL REFERENCES backup_destinations(id) ON DELETE RESTRICT,
+        name TEXT NOT NULL, resource_kind TEXT NOT NULL CHECK (resource_kind IN ('managed_database','logical_database','volume','files','control_plane','infrastructure')), schedule TEXT NOT NULL, timezone TEXT NOT NULL, retention TEXT NOT NULL, compression TEXT NOT NULL CHECK (compression IN ('none','gzip','zstd')), encryption TEXT NOT NULL CHECK (encryption IN ('destination','client_side','both')), include_patterns TEXT NOT NULL DEFAULT '[]', exclude_patterns TEXT NOT NULL DEFAULT '[]', expected_rpo_minutes INTEGER NOT NULL CHECK (expected_rpo_minutes BETWEEN 1 AND 525600), expected_rto_minutes INTEGER NOT NULL CHECK (expected_rto_minutes BETWEEN 1 AND 525600), health_check_id TEXT REFERENCES health_checks(id) ON DELETE SET NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), next_run_at TEXT, last_run_at TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,environment_id,name)
+      ) STRICT;
+      CREATE INDEX backup_policies_due_idx ON backup_policies(enabled,next_run_at,project_id,environment_id);
+      CREATE TABLE backup_jobs (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, policy_id TEXT REFERENCES backup_policies(id) ON DELETE SET NULL, recovery_point_id TEXT, operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('backup','restore','verify','drill','cleanup')), status TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed','cancelled','cleanup_required')), idempotency_key TEXT NOT NULL UNIQUE, target TEXT NOT NULL DEFAULT '{}', restore_mode TEXT CHECK (restore_mode IN ('isolated','in_place')), cancellability TEXT NOT NULL CHECK (cancellability IN ('safe','checkpoint_only','provider_uncancellable')), safety_backup_id TEXT, health_result TEXT, progress TEXT NOT NULL DEFAULT '{}', error TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX backup_jobs_scope_idx ON backup_jobs(project_id,status,kind,created_at DESC);
+      CREATE TABLE recovery_points (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, policy_id TEXT REFERENCES backup_policies(id) ON DELETE SET NULL, destination_id TEXT NOT NULL REFERENCES backup_destinations(id) ON DELETE RESTRICT, resource_id TEXT REFERENCES resources(id) ON DELETE SET NULL, data_service_id TEXT REFERENCES data_services(id) ON DELETE SET NULL, backup_job_id TEXT REFERENCES backup_jobs(id) ON DELETE SET NULL,
+        kind TEXT NOT NULL, point_in_time TEXT NOT NULL, uri TEXT NOT NULL, size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0), checksum TEXT NOT NULL, manifest TEXT NOT NULL DEFAULT '{}', tool_version TEXT, engine_version TEXT, expires_at TEXT, locked_until TEXT, held INTEGER NOT NULL DEFAULT 0 CHECK (held IN (0,1)), pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)), status TEXT NOT NULL CHECK (status IN ('pending','available','failed','deleting','deleted')), verification_state TEXT NOT NULL CHECK (verification_state IN ('unverified','verifying','verified','corrupt','failed')), verified_at TEXT, duration_ms INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX recovery_points_inventory_idx ON recovery_points(project_id,policy_id,point_in_time DESC);
+      CREATE INDEX recovery_points_retention_idx ON recovery_points(status,expires_at,held,pinned);
+      CREATE TRIGGER backup_jobs_recovery_point_fk_insert BEFORE INSERT ON backup_jobs WHEN NEW.recovery_point_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM recovery_points WHERE id=NEW.recovery_point_id) BEGIN SELECT RAISE(ABORT,'backup recovery point not found'); END;
+      CREATE TRIGGER backup_jobs_recovery_point_fk_update BEFORE UPDATE OF recovery_point_id ON backup_jobs WHEN NEW.recovery_point_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM recovery_points WHERE id=NEW.recovery_point_id) BEGIN SELECT RAISE(ABORT,'backup recovery point not found'); END;
     `,
   },
 ]
