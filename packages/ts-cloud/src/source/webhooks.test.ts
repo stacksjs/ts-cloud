@@ -119,6 +119,18 @@ describe('source webhook ingestion', () => {
     expect(f.controlPlane.listEvents({ projectId: f.project.id }).some(event => event.type === 'preview.rejected' && JSON.stringify(event.payload).includes('fork'))).toBe(true)
   })
 
+  it('creates branch previews outside the production branch rule and tears them down on deletion', async () => {
+    const f = fixture('generic_https'); const previews = new PreviewEnvironmentStore(f.controlPlane)
+    const policy = previews.createDefinition({ projectId: f.project.id, resourceId: f.resource.id, baseEnvironmentId: f.environment.id, domainPattern: 'https://{name}.preview.example.com', branchRule: 'preview/**' })
+    const now = new Date('2026-07-21T12:00:00.000Z')
+    const deliver = async (delivery: string, sha: string, deleted = false) => { const body = raw({ event: 'push', repository: 'acme/web', branch: 'preview/search', commitSha: sha, changedPaths: ['apps/web/src.ts'], deleted }); return processSourceWebhook({ sources: f.sources, controlPlane: f.controlPlane, endpointToken: 'endpoint-fixture', headers: { 'x-ts-cloud-event': 'push', 'x-ts-cloud-delivery': delivery, 'x-ts-cloud-signature': signature(f.secret, body), 'x-ts-cloud-timestamp': String(now.getTime() / 1000) }, rawBody: body, now }) }
+    expect(await deliver('branch-open', 'a'.repeat(40))).toMatchObject({ operations: [{ kind: 'preview.create' }] })
+    const preview = previews.findForBranch(policy.id, 'acme/web', 'preview/search')!
+    expect(await deliver('branch-update', 'b'.repeat(40))).toMatchObject({ operations: [{ kind: 'preview.update' }] })
+    expect(previews.getInstance(preview.id)?.commitSha).toBe('b'.repeat(40))
+    expect(await deliver('branch-delete', '0'.repeat(40), true)).toMatchObject({ operations: [{ kind: 'preview.destroy', input: { reason: 'branch_deleted' } }] })
+  })
+
   it('normalizes hosted provider push and pull-request fixtures', () => {
     expect(normalizeSourceEvent('gitlab', { 'x-gitlab-event': 'Push Hook' }, { object_kind: 'push', ref: 'refs/heads/main', checkout_sha: 'a'.repeat(40), project: { path_with_namespace: 'acme/web' }, commits: [] })).toMatchObject({ event: 'push', repository: 'acme/web', branch: 'main' })
     expect(normalizeSourceEvent('bitbucket', { 'x-event-key': 'pullrequest:created' }, { repository: { full_name: 'acme/web' }, pullrequest: { id: 9, source: { branch: { name: 'feature' }, commit: { hash: 'b'.repeat(40) } } } })).toMatchObject({ event: 'pull_request', action: 'created', pullRequestNumber: 9 })

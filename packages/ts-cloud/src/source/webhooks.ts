@@ -175,15 +175,36 @@ export async function processSourceWebhook(input: { sources: SourceConnectionSto
     payloadSummary: { repository: event.repository, ref: event.ref ?? null, branch: event.branch ?? null, tag: event.tag ?? null, commitSha: event.commitSha, pullRequestNumber: event.pullRequestNumber ?? null, changedPathCount: event.changedPaths.length } })
   if (recorded.duplicate && recorded.delivery.status !== 'accepted') return { accepted: true, duplicate: true, status: 'duplicate', operations: [], message: 'Delivery already processed' }
 
-  const bindings = input.sources.listBindings({ connectionId: connection.id, status: 'active' }).filter(binding => binding.repositoryFullName.toLowerCase() === event.repository.toLowerCase() && eventMatches(binding, event) && pathsMatch(binding, event.changedPaths))
+  const previews = new PreviewEnvironmentStore(input.controlPlane)
+  const bindings = input.sources.listBindings({ connectionId: connection.id, status: 'active' }).filter((binding) => {
+    if (binding.repositoryFullName.toLowerCase() !== event.repository.toLowerCase() || !pathsMatch(binding, event.changedPaths)) return false
+    const previewPolicy = binding.resourceId ? previews.getDefinitionForResource(binding.resourceId) : undefined
+    const branchPreview = event.event === 'push' && !!previewPolicy?.branchRule && !!event.branch && glob(event.branch, previewPolicy.branchRule)
+    return eventMatches(binding, event) || branchPreview
+  })
   if (!bindings.length) {
     input.sources.updateDelivery(recorded.delivery.id, { status: 'ignored' })
     return { accepted: true, duplicate: recorded.duplicate, status: 'ignored', operations: [], message: 'Verified event did not match an active deployment rule' }
   }
   const queue = new DurableOperationQueue(input.controlPlane)
-  const previews = new PreviewEnvironmentStore(input.controlPlane)
   const closeActions = new Set(['closed', 'merged', 'declined'])
   const operations = bindings.flatMap((binding) => {
+    if (event.event === 'push' && binding.resourceId && event.branch) {
+      const policy = previews.getDefinitionForResource(binding.resourceId)
+      if (policy?.branchRule && glob(event.branch, policy.branchRule)) {
+        const existing = previews.findForBranch(policy.id, event.repository, event.branch)
+        if (event.deleted) {
+          if (!policy.cleanupOnClose || !existing || existing.status === 'destroyed') return []
+          const operation = queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind: 'preview.destroy', idempotencyKey: `preview:${existing.id}:branch-delete:${providerDeliveryId}`, correlationId: `preview:${existing.id}`, input: { previewId: existing.id, reason: 'branch_deleted', source: { repository: event.repository, commitSha: event.commitSha, branch: event.branch } }, lockKey: `preview:${existing.id}`, providerKey: connection.provider, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
+          previews.transition(existing.id, 'queued', { operationId: operation.id }); return [operation]
+        }
+        const persisted = previews.upsert({ definitionId: policy.id, sourceProvider: connection.provider, repository: event.repository, branch: event.branch, commitSha: event.commitSha })
+        if (!persisted.changed) return []
+        const kind = persisted.created ? 'preview.create' : 'preview.update'
+        const operation = queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind, idempotencyKey: `preview:${persisted.preview.id}:${event.commitSha}`, correlationId: `preview:${persisted.preview.id}`, input: { previewId: persisted.preview.id, source: { connectionId: connection.id, bindingId: binding.id, repository: event.repository, commitSha: event.commitSha, branch: event.branch, monorepoRoot: binding.monorepoRoot, submodules: binding.submodules, cloneDepth: binding.cloneDepth ?? null } }, lockKey: `preview:${persisted.preview.id}`, providerKey: connection.provider, buildSlot: true, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
+        previews.transition(persisted.preview.id, 'queued', { operationId: operation.id }); return [operation]
+      }
+    }
     if (event.event === 'pull_request' && binding.resourceId && event.pullRequestNumber) {
       const policy = previews.getDefinitionForResource(binding.resourceId)
       if (policy) {
