@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 27
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 28
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1205,6 +1205,29 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX recovery_points_retention_idx ON recovery_points(status,expires_at,held,pinned);
       CREATE TRIGGER backup_jobs_recovery_point_fk_insert BEFORE INSERT ON backup_jobs WHEN NEW.recovery_point_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM recovery_points WHERE id=NEW.recovery_point_id) BEGIN SELECT RAISE(ABORT,'backup recovery point not found'); END;
       CREATE TRIGGER backup_jobs_recovery_point_fk_update BEFORE UPDATE OF recovery_point_id ON backup_jobs WHEN NEW.recovery_point_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM recovery_points WHERE id=NEW.recovery_point_id) BEGIN SELECT RAISE(ABORT,'backup recovery point not found'); END;
+    `,
+  },
+  {
+    version: 28,
+    name: 'scoped_configuration',
+    sql: `
+      CREATE TABLE configuration_entries (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        scope_type TEXT NOT NULL CHECK (scope_type IN ('project','environment','service','preview')), scope_id TEXT NOT NULL, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE, preview_id TEXT,
+        key TEXT NOT NULL, kind TEXT NOT NULL CHECK (kind IN ('variable','secret')), value TEXT, value_fingerprint TEXT NOT NULL, secret_ref TEXT, backend TEXT NOT NULL CHECK (backend IN ('plaintext','local_encrypted','aws_secrets_manager','aws_ssm','external')), backend_version TEXT,
+        origin TEXT NOT NULL CHECK (origin IN ('managed','config','migrated')), required INTEGER NOT NULL DEFAULT 0 CHECK (required IN (0,1)), metadata TEXT NOT NULL DEFAULT '{}', last_used_at TEXT, rotated_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+        UNIQUE(project_id,scope_type,scope_id,key),
+        CHECK ((kind='variable' AND value IS NOT NULL AND secret_ref IS NULL AND backend='plaintext') OR (kind='secret' AND value IS NULL AND secret_ref IS NOT NULL AND backend<>'plaintext'))
+      ) STRICT;
+      CREATE INDEX configuration_entries_scope_idx ON configuration_entries(project_id,environment_id,resource_id,preview_id,kind,key);
+      CREATE TABLE configuration_dependencies (
+        entry_id TEXT NOT NULL REFERENCES configuration_entries(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, injection_target TEXT NOT NULL CHECK (injection_target IN ('environment','native_reference','file')), required INTEGER NOT NULL DEFAULT 1 CHECK (required IN (0,1)), requires_redeploy INTEGER NOT NULL DEFAULT 1 CHECK (requires_redeploy IN (0,1)), last_deployed_version INTEGER, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(entry_id,resource_id)
+      ) STRICT;
+      CREATE INDEX configuration_dependencies_resource_idx ON configuration_dependencies(resource_id,requires_redeploy);
+      CREATE TABLE configuration_mutations (
+        id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, idempotency_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}', actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, created_at TEXT NOT NULL
+      ) STRICT;
     `,
   },
 ]

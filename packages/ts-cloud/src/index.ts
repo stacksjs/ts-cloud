@@ -278,6 +278,7 @@ export {
 export * from './source'
 export * from './queue'
 export * from './backups'
+export * from './configuration'
 export type {
   DnsProvider,
   DnsProviderConfig,
