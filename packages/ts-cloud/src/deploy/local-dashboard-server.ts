@@ -22,7 +22,7 @@ import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft,
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
-import { createReleaseQueueHandlers } from '../release'
+import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -613,6 +613,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/applications/compose',
   '/operations/queue',
   '/operations/previews',
+  '/operations/releases',
   '/account/security',
   '/security',
   '/access-denied',
@@ -650,6 +651,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/applications/compose': 'applications:read',
   '/operations/queue': 'deployments:read',
   '/operations/previews': 'deployments:read',
+  '/operations/releases': 'deployments:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -867,6 +869,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
   const composeService = new ComposeApplicationService(controlPlane.store)
+  const releaseService = new ReleaseService(controlPlane.store)
   previewService.cleanup()
   const previewCleanupSweep = setInterval(() => {
     try { previewService.cleanup() }
@@ -2122,6 +2125,32 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const definitions = previewService.previews.listDefinitions(controlPlane.project.id).filter(item => mayAccessResource(user, item.resourceId, 'project:read'))
           const resources = controlPlane.store.listResources(controlPlane.project.id).filter(item => item.kind === 'application' && mayAccessResource(user, item.id, 'project:read')).map(item => ({ id: item.id, slug: item.slug, name: item.name, environmentId: item.environmentId }))
           return json({ previews, definitions, resources, environments: [...controlPlane.environments.values()] })
+        }
+        if (url.pathname === '/api/releases' && req.method === 'GET') {
+          const environments = [...controlPlane.environments.values()]
+          const resources = controlPlane.store.listResources(controlPlane.project.id).filter(item => mayAccessResource(user, item.id, 'deployments:read'))
+          const visible = new Set(resources.map(item => item.id))
+          const releases = releaseService.releases.list({ projectId: controlPlane.project.id }).filter(item => visible.has(item.resourceId)).map((item) => {
+            const resource = resources.find(value => value.id === item.resourceId)
+            const environment = environments.find(value => value.id === item.environmentId)
+            const previous = item.previousReleaseId ? releaseService.releases.get(item.previousReleaseId) : undefined
+            return { ...item, resource: resource ? { id: resource.id, name: resource.name, slug: resource.slug, provider: resource.provider } : undefined, environment: environment ? { id: environment.id, name: environment.name, slug: environment.slug, kind: environment.kind } : undefined, artifact: releaseService.releases.getArtifact(item.artifactId), transitions: releaseService.releases.transitions(item.id), approvals: releaseService.releases.approvals(item.id), previous, comparison: previous ? releaseService.releases.compare(previous.id, item.id) : undefined, capabilities: releaseStrategyCapabilities({ kind: item.kind, provider: resource?.provider, hasHealthGate: !!item.healthGate, replicas: Number((item.manifest as any)?.replicas) || 1 }) }
+          })
+          return json({ releases, resources: resources.map(item => ({ id: item.id, name: item.name, slug: item.slug, environmentId: item.environmentId, provider: item.provider })), environments })
+        }
+        if (url.pathname === '/api/releases/action' && req.method === 'POST') {
+          const body = await readJsonBody(req); const release = releaseService.releases.get(String(body.id ?? '')); const action = String(body.action ?? '')
+          if (!release || !mayAccessResource(user, release.resourceId, 'deployments:create')) return json({ ok: false, error: 'Release was not found in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try {
+            if (action === 'activate') return json({ ok: true, operation: releaseService.enqueueActivation(release, { actorId: actor.id }) })
+            if (action === 'rollback') { const resource = controlPlane.store.getResource(release.resourceId); if (body.confirm !== resource?.slug) return json({ ok: false, error: `Type "${resource?.slug ?? ''}" to confirm rollback.` }, 409); return json({ ok: true, operation: releaseService.enqueueRollback(release, { actorId: actor.id, targetReleaseId: typeof body.targetReleaseId === 'string' ? body.targetReleaseId : undefined }) }) }
+            if (action === 'approve') { const environment = controlPlane.store.listEnvironments(release.projectId).find(item => item.id === release.environmentId); if (body.confirm !== environment?.slug) return json({ ok: false, error: `Type "${environment?.slug ?? ''}" to confirm the environment gate.` }, 409); return json({ ok: true, release: releaseService.releases.approve(release.id, { actorId: actor.id, decision: body.decision === 'rejected' ? 'rejected' : 'approved', comment: typeof body.comment === 'string' ? body.comment : undefined }) }) }
+            if (action === 'pin') return json({ ok: true, release: releaseService.releases.pin(release.id, body.pinned !== false, typeof body.reason === 'string' ? body.reason : undefined) })
+            if (action === 'promote') { const targetResource = controlPlane.store.getResource(String(body.targetResourceId ?? '')); const targetEnvironment = targetResource ? controlPlane.store.listEnvironments(release.projectId).find(item => item.id === targetResource.environmentId) : undefined; if (!targetResource || !targetEnvironment || !mayAccessResource(user, targetResource.id, 'deployments:create')) return json({ ok: false, error: 'Promotion target was not found in this scope.' }, 404); if (body.confirm !== targetEnvironment.slug) return json({ ok: false, error: `Type "${targetEnvironment.slug}" to confirm promotion.` }, 409); return json({ ok: true, release: releaseService.releases.promote(release.id, { targetEnvironmentId: targetEnvironment.id, targetResourceId: targetResource.id, config: body.config && typeof body.config === 'object' ? body.config : {}, strategy: typeof body.strategy === 'string' ? body.strategy as any : undefined, actorId: actor.id, approvalRequired: body.approvalRequired === true }) }) }
+            return json({ ok: false, error: 'Unsupported release action.' }, 422)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Release action failed.' }, 409) }
         }
         if (url.pathname === '/api/compose' && req.method === 'GET') {
           const applications = composeService.applications.list({ projectId: controlPlane.project.id }).filter(item => mayAccessResource(user, item.resourceId, 'applications:read')).map(item => ({ ...item, services: composeService.applications.services(item.id) }))

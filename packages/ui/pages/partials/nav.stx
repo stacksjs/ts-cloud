@@ -78,6 +78,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           <h2>Operations</h2>
           @if (canView('deployments:read'))<a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>@endif
           @if (canView('deployments:read'))<a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>@endif
+          @if (canView('deployments:read'))<a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
           @if (canView('automation:read'))<a href="{{ envHref('/server/workers') }}">Workers & schedules</a>@endif
           @if (canView('backups:read'))<a href="{{ envHref('/server/backups') }}">Backups</a>@endif
@@ -140,6 +141,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         <h2>Operations</h2>
         <a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>
         <a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>
+        <a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>
       </section>
     @endif
     @if (canView('users:read'))

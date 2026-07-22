@@ -22,6 +22,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'applications.compose', path: '/applications/compose', label: 'Compose applications', group: 'applications', modes: ['server'], adminOnly: false },
   { id: 'operations.queue', path: '/operations/queue', label: 'Deployment queue', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'operations.previews', path: '/operations/previews', label: 'Preview environments', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
+  { id: 'operations.releases', path: '/operations/releases', label: 'Releases & promotion', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'metrics.overview', path: '/server/metrics', label: 'Metrics', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'runtime.services', path: '/server/services', label: 'Runtime services', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'automation.workers', path: '/server/workers', label: 'Workers & schedules', group: 'operations', modes: ['server'], adminOnly: true },
