@@ -38,6 +38,7 @@ export * from './fleet'
 export * from './placement'
 export * from './regions'
 export * from './maintenance'
+export * from './media'
 export * from './generators'
 
 // Validation exports - functions
