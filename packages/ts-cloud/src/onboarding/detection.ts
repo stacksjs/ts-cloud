@@ -48,9 +48,10 @@ export function detectApplication(files: DetectionFile[]): DetectionCandidate[] 
 export function scanApplicationDirectory(root: string, options: { maxFiles?: number, maxContentBytes?: number } = {}): DetectionFile[] {
   const absolute = resolve(root); const maxFiles = options.maxFiles ?? 10_000; const maxContentBytes = options.maxContentBytes ?? 256 * 1024; const files: DetectionFile[] = []
   const readable = new Set(['Dockerfile', 'package.json', 'composer.json', 'index.html', 'public/index.html', 'bun.lock', 'bun.lockb', 'artisan'])
+  const ignoredDirectories = new Set(['.git', '.ts-cloud', '.cache', '.next', '.nuxt', '.output', '.turbo', '.bun', 'node_modules', 'vendor', 'pantry', 'dist', 'build', 'coverage'])
   const visit = (directory: string) => {
     for (const name of readdirSync(directory).sort()) {
-      if (name === '.git' || name === 'node_modules' || name === 'vendor' || name === '.ts-cloud') continue
+      if (ignoredDirectories.has(name)) continue
       const path = resolve(directory, name); const rel = relative(absolute, path).split(sep).join('/')
       if (!rel || rel.startsWith('../')) throw new Error('Detection path escaped the application root')
       const stat = lstatSync(path)
