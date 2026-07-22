@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 33
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 34
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1346,5 +1346,33 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       cleanup_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE INDEX remote_builds_pool ON remote_builds(pool_id,status,created_at);
+  ` },
+  { version: 34, name: 'multi_region_orchestration', sql: `
+    CREATE TABLE regional_topologies (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, hostname TEXT NOT NULL, home_region TEXT NOT NULL, regions TEXT NOT NULL, traffic_policy TEXT NOT NULL CHECK(traffic_policy IN ('active_passive','weighted','latency')),
+      data_policy TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('draft','provisioning','ready','degraded','failing_over','failed_over','failing_back','destroying','destroyed','failed')),
+      active_region TEXT NOT NULL, revision TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,environment_id,name), UNIQUE(project_id,hostname)
+    ) STRICT;
+    CREATE TABLE regional_targets (
+      id TEXT PRIMARY KEY, topology_id TEXT NOT NULL REFERENCES regional_topologies(id) ON DELETE CASCADE, region TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('primary','secondary')), provider TEXT NOT NULL,
+      stack_id TEXT, stack_revision TEXT, status TEXT NOT NULL CHECK(status IN ('pending','provisioning','ready','degraded','failed','deleting','deleted')), health TEXT NOT NULL DEFAULT '{}', last_healthy_at TEXT,
+      version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(topology_id,region)
+    ) STRICT;
+    CREATE TABLE regional_replication_channels (
+      id TEXT PRIMARY KEY, topology_id TEXT NOT NULL REFERENCES regional_topologies(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('s3','dynamodb','secrets')), source_region TEXT NOT NULL, target_region TEXT NOT NULL,
+      config TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','configuring','in_sync','lagging','failed','disabled')), checkpoint TEXT, lag_seconds INTEGER, last_verified_at TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      UNIQUE(topology_id,kind,source_region,target_region)
+    ) STRICT;
+    CREATE TABLE regional_traffic_routes (
+      id TEXT PRIMARY KEY, topology_id TEXT NOT NULL REFERENCES regional_topologies(id) ON DELETE CASCADE, hostname TEXT NOT NULL, dns_provider TEXT NOT NULL, cdn_enabled INTEGER NOT NULL DEFAULT 0 CHECK(cdn_enabled IN (0,1)), waf_enabled INTEGER NOT NULL DEFAULT 0 CHECK(waf_enabled IN (0,1)),
+      weights TEXT NOT NULL, desired_weights TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('pending','applying','in_sync','failed','drained')), provider_state TEXT NOT NULL DEFAULT '{}', version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(topology_id,hostname)
+    ) STRICT;
+    CREATE TABLE regional_executions (
+      id TEXT PRIMARY KEY, topology_id TEXT NOT NULL REFERENCES regional_topologies(id) ON DELETE CASCADE, operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, kind TEXT NOT NULL CHECK(kind IN ('rollout','failover','failback','destroy','reconcile')),
+      requested_region TEXT, revision TEXT, plan TEXT NOT NULL, current_step TEXT, completed_steps TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')), error TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX regional_executions_active ON regional_executions(topology_id,status,created_at DESC);
   ` },
 ]
