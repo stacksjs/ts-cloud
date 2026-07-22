@@ -8,13 +8,13 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { searchControlPlane } from '../control-plane'
+import { effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { hashPassword, verifyPassword } from './dashboard-auth'
-import { initializeDashboardControlPlane, trackDashboardOperation } from './dashboard-control-plane'
+import { initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
-import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
+import { createDashboardGuard, dashboardMembershipVersions, siteFromRequest } from './dashboard-guard'
 import { renderLoginPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
@@ -615,7 +615,20 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const authEnabled = !authDisabled
 
   const secret = resolveSessionSecret(cwd)
-  const guard = createDashboardGuard({ cwd, enabled: authEnabled, secret })
+  const bootstrap = authEnabled ? ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin') : undefined
+  if (bootstrap)
+    synchronizeDashboardUsers(controlPlane, bootstrap.users)
+  const guard = createDashboardGuard({
+    cwd,
+    enabled: authEnabled,
+    secret,
+    authorization: {
+      store: controlPlane.store,
+      organizationId: controlPlane.organization.id,
+      projectId: controlPlane.project.id,
+      defaultEnvironment: String(defaultEnvironment),
+    },
+  })
 
   // The login is internet-facing and guards a box hosting other people's sites,
   // so failed attempts are rate-limited. Pruned periodically so the counters
@@ -625,8 +638,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   throttleSweep.unref?.()
 
   if (authEnabled) {
-    const bootstrap = ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin')
-    if (bootstrap.generated) {
+    if (bootstrap?.generated) {
       console.warn(`\n  ts-cloud dashboard: created the first admin.\n    username: ${bootstrap.generated.username}\n    password: ${bootstrap.generated.password}\n  Saved (hashed) to .ts-cloud/dashboard-users.json. This password is shown once.\n`)
     }
   }
@@ -702,7 +714,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           }
 
           throttle.recordSuccess(username, address)
-          const token = createSessionToken(user!.username, secret)
+          const token = createSessionToken(user!.username, secret, undefined, dashboardMembershipVersions(controlPlane.store, controlPlane.organization.id, user!))
           return json({ ok: true, user: describeUser(user!) }, 200, {
             'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),
           })
@@ -733,8 +745,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: false, error: 'Sign in to continue.' }, 401)
         }
 
-        if (url.pathname === '/api/me')
-          return json({ ok: true, user: describeUser(user), authEnabled })
+        if (url.pathname === '/api/me') {
+          const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
+          const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
+          const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'project', id: controlPlane.project.id })!
+          return json({
+            ok: true,
+            user: describeUser(user),
+            authEnabled,
+            organization: controlPlane.organization,
+            membership,
+            capabilities: effectiveCapabilities({ membership, grants: membership ? controlPlane.store.listGrants(membership.id) : [], target }),
+          })
+        }
 
         if (url.pathname.startsWith('/api/')) {
           const site = await siteFromRequest(req, url.pathname)
@@ -791,6 +814,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         if (url.pathname === '/api/control-plane/events') {
           return json({
             events: controlPlane.store.listEvents({
+              organizationId: controlPlane.organization.id,
               projectId: controlPlane.project.id,
               operationId: url.searchParams.get('operationId') ?? undefined,
               correlationId: url.searchParams.get('correlationId') ?? undefined,
@@ -1210,6 +1234,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Password must be at least 12 characters.' }, 422)
 
           const result = upsertMember(cwd, { username, password, name: typeof body.name === 'string' ? body.name : undefined, sites })
+          synchronizeDashboardUsers(controlPlane, loadUsers(cwd))
           // Their grants changed, so any UI built for their old scope is stale.
           clearUiCache()
           // The generated password is returned once, at creation, and never stored.
@@ -1224,6 +1249,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const result = removeUser(cwd, username)
           if (!result.ok)
             return json(result, 409)
+          synchronizeDashboardUsers(controlPlane, loadUsers(cwd))
           uiCache.clear()
           return json({ ok: true, username })
         }

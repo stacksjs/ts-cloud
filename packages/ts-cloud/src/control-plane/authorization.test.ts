@@ -10,6 +10,7 @@ function membership(roleTemplate: OrganizationRoleTemplate, scope: OrganizationM
     actorId: 'actor-1',
     roleTemplate,
     scope,
+    source: 'manual',
     status: 'active',
     sessionVersion: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -50,11 +51,11 @@ describe('organization authorization', () => {
     const grants: AuthorizationGrant[] = [
       {
         id: 'allow', organizationId: 'org-1', membershipId: 'membership-1', effect: 'allow', capability: 'secrets:read',
-        scope: { type: 'resource', id: 'resource-1' }, createdAt: '', updatedAt: '',
+        scope: { type: 'resource', id: 'resource-1' }, source: 'manual', createdAt: '', updatedAt: '',
       },
       {
         id: 'deny', organizationId: 'org-1', membershipId: 'membership-1', effect: 'deny', capability: 'secrets:read',
-        scope: { type: 'environment', id: 'environment-1' }, createdAt: '', updatedAt: '',
+        scope: { type: 'environment', id: 'environment-1' }, source: 'manual', createdAt: '', updatedAt: '',
       },
     ]
     expect(authorizeOrganization({ membership: membership('owner'), grants, capability: 'secrets:read', target })).toMatchObject({ allowed: false, reason: 'explicit-deny' })

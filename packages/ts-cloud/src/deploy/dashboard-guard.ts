@@ -8,7 +8,8 @@
  */
 
 import type { DashboardUser } from './dashboard-auth'
-import { authorize } from './dashboard-auth'
+import type { ControlPlaneStore } from '../control-plane'
+import { authorizeOrganization } from '../control-plane'
 import { routePolicy } from './dashboard-policy'
 import { readCookie, SESSION_COOKIE, verifySessionToken } from './dashboard-session'
 import { findUser, loadUsers } from './dashboard-users'
@@ -30,6 +31,12 @@ export interface GuardOptions {
   /** When false, every request is treated as {@link LOCAL_ADMIN}. */
   enabled: boolean
   secret: string
+  authorization: {
+    store: ControlPlaneStore
+    organizationId: string
+    projectId: string
+    defaultEnvironment: string
+  }
 }
 
 export interface GuardDecision {
@@ -49,7 +56,13 @@ export interface DashboardGuard {
 }
 
 export function createDashboardGuard(options: GuardOptions): DashboardGuard {
-  const { cwd, enabled, secret } = options
+  const { cwd, enabled, secret, authorization } = options
+
+  const identity = (user: DashboardUser) => {
+    const actor = authorization.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
+    const membership = actor ? authorization.store.getMembershipForActor(authorization.organizationId, actor.id) : undefined
+    return { actor, membership }
+  }
 
   return {
     enabled,
@@ -63,10 +76,18 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
       if (!payload)
         return null
 
-      // Re-read the user on every request rather than trusting the token's
+      // Re-read the user and membership on every request rather than trusting the token's
       // claims: revoking a grant or deleting a user then takes effect at once,
       // instead of lingering until the session expires.
-      return findUser(loadUsers(cwd), payload.u) ?? null
+      const user = findUser(loadUsers(cwd), payload.u)
+      if (!user)
+        return null
+      const { membership } = identity(user)
+      if (!membership || membership.status !== 'active' || payload.mv?.[authorization.organizationId] !== membership.sessionVersion)
+        return null
+      if (!membership.lastActiveAt || Date.now() - new Date(membership.lastActiveAt).getTime() > 5 * 60 * 1000)
+        authorization.store.touchMembership(membership.id)
+      return user
     },
 
     check(req: Request, pathname: string, user: DashboardUser | null, site?: string): GuardDecision {
@@ -84,7 +105,27 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
         return { ok: false, status: 400, error: 'This request must name a site.' }
       }
 
-      if (!authorize({ user, capability: policy.capability, site })) {
+      const { membership } = identity(user)
+      if (!membership)
+        return { ok: false, status: 401, error: 'Sign in to continue.', unauthenticated: true }
+
+      let target = policy.scope === 'organization'
+        ? { organizationId: authorization.organizationId }
+        : authorization.store.resolveAuthorizationTarget(authorization.organizationId, { type: 'project', id: authorization.projectId })
+      if (policy.scope === 'site') {
+        const environmentSlug = new URL(req.url).searchParams.get('env') ?? authorization.defaultEnvironment
+        const environment = authorization.store.getEnvironmentBySlug(authorization.projectId, environmentSlug)
+        const resource = authorization.store.listResources(authorization.projectId, environment?.id)
+          .find(candidate => candidate.kind === 'application' && candidate.slug === site)
+        target = resource
+          ? authorization.store.resolveAuthorizationTarget(authorization.organizationId, { type: 'resource', id: resource.id })
+          : undefined
+      }
+
+      const decision = target
+        ? authorizeOrganization({ membership, grants: authorization.store.listGrants(membership.id), capability: policy.capability, target })
+        : { allowed: false }
+      if (!decision.allowed) {
         // Say the same thing whether the site exists or the grant is missing, so
         // a member can't probe for other tenants' site names.
         return { ok: false, status: 403, error: 'You do not have access to this.' }
@@ -93,6 +134,12 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
       return { ok: true }
     },
   }
+}
+
+export function dashboardMembershipVersions(store: ControlPlaneStore, organizationId: string, user: DashboardUser): Record<string, number> {
+  const actor = store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
+  const membership = actor ? store.getMembershipForActor(organizationId, actor.id) : undefined
+  return membership?.status === 'active' ? { [organizationId]: membership.sessionVersion } : {}
 }
 
 /**

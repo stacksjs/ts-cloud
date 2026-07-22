@@ -27,6 +27,8 @@ export interface SessionPayload {
   u: string
   /** Expiry, epoch milliseconds. */
   exp: number
+  /** Organization membership versions at issuance; changes revoke the session. */
+  mv?: Record<string, number>
 }
 
 /**
@@ -69,8 +71,8 @@ function sign(data: string, secret: string): string {
 }
 
 /** Issue a signed session token for `username`. */
-export function createSessionToken(username: string, secret: string, ttlMs: number = SESSION_TTL_MS): string {
-  const payload: SessionPayload = { u: username, exp: Date.now() + ttlMs }
+export function createSessionToken(username: string, secret: string, ttlMs: number = SESSION_TTL_MS, membershipVersions?: Record<string, number>): string {
+  const payload: SessionPayload = { u: username, exp: Date.now() + ttlMs, ...(membershipVersions ? { mv: membershipVersions } : {}) }
   const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url')
   return `${encoded}.${sign(encoded, secret)}`
 }
@@ -102,6 +104,9 @@ export function verifySessionToken(token: string | undefined, secret: string): S
   try {
     const payload = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) as SessionPayload
     if (typeof payload?.u !== 'string' || typeof payload?.exp !== 'number')
+      return null
+    if (payload.mv !== undefined && (!payload.mv || typeof payload.mv !== 'object' || Array.isArray(payload.mv)
+      || Object.values(payload.mv).some(version => !Number.isInteger(version) || version < 1)))
       return null
     if (Date.now() >= payload.exp)
       return null

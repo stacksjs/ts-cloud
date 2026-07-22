@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 4
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 5
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -254,6 +254,15 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE UNIQUE INDEX grants_unique_idx ON authorization_grants(membership_id, effect, capability, scope_type, COALESCE(scope_id, ''));
       CREATE INDEX projects_organization_idx ON projects(organization_id, slug);
       CREATE INDEX events_organization_idx ON events(organization_id, sequence DESC);
+    `,
+  },
+  {
+    version: 5,
+    name: 'authorization_provenance',
+    sql: `
+      ALTER TABLE organization_memberships ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'legacy', 'invitation'));
+      ALTER TABLE authorization_grants ADD COLUMN source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'legacy', 'invitation'));
+      CREATE INDEX grants_source_idx ON authorization_grants(membership_id, source);
     `,
   },
 ]

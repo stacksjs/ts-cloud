@@ -68,13 +68,13 @@ describe('ControlPlaneStore schema and persistence', () => {
     const backup = migrated.getSetting('storage.last_backup') as { path: string }
     expect(existsSync(backup.path)).toBe(true)
     expect(backup.path.startsWith(`${path}.v1.`)).toBe(true)
-    expect(migrated.health().schemaVersion).toBe(4)
+    expect(migrated.health().schemaVersion).toBe(5)
     expect(existsSync(parent)).toBe(true)
     migrated.close()
   })
 
   it('keeps migration numbering contiguous', () => {
-    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2, 3, 4])
+    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2, 3, 4, 5])
   })
 })
 

@@ -114,6 +114,11 @@ describe('session tokens', () => {
     expect(verifySessionToken(token, secret)?.u).toBe('chris')
   })
 
+  it('round-trips organization membership versions used for revocation', () => {
+    const token = createSessionToken('chris', secret, undefined, { 'org-1': 3 })
+    expect(verifySessionToken(token, secret)?.mv).toEqual({ 'org-1': 3 })
+  })
+
   it('rejects a token signed with a different secret', () => {
     const token = createSessionToken('chris', secret)
     expect(verifySessionToken(token, 'other-secret')).toBeNull()

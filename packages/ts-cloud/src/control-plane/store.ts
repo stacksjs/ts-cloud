@@ -216,6 +216,7 @@ function mapMembership(row: Row): OrganizationMembership {
   return {
     id: String(row.id), organizationId: String(row.organization_id), actorId: String(row.actor_id),
     roleTemplate: String(row.role_template) as OrganizationMembership['roleTemplate'], scope: mapScope(row),
+    source: String(row.source ?? 'manual') as OrganizationMembership['source'],
     status: String(row.status) as OrganizationMembership['status'], sessionVersion: Number(row.session_version),
     lastActiveAt: optionalString(row.last_active_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
@@ -238,7 +239,7 @@ function mapGrant(row: Row): AuthorizationGrant {
   return {
     id: String(row.id), organizationId: String(row.organization_id), membershipId: String(row.membership_id),
     effect: String(row.effect) as AuthorizationGrant['effect'], capability: String(row.capability) as AuthorizationGrant['capability'],
-    scope: mapScope(row), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    scope: mapScope(row), source: String(row.source ?? 'manual') as AuthorizationGrant['source'], createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
 }
 
@@ -550,9 +551,9 @@ export class ControlPlaneStore {
     const id = input.id ?? this.idFn()
     const now = this.now()
     run(this.database,
-      `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.organizationId, input.actorId, input.roleTemplate, scope.type, scope.id ?? null, now, now],
+      `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, source, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, input.actorId, input.roleTemplate, scope.type, scope.id ?? null, input.source ?? 'manual', now, now],
     )
     const membership = this.getMembership(id)!
     this.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'organization.membership.created', payload: { membershipId: id, roleTemplate: input.roleTemplate, scope: scopePayload(scope) } })
@@ -677,6 +678,7 @@ export class ControlPlaneStore {
         actorId,
         roleTemplate: invitation.roleTemplate,
         scope: invitation.scope,
+        source: 'invitation',
       })
       this.appendEvent({ organizationId: invitation.organizationId, actorId, type: 'organization.invitation.accepted', payload: { invitationId: invitation.id, membershipId: membership.id } })
       return { invitation: this.getInvitation(invitation.id)!, membership }
@@ -726,9 +728,9 @@ export class ControlPlaneStore {
       return mapGrant(existing)
     const id = input.id ?? this.idFn()
     run(this.database,
-      `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.organizationId, input.membershipId, input.effect, input.capability, scope.type, scope.id ?? null, now, now],
+      `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, source, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, input.membershipId, input.effect, input.capability, scope.type, scope.id ?? null, input.source ?? 'manual', now, now],
     )
     this.appendEvent({ organizationId: input.organizationId, type: 'organization.grant.created', payload: { grantId: id, membershipId: input.membershipId, effect: input.effect, capability: input.capability, scope: scopePayload(scope) } })
     return this.getGrant(id)!
@@ -1193,9 +1195,9 @@ export class ControlPlaneStore {
       }
       for (const item of snapshot.memberships ?? []) {
         run(this.database,
-          `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, status, session_version, last_active_at, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [item.id, item.organizationId, item.actorId, item.roleTemplate, item.scope.type, item.scope.id ?? null, item.status, item.sessionVersion, item.lastActiveAt ?? null, item.createdAt, item.updatedAt],
+          `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, status, session_version, last_active_at, source, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.id, item.organizationId, item.actorId, item.roleTemplate, item.scope.type, item.scope.id ?? null, item.status, item.sessionVersion, item.lastActiveAt ?? null, item.source ?? 'manual', item.createdAt, item.updatedAt],
         )
       }
       for (const item of snapshot.invitations ?? []) {
@@ -1209,9 +1211,9 @@ export class ControlPlaneStore {
       }
       for (const item of snapshot.grants ?? []) {
         run(this.database,
-          `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [item.id, item.organizationId, item.membershipId, item.effect, item.capability, item.scope.type, item.scope.id ?? null, item.createdAt, item.updatedAt],
+          `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, source, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.id, item.organizationId, item.membershipId, item.effect, item.capability, item.scope.type, item.scope.id ?? null, item.source ?? 'manual', item.createdAt, item.updatedAt],
         )
       }
       for (const item of snapshot.operations) {

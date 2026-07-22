@@ -9,6 +9,7 @@ export type TerminalOperationState = Extract<OperationState, 'succeeded' | 'fail
 export type OrganizationRoleTemplate = 'owner' | 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor'
 export type AuthorizationScopeType = 'organization' | 'project' | 'environment' | 'resource'
 export type AuthorizationEffect = 'allow' | 'deny'
+export type AuthorizationRecordSource = 'manual' | 'legacy' | 'invitation'
 export type AuthorizationCapability
   = | 'project:read'
     | 'config:read'
@@ -65,6 +66,7 @@ export interface OrganizationMembership {
   actorId: ControlPlaneId
   roleTemplate: OrganizationRoleTemplate
   scope: AuthorizationScope
+  source: AuthorizationRecordSource
   status: 'active' | 'revoked'
   sessionVersion: number
   lastActiveAt?: string
@@ -97,6 +99,7 @@ export interface AuthorizationGrant {
   effect: AuthorizationEffect
   capability: AuthorizationCapability
   scope: AuthorizationScope
+  source: AuthorizationRecordSource
   createdAt: string
   updatedAt: string
 }
@@ -363,6 +366,7 @@ export interface CreateMembershipInput {
   actorId: ControlPlaneId
   roleTemplate: OrganizationRoleTemplate
   scope?: AuthorizationScope
+  source?: AuthorizationRecordSource
 }
 
 export interface CreateInvitationInput {
@@ -382,6 +386,7 @@ export interface CreateGrantInput {
   effect: AuthorizationEffect
   capability: AuthorizationCapability
   scope?: AuthorizationScope
+  source?: AuthorizationRecordSource
 }
 
 export interface ControlPlaneTag {

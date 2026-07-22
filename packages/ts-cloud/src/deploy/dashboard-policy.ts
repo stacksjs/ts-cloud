@@ -13,10 +13,12 @@
  * `siteFrom: 'body'` and the caller supplies the parsed name.
  */
 
-import type { Capability } from './dashboard-auth'
+import type { AuthorizationCapability } from '../control-plane'
 
 export interface RoutePolicy {
-  capability: Capability
+  capability: AuthorizationCapability
+  /** Resource ancestry used when evaluating the capability. Defaults to project. */
+  scope?: 'organization' | 'project' | 'site'
   /** Where the site name comes from, for `site:*` capabilities. */
   siteFrom?: 'body'
   /** Any authenticated user may call it, regardless of role. */
@@ -24,7 +26,7 @@ export interface RoutePolicy {
 }
 
 /** Sentinel for unlisted routes: the most privileged capability. */
-const FAIL_CLOSED: RoutePolicy = { capability: 'box:shell' }
+const FAIL_CLOSED: RoutePolicy = { capability: 'runtime:terminal', scope: 'organization' }
 
 /**
  * Routes reachable with no session at all. These necessarily run before there
@@ -46,76 +48,76 @@ const POLICIES: Record<string, RoutePolicy> = {
   // --- Any authenticated user -------------------------------------------
   // Health carries no tenant data. Dashboard data and config are scoped to the
   // caller's sites by the handler before they are serialized.
-  'GET /api/health': { capability: 'site:read', anyUser: true },
-  'GET /api/dashboard-data': { capability: 'site:read', anyUser: true },
-  'GET /api/config': { capability: 'site:read', anyUser: true },
-  'GET /api/me': { capability: 'site:read', anyUser: true },
-  'GET /api/search': { capability: 'site:read', anyUser: true },
-  'GET /api/search/preferences': { capability: 'site:read', anyUser: true },
-  'POST /api/search/preferences': { capability: 'site:read', anyUser: true },
-  'DELETE /api/search/preferences': { capability: 'site:read', anyUser: true },
+  'GET /api/health': { capability: 'project:read', anyUser: true },
+  'GET /api/dashboard-data': { capability: 'project:read', anyUser: true },
+  'GET /api/config': { capability: 'config:read', anyUser: true },
+  'GET /api/me': { capability: 'project:read', anyUser: true },
+  'GET /api/search': { capability: 'project:read', anyUser: true },
+  'GET /api/search/preferences': { capability: 'project:read', anyUser: true },
+  'POST /api/search/preferences': { capability: 'project:read', anyUser: true },
+  'DELETE /api/search/preferences': { capability: 'project:read', anyUser: true },
 
-  'GET /api/control-plane/operations': { capability: 'box:read' },
-  'GET /api/control-plane/events': { capability: 'box:read' },
-  'GET /api/tags': { capability: 'box:read' },
-  'POST /api/tags': { capability: 'box:config' },
-  'DELETE /api/tags': { capability: 'box:config' },
+  'GET /api/control-plane/operations': { capability: 'deployments:read' },
+  'GET /api/control-plane/events': { capability: 'audit:read' },
+  'GET /api/tags': { capability: 'project:read' },
+  'POST /api/tags': { capability: 'tags:manage' },
+  'DELETE /api/tags': { capability: 'tags:manage' },
 
   // --- Site-scoped: a member may reach their own sites -------------------
-  'POST /api/sites/deploy': { capability: 'site:deploy', siteFrom: 'body' },
-  'PATCH /api/sites': { capability: 'site:settings', siteFrom: 'body' },
+  'POST /api/sites/deploy': { capability: 'deployments:create', scope: 'site', siteFrom: 'body' },
+  'PATCH /api/sites': { capability: 'config:write', scope: 'site', siteFrom: 'body' },
 
   // --- Box-level: admin only --------------------------------------------
   // Creating or destroying a site changes the box's routing table, so it stays
   // with the box owner even though it names a site.
-  'POST /api/sites': { capability: 'box:sites:create' },
-  'DELETE /api/sites': { capability: 'box:sites:delete' },
+  'POST /api/sites': { capability: 'config:write' },
+  'DELETE /api/sites': { capability: 'config:write' },
 
-  'POST /api/env': { capability: 'box:config' },
+  'POST /api/env': { capability: 'config:write' },
 
-  'GET /api/ssh-keys': { capability: 'box:ssh' },
-  'POST /api/ssh-keys': { capability: 'box:ssh' },
-  'DELETE /api/ssh-keys': { capability: 'box:ssh' },
+  'GET /api/ssh-keys': { capability: 'fleet:read' },
+  'POST /api/ssh-keys': { capability: 'fleet:manage' },
+  'DELETE /api/ssh-keys': { capability: 'fleet:manage' },
 
-  'GET /api/firewall': { capability: 'box:firewall' },
-  'POST /api/firewall': { capability: 'box:firewall' },
-  'DELETE /api/firewall': { capability: 'box:firewall' },
+  'GET /api/firewall': { capability: 'fleet:read' },
+  'POST /api/firewall': { capability: 'fleet:manage' },
+  'DELETE /api/firewall': { capability: 'fleet:manage' },
 
-  'GET /api/databases': { capability: 'box:database' },
-  'POST /api/databases': { capability: 'box:database' },
-  'GET /api/databases/backups': { capability: 'box:database' },
-  'POST /api/databases/backup': { capability: 'box:database' },
-  'POST /api/databases/users': { capability: 'box:database' },
+  'GET /api/databases': { capability: 'data:read' },
+  'POST /api/databases': { capability: 'data:admin' },
+  'GET /api/databases/backups': { capability: 'backups:read' },
+  'POST /api/databases/backup': { capability: 'backups:create' },
+  'POST /api/databases/users': { capability: 'data:admin' },
 
   // Actions and server operations shell out on the box as root.
-  'GET /api/actions': { capability: 'box:read' },
-  'POST /api/actions/run': { capability: 'box:shell' },
-  'GET /api/server/operations': { capability: 'box:read' },
-  'POST /api/server/operations/run': { capability: 'box:shell' },
-  'POST /api/server/command': { capability: 'box:shell' },
-  'GET /api/terminal': { capability: 'box:shell' },
+  'GET /api/actions': { capability: 'runtime:read' },
+  'POST /api/actions/run': { capability: 'fleet:manage' },
+  'GET /api/server/operations': { capability: 'fleet:read' },
+  'POST /api/server/operations/run': { capability: 'fleet:manage' },
+  'POST /api/server/command': { capability: 'runtime:terminal', scope: 'organization' },
+  'GET /api/terminal': { capability: 'runtime:terminal', scope: 'organization' },
 
   // User management is box-level: granting a site is the box owner's call.
-  'GET /api/users': { capability: 'box:users' },
-  'POST /api/users': { capability: 'box:users' },
-  'DELETE /api/users': { capability: 'box:users' },
+  'GET /api/users': { capability: 'users:read', scope: 'organization' },
+  'POST /api/users': { capability: 'users:manage', scope: 'organization' },
+  'DELETE /api/users': { capability: 'users:manage', scope: 'organization' },
 
   // The serverless surface is account-wide, not per-site.
-  'GET /api/serverless/operations': { capability: 'box:serverless' },
-  'POST /api/serverless/operations/run': { capability: 'box:serverless' },
-  'POST /api/serverless/command': { capability: 'box:serverless' },
-  'GET /api/serverless/dlq': { capability: 'box:serverless' },
-  'POST /api/serverless/dlq/redrive': { capability: 'box:serverless' },
-  'POST /api/serverless/dlq/purge': { capability: 'box:serverless' },
-  'GET /api/serverless/secrets': { capability: 'box:serverless' },
-  'POST /api/serverless/secrets': { capability: 'box:serverless' },
-  'DELETE /api/serverless/secrets': { capability: 'box:serverless' },
-  'POST /api/serverless/functions/config': { capability: 'box:serverless' },
-  'GET /api/serverless/alarms': { capability: 'box:serverless' },
-  'POST /api/serverless/alarms': { capability: 'box:serverless' },
-  'DELETE /api/serverless/alarms': { capability: 'box:serverless' },
-  'GET /api/serverless/traces': { capability: 'box:serverless' },
-  'POST /api/serverless/scheduler': { capability: 'box:serverless' },
+  'GET /api/serverless/operations': { capability: 'deployments:read' },
+  'POST /api/serverless/operations/run': { capability: 'deployments:create' },
+  'POST /api/serverless/command': { capability: 'runtime:terminal', scope: 'organization' },
+  'GET /api/serverless/dlq': { capability: 'data:read' },
+  'POST /api/serverless/dlq/redrive': { capability: 'data:write' },
+  'POST /api/serverless/dlq/purge': { capability: 'data:admin' },
+  'GET /api/serverless/secrets': { capability: 'secrets:read' },
+  'POST /api/serverless/secrets': { capability: 'secrets:write' },
+  'DELETE /api/serverless/secrets': { capability: 'secrets:write' },
+  'POST /api/serverless/functions/config': { capability: 'config:write' },
+  'GET /api/serverless/alarms': { capability: 'runtime:read' },
+  'POST /api/serverless/alarms': { capability: 'config:write' },
+  'DELETE /api/serverless/alarms': { capability: 'config:write' },
+  'GET /api/serverless/traces': { capability: 'runtime:read' },
+  'POST /api/serverless/scheduler': { capability: 'automation:manage' },
 }
 
 /**

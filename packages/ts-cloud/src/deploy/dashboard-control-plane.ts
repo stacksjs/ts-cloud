@@ -3,15 +3,17 @@ import type {
   ControlPlaneActor,
   ControlPlaneEnvironment,
   ControlPlaneOperation,
+  ControlPlaneOrganization,
   ControlPlaneProject,
   JsonValue,
 } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { createHash } from 'node:crypto'
-import { ControlPlaneStore, sanitizeControlPlaneValue } from '../control-plane'
+import { ControlPlaneStore, roleCapabilities, sanitizeControlPlaneValue } from '../control-plane'
 
 export interface DashboardControlPlane {
   store: ControlPlaneStore
+  organization: ControlPlaneOrganization
   project: ControlPlaneProject
   environments: Map<string, ControlPlaneEnvironment>
   reconciliation: { requeued: number, failed: number }
@@ -63,11 +65,15 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
   const store = new ControlPlaneStore({ cwd })
   const hash = stableConfigHash(config)
   const existing = store.getProjectBySlug(config.project.slug)
+  const organizationSlug = config.project.slug.length >= 3 ? config.project.slug : `${config.project.slug}-org`
+  const organization = (existing?.organizationId ? store.getOrganization(existing.organizationId) : undefined)
+    ?? store.getOrganizationBySlug(organizationSlug)
+    ?? store.createOrganization({ id: existing?.organizationId, slug: organizationSlug, name: config.project.name })
   const project = existing
-    ? (existing.name !== config.project.name || existing.desiredConfigHash !== hash
-        ? store.updateProject(existing.id, existing.version, { name: config.project.name, desiredConfigHash: hash })
+    ? (existing.name !== config.project.name || existing.desiredConfigHash !== hash || existing.organizationId !== organization.id
+        ? store.updateProject(existing.id, existing.version, { name: config.project.name, organizationId: organization.id, desiredConfigHash: hash })
         : existing)
-    : store.createProject({ slug: config.project.slug, name: config.project.name, desiredConfigHash: hash })
+    : store.createProject({ organizationId: organization.id, slug: config.project.slug, name: config.project.name, desiredConfigHash: hash })
 
   const environments = new Map<string, ControlPlaneEnvironment>()
   for (const [slug, desired] of Object.entries(config.environments ?? {})) {
@@ -125,7 +131,68 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
   }
 
   const reconciliation = store.reconcileOrphanedOperations({ policy: 'fail' })
-  return { store, project, environments, reconciliation }
+  return { store, organization, project, environments, reconciliation }
+}
+
+const LEGACY_MEMBER_CAPABILITIES = ['project:read', 'config:read', 'deployments:read', 'deployments:create', 'runtime:read', 'runtime:logs'] as const
+
+export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, users: readonly DashboardUser[]): void {
+  const { store, organization, project } = controlPlane
+  const activeActorIds = new Set<string>()
+  for (const user of users) {
+    const actor = ensureActor(store, user)
+    activeActorIds.add(actor.id)
+    const existing = store.getMembershipForActor(organization.id, actor.id)
+    if (existing && existing.source !== 'legacy')
+      continue
+
+    const siteResources = store.listResources(project.id)
+      .filter(resource => resource.kind === 'application' && Object.hasOwn(user.sites, resource.slug))
+    const desiredRole = user.role === 'admin' ? 'owner' : 'viewer'
+    const desiredScope = user.role === 'admin' || siteResources.length === 0
+      ? { type: 'organization' as const }
+      : { type: 'resource' as const, id: siteResources[0].id }
+    const membership = existing
+      ? (existing.roleTemplate !== desiredRole || stableJson(existing.scope) !== stableJson(desiredScope)
+          ? store.updateMembership({ id: existing.id, roleTemplate: desiredRole, scope: desiredScope, actorId: actor.id })
+          : existing)
+      : store.createMembership({ organizationId: organization.id, actorId: actor.id, roleTemplate: desiredRole, scope: desiredScope, source: 'legacy' })
+
+    const desiredGrants = new Set<string>()
+    if (user.role === 'member' && siteResources.length === 0) {
+      for (const capability of roleCapabilities('viewer'))
+        desiredGrants.add(`deny|${capability}|organization|`)
+    }
+    for (const resource of siteResources) {
+      const role = user.sites[resource.slug]
+      for (const capability of LEGACY_MEMBER_CAPABILITIES)
+        desiredGrants.add(`allow|${capability}|resource|${resource.id}`)
+      if (role === 'owner')
+        desiredGrants.add(`allow|config:write|resource|${resource.id}`)
+    }
+
+    for (const grant of store.listGrants(membership.id).filter(grant => grant.source === 'legacy')) {
+      const key = `${grant.effect}|${grant.capability}|${grant.scope.type}|${grant.scope.id ?? ''}`
+      if (!desiredGrants.has(key))
+        store.removeGrant(grant.id, actor.id)
+    }
+    for (const key of desiredGrants) {
+      const [effect, capability, scopeType, scopeId] = key.split('|')
+      store.upsertGrant({
+        organizationId: organization.id,
+        membershipId: membership.id,
+        effect: effect as 'allow' | 'deny',
+        capability: capability as Parameters<typeof store.upsertGrant>[0]['capability'],
+        scope: scopeType === 'organization' ? { type: 'organization' } : { type: scopeType as 'resource', id: scopeId },
+        source: 'legacy',
+      })
+    }
+  }
+
+  for (const membership of store.listMemberships(organization.id)) {
+    if (membership.source === 'legacy' && !activeActorIds.has(membership.actorId))
+      store.revokeMembership(membership.id)
+  }
 }
 
 export async function trackDashboardOperation<T extends { ok: boolean }>(input: TrackDashboardOperationInput<T>): Promise<TrackedDashboardOperationResult<T>> {
