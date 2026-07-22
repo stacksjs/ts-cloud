@@ -91,3 +91,23 @@ export interface ApplicationDraftRecord {
   createdAt: string
   updatedAt: string
 }
+
+export interface RegistryConnection {
+  id: string
+  organizationId: string
+  provider: 'docker_hub' | 'ghcr' | 'ecr' | 'gcr' | 'generic'
+  name: string
+  host: string
+  credentialConfigured: boolean
+  credentialFingerprint?: string
+  credentialExpiresAt?: string
+  status: 'pending' | 'healthy' | 'degraded' | 'expired' | 'disconnected'
+  healthMessage?: string
+  lastTestedAt?: string
+  version: number
+  createdByActorId?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RegistryCredential { username?: string, password?: string, token?: string }

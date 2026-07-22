@@ -5,6 +5,7 @@ import { inspectApplicationArchive } from './archive'
 import { detectApplication } from './detection'
 import { migrateApplicationDraft } from './migrations'
 import { parseApplicationManifest, planApplication } from './plan'
+import { RegistryConnectionStore } from './registry'
 import { ApplicationDraftStore } from './store'
 
 function base(build: ApplicationDraftInput['build'], runtime: ApplicationDraftInput['runtime']): ApplicationDraftInput {
@@ -109,6 +110,42 @@ describe('resumable application drafts', () => {
     const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'secrets', name: 'Secrets' }); const project = controlPlane.createProject({ organizationId: organization.id, slug: 'app', name: 'App' })
     const draft = base({ kind: 'dockerfile', context: '.', dockerfile: 'Dockerfile', buildArgs: { API_TOKEN: 'runtime-secret' } }, { target: 'container', architecture: 'x86_64' }); draft.projectId = project.id
     expect(() => new ApplicationDraftStore(controlPlane).create({ organizationId: organization.id, projectId: project.id, name: 'Unsafe', draft })).toThrow('build secret name')
+    controlPlane.close()
+  })
+})
+
+describe('private registry connections', () => {
+  it('encrypts, tests, rotates, expires, and disconnects image-pull credentials', async () => {
+    let now = new Date('2026-01-01T00:00:00.000Z'); let sequence = 0
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'registry', name: 'Registry' })
+    const registries = new RegistryConnectionStore(controlPlane, { encryptionKey: 'registry-fixture', now: () => now, id: () => `registry-${++sequence}` })
+    const created = registries.create({ organizationId: organization.id, provider: 'generic', name: 'Production OCI', host: 'https://registry.example', credential: { username: 'robot', password: 'runtime-password' }, credentialExpiresAt: '2026-02-01T00:00:00.000Z' })
+    expect(created).toMatchObject({ credentialConfigured: true, status: 'pending' })
+    const raw = controlPlane.database.query<Record<string, string>, [string]>('SELECT credential_ciphertext FROM registry_connections WHERE id=?').get(created.id)!
+    expect(raw.credential_ciphertext).not.toContain('runtime-password')
+    const calls: Array<{ url: string, authorization?: string }> = []
+    const fetch = (async (value: string | URL | Request, init?: RequestInit) => { calls.push({ url: String(value), authorization: new Headers(init?.headers).get('authorization') ?? undefined }); return new Response(null, { status: 200 }) }) as typeof globalThis.fetch
+    expect(await registries.test(created.id, { image: 'registry.example/acme/web:release', fetch })).toMatchObject({ status: 'healthy', healthMessage: 'Registry image is readable.' })
+    expect(calls.map(call => call.url)).toEqual(['https://registry.example/v2/', 'https://registry.example/v2/acme/web/manifests/release'])
+    expect(calls.every(call => call.authorization?.startsWith('Basic '))).toBe(true)
+    expect(registries.rotate(created.id, { token: 'replacement' }, { expiresAt: '2026-03-01T00:00:00.000Z' })).toMatchObject({ status: 'pending', version: 3 })
+    now = new Date('2026-04-01T00:00:00.000Z')
+    expect(registries.get(created.id)?.status).toBe('expired')
+    expect(registries.disconnect(created.id)).toMatchObject({ status: 'disconnected', credentialConfigured: false })
+    expect(registries.credential(created.id)).toBeUndefined()
+    controlPlane.close()
+  })
+
+  it('follows bounded HTTPS bearer challenges without returning credentials', async () => {
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'bearer', name: 'Bearer' }); const registries = new RegistryConnectionStore(controlPlane, { encryptionKey: 'registry-fixture' })
+    const connection = registries.create({ organizationId: organization.id, provider: 'docker_hub', name: 'Docker Hub', host: 'https://registry-1.docker.io', credential: { username: 'robot', password: 'password' } })
+    const fetch = (async (value: string | URL | Request) => {
+      const url = String(value)
+      if (url === 'https://registry-1.docker.io/v2/') return new Response(null, { status: 401, headers: { 'www-authenticate': 'Bearer realm="https://auth.docker.io/token",service="registry.docker.io"' } })
+      if (url.startsWith('https://auth.docker.io/token')) return Response.json({ token: 'short-lived' })
+      return new Response(null, { status: 200 })
+    }) as typeof globalThis.fetch
+    expect(await registries.test(connection.id, { image: 'registry-1.docker.io/library/bun:latest', fetch })).toMatchObject({ status: 'healthy' })
     controlPlane.close()
   })
 })

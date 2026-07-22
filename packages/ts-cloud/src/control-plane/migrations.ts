@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 14
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 15
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -761,6 +761,31 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         updated_at TEXT NOT NULL
       );
       CREATE INDEX application_drafts_project_idx ON application_drafts(project_id, updated_at DESC);
+    `,
+  },
+  {
+    version: 15,
+    name: 'encrypted_container_registry_connections',
+    sql: `
+      CREATE TABLE registry_connections (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        credential_ciphertext TEXT,
+        credential_fingerprint TEXT,
+        credential_expires_at TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        health_message TEXT,
+        last_tested_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, name)
+      );
+      CREATE INDEX registry_connections_org_idx ON registry_connections(organization_id, status, name);
     `,
   },
 ]
