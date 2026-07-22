@@ -1,6 +1,6 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { AuthOidcRole, OidcFetch } from '../auth'
-import type { AuthorizationCapability, AuthorizationScope, OrganizationRoleTemplate } from '../control-plane'
+import type { AuthorizationCapability, AuthorizationScope, OperationState, OrganizationRoleTemplate } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
 import { createHash } from 'node:crypto'
@@ -18,6 +18,7 @@ import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilitie
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
 import { cloneSourceBinding, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
+import { DurableOperationQueue } from '../queue'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -309,6 +310,8 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'PATCH /api/onboarding/registries',
   'DELETE /api/onboarding/registries',
   'POST /api/onboarding/apply',
+  'PATCH /api/queue/settings',
+  'DELETE /api/queue/history',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -553,6 +556,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/logs',
   '/integrations',
   '/applications/new',
+  '/operations/queue',
   '/account/security',
   '/security',
   '/access-denied',
@@ -587,6 +591,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/security': 'security:read',
   '/integrations': 'sources:read',
   '/applications/new': 'applications:read',
+  '/operations/queue': 'deployments:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -801,6 +806,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const applicationDrafts = new ApplicationDraftStore(controlPlane.store)
   const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
   ensureDefaultSecurityPolicies(controlPlane)
   recordDashboardHostPosture(securityPosture, securityScope(controlPlane, String(defaultEnvironment)), initialData)
   if (bootstrap) {
@@ -862,6 +868,14 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
     const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
     return { actor, membership, grants: membership ? controlPlane.store.listGrants(membership.id) : [] }
+  }
+  const mayAccessOperation = (user: DashboardUser, operationId: string, capability: AuthorizationCapability): boolean => {
+    if (user.role === 'admin') return true
+    const operation = controlPlane.store.getOperation(operationId); const principal = organizationPrincipal(user)
+    if (!operation || !principal.membership) return false
+    const scope: AuthorizationScope = operation.resourceId ? { type: 'resource', id: operation.resourceId } : operation.environmentId ? { type: 'environment', id: operation.environmentId } : operation.projectId ? { type: 'project', id: operation.projectId } : { type: 'organization' }
+    const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, scope)
+    return !!target && authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
   }
 
   const server = Bun.serve({
@@ -1893,6 +1907,81 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               limit: Number(url.searchParams.get('limit')) || 100,
             }),
           })
+        }
+
+        if (url.pathname === '/api/queue' && req.method === 'GET') {
+          const requestedState = url.searchParams.get('state')
+          const queueState = requestedState && ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'].includes(requestedState) ? requestedState as OperationState : undefined
+          const operations = operationQueue.list({ projectId: controlPlane.project.id, state: queueState, limit: Number(url.searchParams.get('limit')) || 250 })
+            .filter(item => mayAccessOperation(user, item.operation.id, 'deployments:read'))
+            .map((item) => {
+              const resource = item.operation.resourceId ? controlPlane.store.getResource(item.operation.resourceId) : undefined
+              const targetEnvironment = item.operation.environmentId ? controlPlane.store.listEnvironments(controlPlane.project.id).find(candidate => candidate.id === item.operation.environmentId) : undefined
+              const actor = item.operation.actorId ? controlPlane.store.getActor(item.operation.actorId) : undefined
+              const operationInput = item.operation.input as Record<string, any>
+              return { ...item, target: resource ? { id: resource.id, name: resource.name, slug: resource.slug, kind: resource.kind } : targetEnvironment ? { id: targetEnvironment.id, name: targetEnvironment.name, slug: targetEnvironment.slug, kind: 'environment' } : { id: controlPlane.project.id, name: controlPlane.project.name, slug: controlPlane.project.slug, kind: 'project' }, actor: actor ? { id: actor.id, name: actor.displayName, kind: actor.kind } : undefined, commit: operationInput.revision ?? operationInput.source?.commitSha ?? null }
+            })
+          return json({ operations, concurrency: operationQueue.limits })
+        }
+
+        if (url.pathname === '/api/queue/logs' && req.method === 'GET') {
+          const operationId = String(url.searchParams.get('id') ?? '')
+          if (!mayAccessOperation(user, operationId, 'deployments:read')) return json({ ok: false, error: 'Operation was not found in this scope.' }, 404)
+          const entries = operationQueue.logs(operationId, { after: Number(url.searchParams.get('after')) || 0, limit: Number(url.searchParams.get('limit')) || 500 })
+          return json({ entries, cursor: entries.at(-1)?.sequence ?? (Number(url.searchParams.get('after')) || 0), operation: controlPlane.store.getOperation(operationId) })
+        }
+
+        if (url.pathname === '/api/queue/stream' && req.method === 'GET') {
+          const operationId = String(url.searchParams.get('id') ?? '')
+          if (!mayAccessOperation(user, operationId, 'deployments:read')) return json({ ok: false, error: 'Operation was not found in this scope.' }, 404)
+          const lastId = req.headers.get('last-event-id')?.trim()
+          let cursor = Number(lastId || url.searchParams.get('after') || 0)
+          const encoder = new TextEncoder(); let timer: ReturnType<typeof setInterval> | undefined; let closed = false
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const flush = () => {
+                if (closed) return
+                const currentUser = guard.resolveUser(req)
+                if (!currentUser || !mayAccessOperation(currentUser, operationId, 'deployments:read')) { closed = true; if (timer) clearInterval(timer); controller.close(); return }
+                const entries = operationQueue.logs(operationId, { after: cursor, limit: 500 })
+                for (const entry of entries) { cursor = entry.sequence; controller.enqueue(encoder.encode(`id: ${entry.sequence}\nevent: log\ndata: ${JSON.stringify(entry)}\n\n`)) }
+                const operation = controlPlane.store.getOperation(operationId)
+                if (operation && ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(operation.state) && operationQueue.logs(operationId, { after: cursor, limit: 1 }).length === 0) { closed = true; if (timer) clearInterval(timer); controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ state: operation.state, cursor })}\n\n`)); controller.close() }
+              }
+              flush(); if (!closed) timer = setInterval(flush, 500)
+              req.signal.addEventListener('abort', () => { closed = true; if (timer) clearInterval(timer); try { controller.close() } catch {} }, { once: true })
+            },
+            cancel() { closed = true; if (timer) clearInterval(timer) },
+          })
+          return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } })
+        }
+
+        if (url.pathname === '/api/queue/cancel' && req.method === 'POST') {
+          const body = await readJsonBody(req); const operationId = String(body.id ?? '')
+          if (!mayAccessOperation(user, operationId, 'deployments:cancel')) return json({ ok: false, error: 'Operation was not found or cannot be cancelled in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try { return json({ ok: true, operation: operationQueue.requestCancellation(operationId, actor.id) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Cancellation failed.' }, 409) }
+        }
+
+        if (url.pathname === '/api/queue/retry' && req.method === 'POST') {
+          const body = await readJsonBody(req); const operationId = String(body.id ?? '')
+          if (!mayAccessOperation(user, operationId, 'deployments:create')) return json({ ok: false, error: 'Operation was not found or cannot be retried in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try { return json({ ok: true, operation: operationQueue.retry(operationId, String(body.errorClass ?? 'manual'), { delayMs: Number(body.delayMs) || 0, actorId: actor.id }) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Retry failed.' }, 409) }
+        }
+
+        if (url.pathname === '/api/queue/settings' && req.method === 'GET') return json({ concurrency: operationQueue.limits })
+        if (url.pathname === '/api/queue/settings' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          if (body.confirm !== 'update queue limits') return json({ ok: false, error: 'Type "update queue limits" to confirm production concurrency changes.' }, 409)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          return json({ ok: true, concurrency: operationQueue.configureConcurrency(body.concurrency ?? {}, { organizationId: controlPlane.organization.id, actorId: actor.id }) })
+        }
+        if (url.pathname === '/api/queue/history' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          if (body.confirm !== 'clear completed') return json({ ok: false, error: 'Type "clear completed" to confirm retained history cleanup.' }, 409)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          return json({ ok: true, deleted: operationQueue.clearCompleted({ projectId: controlPlane.project.id, before: typeof body.before === 'string' ? body.before : undefined, actorId: actor.id }) })
         }
 
         if (url.pathname === '/api/control-plane/events') {

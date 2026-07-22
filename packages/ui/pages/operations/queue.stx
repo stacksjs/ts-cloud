@@ -1,0 +1,158 @@
+<script server>
+let __q = null
+try { __q = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __q = null }
+const viewerCapabilities = __q?.viewer?.capabilities ?? []
+const canCancel = viewerCapabilities.includes('deployments:cancel')
+const canRetry = viewerCapabilities.includes('deployments:create')
+const canManage = viewerCapabilities.includes('automation:manage')
+</script>
+<script client>
+const operations = state([])
+const concurrency = state({ project: 2, environment: 1, provider: 2, builds: 1 })
+const selectedId = state('')
+const logs = state([])
+const filter = state(new URLSearchParams(location.search).get('state') || 'active')
+const loading = state(true)
+const message = state('')
+const confirmLimits = state('')
+const confirmClear = state('')
+let source = null
+const selected = derived(() => operations().find(item => item.operation.id === selectedId()) || null)
+const visible = derived(() => operations().filter(item => filter() === 'all' ? true : filter() === 'active' ? ['queued', 'running'].includes(item.operation.state) : item.operation.state === filter()))
+function duration(operation) {
+  if (!operation.startedAt) return 'Not started'
+  const end = operation.finishedAt ? new Date(operation.finishedAt).getTime() : Date.now()
+  const seconds = Math.max(0, Math.round((end - new Date(operation.startedAt).getTime()) / 1000))
+  return seconds < 60 ? seconds + 's' : Math.round(seconds / 60) + 'm'
+}
+function statusTone(value) { return value === 'succeeded' ? 'ok' : ['failed', 'timed_out'].includes(value) ? 'bad' : ['running', 'queued'].includes(value) ? 'warn' : '' }
+function setFilter(value) { filter.set(value); const url = new URL(location.href); value === 'active' ? url.searchParams.delete('state') : url.searchParams.set('state', value); history.replaceState(null, '', url) }
+async function refresh() {
+  try {
+    const response = await fetch('/api/queue')
+    const body = await response.json()
+    if (!response.ok) throw new Error(body.error || 'Queue could not be loaded.')
+    operations.set(body.operations || [])
+    concurrency.set(body.concurrency || concurrency())
+    if (selectedId() && !body.operations.some(item => item.operation.id === selectedId())) closeDetail()
+  } catch (error) { message.set(error.message || String(error)) }
+  finally { loading.set(false) }
+}
+function appendLog(entry) {
+  if (!logs().some(item => item.sequence === entry.sequence)) logs.set([...logs(), entry].sort((a, b) => a.sequence - b.sequence))
+}
+async function openDetail(item) {
+  selectedId.set(item.operation.id); logs.set([]); if (source) source.close()
+  const response = await fetch('/api/queue/logs?id=' + encodeURIComponent(item.operation.id))
+  const body = await response.json(); (body.entries || []).forEach(appendLog)
+  const cursor = body.cursor || 0
+  if (!['succeeded', 'failed', 'cancelled', 'timed_out'].includes(item.operation.state)) {
+    source = new EventSource('/api/queue/stream?id=' + encodeURIComponent(item.operation.id) + '&after=' + cursor)
+    source.addEventListener('log', event => appendLog(JSON.parse(event.data)))
+    source.addEventListener('complete', () => { source.close(); source = null; refresh() })
+  }
+}
+function closeDetail() { selectedId.set(''); logs.set([]); if (source) source.close(); source = null }
+async function mutate(path, body) {
+  message.set('')
+  const response = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const result = await response.json(); if (!response.ok || result.ok === false) { message.set(result.error || 'Operation failed.'); return }
+  message.set('Queue updated.'); await refresh()
+  const item = operations().find(value => value.operation.id === body.id); if (item) openDetail(item)
+}
+async function cancelSelected() { const item = selected(); if (item) await mutate('/api/queue/cancel', { id: item.operation.id }) }
+async function retrySelected() { const item = selected(); const errorClass = item?.job.retryClasses?.[0]; if (item && errorClass) await mutate('/api/queue/retry', { id: item.operation.id, errorClass }) }
+async function saveLimits() {
+  const response = await fetch('/api/queue/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: confirmLimits(), concurrency: concurrency() }) })
+  const result = await response.json(); if (!response.ok) message.set(result.error || 'Limits were not updated.'); else { concurrency.set(result.concurrency); confirmLimits.set(''); message.set('Concurrency limits updated and audited.') }
+}
+async function clearHistory() {
+  const response = await fetch('/api/queue/history', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: confirmClear() }) })
+  const result = await response.json(); if (!response.ok) message.set(result.error || 'History was not cleared.'); else { confirmClear.set(''); message.set('Cleared ' + result.deleted + ' operations whose retention had elapsed.'); refresh() }
+}
+onMount(() => { refresh(); const timer = setInterval(refresh, 3000); return () => { clearInterval(timer); if (source) source.close() } })
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - Deployment queue' })</head>
+<body>
+  @include('../partials/nav', { active: 'operation-queue', env: 'production' })
+  <div class="queue-wrap wrap">
+    <div class="crumbs">Operations <span class="sep">/</span> Deployment queue</div>
+    <header class="page">
+      <div><h1>Deployment queue</h1><p>Durable deployments and mutations, with ordered progress, resource locks, cancellation, and safe retries.</p></div>
+      <div class="queue-limits"><span>Project <b>{{ concurrency().project }}</b></span><span>Environment <b>{{ concurrency().environment }}</b></span><span>Provider <b>{{ concurrency().provider }}</b></span><span>Builds <b>{{ concurrency().builds }}</b></span></div>
+    </header>
+    <div class="bad notice" @show="!!message()">{{ message() }}</div>
+    <div class="queue-layout" :class="{ inspecting: !!selectedId() }">
+      <main class="panel queue-main">
+        <div class="filters queue-filters">
+          <div class="segmented" role="group" aria-label="Filter queue state">
+            <button type="button" :class="{ active: filter() === 'active' }" @click="setFilter('active')">Active</button>
+            <button type="button" :class="{ active: filter() === 'all' }" @click="setFilter('all')">All</button>
+            <button type="button" :class="{ active: filter() === 'failed' }" @click="setFilter('failed')">Failed</button>
+            <button type="button" :class="{ active: filter() === 'cancelled' }" @click="setFilter('cancelled')">Cancelled</button>
+          </div>
+          <button class="btn sm" type="button" @click="refresh()">Refresh</button>
+        </div>
+        <div class="queue-table-wrap">
+          <table class="queue-table">
+            <thead><tr><th>Status</th><th>Target</th><th>Operation</th><th>Actor / trigger</th><th>Commit</th><th>Progress</th><th>Attempt</th><th>Timing</th></tr></thead>
+            <tbody>
+              <template :for="item in visible()">
+                <tr class="queue-row" :class="{ selected: item.operation.id === selectedId() }" @click="openDetail(item)" tabindex="0">
+                  <td><span class="pill" :class="statusTone(item.operation.state)">{{ item.operation.state }}</span></td>
+                  <td><b>{{ item.target.name }}</b><small>{{ item.target.kind }} · {{ item.target.slug }}</small></td>
+                  <td class="mono">{{ item.operation.kind }}<small>{{ item.operation.id.slice(0, 8) }}</small></td>
+                  <td>{{ item.actor?.name || 'System' }}<small>{{ item.actor?.kind || 'automation' }}</small></td>
+                  <td class="mono">{{ item.commit ? String(item.commit).slice(0, 12) : '—' }}</td>
+                  <td><span @show="!!item.job.currentStep">{{ item.job.currentStep }}</span><span class="blocked" @show="!!item.job.blockedReason">{{ item.job.blockedReason }}</span><small @show="!!item.approximatePosition && item.operation.state === 'queued'">About {{ item.approximatePosition.ahead }} ahead</small></td>
+                  <td class="mono">{{ item.operation.attempt }} / {{ item.job.maxAttempts }}</td>
+                  <td>{{ duration(item.operation) }}<small>{{ new Date(item.operation.createdAt).toLocaleString() }}</small></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty" @show="!loading() && visible().length === 0"><strong>No matching work</strong><span>Queued deployments and other long-lived mutations will appear here.</span></div>
+      </main>
+      <aside class="panel queue-detail" @show="!!selected()">
+        <button class="detail-close" type="button" aria-label="Close operation detail" @click="closeDetail()">×</button>
+        <template :if="selected()">
+          <div class="eyebrow">{{ selected().operation.kind }}</div>
+          <h2>{{ selected().target.name }}</h2>
+          <div class="detail-meta"><span class="pill" :class="statusTone(selected().operation.state)">{{ selected().operation.state }}</span><span>Attempt {{ selected().operation.attempt }} of {{ selected().job.maxAttempts }}</span><span>{{ duration(selected().operation) }}</span></div>
+          <div class="blocked-card" @show="!!selected().job.blockedReason"><b>Waiting</b><span>{{ selected().job.blockedReason }}</span><small>Position is an estimate because earlier work may unblock or retry.</small></div>
+          <div class="detail-actions">
+            @if (canCancel)<button class="btn danger sm" type="button" @show="['queued','running'].includes(selected().operation.state)" @click="cancelSelected()">{{ selected().operation.state === 'queued' ? 'Cancel queued' : 'Request cancellation' }}</button>@endif
+            @if (canRetry)<button class="btn sm" type="button" @show="['failed','cancelled','timed_out'].includes(selected().operation.state) && selected().job.retryClasses.length > 0 && selected().operation.attempt < selected().job.maxAttempts" @click="retrySelected()">Retry {{ selected().job.retryClasses[0] }}</button>@endif
+          </div>
+          <h3>Structured progress</h3>
+          <div class="step-list"><template :for="entry in logs().filter(item => item.stream === 'step')"><div><span></span><b>{{ entry.step || 'Step' }}</b><small>{{ entry.message }}</small></div></template></div>
+          <details class="raw-logs" open><summary>Raw logs · {{ logs().length }} chunks</summary><pre><template :for="entry in logs()"><span :class="entry.stream">{{ entry.sequence }} {{ entry.stream.toUpperCase() }}{{ entry.redacted ? ' [REDACTED]' : '' }}{{ entry.truncated ? ' [TRUNCATED]' : '' }}  {{ entry.message }}
+</span></template></pre></details>
+          <div class="detail-foot mono">{{ selected().operation.id }}</div>
+        </template>
+      </aside>
+    </div>
+    @if (canManage)
+      <section class="panel queue-admin">
+        <div><h2>Queue controls</h2><p>Concurrency changes affect production scheduling and are audited. Retention cleanup never removes jobs before their policy expires.</p></div>
+        <div class="limit-grid">
+          <label>Project<input type="number" min="1" max="100" :value="concurrency().project" @input="concurrency.set({...concurrency(), project: Number($event.target.value)})"></label>
+          <label>Environment<input type="number" min="1" max="100" :value="concurrency().environment" @input="concurrency.set({...concurrency(), environment: Number($event.target.value)})"></label>
+          <label>Provider<input type="number" min="1" max="100" :value="concurrency().provider" @input="concurrency.set({...concurrency(), provider: Number($event.target.value)})"></label>
+          <label>Builds<input type="number" min="1" max="100" :value="concurrency().builds" @input="concurrency.set({...concurrency(), builds: Number($event.target.value)})"></label>
+        </div>
+        <div class="confirm-row"><input type="text" placeholder="update queue limits" :value="confirmLimits()" @input="confirmLimits.set($event.target.value)"><button class="btn" type="button" :disabled="confirmLimits() !== 'update queue limits'" @click="saveLimits()">Update limits</button></div>
+        <div class="confirm-row"><input type="text" placeholder="clear completed" :value="confirmClear()" @input="confirmClear.set($event.target.value)"><button class="btn danger" type="button" :disabled="confirmClear() !== 'clear completed'" @click="clearHistory()">Clear retained history</button></div>
+      </section>
+    @endif
+  </div>
+  <style>
+    .queue-wrap{max-width:1500px}.queue-limits{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.queue-limits span{border:1px solid var(--line);background:var(--bg2);border-radius:8px;padding:8px 10px;color:var(--txt3);font-size:12px}.queue-limits b{color:var(--txt);margin-left:5px}.queue-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}.queue-layout.inspecting{grid-template-columns:minmax(620px,1.4fr) minmax(340px,.6fr)}.queue-main{padding:0;overflow:hidden}.queue-filters{padding:14px 16px;margin:0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}.queue-table-wrap{overflow:auto}.queue-table{min-width:1060px}.queue-row{cursor:pointer}.queue-row.selected{background:color-mix(in srgb,var(--accent) 9%,transparent)}.queue-row td small{display:block;margin-top:4px;color:var(--txt3);font-size:11px}.blocked{color:var(--yellow);font-size:12px}.queue-detail{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;padding:22px}.detail-close{float:right;border:0;background:transparent;color:var(--txt3);font-size:24px;cursor:pointer}.eyebrow{text-transform:uppercase;letter-spacing:.08em;color:var(--accent);font-size:11px}.queue-detail h2{margin:5px 0 10px}.detail-meta,.detail-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;color:var(--txt3);font-size:12px}.blocked-card{display:grid;gap:5px;margin:16px 0;padding:12px;border:1px solid color-mix(in srgb,var(--yellow) 35%,var(--line));border-radius:8px;background:color-mix(in srgb,var(--yellow) 6%,transparent)}.blocked-card small{color:var(--txt3)}.detail-actions{margin:16px 0}.step-list>div{display:grid;grid-template-columns:12px 1fr;gap:0 8px;margin:10px 0}.step-list span{width:8px;height:8px;margin-top:5px;border-radius:50%;background:var(--accent)}.step-list small{grid-column:2;color:var(--txt3)}.raw-logs{margin-top:14px}.raw-logs pre{max-height:330px;overflow:auto;background:#090c12;border:1px solid var(--line);border-radius:8px;padding:12px;font-size:11px;white-space:pre-wrap}.raw-logs .stderr{color:#ff9b9b}.raw-logs .step{color:#8dd6ff}.detail-foot{margin-top:16px;color:var(--txt3);font-size:10px}.queue-admin{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px 24px}.limit-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.limit-grid label{font-size:11px;color:var(--txt3)}.limit-grid input,.confirm-row input{width:100%;margin-top:5px}.confirm-row{display:flex;gap:8px;align-items:end}.confirm-row input{margin:0}.notice{margin-bottom:12px}.notice.bad{padding:10px 12px}
+    @media(max-width:1050px){.queue-layout.inspecting{grid-template-columns:1fr}.queue-detail{position:static;max-height:none}.queue-admin{grid-template-columns:1fr}}
+    @media(max-width:680px){.queue-limits{justify-content:flex-start}.queue-table{min-width:0}.queue-table thead{display:none}.queue-table tbody,.queue-row{display:block}.queue-row{padding:14px;border-bottom:1px solid var(--line)}.queue-row td{display:grid;grid-template-columns:100px 1fr;padding:4px 0;border:0}.queue-row td:before{color:var(--txt3);font-size:11px}.queue-row td:nth-child(1):before{content:'Status'}.queue-row td:nth-child(2):before{content:'Target'}.queue-row td:nth-child(3):before{content:'Operation'}.queue-row td:nth-child(4):before{content:'Actor'}.queue-row td:nth-child(5):before{content:'Commit'}.queue-row td:nth-child(6):before{content:'Progress'}.queue-row td:nth-child(7):before{content:'Attempt'}.queue-row td:nth-child(8):before{content:'Timing'}.limit-grid{grid-template-columns:repeat(2,1fr)}.confirm-row{flex-direction:column;align-items:stretch}}
+  </style>
+</body>
+</html>

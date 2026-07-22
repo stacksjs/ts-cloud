@@ -37,7 +37,16 @@ describe('dashboard application onboarding integration', () => {
     const rejected = await call('/api/onboarding/apply?env=production', { method: 'POST', headers, body: JSON.stringify({ id: updated.draft.id, version: 2, confirmEnvironment: 'staging' }) }); expect(rejected.status).toBe(422)
     expect((await (await call('/api/onboarding?env=production', { headers: { cookie: session } })).json() as any).resources).toHaveLength(0)
     const appliedResponse = await call('/api/onboarding/apply?env=production', { method: 'POST', headers, body: JSON.stringify({ id: updated.draft.id, version: 2, confirmEnvironment: 'production' }) }); expect(appliedResponse.status).toBe(202)
-    expect(await appliedResponse.json()).toMatchObject({ resource: { slug: 'web' }, operation: { kind: 'application.create', state: 'queued' }, plan: { valid: true, serializedManifest: expect.any(String) } })
+    const applied = await appliedResponse.json() as any
+    expect(applied).toMatchObject({ resource: { slug: 'web' }, operation: { kind: 'application.create', state: 'queued' }, plan: { valid: true, serializedManifest: expect.any(String) } })
+    const queue = await (await call('/api/queue?env=production', { headers: { cookie: session } })).json() as any
+    expect(queue.operations).toMatchObject([{ operation: { id: applied.operation.id, state: 'queued' }, job: { maxAttempts: 3 }, target: { slug: 'web' } }])
+    const logs = await (await call(`/api/queue/logs?id=${applied.operation.id}`, { headers: { cookie: session } })).json() as any
+    expect(logs.entries).toMatchObject([{ stream: 'system', message: 'Queued for durable execution.' }])
+    const cancelled = await (await call('/api/queue/cancel', { method: 'POST', headers, body: JSON.stringify({ id: applied.operation.id }) })).json() as any
+    expect(cancelled.operation).toMatchObject({ id: applied.operation.id, state: 'cancelled' })
+    const retried = await (await call('/api/queue/retry', { method: 'POST', headers, body: JSON.stringify({ id: applied.operation.id, errorClass: 'provider_unavailable' }) })).json() as any
+    expect(retried.operation).toMatchObject({ id: applied.operation.id, state: 'queued' })
 
     const artifactResponse = await call('/api/onboarding/artifacts?env=production', { method: 'POST', headers: { origin: base, cookie: session, 'content-type': 'application/octet-stream', 'x-artifact-filename': 'site.zip' }, body: storedZip('dist/index.html') }); expect(artifactResponse.status).toBe(201); expect(await artifactResponse.json()).toMatchObject({ artifact: { format: 'zip', entryCount: 1 } })
     const registryResponse = await call('/api/onboarding/registries?env=production', { method: 'POST', headers, body: JSON.stringify({ provider: 'generic', name: 'Private OCI', host: 'https://registry.example', username: 'robot', password: 'registry-runtime-secret' }) }); expect(registryResponse.status).toBe(201); const registry = await registryResponse.json() as any; expect(registry.registry).toMatchObject({ credentialConfigured: true }); expect(JSON.stringify(registry)).not.toContain('registry-runtime-secret')

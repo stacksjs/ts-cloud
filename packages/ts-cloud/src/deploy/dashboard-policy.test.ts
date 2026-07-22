@@ -22,6 +22,12 @@ describe('routePolicy', () => {
     expect(routePolicy('get', '/api/health').capability).toBe(routePolicy('GET', '/api/health').capability)
   })
 
+  it('allows scoped queue reads and controls while protecting global settings', () => {
+    expect(routePolicy('GET', '/api/queue')).toMatchObject({ capability: 'deployments:read', anyUser: true })
+    expect(routePolicy('POST', '/api/queue/cancel')).toMatchObject({ capability: 'deployments:cancel', anyUser: true })
+    expect(routePolicy('PATCH', '/api/queue/settings')).toMatchObject({ capability: 'automation:manage', scope: 'organization' })
+  })
+
   it('keeps every shell-equivalent route admin-only', () => {
     const rootRoutes = [
       ['GET', '/api/terminal'],
