@@ -37,6 +37,7 @@ import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentia
 import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, synchronizeConfiguredConfiguration, type ConfigurationScope } from '../configuration'
 import { createVolumeQueueHandlers, DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore } from '../storage'
 import { createFleetQueueHandlers, FleetService, FleetStore, SshFleetDriver } from '../fleet'
+import { PlacementService, PlacementStore } from '../placement'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -444,6 +445,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'DELETE /api/volumes',
   'POST /api/fleet',
   'POST /api/fleet/action',
+  'POST /api/capacity',
+  'POST /api/capacity/member',
+  'POST /api/capacity/action',
+  'POST /api/capacity/explain',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -782,6 +787,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/data/backups': 'backups:read',
   '/data/volumes': 'data:read',
   '/server/fleet': 'fleet:read',
+  '/server/capacity': 'fleet:read',
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
@@ -1073,6 +1079,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const volumeService = new VolumeService(volumeStore, volumeDrivers, operationQueue)
   const fleetStore = new FleetStore(controlPlane.store)
   const fleetService = new FleetService(fleetStore, [new SshFleetDriver('aws'), new SshFleetDriver('hetzner'), new SshFleetDriver('ssh')], operationQueue)
+  const placementStore = new PlacementStore(controlPlane.store)
+  const placementService = new PlacementService(placementStore, fleetStore)
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -3677,6 +3685,14 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if(url.pathname==='/api/fleet'&&req.method==='GET')return json({ok:true,servers:fleetStore.list(controlPlane.project.id),resources:controlPlane.store.listResources(controlPlane.project.id),operations:operationQueue.list({projectId:controlPlane.project.id,limit:200}).filter(item=>item.operation.kind.startsWith('fleet.'))},200,{'cache-control':'no-store'})
           if(url.pathname==='/api/fleet'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,server:fleetService.enroll({organizationId:controlPlane.organization.id,projectId:controlPlane.project.id,name:String(body.name??''),provider:['aws','hetzner'].includes(String(body.provider))?body.provider:'ssh',providerId:body.providerId?String(body.providerId):undefined,region:body.region?String(body.region):undefined,zone:body.zone?String(body.zone):undefined,endpoint:String(body.endpoint??''),sshUser:String(body.sshUser??'deploy'),sshPort:body.sshPort?Number(body.sshPort):22,credentialRef:String(body.credentialRef??''),roles:Array.isArray(body.roles)?body.roles:[],labels:body.labels&&typeof body.labels==='object'?body.labels:{}})},201)}catch(error){return fail(error,422)}}
           if(url.pathname==='/api/fleet/action'&&req.method==='POST'){const body=await readJsonBody(req),id=String(body.id??''),action=String(body.action??'');try{if(action==='test')return json({ok:true,server:await fleetService.test(id)});if(action==='validate')return json({ok:true,server:await fleetService.validate(id)});if(action==='review_host_key')return json({ok:true,server:fleetService.reviewHostKey(id,String(body.fingerprint??''))});if(action==='bootstrap')return json({ok:true,...fleetService.bootstrap(id,body.confirmed===true)},body.confirmed===true?202:200);if(action==='heartbeat')return json({ok:true,server:fleetService.heartbeat(id,{usage:body.usage&&typeof body.usage==='object'?body.usage:{}})});if(action==='drain')return json({ok:true,server:fleetService.drain(id,body.completed===true)});if(action==='uncordon')return json({ok:true,server:fleetService.uncordon(id)});if(action==='archive')return json({ok:true,server:fleetService.archive(id,String(body.confirmation??''))});return fail('Unsupported fleet action.',422)}catch(error){return fail(error)}}
+        }
+        if(url.pathname.startsWith('/api/capacity')){
+          const capacityFail=(error:unknown,status=409)=>json({ok:false,error:error instanceof Error?error.message:String(error)},status,{'cache-control':'no-store'})
+          if(url.pathname==='/api/capacity'&&req.method==='GET')return json({ok:true,pools:placementStore.listPools(controlPlane.project.id),placements:placementStore.listPlacements(controlPlane.project.id),servers:fleetStore.list(controlPlane.project.id)},200,{'cache-control':'no-store'})
+          if(url.pathname==='/api/capacity'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,pool:placementStore.createPool({organizationId:controlPlane.organization.id,projectId:controlPlane.project.id,name:String(body.name??''),purpose:String(body.purpose??'application') as any,backend:String(body.backend??'server') as any,region:body.region?String(body.region):undefined,architecture:body.architecture?String(body.architecture):undefined,labels:body.labels&&typeof body.labels==='object'?body.labels:{},requiredServerLabels:body.requiredServerLabels&&typeof body.requiredServerLabels==='object'?body.requiredServerLabels:{},toleratedTaints:Array.isArray(body.toleratedTaints)?body.toleratedTaints.map(String):[],capacity:body.capacity&&typeof body.capacity==='object'?body.capacity:{},maxWorkloads:Number(body.maxWorkloads??10),costWeight:Number(body.costWeight??1),spreadKey:body.spreadKey?String(body.spreadKey):undefined,concurrency:Number(body.concurrency??1),ephemeralWorkspaces:true,allowProductionSecrets:false,status:'active'})},201)}catch(error){return capacityFail(error,422)}}
+          if(url.pathname==='/api/capacity/member'&&req.method==='POST'){const body=await readJsonBody(req);try{placementStore.addMember(String(body.poolId??''),String(body.serverId??''));return json({ok:true,pool:placementStore.getPool(String(body.poolId??''))})}catch(error){return capacityFail(error,422)}}
+          if(url.pathname==='/api/capacity/explain'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,decisions:placementService.explain(controlPlane.project.id,{purpose:String(body.purpose??'application') as any,resources:body.resources&&typeof body.resources==='object'?body.resources:{},region:body.region?String(body.region):undefined,architecture:body.architecture?String(body.architecture):undefined,labels:body.labels&&typeof body.labels==='object'?body.labels:{}})})}catch(error){return capacityFail(error,422)}}
+          if(url.pathname==='/api/capacity/action'&&req.method==='POST'){const body=await readJsonBody(req);try{if(body.action==='drain')return json({ok:true,...placementService.drainPool(String(body.poolId??''))});if(body.action==='enable')return json({ok:true,pool:placementStore.updatePool(String(body.poolId??''),{status:'active'})});if(body.action==='disable')return json({ok:true,pool:placementStore.updatePool(String(body.poolId??''),{status:'disabled'})});return capacityFail('Unsupported capacity action.',422)}catch(error){return capacityFail(error,422)}}
         }
 
         if (url.pathname.startsWith('/api/volumes')) {
