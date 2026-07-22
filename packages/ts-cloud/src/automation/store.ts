@@ -155,7 +155,7 @@ export class AutomationIdentityStore {
       .map(mapServiceAccount).filter(account => options.includeDisabled || account.state === 'active')
   }
 
-  disableServiceAccount(id: string): ServiceAccount {
+  disableServiceAccount(id: string, actorId?: string): ServiceAccount {
     const account = this.getServiceAccount(id)
     if (!account)
       throw new Error('Service account was not found')
@@ -167,6 +167,7 @@ export class AutomationIdentityStore {
       if (membership?.status === 'active')
         this.controlPlane.revokeMembership(membership.id)
     })
+    this.controlPlane.appendEvent({ organizationId: account.organizationId, actorId, type: 'api.service_account.disabled', payload: { serviceAccountId: id } })
     return this.getServiceAccount(id)!
   }
 
@@ -232,7 +233,10 @@ export class AutomationIdentityStore {
     if (!actor || actor.disabledAt || !membership || membership.status !== 'active')
       return undefined
     const now = this.now()
+    const shouldAuditUse = !token.lastUsedAt || this.nowFn().getTime() - new Date(token.lastUsedAt).getTime() >= 60 * 60 * 1000
     this.run('UPDATE api_tokens SET last_used_at = ?, last_network_hint = ?, updated_at = ? WHERE id = ?', [now, networkHint?.slice(0, 128) ?? null, now, token.id])
+    if (shouldAuditUse)
+      this.controlPlane.appendEvent({ organizationId: serviceAccount.organizationId, actorId: actor.id, type: 'api.token.used', payload: { serviceAccountId: serviceAccount.id, tokenId: token.id, prefix: token.prefix } })
     return { serviceAccount, token: this.getToken(token.id)!, actor, membership }
   }
 
@@ -240,7 +244,7 @@ export class AutomationIdentityStore {
     const current = this.getToken(tokenId)
     if (!current || current.state !== 'active')
       throw new Error('Active API token was not found')
-    return this.createToken({
+    const rotated = this.createToken({
       serviceAccountId: current.serviceAccountId,
       name: `${current.name} (rotated)`,
       capabilities: current.capabilities,
@@ -249,6 +253,9 @@ export class AutomationIdentityStore {
       createdByActorId,
       rotatedFromTokenId: current.id,
     })
+    const account = this.getServiceAccount(current.serviceAccountId)
+    this.controlPlane.appendEvent({ organizationId: account?.organizationId, actorId: createdByActorId, type: 'api.token.rotated', payload: { serviceAccountId: current.serviceAccountId, previousTokenId: current.id, tokenId: rotated.token.id } })
+    return rotated
   }
 
   revokeToken(tokenId: string, actorId?: string): ApiToken {

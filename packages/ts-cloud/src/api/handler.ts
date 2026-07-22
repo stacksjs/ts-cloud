@@ -63,7 +63,8 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
     if (url.pathname === '/api/v1/openapi.json' && request.method === 'GET')
       return response(openApiDocument(), 200, requestId, { 'cache-control': 'public, max-age=300' })
     const authorization = request.headers.get('authorization') ?? ''
-    const principal = authorization.startsWith('Bearer ') ? options.identities.verifyToken(authorization.slice(7).trim(), networkHint) : undefined
+    const bearerToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : ''
+    const principal = bearerToken ? options.identities.verifyToken(bearerToken, networkHint) : undefined
     if (!principal)
       return failure('unauthorized', 'A valid bearer token is required.', 401, requestId, undefined, { 'www-authenticate': 'Bearer realm="ts-cloud", error="invalid_token"' })
     const window = windows.get(principal.token.id)
@@ -94,8 +95,52 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       else if (request.method === 'GET' && (url.pathname === '/api/v1/events' || url.pathname === '/api/v1/events/stream')) {
         const events = service.listEvents(principal, url.searchParams.get('projectId') ?? undefined, Number(url.searchParams.get('after')) || undefined)
         if (url.pathname.endsWith('/stream')) {
-          const streamBody = events.map(event => `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('') || ': connected\n\n'
-          return new Response(streamBody, { status: 200, headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-request-id': requestId, ...rateHeaders } })
+          const encoder = new TextEncoder()
+          let after = events.reduce((last, event) => Math.max(last, Number(event.sequence)), Number(url.searchParams.get('after')) || 0)
+          let timer: ReturnType<typeof setInterval> | undefined
+          let closed = false
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const send = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`))
+              if (events.length) events.forEach(send)
+              else controller.enqueue(encoder.encode(': connected\n\n'))
+              timer = setInterval(() => {
+                if (closed)
+                  return
+                const currentPrincipal = options.identities.verifyToken(bearerToken, networkHint)
+                if (!currentPrincipal) {
+                  closed = true
+                  if (timer) clearInterval(timer)
+                  controller.close()
+                  return
+                }
+                try {
+                  const next = service.listEvents(currentPrincipal, url.searchParams.get('projectId') ?? undefined, after)
+                  for (const event of next) {
+                    send(event)
+                    after = Math.max(after, Number(event.sequence))
+                  }
+                  if (!next.length)
+                    controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`))
+                }
+                catch {
+                  closed = true
+                  if (timer) clearInterval(timer)
+                  controller.close()
+                }
+              }, 1_000)
+              request.signal.addEventListener('abort', () => {
+                closed = true
+                if (timer) clearInterval(timer)
+                try { controller.close() } catch { /* already closed */ }
+              }, { once: true })
+            },
+            cancel() {
+              closed = true
+              if (timer) clearInterval(timer)
+            },
+          })
+          return new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'connection': 'keep-alive', 'x-accel-buffering': 'no', 'x-request-id': requestId, ...rateHeaders } })
         }
         body = page(events, url, requestId, ['sequence', 'id'])
       }

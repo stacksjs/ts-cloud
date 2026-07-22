@@ -1232,7 +1232,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         if (url.pathname === '/api/automation' && req.method === 'GET') {
           const accounts = automationIdentities.listServiceAccounts(controlPlane.organization.id, { includeDisabled: true }).map((account) => {
             const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, account.actorId)
-            return { account, membership, tokens: automationIdentities.listTokens(account.id, { includeInactive: true }) }
+            const createdBy = account.createdByActorId ? controlPlane.store.getActor(account.createdByActorId) : undefined
+            const tokens = automationIdentities.listTokens(account.id, { includeInactive: true }).map(token => ({ ...token, createdBy: token.createdByActorId ? controlPlane.store.getActor(token.createdByActorId) : undefined }))
+            return { account, createdBy, membership, tokens }
           })
           return json({ accounts, apiBaseUrl: `${url.origin}/api/v1`, openApiUrl: `${url.origin}/api/v1/openapi.json`, tokenEnvironmentVariable: 'TS_CLOUD_API_TOKEN' })
         }
@@ -1263,10 +1265,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/automation/service-accounts' && req.method === 'PATCH') {
           const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
           const account = automationIdentities.getServiceAccount(String(body.id ?? ''))
           if (!account || account.organizationId !== controlPlane.organization.id)
             return json({ ok: false, error: 'Service account was not found.' }, 404)
-          return json({ ok: true, account: automationIdentities.disableServiceAccount(account.id) })
+          return json({ ok: true, account: automationIdentities.disableServiceAccount(account.id, principal.actor?.id) })
         }
 
         if (url.pathname === '/api/automation/tokens' && req.method === 'POST') {

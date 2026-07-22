@@ -91,6 +91,19 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('authenticates event streams and closes them after token revocation', async () => {
+    const { controlPlane, organization, production, identities, handler } = fixture()
+    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'event-relay', name: 'Event Relay', roleTemplate: 'admin', scope: { type: 'environment', id: production.id } }).serviceAccount
+    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Events', capabilities: ['audit:read'], scope: { type: 'environment', id: production.id } })
+    const response = await handler(new Request('https://cloud.acme.test/api/v1/events/stream', { headers: { authorization: `Bearer ${issued.secret}` } })) as Response
+    expect(response.headers.get('content-type')).toBe('text/event-stream')
+    const reader = response.body!.getReader()
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('connected')
+    identities.revokeToken(issued.token.id)
+    expect((await reader.read()).done).toBe(true)
+    controlPlane.close()
+  }, 3_000)
+
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
     expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream']))
