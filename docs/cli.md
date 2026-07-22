@@ -82,6 +82,22 @@ See [Application onboarding](/features/application-onboarding) for draft JSON, b
 
 See [Compose applications and templates](/features/compose-applications) for supported fields, diagnostics, topology UX, catalogs, and safety boundaries.
 
+## Unified releases
+
+| Command | Description |
+|---|---|
+| `cloud release:artifact <uri> --digest <sha256> --kind <kind>` | Register a verified content-addressed artifact identity. |
+| `cloud release:create <resource> <artifact> ...` | Bind an existing artifact to an immutable target/config/strategy release. |
+| `cloud release:list` / `release:show <id>` / `release:compare <left> <right>` | Inspect provenance, approvals, traffic/health history, and exact changes. |
+| `cloud release:capabilities <kind> [--health] [--replicas <n>]` | Explain strategy availability, capacity, cost, and rollback behavior. |
+| `cloud release:promote <id> <resource> --env <env>` | Reuse the tested artifact in another environment without rebuilding. |
+| `cloud release:approve <id> --actor <actor-id>` | Approve or reject a gated target with an auditable actor/comment. |
+| `cloud release:activate <id>` / `release:health <id>` | Queue provider activation or report an external health result. |
+| `cloud release:rollback <id> [--to <prior-id>]` | Restore an exact preserved release through the durable worker. |
+| `cloud release:pin <id> [--remove]` | Protect or unprotect a release from retention cleanup. |
+
+See [Releases, promotion, and rollback](/features/releases) for immutable identity, strategy support, provider driver contracts, health gates, and safety boundaries.
+
 ## Durable operations
 
 | Command | Description |

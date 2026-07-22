@@ -25,6 +25,8 @@ The queue persists the operation, execution policy, current checkpoint, lease he
 
 Transactional claims prevent two workers from owning the same job. A leased resource lock also prevents deploy, rollback, restore, or another mutation from running concurrently against the same target.
 
+Unified `release.activate` and `release.rollback` jobs use the same lock and checkpoints. They additionally persist traffic percentages and health observations in release history, verify the artifact/config identity before calling the provider driver, and bound automatic rollback to one preserved target attempt.
+
 The persisted default limits are:
 
 | Scope | Default | Meaning |

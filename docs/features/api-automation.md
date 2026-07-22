@@ -58,6 +58,8 @@ curl --fail-with-body \
 
 The same replay-safe contract is available for guided application creation, including detection, normalized plans, resumable secret-free drafts, bounded artifact uploads, and encrypted registry connections. See [Application onboarding](/features/application-onboarding) for the endpoint map and examples.
 
+Release automation uses content-addressed artifact registration, immutable release creation, environment promotion without rebuild, approvals, durable activation/rollback, health reporting, and retention pinning. See [Releases, promotion, and rollback](/features/releases) for the endpoint map and target-scoped authorization rules.
+
 ## Progress and event delivery
 
 Use `GET /api/v1/events/stream?projectId=...&after=...` for authenticated server-sent events. The stream sends event sequence IDs, heartbeats while idle, and rechecks token validity while connected. Reconnect with the last observed sequence in `after`.
