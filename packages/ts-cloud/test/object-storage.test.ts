@@ -8,8 +8,8 @@
  *   - config resolution from explicit values and environment variables
  *   - that a constructed client signs against the correct provider host
  *
- * Crucially, with no endpoint and no path-style the resolver must be byte-for-byte
- * identical to the previous AWS-only behavior so existing callers are unaffected.
+ * Crucially, with no endpoint and no path-style the resolver retains the AWS host
+ * and path while making the default HTTPS transport explicit.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
@@ -19,6 +19,7 @@ import { createObjectStorageClient, providerEndpoint, resolveObjectStorage } fro
 describe('resolveS3Endpoint', () => {
   it('preserves AWS virtual-hosted behavior when no endpoint is given', () => {
     expect(resolveS3Endpoint({ region: 'us-east-1', path: '/file.txt', bucket: 'my-bucket' })).toEqual({
+      protocol: 'https',
       host: 'my-bucket.s3.us-east-1.amazonaws.com',
       path: '/file.txt',
     })
@@ -26,6 +27,7 @@ describe('resolveS3Endpoint', () => {
 
   it('uses the bare regional host when no bucket is scoped (e.g. ListBuckets)', () => {
     expect(resolveS3Endpoint({ region: 'eu-west-1', path: '/' })).toEqual({
+      protocol: 'https',
       host: 's3.eu-west-1.amazonaws.com',
       path: '/',
     })
@@ -33,6 +35,7 @@ describe('resolveS3Endpoint', () => {
 
   it('leaves a bucket-in-path request untouched (path-style already encoded)', () => {
     expect(resolveS3Endpoint({ region: 'us-east-1', path: '/my-bucket?policy=' })).toEqual({
+      protocol: 'https',
       host: 's3.us-east-1.amazonaws.com',
       path: '/my-bucket?policy=',
     })
@@ -46,7 +49,7 @@ describe('resolveS3Endpoint', () => {
         bucket: 'pantry',
         endpoint: 's3.us-west-004.backblazeb2.com',
       }),
-    ).toEqual({ host: 'pantry.s3.us-west-004.backblazeb2.com', path: '/pkg.tgz' })
+    ).toEqual({ protocol: 'https', host: 'pantry.s3.us-west-004.backblazeb2.com', path: '/pkg.tgz' })
   })
 
   it('builds Hetzner virtual-hosted hosts', () => {
@@ -57,7 +60,7 @@ describe('resolveS3Endpoint', () => {
         bucket: 'pantry',
         endpoint: 'fsn1.your-objectstorage.com',
       }),
-    ).toEqual({ host: 'pantry.fsn1.your-objectstorage.com', path: '/pkg.tgz' })
+    ).toEqual({ protocol: 'https', host: 'pantry.fsn1.your-objectstorage.com', path: '/pkg.tgz' })
   })
 
   it('moves the bucket into the path for path-style addressing', () => {
@@ -69,7 +72,7 @@ describe('resolveS3Endpoint', () => {
         endpoint: 'fsn1.your-objectstorage.com',
         forcePathStyle: true,
       }),
-    ).toEqual({ host: 'fsn1.your-objectstorage.com', path: '/pantry/pkg.tgz' })
+    ).toEqual({ protocol: 'https', host: 'fsn1.your-objectstorage.com', path: '/pantry/pkg.tgz' })
   })
 
   it('handles a bucket-root request in path-style mode', () => {
@@ -81,7 +84,7 @@ describe('resolveS3Endpoint', () => {
         endpoint: 's3.us-west-004.backblazeb2.com',
         forcePathStyle: true,
       }),
-    ).toEqual({ host: 's3.us-west-004.backblazeb2.com', path: '/pantry' })
+    ).toEqual({ protocol: 'https', host: 's3.us-west-004.backblazeb2.com', path: '/pantry' })
   })
 })
 

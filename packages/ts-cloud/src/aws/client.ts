@@ -64,8 +64,8 @@ export interface AWSClientConfig {
  *
  * Supports AWS S3 plus S3-compatible providers (Backblaze B2, Hetzner Object
  * Storage) by allowing an endpoint override and path- vs virtual-hosted-style
- * addressing. With no `endpoint` and no `forcePathStyle` the result is byte-for-byte
- * identical to the previous AWS-only behavior, so existing callers are unaffected.
+ * addressing. With no `endpoint` and no `forcePathStyle` the AWS host and path
+ * are preserved while the default HTTPS transport is made explicit.
  *
  * The returned `path` is used for BOTH the request URL and the SigV4 canonical
  * URI, so the signature always matches the wire request.
