@@ -346,6 +346,9 @@ const POLICIES: Record<string, RoutePolicy> = {
   'POST /api/volumes/adopt': { capability: 'data:admin' },
   'POST /api/volumes/discover': { capability: 'data:read' },
   'DELETE /api/volumes': { capability: 'data:admin' },
+  'GET /api/fleet': { capability: 'fleet:read' },
+  'POST /api/fleet': { capability: 'fleet:manage' },
+  'POST /api/fleet/action': { capability: 'fleet:manage' },
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },

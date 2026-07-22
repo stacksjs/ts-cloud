@@ -32,6 +32,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'runtime.services', path: '/server/services', label: 'Runtime services', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'backups.list', path: '/data/backups', label: 'Backups & recovery', group: 'operations', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/server/backups'] },
   { id: 'volumes.list', path: '/data/volumes', label: 'Persistent volumes', group: 'operations', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: [] },
+  { id: 'fleet.list', path: '/server/fleet', label: 'Fleet inventory', group: 'operations', modes: ['server'], adminOnly: false, legacyPaths: [] },
   { id: 'operations.run', path: '/server/actions', label: 'Run operations', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'data.services', path: '/data/services', label: 'Data services', group: 'infrastructure', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/database', '/databases', '/server/database', '/serverless/data'] },
   { id: 'network.firewall', path: '/server/firewall', label: 'Network & firewall', group: 'infrastructure', modes: ['server'], adminOnly: true },
