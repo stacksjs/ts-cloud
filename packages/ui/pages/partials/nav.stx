@@ -70,6 +70,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('deployments:read'))<a class="{{ isActive('deployments') ? 'active' : '' }}" href="{{ envHref('/server/deployments') }}">Deployments</a>@endif
         @if (canView('runtime:logs'))<a class="{{ isActive('logs') ? 'active' : '' }}" href="{{ envHref('/server/logs') }}">Logs</a>@endif
         @if (canView('sources:read'))<a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>@endif
+        @if (canView('applications:read'))<a class="{{ isActive('application-create') ? 'active' : '' }}" href="{{ envHref('/applications/new') }}">Create application</a>@endif
       </section>
       @if (canView('runtime:read') || canView('automation:read') || canView('backups:read') || canView('runtime:restart'))
         <section class="nav-group">
@@ -124,10 +125,11 @@ const isActive = (...keys) => keys.includes(active ?? '')
         <a class="{{ isActive('security-posture') ? 'active' : '' }}" href="{{ envHref('/security') }}">Posture & policy</a>
       </section>
     @endif
-    @if (navMode === 'serverless' && canView('sources:read'))
+    @if (navMode === 'serverless' && (canView('sources:read') || canView('applications:read')))
       <section class="nav-group">
         <h2>Delivery</h2>
-        <a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>
+        @if (canView('applications:read'))<a class="{{ isActive('application-create') ? 'active' : '' }}" href="{{ envHref('/applications/new') }}">Create application</a>@endif
+        @if (canView('sources:read'))<a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>@endif
       </section>
     @endif
     @if (canView('users:read'))
