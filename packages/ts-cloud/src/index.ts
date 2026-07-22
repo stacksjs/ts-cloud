@@ -1,4 +1,5 @@
 export * from './config'
+export * from './control-plane'
 export * from './generators'
 
 // Validation exports - functions
