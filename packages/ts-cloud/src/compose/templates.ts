@@ -1,6 +1,6 @@
-import type { ComposeParseResult, ComposeTemplate } from './types'
+import type { ComposeApplicationManifest, ComposeCatalogResult, ComposeDiagnostic, ComposeParseResult, ComposeTemplate, ComposeTemplateUpgradePlan } from './types'
 import { createHash } from 'node:crypto'
-import { parseCompose } from './parser'
+import { diffCompose, parseCompose } from './parser'
 
 const verified = '2026-07-21T00:00:00.000Z'
 const definitions = [
@@ -15,4 +15,26 @@ export function renderComposeTemplate(id: string, inputs: Record<string, string>
   let source: string = definition.source
   for (const input of definition.inputs) { const value = inputs[input.name] ?? ('default' in input ? input.default : undefined); if (input.required && !value) throw new Error(`Template input ${input.name} is required`); if (value && !/^[A-Za-z0-9._:/@+-]{1,255}$/.test(value)) throw new Error(`Template input ${input.name} contains unsupported characters`); source = source.replaceAll(`{{${input.name}}}`, value ?? '') }
   return parseCompose(source, target)
+}
+
+export function parseComposeCatalog(source: string, target: { projectId: string, environmentId: string }): ComposeCatalogResult {
+  if (Buffer.byteLength(source) > 1024 * 1024) throw new Error('Compose catalog exceeds the 1 MiB limit')
+  let document: Record<string, any>; try { document = JSON.parse(source) as Record<string, any> } catch { throw new Error('Compose catalog must be valid JSON') }
+  if (document.apiVersion !== 'ts-cloud.dev/compose-catalog/v1' || !Array.isArray(document.templates)) throw new Error('Compose catalog must use ts-cloud.dev/compose-catalog/v1 and contain templates')
+  const catalogSource = String(document.source ?? '').trim(); if (!/^https:\/\//.test(catalogSource) && !catalogSource.startsWith('file:')) throw new Error('Compose catalog source must be HTTPS or an explicit file: source')
+  const diagnostics: ComposeDiagnostic[] = []; const templates: ComposeCatalogResult['templates'] = []
+  for (const [index, entryValue] of document.templates.slice(0, 100).entries()) {
+    const entry = entryValue && typeof entryValue === 'object' && !Array.isArray(entryValue) ? entryValue as Record<string, any> : {}; const path = `templates[${index}]`; const manifestSource = String(entry.compose ?? ''); const checksum = createHash('sha256').update(manifestSource).digest('hex')
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(String(entry.id ?? '')) || !/^\d+\.\d+\.\d+$/.test(String(entry.version ?? ''))) { diagnostics.push({ severity: 'error', path, code: 'template.identity', message: 'Template id and semantic version are required.' }); continue }
+    if (String(entry.checksum ?? '') !== checksum) { diagnostics.push({ severity: 'error', path: `${path}.checksum`, code: 'template.checksum', message: 'Template checksum does not match its Compose source.' }); continue }
+    const parsed = parseCompose(manifestSource, { name: String(entry.name ?? entry.id), projectId: target.projectId, environmentId: target.environmentId }); diagnostics.push(...parsed.diagnostics.map(issue => ({ ...issue, path: `${path}.compose.${issue.path}` })))
+    const template: ComposeTemplate = { id: String(entry.id), name: String(entry.name ?? entry.id), description: String(entry.description ?? ''), category: String(entry.category ?? 'custom'), version: String(entry.version), source: catalogSource, sourceVersion: String(entry.sourceVersion ?? entry.version), architecture: String(entry.architecture ?? Object.keys(parsed.manifest.spec.services).join(' + ')), minimumResources: { cpu: Math.max(.1, Number(entry.minimumResources?.cpu) || 1), memoryMb: Math.max(128, Number(entry.minimumResources?.memoryMb) || 512) }, exposedServices: Array.isArray(entry.exposedServices) ? entry.exposedServices.map(String) : [], maintenanceNotes: String(entry.maintenanceNotes ?? ''), lastVerifiedAt: String(entry.lastVerifiedAt ?? ''), inputs: [], checksum, builtin: false }
+    templates.push({ template, parsed })
+  }
+  return { valid: !diagnostics.some(issue => issue.severity === 'error'), source: catalogSource, templates, diagnostics }
+}
+
+export function planComposeTemplateUpgrade(current: ComposeApplicationManifest, previousTemplate: ComposeApplicationManifest, id: string, inputs: Record<string, string>, target: { name: string, projectId: string, environmentId: string }, version: string): ComposeTemplateUpgradePlan {
+  const template = getComposeTemplate(id, version); if (!template) throw new Error(`Compose template ${id}@${version} was not found`); const parsed = renderComposeTemplate(id, inputs, target, version)
+  return { template, parsed, templateChanges: diffCompose(previousTemplate, parsed.manifest), userChanges: diffCompose(previousTemplate, current) }
 }

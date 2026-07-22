@@ -93,3 +93,5 @@ export interface ComposeTemplate {
   checksum: string
   builtin: boolean
 }
+export interface ComposeCatalogResult { valid: boolean, source: string, templates: Array<{ template: ComposeTemplate, parsed: ComposeParseResult }>, diagnostics: ComposeDiagnostic[] }
+export interface ComposeTemplateUpgradePlan { template: ComposeTemplate, parsed: ComposeParseResult, templateChanges: Array<{ path: string, before?: unknown, after?: unknown }>, userChanges: Array<{ path: string, before?: unknown, after?: unknown }> }
