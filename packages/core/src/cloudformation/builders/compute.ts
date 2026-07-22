@@ -67,6 +67,7 @@ export interface ComputeConfig {
     loadBalancer?: {
       type?: 'application'
       customDomain?: { domain?: string, certificateArn?: string }
+      originVerifyHeader?: { name: string, value: string }
     }
   }
   services?: Array<{
@@ -537,18 +538,28 @@ function addFargateResources(
   }, { dependsOn: ['PublicSubnet1', 'PublicSubnet2', 'ALBSecurityGroup'] })
 
   const certificateArn = config.loadBalancer?.customDomain?.certificateArn
+  const originVerifyHeader = config.loadBalancer?.originVerifyHeader
   builder.addResource(`${serviceId}HttpListener`, 'AWS::ElasticLoadBalancingV2::Listener', {
     LoadBalancerArn: Fn.ref(`${serviceId}LoadBalancer`),
     Port: 80,
     Protocol: 'HTTP',
     DefaultActions: certificateArn
       ? [{ Type: 'redirect', RedirectConfig: { Protocol: 'HTTPS', Port: '443', StatusCode: 'HTTP_301' } }]
-      : [{ Type: 'forward', TargetGroupArn: Fn.ref(`${serviceId}TargetGroup`) }],
+      : originVerifyHeader ? [{ Type: 'fixed-response', FixedResponseConfig: { StatusCode: '403', ContentType: 'text/plain', MessageBody: 'Forbidden' } }] : [{ Type: 'forward', TargetGroupArn: Fn.ref(`${serviceId}TargetGroup`) }],
   }, { dependsOn: [`${serviceId}LoadBalancer`, `${serviceId}TargetGroup`] })
   if (certificateArn) {
     builder.addResource(`${serviceId}HttpsListener`, 'AWS::ElasticLoadBalancingV2::Listener', {
-      LoadBalancerArn: Fn.ref(`${serviceId}LoadBalancer`), Port: 443, Protocol: 'HTTPS', Certificates: [{ CertificateArn: certificateArn }], SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06', DefaultActions: [{ Type: 'forward', TargetGroupArn: Fn.ref(`${serviceId}TargetGroup`) }],
+      LoadBalancerArn: Fn.ref(`${serviceId}LoadBalancer`), Port: 443, Protocol: 'HTTPS', Certificates: [{ CertificateArn: certificateArn }], SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06', DefaultActions: originVerifyHeader ? [{ Type: 'fixed-response', FixedResponseConfig: { StatusCode: '403', ContentType: 'text/plain', MessageBody: 'Forbidden' } }] : [{ Type: 'forward', TargetGroupArn: Fn.ref(`${serviceId}TargetGroup`) }],
     }, { dependsOn: [`${serviceId}LoadBalancer`, `${serviceId}TargetGroup`] })
+  }
+  if (originVerifyHeader) {
+    const listener = certificateArn ? `${serviceId}HttpsListener` : `${serviceId}HttpListener`
+    builder.addResource(`${serviceId}OriginVerifyRule`, 'AWS::ElasticLoadBalancingV2::ListenerRule', {
+      ListenerArn: Fn.ref(listener),
+      Priority: 1,
+      Conditions: [{ Field: 'http-header', HttpHeaderConfig: { HttpHeaderName: originVerifyHeader.name, Values: [originVerifyHeader.value] } }],
+      Actions: [{ Type: 'forward', TargetGroupArn: Fn.ref(`${serviceId}TargetGroup`) }],
+    }, { dependsOn: [listener, `${serviceId}TargetGroup`] })
   }
 
   // ECS Service
@@ -573,7 +584,7 @@ function addFargateResources(
       },
     },
   }, {
-    dependsOn: ['ECSCluster', `${serviceId}TaskDefinition`, certificateArn ? `${serviceId}HttpsListener` : `${serviceId}HttpListener`],
+    dependsOn: ['ECSCluster', `${serviceId}TaskDefinition`, originVerifyHeader ? `${serviceId}OriginVerifyRule` : certificateArn ? `${serviceId}HttpsListener` : `${serviceId}HttpListener`],
   })
 
   if (config.service.autoScaling) {

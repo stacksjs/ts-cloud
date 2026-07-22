@@ -12,6 +12,7 @@ export function createExistingStaticFullStackPreset(options: {
   domain: string
   imageUri: string
   certificateArn?: string
+  originVerifySecret?: string
   desiredCount?: number
   database?: boolean
   cache?: boolean
@@ -48,7 +49,7 @@ export function createExistingStaticFullStackPreset(options: {
             }],
           },
           service: { desiredCount: options.desiredCount || 1, healthCheck: { path: '/api/health', interval: 30, timeout: 5 }, autoScaling: { min: options.desiredCount || 1, max: 6, targetCPU: 70 } },
-          loadBalancer: { type: 'application', ...(options.certificateArn ? { customDomain: { domain: options.domain, certificateArn: options.certificateArn } } : {}) },
+          loadBalancer: { type: 'application', ...(options.certificateArn ? { customDomain: { domain: options.domain, certificateArn: options.certificateArn } } : {}), ...(options.originVerifySecret ? { originVerifyHeader: { name: 'X-Origin-Verify', value: options.originVerifySecret } } : {}) },
         },
       },
       ...(database ? { databases: { postgres: { engine: 'postgres', version: '16', instanceClass: 'db.t4g.micro', allocatedStorage: 20, maxAllocatedStorage: 100, multiAZ: false, backupRetentionDays: 7, deletionProtection: true } } } : {}),

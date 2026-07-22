@@ -2441,6 +2441,10 @@ export interface ComputeConfig {
         domain?: string
         certificateArn?: string
       }
+      originVerifyHeader?: {
+        name?: string
+        value?: string
+      }
     }
   }
 
