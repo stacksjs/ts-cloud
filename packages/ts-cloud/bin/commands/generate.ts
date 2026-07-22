@@ -1,4 +1,5 @@
 import type { CLI } from '@stacksjs/clapp'
+import { unsupportedCommand } from './capability-command'
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -124,9 +125,7 @@ export function registerGenerateCommands(app: CLI): void {
   app
     .command('generate:preview', 'Preview what will be generated')
     .action(async () => {
-      cli.header('Template Preview')
-      cli.info('This command will show a preview of generated templates')
-      // TODO: Implement preview logic
+      unsupportedCommand('generate:preview',{message:'The legacy preview renderer has no stable output contract.',nextAction:'Run `cloud generate` into a temporary output directory and inspect the generated templates.'})
     })
 
   app

@@ -3,47 +3,13 @@ import { existsSync } from 'node:fs'
 import * as cli from '../../src/utils/cli'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
 import { ACMClient } from '../../src/aws/acm'
+import { unsupportedCommand } from './capability-command'
 
 export function registerUtilsCommands(app: CLI, version: string): void {
   app
     .command('upgrade', 'Upgrade CLI to latest version')
     .action(async () => {
-      cli.header('Upgrading ts-cloud CLI')
-
-      const spinner = new cli.Spinner('Checking for updates...')
-      spinner.start()
-
-      // TODO: Check npm/GitHub for latest version
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      spinner.stop()
-
-      cli.info('\nCurrent version: 0.1.0')
-      cli.info('Latest version: 0.2.0')
-
-      const confirm = await cli.confirm('\nUpgrade to latest version?', true)
-      if (!confirm) {
-        cli.info('Operation cancelled')
-        return
-      }
-
-      const upgradeSpinner = new cli.Spinner('Upgrading...')
-      upgradeSpinner.start()
-
-      // TODO: Run npm/bun upgrade command
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
-      upgradeSpinner.succeed('Upgrade completed successfully')
-
-      cli.success('\nts-cloud CLI upgraded to v0.2.0!')
-
-      cli.info('\nWhat\'s new in v0.2.0:')
-      cli.info('  - New cost optimization commands')
-      cli.info('  - Improved team collaboration features')
-      cli.info('  - Better error messages')
-      cli.info('  - Performance improvements')
-
-      cli.info('\nTip: Run `cloud --help` to see all available commands')
+      unsupportedCommand('upgrade',{message:`Self-update is disabled for this ${version} build because no signed update-manifest source is configured.`,nextAction:'Install a verified release with your package manager or configure platform maintenance updates.'})
     })
 
   app
