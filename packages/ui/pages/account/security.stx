@@ -1,0 +1,151 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const project = __d?.project ?? { name: 'Project' }
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('../partials/head', { title: 'ts-cloud - Sign-in & security' })
+  <style>
+    .security-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .7fr); gap: 18px; align-items: start; }
+    .security-stack { display: grid; gap: 18px; }
+    .security-summary { display: grid; gap: 10px; }
+    .security-summary .kv { padding: 8px 0; }
+    .session-list { display: grid; gap: 10px; }
+    .session-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 13px; border: 1px solid var(--panel-br); border-radius: 11px; }
+    .session-copy { display: grid; gap: 4px; min-width: 0; }
+    .session-copy strong, .session-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-copy span { color: var(--txt3); font-size: 11px; }
+    .security-form { display: grid; gap: 13px; }
+    .security-form label { display: grid; gap: 6px; color: var(--txt3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+    .security-form input { width: 100%; }
+    .security-status { min-height: 20px; color: var(--txt2); font-size: 12px; }
+    @media (max-width: 900px) { .security-layout { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  @include('../partials/nav', { active: 'account-security', name: project.name, env: 'production' })
+  <main class="wrap" id="main-content">
+    <div class="crumbs"><a href="/">Account</a> <span class="sep">/</span> Sign-in & security</div>
+    <header class="page">
+      <div><h1>Sign-in & security</h1><p>Manage your password and review every browser session with access to this account.</p></div>
+    </header>
+
+    <div class="security-layout">
+      <div class="security-stack">
+        <section class="panel" aria-labelledby="sessions-title">
+          <div class="section-heading"><div><h2 id="sessions-title">Active sessions</h2><p class="note">Last-used times and device details help you spot unfamiliar access.</p></div><button class="btn ghost sm" id="revoke-others" type="button">Sign out other sessions</button></div>
+          <div class="session-list" id="session-list" aria-live="polite"><div class="compact empty"><strong>Loading sessions…</strong></div></div>
+        </section>
+      </div>
+
+      <div class="security-stack">
+        <section class="panel security-summary" aria-labelledby="identity-title">
+          <h2 id="identity-title">Identity</h2>
+          <div class="kv"><span>Username</span><b id="identity-username">—</b></div>
+          <div class="kv"><span>Email</span><b id="identity-email">Not configured</b></div>
+          <div class="kv"><span>Last sign-in</span><b id="identity-login">—</b></div>
+        </section>
+
+        <section class="panel" aria-labelledby="password-title">
+          <h2 id="password-title">Change password</h2>
+          <p class="note">Changing your password rotates this session and immediately signs out every other session.</p>
+          <form class="security-form" id="password-form">
+            <label>Current password<input name="currentPassword" type="password" autocomplete="current-password" required></label>
+            <label>New password<input name="password" type="password" autocomplete="new-password" minlength="12" required></label>
+            <label>Confirm new password<input name="confirmation" type="password" autocomplete="new-password" minlength="12" required></label>
+            <button class="btn" type="submit">Change password</button>
+            <div class="security-status" id="password-status" role="status"></div>
+          </form>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  (() => {
+    const list = document.querySelector('#session-list')
+    const status = document.querySelector('#password-status')
+    let currentSessionId = ''
+
+    const when = value => value ? new Date(value).toLocaleString() : 'Never'
+    const request = async (path, options) => {
+      const response = await fetch(path, options)
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(result.error || 'The request failed.')
+      return result
+    }
+    const renderSessions = sessions => {
+      list.replaceChildren()
+      const active = sessions.filter(session => session.state === 'active')
+      if (!active.length) {
+        list.innerHTML = '<div class="compact empty"><strong>No active sessions</strong></div>'
+        return
+      }
+      for (const session of active) {
+        const row = document.createElement('div')
+        row.className = 'session-row'
+        const copy = document.createElement('div')
+        copy.className = 'session-copy'
+        const title = document.createElement('strong')
+        title.textContent = `${session.userAgent || 'Unknown browser'}${session.id === currentSessionId ? ' · This session' : ''}`
+        const meta = document.createElement('span')
+        meta.textContent = `Last used ${when(session.lastUsedAt)} · Network ${session.networkHint || 'unknown'} · ${session.authMethod}`
+        copy.append(title, meta)
+        const button = document.createElement('button')
+        button.className = 'btn ghost sm'
+        button.type = 'button'
+        button.textContent = session.id === currentSessionId ? 'Sign out' : 'Revoke'
+        button.addEventListener('click', async () => {
+          button.disabled = true
+          const result = await request('/api/auth/sessions', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session.id }) }).catch(error => ({ error }))
+          if (result.error) { button.disabled = false; button.textContent = result.error.message; return }
+          if (result.signedOut) { location.assign('/login'); return }
+          await load()
+        })
+        row.append(copy, button)
+        list.append(row)
+      }
+    }
+    const load = async () => {
+      const data = await request('/api/auth/security')
+      currentSessionId = data.currentSessionId || ''
+      document.querySelector('#identity-username').textContent = data.identity?.username || '—'
+      document.querySelector('#identity-email').textContent = data.identity?.email ? `${data.identity.email}${data.identity.emailVerifiedAt ? ' · Verified' : ' · Unverified'}` : 'Not configured'
+      document.querySelector('#identity-login').textContent = when(data.identity?.lastLoginAt)
+      renderSessions(data.sessions || [])
+    }
+    document.querySelector('#revoke-others').addEventListener('click', async event => {
+      event.currentTarget.disabled = true
+      await request('/api/auth/sessions/revoke-others', { method: 'POST' }).catch(() => undefined)
+      event.currentTarget.disabled = false
+      await load()
+    })
+    document.querySelector('#password-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      if (data.get('password') !== data.get('confirmation')) { status.textContent = 'The new passwords do not match.'; return }
+      status.textContent = 'Changing password…'
+      try {
+        const result = await request('/api/auth/password/change', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ currentPassword: data.get('currentPassword'), password: data.get('password') }) })
+        status.textContent = result.message
+        form.reset()
+        await load()
+      }
+      catch (error) { status.textContent = error.message }
+    })
+    load().catch(error => {
+      list.replaceChildren()
+      const empty = document.createElement('div')
+      empty.className = 'compact empty'
+      const message = document.createElement('strong')
+      message.textContent = error.message
+      empty.append(message)
+      list.append(empty)
+    })
+  })()
+  </script>
+</body>
+</html>

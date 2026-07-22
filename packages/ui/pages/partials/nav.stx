@@ -123,6 +123,10 @@ const isActive = (...keys) => keys.includes(active ?? '')
         <a class="{{ isActive('team') ? 'active' : '' }}" href="{{ envHref('/server/team') }}">People & access</a>
       </section>
     @endif
+    <section class="nav-group">
+      <h2>Account</h2>
+      <a class="{{ isActive('account-security') ? 'active' : '' }}" href="{{ envHref('/account/security') }}">Sign-in & security</a>
+    </section>
   </div>
 
   <form method="post" action="/api/logout" class="signout">

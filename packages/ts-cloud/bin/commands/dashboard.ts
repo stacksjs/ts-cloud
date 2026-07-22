@@ -3,6 +3,7 @@ import type { AuthorizationCapability, AuthorizationEffect, AuthorizationScope, 
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
+import { AuthenticationStore } from '../../src/auth'
 import * as cli from '../../src/utils/cli'
 import { startLocalDashboardServer } from '../../src/deploy/local-dashboard-server'
 
@@ -37,6 +38,15 @@ function commandScope(type?: string, id?: string): AuthorizationScope {
   if (!['project', 'environment', 'resource'].includes(scopeType) || !id)
     throw new Error('Scoped access requires --scope project|environment|resource and --scope-id <id>.')
   return { type: scopeType as 'project' | 'environment' | 'resource', id }
+}
+
+function resolveAuthIdentity(authentication: AuthenticationStore, value: string) {
+  const identity = value.includes('@')
+    ? authentication.getIdentityByEmail(value)
+    : authentication.getIdentityByUsername(value)
+  if (!identity)
+    throw new Error(`Authentication identity '${value}' was not found.`)
+  return identity
 }
 
 export function registerDashboardCommands(app: CLI): void {
@@ -281,6 +291,71 @@ export function registerDashboardCommands(app: CLI): void {
       try {
         const revoked = store.revokeMembership(membership)
         cli.success(`Membership ${revoked.id} revoked; session version is now ${revoked.sessionVersion}.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:identities', 'List local authentication identities without credential material')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = new AuthenticationStore(store)
+        cli.header('Authentication identities')
+        for (const identity of authentication.listIdentities())
+          cli.info(`${identity.username}  ${identity.email ?? 'no-email'}  ${identity.disabledAt ? 'disabled' : 'active'}  ${identity.id}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:reset-link <identity>', 'Create a one-time password reset link for offline recovery')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--base-url <url>', 'Dashboard URL used to print the reset link', { default: 'http://127.0.0.1:7676' })
+    .action((identityValue: string, options?: { path?: string, baseUrl?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = new AuthenticationStore(store)
+        const identity = resolveAuthIdentity(authentication, identityValue)
+        authentication.revokeActionTokens(identity.id, 'password_reset')
+        const created = authentication.createActionToken(identity.id, 'password_reset')
+        cli.success(`Created a one-time reset link for ${identity.username}; it expires ${created.actionToken.expiresAt}.`)
+        cli.info(`${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(created.token)}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:sessions <identity>', 'List active and expired sessions for an identity')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((identityValue: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = new AuthenticationStore(store)
+        const identity = resolveAuthIdentity(authentication, identityValue)
+        cli.header(`${identity.username} sessions`)
+        for (const session of authentication.listSessions(identity.id, { includeInactive: true }))
+          cli.info(`${session.state}  ${session.authMethod}  ${session.userAgent ?? 'unknown-device'}  ${session.lastUsedAt}  ${session.id}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:revoke-sessions <identity>', 'Revoke every dashboard session for an identity')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--confirm <identity>', 'Type the username or email to confirm')
+    .action((identityValue: string, options?: { path?: string, confirm?: string }) => {
+      if (options?.confirm !== identityValue)
+        throw new Error(`Pass --confirm ${identityValue} to revoke these sessions.`)
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = new AuthenticationStore(store)
+        const identity = resolveAuthIdentity(authentication, identityValue)
+        const sessions = authentication.listSessions(identity.id)
+        for (const session of sessions)
+          authentication.revokeSession(identity.id, session.id)
+        cli.success(`Revoked ${sessions.length} session(s) for ${identity.username}.`)
       }
       finally { store.close() }
     })
