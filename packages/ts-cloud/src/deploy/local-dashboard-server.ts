@@ -842,9 +842,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         terminalSessions.delete(ws)
       },
     },
-    async fetch(req, server) {
+    async fetch(req, runtimeServer) {
+      const activeServer = runtimeServer ?? server
       const url = new URL(req.url)
-      const oidcOrigin = resolveOidcDashboardOrigin(host, server.port ?? port)
+      const oidcOrigin = resolveOidcDashboardOrigin(host, activeServer.port ?? port)
       const requestedEnvironment = url.searchParams.get('env')
       const environment = resolveDashboardEnvironment(availableEnvironments, defaultEnvironment, requestedEnvironment)
       let latestData = latestDataByEnvironment.get(environment)
@@ -889,7 +890,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             }, options.oidcFetch)
             const resolved = resolveOidcDashboardIdentity(authentication, controlPlane, cwd, completed.identity)
             authentication.recordLogin(resolved.identity.id)
-            const issued = issueSession(resolved.identity.id, req, server.requestIP(req)?.address ?? 'unknown', 'oidc')
+            const issued = issueSession(resolved.identity.id, req, activeServer.requestIP(req)?.address ?? 'unknown', 'oidc')
             clearUiCache()
             controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: resolved.identity.actorId, type: 'auth.login.succeeded', payload: { method: 'oidc', provider: providerSlug, provisioned: resolved.provisioned } })
             return new Response(null, { status: 302, headers: {
@@ -934,7 +935,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const identity = existingIdentity
               ? authentication.setVerifiedEmail(existingIdentity.id, accepted.invitation.email)
               : authentication.createIdentity({ actorId: actor.id, username: result.user.username, email: accepted.invitation.email, emailVerified: true, passwordHash: result.user.passwordHash })
-            const issued = issueSession(identity.id, req, server.requestIP(req)?.address ?? 'unknown')
+            const issued = issueSession(identity.id, req, activeServer.requestIP(req)?.address ?? 'unknown')
             clearUiCache()
             return json({ ok: true, user: describeUser(result.user), organization: controlPlane.organization, membership: accepted.membership }, 200, {
               'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
@@ -951,7 +952,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         if (url.pathname === '/api/auth/password-reset/request' && req.method === 'POST') {
           const body = await readJsonBody(req)
           const identifier = String(body.identifier ?? '').trim().toLowerCase()
-          const address = server.requestIP(req)?.address ?? 'unknown'
+          const address = activeServer.requestIP(req)?.address ?? 'unknown'
           const gate = recoveryThrottle.check(identifier, address)
           const identity = identifier.includes('@')
             ? authentication.getIdentityByEmail(identifier)
@@ -996,7 +997,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const body = await readJsonBody(req)
           const username = String(body.username ?? '').trim()
           const password = String(body.password ?? '')
-          const address = server.requestIP(req)?.address ?? 'unknown'
+          const address = activeServer.requestIP(req)?.address ?? 'unknown'
 
           const gate = throttle.check(username, address)
           if (!gate.allowed) {
@@ -1048,7 +1049,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const body = await readJsonBody(req)
           const challengeToken = String(body.challengeToken ?? '').trim()
           const code = String(body.code ?? '').trim()
-          const address = server.requestIP(req)?.address ?? 'unknown'
+          const address = activeServer.requestIP(req)?.address ?? 'unknown'
           const challenge = authentication.inspectMfaChallengeToken(challengeToken, 'login')
           const throttleKey = challenge?.identityId ?? 'unknown-mfa'
           const gate = mfaThrottle.check(throttleKey, address)
@@ -1253,7 +1254,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const passwordHash = hashPassword(nextPassword)
           const changed = authentication.updatePassword(identity.id, passwordHash)
           updateUserPassword(cwd, changed.username, passwordHash)
-          const issued = issueSession(changed.id, req, server.requestIP(req)?.address ?? 'unknown')
+          const issued = issueSession(changed.id, req, activeServer.requestIP(req)?.address ?? 'unknown')
           controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: changed.actorId, type: 'auth.password.changed' })
           return json({ ok: true, message: 'Password changed and other sessions were signed out.' }, 200, {
             'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
@@ -1337,7 +1338,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'The web terminal is disabled.' }, 403)
           // The gate above already refused any non-admin, so an upgraded socket
           // always belongs to someone entitled to a root shell.
-          if (server.upgrade(req))
+          if (activeServer.upgrade(req))
             return undefined
           return text('WebSocket upgrade failed', 400)
         }

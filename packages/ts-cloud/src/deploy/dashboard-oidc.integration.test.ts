@@ -4,17 +4,12 @@ import { createSign, generateKeyPairSync } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { hashPassword } from './dashboard-auth'
 import { startLocalDashboardServer } from './local-dashboard-server'
+import { saveUsers } from './dashboard-users'
 
 let root: string | undefined
 let running: Awaited<ReturnType<typeof startLocalDashboardServer>> | undefined
-const priorEnvironment = new Map<string, string | undefined>()
-
-function environment(key: string, value: string): void {
-  if (!priorEnvironment.has(key))
-    priorEnvironment.set(key, process.env[key])
-  process.env[key] = value
-}
 
 afterEach(() => {
   running?.server.stop(true)
@@ -22,13 +17,6 @@ afterEach(() => {
   if (root)
     rmSync(root, { recursive: true, force: true })
   root = undefined
-  for (const [key, value] of priorEnvironment) {
-    if (value === undefined)
-      delete process.env[key]
-    else
-      process.env[key] = value
-  }
-  priorEnvironment.clear()
 })
 
 function json(value: unknown, status = 200): Response {
@@ -42,8 +30,14 @@ function cookie(response: Response): string {
 describe('dashboard OIDC integration', () => {
   it('configures, signs in, provisions, and disables a provider without exposing tokens', async () => {
     root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-oidc-'))
-    environment('TS_CLOUD_UI_USERNAME', 'owner')
-    environment('TS_CLOUD_UI_PASSWORD', 'correct horse battery staple')
+    saveUsers(root, [{
+      username: 'owner',
+      passwordHash: hashPassword('correct horse battery staple'),
+      role: 'admin',
+      sites: {},
+      name: 'Owner',
+      createdAt: new Date().toISOString(),
+    }])
     const issuer = 'http://localhost:9143'
     const keys = generateKeyPairSync('rsa', { modulusLength: 2048 })
     const jwk = keys.publicKey.export({ format: 'jwk' })
@@ -102,7 +96,8 @@ describe('dashboard OIDC integration', () => {
       } as any,
     })
     const base = running.url.replace(/\/$/, '')
-    const login = await fetch(`${base}/api/login`, {
+    const dashboardFetch = (path: string, init?: RequestInit): Response | Promise<Response> => running!.server.fetch(new Request(`${base}${path}`, init))
+    const login = await dashboardFetch('/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: base },
       body: JSON.stringify({ username: 'owner', password: 'correct horse battery staple' }),
@@ -111,7 +106,7 @@ describe('dashboard OIDC integration', () => {
     const ownerCookie = cookie(login)
     expect(ownerCookie).toStartWith('ts_cloud_session=v2.')
 
-    const configured = await fetch(`${base}/api/auth/oidc/providers`, {
+    const configured = await dashboardFetch('/api/auth/oidc/providers', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
       body: JSON.stringify({
@@ -129,33 +124,33 @@ describe('dashboard OIDC integration', () => {
     expect(provider.hasClientSecret).toBe(true)
     expect(JSON.stringify(provider)).not.toContain('dashboard-secret')
 
-    const started = await fetch(`${base}/auth/oidc/workforce/start?return=${encodeURIComponent('/server/sites?env=production')}`, { redirect: 'manual' })
+    const started = await dashboardFetch(`/auth/oidc/workforce/start?return=${encodeURIComponent('/server/sites?env=production')}`)
     expect(started.status).toBe(302)
     const authorization = new URL(started.headers.get('location')!)
     nonce = authorization.searchParams.get('nonce')!
     const state = authorization.searchParams.get('state')!
     expect(authorization.searchParams.get('redirect_uri')).toBe(`${base}/auth/oidc/workforce/callback`)
 
-    const callback = await fetch(`${base}/auth/oidc/workforce/callback?code=signed-code&state=${encodeURIComponent(state)}`, { redirect: 'manual' })
+    const callback = await dashboardFetch(`/auth/oidc/workforce/callback?code=signed-code&state=${encodeURIComponent(state)}`)
     expect(callback.status).toBe(302)
     expect(callback.headers.get('location')).toBe('/server/sites?env=production')
     expect(tokenExchange).toBe(true)
     const oidcCookie = cookie(callback)
-    const me = await fetch(`${base}/api/me`, { headers: { cookie: oidcCookie } })
+    const me = await dashboardFetch('/api/me', { headers: { cookie: oidcCookie } })
     expect(me.status).toBe(200)
     expect(await me.json()).toMatchObject({ user: { username: 'chris', email: 'chris@acme.test' }, membership: { roleTemplate: 'viewer', status: 'active' } })
-    const security = await fetch(`${base}/api/auth/security`, { headers: { cookie: oidcCookie } })
+    const security = await dashboardFetch('/api/auth/security', { headers: { cookie: oidcCookie } })
     const securityBody = await security.json() as any
     expect(securityBody.sessions.find((session: any) => session.id === securityBody.currentSessionId)?.authMethod).toBe('oidc')
 
-    const disabled = await fetch(`${base}/api/auth/oidc/providers`, {
+    const disabled = await dashboardFetch('/api/auth/oidc/providers', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
       body: JSON.stringify({ id: provider.id, enabled: false }),
     })
     expect(disabled.status).toBe(200)
     expect(await disabled.json()).toMatchObject({ provider: { enabled: false, enforceSso: false } })
-    const unavailable = await fetch(`${base}/auth/oidc/workforce/start`, { redirect: 'manual' })
+    const unavailable = await dashboardFetch('/auth/oidc/workforce/start')
     expect(unavailable.headers.get('location')).toBe('/login?sso_error=start')
   }, 20_000)
 })
