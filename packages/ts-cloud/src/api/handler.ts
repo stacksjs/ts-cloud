@@ -8,6 +8,7 @@ import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, w
 import { applyApplicationDraft, detectApplication, planApplication } from '../onboarding'
 import { DurableOperationQueue } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
+import { ComposeApplicationService, listComposeTemplates } from '../compose'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
@@ -56,6 +57,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
   const service = new AutomationApiService(options.controlPlane, options.identities)
   const queue = new DurableOperationQueue(options.controlPlane)
   const previews = new PreviewEnvironmentService(options.controlPlane)
+  const compose = new ComposeApplicationService(options.controlPlane)
   const windows = new Map<string, { start: number, count: number }>()
   const now = options.now ?? (() => new Date())
   const limit = options.rateLimit ?? 120
@@ -100,6 +102,8 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       const operationLogs = /^\/api\/v1\/operations\/([^/]+)\/logs(?:\/(stream))?$/.exec(url.pathname)
       const operationAction = /^\/api\/v1\/operations\/([^/]+)\/(cancel|retry)$/.exec(url.pathname)
       const previewAction = /^\/api\/v1\/previews\/([^/]+)\/(destroy|extend|rebuild)$/.exec(url.pathname)
+      const composeAction = /^\/api\/v1\/compose-applications\/([^/]+)\/(deploy|redeploy|start|stop|scale|delete)$/.exec(url.pathname)
+      const composeServices = /^\/api\/v1\/compose-applications\/([^/]+)\/services$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
       else if (request.method === 'GET' && projectEnvironments)
@@ -116,6 +120,33 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
         const projectId = url.searchParams.get('projectId') ?? undefined
         const values = previews.previews.listInstances({ projectId }).filter((preview) => { try { service.authorize(principal, 'deployments:read', { type: 'resource', id: preview.resourceId }); return true } catch { return false } }).map(preview => ({ ...preview } as Record<string, unknown>))
         body = page(values, url, requestId)
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/compose-templates') body = page(listComposeTemplates().map(value => ({ ...value } as Record<string, unknown>)), url, requestId, ['id', 'version'])
+      else if (request.method === 'GET' && url.pathname === '/api/v1/compose-applications') {
+        const projectId = url.searchParams.get('projectId'); if (!projectId) throw new ApiServiceError('validation_error', 'projectId is required.', 422)
+        service.authorize(principal, 'project:read', { type: 'project', id: projectId })
+        const values = compose.applications.list({ projectId, environmentId: url.searchParams.get('environmentId') ?? undefined }).filter((application) => { try { service.authorize(principal, 'deployments:read', { type: 'resource', id: application.resourceId }); return true } catch { return false } }).map(application => ({ ...application, services: compose.applications.services(application.id) } as Record<string, unknown>))
+        body = page(values, url, requestId)
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/compose-applications/preview') {
+        const input = await readBody(); const projectId = String(input.projectId ?? ''); service.authorize(principal, 'project:read', { type: 'project', id: projectId })
+        body = { result: compose.applications.preview(String(input.source ?? ''), { name: String(input.name ?? ''), slug: typeof input.slug === 'string' ? input.slug : undefined, projectId, environmentId: String(input.environmentId ?? '') }), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/compose-applications') {
+        const input = await readBody(); const projectId = String(input.projectId ?? ''); service.authorize(principal, 'applications:manage', { type: 'environment', id: String(input.environmentId ?? '') })
+        const target = { name: String(input.name ?? ''), slug: typeof input.slug === 'string' ? input.slug : undefined, projectId, environmentId: String(input.environmentId ?? ''), createdByActorId: principal.actor.id }
+        const result = typeof input.templateId === 'string' ? compose.applications.fromTemplate(input.templateId, input.inputs && typeof input.inputs === 'object' && !Array.isArray(input.inputs) ? input.inputs as Record<string, string> : {}, { ...target, version: typeof input.templateVersion === 'string' ? input.templateVersion : undefined }) : compose.applications.import(String(input.source ?? ''), target)
+        body = { application: result.application, diagnostics: result.parsed.diagnostics, requestId }
+      }
+      else if (request.method === 'GET' && composeServices) {
+        const application = compose.applications.get(decodeURIComponent(composeServices[1])); if (!application) throw new ApiServiceError('not_found', 'Compose application was not found.', 404)
+        service.authorize(principal, 'deployments:read', { type: 'resource', id: application.resourceId }); body = { application, services: compose.applications.services(application.id), requestId }
+      }
+      else if (request.method === 'POST' && composeAction) {
+        const application = compose.applications.get(decodeURIComponent(composeAction[1])); if (!application) throw new ApiServiceError('not_found', 'Compose application was not found.', 404)
+        const action = composeAction[2] as 'deploy' | 'redeploy' | 'start' | 'stop' | 'scale' | 'delete'; const input = await readBody()
+        service.authorize(principal, action === 'delete' || action === 'stop' ? 'deployments:cancel' : 'deployments:create', { type: 'resource', id: application.resourceId })
+        body = { operation: service.operation(compose.enqueue(application, action, { actorId: principal.actor.id, service: typeof input.service === 'string' ? input.service : undefined, replicas: Number.isFinite(Number(input.replicas)) ? Number(input.replicas) : undefined, removeVolumes: input.removeVolumes === true, confirmation: typeof input.confirm === 'string' ? input.confirm : undefined })), requestId }
       }
       else if (request.method === 'GET' && url.pathname === '/api/v1/preview-definitions') {
         const projectId = url.searchParams.get('projectId')
@@ -453,7 +484,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
     catch (error) {
       if (error instanceof ApiServiceError)
         return failure(error.code, error.message, error.status, requestId, error.details as ApiErrorEnvelope['error']['details'], rateHeaders)
-      if (url.pathname.startsWith('/api/v1/source/') || url.pathname.startsWith('/api/v1/application') || url.pathname === '/api/v1/registry-connections')
+      if (url.pathname.startsWith('/api/v1/source/') || url.pathname.startsWith('/api/v1/application') || url.pathname.startsWith('/api/v1/compose-') || url.pathname === '/api/v1/registry-connections')
         return failure('validation_error', error instanceof Error ? error.message : 'Integration request could not be completed.', 422, requestId, undefined, rateHeaders)
       return failure('internal_error', 'The API request could not be completed.', 500, requestId, undefined, rateHeaders)
     }

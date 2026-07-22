@@ -1,4 +1,4 @@
-export const API_VERSION = '1.4.0'
+export const API_VERSION = '1.5.0'
 
 export function openApiDocument(): Record<string, unknown> {
   const error = {
@@ -50,6 +50,11 @@ export function openApiDocument(): Record<string, unknown> {
       '/api/v1/previews/{previewId}/extend': { post: { operationId: 'extendPreview', summary: 'Extend preview TTL', responses: { '200': { description: 'Expiry extended.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/previews/{previewId}/rebuild': { post: { operationId: 'rebuildPreview', summary: 'Rebuild the exact recorded commit', responses: { '200': { description: 'Rebuild queued.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/previews/cleanup': { post: { operationId: 'cleanupPreviews', summary: 'Dry-run or queue TTL/keep-count teardown', responses: { '200': { description: 'Cleanup plan or operations.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/compose-templates': { get: { operationId: 'listComposeTemplates', summary: 'List pinned verified application templates', responses: listResponses({ type: 'object' }) } },
+      '/api/v1/compose-applications': { get: { operationId: 'listComposeApplications', summary: 'List authorized multi-service applications', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createComposeApplication', summary: 'Import Compose or materialize a template', responses: { '200': { description: 'Editable normalized application.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/compose-applications/preview': { post: { operationId: 'previewComposeApplication', summary: 'Parse and diagnose Compose without mutation', responses: { '200': { description: 'Normalized preview and actionable diagnostics.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/compose-applications/{applicationId}/services': { get: { operationId: 'listComposeServices', summary: 'Inspect per-service desired and observed state', responses: { '200': { description: 'Service topology and status.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/compose-applications/{applicationId}/{action}': { post: { operationId: 'operateComposeApplication', summary: 'Deploy, redeploy, start, stop, scale, or delete through the durable queue', responses: { '200': { description: 'Scoped operation queued.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/queue/settings': {
         get: { operationId: 'getQueueSettings', summary: 'Get effective concurrency limits', responses: { '200': { description: 'Queue concurrency settings.' }, default: { $ref: '#/components/responses/Error' } } },
         patch: { operationId: 'updateQueueSettings', summary: 'Confirm and audit production concurrency changes', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confirm', 'concurrency'], properties: { confirm: { const: 'update queue limits' }, concurrency: { $ref: '#/components/schemas/QueueConcurrency' } } } } } }, responses: { '200': { description: 'Updated effective limits.' }, default: { $ref: '#/components/responses/Error' } } },

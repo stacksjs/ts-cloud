@@ -1,6 +1,7 @@
 import type { ApplicationArtifactRecord, ApplicationDraftRecord, RegistryConnection } from '../onboarding'
 import type { QueueConcurrencyLimits } from '../queue'
 import type { CreatePreviewDefinitionInput, PreviewDefinition, PreviewInstance } from '../preview'
+import type { ComposeApplicationRecord, ComposeParseResult, ComposeServiceState, ComposeTemplate } from '../compose'
 import type { ApiApplicationCreateRequest, ApiApplicationCreateResponse, ApiApplicationDetectionRequest, ApiApplicationDetectionResponse, ApiApplicationDraftCreateRequest, ApiApplicationDraftUpdateRequest, ApiApplicationPlanRequest, ApiApplicationPlanResponse, ApiDeploymentRequest, ApiOperationLogsResponse, ApiOperationResponse, ApiPage, ApiQueueOperation, ApiQueueSettingsResponse, ApiRegistryConnectionCreateRequest, ApiRegistryConnectionUpdateRequest } from './types'
 
 export interface TsCloudClientOptions {
@@ -45,6 +46,13 @@ export class TsCloudClient {
   listOperations(projectId?: string): Promise<ApiPage<Record<string, unknown>>> {
     return this.request(`/api/v1/operations${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`)
   }
+
+  listComposeTemplates(): Promise<ApiPage<ComposeTemplate>> { return this.request('/api/v1/compose-templates') }
+  listComposeApplications(projectId: string, environmentId?: string): Promise<ApiPage<ComposeApplicationRecord & { services: ComposeServiceState[] }>> { return this.request(`/api/v1/compose-applications?${new URLSearchParams({ projectId, ...(environmentId ? { environmentId } : {}) })}`) }
+  previewCompose(input: { source: string, name: string, slug?: string, projectId: string, environmentId: string }): Promise<{ result: ComposeParseResult, requestId: string }> { return this.request('/api/v1/compose-applications/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }) }
+  createComposeApplication(input: { source?: string, templateId?: string, templateVersion?: string, inputs?: Record<string, string>, name: string, slug?: string, projectId: string, environmentId: string }): Promise<{ application: ComposeApplicationRecord, diagnostics: ComposeParseResult['diagnostics'], requestId: string }> { return this.request('/api/v1/compose-applications', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }) }
+  composeServices(applicationId: string): Promise<{ application: ComposeApplicationRecord, services: ComposeServiceState[], requestId: string }> { return this.request(`/api/v1/compose-applications/${encodeURIComponent(applicationId)}/services`) }
+  composeAction(applicationId: string, action: 'deploy' | 'redeploy' | 'start' | 'stop' | 'scale' | 'delete', input: { service?: string, replicas?: number, removeVolumes?: boolean, confirm?: string } = {}): Promise<ApiOperationResponse> { return this.request(`/api/v1/compose-applications/${encodeURIComponent(applicationId)}/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }) }
 
   createDeployment(input: ApiDeploymentRequest, idempotencyKey: string): Promise<ApiOperationResponse> {
     return this.request('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': idempotencyKey }, body: JSON.stringify(input) })

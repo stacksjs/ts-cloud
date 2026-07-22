@@ -236,9 +236,26 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('previews, imports, inspects, and operates Compose applications at resource scope', async () => {
+    const { controlPlane, project, production, call } = fixture()
+    const source = `services:\n  web:\n    image: acme/web:1.0.0\n    environment:\n      API_TOKEN: \${API_TOKEN}\n  worker:\n    image: acme/worker:1.0.0\n    depends_on: [web]\n`
+    const previewed = await (await call('/api/v1/compose-applications/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }) })).json() as any
+    expect(previewed.result).toMatchObject({ valid: true, manifest: { spec: { dependencyOrder: ['web', 'worker'] } } })
+    const createdResponse = await call('/api/v1/compose-applications', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }) })
+    expect(createdResponse.status).toBe(200)
+    const created = await createdResponse.json() as any
+    expect(created.application).toMatchObject({ status: 'ready', redactedSource: expect.not.stringContaining('literal-secret') })
+    const services = await (await call(`/api/v1/compose-applications/${created.application.id}/services`)).json() as any
+    expect(services.services.map((service: any) => service.serviceName)).toEqual(['web', 'worker'])
+    expect(await (await call(`/api/v1/compose-applications/${created.application.id}/deploy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json()).toMatchObject({ operation: { kind: 'compose.deploy' } })
+    expect((await call(`/api/v1/compose-applications/${created.application.id}/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'wrong' }) })).status).toBe(422)
+    expect(await (await call(`/api/v1/compose-applications/${created.application.id}/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: created.application.slug }) })).json()).toMatchObject({ operation: { kind: 'compose.delete', input: { removeVolumes: false } } })
+    controlPlane.close()
+  })
+
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/compose-templates', '/api/v1/compose-applications', '/api/v1/compose-applications/preview', '/api/v1/compose-applications/{applicationId}/services', '/api/v1/compose-applications/{applicationId}/{action}', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
     expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
