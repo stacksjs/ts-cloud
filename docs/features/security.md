@@ -1,6 +1,8 @@
 # Security
 
-ts-cloud includes built-in security scanning to protect your deployments from accidental secret exposure.
+ts-cloud includes a persistent security posture center and local security scanning to protect deployments from accidental secret exposure, vulnerable images, host drift, TLS expiry, firewall mistakes, and insufficient cloud permissions.
+
+For policies, waivers, scanner health, release SBOMs, and the dashboard workflow, see [Security posture center](/features/security-posture).
 
 ## Pre-Deployment Security Scanning
 
@@ -109,12 +111,12 @@ cloud deploy:static --source ./dist --bucket my-bucket
 cloud deploy:container --cluster my-cluster --service my-service
 ```
 
-### Bypassing Security Scans
+### Skipping a Security Scan
 
-If you need to skip security scans (not recommended for production):
+The skip flag records an explicit `skipped` scanner result. It does not bypass the environment policy. Production fails closed when `source-secrets` is required, so the deployment remains blocked until the scan succeeds or an authorized, time-limited waiver covers the finding.
 
 ```bash
-# Skip security scan
+# Record a skipped scan and let the policy decide
 cloud deploy --skip-security-scan
 
 # Skip with lower severity threshold

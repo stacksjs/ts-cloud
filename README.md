@@ -166,14 +166,15 @@ Complete CloudFormation template builders for:
 - **Monitoring** - CloudWatch dashboards, alarms, and log groups
 - **Security** - ACM certificates, WAF rules, security groups
 
-### 🔒 Pre-Deployment Security Scanning
+### 🔒 Security Posture and Deployment Gates
 
-Built-in secret detection to prevent accidental credential exposure:
+Persistent security findings and policy gates prevent unsafe releases:
 
 - **35+ Secret Patterns** - AWS keys, API tokens, private keys, database credentials
-- **Automatic Scanning** - Runs before every deployment
-- **Configurable Severity** - Block on critical, high, medium, or low findings
-- **CI/CD Ready** - Integrate security checks into your pipeline
+- **Container Supply Chain** - Local Trivy scanning, CycloneDX SBOMs, vulnerability summaries, and SLSA provenance
+- **Environment Policies** - Block, warn, or record by severity and scanner health
+- **Auditable Remediation** - Assignment, comments, expiring waivers, recurrence, and decision history
+- **Posture Center** - Responsive dashboard for findings, scanner health, policy editing, review, and export
 
 ```bash
 # Scan for secrets before deploying
@@ -182,6 +183,8 @@ cloud deploy:security-scan --source ./dist
 # Deploy with automatic security scanning
 cloud deploy  # Scans automatically before deployment
 ```
+
+See the [security posture center documentation](./docs/features/security-posture.md) for policy, scanner, waiver, and release-artifact behavior.
 
 ### ☁️ Direct Provider Integration
 
