@@ -359,4 +359,23 @@ export function registerDashboardCommands(app: CLI): void {
       }
       finally { store.close() }
     })
+
+  app
+    .command('auth:disable-mfa <identity>', 'Disable MFA through the offline administrative recovery path')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--confirm <identity>', 'Type the username or email to confirm')
+    .action((identityValue: string, options?: { path?: string, confirm?: string }) => {
+      if (options?.confirm !== identityValue)
+        throw new Error(`Pass --confirm ${identityValue} to disable MFA.`)
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = new AuthenticationStore(store)
+        const identity = resolveAuthIdentity(authentication, identityValue)
+        authentication.disableMfa(identity.id)
+        for (const session of authentication.listSessions(identity.id))
+          authentication.revokeSession(identity.id, session.id)
+        cli.success(`Disabled MFA and revoked active sessions for ${identity.username}.`)
+      }
+      finally { store.close() }
+    })
 }

@@ -61,6 +61,7 @@ const STYLES = `
     font-size: 13px; line-height: 1.45;
   }
   .msg.shown { display: block; }
+  .hidden { display: none !important; }
   .note { color: var(--txt3); font-size: 12px; margin-top: 20px; line-height: 1.5; }
   .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--txt2); }
   a { color: var(--accent); text-decoration: none; }
@@ -95,6 +96,10 @@ export function renderLoginPage(serverless = false): string {
         <label for="username">Username</label>
         <input id="username" name="username" autocomplete="username" required autofocus>
       </div>
+      <div class="hidden field" id="mfa-field">
+        <label for="mfa-code">Authenticator or recovery code</label>
+        <input id="mfa-code" name="mfa-code" autocomplete="one-time-code">
+      </div>
       <div class="field">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required>
@@ -110,6 +115,9 @@ export function renderLoginPage(serverless = false): string {
   const form = document.getElementById('login')
   const msg = document.getElementById('msg')
   const submit = document.getElementById('submit')
+  const mfaField = document.getElementById('mfa-field')
+  const mfaCode = document.getElementById('mfa-code')
+  let challengeToken = ''
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()
@@ -117,24 +125,40 @@ export function renderLoginPage(serverless = false): string {
     submit.disabled = true
     submit.textContent = 'Signing in...'
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(challengeToken ? '/api/auth/mfa/complete' : '/api/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          username: document.getElementById('username').value,
-          password: document.getElementById('password').value,
-        }),
+        body: JSON.stringify(challengeToken
+          ? { challengeToken, code: mfaCode.value }
+          : { username: document.getElementById('username').value, password: document.getElementById('password').value }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || !body.ok) throw new Error(body.error || 'Could not sign in.')
+      if (body.mfaRequired) {
+        challengeToken = body.challengeToken
+        mfaField.classList.remove('hidden')
+        mfaCode.required = true
+        document.getElementById('username').readOnly = true
+        document.getElementById('password').readOnly = true
+        submit.disabled = false
+        submit.textContent = 'Verify and sign in'
+        mfaCode.focus()
+        return
+      }
       location.href = ${JSON.stringify(home)}
     } catch (error) {
       msg.textContent = (error && error.message) || String(error)
       msg.classList.add('shown')
       submit.disabled = false
       submit.textContent = 'Sign in'
-      document.getElementById('password').value = ''
-      document.getElementById('password').focus()
+      if (challengeToken) {
+        mfaCode.value = ''
+        mfaCode.focus()
+      }
+      else {
+        document.getElementById('password').value = ''
+        document.getElementById('password').focus()
+      }
     }
   })
 </script>

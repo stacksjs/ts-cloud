@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, sendAuthenticationEmail } from '../auth'
+import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
@@ -249,6 +249,17 @@ export function isTrustedMutationRequest(req: Request): boolean {
 
 const ORGANIZATION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'])
 const AUTHORIZATION_SCOPES: ReadonlySet<string> = new Set(['organization', 'project', 'environment', 'resource'])
+const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
+  'POST /api/organization/invitations',
+  'DELETE /api/organization/invitations',
+  'POST /api/organization/invitations/resend',
+  'PATCH /api/organization/memberships',
+  'DELETE /api/organization/memberships',
+  'POST /api/organization/grants',
+  'DELETE /api/organization/grants',
+  'POST /api/serverless/secrets',
+  'DELETE /api/serverless/secrets',
+])
 
 function organizationRole(value: unknown): OrganizationRoleTemplate | undefined {
   const role = String(value ?? '')
@@ -724,7 +735,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   const secret = resolveSessionSecret(cwd)
   const bootstrap = authEnabled ? ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin') : undefined
-  const authentication = new AuthenticationStore(controlPlane.store)
+  const authentication = new AuthenticationStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   if (bootstrap) {
     synchronizeDashboardUsers(controlPlane, bootstrap.users)
     synchronizeDashboardIdentities(authentication, controlPlane, bootstrap.users)
@@ -747,10 +758,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   // cannot grow without bound; unref'd so it never holds the process open.
   const throttle = new LoginThrottle()
   const recoveryThrottle = new LoginThrottle(3, 15 * 60 * 1000, 15 * 60 * 1000)
+  const mfaThrottle = new LoginThrottle(8, 15 * 60 * 1000, 15 * 60 * 1000)
   const throttleSweep = setInterval(() => throttle.prune(), 5 * 60 * 1000)
   const recoveryThrottleSweep = setInterval(() => recoveryThrottle.prune(), 5 * 60 * 1000)
+  const mfaThrottleSweep = setInterval(() => mfaThrottle.prune(), 5 * 60 * 1000)
   throttleSweep.unref?.()
   recoveryThrottleSweep.unref?.()
+  mfaThrottleSweep.unref?.()
 
   if (authEnabled) {
     if (bootstrap?.generated) {
@@ -941,11 +955,48 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             updateUserPassword(cwd, currentIdentity.username, passwordHash)
           }
           authentication.recordLogin(currentIdentity.id)
+          if (authentication.getMfaFactor(currentIdentity.id)?.state === 'active') {
+            const challenge = authentication.createMfaChallenge(currentIdentity.id, 'login')
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: currentIdentity.actorId, type: 'auth.mfa.challenge.created', payload: { purpose: 'login' } })
+            return json({ ok: true, mfaRequired: true, challengeToken: challenge.token, passwordUpgraded })
+          }
           const issued = issueSession(currentIdentity.id, req, address)
           controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: currentIdentity.actorId, type: 'auth.login.succeeded', payload: { method: 'local' } })
           return json({ ok: true, user: describeUser(user!), passwordUpgraded }, 200, {
             'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
           })
+        }
+
+        if (url.pathname === '/api/auth/mfa/complete' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const challengeToken = String(body.challengeToken ?? '').trim()
+          const code = String(body.code ?? '').trim()
+          const address = server.requestIP(req)?.address ?? 'unknown'
+          const challenge = authentication.inspectMfaChallengeToken(challengeToken, 'login')
+          const throttleKey = challenge?.identityId ?? 'unknown-mfa'
+          const gate = mfaThrottle.check(throttleKey, address)
+          if (!gate.allowed)
+            return json({ ok: false, error: 'Too many MFA attempts. Try again later.' }, 429, { 'retry-after': String(gate.retryAfterSeconds ?? 60) })
+          try {
+            const completed = authentication.completeMfaChallenge(challengeToken, code, 'login')
+            mfaThrottle.recordSuccess(throttleKey, address)
+            const now = new Date().toISOString()
+            const issued = authentication.createSession({
+              identityId: completed.identity.id,
+              userAgent: userAgentLabel(req),
+              networkHint: networkHint(address),
+              mfaAt: now,
+              recentAuthAt: now,
+            })
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: completed.identity.actorId, type: 'auth.mfa.succeeded', payload: { purpose: 'login', method: completed.method } })
+            return json({ ok: true }, 200, {
+              'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
+            })
+          }
+          catch {
+            mfaThrottle.recordFailure(throttleKey, address)
+            return json({ ok: false, error: 'Authenticator or recovery code is incorrect.' }, 401)
+          }
         }
 
         if (url.pathname === '/api/logout' && req.method === 'POST') {
@@ -1006,6 +1057,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const decision = guard.check(req, url.pathname, user, site)
           if (!decision.ok)
             return json({ ok: false, error: decision.error }, decision.status ?? 403)
+          if (RECENT_AUTH_MUTATIONS.has(`${req.method.toUpperCase()} ${url.pathname}`)) {
+            const session = guard.resolveSession(req)
+            if (!session || !authentication.isRecentlyAuthenticated(session))
+              return json({ ok: false, error: 'Recent authentication is required for this change.', stepUpRequired: true }, 401)
+          }
         }
 
         if (url.pathname === '/api/auth/security' && req.method === 'GET') {
@@ -1022,6 +1078,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             } : undefined,
             currentSessionId: session?.id,
             sessions: identity ? authentication.listSessions(identity.id, { includeInactive: true }) : [],
+            mfa: identity ? {
+              factor: authentication.getMfaFactor(identity.id),
+              recoveryCodesRemaining: authentication.remainingRecoveryCodes(identity.id),
+            } : undefined,
           })
         }
 
@@ -1068,6 +1128,78 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: true, message: 'Password changed and other sessions were signed out.' }, 200, {
             'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
           })
+        }
+
+        if (url.pathname === '/api/auth/mfa/enroll' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const current = guard.resolveSession(req)
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          if (!current || !identity)
+            return json({ ok: false, error: 'Sign in again before enabling MFA.' }, 401)
+          if (!verifyPassword(String(body.password ?? ''), identity.passwordHash))
+            return json({ ok: false, error: 'Current password is incorrect.' }, 401)
+          try {
+            const enrollment = authentication.beginTotpEnrollment(identity.id, { issuer: controlPlane.organization.name })
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.mfa.enrollment.started' })
+            return json({ factor: enrollment.factor, secret: enrollment.secret, uri: enrollment.uri })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'MFA enrollment failed.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/auth/mfa/verify' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const current = guard.resolveSession(req)
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          if (!current || !identity)
+            return json({ ok: false, error: 'Sign in again before enabling MFA.' }, 401)
+          try {
+            const verified = authentication.verifyTotpEnrollment(identity.id, String(body.code ?? ''))
+            authentication.markSessionStepUp(current.id, true)
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.mfa.enabled', payload: { recoveryCodeCount: verified.recoveryCodes.length } })
+            return json(verified)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'MFA enrollment failed.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/auth/mfa' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const current = guard.resolveSession(req)
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          if (!current || !identity || !verifyPassword(String(body.password ?? ''), identity.passwordHash))
+            return json({ ok: false, error: 'Current password is incorrect.' }, 401)
+          const verification = authentication.verifyMfaCode(identity.id, String(body.code ?? ''))
+          if (!verification.valid || !verification.method)
+            return json({ ok: false, error: 'Authenticator or recovery code is incorrect.' }, 401)
+          authentication.disableMfa(identity.id)
+          authentication.revokeOtherSessions(identity.id, current.id)
+          authentication.markSessionStepUp(current.id)
+          controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.mfa.disabled', payload: { method: verification.method } })
+          return json({ ok: true })
+        }
+
+        if (url.pathname === '/api/auth/step-up' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const current = guard.resolveSession(req)
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          if (!current || !identity || !verifyPassword(String(body.password ?? ''), identity.passwordHash))
+            return json({ ok: false, error: 'Current password is incorrect.' }, 401)
+          const factor = authentication.getMfaFactor(identity.id)
+          if (factor?.state === 'active') {
+            const verification = authentication.verifyMfaCode(identity.id, String(body.code ?? ''))
+            if (!verification.valid)
+              return json({ ok: false, error: 'Authenticator or recovery code is incorrect.' }, 401)
+          }
+          const session = authentication.markSessionStepUp(current.id, factor?.state === 'active')
+          controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.step_up.succeeded', payload: { mfa: factor?.state === 'active' } })
+          return json({ ok: true, recentAuthAt: session.recentAuthAt })
         }
 
         if (url.pathname === '/api/terminal') {
@@ -1940,6 +2072,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   server.stop = ((closeActiveConnections?: boolean) => {
     clearInterval(throttleSweep)
     clearInterval(recoveryThrottleSweep)
+    clearInterval(mfaThrottleSweep)
     clearUiCache()
     const result = stop(closeActiveConnections)
     controlPlane.store.close()

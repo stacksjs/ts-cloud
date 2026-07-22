@@ -21,6 +21,10 @@ const project = __d?.project ?? { name: 'Project' }
     .security-form label { display: grid; gap: 6px; color: var(--txt3); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
     .security-form input { width: 100%; }
     .security-status { min-height: 20px; color: var(--txt2); font-size: 12px; }
+    .mfa-secret { display: block; margin: 9px 0; padding: 10px; overflow-wrap: anywhere; border: 1px solid var(--panel-br); border-radius: 9px; background: rgba(255,255,255,.025); color: var(--accent); font: 700 12px var(--mono); }
+    .recovery-codes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .recovery-codes code { padding: 7px; border: 1px solid var(--panel-br); border-radius: 7px; text-align: center; }
+    .hidden { display: none !important; }
     @media (max-width: 900px) { .security-layout { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -46,6 +50,39 @@ const project = __d?.project ?? { name: 'Project' }
           <div class="kv"><span>Username</span><b id="identity-username">—</b></div>
           <div class="kv"><span>Email</span><b id="identity-email">Not configured</b></div>
           <div class="kv"><span>Last sign-in</span><b id="identity-login">—</b></div>
+          <div class="kv"><span>Multi-factor authentication</span><b id="identity-mfa">Loading…</b></div>
+          <details>
+            <summary>Confirm identity for sensitive changes</summary>
+            <form class="security-form" id="step-up-form">
+              <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+              <label>Authenticator or recovery code (when enabled)<input name="code" autocomplete="one-time-code"></label>
+              <button class="btn ghost" type="submit">Confirm identity</button>
+              <div class="security-status" id="step-up-status" role="status"></div>
+            </form>
+          </details>
+        </section>
+
+        <section class="panel" aria-labelledby="mfa-title">
+          <h2 id="mfa-title">Authenticator app</h2>
+          <p class="note" id="mfa-copy">Add a time-based code as a second sign-in factor.</p>
+          <form class="security-form" id="mfa-enroll-form">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+            <button class="btn" type="submit">Set up authenticator</button>
+          </form>
+          <form class="hidden security-form" id="mfa-verify-form">
+            <p class="note">Add this secret or setup URI to your authenticator app, then enter its six-digit code.</p>
+            <code class="mfa-secret" id="mfa-secret"></code>
+            <details><summary>Show full setup URI</summary><code class="mfa-secret" id="mfa-uri"></code></details>
+            <label>Six-digit code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required></label>
+            <button class="btn" type="submit">Verify and enable</button>
+          </form>
+          <form class="hidden security-form" id="mfa-disable-form">
+            <label>Current password<input name="password" type="password" autocomplete="current-password" required></label>
+            <label>Authenticator or recovery code<input name="code" autocomplete="one-time-code" required></label>
+            <button class="btn danger" type="submit">Disable MFA</button>
+          </form>
+          <div class="hidden recovery-codes" id="recovery-codes" aria-label="Recovery codes"></div>
+          <div class="security-status" id="mfa-status" role="status"></div>
         </section>
 
         <section class="panel" aria-labelledby="password-title">
@@ -67,6 +104,7 @@ const project = __d?.project ?? { name: 'Project' }
   (() => {
     const list = document.querySelector('#session-list')
     const status = document.querySelector('#password-status')
+    const mfaStatus = document.querySelector('#mfa-status')
     let currentSessionId = ''
 
     const when = value => value ? new Date(value).toLocaleString() : 'Never'
@@ -114,6 +152,10 @@ const project = __d?.project ?? { name: 'Project' }
       document.querySelector('#identity-username').textContent = data.identity?.username || '—'
       document.querySelector('#identity-email').textContent = data.identity?.email ? `${data.identity.email}${data.identity.emailVerifiedAt ? ' · Verified' : ' · Unverified'}` : 'Not configured'
       document.querySelector('#identity-login').textContent = when(data.identity?.lastLoginAt)
+      const mfaActive = data.mfa?.factor?.state === 'active'
+      document.querySelector('#identity-mfa').textContent = mfaActive ? `Enabled · ${data.mfa.recoveryCodesRemaining} recovery codes left` : 'Not enabled'
+      document.querySelector('#mfa-enroll-form').classList.toggle('hidden', mfaActive)
+      document.querySelector('#mfa-disable-form').classList.toggle('hidden', !mfaActive)
       renderSessions(data.sessions || [])
     }
     document.querySelector('#revoke-others').addEventListener('click', async event => {
@@ -135,6 +177,62 @@ const project = __d?.project ?? { name: 'Project' }
         await load()
       }
       catch (error) { status.textContent = error.message }
+    })
+    document.querySelector('#step-up-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      const stepStatus = document.querySelector('#step-up-status')
+      try {
+        await request('/api/auth/step-up', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password'), code: data.get('code') }) })
+        form.reset()
+        stepStatus.textContent = 'Identity confirmed for the next 10 minutes.'
+      }
+      catch (error) { stepStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-enroll-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      mfaStatus.textContent = 'Starting enrollment…'
+      try {
+        const result = await request('/api/auth/mfa/enroll', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password') }) })
+        document.querySelector('#mfa-secret').textContent = result.secret
+        document.querySelector('#mfa-uri').textContent = result.uri
+        form.classList.add('hidden')
+        document.querySelector('#mfa-verify-form').classList.remove('hidden')
+        mfaStatus.textContent = 'Enter the code from your authenticator app.'
+      }
+      catch (error) { mfaStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-verify-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      try {
+        const result = await request('/api/auth/mfa/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: data.get('code') }) })
+        const recovery = document.querySelector('#recovery-codes')
+        recovery.replaceChildren()
+        for (const code of result.recoveryCodes) { const item = document.createElement('code'); item.textContent = code; recovery.append(item) }
+        recovery.classList.remove('hidden')
+        form.classList.add('hidden')
+        mfaStatus.textContent = 'MFA enabled. Save these recovery codes now; they are shown once.'
+        await load()
+      }
+      catch (error) { mfaStatus.textContent = error.message }
+    })
+    document.querySelector('#mfa-disable-form').addEventListener('submit', async event => {
+      event.preventDefault()
+      const form = event.currentTarget
+      const data = new FormData(form)
+      try {
+        await request('/api/auth/mfa', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: data.get('password'), code: data.get('code') }) })
+        form.reset()
+        document.querySelector('#recovery-codes').classList.add('hidden')
+        mfaStatus.textContent = 'MFA disabled and other sessions signed out.'
+        await load()
+      }
+      catch (error) { mfaStatus.textContent = error.message }
     })
     load().catch(error => {
       list.replaceChildren()

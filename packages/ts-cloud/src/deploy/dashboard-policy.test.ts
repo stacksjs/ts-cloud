@@ -86,6 +86,7 @@ describe('policy coverage', () => {
     // Anything reachable without a session is worth noticing in review, so pin
     // the exact set rather than asserting a count.
     expect([...PUBLIC_ROUTES].sort()).toEqual([
+      'POST /api/auth/mfa/complete',
       'POST /api/auth/password-reset/complete',
       'POST /api/auth/password-reset/request',
       'POST /api/invitations/accept',
