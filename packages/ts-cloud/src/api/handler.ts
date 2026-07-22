@@ -1,12 +1,15 @@
 import type { ApiTokenPrincipal, AutomationIdentityStore } from '../automation'
 import type { ControlPlaneStore } from '../control-plane'
+import type { SourceConnectionStore } from '../source'
 import type { ApiDeploymentRequest, ApiErrorEnvelope, ApiPage } from './types'
+import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, webhookEndpoint } from '../source'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
 interface ApiV1HandlerOptions {
   controlPlane: ControlPlaneStore
   identities: AutomationIdentityStore
+  sources?: SourceConnectionStore
   now?: () => Date
   rateLimit?: number
 }
@@ -79,6 +82,12 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
 
     try {
       let body: unknown
+      const readBody = async (): Promise<Record<string, any>> => {
+        const text = await request.text()
+        if (text.length > 1024 * 1024) throw new ApiServiceError('payload_too_large', 'Request body exceeds 1 MB.', 413)
+        try { return JSON.parse(text) as Record<string, any> }
+        catch { throw new ApiServiceError('invalid_json', 'Request body must be valid JSON.', 400) }
+      }
       const projectEnvironments = /^\/api\/v1\/projects\/([^/]+)\/environments$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
@@ -92,6 +101,82 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       }
       else if (request.method === 'GET' && url.pathname === '/api/v1/operations')
         body = page(service.listOperations(principal, url.searchParams.get('projectId') ?? undefined), url, requestId)
+      else if (request.method === 'GET' && url.pathname === '/api/v1/source/connections') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:read', principal.token.scope)
+        body = page(options.sources.listConnections(principal.serviceAccount.organizationId) as unknown as Array<Record<string, unknown>>, url, requestId, ['createdAt', 'id'])
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/source/repositories') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:read', principal.token.scope)
+        const connection = options.sources.getConnection(url.searchParams.get('connectionId') ?? '')
+        if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
+        if (url.searchParams.get('sync') === 'true') {
+          service.authorize(principal, 'sources:manage', { type: 'organization' })
+          await syncSourceRepositories(options.sources, connection.id, { search: url.searchParams.get('search') ?? undefined })
+        }
+        body = page(options.sources.listRepositories(connection.id, url.searchParams.get('search') ?? undefined) as unknown as Array<Record<string, unknown>>, url, requestId, ['fullName', 'id'])
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/source/refs') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:read', principal.token.scope)
+        const connectionId = url.searchParams.get('connectionId') ?? ''
+        const connection = options.sources.getConnection(connectionId)
+        if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
+        body = await listSourceReferences(options.sources, { connectionId, repository: url.searchParams.get('repository') ?? '', repositoryId: url.searchParams.get('repositoryId') ?? undefined, type: url.searchParams.get('type') === 'tags' ? 'tags' : 'branches', cursor: url.searchParams.get('cursor') ?? undefined, deployKeyId: url.searchParams.get('deployKeyId') ?? undefined })
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/source/connections') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:manage', { type: 'organization' })
+        const input = await readBody()
+        const provider = String(input.provider ?? '')
+        if (!['github', 'gitlab', 'bitbucket', 'gitea', 'generic_https', 'generic_ssh'].includes(provider)) throw new ApiServiceError('validation_error', 'A supported provider is required.', 422)
+        const credential = provider === 'github' && (input.privateKey || input.appId)
+          ? { appId: typeof input.appId === 'string' ? input.appId : undefined, installationId: typeof input.installationId === 'string' ? input.installationId : undefined, privateKey: typeof input.privateKey === 'string' ? input.privateKey : undefined }
+          : provider !== 'generic_ssh' && input.token ? { token: String(input.token), username: typeof input.username === 'string' ? input.username : undefined } : undefined
+        let connection!: ReturnType<SourceConnectionStore['createConnection']>
+        let repository: ReturnType<SourceConnectionStore['upsertRepository']> | undefined
+        let deployKey: ReturnType<SourceConnectionStore['createDeployKey']> | undefined
+        options.controlPlane.database.transaction(() => {
+          connection = options.sources!.createConnection({ organizationId: principal.serviceAccount.organizationId, provider: provider as any, name: String(input.name ?? provider), host: String(input.host ?? ''), owner: typeof input.owner === 'string' ? input.owner : undefined, authKind: input.authKind, credential, createdByActorId: principal.actor.id })
+          if (typeof input.repositoryUrl === 'string' && typeof input.repositoryFullName === 'string') repository = options.sources!.upsertRepository({ connectionId: connection.id, providerRepositoryId: `manual:${input.repositoryFullName}`, fullName: input.repositoryFullName, cloneUrl: input.repositoryUrl, defaultBranch: String(input.defaultBranch ?? 'main'), visibility: 'unknown', archived: false, metadata: { source: 'api' } })
+          if (provider === 'generic_ssh') deployKey = options.sources!.createDeployKey({ connectionId: connection.id, name: String(input.deployKeyName ?? 'Repository deploy key'), publicKey: String(input.publicKey ?? ''), privateKey: String(input.deployPrivateKey ?? ''), host: String(input.sshHost ?? ''), hostKey: String(input.hostKey ?? ''), actorId: principal.actor.id })
+        })()
+        return response({ connection, repository, deployKey, requestId }, 201, requestId, rateHeaders)
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/source/bindings') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        const input = await readBody()
+        const projectId = String(input.projectId ?? '')
+        service.authorize(principal, 'sources:manage', { type: 'project', id: projectId })
+        const connection = options.sources.getConnection(String(input.connectionId ?? ''))
+        if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
+        const binding = options.sources.createBinding({ projectId, environmentId: typeof input.environmentId === 'string' ? input.environmentId : undefined, resourceId: typeof input.resourceId === 'string' ? input.resourceId : undefined, connectionId: connection.id, repositoryId: typeof input.repositoryId === 'string' ? input.repositoryId : undefined, repositoryFullName: String(input.repositoryFullName ?? ''), defaultBranch: String(input.defaultBranch ?? 'main'), branchRule: typeof input.branchRule === 'string' ? input.branchRule : undefined, tagRule: typeof input.tagRule === 'string' ? input.tagRule : undefined, monorepoRoot: String(input.monorepoRoot ?? '.'), includePaths: Array.isArray(input.includePaths) ? input.includePaths.map(String) : [], excludePaths: Array.isArray(input.excludePaths) ? input.excludePaths.map(String) : [], submodules: input.submodules === true, cloneDepth: typeof input.cloneDepth === 'number' ? input.cloneDepth : undefined, deployKeyId: typeof input.deployKeyId === 'string' && input.deployKeyId ? input.deployKeyId : undefined, autoDeploy: input.autoDeploy !== false, pullRequestPreviews: input.pullRequestPreviews !== false, actorId: principal.actor.id })
+        return response({ binding, requestId }, 201, requestId, rateHeaders)
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/source/webhooks') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:manage', { type: 'organization' })
+        const input = await readBody()
+        const connection = options.sources.getConnection(String(input.connectionId ?? ''))
+        if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
+        const baseUrl = typeof input.baseUrl === 'string' ? input.baseUrl : undefined
+        if (!baseUrl) throw new ApiServiceError('validation_error', 'baseUrl is required.', 422)
+        const created = options.sources.createWebhook({ connectionId: connection.id, repositoryId: typeof input.repositoryId === 'string' ? input.repositoryId : undefined, repositoryFullName: String(input.repositoryFullName ?? ''), events: Array.isArray(input.events) ? input.events.map(String) : undefined })
+        const endpoint = webhookEndpoint(baseUrl, created.webhook)
+        const webhook = input.reconcile === false ? created.webhook : await reconcileSourceWebhook(options.sources, created.webhook.id, baseUrl)
+        return response({ webhook, endpoint, endpointRevealOnce: true, requestId }, 201, requestId, rateHeaders)
+      }
+      else if (request.method === 'DELETE' && url.pathname === '/api/v1/source/connections') {
+        if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
+        service.authorize(principal, 'sources:manage', { type: 'organization' })
+        const input = await readBody()
+        const connection = options.sources.getConnection(String(input.id ?? ''))
+        if (!connection || connection.organizationId !== principal.serviceAccount.organizationId) throw new ApiServiceError('not_found', 'Source connection was not found.', 404)
+        const affectedBindings = options.sources.listBindings({ connectionId: connection.id, status: 'active' })
+        if (input.preview === true) return response({ preview: true, affectedBindings, requestId }, 200, requestId, rateHeaders)
+        return response({ ...options.sources.disconnectConnection(connection.id, principal.actor.id), requestId }, 200, requestId, rateHeaders)
+      }
       else if (request.method === 'GET' && (url.pathname === '/api/v1/events' || url.pathname === '/api/v1/events/stream')) {
         const events = service.listEvents(principal, url.searchParams.get('projectId') ?? undefined, Number(url.searchParams.get('after')) || undefined)
         if (url.pathname.endsWith('/stream')) {
@@ -167,6 +252,8 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
     catch (error) {
       if (error instanceof ApiServiceError)
         return failure(error.code, error.message, error.status, requestId, error.details as ApiErrorEnvelope['error']['details'], rateHeaders)
+      if (url.pathname.startsWith('/api/v1/source/'))
+        return failure('validation_error', error instanceof Error ? error.message : 'Source request could not be completed.', 422, requestId, undefined, rateHeaders)
       return failure('internal_error', 'The API request could not be completed.', 500, requestId, undefined, rateHeaders)
     }
   }

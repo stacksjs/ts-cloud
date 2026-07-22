@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { AutomationIdentityStore } from '../automation'
 import { ControlPlaneStore } from '../control-plane'
+import { SourceConnectionStore } from '../source'
 import { TsCloudClient } from './client'
 import { createApiV1Handler } from './handler'
 import { openApiDocument } from './openapi'
@@ -14,11 +15,12 @@ function fixture(rateLimit = 120) {
   const productionService = controlPlane.createResource({ projectId: project.id, environmentId: production.id, kind: 'application', slug: 'web', name: 'Web', metadata: { apiKey: 'redact-me', revision: 'abc123' } })
   controlPlane.createResource({ projectId: project.id, environmentId: staging.id, kind: 'application', slug: 'web-staging', name: 'Staging Web' })
   const identities = new AutomationIdentityStore(controlPlane)
+  const sources = new SourceConnectionStore(controlPlane, { encryptionKey: 'api-fixture-key' })
   const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scope: { type: 'environment', id: production.id } }).serviceAccount
   const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create'], scope: { type: 'environment', id: production.id } })
-  const handler = createApiV1Handler({ controlPlane, identities, rateLimit })
+  const handler = createApiV1Handler({ controlPlane, identities, sources, rateLimit })
   const call = (path: string, init: RequestInit = {}, token = issued.secret) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } })) as Promise<Response>
-  return { controlPlane, organization, project, production, staging, productionService, identities, account, issued, handler, call }
+  return { controlPlane, organization, project, production, staging, productionService, identities, sources, account, issued, handler, call }
 }
 
 describe('/api/v1 contract', () => {
@@ -91,6 +93,29 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('manages encrypted source connections through organization-scoped automation', async () => {
+    const { controlPlane, organization, project, production, productionService, identities, handler } = fixture()
+    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'source-automation', name: 'Source Automation', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
+    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Sources', capabilities: ['sources:read', 'sources:manage'], scope: { type: 'organization' } })
+    const call = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
+    const createdResponse = await call('/api/v1/source/connections', { method: 'POST', body: JSON.stringify({ provider: 'generic_https', name: 'Private Git', host: 'https://git.example', authKind: 'access_token', token: 'runtime-source-secret', repositoryFullName: 'acme/web', repositoryUrl: 'https://git.example/acme/web.git' }) })
+    expect(createdResponse.status).toBe(201)
+    const created = await createdResponse.json() as any
+    expect(created.connection).toMatchObject({ provider: 'generic_https', credentialConfigured: true })
+    expect(JSON.stringify(created)).not.toContain('runtime-source-secret')
+    const listed = await (await call('/api/v1/source/connections')).json() as any
+    expect(listed.data).toMatchObject([{ id: created.connection.id, name: 'Private Git' }])
+    const bindingResponse = await call('/api/v1/source/bindings', { method: 'POST', body: JSON.stringify({ projectId: project.id, environmentId: production.id, resourceId: productionService.id, connectionId: created.connection.id, repositoryId: created.repository.id, repositoryFullName: 'acme/web', defaultBranch: 'main' }) })
+    expect(bindingResponse.status).toBe(201)
+    expect(await bindingResponse.json()).toMatchObject({ binding: { status: 'active', resourceId: productionService.id } })
+    const webhookResponse = await call('/api/v1/source/webhooks', { method: 'POST', body: JSON.stringify({ connectionId: created.connection.id, repositoryId: created.repository.id, repositoryFullName: 'acme/web', baseUrl: 'https://deploy.example', reconcile: false }) })
+    expect(webhookResponse.status).toBe(201)
+    expect(await webhookResponse.json()).toMatchObject({ endpointRevealOnce: true, endpoint: expect.stringContaining('/api/source/webhooks/') })
+    const preview = await (await call('/api/v1/source/connections', { method: 'DELETE', body: JSON.stringify({ id: created.connection.id, preview: true }) })).json() as any
+    expect(preview.affectedBindings).toHaveLength(1)
+    controlPlane.close()
+  })
+
   it('authenticates event streams and closes them after token revocation', async () => {
     const { controlPlane, organization, production, identities, handler } = fixture()
     const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'event-relay', name: 'Event Relay', roleTemplate: 'admin', scope: { type: 'environment', id: production.id } }).serviceAccount
@@ -106,7 +131,7 @@ describe('/api/v1 contract', () => {
 
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
   })
