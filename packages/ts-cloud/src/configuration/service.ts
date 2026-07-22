@@ -1,4 +1,5 @@
 import type { JsonValue } from '../control-plane'
+import { sanitizeControlPlaneValue } from '../control-plane'
 import type { ConfigurationBackend, ConfigurationEntry, ConfigurationKind, ConfigurationMutationResult, ConfigurationScope } from './model'
 import type { ConfigurationSecretBackend } from './backends'
 import { createHmac } from 'node:crypto'
@@ -44,6 +45,7 @@ export interface SetConfigurationInput {
   required?: boolean
   metadata?: Record<string, JsonValue>
   expectedVersion?: number
+  confirmed?: boolean
   idempotencyKey?: string
   actorId?: string
   origin?: ConfigurationEntry['origin']
@@ -124,6 +126,9 @@ export class ConfigurationService {
     if (current && input.expectedVersion != null && current.version !== input.expectedVersion) throw new Error('Configuration entry changed; refresh and retry.')
     if (current && current.kind !== input.kind) throw new Error('Delete the existing entry before changing between variable and secret kinds.')
     const backendKind: ConfigurationBackend = input.kind === 'variable' ? 'plaintext' : (input.backend ?? (input.reference ? 'external' : 'local_encrypted'))
+    const replacing = !!current && (current.valueFingerprint !== fingerprint || current.backend !== backendKind || current.required !== !!input.required)
+    if (replacing && (this.isProduction(current!) || this.store.dependencies(current!.id).length > 0) && !input.confirmed)
+      throw new Error('Confirmation is required because this replacement affects production or dependent services.')
     let secretRef = input.reference, backendVersion: string | undefined
     if (input.kind === 'secret') {
       const backend = this.backend(backendKind)
@@ -141,8 +146,8 @@ export class ConfigurationService {
     if (input.kind === 'variable' && value == null) throw new Error('A variable value is required.')
     const changed = !current || current.valueFingerprint !== fingerprint || current.backend !== backendKind || current.secretRef !== secretRef || current.backendVersion !== backendVersion || current.required !== !!input.required
     const entry = current
-      ? changed ? this.store.update(current.id, current.version, { value, valueFingerprint: fingerprint, secretRef, backend: backendKind, backendVersion, required: !!input.required, metadata: input.metadata ?? current.metadata, rotatedAt: input.kind === 'secret' ? this.now().toISOString() : current.rotatedAt }) : current
-      : this.store.create({ organizationId: input.organizationId, projectId: input.projectId, scope: input.scope, key: input.key, kind: input.kind, value, valueFingerprint: fingerprint, secretRef, backend: backendKind, backendVersion, origin: input.origin ?? 'managed', required: !!input.required, metadata: input.metadata ?? {}, rotatedAt: input.kind === 'secret' ? this.now().toISOString() : undefined })
+      ? changed ? this.store.update(current.id, current.version, { value, valueFingerprint: fingerprint, secretRef, backend: backendKind, backendVersion, required: !!input.required, metadata: sanitizeControlPlaneValue(input.metadata ?? current.metadata) as Record<string, JsonValue>, rotatedAt: input.kind === 'secret' ? this.now().toISOString() : current.rotatedAt }) : current
+      : this.store.create({ organizationId: input.organizationId, projectId: input.projectId, scope: input.scope, key: input.key, kind: input.kind, value, valueFingerprint: fingerprint, secretRef, backend: backendKind, backendVersion, origin: input.origin ?? 'managed', required: !!input.required, metadata: sanitizeControlPlaneValue(input.metadata ?? {}) as Record<string, JsonValue>, rotatedAt: input.kind === 'secret' ? this.now().toISOString() : undefined })
     const affectedResourceIds = this.affectedResources(input.projectId, input.scope, [input.key])
     const mutation: ConfigurationMutationResult = { added: current ? [] : [input.key], changed: current && changed ? [input.key] : [], removed: [], unchanged: current && !changed ? [input.key] : [], affectedResourceIds, versions: { [input.key]: entry.version } }
     if (idempotencyKey) this.store.recordMutation({ projectId: input.projectId, idempotencyKey, requestHash, actorId: input.actorId, result: { entryId: entry.id, mutation: mutation as unknown as JsonValue } })
@@ -164,6 +169,18 @@ export class ConfigurationService {
 
   exportVariables(input: { projectId: string; scope: ConfigurationScope }): string {
     return serializeDotenv(Object.fromEntries(this.store.list({ projectId: input.projectId, scope: input.scope, kind: 'variable' }).map(entry => [entry.key, entry.value ?? ''])))
+  }
+
+  async transfer(input: { entryId: string; targetScope: ConfigurationScope; mode: 'copy' | 'move'; confirmed?: boolean; actorId?: string; idempotencyKey?: string }): Promise<{ entry: ConfigurationEntry; mutation: ConfigurationMutationResult }> {
+    const source = this.store.get(input.entryId)
+    if (!source) throw new Error('Configuration entry was not found.')
+    if (source.scope.type === input.targetScope.type && source.scope.id === input.targetScope.id) throw new Error('Choose a different destination scope.')
+    const value = source.kind === 'variable' ? source.value : source.backend === 'external' ? undefined : await this.backend(source.backend).resolve(source.secretRef!)
+    const secretBackend = source.kind === 'secret' ? source.backend as Exclude<ConfigurationBackend, 'plaintext'> : undefined
+    const copied = await this.set({ organizationId: source.organizationId, projectId: source.projectId, scope: input.targetScope, key: source.key, kind: source.kind, value, reference: source.backend === 'external' ? source.secretRef : undefined, backend: secretBackend, required: source.required, metadata: source.metadata, confirmed: input.confirmed, actorId: input.actorId, idempotencyKey: input.idempotencyKey ? `${input.idempotencyKey}:copy` : undefined, origin: source.origin })
+    if (input.mode === 'move') await this.remove({ entryId: source.id, expectedVersion: source.version, confirmed: input.confirmed, actorId: input.actorId })
+    const mutation: ConfigurationMutationResult = { added: copied.mutation.added, changed: copied.mutation.changed, removed: input.mode === 'move' ? [source.key] : [], unchanged: copied.mutation.unchanged, affectedResourceIds: sorted([...copied.mutation.affectedResourceIds, ...this.affectedResources(source.projectId, source.scope, [source.key])]), versions: copied.mutation.versions }
+    return { entry: copied.entry, mutation }
   }
 
   async resolve(input: { projectId: string; environmentId?: string; resourceId?: string; previewId?: string; trustedPreview?: boolean; allowedPreviewSecrets?: string[]; nativeReferences?: boolean; canReadSecretMetadata?: boolean }): Promise<ResolvedConfiguration> {
@@ -220,6 +237,7 @@ export class ConfigurationService {
   private requestHash(input: SetConfigurationInput): string { return this.fingerprint(JSON.stringify({ ...input, idempotencyKey: undefined, actorId: undefined })) }
   private backend(kind: ConfigurationBackend): ConfigurationSecretBackend { const backend = this.backends.get(kind); if (!backend) throw new Error(`Configuration secret backend is not configured: ${kind}`); return backend }
   private backendName(input: SetConfigurationInput): string { return `ts-cloud/${input.projectId}/${input.scope.type}/${input.scope.id}/${input.key}`.replace(/[^A-Za-z0-9/_+=.@-]/g, '-') }
+  private isProduction(entry: ConfigurationEntry): boolean { return entry.scope.type === 'project' || !!entry.scope.environmentId && this.store.controlPlane.listEnvironments(entry.projectId).some(environment => environment.id === entry.scope.environmentId && environment.kind === 'production') }
   private warnings(key: string, value: string): ConfigurationWarning[] { const warnings: ConfigurationWarning[] = []; if (RESERVED.test(key)) warnings.push({ key, code: 'reserved', message: `${key} may be reserved by the runtime or provider.` }); if (Buffer.byteLength(value) > 64 * 1024) warnings.push({ key, code: 'limit', message: `${key} exceeds the portable 64 KiB value limit.` }); return warnings }
   private affectedResources(projectId: string, scope: ConfigurationScope, keys: string[]): string[] {
     const explicit = this.store.list({ projectId, scope }).filter(entry => keys.includes(entry.key)).flatMap(entry => this.store.dependencies(entry.id).map(item => item.resourceId))

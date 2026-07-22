@@ -23,6 +23,8 @@ import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorke
 import { ElastiCacheClient } from '../aws/elasticache'
 import { RDSClient } from '../aws/rds'
 import { AwsBackupClient } from '../aws/backup'
+import { SecretsManagerClient } from '../aws/secrets-manager'
+import { SSMClient } from '../aws/ssm'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
@@ -32,6 +34,7 @@ import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, Notificatio
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
+import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, type ConfigurationScope } from '../configuration'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -349,6 +352,17 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
   return await req.json().catch(() => ({})) as Record<string, any>
 }
 
+function parseConfigurationScope(input: Record<string, any>, defaults: { projectId: string; environmentId?: string }): ConfigurationScope {
+  const type = String(input.scopeType ?? 'environment') as ConfigurationScope['type']
+  if (!['project', 'environment', 'service', 'preview'].includes(type)) throw new Error('Configuration scopeType must be project, environment, service, or preview.')
+  const id = String(input.scopeId ?? (type === 'project' ? defaults.projectId : type === 'environment' ? defaults.environmentId ?? '' : ''))
+  if (!id) throw new Error('Configuration scopeId is required.')
+  if (type === 'project') return { type, id }
+  if (type === 'environment') return { type, id, environmentId: id }
+  if (type === 'service') return { type, id, environmentId: String(input.environmentId ?? defaults.environmentId ?? '') || undefined, resourceId: id }
+  return { type, id, environmentId: String(input.environmentId ?? defaults.environmentId ?? '') || undefined, resourceId: String(input.resourceId ?? '') || undefined, previewId: id }
+}
+
 /** Reject browser cross-site mutations while retaining header-light CLI access. */
 export function isTrustedMutationRequest(req: Request): boolean {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase()))
@@ -413,6 +427,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/backups/restore',
   'POST /api/backups/recovery-points',
   'POST /api/backups/retention',
+  'POST /api/configuration/reveal',
+  'POST /api/configuration/transfer',
+  'POST /api/configuration/bulk',
+  'DELETE /api/configuration',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -655,12 +673,13 @@ async function readProcessOutput(stream: ReadableStream<Uint8Array>, kind: 'stdo
 export async function runDashboardAction(action: DashboardAction, options: Required<Pick<LocalDashboardServerOptions, 'cwd' | 'cliEntry'>> & {
   signal?: AbortSignal
   onOutput?: (kind: 'stdout' | 'stderr', chunk: string) => void
+  env?: Record<string, string>
 }): Promise<Record<string, any>> {
   const proc = Bun.spawn([process.execPath, options.cliEntry, ...action.command], {
     cwd: options.cwd,
     stdout: 'pipe',
     stderr: 'pipe',
-    env: process.env,
+    env: { ...process.env, ...options.env },
   })
 
   const abort = () => {
@@ -763,6 +782,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/operations/observability': 'runtime:logs',
   '/operations/alerts': 'runtime:read',
   '/operations/jobs': 'automation:read',
+  '/operations/configuration': 'config:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -995,8 +1015,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
   const dataServiceStore = new DataServiceStore(controlPlane.store)
   const dataServiceSecrets = new EncryptedDataSecretStore(controlPlane.store, resolveAuthEncryptionKey(cwd))
+  const configurationStore = new ConfigurationStore(controlPlane.store)
   const dataServiceLifecycle = new DataServiceLifecycle(dataServiceStore, operationQueue, dataServiceSecrets)
   const dataServiceRegion = config.project?.region ?? 'us-east-1'
+  const configurationEncryptionKey = resolveAuthEncryptionKey(cwd)
+  const configurationService = new ConfigurationService(configurationStore, {
+    encryptionKey: configurationEncryptionKey,
+    backends: [
+      new LocalEncryptedConfigurationBackend(controlPlane.store, configurationEncryptionKey),
+      new AwsSecretsManagerConfigurationBackend(new SecretsManagerClient(dataServiceRegion), dataServiceRegion),
+      new AwsSsmConfigurationBackend(new SSMClient(dataServiceRegion), dataServiceRegion),
+      new ExternalConfigurationBackend(),
+    ],
+  })
   const rdsClient = new RDSClient(dataServiceRegion)
   const dataAdapters = {
     aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(rdsClient)),
@@ -1121,6 +1152,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const source = operationInput.source && typeof operationInput.source === 'object' ? operationInput.source as Record<string, any> : undefined
           let actionCwd = cwd
           let checkoutRoot: string | undefined
+          let deploymentConfiguration: Awaited<ReturnType<ConfigurationService['resolve']>> | undefined
           let publishStatus: ((_state: 'pending' | 'success' | 'failure' | 'error', _description: string) => Promise<void>) | undefined
           try {
             if (source?.bindingId && source?.connectionId && source?.commitSha) {
@@ -1144,12 +1176,22 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               const cloned = await cloneSourceBinding({ remote, binding, destination: join(checkoutRoot, 'checkout'), ref: String(source.branch ?? binding.defaultBranch), commitSha: String(source.commitSha) }, { credential: sourceConnections.getCredential(connection.id), deployKey })
               actionCwd = cloned.directory
             }
+            if (context.operation.kind !== 'preview.destroy') {
+              const preview = command.target.previewId ? previewService.previews.getInstance(command.target.previewId) : undefined
+              const definition = preview ? previewService.previews.getDefinition(preview.definitionId) : undefined
+              deploymentConfiguration = await configurationService.resolve({ projectId: controlPlane.project.id, environmentId: context.operation.environmentId, resourceId: context.operation.resourceId, previewId: preview?.id, trustedPreview: !!preview && !preview.fork, allowedPreviewSecrets: definition?.inheritedSecrets })
+              if (deploymentConfiguration.warnings.some(warning => warning.code === 'missing_required')) throw new Error(`Required deployment configuration is unavailable: ${deploymentConfiguration.warnings.filter(warning => warning.code === 'missing_required').map(warning => warning.key).join(', ')}`)
+              if (context.operation.resourceId) for (const item of Object.values(deploymentConfiguration.entries)) configurationStore.setDependency({ entryId: item.id, resourceId: context.operation.resourceId, injectionTarget: 'environment', required: item.required, requiresRedeploy: true })
+              context.log(`Resolved configuration ${deploymentConfiguration.configurationHash.slice(0, 18)} for ${Object.keys(deploymentConfiguration.values).length} keys.`, { stream: 'system' })
+            }
             const result = await runDashboardAction(command, {
               cwd: actionCwd,
               cliEntry,
               signal: context.signal,
-              onOutput: (stream, chunk) => context.log(chunk, { stream, step: 'execute', secrets: queueSecrets }),
+              env: deploymentConfiguration?.values,
+              onOutput: (stream, chunk) => context.log(chunk, { stream, step: 'execute', secrets: [...queueSecrets, ...Object.entries(deploymentConfiguration?.entries ?? {}).filter(([, item]) => item.kind === 'secret').map(([key]) => deploymentConfiguration!.values[key]!).filter(Boolean)] }),
             }) as { ok: boolean, exitCode: number, command?: string, stderr?: string }
+            if (result.ok && context.operation.resourceId && deploymentConfiguration) for (const item of Object.values(deploymentConfiguration.entries)) configurationStore.setDependency({ entryId: item.id, resourceId: context.operation.resourceId, injectionTarget: 'environment', required: item.required, requiresRedeploy: false, lastDeployedVersion: item.version })
             await publishStatus?.(result.ok ? 'success' : 'failure', result.ok ? `Preview is ready at ${String(source?.commitSha).slice(0, 12)}` : `Preview deployment failed at ${String(source?.commitSha).slice(0, 12)}`)
             return result
           }
@@ -3521,6 +3563,86 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const body = await readJsonBody(req); const principal = organizationPrincipal(user)
             const removed = telemetry.deleteSavedQuery(controlPlane.project.id, principal.actor?.id, String(body.id ?? ''))
             return json({ ok: removed }, removed ? 200 : 404)
+          }
+        }
+
+        if (url.pathname.startsWith('/api/configuration')) {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const canReadSecretMetadata = user.role === 'admin' || !!scopedUser.capabilities?.includes('secrets:read')
+          const canWriteSecrets = user.role === 'admin' || !!scopedUser.capabilities?.includes('secrets:write')
+          const defaults = { projectId: controlPlane.project.id, environmentId: environmentRecord?.id }
+          const noStore = { 'cache-control': 'no-store' }
+          if (url.pathname === '/api/configuration' && req.method === 'GET') {
+            const query = Object.fromEntries(url.searchParams)
+            const scope = query.scopeType || query.scopeId ? parseConfigurationScope(query, defaults) : undefined
+            const kind = ['variable', 'secret'].includes(String(query.kind)) ? query.kind as 'variable' | 'secret' : undefined
+            return json({ ok: true, entries: configurationService.list({ projectId: controlPlane.project.id, scope, kind, search: query.search, canReadSecretMetadata }), scopes: { project: controlPlane.project, environments: controlPlane.store.listEnvironments(controlPlane.project.id), resources: controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id) } }, 200, noStore)
+          }
+          if (url.pathname === '/api/configuration/export' && req.method === 'GET') {
+            const scope = parseConfigurationScope(Object.fromEntries(url.searchParams), defaults)
+            return new Response(configurationService.exportVariables({ projectId: controlPlane.project.id, scope }), { headers: { ...noStore, 'content-disposition': 'attachment; filename="ts-cloud.env"', 'content-type': 'text/plain; charset=utf-8' } })
+          }
+          if (url.pathname === '/api/configuration/plan' && req.method === 'POST') {
+            const body = await readJsonBody(req), scope = parseConfigurationScope(body, defaults)
+            const values = body.values && typeof body.values === 'object' && !Array.isArray(body.values) ? Object.fromEntries(Object.entries(body.values).map(([key, value]) => [key, String(value)])) : {}
+            return json({ ok: true, plan: configurationService.plan({ projectId: controlPlane.project.id, scope, values, removeMissing: body.removeMissing === true }) }, 200, noStore)
+          }
+          if (url.pathname === '/api/configuration' && req.method === 'POST') {
+            const body = await readJsonBody(req), scope = parseConfigurationScope(body, defaults), kind = body.kind === 'secret' ? 'secret' as const : 'variable' as const, key = String(body.key ?? '')
+            if (kind === 'secret' && !canWriteSecrets) return json({ ok: false, error: 'Secret write permission is required.' }, 403, noStore)
+            try {
+              const result = await configurationService.set({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, scope, key, kind, value: body.value == null ? undefined : String(body.value), reference: body.reference == null ? undefined : String(body.reference), backend: body.backend, required: body.required === true, expectedVersion: body.expectedVersion == null ? undefined : Number(body.expectedVersion), confirmed: String(body.confirm ?? '') === key, idempotencyKey: req.headers.get('idempotency-key') ?? body.idempotencyKey, actorId: organizationPrincipal(user).actor?.id })
+              return json({ ok: true, entry: configurationService.list({ projectId: controlPlane.project.id, scope, canReadSecretMetadata }).find(entry => entry.id === result.entry.id), mutation: result.mutation, warnings: result.warnings }, result.mutation.added.length ? 201 : 200, noStore)
+            }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409, noStore) }
+          }
+          if (url.pathname === '/api/configuration/import' && req.method === 'POST') {
+            const body = await readJsonBody(req), scope = parseConfigurationScope(body, defaults), secretKeys = Array.isArray(body.secretKeys) ? body.secretKeys.map(String) : []
+            if (secretKeys.length && !canWriteSecrets) return json({ ok: false, error: 'Secret write permission is required.' }, 403, noStore)
+            try {
+              const result = await configurationService.importDotenv({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, scope, source: String(body.source ?? ''), secretKeys, backend: body.backend, confirmed: body.confirm === 'import', idempotencyKey: req.headers.get('idempotency-key') ?? body.idempotencyKey, actorId: organizationPrincipal(user).actor?.id })
+              return json({ ok: result.document.valid, diagnostics: result.document.diagnostics, mutation: result.mutation, warnings: result.warnings }, result.document.valid ? 200 : 422, noStore)
+            }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409, noStore) }
+          }
+          if (url.pathname === '/api/configuration/dependencies' && req.method === 'POST') {
+            const body = await readJsonBody(req), entry = configurationStore.get(String(body.entryId ?? '')), resource = controlPlane.store.getResource(String(body.resourceId ?? ''))
+            if (!entry || entry.projectId !== controlPlane.project.id || !resource || resource.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Configuration entry or dependent resource was not found.' }, 404, noStore)
+            return json({ ok: true, dependency: configurationStore.setDependency({ entryId: entry.id, resourceId: resource.id, injectionTarget: ['native_reference', 'file'].includes(String(body.injectionTarget)) ? body.injectionTarget : 'environment', required: body.required !== false, requiresRedeploy: body.requiresRedeploy !== false, lastDeployedVersion: body.lastDeployedVersion == null ? undefined : Number(body.lastDeployedVersion) }) }, 200, noStore)
+          }
+          if (url.pathname === '/api/configuration/transfer' && req.method === 'POST') {
+            const body = await readJsonBody(req), source = configurationStore.get(String(body.id ?? '')), targetScope = parseConfigurationScope({ ...body, scopeType: body.targetScopeType, scopeId: body.targetScopeId }, defaults)
+            if (!source || source.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Configuration entry was not found.' }, 404, noStore)
+            if (source.kind === 'secret' && !canWriteSecrets) return json({ ok: false, error: 'Secret write permission is required.' }, 403, noStore)
+            try {
+              const result = await configurationService.transfer({ entryId: source.id, targetScope, mode: body.mode === 'move' ? 'move' : 'copy', confirmed: body.confirm === source.key, actorId: organizationPrincipal(user).actor?.id, idempotencyKey: req.headers.get('idempotency-key') ?? body.idempotencyKey })
+              return json({ ok: true, entry: configurationService.list({ projectId: controlPlane.project.id, scope: targetScope, canReadSecretMetadata }).find(entry => entry.id === result.entry.id), mutation: result.mutation }, 200, noStore)
+            }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409, noStore) }
+          }
+          if (url.pathname === '/api/configuration/bulk' && req.method === 'POST') {
+            const body = await readJsonBody(req), ids = Array.isArray(body.ids) ? body.ids.map(String).slice(0, 500) : [], selected = ids.map(id => configurationStore.get(id)).filter((entry): entry is NonNullable<typeof entry> => !!entry && entry.projectId === controlPlane.project.id)
+            if (selected.length !== ids.length) return json({ ok: false, error: 'One or more configuration entries were not found.' }, 404, noStore)
+            if (selected.some(entry => entry.kind === 'secret') && !canWriteSecrets) return json({ ok: false, error: 'Secret write permission is required.' }, 403, noStore)
+            if (body.action !== 'delete' || body.confirm !== 'bulk') return json({ ok: false, error: 'Bulk deletion requires action delete and confirm bulk.' }, 409, noStore)
+            const removed = []
+            try {
+              for (const entry of selected) removed.push(await configurationService.remove({ entryId: entry.id, expectedVersion: entry.version, confirmed: true, actorId: organizationPrincipal(user).actor?.id }))
+              return json({ ok: true, removed: removed.flatMap(result => result.removed), affectedResourceIds: [...new Set(removed.flatMap(result => result.affectedResourceIds))].sort() }, 200, noStore)
+            }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error), partial: removed.flatMap(result => result.removed) }, 409, noStore) }
+          }
+          if (url.pathname === '/api/configuration/reveal' && req.method === 'POST') {
+            const body = await readJsonBody(req), session = guard.resolveSession(req)
+            try { return json({ ok: true, value: await configurationService.reveal({ entryId: String(body.id ?? ''), canRevealSecrets: canReadSecretMetadata, recentlyAuthenticated: !authEnabled || !!session && authentication.isRecentlyAuthenticated(session), actorId: organizationPrincipal(user).actor?.id }) }, 200, noStore) }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 403, noStore) }
+          }
+          if (url.pathname === '/api/configuration' && req.method === 'DELETE') {
+            const body = await readJsonBody(req), entry = configurationStore.get(String(body.id ?? ''))
+            if (entry?.kind === 'secret' && !canWriteSecrets) return json({ ok: false, error: 'Secret write permission is required.' }, 403, noStore)
+            if (!entry || entry.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Configuration entry was not found.' }, 404, noStore)
+            try { return json({ ok: true, mutation: await configurationService.remove({ entryId: entry.id, expectedVersion: Number(body.expectedVersion), confirmed: String(body.confirm ?? '') === entry.key, actorId: organizationPrincipal(user).actor?.id }) }, 200, noStore) }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409, noStore) }
           }
         }
 

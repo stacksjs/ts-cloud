@@ -326,6 +326,16 @@ const POLICIES: Record<string, RoutePolicy> = {
   'POST /api/backups/restore': { capability: 'backups:restore' },
   'POST /api/backups/recovery-points': { capability: 'backups:create' },
   'POST /api/backups/retention': { capability: 'backups:create' },
+  'GET /api/configuration': { capability: 'config:read' },
+  'GET /api/configuration/export': { capability: 'config:read' },
+  'POST /api/configuration/plan': { capability: 'config:read' },
+  'POST /api/configuration': { capability: 'config:write' },
+  'POST /api/configuration/import': { capability: 'config:write' },
+  'POST /api/configuration/dependencies': { capability: 'config:write' },
+  'POST /api/configuration/transfer': { capability: 'config:write' },
+  'POST /api/configuration/bulk': { capability: 'config:write' },
+  'POST /api/configuration/reveal': { capability: 'secrets:read' },
+  'DELETE /api/configuration': { capability: 'config:write' },
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },
