@@ -75,8 +75,7 @@ export function releasePaths(base: string, releaseId: string): ReleasePaths {
  */
 function isFileSharedPath(p: string): boolean {
   const name = p.split('/').pop() || p
-  if (name === '.env' || name.startsWith('.env.'))
-    return true
+  if (name === '.env' || name.startsWith('.env.')) return true
   return /\.[a-z0-9]+$/i.test(name)
 }
 
@@ -84,18 +83,18 @@ function isFileSharedPath(p: string): boolean {
  * Ensure the releases/ and shared/ skeleton exist, including the Laravel
  * `storage` tree and an empty shared `.env` so symlinks never dangle.
  */
-export function buildEnsureReleaseLayout(paths: ReleasePaths, sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS): string[] {
-  const lines = [
-    `mkdir -p ${paths.releases} ${paths.shared}`,
-  ]
+export function buildEnsureReleaseLayout(
+  paths: ReleasePaths,
+  sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS,
+): string[] {
+  const lines = [`mkdir -p ${paths.releases} ${paths.shared}`]
 
   for (const p of sharedPaths) {
     if (isFileSharedPath(p)) {
       // Files (e.g. .env, database.sqlite) — create an empty placeholder so the
       // release symlink resolves; real contents are written by the deploy step.
       lines.push(`mkdir -p "$(dirname ${paths.shared}/${p})"`, `touch ${paths.shared}/${p}`)
-    }
-    else if (p === 'storage') {
+    } else if (p === 'storage') {
       // Laravel's storage skeleton, created once in shared/.
       lines.push(
         `mkdir -p ${paths.shared}/storage/app/public`,
@@ -105,8 +104,7 @@ export function buildEnsureReleaseLayout(paths: ReleasePaths, sharedPaths: reado
         `mkdir -p ${paths.shared}/storage/framework/views`,
         `mkdir -p ${paths.shared}/storage/logs`,
       )
-    }
-    else {
+    } else {
       lines.push(`mkdir -p ${paths.shared}/${p}`)
     }
   }
@@ -118,16 +116,15 @@ export function buildEnsureReleaseLayout(paths: ReleasePaths, sharedPaths: reado
  * Symlink every shared path from `shared/` into the freshly checked-out release,
  * replacing whatever the checkout shipped (e.g. the repo's empty `storage`).
  */
-export function buildLinkSharedPaths(paths: ReleasePaths, sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS): string[] {
+export function buildLinkSharedPaths(
+  paths: ReleasePaths,
+  sharedPaths: readonly string[] = DEFAULT_SHARED_PATHS,
+): string[] {
   const lines: string[] = []
   for (const p of sharedPaths) {
     const target = `${paths.shared}/${p}`
     const link = `${paths.release}/${p}`
-    lines.push(
-      `rm -rf ${link}`,
-      `mkdir -p "$(dirname ${link})"`,
-      `ln -sfn ${target} ${link}`,
-    )
+    lines.push(`rm -rf ${link}`, `mkdir -p "$(dirname ${link})"`, `ln -sfn ${target} ${link}`)
   }
   return lines
 }
@@ -137,10 +134,7 @@ export function buildLinkSharedPaths(paths: ReleasePaths, sharedPaths: readonly 
  * `mv -T`s it over `current` so there is no window where `current` is missing.
  */
 export function buildActivateRelease(paths: ReleasePaths): string[] {
-  return [
-    `ln -sfn ${paths.release} ${paths.current}.tmp`,
-    `mv -Tf ${paths.current}.tmp ${paths.current}`,
-  ]
+  return [`ln -sfn ${paths.release} ${paths.current}.tmp`, `mv -Tf ${paths.current}.tmp ${paths.current}`]
 }
 
 /**
@@ -158,7 +152,7 @@ export function buildActivateRelease(paths: ReleasePaths): string[] {
  * on the legacy single unit just get a restart. The caller appends any engine
  * reload (php-fpm/queues) — see {@link import('./laravel-deploy')}.
  */
-export function buildRollbackScript(paths: ReleasePaths, options: { to?: string, unitBase?: string } = {}): string[] {
+export function buildRollbackScript(paths: ReleasePaths, options: { to?: string; unitBase?: string } = {}): string[] {
   const flip = options.to
     ? [
         `[ -d ${paths.releases}/${options.to} ] || { echo "rollback target ${paths.releases}/${options.to} not found" >&2; exit 1; }`,
@@ -168,16 +162,15 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string,
     : [
         `TS_CLOUD_CURRENT=$(readlink -f ${paths.current} 2>/dev/null || true)`,
         // Newest release dir whose real path differs from current = the prior deploy.
-        `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do `
-        + '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
+        `TS_CLOUD_PREV=$(ls -1dt ${paths.releases}/*/ 2>/dev/null | sed 's#/$##' | while read -r r; do ` +
+          '[ "$(readlink -f "$r")" != "$TS_CLOUD_CURRENT" ] && { echo "$r"; break; }; done)',
         '[ -n "$TS_CLOUD_PREV" ] || { echo "no previous release to roll back to" >&2; exit 1; }',
         `ln -sfn "$TS_CLOUD_PREV" ${paths.current}.tmp`,
         `mv -Tf ${paths.current}.tmp ${paths.current}`,
         'echo "rolled back to $TS_CLOUD_PREV"',
       ]
 
-  if (!options.unitBase)
-    return flip
+  if (!options.unitBase) return flip
 
   const unitBase = options.unitBase
   return [
@@ -187,12 +180,12 @@ export function buildRollbackScript(paths: ReleasePaths, options: { to?: string,
     `TS_CLOUD_RB_ID=$(basename "$(readlink -f ${paths.current})")`,
     // Zero-downtime layout: start the rolled-back release's instance alongside
     // the current one (SO_REUSEPORT), then retire everything else.
-    `if [ -f /etc/systemd/system/${unitBase}@.service ]; then `
-    + `systemctl start "${unitBase}@\${TS_CLOUD_RB_ID}.service"; sleep 2; `
-    + `systemctl is-active --quiet "${unitBase}@\${TS_CLOUD_RB_ID}.service" || { echo "rolled-back release failed to start" >&2; exit 1; }; `
-    + `systemctl enable "${unitBase}@\${TS_CLOUD_RB_ID}.service" 2>/dev/null || true; `
-    + `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; `
-    + `elif [ -f /etc/systemd/system/${unitBase}.service ]; then systemctl restart ${unitBase}.service; fi`,
+    `if [ -f /etc/systemd/system/${unitBase}@.service ]; then ` +
+      `systemctl start "${unitBase}@\${TS_CLOUD_RB_ID}.service"; sleep 2; ` +
+      `systemctl is-active --quiet "${unitBase}@\${TS_CLOUD_RB_ID}.service" || { echo "rolled-back release failed to start" >&2; exit 1; }; ` +
+      `systemctl enable "${unitBase}@\${TS_CLOUD_RB_ID}.service" 2>/dev/null || true; ` +
+      `systemctl list-units --plain --no-legend --type=service "${unitBase}@*.service" 2>/dev/null | awk '{print $1}' | { grep -v "^${unitBase}@\${TS_CLOUD_RB_ID}.service\$" || true; } | while read -r TS_CLOUD_U; do systemctl stop "\$TS_CLOUD_U" 2>/dev/null || true; systemctl disable "\$TS_CLOUD_U" 2>/dev/null || true; done; ` +
+      `elif [ -f /etc/systemd/system/${unitBase}.service ]; then systemctl restart ${unitBase}.service; fi`,
   ]
 }
 

@@ -107,7 +107,8 @@ export interface CloudflareProviderConfig {
   apiToken: string // API Token (recommended) - create at https://dash.cloudflare.com/profile/api-tokens
 }
 
-export type DnsProviderConfig = Route53ProviderConfig | PorkbunProviderConfig | GoDaddyProviderConfig | CloudflareProviderConfig
+export type DnsProviderConfig =
+  Route53ProviderConfig | PorkbunProviderConfig | GoDaddyProviderConfig | CloudflareProviderConfig
 
 /**
  * Extended configuration for certificate validation

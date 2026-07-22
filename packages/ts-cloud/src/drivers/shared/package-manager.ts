@@ -62,7 +62,7 @@ export const PANTRY_PROJECT_DIR = '/opt/pantry'
 
 /** Single-quote a value for safe embedding in the generated shell. */
 function sh(value: string): string {
-  return `'${value.split('\'').join('\'\\\'\'')}'`
+  return `'${value.split("'").join("'\\''")}'`
 }
 
 export interface PantryBootstrapOptions {
@@ -95,15 +95,15 @@ export function buildPantryBootstrapScript(options: PantryBootstrapOptions = {})
     // aborted the ENTIRE bootstrap before bun/postgres/rpx were ever set up, so
     // the deploy failed with "bun runtime did not appear". Platform-detect and
     // fetch the matching release zip, mirroring the framework's ./bootstrap.
-    `command -v pantry >/dev/null 2>&1 || { `
-    + `OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m); `
-    + `case "$ARCH" in x86_64|amd64) ARCH=x64 ;; arm64|aarch64) ARCH=arm64 ;; esac; `
-    + `ZIP="pantry-\${OS}-\${ARCH}.zip"; `
-    + `if [ "\${PANTRY_VERSION:-latest}" = latest ]; then REL='latest/download'; else REL="download/v\${PANTRY_VERSION}"; fi; `
-    + `TMP=$(mktemp -d); `
-    + `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/home-lang/pantry/releases/\${REL}/\${ZIP}"; `
-    + `unzip -o "\${TMP}/\${ZIP}" -d ${PANTRY_INSTALL_DIR}; `
-    + `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"; }`,
+    `command -v pantry >/dev/null 2>&1 || { ` +
+      `OS=$(uname -s | tr '[:upper:]' '[:lower:]'); ARCH=$(uname -m); ` +
+      `case "$ARCH" in x86_64|amd64) ARCH=x64 ;; arm64|aarch64) ARCH=arm64 ;; esac; ` +
+      `ZIP="pantry-\${OS}-\${ARCH}.zip"; ` +
+      `if [ "\${PANTRY_VERSION:-latest}" = latest ]; then REL='latest/download'; else REL="download/v\${PANTRY_VERSION}"; fi; ` +
+      `TMP=$(mktemp -d); ` +
+      `curl -fsSL -o "\${TMP}/\${ZIP}" "https://github.com/home-lang/pantry/releases/\${REL}/\${ZIP}"; ` +
+      `unzip -o "\${TMP}/\${ZIP}" -d ${PANTRY_INSTALL_DIR}; ` +
+      `chmod +x ${PANTRY_INSTALL_DIR}/pantry; rm -rf "\${TMP}"; }`,
     // The pantry CLI lives in PANTRY_INSTALL_DIR; put it on PATH for later steps.
     `export PATH="${PANTRY_INSTALL_DIR}:$PATH"`,
     `mkdir -p ${PANTRY_PROJECT_DIR}`,
@@ -125,8 +125,7 @@ export function pantryEnvActivation(): string {
  * domains (optionally `domain@version`). Returns `[]` for an empty list.
  */
 export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[] {
-  if (specs.length === 0)
-    return []
+  if (specs.length === 0) return []
   const unique = [...new Set(specs)]
   // `pantry install` is project-scoped; install into the fixed project root.
   return [`(cd ${PANTRY_PROJECT_DIR} && pantry install ${unique.map(sh).join(' ')})`]
@@ -140,7 +139,7 @@ export function buildPantryInstallScript(specs: readonly PantrySpec[]): string[]
 export function buildPantryServiceScript(services: readonly string[]): string[] {
   // Start before enable: `pantry start` writes the systemd unit (then runs it),
   // and `pantry enable` (boot persistence) needs that unit to already exist.
-  return [...new Set(services)].flatMap(name => [
+  return [...new Set(services)].flatMap((name) => [
     `(cd ${PANTRY_PROJECT_DIR} && pantry start ${sh(name)})`,
     `(cd ${PANTRY_PROJECT_DIR} && pantry enable ${sh(name)})`,
   ])

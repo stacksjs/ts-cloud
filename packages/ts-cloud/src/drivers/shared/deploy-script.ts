@@ -11,25 +11,15 @@
  * instant rollback. See {@link import('./releases')}.
  */
 import { formatEnvFile } from './env-file'
-import {
-  buildActivateRelease,
-  buildEnsureReleaseLayout,
-  buildLinkSharedPaths,
-  buildPruneReleases,
-  DEFAULT_KEEP_RELEASES,
-  releasePaths,
-} from './releases'
+import { buildActivateRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPruneReleases, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
  * systemd ExecStart by swapping the leading runtime word for its absolute path.
  */
 export function resolveExecStart(start: string, runtime: 'bun' | 'node' | 'deno'): string {
-  const bin = runtime === 'bun'
-    ? '/usr/local/bin/bun'
-    : runtime === 'deno'
-      ? '/usr/local/bin/deno'
-      : '/usr/local/bin/node'
+  const bin =
+    runtime === 'bun' ? '/usr/local/bin/bun' : runtime === 'deno' ? '/usr/local/bin/deno' : '/usr/local/bin/node'
   const args = start.replace(/^(bun|node|deno)\s+/, '')
   return `${bin} ${args}`
 }
@@ -135,9 +125,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   // the linked `.env` from the cwd, so build steps see the same config as the
   // running service. The release isn't live yet, so a slow build never affects
   // the currently-serving release.
-  const preStart = preStartCommands.length > 0
-    ? [`cd ${paths.release}`, ...preStartCommands]
-    : []
+  const preStart = preStartCommands.length > 0 ? [`cd ${paths.release}`, ...preStartCommands] : []
 
   const stageRelease = [
     'set -euo pipefail',
@@ -174,7 +162,9 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
   if (zeroDowntime && port != null) {
     const instance = `${unitBase}@${releaseId}.service`
     const gatePath = healthCheckPath
-      ? (healthCheckPath.startsWith('/') ? healthCheckPath : `/${healthCheckPath}`)
+      ? healthCheckPath.startsWith('/')
+        ? healthCheckPath
+        : `/${healthCheckPath}`
       : null
 
     // On gate failure the new instance is stopped and the deploy exits 1 —
@@ -228,9 +218,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // … and, when configured, answer 2xx/3xx on the health path. (With both
       // instances on the port the probe may hit either — combined with the
       // is-active window that still catches dead-new and dead-port alike.)
-      ...(gatePath
-        ? [`curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:${port}${gatePath}" || ${failGate}`]
-        : []),
+      ...(gatePath ? [`curl -sf -o /dev/null --max-time 10 "http://127.0.0.1:${port}${gatePath}" || ${failGate}`] : []),
       // Promote: flip `current` (tooling + gateway reference), persist across
       // boots, then retire whatever served the previous release.
       ...buildActivateRelease(paths),
@@ -316,9 +304,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
   const paths = releasePaths(base, releaseId)
   const tarball = releaseTarballTmpPath(options.slug, siteName, releaseId)
 
-  const preStart = preStartCommands.length > 0
-    ? [`cd ${paths.release}`, ...preStartCommands]
-    : []
+  const preStart = preStartCommands.length > 0 ? [`cd ${paths.release}`, ...preStartCommands] : []
 
   return [
     'set -euo pipefail',
@@ -352,9 +338,7 @@ export function releaseTarballTmpPath(slug: string | undefined, siteName: string
 }
 
 export function buildAwsArtifactFetch(bucket: string, key: string, region: string, destPath: string): string[] {
-  return [
-    `aws s3 cp "s3://${bucket}/${key}" ${destPath} --region ${region}`,
-  ]
+  return [`aws s3 cp "s3://${bucket}/${key}" ${destPath} --region ${region}`]
 }
 
 export function buildLocalArtifactFetch(localPath: string, destPath: string): string[] {

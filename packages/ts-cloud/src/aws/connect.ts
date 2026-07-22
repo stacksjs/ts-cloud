@@ -2,7 +2,6 @@
  * AWS Amazon Connect Operations
  * Direct API calls without AWS SDK dependency
  */
-
 import { AWSClient } from './client'
 
 export interface ConnectInstance {
@@ -33,7 +32,16 @@ export interface ContactFlow {
   Id?: string
   Arn?: string
   Name?: string
-  Type?: 'CONTACT_FLOW' | 'CUSTOMER_QUEUE' | 'CUSTOMER_HOLD' | 'CUSTOMER_WHISPER' | 'AGENT_HOLD' | 'AGENT_WHISPER' | 'OUTBOUND_WHISPER' | 'AGENT_TRANSFER' | 'QUEUE_TRANSFER'
+  Type?:
+    | 'CONTACT_FLOW'
+    | 'CUSTOMER_QUEUE'
+    | 'CUSTOMER_HOLD'
+    | 'CUSTOMER_WHISPER'
+    | 'AGENT_HOLD'
+    | 'AGENT_WHISPER'
+    | 'OUTBOUND_WHISPER'
+    | 'AGENT_TRANSFER'
+    | 'QUEUE_TRANSFER'
   State?: 'ACTIVE' | 'ARCHIVED'
   Description?: string
   Content?: string
@@ -80,7 +88,7 @@ export class ConnectClient {
     DirectoryId?: string
     ClientToken?: string
     Tags?: Record<string, string>
-  }): Promise<{ Id?: string, Arn?: string }> {
+  }): Promise<{ Id?: string; Arn?: string }> {
     const body: Record<string, any> = {
       InstanceAlias: params.InstanceAlias,
       IdentityManagementType: params.IdentityManagementType || 'CONNECT_MANAGED',
@@ -138,7 +146,7 @@ export class ConnectClient {
   async listInstances(params?: {
     MaxResults?: number
     NextToken?: string
-  }): Promise<{ InstanceSummaryList?: ConnectInstance[], NextToken?: string }> {
+  }): Promise<{ InstanceSummaryList?: ConnectInstance[]; NextToken?: string }> {
     const queryParams: Record<string, string> = {}
     if (params?.MaxResults) queryParams.maxResults = String(params.MaxResults)
     if (params?.NextToken) queryParams.nextToken = params.NextToken
@@ -164,7 +172,7 @@ export class ConnectClient {
     PhoneNumberPrefix?: string
     MaxResults?: number
     NextToken?: string
-  }): Promise<{ AvailableNumbersList?: AvailablePhoneNumber[], NextToken?: string }> {
+  }): Promise<{ AvailableNumbersList?: AvailablePhoneNumber[]; NextToken?: string }> {
     const body: Record<string, any> = {
       TargetArn: params.TargetArn,
       PhoneNumberCountryCode: params.PhoneNumberCountryCode,
@@ -198,7 +206,7 @@ export class ConnectClient {
     PhoneNumberDescription?: string
     Tags?: Record<string, string>
     ClientToken?: string
-  }): Promise<{ PhoneNumberId?: string, PhoneNumberArn?: string }> {
+  }): Promise<{ PhoneNumberId?: string; PhoneNumberArn?: string }> {
     const body: Record<string, any> = {
       TargetArn: params.TargetArn,
       PhoneNumber: params.PhoneNumber,
@@ -248,7 +256,7 @@ export class ConnectClient {
     PhoneNumberCountryCodes?: string[]
     MaxResults?: number
     NextToken?: string
-  }): Promise<{ ListPhoneNumbersSummaryList?: PhoneNumber[], NextToken?: string }> {
+  }): Promise<{ ListPhoneNumbersSummaryList?: PhoneNumber[]; NextToken?: string }> {
     const body: Record<string, any> = {}
 
     if (params.TargetArn) body.TargetArn = params.TargetArn
@@ -278,11 +286,20 @@ export class ConnectClient {
   async createContactFlow(params: {
     InstanceId: string
     Name: string
-    Type: 'CONTACT_FLOW' | 'CUSTOMER_QUEUE' | 'CUSTOMER_HOLD' | 'CUSTOMER_WHISPER' | 'AGENT_HOLD' | 'AGENT_WHISPER' | 'OUTBOUND_WHISPER' | 'AGENT_TRANSFER' | 'QUEUE_TRANSFER'
+    Type:
+      | 'CONTACT_FLOW'
+      | 'CUSTOMER_QUEUE'
+      | 'CUSTOMER_HOLD'
+      | 'CUSTOMER_WHISPER'
+      | 'AGENT_HOLD'
+      | 'AGENT_WHISPER'
+      | 'OUTBOUND_WHISPER'
+      | 'AGENT_TRANSFER'
+      | 'QUEUE_TRANSFER'
     Content: string
     Description?: string
     Tags?: Record<string, string>
-  }): Promise<{ ContactFlowId?: string, ContactFlowArn?: string }> {
+  }): Promise<{ ContactFlowId?: string; ContactFlowArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       Type: params.Type,
@@ -334,7 +351,7 @@ export class ConnectClient {
     ContactFlowTypes?: string[]
     MaxResults?: number
     NextToken?: string
-  }): Promise<{ ContactFlowSummaryList?: ContactFlow[], NextToken?: string }> {
+  }): Promise<{ ContactFlowSummaryList?: ContactFlow[]; NextToken?: string }> {
     const queryParams: Record<string, string> = {}
     if (params.ContactFlowTypes) queryParams.contactFlowTypes = params.ContactFlowTypes.join(',')
     if (params.MaxResults) queryParams.maxResults = String(params.MaxResults)
@@ -366,7 +383,7 @@ export class ConnectClient {
       OutboundFlowId?: string
     }
     Tags?: Record<string, string>
-  }): Promise<{ QueueId?: string, QueueArn?: string }> {
+  }): Promise<{ QueueId?: string; QueueArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       HoursOfOperationId: params.HoursOfOperationId,
@@ -400,12 +417,12 @@ export class ConnectClient {
     TimeZone: string
     Config: Array<{
       Day: 'SUNDAY' | 'MONDAY' | 'TUESDAY' | 'WEDNESDAY' | 'THURSDAY' | 'FRIDAY' | 'SATURDAY'
-      StartTime: { Hours: number, Minutes: number }
-      EndTime: { Hours: number, Minutes: number }
+      StartTime: { Hours: number; Minutes: number }
+      EndTime: { Hours: number; Minutes: number }
     }>
     Description?: string
     Tags?: Record<string, string>
-  }): Promise<{ HoursOfOperationId?: string, HoursOfOperationArn?: string }> {
+  }): Promise<{ HoursOfOperationId?: string; HoursOfOperationArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       TimeZone: params.TimeZone,
@@ -476,7 +493,7 @@ export class ConnectClient {
       Delay: number
     }>
     Tags?: Record<string, string>
-  }): Promise<{ RoutingProfileId?: string, RoutingProfileArn?: string }> {
+  }): Promise<{ RoutingProfileId?: string; RoutingProfileArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       DefaultOutboundQueueId: params.DefaultOutboundQueueId,
@@ -507,11 +524,8 @@ export class ConnectClient {
   async instanceExists(instanceAlias: string): Promise<boolean> {
     try {
       const result = await this.listInstances({ MaxResults: 100 })
-      return result.InstanceSummaryList?.some(
-        instance => instance.InstanceAlias === instanceAlias
-      ) || false
-    }
-    catch {
+      return result.InstanceSummaryList?.some((instance) => instance.InstanceAlias === instanceAlias) || false
+    } catch {
       return false
     }
   }
@@ -585,10 +599,7 @@ export class ConnectClient {
   /**
    * Stop a contact (end a call)
    */
-  async stopContact(params: {
-    InstanceId: string
-    ContactId: string
-  }): Promise<void> {
+  async stopContact(params: { InstanceId: string; ContactId: string }): Promise<void> {
     await this.client.request({
       service: 'connect',
       region: this.region,
@@ -600,16 +611,22 @@ export class ConnectClient {
   /**
    * Get contact details
    */
-  async describeContact(params: {
-    InstanceId: string
-    ContactId: string
-  }): Promise<{
+  async describeContact(params: { InstanceId: string; ContactId: string }): Promise<{
     Contact?: {
       Arn?: string
       Id?: string
       InitialContactId?: string
       PreviousContactId?: string
-      InitiationMethod?: 'INBOUND' | 'OUTBOUND' | 'TRANSFER' | 'QUEUE_TRANSFER' | 'CALLBACK' | 'API' | 'DISCONNECT' | 'MONITOR' | 'EXTERNAL_OUTBOUND'
+      InitiationMethod?:
+        | 'INBOUND'
+        | 'OUTBOUND'
+        | 'TRANSFER'
+        | 'QUEUE_TRANSFER'
+        | 'CALLBACK'
+        | 'API'
+        | 'DISCONNECT'
+        | 'MONITOR'
+        | 'EXTERNAL_OUTBOUND'
       Name?: string
       Description?: string
       Channel?: 'VOICE' | 'CHAT' | 'TASK'
@@ -684,7 +701,7 @@ export class ConnectClient {
     RoutingProfileId: string
     HierarchyGroupId?: string
     Tags?: Record<string, string>
-  }): Promise<{ UserId?: string, UserArn?: string }> {
+  }): Promise<{ UserId?: string; UserArn?: string }> {
     const body: Record<string, any> = {
       Username: params.Username,
       PhoneConfig: params.PhoneConfig,
@@ -713,10 +730,7 @@ export class ConnectClient {
   /**
    * Delete a user
    */
-  async deleteUser(params: {
-    InstanceId: string
-    UserId: string
-  }): Promise<void> {
+  async deleteUser(params: { InstanceId: string; UserId: string }): Promise<void> {
     await this.client.request({
       service: 'connect',
       region: this.region,
@@ -728,11 +742,7 @@ export class ConnectClient {
   /**
    * List users
    */
-  async listUsers(params: {
-    InstanceId: string
-    NextToken?: string
-    MaxResults?: number
-  }): Promise<{
+  async listUsers(params: { InstanceId: string; NextToken?: string; MaxResults?: number }): Promise<{
     UserSummaryList?: Array<{
       Id?: string
       Arn?: string
@@ -764,7 +774,7 @@ export class ConnectClient {
     S3Uri: string
     Description?: string
     Tags?: Record<string, string>
-  }): Promise<{ PromptId?: string, PromptArn?: string }> {
+  }): Promise<{ PromptId?: string; PromptArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       S3Uri: params.S3Uri,
@@ -788,11 +798,7 @@ export class ConnectClient {
   /**
    * List prompts
    */
-  async listPrompts(params: {
-    InstanceId: string
-    NextToken?: string
-    MaxResults?: number
-  }): Promise<{
+  async listPrompts(params: { InstanceId: string; NextToken?: string; MaxResults?: number }): Promise<{
     PromptSummaryList?: Array<{
       Id?: string
       Arn?: string
@@ -837,7 +843,7 @@ export class ConnectClient {
       }
     }
     Tags?: Record<string, string>
-  }): Promise<{ QuickConnectId?: string, QuickConnectArn?: string }> {
+  }): Promise<{ QuickConnectId?: string; QuickConnectArn?: string }> {
     const body: Record<string, any> = {
       Name: params.Name,
       QuickConnectConfig: params.QuickConnectConfig,
@@ -904,10 +910,13 @@ export class ConnectClient {
     Attributes?: Record<string, string>
     Name: string
     Description?: string
-    References?: Record<string, {
-      Value: string
-      Type: 'URL' | 'ATTACHMENT' | 'NUMBER' | 'STRING' | 'DATE' | 'EMAIL'
-    }>
+    References?: Record<
+      string,
+      {
+        Value: string
+        Type: 'URL' | 'ATTACHMENT' | 'NUMBER' | 'STRING' | 'DATE' | 'EMAIL'
+      }
+    >
     ClientToken?: string
     ScheduledTime?: string
     TaskTemplateId?: string
@@ -931,10 +940,7 @@ export class ConnectClient {
   /**
    * Create a simple IVR contact flow for outbound calls
    */
-  createOutboundIvrFlow(params: {
-    message: string
-    voiceId?: string
-  }): string {
+  createOutboundIvrFlow(params: { message: string; voiceId?: string }): string {
     const voiceId = params.voiceId || 'Joanna'
     return JSON.stringify({
       Version: '2019-10-30',
@@ -949,12 +955,10 @@ export class ConnectClient {
           },
           Transitions: {
             NextAction: 'disconnect',
-            Errors: [
-              { NextAction: 'disconnect', ErrorType: 'NoMatchingError' },
-            ],
+            Errors: [{ NextAction: 'disconnect', ErrorType: 'NoMatchingError' }],
           },
         },
-        'disconnect': {
+        disconnect: {
           Type: 'DisconnectParticipant',
           Parameters: {},
           Transitions: {},
@@ -1000,7 +1004,7 @@ export class ConnectClient {
             ],
           },
         },
-        'disconnect': {
+        disconnect: {
           Type: 'DisconnectParticipant',
           Parameters: {},
           Transitions: {},
@@ -1022,7 +1026,20 @@ export class ConnectClient {
       RoutingProfiles?: string[]
     }
     CurrentMetrics: Array<{
-      Name: 'AGENTS_ONLINE' | 'AGENTS_AVAILABLE' | 'AGENTS_ON_CALL' | 'AGENTS_NON_PRODUCTIVE' | 'AGENTS_AFTER_CONTACT_WORK' | 'AGENTS_ERROR' | 'AGENTS_STAFFED' | 'CONTACTS_IN_QUEUE' | 'OLDEST_CONTACT_AGE' | 'CONTACTS_SCHEDULED' | 'AGENTS_ON_CONTACT' | 'SLOTS_ACTIVE' | 'SLOTS_AVAILABLE'
+      Name:
+        | 'AGENTS_ONLINE'
+        | 'AGENTS_AVAILABLE'
+        | 'AGENTS_ON_CALL'
+        | 'AGENTS_NON_PRODUCTIVE'
+        | 'AGENTS_AFTER_CONTACT_WORK'
+        | 'AGENTS_ERROR'
+        | 'AGENTS_STAFFED'
+        | 'CONTACTS_IN_QUEUE'
+        | 'OLDEST_CONTACT_AGE'
+        | 'CONTACTS_SCHEDULED'
+        | 'AGENTS_ON_CONTACT'
+        | 'SLOTS_ACTIVE'
+        | 'SLOTS_AVAILABLE'
       Unit?: 'SECONDS' | 'COUNT' | 'PERCENT'
     }>
     Groupings?: Array<'QUEUE' | 'CHANNEL' | 'ROUTING_PROFILE'>

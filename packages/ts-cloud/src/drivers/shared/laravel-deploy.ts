@@ -15,19 +15,10 @@
  * the Envoyer zero-downtime guarantee.
  */
 import type { SiteConfig, SiteCredentialsConfig } from '@ts-cloud/core'
-import { buildGitCheckoutScript } from './git-deploy'
 import { formatEnvFile } from './env-file'
+import { buildGitCheckoutScript } from './git-deploy'
 import { PANTRY_PROJECT_DIR, pantryEnvActivation } from './package-manager'
-import {
-  buildActivateRelease,
-  buildDeployHistoryHeader,
-  buildEnsureReleaseLayout,
-  buildLinkSharedPaths,
-  buildPruneReleases,
-  DEFAULT_KEEP_RELEASES,
-  DEFAULT_SHARED_PATHS,
-  releasePaths,
-} from './releases'
+import { buildActivateRelease, buildDeployHistoryHeader, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPruneReleases, DEFAULT_KEEP_RELEASES, DEFAULT_SHARED_PATHS, releasePaths } from './releases'
 
 export const MACRO_CREATE_RELEASE = '$CREATE_RELEASE'
 export const MACRO_ACTIVATE_RELEASE = '$ACTIVATE_RELEASE'
@@ -65,17 +56,10 @@ export function defaultDeployScriptFor(type: NonNullable<SiteConfig['type']>): s
     case 'wordpress':
       // WordPress isn't a Laravel app — no artisan. `composer install` is
       // optional (Bedrock/composer-managed WP have it; classic WP doesn't).
-      return [
-        MACRO_CREATE_RELEASE,
-        `${COMPOSER_INSTALL} || true`,
-        MACRO_ACTIVATE_RELEASE,
-      ]
+      return [MACRO_CREATE_RELEASE, `${COMPOSER_INSTALL} || true`, MACRO_ACTIVATE_RELEASE]
     case 'static':
     case 'spa':
-      return [
-        MACRO_CREATE_RELEASE,
-        MACRO_ACTIVATE_RELEASE,
-      ]
+      return [MACRO_CREATE_RELEASE, MACRO_ACTIVATE_RELEASE]
   }
 }
 
@@ -94,20 +78,13 @@ export interface LaravelDeployOptions {
 
 /** Rewrite a deploy-step's leading `php`/`composer` to the versioned binaries. */
 function substituteBins(line: string, phpBin: string): string {
-  return line
-    .replace(/^php\s+/, `${phpBin} `)
-    .replace(/(\s)php\s+artisan\s+/g, `$1${phpBin} artisan `)
+  return line.replace(/^php\s+/, `${phpBin} `).replace(/(\s)php\s+artisan\s+/g, `$1${phpBin} artisan `)
 }
 
 /** Write `site.env` to the shared `.env` (heredoc), `chmod 600`. */
 function writeSharedEnv(sharedEnvPath: string, env: Record<string, string>): string[] {
   const body = formatEnvFile(env)
-  return [
-    `cat > ${sharedEnvPath} <<'TS_CLOUD_ENV_EOF'`,
-    body,
-    'TS_CLOUD_ENV_EOF',
-    `chmod 600 ${sharedEnvPath}`,
-  ]
+  return [`cat > ${sharedEnvPath} <<'TS_CLOUD_ENV_EOF'`, body, 'TS_CLOUD_ENV_EOF', `chmod 600 ${sharedEnvPath}`]
 }
 
 /** Write a file via a quoted heredoc (no shell interpolation of contents). */
@@ -120,17 +97,14 @@ function writeFileHeredoc(path: string, body: string, marker: string): string[] 
  * Composer `auth.json` and/or `.npmrc`. Quoted heredocs keep tokens literal.
  */
 export function buildCredentialFiles(releaseDir: string, creds?: SiteCredentialsConfig): string[] {
-  if (!creds)
-    return []
+  if (!creds) return []
   const out: string[] = []
   if (creds.composerAuth) {
-    const json = typeof creds.composerAuth === 'string'
-      ? creds.composerAuth
-      : JSON.stringify(creds.composerAuth, null, 2)
+    const json =
+      typeof creds.composerAuth === 'string' ? creds.composerAuth : JSON.stringify(creds.composerAuth, null, 2)
     out.push(...writeFileHeredoc(`${releaseDir}/auth.json`, json, 'TS_CLOUD_AUTHJSON_EOF'))
   }
-  if (creds.npmrc)
-    out.push(...writeFileHeredoc(`${releaseDir}/.npmrc`, creds.npmrc, 'TS_CLOUD_NPMRC_EOF'))
+  if (creds.npmrc) out.push(...writeFileHeredoc(`${releaseDir}/.npmrc`, creds.npmrc, 'TS_CLOUD_NPMRC_EOF'))
   return out
 }
 
@@ -143,8 +117,7 @@ export function buildCredentialFiles(releaseDir: string, creds?: SiteCredentials
  */
 export function buildHealthCheckScript(site: SiteConfig): string[] {
   const path = site.healthCheck?.path
-  if (!path || !site.domain)
-    return []
+  if (!path || !site.domain) return []
   const p = path.startsWith('/') ? path : `/${path}`
   const url = `http://127.0.0.1${p}`
   return [
@@ -161,8 +134,7 @@ export function buildHealthCheckScript(site: SiteConfig): string[] {
  */
 export function buildLaravelDeployScript(options: LaravelDeployOptions): string[] {
   const { siteName, site, releaseId, commit } = options
-  if (!site.repository?.url)
-    throw new Error(`Site '${siteName}' is a PHP/git site but has no repository.url to clone`)
+  if (!site.repository?.url) throw new Error(`Site '${siteName}' is a PHP/git site but has no repository.url to clone`)
 
   const base = options.appBase ?? `/var/www/${siteName}`
   // pantry exposes a single `php` on PATH (via `pantry env`); there are no
@@ -172,9 +144,7 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
   const paths = releasePaths(base, releaseId)
   const sharedPaths = site.sharedPaths ?? DEFAULT_SHARED_PATHS
   const keepReleases = site.keepReleases ?? DEFAULT_KEEP_RELEASES
-  const template = site.deployScript?.length
-    ? site.deployScript
-    : defaultDeployScriptFor(site.type ?? 'laravel')
+  const template = site.deployScript?.length ? site.deployScript : defaultDeployScriptFor(site.type ?? 'laravel')
 
   const out: string[] = [
     'set -euo pipefail',
@@ -191,18 +161,19 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
   // Record deployment history + capture this deploy's output on the box
   // (Forge's deployment log). Installed before any release work so a failure
   // anywhere below is still recorded via the EXIT trap.
-  out.push(...buildDeployHistoryHeader(base, {
-    releaseId,
-    commit,
-    branch: site.repository.branch,
-    keepLogs: keepReleases,
-  }))
+  out.push(
+    ...buildDeployHistoryHeader(base, {
+      releaseId,
+      commit,
+      branch: site.repository.branch,
+      keepLogs: keepReleases,
+    }),
+  )
 
   // Ensure the releases/shared skeleton exists, then write the shared .env so
   // it's in place before the new release symlinks it in.
   out.push(...buildEnsureReleaseLayout(paths, sharedPaths))
-  if (site.env && Object.keys(site.env).length > 0)
-    out.push(...writeSharedEnv(`${paths.shared}/.env`, site.env))
+  if (site.env && Object.keys(site.env).length > 0) out.push(...writeSharedEnv(`${paths.shared}/.env`, site.env))
 
   for (const raw of template) {
     const line = raw.trim()
@@ -220,17 +191,14 @@ export function buildLaravelDeployScript(options: LaravelDeployOptions): string[
         `[ -d ${paths.release}/bootstrap/cache ] && chown -R www-data:www-data ${paths.release}/bootstrap/cache 2>/dev/null || true`,
         `chmod -R ug+rwX ${paths.shared}/storage 2>/dev/null || true`,
       )
-    }
-    else if (line === MACRO_ACTIVATE_RELEASE) {
+    } else if (line === MACRO_ACTIVATE_RELEASE) {
       out.push(...buildActivateRelease(paths))
       out.push(...buildPruneReleases(paths, keepReleases))
       out.push(`(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm) 2>/dev/null || true`)
-    }
-    else if (line === MACRO_RESTART_QUEUES) {
+    } else if (line === MACRO_RESTART_QUEUES) {
       // Laravel-native: signals all workers (queue:work + Horizon) to restart.
       out.push(`${phpBin} artisan queue:restart || true`)
-    }
-    else {
+    } else {
       out.push(substituteBins(raw, phpBin))
     }
   }

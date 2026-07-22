@@ -39,7 +39,12 @@ export {
   releaseTarballTmpPath,
   resolveExecStart,
 } from './shared/deploy-script'
-export { deployAllComputeSites, deploySiteRelease, reloadRpxGateway, renewRpxCertificates } from './shared/compute-deploy'
+export {
+  deployAllComputeSites,
+  deploySiteRelease,
+  reloadRpxGateway,
+  renewRpxCertificates,
+} from './shared/compute-deploy'
 export {
   buildRpxConfig,
   buildRpxFragmentRefreshScript,
@@ -67,7 +72,4 @@ export {
   MANAGED_CACHE_POLICY_OPTIMIZED,
   MANAGED_ORIGIN_REQUEST_POLICY_ALL_VIEWER,
 } from './shared/cloudfront-origin'
-export type {
-  BuildCloudFrontOriginOptions,
-  OriginFrontedBehavior,
-} from './shared/cloudfront-origin'
+export type { BuildCloudFrontOriginOptions, OriginFrontedBehavior } from './shared/cloudfront-origin'

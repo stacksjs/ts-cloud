@@ -39,13 +39,10 @@ export interface RpxRedirect {
  * when unset so rpx applies its own defaults (status `301`, path-preserving).
  */
 export function normalizeSiteRedirect(input: string | SiteRedirectConfig): RpxRedirect {
-  if (typeof input === 'string')
-    return { to: input }
+  if (typeof input === 'string') return { to: input }
   const out: RpxRedirect = { to: input.to }
-  if (input.status != null)
-    out.status = input.status
-  if (input.preservePath != null)
-    out.preservePath = input.preservePath
+  if (input.status != null) out.status = input.status
+  if (input.preservePath != null) out.preservePath = input.preservePath
   return out
 }
 
@@ -71,7 +68,7 @@ export interface RpxRoute {
    * see `buildRpxConfig`. The string shorthand remains valid for a plain
    * directory served with the route-level `cleanUrls`.
    */
-  static?: string | { dir: string, spa?: boolean, pathRewriteStyle?: 'directory' | 'flat', maxAge?: number }
+  static?: string | { dir: string; spa?: boolean; pathRewriteStyle?: 'directory' | 'flat'; maxAge?: number }
   /**
    * Redirect target for a `redirect` site — the gateway answers `to` (the host)
    * with an HTTP redirect here instead of proxying/serving. The request path +
@@ -88,7 +85,7 @@ export interface RpxRoute {
    * how the management dashboard (and other protected sites) stay private behind
    * rpx, the same way the nginx driver applies htpasswd.
    */
-  auth?: { username: string, password: string, realm?: string }
+  auth?: { username: string; password: string; realm?: string }
   /**
    * Load-balancing strategy/health-check tuning for a multi-upstream `from`
    * (see {@link ComputeProxyConfig.loadBalancer}). Only meaningful when `from`
@@ -106,8 +103,7 @@ export interface RpxRoute {
  */
 export function resolveRouteAuth(site: SiteConfig): RpxRoute['auth'] {
   const auth = site.auth
-  if (!auth || auth.enabled === false || !auth.password)
-    return undefined
+  if (!auth || auth.enabled === false || !auth.password) return undefined
   return {
     username: auth.username || 'admin',
     password: auth.password,
@@ -128,7 +124,7 @@ export interface RpxGatewayConfig {
    * On-demand TLS (opt-in): lazily issue a real cert for an approved host the
    * first time it's needed. The site domains form the allowlist.
    */
-  onDemandTls?: { enabled: true, allowedSuffixes: string[], email?: string, certsDir: string }
+  onDemandTls?: { enabled: true; allowedSuffixes: string[]; email?: string; certsDir: string }
   /**
    * Directory the gateway serves ACME http-01 challenge tokens from on `:80`
    * before redirecting to HTTPS. Set when ts-cloud manages certs so the renewal
@@ -141,12 +137,12 @@ export interface RpxGatewayConfig {
   /** Never touch `/etc/hosts` on a real server with real DNS. */
   hostsManagement: false
   /** Don't remove certs/hosts on exit. */
-  cleanup: { hosts: false, certs: false }
+  cleanup: { hosts: false; certs: false }
   /**
    * Origin lockdown (from `proxy.cdn` when a `secret` is set): rpx rejects
    * direct hits to the CDN-fronted hosts that lack the shared-secret header.
    */
-  originGuard?: { header: string, value: string, hosts: string[] }
+  originGuard?: { header: string; value: string; hosts: string[] }
 }
 
 export interface BuildRpxConfigOptions {
@@ -169,18 +165,19 @@ export interface BuildRpxConfigOptions {
  * `undefined` for the host default. Mirrors rpx's `normalizePathPrefix`.
  */
 export function normalizeRoutePath(path: string | undefined): string | undefined {
-  if (!path || path === '/')
-    return undefined
+  if (!path || path === '/') return undefined
   let p = `/${path}`.replace(/\/+/g, '/').replace(/\/+$/, '')
-  if (!p.startsWith('/'))
-    p = `/${p}`
+  if (!p.startsWith('/')) p = `/${p}`
   return p === '' || p === '/' ? undefined : p
 }
 
 /** Derive a stable, filesystem/registry-safe id from a host (+ optional path). */
 export function deriveRouteId(to: string, path?: string): string {
   const base = path ? `${to}${path}` : to
-  const cleaned = base.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 128)
+  const cleaned = base
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 128)
   return cleaned.length > 0 ? cleaned : 'rpx'
 }
 
@@ -191,9 +188,8 @@ export function deriveRouteId(to: string, path?: string): string {
  * private IP (falling back to its public IP when no private IP is available).
  */
 function resolveServerAppFrom(port: number, appBoxes?: RpxLbAppBox[]): string | string[] {
-  if (!appBoxes || appBoxes.length === 0)
-    return `localhost:${port}`
-  return appBoxes.map(box => `${box.privateIp ?? box.publicIp}:${port}`)
+  if (!appBoxes || appBoxes.length === 0) return `localhost:${port}`
+  return appBoxes.map((box) => `${box.privateIp ?? box.publicIp}:${port}`)
 }
 
 /**
@@ -219,11 +215,9 @@ function buildRpxConfigInternal(
   const domains = new Set<string>()
 
   for (const [name, site] of Object.entries(sites)) {
-    if (!site || !site.domain)
-      continue
+    if (!site || !site.domain) continue
     const kind = resolveSiteKind(site)
-    if (kind === 'bucket')
-      continue
+    if (kind === 'bucket') continue
 
     const path = normalizeRoutePath(site.path)
     const id = deriveRouteId(site.domain, path)
@@ -232,15 +226,20 @@ function buildRpxConfigInternal(
     if (kind === 'redirect') {
       // Gateway-only redirect: answer `domain` with a Location to the target.
       // `site.redirect` is guaranteed here (it's what makes the kind 'redirect').
-      proxies.push({ to: site.domain, path, redirect: normalizeSiteRedirect(site.redirect!), id, ...(auth ? { auth } : {}) })
+      proxies.push({
+        to: site.domain,
+        path,
+        redirect: normalizeSiteRedirect(site.redirect!),
+        id,
+        ...(auth ? { auth } : {}),
+      })
       domains.add(site.domain)
       continue
     }
 
     if (kind === 'server-app') {
       // A server-app must declare the port it listens on to be routable.
-      if (typeof site.port !== 'number')
-        continue
+      if (typeof site.port !== 'number') continue
       const from = resolveServerAppFrom(site.port, appBoxes)
       proxies.push({
         to: site.domain,
@@ -250,8 +249,7 @@ function buildRpxConfigInternal(
         ...(auth ? { auth } : {}),
         ...(Array.isArray(from) && loadBalancer ? { loadBalancer } : {}),
       })
-    }
-    else {
+    } else {
       // server-static: served from the atomic-release `current` symlink under
       // /var/www/<name> (zero-downtime swaps — see buildStaticSiteDeployScript).
       // `spa` + `pathRewriteStyle` MUST live inside the `static` object — rpx
@@ -285,11 +283,9 @@ function buildRpxConfigInternal(
   // custom domains where `www.<domain>` might belong to someone else).
   if (options.proxy.autoWww !== false) {
     for (const domain of [...domains]) {
-      if (domain.split('.').length !== 2)
-        continue
+      if (domain.split('.').length !== 2) continue
       const wwwDomain = `www.${domain}`
-      if (domains.has(wwwDomain))
-        continue
+      if (domains.has(wwwDomain)) continue
       proxies.push({ to: wwwDomain, redirect: { to: `https://${domain}` }, id: deriveRouteId(wwwDomain) })
       domains.add(wwwDomain)
     }
@@ -298,8 +294,7 @@ function buildRpxConfigInternal(
   // Sort so routes group by domain and, within a domain, the most-specific path
   // comes first (cosmetic — rpx re-sorts longest-prefix-first at runtime).
   proxies.sort((a, b) => {
-    if (a.to !== b.to)
-      return a.to.localeCompare(b.to)
+    if (a.to !== b.to) return a.to.localeCompare(b.to)
     return (b.path?.length ?? 0) - (a.path?.length ?? 0)
   })
 
@@ -419,7 +414,7 @@ await startProxies({ verbose: process.env.RPX_VERBOSE !== 'false', ...config } a
  * challenge fails with "Address already in use". Treating either signal as
  * "rpx mode" keeps the nginx/SSL path and the gateway path from contradicting.
  */
-export function usesRpxProxy(compute?: { webServer?: string, proxy?: { engine?: string } }): boolean {
+export function usesRpxProxy(compute?: { webServer?: string; proxy?: { engine?: string } }): boolean {
   return compute?.webServer === 'rpx' || compute?.proxy?.engine === 'rpx'
 }
 
@@ -456,26 +451,22 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
   let email: string | undefined
   let certsDir = DEFAULT_RPX_CERTS_DIR
   let acmeChallengeWebroot: string | undefined
-  let guard: { header: string, value: string } | undefined
+  let guard: { header: string; value: string } | undefined
 
   for (const f of fragments) {
     for (const p of f.proxies ?? []) {
       const key = p.id || `${p.to}${p.path ?? ''}`
-      if (seen.has(key))
-        continue
+      if (seen.has(key)) continue
       seen.add(key)
       proxies.push(p)
     }
-    for (const s of f.onDemandTls?.allowedSuffixes ?? [])
-      suffixes.add(s)
+    for (const s of f.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)
     email ??= f.onDemandTls?.email
-    if (f.productionCerts?.certsDir)
-      certsDir = f.productionCerts.certsDir
+    if (f.productionCerts?.certsDir) certsDir = f.productionCerts.certsDir
     acmeChallengeWebroot ??= f.acmeChallengeWebroot
     if (f.originGuard) {
       guard ??= { header: f.originGuard.header, value: f.originGuard.value }
-      for (const h of f.originGuard.hosts)
-        guardHosts.add(h)
+      for (const h of f.originGuard.hosts) guardHosts.add(h)
     }
   }
 
@@ -486,12 +477,9 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
   }
-  if (suffixes.size > 0)
-    merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir }
-  if (acmeChallengeWebroot)
-    merged.acmeChallengeWebroot = acmeChallengeWebroot
-  if (guard)
-    merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
+  if (suffixes.size > 0) merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir }
+  if (acmeChallengeWebroot) merged.acmeChallengeWebroot = acmeChallengeWebroot
+  if (guard) merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
   return merged
 }
 
@@ -501,7 +489,10 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
  * at startup, merges them (same algorithm as {@link mergeRpxFragments}), and
  * starts the gateway. A malformed fragment is skipped, not fatal.
  */
-export function renderRpxAssembler(sitesDir: string = RPX_SITES_DIR, defaultCertsDir: string = DEFAULT_RPX_CERTS_DIR): string {
+export function renderRpxAssembler(
+  sitesDir: string = RPX_SITES_DIR,
+  defaultCertsDir: string = DEFAULT_RPX_CERTS_DIR,
+): string {
   return `// Generated by ts-cloud — rpx gateway assembler.
 // Merges every app's fragment in ${sitesDir} so independent deploys compose
 // without clobbering each other. Each deploy writes only its own <slug>.json.
@@ -622,8 +613,7 @@ export function certDomainsForConfig(config: RpxGatewayConfig): string[] {
   for (const r of config.proxies) {
     const host = r.to
     // Skip wildcards / non-FQDN / host:port — http-01 can only cover real names.
-    if (!host || host.startsWith('*') || host.includes(':') || !host.includes('.'))
-      continue
+    if (!host || host.startsWith('*') || host.includes(':') || !host.includes('.')) continue
     seen.add(host)
   }
   return [...seen]
@@ -644,8 +634,7 @@ export function buildCertManagementCommands(options: BuildRpxProvisionOptions): 
   const { config, proxy } = options
   const webroot = config.acmeChallengeWebroot
   const domains = certDomainsForConfig(config)
-  if (!proxy.onDemandTls || !webroot || domains.length === 0)
-    return []
+  if (!proxy.onDemandTls || !webroot || domains.length === 0) return []
 
   const bunBin = options.bunBin ?? '/usr/local/bin/bun'
   const version = proxy.version ?? 'latest'
@@ -784,30 +773,34 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     // ... and the stable assembler launcher that merges every app's fragment.
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, assembler, 'TS_CLOUD_RPX_EOF'),
     // systemd unit: runs the launcher as root so it can bind :80/:443.
-    ...writeFileHeredoc(`/etc/systemd/system/${RPX_SERVICE_NAME}`, [
-      '[Unit]',
-      'Description=rpx reverse-proxy gateway (managed by ts-cloud)',
-      'After=network.target network-online.target',
-      'Wants=network-online.target',
-      '',
-      '[Service]',
-      'Type=simple',
-      `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
-      `WorkingDirectory=${RPX_INSTALL_DIR}`,
-      `Environment=BUN_INSTALL=/root/.bun`,
-      ...poolEnv,
-      'MemoryAccounting=true',
-      `MemoryHigh=${memoryHigh}`,
-      `MemoryMax=${memoryMax}`,
-      'OOMPolicy=stop',
-      'Restart=always',
-      'RestartSec=5',
-      'LimitNOFILE=1048576',
-      'AmbientCapabilities=CAP_NET_BIND_SERVICE',
-      '',
-      '[Install]',
-      'WantedBy=multi-user.target',
-    ].join('\n'), 'TS_CLOUD_RPX_UNIT_EOF'),
+    ...writeFileHeredoc(
+      `/etc/systemd/system/${RPX_SERVICE_NAME}`,
+      [
+        '[Unit]',
+        'Description=rpx reverse-proxy gateway (managed by ts-cloud)',
+        'After=network.target network-online.target',
+        'Wants=network-online.target',
+        '',
+        '[Service]',
+        'Type=simple',
+        `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
+        `WorkingDirectory=${RPX_INSTALL_DIR}`,
+        `Environment=BUN_INSTALL=/root/.bun`,
+        ...poolEnv,
+        'MemoryAccounting=true',
+        `MemoryHigh=${memoryHigh}`,
+        `MemoryMax=${memoryMax}`,
+        'OOMPolicy=stop',
+        'Restart=always',
+        'RestartSec=5',
+        'LimitNOFILE=1048576',
+        'AmbientCapabilities=CAP_NET_BIND_SERVICE',
+        '',
+        '[Install]',
+        'WantedBy=multi-user.target',
+      ].join('\n'),
+      'TS_CLOUD_RPX_UNIT_EOF',
+    ),
     'systemctl daemon-reload',
     // Older ts-cloud/stacks boxes used bun-gateway.service for the same
     // :80/:443 role. Retire managed predecessors so rpx can bind cleanly.

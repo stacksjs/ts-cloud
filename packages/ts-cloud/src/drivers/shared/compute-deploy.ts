@@ -1,36 +1,22 @@
-import type {
-  CloudConfig,
-  CloudDriver,
-  DeploySiteReleaseOptions,
-  DeploySiteReleaseResult,
-  EnvironmentType,
-} from '@ts-cloud/core'
+import type { CloudConfig, CloudDriver, DeploySiteReleaseOptions, DeploySiteReleaseResult, EnvironmentType } from '@ts-cloud/core'
+import type { RpxLbAppBox } from './rpx-gateway'
 import { copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { hasManagementDashboardSite, resolveAppDatabase, resolveProjectStackName } from '@ts-cloud/core'
 import { buildManagementDashboardArtifact, ensureManagementDashboard, managementDashboardSiteNames } from '../../deploy/management-dashboard'
 import { isPhpSite, resolveSiteKind, siteInstallBase } from '../../deploy/site-target'
-import {
-  buildAwsArtifactFetch,
-  buildHostCleanupScript,
-  buildLocalArtifactFetch,
-  buildSiteDeployScript,
-  buildStaticSiteDeployScript,
-  releaseTarballTmpPath,
-  resolveExecStart,
-} from './deploy-script'
+import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildSslScript, resolveSslProvider } from './certbot'
 import { buildDatabaseSetupScript, buildManagedDbEnv } from './db-provision'
+import { buildAwsArtifactFetch, buildHostCleanupScript, buildLocalArtifactFetch, buildSiteDeployScript, buildStaticSiteDeployScript, releaseTarballTmpPath, resolveExecStart } from './deploy-script'
 import { buildFleetServicesEnv } from './fleet'
-import { resolveNotifications, sendNotifications } from './notifications'
 import { buildHealthCheckScript, buildLaravelDeployScript } from './laravel-deploy'
-import { buildSiteServicesScript, siteHasServices } from './app-services'
 import { buildNginxVhostScript, resolveNginxSnippet } from './nginx-vhost'
+import { resolveNotifications, sendNotifications } from './notifications'
 import { buildPhpFpmPoolScript, phpFpmPoolListen } from './php-fpm-pool'
 import { buildDeployHistoryHeader, buildSiteOwnerGuard } from './releases'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, rpxCertRenewServiceName, usesRpxProxy } from './rpx-gateway'
-import type { RpxLbAppBox } from './rpx-gateway'
 
 export interface ComputeDeployLogger {
   info(message: string): void
@@ -56,16 +42,7 @@ export async function deploySiteRelease(
   options: DeploySiteReleaseOptions,
   logger: ComputeDeployLogger = noopLogger,
 ): Promise<DeploySiteReleaseResult> {
-  const {
-    config,
-    environment,
-    siteName,
-    site,
-    slug,
-    sha,
-    runtime,
-    localTarballPath,
-  } = options
+  const { config, environment, siteName, site, slug, sha, runtime, localTarballPath } = options
 
   const remoteKey = `releases/${siteName}/${sha}.tar.gz`
   const stackName = resolveProjectStackName(config, environment)
@@ -79,9 +56,10 @@ export async function deploySiteRelease(
   })
 
   if (targets.length === 0) {
-    const hint = driver.name === 'aws'
-      ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app, and storage/cloud/state/${stackName}.json pins no live instance. For a shared box, record its instanceId there.`
-      : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app, and storage/cloud/state/${stackName}.json pins no live server. For a shared box, record its serverId there.`
+    const hint =
+      driver.name === 'aws'
+        ? `Stack '${stackName}' has no EC2 instances tagged Project=${slug} Environment=${environment} Role=app, and storage/cloud/state/${stackName}.json pins no live instance. For a shared box, record its instanceId there.`
+        : `No Hetzner servers labeled ts-cloud/project=${slug} ts-cloud/environment=${environment} ts-cloud/role=app, and storage/cloud/state/${stackName}.json pins no live server. For a shared box, record its serverId there.`
     return { success: false, error: hint }
   }
 
@@ -94,9 +72,7 @@ export async function deploySiteRelease(
   const dbEnv = outputs.servicesPrivateIp
     ? buildFleetServicesEnv(outputs.servicesPrivateIp, resolveAppDatabase(config))
     : buildManagedDbEnv(resolveAppDatabase(config))
-  const envWithServices = Object.keys(dbEnv).length > 0
-    ? { ...dbEnv, ...(site.env || {}) }
-    : (site.env || {})
+  const envWithServices = Object.keys(dbEnv).length > 0 ? { ...dbEnv, ...(site.env || {}) } : site.env || {}
 
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the
@@ -106,9 +82,7 @@ export async function deploySiteRelease(
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
     const appBase = siteInstallBase(slug, siteName)
 
-    const siteWithEnv = Object.keys(dbEnv).length > 0
-      ? { ...site, env: envWithServices }
-      : site
+    const siteWithEnv = Object.keys(dbEnv).length > 0 ? { ...site, env: envWithServices } : site
 
     const deployScript = buildLaravelDeployScript({
       siteName,
@@ -123,9 +97,10 @@ export async function deploySiteRelease(
     // on afterwards by certbot, which rewrites the :80 block to add :443.
     const useNginx = !usesRpxProxy(compute)
     const sslProvider = resolveSslProvider(site)
-    const customCert = sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
-      ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
-      : undefined
+    const customCert =
+      sslProvider === 'custom' && site.ssl?.certPath && site.ssl?.keyPath
+        ? { certPath: site.ssl.certPath, keyPath: site.ssl.keyPath }
+        : undefined
 
     // Site isolation (Forge-style): a dedicated Linux user + php-fpm pool. The
     // vhost points at the pool's per-site port instead of the shared php-fpm.
@@ -142,9 +117,10 @@ export async function deploySiteRelease(
           fastcgiPass: site.isolation ? phpFpmPoolListen(siteName) : undefined,
           redirects: site.redirects,
           ssl: customCert,
-          auth: site.auth && site.auth.enabled !== false && site.auth.password
-            ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
-            : undefined,
+          auth:
+            site.auth && site.auth.enabled !== false && site.auth.password
+              ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+              : undefined,
           serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
           clientMaxBodySize: site.nginx?.clientMaxBodySize,
           hsts: site.ssl?.hsts,
@@ -166,14 +142,26 @@ export async function deploySiteRelease(
     logger.step(`Deploying PHP site '${siteName}' to ${targets.length} target(s)...`)
     const phpResult = await driver.runRemoteDeploy({
       targets,
-      commands: [...buildSiteOwnerGuard(appBase, slug), ...deployScript, ...poolScript, ...vhostScript, ...sslScript, ...servicesScript, ...healthCheckScript],
+      commands: [
+        ...buildSiteOwnerGuard(appBase, slug),
+        ...deployScript,
+        ...poolScript,
+        ...vhostScript,
+        ...sslScript,
+        ...servicesScript,
+        ...healthCheckScript,
+      ],
       comment: `ts-cloud deploy ${slug}/${siteName}@${sha}`,
       tags: { Project: slug, Environment: environment, Role: 'app' },
     })
 
     const notifications = resolveNotifications(config.notifications, site.notifications)
     if (!phpResult.success) {
-      await sendNotifications(notifications, 'deploy-failed', `❌ Deploy of ${slug}/${siteName}@${sha} failed: ${phpResult.error || 'unknown error'}`)
+      await sendNotifications(
+        notifications,
+        'deploy-failed',
+        `❌ Deploy of ${slug}/${siteName}@${sha} failed: ${phpResult.error || 'unknown error'}`,
+      )
       return {
         success: false,
         error: phpResult.error || 'Remote PHP deploy failed',
@@ -202,9 +190,10 @@ export async function deploySiteRelease(
   })
 
   const tarballPath = releaseTarballTmpPath(slug, siteName, sha)
-  const artifactFetch = driver.name === 'aws'
-    ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', tarballPath)
-    : buildLocalArtifactFetch(uploadResult.artifactRef, tarballPath)
+  const artifactFetch =
+    driver.name === 'aws'
+      ? buildAwsArtifactFetch(outputs.deployBucketName!, remoteKey, config.project.region || 'us-east-1', tarballPath)
+      : buildLocalArtifactFetch(uploadResult.artifactRef, tarballPath)
 
   // server-static sites are shipped to /var/www/<site> (no systemd); server-app
   // sites run as a systemd service.
@@ -214,33 +203,34 @@ export async function deploySiteRelease(
   // WorkingDirectory, rpx static root, ownership guard, deploy history) derives
   // from it so a shared box never collides two projects on /var/www/<name>.
   const appBase = siteInstallBase(slug, siteName)
-  const baseScript = kind === 'server-static'
-    ? buildStaticSiteDeployScript({
-        siteName,
-        slug,
-        appDir: appBase,
-        artifactFetch,
-        releaseId: sha,
-        preStartCommands: site.preStart,
-      })
-    : buildSiteDeployScript({
-        siteName,
-        slug,
-        appDir: appBase,
-        artifactFetch,
-        releaseId: sha,
-        // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
-        execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
-        envEntries: envWithServices,
-        port: site.port,
-        preStartCommands: site.preStart,
-        sharedPaths: site.sharedPaths,
-        // Ported sites cut over with SO_REUSEPORT overlap + health gate by
-        // default; `zeroDowntime: false` opts back into stop/start. Portless
-        // sites (workers/schedulers) always stop/start — see the builder.
-        zeroDowntime: site.zeroDowntime !== false,
-        healthCheckPath: site.healthCheck?.path,
-      })
+  const baseScript =
+    kind === 'server-static'
+      ? buildStaticSiteDeployScript({
+          siteName,
+          slug,
+          appDir: appBase,
+          artifactFetch,
+          releaseId: sha,
+          preStartCommands: site.preStart,
+        })
+      : buildSiteDeployScript({
+          siteName,
+          slug,
+          appDir: appBase,
+          artifactFetch,
+          releaseId: sha,
+          // PHP sites branch out above, so a non-PHP runtime is guaranteed here.
+          execStart: resolveExecStart(site.start!, runtime as 'bun' | 'node' | 'deno'),
+          envEntries: envWithServices,
+          port: site.port,
+          preStartCommands: site.preStart,
+          sharedPaths: site.sharedPaths,
+          // Ported sites cut over with SO_REUSEPORT overlap + health gate by
+          // default; `zeroDowntime: false` opts back into stop/start. Portless
+          // sites (workers/schedulers) always stop/start — see the builder.
+          zeroDowntime: site.zeroDowntime !== false,
+          healthCheckPath: site.healthCheck?.path,
+        })
 
   // A static site served on the box can be fronted by nginx (default) with
   // HTTP Basic auth + Let's Encrypt — this is how the ts-cloud UI is published
@@ -256,9 +246,10 @@ export async function deploySiteRelease(
         appDir: `${appBase}/current`,
         webDirectory: '',
         redirects: site.redirects,
-        auth: site.auth && site.auth.enabled !== false && site.auth.password
-          ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
-          : undefined,
+        auth:
+          site.auth && site.auth.enabled !== false && site.auth.password
+            ? { username: site.auth.username || 'admin', password: site.auth.password, realm: site.auth.realm }
+            : undefined,
         serverSnippet: resolveNginxSnippet(site.nginx, compute?.nginxTemplates),
         clientMaxBodySize: site.nginx?.clientMaxBodySize,
         hsts: site.ssl?.hsts,
@@ -272,9 +263,7 @@ export async function deploySiteRelease(
   // non-PHP sites too — not just Laravel. The framework driver (app-services)
   // renders the right commands for Stacks (bun) vs Laravel, so a Stacks
   // server-app can run its scheduler + workers the same way.
-  const servicesScript = siteHasServices(site)
-    ? buildSiteServicesScript({ slug, siteName, site, appBase })
-    : []
+  const servicesScript = siteHasServices(site) ? buildSiteServicesScript({ slug, siteName, site, appBase }) : []
 
   const remoteScript = [
     ...buildDeployHistoryHeader(appBase, {
@@ -363,13 +352,11 @@ async function ensureAttachModeDatabase(
   logger: ComputeDeployLogger,
 ): Promise<boolean> {
   const { config, environment } = options
-  if (!config.cloud?.attachTo)
-    return true
+  if (!config.cloud?.attachTo) return true
   const compute = config.infrastructure?.compute
   const database = resolveAppDatabase(config)
   const commands = buildDatabaseSetupScript(database, compute?.managedServices ?? {})
-  if (commands.length === 0)
-    return true
+  if (commands.length === 0) return true
 
   const slug = config.project.slug
   const stackName = resolveProjectStackName(config, environment)
@@ -439,15 +426,19 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // their `cp` from staging. Build once, then copy per site.
   const dashboardTarballBySite = new Map<string, string>()
   if (injectedDashboardSites.length > 0) {
-    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, { cwd, slug, sha, siteName: injectedDashboardSites[0], logger: { info: logger.info, warn: logger.warn } })
+    dashboardTarball = buildManagementDashboardArtifact(config.sites?.[injectedDashboardSites[0]] as any, {
+      cwd,
+      slug,
+      sha,
+      siteName: injectedDashboardSites[0],
+      logger: { info: logger.info, warn: logger.warn },
+    })
     if (!dashboardTarball) {
       logger.warn('Management dashboard: no artifact available — skipping dashboard site(s) for this deploy.')
       for (const name of injectedDashboardSites) {
-        if (config.sites)
-          delete (config.sites as Record<string, unknown>)[name]
+        if (config.sites) delete (config.sites as Record<string, unknown>)[name]
       }
-    }
-    else {
+    } else {
       for (const name of injectedDashboardSites) {
         if (name === injectedDashboardSites[0]) {
           dashboardTarballBySite.set(name, dashboardTarball)
@@ -457,8 +448,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
           const copy = join(tmpdir(), `${slug}-${name}-${sha}.tar.gz`)
           copyFileSync(dashboardTarball, copy)
           dashboardTarballBySite.set(name, copy)
-        }
-        catch {
+        } catch {
           dashboardTarballBySite.set(name, dashboardTarball)
         }
       }
@@ -467,8 +457,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
 
   const sites = config.sites || {}
   const deployable = Object.entries(sites).filter(([name, site]) => {
-    if (!site)
-      return false
+    if (!site) return false
     const kind = resolveSiteKind(site)
     if (kind === 'bucket') {
       logger.warn(`Site '${name}' targets a bucket — skipping (handled by the static-site path, not compute).`)
@@ -476,8 +465,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
     }
     // Redirect-only sites ship nothing — they become a gateway redirect route in
     // reloadRpxGateway. Nothing to build/upload here.
-    if (kind === 'redirect')
-      return false
+    if (kind === 'redirect') return false
     return true
   })
 
@@ -487,28 +475,30 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // so no cloud-init of ours ever ran this project's on-box database setup — the
   // tenant role + database would not exist unless someone created them by hand.
   // Ensure them before the first site ships (idempotent; no-op otherwise).
-  if (!await ensureAttachModeDatabase(driver, options, logger))
-    return false
+  if (!(await ensureAttachModeDatabase(driver, options, logger))) return false
 
   // Use the internally-built dashboard tarball when we injected it; otherwise the
   // consumer supplies every tarball (the CLI builds the dashboard in its own loop).
-  const tarballFor = (siteName: string): string =>
-    dashboardTarballBySite.get(siteName) ?? tarballForSite(siteName)
+  const tarballFor = (siteName: string): string => dashboardTarballBySite.get(siteName) ?? tarballForSite(siteName)
 
   for (const [siteName, site] of deployable) {
     logger.step(`Deploying site: ${siteName}`)
     // PHP/Laravel sites clone from git on the box — no local tarball to build.
     const localTarballPath = isPhpSite(site) ? undefined : tarballFor(siteName)
-    const result = await deploySiteRelease(driver, {
-      config,
-      environment,
-      siteName,
-      site,
-      slug,
-      sha,
-      runtime,
-      localTarballPath,
-    }, logger)
+    const result = await deploySiteRelease(
+      driver,
+      {
+        config,
+        environment,
+        siteName,
+        site,
+        slug,
+        sha,
+        runtime,
+        localTarballPath,
+      },
+      logger,
+    )
 
     if (!result.success) {
       logger.error(`Deploy of '${siteName}' failed: ${result.error || 'unknown error'}`)
@@ -533,8 +523,7 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // server-app/server-static sites appear in the gateway automatically. Opt-in
   // via `compute.proxy.engine === 'rpx'`; a no-op otherwise.
   const reloaded = await reloadRpxGateway(options)
-  if (!reloaded)
-    return false
+  if (!reloaded) return false
 
   return true
 }
@@ -557,8 +546,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   // subset), so a partial deploy can never drop the other sites' routes.
   const routeSource = options.rpxConfig ?? config
   const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
-  if (proxy?.engine !== 'rpx')
-    return true
+  if (proxy?.engine !== 'rpx') return true
 
   const sites = routeSource.sites || {}
   const slug = config.project.slug
@@ -581,7 +569,7 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
       role: 'app',
       stackName,
     })
-    const appBoxes: RpxLbAppBox[] = appTargets.map(t => ({ privateIp: t.privateIp, publicIp: t.publicIp }))
+    const appBoxes: RpxLbAppBox[] = appTargets.map((t) => ({ privateIp: t.privateIp, publicIp: t.publicIp }))
     const lbConfig = buildRpxLbConfig(sites, appBoxes, { proxy, slug })
     if (lbConfig.proxies.length === 0) {
       logger.warn('rpx gateway: no server sites with a domain to route — skipping gateway reload.')
@@ -658,12 +646,10 @@ export async function renewRpxCertificates(
   const { config, environment, driver, logger = noopLogger } = options
   const routeSource = options.rpxConfig ?? config
   const proxy = routeSource.infrastructure?.compute?.proxy ?? config.infrastructure?.compute?.proxy
-  if (proxy?.engine !== 'rpx' || !proxy.onDemandTls)
-    return true
+  if (proxy?.engine !== 'rpx' || !proxy.onDemandTls) return true
 
   const rpxConfig = buildRpxConfig(routeSource.sites || {}, { proxy, slug: config.project.slug })
-  if (rpxConfig.proxies.length === 0)
-    return true
+  if (rpxConfig.proxies.length === 0) return true
 
   const slug = config.project.slug
   const stackName = resolveProjectStackName(config, environment)

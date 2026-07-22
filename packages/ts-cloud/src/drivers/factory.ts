@@ -17,8 +17,7 @@ export interface CreateCloudDriverOptions {
  * scripts and operations against localhost instead of reaching out over SSH/SSM.
  */
 export function createCloudDriver(options: CreateCloudDriverOptions): CloudDriver {
-  if (isBoxMode())
-    return new LocalBoxDriver()
+  if (isBoxMode()) return new LocalBoxDriver()
 
   const provider = options.provider ?? resolveCloudProvider(options.config)
 

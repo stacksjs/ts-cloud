@@ -38,11 +38,9 @@ export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
   ]
   const extra = new Set<number>()
   for (const site of Object.values(config.sites || {})) {
-    if (site && typeof site.port === 'number' && ![22, 80, 443].includes(site.port))
-      extra.add(site.port)
+    if (site && typeof site.port === 'number' && ![22, 80, 443].includes(site.port)) extra.add(site.port)
   }
-  for (const port of extra)
-    rules.push({ port, protocol: 'tcp', cidr: '0.0.0.0/0' })
+  for (const port of extra) rules.push({ port, protocol: 'tcp', cidr: '0.0.0.0/0' })
   return rules
 }
 
@@ -54,14 +52,15 @@ export function awsComputeIngressRules(config: CloudConfig): AwsIngressRule[] {
 export function buildAwsUserData(config: CloudConfig): string {
   const compute = config.infrastructure?.compute ?? {}
   const provision = buildComputeProvisionScripts(config)
-  const rpxProvision = compute.proxy?.engine === 'rpx'
-    ? buildRpxProvisionScript({
-        proxy: compute.proxy,
-        config: buildRpxConfig(config.sites ?? {}, { proxy: compute.proxy, slug: config.project.slug }),
-        slug: config.project.slug,
-        bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
-      })
-    : undefined
+  const rpxProvision =
+    compute.proxy?.engine === 'rpx'
+      ? buildRpxProvisionScript({
+          proxy: compute.proxy,
+          config: buildRpxConfig(config.sites ?? {}, { proxy: compute.proxy, slug: config.project.slug }),
+          slug: config.project.slug,
+          bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+        })
+      : undefined
 
   return buildUbuntuBootstrapScript({
     runtime: provision.runtime,

@@ -13,7 +13,6 @@
  *     infinite while still bounding disk usage if many historical periods are
  *     queried.
  */
-
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -31,7 +30,7 @@ export interface CostCacheKey {
   end: string
   granularity: string
   metrics: string[]
-  groupBy: Array<{ Type: string, Key: string }>
+  groupBy: Array<{ Type: string; Key: string }>
 }
 
 interface CacheEntry<T> {
@@ -62,7 +61,7 @@ function hashKey(key: CostCacheKey): string {
     e: key.end,
     g: key.granularity,
     m: [...key.metrics].sort(),
-    gb: [...key.groupBy].map(g => `${g.Type}:${g.Key}`).sort(),
+    gb: [...key.groupBy].map((g) => `${g.Type}:${g.Key}`).sort(),
   }
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 24)
 }
@@ -92,8 +91,7 @@ export function loadCache<T>(profile: string | undefined, key: CostCacheKey): Ca
   let entry: CacheEntry<T>
   try {
     entry = JSON.parse(readFileSync(file, 'utf-8')) as CacheEntry<T>
-  }
-  catch {
+  } catch {
     return null
   }
 

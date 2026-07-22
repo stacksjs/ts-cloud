@@ -2,7 +2,6 @@
  * AWS DynamoDB Client
  * Direct API calls for DynamoDB operations
  */
-
 import { AWSClient } from './client'
 
 export interface AttributeValue {
@@ -43,7 +42,8 @@ export interface GlobalSecondaryIndex {
 
 export interface TableDescription {
   TableName: string
-  TableStatus: 'CREATING' | 'UPDATING' | 'DELETING' | 'ACTIVE' | 'INACCESSIBLE_ENCRYPTION_CREDENTIALS' | 'ARCHIVING' | 'ARCHIVED'
+  TableStatus:
+    'CREATING' | 'UPDATING' | 'DELETING' | 'ACTIVE' | 'INACCESSIBLE_ENCRYPTION_CREDENTIALS' | 'ARCHIVING' | 'ARCHIVED'
   TableArn: string
   ItemCount: number
   TableSizeBytes: number
@@ -252,15 +252,21 @@ export class DynamoDBClient {
    * Batch write items
    */
   async batchWriteItem(params: {
-    RequestItems: Record<string, Array<{
-      PutRequest?: { Item: Record<string, AttributeValue> }
-      DeleteRequest?: { Key: Record<string, AttributeValue> }
-    }>>
+    RequestItems: Record<
+      string,
+      Array<{
+        PutRequest?: { Item: Record<string, AttributeValue> }
+        DeleteRequest?: { Key: Record<string, AttributeValue> }
+      }>
+    >
   }): Promise<{
-    UnprocessedItems: Record<string, Array<{
-      PutRequest?: { Item: Record<string, AttributeValue> }
-      DeleteRequest?: { Key: Record<string, AttributeValue> }
-    }>>
+    UnprocessedItems: Record<
+      string,
+      Array<{
+        PutRequest?: { Item: Record<string, AttributeValue> }
+        DeleteRequest?: { Key: Record<string, AttributeValue> }
+      }>
+    >
   }> {
     return this.request('BatchWriteItem', params)
   }
@@ -269,17 +275,23 @@ export class DynamoDBClient {
    * Batch get items
    */
   async batchGetItem(params: {
-    RequestItems: Record<string, {
-      Keys: Array<Record<string, AttributeValue>>
-      ProjectionExpression?: string
-      ExpressionAttributeNames?: Record<string, string>
-      ConsistentRead?: boolean
-    }>
+    RequestItems: Record<
+      string,
+      {
+        Keys: Array<Record<string, AttributeValue>>
+        ProjectionExpression?: string
+        ExpressionAttributeNames?: Record<string, string>
+        ConsistentRead?: boolean
+      }
+    >
   }): Promise<{
     Responses: Record<string, Array<Record<string, AttributeValue>>>
-    UnprocessedKeys: Record<string, {
-      Keys: Array<Record<string, AttributeValue>>
-    }>
+    UnprocessedKeys: Record<
+      string,
+      {
+        Keys: Array<Record<string, AttributeValue>>
+      }
+    >
   }> {
     return this.request('BatchGetItem', params)
   }
@@ -325,7 +337,7 @@ export class DynamoDBClient {
       return { BOOL: value }
     }
     if (Array.isArray(value)) {
-      return { L: value.map(v => DynamoDBClient.marshalValue(v)) }
+      return { L: value.map((v) => DynamoDBClient.marshalValue(v)) }
     }
     if (typeof value === 'object') {
       return { M: DynamoDBClient.marshal(value) }
@@ -352,7 +364,7 @@ export class DynamoDBClient {
     if (value.N !== undefined) return Number(value.N)
     if (value.BOOL !== undefined) return value.BOOL
     if (value.NULL !== undefined) return null
-    if (value.L !== undefined) return value.L.map(v => DynamoDBClient.unmarshalValue(v))
+    if (value.L !== undefined) return value.L.map((v) => DynamoDBClient.unmarshalValue(v))
     if (value.M !== undefined) return DynamoDBClient.unmarshal(value.M)
     if (value.SS !== undefined) return value.SS
     if (value.NS !== undefined) return value.NS.map(Number)

@@ -8,11 +8,9 @@
  * - Inbox management (list, read, delete)
  * - Two-way messaging support
  */
-
-import { SNSClient } from './sns'
 import { S3Client } from './s3'
 import { SchedulerClient } from './scheduler'
-import { LambdaClient } from './lambda'
+import { SNSClient } from './sns'
 
 export interface SmsClientConfig {
   region?: string
@@ -250,8 +248,7 @@ export class SmsClient {
         if (parsed) {
           messages.push(parsed)
         }
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to read SMS ${obj.Key}:`, err)
       }
     }
@@ -271,8 +268,7 @@ catch (err) {
     try {
       const content = await this.s3.getObject(this.config.inboxBucket, key)
       return this.parseIncomingSms(content, key)
-    }
-catch (err) {
+    } catch (err) {
       return null
     }
   }
@@ -366,21 +362,21 @@ catch (err) {
    */
   async getUnreadCount(): Promise<number> {
     const messages = await this.getInbox({ maxResults: 1000 })
-    return messages.filter(m => !m.read).length
+    return messages.filter((m) => !m.read).length
   }
 
   /**
    * Batch mark messages as read
    */
   async markManyAsRead(keys: string[]): Promise<void> {
-    await Promise.all(keys.map(key => this.markAsRead(key)))
+    await Promise.all(keys.map((key) => this.markAsRead(key)))
   }
 
   /**
    * Batch delete messages
    */
   async deleteMany(keys: string[]): Promise<void> {
-    await Promise.all(keys.map(key => this.deleteMessage(key)))
+    await Promise.all(keys.map((key) => this.deleteMessage(key)))
   }
 
   /**
@@ -420,27 +416,34 @@ catch (err) {
     const messages = await this.getInbox({ maxResults: 1000 })
     const normalizedTarget = normalizePhoneNumber(phoneNumber)
 
-    return messages.filter(m => {
-      const from = normalizePhoneNumber(m.from)
-      const to = normalizePhoneNumber(m.to)
-      return from === normalizedTarget || to === normalizedTarget
-    }).sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+    return messages
+      .filter((m) => {
+        const from = normalizePhoneNumber(m.from)
+        const to = normalizePhoneNumber(m.to)
+        return from === normalizedTarget || to === normalizedTarget
+      })
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
   }
 
   /**
    * Get unique conversations (grouped by contact)
    */
-  async getConversations(): Promise<Array<{
-    phoneNumber: string
-    lastMessage: SmsMessage
-    messageCount: number
-    unreadCount: number
-  }>> {
-    const messages = await this.getInbox({ maxResults: 1000 })
-    const conversations = new Map<string, {
+  async getConversations(): Promise<
+    Array<{
       phoneNumber: string
-      messages: SmsMessage[]
-    }>()
+      lastMessage: SmsMessage
+      messageCount: number
+      unreadCount: number
+    }>
+  > {
+    const messages = await this.getInbox({ maxResults: 1000 })
+    const conversations = new Map<
+      string,
+      {
+        phoneNumber: string
+        messages: SmsMessage[]
+      }
+    >()
 
     for (const msg of messages) {
       // Use the "other" phone number as the conversation key
@@ -451,12 +454,14 @@ catch (err) {
       conversations.get(otherNumber)!.messages.push(msg)
     }
 
-    return Array.from(conversations.values()).map(conv => ({
-      phoneNumber: conv.phoneNumber,
-      lastMessage: conv.messages[0], // Already sorted newest first
-      messageCount: conv.messages.length,
-      unreadCount: conv.messages.filter(m => !m.read).length,
-    })).sort((a, b) => b.lastMessage.timestamp.getTime() - a.lastMessage.timestamp.getTime())
+    return Array.from(conversations.values())
+      .map((conv) => ({
+        phoneNumber: conv.phoneNumber,
+        lastMessage: conv.messages[0], // Already sorted newest first
+        messageCount: conv.messages.length,
+        unreadCount: conv.messages.filter((m) => !m.read).length,
+      }))
+      .sort((a, b) => b.lastMessage.timestamp.getTime() - a.lastMessage.timestamp.getTime())
   }
 
   // ============================================
@@ -643,8 +648,7 @@ catch (err) {
         sms.createdAt = new Date(sms.createdAt)
         if (sms.sentAt) sms.sentAt = new Date(sms.sentAt)
         messages.push(sms)
-      }
-catch {
+      } catch {
         // Skip invalid entries
       }
     }
@@ -669,8 +673,7 @@ catch {
       sms.createdAt = new Date(sms.createdAt)
       if (sms.sentAt) sms.sentAt = new Date(sms.sentAt)
       return sms
-    }
-catch {
+    } catch {
       return null
     }
   }
@@ -700,8 +703,7 @@ catch {
     if (this.scheduler) {
       try {
         await this.scheduler.deleteRule(`sms-${id}`, true)
-      }
-catch {
+      } catch {
         // Rule may not exist
       }
     }
@@ -739,8 +741,7 @@ catch {
       })
 
       return result
-    }
-catch (err: any) {
+    } catch (err: any) {
       // Update with error
       const bucket = this.config.scheduledBucket || this.config.inboxBucket!
       const key = `${this.config.scheduledPrefix}${id}.json`
@@ -768,12 +769,7 @@ catch (err: any) {
   /**
    * Schedule SMS to send after a delay (convenience method)
    */
-  async sendAfter(
-    to: string,
-    body: string,
-    delayMinutes: number,
-    from?: string,
-  ): Promise<ScheduledSms> {
+  async sendAfter(to: string, body: string, delayMinutes: number, from?: string): Promise<ScheduledSms> {
     const scheduledAt = new Date(Date.now() + delayMinutes * 60 * 1000)
     return this.scheduleMessage({ to, body, scheduledAt, from })
   }
@@ -785,11 +781,7 @@ catch (err: any) {
   /**
    * Create an SMS template
    */
-  async createTemplate(template: {
-    name: string
-    body: string
-    description?: string
-  }): Promise<SmsTemplate> {
+  async createTemplate(template: { name: string; body: string; description?: string }): Promise<SmsTemplate> {
     const bucket = this.config.scheduledBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
       throw new Error('Templates bucket not configured')
@@ -800,7 +792,7 @@ catch (err: any) {
 
     // Extract variables from template (e.g., {{name}}, {{code}})
     const variableMatches = template.body.match(/\{\{(\w+)\}\}/g) || []
-    const variables = variableMatches.map(m => m.replace(/\{\{|\}\}/g, ''))
+    const variables = variableMatches.map((m) => m.replace(/\{\{|\}\}/g, ''))
 
     const smsTemplate: SmsTemplate = {
       id,
@@ -845,8 +837,7 @@ catch (err: any) {
         template.createdAt = new Date(template.createdAt)
         if (template.updatedAt) template.updatedAt = new Date(template.updatedAt)
         templates.push(template)
-      }
-catch {
+      } catch {
         // Skip invalid entries
       }
     }
@@ -870,8 +861,7 @@ catch {
       template.createdAt = new Date(template.createdAt)
       if (template.updatedAt) template.updatedAt = new Date(template.updatedAt)
       return template
-    }
-catch {
+    } catch {
       return null
     }
   }
@@ -881,7 +871,7 @@ catch {
    */
   async getTemplateByName(name: string): Promise<SmsTemplate | null> {
     const templates = await this.getTemplates()
-    return templates.find(t => t.name === name) || null
+    return templates.find((t) => t.name === name) || null
   }
 
   /**
@@ -904,7 +894,7 @@ catch {
       template.body = updates.body
       // Re-extract variables
       const variableMatches = updates.body.match(/\{\{(\w+)\}\}/g) || []
-      template.variables = [...new Set(variableMatches.map(m => m.replace(/\{\{|\}\}/g, '')))]
+      template.variables = [...new Set(variableMatches.map((m) => m.replace(/\{\{|\}\}/g, '')))]
     }
     if (updates.description !== undefined) template.description = updates.description
     template.updatedAt = new Date()
@@ -1032,8 +1022,7 @@ catch {
         const receipt = JSON.parse(content) as DeliveryReceipt
         receipt.timestamp = new Date(receipt.timestamp)
         return receipt
-      }
-catch {
+      } catch {
         // Try next day
       }
     }
@@ -1044,10 +1033,12 @@ catch {
   /**
    * Get all delivery receipts (recent)
    */
-  async getDeliveryReceipts(options: {
-    maxResults?: number
-    status?: DeliveryReceipt['status']
-  } = {}): Promise<DeliveryReceipt[]> {
+  async getDeliveryReceipts(
+    options: {
+      maxResults?: number
+      status?: DeliveryReceipt['status']
+    } = {},
+  ): Promise<DeliveryReceipt[]> {
     const bucket = this.config.receiptBucket || this.config.inboxBucket
     if (!this.s3 || !bucket) {
       throw new Error('Receipt bucket not configured')
@@ -1071,8 +1062,7 @@ catch {
         if (options.status && receipt.status !== options.status) continue
 
         receipts.push(receipt)
-      }
-catch {
+      } catch {
         // Skip invalid entries
       }
     }
@@ -1107,7 +1097,7 @@ catch {
       if (receipt && (receipt.status === 'delivered' || receipt.status === 'failed')) {
         return receipt
       }
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     return await this.getDeliveryReceipt(messageId)
@@ -1123,10 +1113,12 @@ catch {
   /**
    * Get delivery statistics
    */
-  async getDeliveryStats(options: {
-    since?: Date
-    maxMessages?: number
-  } = {}): Promise<{
+  async getDeliveryStats(
+    options: {
+      since?: Date
+      maxMessages?: number
+    } = {},
+  ): Promise<{
     total: number
     delivered: number
     failed: number
@@ -1137,16 +1129,15 @@ catch {
     const receipts = await this.getDeliveryReceipts({ maxResults: options.maxMessages || 1000 })
 
     const since = options.since || new Date(0)
-    const filtered = receipts.filter(r => r.timestamp >= since)
+    const filtered = receipts.filter((r) => r.timestamp >= since)
 
-    const delivered = filtered.filter(r => r.status === 'delivered').length
-    const failed = filtered.filter(r => r.status === 'failed').length
-    const pending = filtered.filter(r => r.status === 'pending' || r.status === 'sent').length
+    const delivered = filtered.filter((r) => r.status === 'delivered').length
+    const failed = filtered.filter((r) => r.status === 'failed').length
+    const pending = filtered.filter((r) => r.status === 'pending' || r.status === 'sent').length
 
-    const pricesWithValue = filtered.filter(r => r.priceInUsd !== undefined).map(r => r.priceInUsd!)
-    const averagePriceUsd = pricesWithValue.length > 0
-      ? pricesWithValue.reduce((a, b) => a + b, 0) / pricesWithValue.length
-      : 0
+    const pricesWithValue = filtered.filter((r) => r.priceInUsd !== undefined).map((r) => r.priceInUsd!)
+    const averagePriceUsd =
+      pricesWithValue.length > 0 ? pricesWithValue.reduce((a, b) => a + b, 0) / pricesWithValue.length : 0
 
     return {
       total: filtered.length,
@@ -1172,8 +1163,7 @@ catch {
     return {
       messageId: result.messageId,
       trackDelivery: () => this.getDeliveryReceipt(result.messageId),
-      waitForDelivery: (timeoutMs?: number) =>
-        this.waitForDelivery(result.messageId, { timeoutMs }),
+      waitForDelivery: (timeoutMs?: number) => this.waitForDelivery(result.messageId, { timeoutMs }),
     }
   }
 
@@ -1196,8 +1186,7 @@ catch {
 
       // Direct SMS data format
       return this.extractSmsFields(data, key)
-    }
-catch {
+    } catch {
       // Not JSON, might be raw text
       return {
         key,
@@ -1271,8 +1260,7 @@ export function createSmsInboxHandler(config: {
 
           try {
             messageData = JSON.parse(snsMessage.Message)
-          }
-catch {
+          } catch {
             messageData = { body: snsMessage.Message }
           }
 
@@ -1361,8 +1349,7 @@ export function createScheduledSmsHandler(config: {
         statusCode: 200,
         body: JSON.stringify({ messageId: result.messageId }),
       }
-    }
-catch (err: any) {
+    } catch (err: any) {
       console.error(`Failed to send scheduled SMS ${scheduledSmsId}:`, err.message)
 
       if (config.onError) {
@@ -1437,8 +1424,7 @@ export function createDeliveryReceiptHandler(config: {
 
           try {
             data = JSON.parse(snsMessage.Message)
-          }
-catch {
+          } catch {
             data = snsMessage.Message
           }
 
@@ -1497,10 +1483,14 @@ catch {
 function parseDeliveryStatus(data: any, snsMessage: any): DeliveryReceipt | null {
   // SNS SMS delivery status format
   if (data.status !== undefined && data.PhoneNumber) {
-    const status = data.status === 'SUCCESS' ? 'delivered'
-      : data.status === 'FAILURE' ? 'failed'
-        : data.status === 'PENDING' ? 'pending'
-          : 'unknown'
+    const status =
+      data.status === 'SUCCESS'
+        ? 'delivered'
+        : data.status === 'FAILURE'
+          ? 'failed'
+          : data.status === 'PENDING'
+            ? 'pending'
+            : 'unknown'
 
     return {
       messageId: data.messageId || snsMessage.MessageId,
@@ -1570,11 +1560,7 @@ function normalizeStatus(status: string): DeliveryReceipt['status'] {
 /**
  * Forward delivery receipt to a webhook URL
  */
-async function forwardToWebhook(
-  url: string,
-  receipt: DeliveryReceipt,
-  secret?: string,
-): Promise<void> {
+async function forwardToWebhook(url: string, receipt: DeliveryReceipt, secret?: string): Promise<void> {
   const body = JSON.stringify(receipt)
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -1598,8 +1584,7 @@ async function forwardToWebhook(
     if (!response.ok) {
       console.error(`Webhook failed: ${response.status} ${response.statusText}`)
     }
-  }
-catch (err: any) {
+  } catch (err: any) {
     console.error(`Webhook error: ${err.message}`)
   }
 }

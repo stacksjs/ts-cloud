@@ -78,12 +78,16 @@ function cacheBehavior(pathPattern: string | null, kind: 'dynamic' | 'static') {
     TrustedKeyGroups: { Enabled: false, Quantity: 0 },
     LambdaFunctionAssociations: { Quantity: 0 },
     FunctionAssociations: { Quantity: 0 },
-    AllowedMethods: kind === 'dynamic'
-      ? { Quantity: 7, Items: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'], CachedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] } }
-      : { Quantity: 3, Items: ['GET', 'HEAD', 'OPTIONS'], CachedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] } },
+    AllowedMethods:
+      kind === 'dynamic'
+        ? {
+            Quantity: 7,
+            Items: ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE'],
+            CachedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] },
+          }
+        : { Quantity: 3, Items: ['GET', 'HEAD', 'OPTIONS'], CachedMethods: { Quantity: 2, Items: ['GET', 'HEAD'] } },
   }
-  if (pathPattern !== null)
-    base.PathPattern = pathPattern
+  if (pathPattern !== null) base.PathPattern = pathPattern
   return base
 }
 
@@ -93,10 +97,11 @@ function cacheBehavior(pathPattern: string | null, kind: 'dynamic' | 'static') {
  */
 export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOptions): Record<string, any> {
   const aliases = options.aliases
-  if (aliases.length === 0)
-    throw new Error('buildCloudFrontOriginConfig: at least one alias is required')
+  if (aliases.length === 0) throw new Error('buildCloudFrontOriginConfig: at least one alias is required')
   if (aliases.includes(options.originDomain))
-    throw new Error(`buildCloudFrontOriginConfig: originDomain ${options.originDomain} must not be one of the aliases (it would loop)`)
+    throw new Error(
+      `buildCloudFrontOriginConfig: originDomain ${options.originDomain} must not be one of the aliases (it would loop)`,
+    )
   if (options.originShield && !options.originShieldRegion)
     throw new Error('buildCloudFrontOriginConfig: originShieldRegion is required when originShield is enabled')
 
@@ -117,30 +122,32 @@ export function buildCloudFrontOriginConfig(options: BuildCloudFrontOriginOption
     DefaultRootObject: '',
     Origins: {
       Quantity: 1,
-      Items: [{
-        Id: ORIGIN_ID,
-        DomainName: options.originDomain,
-        OriginPath: '',
-        CustomHeaders: customHeaders,
-        CustomOriginConfig: {
-          HTTPPort: 80,
-          HTTPSPort: 443,
-          OriginProtocolPolicy: 'https-only',
-          OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
-          OriginReadTimeout: 30,
-          OriginKeepaliveTimeout: 5,
+      Items: [
+        {
+          Id: ORIGIN_ID,
+          DomainName: options.originDomain,
+          OriginPath: '',
+          CustomHeaders: customHeaders,
+          CustomOriginConfig: {
+            HTTPPort: 80,
+            HTTPSPort: 443,
+            OriginProtocolPolicy: 'https-only',
+            OriginSslProtocols: { Quantity: 1, Items: ['TLSv1.2'] },
+            OriginReadTimeout: 30,
+            OriginKeepaliveTimeout: 5,
+          },
+          ConnectionAttempts: 3,
+          ConnectionTimeout: 10,
+          OriginShield: options.originShield
+            ? { Enabled: true, OriginShieldRegion: options.originShieldRegion }
+            : { Enabled: false },
+          OriginAccessControlId: '',
         },
-        ConnectionAttempts: 3,
-        ConnectionTimeout: 10,
-        OriginShield: options.originShield
-          ? { Enabled: true, OriginShieldRegion: options.originShieldRegion }
-          : { Enabled: false },
-        OriginAccessControlId: '',
-      }],
+      ],
     },
     OriginGroups: { Quantity: 0 },
     DefaultCacheBehavior: cacheBehavior(null, 'static'),
-    CacheBehaviors: { Quantity: behaviors.length, Items: behaviors.map(b => cacheBehavior(b.pathPattern, b.kind)) },
+    CacheBehaviors: { Quantity: behaviors.length, Items: behaviors.map((b) => cacheBehavior(b.pathPattern, b.kind)) },
     ViewerCertificate: {
       CloudFrontDefaultCertificate: false,
       ACMCertificateArn: options.viewerCertificateArn,

@@ -3,7 +3,6 @@
  * Enterprise search service
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -161,7 +160,26 @@ export interface DeleteIndexCommandOutput {
 export interface CreateDataSourceCommandInput {
   Name: string
   IndexId: string
-  Type: 'S3' | 'SHAREPOINT' | 'DATABASE' | 'SALESFORCE' | 'ONEDRIVE' | 'SERVICENOW' | 'CUSTOM' | 'CONFLUENCE' | 'GOOGLEDRIVE' | 'WEBCRAWLER' | 'WORKDOCS' | 'FSX' | 'SLACK' | 'BOX' | 'QUIP' | 'JIRA' | 'GITHUB' | 'ALFRESCO' | 'TEMPLATE'
+  Type:
+    | 'S3'
+    | 'SHAREPOINT'
+    | 'DATABASE'
+    | 'SALESFORCE'
+    | 'ONEDRIVE'
+    | 'SERVICENOW'
+    | 'CUSTOM'
+    | 'CONFLUENCE'
+    | 'GOOGLEDRIVE'
+    | 'WEBCRAWLER'
+    | 'WORKDOCS'
+    | 'FSX'
+    | 'SLACK'
+    | 'BOX'
+    | 'QUIP'
+    | 'JIRA'
+    | 'GITHUB'
+    | 'ALFRESCO'
+    | 'TEMPLATE'
   Configuration?: {
     S3Configuration?: {
       BucketName: string
@@ -269,7 +287,18 @@ export interface CreateDataSourceCommandInput {
     InlineConfigurations?: Array<{
       Condition?: {
         ConditionDocumentAttributeKey: string
-        Operator: 'GreaterThan' | 'GreaterThanOrEquals' | 'LessThan' | 'LessThanOrEquals' | 'Equals' | 'NotEquals' | 'Contains' | 'NotContains' | 'Exists' | 'NotExists' | 'BeginsWith'
+        Operator:
+          | 'GreaterThan'
+          | 'GreaterThanOrEquals'
+          | 'LessThan'
+          | 'LessThanOrEquals'
+          | 'Equals'
+          | 'NotEquals'
+          | 'Contains'
+          | 'NotContains'
+          | 'Exists'
+          | 'NotExists'
+          | 'BeginsWith'
         ConditionOnValue?: {
           StringValue?: string
           StringListValue?: string[]
@@ -734,7 +763,8 @@ export interface BatchPutDocumentCommandInput {
         DataSourceId?: string
       }>
     }>
-    ContentType?: 'PDF' | 'HTML' | 'MS_WORD' | 'PLAIN_TEXT' | 'PPT' | 'RTF' | 'XML' | 'XSLT' | 'MS_EXCEL' | 'CSV' | 'JSON' | 'MD'
+    ContentType?:
+      'PDF' | 'HTML' | 'MS_WORD' | 'PLAIN_TEXT' | 'PPT' | 'RTF' | 'XML' | 'XSLT' | 'MS_EXCEL' | 'CSV' | 'JSON' | 'MD'
     AccessControlConfigurationId?: string
   }>
   CustomDocumentEnrichmentConfiguration?: CreateDataSourceCommandInput['CustomDocumentEnrichmentConfiguration']
@@ -828,7 +858,9 @@ export class KendraClient {
     return this.request('ListDataSources', params as unknown as Record<string, unknown>)
   }
 
-  async startDataSourceSyncJob(params: StartDataSourceSyncJobCommandInput): Promise<StartDataSourceSyncJobCommandOutput> {
+  async startDataSourceSyncJob(
+    params: StartDataSourceSyncJobCommandInput,
+  ): Promise<StartDataSourceSyncJobCommandOutput> {
     return this.request('StartDataSourceSyncJob', params as unknown as Record<string, unknown>)
   }
 
@@ -867,11 +899,15 @@ export class KendraClient {
   /**
    * Simple search query
    */
-  async search(indexId: string, queryText: string, options?: {
-    pageSize?: number
-    pageNumber?: number
-    attributeFilter?: QueryCommandInput['AttributeFilter']
-  }): Promise<QueryResultItem[]> {
+  async search(
+    indexId: string,
+    queryText: string,
+    options?: {
+      pageSize?: number
+      pageNumber?: number
+      attributeFilter?: QueryCommandInput['AttributeFilter']
+    },
+  ): Promise<QueryResultItem[]> {
     const result = await this.query({
       IndexId: indexId,
       QueryText: queryText,
@@ -885,10 +921,14 @@ export class KendraClient {
   /**
    * Retrieve documents (for RAG)
    */
-  async retrieveDocuments(indexId: string, queryText: string, options?: {
-    pageSize?: number
-    pageNumber?: number
-  }): Promise<RetrieveResultItem[]> {
+  async retrieveDocuments(
+    indexId: string,
+    queryText: string,
+    options?: {
+      pageSize?: number
+      pageNumber?: number
+    },
+  ): Promise<RetrieveResultItem[]> {
     const result = await this.retrieve({
       IndexId: indexId,
       QueryText: queryText,
@@ -901,20 +941,24 @@ export class KendraClient {
   /**
    * Add a text document to the index
    */
-  async addDocument(indexId: string, document: {
-    id: string
-    title?: string
-    content: string
-    attributes?: Record<string, string | string[] | number>
-  }): Promise<void> {
+  async addDocument(
+    indexId: string,
+    document: {
+      id: string
+      title?: string
+      content: string
+      attributes?: Record<string, string | string[] | number>
+    },
+  ): Promise<void> {
     const attributes = document.attributes
       ? Object.entries(document.attributes).map(([key, value]) => ({
           Key: key,
-          Value: typeof value === 'number'
-            ? { LongValue: value }
-            : Array.isArray(value)
-              ? { StringListValue: value }
-              : { StringValue: value },
+          Value:
+            typeof value === 'number'
+              ? { LongValue: value }
+              : Array.isArray(value)
+                ? { StringListValue: value }
+                : { StringValue: value },
         }))
       : undefined
 
@@ -939,21 +983,25 @@ export class KendraClient {
   /**
    * Add multiple documents
    */
-  async addDocuments(indexId: string, documents: Array<{
-    id: string
-    title?: string
-    content: string
-    attributes?: Record<string, string | string[] | number>
-  }>): Promise<{ succeeded: number; failed: Array<{ id: string; error: string }> }> {
-    const docs = documents.map(doc => {
+  async addDocuments(
+    indexId: string,
+    documents: Array<{
+      id: string
+      title?: string
+      content: string
+      attributes?: Record<string, string | string[] | number>
+    }>,
+  ): Promise<{ succeeded: number; failed: Array<{ id: string; error: string }> }> {
+    const docs = documents.map((doc) => {
       const attributes = doc.attributes
         ? Object.entries(doc.attributes).map(([key, value]) => ({
             Key: key,
-            Value: typeof value === 'number'
-              ? { LongValue: value }
-              : Array.isArray(value)
-                ? { StringListValue: value }
-                : { StringValue: value },
+            Value:
+              typeof value === 'number'
+                ? { LongValue: value }
+                : Array.isArray(value)
+                  ? { StringListValue: value }
+                  : { StringValue: value },
           }))
         : undefined
 
@@ -971,10 +1019,11 @@ export class KendraClient {
       Documents: docs,
     })
 
-    const failed = result.FailedDocuments?.map(f => ({
-      id: f.Id || 'unknown',
-      error: f.ErrorMessage || 'Unknown error',
-    })) || []
+    const failed =
+      result.FailedDocuments?.map((f) => ({
+        id: f.Id || 'unknown',
+        error: f.ErrorMessage || 'Unknown error',
+      })) || []
 
     return {
       succeeded: documents.length - failed.length,
@@ -992,17 +1041,14 @@ export class KendraClient {
     })
 
     if (result.FailedDocuments?.length) {
-      throw new Error(`Failed to delete documents: ${result.FailedDocuments.map(f => f.Id).join(', ')}`)
+      throw new Error(`Failed to delete documents: ${result.FailedDocuments.map((f) => f.Id).join(', ')}`)
     }
   }
 
   /**
    * Wait for index to be active
    */
-  async waitForIndex(
-    indexId: string,
-    options?: { maxWaitMs?: number; pollIntervalMs?: number },
-  ): Promise<Index> {
+  async waitForIndex(indexId: string, options?: { maxWaitMs?: number; pollIntervalMs?: number }): Promise<Index> {
     const maxWaitMs = options?.maxWaitMs ?? 3600000 // 1 hour
     const pollIntervalMs = options?.pollIntervalMs ?? 30000
     const startTime = Date.now()
@@ -1017,7 +1063,7 @@ export class KendraClient {
         throw new Error(`Index creation failed: ${result.ErrorMessage}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for index ${indexId}`)
@@ -1048,7 +1094,7 @@ export class KendraClient {
         throw new Error(`Data source creation failed: ${result.ErrorMessage}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for data source ${dataSourceId}`)
@@ -1070,7 +1116,7 @@ export async function search(
   const client = new KendraClient(options?.region || 'us-east-1')
   const results = await client.search(indexId, query, { pageSize: options?.pageSize })
 
-  return results.map(r => ({
+  return results.map((r) => ({
     title: r.DocumentTitle?.Text || '',
     excerpt: r.DocumentExcerpt?.Text || '',
     uri: r.DocumentURI || '',
@@ -1089,7 +1135,7 @@ export async function retrieveForRag(
   const client = new KendraClient(options?.region || 'us-east-1')
   const results = await client.retrieveDocuments(indexId, query, { pageSize: options?.pageSize })
 
-  return results.map(r => ({
+  return results.map((r) => ({
     content: r.Content || '',
     uri: r.DocumentURI || '',
     score: r.ScoreAttributes?.ScoreConfidence || 'NOT_AVAILABLE',

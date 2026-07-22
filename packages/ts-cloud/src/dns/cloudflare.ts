@@ -2,22 +2,13 @@
  * Cloudflare DNS Provider
  * API documentation: https://developers.cloudflare.com/api/resources/dns/subresources/records/
  */
-
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 
 const CLOUDFLARE_API_URL = 'https://api.cloudflare.com/client/v4'
 
 interface CloudflareApiResponse<T = any> {
   success: boolean
-  errors: Array<{ code: number, message: string }>
+  errors: Array<{ code: number; message: string }>
   messages: string[]
   result: T
   result_info?: {
@@ -70,15 +61,11 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Make an authenticated API request to Cloudflare
    */
-  private async request<T>(
-    method: string,
-    endpoint: string,
-    body?: any,
-  ): Promise<CloudflareApiResponse<T>> {
+  private async request<T>(method: string, endpoint: string, body?: any): Promise<CloudflareApiResponse<T>> {
     const url = `${CLOUDFLARE_API_URL}${endpoint}`
 
     const headers: Record<string, string> = {
-      'Authorization': `Bearer ${this.apiToken}`,
+      Authorization: `Bearer ${this.apiToken}`,
       'Content-Type': 'application/json',
     }
 
@@ -92,10 +79,10 @@ export class CloudflareProvider implements DnsProvider {
     }
 
     const response = await fetch(url, options)
-    const data = await response.json() as CloudflareApiResponse<T>
+    const data = (await response.json()) as CloudflareApiResponse<T>
 
     if (!data.success) {
-      const errorMessages = data.errors.map(e => e.message).join(', ')
+      const errorMessages = data.errors.map((e) => e.message).join(', ')
       throw new Error(`Cloudflare API error: ${errorMessages}`)
     }
 
@@ -127,10 +114,7 @@ export class CloudflareProvider implements DnsProvider {
     }
 
     // Look up zone by name
-    const response = await this.request<CloudflareZone[]>(
-      'GET',
-      `/zones?name=${encodeURIComponent(rootDomain)}`,
-    )
+    const response = await this.request<CloudflareZone[]>('GET', `/zones?name=${encodeURIComponent(rootDomain)}`)
 
     if (!response.result || response.result.length === 0) {
       throw new Error(`Zone not found for domain: ${rootDomain}`)
@@ -208,19 +192,14 @@ export class CloudflareProvider implements DnsProvider {
       const zoneId = await this.getZoneId(domain)
       const cfRecord = this.toCloudflareRecord(record, domain)
 
-      const response = await this.request<CloudflareRecord>(
-        'POST',
-        `/zones/${zoneId}/dns_records`,
-        cfRecord,
-      )
+      const response = await this.request<CloudflareRecord>('POST', `/zones/${zoneId}/dns_records`, cfRecord)
 
       return {
         success: true,
         id: response.result.id,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -258,19 +237,14 @@ export class CloudflareProvider implements DnsProvider {
       }
 
       // Create new record
-      const response = await this.request<CloudflareRecord>(
-        'POST',
-        `/zones/${zoneId}/dns_records`,
-        cfRecord,
-      )
+      const response = await this.request<CloudflareRecord>('POST', `/zones/${zoneId}/dns_records`, cfRecord)
 
       return {
         success: true,
         id: response.result.id,
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       // If upsert fails, try create
       return this.createRecord(domain, record)
     }
@@ -295,9 +269,7 @@ export class CloudflareProvider implements DnsProvider {
       }
 
       // Find matching record by content
-      const matchingRecord = existingResponse.result.find(
-        r => r.content === record.content,
-      )
+      const matchingRecord = existingResponse.result.find((r) => r.content === record.content)
 
       if (!matchingRecord) {
         return {
@@ -306,17 +278,13 @@ export class CloudflareProvider implements DnsProvider {
         }
       }
 
-      await this.request(
-        'DELETE',
-        `/zones/${zoneId}/dns_records/${matchingRecord.id}`,
-      )
+      await this.request('DELETE', `/zones/${zoneId}/dns_records/${matchingRecord.id}`)
 
       return {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -339,28 +307,23 @@ export class CloudflareProvider implements DnsProvider {
 
       // Paginate through all records
       while (hasMore) {
-        const response = await this.request<CloudflareRecord[]>(
-          'GET',
-          `${endpoint}&page=${page}`,
-        )
+        const response = await this.request<CloudflareRecord[]>('GET', `${endpoint}&page=${page}`)
 
         allRecords.push(...(response.result || []))
 
         if (response.result_info) {
           hasMore = page < response.result_info.total_pages
           page++
-        }
-        else {
+        } else {
           hasMore = false
         }
       }
 
       return {
         success: true,
-        records: allRecords.map(r => this.fromCloudflareRecord(r)),
+        records: allRecords.map((r) => this.fromCloudflareRecord(r)),
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -373,8 +336,7 @@ export class CloudflareProvider implements DnsProvider {
     try {
       await this.getZoneId(domain)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -389,25 +351,20 @@ export class CloudflareProvider implements DnsProvider {
       let hasMore = true
 
       while (hasMore) {
-        const response = await this.request<CloudflareZone[]>(
-          'GET',
-          `/zones?per_page=50&page=${page}`,
-        )
+        const response = await this.request<CloudflareZone[]>('GET', `/zones?per_page=50&page=${page}`)
 
         allZones.push(...(response.result || []))
 
         if (response.result_info) {
           hasMore = page < response.result_info.total_pages
           page++
-        }
-        else {
+        } else {
           hasMore = false
         }
       }
 
-      return allZones.map(z => z.name)
-    }
-    catch {
+      return allZones.map((z) => z.name)
+    } catch {
       return []
     }
   }
@@ -424,10 +381,7 @@ export class CloudflareProvider implements DnsProvider {
   } | null> {
     try {
       const zoneId = await this.getZoneId(domain)
-      const response = await this.request<CloudflareZone>(
-        'GET',
-        `/zones/${zoneId}`,
-      )
+      const response = await this.request<CloudflareZone>('GET', `/zones/${zoneId}`)
 
       return {
         id: response.result.id,
@@ -436,8 +390,7 @@ export class CloudflareProvider implements DnsProvider {
         nameServers: response.result.name_servers,
         paused: response.result.paused,
       }
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -445,12 +398,15 @@ export class CloudflareProvider implements DnsProvider {
   /**
    * Purge cache for a domain (Cloudflare-specific)
    */
-  async purgeCache(domain: string, options?: {
-    purgeEverything?: boolean
-    files?: string[]
-    tags?: string[]
-    hosts?: string[]
-  }): Promise<boolean> {
+  async purgeCache(
+    domain: string,
+    options?: {
+      purgeEverything?: boolean
+      files?: string[]
+      tags?: string[]
+      hosts?: string[]
+    },
+  ): Promise<boolean> {
     try {
       const zoneId = await this.getZoneId(domain)
 
@@ -458,8 +414,7 @@ export class CloudflareProvider implements DnsProvider {
 
       if (options?.purgeEverything) {
         body.purge_everything = true
-      }
-      else {
+      } else {
         if (options?.files) body.files = options.files
         if (options?.tags) body.tags = options.tags
         if (options?.hosts) body.hosts = options.hosts
@@ -470,15 +425,10 @@ export class CloudflareProvider implements DnsProvider {
         body.purge_everything = true
       }
 
-      await this.request(
-        'POST',
-        `/zones/${zoneId}/purge_cache`,
-        body,
-      )
+      await this.request('POST', `/zones/${zoneId}/purge_cache`, body)
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -498,13 +448,12 @@ export class CloudflareProvider implements DnsProvider {
       )
 
       if (response.result && response.result.length > 0) {
-        const matchingRecord = response.result.find(r => r.content === record.content)
+        const matchingRecord = response.result.find((r) => r.content === record.content)
         return matchingRecord?.proxied ?? null
       }
 
       return null
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -527,21 +476,16 @@ export class CloudflareProvider implements DnsProvider {
         return false
       }
 
-      const matchingRecord = response.result.find(r => r.content === record.content)
+      const matchingRecord = response.result.find((r) => r.content === record.content)
       if (!matchingRecord) {
         return false
       }
 
       // Update the record with new proxy status
-      await this.request(
-        'PATCH',
-        `/zones/${zoneId}/dns_records/${matchingRecord.id}`,
-        { proxied },
-      )
+      await this.request('PATCH', `/zones/${zoneId}/dns_records/${matchingRecord.id}`, { proxied })
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }

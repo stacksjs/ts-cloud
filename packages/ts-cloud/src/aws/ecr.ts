@@ -2,7 +2,6 @@
  * AWS ECR (Elastic Container Registry) Client
  * Manages Docker container image repositories using direct API calls
  */
-
 import { AWSClient } from './client'
 
 export interface Repository {
@@ -45,7 +44,7 @@ export interface ImageDetail {
 
 export interface CreateRepositoryOptions {
   repositoryName: string
-  tags?: { Key: string, Value: string }[]
+  tags?: { Key: string; Value: string }[]
   imageTagMutability?: 'MUTABLE' | 'IMMUTABLE'
   imageScanningConfiguration?: {
     scanOnPush?: boolean
@@ -132,7 +131,7 @@ export class ECRClient {
     registryId?: string
     maxResults?: number
     nextToken?: string
-  }): Promise<{ repositories?: Repository[], nextToken?: string }> {
+  }): Promise<{ repositories?: Repository[]; nextToken?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.repositoryNames && options.repositoryNames.length > 0) {
@@ -245,11 +244,11 @@ export class ECRClient {
   async describeImages(options: {
     repositoryName: string
     registryId?: string
-    imageIds?: { imageTag?: string, imageDigest?: string }[]
+    imageIds?: { imageTag?: string; imageDigest?: string }[]
     filter?: { tagStatus?: 'TAGGED' | 'UNTAGGED' | 'ANY' }
     maxResults?: number
     nextToken?: string
-  }): Promise<{ imageDetails?: ImageDetail[], nextToken?: string }> {
+  }): Promise<{ imageDetails?: ImageDetail[]; nextToken?: string }> {
     const params: Record<string, any> = {
       repositoryName: options.repositoryName,
     }
@@ -298,10 +297,10 @@ export class ECRClient {
   async batchDeleteImage(options: {
     repositoryName: string
     registryId?: string
-    imageIds: { imageTag?: string, imageDigest?: string }[]
+    imageIds: { imageTag?: string; imageDigest?: string }[]
   }): Promise<{
-    imageIds?: { imageTag?: string, imageDigest?: string }[]
-    failures?: { imageId?: { imageTag?: string, imageDigest?: string }, failureCode?: string, failureReason?: string }[]
+    imageIds?: { imageTag?: string; imageDigest?: string }[]
+    failures?: { imageId?: { imageTag?: string; imageDigest?: string }; failureCode?: string; failureReason?: string }[]
   }> {
     const params: Record<string, any> = {
       repositoryName: options.repositoryName,
@@ -373,10 +372,7 @@ export class ECRClient {
   /**
    * Get lifecycle policy for a repository
    */
-  async getLifecyclePolicy(options: {
-    repositoryName: string
-    registryId?: string
-  }): Promise<{
+  async getLifecyclePolicy(options: { repositoryName: string; registryId?: string }): Promise<{
     registryId?: string
     repositoryName?: string
     lifecyclePolicyText?: string
@@ -458,10 +454,7 @@ export class ECRClient {
   /**
    * Get repository policy
    */
-  async getRepositoryPolicy(options: {
-    repositoryName: string
-    registryId?: string
-  }): Promise<{
+  async getRepositoryPolicy(options: { repositoryName: string; registryId?: string }): Promise<{
     registryId?: string
     repositoryName?: string
     policyText?: string
@@ -496,10 +489,7 @@ export class ECRClient {
   /**
    * Tag a repository resource
    */
-  async tagResource(options: {
-    resourceArn: string
-    tags: { Key: string, Value: string }[]
-  }): Promise<void> {
+  async tagResource(options: { resourceArn: string; tags: { Key: string; Value: string }[] }): Promise<void> {
     const params: Record<string, any> = {
       resourceArn: options.resourceArn,
       tags: options.tags,
@@ -522,7 +512,7 @@ export class ECRClient {
    * List tags for a resource
    */
   async listTagsForResource(resourceArn: string): Promise<{
-    tags?: { Key: string, Value: string }[]
+    tags?: { Key: string; Value: string }[]
   }> {
     const params: Record<string, any> = {
       resourceArn,
@@ -550,7 +540,7 @@ export class ECRClient {
    */
   createLifecyclePolicyText(rules: LifecyclePolicy[]): string {
     return JSON.stringify({
-      rules: rules.map(rule => ({
+      rules: rules.map((rule) => ({
         rulePriority: rule.rulePriority,
         description: rule.description,
         selection: rule.selection,

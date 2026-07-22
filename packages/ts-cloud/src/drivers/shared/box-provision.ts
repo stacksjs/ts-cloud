@@ -59,7 +59,8 @@ export interface BoxProvisioner {
 }
 
 /** SSM parameter for the current Ubuntu 24.04 amd64 gp3 AMI (Canonical-published). */
-export const UBUNTU_2404_AMI_PARAM = '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id'
+export const UBUNTU_2404_AMI_PARAM =
+  '/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id'
 
 /**
  * Cloud-config shared by both providers: root SSH access with the given key
@@ -68,15 +69,13 @@ export const UBUNTU_2404_AMI_PARAM = '/aws/service/canonical/ubuntu/server/24.04
  */
 export function buildBoxUserData(spec: Pick<BoxSpec, 'sshPublicKey' | 'bootstrapScript'>): string {
   const key = spec.sshPublicKey.trim()
-  const lines = [
-    '#cloud-config',
-    'disable_root: false',
-    'ssh_authorized_keys:',
-    `  - ${key}`,
-  ]
+  const lines = ['#cloud-config', 'disable_root: false', 'ssh_authorized_keys:', `  - ${key}`]
   if (spec.bootstrapScript) {
     const path = '/var/lib/cloud/box-bootstrap.sh'
-    const indented = spec.bootstrapScript.split('\n').map(l => `      ${l}`).join('\n')
+    const indented = spec.bootstrapScript
+      .split('\n')
+      .map((l) => `      ${l}`)
+      .join('\n')
     lines.push(
       'write_files:',
       `  - path: ${path}`,
@@ -91,8 +90,7 @@ export function buildBoxUserData(spec: Pick<BoxSpec, 'sshPublicKey' | 'bootstrap
     // Root key injection must survive cloud-init's default-user rewrite on AWS.
     `  - mkdir -p /root/.ssh && grep -qF "${key}" /root/.ssh/authorized_keys 2>/dev/null || echo "${key}" >> /root/.ssh/authorized_keys`,
   )
-  if (spec.bootstrapScript)
-    lines.push('  - [ bash, /var/lib/cloud/box-bootstrap.sh ]')
+  if (spec.bootstrapScript) lines.push('  - [ bash, /var/lib/cloud/box-bootstrap.sh ]')
   return `${lines.join('\n')}\n`
 }
 
@@ -131,13 +129,19 @@ export class HetznerBoxProvisioner implements BoxProvisioner {
       userData: buildBoxUserData(spec),
       labels: spec.labels,
     })
-    return { provider: 'hetzner', id: String(server.id), name: server.name, publicIp: serverPublicIpv4(server), created }
+    return {
+      provider: 'hetzner',
+      id: String(server.id),
+      name: server.name,
+      publicIp: serverPublicIpv4(server),
+      created,
+    }
   }
 
   async destroyBox(name: string): Promise<{ destroyed: string[] }> {
     const destroyed: string[] = []
 
-    const server = (await this.client.listServers()).find(s => s.name === name)
+    const server = (await this.client.listServers()).find((s) => s.name === name)
     if (server) {
       const action = await this.client.deleteServer(server.id)
       await this.client.waitForAction(action.id).catch(() => {})
@@ -146,18 +150,16 @@ export class HetznerBoxProvisioner implements BoxProvisioner {
 
     // A firewall can only be deleted once the provider detaches it from the
     // deleted server, which happens asynchronously — retry briefly.
-    const firewall = (await this.client.listFirewalls()).find(f => f.name === `${name}-fw`)
+    const firewall = (await this.client.listFirewalls()).find((f) => f.name === `${name}-fw`)
     if (firewall) {
       for (let i = 0; i < 10; i++) {
         try {
           await this.client.deleteFirewall(firewall.id)
           destroyed.push(`firewall ${name}-fw (#${firewall.id})`)
           break
-        }
-        catch {
-          if (i === 9)
-            break
-          await new Promise(resolve => setTimeout(resolve, 3000))
+        } catch {
+          if (i === 9) break
+          await new Promise((resolve) => setTimeout(resolve, 3000))
         }
       }
     }
@@ -171,9 +173,14 @@ export class HetznerBoxProvisioner implements BoxProvisioner {
 /** The EC2 surface the AWS provisioner uses (injectable for tests). */
 export type BoxEc2Client = Pick<
   EC2Client,
-  'describeInstances' | 'describeSecurityGroups' | 'createSecurityGroup'
-  | 'authorizeSecurityGroupIngress' | 'runInstances' | 'terminateInstances'
-  | 'deleteSecurityGroup' | 'getInstance'
+  | 'describeInstances'
+  | 'describeSecurityGroups'
+  | 'createSecurityGroup'
+  | 'authorizeSecurityGroupIngress'
+  | 'runInstances'
+  | 'terminateInstances'
+  | 'deleteSecurityGroup'
+  | 'getInstance'
 >
 
 /** The SSM surface the AWS provisioner uses (injectable for tests). */
@@ -189,9 +196,11 @@ function toIpPermissions(ports: BoxPort[] = []): IpPermission[] {
     { IpProtocol: 'tcp', FromPort: 22, ToPort: 22, IpRanges: [{ CidrIp: '0.0.0.0/0', Description: 'SSH' }] },
   ]
   for (const p of ports) {
-    permissions.push(p.protocol === 'icmp'
-      ? { IpProtocol: 'icmp', FromPort: -1, ToPort: -1, IpRanges: [{ CidrIp: '0.0.0.0/0' }] }
-      : { IpProtocol: p.protocol, FromPort: p.port, ToPort: p.port, IpRanges: [{ CidrIp: '0.0.0.0/0' }] })
+    permissions.push(
+      p.protocol === 'icmp'
+        ? { IpProtocol: 'icmp', FromPort: -1, ToPort: -1, IpRanges: [{ CidrIp: '0.0.0.0/0' }] }
+        : { IpProtocol: p.protocol, FromPort: p.port, ToPort: p.port, IpRanges: [{ CidrIp: '0.0.0.0/0' }] },
+    )
   }
   return permissions
 }
@@ -213,16 +222,15 @@ export class AwsBoxProvisioner implements BoxProvisioner {
         { Name: 'instance-state-name', Values: states },
       ],
     })
-    return result.Reservations?.flatMap(r => r.Instances ?? [])[0]
+    return result.Reservations?.flatMap((r) => r.Instances ?? [])[0]
   }
 
   private async waitForPublicIp(instanceId: string, timeoutMs = 300_000): Promise<Instance> {
     const start = Date.now()
     while (Date.now() - start < timeoutMs) {
       const instance = await this.ec2.getInstance(instanceId)
-      if (instance?.State?.Name === 'running' && instance.PublicIpAddress)
-        return instance
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      if (instance?.State?.Name === 'running' && instance.PublicIpAddress) return instance
+      await new Promise((resolve) => setTimeout(resolve, 5000))
     }
     throw new Error(`EC2 instance ${instanceId} did not reach running with a public IP within ${timeoutMs}ms`)
   }
@@ -233,15 +241,13 @@ export class AwsBoxProvisioner implements BoxProvisioner {
       Filters: [{ Name: 'group-name', Values: [groupName] }],
     })
     const found = existing.SecurityGroups?.[0]?.GroupId
-    if (found)
-      return found
+    if (found) return found
 
     const created = await this.ec2.createSecurityGroup({
       GroupName: groupName,
       Description: `box ${spec.name} (managed by ts-cloud box-provision)`,
     })
-    if (!created.GroupId)
-      throw new Error(`could not create security group ${groupName}`)
+    if (!created.GroupId) throw new Error(`could not create security group ${groupName}`)
     await this.ec2.authorizeSecurityGroupIngress({
       GroupId: created.GroupId,
       IpPermissions: toIpPermissions(spec.ports),
@@ -250,12 +256,10 @@ export class AwsBoxProvisioner implements BoxProvisioner {
   }
 
   private async resolveImage(spec: BoxSpec): Promise<string> {
-    if (spec.image?.startsWith('ami-'))
-      return spec.image
+    if (spec.image?.startsWith('ami-')) return spec.image
     const result = await this.ssm.getParameter({ Name: UBUNTU_2404_AMI_PARAM })
     const ami = result.Parameter?.Value
-    if (!ami)
-      throw new Error(`could not resolve the Ubuntu 24.04 AMI via SSM (${UBUNTU_2404_AMI_PARAM})`)
+    if (!ami) throw new Error(`could not resolve the Ubuntu 24.04 AMI via SSM (${UBUNTU_2404_AMI_PARAM})`)
     return ami
   }
 
@@ -263,13 +267,16 @@ export class AwsBoxProvisioner implements BoxProvisioner {
     const existing = await this.findInstance(spec.name, ['pending', 'running'])
     if (existing?.InstanceId) {
       const instance = await this.waitForPublicIp(existing.InstanceId)
-      return { provider: 'aws', id: instance.InstanceId!, name: spec.name, publicIp: instance.PublicIpAddress!, created: false }
+      return {
+        provider: 'aws',
+        id: instance.InstanceId!,
+        name: spec.name,
+        publicIp: instance.PublicIpAddress!,
+        created: false,
+      }
     }
 
-    const [groupId, imageId] = await Promise.all([
-      this.ensureSecurityGroup(spec),
-      this.resolveImage(spec),
-    ])
+    const [groupId, imageId] = await Promise.all([this.ensureSecurityGroup(spec), this.resolveImage(spec)])
 
     const tags = [
       { Key: 'Name', Value: spec.name },
@@ -288,8 +295,7 @@ export class AwsBoxProvisioner implements BoxProvisioner {
       TagSpecifications: [{ ResourceType: 'instance', Tags: tags }],
     })
     const instanceId = result.Instances?.[0]?.InstanceId
-    if (!instanceId)
-      throw new Error(`RunInstances returned no instance for box ${spec.name}`)
+    if (!instanceId) throw new Error(`RunInstances returned no instance for box ${spec.name}`)
 
     const instance = await this.waitForPublicIp(instanceId)
     return { provider: 'aws', id: instanceId, name: spec.name, publicIp: instance.PublicIpAddress!, created: true }
@@ -306,9 +312,8 @@ export class AwsBoxProvisioner implements BoxProvisioner {
       const start = Date.now()
       while (Date.now() - start < 300_000) {
         const current = await this.ec2.getInstance(instance.InstanceId)
-        if (!current || current.State?.Name === 'terminated')
-          break
-        await new Promise(resolve => setTimeout(resolve, 5000))
+        if (!current || current.State?.Name === 'terminated') break
+        await new Promise((resolve) => setTimeout(resolve, 5000))
       }
     }
 
@@ -322,11 +327,9 @@ export class AwsBoxProvisioner implements BoxProvisioner {
           await this.ec2.deleteSecurityGroup(groupId)
           destroyed.push(`security group ${name}-sg (${groupId})`)
           break
-        }
-        catch {
-          if (i === 9)
-            break
-          await new Promise(resolve => setTimeout(resolve, 3000))
+        } catch {
+          if (i === 9) break
+          await new Promise((resolve) => setTimeout(resolve, 3000))
         }
       }
     }
@@ -351,7 +354,6 @@ export function createBoxProvisioner(options: CreateBoxProvisionerOptions): BoxP
       throw new Error('createBoxProvisioner: options.hetzner (a HetznerClient) is required for provider "hetzner"')
     return new HetznerBoxProvisioner(options.hetzner)
   }
-  if (!options.aws)
-    throw new Error('createBoxProvisioner: options.aws ({ ec2, ssm }) is required for provider "aws"')
+  if (!options.aws) throw new Error('createBoxProvisioner: options.aws ({ ec2, ssm }) is required for provider "aws"')
   return new AwsBoxProvisioner(options.aws)
 }

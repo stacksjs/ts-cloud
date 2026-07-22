@@ -11,17 +11,17 @@
  */
 import type { CloudConfig } from '@ts-cloud/core'
 import { resolveAppDatabase } from '@ts-cloud/core'
-import { buildServicesProvisionScript, buildDatabaseSetupScript } from './db-provision'
-import { buildPhpProvisionScript } from './php-provision'
-import { buildNginxServiceScript } from './nginx-vhost'
-import { usesRpxProxy } from './rpx-gateway'
-import { buildPantryBootstrapScript } from './package-manager'
-import { buildUfwScript } from './ufw'
+import { buildBackupProvisionScript } from './backups'
+import { buildDatabaseSetupScript, buildServicesProvisionScript } from './db-provision'
 import { buildAutoUpdatesScript } from './maintenance'
 import { buildMonitoringScript } from './monitoring'
-import { buildAuthorizedKeysScript } from './ssh-keys'
+import { buildNginxServiceScript } from './nginx-vhost'
 import { buildNotifierScript } from './notifications'
-import { buildBackupProvisionScript } from './backups'
+import { buildPantryBootstrapScript } from './package-manager'
+import { buildPhpProvisionScript } from './php-provision'
+import { usesRpxProxy } from './rpx-gateway'
+import { buildAuthorizedKeysScript } from './ssh-keys'
+import { buildUfwScript } from './ufw'
 
 export interface ComputeProvisionScripts {
   /** Effective runtime to install (bun/node/deno/php). */
@@ -71,8 +71,7 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   const extras: string[] = []
   const appDatabase = resolveAppDatabase(config)
   // pantry bootstrap for a services-only (non-PHP) box.
-  if (!phpBox && needsPantry)
-    extras.push(...pantryBootstrap)
+  if (!phpBox && needsPantry) extras.push(...pantryBootstrap)
   // On-box notifier first, so cron-driven jobs (backups) can call it.
   extras.push(...buildNotifierScript(config.notifications))
   if (compute.managedServices) {
@@ -86,10 +85,12 @@ export function buildComputeProvisionScripts(config: CloudConfig): ComputeProvis
   extras.push(...buildMonitoringScript(compute.monitoring ?? phpBox))
   extras.push(...buildAuthorizedKeysScript(compute.sshKeys))
   if (compute.backups?.enabled) {
-    extras.push(...buildBackupProvisionScript({
-      database: appDatabase,
-      backups: compute.backups,
-    }))
+    extras.push(
+      ...buildBackupProvisionScript({
+        database: appDatabase,
+        backups: compute.backups,
+      }),
+    )
   }
 
   return {

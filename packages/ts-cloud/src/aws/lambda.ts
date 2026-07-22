@@ -2,9 +2,8 @@
  * AWS Lambda Operations
  * Direct API calls without AWS SDK dependency
  */
-
-import { AWSClient } from './client'
 import { deflateRawSync } from 'zlib'
+import { AWSClient } from './client'
 
 /**
  * Create a minimal ZIP file containing a single file
@@ -262,7 +261,11 @@ export class LambdaClient {
    * Update function code with inline JavaScript/TypeScript code
    * Automatically creates a zip file with the code as index.js
    */
-  async updateFunctionCodeInline(functionName: string, code: string, filename: string = 'index.js'): Promise<LambdaFunctionConfiguration> {
+  async updateFunctionCodeInline(
+    functionName: string,
+    code: string,
+    filename: string = 'index.js',
+  ): Promise<LambdaFunctionConfiguration> {
     const zipBuffer = createZipFile(filename, code)
     return this.updateFunctionCode({
       FunctionName: functionName,
@@ -335,11 +338,7 @@ export class LambdaClient {
       headers['X-Amz-Log-Type'] = LogType
     }
 
-    const body = Payload
-      ? typeof Payload === 'string'
-        ? Payload
-        : JSON.stringify(Payload)
-      : undefined
+    const body = Payload ? (typeof Payload === 'string' ? Payload : JSON.stringify(Payload)) : undefined
 
     const result = await this.client.request({
       service: 'lambda',
@@ -363,11 +362,7 @@ export class LambdaClient {
   /**
    * List Lambda functions
    */
-  async listFunctions(params?: {
-    MaxItems?: number
-    Marker?: string
-    FunctionVersion?: 'ALL'
-  }): Promise<{
+  async listFunctions(params?: { MaxItems?: number; Marker?: string; FunctionVersion?: 'ALL' }): Promise<{
     Functions?: LambdaFunctionConfiguration[]
     NextMarker?: string
   }> {
@@ -482,7 +477,7 @@ export class LambdaClient {
     Name: string
     FunctionVersion: string
     Description?: string
-  }): Promise<{ AliasArn?: string, Name?: string, FunctionVersion?: string }> {
+  }): Promise<{ AliasArn?: string; Name?: string; FunctionVersion?: string }> {
     const { FunctionName, Name, ...rest } = params
     return this.client.request({
       service: 'lambda',
@@ -495,7 +490,10 @@ export class LambdaClient {
   }
 
   /** Read an alias (e.g. the version `live` points at). Returns null if absent. */
-  async getAlias(functionName: string, name: string): Promise<{ Name?: string, FunctionVersion?: string, AliasArn?: string } | null> {
+  async getAlias(
+    functionName: string,
+    name: string,
+  ): Promise<{ Name?: string; FunctionVersion?: string; AliasArn?: string } | null> {
     try {
       return await this.client.request({
         service: 'lambda',
@@ -503,15 +501,17 @@ export class LambdaClient {
         method: 'GET',
         path: `/2015-03-31/functions/${encodeURIComponent(functionName)}/aliases/${encodeURIComponent(name)}`,
       })
-    }
-    catch (err: any) {
+    } catch (err: any) {
       if (/ResourceNotFound/i.test(String(err?.message))) return null
       throw err
     }
   }
 
   /** Read a provisioned-concurrency config for a qualifier. Returns null if none. */
-  async getProvisionedConcurrencyConfig(functionName: string, qualifier: string): Promise<{
+  async getProvisionedConcurrencyConfig(
+    functionName: string,
+    qualifier: string,
+  ): Promise<{
     Status?: string
     RequestedProvisionedConcurrentExecutions?: number
     AllocatedProvisionedConcurrentExecutions?: number
@@ -524,8 +524,7 @@ export class LambdaClient {
         path: `/2019-09-30/functions/${encodeURIComponent(functionName)}/provisioned-concurrency`,
         queryParams: { Qualifier: qualifier },
       })
-    }
-    catch (err: any) {
+    } catch (err: any) {
       if (/ProvisionedConcurrencyConfigNotFound|ResourceNotFound/i.test(String(err?.message))) return null
       throw err
     }
@@ -536,7 +535,7 @@ export class LambdaClient {
     FunctionName: string
     Qualifier: string
     ProvisionedConcurrentExecutions: number
-  }): Promise<{ Status?: string, RequestedProvisionedConcurrentExecutions?: number }> {
+  }): Promise<{ Status?: string; RequestedProvisionedConcurrentExecutions?: number }> {
     const { FunctionName, Qualifier, ProvisionedConcurrentExecutions } = params
     return this.client.request({
       service: 'lambda',
@@ -581,11 +580,10 @@ export class LambdaClient {
         }
 
         // Wait 2 seconds before checking again
-        await new Promise(resolve => setTimeout(resolve, 2000))
-      }
-      catch (error: any) {
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      } catch (error: any) {
         if (error.code === 'ResourceNotFoundException') {
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await new Promise((resolve) => setTimeout(resolve, 2000))
           continue
         }
         throw error
@@ -602,8 +600,7 @@ export class LambdaClient {
     try {
       await this.getFunction(functionName)
       return true
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.code === 'ResourceNotFoundException' || error.statusCode === 404) {
         return false
       }
@@ -672,8 +669,7 @@ export class LambdaClient {
         },
       })
       return result
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.statusCode === 404) {
         return null
       }
@@ -779,12 +775,15 @@ export class LambdaClient {
   /**
    * List layer versions
    */
-  async listLayerVersions(layerName: string, params?: {
-    CompatibleRuntime?: string
-    CompatibleArchitecture?: 'x86_64' | 'arm64'
-    MaxItems?: number
-    Marker?: string
-  }): Promise<{
+  async listLayerVersions(
+    layerName: string,
+    params?: {
+      CompatibleRuntime?: string
+      CompatibleArchitecture?: 'x86_64' | 'arm64'
+      MaxItems?: number
+      Marker?: string
+    },
+  ): Promise<{
     LayerVersions?: Array<{
       LayerVersionArn?: string
       Version?: number
@@ -817,7 +816,10 @@ export class LambdaClient {
   /**
    * Get layer version details
    */
-  async getLayerVersion(layerName: string, versionNumber: number): Promise<{
+  async getLayerVersion(
+    layerName: string,
+    versionNumber: number,
+  ): Promise<{
     LayerArn?: string
     LayerVersionArn?: string
     Description?: string

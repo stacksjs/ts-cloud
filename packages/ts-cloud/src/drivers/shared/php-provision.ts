@@ -74,8 +74,8 @@ export const PRODUCTION_PHP_INI: Readonly<Record<string, string>> = {
   'opcache.revalidate_freq': '0',
   'opcache.save_comments': '1',
   'opcache.fast_shutdown': '1',
-  'realpath_cache_size': '4096K',
-  'realpath_cache_ttl': '600',
+  realpath_cache_size: '4096K',
+  realpath_cache_ttl: '600',
 }
 
 /** PHP-FPM listen address for nginx `fastcgi_pass` (pantry's php-fpm is TCP). */
@@ -112,15 +112,14 @@ export function resolvePhpIni(options: PhpProvisionOptions = {}): Record<string,
 export function buildPhpTuningScript(options: PhpProvisionOptions = {}): string[] {
   const ini = resolvePhpIni(options)
   const keys = Object.keys(ini)
-  if (keys.length === 0)
-    return []
+  if (keys.length === 0) return []
   // The directive body, shared by both the drop-in file and the marker block.
-  const body = keys.map(k => `${k}=${ini[k]}`)
+  const body = keys.map((k) => `${k}=${ini[k]}`)
   const marker = 'ts-cloud-managed'
   return [
     pantryEnvActivation(),
     // Discover where this PHP reads extra .ini files (authoritative on the box).
-    'TS_CLOUD_SCAN_DIR=$(php -i 2>/dev/null | awk -F\' => \' \'/^Scan this dir for additional .ini files/{print $2}\' | head -1)',
+    "TS_CLOUD_SCAN_DIR=$(php -i 2>/dev/null | awk -F' => ' '/^Scan this dir for additional .ini files/{print $2}' | head -1)",
     'TS_CLOUD_LOADED_INI=$(php -r \'echo php_ini_loaded_file() ?: "";\' 2>/dev/null)',
     'if [ -n "$TS_CLOUD_SCAN_DIR" ] && [ "$TS_CLOUD_SCAN_DIR" != "(none)" ]; then',
     '  mkdir -p "$TS_CLOUD_SCAN_DIR"',
@@ -133,7 +132,7 @@ export function buildPhpTuningScript(options: PhpProvisionOptions = {}): string[
     // No scan dir: target the loaded php.ini, creating one in the configured
     // path dir if PHP isn't loading any ini yet.
     '  if [ -z "$TS_CLOUD_LOADED_INI" ]; then',
-    '    TS_CLOUD_INI_DIR=$(php -i 2>/dev/null | awk -F\' => \' \'/^Configuration File \\(php.ini\\) Path/{print $2}\' | head -1)',
+    "    TS_CLOUD_INI_DIR=$(php -i 2>/dev/null | awk -F' => ' '/^Configuration File \\(php.ini\\) Path/{print $2}' | head -1)",
     '    TS_CLOUD_LOADED_INI="$TS_CLOUD_INI_DIR/php.ini"',
     '    mkdir -p "$TS_CLOUD_INI_DIR"',
     '    touch "$TS_CLOUD_LOADED_INI"',
@@ -163,10 +162,8 @@ export function buildPhpProvisionScript(options: PhpProvisionOptions = {}): stri
   const installComposer = options.installComposer !== false
 
   const specs: PantrySpec[] = [`php.net@${defaultVersion}`]
-  if (installComposer)
-    specs.push('getcomposer.org')
-  if (installNginx)
-    specs.push('nginx.org')
+  if (installComposer) specs.push('getcomposer.org')
+  if (installNginx) specs.push('nginx.org')
 
   return [
     ...buildPantryInstallScript(specs),

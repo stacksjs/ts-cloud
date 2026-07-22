@@ -8,11 +8,11 @@
  * {@link import('./compute-deploy').deploySiteRelease} drives a deploy.
  */
 import type { CloudDriver, DatabaseConfig, EnvironmentType, RemoteDeployInstanceResult } from '@ts-cloud/core'
+import { siteInstallBase } from '../../deploy/site-target'
 import { buildBackupRestoreScript } from './backups'
 import { PANTRY_PROJECT_DIR } from './package-manager'
 import { buildRollbackScript, deployHistoryPath, releasePaths } from './releases'
 import { buildServerRecipeScript } from './server-recipes'
-import { siteInstallBase } from '../../deploy/site-target'
 
 export interface ComputeOpsLogger {
   info(message: string): void
@@ -63,7 +63,7 @@ async function findTargets(ctx: ComputeOpsContext) {
  */
 export async function rollbackComputeSite(
   ctx: ComputeOpsContext,
-  options: { siteName: string, to?: string },
+  options: { siteName: string; to?: string },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
@@ -76,23 +76,26 @@ export async function rollbackComputeSite(
     'set -uo pipefail',
     // unitBase lets the rollback swap the running templated release instance
     // (zero-downtime layout); legacy single-unit sites just get a restart.
-    ...buildRollbackScript(paths, { ...(options.to ? { to: options.to } : {}), unitBase: `${ctx.slug}-${options.siteName}` }),
+    ...buildRollbackScript(paths, {
+      ...(options.to ? { to: options.to } : {}),
+      unitBase: `${ctx.slug}-${options.siteName}`,
+    }),
     // Pick up the rolled-back code: restart php-fpm + signal queue workers.
     `(cd ${PANTRY_PROJECT_DIR} && pantry restart php-fpm) 2>/dev/null || true`,
     `(cd ${paths.current} && eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)" && php artisan queue:restart) 2>/dev/null || true`,
   ]
 
-  logger.step(`Rolling back ${options.siteName}${options.to ? ` to ${options.to}` : ' to the previous release'} on ${targets.length} server(s)...`)
+  logger.step(
+    `Rolling back ${options.siteName}${options.to ? ` to ${options.to}` : ' to the previous release'} on ${targets.length} server(s)...`,
+  )
   const result = await ctx.driver.runRemoteDeploy({
     targets,
     commands,
     comment: `ts-cloud rollback ${ctx.slug}/${options.siteName}`,
     tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
   })
-  if (!result.success)
-    logger.error(`Rollback failed: ${result.error || 'unknown error'}`)
-  else
-    logger.success(`Rolled back ${options.siteName}.`)
+  if (!result.success) logger.error(`Rollback failed: ${result.error || 'unknown error'}`)
+  else logger.success(`Rolled back ${options.siteName}.`)
   return { success: result.success, error: result.error, perInstance: result.perInstance }
 }
 
@@ -103,7 +106,7 @@ export async function rollbackComputeSite(
  */
 export async function getComputeDeployHistory(
   ctx: ComputeOpsContext,
-  options: { siteName: string, limit?: number },
+  options: { siteName: string; limit?: number },
 ): Promise<ComputeOpsResult> {
   const targets = await findTargets(ctx)
   if (targets.length === 0)
@@ -130,7 +133,7 @@ export async function getComputeDeployHistory(
  */
 export async function runComputeRecipe(
   ctx: ComputeOpsContext,
-  options: { name: string, script: string[], user?: string },
+  options: { name: string; script: string[]; user?: string },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
   const targets = await findTargets(ctx)
@@ -144,10 +147,8 @@ export async function runComputeRecipe(
     comment: `ts-cloud recipe ${options.name}`,
     tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
   })
-  if (!result.success)
-    logger.error(`Recipe '${options.name}' failed: ${result.error || 'unknown error'}`)
-  else
-    logger.success(`Recipe '${options.name}' completed.`)
+  if (!result.success) logger.error(`Recipe '${options.name}' failed: ${result.error || 'unknown error'}`)
+  else logger.success(`Recipe '${options.name}' completed.`)
   return { success: result.success, error: result.error, perInstance: result.perInstance }
 }
 
@@ -158,25 +159,24 @@ export async function runComputeRecipe(
  */
 export async function restoreDatabaseBackup(
   ctx: ComputeOpsContext,
-  options: { database: DatabaseConfig | undefined, from?: string },
+  options: { database: DatabaseConfig | undefined; from?: string },
 ): Promise<ComputeOpsResult> {
   const logger = ctx.logger || noopLogger
-  if (!options.database?.name)
-    return { success: false, error: 'No appDatabase configured to restore.' }
+  if (!options.database?.name) return { success: false, error: 'No appDatabase configured to restore.' }
   const targets = await findTargets(ctx)
   if (targets.length === 0)
     return { success: false, error: `No '${ctx.role || 'app'}' servers found for ${ctx.slug}/${ctx.environment}.` }
 
-  logger.step(`Restoring database '${options.database.name}'${options.from ? ` from ${options.from}` : ' from the latest backup'} on ${targets.length} server(s)...`)
+  logger.step(
+    `Restoring database '${options.database.name}'${options.from ? ` from ${options.from}` : ' from the latest backup'} on ${targets.length} server(s)...`,
+  )
   const result = await ctx.driver.runRemoteDeploy({
     targets,
     commands: buildBackupRestoreScript(options.database, { from: options.from }),
     comment: `ts-cloud db:restore ${ctx.slug}/${options.database.name}`,
     tags: { Project: ctx.slug, Environment: ctx.environment, Role: ctx.role || 'app' },
   })
-  if (!result.success)
-    logger.error(`Restore failed: ${result.error || 'unknown error'}`)
-  else
-    logger.success(`Restored ${options.database.name}.`)
+  if (!result.success) logger.error(`Restore failed: ${result.error || 'unknown error'}`)
+  else logger.success(`Restored ${options.database.name}.`)
   return { success: result.success, error: result.error, perInstance: result.perInstance }
 }

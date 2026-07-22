@@ -2,7 +2,6 @@
  * AWS Secrets Manager Client
  * Manages secrets using direct API calls
  */
-
 import { AWSClient } from './client'
 
 export interface Secret {
@@ -22,7 +21,7 @@ export interface Secret {
   LastAccessedDate?: string
   DeletedDate?: string
   NextRotationDate?: string
-  Tags?: { Key: string, Value: string }[]
+  Tags?: { Key: string; Value: string }[]
   SecretVersionsToStages?: Record<string, string[]>
   CreatedDate?: string
   PrimaryRegion?: string
@@ -44,8 +43,8 @@ export interface CreateSecretOptions {
   KmsKeyId?: string
   SecretBinary?: string
   SecretString?: string
-  Tags?: { Key: string, Value: string }[]
-  AddReplicaRegions?: { Region: string, KmsKeyId?: string }[]
+  Tags?: { Key: string; Value: string }[]
+  AddReplicaRegions?: { Region: string; KmsKeyId?: string }[]
   ForceOverwriteReplicaSecret?: boolean
   ClientRequestToken?: string
 }
@@ -97,7 +96,7 @@ export class SecretsManagerClient {
     ARN?: string
     Name?: string
     VersionId?: string
-    ReplicationStatus?: { Region: string, Status: string, StatusMessage?: string }[]
+    ReplicationStatus?: { Region: string; Status: string; StatusMessage?: string }[]
   }> {
     const params: Record<string, any> = {
       Name: options.Name,
@@ -318,7 +317,7 @@ export class SecretsManagerClient {
   async listSecrets(options?: {
     MaxResults?: number
     NextToken?: string
-    Filters?: { Key: string, Values: string[] }[]
+    Filters?: { Key: string; Values: string[] }[]
     SortOrder?: 'asc' | 'desc'
   }): Promise<{
     SecretList?: Secret[]
@@ -548,11 +547,7 @@ export class SecretsManagerClient {
   /**
    * Put resource policy for a secret
    */
-  async putResourcePolicy(options: {
-    SecretId: string
-    ResourcePolicy: string
-    BlockPublicPolicy?: boolean
-  }): Promise<{
+  async putResourcePolicy(options: { SecretId: string; ResourcePolicy: string; BlockPublicPolicy?: boolean }): Promise<{
     ARN?: string
     Name?: string
   }> {
@@ -615,10 +610,7 @@ export class SecretsManagerClient {
   /**
    * Tag a secret
    */
-  async tagResource(options: {
-    SecretId: string
-    Tags: { Key: string, Value: string }[]
-  }): Promise<void> {
+  async tagResource(options: { SecretId: string; Tags: { Key: string; Value: string }[] }): Promise<void> {
     const params: Record<string, any> = {
       SecretId: options.SecretId,
       Tags: options.Tags,
@@ -640,10 +632,7 @@ export class SecretsManagerClient {
   /**
    * Remove tags from a secret
    */
-  async untagResource(options: {
-    SecretId: string
-    TagKeys: string[]
-  }): Promise<void> {
+  async untagResource(options: { SecretId: string; TagKeys: string[] }): Promise<void> {
     const params: Record<string, any> = {
       SecretId: options.SecretId,
       TagKeys: options.TagKeys,
@@ -665,11 +654,15 @@ export class SecretsManagerClient {
   /**
    * Helper: Set a string secret
    */
-  async setString(name: string, value: string, options?: {
-    description?: string
-    kmsKeyId?: string
-    tags?: { Key: string, Value: string }[]
-  }): Promise<{ ARN?: string, VersionId?: string }> {
+  async setString(
+    name: string,
+    value: string,
+    options?: {
+      description?: string
+      kmsKeyId?: string
+      tags?: { Key: string; Value: string }[]
+    },
+  ): Promise<{ ARN?: string; VersionId?: string }> {
     // Try to update existing, create if doesn't exist
     try {
       const result = await this.putSecretValue({
@@ -677,8 +670,7 @@ export class SecretsManagerClient {
         SecretString: value,
       })
       return { ARN: result.ARN, VersionId: result.VersionId }
-    }
-    catch (error: any) {
+    } catch (error: any) {
       if (error.code === 'ResourceNotFoundException') {
         const result = await this.createSecret({
           Name: name,
@@ -696,11 +688,15 @@ export class SecretsManagerClient {
   /**
    * Helper: Set a JSON secret
    */
-  async setJson(name: string, value: Record<string, any>, options?: {
-    description?: string
-    kmsKeyId?: string
-    tags?: { Key: string, Value: string }[]
-  }): Promise<{ ARN?: string, VersionId?: string }> {
+  async setJson(
+    name: string,
+    value: Record<string, any>,
+    options?: {
+      description?: string
+      kmsKeyId?: string
+      tags?: { Key: string; Value: string }[]
+    },
+  ): Promise<{ ARN?: string; VersionId?: string }> {
     return this.setString(name, JSON.stringify(value), options)
   }
 

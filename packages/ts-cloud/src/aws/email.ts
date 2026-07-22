@@ -8,11 +8,10 @@
  * - Domain verification and DKIM setup
  * - SMTP credential management for client email apps
  */
-
-import { SESClient } from './ses'
-import { S3Client } from './s3'
 import { IAMClient } from './iam'
 import { Route53Client } from './route53'
+import { S3Client } from './s3'
+import { SESClient } from './ses'
 
 export interface EmailConfig {
   domain: string
@@ -91,11 +90,13 @@ export class EmailClient {
   private domain?: string
   private defaultFrom?: string
 
-  constructor(options: {
-    region?: string
-    domain?: string
-    defaultFrom?: string
-  } = {}) {
+  constructor(
+    options: {
+      region?: string
+      domain?: string
+      defaultFrom?: string
+    } = {},
+  ) {
     this.region = options.region || 'us-east-1'
     this.domain = options.domain
     this.defaultFrom = options.defaultFrom
@@ -118,9 +119,7 @@ export class EmailClient {
       throw new Error('From address is required. Set defaultFrom in constructor or provide from in options.')
     }
 
-    const fromAddress = options.fromName
-      ? `${options.fromName} <${from}>`
-      : from
+    const fromAddress = options.fromName ? `${options.fromName} <${from}>` : from
 
     const toAddresses = Array.isArray(options.to) ? options.to : [options.to]
 
@@ -171,9 +170,7 @@ export class EmailClient {
       throw new Error('From address is required')
     }
 
-    const fromAddress = options.fromName
-      ? `${options.fromName} <${from}>`
-      : from
+    const fromAddress = options.fromName ? `${options.fromName} <${from}>` : from
 
     const result = await this.ses.sendTemplatedEmail({
       from: fromAddress,
@@ -202,15 +199,17 @@ export class EmailClient {
       throw new Error('From address is required')
     }
 
-    const entries = options.recipients.map(r => ({
+    const entries = options.recipients.map((r) => ({
       Destination: {
         ToAddresses: Array.isArray(r.to) ? r.to : [r.to],
       },
-      ReplacementEmailContent: r.templateData ? {
-        ReplacementTemplate: {
-          ReplacementTemplateData: JSON.stringify(r.templateData),
-        },
-      } : undefined,
+      ReplacementEmailContent: r.templateData
+        ? {
+            ReplacementTemplate: {
+              ReplacementTemplateData: JSON.stringify(r.templateData),
+            },
+          }
+        : undefined,
     }))
 
     const result = await this.ses.sendBulkEmail({
@@ -225,11 +224,12 @@ export class EmailClient {
     })
 
     return {
-      results: result.BulkEmailEntryResults?.map(r => ({
-        status: r.Status || 'UNKNOWN',
-        messageId: r.MessageId,
-        error: r.Error,
-      })) || [],
+      results:
+        result.BulkEmailEntryResults?.map((r) => ({
+          status: r.Status || 'UNKNOWN',
+          messageId: r.MessageId,
+          error: r.Error,
+        })) || [],
     }
   }
 
@@ -245,8 +245,7 @@ export class EmailClient {
     let identity
     try {
       identity = await this.ses.getEmailIdentity(domain)
-    }
-    catch {
+    } catch {
       // Create new identity
       const createResult = await this.ses.createEmailIdentity({ EmailIdentity: domain })
       identity = {
@@ -262,8 +261,7 @@ export class EmailClient {
         EmailIdentity: domain,
         SigningEnabled: true,
       })
-    }
-    catch {
+    } catch {
       // Might already be enabled
     }
 
@@ -273,8 +271,7 @@ export class EmailClient {
         MailFromDomain: `mail.${domain}`,
         BehaviorOnMxFailure: 'USE_DEFAULT_VALUE',
       })
-    }
-    catch {
+    } catch {
       // Might already be configured
     }
 
@@ -292,13 +289,15 @@ export class EmailClient {
   /**
    * Get DNS records needed for email verification
    */
-  async getDnsRecords(domain: string): Promise<Array<{
-    type: string
-    name: string
-    value: string
-    priority?: number
-    ttl?: number
-  }>> {
+  async getDnsRecords(domain: string): Promise<
+    Array<{
+      type: string
+      name: string
+      value: string
+      priority?: number
+      ttl?: number
+    }>
+  > {
     const records: Array<{
       type: string
       name: string
@@ -361,10 +360,8 @@ export class EmailClient {
   async isDomainReady(domain: string): Promise<boolean> {
     try {
       const identity = await this.ses.getEmailIdentity(domain)
-      return identity.SendingEnabled === true
-        && identity.DkimAttributes?.Status === 'SUCCESS'
-    }
-    catch {
+      return identity.SendingEnabled === true && identity.DkimAttributes?.Status === 'SUCCESS'
+    } catch {
       return false
     }
   }
@@ -409,8 +406,7 @@ export class EmailClient {
     // Create receipt rule set if it doesn't exist
     try {
       await this.ses.createReceiptRuleSet(config.ruleSetName)
-    }
-    catch (e: any) {
+    } catch (e: any) {
       if (!e.message?.includes('already exists') && e.code !== 'AlreadyExists') {
         throw e
       }
@@ -452,8 +448,7 @@ export class EmailClient {
           Actions: actions,
         },
       })
-    }
-    catch (e: any) {
+    } catch (e: any) {
       // Rule might already exist - try to update it
       if (e.message?.includes('already exists')) {
         // Delete and recreate
@@ -469,8 +464,7 @@ export class EmailClient {
             Actions: actions,
           },
         })
-      }
-      else {
+      } else {
         throw e
       }
     }
@@ -493,7 +487,7 @@ export class EmailClient {
       maxKeys: options.maxResults || 100,
     })
 
-    return objects.map(obj => ({
+    return objects.map((obj) => ({
       key: obj.Key || '',
       lastModified: obj.LastModified || '',
       size: obj.Size || 0,
@@ -503,10 +497,7 @@ export class EmailClient {
   /**
    * Read an email from S3
    */
-  async readEmail(options: {
-    bucket: string
-    key: string
-  }): Promise<string> {
+  async readEmail(options: { bucket: string; key: string }): Promise<string> {
     return await this.s3.getObject(options.bucket, options.key)
   }
 
@@ -518,10 +509,7 @@ export class EmailClient {
    * Create SMTP credentials for sending via email clients
    * Note: These use IAM users and SES SMTP interface
    */
-  async createSmtpCredentials(options: {
-    username: string
-    domain: string
-  }): Promise<{
+  async createSmtpCredentials(options: { username: string; domain: string }): Promise<{
     username: string
     password: string
     server: string
@@ -550,8 +538,7 @@ export class EmailClient {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: buildBody('CreateUser', { UserName: iamUsername }),
       })
-    }
-    catch (e: any) {
+    } catch (e: any) {
       if (!e.message?.includes('EntityAlreadyExists')) {
         throw e
       }
@@ -588,8 +575,7 @@ export class EmailClient {
           PolicyDocument: JSON.stringify(policy),
         }),
       })
-    }
-    catch {
+    } catch {
       // Policy might already exist
     }
 
@@ -633,30 +619,15 @@ export class EmailClient {
     const versionInBytes = Buffer.from([0x04])
 
     // Sign the message
-    let signature = crypto
-      .createHmac('sha256', `AWS4${secretAccessKey}`)
-      .update('11111111')
-      .digest()
+    let signature = crypto.createHmac('sha256', `AWS4${secretAccessKey}`).update('11111111').digest()
 
-    signature = crypto
-      .createHmac('sha256', signature)
-      .update(this.region)
-      .digest()
+    signature = crypto.createHmac('sha256', signature).update(this.region).digest()
 
-    signature = crypto
-      .createHmac('sha256', signature)
-      .update('ses')
-      .digest()
+    signature = crypto.createHmac('sha256', signature).update('ses').digest()
 
-    signature = crypto
-      .createHmac('sha256', signature)
-      .update('aws4_request')
-      .digest()
+    signature = crypto.createHmac('sha256', signature).update('aws4_request').digest()
 
-    signature = crypto
-      .createHmac('sha256', signature)
-      .update(message)
-      .digest()
+    signature = crypto.createHmac('sha256', signature).update(message).digest()
 
     // Prepend version byte and encode as base64
     const signatureWithVersion = Buffer.concat([versionInBytes, signature])
@@ -670,12 +641,7 @@ export class EmailClient {
   /**
    * Create an email template
    */
-  async createTemplate(options: {
-    name: string
-    subject: string
-    text?: string
-    html?: string
-  }): Promise<void> {
+  async createTemplate(options: { name: string; subject: string; text?: string; html?: string }): Promise<void> {
     await this.ses.createEmailTemplate({
       TemplateName: options.name,
       TemplateContent: {
@@ -703,8 +669,7 @@ export class EmailClient {
         text: result.TemplateContent?.Text,
         html: result.TemplateContent?.Html,
       }
-    }
-    catch {
+    } catch {
       return null
     }
   }
@@ -721,10 +686,12 @@ export class EmailClient {
    */
   async listTemplates(): Promise<Array<{ name: string; createdAt?: string }>> {
     const result = await this.ses.listEmailTemplates()
-    return result.TemplatesMetadata?.map(t => ({
-      name: t.TemplateName || '',
-      createdAt: t.CreatedTimestamp,
-    })) || []
+    return (
+      result.TemplatesMetadata?.map((t) => ({
+        name: t.TemplateName || '',
+        createdAt: t.CreatedTimestamp,
+      })) || []
+    )
   }
 
   // ============================================
@@ -751,7 +718,7 @@ export class EmailClient {
 
     // 2. Create S3 bucket for email storage if it doesn't exist
     const buckets = await this.s3.listBuckets()
-    const bucketExists = buckets.Buckets?.some(b => b.Name === bucketName)
+    const bucketExists = buckets.Buckets?.some((b) => b.Name === bucketName)
     if (!bucketExists) {
       await this.s3.createBucket(bucketName)
     }
@@ -797,16 +764,14 @@ export class EmailClient {
     // 1. Delete receipt rule
     try {
       await this.ses.deleteReceiptRule(ruleSetName, ruleName)
-    }
-    catch {
+    } catch {
       // Rule might not exist
     }
 
     // 2. Delete receipt rule set
     try {
       await this.ses.deleteReceiptRuleSet(ruleSetName)
-    }
-    catch {
+    } catch {
       // Rule set might not exist or might be active
     }
 
@@ -818,8 +783,7 @@ export class EmailClient {
     if (config.deleteBucket) {
       try {
         await this.s3.emptyAndDeleteBucket(bucketName)
-      }
-      catch {
+      } catch {
         // Bucket might not exist
       }
     }
@@ -852,11 +816,7 @@ export class EmailClient {
   /**
    * Build a raw MIME email with attachments
    */
-  private buildRawEmail(
-    options: SendEmailOptions,
-    from: string,
-    to: string[],
-  ): string {
+  private buildRawEmail(options: SendEmailOptions, from: string, to: string[]): string {
     const boundary = `----=_Part_${Date.now()}_${Math.random().toString(36).substring(2)}`
 
     let email = ''
@@ -893,13 +853,11 @@ export class EmailClient {
         email += `${options.html}\r\n`
 
         email += `--${altBoundary}--\r\n`
-      }
-      else if (options.html) {
+      } else if (options.html) {
         email += 'Content-Type: text/html; charset="UTF-8"\r\n'
         email += '\r\n'
         email += `${options.html}\r\n`
-      }
-      else {
+      } else {
         email += 'Content-Type: text/plain; charset="UTF-8"\r\n'
         email += '\r\n'
         email += `${options.text}\r\n`

@@ -1,13 +1,4 @@
-import type {
-  CloudDriver,
-  ComputeStackOutputs,
-  ComputeTarget,
-  FindComputeTargetsOptions,
-  RemoteDeployResult,
-  RunRemoteDeployOptions,
-  UploadReleaseOptions,
-  UploadReleaseResult,
-} from '@ts-cloud/core'
+import type { CloudDriver, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, RemoteDeployResult, RunRemoteDeployOptions, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
 
 /**
  * A {@link CloudDriver} that runs every "remote" command on the LOCAL machine.
@@ -38,8 +29,7 @@ export class LocalBoxDriver implements CloudDriver {
     // machine. Answer only app-role queries so role-specific callers (e.g. the
     // rpx fleet-LB gateway reload, which first looks for 'lb' targets) don't
     // mistake localhost for a dedicated load balancer.
-    if ((options.role || 'app') !== 'app')
-      return []
+    if ((options.role || 'app') !== 'app') return []
     return [{ id: 'localhost', name: 'localhost', publicIp: '127.0.0.1', status: 'running' }]
   }
 
@@ -57,8 +47,7 @@ export class LocalBoxDriver implements CloudDriver {
         instanceCount: 1,
         perInstance: [{ instanceId: 'localhost', status: exitCode === 0 ? 'Success' : 'Failed', output, error }],
       }
-    }
-    catch (err: any) {
+    } catch (err: any) {
       return {
         success: false,
         instanceCount: 1,

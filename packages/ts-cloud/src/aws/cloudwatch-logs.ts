@@ -2,7 +2,6 @@
  * AWS CloudWatch Logs Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface LogEvent {
@@ -32,12 +31,31 @@ export class CloudWatchLogsClient {
   }
 
   async createLogGroup(logGroupName: string, tags?: Record<string, string>): Promise<void> {
-    await this.client.request({ service: 'logs', region: this.region, method: 'POST', path: '/', headers: { 'X-Amz-Target': 'Logs_20140328.CreateLogGroup', 'Content-Type': 'application/x-amz-json-1.1' }, body: JSON.stringify({ logGroupName, ...(tags ? { tags } : {}) }) })
+    await this.client.request({
+      service: 'logs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'X-Amz-Target': 'Logs_20140328.CreateLogGroup', 'Content-Type': 'application/x-amz-json-1.1' },
+      body: JSON.stringify({ logGroupName, ...(tags ? { tags } : {}) }),
+    })
   }
 
   async putRetentionPolicy(logGroupName: string, retentionInDays: number): Promise<void> {
-    if (![1,3,5,7,14,30,60,90,120,150,180,365,400,545,731,1096,1827,2192,2557,2922,3288,3653].includes(retentionInDays)) throw new Error('Unsupported CloudWatch Logs retention period')
-    await this.client.request({ service: 'logs', region: this.region, method: 'POST', path: '/', headers: { 'X-Amz-Target': 'Logs_20140328.PutRetentionPolicy', 'Content-Type': 'application/x-amz-json-1.1' }, body: JSON.stringify({ logGroupName, retentionInDays }) })
+    if (
+      ![
+        1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653,
+      ].includes(retentionInDays)
+    )
+      throw new Error('Unsupported CloudWatch Logs retention period')
+    await this.client.request({
+      service: 'logs',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'X-Amz-Target': 'Logs_20140328.PutRetentionPolicy', 'Content-Type': 'application/x-amz-json-1.1' },
+      body: JSON.stringify({ logGroupName, retentionInDays }),
+    })
   }
 
   async describeLogStreams(options: {
@@ -46,7 +64,7 @@ export class CloudWatchLogsClient {
     orderBy?: 'LogStreamName' | 'LastEventTime'
     descending?: boolean
     limit?: number
-  }): Promise<{ logStreams?: LogStream[], nextToken?: string }> {
+  }): Promise<{ logStreams?: LogStream[]; nextToken?: string }> {
     const params: Record<string, any> = {
       logGroupName: options.logGroupName,
     }
@@ -78,7 +96,7 @@ export class CloudWatchLogsClient {
     endTime?: number
     limit?: number
     startFromHead?: boolean
-  }): Promise<{ events?: LogEvent[], nextForwardToken?: string, nextBackwardToken?: string }> {
+  }): Promise<{ events?: LogEvent[]; nextForwardToken?: string; nextBackwardToken?: string }> {
     const params: Record<string, any> = {
       logGroupName: options.logGroupName,
       logStreamName: options.logStreamName,
@@ -107,7 +125,7 @@ export class CloudWatchLogsClient {
   async describeLogGroups(options?: {
     logGroupNamePrefix?: string
     limit?: number
-  }): Promise<{ logGroups?: { logGroupName?: string, arn?: string, creationTime?: number }[], nextToken?: string }> {
+  }): Promise<{ logGroups?: { logGroupName?: string; arn?: string; creationTime?: number }[]; nextToken?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.logGroupNamePrefix) params.logGroupNamePrefix = options.logGroupNamePrefix
@@ -149,7 +167,7 @@ export class CloudWatchLogsClient {
     endTime?: number
     filterPattern?: string
     limit?: number
-  }): Promise<{ events?: LogEvent[], searchedLogStreams?: any[], nextToken?: string }> {
+  }): Promise<{ events?: LogEvent[]; searchedLogStreams?: any[]; nextToken?: string }> {
     const params: Record<string, any> = {
       logGroupName: options.logGroupName,
     }

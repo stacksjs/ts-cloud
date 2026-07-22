@@ -29,8 +29,7 @@ export interface RemoteExecResult {
  */
 export function buildSshArgs(options: RemoteExecOptions = {}): string[] {
   const args: string[] = []
-  if (options.identityFile)
-    args.push('-i', options.identityFile)
+  if (options.identityFile) args.push('-i', options.identityFile)
   args.push(
     '-o',
     'StrictHostKeyChecking=no',
@@ -45,15 +44,16 @@ export function buildSshArgs(options: RemoteExecOptions = {}): string[] {
 }
 
 /** Run a command on the host over SSH, capturing exit code and output. */
-export async function sshExec(host: string, command: string, options: RemoteExecOptions = {}): Promise<RemoteExecResult> {
+export async function sshExec(
+  host: string,
+  command: string,
+  options: RemoteExecOptions = {},
+): Promise<RemoteExecResult> {
   const proc = Bun.spawn(['ssh', ...buildSshArgs(options), `${options.user ?? 'root'}@${host}`, command], {
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ])
+  const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()])
   const code = await proc.exited
   return { code, stdout, stderr }
 }
@@ -62,16 +62,26 @@ export async function sshExec(host: string, command: string, options: RemoteExec
 export async function sshExecOrThrow(host: string, command: string, options: RemoteExecOptions = {}): Promise<string> {
   const result = await sshExec(host, command, options)
   if (result.code !== 0)
-    throw new Error(`ssh \`${command}\` on ${host} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`)
+    throw new Error(
+      `ssh \`${command}\` on ${host} failed (${result.code}): ${result.stderr.trim() || result.stdout.trim()}`,
+    )
   return result.stdout
 }
 
 /** Copy local files into a directory on the host via scp. */
-export async function scpUpload(host: string, localPaths: string[], remoteDir: string, options: RemoteExecOptions = {}): Promise<void> {
-  const proc = Bun.spawn(['scp', ...buildSshArgs(options), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+export async function scpUpload(
+  host: string,
+  localPaths: string[],
+  remoteDir: string,
+  options: RemoteExecOptions = {},
+): Promise<void> {
+  const proc = Bun.spawn(
+    ['scp', ...buildSshArgs(options), ...localPaths, `${options.user ?? 'root'}@${host}:${remoteDir}`],
+    {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
   const code = await proc.exited
   if (code !== 0) {
     const stderr = await new Response(proc.stderr).text()
@@ -93,9 +103,8 @@ export async function waitForSsh(host: string, options: WaitOptions = {}): Promi
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     const r = await sshExec(host, 'echo ready', options)
-    if (r.code === 0 && r.stdout.includes('ready'))
-      return
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+    if (r.code === 0 && r.stdout.includes('ready')) return
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
   }
   throw new Error(`SSH not ready on ${host} after ${timeoutMs}ms`)
 }
@@ -111,11 +120,10 @@ export async function waitForCloudInit(host: string, options: WaitOptions = {}):
   const start = Date.now()
   while (Date.now() - start < timeoutMs) {
     const r = await sshExec(host, 'cloud-init status 2>/dev/null || echo unknown', options)
-    if (r.stdout.includes('status: done'))
-      return
+    if (r.stdout.includes('status: done')) return
     if (r.stdout.includes('status: error'))
       throw new Error(`cloud-init reported an error on ${host}; check /var/log/cloud-init-output.log`)
-    await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
   }
   throw new Error(`cloud-init did not finish on ${host} after ${timeoutMs}ms`)
 }

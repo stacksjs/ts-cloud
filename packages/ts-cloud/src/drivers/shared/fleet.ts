@@ -63,10 +63,8 @@ export function buildFleetServicesEnv(servicesPrivateIp: string, database?: Data
     env.DB_HOST = servicesPrivateIp
     env.DB_PORT = String(database.port ?? (database.engine === 'postgres' ? 5432 : 3306))
     env.DB_DATABASE = database.name
-    if (database.username)
-      env.DB_USERNAME = database.username
-    if (database.password)
-      env.DB_PASSWORD = database.password
+    if (database.username) env.DB_USERNAME = database.username
+    if (database.password) env.DB_PASSWORD = database.password
   }
   return env
 }

@@ -41,8 +41,7 @@ export async function readDriverState(stackName: string): Promise<HetznerDriverS
   try {
     const raw = await readFile(driverStatePath(stackName), 'utf8')
     return JSON.parse(raw) as HetznerDriverState
-  }
-  catch {
+  } catch {
     return null
   }
 }

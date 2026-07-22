@@ -3,7 +3,6 @@
  * Machine translation service
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -77,7 +76,13 @@ export interface StartTextTranslationJobCommandInput {
   JobName?: string
   InputDataConfig: {
     S3Uri: string
-    ContentType: 'text/html' | 'text/plain' | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' | 'application/vnd.openxmlformats-officedocument.presentationml.presentation' | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' | 'application/x-xliff+xml'
+    ContentType:
+      | 'text/html'
+      | 'text/plain'
+      | 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      | 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+      | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      | 'application/x-xliff+xml'
   }
   OutputDataConfig: {
     S3Uri: string
@@ -101,7 +106,8 @@ export interface StartTextTranslationJobCommandInput {
 
 export interface StartTextTranslationJobCommandOutput {
   JobId?: string
-  JobStatus?: 'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
+  JobStatus?:
+    'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
 }
 
 export interface DescribeTextTranslationJobCommandInput {
@@ -111,7 +117,8 @@ export interface DescribeTextTranslationJobCommandInput {
 export interface TextTranslationJobProperties {
   JobId?: string
   JobName?: string
-  JobStatus?: 'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
+  JobStatus?:
+    'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
   JobDetails?: {
     TranslatedDocumentsCount?: number
     DocumentsWithErrorsCount?: number
@@ -150,7 +157,8 @@ export interface DescribeTextTranslationJobCommandOutput {
 export interface ListTextTranslationJobsCommandInput {
   Filter?: {
     JobName?: string
-    JobStatus?: 'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
+    JobStatus?:
+      'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
     SubmittedBeforeTime?: string
     SubmittedAfterTime?: string
   }
@@ -169,7 +177,8 @@ export interface StopTextTranslationJobCommandInput {
 
 export interface StopTextTranslationJobCommandOutput {
   JobId?: string
-  JobStatus?: 'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
+  JobStatus?:
+    'SUBMITTED' | 'IN_PROGRESS' | 'COMPLETED' | 'COMPLETED_WITH_ERROR' | 'FAILED' | 'STOP_REQUESTED' | 'STOPPED'
 }
 
 export interface ListLanguagesCommandInput {
@@ -405,28 +414,36 @@ export class TranslateClient {
   /**
    * Start a batch translation job
    */
-  async startTextTranslationJob(params: StartTextTranslationJobCommandInput): Promise<StartTextTranslationJobCommandOutput> {
+  async startTextTranslationJob(
+    params: StartTextTranslationJobCommandInput,
+  ): Promise<StartTextTranslationJobCommandOutput> {
     return this.request('StartTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a batch translation job
    */
-  async describeTextTranslationJob(params: DescribeTextTranslationJobCommandInput): Promise<DescribeTextTranslationJobCommandOutput> {
+  async describeTextTranslationJob(
+    params: DescribeTextTranslationJobCommandInput,
+  ): Promise<DescribeTextTranslationJobCommandOutput> {
     return this.request('DescribeTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * List batch translation jobs
    */
-  async listTextTranslationJobs(params?: ListTextTranslationJobsCommandInput): Promise<ListTextTranslationJobsCommandOutput> {
+  async listTextTranslationJobs(
+    params?: ListTextTranslationJobsCommandInput,
+  ): Promise<ListTextTranslationJobsCommandOutput> {
     return this.request('ListTextTranslationJobs', (params || {}) as unknown as Record<string, unknown>)
   }
 
   /**
    * Stop a batch translation job
    */
-  async stopTextTranslationJob(params: StopTextTranslationJobCommandInput): Promise<StopTextTranslationJobCommandOutput> {
+  async stopTextTranslationJob(
+    params: StopTextTranslationJobCommandInput,
+  ): Promise<StopTextTranslationJobCommandOutput> {
     return this.request('StopTextTranslationJob', params as unknown as Record<string, unknown>)
   }
 
@@ -512,11 +529,7 @@ export class TranslateClient {
   /**
    * Simple translation
    */
-  async translate(
-    text: string,
-    targetLanguage: string,
-    sourceLanguage: string = 'auto',
-  ): Promise<string> {
+  async translate(text: string, targetLanguage: string, sourceLanguage: string = 'auto'): Promise<string> {
     const result = await this.translateText({
       Text: text,
       SourceLanguageCode: sourceLanguage,
@@ -582,7 +595,7 @@ export class TranslateClient {
         throw new Error(`Translation job ${jobId} failed: ${job.Message}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for translation job ${jobId}`)
@@ -593,7 +606,7 @@ export class TranslateClient {
    */
   async getSupportedLanguages(): Promise<string[]> {
     const result = await this.listLanguages()
-    return result.Languages?.map(l => l.LanguageCode || '').filter(Boolean) || []
+    return result.Languages?.map((l) => l.LanguageCode || '').filter(Boolean) || []
   }
 }
 

@@ -27,7 +27,7 @@ export interface TraceSummary {
 export interface XRayTrace {
   Id?: string
   Duration?: number
-  Segments?: Array<{ Id?: string, Document?: string }>
+  Segments?: Array<{ Id?: string; Document?: string }>
 }
 
 export class XRayClient {
@@ -43,17 +43,20 @@ export class XRayClient {
    * List trace summaries between two times. `filterExpression` is an X-Ray
    * filter (e.g. `service("acme-production-http")` or `error = true`).
    */
-  async getTraceSummaries(options: { startTime: Date, endTime: Date, filterExpression?: string, nextToken?: string }): Promise<{ summaries: TraceSummary[], nextToken?: string }> {
+  async getTraceSummaries(options: {
+    startTime: Date
+    endTime: Date
+    filterExpression?: string
+    nextToken?: string
+  }): Promise<{ summaries: TraceSummary[]; nextToken?: string }> {
     const body: Record<string, any> = {
       StartTime: Math.floor(options.startTime.getTime() / 1000),
       EndTime: Math.floor(options.endTime.getTime() / 1000),
       TimeRangeType: 'Event',
       Sampling: false,
     }
-    if (options.filterExpression)
-      body.FilterExpression = options.filterExpression
-    if (options.nextToken)
-      body.NextToken = options.nextToken
+    if (options.filterExpression) body.FilterExpression = options.filterExpression
+    if (options.nextToken) body.NextToken = options.nextToken
 
     const res = await this.client.request({
       service: 'xray',
@@ -68,8 +71,7 @@ export class XRayClient {
 
   /** Fetch full traces (segment documents) for up to 5 trace ids. */
   async batchGetTraces(traceIds: string[]): Promise<XRayTrace[]> {
-    if (!traceIds.length)
-      return []
+    if (!traceIds.length) return []
     const res = await this.client.request({
       service: 'xray',
       region: this.region,

@@ -2,33 +2,8 @@
  * Infrastructure Generator
  * Generates CloudFormation templates from cloud.config.ts using all Phase 2 modules
  */
-
 import type { CloudConfig } from '@ts-cloud/core'
-import {
-  Storage,
-  CDN,
-  DNS,
-  Security,
-  Compute,
-  Network,
-  FileSystem,
-  Email,
-  Queue,
-  AI,
-  Database,
-  Cache,
-  Permissions,
-  ApiGateway,
-  Messaging,
-  Workflow,
-  Monitoring,
-  Auth,
-  Deployment,
-  Redirects,
-  Sftp,
-  Search,
-  TemplateBuilder,
-} from '@ts-cloud/core'
+import { AI, ApiGateway, Cache, CDN, Compute, Database, DNS, Email, FileSystem, Monitoring, Network, Permissions, Queue, Redirects, Search, Security, Sftp, Storage, TemplateBuilder } from '@ts-cloud/core'
 
 export interface GenerationOptions {
   config: CloudConfig
@@ -46,9 +21,7 @@ export class InfrastructureGenerator {
   constructor(options: GenerationOptions) {
     this.config = options.config
     this.environment = options.environment
-    this.builder = new TemplateBuilder(
-      `${this.config.project.name} - ${this.environment}`,
-    )
+    this.builder = new TemplateBuilder(`${this.config.project.name} - ${this.environment}`)
 
     // Merge environment-specific infrastructure overrides
     this.mergedConfig = this.mergeEnvironmentConfig()
@@ -102,9 +75,7 @@ export class InfrastructureGenerator {
     // Check feature flag requirements
     if (resource.requiresFeatures) {
       const features = this.config.features || {}
-      const hasRequiredFeatures = resource.requiresFeatures.every(
-        (feature: string) => features[feature] === true
-      )
+      const hasRequiredFeatures = resource.requiresFeatures.every((feature: string) => features[feature] === true)
       if (!hasRequiredFeatures) {
         return false
       }
@@ -127,8 +98,7 @@ export class InfrastructureGenerator {
   }
 
   private resolveApiOriginPort(): number {
-    const configuredPort = (this.mergedConfig.infrastructure as any)?.api?.port
-      ?? (this.mergedConfig as any).ports?.api
+    const configuredPort = (this.mergedConfig.infrastructure as any)?.api?.port ?? (this.mergedConfig as any).ports?.api
 
     const port = Number(configuredPort || 3008)
     return Number.isFinite(port) && port > 0 ? port : 3008
@@ -198,19 +168,13 @@ export class InfrastructureGenerator {
     }
 
     const apiOriginId = `EC2-${slug}-${env}-api`
-    const serverRegion = this.mergedConfig.infrastructure?.servers?.app?.region
-      || this.mergedConfig.project?.region
-      || 'us-east-1'
-    const dnsSuffix = serverRegion === 'us-east-1'
-      ? '.compute-1.amazonaws.com'
-      : `.${serverRegion}.compute.amazonaws.com`
+    const serverRegion =
+      this.mergedConfig.infrastructure?.servers?.app?.region || this.mergedConfig.project?.region || 'us-east-1'
+    const dnsSuffix =
+      serverRegion === 'us-east-1' ? '.compute-1.amazonaws.com' : `.${serverRegion}.compute.amazonaws.com`
 
     const originDomainName = {
-      'Fn::Join': ['', [
-        'ec2-',
-        { 'Fn::Join': ['-', { 'Fn::Split': ['.', { Ref: appEipId }] }] },
-        dnsSuffix,
-      ]],
+      'Fn::Join': ['', ['ec2-', { 'Fn::Join': ['-', { 'Fn::Split': ['.', { Ref: appEipId }] }] }, dnsSuffix]],
     }
 
     const apiOriginPort = this.resolveApiOriginPort()
@@ -247,10 +211,12 @@ export class InfrastructureGenerator {
    * `handle` at the end.
    */
   private buildCaddyfile(allSites: Array<[string, any]>): string | undefined {
-    const sitesWithDomain = allSites.filter(([, s]) => typeof s.domain === 'string' && s.domain && typeof s.port === 'number')
+    const sitesWithDomain = allSites.filter(
+      ([, s]) => typeof s.domain === 'string' && s.domain && typeof s.port === 'number',
+    )
     if (sitesWithDomain.length === 0) return undefined
 
-    const byDomain = new Map<string, Array<{ port: number, path?: string }>>()
+    const byDomain = new Map<string, Array<{ port: number; path?: string }>>()
     for (const [, site] of sitesWithDomain) {
       const list = byDomain.get(site.domain) ?? []
       list.push({ port: site.port, path: site.path })
@@ -271,9 +237,7 @@ export class InfrastructureGenerator {
       const handles = sorted.map((s) => {
         const isCatchAll = !s.path || s.path === '/'
         const inner = `reverse_proxy localhost:${s.port}`
-        return isCatchAll
-          ? `  handle {\n    ${inner}\n  }`
-          : `  handle ${s.path} {\n    ${inner}\n  }`
+        return isCatchAll ? `  handle {\n    ${inner}\n  }` : `  handle ${s.path} {\n    ${inner}\n  }`
       })
 
       blocks.push(`${domain} {\n${handles.join('\n')}\n}`)
@@ -282,7 +246,7 @@ export class InfrastructureGenerator {
     return blocks.join('\n\n')
   }
 
-  private normalizeMountPath(config: { path?: string, mountPath?: string } | undefined): string | undefined {
+  private normalizeMountPath(config: { path?: string; mountPath?: string } | undefined): string | undefined {
     const rawPath = config?.mountPath || config?.path
     if (!rawPath || rawPath === '/') return undefined
 
@@ -294,7 +258,7 @@ export class InfrastructureGenerator {
     return `${slug}-${env}-s3-${name}`
       .split(/[^a-zA-Z0-9]+/)
       .filter(Boolean)
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
       .join('')
   }
 
@@ -313,14 +277,14 @@ export class InfrastructureGenerator {
     // Auto-detect and generate based on what's configured (using merged config)
     // If functions or API are defined, generate serverless resources
     const hasServerlessConfig = !!(
-      (this.mergedConfig.infrastructure?.functions && Object.keys(this.mergedConfig.infrastructure.functions).length > 0)
-      || this.mergedConfig.infrastructure?.api
+      (this.mergedConfig.infrastructure?.functions &&
+        Object.keys(this.mergedConfig.infrastructure.functions).length > 0) ||
+      this.mergedConfig.infrastructure?.api
     )
 
     // If servers are defined, generate server resources
     const hasServerConfig = !!(
-      this.mergedConfig.infrastructure?.servers
-      && Object.keys(this.mergedConfig.infrastructure.servers).length > 0
+      this.mergedConfig.infrastructure?.servers && Object.keys(this.mergedConfig.infrastructure.servers).length > 0
     )
 
     // Presence of `infrastructure.compute` is the deploy-mode declaration:
@@ -334,9 +298,9 @@ export class InfrastructureGenerator {
     // Only generate when mode is 'serverless' or containers are explicitly configured
     const mode = this.mergedConfig.mode || 'server'
     const hasContainerConfig = !!(
-      mode === 'serverless'
-      && this.mergedConfig.infrastructure?.containers
-      && Object.keys(this.mergedConfig.infrastructure.containers).length > 0
+      mode === 'serverless' &&
+      this.mergedConfig.infrastructure?.containers &&
+      Object.keys(this.mergedConfig.infrastructure.containers).length > 0
     )
 
     // Generate network resources first if containers need them
@@ -498,8 +462,7 @@ export class InfrastructureGenerator {
     if (sslConfig?.enabled && sslConfig.domains?.length) {
       if (sslConfig.certificateArn) {
         // Use existing certificate ARN - no resource needed
-      }
-      else {
+      } else {
         const domain = sslConfig.domains[0]
         const subdomains = sslConfig.domains.slice(1).map((d: string) => {
           // If it's already a full domain (e.g. www.example.com), extract subdomain
@@ -531,9 +494,7 @@ export class InfrastructureGenerator {
       Type: 'AWS::ECS::Cluster',
       Properties: {
         ClusterName: `${slug}-${env}`,
-        ClusterSettings: [
-          { Name: 'containerInsights', Value: 'enabled' },
-        ],
+        ClusterSettings: [{ Name: 'containerInsights', Value: 'enabled' }],
         Tags: [
           { Key: 'Name', Value: `${slug}-${env}` },
           { Key: 'Environment', Value: env },
@@ -554,9 +515,7 @@ export class InfrastructureGenerator {
           { IpProtocol: 'tcp', FromPort: 80, ToPort: 80, CidrIp: '0.0.0.0/0', Description: 'HTTP' },
           { IpProtocol: 'tcp', FromPort: 443, ToPort: 443, CidrIp: '0.0.0.0/0', Description: 'HTTPS' },
         ],
-        SecurityGroupEgress: [
-          { IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' },
-        ],
+        SecurityGroupEgress: [{ IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' }],
         Tags: [
           { Key: 'Name', Value: `${slug}-${env}-alb-sg` },
           { Key: 'Environment', Value: env },
@@ -587,9 +546,7 @@ export class InfrastructureGenerator {
               Description: 'Allow traffic from ALB',
             },
           ],
-          SecurityGroupEgress: [
-            { IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' },
-          ],
+          SecurityGroupEgress: [{ IpProtocol: '-1', CidrIp: '0.0.0.0/0', Description: 'Allow all outbound' }],
           Tags: [
             { Key: 'Name', Value: `${slug}-${env}-ecs-sg` },
             { Key: 'Environment', Value: env },
@@ -607,33 +564,37 @@ export class InfrastructureGenerator {
           RoleName: `${slug}-${env}-ecs-exec-role`,
           AssumeRolePolicyDocument: {
             Version: '2012-10-17',
-            Statement: [{
-              Effect: 'Allow',
-              Principal: { Service: 'ecs-tasks.amazonaws.com' },
-              Action: 'sts:AssumeRole',
-            }],
-          },
-          ManagedPolicyArns: [
-            'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
-          ],
-          Policies: [{
-            PolicyName: 'ECRPullPolicy',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [{
+            Statement: [
+              {
                 Effect: 'Allow',
-                Action: [
-                  'ecr:GetAuthorizationToken',
-                  'ecr:BatchCheckLayerAvailability',
-                  'ecr:GetDownloadUrlForLayer',
-                  'ecr:BatchGetImage',
-                  'logs:CreateLogStream',
-                  'logs:PutLogEvents',
+                Principal: { Service: 'ecs-tasks.amazonaws.com' },
+                Action: 'sts:AssumeRole',
+              },
+            ],
+          },
+          ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'],
+          Policies: [
+            {
+              PolicyName: 'ECRPullPolicy',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [
+                  {
+                    Effect: 'Allow',
+                    Action: [
+                      'ecr:GetAuthorizationToken',
+                      'ecr:BatchCheckLayerAvailability',
+                      'ecr:GetDownloadUrlForLayer',
+                      'ecr:BatchGetImage',
+                      'logs:CreateLogStream',
+                      'logs:PutLogEvents',
+                    ],
+                    Resource: '*',
+                  },
                 ],
-                Resource: '*',
-              }],
+              },
             },
-          }],
+          ],
         },
       } as any)
 
@@ -647,37 +608,34 @@ export class InfrastructureGenerator {
           RoleName: `${slug}-${env}-ecs-task-role`,
           AssumeRolePolicyDocument: {
             Version: '2012-10-17',
-            Statement: [{
-              Effect: 'Allow',
-              Principal: { Service: 'ecs-tasks.amazonaws.com' },
-              Action: 'sts:AssumeRole',
-            }],
+            Statement: [
+              {
+                Effect: 'Allow',
+                Principal: { Service: 'ecs-tasks.amazonaws.com' },
+                Action: 'sts:AssumeRole',
+              },
+            ],
           },
-          Policies: [{
-            PolicyName: 'TaskPolicy',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    'logs:CreateLogStream',
-                    'logs:PutLogEvents',
-                  ],
-                  Resource: '*',
-                },
-                {
-                  Effect: 'Allow',
-                  Action: [
-                    's3:GetObject',
-                    's3:PutObject',
-                    's3:ListBucket',
-                  ],
-                  Resource: '*',
-                },
-              ],
+          Policies: [
+            {
+              PolicyName: 'TaskPolicy',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [
+                  {
+                    Effect: 'Allow',
+                    Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                    Resource: '*',
+                  },
+                  {
+                    Effect: 'Allow',
+                    Action: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
+                    Resource: '*',
+                  },
+                ],
+              },
             },
-          }],
+          ],
         },
       } as any)
 
@@ -711,30 +669,37 @@ export class InfrastructureGenerator {
           Memory: memory,
           ExecutionRoleArn: { 'Fn::GetAtt': [execRoleId, 'Arn'] },
           TaskRoleArn: { 'Fn::GetAtt': [taskRoleId, 'Arn'] },
-          ContainerDefinitions: [{
-            Name: name,
-            Image: { 'Fn::Sub': `\${AWS::AccountId}.dkr.ecr.\${AWS::Region}.amazonaws.com/${slug}:latest` },
-            Essential: true,
-            PortMappings: [{
-              ContainerPort: port,
-              Protocol: 'tcp',
-            }],
-            LogConfiguration: {
-              LogDriver: 'awslogs',
-              Options: {
-                'awslogs-group': logGroupName,
-                'awslogs-region': { Ref: 'AWS::Region' },
-                'awslogs-stream-prefix': name,
+          ContainerDefinitions: [
+            {
+              Name: name,
+              Image: { 'Fn::Sub': `\${AWS::AccountId}.dkr.ecr.\${AWS::Region}.amazonaws.com/${slug}:latest` },
+              Essential: true,
+              PortMappings: [
+                {
+                  ContainerPort: port,
+                  Protocol: 'tcp',
+                },
+              ],
+              LogConfiguration: {
+                LogDriver: 'awslogs',
+                Options: {
+                  'awslogs-group': logGroupName,
+                  'awslogs-region': { Ref: 'AWS::Region' },
+                  'awslogs-stream-prefix': name,
+                },
+              },
+              HealthCheck: {
+                Command: [
+                  'CMD-SHELL',
+                  `curl -f http://localhost:${port}${(containerConfig as any).healthCheck || '/health'} || exit 1`,
+                ],
+                Interval: 30,
+                Timeout: 5,
+                Retries: 3,
+                StartPeriod: 60,
               },
             },
-            HealthCheck: {
-              Command: ['CMD-SHELL', `curl -f http://localhost:${port}${(containerConfig as any).healthCheck || '/health'} || exit 1`],
-              Interval: 30,
-              Timeout: 5,
-              Retries: 3,
-              StartPeriod: 60,
-            },
-          }],
+          ],
           Tags: [
             { Key: 'Name', Value: `${slug}-${env}-${name}` },
             { Key: 'Environment', Value: env },
@@ -795,36 +760,38 @@ export class InfrastructureGenerator {
               LoadBalancerArn: { Ref: albId },
               Port: 80,
               Protocol: 'HTTP',
-              DefaultActions: [{
-                Type: 'redirect',
-                RedirectConfig: {
-                  Protocol: 'HTTPS',
-                  Port: '443',
-                  StatusCode: 'HTTP_301',
+              DefaultActions: [
+                {
+                  Type: 'redirect',
+                  RedirectConfig: {
+                    Protocol: 'HTTPS',
+                    Port: '443',
+                    StatusCode: 'HTTP_301',
+                  },
                 },
-              }],
+              ],
             },
           } as any)
-        }
-        else {
+        } else {
           this.builder.addResource(httpListenerId, {
             Type: 'AWS::ElasticLoadBalancingV2::Listener',
             Properties: {
               LoadBalancerArn: { Ref: albId },
               Port: 80,
               Protocol: 'HTTP',
-              DefaultActions: [{
-                Type: 'forward',
-                TargetGroupArn: { Ref: tgId },
-              }],
+              DefaultActions: [
+                {
+                  Type: 'forward',
+                  TargetGroupArn: { Ref: tgId },
+                },
+              ],
             },
           } as any)
         }
 
         // HTTPS Listener (if SSL is configured)
         if (sslConfig?.enabled) {
-          const certArn = sslConfig.certificateArn
-            || (certificateLogicalId ? { Ref: certificateLogicalId } : undefined)
+          const certArn = sslConfig.certificateArn || (certificateLogicalId ? { Ref: certificateLogicalId } : undefined)
 
           if (certArn) {
             const httpsListenerId = `${slug}${env}HTTPSListener`.replace(/[^a-zA-Z0-9]/g, '')
@@ -835,10 +802,12 @@ export class InfrastructureGenerator {
                 Port: 443,
                 Protocol: 'HTTPS',
                 Certificates: [{ CertificateArn: certArn }],
-                DefaultActions: [{
-                  Type: 'forward',
-                  TargetGroupArn: { Ref: tgId },
-                }],
+                DefaultActions: [
+                  {
+                    Type: 'forward',
+                    TargetGroupArn: { Ref: tgId },
+                  },
+                ],
                 SslPolicy: 'ELBSecurityPolicy-TLS13-1-2-2021-06',
               },
             } as any)
@@ -866,11 +835,13 @@ export class InfrastructureGenerator {
                 Subnets: [{ Ref: 'PublicSubnet1' }, { Ref: 'PublicSubnet2' }],
               },
             },
-            LoadBalancers: [{
-              ContainerName: name,
-              ContainerPort: port,
-              TargetGroupArn: { Ref: tgId },
-            }],
+            LoadBalancers: [
+              {
+                ContainerName: name,
+                ContainerPort: port,
+                TargetGroupArn: { Ref: tgId },
+              },
+            ],
             HealthCheckGracePeriodSeconds: 120,
             Tags: [
               { Key: 'Name', Value: `${slug}-${env}-${name}` },
@@ -894,7 +865,10 @@ export class InfrastructureGenerator {
               ResourceId: { 'Fn::Sub': `service/\${${clusterLogicalId}}/${slug}-${env}-${name}` },
               ScalableDimension: 'ecs:service:DesiredCount',
               ServiceNamespace: 'ecs',
-              RoleARN: { 'Fn::Sub': 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService' },
+              RoleARN: {
+                'Fn::Sub':
+                  'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService',
+              },
             },
             DependsOn: serviceId,
           } as any)
@@ -976,8 +950,7 @@ export class InfrastructureGenerator {
           Value: { 'Fn::GetAtt': [albId, 'DNSName'] },
           Export: { Name: { 'Fn::Sub': '${AWS::StackName}-alb-dns' } as any },
         })
-      }
-      else {
+      } else {
         // No load balancer - create service without ALB attachment
         const serviceId = `${slug}${env}${name}Service`.replace(/[^a-zA-Z0-9]/g, '')
         this.builder.addResource(serviceId, {
@@ -1028,9 +1001,7 @@ export class InfrastructureGenerator {
           environment: env,
           roleName: `${slug}-${env}-${name}-role`,
           servicePrincipal: 'lambda.amazonaws.com',
-          managedPolicyArns: [
-            'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-          ],
+          managedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
         })
 
         this.builder.addResource(roleLogicalId, role)
@@ -1074,12 +1045,11 @@ export class InfrastructureGenerator {
 
     const servers = this.mergedConfig.infrastructure.servers
     const computeConfig = this.mergedConfig.infrastructure?.compute
-    const sslConfig = this.mergedConfig.infrastructure?.ssl as { enabled?: boolean, letsEncrypt?: { email?: string } } | undefined
+    const sslConfig = this.mergedConfig.infrastructure?.ssl as
+      { enabled?: boolean; letsEncrypt?: { email?: string } } | undefined
 
     // Check if any server needs a new VPC
-    const needsVpc = Object.values(servers).some(s =>
-      !s.privateNetwork || s.privateNetwork === 'create',
-    )
+    const needsVpc = Object.values(servers).some((s) => !s.privateNetwork || s.privateNetwork === 'create')
 
     if (needsVpc) {
       this.generateNetworkInfrastructure(slug, env)
@@ -1089,7 +1059,9 @@ export class InfrastructureGenerator {
     for (const [name, serverConfig] of Object.entries(servers)) {
       // Resolve instance type: explicit instanceType > size lookup > compute default > fallback
       const sizeKey = serverConfig.instanceType || serverConfig.size || computeConfig?.size
-      const sizeSpec = sizeKey ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string] : undefined
+      const sizeSpec = sizeKey
+        ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string]
+        : undefined
       const resolvedInstanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
 
       // Determine UserData
@@ -1111,16 +1083,16 @@ export class InfrastructureGenerator {
       }
 
       // Resolve VPC and subnet IDs
-      const vpcId = serverConfig.privateNetwork && serverConfig.privateNetwork !== 'create'
-        ? serverConfig.privateNetwork
-        : { Ref: 'VPC' } as unknown as string
+      const vpcId =
+        serverConfig.privateNetwork && serverConfig.privateNetwork !== 'create'
+          ? serverConfig.privateNetwork
+          : ({ Ref: 'VPC' } as unknown as string)
 
-      const subnetId = serverConfig.subnet
-        || { Ref: 'PublicSubnet1' } as unknown as string
+      const subnetId = serverConfig.subnet || ({ Ref: 'PublicSubnet1' } as unknown as string)
 
       // Determine allowed ports — add SMTP/IMAP ports when email server is enabled
       const emailConfig = this.mergedConfig.infrastructure?.email
-      const emailServerEnabled = !!(emailConfig?.server?.enabled)
+      const emailServerEnabled = !!emailConfig?.server?.enabled
       const ports = [22, 80, 443, this.resolveApiOriginPort()]
       if (emailServerEnabled) {
         ports.push(25, 465, 587, 143, 993)
@@ -1192,7 +1164,9 @@ export class InfrastructureGenerator {
     // (e.g. 't2.small') — matches the jump-box path's behavior and lets a
     // 1-vCPU instance fit accounts capped at the default vCPU quota.
     const sizeKey = compute.size
-    const sizeSpec = sizeKey ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string] : undefined
+    const sizeSpec = sizeKey
+      ? (Compute.InstanceSize.specs as Record<string, { instanceType: string }>)[sizeKey as string]
+      : undefined
     const resolvedInstanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
 
     // Need a VPC + subnet for the instance
@@ -1237,12 +1211,14 @@ export class InfrastructureGenerator {
           RestrictPublicBuckets: true,
         },
         LifecycleConfiguration: {
-          Rules: [{
-            Id: 'expire-old-releases',
-            Status: 'Enabled',
-            ExpirationInDays: 7,
-            Prefix: 'releases/',
-          }],
+          Rules: [
+            {
+              Id: 'expire-old-releases',
+              Status: 'Enabled',
+              ExpirationInDays: 7,
+              Prefix: 'releases/',
+            },
+          ],
         },
         Tags: [
           { Key: 'Project', Value: slug },
@@ -1269,13 +1245,7 @@ export class InfrastructureGenerator {
       imageId: compute.image,
       // SSH (port 22) is closed by default — deploys go through SSM Run Command
       // and shell access is via SSM Session Manager. Opt in with `compute.allowSsh: true`.
-      allowedPorts: [
-        ...(compute.allowSsh ? [22] : []),
-        80,
-        443,
-        apiOriginPort,
-        ...sitePorts,
-      ],
+      allowedPorts: [...(compute.allowSsh ? [22] : []), 80, 443, apiOriginPort, ...sitePorts],
     })
 
     // Add the canonical Project / Environment / Role / ManagedBy tags to the EC2
@@ -1303,14 +1273,13 @@ export class InfrastructureGenerator {
         PolicyName: 'DeployBucketRead',
         PolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Action: ['s3:GetObject', 's3:ListBucket'],
-            Resource: [
-              `arn:aws:s3:::${deployBucketName}`,
-              `arn:aws:s3:::${deployBucketName}/*`,
-            ],
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Action: ['s3:GetObject', 's3:ListBucket'],
+              Resource: [`arn:aws:s3:::${deployBucketName}`, `arn:aws:s3:::${deployBucketName}/*`],
+            },
+          ],
         },
       })
     }
@@ -1360,11 +1329,12 @@ export class InfrastructureGenerator {
     const instanceType = sizeSpec?.instanceType || (sizeKey as string) || 't3.micro'
 
     // Resolve EFS mount
-    let mountEfs: { fileSystemId: string, mountPath?: string } | undefined
+    let mountEfs: { fileSystemId: string; mountPath?: string } | undefined
     if (jumpBoxConfig.mountEfs) {
-      const efsId = typeof jumpBoxConfig.mountEfs === 'string'
-        ? jumpBoxConfig.mountEfs
-        : { Ref: 'FileSystem' } as unknown as string // auto-detect from template
+      const efsId =
+        typeof jumpBoxConfig.mountEfs === 'string'
+          ? jumpBoxConfig.mountEfs
+          : ({ Ref: 'FileSystem' } as unknown as string) // auto-detect from template
       mountEfs = {
         fileSystemId: efsId,
         mountPath: jumpBoxConfig.mountPath || '/mnt/efs',
@@ -1382,8 +1352,7 @@ export class InfrastructureGenerator {
         keyName: jumpBoxConfig.keyName || `${slug}-${env}`,
         allowedCidrs: jumpBoxConfig.allowedCidrs,
       })
-    }
-else if (mountEfs) {
+    } else if (mountEfs) {
       result = Compute.JumpBox.withEfsMount({
         slug,
         environment: env,
@@ -1394,8 +1363,7 @@ else if (mountEfs) {
         mountPath: mountEfs.mountPath,
         allowedCidrs: jumpBoxConfig.allowedCidrs,
       })
-    }
-else {
+    } else {
       result = Compute.createJumpBox({
         slug,
         environment: env,
@@ -1449,8 +1417,7 @@ else {
     if (sslConfig?.certificateArn) {
       // Use existing certificate ARN
       cfCertificateArn = sslConfig.certificateArn
-    }
-    else if (sslConfig?.enabled && domain && hostedZoneId) {
+    } else if (sslConfig?.enabled && domain && hostedZoneId) {
       // Auto-create certificate covering the configured website domains.
       const sslDomains = sslConfig.domains || [domain]
       const primaryDomain = sslDomains[0]
@@ -1479,9 +1446,7 @@ else {
     // ========================================
     if (this.mergedConfig.infrastructure?.storage) {
       // Determine if any website bucket exists (needs shared OAC)
-      const hasWebsiteBuckets = Object.entries(this.mergedConfig.infrastructure.storage).some(
-        ([, cfg]) => cfg.website,
-      )
+      const hasWebsiteBuckets = Object.entries(this.mergedConfig.infrastructure.storage).some(([, cfg]) => cfg.website)
 
       // Create a shared Origin Access Control for all website buckets
       let sharedOacLogicalId: string | undefined
@@ -1509,7 +1474,7 @@ else {
           rewriteStyle: bucketConfig.pathRewriteStyle || 'directory',
           logicalId: this.storageBucketLogicalId(slug, env, bucketName),
         }))
-        .filter(bucket => bucket.name !== 'public' && bucket.config.website && bucket.mountPath)
+        .filter((bucket) => bucket.name !== 'public' && bucket.config.website && bucket.mountPath)
 
       for (const [name, storageConfig] of Object.entries(this.mergedConfig.infrastructure.storage)) {
         // For website buckets served via CloudFront, don't make them public directly
@@ -1563,18 +1528,15 @@ else {
           const aliases: string[] = []
           if (storageConfig.aliases && storageConfig.aliases.length > 0) {
             aliases.push(...storageConfig.aliases)
-          }
-          else if (name === 'public') {
+          } else if (name === 'public') {
             // Main site: domain + www
             aliases.push(domain)
             if (sslConfig?.domains?.includes(`www.${domain}`)) {
               aliases.push(`www.${domain}`)
             }
-          }
-          else if (name === 'docs') {
+          } else if (name === 'docs') {
             aliases.push(`docs.${domain}`)
-          }
-          else if (name === 'blog') {
+          } else if (name === 'blog') {
             aliases.push(`blog.${domain}`)
           }
           // Other website buckets without explicit aliases don't get automatic aliases
@@ -1592,8 +1554,7 @@ else {
               { ErrorCode: 403, ResponseCode: 200, ResponsePagePath: '/index.html', ErrorCachingMinTTL: 300 },
               { ErrorCode: 404, ResponseCode: 200, ResponsePagePath: '/index.html', ErrorCachingMinTTL: 300 },
             )
-          }
-          else {
+          } else {
             // Docs: show proper error page
             customErrorResponses.push(
               { ErrorCode: 403, ResponseCode: 404, ResponsePagePath: `/${errorDocument}`, ErrorCachingMinTTL: 300 },
@@ -1602,19 +1563,20 @@ else {
           }
 
           // Build viewer certificate
-          const viewerCertificate: any = cfCertificateArn && aliases.length > 0
-            ? {
-                AcmCertificateArn: cfCertificateArn,
-                SslSupportMethod: 'sni-only',
-                MinimumProtocolVersion: 'TLSv1.2_2021',
-              }
-            : cfCertificateLogicalId && aliases.length > 0
+          const viewerCertificate: any =
+            cfCertificateArn && aliases.length > 0
               ? {
-                  AcmCertificateArn: { Ref: cfCertificateLogicalId },
+                  AcmCertificateArn: cfCertificateArn,
                   SslSupportMethod: 'sni-only',
                   MinimumProtocolVersion: 'TLSv1.2_2021',
                 }
-              : { CloudFrontDefaultCertificate: true }
+              : cfCertificateLogicalId && aliases.length > 0
+                ? {
+                    AcmCertificateArn: { Ref: cfCertificateLogicalId },
+                    SslSupportMethod: 'sni-only',
+                    MinimumProtocolVersion: 'TLSv1.2_2021',
+                  }
+                : { CloudFrontDefaultCertificate: true }
 
           const originId = `S3-${slug}-${env}-${name}`
           const region = this.mergedConfig.project.region || 'us-east-1'
@@ -1641,16 +1603,18 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           }
 
           // For the public distribution, add EC2 origin for /api/* routing if servers exist
-          const origins: any[] = [{
-            Id: originId,
-            // Use S3 REST endpoint (not website endpoint) for OAC
-            DomainName: { 'Fn::Sub': `\${${logicalId}}.s3.${region}.amazonaws.com` },
-            OriginPath: '',
-            S3OriginConfig: {
-              OriginAccessIdentity: '', // Required but empty when using OAC
+          const origins: any[] = [
+            {
+              Id: originId,
+              // Use S3 REST endpoint (not website endpoint) for OAC
+              DomainName: { 'Fn::Sub': `\${${logicalId}}.s3.${region}.amazonaws.com` },
+              OriginPath: '',
+              S3OriginConfig: {
+                OriginAccessIdentity: '', // Required but empty when using OAC
+              },
+              OriginAccessControlId: { Ref: sharedOacLogicalId },
             },
-            OriginAccessControlId: { Ref: sharedOacLogicalId },
-          }]
+          ]
 
           const cacheBehaviors: any[] = []
           const extraDependsOn: string[] = []
@@ -1668,7 +1632,10 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
 
             for (const mountedBucket of pathMountedWebsiteBuckets) {
               const mountedOriginId = `S3-${slug}-${env}-${mountedBucket.name}`
-              const mountedFunctionLogicalId = `${slug}${env}${mountedBucket.name}PathMountRewrite`.replace(/[^a-zA-Z0-9]/g, '')
+              const mountedFunctionLogicalId = `${slug}${env}${mountedBucket.name}PathMountRewrite`.replace(
+                /[^a-zA-Z0-9]/g,
+                '',
+              )
 
               this.builder.addResource(mountedFunctionLogicalId, {
                 Type: 'AWS::CloudFront::Function',
@@ -1708,10 +1675,12 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                   // Disable CloudFront object caching for these HTML-heavy mounts
                   // so sibling origins cannot poison each other's cache entries.
                   CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
-                  FunctionAssociations: [{
-                    EventType: 'viewer-request',
-                    FunctionARN: { 'Fn::GetAtt': [mountedFunctionLogicalId, 'FunctionARN'] },
-                  }],
+                  FunctionAssociations: [
+                    {
+                      EventType: 'viewer-request',
+                      FunctionARN: { 'Fn::GetAtt': [mountedFunctionLogicalId, 'FunctionARN'] },
+                    },
+                  ],
                 })
               }
             }
@@ -1719,7 +1688,12 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
 
           const distribution: any = {
             Type: 'AWS::CloudFront::Distribution',
-            DependsOn: [logicalId, sharedOacLogicalId, ...(cfFunctionLogicalId ? [cfFunctionLogicalId] : []), ...extraDependsOn],
+            DependsOn: [
+              logicalId,
+              sharedOacLogicalId,
+              ...(cfFunctionLogicalId ? [cfFunctionLogicalId] : []),
+              ...extraDependsOn,
+            ],
             Properties: {
               DistributionConfig: {
                 Enabled: true,
@@ -1735,12 +1709,16 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                   // Use CachingOptimized managed policy
                   CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6',
                   // Add URL rewrite function for non-SPA sites
-                  ...(cfFunctionLogicalId ? {
-                    FunctionAssociations: [{
-                      EventType: 'viewer-request',
-                      FunctionARN: { 'Fn::GetAtt': [cfFunctionLogicalId, 'FunctionARN'] },
-                    }],
-                  } : {}),
+                  ...(cfFunctionLogicalId
+                    ? {
+                        FunctionAssociations: [
+                          {
+                            EventType: 'viewer-request',
+                            FunctionARN: { 'Fn::GetAtt': [cfFunctionLogicalId, 'FunctionARN'] },
+                          },
+                        ],
+                      }
+                    : {}),
                 },
                 ...(cacheBehaviors.length > 0 ? { CacheBehaviors: cacheBehaviors } : {}),
                 ...(aliases.length > 0 ? { Aliases: aliases } : {}),
@@ -1769,20 +1747,24 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
               Bucket: { Ref: logicalId },
               PolicyDocument: {
                 Version: '2012-10-17',
-                Statement: [{
-                  Sid: 'AllowCloudFrontServicePrincipal',
-                  Effect: 'Allow',
-                  Principal: {
-                    Service: 'cloudfront.amazonaws.com',
-                  },
-                  Action: 's3:GetObject',
-                  Resource: { 'Fn::Sub': `arn:aws:s3:::\${${logicalId}}/*` },
-                  Condition: {
-                    StringEquals: {
-                      'AWS:SourceArn': { 'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}` },
+                Statement: [
+                  {
+                    Sid: 'AllowCloudFrontServicePrincipal',
+                    Effect: 'Allow',
+                    Principal: {
+                      Service: 'cloudfront.amazonaws.com',
+                    },
+                    Action: 's3:GetObject',
+                    Resource: { 'Fn::Sub': `arn:aws:s3:::\${${logicalId}}/*` },
+                    Condition: {
+                      StringEquals: {
+                        'AWS:SourceArn': {
+                          'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}`,
+                        },
+                      },
                     },
                   },
-                }],
+                ],
               },
             },
           } as any)
@@ -1797,20 +1779,24 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                   Bucket: { Ref: mountedBucket.logicalId },
                   PolicyDocument: {
                     Version: '2012-10-17',
-                    Statement: [{
-                      Sid: 'AllowCloudFrontServicePrincipal',
-                      Effect: 'Allow',
-                      Principal: {
-                        Service: 'cloudfront.amazonaws.com',
-                      },
-                      Action: 's3:GetObject',
-                      Resource: { 'Fn::Sub': `arn:aws:s3:::\${${mountedBucket.logicalId}}/*` },
-                      Condition: {
-                        StringEquals: {
-                          'AWS:SourceArn': { 'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}` },
+                    Statement: [
+                      {
+                        Sid: 'AllowCloudFrontServicePrincipal',
+                        Effect: 'Allow',
+                        Principal: {
+                          Service: 'cloudfront.amazonaws.com',
+                        },
+                        Action: 's3:GetObject',
+                        Resource: { 'Fn::Sub': `arn:aws:s3:::\${${mountedBucket.logicalId}}/*` },
+                        Condition: {
+                          StringEquals: {
+                            'AWS:SourceArn': {
+                              'Fn::Sub': `arn:aws:cloudfront::\${AWS::AccountId}:distribution/\${${distLogicalId}}`,
+                            },
+                          },
                         },
                       },
-                    }],
+                    ],
                   },
                 },
               } as any)
@@ -1942,13 +1928,15 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             slug,
             environment: env,
             tableName: `${slug}-${env}-${name}`,
-            partitionKey: (dbConfig.partitionKey || { name: 'id', type: 'S' }) as { name: string; type: 'S' | 'N' | 'B' },
+            partitionKey: (dbConfig.partitionKey || { name: 'id', type: 'S' }) as {
+              name: string
+              type: 'S' | 'N' | 'B'
+            },
             sortKey: dbConfig.sortKey as any,
           })
 
           this.builder.addResource(logicalId, table)
-        }
-        else if (dbConfig.engine === 'postgres') {
+        } else if (dbConfig.engine === 'postgres') {
           const { dbInstance, logicalId } = Database.createPostgres({
             slug,
             environment: env,
@@ -1960,8 +1948,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           })
 
           this.builder.addResource(logicalId, dbInstance)
-        }
-        else if (dbConfig.engine === 'mysql') {
+        } else if (dbConfig.engine === 'mysql') {
           const { dbInstance, logicalId } = Database.createMysql({
             slug,
             environment: env,
@@ -1984,34 +1971,36 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           continue
         }
 
-        const customDomain = typeof cdnConfig.customDomain === 'string'
-          ? cdnConfig.customDomain
-          : cdnConfig.customDomain?.domain
-            || cdnConfig.domain
-        const explicitCertificateArn = typeof cdnConfig.customDomain === 'object'
-          ? cdnConfig.customDomain?.certificateArn
-          : cdnConfig.certificateArn
+        const customDomain =
+          typeof cdnConfig.customDomain === 'string'
+            ? cdnConfig.customDomain
+            : cdnConfig.customDomain?.domain || cdnConfig.domain
+        const explicitCertificateArn =
+          typeof cdnConfig.customDomain === 'object' ? cdnConfig.customDomain?.certificateArn : cdnConfig.certificateArn
         const resolvedCertArn = explicitCertificateArn || cfCertificateArn
 
         const distLogicalId = `${slug}${env}${name}CDN`.replace(/[^a-zA-Z0-9]/g, '')
         const originId = `S3-${slug}-${env}-${name}-cdn`
-        const origins: any[] = [{
-          Id: originId,
-          DomainName: cdnConfig.origin,
-          OriginPath: '',
-          S3OriginConfig: {
-            OriginAccessIdentity: '',
+        const origins: any[] = [
+          {
+            Id: originId,
+            DomainName: cdnConfig.origin,
+            OriginPath: '',
+            S3OriginConfig: {
+              OriginAccessIdentity: '',
+            },
+            OriginShield: cdnConfig.originShield
+              ? {
+                  Enabled: true,
+                  OriginShieldRegion:
+                    cdnConfig.originShieldRegion ||
+                    this.mergedConfig.environments[env]?.region ||
+                    this.mergedConfig.project.region ||
+                    'us-east-1',
+                }
+              : { Enabled: false },
           },
-          OriginShield: cdnConfig.originShield
-            ? {
-                Enabled: true,
-                OriginShieldRegion: cdnConfig.originShieldRegion
-                  || this.mergedConfig.environments[env]?.region
-                  || this.mergedConfig.project.region
-                  || 'us-east-1',
-              }
-            : { Enabled: false },
-        }]
+        ]
         const cacheBehaviors: any[] = []
         const extraDependsOn: string[] = []
 
@@ -2026,15 +2015,15 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           )
         }
 
-        const viewerCertificate: any = resolvedCertArn && customDomain
-          ? {
-              AcmCertificateArn: cfCertificateLogicalId && !explicitCertificateArn
-                ? { Ref: cfCertificateLogicalId }
-                : resolvedCertArn,
-              SslSupportMethod: 'sni-only',
-              MinimumProtocolVersion: 'TLSv1.2_2021',
-            }
-          : { CloudFrontDefaultCertificate: true }
+        const viewerCertificate: any =
+          resolvedCertArn && customDomain
+            ? {
+                AcmCertificateArn:
+                  cfCertificateLogicalId && !explicitCertificateArn ? { Ref: cfCertificateLogicalId } : resolvedCertArn,
+                SslSupportMethod: 'sni-only',
+                MinimumProtocolVersion: 'TLSv1.2_2021',
+              }
+            : { CloudFrontDefaultCertificate: true }
 
         const distributionDependsOn = [...extraDependsOn]
         if (cfCertificateLogicalId && !explicitCertificateArn && customDomain) {
@@ -2073,7 +2062,10 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           const safeName = customDomain.replace(/\./g, '').replace(/[^a-zA-Z0-9]/g, '')
           this.builder.addResource(`${safeName}CdnARecord`, {
             Type: 'AWS::Route53::RecordSet',
-            DependsOn: [distLogicalId, ...(cfCertificateLogicalId && !explicitCertificateArn ? [cfCertificateLogicalId] : [])],
+            DependsOn: [
+              distLogicalId,
+              ...(cfCertificateLogicalId && !explicitCertificateArn ? [cfCertificateLogicalId] : []),
+            ],
             Properties: {
               HostedZoneId: hostedZoneId,
               Name: customDomain,
@@ -2117,11 +2109,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
         // Create dead letter queue if enabled
         let dlqLogicalId: string | undefined
         if (queueConfig.deadLetterQueue) {
-          const {
-            deadLetterQueue,
-            updatedSourceQueue,
-            deadLetterLogicalId,
-          } = Queue.createDeadLetterQueue(logicalId, {
+          const { deadLetterQueue, updatedSourceQueue, deadLetterLogicalId } = Queue.createDeadLetterQueue(logicalId, {
             slug,
             environment: env,
             maxReceiveCount: queueConfig.maxReceiveCount,
@@ -2280,15 +2268,17 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
                 Queues: [{ Ref: logicalId }],
                 PolicyDocument: {
                   Version: '2012-10-17',
-                  Statement: [{
-                    Effect: 'Allow',
-                    Principal: { Service: 'sns.amazonaws.com' },
-                    Action: 'sqs:SendMessage',
-                    Resource: { 'Fn::GetAtt': [logicalId, 'Arn'] },
-                    Condition: {
-                      ArnEquals: { 'aws:SourceArn': topicArn },
+                  Statement: [
+                    {
+                      Effect: 'Allow',
+                      Principal: { Service: 'sns.amazonaws.com' },
+                      Action: 'sqs:SendMessage',
+                      Resource: { 'Fn::GetAtt': [logicalId, 'Arn'] },
+                      Condition: {
+                        ArnEquals: { 'aws:SourceArn': topicArn },
+                      },
                     },
-                  }],
+                  ],
                 },
               },
             } as any)
@@ -2321,8 +2311,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       const realtimeMode = this.mergedConfig.infrastructure.realtime.mode || 'serverless'
       if (realtimeMode === 'server') {
         this.generateRealtimeServerResources(slug, env)
-      }
-      else {
+      } else {
         this.generateRealtimeResources(slug, env)
       }
     }
@@ -2330,9 +2319,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
     // Redirects (domain + path)
     const redirectsConfig = this.mergedConfig.infrastructure?.redirects
     if (redirectsConfig) {
-      const targetDomain = redirectsConfig.target
-        || this.mergedConfig.infrastructure?.dns?.domain
-        || ''
+      const targetDomain = redirectsConfig.target || this.mergedConfig.infrastructure?.dns?.domain || ''
       const protocol = redirectsConfig.protocol || 'https'
 
       // Domain redirects — each source domain gets an S3 redirect bucket
@@ -2406,10 +2393,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           transitEncryption: true,
           snapshotRetentionDays: redisConfig.snapshotRetentionLimit || 7,
           snapshotWindow: redisConfig.snapshotWindow,
-          subnetIds: [
-            { Ref: 'PublicSubnet1' } as unknown as string,
-            { Ref: 'PublicSubnet2' } as unknown as string,
-          ],
+          subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string, { Ref: 'PublicSubnet2' } as unknown as string],
         })
 
         this.builder.addResource(logicalId, replicationGroup)
@@ -2425,8 +2409,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           Value: { 'Fn::GetAtt': [logicalId, 'PrimaryEndPoint.Port'] } as any,
           Description: 'Redis primary endpoint port',
         })
-      }
-      else if (cacheType === 'memcached') {
+      } else if (cacheType === 'memcached') {
         this.generateNetworkInfrastructure(slug, env)
 
         const mcConfig = cacheConfig.elasticache || {}
@@ -2436,10 +2419,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           nodeType: mcConfig.nodeType || cacheConfig.nodeType || 'cache.t3.micro',
           engineVersion: mcConfig.engineVersion || '1.6.22',
           numCacheNodes: mcConfig.numCacheNodes || 2,
-          subnetIds: [
-            { Ref: 'PublicSubnet1' } as unknown as string,
-            { Ref: 'PublicSubnet2' } as unknown as string,
-          ],
+          subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string, { Ref: 'PublicSubnet2' } as unknown as string],
         })
 
         this.builder.addResource(logicalId, cluster)
@@ -2479,8 +2459,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
         }
 
         // DNS records (SPF, DKIM, DMARC) if hosted zone is available
-        const hostedZoneId = emailConfig.hostedZoneId
-          || this.mergedConfig.infrastructure?.dns?.hostedZoneId
+        const hostedZoneId = emailConfig.hostedZoneId || this.mergedConfig.infrastructure?.dns?.hostedZoneId
         if (hostedZoneId) {
           // DKIM CNAME records (using Fn::GetAtt to reference tokens from the SES identity)
           if (emailConfig.enableDkim !== false) {
@@ -2500,20 +2479,13 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             }
           }
 
-          const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(
-            domain,
-            hostedZoneId,
-          )
+          const { record: spfRecord, logicalId: spfLogicalId } = Email.createSpfRecord(domain, hostedZoneId)
           this.builder.addResource(spfLogicalId, spfRecord)
 
-          const { record: dmarcRecord, logicalId: dmarcLogicalId } = Email.createDmarcRecord(
-            domain,
-            hostedZoneId,
-            {
-              policy: 'none',
-              reportingEmail: emailConfig.dmarcReportingEmail || `dmarc-reports@${domain}`,
-            },
-          )
+          const { record: dmarcRecord, logicalId: dmarcLogicalId } = Email.createDmarcRecord(domain, hostedZoneId, {
+            policy: 'none',
+            reportingEmail: emailConfig.dmarcReportingEmail || `dmarc-reports@${domain}`,
+          })
           this.builder.addResource(dmarcLogicalId, dmarcRecord)
         }
 
@@ -2615,9 +2587,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
     if (searchConfig) {
       const searchVpc = searchConfig.vpc
         ? {
-          subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string],
-          securityGroupIds: [] as string[],
-        }
+            subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string],
+            securityGroupIds: [] as string[],
+          }
         : undefined
 
       if (searchVpc) {
@@ -2683,18 +2655,12 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
         this.builder.addResource(sgLogicalId, securityGroup)
 
         // Create mount targets in each subnet
-        const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(
-          fsLogicalId,
-          {
-            slug: `${slug}-${name}`,
-            environment: env,
-            subnetIds: [
-              { Ref: 'PublicSubnet1' } as unknown as string,
-              { Ref: 'PublicSubnet2' } as unknown as string,
-            ],
-            securityGroupId: { Ref: sgLogicalId } as unknown as string,
-          },
-        )
+        const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(fsLogicalId, {
+          slug: `${slug}-${name}`,
+          environment: env,
+          subnetIds: [{ Ref: 'PublicSubnet1' } as unknown as string, { Ref: 'PublicSubnet2' } as unknown as string],
+          securityGroupId: { Ref: sgLogicalId } as unknown as string,
+        })
 
         for (let i = 0; i < mountTargets.length; i++) {
           this.builder.addResource(mtLogicalIds[i], mountTargets[i])
@@ -2723,24 +2689,21 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           models,
           allowStreaming,
         })
-      }
-      else if (service === 'ec2') {
+      } else if (service === 'ec2') {
         result = AI.enableBedrockForEc2({
           slug,
           environment: env,
           models,
           allowStreaming,
         })
-      }
-      else if (service === 'lambda') {
+      } else if (service === 'lambda') {
         result = AI.enableBedrockForLambda({
           slug,
           environment: env,
           models,
           allowStreaming,
         })
-      }
-      else {
+      } else {
         // Custom service principal
         result = AI.createBedrockRole(service, {
           slug,
@@ -2805,15 +2768,11 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
             { AttributeName: 'connectionId', AttributeType: 'S' },
             { AttributeName: 'userId', AttributeType: 'S' },
           ],
-          KeySchema: [
-            { AttributeName: 'connectionId', KeyType: 'HASH' },
-          ],
+          KeySchema: [{ AttributeName: 'connectionId', KeyType: 'HASH' }],
           GlobalSecondaryIndexes: [
             {
               IndexName: 'userId-index',
-              KeySchema: [
-                { AttributeName: 'userId', KeyType: 'HASH' },
-              ],
+              KeySchema: [{ AttributeName: 'userId', KeyType: 'HASH' }],
               Projection: { ProjectionType: 'ALL' },
               ...(billingMode === 'PROVISIONED' && {
                 ProvisionedThroughput: {
@@ -2860,9 +2819,7 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
           GlobalSecondaryIndexes: [
             {
               IndexName: 'connectionId-index',
-              KeySchema: [
-                { AttributeName: 'connectionId', KeyType: 'HASH' },
-              ],
+              KeySchema: [{ AttributeName: 'connectionId', KeyType: 'HASH' }],
               Projection: { ProjectionType: 'ALL' },
               ...(billingMode === 'PROVISIONED' && {
                 ProvisionedThroughput: {
@@ -2901,45 +2858,47 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
         RoleName: `${slug}-${env}-realtime-handler-role`,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: { Service: 'lambda.amazonaws.com' },
-            Action: 'sts:AssumeRole',
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'lambda.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            },
+          ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-        ],
-        Policies: [{
-          PolicyName: 'RealtimeHandlerPolicy',
-          PolicyDocument: {
-            Version: '2012-10-17',
-            Statement: [
-              {
-                Effect: 'Allow',
-                Action: [
-                  'dynamodb:GetItem',
-                  'dynamodb:PutItem',
-                  'dynamodb:DeleteItem',
-                  'dynamodb:Query',
-                  'dynamodb:Scan',
-                  'dynamodb:UpdateItem',
-                ],
-                Resource: [
-                  { 'Fn::GetAtt': [connectionsTableId, 'Arn'] },
-                  { 'Fn::Sub': `\${${connectionsTableId}.Arn}/index/*` },
-                  { 'Fn::GetAtt': [channelsTableId, 'Arn'] },
-                  { 'Fn::Sub': `\${${channelsTableId}.Arn}/index/*` },
-                ],
-              },
-              {
-                Effect: 'Allow',
-                Action: 'execute-api:ManageConnections',
-                Resource: { 'Fn::Sub': 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*' },
-              },
-            ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
+        Policies: [
+          {
+            PolicyName: 'RealtimeHandlerPolicy',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: [
+                    'dynamodb:GetItem',
+                    'dynamodb:PutItem',
+                    'dynamodb:DeleteItem',
+                    'dynamodb:Query',
+                    'dynamodb:Scan',
+                    'dynamodb:UpdateItem',
+                  ],
+                  Resource: [
+                    { 'Fn::GetAtt': [connectionsTableId, 'Arn'] },
+                    { 'Fn::Sub': `\${${connectionsTableId}.Arn}/index/*` },
+                    { 'Fn::GetAtt': [channelsTableId, 'Arn'] },
+                    { 'Fn::Sub': `\${${channelsTableId}.Arn}/index/*` },
+                  ],
+                },
+                {
+                  Effect: 'Allow',
+                  Action: 'execute-api:ManageConnections',
+                  Resource: { 'Fn::Sub': 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*' },
+                },
+              ],
+            },
           },
-        }],
+        ],
       },
     } as any)
 
@@ -3085,7 +3044,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       Properties: {
         ApiId: { Ref: apiId },
         IntegrationType: 'AWS_PROXY',
-        IntegrationUri: { 'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${connectHandlerId}.Arn}/invocations` },
+        IntegrationUri: {
+          'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${connectHandlerId}.Arn}/invocations`,
+        },
       },
     } as any)
 
@@ -3094,7 +3055,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       Properties: {
         ApiId: { Ref: apiId },
         IntegrationType: 'AWS_PROXY',
-        IntegrationUri: { 'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${disconnectHandlerId}.Arn}/invocations` },
+        IntegrationUri: {
+          'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${disconnectHandlerId}.Arn}/invocations`,
+        },
       },
     } as any)
 
@@ -3103,7 +3066,9 @@ else if (!uri.includes('.')) { request.uri += '.html'; } return request; }`,
       Properties: {
         ApiId: { Ref: apiId },
         IntegrationType: 'AWS_PROXY',
-        IntegrationUri: { 'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${messageHandlerId}.Arn}/invocations` },
+        IntegrationUri: {
+          'Fn::Sub': `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${messageHandlerId}.Arn}/invocations`,
+        },
       },
     } as any)
 
@@ -3487,15 +3452,15 @@ catch (error) {
         RoleName: `${slug}-${env}-realtime-exec-role`,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: { Service: 'ecs-tasks.amazonaws.com' },
-            Action: 'sts:AssumeRole',
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'ecs-tasks.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            },
+          ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
-        ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'],
       },
     } as any)
 
@@ -3506,42 +3471,44 @@ catch (error) {
         RoleName: `${slug}-${env}-realtime-task-role`,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: { Service: 'ecs-tasks.amazonaws.com' },
-            Action: 'sts:AssumeRole',
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'ecs-tasks.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            },
+          ],
         },
-        Policies: [{
-          PolicyName: 'RealtimeTaskPolicy',
-          PolicyDocument: {
-            Version: '2012-10-17',
-            Statement: [
-              {
-                Effect: 'Allow',
-                Action: [
-                  'logs:CreateLogStream',
-                  'logs:PutLogEvents',
-                ],
-                Resource: '*',
-              },
-              // Add ElastiCache access if Redis is enabled
-              ...(serverConfig.redis?.enabled ? [{
-                Effect: 'Allow',
-                Action: [
-                  'elasticache:DescribeCacheClusters',
-                  'elasticache:DescribeReplicationGroups',
-                ],
-                Resource: '*',
-              }] : []),
-            ],
+        Policies: [
+          {
+            PolicyName: 'RealtimeTaskPolicy',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [
+                {
+                  Effect: 'Allow',
+                  Action: ['logs:CreateLogStream', 'logs:PutLogEvents'],
+                  Resource: '*',
+                },
+                // Add ElastiCache access if Redis is enabled
+                ...(serverConfig.redis?.enabled
+                  ? [
+                      {
+                        Effect: 'Allow',
+                        Action: ['elasticache:DescribeCacheClusters', 'elasticache:DescribeReplicationGroups'],
+                        Resource: '*',
+                      },
+                    ]
+                  : []),
+              ],
+            },
           },
-        }],
+        ],
       },
     } as any)
 
     // Build environment variables for ts-broadcasting
-    const envVars: Array<{ Name: string, Value: any }> = [
+    const envVars: Array<{ Name: string; Value: any }> = [
       { Name: 'BROADCAST_HOST', Value: serverConfig.host || '0.0.0.0' },
       { Name: 'BROADCAST_PORT', Value: String(port) },
       { Name: 'NODE_ENV', Value: env === 'production' ? 'production' : 'development' },
@@ -3551,8 +3518,7 @@ catch (error) {
       if (serverConfig.redis.useElastiCache) {
         envVars.push({ Name: 'REDIS_HOST', Value: { 'Fn::GetAtt': ['CacheCluster', 'RedisEndpoint.Address'] } })
         envVars.push({ Name: 'REDIS_PORT', Value: { 'Fn::GetAtt': ['CacheCluster', 'RedisEndpoint.Port'] } })
-      }
-      else {
+      } else {
         envVars.push({ Name: 'REDIS_HOST', Value: serverConfig.redis.host || 'localhost' })
         envVars.push({ Name: 'REDIS_PORT', Value: String(serverConfig.redis.port || 6379) })
       }
@@ -3572,31 +3538,38 @@ catch (error) {
         Memory: '1024',
         ExecutionRoleArn: { 'Fn::GetAtt': [execRoleId, 'Arn'] },
         TaskRoleArn: { 'Fn::GetAtt': [taskRoleId, 'Arn'] },
-        ContainerDefinitions: [{
-          Name: 'realtime',
-          Image: { 'Fn::Sub': `\${AWS::AccountId}.dkr.ecr.\${AWS::Region}.amazonaws.com/${slug}-realtime:latest` },
-          Essential: true,
-          PortMappings: [{
-            ContainerPort: port,
-            Protocol: 'tcp',
-          }],
-          Environment: envVars,
-          LogConfiguration: {
-            LogDriver: 'awslogs',
-            Options: {
-              'awslogs-group': `/ecs/${slug}-${env}-realtime`,
-              'awslogs-region': { Ref: 'AWS::Region' },
-              'awslogs-stream-prefix': 'realtime',
+        ContainerDefinitions: [
+          {
+            Name: 'realtime',
+            Image: { 'Fn::Sub': `\${AWS::AccountId}.dkr.ecr.\${AWS::Region}.amazonaws.com/${slug}-realtime:latest` },
+            Essential: true,
+            PortMappings: [
+              {
+                ContainerPort: port,
+                Protocol: 'tcp',
+              },
+            ],
+            Environment: envVars,
+            LogConfiguration: {
+              LogDriver: 'awslogs',
+              Options: {
+                'awslogs-group': `/ecs/${slug}-${env}-realtime`,
+                'awslogs-region': { Ref: 'AWS::Region' },
+                'awslogs-stream-prefix': 'realtime',
+              },
+            },
+            HealthCheck: {
+              Command: [
+                'CMD-SHELL',
+                `curl -f http://localhost:${port}${serverConfig.healthCheckPath || '/health'} || exit 1`,
+              ],
+              Interval: 30,
+              Timeout: 5,
+              Retries: 3,
+              StartPeriod: 60,
             },
           },
-          HealthCheck: {
-            Command: ['CMD-SHELL', `curl -f http://localhost:${port}${serverConfig.healthCheckPath || '/health'} || exit 1`],
-            Interval: 30,
-            Timeout: 5,
-            Retries: 3,
-            StartPeriod: 60,
-          },
-        }],
+        ],
         Tags: [
           { Key: 'Name', Value: `${slug}-${env}-realtime` },
           { Key: 'Environment', Value: env },
@@ -3657,7 +3630,10 @@ catch (error) {
           MaxCapacity: scalingConfig.max || 10,
           MinCapacity: scalingConfig.min || 1,
           ResourceId: { 'Fn::Sub': `service/\${ECSCluster}/${slug}-${env}-realtime` },
-          RoleARN: { 'Fn::Sub': 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService' },
+          RoleARN: {
+            'Fn::Sub':
+              'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService',
+          },
           ScalableDimension: 'ecs:service:DesiredCount',
           ServiceNamespace: 'ecs',
         },
@@ -3803,7 +3779,9 @@ export default {
       },
     },
   },
-${serverConfig.redis?.enabled ? `
+${
+  serverConfig.redis?.enabled
+    ? `
   redis: {
     host: process.env.REDIS_HOST || '${serverConfig.redis.host || 'localhost'}',
     port: Number(process.env.REDIS_PORT) || ${serverConfig.redis.port || 6379},
@@ -3811,23 +3789,33 @@ ${serverConfig.redis?.enabled ? `
     database: ${serverConfig.redis.database || 0},
     keyPrefix: '${serverConfig.redis.keyPrefix || 'broadcasting:'}',
   },
-` : ''}
-${serverConfig.rateLimit?.enabled ? `
+`
+    : ''
+}
+${
+  serverConfig.rateLimit?.enabled
+    ? `
   rateLimit: {
     max: ${serverConfig.rateLimit.max || 100},
     window: ${serverConfig.rateLimit.window || 60000},
     perChannel: ${serverConfig.rateLimit.perChannel !== false},
     perUser: ${serverConfig.rateLimit.perUser !== false},
   },
-` : ''}
-${serverConfig.loadManagement?.enabled ? `
+`
+    : ''
+}
+${
+  serverConfig.loadManagement?.enabled
+    ? `
   loadManagement: {
     enabled: true,
     maxConnections: ${serverConfig.loadManagement.maxConnections || 10000},
     maxSubscriptionsPerConnection: ${serverConfig.loadManagement.maxSubscriptionsPerConnection || 100},
     shedLoadThreshold: ${serverConfig.loadManagement.shedLoadThreshold || 0.8},
   },
-` : ''}
+`
+    : ''
+}
 } satisfies BroadcastConfig
 `
   }

@@ -29,10 +29,13 @@ export interface EnsureSshKeyOptions {
  */
 export async function ensureSshKey(client: HetznerClient, options: EnsureSshKeyOptions): Promise<EnsuredResource> {
   const body = normalizeSshPublicKey(options.publicKey)
-  const existing = (await client.listSshKeys()).find(k => normalizeSshPublicKey(k.public_key) === body)
-  if (existing)
-    return { id: existing.id, name: existing.name, created: false }
-  const created = await client.createSshKey({ name: options.name, publicKey: options.publicKey.trim(), labels: options.labels })
+  const existing = (await client.listSshKeys()).find((k) => normalizeSshPublicKey(k.public_key) === body)
+  if (existing) return { id: existing.id, name: existing.name, created: false }
+  const created = await client.createSshKey({
+    name: options.name,
+    publicKey: options.publicKey.trim(),
+    labels: options.labels,
+  })
   return { id: created.id, name: created.name, created: true }
 }
 
@@ -48,7 +51,7 @@ export interface EnsureFirewallOptions {
  * declared config.
  */
 export async function ensureFirewall(client: HetznerClient, options: EnsureFirewallOptions): Promise<EnsuredResource> {
-  const existing = (await client.listFirewalls()).find(f => f.name === options.name)
+  const existing = (await client.listFirewalls()).find((f) => f.name === options.name)
   if (existing) {
     await client.setFirewallRules(existing.id, options.rules)
     return { id: existing.id, name: existing.name, created: false }
@@ -74,19 +77,16 @@ export interface EnsuredServer {
  */
 export async function ensureServer(client: HetznerClient, options: EnsureServerOptions): Promise<EnsuredServer> {
   const { waitForRunning = true, ...createOptions } = options
-  let server = (await client.listServers()).find(s => s.name === options.name)
+  let server = (await client.listServers()).find((s) => s.name === options.name)
   const created = !server
-  if (!server)
-    server = (await client.createServer(createOptions)).server
-  if (waitForRunning)
-    server = await client.waitForServerRunning(server.id)
+  if (!server) server = (await client.createServer(createOptions)).server
+  if (waitForRunning) server = await client.waitForServerRunning(server.id)
   return { server, created }
 }
 
 /** The public IPv4 of a server, throwing when it has none. */
 export function serverPublicIpv4(server: HetznerServer): string {
   const ip = server.public_net.ipv4?.ip
-  if (!ip)
-    throw new Error(`Hetzner server "${server.name}" (#${server.id}) has no public IPv4`)
+  if (!ip) throw new Error(`Hetzner server "${server.name}" (#${server.id}) has no public IPv4`)
   return ip
 }

@@ -1,7 +1,15 @@
 import { AWSClient } from './client'
 
-export interface WebAclSummary { Name?: string, Id?: string, ARN?: string }
-export interface WafRule { Name?: string, Priority?: number, Action?: string }
+export interface WebAclSummary {
+  Name?: string
+  Id?: string
+  ARN?: string
+}
+export interface WafRule {
+  Name?: string
+  Priority?: number
+  Action?: string
+}
 
 /** Minimal WAFv2 client (JSON API) — enough to list a web ACL's rules. */
 export class WAFv2Client {
@@ -37,7 +45,11 @@ export class WAFv2Client {
     return rules.map((rule: any) => ({
       Name: rule.Name,
       Priority: rule.Priority,
-      Action: rule.Action ? Object.keys(rule.Action)[0] : (rule.OverrideAction ? Object.keys(rule.OverrideAction)[0] : 'count'),
+      Action: rule.Action
+        ? Object.keys(rule.Action)[0]
+        : rule.OverrideAction
+          ? Object.keys(rule.OverrideAction)[0]
+          : 'count',
     }))
   }
 }

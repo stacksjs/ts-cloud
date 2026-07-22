@@ -22,7 +22,7 @@ export interface ServerRecipeOptions {
 
 /** Single-quote a value for safe embedding in the generated shell. */
 function sq(value: string): string {
-  return `'${value.split('\'').join('\'\\\'\'')}'`
+  return `'${value.split("'").join("'\\''")}'`
 }
 
 /**
@@ -36,9 +36,7 @@ export function buildServerRecipeScript(options: ServerRecipeOptions): string[] 
   // Run the recipe file through a LOGIN shell so /etc/profile.d (pantry, bun, …)
   // is sourced. As root: `bash -l <file>`. As another user: `runuser -l` (login)
   // running the same — the outer shell expands $TS_CLOUD_RECIPE into the string.
-  const runLine = user === 'root'
-    ? 'bash -l "$TS_CLOUD_RECIPE"'
-    : `runuser -l ${sq(user)} -c "bash $TS_CLOUD_RECIPE"`
+  const runLine = user === 'root' ? 'bash -l "$TS_CLOUD_RECIPE"' : `runuser -l ${sq(user)} -c "bash $TS_CLOUD_RECIPE"`
   return [
     'set -uo pipefail',
     `echo "__TS_CLOUD_RECIPE_BEGIN__ ${options.name} (user=${user})"`,

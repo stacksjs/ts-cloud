@@ -4,7 +4,10 @@ import type { InstanceSize } from '@ts-cloud/core'
  * Map ts-cloud instance size shorthands to Hetzner Cloud server types.
  * @see https://www.hetzner.com/cloud
  */
-export const HETZNER_INSTANCE_TYPES: Record<Exclude<InstanceSize, string & {}> | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge', string> = {
+export const HETZNER_INSTANCE_TYPES: Record<
+  Exclude<InstanceSize, string & {}> | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
+  string
+> = {
   // Hetzner deprecated the original shared-Intel `cx` line (cx11…cx52). The
   // current shared lines are `cx2x`-suffixed (cx23/cx33/cx43/cx53) for Intel
   // and `cpx`/`cax` for AMD/ARM. Map to non-deprecated types so `createServer`
@@ -43,7 +46,9 @@ export function matchesTsCloudLabels(
   role = 'app',
 ): boolean {
   if (!labels) return false
-  return labels[`${TS_CLOUD_LABEL_PREFIX}/project`] === slug
-    && labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
-    && labels[`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+  return (
+    labels[`${TS_CLOUD_LABEL_PREFIX}/project`] === slug &&
+    labels[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment &&
+    labels[`${TS_CLOUD_LABEL_PREFIX}/role`] === role
+  )
 }

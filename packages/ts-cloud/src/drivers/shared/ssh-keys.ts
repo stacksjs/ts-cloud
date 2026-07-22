@@ -37,17 +37,8 @@ export function buildAuthorizedKeysScript(keys: SshKeyConfig[] = [], options: Au
   ]
 
   if (keys.length > 0) {
-    const block = [
-      BLOCK_BEGIN,
-      ...keys.map(k => `${k.publicKey.trim()} ${k.name}`),
-      BLOCK_END,
-    ].join('\n')
-    lines.push(
-      `cat >> ${path} <<'TS_CLOUD_KEYS_EOF'`,
-      block,
-      'TS_CLOUD_KEYS_EOF',
-      `chmod 600 ${path}`,
-    )
+    const block = [BLOCK_BEGIN, ...keys.map((k) => `${k.publicKey.trim()} ${k.name}`), BLOCK_END].join('\n')
+    lines.push(`cat >> ${path} <<'TS_CLOUD_KEYS_EOF'`, block, 'TS_CLOUD_KEYS_EOF', `chmod 600 ${path}`)
   }
 
   return lines

@@ -165,17 +165,15 @@ ln -sf /root/.bun/bin/bun /usr/local/bin/bun
 echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
 echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
 `
-    }
-    else if (runtime === 'node') {
-      const nodeMajor = (runtimeVersion === 'latest' || !runtimeVersion) ? '20' : runtimeVersion.split('.')[0]
+    } else if (runtime === 'node') {
+      const nodeMajor = runtimeVersion === 'latest' || !runtimeVersion ? '20' : runtimeVersion.split('.')[0]
       script += `
 curl -fsSL https://deb.nodesource.com/setup_${nodeMajor}.x | bash -
 apt-get install -y nodejs
 ln -sf /usr/bin/node /usr/local/bin/node
 ln -sf /usr/bin/npm /usr/local/bin/npm
 `
-    }
-    else if (runtime === 'deno') {
+    } else if (runtime === 'deno') {
       script += `
 curl -fsSL https://deno.land/install.sh | sh
 ln -sf /root/.deno/bin/deno /usr/local/bin/deno
@@ -243,9 +241,7 @@ systemctl start caddy
   if (rpxProvision && rpxProvision.length > 0) {
     // The provision script carries its own `set -euo pipefail`; strip a leading
     // duplicate so the embedded block is clean.
-    const body = rpxProvision[0] === 'set -euo pipefail'
-      ? rpxProvision.slice(1)
-      : rpxProvision
+    const body = rpxProvision[0] === 'set -euo pipefail' ? rpxProvision.slice(1) : rpxProvision
     script += `
 ${body.join('\n')}
 `

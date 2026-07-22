@@ -5,11 +5,10 @@
  * This allows email clients like Mail.app to access emails that are
  * stored in S3 buckets through SES inbound email processing.
  */
-
+import * as crypto from 'node:crypto'
 import * as net from 'node:net'
 import * as tls from 'node:tls'
 import { readFileSync } from 'node:fs'
-import * as crypto from 'node:crypto'
 import { S3Client } from './s3'
 
 export interface ImapServerConfig {
@@ -154,8 +153,7 @@ export class ImapServer {
 
         try {
           await this.processCommand(session, line)
-        }
-        catch (err) {
+        } catch (err) {
           console.error(`Error processing command: ${err}`)
           this.send(session, `* BAD Internal server error`)
         }
@@ -384,8 +382,8 @@ export class ImapServer {
     const messages = this.getMessagesForFolder(session.email || '', mailbox)
 
     const exists = messages.length
-    const recent = messages.filter(m => m.flags.includes('\\Recent')).length
-    const unseenIdx = messages.findIndex(m => !m.flags.includes('\\Seen'))
+    const recent = messages.filter((m) => m.flags.includes('\\Recent')).length
+    const unseenIdx = messages.findIndex((m) => !m.flags.includes('\\Seen'))
     const unseen = unseenIdx >= 0 ? unseenIdx + 1 : 0
     const uidnext = this.getUidCounterForFolder(session.email || '', mailbox) + 1
 
@@ -426,7 +424,7 @@ export class ImapServer {
       // Notify client of changes
       if (newCount !== oldCount) {
         this.send(session, `* ${newCount} EXISTS`)
-        const recent = newMessages.filter(m => m.flags.includes('\\Recent')).length
+        const recent = newMessages.filter((m) => m.flags.includes('\\Recent')).length
         this.send(session, `* ${recent} RECENT`)
       }
     }
@@ -481,11 +479,9 @@ export class ImapServer {
       this.send(session, `* LIST (\\HasNoChildren \\Archive) "/" "Archive"`)
       // All Mail - all messages (Gmail-style)
       this.send(session, `* LIST (\\HasNoChildren \\All) "/" "All Mail"`)
-    }
-    else if (pattern.toUpperCase() === 'INBOX') {
+    } else if (pattern.toUpperCase() === 'INBOX') {
       this.send(session, `* LIST (\\HasNoChildren) "/" "INBOX"`)
-    }
-    else {
+    } else {
       // Check for specific folder patterns
       const upperPattern = pattern.toUpperCase()
       if (upperPattern === 'SENT' || upperPattern === '*SENT*') {
@@ -497,7 +493,12 @@ export class ImapServer {
       if (upperPattern === 'TRASH' || upperPattern === '*TRASH*') {
         this.send(session, `* LIST (\\HasNoChildren \\Trash) "/" "Trash"`)
       }
-      if (upperPattern === 'JUNK' || upperPattern === 'SPAM' || upperPattern === '*JUNK*' || upperPattern === '*SPAM*') {
+      if (
+        upperPattern === 'JUNK' ||
+        upperPattern === 'SPAM' ||
+        upperPattern === '*JUNK*' ||
+        upperPattern === '*SPAM*'
+      ) {
         this.send(session, `* LIST (\\HasNoChildren \\Junk) "/" "Junk"`)
       }
       if (upperPattern === 'ARCHIVE' || upperPattern === '*ARCHIVE*') {
@@ -535,8 +536,7 @@ export class ImapServer {
       this.send(session, `* LSUB (\\HasNoChildren \\Junk) "/" "Junk"`)
       this.send(session, `* LSUB (\\HasNoChildren \\Archive) "/" "Archive"`)
       this.send(session, `* LSUB (\\HasNoChildren \\All) "/" "All Mail"`)
-    }
-    else if (pattern.toUpperCase() === 'INBOX') {
+    } else if (pattern.toUpperCase() === 'INBOX') {
       this.send(session, `* LSUB (\\HasNoChildren) "/" "INBOX"`)
     }
 
@@ -572,7 +572,7 @@ export class ImapServer {
           results.push(`MESSAGES ${messages.length}`)
           break
         case 'RECENT':
-          results.push(`RECENT ${messages.filter(m => m.flags.includes('\\Recent')).length}`)
+          results.push(`RECENT ${messages.filter((m) => m.flags.includes('\\Recent')).length}`)
           break
         case 'UIDNEXT':
           results.push(`UIDNEXT ${this.getUidCounterForFolder(session.email || '', mailbox) + 1}`)
@@ -581,7 +581,7 @@ export class ImapServer {
           results.push(`UIDVALIDITY ${this.getUidValidity(session.email || '')}`)
           break
         case 'UNSEEN':
-          results.push(`UNSEEN ${messages.filter(m => !m.flags.includes('\\Seen')).length}`)
+          results.push(`UNSEEN ${messages.filter((m) => !m.flags.includes('\\Seen')).length}`)
           break
       }
     }
@@ -613,8 +613,7 @@ export class ImapServer {
 
     for (const idx of indices) {
       const msg = messages[idx - 1] // 1-indexed
-      if (!msg)
-        continue
+      if (!msg) continue
 
       const fetchData = await this.buildFetchResponse(session, msg, idx, itemsStr)
       this.send(session, `* ${idx} FETCH ${fetchData}`)
@@ -679,13 +678,12 @@ export class ImapServer {
     const messages = this.getMessagesForFolder(session.email || '', folder)
 
     // Parse UID set
-    const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+    const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
     const uids = this.parseSequenceSet(uidSet, maxUid)
 
     for (const uid of uids) {
-      const idx = messages.findIndex(m => m.uid === uid)
-      if (idx === -1)
-        continue
+      const idx = messages.findIndex((m) => m.uid === uid)
+      if (idx === -1) continue
 
       const msg = messages[idx]
       const fetchData = await this.buildFetchResponse(session, msg, idx + 1, itemsStr, true)
@@ -710,8 +708,7 @@ export class ImapServer {
     // Simple search - return all message sequence numbers
     if (messages.length === 0) {
       this.send(session, `* SEARCH`)
-    }
-else {
+    } else {
       const results = messages.map((_, i) => i + 1)
       this.send(session, `* SEARCH ${results.join(' ')}`)
     }
@@ -728,9 +725,8 @@ else {
     // Simple UID search - return all UIDs
     if (messages.length === 0) {
       this.send(session, `* SEARCH`)
-    }
-else {
-      const results = messages.map(m => m.uid)
+    } else {
+      const results = messages.map((m) => m.uid)
       this.send(session, `* SEARCH ${results.join(' ')}`)
     }
     this.send(session, `${tag} OK UID SEARCH completed`)
@@ -761,7 +757,7 @@ else {
     const messages = this.getMessagesForFolder(session.email || '', folder)
     const indices = this.parseSequenceSet(sequenceSet, messages.length)
     const silent = operation.toUpperCase().includes('.SILENT')
-    const flags = flagsStr.split(/\s+/).filter(f => f)
+    const flags = flagsStr.split(/\s+/).filter((f) => f)
 
     // Load persisted flags
     const persistedFlags = await this.loadFlags(session.email || '')
@@ -779,12 +775,10 @@ else {
             msg.flags.push(flag)
           }
         }
-      }
-else if (operation.startsWith('-')) {
+      } else if (operation.startsWith('-')) {
         // Remove flags
-        msg.flags = msg.flags.filter(f => !flags.includes(f))
-      }
-else {
+        msg.flags = msg.flags.filter((f) => !flags.includes(f))
+      } else {
         // Replace flags
         msg.flags = [...flags]
       }
@@ -824,17 +818,17 @@ else {
     const [, uidSet, operation, flagsStr] = match
     const folder = session.selectedMailbox || 'INBOX'
     const messages = this.getMessagesForFolder(session.email || '', folder)
-    const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+    const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
     const uids = this.parseSequenceSet(uidSet, maxUid)
     const silent = operation.toUpperCase().includes('.SILENT')
-    const flags = flagsStr.split(/\s+/).filter(f => f)
+    const flags = flagsStr.split(/\s+/).filter((f) => f)
 
     // Load persisted flags
     const persistedFlags = await this.loadFlags(session.email || '')
 
     // For each message, update flags and send FETCH response (unless SILENT)
     for (const uid of uids) {
-      const idx = messages.findIndex(m => m.uid === uid)
+      const idx = messages.findIndex((m) => m.uid === uid)
       if (idx === -1) continue
 
       const msg = messages[idx]
@@ -847,12 +841,10 @@ else {
             msg.flags.push(flag)
           }
         }
-      }
-else if (operation.startsWith('-')) {
+      } else if (operation.startsWith('-')) {
         // Remove flags
-        msg.flags = msg.flags.filter(f => !flags.includes(f))
-      }
-else {
+        msg.flags = msg.flags.filter((f) => !flags.includes(f))
+      } else {
         // Replace flags
         msg.flags = [...flags]
       }
@@ -904,7 +896,7 @@ else {
 
       try {
         // Get the message content
-        const content = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+        const content = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
 
         // Generate new key for destination folder
         const filename = msg.key.split('/').pop() || `${Date.now()}`
@@ -919,8 +911,7 @@ else {
         })
 
         console.log(`Copied message from ${msg.key} to ${newKey}`)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to copy message: ${err}`)
       }
     }
@@ -948,7 +939,7 @@ catch (err) {
     const [, uidSet, destMailbox] = match
     const sourceFolder = session.selectedMailbox || 'INBOX'
     const messages = this.getMessagesForFolder(session.email || '', sourceFolder)
-    const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+    const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
     const uids = this.parseSequenceSet(uidSet, maxUid)
 
     // Get destination folder S3 prefix
@@ -956,12 +947,12 @@ catch (err) {
 
     // Copy messages to destination folder
     for (const uid of uids) {
-      const msg = messages.find(m => m.uid === uid)
+      const msg = messages.find((m) => m.uid === uid)
       if (!msg) continue
 
       try {
         // Get the message content
-        const content = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+        const content = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
 
         // Generate new key for destination folder
         const filename = msg.key.split('/').pop() || `${Date.now()}`
@@ -976,8 +967,7 @@ catch (err) {
         })
 
         console.log(`UID COPY: Copied message from ${msg.key} to ${newKey}`)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to copy message: ${err}`)
       }
     }
@@ -1016,7 +1006,7 @@ catch (err) {
       if (!msg) continue
 
       try {
-        const content = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+        const content = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
         const filename = msg.key.split('/').pop() || `${Date.now()}`
         const newKey = `${destPrefix}${filename}`
 
@@ -1032,8 +1022,7 @@ catch (err) {
         await this.s3.deleteObject(this.config.bucket, msg.key)
         console.log(`MOVE: ${msg.key} -> ${newKey}`)
         movedIndices.push(idx)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to move message: ${err}`)
       }
     }
@@ -1074,7 +1063,7 @@ catch (err) {
     const [, uidSet, destMailbox] = match
     const sourceFolder = session.selectedMailbox || 'INBOX'
     const messages = this.getMessagesForFolder(session.email || '', sourceFolder)
-    const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+    const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
     const uids = this.parseSequenceSet(uidSet, maxUid)
     const destPrefix = this.getFolderPrefix(destMailbox)
 
@@ -1082,13 +1071,13 @@ catch (err) {
 
     // Copy messages to destination then delete from source
     for (const uid of uids) {
-      const idx = messages.findIndex(m => m.uid === uid)
+      const idx = messages.findIndex((m) => m.uid === uid)
       if (idx === -1) continue
 
       const msg = messages[idx]
 
       try {
-        const content = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+        const content = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
         const filename = msg.key.split('/').pop() || `${Date.now()}`
         const newKey = `${destPrefix}${filename}`
 
@@ -1104,8 +1093,7 @@ catch (err) {
         await this.s3.deleteObject(this.config.bucket, msg.key)
         console.log(`UID MOVE: ${msg.key} -> ${newKey}`)
         movedIndices.push(idx + 1)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to move message: ${err}`)
       }
     }
@@ -1141,7 +1129,7 @@ catch (err) {
 
     // Parse UID set from args
     const uidSet = args.trim()
-    const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+    const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
     const uids = this.parseSequenceSet(uidSet, maxUid)
 
     const indicesToExpunge: number[] = []
@@ -1161,8 +1149,7 @@ catch (err) {
       try {
         await this.s3.deleteObject(this.config.bucket, key)
         console.log(`Deleted from S3: ${key}`)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to delete from S3: ${key}`, err)
       }
     }
@@ -1221,8 +1208,7 @@ catch (err) {
       try {
         await this.s3.deleteObject(this.config.bucket, key)
         console.log(`EXPUNGE: Deleted from S3: ${key}`)
-      }
-catch (err) {
+      } catch (err) {
         console.error(`Failed to delete from S3: ${key}`, err)
       }
     }
@@ -1233,7 +1219,7 @@ catch (err) {
     }
 
     // Remove deleted messages from cache
-    const remainingMessages = messages.filter(m => !m.flags.includes('\\Deleted'))
+    const remainingMessages = messages.filter((m) => !m.flags.includes('\\Deleted'))
     this.setMessagesForFolder(session.email || '', folder, remainingMessages)
 
     // Send EXISTS if messages were removed
@@ -1291,8 +1277,7 @@ catch (err) {
   private async loadMessages(session: ImapSession, forceRefresh = false): Promise<void> {
     const email = session.email
     const folder = session.selectedMailbox || 'INBOX'
-    if (!email)
-      return
+    if (!email) return
 
     // Check cache freshness
     const cacheKey = `${email}:${folder}`
@@ -1333,15 +1318,13 @@ catch (err) {
       let hasNewMessages = false
 
       for (const obj of objects) {
-        if (!obj.Key)
-          continue
+        if (!obj.Key) continue
 
         // Parse email content to get headers
         let raw = ''
         try {
           raw = await this.s3.getObject(this.config.bucket, obj.Key)
-        }
-        catch {
+        } catch {
           continue
         }
 
@@ -1390,13 +1373,14 @@ catch (err) {
       }
 
       // Update UID counter for folder to max UID
-      const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+      const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
       this.setUidCounterForFolder(email, folder, maxUid)
       this.setMessagesForFolder(email, folder, messages)
       this.cacheTimestamp.set(cacheKey, Date.now())
-      console.log(`Loaded ${messages.length} messages for ${email} in ${folder} from S3 (hasNewMessages=${hasNewMessages})`)
-    }
-    catch (err) {
+      console.log(
+        `Loaded ${messages.length} messages for ${email} in ${folder} from S3 (hasNewMessages=${hasNewMessages})`,
+      )
+    } catch (err) {
       console.error(`Error loading messages from S3: ${err}`)
     }
   }
@@ -1435,16 +1419,14 @@ catch (err) {
         })
 
         for (const obj of objects) {
-          if (!obj.Key || seenKeys.has(obj.Key))
-            continue
+          if (!obj.Key || seenKeys.has(obj.Key)) continue
 
           seenKeys.add(obj.Key)
 
           let raw = ''
           try {
             raw = await this.s3.getObject(this.config.bucket, obj.Key)
-          }
-          catch {
+          } catch {
             continue
           }
 
@@ -1480,8 +1462,7 @@ catch (err) {
             raw,
           })
         }
-      }
-      catch (err) {
+      } catch (err) {
         console.error(`Error loading messages from prefix ${prefix}: ${err}`)
       }
     }
@@ -1495,11 +1476,13 @@ catch (err) {
     }
 
     // Update UID counter for folder to max UID
-    const maxUid = allMessages.length > 0 ? Math.max(...allMessages.map(m => m.uid)) : 0
+    const maxUid = allMessages.length > 0 ? Math.max(...allMessages.map((m) => m.uid)) : 0
     this.setUidCounterForFolder(email, folder, maxUid)
     this.setMessagesForFolder(email, folder, allMessages)
     this.cacheTimestamp.set(cacheKey, Date.now())
-    console.log(`Loaded ${allMessages.length} total messages for ${email} in All Mail from S3 (hasNewMessages=${hasNewMessages})`)
+    console.log(
+      `Loaded ${allMessages.length} total messages for ${email} in All Mail from S3 (hasNewMessages=${hasNewMessages})`,
+    )
   }
 
   /**
@@ -1508,8 +1491,7 @@ catch (err) {
    */
   private async loadMessagesForFolder(session: ImapSession, folder: string): Promise<void> {
     const email = session.email
-    if (!email)
-      return
+    if (!email) return
 
     const cacheKey = `${email}:${folder}`
     const lastUpdate = this.cacheTimestamp.get(cacheKey) || 0
@@ -1546,14 +1528,12 @@ catch (err) {
       let hasNewMessages = false
 
       for (const obj of objects) {
-        if (!obj.Key)
-          continue
+        if (!obj.Key) continue
 
         let raw = ''
         try {
           raw = await this.s3.getObject(this.config.bucket, obj.Key)
-        }
-        catch {
+        } catch {
           continue
         }
 
@@ -1599,12 +1579,11 @@ catch (err) {
       }
 
       // Update UID counter for folder to max UID
-      const maxUid = messages.length > 0 ? Math.max(...messages.map(m => m.uid)) : 0
+      const maxUid = messages.length > 0 ? Math.max(...messages.map((m) => m.uid)) : 0
       this.setUidCounterForFolder(email, folder, maxUid)
       this.setMessagesForFolder(email, folder, messages)
       this.cacheTimestamp.set(cacheKey, Date.now())
-    }
-    catch (err) {
+    } catch (err) {
       console.error(`Error loading messages for folder ${folder}: ${err}`)
       // Set empty array so we don't return undefined
       this.setMessagesForFolder(email, folder, [])
@@ -1626,8 +1605,7 @@ catch (err) {
       if (line.startsWith(' ') || line.startsWith('\t')) {
         // Continuation
         currentValue += ` ${line.trim()}`
-      }
-      else {
+      } else {
         // Save previous header
         if (currentHeader) {
           headers[currentHeader.toLowerCase()] = currentValue
@@ -1685,24 +1663,26 @@ catch (err) {
     }
 
     if (items.includes('BODYSTRUCTURE') || items.includes('BODY.PEEK[STRUCTURE]')) {
-      results.push(`BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" ${msg.size} ${Math.ceil(msg.size / 80)} NIL NIL NIL)`)
+      results.push(
+        `BODYSTRUCTURE ("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "7BIT" ${msg.size} ${Math.ceil(msg.size / 80)} NIL NIL NIL)`,
+      )
     }
 
     if (items.includes('BODY[]') || items.includes('BODY.PEEK[]') || items.includes('RFC822')) {
-      const raw = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+      const raw = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
       results.push(`BODY[] {${raw.length}}\r\n${raw}`)
     }
 
     if (items.includes('BODY[HEADER]') || items.includes('BODY.PEEK[HEADER]')) {
-      const raw = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+      const raw = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
       const header = raw.split('\r\n\r\n')[0] || raw.split('\n\n')[0] || ''
       results.push(`BODY[HEADER] {${header.length + 2}}\r\n${header}\r\n`)
     }
 
     if (items.includes('BODY[TEXT]') || items.includes('BODY.PEEK[TEXT]')) {
-      const raw = msg.raw || await this.s3.getObject(this.config.bucket, msg.key)
+      const raw = msg.raw || (await this.s3.getObject(this.config.bucket, msg.key))
       const parts = raw.split('\r\n\r\n')
-      const text = parts.slice(1).join('\r\n\r\n') || (raw.split('\n\n').slice(1).join('\n\n'))
+      const text = parts.slice(1).join('\r\n\r\n') || raw.split('\n\n').slice(1).join('\n\n')
       results.push(`BODY[TEXT] {${text.length}}\r\n${text}`)
     }
 
@@ -1713,7 +1693,7 @@ catch (err) {
    * Build ENVELOPE response
    */
   private buildEnvelope(msg: EmailMessage): string {
-    const quote = (s?: string) => s ? `"${s.replace(/"/g, '\\"')}"` : 'NIL'
+    const quote = (s?: string) => (s ? `"${s.replace(/"/g, '\\"')}"` : 'NIL')
 
     const date = quote(msg.date.toUTCString())
     const subject = quote(msg.subject)
@@ -1755,8 +1735,7 @@ catch (err) {
             results.push(i)
           }
         }
-      }
-      else {
+      } else {
         const n = part === '*' ? max : Number.parseInt(part, 10)
         if (n > 0 && n <= max) {
           results.push(n)
@@ -1774,7 +1753,7 @@ catch (err) {
     // Use a hash of the email to generate a stable UID validity
     let hash = 0
     for (let i = 0; i < email.length; i++) {
-      hash = ((hash << 5) - hash) + email.charCodeAt(i)
+      hash = (hash << 5) - hash + email.charCodeAt(i)
       hash = hash & hash // Convert to 32-bit integer
     }
     return Math.abs(hash) || 1
@@ -1825,8 +1804,7 @@ catch (err) {
       const flags = JSON.parse(content)
       this.flagsCache.set(email, flags)
       return flags
-    }
-catch {
+    } catch {
       // No flags file yet
       const empty: Record<string, string[]> = {}
       this.flagsCache.set(email, empty)
@@ -1850,8 +1828,7 @@ catch {
         contentType: 'application/json',
       })
       console.log(`Saved flags for ${email}`)
-    }
-catch (err) {
+    } catch (err) {
       console.error(`Failed to save flags for ${email}:`, err)
     }
   }
@@ -1859,7 +1836,7 @@ catch (err) {
   /**
    * Load UID mapping from S3 (maps S3 keys to persistent UIDs)
    */
-  private async loadUidMapping(email: string): Promise<{ mapping: Record<string, number>, nextUid: number }> {
+  private async loadUidMapping(email: string): Promise<{ mapping: Record<string, number>; nextUid: number }> {
     const cached = this.uidMappingCache.get(email)
     const nextUid = this.nextUidCache.get(email)
     if (cached && nextUid !== undefined) {
@@ -1875,8 +1852,7 @@ catch (err) {
       this.uidMappingCache.set(email, mapping)
       this.nextUidCache.set(email, loadedNextUid)
       return { mapping, nextUid: loadedNextUid }
-    }
-catch {
+    } catch {
       // No UID mapping file yet
       const empty: Record<string, number> = {}
       this.uidMappingCache.set(email, empty)
@@ -1901,8 +1877,7 @@ catch {
         body: JSON.stringify({ mapping, nextUid }),
         contentType: 'application/json',
       })
-    }
-catch (err) {
+    } catch (err) {
       console.error(`Failed to save UID mapping for ${email}:`, err)
     }
   }

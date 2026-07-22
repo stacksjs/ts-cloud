@@ -2,11 +2,12 @@
  * AWS CloudFront Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import type { AWSRequestOptions } from './client'
 import { AWSClient } from './client'
 
-interface CloudFrontTransport { request: (options: AWSRequestOptions) => Promise<any> }
+interface CloudFrontTransport {
+  request: (options: AWSRequestOptions) => Promise<any>
+}
 
 export interface ExistingDistributionOriginInput {
   id: string
@@ -65,14 +66,29 @@ export class CloudFrontClient {
     return Array.isArray(nested) ? nested : [nested]
   }
 
-  private validateExistingOriginInput(distributionId: string, input: ExistingDistributionOriginInput): ExistingDistributionOriginInput {
+  private validateExistingOriginInput(
+    distributionId: string,
+    input: ExistingDistributionOriginInput,
+  ): ExistingDistributionOriginInput {
     if (!/^[A-Z0-9]{8,32}$/.test(distributionId)) throw new Error('CloudFront distribution ID is invalid')
     if (!/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(input.id)) throw new Error('CloudFront origin ID is invalid')
-    if (!/^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(input.domainName)) throw new Error('CloudFront origin must be a hostname without a scheme or path')
+    if (
+      !/^(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(
+        input.domainName,
+      )
+    )
+      throw new Error('CloudFront origin must be a hostname without a scheme or path')
     const pathPattern = input.pathPattern.startsWith('/') ? input.pathPattern : `/${input.pathPattern}`
-    if (pathPattern === '/' || pathPattern === '/*' || !/^\/[A-Za-z0-9_.*?~!$&'()+,;=:@%/-]{1,255}$/.test(pathPattern)) throw new Error('CloudFront path pattern must be a non-default absolute pattern')
-    if (input.originPath && (!input.originPath.startsWith('/') || input.originPath.includes('..'))) throw new Error('CloudFront origin path must be absolute and traversal-free')
-    if (Object.entries(input.customHeaders ?? {}).some(([name, value]) => !/^[A-Za-z0-9-]{1,64}$/.test(name) || !value || value.length > 1024)) throw new Error('CloudFront custom origin headers are invalid')
+    if (pathPattern === '/' || pathPattern === '/*' || !/^\/[A-Za-z0-9_.*?~!$&'()+,;=:@%/-]{1,255}$/.test(pathPattern))
+      throw new Error('CloudFront path pattern must be a non-default absolute pattern')
+    if (input.originPath && (!input.originPath.startsWith('/') || input.originPath.includes('..')))
+      throw new Error('CloudFront origin path must be absolute and traversal-free')
+    if (
+      Object.entries(input.customHeaders ?? {}).some(
+        ([name, value]) => !/^[A-Za-z0-9-]{1,64}$/.test(name) || !value || value.length > 1024,
+      )
+    )
+      throw new Error('CloudFront custom origin headers are invalid')
     return { ...input, pathPattern }
   }
 
@@ -80,46 +96,201 @@ export class CloudFrontClient {
    * Add a custom backend origin and path behavior to a live distribution while
    * preserving the existing default S3 origin and every unrelated field.
    */
-  async upsertExistingDistributionOrigin(distributionId: string, rawInput: ExistingDistributionOriginInput): Promise<ExistingDistributionOriginResult> {
+  async upsertExistingDistributionOrigin(
+    distributionId: string,
+    rawInput: ExistingDistributionOriginInput,
+  ): Promise<ExistingDistributionOriginResult> {
     const input = this.validateExistingOriginInput(distributionId, rawInput)
-    const getResult = await this.client.request({ service: 'cloudfront', region: 'us-east-1', method: 'GET', path: `/2020-05-31/distribution/${distributionId}/config`, returnHeaders: true })
+    const getResult = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      returnHeaders: true,
+    })
     const etag = getResult.headers?.etag || getResult.headers?.ETag || getResult.ETag || ''
     const config = getResult.body?.DistributionConfig || getResult.DistributionConfig || getResult.body
-    if (!config || config.Enabled === undefined || !etag) throw new Error('Failed to read an ETag-protected CloudFront distribution config')
+    if (!config || config.Enabled === undefined || !etag)
+      throw new Error('Failed to read an ETag-protected CloudFront distribution config')
     const origins = this.collectionItems(config.Origins, 'Origin')
     const behaviors = this.collectionItems(config.CacheBehaviors, 'CacheBehavior')
-    const existingOrigin = origins.find(value => String(value.Id) === input.id)
-    const existingBehavior = behaviors.find(value => String(value.PathPattern) === input.pathPattern)
-    if (existingOrigin && String(existingOrigin.DomainName) !== input.domainName && !input.replaceExisting) throw new Error(`Origin ${input.id} already targets ${existingOrigin.DomainName}; pass replaceExisting only after reviewing the live config`)
-    if (existingBehavior && String(existingBehavior.TargetOriginId) !== input.id && !input.replaceExisting) throw new Error(`Path ${input.pathPattern} already targets ${existingBehavior.TargetOriginId}; pass replaceExisting only after reviewing the live config`)
-    const origin = { Id: input.id, DomainName: input.domainName, OriginPath: input.originPath ?? '', CustomHeaders: { Quantity: Object.keys(input.customHeaders ?? {}).length, ...(Object.keys(input.customHeaders ?? {}).length ? { Items: { OriginCustomHeader: Object.entries(input.customHeaders!).map(([HeaderName, HeaderValue]) => ({ HeaderName, HeaderValue })) } } : {}) }, CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: input.protocolPolicy ?? 'https-only', OriginSslProtocols: { Quantity: 1, Items: { SslProtocol: ['TLSv1.2'] } }, OriginReadTimeout: 30, OriginKeepaliveTimeout: 5 }, ConnectionAttempts: 3, ConnectionTimeout: 10, ...(input.originAccessControlId ? { OriginAccessControlId: input.originAccessControlId } : {}) }
+    const existingOrigin = origins.find((value) => String(value.Id) === input.id)
+    const existingBehavior = behaviors.find((value) => String(value.PathPattern) === input.pathPattern)
+    if (existingOrigin && String(existingOrigin.DomainName) !== input.domainName && !input.replaceExisting)
+      throw new Error(
+        `Origin ${input.id} already targets ${existingOrigin.DomainName}; pass replaceExisting only after reviewing the live config`,
+      )
+    if (existingBehavior && String(existingBehavior.TargetOriginId) !== input.id && !input.replaceExisting)
+      throw new Error(
+        `Path ${input.pathPattern} already targets ${existingBehavior.TargetOriginId}; pass replaceExisting only after reviewing the live config`,
+      )
+    const origin = {
+      Id: input.id,
+      DomainName: input.domainName,
+      OriginPath: input.originPath ?? '',
+      CustomHeaders: {
+        Quantity: Object.keys(input.customHeaders ?? {}).length,
+        ...(Object.keys(input.customHeaders ?? {}).length
+          ? {
+              Items: {
+                OriginCustomHeader: Object.entries(input.customHeaders!).map(([HeaderName, HeaderValue]) => ({
+                  HeaderName,
+                  HeaderValue,
+                })),
+              },
+            }
+          : {}),
+      },
+      CustomOriginConfig: {
+        HTTPPort: 80,
+        HTTPSPort: 443,
+        OriginProtocolPolicy: input.protocolPolicy ?? 'https-only',
+        OriginSslProtocols: { Quantity: 1, Items: { SslProtocol: ['TLSv1.2'] } },
+        OriginReadTimeout: 30,
+        OriginKeepaliveTimeout: 5,
+      },
+      ConnectionAttempts: 3,
+      ConnectionTimeout: 10,
+      ...(input.originAccessControlId ? { OriginAccessControlId: input.originAccessControlId } : {}),
+    }
     const methods = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
-    const behavior = { PathPattern: input.pathPattern, TargetOriginId: input.id, ViewerProtocolPolicy: 'redirect-to-https', Compress: true, CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad', OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac', AllowedMethods: { Quantity: methods.length, Items: { Method: methods }, CachedMethods: { Quantity: 2, Items: { Method: ['GET', 'HEAD'] } } }, SmoothStreaming: false, FieldLevelEncryptionId: '', TrustedSigners: { Enabled: false, Quantity: 0 }, TrustedKeyGroups: { Enabled: false, Quantity: 0 }, LambdaFunctionAssociations: { Quantity: 0 }, FunctionAssociations: { Quantity: 0 } }
-    const nextOrigins = existingOrigin ? origins.map(value => String(value.Id) === input.id ? origin : value) : [...origins, origin]
-    const nextBehaviors = existingBehavior ? behaviors.map(value => String(value.PathPattern) === input.pathPattern ? behavior : value) : [...behaviors, behavior]
-    const changed = JSON.stringify(origins) !== JSON.stringify(nextOrigins) || JSON.stringify(behaviors) !== JSON.stringify(nextBehaviors)
-    if (!changed || input.dryRun) return { distributionId, originId: input.id, domainName: input.domainName, pathPattern: input.pathPattern, changed, applied: false, etag }
+    const behavior = {
+      PathPattern: input.pathPattern,
+      TargetOriginId: input.id,
+      ViewerProtocolPolicy: 'redirect-to-https',
+      Compress: true,
+      CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad',
+      OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
+      AllowedMethods: {
+        Quantity: methods.length,
+        Items: { Method: methods },
+        CachedMethods: { Quantity: 2, Items: { Method: ['GET', 'HEAD'] } },
+      },
+      SmoothStreaming: false,
+      FieldLevelEncryptionId: '',
+      TrustedSigners: { Enabled: false, Quantity: 0 },
+      TrustedKeyGroups: { Enabled: false, Quantity: 0 },
+      LambdaFunctionAssociations: { Quantity: 0 },
+      FunctionAssociations: { Quantity: 0 },
+    }
+    const nextOrigins = existingOrigin
+      ? origins.map((value) => (String(value.Id) === input.id ? origin : value))
+      : [...origins, origin]
+    const nextBehaviors = existingBehavior
+      ? behaviors.map((value) => (String(value.PathPattern) === input.pathPattern ? behavior : value))
+      : [...behaviors, behavior]
+    const changed =
+      JSON.stringify(origins) !== JSON.stringify(nextOrigins) ||
+      JSON.stringify(behaviors) !== JSON.stringify(nextBehaviors)
+    if (!changed || input.dryRun)
+      return {
+        distributionId,
+        originId: input.id,
+        domainName: input.domainName,
+        pathPattern: input.pathPattern,
+        changed,
+        applied: false,
+        etag,
+      }
     config.Origins = { Quantity: nextOrigins.length, Items: { Origin: nextOrigins } }
-    config.CacheBehaviors = { Quantity: nextBehaviors.length, ...(nextBehaviors.length ? { Items: { CacheBehavior: nextBehaviors } } : {}) }
-    const result = await this.client.request({ service: 'cloudfront', region: 'us-east-1', method: 'PUT', path: `/2020-05-31/distribution/${distributionId}/config`, body: this.buildDistributionConfigXml(config), headers: { 'Content-Type': 'application/xml', 'If-Match': etag } })
-    return { distributionId, originId: input.id, domainName: input.domainName, pathPattern: input.pathPattern, changed: true, applied: true, etag: result.ETag || result.headers?.etag || '' }
+    config.CacheBehaviors = {
+      Quantity: nextBehaviors.length,
+      ...(nextBehaviors.length ? { Items: { CacheBehavior: nextBehaviors } } : {}),
+    }
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'PUT',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      body: this.buildDistributionConfigXml(config),
+      headers: { 'Content-Type': 'application/xml', 'If-Match': etag },
+    })
+    return {
+      distributionId,
+      originId: input.id,
+      domainName: input.domainName,
+      pathPattern: input.pathPattern,
+      changed: true,
+      applied: true,
+      etag: result.ETag || result.headers?.etag || '',
+    }
   }
 
   /** Remove only the named path behavior and remove its origin if now unused. */
-  async removeExistingDistributionOrigin(distributionId: string, rawInput: Pick<ExistingDistributionOriginInput, 'id' | 'domainName' | 'pathPattern' | 'dryRun'>): Promise<ExistingDistributionOriginResult> {
+  async removeExistingDistributionOrigin(
+    distributionId: string,
+    rawInput: Pick<ExistingDistributionOriginInput, 'id' | 'domainName' | 'pathPattern' | 'dryRun'>,
+  ): Promise<ExistingDistributionOriginResult> {
     const input = this.validateExistingOriginInput(distributionId, rawInput)
-    const getResult = await this.client.request({ service: 'cloudfront', region: 'us-east-1', method: 'GET', path: `/2020-05-31/distribution/${distributionId}/config`, returnHeaders: true })
-    const etag = getResult.headers?.etag || getResult.headers?.ETag || getResult.ETag || ''; const config = getResult.body?.DistributionConfig || getResult.DistributionConfig || getResult.body
-    if (!config || config.Enabled === undefined || !etag) throw new Error('Failed to read an ETag-protected CloudFront distribution config')
-    const origins = this.collectionItems(config.Origins, 'Origin'); const behaviors = this.collectionItems(config.CacheBehaviors, 'CacheBehavior'); const origin = origins.find(value => String(value.Id) === input.id); const behavior = behaviors.find(value => String(value.PathPattern) === input.pathPattern)
-    if (origin && String(origin.DomainName) !== input.domainName) throw new Error(`Origin ${input.id} no longer targets ${input.domainName}; refusing ambiguous removal`)
-    if (behavior && String(behavior.TargetOriginId) !== input.id) throw new Error(`Path ${input.pathPattern} no longer targets ${input.id}; refusing ambiguous removal`)
-    if (!behavior) return { distributionId, originId: input.id, domainName: input.domainName, pathPattern: input.pathPattern, changed: false, applied: false, originRemoved: false, etag }
-    const nextBehaviors = behaviors.filter(value => String(value.PathPattern) !== input.pathPattern); const stillReferenced = String(config.DefaultCacheBehavior?.TargetOriginId) === input.id || nextBehaviors.some(value => String(value.TargetOriginId) === input.id); const nextOrigins = stillReferenced ? origins : origins.filter(value => String(value.Id) !== input.id)
-    if (input.dryRun) return { distributionId, originId: input.id, domainName: input.domainName, pathPattern: input.pathPattern, changed: true, applied: false, originRemoved: !stillReferenced && !!origin, etag }
-    config.Origins = { Quantity: nextOrigins.length, Items: { Origin: nextOrigins } }; config.CacheBehaviors = { Quantity: nextBehaviors.length, ...(nextBehaviors.length ? { Items: { CacheBehavior: nextBehaviors } } : {}) }
-    const result = await this.client.request({ service: 'cloudfront', region: 'us-east-1', method: 'PUT', path: `/2020-05-31/distribution/${distributionId}/config`, body: this.buildDistributionConfigXml(config), headers: { 'Content-Type': 'application/xml', 'If-Match': etag } })
-    return { distributionId, originId: input.id, domainName: input.domainName, pathPattern: input.pathPattern, changed: true, applied: true, originRemoved: !stillReferenced && !!origin, etag: result.ETag || result.headers?.etag || '' }
+    const getResult = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      returnHeaders: true,
+    })
+    const etag = getResult.headers?.etag || getResult.headers?.ETag || getResult.ETag || ''
+    const config = getResult.body?.DistributionConfig || getResult.DistributionConfig || getResult.body
+    if (!config || config.Enabled === undefined || !etag)
+      throw new Error('Failed to read an ETag-protected CloudFront distribution config')
+    const origins = this.collectionItems(config.Origins, 'Origin')
+    const behaviors = this.collectionItems(config.CacheBehaviors, 'CacheBehavior')
+    const origin = origins.find((value) => String(value.Id) === input.id)
+    const behavior = behaviors.find((value) => String(value.PathPattern) === input.pathPattern)
+    if (origin && String(origin.DomainName) !== input.domainName)
+      throw new Error(`Origin ${input.id} no longer targets ${input.domainName}; refusing ambiguous removal`)
+    if (behavior && String(behavior.TargetOriginId) !== input.id)
+      throw new Error(`Path ${input.pathPattern} no longer targets ${input.id}; refusing ambiguous removal`)
+    if (!behavior)
+      return {
+        distributionId,
+        originId: input.id,
+        domainName: input.domainName,
+        pathPattern: input.pathPattern,
+        changed: false,
+        applied: false,
+        originRemoved: false,
+        etag,
+      }
+    const nextBehaviors = behaviors.filter((value) => String(value.PathPattern) !== input.pathPattern)
+    const stillReferenced =
+      String(config.DefaultCacheBehavior?.TargetOriginId) === input.id ||
+      nextBehaviors.some((value) => String(value.TargetOriginId) === input.id)
+    const nextOrigins = stillReferenced ? origins : origins.filter((value) => String(value.Id) !== input.id)
+    if (input.dryRun)
+      return {
+        distributionId,
+        originId: input.id,
+        domainName: input.domainName,
+        pathPattern: input.pathPattern,
+        changed: true,
+        applied: false,
+        originRemoved: !stillReferenced && !!origin,
+        etag,
+      }
+    config.Origins = { Quantity: nextOrigins.length, Items: { Origin: nextOrigins } }
+    config.CacheBehaviors = {
+      Quantity: nextBehaviors.length,
+      ...(nextBehaviors.length ? { Items: { CacheBehavior: nextBehaviors } } : {}),
+    }
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'PUT',
+      path: `/2020-05-31/distribution/${distributionId}/config`,
+      body: this.buildDistributionConfigXml(config),
+      headers: { 'Content-Type': 'application/xml', 'If-Match': etag },
+    })
+    return {
+      distributionId,
+      originId: input.id,
+      domainName: input.domainName,
+      pathPattern: input.pathPattern,
+      changed: true,
+      applied: true,
+      originRemoved: !stillReferenced && !!origin,
+      etag: result.ETag || result.headers?.etag || '',
+    }
   }
 
   /**
@@ -137,7 +308,7 @@ export class CloudFrontClient {
   <Paths>
     <Quantity>${options.paths.length}</Quantity>
     <Items>
-      ${options.paths.map(path => `<Path>${path}</Path>`).join('\n      ')}
+      ${options.paths.map((path) => `<Path>${path}</Path>`).join('\n      ')}
     </Items>
   </Paths>
   <CallerReference>${callerReference}</CallerReference>
@@ -164,7 +335,10 @@ export class CloudFrontClient {
   /**
    * Get invalidation status
    */
-  async getInvalidation(distributionId: string, invalidationId: string): Promise<{
+  async getInvalidation(
+    distributionId: string,
+    invalidationId: string,
+  ): Promise<{
     Id: string
     Status: string
     CreateTime: string
@@ -186,11 +360,13 @@ export class CloudFrontClient {
   /**
    * List invalidations
    */
-  async listInvalidations(distributionId: string): Promise<Array<{
-    Id: string
-    Status: string
-    CreateTime: string
-  }>> {
+  async listInvalidations(distributionId: string): Promise<
+    Array<{
+      Id: string
+      Status: string
+      CreateTime: string
+    }>
+  > {
     const result = await this.client.request({
       service: 'cloudfront',
       region: 'us-east-1',
@@ -199,7 +375,7 @@ export class CloudFrontClient {
     })
 
     // Parse invalidation list
-    const invalidations: Array<{ Id: string, Status: string, CreateTime: string }> = []
+    const invalidations: Array<{ Id: string; Status: string; CreateTime: string }> = []
 
     // Simple parser - would need proper XML parsing in production
     if (result.InvalidationSummary) {
@@ -207,11 +383,13 @@ export class CloudFrontClient {
         ? result.InvalidationSummary
         : [result.InvalidationSummary]
 
-      invalidations.push(...summaries.map((item: any) => ({
-        Id: item.Id,
-        Status: item.Status,
-        CreateTime: item.CreateTime,
-      })))
+      invalidations.push(
+        ...summaries.map((item: any) => ({
+          Id: item.Id,
+          Status: item.Status,
+          CreateTime: item.CreateTime,
+        })),
+      )
     }
 
     return invalidations
@@ -232,7 +410,7 @@ export class CloudFrontClient {
       }
 
       // Wait 5 seconds before next attempt
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      await new Promise((resolve) => setTimeout(resolve, 5000))
       attempts++
     }
 
@@ -259,21 +437,20 @@ export class CloudFrontClient {
     let summaries: any[] = []
     if (Array.isArray(items)) {
       summaries = items
-    }
-    else if (items?.DistributionSummary) {
-      summaries = Array.isArray(items.DistributionSummary)
-        ? items.DistributionSummary
-        : [items.DistributionSummary]
+    } else if (items?.DistributionSummary) {
+      summaries = Array.isArray(items.DistributionSummary) ? items.DistributionSummary : [items.DistributionSummary]
     }
 
-    distributions.push(...summaries.map((item: any) => ({
-      Id: item.Id,
-      ARN: item.ARN,
-      Status: item.Status,
-      DomainName: item.DomainName,
-      Aliases: item.Aliases || undefined,
-      Enabled: item.Enabled === 'true' || item.Enabled === true,
-    })))
+    distributions.push(
+      ...summaries.map((item: any) => ({
+        Id: item.Id,
+        ARN: item.ARN,
+        Status: item.Status,
+        DomainName: item.DomainName,
+        Aliases: item.Aliases || undefined,
+        Enabled: item.Enabled === 'true' || item.Enabled === true,
+      })),
+    )
 
     return distributions
   }
@@ -314,8 +491,8 @@ export class CloudFrontClient {
       DefaultCacheBehavior: {
         TargetOriginId: string
         ViewerProtocolPolicy: string
-        AllowedMethods?: { Quantity: number, Items: string[] }
-        CachedMethods?: { Quantity: number, Items: string[] }
+        AllowedMethods?: { Quantity: number; Items: string[] }
+        CachedMethods?: { Quantity: number; Items: string[] }
         ForwardedValues?: any
         TrustedSigners?: any
         MinTTL?: number
@@ -328,15 +505,15 @@ export class CloudFrontClient {
           PathPattern: string
           TargetOriginId: string
           ViewerProtocolPolicy: string
-          AllowedMethods?: { Quantity: number, Items: string[] }
-          CachedMethods?: { Quantity: number, Items: string[] }
+          AllowedMethods?: { Quantity: number; Items: string[] }
+          CachedMethods?: { Quantity: number; Items: string[] }
           ForwardedValues?: any
           MinTTL?: number
           DefaultTTL?: number
           MaxTTL?: number
         }>
       }
-      Aliases?: { Quantity: number, Items: string[] }
+      Aliases?: { Quantity: number; Items: string[] }
       Comment?: string
       Enabled: boolean
     }
@@ -371,13 +548,16 @@ export class CloudFrontClient {
   /**
    * Invalidate specific paths
    */
-  async invalidatePaths(distributionId: string, paths: string[]): Promise<{
+  async invalidatePaths(
+    distributionId: string,
+    paths: string[],
+  ): Promise<{
     Id: string
     Status: string
     CreateTime: string
   }> {
     // Ensure paths start with /
-    const formattedPaths = paths.map(path => path.startsWith('/') ? path : `/${path}`)
+    const formattedPaths = paths.map((path) => (path.startsWith('/') ? path : `/${path}`))
 
     return this.createInvalidation({
       distributionId,
@@ -388,7 +568,10 @@ export class CloudFrontClient {
   /**
    * Invalidate by pattern
    */
-  async invalidatePattern(distributionId: string, pattern: string): Promise<{
+  async invalidatePattern(
+    distributionId: string,
+    pattern: string,
+  ): Promise<{
     Id: string
     Status: string
     CreateTime: string
@@ -421,8 +604,7 @@ export class CloudFrontClient {
 
     if (invalidateAll || !changedPaths || changedPaths.length === 0) {
       result = await this.invalidateAll(distributionId)
-    }
-    else {
+    } else {
       result = await this.invalidatePaths(distributionId, changedPaths)
     }
 
@@ -460,11 +642,16 @@ export class CloudFrontClient {
    * Batch invalidate multiple distributions
    * Useful for multi-region or blue/green deployments
    */
-  async batchInvalidate(distributionIds: string[], paths: string[] = ['/*']): Promise<Array<{
-    distributionId: string
-    invalidationId: string
-    status: string
-  }>> {
+  async batchInvalidate(
+    distributionIds: string[],
+    paths: string[] = ['/*'],
+  ): Promise<
+    Array<{
+      distributionId: string
+      invalidationId: string
+      status: string
+    }>
+  > {
     const results = await Promise.all(
       distributionIds.map(async (distributionId) => {
         const result = await this.createInvalidation({
@@ -513,7 +700,10 @@ export class CloudFrontClient {
     // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
     // parser yields the config directly as `body` (no wrapping key). Older code
     // only looked for a `.DistributionConfig` wrapper and always threw.
-    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
+    const currentConfig =
+      getResult.body?.DistributionConfig ||
+      (getResult.body?.Enabled !== undefined ? getResult.body : undefined) ||
+      getResult.DistributionConfig
 
     if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
@@ -524,12 +714,11 @@ export class CloudFrontClient {
       currentConfig.CustomErrorResponses = {
         Quantity: 0,
       }
-    }
-    else {
+    } else {
       currentConfig.CustomErrorResponses = {
         Quantity: customErrorResponses.length,
         Items: {
-          CustomErrorResponse: customErrorResponses.map(err => ({
+          CustomErrorResponse: customErrorResponses.map((err) => ({
             ErrorCode: err.errorCode,
             ...(err.responsePagePath && { ResponsePagePath: err.responsePagePath }),
             ...(err.responseCode && { ResponseCode: err.responseCode }),
@@ -612,7 +801,10 @@ export class CloudFrontClient {
     // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
     // parser yields the config directly as `body` (no wrapping key). Older code
     // only looked for a `.DistributionConfig` wrapper and always threw.
-    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
+    const currentConfig =
+      getResult.body?.DistributionConfig ||
+      (getResult.body?.Enabled !== undefined ? getResult.body : undefined) ||
+      getResult.DistributionConfig
 
     if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
@@ -676,7 +868,8 @@ export class CloudFrontClient {
    */
   private buildDistributionConfigXml(config: any): string {
     const escapeXml = (str: string): string => {
-      return str.replace(/&/g, '&amp;')
+      return str
+        .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
@@ -730,7 +923,7 @@ export class CloudFrontClient {
       if (Array.isArray(value)) {
         // For arrays, we need to output each item with the appropriate element name
         const childName = arrayChildNames[name] || name.replace(/s$/, '')
-        return value.map(item => buildXmlElement(childName, item, indent, name)).join('')
+        return value.map((item) => buildXmlElement(childName, item, indent, name)).join('')
       }
 
       if (typeof value === 'object') {
@@ -740,7 +933,7 @@ export class CloudFrontClient {
           const childElementName = itemsChildNames[parentContext] || ''
 
           // Check if Items has named children (like CNAME, Origin, etc.)
-          const keys = Object.keys(value).filter(k => !k.startsWith('@_'))
+          const keys = Object.keys(value).filter((k) => !k.startsWith('@_'))
 
           if (keys.length === 1 && !Array.isArray(value[keys[0]])) {
             // Single named child that's not an array - could be a single item
@@ -749,8 +942,7 @@ export class CloudFrontClient {
             if (typeof childValue === 'string') {
               // Single item like {CNAME: "domain.com"}
               return `${indent}<Items>\n${indent}  <${childKey}>${escapeXml(childValue)}</${childKey}>\n${indent}</Items>\n`
-            }
-            else if (typeof childValue === 'object' && !Array.isArray(childValue)) {
+            } else if (typeof childValue === 'object' && !Array.isArray(childValue)) {
               // Single complex item like {Origin: {...}}
               return `${indent}<Items>\n${buildXmlElement(childKey, childValue, indent + '  ', name)}${indent}</Items>\n`
             }
@@ -764,8 +956,7 @@ export class CloudFrontClient {
             for (const item of childArray) {
               if (typeof item === 'string') {
                 children += `${indent}  <${childKey}>${escapeXml(item)}</${childKey}>\n`
-              }
-              else {
+              } else {
                 children += buildXmlElement(childKey, item, indent + '  ', name)
               }
             }
@@ -779,8 +970,7 @@ export class CloudFrontClient {
             for (const item of value) {
               if (typeof item === 'string') {
                 children += `${indent}  <${childName}>${escapeXml(item)}</${childName}>\n`
-              }
-              else {
+              } else {
                 children += buildXmlElement(childName, item, indent + '  ', name)
               }
             }
@@ -807,7 +997,12 @@ export class CloudFrontClient {
       return ''
     }
 
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">\n${Object.entries(config).filter(([k]) => !k.startsWith('@_')).map(([key, val]) => buildXmlElement(key, val, '  ', 'DistributionConfig')).join('')}</DistributionConfig>`
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<DistributionConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/">\n${Object.entries(
+      config,
+    )
+      .filter(([k]) => !k.startsWith('@_'))
+      .map(([key, val]) => buildXmlElement(key, val, '  ', 'DistributionConfig'))
+      .join('')}</DistributionConfig>`
   }
 
   /**
@@ -824,9 +1019,7 @@ export class CloudFrontClient {
     })
 
     const etag = getResult.headers?.etag || getResult.headers?.ETag || ''
-    const currentConfig = getResult.body?.DistributionConfig
-      || getResult.DistributionConfig
-      || getResult.body
+    const currentConfig = getResult.body?.DistributionConfig || getResult.DistributionConfig || getResult.body
 
     if (!currentConfig) {
       throw new Error('Failed to get current distribution config')
@@ -893,7 +1086,11 @@ export class CloudFrontClient {
   /**
    * Add aliases to a distribution
    */
-  async addAliases(distributionId: string, aliases: string[], certificateArn: string): Promise<{
+  async addAliases(
+    distributionId: string,
+    aliases: string[],
+    certificateArn: string,
+  ): Promise<{
     Distribution: Distribution
     ETag: string
   }> {
@@ -955,13 +1152,15 @@ export class CloudFrontClient {
   /**
    * List CloudFront Functions
    */
-  async listFunctions(): Promise<Array<{
-    Name: string
-    FunctionARN: string
-    Stage: string
-    CreatedTime: string
-    LastModifiedTime: string
-  }>> {
+  async listFunctions(): Promise<
+    Array<{
+      Name: string
+      FunctionARN: string
+      Stage: string
+      CreatedTime: string
+      LastModifiedTime: string
+    }>
+  > {
     const result = await this.client.request({
       service: 'cloudfront',
       region: 'us-east-1',
@@ -997,7 +1196,10 @@ export class CloudFrontClient {
   /**
    * Get a CloudFront Function
    */
-  async getFunction(name: string, stage: 'DEVELOPMENT' | 'LIVE' = 'LIVE'): Promise<{
+  async getFunction(
+    name: string,
+    stage: 'DEVELOPMENT' | 'LIVE' = 'LIVE',
+  ): Promise<{
     FunctionARN: string
     Name: string
     Stage: string
@@ -1023,8 +1225,7 @@ export class CloudFrontClient {
         ETag: result.headers?.etag || result.ETag || '',
         FunctionCode: func.FunctionCode,
       }
-    }
-    catch (err: any) {
+    } catch (err: any) {
       if (err.message?.includes('404') || err.message?.includes('NoSuchFunctionExists')) {
         return null
       }
@@ -1036,7 +1237,10 @@ export class CloudFrontClient {
    * Publish a CloudFront Function (move from DEVELOPMENT to LIVE stage)
    * Can be called with just the name (will auto-fetch ETag) or with options object
    */
-  async publishFunction(nameOrOptions: string | { Name: string, IfMatch: string }, etag?: string): Promise<{
+  async publishFunction(
+    nameOrOptions: string | { Name: string; IfMatch: string },
+    etag?: string,
+  ): Promise<{
     FunctionARN: string
     Stage: string
     FunctionSummary?: {
@@ -1053,8 +1257,7 @@ export class CloudFrontClient {
     if (typeof nameOrOptions === 'object') {
       name = nameOrOptions.Name
       functionETag = nameOrOptions.IfMatch
-    }
-    else {
+    } else {
       name = nameOrOptions
       functionETag = etag
     }
@@ -1090,7 +1293,7 @@ export class CloudFrontClient {
   /**
    * Describe a CloudFront Function (get metadata including ETag)
    */
-  async describeFunction(options: { Name: string, Stage?: 'DEVELOPMENT' | 'LIVE' }): Promise<{
+  async describeFunction(options: { Name: string; Stage?: 'DEVELOPMENT' | 'LIVE' }): Promise<{
     ETag: string
     FunctionSummary: {
       Name: string
@@ -1239,14 +1442,16 @@ export class CloudFrontClient {
   /**
    * Get origin access control configurations
    */
-  async listOriginAccessControls(): Promise<Array<{
-    Id: string
-    Name: string
-    Description?: string
-    SigningProtocol: string
-    SigningBehavior: string
-    OriginAccessControlOriginType: string
-  }>> {
+  async listOriginAccessControls(): Promise<
+    Array<{
+      Id: string
+      Name: string
+      Description?: string
+      SigningProtocol: string
+      SigningBehavior: string
+      OriginAccessControlOriginType: string
+    }>
+  > {
     const result = await this.client.request({
       service: 'cloudfront',
       region: 'us-east-1',
@@ -1261,14 +1466,16 @@ export class CloudFrontClient {
         ? result.OriginAccessControlList.Items.OriginAccessControlSummary
         : [result.OriginAccessControlList.Items.OriginAccessControlSummary]
 
-      items.push(...summaries.map((item: any) => ({
-        Id: item.Id,
-        Name: item.Name,
-        Description: item.Description,
-        SigningProtocol: item.SigningProtocol,
-        SigningBehavior: item.SigningBehavior,
-        OriginAccessControlOriginType: item.OriginAccessControlOriginType,
-      })))
+      items.push(
+        ...summaries.map((item: any) => ({
+          Id: item.Id,
+          Name: item.Name,
+          Description: item.Description,
+          SigningProtocol: item.SigningProtocol,
+          SigningBehavior: item.SigningBehavior,
+          OriginAccessControlOriginType: item.OriginAccessControlOriginType,
+        })),
+      )
     }
 
     return items
@@ -1337,13 +1544,16 @@ export class CloudFrontClient {
   /**
    * Find or create an Origin Access Control
    */
-  async findOrCreateOriginAccessControl(name: string, originType: 's3' | 'mediastore' | 'mediapackagev2' | 'lambda' = 's3'): Promise<{
+  async findOrCreateOriginAccessControl(
+    name: string,
+    originType: 's3' | 'mediastore' | 'mediapackagev2' | 'lambda' = 's3',
+  ): Promise<{
     Id: string
     Name: string
     isNew: boolean
   }> {
     const oacs = await this.listOriginAccessControls()
-    const existing = oacs.find(oac => oac.Name === name && oac.OriginAccessControlOriginType === originType)
+    const existing = oacs.find((oac) => oac.Name === name && oac.OriginAccessControlOriginType === originType)
 
     if (existing) {
       return { Id: existing.Id, Name: existing.Name, isNew: false }
@@ -1395,7 +1605,7 @@ export class CloudFrontClient {
       aliasesXml = `<Aliases>
     <Quantity>${aliases.length}</Quantity>
     <Items>
-      ${aliases.map(a => `<CNAME>${a}</CNAME>`).join('\n      ')}
+      ${aliases.map((a) => `<CNAME>${a}</CNAME>`).join('\n      ')}
     </Items>
   </Aliases>`
     }
@@ -1532,7 +1742,7 @@ export class CloudFrontClient {
       }
 
       // Wait 30 seconds between checks
-      await new Promise(resolve => setTimeout(resolve, 30000))
+      await new Promise((resolve) => setTimeout(resolve, 30000))
     }
 
     return false
@@ -1556,7 +1766,10 @@ export class CloudFrontClient {
     // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
     // parser yields the config directly as `body` (no wrapping key). Older code
     // only looked for a `.DistributionConfig` wrapper and always threw.
-    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
+    const currentConfig =
+      getResult.body?.DistributionConfig ||
+      (getResult.body?.Enabled !== undefined ? getResult.body : undefined) ||
+      getResult.DistributionConfig
 
     if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
@@ -1626,7 +1839,7 @@ export class CloudFrontClient {
       }
 
       // Wait 30 seconds between checks
-      await new Promise(resolve => setTimeout(resolve, 30000))
+      await new Promise((resolve) => setTimeout(resolve, 30000))
     }
 
     return false
@@ -1650,7 +1863,10 @@ export class CloudFrontClient {
     // The `/config` endpoint's root element IS <DistributionConfig>, so the XML
     // parser yields the config directly as `body` (no wrapping key). Older code
     // only looked for a `.DistributionConfig` wrapper and always threw.
-    const currentConfig = getResult.body?.DistributionConfig || (getResult.body?.Enabled !== undefined ? getResult.body : undefined) || getResult.DistributionConfig
+    const currentConfig =
+      getResult.body?.DistributionConfig ||
+      (getResult.body?.Enabled !== undefined ? getResult.body : undefined) ||
+      getResult.DistributionConfig
 
     if (!currentConfig || currentConfig.Enabled === undefined) {
       throw new Error('Failed to get current distribution config')
@@ -1662,13 +1878,11 @@ export class CloudFrontClient {
     if (currentConfig.Aliases?.Items) {
       if (Array.isArray(currentConfig.Aliases.Items)) {
         items = currentConfig.Aliases.Items
-      }
-      else if (typeof currentConfig.Aliases.Items === 'object') {
+      } else if (typeof currentConfig.Aliases.Items === 'object') {
         const cname = currentConfig.Aliases.Items.CNAME
         if (typeof cname === 'string') {
           items = [cname]
-        }
-        else if (Array.isArray(cname)) {
+        } else if (Array.isArray(cname)) {
           items = cname
         }
       }

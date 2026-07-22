@@ -2,7 +2,6 @@
  * AWS EFS (Elastic File System) Client
  * Manages EFS file systems using direct API calls
  */
-
 import { AWSClient } from './client'
 
 export interface FileSystem {
@@ -18,7 +17,7 @@ export interface FileSystem {
   PerformanceMode?: 'generalPurpose' | 'maxIO'
   Encrypted?: boolean
   ThroughputMode?: 'bursting' | 'provisioned' | 'elastic'
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export class EFSClient {
@@ -33,10 +32,7 @@ export class EFSClient {
   /**
    * Describe EFS file systems
    */
-  async describeFileSystems(options?: {
-    FileSystemId?: string
-    CreationToken?: string
-  }): Promise<{
+  async describeFileSystems(options?: { FileSystemId?: string; CreationToken?: string }): Promise<{
     FileSystems?: FileSystem[]
   }> {
     const queryParams: string[] = []
@@ -67,10 +63,12 @@ export class EFSClient {
         CreationTime: fs.CreationTime,
         LifeCycleState: fs.LifeCycleState,
         NumberOfMountTargets: fs.NumberOfMountTargets,
-        SizeInBytes: fs.SizeInBytes ? {
-          Value: fs.SizeInBytes.Value,
-          Timestamp: fs.SizeInBytes.Timestamp,
-        } : undefined,
+        SizeInBytes: fs.SizeInBytes
+          ? {
+              Value: fs.SizeInBytes.Value,
+              Timestamp: fs.SizeInBytes.Timestamp,
+            }
+          : undefined,
         PerformanceMode: fs.PerformanceMode,
         Encrypted: fs.Encrypted,
         ThroughputMode: fs.ThroughputMode,

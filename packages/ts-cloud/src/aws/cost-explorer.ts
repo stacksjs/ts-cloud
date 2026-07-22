@@ -7,9 +7,8 @@
  * Cost Explorer requests are billed at $0.01 each, so getCostByService is
  * served from a filesystem cache by default. Pass `useCache: false` to bypass.
  */
-
-import { AWSClient } from './client'
 import type { CacheHit, CostCacheKey } from './cost-explorer-cache'
+import { AWSClient } from './client'
 import { loadCache, saveCache } from './cost-explorer-cache'
 import { resolveCredentials } from './credentials'
 
@@ -95,7 +94,7 @@ export class CostExplorerClient {
   }
 
   /** Total unblended cost per day over a window (for the spend trend chart). */
-  async getDailyTotals(params: { start: string, end: string }): Promise<number[]> {
+  async getDailyTotals(params: { start: string; end: string }): Promise<number[]> {
     const result = await this.client.request({
       service: 'ce',
       region: 'us-east-1',

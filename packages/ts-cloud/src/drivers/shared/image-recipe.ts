@@ -103,8 +103,7 @@ export function buildImageRecipe(config: CloudConfig, options: ImageRecipeOption
     baked: false,
   })
 
-  if (options.optimize === false)
-    return bootstrap
+  if (options.optimize === false) return bootstrap
 
   // Append the size-minimization pass so the published snapshot/AMI is lean.
   return `${bootstrap}\n${buildImageCleanupScript().join('\n')}\n`

@@ -2,8 +2,7 @@
  * AWS CloudFormation Operations
  * Direct API calls without AWS CLI dependency
  */
-
-import { AWSClient, buildQueryParams } from './client'
+import { AWSClient } from './client'
 
 export interface StackParameter {
   ParameterKey: string
@@ -91,11 +90,9 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateUrl) {
+    } else if (options.templateUrl) {
       params.TemplateURL = options.templateUrl
-    }
-    else {
+    } else {
       throw new Error('Either templateBody or templateUrl must be provided')
     }
 
@@ -154,8 +151,7 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateUrl) {
+    } else if (options.templateUrl) {
       params.TemplateURL = options.templateUrl
     }
 
@@ -164,8 +160,7 @@ export class CloudFormationClient {
         params[`Parameters.member.${index + 1}.ParameterKey`] = param.ParameterKey
         if (param.UsePreviousValue) {
           params[`Parameters.member.${index + 1}.UsePreviousValue`] = 'true'
-        }
-        else {
+        } else {
           params[`Parameters.member.${index + 1}.ParameterValue`] = param.ParameterValue
         }
       })
@@ -308,7 +303,10 @@ export class CloudFormationClient {
   /**
    * Wait for stack to reach a specific status
    */
-  async waitForStack(stackName: string, waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete'): Promise<void> {
+  async waitForStack(
+    stackName: string,
+    waitType: 'stack-create-complete' | 'stack-update-complete' | 'stack-delete-complete',
+  ): Promise<void> {
     const targetStatuses = {
       'stack-create-complete': ['CREATE_COMPLETE'],
       'stack-update-complete': ['UPDATE_COMPLETE'],
@@ -339,7 +337,7 @@ export class CloudFormationClient {
           if (attempts % 10 === 0) {
             console.log(`[waitForStack] Attempt ${attempts}: Stack not visible yet`)
           }
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await new Promise((resolve) => setTimeout(resolve, 2000))
           attempts++
           continue
         }
@@ -347,7 +345,9 @@ export class CloudFormationClient {
         const stack = result.Stacks[0]
 
         if (attempts % 10 === 0) {
-          console.log(`[waitForStack] Attempt ${attempts}: Status = ${stack.StackStatus}${stack.StackStatusReason ? ` (${stack.StackStatusReason})` : ''}`)
+          console.log(
+            `[waitForStack] Attempt ${attempts}: Status = ${stack.StackStatus}${stack.StackStatusReason ? ` (${stack.StackStatusReason})` : ''}`,
+          )
         }
 
         if (targets.includes(stack.StackStatus)) {
@@ -355,8 +355,10 @@ export class CloudFormationClient {
         }
 
         // If stack is being deleted but we're waiting for create/update, something went wrong
-        if ((waitType === 'stack-create-complete' || waitType === 'stack-update-complete') &&
-            (stack.StackStatus === 'DELETE_IN_PROGRESS' || stack.StackStatus === 'DELETE_COMPLETE')) {
+        if (
+          (waitType === 'stack-create-complete' || waitType === 'stack-update-complete') &&
+          (stack.StackStatus === 'DELETE_IN_PROGRESS' || stack.StackStatus === 'DELETE_COMPLETE')
+        ) {
           console.log(`[waitForStack] Stack is being deleted (creation/update failed)`)
           // Try to get stack events to understand the failure
           let failedEventReason = ''
@@ -365,19 +367,21 @@ export class CloudFormationClient {
             console.log('[waitForStack] Stack events (most recent first):')
             for (const event of eventsResult.StackEvents.slice(0, 15)) {
               if (event.ResourceStatus.includes('FAILED') || event.ResourceStatusReason) {
-                console.log(`  ${event.LogicalResourceId}: ${event.ResourceStatus} - ${event.ResourceStatusReason || 'No reason provided'}`)
+                console.log(
+                  `  ${event.LogicalResourceId}: ${event.ResourceStatus} - ${event.ResourceStatusReason || 'No reason provided'}`,
+                )
                 // Capture the first failed event reason for the error message
                 if (event.ResourceStatus.includes('FAILED') && event.ResourceStatusReason && !failedEventReason) {
                   failedEventReason = event.ResourceStatusReason
                 }
               }
             }
-          }
-          catch {
+          } catch {
             // Ignore errors fetching events
           }
           // Include the detailed failure reason in the error message
-          const errorReason = failedEventReason || stack.StackStatusReason || 'Check CloudFormation console for details.'
+          const errorReason =
+            failedEventReason || stack.StackStatusReason || 'Check CloudFormation console for details.'
           throw new Error(`Stack creation/update failed - stack is being deleted. Reason: ${errorReason}`)
         }
 
@@ -395,10 +399,9 @@ export class CloudFormationClient {
         }
 
         // Wait 5 seconds before next attempt
-        await new Promise(resolve => setTimeout(resolve, 5000))
+        await new Promise((resolve) => setTimeout(resolve, 5000))
         attempts++
-      }
-      catch (error: any) {
+      } catch (error: any) {
         if (waitType === 'stack-delete-complete' && error.message?.includes('does not exist')) {
           return // Stack deleted
         }
@@ -407,7 +410,7 @@ export class CloudFormationClient {
           if (attempts % 10 === 0) {
             console.log(`[waitForStack] Attempt ${attempts}: Stack does not exist (error), retrying...`)
           }
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await new Promise((resolve) => setTimeout(resolve, 2000))
           attempts++
           continue
         }
@@ -442,15 +445,17 @@ export class CloudFormationClient {
   /**
    * List all stacks
    */
-  async listStacks(statusFilter?: string[]): Promise<{ StackSummaries: Array<{
-    StackId: string
-    StackName: string
-    TemplateDescription?: string
-    CreationTime: string
-    LastUpdatedTime?: string
-    DeletionTime?: string
-    StackStatus: string
-  }> }> {
+  async listStacks(statusFilter?: string[]): Promise<{
+    StackSummaries: Array<{
+      StackId: string
+      StackName: string
+      TemplateDescription?: string
+      CreationTime: string
+      LastUpdatedTime?: string
+      DeletionTime?: string
+      StackStatus: string
+    }>
+  }> {
     const params: Record<string, any> = {
       Action: 'ListStacks',
       Version: '2010-05-15',
@@ -473,7 +478,7 @@ export class CloudFormationClient {
     const response = result.ListStacksResponse || result
     const summariesResult = response.ListStacksResult || response
     const members = summariesResult.StackSummaries?.member || summariesResult.StackSummaries || []
-    const items = Array.isArray(members) ? members : (members ? [members] : [])
+    const items = Array.isArray(members) ? members : members ? [members] : []
 
     return {
       StackSummaries: items.map((s: any) => ({
@@ -488,7 +493,6 @@ export class CloudFormationClient {
     }
   }
 
-
   /**
    * Create change set (for preview before updating)
    */
@@ -500,7 +504,7 @@ export class CloudFormationClient {
     parameters?: StackParameter[]
     capabilities?: string[]
     changeSetType?: 'CREATE' | 'UPDATE'
-  }): Promise<{ Id: string, StackId: string }> {
+  }): Promise<{ Id: string; StackId: string }> {
     const params: Record<string, any> = {
       Action: 'CreateChangeSet',
       StackName: options.stackName,
@@ -510,8 +514,7 @@ export class CloudFormationClient {
 
     if (options.templateBody) {
       params.TemplateBody = options.templateBody
-    }
-    else if (options.templateUrl) {
+    } else if (options.templateUrl) {
       params.TemplateURL = options.templateUrl
     }
 
@@ -656,10 +659,7 @@ export class CloudFormationClient {
 
     // Handle different response structures from XML parsing
     // The XML response is: DescribeStacksResponse > DescribeStacksResult > Stacks > member
-    let stackData = result?.DescribeStacksResult?.Stacks?.member
-      || result?.Stacks?.member
-      || result?.Stacks
-      || result
+    let stackData = result?.DescribeStacksResult?.Stacks?.member || result?.Stacks?.member || result?.Stacks || result
 
     // If it's a single stack, wrap in array
     if (stackData && !Array.isArray(stackData)) {
@@ -670,7 +670,8 @@ export class CloudFormationClient {
       for (const s of stackData) {
         if (s.StackId || s.StackName) {
           // Parse outputs
-          let outputs: Array<{ OutputKey: string, OutputValue: string, Description?: string, ExportName?: string }> | undefined
+          let outputs:
+            Array<{ OutputKey: string; OutputValue: string; Description?: string; ExportName?: string }> | undefined
           if (s.Outputs?.member) {
             const outputData = Array.isArray(s.Outputs.member) ? s.Outputs.member : [s.Outputs.member]
             outputs = outputData.map((o: any) => ({
@@ -714,10 +715,8 @@ export class CloudFormationClient {
     const events: StackEvent[] = []
 
     // Handle XML response structure: DescribeStackEventsResult > StackEvents > member
-    let eventData = result?.DescribeStackEventsResult?.StackEvents?.member
-      || result?.StackEvents?.member
-      || result?.StackEvents
-      || []
+    let eventData =
+      result?.DescribeStackEventsResult?.StackEvents?.member || result?.StackEvents?.member || result?.StackEvents || []
 
     // If single event, wrap in array
     if (eventData && !Array.isArray(eventData)) {
@@ -796,8 +795,7 @@ export class CloudFormationClient {
                 })
               }
             }
-          }
-          catch {
+          } catch {
             // Events might not be available yet, continue
           }
         }
@@ -809,7 +807,7 @@ export class CloudFormationClient {
           if (waitType === 'stack-delete-complete') {
             return // Stack deleted successfully
           }
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await new Promise((resolve) => setTimeout(resolve, 2000))
           attempts++
           continue
         }
@@ -832,15 +830,14 @@ export class CloudFormationClient {
           throw new Error(`Stack reached failure status: ${stack.StackStatus}`)
         }
 
-        await new Promise(resolve => setTimeout(resolve, 3000))
+        await new Promise((resolve) => setTimeout(resolve, 3000))
         attempts++
-      }
-      catch (error: any) {
+      } catch (error: any) {
         if (waitType === 'stack-delete-complete' && error.message?.includes('does not exist')) {
           return
         }
         if (waitType === 'stack-create-complete' && error.message?.includes('does not exist')) {
-          await new Promise(resolve => setTimeout(resolve, 2000))
+          await new Promise((resolve) => setTimeout(resolve, 2000))
           attempts++
           continue
         }
@@ -860,11 +857,7 @@ export class CloudFormationClient {
     maxAttempts: number = 120,
     delayMs: number = 5000,
   ): Promise<{ success: boolean; status: string; reason?: string }> {
-    const successStatuses = [
-      'CREATE_COMPLETE',
-      'UPDATE_COMPLETE',
-      'DELETE_COMPLETE',
-    ]
+    const successStatuses = ['CREATE_COMPLETE', 'UPDATE_COMPLETE', 'DELETE_COMPLETE']
     const failureStatuses = [
       'CREATE_FAILED',
       'UPDATE_FAILED',
@@ -896,9 +889,8 @@ export class CloudFormationClient {
         }
 
         // Still in progress, wait and retry
-        await new Promise(resolve => setTimeout(resolve, delayMs))
-      }
-      catch (error: any) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      } catch (error: any) {
         if (error.message?.includes('does not exist')) {
           return { success: true, status: 'DELETE_COMPLETE' }
         }

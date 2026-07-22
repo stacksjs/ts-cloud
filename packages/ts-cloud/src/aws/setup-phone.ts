@@ -95,8 +95,7 @@ async function main() {
     console.log('  Hours: 11:30 AM - 8:00 PM PST')
     console.log('')
     console.log('========================================')
-  }
-  catch (e: any) {
+  } catch (e: any) {
     console.log('Error:', e.message)
   }
 }

@@ -2,7 +2,6 @@
  * AWS IAM (Identity and Access Management) Operations
  * Direct API calls without AWS SDK dependency
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -664,21 +663,18 @@ function buildQueryParams(action: string, params: Record<string, unknown>): stri
           for (const [subKey, subValue] of Object.entries(item as Record<string, unknown>)) {
             queryParams.push(`${key}.member.${index + 1}.${subKey}=${encodeURIComponent(String(subValue))}`)
           }
-        }
-else {
+        } else {
           queryParams.push(`${key}.member.${index + 1}=${encodeURIComponent(String(item))}`)
         }
       })
-    }
-else if (typeof value === 'object') {
+    } else if (typeof value === 'object') {
       // Handle nested objects
       for (const [subKey, subValue] of Object.entries(value as Record<string, unknown>)) {
         if (subValue !== undefined && subValue !== null) {
           queryParams.push(`${key}.${subKey}=${encodeURIComponent(String(subValue))}`)
         }
       }
-    }
-else {
+    } else {
       queryParams.push(`${key}=${encodeURIComponent(String(value))}`)
     }
   }
@@ -834,7 +830,9 @@ export class IAMClient {
   /**
    * Get information about an IAM group
    */
-  async getGroup(params: GetGroupParams): Promise<{ Group: IAMGroup; Users: IAMUser[]; IsTruncated: boolean; Marker?: string }> {
+  async getGroup(
+    params: GetGroupParams,
+  ): Promise<{ Group: IAMGroup; Users: IAMUser[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('GetGroup', params)
     const group = this.parseGroup(response)
     const users = this.parseUsers(response)
@@ -846,7 +844,9 @@ export class IAMClient {
   /**
    * List IAM groups
    */
-  async listGroups(params: ListGroupsParams = {}): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
+  async listGroups(
+    params: ListGroupsParams = {},
+  ): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroups', params)
     const groups = this.parseGroups(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -885,7 +885,9 @@ export class IAMClient {
   /**
    * List groups for a user
    */
-  async listGroupsForUser(params: ListGroupsForUserParams): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
+  async listGroupsForUser(
+    params: ListGroupsForUserParams,
+  ): Promise<{ Groups: IAMGroup[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroupsForUser', params)
     const groups = this.parseGroups(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -997,7 +999,9 @@ export class IAMClient {
   /**
    * List tags for an IAM role
    */
-  async listRoleTags(params: ListRoleTagsParams): Promise<{ Tags: Array<{ Key: string; Value: string }>; IsTruncated: boolean; Marker?: string }> {
+  async listRoleTags(
+    params: ListRoleTagsParams,
+  ): Promise<{ Tags: Array<{ Key: string; Value: string }>; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListRoleTags', params)
     const tags = this.parseTags(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1017,7 +1021,9 @@ export class IAMClient {
       CreateDate: parseXmlValue(xml, 'CreateDate'),
       AssumeRolePolicyDocument: parseXmlValue(xml, 'AssumeRolePolicyDocument'),
       Description: parseXmlValue(xml, 'Description'),
-      MaxSessionDuration: parseXmlValue(xml, 'MaxSessionDuration') ? Number.parseInt(parseXmlValue(xml, 'MaxSessionDuration')!, 10) : undefined,
+      MaxSessionDuration: parseXmlValue(xml, 'MaxSessionDuration')
+        ? Number.parseInt(parseXmlValue(xml, 'MaxSessionDuration')!, 10)
+        : undefined,
     }
   }
 
@@ -1034,7 +1040,9 @@ export class IAMClient {
       CreateDate: parseXmlValue(memberXml, 'CreateDate'),
       AssumeRolePolicyDocument: parseXmlValue(memberXml, 'AssumeRolePolicyDocument'),
       Description: parseXmlValue(memberXml, 'Description'),
-      MaxSessionDuration: parseXmlValue(memberXml, 'MaxSessionDuration') ? Number.parseInt(parseXmlValue(memberXml, 'MaxSessionDuration')!, 10) : undefined,
+      MaxSessionDuration: parseXmlValue(memberXml, 'MaxSessionDuration')
+        ? Number.parseInt(parseXmlValue(memberXml, 'MaxSessionDuration')!, 10)
+        : undefined,
     }))
   }
 
@@ -1085,7 +1093,9 @@ export class IAMClient {
   /**
    * List managed policies
    */
-  async listPolicies(params: ListPoliciesParams = {}): Promise<{ Policies: IAMPolicy[]; IsTruncated: boolean; Marker?: string }> {
+  async listPolicies(
+    params: ListPoliciesParams = {},
+  ): Promise<{ Policies: IAMPolicy[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListPolicies', params)
     const policies = this.parsePolicies(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1096,7 +1106,9 @@ export class IAMClient {
   /**
    * List versions of a managed policy
    */
-  async listPolicyVersions(params: ListPolicyVersionsParams): Promise<{ Versions: PolicyVersion[]; IsTruncated: boolean; Marker?: string }> {
+  async listPolicyVersions(
+    params: ListPolicyVersionsParams,
+  ): Promise<{ Versions: PolicyVersion[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListPolicyVersions', params)
     const versions = this.parsePolicyVersions(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1182,7 +1194,11 @@ export class IAMClient {
   /**
    * List managed policies attached to a user
    */
-  async listAttachedUserPolicies(params: ListAttachedUserPoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
+  async listAttachedUserPolicies(params: ListAttachedUserPoliciesParams): Promise<{
+    AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>
+    IsTruncated: boolean
+    Marker?: string
+  }> {
     const response = await this.request('ListAttachedUserPolicies', params)
     const policies = this.parseAttachedPolicies(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1193,7 +1209,11 @@ export class IAMClient {
   /**
    * List managed policies attached to a group
    */
-  async listAttachedGroupPolicies(params: ListAttachedGroupPoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
+  async listAttachedGroupPolicies(params: ListAttachedGroupPoliciesParams): Promise<{
+    AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>
+    IsTruncated: boolean
+    Marker?: string
+  }> {
     const response = await this.request('ListAttachedGroupPolicies', params)
     const policies = this.parseAttachedPolicies(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1204,7 +1224,11 @@ export class IAMClient {
   /**
    * List managed policies attached to a role
    */
-  async listAttachedRolePolicies(params: ListAttachedRolePoliciesParams): Promise<{ AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>; IsTruncated: boolean; Marker?: string }> {
+  async listAttachedRolePolicies(params: ListAttachedRolePoliciesParams): Promise<{
+    AttachedPolicies: Array<{ PolicyName: string; PolicyArn: string }>
+    IsTruncated: boolean
+    Marker?: string
+  }> {
     const response = await this.request('ListAttachedRolePolicies', params)
     const policies = this.parseAttachedPolicies(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1222,8 +1246,12 @@ export class IAMClient {
       Arn: parseXmlValue(xml, 'Arn') || '',
       Path: parseXmlValue(xml, 'Path'),
       DefaultVersionId: parseXmlValue(xml, 'DefaultVersionId'),
-      AttachmentCount: parseXmlValue(xml, 'AttachmentCount') ? Number.parseInt(parseXmlValue(xml, 'AttachmentCount')!, 10) : undefined,
-      PermissionsBoundaryUsageCount: parseXmlValue(xml, 'PermissionsBoundaryUsageCount') ? Number.parseInt(parseXmlValue(xml, 'PermissionsBoundaryUsageCount')!, 10) : undefined,
+      AttachmentCount: parseXmlValue(xml, 'AttachmentCount')
+        ? Number.parseInt(parseXmlValue(xml, 'AttachmentCount')!, 10)
+        : undefined,
+      PermissionsBoundaryUsageCount: parseXmlValue(xml, 'PermissionsBoundaryUsageCount')
+        ? Number.parseInt(parseXmlValue(xml, 'PermissionsBoundaryUsageCount')!, 10)
+        : undefined,
       IsAttachable: parseXmlValue(xml, 'IsAttachable') === 'true',
       Description: parseXmlValue(xml, 'Description'),
       CreateDate: parseXmlValue(xml, 'CreateDate'),
@@ -1242,8 +1270,12 @@ export class IAMClient {
       Arn: parseXmlValue(memberXml, 'Arn') || '',
       Path: parseXmlValue(memberXml, 'Path'),
       DefaultVersionId: parseXmlValue(memberXml, 'DefaultVersionId'),
-      AttachmentCount: parseXmlValue(memberXml, 'AttachmentCount') ? Number.parseInt(parseXmlValue(memberXml, 'AttachmentCount')!, 10) : undefined,
-      PermissionsBoundaryUsageCount: parseXmlValue(memberXml, 'PermissionsBoundaryUsageCount') ? Number.parseInt(parseXmlValue(memberXml, 'PermissionsBoundaryUsageCount')!, 10) : undefined,
+      AttachmentCount: parseXmlValue(memberXml, 'AttachmentCount')
+        ? Number.parseInt(parseXmlValue(memberXml, 'AttachmentCount')!, 10)
+        : undefined,
+      PermissionsBoundaryUsageCount: parseXmlValue(memberXml, 'PermissionsBoundaryUsageCount')
+        ? Number.parseInt(parseXmlValue(memberXml, 'PermissionsBoundaryUsageCount')!, 10)
+        : undefined,
       IsAttachable: parseXmlValue(memberXml, 'IsAttachable') === 'true',
       Description: parseXmlValue(memberXml, 'Description'),
       CreateDate: parseXmlValue(memberXml, 'CreateDate'),
@@ -1288,7 +1320,9 @@ export class IAMClient {
   /**
    * Get an inline policy for a user
    */
-  async getUserPolicy(params: GetUserPolicyParams): Promise<{ UserName: string; PolicyName: string; PolicyDocument: string }> {
+  async getUserPolicy(
+    params: GetUserPolicyParams,
+  ): Promise<{ UserName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetUserPolicy', params)
     return {
       UserName: parseXmlValue(response, 'UserName') || '',
@@ -1307,7 +1341,9 @@ export class IAMClient {
   /**
    * List inline policies for a user
    */
-  async listUserPolicies(params: ListUserPoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
+  async listUserPolicies(
+    params: ListUserPoliciesParams,
+  ): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListUserPolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1325,7 +1361,9 @@ export class IAMClient {
   /**
    * Get an inline policy for a group
    */
-  async getGroupPolicy(params: GetGroupPolicyParams): Promise<{ GroupName: string; PolicyName: string; PolicyDocument: string }> {
+  async getGroupPolicy(
+    params: GetGroupPolicyParams,
+  ): Promise<{ GroupName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetGroupPolicy', params)
     return {
       GroupName: parseXmlValue(response, 'GroupName') || '',
@@ -1344,7 +1382,9 @@ export class IAMClient {
   /**
    * List inline policies for a group
    */
-  async listGroupPolicies(params: ListGroupPoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
+  async listGroupPolicies(
+    params: ListGroupPoliciesParams,
+  ): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListGroupPolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1362,7 +1402,9 @@ export class IAMClient {
   /**
    * Get an inline policy for a role
    */
-  async getRolePolicy(params: GetRolePolicyParams): Promise<{ RoleName: string; PolicyName: string; PolicyDocument: string }> {
+  async getRolePolicy(
+    params: GetRolePolicyParams,
+  ): Promise<{ RoleName: string; PolicyName: string; PolicyDocument: string }> {
     const response = await this.request('GetRolePolicy', params)
     return {
       RoleName: parseXmlValue(response, 'RoleName') || '',
@@ -1381,7 +1423,9 @@ export class IAMClient {
   /**
    * List inline policies for a role
    */
-  async listRolePolicies(params: ListRolePoliciesParams): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
+  async listRolePolicies(
+    params: ListRolePoliciesParams,
+  ): Promise<{ PolicyNames: string[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListRolePolicies', params)
     const policyNames = parseXmlArray(response, 'PolicyNames', 'member')
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1401,8 +1445,7 @@ export class IAMClient {
 
     // Handle both string (XML) and object (parsed) responses
     if (typeof response === 'object') {
-      const accessKey = (response as any)?.CreateAccessKeyResult?.AccessKey
-        || (response as any)?.AccessKey
+      const accessKey = (response as any)?.CreateAccessKeyResult?.AccessKey || (response as any)?.AccessKey
       if (accessKey) {
         return {
           AccessKey: {
@@ -1431,7 +1474,9 @@ export class IAMClient {
   /**
    * List access keys for a user
    */
-  async listAccessKeys(params: ListAccessKeysParams = {}): Promise<{ AccessKeyMetadata: AccessKeyMetadata[]; IsTruncated: boolean; Marker?: string }> {
+  async listAccessKeys(
+    params: ListAccessKeysParams = {},
+  ): Promise<{ AccessKeyMetadata: AccessKeyMetadata[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListAccessKeys', params)
     const keys = this.parseAccessKeys(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1456,7 +1501,10 @@ export class IAMClient {
   /**
    * Get information about when an access key was last used
    */
-  async getAccessKeyLastUsed(params: GetAccessKeyLastUsedParams): Promise<{ UserName: string; AccessKeyLastUsed: { LastUsedDate?: string; ServiceName?: string; Region?: string } }> {
+  async getAccessKeyLastUsed(params: GetAccessKeyLastUsedParams): Promise<{
+    UserName: string
+    AccessKeyLastUsed: { LastUsedDate?: string; ServiceName?: string; Region?: string }
+  }> {
     const response = await this.request('GetAccessKeyLastUsed', params)
     return {
       UserName: parseXmlValue(response, 'UserName') || '',
@@ -1504,7 +1552,9 @@ export class IAMClient {
   /**
    * List instance profiles
    */
-  async listInstanceProfiles(params: ListInstanceProfilesParams = {}): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
+  async listInstanceProfiles(
+    params: ListInstanceProfilesParams = {},
+  ): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListInstanceProfiles', params)
     const profiles = this.parseInstanceProfiles(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1515,7 +1565,9 @@ export class IAMClient {
   /**
    * List instance profiles for a role
    */
-  async listInstanceProfilesForRole(params: ListInstanceProfilesForRoleParams): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
+  async listInstanceProfilesForRole(
+    params: ListInstanceProfilesForRoleParams,
+  ): Promise<{ InstanceProfiles: InstanceProfile[]; IsTruncated: boolean; Marker?: string }> {
     const response = await this.request('ListInstanceProfilesForRole', params)
     const profiles = this.parseInstanceProfiles(response)
     const isTruncated = parseXmlValue(response, 'IsTruncated') === 'true'
@@ -1581,15 +1633,21 @@ export class IAMClient {
   async getAccountPasswordPolicy(): Promise<PasswordPolicy> {
     const response = await this.request('GetAccountPasswordPolicy')
     return {
-      MinimumPasswordLength: parseXmlValue(response, 'MinimumPasswordLength') ? Number.parseInt(parseXmlValue(response, 'MinimumPasswordLength')!, 10) : undefined,
+      MinimumPasswordLength: parseXmlValue(response, 'MinimumPasswordLength')
+        ? Number.parseInt(parseXmlValue(response, 'MinimumPasswordLength')!, 10)
+        : undefined,
       RequireSymbols: parseXmlValue(response, 'RequireSymbols') === 'true',
       RequireNumbers: parseXmlValue(response, 'RequireNumbers') === 'true',
       RequireUppercaseCharacters: parseXmlValue(response, 'RequireUppercaseCharacters') === 'true',
       RequireLowercaseCharacters: parseXmlValue(response, 'RequireLowercaseCharacters') === 'true',
       AllowUsersToChangePassword: parseXmlValue(response, 'AllowUsersToChangePassword') === 'true',
       ExpirePasswords: parseXmlValue(response, 'ExpirePasswords') === 'true',
-      MaxPasswordAge: parseXmlValue(response, 'MaxPasswordAge') ? Number.parseInt(parseXmlValue(response, 'MaxPasswordAge')!, 10) : undefined,
-      PasswordReusePrevention: parseXmlValue(response, 'PasswordReusePrevention') ? Number.parseInt(parseXmlValue(response, 'PasswordReusePrevention')!, 10) : undefined,
+      MaxPasswordAge: parseXmlValue(response, 'MaxPasswordAge')
+        ? Number.parseInt(parseXmlValue(response, 'MaxPasswordAge')!, 10)
+        : undefined,
+      PasswordReusePrevention: parseXmlValue(response, 'PasswordReusePrevention')
+        ? Number.parseInt(parseXmlValue(response, 'PasswordReusePrevention')!, 10)
+        : undefined,
       HardExpiry: parseXmlValue(response, 'HardExpiry') === 'true',
     }
   }
@@ -1621,7 +1679,7 @@ export class IAMClient {
       const key = parseXmlValue(entry, 'key')
       const value = parseXmlValue(entry, 'value')
       if (key && value) {
-        (summary as Record<string, number>)[key] = Number.parseInt(value, 10)
+        ;(summary as Record<string, number>)[key] = Number.parseInt(value, 10)
       }
     }
 

@@ -2,39 +2,30 @@
  * Porkbun DNS Provider
  * API documentation: https://porkbun.com/api/json/v3/documentation
  */
-
-import type {
-  CreateRecordResult,
-  DeleteRecordResult,
-  DnsProvider,
-  DnsRecord,
-  DnsRecordResult,
-  DnsRecordType,
-  ListRecordsResult,
-} from './types'
+import type { CreateRecordResult, DeleteRecordResult, DnsProvider, DnsRecord, DnsRecordResult, DnsRecordType, ListRecordsResult } from './types'
 
 const PORKBUN_API_URL = 'https://api.porkbun.com/api/json/v3'
 const PORKBUN_MAX_ATTEMPTS = 8
 const PORKBUN_REQUEST_TIMEOUT_MS = 15_000
 
 function isRetryablePorkbunResponse(status: number, message = ''): boolean {
-  return status === 408
-    || status === 409
-    || status === 425
-    || status === 429
-    || status >= 500
-    || /rate limit|temporar|timed? ?out|try again/i.test(message)
+  return (
+    status === 408 ||
+    status === 409 ||
+    status === 425 ||
+    status === 429 ||
+    status >= 500 ||
+    /rate limit|temporar|timed? ?out|try again/i.test(message)
+  )
 }
 
 async function waitForPorkbunRetry(attempt: number, response?: Response): Promise<void> {
   const retryAfter = response?.headers.get('retry-after')
-  const retryAfterMs = retryAfter === null || retryAfter === undefined
-    ? undefined
-    : Number(retryAfter) * 1000
+  const retryAfterMs = retryAfter === null || retryAfter === undefined ? undefined : Number(retryAfter) * 1000
   const delay = Number.isFinite(retryAfterMs)
     ? Math.max(0, retryAfterMs as number)
     : Math.min(1000 * 2 ** (attempt - 1), 30000)
-  await new Promise(resolve => setTimeout(resolve, delay))
+  await new Promise((resolve) => setTimeout(resolve, delay))
 }
 
 interface PorkbunApiResponse {
@@ -99,31 +90,26 @@ export class PorkbunProvider implements DnsProvider {
           }),
           signal: controller.signal,
         })
-      }
-      catch (error) {
+      } catch (error) {
         lastError = error
-        if (attempt === PORKBUN_MAX_ATTEMPTS)
-          throw error
+        if (attempt === PORKBUN_MAX_ATTEMPTS) throw error
         await waitForPorkbunRetry(attempt)
         continue
-      }
-      finally {
+      } finally {
         clearTimeout(timeout)
       }
 
       if (!response.ok) {
         lastError = new Error(`Porkbun API error: ${response.status} ${response.statusText}`)
-        if (!isRetryablePorkbunResponse(response.status) || attempt === PORKBUN_MAX_ATTEMPTS)
-          throw lastError
+        if (!isRetryablePorkbunResponse(response.status) || attempt === PORKBUN_MAX_ATTEMPTS) throw lastError
         await waitForPorkbunRetry(attempt, response)
         continue
       }
 
-      const data = await response.json() as T
+      const data = (await response.json()) as T
       if (data.status === 'ERROR') {
         lastError = new Error(`Porkbun API error: ${data.message || 'Unknown error'}`)
-        if (!isRetryablePorkbunResponse(0, data.message) || attempt === PORKBUN_MAX_ATTEMPTS)
-          throw lastError
+        if (!isRetryablePorkbunResponse(0, data.message) || attempt === PORKBUN_MAX_ATTEMPTS) throw lastError
         await waitForPorkbunRetry(attempt, response)
         continue
       }
@@ -197,18 +183,14 @@ export class PorkbunProvider implements DnsProvider {
         body.content = `${record.weight} ${record.port} ${record.content}`
       }
 
-      const response = await this.request<PorkbunCreateRecordResponse>(
-        `/dns/create/${rootDomain}`,
-        body,
-      )
+      const response = await this.request<PorkbunCreateRecordResponse>(`/dns/create/${rootDomain}`, body)
 
       return {
         success: true,
         id: response.id?.toString(),
         message: 'Record created successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -252,10 +234,7 @@ export class PorkbunProvider implements DnsProvider {
             body.content = `${record.weight} ${record.port} ${record.content}`
           }
 
-          await this.request(
-            `/dns/edit/${rootDomain}/${matchingRecord.id}`,
-            body,
-          )
+          await this.request(`/dns/edit/${rootDomain}/${matchingRecord.id}`, body)
 
           return {
             success: true,
@@ -267,8 +246,7 @@ export class PorkbunProvider implements DnsProvider {
 
       // No existing record found, create new one
       return this.createRecord(domain, record)
-    }
-    catch (error) {
+    } catch (error) {
       // If update fails, try create
       return this.createRecord(domain, record)
     }
@@ -301,9 +279,7 @@ export class PorkbunProvider implements DnsProvider {
       // Find matching record
       const matchingRecord = existing.records.find((r) => {
         const existingSubdomain = this.getSubdomain(r.name, rootDomain)
-        return existingSubdomain === subdomain
-          && r.type === record.type
-          && r.content === record.content
+        return existingSubdomain === subdomain && r.type === record.type && r.content === record.content
       })
 
       if (!matchingRecord?.id) {
@@ -319,8 +295,7 @@ export class PorkbunProvider implements DnsProvider {
         success: true,
         message: 'Record deleted successfully',
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -339,7 +314,7 @@ export class PorkbunProvider implements DnsProvider {
 
       const response = await this.request<PorkbunListRecordsResponse>(endpoint)
 
-      const records: DnsRecordResult[] = (response.records || []).map(r => ({
+      const records: DnsRecordResult[] = (response.records || []).map((r) => ({
         id: r.id,
         name: r.name || rootDomain,
         type: r.type as DnsRecordType,
@@ -352,8 +327,7 @@ export class PorkbunProvider implements DnsProvider {
         success: true,
         records,
       }
-    }
-    catch (error) {
+    } catch (error) {
       return {
         success: false,
         records: [],
@@ -368,8 +342,7 @@ export class PorkbunProvider implements DnsProvider {
       // Ping API to check if we can access this domain
       await this.request(`/dns/retrieve/${rootDomain}`)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -384,9 +357,8 @@ export class PorkbunProvider implements DnsProvider {
       const response = await this.request<PorkbunApiResponse & { domains?: Array<{ domain: string }> }>(
         '/domain/listAll',
       )
-      return (response.domains || []).map(d => d.domain)
-    }
-    catch {
+      return (response.domains || []).map((d) => d.domain)
+    } catch {
       return []
     }
   }
@@ -397,12 +369,9 @@ export class PorkbunProvider implements DnsProvider {
   async getNameServers(domain: string): Promise<string[]> {
     try {
       const rootDomain = this.getRootDomain(domain)
-      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(
-        `/dns/getNS/${rootDomain}`,
-      )
+      const response = await this.request<PorkbunApiResponse & { ns?: string[] }>(`/dns/getNS/${rootDomain}`)
       return response.ns || []
-    }
-    catch {
+    } catch {
       return []
     }
   }
@@ -417,8 +386,7 @@ export class PorkbunProvider implements DnsProvider {
         ns: nameservers,
       })
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }

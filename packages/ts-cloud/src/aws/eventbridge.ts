@@ -2,7 +2,6 @@
  * AWS EventBridge Client
  * Direct API calls for EventBridge operations
  */
-
 import { AWSClient } from './client'
 
 export interface EventBridgeRule {
@@ -83,21 +82,14 @@ export class EventBridgeClient {
   /**
    * Delete a rule
    */
-  async deleteRule(params: {
-    Name: string
-    EventBusName?: string
-    Force?: boolean
-  }): Promise<void> {
+  async deleteRule(params: { Name: string; EventBusName?: string; Force?: boolean }): Promise<void> {
     return this.request('DeleteRule', params)
   }
 
   /**
    * Describe a rule
    */
-  async describeRule(params: {
-    Name: string
-    EventBusName?: string
-  }): Promise<EventBridgeRule> {
+  async describeRule(params: { Name: string; EventBusName?: string }): Promise<EventBridgeRule> {
     return this.request('DescribeRule', params)
   }
 
@@ -127,31 +119,21 @@ export class EventBridgeClient {
   /**
    * Enable a rule
    */
-  async enableRule(params: {
-    Name: string
-    EventBusName?: string
-  }): Promise<void> {
+  async enableRule(params: { Name: string; EventBusName?: string }): Promise<void> {
     return this.request('EnableRule', params)
   }
 
   /**
    * Disable a rule
    */
-  async disableRule(params: {
-    Name: string
-    EventBusName?: string
-  }): Promise<void> {
+  async disableRule(params: { Name: string; EventBusName?: string }): Promise<void> {
     return this.request('DisableRule', params)
   }
 
   /**
    * Add targets to a rule
    */
-  async putTargets(params: {
-    Rule: string
-    EventBusName?: string
-    Targets: EventBridgeTarget[]
-  }): Promise<{
+  async putTargets(params: { Rule: string; EventBusName?: string; Targets: EventBridgeTarget[] }): Promise<{
     FailedEntryCount: number
     FailedEntries: Array<{
       TargetId: string
@@ -165,12 +147,7 @@ export class EventBridgeClient {
   /**
    * Remove targets from a rule
    */
-  async removeTargets(params: {
-    Rule: string
-    EventBusName?: string
-    Ids: string[]
-    Force?: boolean
-  }): Promise<{
+  async removeTargets(params: { Rule: string; EventBusName?: string; Ids: string[]; Force?: boolean }): Promise<{
     FailedEntryCount: number
     FailedEntries: Array<{
       TargetId: string

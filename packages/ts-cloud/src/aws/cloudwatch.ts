@@ -51,7 +51,7 @@ export class CloudWatchClient {
   async getMetricStatistics(options: {
     Namespace: string
     MetricName: string
-    Dimensions?: Array<{ Name: string, Value: string }>
+    Dimensions?: Array<{ Name: string; Value: string }>
     StartTime: Date
     EndTime: Date
     Period: number
@@ -67,8 +67,12 @@ export class CloudWatchClient {
       EndTime: options.EndTime.toISOString(),
       Period: options.Period,
     }
-    ;(options.Statistics ?? []).forEach((s, i) => { params[`Statistics.member.${i + 1}`] = s })
-    ;(options.ExtendedStatistics ?? []).forEach((s, i) => { params[`ExtendedStatistics.member.${i + 1}`] = s })
+    ;(options.Statistics ?? []).forEach((s, i) => {
+      params[`Statistics.member.${i + 1}`] = s
+    })
+    ;(options.ExtendedStatistics ?? []).forEach((s, i) => {
+      params[`ExtendedStatistics.member.${i + 1}`] = s
+    })
     ;(options.Dimensions ?? []).forEach((d, i) => {
       params[`Dimensions.member.${i + 1}.Name`] = d.Name
       params[`Dimensions.member.${i + 1}.Value`] = d.Value
@@ -106,7 +110,7 @@ export class CloudWatchClient {
   async getMetricSeries(options: {
     Namespace: string
     MetricName: string
-    Dimensions?: Array<{ Name: string, Value: string }>
+    Dimensions?: Array<{ Name: string; Value: string }>
     StartTime: Date
     EndTime: Date
     Period: number
@@ -126,11 +130,11 @@ export class CloudWatchClient {
     return pts
       .slice()
       .sort((a, b) => new Date(a.Timestamp ?? 0).getTime() - new Date(b.Timestamp ?? 0).getTime())
-      .map(p => (isPct ? (p.Percentiles?.[options.Stat] ?? 0) : (p as any)[options.Stat] ?? 0))
+      .map((p) => (isPct ? (p.Percentiles?.[options.Stat] ?? 0) : ((p as any)[options.Stat] ?? 0)))
   }
 
   /** List alarms, optionally filtered by name prefix. */
-  async describeAlarms(options?: { AlarmNamePrefix?: string, MaxRecords?: number }): Promise<MetricAlarm[]> {
+  async describeAlarms(options?: { AlarmNamePrefix?: string; MaxRecords?: number }): Promise<MetricAlarm[]> {
     const params: Record<string, any> = { Action: 'DescribeAlarms' }
     if (options?.AlarmNamePrefix) params.AlarmNamePrefix = options.AlarmNamePrefix
     if (options?.MaxRecords) params.MaxRecords = options.MaxRecords
@@ -159,7 +163,7 @@ export class CloudWatchClient {
     EvaluationPeriods: number
     Period: number
     Statistic: 'Sum' | 'Average' | 'Maximum' | 'Minimum'
-    Dimensions?: Array<{ Name: string, Value: string }>
+    Dimensions?: Array<{ Name: string; Value: string }>
     AlarmActions?: string[]
     AlarmDescription?: string
   }): Promise<void> {
@@ -179,16 +183,19 @@ export class CloudWatchClient {
       params[`Dimensions.member.${i + 1}.Name`] = d.Name
       params[`Dimensions.member.${i + 1}.Value`] = d.Value
     })
-    ;(options.AlarmActions ?? []).forEach((a, i) => { params[`AlarmActions.member.${i + 1}`] = a })
+    ;(options.AlarmActions ?? []).forEach((a, i) => {
+      params[`AlarmActions.member.${i + 1}`] = a
+    })
     await this.query(params)
   }
 
   /** Delete one or more metric alarms by name. */
   async deleteAlarms(alarmNames: string[]): Promise<void> {
-    if (!alarmNames.length)
-      return
+    if (!alarmNames.length) return
     const params: Record<string, any> = { Action: 'DeleteAlarms' }
-    alarmNames.forEach((name, i) => { params[`AlarmNames.member.${i + 1}`] = name })
+    alarmNames.forEach((name, i) => {
+      params[`AlarmNames.member.${i + 1}`] = name
+    })
     await this.query(params)
   }
 }

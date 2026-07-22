@@ -2,7 +2,6 @@
  * AWS SQS Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface QueueAttributes {
@@ -60,9 +59,8 @@ export class SQSClient {
    * Create a new SQS queue
    */
   async createQueue(options: CreateQueueOptions): Promise<{ QueueUrl: string }> {
-    const queueName = options.fifo && !options.queueName.endsWith('.fifo')
-      ? `${options.queueName}.fifo`
-      : options.queueName
+    const queueName =
+      options.fifo && !options.queueName.endsWith('.fifo') ? `${options.queueName}.fifo` : options.queueName
 
     const params: Record<string, any> = {
       Action: 'CreateQueue',
@@ -168,12 +166,10 @@ export class SQSClient {
     const queueUrls: string[] = []
     if (result.QueueUrl) {
       queueUrls.push(result.QueueUrl)
-    }
-    else if (result.ListQueuesResult?.QueueUrl) {
+    } else if (result.ListQueuesResult?.QueueUrl) {
       if (Array.isArray(result.ListQueuesResult.QueueUrl)) {
         queueUrls.push(...result.ListQueuesResult.QueueUrl)
-      }
-      else {
+      } else {
         queueUrls.push(result.ListQueuesResult.QueueUrl)
       }
     }
@@ -342,13 +338,14 @@ export class SQSClient {
 
     if (msgData) {
       if (Array.isArray(msgData)) {
-        messages.push(...msgData.map((m: any) => ({
-          MessageId: m.MessageId,
-          ReceiptHandle: m.ReceiptHandle,
-          Body: m.Body,
-        })))
-      }
-      else {
+        messages.push(
+          ...msgData.map((m: any) => ({
+            MessageId: m.MessageId,
+            ReceiptHandle: m.ReceiptHandle,
+            Body: m.Body,
+          })),
+        )
+      } else {
         messages.push({
           MessageId: msgData.MessageId,
           ReceiptHandle: msgData.ReceiptHandle,

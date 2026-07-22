@@ -2,7 +2,6 @@
  * AWS OpenSearch Service Client
  * Direct API calls for OpenSearch operations
  */
-
 import { AWSClient } from './client'
 
 export interface DomainStatus {

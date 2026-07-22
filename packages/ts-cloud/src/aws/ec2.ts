@@ -2,7 +2,6 @@
  * AWS EC2 Client
  * Manages EC2 instances, VPCs, security groups, and related resources using direct API calls
  */
-
 import { AWSClient } from './client'
 
 export interface Instance {
@@ -17,8 +16,8 @@ export interface Instance {
   PublicIpAddress?: string
   SubnetId?: string
   VpcId?: string
-  SecurityGroups?: { GroupId?: string, GroupName?: string }[]
-  Tags?: { Key?: string, Value?: string }[]
+  SecurityGroups?: { GroupId?: string; GroupName?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
   LaunchTime?: string
   Placement?: {
     AvailabilityZone?: string
@@ -49,7 +48,7 @@ export interface Vpc {
   DhcpOptionsId?: string
   InstanceTenancy?: string
   IsDefault?: boolean
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface Subnet {
@@ -60,7 +59,7 @@ export interface Subnet {
   AvailableIpAddressCount?: number
   State?: 'pending' | 'available'
   MapPublicIpOnLaunch?: boolean
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface SecurityGroup {
@@ -70,22 +69,22 @@ export interface SecurityGroup {
   VpcId?: string
   IpPermissions?: IpPermission[]
   IpPermissionsEgress?: IpPermission[]
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface IpPermission {
   IpProtocol?: string
   FromPort?: number
   ToPort?: number
-  IpRanges?: { CidrIp?: string, Description?: string }[]
-  Ipv6Ranges?: { CidrIpv6?: string, Description?: string }[]
-  UserIdGroupPairs?: { GroupId?: string, UserId?: string, Description?: string }[]
+  IpRanges?: { CidrIp?: string; Description?: string }[]
+  Ipv6Ranges?: { CidrIpv6?: string; Description?: string }[]
+  UserIdGroupPairs?: { GroupId?: string; UserId?: string; Description?: string }[]
 }
 
 export interface InternetGateway {
   InternetGatewayId?: string
-  Attachments?: { VpcId?: string, State?: string }[]
-  Tags?: { Key?: string, Value?: string }[]
+  Attachments?: { VpcId?: string; State?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface RouteTable {
@@ -102,7 +101,7 @@ export interface RouteTable {
     SubnetId?: string
     Main?: boolean
   }[]
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface Address {
@@ -113,7 +112,7 @@ export interface Address {
   NetworkInterfaceId?: string
   PrivateIpAddress?: string
   Domain?: 'vpc' | 'standard'
-  Tags?: { Key?: string, Value?: string }[]
+  Tags?: { Key?: string; Value?: string }[]
 }
 
 export interface ConsoleOutput {
@@ -130,11 +129,11 @@ export interface InstanceStatus {
   }
   InstanceStatus?: {
     Status?: string
-    Details?: { Name?: string, Status?: string }[]
+    Details?: { Name?: string; Status?: string }[]
   }
   SystemStatus?: {
     Status?: string
-    Details?: { Name?: string, Status?: string }[]
+    Details?: { Name?: string; Status?: string }[]
   }
 }
 
@@ -155,7 +154,7 @@ export class EC2Client {
    */
   async describeInstances(options?: {
     InstanceIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
     MaxResults?: number
     NextToken?: string
   }): Promise<{
@@ -259,10 +258,13 @@ export class EC2Client {
   /**
    * Get console output decoded (convenience method)
    */
-  async getConsoleOutputDecoded(instanceId: string, options?: {
-    latest?: boolean
-    tailLines?: number
-  }): Promise<string> {
+  async getConsoleOutputDecoded(
+    instanceId: string,
+    options?: {
+      latest?: boolean
+      tailLines?: number
+    },
+  ): Promise<string> {
     const result = await this.getConsoleOutput(instanceId, options?.latest)
 
     if (!result.Output) {
@@ -286,7 +288,7 @@ export class EC2Client {
   async describeInstanceStatus(options?: {
     InstanceIds?: string[]
     IncludeAllInstances?: boolean
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     InstanceStatuses?: InstanceStatus[]
   }> {
@@ -328,24 +330,30 @@ export class EC2Client {
     return {
       InstanceStatuses: this.parseArray(result.instanceStatusSet?.item).map((item: any) => ({
         InstanceId: item.instanceId,
-        InstanceState: item.instanceState ? {
-          Code: Number.parseInt(item.instanceState.code),
-          Name: item.instanceState.name,
-        } : undefined,
-        InstanceStatus: item.instanceStatus ? {
-          Status: item.instanceStatus.status,
-          Details: this.parseArray(item.instanceStatus.details?.item).map((d: any) => ({
-            Name: d.name,
-            Status: d.status,
-          })),
-        } : undefined,
-        SystemStatus: item.systemStatus ? {
-          Status: item.systemStatus.status,
-          Details: this.parseArray(item.systemStatus.details?.item).map((d: any) => ({
-            Name: d.name,
-            Status: d.status,
-          })),
-        } : undefined,
+        InstanceState: item.instanceState
+          ? {
+              Code: Number.parseInt(item.instanceState.code),
+              Name: item.instanceState.name,
+            }
+          : undefined,
+        InstanceStatus: item.instanceStatus
+          ? {
+              Status: item.instanceStatus.status,
+              Details: this.parseArray(item.instanceStatus.details?.item).map((d: any) => ({
+                Name: d.name,
+                Status: d.status,
+              })),
+            }
+          : undefined,
+        SystemStatus: item.systemStatus
+          ? {
+              Status: item.systemStatus.status,
+              Details: this.parseArray(item.systemStatus.details?.item).map((d: any) => ({
+                Name: d.name,
+                Status: d.status,
+              })),
+            }
+          : undefined,
       })),
     }
   }
@@ -354,7 +362,7 @@ export class EC2Client {
    * Start instances
    */
   async startInstances(instanceIds: string[]): Promise<{
-    StartingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
+    StartingInstances?: { InstanceId?: string; CurrentState?: { Name?: string }; PreviousState?: { Name?: string } }[]
   }> {
     const params: Record<string, string> = {
       Action: 'StartInstances',
@@ -388,8 +396,11 @@ export class EC2Client {
   /**
    * Stop instances
    */
-  async stopInstances(instanceIds: string[], force?: boolean): Promise<{
-    StoppingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
+  async stopInstances(
+    instanceIds: string[],
+    force?: boolean,
+  ): Promise<{
+    StoppingInstances?: { InstanceId?: string; CurrentState?: { Name?: string }; PreviousState?: { Name?: string } }[]
   }> {
     const params: Record<string, string> = {
       Action: 'StopInstances',
@@ -453,7 +464,11 @@ export class EC2Client {
    * Terminate instances
    */
   async terminateInstances(instanceIds: string[]): Promise<{
-    TerminatingInstances?: { InstanceId?: string, CurrentState?: { Name?: string }, PreviousState?: { Name?: string } }[]
+    TerminatingInstances?: {
+      InstanceId?: string
+      CurrentState?: { Name?: string }
+      PreviousState?: { Name?: string }
+    }[]
   }> {
     const params: Record<string, string> = {
       Action: 'TerminateInstances',
@@ -493,7 +508,7 @@ export class EC2Client {
     Name: string
     Description?: string
     NoReboot?: boolean
-    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
   }): Promise<{ ImageId?: string }> {
     const params: Record<string, string> = {
       Action: 'CreateImage',
@@ -501,10 +516,8 @@ export class EC2Client {
       InstanceId: options.InstanceId,
       Name: options.Name,
     }
-    if (options.Description)
-      params.Description = options.Description
-    if (options.NoReboot !== undefined)
-      params.NoReboot = String(options.NoReboot)
+    if (options.Description) params.Description = options.Description
+    if (options.NoReboot !== undefined) params.NoReboot = String(options.NoReboot)
     if (options.TagSpecifications) {
       options.TagSpecifications.forEach((spec, i) => {
         params[`TagSpecification.${i + 1}.ResourceType`] = spec.ResourceType
@@ -541,10 +554,7 @@ export class EC2Client {
   /**
    * Describe VPCs
    */
-  async describeVpcs(options?: {
-    VpcIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
-  }): Promise<{
+  async describeVpcs(options?: { VpcIds?: string[]; Filters?: { Name: string; Values: string[] }[] }): Promise<{
     Vpcs?: Vpc[]
   }> {
     const params: Record<string, string> = {
@@ -594,10 +604,7 @@ export class EC2Client {
   /**
    * Describe Subnets
    */
-  async describeSubnets(options?: {
-    SubnetIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
-  }): Promise<{
+  async describeSubnets(options?: { SubnetIds?: string[]; Filters?: { Name: string; Values: string[] }[] }): Promise<{
     Subnets?: Subnet[]
   }> {
     const params: Record<string, string> = {
@@ -651,7 +658,7 @@ export class EC2Client {
   async describeSecurityGroups(options?: {
     GroupIds?: string[]
     GroupNames?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     SecurityGroups?: SecurityGroup[]
   }> {
@@ -710,7 +717,7 @@ export class EC2Client {
    */
   async describeInternetGateways(options?: {
     InternetGatewayIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     InternetGateways?: InternetGateway[]
   }> {
@@ -763,7 +770,7 @@ export class EC2Client {
   async describeAddresses(options?: {
     AllocationIds?: string[]
     PublicIps?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     Addresses?: Address[]
   }> {
@@ -823,7 +830,7 @@ export class EC2Client {
    */
   async allocateAddress(options?: {
     Domain?: 'vpc' | 'standard'
-    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
   }): Promise<{
     AllocationId?: string
     PublicIp?: string
@@ -927,10 +934,7 @@ export class EC2Client {
   /**
    * Create tags for resources
    */
-  async createTags(options: {
-    Resources: string[]
-    Tags: { Key: string, Value: string }[]
-  }): Promise<void> {
+  async createTags(options: { Resources: string[]; Tags: { Key: string; Value: string }[] }): Promise<void> {
     const params: Record<string, string> = {
       Action: 'CreateTags',
       Version: '2016-11-15',
@@ -980,8 +984,7 @@ export class EC2Client {
       let instance: Instance | undefined
       try {
         instance = await this.getInstance(instanceId)
-      }
-      catch {
+      } catch {
         instance = undefined
       }
 
@@ -989,7 +992,7 @@ export class EC2Client {
         return instance
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     return undefined
@@ -1001,7 +1004,7 @@ export class EC2Client {
   async createVpc(options: {
     CidrBlock: string
     InstanceTenancy?: string
-    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
   }): Promise<{
     Vpc?: Vpc
   }> {
@@ -1040,15 +1043,17 @@ export class EC2Client {
     const vpc = response.vpc
 
     return {
-      Vpc: vpc ? {
-        VpcId: vpc.vpcId,
-        CidrBlock: vpc.cidrBlock,
-        State: vpc.state,
-        DhcpOptionsId: vpc.dhcpOptionsId,
-        InstanceTenancy: vpc.instanceTenancy,
-        IsDefault: vpc.isDefault === 'true',
-        Tags: this.parseTags(vpc.tagSet?.item),
-      } : undefined,
+      Vpc: vpc
+        ? {
+            VpcId: vpc.vpcId,
+            CidrBlock: vpc.cidrBlock,
+            State: vpc.state,
+            DhcpOptionsId: vpc.dhcpOptionsId,
+            InstanceTenancy: vpc.instanceTenancy,
+            IsDefault: vpc.isDefault === 'true',
+            Tags: this.parseTags(vpc.tagSet?.item),
+          }
+        : undefined,
     }
   }
 
@@ -1059,7 +1064,7 @@ export class EC2Client {
     VpcId: string
     CidrBlock: string
     AvailabilityZone?: string
-    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
   }): Promise<{
     Subnet?: Subnet
   }> {
@@ -1099,26 +1104,27 @@ export class EC2Client {
     const subnet = response.subnet
 
     return {
-      Subnet: subnet ? {
-        SubnetId: subnet.subnetId,
-        VpcId: subnet.vpcId,
-        CidrBlock: subnet.cidrBlock,
-        AvailabilityZone: subnet.availabilityZone,
-        AvailableIpAddressCount: subnet.availableIpAddressCount ? Number.parseInt(subnet.availableIpAddressCount) : undefined,
-        State: subnet.state,
-        MapPublicIpOnLaunch: subnet.mapPublicIpOnLaunch === 'true',
-        Tags: this.parseTags(subnet.tagSet?.item),
-      } : undefined,
+      Subnet: subnet
+        ? {
+            SubnetId: subnet.subnetId,
+            VpcId: subnet.vpcId,
+            CidrBlock: subnet.cidrBlock,
+            AvailabilityZone: subnet.availabilityZone,
+            AvailableIpAddressCount: subnet.availableIpAddressCount
+              ? Number.parseInt(subnet.availableIpAddressCount)
+              : undefined,
+            State: subnet.state,
+            MapPublicIpOnLaunch: subnet.mapPublicIpOnLaunch === 'true',
+            Tags: this.parseTags(subnet.tagSet?.item),
+          }
+        : undefined,
     }
   }
 
   /**
    * Modify a Subnet attribute
    */
-  async modifySubnetAttribute(options: {
-    SubnetId: string
-    MapPublicIpOnLaunch?: { Value: boolean }
-  }): Promise<void> {
+  async modifySubnetAttribute(options: { SubnetId: string; MapPublicIpOnLaunch?: { Value: boolean } }): Promise<void> {
     const params: Record<string, string> = {
       Action: 'ModifySubnetAttribute',
       Version: '2016-11-15',
@@ -1148,7 +1154,7 @@ export class EC2Client {
     GroupName: string
     Description: string
     VpcId?: string
-    TagSpecifications?: { ResourceType: string, Tags: { Key: string, Value: string }[] }[]
+    TagSpecifications?: { ResourceType: string; Tags: { Key: string; Value: string }[] }[]
   }): Promise<{
     GroupId?: string
   }> {
@@ -1194,10 +1200,7 @@ export class EC2Client {
   /**
    * Authorize Security Group Ingress (add inbound rule)
    */
-  async authorizeSecurityGroupIngress(options: {
-    GroupId: string
-    IpPermissions: IpPermission[]
-  }): Promise<void> {
+  async authorizeSecurityGroupIngress(options: { GroupId: string; IpPermissions: IpPermission[] }): Promise<void> {
     const params: Record<string, string> = {
       Action: 'AuthorizeSecurityGroupIngress',
       Version: '2016-11-15',
@@ -1221,10 +1224,7 @@ export class EC2Client {
   /**
    * Authorize Security Group Egress (add outbound rule)
    */
-  async authorizeSecurityGroupEgress(options: {
-    GroupId: string
-    IpPermissions: IpPermission[]
-  }): Promise<void> {
+  async authorizeSecurityGroupEgress(options: { GroupId: string; IpPermissions: IpPermission[] }): Promise<void> {
     const params: Record<string, string> = {
       Action: 'AuthorizeSecurityGroupEgress',
       Version: '2016-11-15',
@@ -1250,7 +1250,7 @@ export class EC2Client {
    */
   async describeRouteTables(options?: {
     RouteTableIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     RouteTables?: RouteTable[]
   }> {
@@ -1368,7 +1368,7 @@ export class EC2Client {
    */
   async describeNetworkInterfaces(options?: {
     NetworkInterfaceIds?: string[]
-    Filters?: { Name: string, Values: string[] }[]
+    Filters?: { Name: string; Values: string[] }[]
   }): Promise<{
     NetworkInterfaces?: {
       NetworkInterfaceId?: string
@@ -1421,11 +1421,13 @@ export class EC2Client {
         SubnetId: ni.subnetId,
         VpcId: ni.vpcId,
         Status: ni.status,
-        Attachment: ni.attachment ? {
-          AttachmentId: ni.attachment.attachmentId,
-          InstanceId: ni.attachment.instanceId,
-          Status: ni.attachment.status,
-        } : undefined,
+        Attachment: ni.attachment
+          ? {
+              AttachmentId: ni.attachment.attachmentId,
+              InstanceId: ni.attachment.instanceId,
+              Status: ni.attachment.status,
+            }
+          : undefined,
       })),
     }
   }
@@ -1482,7 +1484,7 @@ export class EC2Client {
    * Describe AWS regions
    */
   async describeRegions(): Promise<{
-    Regions?: { RegionName?: string, Endpoint?: string }[]
+    Regions?: { RegionName?: string; Endpoint?: string }[]
   }> {
     const params: Record<string, string> = {
       Action: 'DescribeRegions',
@@ -1521,10 +1523,10 @@ export class EC2Client {
     SecurityGroupIds?: string[]
     SubnetId?: string
     UserData?: string
-    IamInstanceProfile?: { Name?: string, Arn?: string }
+    IamInstanceProfile?: { Name?: string; Arn?: string }
     TagSpecifications?: {
       ResourceType: string
-      Tags: { Key: string, Value: string }[]
+      Tags: { Key: string; Value: string }[]
     }[]
   }): Promise<{
     Instances?: Instance[]
@@ -1647,19 +1649,18 @@ export class EC2Client {
   // Helper methods for parsing EC2 XML responses
 
   private parseArray(item: any): any[] {
-    if (!item)
-      return []
+    if (!item) return []
     return Array.isArray(item) ? item : [item]
   }
 
-  private parseTags(item: any): { Key?: string, Value?: string }[] {
+  private parseTags(item: any): { Key?: string; Value?: string }[] {
     return this.parseArray(item).map((t: any) => ({
       Key: t.key,
       Value: t.value,
     }))
   }
 
-  private parseReservations(item: any): { ReservationId?: string, Instances?: Instance[] }[] {
+  private parseReservations(item: any): { ReservationId?: string; Instances?: Instance[] }[] {
     return this.parseArray(item).map((r: any) => ({
       ReservationId: r.reservationId,
       Instances: this.parseInstances(r.instancesSet?.item || r.instancesSet),
@@ -1671,10 +1672,12 @@ export class EC2Client {
       InstanceId: i.instanceId,
       ImageId: i.imageId,
       InstanceType: i.instanceType,
-      State: i.instanceState ? {
-        Code: Number.parseInt(i.instanceState.code),
-        Name: i.instanceState.name,
-      } : undefined,
+      State: i.instanceState
+        ? {
+            Code: Number.parseInt(i.instanceState.code),
+            Name: i.instanceState.name,
+          }
+        : undefined,
       PrivateIpAddress: i.privateIpAddress,
       PublicIpAddress: i.ipAddress,
       SubnetId: i.subnetId,
@@ -1685,26 +1688,32 @@ export class EC2Client {
       })),
       Tags: this.parseTags(i.tagSet?.item),
       LaunchTime: i.launchTime,
-      Placement: i.placement ? {
-        AvailabilityZone: i.placement.availabilityZone,
-        Tenancy: i.placement.tenancy,
-      } : undefined,
+      Placement: i.placement
+        ? {
+            AvailabilityZone: i.placement.availabilityZone,
+            Tenancy: i.placement.tenancy,
+          }
+        : undefined,
       Architecture: i.architecture,
       RootDeviceType: i.rootDeviceType,
       RootDeviceName: i.rootDeviceName,
       BlockDeviceMappings: this.parseArray(i.blockDeviceMapping?.item).map((b: any) => ({
         DeviceName: b.deviceName,
-        Ebs: b.ebs ? {
-          VolumeId: b.ebs.volumeId,
-          Status: b.ebs.status,
-          AttachTime: b.ebs.attachTime,
-          DeleteOnTermination: b.ebs.deleteOnTermination === 'true',
-        } : undefined,
+        Ebs: b.ebs
+          ? {
+              VolumeId: b.ebs.volumeId,
+              Status: b.ebs.status,
+              AttachTime: b.ebs.attachTime,
+              DeleteOnTermination: b.ebs.deleteOnTermination === 'true',
+            }
+          : undefined,
       })),
-      IamInstanceProfile: i.iamInstanceProfile ? {
-        Arn: i.iamInstanceProfile.arn,
-        Id: i.iamInstanceProfile.id,
-      } : undefined,
+      IamInstanceProfile: i.iamInstanceProfile
+        ? {
+            Arn: i.iamInstanceProfile.arn,
+            Id: i.iamInstanceProfile.id,
+          }
+        : undefined,
     }))
   }
 

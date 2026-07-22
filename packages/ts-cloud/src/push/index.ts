@@ -43,16 +43,6 @@ export * from './apns'
 export * from './fcm'
 
 // Re-export types for convenience
-export type {
-  APNsConfig,
-  APNsNotification,
-  APNsSendResult,
-  APNsBatchResult,
-} from './apns'
+export type { APNsConfig, APNsNotification, APNsSendResult, APNsBatchResult } from './apns'
 
-export type {
-  FCMConfig,
-  FCMNotification,
-  FCMSendResult,
-  FCMBatchResult,
-} from './fcm'
+export type { FCMConfig, FCMNotification, FCMSendResult, FCMBatchResult } from './fcm'

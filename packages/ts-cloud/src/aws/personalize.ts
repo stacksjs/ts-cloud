@@ -3,7 +3,6 @@
  * Recommendation engine service
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -568,11 +567,15 @@ export class PersonalizeClient {
     return this.request('CreateDataset', params as unknown as Record<string, unknown>)
   }
 
-  async createDatasetImportJob(params: CreateDatasetImportJobCommandInput): Promise<CreateDatasetImportJobCommandOutput> {
+  async createDatasetImportJob(
+    params: CreateDatasetImportJobCommandInput,
+  ): Promise<CreateDatasetImportJobCommandOutput> {
     return this.request('CreateDatasetImportJob', params as unknown as Record<string, unknown>)
   }
 
-  async describeDatasetImportJob(params: DescribeDatasetImportJobCommandInput): Promise<DescribeDatasetImportJobCommandOutput> {
+  async describeDatasetImportJob(
+    params: DescribeDatasetImportJobCommandInput,
+  ): Promise<DescribeDatasetImportJobCommandOutput> {
     return this.request('DescribeDatasetImportJob', params as unknown as Record<string, unknown>)
   }
 
@@ -588,7 +591,9 @@ export class PersonalizeClient {
     return this.request('CreateSolutionVersion', params as unknown as Record<string, unknown>)
   }
 
-  async describeSolutionVersion(params: DescribeSolutionVersionCommandInput): Promise<DescribeSolutionVersionCommandOutput> {
+  async describeSolutionVersion(
+    params: DescribeSolutionVersionCommandInput,
+  ): Promise<DescribeSolutionVersionCommandOutput> {
     return this.request('DescribeSolutionVersion', params as unknown as Record<string, unknown>)
   }
 
@@ -674,7 +679,7 @@ export class PersonalizeClient {
         throw new Error(`Solution version failed: ${sv.failureReason}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for solution version ${solutionVersionArn}`)
@@ -702,7 +707,7 @@ export class PersonalizeClient {
         throw new Error(`Campaign failed: ${campaign.failureReason}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for campaign ${campaignArn}`)
@@ -730,7 +735,7 @@ export class PersonalizeClient {
         throw new Error(`Dataset import job failed: ${job.failureReason}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for dataset import job ${jobArn}`)
@@ -774,7 +779,9 @@ export class PersonalizeRuntimeClient {
   /**
    * Get personalized ranking of items for a user
    */
-  async getPersonalizedRanking(params: GetPersonalizedRankingCommandInput): Promise<GetPersonalizedRankingCommandOutput> {
+  async getPersonalizedRanking(
+    params: GetPersonalizedRankingCommandInput,
+  ): Promise<GetPersonalizedRankingCommandOutput> {
     return this.request('GetPersonalizedRanking', params as unknown as Record<string, unknown>)
   }
 
@@ -785,49 +792,37 @@ export class PersonalizeRuntimeClient {
   /**
    * Simple recommendations for a user
    */
-  async recommendForUser(
-    campaignArn: string,
-    userId: string,
-    numResults: number = 10,
-  ): Promise<string[]> {
+  async recommendForUser(campaignArn: string, userId: string, numResults: number = 10): Promise<string[]> {
     const result = await this.getRecommendations({
       campaignArn,
       userId,
       numResults,
     })
-    return result.itemList?.map(i => i.itemId || '').filter(Boolean) || []
+    return result.itemList?.map((i) => i.itemId || '').filter(Boolean) || []
   }
 
   /**
    * Get similar items
    */
-  async getSimilarItems(
-    campaignArn: string,
-    itemId: string,
-    numResults: number = 10,
-  ): Promise<string[]> {
+  async getSimilarItems(campaignArn: string, itemId: string, numResults: number = 10): Promise<string[]> {
     const result = await this.getRecommendations({
       campaignArn,
       itemId,
       numResults,
     })
-    return result.itemList?.map(i => i.itemId || '').filter(Boolean) || []
+    return result.itemList?.map((i) => i.itemId || '').filter(Boolean) || []
   }
 
   /**
    * Rank items for a user
    */
-  async rankItems(
-    campaignArn: string,
-    userId: string,
-    itemIds: string[],
-  ): Promise<string[]> {
+  async rankItems(campaignArn: string, userId: string, itemIds: string[]): Promise<string[]> {
     const result = await this.getPersonalizedRanking({
       campaignArn,
       userId,
       inputList: itemIds,
     })
-    return result.personalizedRanking?.map(i => i.itemId || '').filter(Boolean) || []
+    return result.personalizedRanking?.map((i) => i.itemId || '').filter(Boolean) || []
   }
 }
 

@@ -2,7 +2,6 @@
  * AWS RDS Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient, buildQueryParams } from './client'
 
 export interface DBInstance {
@@ -213,9 +212,7 @@ export class RDSClient {
   /**
    * Describe a specific DB instance
    */
-  async describeDBInstance(
-    dbInstanceIdentifier: string,
-  ): Promise<DBInstance | undefined> {
+  async describeDBInstance(dbInstanceIdentifier: string): Promise<DBInstance | undefined> {
     const result = await this.describeDBInstances({
       DBInstanceIdentifier: dbInstanceIdentifier,
     })
@@ -433,37 +430,25 @@ export class RDSClient {
       Engine: options.Engine,
     }
 
-    if (options.DBClusterIdentifier)
-      params.DBClusterIdentifier = options.DBClusterIdentifier
+    if (options.DBClusterIdentifier) params.DBClusterIdentifier = options.DBClusterIdentifier
     if (options.MasterUsername) params.MasterUsername = options.MasterUsername
-    if (options.MasterUserPassword)
-      params.MasterUserPassword = options.MasterUserPassword
+    if (options.MasterUserPassword) params.MasterUserPassword = options.MasterUserPassword
     if (options.DBName) params.DBName = options.DBName
-    if (options.AllocatedStorage)
-      params.AllocatedStorage = options.AllocatedStorage
-    if (options.DBSubnetGroupName)
-      params.DBSubnetGroupName = options.DBSubnetGroupName
-    if (options.AvailabilityZone)
-      params.AvailabilityZone = options.AvailabilityZone
-    if (options.PreferredMaintenanceWindow)
-      params.PreferredMaintenanceWindow = options.PreferredMaintenanceWindow
-    if (options.PreferredBackupWindow)
-      params.PreferredBackupWindow = options.PreferredBackupWindow
-    if (options.BackupRetentionPeriod !== undefined)
-      params.BackupRetentionPeriod = options.BackupRetentionPeriod
+    if (options.AllocatedStorage) params.AllocatedStorage = options.AllocatedStorage
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.AvailabilityZone) params.AvailabilityZone = options.AvailabilityZone
+    if (options.PreferredMaintenanceWindow) params.PreferredMaintenanceWindow = options.PreferredMaintenanceWindow
+    if (options.PreferredBackupWindow) params.PreferredBackupWindow = options.PreferredBackupWindow
+    if (options.BackupRetentionPeriod !== undefined) params.BackupRetentionPeriod = options.BackupRetentionPeriod
     if (options.MultiAZ !== undefined) params.MultiAZ = options.MultiAZ
     if (options.EngineVersion) params.EngineVersion = options.EngineVersion
-    if (options.AutoMinorVersionUpgrade !== undefined)
-      params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
+    if (options.AutoMinorVersionUpgrade !== undefined) params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
     if (options.LicenseModel) params.LicenseModel = options.LicenseModel
-    if (options.PubliclyAccessible !== undefined)
-      params.PubliclyAccessible = options.PubliclyAccessible
+    if (options.PubliclyAccessible !== undefined) params.PubliclyAccessible = options.PubliclyAccessible
     if (options.StorageType) params.StorageType = options.StorageType
-    if (options.StorageEncrypted !== undefined)
-      params.StorageEncrypted = options.StorageEncrypted
+    if (options.StorageEncrypted !== undefined) params.StorageEncrypted = options.StorageEncrypted
     if (options.KmsKeyId) params.KmsKeyId = options.KmsKeyId
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
 
     if (options.VpcSecurityGroupIds) {
       options.VpcSecurityGroupIds.forEach((id, i) => {
@@ -524,23 +509,16 @@ export class RDSClient {
     }
     if (options.EngineVersion) params.EngineVersion = options.EngineVersion
     if (options.MasterUsername) params.MasterUsername = options.MasterUsername
-    if (options.MasterUserPassword)
-      params.MasterUserPassword = options.MasterUserPassword
+    if (options.MasterUserPassword) params.MasterUserPassword = options.MasterUserPassword
     if (options.DatabaseName) params.DatabaseName = options.DatabaseName
-    if (options.DBSubnetGroupName)
-      params.DBSubnetGroupName = options.DBSubnetGroupName
-    if (options.BackupRetentionPeriod !== undefined)
-      params.BackupRetentionPeriod = options.BackupRetentionPeriod
-    if (options.StorageEncrypted !== undefined)
-      params.StorageEncrypted = options.StorageEncrypted
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.BackupRetentionPeriod !== undefined) params.BackupRetentionPeriod = options.BackupRetentionPeriod
+    if (options.StorageEncrypted !== undefined) params.StorageEncrypted = options.StorageEncrypted
     if (options.KmsKeyId) params.KmsKeyId = options.KmsKeyId
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
     if (options.ServerlessV2ScalingConfiguration) {
-      params['ServerlessV2ScalingConfiguration.MinCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MinCapacity
-      params['ServerlessV2ScalingConfiguration.MaxCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MaxCapacity
+      params['ServerlessV2ScalingConfiguration.MinCapacity'] = options.ServerlessV2ScalingConfiguration.MinCapacity
+      params['ServerlessV2ScalingConfiguration.MaxCapacity'] = options.ServerlessV2ScalingConfiguration.MaxCapacity
     }
     options.VpcSecurityGroupIds?.forEach((id, index) => {
       params[`VpcSecurityGroupIds.VpcSecurityGroupId.${index + 1}`] = id
@@ -629,29 +607,19 @@ export class RDSClient {
       DBInstanceIdentifier: options.DBInstanceIdentifier,
     }
 
-    if (options.DBInstanceClass)
-      params.DBInstanceClass = options.DBInstanceClass
-    if (options.AllocatedStorage)
-      params.AllocatedStorage = options.AllocatedStorage
-    if (options.MasterUserPassword)
-      params.MasterUserPassword = options.MasterUserPassword
-    if (options.BackupRetentionPeriod !== undefined)
-      params.BackupRetentionPeriod = options.BackupRetentionPeriod
-    if (options.PreferredBackupWindow)
-      params.PreferredBackupWindow = options.PreferredBackupWindow
-    if (options.PreferredMaintenanceWindow)
-      params.PreferredMaintenanceWindow = options.PreferredMaintenanceWindow
+    if (options.DBInstanceClass) params.DBInstanceClass = options.DBInstanceClass
+    if (options.AllocatedStorage) params.AllocatedStorage = options.AllocatedStorage
+    if (options.MasterUserPassword) params.MasterUserPassword = options.MasterUserPassword
+    if (options.BackupRetentionPeriod !== undefined) params.BackupRetentionPeriod = options.BackupRetentionPeriod
+    if (options.PreferredBackupWindow) params.PreferredBackupWindow = options.PreferredBackupWindow
+    if (options.PreferredMaintenanceWindow) params.PreferredMaintenanceWindow = options.PreferredMaintenanceWindow
     if (options.MultiAZ !== undefined) params.MultiAZ = options.MultiAZ
     if (options.EngineVersion) params.EngineVersion = options.EngineVersion
-    if (options.AutoMinorVersionUpgrade !== undefined)
-      params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
-    if (options.PubliclyAccessible !== undefined)
-      params.PubliclyAccessible = options.PubliclyAccessible
-    if (options.ApplyImmediately !== undefined)
-      params.ApplyImmediately = options.ApplyImmediately
+    if (options.AutoMinorVersionUpgrade !== undefined) params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
+    if (options.PubliclyAccessible !== undefined) params.PubliclyAccessible = options.PubliclyAccessible
+    if (options.ApplyImmediately !== undefined) params.ApplyImmediately = options.ApplyImmediately
     if (options.StorageType) params.StorageType = options.StorageType
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
 
     if (options.VpcSecurityGroupIds) {
       options.VpcSecurityGroupIds.forEach((id, i) => {
@@ -700,20 +668,14 @@ export class RDSClient {
       DBClusterIdentifier: options.DBClusterIdentifier,
     }
     if (options.ServerlessV2ScalingConfiguration) {
-      params['ServerlessV2ScalingConfiguration.MinCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MinCapacity
-      params['ServerlessV2ScalingConfiguration.MaxCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MaxCapacity
+      params['ServerlessV2ScalingConfiguration.MinCapacity'] = options.ServerlessV2ScalingConfiguration.MinCapacity
+      params['ServerlessV2ScalingConfiguration.MaxCapacity'] = options.ServerlessV2ScalingConfiguration.MaxCapacity
     }
-    if (options.BackupRetentionPeriod !== undefined)
-      params.BackupRetentionPeriod = options.BackupRetentionPeriod
+    if (options.BackupRetentionPeriod !== undefined) params.BackupRetentionPeriod = options.BackupRetentionPeriod
     if (options.EngineVersion) params.EngineVersion = options.EngineVersion
-    if (options.MasterUserPassword)
-      params.MasterUserPassword = options.MasterUserPassword
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
-    if (options.ApplyImmediately !== undefined)
-      params.ApplyImmediately = options.ApplyImmediately
+    if (options.MasterUserPassword) params.MasterUserPassword = options.MasterUserPassword
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
+    if (options.ApplyImmediately !== undefined) params.ApplyImmediately = options.ApplyImmediately
 
     const queryString = new URLSearchParams(buildQueryParams(params)).toString()
     const result = await this.client.request({
@@ -729,9 +691,7 @@ export class RDSClient {
   }
 
   /** Reboot/fail over an Aurora cluster. */
-  async rebootDBCluster(
-    dbClusterIdentifier: string,
-  ): Promise<{ DBCluster?: DBCluster }> {
+  async rebootDBCluster(dbClusterIdentifier: string): Promise<{ DBCluster?: DBCluster }> {
     const params = {
       Action: 'FailoverDBCluster',
       Version: '2014-10-31',
@@ -750,10 +710,7 @@ export class RDSClient {
   }
 
   /** Create a manual Aurora cluster snapshot. */
-  async createDBClusterSnapshot(
-    dbClusterIdentifier: string,
-    snapshotIdentifier: string,
-  ): Promise<Record<string, any>> {
+  async createDBClusterSnapshot(dbClusterIdentifier: string, snapshotIdentifier: string): Promise<Record<string, any>> {
     const params = {
       Action: 'CreateDBClusterSnapshot',
       Version: '2014-10-31',
@@ -771,10 +728,12 @@ export class RDSClient {
   }
 
   /** Describe Aurora cluster snapshots, optionally by exact identifier. */
-  async describeDBClusterSnapshots(options: {
-    DBClusterIdentifier?: string
-    DBClusterSnapshotIdentifier?: string
-  } = {}): Promise<{ DBClusterSnapshots: Array<Record<string, any>> }> {
+  async describeDBClusterSnapshots(
+    options: {
+      DBClusterIdentifier?: string
+      DBClusterSnapshotIdentifier?: string
+    } = {},
+  ): Promise<{ DBClusterSnapshots: Array<Record<string, any>> }> {
     const params: Record<string, any> = {
       Action: 'DescribeDBClusterSnapshots',
       Version: '2014-10-31',
@@ -794,9 +753,7 @@ export class RDSClient {
   }
 
   /** Delete one Aurora cluster snapshot managed by ts-cloud. */
-  async deleteDBClusterSnapshot(
-    snapshotIdentifier: string,
-  ): Promise<void> {
+  async deleteDBClusterSnapshot(snapshotIdentifier: string): Promise<void> {
     await this.client.request({
       service: 'rds',
       region: this.region,
@@ -824,8 +781,7 @@ export class RDSClient {
       DBClusterIdentifier: dbClusterIdentifier,
       SkipFinalSnapshot: !finalSnapshotIdentifier,
     }
-    if (finalSnapshotIdentifier)
-      params.FinalDBSnapshotIdentifier = finalSnapshotIdentifier
+    if (finalSnapshotIdentifier) params.FinalDBSnapshotIdentifier = finalSnapshotIdentifier
     const result = await this.client.request({
       service: 'rds',
       region: this.region,
@@ -856,11 +812,9 @@ export class RDSClient {
       DBClusterIdentifier: options.DBClusterIdentifier,
       SourceDBClusterIdentifier: options.SourceDBClusterIdentifier,
     }
-    if (options.RestoreToTime)
-      params.RestoreToTime = options.RestoreToTime.toISOString()
+    if (options.RestoreToTime) params.RestoreToTime = options.RestoreToTime.toISOString()
     if (options.UseLatestRestorableTime) params.UseLatestRestorableTime = true
-    if (options.DBSubnetGroupName)
-      params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
     if (options.VpcSecurityGroupIds) {
       options.VpcSecurityGroupIds.forEach((id, i) => {
         params[`VpcSecurityGroupIds.VpcSecurityGroupId.${i + 1}`] = id
@@ -902,18 +856,14 @@ export class RDSClient {
       Engine: options.Engine,
     }
     if (options.EngineVersion) params.EngineVersion = options.EngineVersion
-    if (options.DBSubnetGroupName)
-      params.DBSubnetGroupName = options.DBSubnetGroupName
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
     options.VpcSecurityGroupIds?.forEach((id, index) => {
       params[`VpcSecurityGroupIds.VpcSecurityGroupId.${index + 1}`] = id
     })
     if (options.ServerlessV2ScalingConfiguration) {
-      params['ServerlessV2ScalingConfiguration.MinCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MinCapacity
-      params['ServerlessV2ScalingConfiguration.MaxCapacity'] =
-        options.ServerlessV2ScalingConfiguration.MaxCapacity
+      params['ServerlessV2ScalingConfiguration.MinCapacity'] = options.ServerlessV2ScalingConfiguration.MinCapacity
+      params['ServerlessV2ScalingConfiguration.MaxCapacity'] = options.ServerlessV2ScalingConfiguration.MaxCapacity
     }
     const result = await this.client.request({
       service: 'rds',
@@ -930,9 +880,7 @@ export class RDSClient {
   /**
    * Start a DB instance
    */
-  async startDBInstance(
-    dbInstanceIdentifier: string,
-  ): Promise<{ DBInstance?: DBInstance }> {
+  async startDBInstance(dbInstanceIdentifier: string): Promise<{ DBInstance?: DBInstance }> {
     const params: Record<string, any> = {
       Action: 'StartDBInstance',
       Version: '2014-10-31',
@@ -1074,9 +1022,7 @@ export class RDSClient {
   /**
    * Delete a DB snapshot
    */
-  async deleteDBSnapshot(
-    dbSnapshotIdentifier: string,
-  ): Promise<{ DBSnapshot?: DBSnapshot }> {
+  async deleteDBSnapshot(dbSnapshotIdentifier: string): Promise<{ DBSnapshot?: DBSnapshot }> {
     const params: Record<string, any> = {
       Action: 'DeleteDBSnapshot',
       Version: '2014-10-31',
@@ -1127,21 +1073,15 @@ export class RDSClient {
       DBSnapshotIdentifier: options.DBSnapshotIdentifier,
     }
 
-    if (options.DBInstanceClass)
-      params.DBInstanceClass = options.DBInstanceClass
+    if (options.DBInstanceClass) params.DBInstanceClass = options.DBInstanceClass
     if (options.Port) params.Port = options.Port
-    if (options.AvailabilityZone)
-      params.AvailabilityZone = options.AvailabilityZone
-    if (options.DBSubnetGroupName)
-      params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.AvailabilityZone) params.AvailabilityZone = options.AvailabilityZone
+    if (options.DBSubnetGroupName) params.DBSubnetGroupName = options.DBSubnetGroupName
     if (options.MultiAZ !== undefined) params.MultiAZ = options.MultiAZ
-    if (options.PubliclyAccessible !== undefined)
-      params.PubliclyAccessible = options.PubliclyAccessible
-    if (options.AutoMinorVersionUpgrade !== undefined)
-      params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
+    if (options.PubliclyAccessible !== undefined) params.PubliclyAccessible = options.PubliclyAccessible
+    if (options.AutoMinorVersionUpgrade !== undefined) params.AutoMinorVersionUpgrade = options.AutoMinorVersionUpgrade
     if (options.StorageType) params.StorageType = options.StorageType
-    if (options.DeletionProtection !== undefined)
-      params.DeletionProtection = options.DeletionProtection
+    if (options.DeletionProtection !== undefined) params.DeletionProtection = options.DeletionProtection
 
     if (options.VpcSecurityGroupIds) {
       options.VpcSecurityGroupIds.forEach((id, i) => {
@@ -1192,34 +1132,23 @@ export class RDSClient {
 
       // Check for terminal states
       if (
-        [
-          'deleted',
-          'failed',
-          'incompatible-restore',
-          'incompatible-parameters',
-        ].includes(instance?.DBInstanceStatus || '')
-      ) {
-        throw new Error(
-          `DB instance ${dbInstanceIdentifier} is in terminal state: ${instance?.DBInstanceStatus}`,
+        ['deleted', 'failed', 'incompatible-restore', 'incompatible-parameters'].includes(
+          instance?.DBInstanceStatus || '',
         )
+      ) {
+        throw new Error(`DB instance ${dbInstanceIdentifier} is in terminal state: ${instance?.DBInstanceStatus}`)
       }
 
       await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
 
-    throw new Error(
-      `Timeout waiting for DB instance ${dbInstanceIdentifier} to become available`,
-    )
+    throw new Error(`Timeout waiting for DB instance ${dbInstanceIdentifier} to become available`)
   }
 
   /**
    * Wait for DB instance to be deleted
    */
-  async waitForDBInstanceDeleted(
-    dbInstanceIdentifier: string,
-    maxAttempts = 60,
-    delayMs = 30000,
-  ): Promise<void> {
+  async waitForDBInstanceDeleted(dbInstanceIdentifier: string, maxAttempts = 60, delayMs = 30000): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const instance = await this.describeDBInstance(dbInstanceIdentifier)
@@ -1231,23 +1160,16 @@ export class RDSClient {
         }
 
         // If it exists but not deleting, there might be an issue
-        throw new Error(
-          `DB instance ${dbInstanceIdentifier} is in state: ${instance?.DBInstanceStatus}`,
-        )
+        throw new Error(`DB instance ${dbInstanceIdentifier} is in state: ${instance?.DBInstanceStatus}`)
       } catch (error: any) {
         // DBInstanceNotFound means it's deleted
-        if (
-          error.code === 'DBInstanceNotFound' ||
-          error.code === 'DBInstanceNotFoundFault'
-        ) {
+        if (error.code === 'DBInstanceNotFound' || error.code === 'DBInstanceNotFoundFault') {
           return
         }
         throw error
       }
     }
 
-    throw new Error(
-      `Timeout waiting for DB instance ${dbInstanceIdentifier} to be deleted`,
-    )
+    throw new Error(`Timeout waiting for DB instance ${dbInstanceIdentifier} to be deleted`)
   }
 }

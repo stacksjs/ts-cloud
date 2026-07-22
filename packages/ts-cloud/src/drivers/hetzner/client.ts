@@ -2,7 +2,6 @@
  * Hetzner Cloud API client
  * @see https://docs.hetzner.cloud/
  */
-
 import type { CloudConfig } from '@ts-cloud/core'
 import { resolveHetznerApiToken as resolveToken } from './config'
 
@@ -27,7 +26,7 @@ export interface HetznerServer {
   private_net?: Array<{ ip: string }>
   labels?: Record<string, string>
   server_type: { name: string }
-  datacenter: { name: string, location: { name: string } }
+  datacenter: { name: string; location: { name: string } }
 }
 
 export interface HetznerFirewall {
@@ -57,7 +56,7 @@ export interface HetznerAction {
   id: number
   status: 'running' | 'success' | 'error'
   progress?: number
-  error?: { code: string, message: string }
+  error?: { code: string; message: string }
 }
 
 export interface CreateServerOptions {
@@ -101,7 +100,7 @@ export interface CreateLoadBalancerOptions {
   network?: number
   labels?: Record<string, string>
   /** Listener services (e.g. 80→80, 443→443). */
-  services: Array<{ listenPort: number, destinationPort: number, protocol?: 'tcp' | 'http' }>
+  services: Array<{ listenPort: number; destinationPort: number; protocol?: 'tcp' | 'http' }>
   /** Target app servers by label selector (e.g. `ts-cloud/role=app`). */
   labelSelector: string
 }
@@ -110,7 +109,7 @@ export interface CreateFirewallOptions {
   name: string
   rules: HetznerFirewallRule[]
   labels?: Record<string, string>
-  applyTo?: Array<{ type: 'server', server: number }>
+  applyTo?: Array<{ type: 'server'; server: number }>
 }
 
 export interface CreateSshKeyOptions {
@@ -140,11 +139,7 @@ export class HetznerClient {
     this.fetchImpl = options.fetchImpl ?? fetch
   }
 
-  private async request<T>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
+  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -158,8 +153,7 @@ export class HetznerClient {
     let data: T & HetznerApiErrorBody
     try {
       data = (text ? JSON.parse(text) : {}) as T & HetznerApiErrorBody
-    }
-    catch {
+    } catch {
       // Non-JSON body (e.g. an HTML 502/503 from an upstream gateway). Surface
       // the raw text so the error is actionable instead of an opaque parse fail.
       if (!response.ok) {
@@ -188,15 +182,16 @@ export class HetznerClient {
   private async requestAll<K extends string, T>(path: string, key: K): Promise<T[]> {
     const items: T[] = []
     let page = 1
-    for (;;) {
+    for (;; ) {
       const sep = path.includes('?') ? '&' : '?'
-      const data = await this.request<Record<K, T[]> & {
-        meta?: { pagination?: { next_page?: number | null } }
-      }>('GET', `${path}${sep}per_page=50&page=${page}`)
+      const data = await this.request<
+        Record<K, T[]> & {
+          meta?: { pagination?: { next_page?: number | null } }
+        }
+      >('GET', `${path}${sep}per_page=50&page=${page}`)
       items.push(...(data[key] ?? []))
       const next = data.meta?.pagination?.next_page
-      if (!next)
-        return items
+      if (!next) return items
       page = next
     }
   }
@@ -210,20 +205,24 @@ export class HetznerClient {
     return data.server
   }
 
-  async createServer(options: CreateServerOptions): Promise<{ server: HetznerServer, action: HetznerAction }> {
-    const data = await this.request<{ server: HetznerServer, root_password?: string, action: HetznerAction }>('POST', '/servers', {
-      name: options.name,
-      server_type: options.serverType,
-      image: options.image,
-      location: options.location,
-      datacenter: options.datacenter,
-      ssh_keys: options.sshKeys,
-      user_data: options.userData,
-      labels: options.labels,
-      firewalls: options.firewalls,
-      networks: options.networks,
-      start_after_create: true,
-    })
+  async createServer(options: CreateServerOptions): Promise<{ server: HetznerServer; action: HetznerAction }> {
+    const data = await this.request<{ server: HetznerServer; root_password?: string; action: HetznerAction }>(
+      'POST',
+      '/servers',
+      {
+        name: options.name,
+        server_type: options.serverType,
+        image: options.image,
+        location: options.location,
+        datacenter: options.datacenter,
+        ssh_keys: options.sshKeys,
+        user_data: options.userData,
+        labels: options.labels,
+        firewalls: options.firewalls,
+        networks: options.networks,
+        start_after_create: true,
+      },
+    )
     return { server: data.server, action: data.action }
   }
 
@@ -262,8 +261,14 @@ export class HetznerClient {
       network: options.network,
       labels: options.labels,
       // Route to app servers selected by label over the private network.
-      targets: [{ type: 'label_selector', label_selector: { selector: options.labelSelector }, use_private_ip: !!options.network }],
-      services: options.services.map(s => ({
+      targets: [
+        {
+          type: 'label_selector',
+          label_selector: { selector: options.labelSelector },
+          use_private_ip: !!options.network,
+        },
+      ],
+      services: options.services.map((s) => ({
         protocol: s.protocol ?? 'tcp',
         listen_port: s.listenPort,
         destination_port: s.destinationPort,
@@ -297,8 +302,10 @@ export class HetznerClient {
     return this.requestAll<'firewalls', HetznerFirewall>('/firewalls', 'firewalls')
   }
 
-  async createFirewall(options: CreateFirewallOptions): Promise<{ firewall: HetznerFirewall, actions: HetznerAction[] }> {
-    const data = await this.request<{ firewall: HetznerFirewall, actions: HetznerAction[] }>('POST', '/firewalls', {
+  async createFirewall(
+    options: CreateFirewallOptions,
+  ): Promise<{ firewall: HetznerFirewall; actions: HetznerAction[] }> {
+    const data = await this.request<{ firewall: HetznerFirewall; actions: HetznerAction[] }>('POST', '/firewalls', {
       name: options.name,
       rules: options.rules,
       labels: options.labels,
@@ -312,9 +319,13 @@ export class HetznerClient {
    * firewall's rules in sync with the desired config without recreating it.
    */
   async setFirewallRules(firewallId: number, rules: HetznerFirewallRule[]): Promise<HetznerAction[]> {
-    const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/set_rules`, {
-      rules,
-    })
+    const data = await this.request<{ actions: HetznerAction[] }>(
+      'POST',
+      `/firewalls/${firewallId}/actions/set_rules`,
+      {
+        rules,
+      },
+    )
     return data.actions ?? []
   }
 
@@ -323,10 +334,17 @@ export class HetznerClient {
     await this.request('DELETE', `/firewalls/${firewallId}`)
   }
 
-  async applyFirewallToResources(firewallId: number, applyTo: Array<{ type: 'server', server: number }>): Promise<HetznerAction[]> {
-    const data = await this.request<{ actions: HetznerAction[] }>('POST', `/firewalls/${firewallId}/actions/apply_to_resources`, {
-      apply_to: applyTo,
-    })
+  async applyFirewallToResources(
+    firewallId: number,
+    applyTo: Array<{ type: 'server'; server: number }>,
+  ): Promise<HetznerAction[]> {
+    const data = await this.request<{ actions: HetznerAction[] }>(
+      'POST',
+      `/firewalls/${firewallId}/actions/apply_to_resources`,
+      {
+        apply_to: applyTo,
+      },
+    )
     return data.actions
   }
 
@@ -343,7 +361,10 @@ export class HetznerClient {
     return data.ssh_key
   }
 
-  async waitForAction(actionId: number, options?: { pollIntervalMs?: number, maxWaitMs?: number }): Promise<HetznerAction> {
+  async waitForAction(
+    actionId: number,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerAction> {
     const pollInterval = options?.pollIntervalMs ?? 2000
     const maxWait = options?.maxWaitMs ?? 300000
     const start = Date.now()
@@ -354,13 +375,16 @@ export class HetznerClient {
       if (data.action.status === 'error') {
         throw new Error(data.action.error?.message || 'Hetzner action failed')
       }
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     throw new Error(`Timed out waiting for Hetzner action ${actionId}`)
   }
 
-  async waitForServerRunning(serverId: number, options?: { pollIntervalMs?: number, maxWaitMs?: number }): Promise<HetznerServer> {
+  async waitForServerRunning(
+    serverId: number,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerServer> {
     const pollInterval = options?.pollIntervalMs ?? 3000
     const maxWait = options?.maxWaitMs ?? 600000
     const start = Date.now()
@@ -368,7 +392,7 @@ export class HetznerClient {
     while (Date.now() - start < maxWait) {
       const server = await this.getServer(serverId)
       if (server.status === 'running') return server
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
 
     throw new Error(`Timed out waiting for server ${serverId} to reach running state`)
@@ -385,7 +409,9 @@ export class HetznerClient {
 export function resolveHetznerApiToken(configToken?: string, config?: CloudConfig): string {
   const token = resolveToken(configToken, config)
   if (!token) {
-    throw new Error('Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.')
+    throw new Error(
+      'Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.',
+    )
   }
   return token
 }

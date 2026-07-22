@@ -9,14 +9,13 @@
  * Returns `[]` when disabled.
  */
 export function buildAutoUpdatesScript(enabled: boolean = true): string[] {
-  if (!enabled)
-    return []
+  if (!enabled) return []
 
   return [
     'export DEBIAN_FRONTEND=noninteractive',
     'apt-get install -y unattended-upgrades',
     // Enable the periodic update/upgrade APT timers.
-    'cat > /etc/apt/apt.conf.d/20auto-upgrades <<\'TS_CLOUD_AUTOUPD_EOF\'',
+    "cat > /etc/apt/apt.conf.d/20auto-upgrades <<'TS_CLOUD_AUTOUPD_EOF'",
     'APT::Periodic::Update-Package-Lists "1";',
     'APT::Periodic::Unattended-Upgrade "1";',
     'APT::Periodic::Download-Upgradeable-Packages "1";',

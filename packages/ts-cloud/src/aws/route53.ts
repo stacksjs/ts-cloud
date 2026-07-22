@@ -2,7 +2,6 @@
  * Route53 Client - DNS management without AWS SDK
  * Uses direct AWS API calls with Signature V4
  */
-
 import { AWSClient } from './client'
 
 export interface HostedZone {
@@ -66,7 +65,7 @@ export interface ListHostedZonesResult {
 export interface GetHostedZoneResult {
   HostedZone: HostedZone
   DelegationSet: DelegationSet
-  VPCs?: { VPCId: string, VPCRegion: string }[]
+  VPCs?: { VPCId: string; VPCRegion: string }[]
 }
 
 export interface ListResourceRecordSetsResult {
@@ -181,10 +180,7 @@ export class Route53Client {
   /**
    * List hosted zones
    */
-  async listHostedZones(params?: {
-    Marker?: string
-    MaxItems?: string
-  }): Promise<ListHostedZonesResult> {
+  async listHostedZones(params?: { Marker?: string; MaxItems?: string }): Promise<ListHostedZonesResult> {
     const queryParams: Record<string, string> = {}
 
     if (params?.Marker) queryParams.marker = params.Marker
@@ -229,9 +225,7 @@ export class Route53Client {
   /**
    * Get a hosted zone
    */
-  async getHostedZone(params: {
-    Id: string
-  }): Promise<GetHostedZoneResult> {
+  async getHostedZone(params: { Id: string }): Promise<GetHostedZoneResult> {
     // Strip /hostedzone/ prefix if present
     const hostedZoneId = params.Id.replace('/hostedzone/', '')
 
@@ -248,9 +242,7 @@ export class Route53Client {
   /**
    * Delete a hosted zone
    */
-  async deleteHostedZone(params: {
-    Id: string
-  }): Promise<void> {
+  async deleteHostedZone(params: { Id: string }): Promise<void> {
     // Strip /hostedzone/ prefix if present
     const hostedZoneId = params.Id.replace('/hostedzone/', '')
 
@@ -480,7 +472,11 @@ export class Route53Client {
     return {
       HostedZone: this.parseHostedZone(response.HostedZone),
       DelegationSet: this.parseDelegationSet(response.DelegationSet),
-      VPCs: response.VPCs?.VPC ? (Array.isArray(response.VPCs.VPC) ? response.VPCs.VPC : [response.VPCs.VPC]) : undefined,
+      VPCs: response.VPCs?.VPC
+        ? Array.isArray(response.VPCs.VPC)
+          ? response.VPCs.VPC
+          : [response.VPCs.VPC]
+        : undefined,
     }
   }
 
@@ -533,10 +529,12 @@ export class Route53Client {
       Id: hz.Id || '',
       Name: hz.Name || '',
       CallerReference: hz.CallerReference,
-      Config: hz.Config ? {
-        Comment: hz.Config.Comment,
-        PrivateZone: hz.Config.PrivateZone === 'true' || hz.Config.PrivateZone === true,
-      } : undefined,
+      Config: hz.Config
+        ? {
+            Comment: hz.Config.Comment,
+            PrivateZone: hz.Config.PrivateZone === 'true' || hz.Config.PrivateZone === true,
+          }
+        : undefined,
       ResourceRecordSetCount: hz.ResourceRecordSetCount ? Number(hz.ResourceRecordSetCount) : undefined,
     }
   }
@@ -581,11 +579,14 @@ export class Route53Client {
       ResourceRecords: resourceRecords.map((rr: any) => ({
         Value: rr.Value || rr,
       })),
-      AliasTarget: rs.AliasTarget ? {
-        HostedZoneId: rs.AliasTarget.HostedZoneId,
-        DNSName: rs.AliasTarget.DNSName,
-        EvaluateTargetHealth: rs.AliasTarget.EvaluateTargetHealth === 'true' || rs.AliasTarget.EvaluateTargetHealth === true,
-      } : undefined,
+      AliasTarget: rs.AliasTarget
+        ? {
+            HostedZoneId: rs.AliasTarget.HostedZoneId,
+            DNSName: rs.AliasTarget.DNSName,
+            EvaluateTargetHealth:
+              rs.AliasTarget.EvaluateTargetHealth === 'true' || rs.AliasTarget.EvaluateTargetHealth === true,
+          }
+        : undefined,
       SetIdentifier: rs.SetIdentifier,
       Weight: rs.Weight ? Number(rs.Weight) : undefined,
       Region: rs.Region,
@@ -605,7 +606,7 @@ export class Route53Client {
     const normalizedDomain = domainName.endsWith('.') ? domainName : `${domainName}.`
 
     const result = await this.listHostedZonesByName({ DNSName: normalizedDomain })
-    const zone = result.HostedZones.find(z => z.Name === normalizedDomain)
+    const zone = result.HostedZones.find((z) => z.Name === normalizedDomain)
 
     return zone || null
   }
@@ -624,15 +625,17 @@ export class Route53Client {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: params.Name,
-            Type: 'A',
-            TTL: params.TTL || 300,
-            ResourceRecords: values.map(v => ({ Value: v })),
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: params.Name,
+              Type: 'A',
+              TTL: params.TTL || 300,
+              ResourceRecords: values.map((v) => ({ Value: v })),
+            },
           },
-        }],
+        ],
       },
     })
   }
@@ -649,15 +652,17 @@ export class Route53Client {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: params.Name,
-            Type: 'CNAME',
-            TTL: params.TTL || 300,
-            ResourceRecords: [{ Value: params.Value }],
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: params.Name,
+              Type: 'CNAME',
+              TTL: params.TTL || 300,
+              ResourceRecords: [{ Value: params.Value }],
+            },
           },
-        }],
+        ],
       },
     })
   }
@@ -676,18 +681,20 @@ export class Route53Client {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: params.Name,
-            Type: params.Type || 'A',
-            AliasTarget: {
-              HostedZoneId: params.TargetHostedZoneId,
-              DNSName: params.TargetDNSName,
-              EvaluateTargetHealth: params.EvaluateTargetHealth ?? false,
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: params.Name,
+              Type: params.Type || 'A',
+              AliasTarget: {
+                HostedZoneId: params.TargetHostedZoneId,
+                DNSName: params.TargetDNSName,
+                EvaluateTargetHealth: params.EvaluateTargetHealth ?? false,
+              },
             },
           },
-        }],
+        ],
       },
     })
   }
@@ -713,15 +720,17 @@ export class Route53Client {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: params.Name,
-            Type: 'TXT',
-            TTL: params.TTL || 300,
-            ResourceRecords: quotedValues.map(v => ({ Value: v })),
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: params.Name,
+              Type: 'TXT',
+              TTL: params.TTL || 300,
+              ResourceRecords: quotedValues.map((v) => ({ Value: v })),
+            },
           },
-        }],
+        ],
       },
     })
   }
@@ -732,23 +741,25 @@ export class Route53Client {
   async createMxRecord(params: {
     HostedZoneId: string
     Name: string
-    Values: Array<{ priority: number, mailServer: string }>
+    Values: Array<{ priority: number; mailServer: string }>
     TTL?: number
   }): Promise<ChangeResourceRecordSetsResult> {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'UPSERT',
-          ResourceRecordSet: {
-            Name: params.Name,
-            Type: 'MX',
-            TTL: params.TTL || 300,
-            ResourceRecords: params.Values.map(v => ({
-              Value: `${v.priority} ${v.mailServer}`,
-            })),
+        Changes: [
+          {
+            Action: 'UPSERT',
+            ResourceRecordSet: {
+              Name: params.Name,
+              Type: 'MX',
+              TTL: params.TTL || 300,
+              ResourceRecords: params.Values.map((v) => ({
+                Value: `${v.priority} ${v.mailServer}`,
+              })),
+            },
           },
-        }],
+        ],
       },
     })
   }
@@ -763,10 +774,12 @@ export class Route53Client {
     return this.changeResourceRecordSets({
       HostedZoneId: params.HostedZoneId,
       ChangeBatch: {
-        Changes: [{
-          Action: 'DELETE',
-          ResourceRecordSet: params.RecordSet,
-        }],
+        Changes: [
+          {
+            Action: 'DELETE',
+            ResourceRecordSet: params.RecordSet,
+          },
+        ],
       },
     })
   }
@@ -790,7 +803,7 @@ export class Route53Client {
         return true
       }
 
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
 
     return false
@@ -814,9 +827,7 @@ export class Route53Client {
     isNew: boolean
   }> {
     // Normalize domain (ensure it ends with a dot)
-    const normalizedDomain = params.domainName.endsWith('.')
-      ? params.domainName
-      : `${params.domainName}.`
+    const normalizedDomain = params.domainName.endsWith('.') ? params.domainName : `${params.domainName}.`
 
     // First, try to find existing hosted zone
     const existing = await this.findHostedZoneByName(normalizedDomain)
@@ -885,10 +896,7 @@ export class Route53Client {
    * Ensure a hosted zone exists for a domain, creating it if necessary
    * Returns the hosted zone ID suitable for use in CloudFormation
    */
-  async ensureHostedZone(params: {
-    domainName: string
-    comment?: string
-  }): Promise<{
+  async ensureHostedZone(params: { domainName: string; comment?: string }): Promise<{
     hostedZoneId: string
     nameServers: string[]
     isNew: boolean
@@ -914,10 +922,7 @@ export class Route53Client {
    * Setup DNS for a domain with automatic hosted zone creation
    * Creates the hosted zone if needed and returns setup information
    */
-  async setupDomainDns(params: {
-    domain: string
-    createIfNotExists?: boolean
-  }): Promise<{
+  async setupDomainDns(params: { domain: string; createIfNotExists?: boolean }): Promise<{
     success: boolean
     hostedZoneId: string | null
     nameServers: string[]

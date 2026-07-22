@@ -2,7 +2,6 @@
  * AWS ECS Operations
  * Direct API calls without AWS CLI dependency
  */
-
 import { AWSClient } from './client'
 
 export interface Service {
@@ -78,7 +77,7 @@ export class ECSClient {
   /**
    * Describe ECS services
    */
-  async describeServices(options: DescribeServicesOptions): Promise<{ services?: Service[], failures?: any[] }> {
+  async describeServices(options: DescribeServicesOptions): Promise<{ services?: Service[]; failures?: any[] }> {
     const params: Record<string, any> = {
       cluster: options.cluster,
       services: options.services,
@@ -102,7 +101,10 @@ export class ECSClient {
   /**
    * List ECS services in a cluster
    */
-  async listServices(cluster: string, options: { nextToken?: string, maxResults?: number } = {}): Promise<{ serviceArns?: string[], nextToken?: string }> {
+  async listServices(
+    cluster: string,
+    options: { nextToken?: string; maxResults?: number } = {},
+  ): Promise<{ serviceArns?: string[]; nextToken?: string }> {
     const params: Record<string, any> = {
       cluster,
       ...options,
@@ -126,7 +128,11 @@ export class ECSClient {
   /**
    * List tasks in a cluster
    */
-  async listTasks(cluster: string, serviceName?: string, options: { nextToken?: string, maxResults?: number } = {}): Promise<{ taskArns?: string[], nextToken?: string }> {
+  async listTasks(
+    cluster: string,
+    serviceName?: string,
+    options: { nextToken?: string; maxResults?: number } = {},
+  ): Promise<{ taskArns?: string[]; nextToken?: string }> {
     const params: Record<string, any> = {
       cluster,
       ...options,
@@ -154,7 +160,7 @@ export class ECSClient {
   /**
    * Describe ECS tasks
    */
-  async describeTasks(cluster: string, tasks: string[]): Promise<{ tasks?: Task[], failures?: any[] }> {
+  async describeTasks(cluster: string, tasks: string[]): Promise<{ tasks?: Task[]; failures?: any[] }> {
     const params: Record<string, any> = {
       cluster,
       tasks,
@@ -289,11 +295,7 @@ export class ECSClient {
   /**
    * Delete an ECS service
    */
-  async deleteService(options: {
-    cluster: string
-    service: string
-    force?: boolean
-  }): Promise<{ service?: Service }> {
+  async deleteService(options: { cluster: string; service: string; force?: boolean }): Promise<{ service?: Service }> {
     const params: Record<string, any> = {
       cluster: options.cluster,
       service: options.service,
@@ -321,7 +323,9 @@ export class ECSClient {
   /**
    * List ECS clusters
    */
-  async listClusters(options: { nextToken?: string, maxResults?: number } = {}): Promise<{ clusterArns?: string[], nextToken?: string }> {
+  async listClusters(
+    options: { nextToken?: string; maxResults?: number } = {},
+  ): Promise<{ clusterArns?: string[]; nextToken?: string }> {
     const result = await this.client.request({
       service: 'ecs',
       region: this.region,
@@ -340,7 +344,7 @@ export class ECSClient {
   /**
    * Describe ECS clusters
    */
-  async describeClusters(clusters: string[]): Promise<{ clusters?: any[], failures?: any[] }> {
+  async describeClusters(clusters: string[]): Promise<{ clusters?: any[]; failures?: any[] }> {
     const params = {
       clusters,
       include: ['ATTACHMENTS', 'CONFIGURATIONS', 'SETTINGS', 'STATISTICS', 'TAGS'],
@@ -364,11 +368,7 @@ export class ECSClient {
   /**
    * Stop a running task
    */
-  async stopTask(options: {
-    cluster: string
-    task: string
-    reason?: string
-  }): Promise<{ task?: Task }> {
+  async stopTask(options: { cluster: string; task: string; reason?: string }): Promise<{ task?: Task }> {
     const params: Record<string, any> = {
       cluster: options.cluster,
       task: options.task,
@@ -412,10 +412,10 @@ export class ECSClient {
       containerOverrides?: Array<{
         name: string
         command?: string[]
-        environment?: Array<{ name: string, value: string }>
+        environment?: Array<{ name: string; value: string }>
       }>
     }
-  }): Promise<{ tasks?: Task[], failures?: any[] }> {
+  }): Promise<{ tasks?: Task[]; failures?: any[] }> {
     const params: Record<string, any> = {
       cluster: options.cluster,
       taskDefinition: options.taskDefinition,
@@ -468,8 +468,8 @@ export class ECSClient {
         hostPort?: number
         protocol?: 'tcp' | 'udp'
       }>
-      environment?: Array<{ name: string, value: string }>
-      secrets?: Array<{ name: string, valueFrom: string }>
+      environment?: Array<{ name: string; value: string }>
+      secrets?: Array<{ name: string; valueFrom: string }>
       logConfiguration?: {
         logDriver: string
         options?: Record<string, string>
@@ -519,7 +519,7 @@ export class ECSClient {
   /**
    * Describe task definitions
    */
-  async describeTaskDefinition(taskDefinition: string): Promise<{ taskDefinition?: any, tags?: any[] }> {
+  async describeTaskDefinition(taskDefinition: string): Promise<{ taskDefinition?: any; tags?: any[] }> {
     const result = await this.client.request({
       service: 'ecs',
       region: this.region,
@@ -581,15 +581,17 @@ export class ECSClient {
       if (svc) {
         // Check if all deployments are completed
         const primaryDeployment = svc.deployments?.find((d: Deployment) => d.status === 'PRIMARY')
-        if (primaryDeployment &&
-            primaryDeployment.runningCount === primaryDeployment.desiredCount &&
-            svc.deployments?.length === 1) {
+        if (
+          primaryDeployment &&
+          primaryDeployment.runningCount === primaryDeployment.desiredCount &&
+          svc.deployments?.length === 1
+        ) {
           return true
         }
       }
 
       // Wait before next check
-      await new Promise(resolve => setTimeout(resolve, delayMs))
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
     }
 
     return false

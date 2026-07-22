@@ -3,7 +3,6 @@
  * Direct API calls for Bedrock AI model invocations and management
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -48,7 +47,9 @@ export interface BedrockResponse {
   id: string
   type: string
   role: string
-  content: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }>
+  content: Array<
+    { type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  >
   model: string
   stop_reason: 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence'
   usage: {
@@ -383,7 +384,17 @@ export interface CreateFoundationModelEntitlementCommandOutput {
 export interface ListModelInvocationJobsCommandInput {
   submitTimeAfter?: string
   submitTimeBefore?: string
-  statusEquals?: 'Submitted' | 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped' | 'PartiallyCompleted' | 'Expired' | 'Validating' | 'Scheduled'
+  statusEquals?:
+    | 'Submitted'
+    | 'InProgress'
+    | 'Completed'
+    | 'Failed'
+    | 'Stopping'
+    | 'Stopped'
+    | 'PartiallyCompleted'
+    | 'Expired'
+    | 'Validating'
+    | 'Scheduled'
   nameContains?: string
   maxResults?: number
   nextToken?: string
@@ -711,7 +722,8 @@ export interface CreateAgentCommandOutput {
     agentVersion: string
     clientToken?: string
     instruction?: string
-    agentStatus: 'CREATING' | 'PREPARING' | 'PREPARED' | 'NOT_PREPARED' | 'DELETING' | 'FAILED' | 'VERSIONING' | 'UPDATING'
+    agentStatus:
+      'CREATING' | 'PREPARING' | 'PREPARED' | 'NOT_PREPARED' | 'DELETING' | 'FAILED' | 'VERSIONING' | 'UPDATING'
     foundationModel?: string
     description?: string
     idleSessionTTLInSeconds: number
@@ -876,15 +888,16 @@ export class BedrockRuntimeClient {
    * Invoke a Bedrock model (matches AWS SDK InvokeModelCommand)
    */
   async invokeModel(params: InvokeModelCommandInput): Promise<InvokeModelCommandOutput> {
-    const body = typeof params.body === 'string'
-      ? params.body
-      : params.body instanceof Uint8Array
-        ? new TextDecoder().decode(params.body)
-        : JSON.stringify(params.body)
+    const body =
+      typeof params.body === 'string'
+        ? params.body
+        : params.body instanceof Uint8Array
+          ? new TextDecoder().decode(params.body)
+          : JSON.stringify(params.body)
 
     const headers: Record<string, string> = {
       'Content-Type': params.contentType || 'application/json',
-      'Accept': params.accept || 'application/json',
+      Accept: params.accept || 'application/json',
     }
 
     if (params.trace) {
@@ -917,16 +930,19 @@ export class BedrockRuntimeClient {
   /**
    * Invoke model with streaming response (matches AWS SDK InvokeModelWithResponseStreamCommand)
    */
-  async invokeModelWithResponseStream(params: InvokeModelWithResponseStreamCommandInput): Promise<InvokeModelWithResponseStreamCommandOutput> {
-    const body = typeof params.body === 'string'
-      ? params.body
-      : params.body instanceof Uint8Array
-        ? new TextDecoder().decode(params.body)
-        : JSON.stringify(params.body)
+  async invokeModelWithResponseStream(
+    params: InvokeModelWithResponseStreamCommandInput,
+  ): Promise<InvokeModelWithResponseStreamCommandOutput> {
+    const body =
+      typeof params.body === 'string'
+        ? params.body
+        : params.body instanceof Uint8Array
+          ? new TextDecoder().decode(params.body)
+          : JSON.stringify(params.body)
 
     const headers: Record<string, string> = {
       'Content-Type': params.contentType || 'application/json',
-      'Accept': params.accept || 'application/vnd.amazon.eventstream',
+      Accept: params.accept || 'application/vnd.amazon.eventstream',
     }
 
     if (params.trace) {
@@ -1010,8 +1026,7 @@ export class BedrockRuntimeClient {
         }
         buffer = chunks.remaining
       }
-    }
-finally {
+    } finally {
       reader.releaseLock()
     }
   }
@@ -1032,8 +1047,7 @@ finally {
       if (remaining[i] === '{') {
         if (braceCount === 0) start = i
         braceCount++
-      }
-else if (remaining[i] === '}') {
+      } else if (remaining[i] === '}') {
         braceCount--
         if (braceCount === 0 && start !== -1) {
           try {
@@ -1042,8 +1056,7 @@ else if (remaining[i] === '}') {
             remaining = remaining.slice(i + 1)
             i = -1 // Reset to search from beginning of new remaining
             start = -1
-          }
-catch {
+          } catch {
             // Not valid JSON, continue
           }
         }
@@ -1088,7 +1101,7 @@ catch {
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '')
 
     const allHeaders: Record<string, string> = {
-      'host': host,
+      host: host,
       'x-amz-date': amzDate,
       ...headers,
     }
@@ -1101,26 +1114,13 @@ catch {
     allHeaders['x-amz-content-sha256'] = payloadHash
     allHeaders['content-length'] = Buffer.byteLength(body).toString()
 
-    const sortedHeaderKeys = Object.keys(allHeaders).sort((a, b) =>
-      a.toLowerCase().localeCompare(b.toLowerCase())
-    )
+    const sortedHeaderKeys = Object.keys(allHeaders).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()))
 
-    const canonicalHeaders = sortedHeaderKeys
-      .map(key => `${key.toLowerCase()}:${allHeaders[key].trim()}\n`)
-      .join('')
+    const canonicalHeaders = sortedHeaderKeys.map((key) => `${key.toLowerCase()}:${allHeaders[key].trim()}\n`).join('')
 
-    const signedHeaders = sortedHeaderKeys
-      .map(key => key.toLowerCase())
-      .join(';')
+    const signedHeaders = sortedHeaderKeys.map((key) => key.toLowerCase()).join(';')
 
-    const canonicalRequest = [
-      method,
-      path,
-      '',
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join('\n')
+    const canonicalRequest = [method, path, '', canonicalHeaders, signedHeaders, payloadHash].join('\n')
 
     const algorithm = 'AWS4-HMAC-SHA256'
     const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`
@@ -1141,7 +1141,7 @@ catch {
 
     return {
       ...allHeaders,
-      'Authorization': authorizationHeader,
+      Authorization: authorizationHeader,
     }
   }
 
@@ -1183,7 +1183,7 @@ catch {
       path: `/model/${encodeURIComponent(modelId)}/invoke`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(requestBody),
     })
@@ -1212,7 +1212,7 @@ catch {
       path: `/model/${encodeURIComponent(params.modelId)}/converse`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(requestBody),
     })
@@ -1239,15 +1239,13 @@ catch {
         texts: Array.isArray(params.inputText) ? params.inputText : [params.inputText],
         input_type: 'search_document',
       }
-    }
-else if (modelId.includes('titan')) {
+    } else if (modelId.includes('titan')) {
       requestBody = {
         inputText: Array.isArray(params.inputText) ? params.inputText[0] : params.inputText,
       }
       if (params.dimensions) requestBody.dimensions = params.dimensions
       if (params.normalize !== undefined) requestBody.normalize = params.normalize
-    }
-else {
+    } else {
       // Default format
       requestBody = {
         inputText: Array.isArray(params.inputText) ? params.inputText[0] : params.inputText,
@@ -1261,7 +1259,7 @@ else {
       path: `/model/${encodeURIComponent(modelId)}/invoke`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(requestBody),
     })
@@ -1283,8 +1281,14 @@ else {
     assessments: Array<{
       topicPolicy?: { topics: Array<{ name: string; type: string; action: string }> }
       contentPolicy?: { filters: Array<{ type: string; confidence: string; action: string }> }
-      wordPolicy?: { customWords: Array<{ match: string; action: string }>; managedWordLists: Array<{ match: string; type: string; action: string }> }
-      sensitiveInformationPolicy?: { piiEntities: Array<{ type: string; match: string; action: string }>; regexes: Array<{ name: string; match: string; action: string }> }
+      wordPolicy?: {
+        customWords: Array<{ match: string; action: string }>
+        managedWordLists: Array<{ match: string; type: string; action: string }>
+      }
+      sensitiveInformationPolicy?: {
+        piiEntities: Array<{ type: string; match: string; action: string }>
+        regexes: Array<{ name: string; match: string; action: string }>
+      }
     }>
   }> {
     const result = await this.client.request({
@@ -1294,7 +1298,7 @@ else {
       path: `/guardrail/${encodeURIComponent(params.guardrailIdentifier)}/version/${encodeURIComponent(params.guardrailVersion)}/apply`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({
         source: params.source,
@@ -1364,7 +1368,9 @@ export class BedrockClient {
   /**
    * Create a model customization job (fine-tuning)
    */
-  async createModelCustomizationJob(params: CreateModelCustomizationJobCommandInput): Promise<CreateModelCustomizationJobCommandOutput> {
+  async createModelCustomizationJob(
+    params: CreateModelCustomizationJobCommandInput,
+  ): Promise<CreateModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1380,7 +1386,9 @@ export class BedrockClient {
   /**
    * Get model customization job details
    */
-  async getModelCustomizationJob(params: GetModelCustomizationJobCommandInput): Promise<GetModelCustomizationJobCommandOutput> {
+  async getModelCustomizationJob(
+    params: GetModelCustomizationJobCommandInput,
+  ): Promise<GetModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1392,7 +1400,9 @@ export class BedrockClient {
   /**
    * List model customization jobs
    */
-  async listModelCustomizationJobs(params?: ListModelCustomizationJobsCommandInput): Promise<ListModelCustomizationJobsCommandOutput> {
+  async listModelCustomizationJobs(
+    params?: ListModelCustomizationJobsCommandInput,
+  ): Promise<ListModelCustomizationJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
     if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
@@ -1415,7 +1425,9 @@ export class BedrockClient {
   /**
    * Stop a model customization job
    */
-  async stopModelCustomizationJob(params: StopModelCustomizationJobCommandInput): Promise<StopModelCustomizationJobCommandOutput> {
+  async stopModelCustomizationJob(
+    params: StopModelCustomizationJobCommandInput,
+  ): Promise<StopModelCustomizationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1486,7 +1498,9 @@ export class BedrockClient {
   /**
    * Request access to a foundation model
    */
-  async requestModelAccess(params: CreateFoundationModelEntitlementCommandInput): Promise<CreateFoundationModelEntitlementCommandOutput> {
+  async requestModelAccess(
+    params: CreateFoundationModelEntitlementCommandInput,
+  ): Promise<CreateFoundationModelEntitlementCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1578,7 +1592,9 @@ export class BedrockClient {
   /**
    * List model invocation jobs (batch inference)
    */
-  async listModelInvocationJobs(params?: ListModelInvocationJobsCommandInput): Promise<ListModelInvocationJobsCommandOutput> {
+  async listModelInvocationJobs(
+    params?: ListModelInvocationJobsCommandInput,
+  ): Promise<ListModelInvocationJobsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.submitTimeAfter) queryParams.submitTimeAfter = params.submitTimeAfter
     if (params?.submitTimeBefore) queryParams.submitTimeBefore = params.submitTimeBefore
@@ -1620,7 +1636,7 @@ export class BedrockClient {
         return job
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for model customization job ${jobIdentifier}`)
@@ -1636,8 +1652,7 @@ export class BedrockClient {
       try {
         const result = await this.requestModelAccess({ modelId })
         results.push({ modelId, status: result.status })
-      }
-catch (error: unknown) {
+      } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         results.push({ modelId, status: 'ERROR', error: errorMessage })
       }
@@ -1676,7 +1691,9 @@ catch (error: unknown) {
   /**
    * Create a batch inference job
    */
-  async createModelInvocationJob(params: CreateModelInvocationJobCommandInput): Promise<CreateModelInvocationJobCommandOutput> {
+  async createModelInvocationJob(
+    params: CreateModelInvocationJobCommandInput,
+  ): Promise<CreateModelInvocationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1704,7 +1721,9 @@ catch (error: unknown) {
   /**
    * Stop a batch inference job
    */
-  async stopModelInvocationJob(params: StopModelInvocationJobCommandInput): Promise<StopModelInvocationJobCommandOutput> {
+  async stopModelInvocationJob(
+    params: StopModelInvocationJobCommandInput,
+  ): Promise<StopModelInvocationJobCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1723,7 +1742,9 @@ catch (error: unknown) {
   /**
    * Create provisioned throughput for a model
    */
-  async createProvisionedModelThroughput(params: CreateProvisionedModelThroughputCommandInput): Promise<CreateProvisionedModelThroughputCommandOutput> {
+  async createProvisionedModelThroughput(
+    params: CreateProvisionedModelThroughputCommandInput,
+  ): Promise<CreateProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1739,7 +1760,9 @@ catch (error: unknown) {
   /**
    * Get provisioned throughput details
    */
-  async getProvisionedModelThroughput(params: GetProvisionedModelThroughputCommandInput): Promise<GetProvisionedModelThroughputCommandOutput> {
+  async getProvisionedModelThroughput(
+    params: GetProvisionedModelThroughputCommandInput,
+  ): Promise<GetProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1751,7 +1774,9 @@ catch (error: unknown) {
   /**
    * List provisioned throughputs
    */
-  async listProvisionedModelThroughputs(params?: ListProvisionedModelThroughputsCommandInput): Promise<ListProvisionedModelThroughputsCommandOutput> {
+  async listProvisionedModelThroughputs(
+    params?: ListProvisionedModelThroughputsCommandInput,
+  ): Promise<ListProvisionedModelThroughputsCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.creationTimeAfter) queryParams.creationTimeAfter = params.creationTimeAfter
     if (params?.creationTimeBefore) queryParams.creationTimeBefore = params.creationTimeBefore
@@ -1775,7 +1800,9 @@ catch (error: unknown) {
   /**
    * Update provisioned throughput
    */
-  async updateProvisionedModelThroughput(params: UpdateProvisionedModelThroughputCommandInput): Promise<UpdateProvisionedModelThroughputCommandOutput> {
+  async updateProvisionedModelThroughput(
+    params: UpdateProvisionedModelThroughputCommandInput,
+  ): Promise<UpdateProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1794,7 +1821,9 @@ catch (error: unknown) {
   /**
    * Delete provisioned throughput
    */
-  async deleteProvisionedModelThroughput(params: DeleteProvisionedModelThroughputCommandInput): Promise<DeleteProvisionedModelThroughputCommandOutput> {
+  async deleteProvisionedModelThroughput(
+    params: DeleteProvisionedModelThroughputCommandInput,
+  ): Promise<DeleteProvisionedModelThroughputCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1910,7 +1939,9 @@ catch (error: unknown) {
   /**
    * Create an inference profile
    */
-  async createInferenceProfile(params: CreateInferenceProfileCommandInput): Promise<CreateInferenceProfileCommandOutput> {
+  async createInferenceProfile(
+    params: CreateInferenceProfileCommandInput,
+  ): Promise<CreateInferenceProfileCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -1926,7 +1957,9 @@ catch (error: unknown) {
   /**
    * Delete an inference profile
    */
-  async deleteInferenceProfile(params: DeleteInferenceProfileCommandInput): Promise<DeleteInferenceProfileCommandOutput> {
+  async deleteInferenceProfile(
+    params: DeleteInferenceProfileCommandInput,
+  ): Promise<DeleteInferenceProfileCommandOutput> {
     return this.client.request({
       service: 'bedrock',
       region: this.region,
@@ -2037,7 +2070,7 @@ export class BedrockAgentRuntimeClient {
       path: `/agents/${encodeURIComponent(params.agentId)}/agentAliases/${encodeURIComponent(params.agentAliasId)}/sessions/${encodeURIComponent(params.sessionId)}/text`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(requestBody),
     })
@@ -2080,7 +2113,7 @@ export class BedrockAgentRuntimeClient {
       path: `/knowledgebases/${encodeURIComponent(params.knowledgeBaseId)}/retrieve`,
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify({
         retrievalQuery: params.retrievalQuery,
@@ -2162,7 +2195,7 @@ export class BedrockAgentRuntimeClient {
       path: '/retrieveAndGenerate',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       body: JSON.stringify(params),
     })
@@ -2216,10 +2249,7 @@ export class BedrockAgentClient {
   /**
    * List agents
    */
-  async listAgents(params?: {
-    maxResults?: number
-    nextToken?: string
-  }): Promise<{
+  async listAgents(params?: { maxResults?: number; nextToken?: string }): Promise<{
     agentSummaries: Array<{
       agentId: string
       agentName: string
@@ -2246,7 +2276,10 @@ export class BedrockAgentClient {
   /**
    * Delete an agent
    */
-  async deleteAgent(params: { agentId: string; skipResourceInUseCheck?: boolean }): Promise<{ agentId: string; agentStatus: string }> {
+  async deleteAgent(params: {
+    agentId: string
+    skipResourceInUseCheck?: boolean
+  }): Promise<{ agentId: string; agentStatus: string }> {
     const queryParams: Record<string, string> = {}
     if (params.skipResourceInUseCheck !== undefined) {
       queryParams.skipResourceInUseCheck = params.skipResourceInUseCheck.toString()
@@ -2300,7 +2333,9 @@ export class BedrockAgentClient {
   /**
    * Get knowledge base details
    */
-  async getKnowledgeBase(params: { knowledgeBaseId: string }): Promise<{ knowledgeBase: CreateKnowledgeBaseCommandOutput['knowledgeBase'] }> {
+  async getKnowledgeBase(params: {
+    knowledgeBaseId: string
+  }): Promise<{ knowledgeBase: CreateKnowledgeBaseCommandOutput['knowledgeBase'] }> {
     return this.client.request({
       service: 'bedrock-agent',
       region: this.region,
@@ -2312,10 +2347,7 @@ export class BedrockAgentClient {
   /**
    * List knowledge bases
    */
-  async listKnowledgeBases(params?: {
-    maxResults?: number
-    nextToken?: string
-  }): Promise<{
+  async listKnowledgeBases(params?: { maxResults?: number; nextToken?: string }): Promise<{
     knowledgeBaseSummaries: Array<{
       knowledgeBaseId: string
       name: string
@@ -2754,7 +2786,17 @@ export interface GetModelInvocationJobCommandOutput {
   modelId: string
   clientRequestToken?: string
   roleArn: string
-  status: 'Submitted' | 'InProgress' | 'Completed' | 'Failed' | 'Stopping' | 'Stopped' | 'PartiallyCompleted' | 'Expired' | 'Validating' | 'Scheduled'
+  status:
+    | 'Submitted'
+    | 'InProgress'
+    | 'Completed'
+    | 'Failed'
+    | 'Stopping'
+    | 'Stopped'
+    | 'PartiallyCompleted'
+    | 'Expired'
+    | 'Validating'
+    | 'Scheduled'
   message?: string
   submitTime: string
   lastModifiedTime?: string
@@ -2904,7 +2946,13 @@ export interface CreateEvaluationJobCommandInput {
       customMetrics?: Array<{
         name: string
         description?: string
-        ratingMethod: 'ThumbsUpDown' | 'IndividualLikertScale' | 'ComparisonLikertScale' | 'ComparisonChoice' | 'ComparisonRank' | 'FreeformFeedback'
+        ratingMethod:
+          | 'ThumbsUpDown'
+          | 'IndividualLikertScale'
+          | 'ComparisonLikertScale'
+          | 'ComparisonChoice'
+          | 'ComparisonRank'
+          | 'FreeformFeedback'
       }>
       datasetMetricConfigs: Array<{
         taskType: 'Summarization' | 'Classification' | 'QuestionAndAnswer' | 'Generation' | 'Custom'
@@ -3344,7 +3392,19 @@ export interface FlowNodeConfiguration {
 
 export interface FlowNode {
   name: string
-  type: 'Input' | 'Output' | 'KnowledgeBase' | 'Condition' | 'Lex' | 'Prompt' | 'LambdaFunction' | 'Agent' | 'Storage' | 'Retrieval' | 'Iterator' | 'Collector'
+  type:
+    | 'Input'
+    | 'Output'
+    | 'KnowledgeBase'
+    | 'Condition'
+    | 'Lex'
+    | 'Prompt'
+    | 'LambdaFunction'
+    | 'Agent'
+    | 'Storage'
+    | 'Retrieval'
+    | 'Iterator'
+    | 'Collector'
   configuration?: FlowNodeConfiguration
   inputs?: Array<{
     name: string
@@ -3609,7 +3669,20 @@ export interface SalesforceDataSourceConfiguration {
       type: 'PATTERN'
       patternObjectFilter?: {
         filters: Array<{
-          objectType: 'Account' | 'Case' | 'Campaign' | 'Contact' | 'Contract' | 'Document' | 'Lead' | 'Opportunity' | 'Partner' | 'PricebookEntry' | 'Product2' | 'Solution' | 'Task'
+          objectType:
+            | 'Account'
+            | 'Case'
+            | 'Campaign'
+            | 'Contact'
+            | 'Contract'
+            | 'Document'
+            | 'Lead'
+            | 'Opportunity'
+            | 'Partner'
+            | 'PricebookEntry'
+            | 'Product2'
+            | 'Solution'
+            | 'Task'
           inclusionFilters?: string[]
           exclusionFilters?: string[]
         }>
@@ -4055,7 +4128,7 @@ export async function completeWithClaude(
     temperature: options?.temperature,
   })
 
-  const textContent = response.content.find(c => c.type === 'text')
+  const textContent = response.content.find((c) => c.type === 'text')
   return textContent?.type === 'text' ? textContent.text : ''
 }
 

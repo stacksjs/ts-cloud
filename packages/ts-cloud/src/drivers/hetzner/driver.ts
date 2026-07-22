@@ -1,38 +1,25 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { execSync } from 'node:child_process'
-import type {
-  CloudDriver,
-  ComputeProxyConfig,
-  ComputeStackOutputs,
-  ComputeTarget,
-  FindComputeTargetsOptions,
-  ProvisionComputeOptions,
-  RemoteDeployResult,
-  RunRemoteDeployOptions,
-  SiteConfig,
-  UploadReleaseOptions,
-  UploadReleaseResult,
-} from '@ts-cloud/core'
-import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
-import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
-import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
-import { resolveHetznerImage, resolveHetznerSettings } from './config'
-import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
+import type { CloudDriver, ComputeProxyConfig, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, RemoteDeployResult, RunRemoteDeployOptions, SiteConfig, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
 import type { RpxLbAppBox } from '../shared/rpx-gateway'
-import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
+import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
+import type { HetznerDriverState } from './state'
+import { execSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
-import { buildPhpProvisionScript } from '../shared/php-provision'
-import { buildUfwScript } from '../shared/ufw'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
-import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
 import { buildNotifierScript } from '../shared/notifications'
+import { buildPhpProvisionScript } from '../shared/php-provision'
+import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
+import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
+import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
+import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
+import { resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
-import { readDriverState, writeDriverState, type HetznerDriverState } from './state'
+import { readDriverState, writeDriverState } from './state'
 
 /** Output cap for SCP/SSH children — large enough for verbose tar extraction. */
 const SSH_MAX_BUFFER = 1024 * 1024 * 256
@@ -41,25 +28,25 @@ const SSH_ERROR_OUTPUT_LIMIT = 8_000
 function sshErrorOutput(value: unknown): string {
   const output = Buffer.isBuffer(value) ? value.toString('utf8') : typeof value === 'string' ? value : ''
 
-  return output
-    // Remote deploy scripts contain a here-document with the complete runtime
-    // environment. Never allow assignment values from command output into CI
-    // logs, even when a shell or child process happens to echo the script.
-    // Cover any shell-legal identifier — lowercase keys (`database_url=…`),
-    // indented lines, and `export `-prefixed assignments leak just as badly.
-    .replace(/(^|\n)(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=).*$/gm, '$1$2[redacted]')
-    .replace(/encrypted:[A-Za-z0-9+/=]+/g, 'encrypted:[redacted]')
-    .trim()
-    .slice(-SSH_ERROR_OUTPUT_LIMIT)
+  return (
+    output
+      // Remote deploy scripts contain a here-document with the complete runtime
+      // environment. Never allow assignment values from command output into CI
+      // logs, even when a shell or child process happens to echo the script.
+      // Cover any shell-legal identifier — lowercase keys (`database_url=…`),
+      // indented lines, and `export `-prefixed assignments leak just as badly.
+      .replace(/(^|\n)(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*=).*$/gm, '$1$2[redacted]')
+      .replace(/encrypted:[A-Za-z0-9+/=]+/g, 'encrypted:[redacted]')
+      .trim()
+      .slice(-SSH_ERROR_OUTPUT_LIMIT)
+  )
 }
 
 export function formatSshFailure(error: unknown): string {
-  const childError = error as { status?: number | null, signal?: string | null, stdout?: unknown, stderr?: unknown }
+  const childError = error as { status?: number | null; signal?: string | null; stdout?: unknown; stderr?: unknown }
   const status = typeof childError?.status === 'number' ? ` (exit ${childError.status})` : ''
   const signal = childError?.signal ? ` (signal ${childError.signal})` : ''
-  const output = [sshErrorOutput(childError?.stderr), sshErrorOutput(childError?.stdout)]
-    .filter(Boolean)
-    .join('\n')
+  const output = [sshErrorOutput(childError?.stderr), sshErrorOutput(childError?.stdout)].filter(Boolean).join('\n')
 
   return `Remote SSH command failed${status}${signal}${output ? `\n${output}` : ''}`
 }
@@ -107,9 +94,11 @@ export class HetznerDriver implements CloudDriver {
   private bootWait: Required<NonNullable<HetznerDriverOptions['bootWait']>>
 
   constructor(options: HetznerDriverOptions = {}) {
-    this.client = options.client ?? new HetznerClient({
-      apiToken: resolveHetznerApiToken(options.apiToken),
-    })
+    this.client =
+      options.client ??
+      new HetznerClient({
+        apiToken: resolveHetznerApiToken(options.apiToken),
+      })
     // Every Hetzner setting resolves through one chain (see ./config), so the
     // driver, the API client and the dashboard cannot disagree about where a
     // box lives or which key reaches it.
@@ -167,9 +156,7 @@ export class HetznerDriver implements CloudDriver {
     const phpBox = compute.runtime === 'php' || !!compute.php
     const topology = resolveFleetTopology(compute)
     if (topology.dedicatedServices || topology.appServers > 1) {
-      return phpBox
-        ? this.provisionFleet(options, topology)
-        : this.provisionBunFleet(options, topology)
+      return phpBox ? this.provisionFleet(options, topology) : this.provisionBunFleet(options, topology)
     }
 
     // Desired-access resources are reconciled on EVERY provision — `deploy`
@@ -186,13 +173,17 @@ export class HetznerDriver implements CloudDriver {
     // ts-cloud provisions that gateway (rpx) on the box from the sites model.
     const sitePorts = this.collectUpstreamPorts(sites)
     const firewallName = `${slug}-${environment}-app-fw`
-    const { firewall } = await this.ensureFirewall(firewallName, labels, buildHetznerFirewallRules({
-      // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
-      // reachable. Only close it when the caller explicitly opts out.
-      allowSsh: compute.allowSsh !== false,
-      sitePorts,
-      allowedPorts: compute.firewall?.allowedPorts,
-    }))
+    const { firewall } = await this.ensureFirewall(
+      firewallName,
+      labels,
+      buildHetznerFirewallRules({
+        // ts-cloud deploys over SSH (SCP + remote systemd setup), so SSH must be
+        // reachable. Only close it when the caller explicitly opts out.
+        allowSsh: compute.allowSsh !== false,
+        sitePorts,
+        allowedPorts: compute.firewall?.allowedPorts,
+      }),
+    )
     const sshKeyId = await this.ensureSshKey(slug, environment, labels)
 
     const existing = await readDriverState(stackName)
@@ -223,14 +214,15 @@ export class HetznerDriver implements CloudDriver {
 
     // Opt-in rpx gateway: generate the route config from the sites model and
     // install + start it on :80/:443 at first boot. Off by default.
-    const rpxProvision = compute.proxy?.engine === 'rpx'
-      ? buildRpxProvisionScript({
-          proxy: compute.proxy,
-          config: buildRpxConfig(sites, { proxy: compute.proxy, slug: config.project.slug }),
-          slug: config.project.slug,
-          bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
-        })
-      : undefined
+    const rpxProvision =
+      compute.proxy?.engine === 'rpx'
+        ? buildRpxProvisionScript({
+            proxy: compute.proxy,
+            config: buildRpxConfig(sites, { proxy: compute.proxy, slug: config.project.slug }),
+            slug: config.project.slug,
+            bunBin: compute.runtime === 'node' || compute.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+          })
+        : undefined
 
     // Machine provisioning (PHP/nginx + services + db + firewall + updates +
     // monitoring + ssh keys + notifier + backups). Composed by the shared
@@ -319,7 +311,7 @@ export class HetznerDriver implements CloudDriver {
     const existingState = await readDriverState(stackName)
     if (existingState?.loadBalancerId) {
       const lbs = await this.client.listLoadBalancers().catch(() => [])
-      const lb = lbs.find(l => l.id === existingState.loadBalancerId)
+      const lb = lbs.find((l) => l.id === existingState.loadBalancerId)
       if (lb) {
         return {
           appPublicIp: lb.public_net?.ipv4?.ip,
@@ -336,8 +328,9 @@ export class HetznerDriver implements CloudDriver {
     // 1. Private network connecting the whole fleet.
     const netName = `${slug}-${environment}-net`
     const networks = await this.client.listNetworks().catch(() => [])
-    const network = networks.find(n => n.name === netName)
-      ?? await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') })
+    const network =
+      networks.find((n) => n.name === netName) ??
+      (await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') }))
 
     // 2. Firewalls. App servers: SSH + 80/443. Services box: SSH + DB/cache/
     //    search reachable only from the private network range.
@@ -361,16 +354,20 @@ export class HetznerDriver implements CloudDriver {
     // 3. Services box — DB/cache/search only (no php/nginx). DB backups (when
     //    enabled) run here, where the database lives — never on the app boxes.
     const servicesProvision = buildFleetServicesBoxProvision(config)
-    const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked, swapGb: compute.swapGb }))
+    const servicesUserData = wrapCloudInitUserData(
+      generateUbuntuAppCloudInit({ runtime: 'php', servicesProvision, baked, swapGb: compute.swapGb }),
+    )
     // Idempotent: reuse an existing services box (by role label) rather than
     // creating a duplicate on re-run.
     const all = await this.client.listServers().catch(() => [])
     const newServerIds: number[] = []
-    let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+    let svcServer = all.find((s) => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
     if (!svcServer) {
       const { server, action } = await this.client.createServer({
         name: `${slug}-${environment}-services`,
-        serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
+        serverType: resolveHetznerServerType(
+          typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size,
+        ),
         image,
         location,
         userData: servicesUserData,
@@ -384,8 +381,8 @@ export class HetznerDriver implements CloudDriver {
       newServerIds.push(server.id)
     }
     const servicesServerId = svcServer.id
-    const servicesPrivateIp = svcServer.private_net?.[0]?.ip
-      ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
+    const servicesPrivateIp =
+      svcServer.private_net?.[0]?.ip ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
 
     // 4. App servers — php + nginx, services installed remotely (not here).
     const appProvision = [
@@ -402,13 +399,21 @@ export class HetznerDriver implements CloudDriver {
       optimizeForProduction: compute.php?.optimizeForProduction,
       ini: compute.php?.ini,
     })
-    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'php', phpProvision: appPhp, servicesProvision: appProvision, baked, swapGb: compute.swapGb }))
+    const appUserData = wrapCloudInitUserData(
+      generateUbuntuAppCloudInit({
+        runtime: 'php',
+        phpProvision: appPhp,
+        servicesProvision: appProvision,
+        baked,
+        swapGb: compute.swapGb,
+      }),
+    )
 
     // Reconcile the app-server set to the desired count: reuse existing ones,
     // create only the delta, and destroy extras on scale-down (so stale boxes
     // don't keep serving traffic via the LB's label selector).
-    const existingApp = all.filter(s => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
-    const appServerIds: number[] = existingApp.map(s => s.id)
+    const existingApp = all.filter((s) => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
+    const appServerIds: number[] = existingApp.map((s) => s.id)
     if (existingApp.length > topology.appServers) {
       for (const extra of existingApp.slice(topology.appServers)) {
         await this.client.deleteServer(extra.id).catch(() => {})
@@ -435,14 +440,16 @@ export class HetznerDriver implements CloudDriver {
     // Wait for SSH + cloud-init on freshly-created boxes before returning, so
     // the deploy doesn't race the bootstrap (php/nginx/services installs).
     if (this.waitForBoot && newServerIds.length > 0) {
-      await Promise.all(newServerIds.map(async (id) => {
-        const running = await this.client.waitForServerRunning(id)
-        const ip = running.public_net.ipv4?.ip
-        if (ip) {
-          await this.waitForSshReady(ip)
-          await this.waitForCloudInit(ip)
-        }
-      }))
+      await Promise.all(
+        newServerIds.map(async (id) => {
+          const running = await this.client.waitForServerRunning(id)
+          const ip = running.public_net.ipv4?.ip
+          if (ip) {
+            await this.waitForSshReady(ip)
+            await this.waitForCloudInit(ip)
+          }
+        }),
+      )
     }
 
     // 5. Load balancer fronting the app servers — only when the topology calls
@@ -452,24 +459,26 @@ export class HetznerDriver implements CloudDriver {
     let lbId: number | undefined
     if (topology.loadBalancer) {
       const lbs = await this.client.listLoadBalancers().catch(() => [])
-      const lb = lbs.find(l => l.name === lbName) ?? await this.client.createLoadBalancer({
-        name: lbName,
-        location,
-        network: network.id,
-        labels: tsCloudLabels(slug, environment, 'lb'),
-        labelSelector: `ts-cloud/project=${slug},ts-cloud/environment=${environment},ts-cloud/role=app`,
-        services: [
-          { listenPort: 80, destinationPort: 80 },
-          { listenPort: 443, destinationPort: 443 },
-        ],
-      })
+      const lb =
+        lbs.find((l) => l.name === lbName) ??
+        (await this.client.createLoadBalancer({
+          name: lbName,
+          location,
+          network: network.id,
+          labels: tsCloudLabels(slug, environment, 'lb'),
+          labelSelector: `ts-cloud/project=${slug},ts-cloud/environment=${environment},ts-cloud/role=app`,
+          services: [
+            { listenPort: 80, destinationPort: 80 },
+            { listenPort: 443, destinationPort: 443 },
+          ],
+        }))
       lbId = lb.id
       lbIp = lb.public_net?.ipv4?.ip
     }
 
     // Public endpoint: the LB if present, else the (single) app server's IP.
-    const appPublicIp = lbIp
-      ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
+    const appPublicIp =
+      lbIp ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
 
     const state: HetznerDriverState = {
       provider: 'hetzner',
@@ -540,7 +549,13 @@ export class HetznerDriver implements CloudDriver {
         // upstream changed) since then would 404/502 without this refresh.
         const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
         const appTargets = await this.findComputeTargets({ slug, environment, role: 'app', stackName })
-        this.refreshLbRoutes(lb, sites, appTargets.map(t => ({ privateIp: t.privateIp, publicIp: t.publicIp })), rpxProxy, slug)
+        this.refreshLbRoutes(
+          lb,
+          sites,
+          appTargets.map((t) => ({ privateIp: t.privateIp, publicIp: t.publicIp })),
+          rpxProxy,
+          slug,
+        )
         return {
           appPublicIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
           loadBalancerIp: lb.public_net.ipv4?.ip ?? existingState.publicIp,
@@ -556,8 +571,9 @@ export class HetznerDriver implements CloudDriver {
     // 1. Private network connecting the whole fleet.
     const netName = `${slug}-${environment}-net`
     const networks = await this.client.listNetworks().catch(() => [])
-    const network = networks.find(n => n.name === netName)
-      ?? await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') })
+    const network =
+      networks.find((n) => n.name === netName) ??
+      (await this.client.createNetwork({ name: netName, labels: tsCloudLabels(slug, environment, 'app') }))
 
     // 2. Firewalls. App servers: SSH + each site's app port, reachable only
     //    from the private network (the LB reaches them privately) plus SSH
@@ -570,7 +586,7 @@ export class HetznerDriver implements CloudDriver {
       tsCloudLabels(slug, environment, 'app'),
       [
         { direction: 'in', protocol: 'tcp', port: '22', source_ips: ['0.0.0.0/0', '::/0'] },
-        ...sitePorts.map(port => ({
+        ...sitePorts.map((port) => ({
           direction: 'in' as const,
           protocol: 'tcp' as const,
           port: String(port),
@@ -615,12 +631,16 @@ export class HetznerDriver implements CloudDriver {
         ],
       )
       const servicesProvision = buildFleetServicesBoxProvision(config)
-      const servicesUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked, swapGb: compute.swapGb }))
-      let svcServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
+      const servicesUserData = wrapCloudInitUserData(
+        generateUbuntuAppCloudInit({ runtime: 'bun', servicesProvision, baked, swapGb: compute.swapGb }),
+      )
+      let svcServer = all.find((s) => matchesTsCloudLabels(s.labels, slug, environment, 'services'))
       if (!svcServer) {
         const { server, action } = await this.client.createServer({
           name: `${slug}-${environment}-services`,
-          serverType: resolveHetznerServerType(typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size),
+          serverType: resolveHetznerServerType(
+            typeof compute.servicesServer === 'object' ? compute.servicesServer.size : compute.size,
+          ),
           image,
           location,
           userData: servicesUserData,
@@ -634,8 +654,8 @@ export class HetznerDriver implements CloudDriver {
         newServerIds.push(server.id)
       }
       servicesServerId = svcServer.id
-      servicesPrivateIp = svcServer.private_net?.[0]?.ip
-        ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
+      servicesPrivateIp =
+        svcServer.private_net?.[0]?.ip ?? (await this.client.getServer(servicesServerId)).private_net?.[0]?.ip
     }
 
     // 4. App servers — the runtime directly, NO local rpx gateway (the LB box
@@ -653,22 +673,24 @@ export class HetznerDriver implements CloudDriver {
       ...config,
       infrastructure: { ...config.infrastructure, compute: appBoxCompute },
     })
-    const appUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({
-      runtime: appProvisionScripts.runtime,
-      runtimeVersion: appProvisionScripts.runtimeVersion,
-      systemPackages: compute.systemPackages,
-      database: config.infrastructure?.database,
-      servicesProvision: appProvisionScripts.servicesProvision,
-      baked,
-      swapGb: compute.swapGb,
-      // No rpxProvision: app boxes in fleet mode do not run their own gateway.
-    }))
+    const appUserData = wrapCloudInitUserData(
+      generateUbuntuAppCloudInit({
+        runtime: appProvisionScripts.runtime,
+        runtimeVersion: appProvisionScripts.runtimeVersion,
+        systemPackages: compute.systemPackages,
+        database: config.infrastructure?.database,
+        servicesProvision: appProvisionScripts.servicesProvision,
+        baked,
+        swapGb: compute.swapGb,
+        // No rpxProvision: app boxes in fleet mode do not run their own gateway.
+      }),
+    )
 
     // Reconcile the app-server set to the desired count: reuse existing ones,
     // create only the delta, and destroy extras on scale-down (so stale boxes
     // never end up in the LB's upstream list).
-    const existingApp = all.filter(s => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
-    const appServerIds: number[] = existingApp.map(s => s.id)
+    const existingApp = all.filter((s) => matchesTsCloudLabels(s.labels, slug, environment, 'app'))
+    const appServerIds: number[] = existingApp.map((s) => s.id)
     if (existingApp.length > topology.appServers) {
       for (const extra of existingApp.slice(topology.appServers)) {
         await this.client.deleteServer(extra.id).catch(() => {})
@@ -696,14 +718,16 @@ export class HetznerDriver implements CloudDriver {
     // continuing, so neither the LB provisioning below nor a subsequent deploy
     // races the bootstrap.
     if (this.waitForBoot && newServerIds.length > 0) {
-      await Promise.all(newServerIds.map(async (id) => {
-        const running = await this.client.waitForServerRunning(id)
-        const ip = running.public_net.ipv4?.ip
-        if (ip) {
-          await this.waitForSshReady(ip)
-          await this.waitForCloudInit(ip)
-        }
-      }))
+      await Promise.all(
+        newServerIds.map(async (id) => {
+          const running = await this.client.waitForServerRunning(id)
+          const ip = running.public_net.ipv4?.ip
+          if (ip) {
+            await this.waitForSshReady(ip)
+            await this.waitForCloudInit(ip)
+          }
+        }),
+      )
     }
 
     // Resolve every app box's private (preferred) or public IP for the LB's
@@ -712,9 +736,8 @@ export class HetznerDriver implements CloudDriver {
     // still empty there) so the LB always gets a real, current address.
     const appBoxes: RpxLbAppBox[] = []
     for (const id of appServerIds) {
-      let server = all.find(s => s.id === id)
-      if (!server || !server.private_net?.[0]?.ip)
-        server = await this.client.getServer(id).catch(() => server)
+      let server = all.find((s) => s.id === id)
+      if (!server || !server.private_net?.[0]?.ip) server = await this.client.getServer(id).catch(() => server)
       appBoxes.push({ privateIp: server?.private_net?.[0]?.ip, publicIp: server?.public_net.ipv4?.ip })
     }
 
@@ -724,7 +747,7 @@ export class HetznerDriver implements CloudDriver {
     let lbId: number | undefined
     let lbIp: string | undefined
     if (topology.loadBalancer) {
-      let lbServer = all.find(s => matchesTsCloudLabels(s.labels, slug, environment, 'lb'))
+      let lbServer = all.find((s) => matchesTsCloudLabels(s.labels, slug, environment, 'lb'))
       // The LB box is an rpx gateway by definition in a bun fleet, even when the
       // project never set `proxy.engine: 'rpx'` explicitly.
       const rpxProxy = compute.proxy?.engine === 'rpx' ? compute.proxy : { engine: 'rpx' as const }
@@ -733,13 +756,18 @@ export class HetznerDriver implements CloudDriver {
           proxy: rpxProxy,
           config: buildRpxLbConfig(sites, appBoxes, { proxy: rpxProxy, slug }),
           slug,
-          bunBin: appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno' ? undefined : '/usr/local/bin/bun',
+          bunBin:
+            appProvisionScripts.runtime === 'node' || appProvisionScripts.runtime === 'deno'
+              ? undefined
+              : '/usr/local/bin/bun',
         })
-        const lbUserData = wrapCloudInitUserData(generateUbuntuAppCloudInit({
-          runtime: 'bun',
-          rpxProvision: lbRpxProvision,
-          baked: false, // the LB box is gateway-only; it always needs the runtime + rpx installed fresh.
-        }))
+        const lbUserData = wrapCloudInitUserData(
+          generateUbuntuAppCloudInit({
+            runtime: 'bun',
+            rpxProvision: lbRpxProvision,
+            baked: false, // the LB box is gateway-only; it always needs the runtime + rpx installed fresh.
+          }),
+        )
         const lbSize = typeof compute.loadBalancer === 'object' ? compute.loadBalancer.size : undefined
         const { server, action } = await this.client.createServer({
           name: lbName,
@@ -761,8 +789,7 @@ export class HetznerDriver implements CloudDriver {
             await this.waitForCloudInit(ip)
           }
         }
-      }
-      else {
+      } else {
         // Reused LB box: cloud-init only runs at first boot, so its route
         // fragment still holds whatever sites/upstreams were current back then.
         // Rewrite it from the just-reconciled fleet so added/removed sites and
@@ -776,8 +803,8 @@ export class HetznerDriver implements CloudDriver {
     // Public endpoint: the LB if present, else the (single) app server's IP.
     // Set BOTH appPublicIp and loadBalancerIp to the LB's IP so callers that
     // only read appPublicIp (single-IP-reading call sites) keep working.
-    const appPublicIp = lbIp
-      ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
+    const appPublicIp =
+      lbIp ?? (await this.client.getServer(appServerIds[0]).catch(() => undefined))?.public_net.ipv4?.ip
 
     const state: HetznerDriverState = {
       provider: 'hetzner',
@@ -817,14 +844,15 @@ export class HetznerDriver implements CloudDriver {
     // 1. Load balancer first (so it stops referencing the network).
     const lbName = `${slug}-${environment}-lb`
     const lbs = await this.client.listLoadBalancers().catch(() => [])
-    const lb = lbs.find(l => l.name === lbName)
+    const lb = lbs.find((l) => l.name === lbName)
     if (lb) {
       // Only report what was actually removed — don't claim success on failure.
       try {
         await this.client.deleteLoadBalancer(lb.id)
         destroyed.push(`load balancer ${lbName}`)
+      } catch {
+        /* surfaced by the leftover resource on the next run */
       }
-      catch { /* surfaced by the leftover resource on the next run */ }
     }
 
     // 2. All servers for this project/env (app + services + lb roles), via
@@ -835,9 +863,9 @@ export class HetznerDriver implements CloudDriver {
     const serverIds = new Set<number>()
     for (const s of allServers) {
       if (
-        matchesTsCloudLabels(s.labels, slug, environment, 'app')
-        || matchesTsCloudLabels(s.labels, slug, environment, 'services')
-        || matchesTsCloudLabels(s.labels, slug, environment, 'lb')
+        matchesTsCloudLabels(s.labels, slug, environment, 'app') ||
+        matchesTsCloudLabels(s.labels, slug, environment, 'services') ||
+        matchesTsCloudLabels(s.labels, slug, environment, 'lb')
       )
         serverIds.add(s.id)
     }
@@ -849,22 +877,26 @@ export class HetznerDriver implements CloudDriver {
       try {
         await this.client.deleteServer(id)
         destroyed.push(`server ${id}`)
+      } catch {
+        /* leftover surfaces on the next teardown */
       }
-      catch { /* leftover surfaces on the next teardown */ }
     }
 
     // 3. Firewalls (retry — can't delete until detached from deleting servers).
     const firewalls = await this.client.listFirewalls().catch(() => [])
-    for (const name of [`${slug}-${environment}-app-fw`, `${slug}-${environment}-services-fw`, `${slug}-${environment}-lb-fw`]) {
-      const fw = firewalls.find(f => f.name === name)
+    for (const name of [
+      `${slug}-${environment}-app-fw`,
+      `${slug}-${environment}-services-fw`,
+      `${slug}-${environment}-lb-fw`,
+    ]) {
+      const fw = firewalls.find((f) => f.name === name)
       if (!fw) continue
       for (let i = 0; i < 12; i++) {
         try {
           await this.client.deleteFirewall(fw.id)
           destroyed.push(`firewall ${name}`)
           break
-        }
-        catch {
+        } catch {
           await this.sleep(3000)
         }
       }
@@ -873,15 +905,14 @@ export class HetznerDriver implements CloudDriver {
     // 4. Private network (after servers detach).
     const netName = `${slug}-${environment}-net`
     const networks = await this.client.listNetworks().catch(() => [])
-    const net = networks.find(n => n.name === netName)
+    const net = networks.find((n) => n.name === netName)
     if (net) {
       for (let i = 0; i < 12; i++) {
         try {
           await this.client.deleteNetwork(net.id)
           destroyed.push(`network ${netName}`)
           break
-        }
-        catch {
+        } catch {
           await this.sleep(3000)
         }
       }
@@ -899,8 +930,7 @@ export class HetznerDriver implements CloudDriver {
       // (404), which crashed every deploy instead of falling through to the
       // label/state re-discovery below.
       const server = await this.tryGetServer(state.serverId)
-      if (server)
-        return this.outputsFromState(state, server)
+      if (server) return this.outputsFromState(state, server)
     }
     // Bun+rpx fleet: no single serverId, but a dedicated rpx LB server — refresh
     // its public IP (state.publicIp may be stale) and surface it as both
@@ -977,11 +1007,10 @@ export class HetznerDriver implements CloudDriver {
     })
 
     // 1) Exact match by this project's labels.
-    const exact = servers.filter(server =>
+    const exact = servers.filter((server) =>
       matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
     )
-    if (exact.length > 0)
-      return exact.map(toTarget)
+    if (exact.length > 0) return exact.map(toTarget)
 
     // 2) State pinning: a project that rides a shared box records its server
     //    in `storage/cloud/state/<stack>.json`, but the box's labels belong to the
@@ -993,21 +1022,22 @@ export class HetznerDriver implements CloudDriver {
     //    and shared-box projects lose their deploy target entirely.
     if (role === 'app' || role === 'lb' || role === 'services') {
       const state = await readDriverState(options.stackName ?? `${options.slug}-${options.environment}`)
-      const pinnedIds = [...new Set(role === 'app'
-        ? [state?.serverId, ...(state?.appServerIds ?? [])]
-        : role === 'lb'
-          ? [state?.lbServerId]
-          : [state?.servicesServerId])]
-        .filter((id): id is number => typeof id === 'number')
+      const pinnedIds = [
+        ...new Set(
+          role === 'app'
+            ? [state?.serverId, ...(state?.appServerIds ?? [])]
+            : role === 'lb'
+              ? [state?.lbServerId]
+              : [state?.servicesServerId],
+        ),
+      ].filter((id): id is number => typeof id === 'number')
       if (pinnedIds.length > 0) {
         const pinned: HetznerServer[] = []
         for (const id of pinnedIds) {
-          const server = servers.find(candidate => candidate.id === id) ?? await this.tryGetServer(id)
-          if (server && server.status !== 'off')
-            pinned.push(server)
+          const server = servers.find((candidate) => candidate.id === id) ?? (await this.tryGetServer(id))
+          if (server && server.status !== 'off') pinned.push(server)
         }
-        if (pinned.length > 0)
-          return pinned.map(toTarget)
+        if (pinned.length > 0) return pinned.map(toTarget)
       }
     }
 
@@ -1016,14 +1046,14 @@ export class HetznerDriver implements CloudDriver {
     //    app server for this environment rather than reporting none — only when
     //    unambiguous, so a release never ships to another project's server.
     if (role === 'app') {
-      const candidates = servers.filter(server =>
-        server.status !== 'off'
-        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud'
-        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === options.environment
-        && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
+      const candidates = servers.filter(
+        (server) =>
+          server.status !== 'off' &&
+          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud' &&
+          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === options.environment &&
+          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
       )
-      if (candidates.length === 1)
-        return candidates.map(toTarget)
+      if (candidates.length === 1) return candidates.map(toTarget)
     }
 
     return []
@@ -1042,10 +1072,10 @@ export class HetznerDriver implements CloudDriver {
     environment: ProvisionComputeOptions['environment'],
   ): Promise<ComputeStackOutputs> {
     const servers = await this.client.listServers()
-    const running = (role: 'app' | 'lb' | 'services') => servers.filter(server =>
-      server.status !== 'off'
-      && matchesTsCloudLabels(server.labels, ownerSlug, environment, role),
-    )
+    const running = (role: 'app' | 'lb' | 'services') =>
+      servers.filter(
+        (server) => server.status !== 'off' && matchesTsCloudLabels(server.labels, ownerSlug, environment, role),
+      )
 
     const appServers = running('app')
     if (appServers.length === 0) {
@@ -1064,7 +1094,7 @@ export class HetznerDriver implements CloudDriver {
       stackName,
       serverId: primaryApp.id,
       serverName: primaryApp.name,
-      appServerIds: appServers.map(server => server.id),
+      appServerIds: appServers.map((server) => server.id),
       lbServerId: lbServer?.id,
       servicesServerId: servicesServer?.id,
       servicesPrivateIp: servicesServer?.private_net?.[0]?.ip,
@@ -1102,8 +1132,7 @@ export class HetznerDriver implements CloudDriver {
           status: 'Success',
           output,
         })
-      }
-      catch (err: any) {
+      } catch (err: any) {
         perInstance.push({
           instanceId: target.id,
           status: 'Failed',
@@ -1112,7 +1141,7 @@ export class HetznerDriver implements CloudDriver {
       }
     }
 
-    const success = perInstance.every(r => r.status === 'Success')
+    const success = perInstance.every((r) => r.status === 'Success')
     return {
       success,
       instanceCount: options.targets.length,
@@ -1127,11 +1156,15 @@ export class HetznerDriver implements CloudDriver {
    * deploy step (SCP/SSH) uses. Without this, deploys fail with "Permission
    * denied (publickey)" because the server has no authorized keys.
    */
-  private async ensureSshKey(slug: string, environment: string, labels: Record<string, string>): Promise<number | undefined> {
+  private async ensureSshKey(
+    slug: string,
+    environment: string,
+    labels: Record<string, string>,
+  ): Promise<number | undefined> {
     if (!existsSync(this.sshPublicKeyPath)) {
       throw new Error(
-        `SSH public key not found at ${this.sshPublicKeyPath}. ts-cloud deploys to Hetzner over SSH and needs a public key to authorize on the server. `
-        + `Generate one (\`ssh-keygen -t ed25519\`) or set hetzner.sshPrivateKeyPath / HCLOUD_SSH_PUBLIC_KEY.`,
+        `SSH public key not found at ${this.sshPublicKeyPath}. ts-cloud deploys to Hetzner over SSH and needs a public key to authorize on the server. ` +
+          `Generate one (\`ssh-keygen -t ed25519\`) or set hetzner.sshPrivateKeyPath / HCLOUD_SSH_PUBLIC_KEY.`,
       )
     }
 
@@ -1139,9 +1172,8 @@ export class HetznerDriver implements CloudDriver {
     const normalized = normalizeSshPublicKey(publicKey)
 
     const existing = await this.client.listSshKeys()
-    const match = existing.find(key => normalizeSshPublicKey(key.public_key) === normalized)
-    if (match)
-      return match.id
+    const match = existing.find((key) => normalizeSshPublicKey(key.public_key) === normalized)
+    if (match) return match.id
 
     const created = await this.client.createSshKey({
       name: `${slug}-${environment}-deploy`,
@@ -1155,8 +1187,7 @@ export class HetznerDriver implements CloudDriver {
   private async tryGetServer(id: number): Promise<HetznerServer | null> {
     try {
       return await this.client.getServer(id)
-    }
-    catch {
+    } catch {
       // Stale state pointing at a deleted server — fall through to recreate.
       return null
     }
@@ -1187,13 +1218,17 @@ export class HetznerDriver implements CloudDriver {
     const ip = lb.public_net.ipv4?.ip
     if (!ip) {
       // eslint-disable-next-line no-console
-      console.warn(`[ts-cloud] LB server '${lb.name}' has no public IP — skipping the rpx route refresh; its routes may be stale.`)
+      console.warn(
+        `[ts-cloud] LB server '${lb.name}' has no public IP — skipping the rpx route refresh; its routes may be stale.`,
+      )
       return
     }
-    const routable = appBoxes.filter(box => box.privateIp || box.publicIp)
+    const routable = appBoxes.filter((box) => box.privateIp || box.publicIp)
     if (routable.length === 0) {
       // eslint-disable-next-line no-console
-      console.warn(`[ts-cloud] No routable app boxes found for LB '${lb.name}' — leaving its current rpx routes untouched.`)
+      console.warn(
+        `[ts-cloud] No routable app boxes found for LB '${lb.name}' — leaving its current rpx routes untouched.`,
+      )
       return
     }
     const config = buildRpxLbConfig(sites, routable, { proxy, slug })
@@ -1205,35 +1240,39 @@ export class HetznerDriver implements CloudDriver {
    * (falling back to name match). Used for idempotency when local state is
    * missing, so re-running deploy doesn't spin up a duplicate server.
    */
-  private async findExistingServer(slug: string, environment: string, serverName: string): Promise<HetznerServer | undefined> {
+  private async findExistingServer(
+    slug: string,
+    environment: string,
+    serverName: string,
+  ): Promise<HetznerServer | undefined> {
     const servers = await this.client.listServers()
 
     // 1) Exact match: this project's labels, or the derived server name.
-    const exact = servers.find(server =>
-      matchesTsCloudLabels(server.labels, slug, environment, 'app') || server.name === serverName,
+    const exact = servers.find(
+      (server) => matchesTsCloudLabels(server.labels, slug, environment, 'app') || server.name === serverName,
     )
-    if (exact)
-      return exact
+    if (exact) return exact
 
     // 2) Adopt-on-rename: a project's slug can change (e.g. `stacks` → `reveal`)
     //    while the same box keeps serving it. Rather than provision a duplicate,
     //    reuse an existing ts-cloud-managed *app* server for the SAME environment,
     //    regardless of its `project` label — but only when it is unambiguous
     //    (exactly one live candidate), so we never adopt another project's server.
-    const candidates = servers.filter(server =>
-      server.status !== 'off'
-      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud'
-      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment
-      && server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
+    const candidates = servers.filter(
+      (server) =>
+        server.status !== 'off' &&
+        server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud' &&
+        server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === environment &&
+        server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
     )
     if (candidates.length === 1) {
       const adopted = candidates[0]
       const adoptedProject = adopted.labels?.[`${TS_CLOUD_LABEL_PREFIX}/project`] ?? 'unknown'
       // eslint-disable-next-line no-console
       console.warn(
-        `[ts-cloud] No server named '${serverName}' found; adopting existing ts-cloud app server `
-        + `'${adopted.name}' (project label '${adoptedProject}') for project '${slug}' — `
-        + `updating it in place instead of provisioning a new server.`,
+        `[ts-cloud] No server named '${serverName}' found; adopting existing ts-cloud app server ` +
+          `'${adopted.name}' (project label '${adoptedProject}') for project '${slug}' — ` +
+          `updating it in place instead of provisioning a new server.`,
       )
       return adopted
     }
@@ -1252,7 +1291,7 @@ export class HetznerDriver implements CloudDriver {
     rules: HetznerFirewallRule[],
   ): Promise<{ firewall: HetznerFirewall }> {
     const existing = await this.client.listFirewalls()
-    const match = existing.find(fw => fw.name === name)
+    const match = existing.find((fw) => fw.name === name)
     if (match) {
       await this.client.setFirewallRules(match.id, rules)
       return { firewall: match }
@@ -1266,19 +1305,16 @@ export class HetznerDriver implements CloudDriver {
    * does not front traffic with its own proxy, so each site's app port is
    * opened directly. Drops 80/443 (always handled by the firewall base rules).
    */
-  private collectUpstreamPorts(
-    sites: Record<string, { port?: number }>,
-  ): number[] {
+  private collectUpstreamPorts(sites: Record<string, { port?: number }>): number[] {
     const ports = new Set<number>()
     for (const site of Object.values(sites)) {
-      if (typeof site.port === 'number')
-        ports.add(site.port)
+      if (typeof site.port === 'number') ports.add(site.port)
     }
-    return [...ports].filter(port => ![80, 443].includes(port))
+    return [...ports].filter((port) => ![80, 443].includes(port))
   }
 
   private async sleep(ms: number): Promise<void> {
-    await new Promise(resolve => setTimeout(resolve, ms))
+    await new Promise((resolve) => setTimeout(resolve, ms))
   }
 
   /**
@@ -1293,18 +1329,24 @@ export class HetznerDriver implements CloudDriver {
     let lastErr: unknown
     while (Date.now() - start < sshTimeoutMs) {
       try {
-        execSync(`ssh ${this.sshBaseArgs(host, ['-o', 'ConnectTimeout=5']).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} true`, {
-          stdio: 'pipe',
-          maxBuffer: SSH_MAX_BUFFER,
-        })
+        execSync(
+          `ssh ${this.sshBaseArgs(host, ['-o', 'ConnectTimeout=5'])
+            .map((a) => `'${a.replace(/'/g, '\\"')}"`)
+            .join(' ')} true`,
+          {
+            stdio: 'pipe',
+            maxBuffer: SSH_MAX_BUFFER,
+          },
+        )
         return
-      }
-      catch (err) {
+      } catch (err) {
         lastErr = err
         await this.sleep(sshIntervalMs)
       }
     }
-    throw new Error(`Timed out waiting for SSH on ${host} after ${sshTimeoutMs}ms: ${(lastErr as Error)?.message ?? 'unknown error'}`)
+    throw new Error(
+      `Timed out waiting for SSH on ${host} after ${sshTimeoutMs}ms: ${(lastErr as Error)?.message ?? 'unknown error'}`,
+    )
   }
 
   /**
@@ -1321,23 +1363,25 @@ export class HetznerDriver implements CloudDriver {
         // fallback would print "done" right after the real status and mask a
         // FAILED bootstrap as success. Probe once, tolerate the exit code, and
         // only treat a missing cloud-init binary (baked image) as done.
-        const out = this.sshExec(host, `if command -v cloud-init >/dev/null 2>&1; then cloud-init status --long 2>/dev/null || true; else echo 'status: done'; fi`)
-        if (/status:\s*error/.test(out))
-          throw new Error(`cloud-init reported an error on ${host}:\n${out}`)
-        if (/status:\s*(?:done|degraded)/.test(out))
-          return
-      }
-      catch (err) {
+        const out = this.sshExec(
+          host,
+          `if command -v cloud-init >/dev/null 2>&1; then cloud-init status --long 2>/dev/null || true; else echo 'status: done'; fi`,
+        )
+        if (/status:\s*error/.test(out)) throw new Error(`cloud-init reported an error on ${host}:\n${out}`)
+        if (/status:\s*(?:done|degraded)/.test(out)) return
+      } catch (err) {
         // SSH hiccup mid-boot — keep polling until the overall timeout.
-        if (err instanceof Error && /cloud-init reported an error/.test(err.message))
-          throw err
+        if (err instanceof Error && /cloud-init reported an error/.test(err.message)) throw err
       }
       await this.sleep(cloudInitIntervalMs)
     }
     throw new Error(`Timed out waiting for cloud-init to finish on ${host} after ${cloudInitTimeoutMs}ms`)
   }
 
-  private outputsFromState(state: HetznerDriverState, server?: { public_net: { ipv4?: { ip: string } } }): ComputeStackOutputs {
+  private outputsFromState(
+    state: HetznerDriverState,
+    server?: { public_net: { ipv4?: { ip: string } } },
+  ): ComputeStackOutputs {
     return {
       deployStoragePath: state.deployStoragePath || '/var/ts-cloud/staging',
       appInstanceId: state.serverId ? String(state.serverId) : undefined,
@@ -1358,9 +1402,12 @@ export class HetznerDriver implements CloudDriver {
    * `REMOTE HOST IDENTIFICATION HAS CHANGED`.
    */
   private static readonly SSH_HOST_KEY_OPTS = [
-    '-o', 'StrictHostKeyChecking=no',
-    '-o', 'UserKnownHostsFile=/dev/null',
-    '-o', 'LogLevel=ERROR',
+    '-o',
+    'StrictHostKeyChecking=no',
+    '-o',
+    'UserKnownHostsFile=/dev/null',
+    '-o',
+    'LogLevel=ERROR',
   ]
 
   /**
@@ -1371,17 +1418,22 @@ export class HetznerDriver implements CloudDriver {
    * transfer fails loudly (and, for scp, is retried) instead of wedging.
    */
   private static readonly SSH_KEEPALIVE_OPTS = [
-    '-o', 'ConnectTimeout=30',
-    '-o', 'ServerAliveInterval=15',
-    '-o', 'ServerAliveCountMax=4',
+    '-o',
+    'ConnectTimeout=30',
+    '-o',
+    'ServerAliveInterval=15',
+    '-o',
+    'ServerAliveCountMax=4',
   ]
 
   private sshBaseArgs(host: string, extra: string[] = []): string[] {
     return [
-      '-i', this.sshPrivateKeyPath,
+      '-i',
+      this.sshPrivateKeyPath,
       ...HetznerDriver.SSH_HOST_KEY_OPTS,
       ...HetznerDriver.SSH_KEEPALIVE_OPTS,
-      '-o', 'BatchMode=yes',
+      '-o',
+      'BatchMode=yes',
       ...extra,
       `${this.sshUser}@${host}`,
     ]
@@ -1390,13 +1442,17 @@ export class HetznerDriver implements CloudDriver {
   private scpToHost(host: string, localPath: string, remotePath: string): void {
     const cmd = [
       'scp',
-      '-i', this.sshPrivateKeyPath,
+      '-i',
+      this.sshPrivateKeyPath,
       ...HetznerDriver.SSH_HOST_KEY_OPTS,
       ...HetznerDriver.SSH_KEEPALIVE_OPTS,
-      '-o', 'BatchMode=yes',
+      '-o',
+      'BatchMode=yes',
       localPath,
       `${this.sshUser}@${host}:${remotePath}`,
-    ].map(arg => `"${arg.replace(/"/g, '\\"')}"`).join(' ')
+    ]
+      .map((arg) => `"${arg.replace(/"/g, '\\"')}"`)
+      .join(' ')
     // Retry the transfer: scp overwrites its destination, so a re-upload is
     // idempotent, and a single dropped connection shouldn't fail a whole deploy.
     const attempts = 3
@@ -1404,10 +1460,8 @@ export class HetznerDriver implements CloudDriver {
       try {
         execSync(cmd, { stdio: 'pipe', maxBuffer: SSH_MAX_BUFFER })
         return
-      }
-      catch (error) {
-        if (attempt === attempts)
-          throw new Error(formatSshFailure(error))
+      } catch (error) {
+        if (attempt === attempts) throw new Error(formatSshFailure(error))
       }
     }
   }
@@ -1419,13 +1473,17 @@ export class HetznerDriver implements CloudDriver {
     // default 1MB maxBuffer, execSync kills the SSH child mid-deploy with
     // ENOBUFS, so give the remote command plenty of headroom.
     try {
-      return execSync(`ssh ${this.sshBaseArgs(host).map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ')} '${escaped}'`, {
-        encoding: 'utf8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-        maxBuffer: SSH_MAX_BUFFER,
-      })
-    }
-    catch (error) {
+      return execSync(
+        `ssh ${this.sshBaseArgs(host)
+          .map((a) => `"${a.replace(/"/g, '\\"')}"`)
+          .join(' ')} '${escaped}'`,
+        {
+          encoding: 'utf8',
+          stdio: ['pipe', 'pipe', 'pipe'],
+          maxBuffer: SSH_MAX_BUFFER,
+        },
+      )
+    } catch (error) {
       // Node's child-process error message embeds the complete command. The
       // command includes the runtime environment here-document, so forwarding
       // error.message would publish every deployment secret to CI logs.

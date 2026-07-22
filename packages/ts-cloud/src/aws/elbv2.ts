@@ -5,7 +5,6 @@
  * Supports Application Load Balancers (ALB), Network Load Balancers (NLB),
  * and Gateway Load Balancers (GWLB)
  */
-
 import { AWSClient } from './client'
 
 export interface LoadBalancer {
@@ -122,8 +121,8 @@ export interface Condition {
   Values?: string[]
   HostHeaderConfig?: { Values?: string[] }
   PathPatternConfig?: { Values?: string[] }
-  HttpHeaderConfig?: { HttpHeaderName?: string, Values?: string[] }
-  QueryStringConfig?: { Values?: Array<{ Key?: string, Value?: string }> }
+  HttpHeaderConfig?: { HttpHeaderName?: string; Values?: string[] }
+  QueryStringConfig?: { Values?: Array<{ Key?: string; Value?: string }> }
   HttpRequestMethodConfig?: { Values?: string[] }
   SourceIpConfig?: { Values?: string[] }
 }
@@ -162,7 +161,7 @@ export class ELBv2Client {
     Names?: string[]
     Marker?: string
     PageSize?: number
-  }): Promise<{ LoadBalancers?: LoadBalancer[], NextMarker?: string }> {
+  }): Promise<{ LoadBalancers?: LoadBalancer[]; NextMarker?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.LoadBalancerArns) {
@@ -208,7 +207,7 @@ export class ELBv2Client {
     Names?: string[]
     Marker?: string
     PageSize?: number
-  }): Promise<{ TargetGroups?: TargetGroup[], NextMarker?: string }> {
+  }): Promise<{ TargetGroups?: TargetGroup[]; NextMarker?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.LoadBalancerArn) {
@@ -254,7 +253,7 @@ export class ELBv2Client {
    */
   async describeTargetHealth(options: {
     TargetGroupArn: string
-    Targets?: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
+    Targets?: Array<{ Id: string; Port?: number; AvailabilityZone?: string }>
   }): Promise<{ TargetHealthDescriptions?: TargetHealthDescription[] }> {
     const params: Record<string, any> = {
       TargetGroupArn: options.TargetGroupArn,
@@ -294,7 +293,7 @@ export class ELBv2Client {
     ListenerArns?: string[]
     Marker?: string
     PageSize?: number
-  }): Promise<{ Listeners?: Listener[], NextMarker?: string }> {
+  }): Promise<{ Listeners?: Listener[]; NextMarker?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.LoadBalancerArn) {
@@ -337,7 +336,7 @@ export class ELBv2Client {
     RuleArns?: string[]
     Marker?: string
     PageSize?: number
-  }): Promise<{ Rules?: Rule[], NextMarker?: string }> {
+  }): Promise<{ Rules?: Rule[]; NextMarker?: string }> {
     const params: Record<string, any> = {}
 
     if (options?.ListenerArn) {
@@ -375,7 +374,9 @@ export class ELBv2Client {
   /**
    * Describe load balancer attributes
    */
-  async describeLoadBalancerAttributes(loadBalancerArn: string): Promise<{ Attributes?: Array<{ Key: string, Value: string }> }> {
+  async describeLoadBalancerAttributes(
+    loadBalancerArn: string,
+  ): Promise<{ Attributes?: Array<{ Key: string; Value: string }> }> {
     const params = {
       LoadBalancerArn: loadBalancerArn,
     }
@@ -397,7 +398,9 @@ export class ELBv2Client {
   /**
    * Describe target group attributes
    */
-  async describeTargetGroupAttributes(targetGroupArn: string): Promise<{ Attributes?: Array<{ Key: string, Value: string }> }> {
+  async describeTargetGroupAttributes(
+    targetGroupArn: string,
+  ): Promise<{ Attributes?: Array<{ Key: string; Value: string }> }> {
     const params = {
       TargetGroupArn: targetGroupArn,
     }
@@ -432,7 +435,7 @@ export class ELBv2Client {
     Scheme?: 'internet-facing' | 'internal'
     Type?: 'application' | 'network' | 'gateway'
     IpAddressType?: 'ipv4' | 'dualstack'
-    Tags?: Array<{ Key: string, Value: string }>
+    Tags?: Array<{ Key: string; Value: string }>
   }): Promise<{ LoadBalancers?: LoadBalancer[] }> {
     const params: Record<string, any> = {
       Name: options.Name,
@@ -535,9 +538,9 @@ export class ELBv2Client {
     HealthCheckTimeoutSeconds?: number
     HealthyThresholdCount?: number
     UnhealthyThresholdCount?: number
-    Matcher?: { HttpCode?: string, GrpcCode?: string }
+    Matcher?: { HttpCode?: string; GrpcCode?: string }
     TargetType?: 'instance' | 'ip' | 'lambda' | 'alb'
-    Tags?: Array<{ Key: string, Value: string }>
+    Tags?: Array<{ Key: string; Value: string }>
     IpAddressType?: 'ipv4' | 'ipv6'
   }): Promise<{ TargetGroups?: TargetGroup[] }> {
     const params: Record<string, any> = {
@@ -610,7 +613,7 @@ export class ELBv2Client {
    */
   async registerTargets(options: {
     TargetGroupArn: string
-    Targets: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
+    Targets: Array<{ Id: string; Port?: number; AvailabilityZone?: string }>
   }): Promise<void> {
     const params: Record<string, any> = {
       TargetGroupArn: options.TargetGroupArn,
@@ -643,7 +646,7 @@ export class ELBv2Client {
    */
   async deregisterTargets(options: {
     TargetGroupArn: string
-    Targets: Array<{ Id: string, Port?: number, AvailabilityZone?: string }>
+    Targets: Array<{ Id: string; Port?: number; AvailabilityZone?: string }>
   }): Promise<void> {
     const params: Record<string, any> = {
       TargetGroupArn: options.TargetGroupArn,
@@ -699,7 +702,7 @@ export class ELBv2Client {
       }
     }>
     AlpnPolicy?: string[]
-    Tags?: Array<{ Key: string, Value: string }>
+    Tags?: Array<{ Key: string; Value: string }>
   }): Promise<{ Listeners?: Listener[] }> {
     const params: Record<string, any> = {
       LoadBalancerArn: options.LoadBalancerArn,
@@ -734,9 +737,11 @@ export class ELBv2Client {
       }
       if (action.FixedResponseConfig) {
         const fr = action.FixedResponseConfig
-        if (fr.MessageBody) params[`DefaultActions.member.${index + 1}.FixedResponseConfig.MessageBody`] = fr.MessageBody
+        if (fr.MessageBody)
+          params[`DefaultActions.member.${index + 1}.FixedResponseConfig.MessageBody`] = fr.MessageBody
         params[`DefaultActions.member.${index + 1}.FixedResponseConfig.StatusCode`] = fr.StatusCode
-        if (fr.ContentType) params[`DefaultActions.member.${index + 1}.FixedResponseConfig.ContentType`] = fr.ContentType
+        if (fr.ContentType)
+          params[`DefaultActions.member.${index + 1}.FixedResponseConfig.ContentType`] = fr.ContentType
       }
     })
 
@@ -896,23 +901,32 @@ export class ELBv2Client {
 
     // Handle arrays
     if (Array.isArray(obj)) {
-      return obj.map(item => this.normalizeArrays(item))
+      return obj.map((item) => this.normalizeArrays(item))
     }
 
     const result: any = {}
     for (const [key, value] of Object.entries(obj)) {
       // Known array fields that should always be arrays
       const arrayFields = [
-        'LoadBalancers', 'TargetGroups', 'Listeners', 'Rules',
-        'TargetHealthDescriptions', 'Attributes', 'SecurityGroups',
-        'AvailabilityZones', 'Certificates', 'DefaultActions',
-        'Conditions', 'Actions', 'member'
+        'LoadBalancers',
+        'TargetGroups',
+        'Listeners',
+        'Rules',
+        'TargetHealthDescriptions',
+        'Attributes',
+        'SecurityGroups',
+        'AvailabilityZones',
+        'Certificates',
+        'DefaultActions',
+        'Conditions',
+        'Actions',
+        'member',
       ]
 
       if (key === 'member') {
         // AWS returns arrays as { member: [...] } or { member: {...} }
         if (Array.isArray(value)) {
-          return value.map(item => this.normalizeArrays(item))
+          return value.map((item) => this.normalizeArrays(item))
         }
         return [this.normalizeArrays(value)]
       }
@@ -923,21 +937,16 @@ export class ELBv2Client {
           result[key] = Array.isArray(memberValue)
             ? memberValue.map((item: any) => this.normalizeArrays(item))
             : [this.normalizeArrays(memberValue)]
-        }
-else if (Array.isArray(value)) {
-          result[key] = value.map(item => this.normalizeArrays(item))
-        }
-else if (value) {
+        } else if (Array.isArray(value)) {
+          result[key] = value.map((item) => this.normalizeArrays(item))
+        } else if (value) {
           result[key] = [this.normalizeArrays(value)]
-        }
-else {
+        } else {
           result[key] = []
         }
-      }
-else if (typeof value === 'object') {
+      } else if (typeof value === 'object') {
         result[key] = this.normalizeArrays(value)
-      }
-else {
+      } else {
         result[key] = value
       }
     }

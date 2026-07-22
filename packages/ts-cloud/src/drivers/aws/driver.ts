@@ -1,30 +1,13 @@
-import type {
-  CloudConfig,
-  CloudDriver,
-  ComputeStackOutputs,
-  ComputeTarget,
-  FindComputeTargetsOptions,
-  ProvisionComputeOptions,
-  RemoteDeployResult,
-  RunRemoteDeployOptions,
-  UploadReleaseOptions,
-  UploadReleaseResult,
-} from '@ts-cloud/core'
+import type { CloudConfig, CloudDriver, ComputeStackOutputs, ComputeTarget, FindComputeTargetsOptions, ProvisionComputeOptions, RemoteDeployResult, RunRemoteDeployOptions, UploadReleaseOptions, UploadReleaseResult } from '@ts-cloud/core'
+import type { Instance } from '../../aws/ec2'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { CloudFormationClient } from '../../aws/cloudformation'
-import type { Instance } from '../../aws/ec2'
 import { EC2Client } from '../../aws/ec2'
 import { S3Client } from '../../aws/s3'
 import { SSMClient } from '../../aws/ssm'
-import {
-  awsComputeIngressRules,
-  buildAwsUserData,
-  encodeUserData,
-  resolveAwsImageId,
-  UBUNTU_AMI_SSM_PARAM,
-} from './provision'
+import { awsComputeIngressRules, buildAwsUserData, encodeUserData, resolveAwsImageId, UBUNTU_AMI_SSM_PARAM } from './provision'
 
 export interface AwsDriverOptions {
   region?: string
@@ -42,8 +25,7 @@ export function readPinnedInstanceId(stackName: string): string | null {
     const raw = readFileSync(join(process.cwd(), 'storage/cloud/state', `${stackName}.json`), 'utf8')
     const state = JSON.parse(raw) as { instanceId?: unknown }
     return typeof state.instanceId === 'string' && state.instanceId.length > 0 ? state.instanceId : null
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -77,8 +59,7 @@ export class AwsDriver implements CloudDriver {
     const region = this.resolveRegion(config)
     const slug = config.project.slug
     const compute = config.infrastructure?.compute
-    if (!compute)
-      throw new Error('infrastructure.compute is required to provision AWS compute')
+    if (!compute) throw new Error('infrastructure.compute is required to provision AWS compute')
 
     const ec2 = new EC2Client(region)
 
@@ -86,7 +67,12 @@ export class AwsDriver implements CloudDriver {
     const existing = await this.findComputeTargets({ slug, environment, role: 'app' })
     if (existing.length > 0) {
       const first = existing[0]
-      return { appInstanceId: first.id, appPublicIp: first.publicIp, sshUser: 'ubuntu', deployStoragePath: '/var/ts-cloud/staging' }
+      return {
+        appInstanceId: first.id,
+        appPublicIp: first.publicIp,
+        sshUser: 'ubuntu',
+        deployStoragePath: '/var/ts-cloud/staging',
+      }
     }
 
     // AMI: explicit golden image, else latest Canonical Ubuntu 24.04 via SSM.
@@ -95,18 +81,16 @@ export class AwsDriver implements CloudDriver {
       const ssm = new SSMClient(region)
       const param = await ssm.getParameter({ Name: UBUNTU_AMI_SSM_PARAM })
       imageId = param.Parameter?.Value ?? null
-      if (!imageId)
-        throw new Error('Could not resolve the Ubuntu 24.04 AMI from SSM')
+      if (!imageId) throw new Error('Could not resolve the Ubuntu 24.04 AMI from SSM')
     }
 
     // A VPC + a subnet to launch into. Prefer a subnet that auto-assigns a
     // public IP, else the instance has no public address for deploys/SSL.
     const vpcs = await ec2.describeVpcs()
-    const vpc = (vpcs.Vpcs || []).find(v => v.IsDefault) || (vpcs.Vpcs || [])[0]
-    if (!vpc?.VpcId)
-      throw new Error('No VPC found to launch the instance into')
+    const vpc = (vpcs.Vpcs || []).find((v) => v.IsDefault) || (vpcs.Vpcs || [])[0]
+    if (!vpc?.VpcId) throw new Error('No VPC found to launch the instance into')
     const subnets = (await ec2.describeSubnets({ Filters: [{ Name: 'vpc-id', Values: [vpc.VpcId] }] })).Subnets || []
-    const subnet = subnets.find(s => s.MapPublicIpOnLaunch) || subnets[0]
+    const subnet = subnets.find((s) => s.MapPublicIpOnLaunch) || subnets[0]
     const subnetId = subnet?.SubnetId
     if (!subnet?.MapPublicIpOnLaunch)
       // eslint-disable-next-line no-console
@@ -115,21 +99,36 @@ export class AwsDriver implements CloudDriver {
     // Security group scoped to the VPC (a same-named SG in another VPC must not
     // be reused). Reconcile ingress rules every time so config changes apply.
     const sgName = `${slug}-${environment}-app-sg`
-    const found = await ec2.describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }, { Name: 'vpc-id', Values: [vpc.VpcId] }] })
+    const found = await ec2.describeSecurityGroups({
+      Filters: [
+        { Name: 'group-name', Values: [sgName] },
+        { Name: 'vpc-id', Values: [vpc.VpcId] },
+      ],
+    })
     let groupId = found.SecurityGroups?.[0]?.GroupId
     if (!groupId) {
-      const created = await ec2.createSecurityGroup({ GroupName: sgName, Description: `ts-cloud ${slug}/${environment} app`, VpcId: vpc.VpcId })
+      const created = await ec2.createSecurityGroup({
+        GroupName: sgName,
+        Description: `ts-cloud ${slug}/${environment} app`,
+        VpcId: vpc.VpcId,
+      })
       groupId = created.GroupId
     }
     // Authorize desired ingress; ignore "already exists" so this is idempotent.
     const rules = awsComputeIngressRules(config)
-    await ec2.authorizeSecurityGroupIngress({
-      GroupId: groupId!,
-      IpPermissions: rules.map(r => ({ IpProtocol: r.protocol, FromPort: r.port, ToPort: r.port, IpRanges: [{ CidrIp: r.cidr }] })),
-    }).catch((e: unknown) => {
-      if (!/InvalidPermission\.Duplicate/.test(e instanceof Error ? e.message : ''))
-        throw e
-    })
+    await ec2
+      .authorizeSecurityGroupIngress({
+        GroupId: groupId!,
+        IpPermissions: rules.map((r) => ({
+          IpProtocol: r.protocol,
+          FromPort: r.port,
+          ToPort: r.port,
+          IpRanges: [{ CidrIp: r.cidr }],
+        })),
+      })
+      .catch((e: unknown) => {
+        if (!/InvalidPermission\.Duplicate/.test(e instanceof Error ? e.message : '')) throw e
+      })
 
     const userData = encodeUserData(buildAwsUserData(config))
     const instanceType = compute.server?.instanceType || 't3.small'
@@ -143,24 +142,24 @@ export class AwsDriver implements CloudDriver {
       SubnetId: subnetId,
       UserData: userData,
       IamInstanceProfile: compute.server?.iamInstanceProfile ? { Name: compute.server.iamInstanceProfile } : undefined,
-      TagSpecifications: [{
-        ResourceType: 'instance',
-        Tags: [
-          { Key: 'Name', Value: `${slug}-${environment}-app` },
-          { Key: 'Project', Value: slug },
-          { Key: 'Environment', Value: environment },
-          { Key: 'Role', Value: 'app' },
-        ],
-      }],
+      TagSpecifications: [
+        {
+          ResourceType: 'instance',
+          Tags: [
+            { Key: 'Name', Value: `${slug}-${environment}-app` },
+            { Key: 'Project', Value: slug },
+            { Key: 'Environment', Value: environment },
+            { Key: 'Role', Value: 'app' },
+          ],
+        },
+      ],
     })
 
     const instanceId = run.Instances?.[0]?.InstanceId
-    if (!instanceId)
-      throw new Error('RunInstances did not return an instance id')
+    if (!instanceId) throw new Error('RunInstances did not return an instance id')
 
     const running = await ec2.waitForInstanceState(instanceId, 'running')
-    if (!running)
-      throw new Error(`Instance ${instanceId} did not reach 'running' before timeout`)
+    if (!running) throw new Error(`Instance ${instanceId} did not reach 'running' before timeout`)
     return {
       appInstanceId: instanceId,
       appPublicIp: running.PublicIpAddress,
@@ -177,16 +176,18 @@ export class AwsDriver implements CloudDriver {
     const destroyed: string[] = []
 
     const targets = await this.findComputeTargets({ slug: config.project.slug, environment, role: 'app' })
-    const ids = targets.map(t => t.id)
+    const ids = targets.map((t) => t.id)
     if (ids.length > 0) {
       await ec2.terminateInstances(ids)
-      destroyed.push(...ids.map(id => `instance ${id}`))
+      destroyed.push(...ids.map((id) => `instance ${id}`))
       // The SG can't be deleted until the ENIs detach; wait then retry.
-      await Promise.all(ids.map(id => ec2.waitForInstanceState(id, 'terminated').catch(() => undefined)))
+      await Promise.all(ids.map((id) => ec2.waitForInstanceState(id, 'terminated').catch(() => undefined)))
     }
 
     const sgName = `${config.project.slug}-${environment}-app-sg`
-    const found = await ec2.describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }] }).catch(() => ({ SecurityGroups: [] }))
+    const found = await ec2
+      .describeSecurityGroups({ Filters: [{ Name: 'group-name', Values: [sgName] }] })
+      .catch(() => ({ SecurityGroups: [] }))
     const groupId = found.SecurityGroups?.[0]?.GroupId
     if (groupId) {
       for (let i = 0; i < 10; i++) {
@@ -194,9 +195,8 @@ export class AwsDriver implements CloudDriver {
           await ec2.deleteSecurityGroup(groupId)
           destroyed.push(`security group ${sgName}`)
           break
-        }
-        catch {
-          await new Promise(r => setTimeout(r, 3000))
+        } catch {
+          await new Promise((r) => setTimeout(r, 3000))
         }
       }
     }
@@ -215,13 +215,11 @@ export class AwsDriver implements CloudDriver {
         appPublicIp: outputs.appPublicIp,
         sshUser: 'ec2-user',
       }
-    }
-    catch (err: unknown) {
+    } catch (err: unknown) {
       // Only fall back for "stack does not exist" (the lightweight EC2 boot
       // path creates no CloudFormation stack). Rethrow transient/permission
       // errors so they aren't masked as a missing stack.
-      if (!/does not exist|ValidationError/i.test(err instanceof Error ? err.message : ''))
-        throw err
+      if (!/does not exist|ValidationError/i.test(err instanceof Error ? err.message : '')) throw err
       // Tag-based lookup of the instance booted by provisionComputeInfrastructure.
       const targets = await this.findComputeTargets({
         slug: options.config.project.slug,
@@ -273,8 +271,7 @@ export class AwsDriver implements CloudDriver {
 
     const result = await ec2.describeInstances({ Filters: filters })
     const targets = this.reservationsToTargets(result.Reservations)
-    if (targets.length > 0 || (options.role || 'app') !== 'app')
-      return targets
+    if (targets.length > 0 || (options.role || 'app') !== 'app') return targets
 
     // Tag scan found nothing. Parity with the Hetzner driver's state pinning:
     // a project riding a shared instance (tagged for another project) records
@@ -286,13 +283,11 @@ export class AwsDriver implements CloudDriver {
     if (!pinnedId) {
       try {
         pinnedId = (await new CloudFormationClient(region).getStackOutputs(stackName)).appInstanceId ?? null
-      }
-      catch {
+      } catch {
         pinnedId = null // no stack (lightweight boot path) — nothing to pin from
       }
     }
-    if (!pinnedId)
-      return []
+    if (!pinnedId) return []
 
     try {
       const pinned = await ec2.describeInstances({
@@ -300,8 +295,7 @@ export class AwsDriver implements CloudDriver {
         Filters: [{ Name: 'instance-state-name', Values: ['running', 'pending'] }],
       })
       return this.reservationsToTargets(pinned.Reservations)
-    }
-    catch {
+    } catch {
       return [] // stale pin at a terminated/foreign instance
     }
   }
@@ -311,7 +305,7 @@ export class AwsDriver implements CloudDriver {
     for (const reservation of reservations || []) {
       for (const instance of reservation.Instances || []) {
         if (!instance.InstanceId) continue
-        const nameTag = instance.Tags?.find(tag => tag.Key === 'Name')?.Value
+        const nameTag = instance.Tags?.find((tag) => tag.Key === 'Name')?.Value
         targets.push({
           id: instance.InstanceId,
           name: nameTag,
@@ -330,7 +324,7 @@ export class AwsDriver implements CloudDriver {
    * scripts are bash, so run them through a bash heredoc.
    */
   private bashWrap(commands: string[]): string[] {
-    return ['bash <<\'TS_CLOUD_BASH_EOF\'', commands.join('\n'), 'TS_CLOUD_BASH_EOF']
+    return ["bash <<'TS_CLOUD_BASH_EOF'", commands.join('\n'), 'TS_CLOUD_BASH_EOF']
   }
 
   async runRemoteDeploy(options: RunRemoteDeployOptions): Promise<RemoteDeployResult> {
@@ -339,7 +333,7 @@ export class AwsDriver implements CloudDriver {
 
     if (options.targets.length > 0) {
       const sendResult = await ssm.sendCommand({
-        InstanceIds: options.targets.map(target => target.id),
+        InstanceIds: options.targets.map((target) => target.id),
         DocumentName: 'AWS-RunShellScript',
         Parameters: { commands: this.bashWrap(options.commands) },
         TimeoutSeconds: options.timeoutSeconds || 600,
@@ -375,7 +369,7 @@ export class AwsDriver implements CloudDriver {
     return {
       success: result.success,
       instanceCount: result.instanceCount,
-      perInstance: result.perInstance.map(item => ({
+      perInstance: result.perInstance.map((item) => ({
         instanceId: item.instanceId,
         status: item.status,
         output: item.output,
@@ -385,34 +379,46 @@ export class AwsDriver implements CloudDriver {
     }
   }
 
-  private async pollSsmCommand(ssm: SSMClient, commandId: string, expectedCount: number, maxWait = 600000): Promise<RemoteDeployResult> {
+  private async pollSsmCommand(
+    ssm: SSMClient,
+    commandId: string,
+    expectedCount: number,
+    maxWait = 600000,
+  ): Promise<RemoteDeployResult> {
     const pollInterval = 3000
     const startTime = Date.now()
     const terminalStatuses = new Set(['Success', 'Failed', 'Cancelled', 'TimedOut'])
-    let lastInvocations: Array<{ InstanceId: string, Status?: string, StandardOutputContent?: string, StandardErrorContent?: string }> = []
+    let lastInvocations: Array<{
+      InstanceId: string
+      Status?: string
+      StandardOutputContent?: string
+      StandardErrorContent?: string
+    }> = []
 
     while (Date.now() - startTime < maxWait) {
-      await new Promise(resolve => setTimeout(resolve, pollInterval))
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
       try {
         const invocations = await ssm.listCommandInvocations({ CommandId: commandId, Details: true })
         lastInvocations = invocations
-        if (lastInvocations.length >= expectedCount && lastInvocations.every(i => terminalStatuses.has(i.Status || ''))) {
+        if (
+          lastInvocations.length >= expectedCount &&
+          lastInvocations.every((i) => terminalStatuses.has(i.Status || ''))
+        ) {
           break
         }
-      }
-      catch {
+      } catch {
         // keep polling
       }
     }
 
-    const perInstance = lastInvocations.map(item => ({
+    const perInstance = lastInvocations.map((item) => ({
       instanceId: item.InstanceId,
       status: item.Status || 'Unknown',
       output: item.StandardOutputContent,
       error: item.StandardErrorContent,
     }))
 
-    const success = perInstance.length > 0 && perInstance.every(item => item.status === 'Success')
+    const success = perInstance.length > 0 && perInstance.every((item) => item.status === 'Success')
     return {
       success,
       instanceCount: perInstance.length,

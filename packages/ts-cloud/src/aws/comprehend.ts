@@ -3,7 +3,6 @@
  * Natural Language Processing - sentiment, entities, key phrases, language detection, PII
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -66,7 +65,14 @@ export interface DetectEntitiesCommandOutput {
   }
   DocumentType?: Array<{
     Page?: number
-    Type?: 'NATIVE_PDF' | 'SCANNED_PDF' | 'MS_WORD' | 'IMAGE' | 'PLAIN_TEXT' | 'TEXTRACT_DETECT_DOCUMENT_TEXT_JSON' | 'TEXTRACT_ANALYZE_DOCUMENT_JSON'
+    Type?:
+      | 'NATIVE_PDF'
+      | 'SCANNED_PDF'
+      | 'MS_WORD'
+      | 'IMAGE'
+      | 'PLAIN_TEXT'
+      | 'TEXTRACT_DETECT_DOCUMENT_TEXT_JSON'
+      | 'TEXTRACT_ANALYZE_DOCUMENT_JSON'
   }>
   Blocks?: Array<{
     Id?: string
@@ -92,7 +98,12 @@ export interface DetectEntitiesCommandOutput {
   }>
   Errors?: Array<{
     Page?: number
-    ErrorCode?: 'TEXTRACT_BAD_PAGE' | 'TEXTRACT_PROVISIONED_THROUGHPUT_EXCEEDED' | 'PAGE_CHARACTERS_EXCEEDED' | 'PAGE_SIZE_EXCEEDED' | 'INTERNAL_SERVER_ERROR'
+    ErrorCode?:
+      | 'TEXTRACT_BAD_PAGE'
+      | 'TEXTRACT_PROVISIONED_THROUGHPUT_EXCEEDED'
+      | 'PAGE_CHARACTERS_EXCEEDED'
+      | 'PAGE_SIZE_EXCEEDED'
+      | 'INTERNAL_SERVER_ERROR'
     ErrorMessage?: string
   }>
 }
@@ -133,7 +144,43 @@ export interface DetectPiiEntitiesCommandInput {
 
 export interface PiiEntity {
   Score?: number
-  Type?: 'BANK_ACCOUNT_NUMBER' | 'BANK_ROUTING' | 'CREDIT_DEBIT_NUMBER' | 'CREDIT_DEBIT_CVV' | 'CREDIT_DEBIT_EXPIRY' | 'PIN' | 'EMAIL' | 'ADDRESS' | 'NAME' | 'PHONE' | 'SSN' | 'DATE_TIME' | 'PASSPORT_NUMBER' | 'DRIVER_ID' | 'URL' | 'AGE' | 'USERNAME' | 'PASSWORD' | 'AWS_ACCESS_KEY' | 'AWS_SECRET_KEY' | 'IP_ADDRESS' | 'MAC_ADDRESS' | 'LICENSE_PLATE' | 'VEHICLE_IDENTIFICATION_NUMBER' | 'UK_NATIONAL_INSURANCE_NUMBER' | 'CA_SOCIAL_INSURANCE_NUMBER' | 'US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER' | 'UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER' | 'IN_PERMANENT_ACCOUNT_NUMBER' | 'IN_NREGA' | 'INTERNATIONAL_BANK_ACCOUNT_NUMBER' | 'SWIFT_CODE' | 'UK_NATIONAL_HEALTH_SERVICE_NUMBER' | 'CA_HEALTH_NUMBER' | 'IN_AADHAAR' | 'IN_VOTER_NUMBER'
+  Type?:
+    | 'BANK_ACCOUNT_NUMBER'
+    | 'BANK_ROUTING'
+    | 'CREDIT_DEBIT_NUMBER'
+    | 'CREDIT_DEBIT_CVV'
+    | 'CREDIT_DEBIT_EXPIRY'
+    | 'PIN'
+    | 'EMAIL'
+    | 'ADDRESS'
+    | 'NAME'
+    | 'PHONE'
+    | 'SSN'
+    | 'DATE_TIME'
+    | 'PASSPORT_NUMBER'
+    | 'DRIVER_ID'
+    | 'URL'
+    | 'AGE'
+    | 'USERNAME'
+    | 'PASSWORD'
+    | 'AWS_ACCESS_KEY'
+    | 'AWS_SECRET_KEY'
+    | 'IP_ADDRESS'
+    | 'MAC_ADDRESS'
+    | 'LICENSE_PLATE'
+    | 'VEHICLE_IDENTIFICATION_NUMBER'
+    | 'UK_NATIONAL_INSURANCE_NUMBER'
+    | 'CA_SOCIAL_INSURANCE_NUMBER'
+    | 'US_INDIVIDUAL_TAX_IDENTIFICATION_NUMBER'
+    | 'UK_UNIQUE_TAXPAYER_REFERENCE_NUMBER'
+    | 'IN_PERMANENT_ACCOUNT_NUMBER'
+    | 'IN_NREGA'
+    | 'INTERNATIONAL_BANK_ACCOUNT_NUMBER'
+    | 'SWIFT_CODE'
+    | 'UK_NATIONAL_HEALTH_SERVICE_NUMBER'
+    | 'CA_HEALTH_NUMBER'
+    | 'IN_AADHAAR'
+    | 'IN_VOTER_NUMBER'
   BeginOffset?: number
   EndOffset?: number
 }
@@ -165,7 +212,25 @@ export interface SyntaxToken {
   BeginOffset?: number
   EndOffset?: number
   PartOfSpeech?: {
-    Tag?: 'ADJ' | 'ADP' | 'ADV' | 'AUX' | 'CONJ' | 'CCONJ' | 'DET' | 'INTJ' | 'NOUN' | 'NUM' | 'O' | 'PART' | 'PRON' | 'PROPN' | 'PUNCT' | 'SCONJ' | 'SYM' | 'VERB'
+    Tag?:
+      | 'ADJ'
+      | 'ADP'
+      | 'ADV'
+      | 'AUX'
+      | 'CONJ'
+      | 'CCONJ'
+      | 'DET'
+      | 'INTJ'
+      | 'NOUN'
+      | 'NUM'
+      | 'O'
+      | 'PART'
+      | 'PRON'
+      | 'PROPN'
+      | 'PUNCT'
+      | 'SCONJ'
+      | 'SYM'
+      | 'VERB'
     Score?: number
   }
 }
@@ -185,7 +250,24 @@ export interface TargetedSentimentEntity {
     Score?: number
     GroupScore?: number
     Text?: string
-    Type?: 'PERSON' | 'LOCATION' | 'ORGANIZATION' | 'FACILITY' | 'BRAND' | 'COMMERCIAL_ITEM' | 'MOVIE' | 'MUSIC' | 'BOOK' | 'SOFTWARE' | 'GAME' | 'PERSONAL_TITLE' | 'EVENT' | 'DATE' | 'QUANTITY' | 'ATTRIBUTE' | 'OTHER'
+    Type?:
+      | 'PERSON'
+      | 'LOCATION'
+      | 'ORGANIZATION'
+      | 'FACILITY'
+      | 'BRAND'
+      | 'COMMERCIAL_ITEM'
+      | 'MOVIE'
+      | 'MUSIC'
+      | 'BOOK'
+      | 'SOFTWARE'
+      | 'GAME'
+      | 'PERSONAL_TITLE'
+      | 'EVENT'
+      | 'DATE'
+      | 'QUANTITY'
+      | 'ATTRIBUTE'
+      | 'OTHER'
     MentionSentiment?: {
       Sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED'
       SentimentScore?: {
@@ -547,7 +629,9 @@ export class ComprehendClient {
   /**
    * Detect the dominant language of text
    */
-  async detectDominantLanguage(params: DetectDominantLanguageCommandInput): Promise<DetectDominantLanguageCommandOutput> {
+  async detectDominantLanguage(
+    params: DetectDominantLanguageCommandInput,
+  ): Promise<DetectDominantLanguageCommandOutput> {
     return this.request('DetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
@@ -575,7 +659,9 @@ export class ComprehendClient {
   /**
    * Detect targeted sentiment (sentiment per entity)
    */
-  async detectTargetedSentiment(params: DetectTargetedSentimentCommandInput): Promise<DetectTargetedSentimentCommandOutput> {
+  async detectTargetedSentiment(
+    params: DetectTargetedSentimentCommandInput,
+  ): Promise<DetectTargetedSentimentCommandOutput> {
     return this.request('DetectTargetedSentiment', params as unknown as Record<string, unknown>)
   }
 
@@ -614,7 +700,9 @@ export class ComprehendClient {
   /**
    * Batch detect dominant language
    */
-  async batchDetectDominantLanguage(params: BatchDetectDominantLanguageCommandInput): Promise<BatchDetectDominantLanguageCommandOutput> {
+  async batchDetectDominantLanguage(
+    params: BatchDetectDominantLanguageCommandInput,
+  ): Promise<BatchDetectDominantLanguageCommandOutput> {
     return this.request('BatchDetectDominantLanguage', params as unknown as Record<string, unknown>)
   }
 
@@ -632,35 +720,45 @@ export class ComprehendClient {
   /**
    * Start an async sentiment detection job
    */
-  async startSentimentDetectionJob(params: StartSentimentDetectionJobCommandInput): Promise<StartSentimentDetectionJobCommandOutput> {
+  async startSentimentDetectionJob(
+    params: StartSentimentDetectionJobCommandInput,
+  ): Promise<StartSentimentDetectionJobCommandOutput> {
     return this.request('StartSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async entities detection job
    */
-  async startEntitiesDetectionJob(params: StartEntitiesDetectionJobCommandInput): Promise<StartEntitiesDetectionJobCommandOutput> {
+  async startEntitiesDetectionJob(
+    params: StartEntitiesDetectionJobCommandInput,
+  ): Promise<StartEntitiesDetectionJobCommandOutput> {
     return this.request('StartEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async key phrases detection job
    */
-  async startKeyPhrasesDetectionJob(params: StartKeyPhrasesDetectionJobCommandInput): Promise<StartKeyPhrasesDetectionJobCommandOutput> {
+  async startKeyPhrasesDetectionJob(
+    params: StartKeyPhrasesDetectionJobCommandInput,
+  ): Promise<StartKeyPhrasesDetectionJobCommandOutput> {
     return this.request('StartKeyPhrasesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Start an async PII entities detection job
    */
-  async startPiiEntitiesDetectionJob(params: StartPiiEntitiesDetectionJobCommandInput): Promise<StartPiiEntitiesDetectionJobCommandOutput> {
+  async startPiiEntitiesDetectionJob(
+    params: StartPiiEntitiesDetectionJobCommandInput,
+  ): Promise<StartPiiEntitiesDetectionJobCommandOutput> {
     return this.request('StartPiiEntitiesDetectionJob', params as unknown as Record<string, unknown>)
   }
 
   /**
    * Describe a sentiment detection job
    */
-  async describeSentimentDetectionJob(params: DescribeSentimentDetectionJobCommandInput): Promise<DescribeSentimentDetectionJobCommandOutput> {
+  async describeSentimentDetectionJob(
+    params: DescribeSentimentDetectionJobCommandInput,
+  ): Promise<DescribeSentimentDetectionJobCommandOutput> {
     return this.request('DescribeSentimentDetectionJob', params as unknown as Record<string, unknown>)
   }
 
@@ -671,7 +769,10 @@ export class ComprehendClient {
   /**
    * Simple sentiment analysis
    */
-  async analyzeSentiment(text: string, languageCode: string = 'en'): Promise<{
+  async analyzeSentiment(
+    text: string,
+    languageCode: string = 'en',
+  ): Promise<{
     sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | 'MIXED'
     scores: { positive: number; negative: number; neutral: number; mixed: number }
   }> {
@@ -693,16 +794,21 @@ export class ComprehendClient {
   /**
    * Extract entities from text
    */
-  async extractEntities(text: string, languageCode: string = 'en'): Promise<Array<{
-    text: string
-    type: string
-    score: number
-  }>> {
+  async extractEntities(
+    text: string,
+    languageCode: string = 'en',
+  ): Promise<
+    Array<{
+      text: string
+      type: string
+      score: number
+    }>
+  > {
     const result = await this.detectEntities({
       Text: text,
       LanguageCode: languageCode,
     })
-    return result.Entities.map(e => ({
+    return result.Entities.map((e) => ({
       text: e.Text || '',
       type: e.Type || 'UNKNOWN',
       score: e.Score || 0,
@@ -717,7 +823,7 @@ export class ComprehendClient {
       Text: text,
       LanguageCode: languageCode,
     })
-    return result.KeyPhrases.map(kp => kp.Text || '').filter(Boolean)
+    return result.KeyPhrases.map((kp) => kp.Text || '').filter(Boolean)
   }
 
   /**
@@ -735,17 +841,22 @@ export class ComprehendClient {
   /**
    * Find PII in text
    */
-  async findPii(text: string, languageCode: string = 'en'): Promise<Array<{
-    type: string
-    beginOffset: number
-    endOffset: number
-    score: number
-  }>> {
+  async findPii(
+    text: string,
+    languageCode: string = 'en',
+  ): Promise<
+    Array<{
+      type: string
+      beginOffset: number
+      endOffset: number
+      score: number
+    }>
+  > {
     const result = await this.detectPiiEntities({
       Text: text,
       LanguageCode: languageCode,
     })
-    return result.Entities.map(e => ({
+    return result.Entities.map((e) => ({
       type: e.Type || 'UNKNOWN',
       beginOffset: e.BeginOffset || 0,
       endOffset: e.EndOffset || 0,
@@ -818,10 +929,7 @@ export async function extractEntities(
 /**
  * Quick language detection
  */
-export async function detectLanguage(
-  text: string,
-  region?: string,
-): Promise<string> {
+export async function detectLanguage(text: string, region?: string): Promise<string> {
   const client = new ComprehendClient(region || 'us-east-1')
   const result = await client.detectLanguage(text)
   return result.languageCode

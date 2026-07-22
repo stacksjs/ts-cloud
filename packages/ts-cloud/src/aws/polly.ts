@@ -3,7 +3,6 @@
  * Text-to-Speech service
  * No external SDK dependencies - implements AWS Signature V4 directly
  */
-
 import { AWSClient } from './client'
 
 // ============================================================================
@@ -11,28 +10,136 @@ import { AWSClient } from './client'
 // ============================================================================
 
 export type VoiceId =
-  | 'Aditi' | 'Amy' | 'Aria' | 'Arlet' | 'Arthur' | 'Astrid'
-  | 'Ayanda' | 'Bianca' | 'Brian' | 'Camila' | 'Carla' | 'Carmen'
-  | 'Celine' | 'Chantal' | 'Conchita' | 'Cristiano' | 'Daniel' | 'Dora'
-  | 'Elin' | 'Emma' | 'Enrique' | 'Ewa' | 'Filiz' | 'Gabrielle'
-  | 'Geraint' | 'Giorgio' | 'Gwyneth' | 'Hala' | 'Hannah' | 'Hans'
-  | 'Hiujin' | 'Ida' | 'Ines' | 'Ivy' | 'Jacek' | 'Jan'
-  | 'Joanna' | 'Joey' | 'Justin' | 'Kajal' | 'Karl' | 'Kazuha'
-  | 'Kendra' | 'Kevin' | 'Kimberly' | 'Laura' | 'Lea' | 'Liam'
-  | 'Lisa' | 'Liv' | 'Lotte' | 'Lucia' | 'Lupe' | 'Mads'
-  | 'Maja' | 'Marlene' | 'Mathieu' | 'Matthew' | 'Maxim' | 'Mia'
-  | 'Miguel' | 'Mizuki' | 'Naja' | 'Niamh' | 'Nicole' | 'Ola'
-  | 'Olivia' | 'Pedro' | 'Penelope' | 'Raveena' | 'Remi' | 'Ricardo'
-  | 'Ruben' | 'Russell' | 'Ruth' | 'Salli' | 'Seoyeon' | 'Sergio'
-  | 'Sofie' | 'Stephen' | 'Suvi' | 'Takumi' | 'Tatyana' | 'Thiago'
-  | 'Tomoko' | 'Vicki' | 'Vitoria' | 'Zayd' | 'Zeina' | 'Zhiyu'
+  | 'Aditi'
+  | 'Amy'
+  | 'Aria'
+  | 'Arlet'
+  | 'Arthur'
+  | 'Astrid'
+  | 'Ayanda'
+  | 'Bianca'
+  | 'Brian'
+  | 'Camila'
+  | 'Carla'
+  | 'Carmen'
+  | 'Celine'
+  | 'Chantal'
+  | 'Conchita'
+  | 'Cristiano'
+  | 'Daniel'
+  | 'Dora'
+  | 'Elin'
+  | 'Emma'
+  | 'Enrique'
+  | 'Ewa'
+  | 'Filiz'
+  | 'Gabrielle'
+  | 'Geraint'
+  | 'Giorgio'
+  | 'Gwyneth'
+  | 'Hala'
+  | 'Hannah'
+  | 'Hans'
+  | 'Hiujin'
+  | 'Ida'
+  | 'Ines'
+  | 'Ivy'
+  | 'Jacek'
+  | 'Jan'
+  | 'Joanna'
+  | 'Joey'
+  | 'Justin'
+  | 'Kajal'
+  | 'Karl'
+  | 'Kazuha'
+  | 'Kendra'
+  | 'Kevin'
+  | 'Kimberly'
+  | 'Laura'
+  | 'Lea'
+  | 'Liam'
+  | 'Lisa'
+  | 'Liv'
+  | 'Lotte'
+  | 'Lucia'
+  | 'Lupe'
+  | 'Mads'
+  | 'Maja'
+  | 'Marlene'
+  | 'Mathieu'
+  | 'Matthew'
+  | 'Maxim'
+  | 'Mia'
+  | 'Miguel'
+  | 'Mizuki'
+  | 'Naja'
+  | 'Niamh'
+  | 'Nicole'
+  | 'Ola'
+  | 'Olivia'
+  | 'Pedro'
+  | 'Penelope'
+  | 'Raveena'
+  | 'Remi'
+  | 'Ricardo'
+  | 'Ruben'
+  | 'Russell'
+  | 'Ruth'
+  | 'Salli'
+  | 'Seoyeon'
+  | 'Sergio'
+  | 'Sofie'
+  | 'Stephen'
+  | 'Suvi'
+  | 'Takumi'
+  | 'Tatyana'
+  | 'Thiago'
+  | 'Tomoko'
+  | 'Vicki'
+  | 'Vitoria'
+  | 'Zayd'
+  | 'Zeina'
+  | 'Zhiyu'
 
 export type LanguageCode =
-  | 'arb' | 'ca-ES' | 'cmn-CN' | 'cy-GB' | 'da-DK' | 'de-AT' | 'de-DE'
-  | 'en-AU' | 'en-GB' | 'en-GB-WLS' | 'en-IE' | 'en-IN' | 'en-NZ' | 'en-US' | 'en-ZA'
-  | 'es-ES' | 'es-MX' | 'es-US' | 'fi-FI' | 'fr-BE' | 'fr-CA' | 'fr-FR'
-  | 'hi-IN' | 'is-IS' | 'it-IT' | 'ja-JP' | 'ko-KR' | 'nb-NO' | 'nl-BE' | 'nl-NL'
-  | 'pl-PL' | 'pt-BR' | 'pt-PT' | 'ro-RO' | 'ru-RU' | 'sv-SE' | 'tr-TR' | 'yue-CN'
+  | 'arb'
+  | 'ca-ES'
+  | 'cmn-CN'
+  | 'cy-GB'
+  | 'da-DK'
+  | 'de-AT'
+  | 'de-DE'
+  | 'en-AU'
+  | 'en-GB'
+  | 'en-GB-WLS'
+  | 'en-IE'
+  | 'en-IN'
+  | 'en-NZ'
+  | 'en-US'
+  | 'en-ZA'
+  | 'es-ES'
+  | 'es-MX'
+  | 'es-US'
+  | 'fi-FI'
+  | 'fr-BE'
+  | 'fr-CA'
+  | 'fr-FR'
+  | 'hi-IN'
+  | 'is-IS'
+  | 'it-IT'
+  | 'ja-JP'
+  | 'ko-KR'
+  | 'nb-NO'
+  | 'nl-BE'
+  | 'nl-NL'
+  | 'pl-PL'
+  | 'pt-BR'
+  | 'pt-PT'
+  | 'ro-RO'
+  | 'ru-RU'
+  | 'sv-SE'
+  | 'tr-TR'
+  | 'yue-CN'
 
 export type Engine = 'standard' | 'neural' | 'long-form' | 'generative'
 
@@ -246,7 +353,9 @@ export class PollyClient {
   /**
    * Start async speech synthesis task
    */
-  async startSpeechSynthesisTask(params: StartSpeechSynthesisTaskCommandInput): Promise<StartSpeechSynthesisTaskCommandOutput> {
+  async startSpeechSynthesisTask(
+    params: StartSpeechSynthesisTaskCommandInput,
+  ): Promise<StartSpeechSynthesisTaskCommandOutput> {
     return this.client.request({
       service: 'polly',
       region: this.region,
@@ -262,7 +371,9 @@ export class PollyClient {
   /**
    * Get speech synthesis task status
    */
-  async getSpeechSynthesisTask(params: GetSpeechSynthesisTaskCommandInput): Promise<GetSpeechSynthesisTaskCommandOutput> {
+  async getSpeechSynthesisTask(
+    params: GetSpeechSynthesisTaskCommandInput,
+  ): Promise<GetSpeechSynthesisTaskCommandOutput> {
     return this.client.request({
       service: 'polly',
       region: this.region,
@@ -274,7 +385,9 @@ export class PollyClient {
   /**
    * List speech synthesis tasks
    */
-  async listSpeechSynthesisTasks(params?: ListSpeechSynthesisTasksCommandInput): Promise<ListSpeechSynthesisTasksCommandOutput> {
+  async listSpeechSynthesisTasks(
+    params?: ListSpeechSynthesisTasksCommandInput,
+  ): Promise<ListSpeechSynthesisTasksCommandOutput> {
     const queryParams: Record<string, string> = {}
     if (params?.MaxResults) queryParams.MaxResults = params.MaxResults.toString()
     if (params?.NextToken) queryParams.NextToken = params.NextToken
@@ -471,10 +584,7 @@ export class PollyClient {
   /**
    * Wait for synthesis task to complete
    */
-  async waitForTask(
-    taskId: string,
-    options?: { maxWaitMs?: number; pollIntervalMs?: number },
-  ): Promise<SynthesisTask> {
+  async waitForTask(taskId: string, options?: { maxWaitMs?: number; pollIntervalMs?: number }): Promise<SynthesisTask> {
     const maxWaitMs = options?.maxWaitMs ?? 300000 // 5 minutes
     const pollIntervalMs = options?.pollIntervalMs ?? 5000
     const startTime = Date.now()
@@ -490,7 +600,7 @@ export class PollyClient {
         throw new Error(`Polly task ${taskId} failed: ${task.TaskStatusReason}`)
       }
 
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs))
     }
 
     throw new Error(`Timeout waiting for Polly task ${taskId}`)
@@ -519,13 +629,11 @@ export async function textToSpeech(
 /**
  * List available voices
  */
-export async function listVoices(
-  options?: {
-    languageCode?: LanguageCode
-    engine?: Engine
-    region?: string
-  },
-): Promise<Voice[]> {
+export async function listVoices(options?: {
+  languageCode?: LanguageCode
+  engine?: Engine
+  region?: string
+}): Promise<Voice[]> {
   const client = new PollyClient(options?.region || 'us-east-1')
   const result = await client.describeVoices({
     LanguageCode: options?.languageCode,
@@ -537,11 +645,14 @@ export async function listVoices(
 /**
  * Create SSML with speech marks (pauses, emphasis, etc.)
  */
-export function createSSML(text: string, options?: {
-  rate?: 'x-slow' | 'slow' | 'medium' | 'fast' | 'x-fast'
-  pitch?: 'x-low' | 'low' | 'medium' | 'high' | 'x-high'
-  volume?: 'silent' | 'x-soft' | 'soft' | 'medium' | 'loud' | 'x-loud'
-}): string {
+export function createSSML(
+  text: string,
+  options?: {
+    rate?: 'x-slow' | 'slow' | 'medium' | 'fast' | 'x-fast'
+    pitch?: 'x-low' | 'low' | 'medium' | 'high' | 'x-high'
+    volume?: 'silent' | 'x-soft' | 'soft' | 'medium' | 'loud' | 'x-loud'
+  },
+): string {
   let ssml = '<speak>'
 
   if (options?.rate || options?.pitch || options?.volume) {
@@ -550,8 +661,7 @@ export function createSSML(text: string, options?: {
     if (options.pitch) ssml += ` pitch="${options.pitch}"`
     if (options.volume) ssml += ` volume="${options.volume}"`
     ssml += `>${text}</prosody>`
-  }
-else {
+  } else {
     ssml += text
   }
 

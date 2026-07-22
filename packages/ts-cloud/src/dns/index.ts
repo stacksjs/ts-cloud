@@ -47,10 +47,7 @@ export function createDnsProvider(config: DnsProviderConfig): DnsProvider {
  * Auto-detect DNS provider for a domain
  * Tries each provider to see which one can manage the domain
  */
-export async function detectDnsProvider(
-  domain: string,
-  configs: DnsProviderConfig[],
-): Promise<DnsProvider | null> {
+export async function detectDnsProvider(domain: string, configs: DnsProviderConfig[]): Promise<DnsProvider | null> {
   for (const config of configs) {
     const provider = createDnsProvider(config)
     if (await provider.canManageDomain(domain)) {
@@ -167,7 +164,7 @@ export class DnsProviderFactory {
     }
 
     // Find config
-    const config = this.configs.find(c => c.provider === name)
+    const config = this.configs.find((c) => c.provider === name)
     if (!config) {
       return null
     }
@@ -195,7 +192,7 @@ export class DnsProviderFactory {
    * Get all configured providers
    */
   getAllProviders(): DnsProvider[] {
-    return this.configs.map(config => createDnsProvider(config))
+    return this.configs.map((config) => createDnsProvider(config))
   }
 }
 
