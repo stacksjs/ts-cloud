@@ -31,7 +31,7 @@ export function ecsWorkloads(services: EcsService[], tasks: EcsTask[], context: 
           containers: (task.containers ?? []).map(container => ({ id: container.containerArn ?? container.name ?? 'container', name: container.name ?? 'container', status: normalizeRuntimeStatus(container.lastStatus), rawStatus: container.lastStatus, exitCode: container.exitCode, reason: container.reason, runtime: 'ecs' })),
         }
       }),
-      networks: [], mounts: [], capabilities: capabilities(['stop', 'restart', 'redeploy', 'scale', 'logs', 'exec', 'inspect'], 'ECS does not expose host file transfer through this runtime explorer'),
+      networks: [], mounts: [], capabilities: capabilities(['start', 'stop', 'restart', 'redeploy', 'scale', 'inspect'], 'This ECS runtime does not expose host logs, exec, or file transfer without task-definition integration'),
       config: redactRuntimeConfig({ clusterArn: service.clusterArn, taskDefinition: service.taskDefinition, launchType: service.launchType, pendingCount: service.pendingCount, deployments: service.deployments }),
       discoveredAt: now.toISOString(), sourceId,
     }
@@ -49,7 +49,7 @@ export function lambdaWorkloads(functions: LambdaFunctionConfiguration[], contex
       image: undefined, runtime: fn.Runtime, version: fn.Version, architecture: fn.Architectures?.join(', '), ageSeconds: ageSeconds(fn.LastModified, now), restartCount: 0,
       tags: {}, links: { project: context.project, environment: context.environment, service: name, providerId: fn.FunctionArn },
       resources: { memoryLimitBytes: fn.MemorySize == null ? undefined : fn.MemorySize * 1024 * 1024 }, replicas: [], networks: [], mounts: [],
-      capabilities: capabilities(['redeploy', 'scale', 'logs', 'inspect'], 'Lambda has no persistent process to start, stop, exec, or browse files'),
+      capabilities: capabilities(['logs', 'inspect'], 'Lambda has no persistent process to start, stop, restart, exec, or browse files; deploy a release to replace code'),
       config: redactRuntimeConfig({ handler: fn.Handler, timeout: fn.Timeout, codeSize: fn.CodeSize, stateReason: fn.StateReason, environmentKeys: Object.keys(fn.Environment?.Variables ?? {}) }),
       discoveredAt: now.toISOString(), sourceId,
     }

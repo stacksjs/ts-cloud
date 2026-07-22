@@ -59,7 +59,7 @@ export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeD
       ageSeconds: ageSeconds(record.activeSince, now),
       restartCount: record.restartCount,
       tags: { enabled: record.enabled ?? 'unknown' },
-      links: { project: context.project, environment: context.environment, server: context.server, service: name, providerId: record.unit },
+      links: { project: context.project, environment: context.environment, server: context.server ?? sourceId.replace(/^systemd:/, ''), service: name, providerId: record.unit },
       resources: { memoryBytes: record.memoryBytes },
       replicas: [{ id: runtimeId('systemd', sourceId, `${record.unit}:main`), name: 'main', status, pid: record.pid, startedAt: record.activeSince, restartCount: record.restartCount, resources: { memoryBytes: record.memoryBytes } }],
       networks: [],
