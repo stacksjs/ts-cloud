@@ -9,6 +9,20 @@ interface CloudFrontTransport {
   request: (options: AWSRequestOptions) => Promise<any>
 }
 
+export interface CloudFrontPublicKey {
+  Id: string
+  Name: string
+  EncodedKey?: string
+  Comment?: string
+}
+
+export interface CloudFrontKeyGroup {
+  Id: string
+  Name: string
+  Items: string[]
+  Comment?: string
+}
+
 export interface ExistingDistributionOriginInput {
   id: string
   domainName: string
@@ -1576,6 +1590,8 @@ export class CloudFrontClient {
     comment?: string
     priceClass?: 'PriceClass_100' | 'PriceClass_200' | 'PriceClass_All'
     enabled?: boolean
+    trustedKeyGroupIds?: string[]
+    mediaDelivery?: boolean
   }): Promise<{
     Id: string
     ARN: string
@@ -1593,11 +1609,21 @@ export class CloudFrontClient {
       comment = `Distribution for ${bucketName}`,
       priceClass = 'PriceClass_100',
       enabled = true,
+      trustedKeyGroupIds = [],
+      mediaDelivery = false,
     } = options
 
     const originId = `S3-${bucketName}`
     const s3DomainName = `${bucketName}.s3.${bucketRegion}.amazonaws.com`
     const callerReference = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+    const trustedKeyGroupsXml = trustedKeyGroupIds.length > 0
+      ? `<TrustedKeyGroups>
+      <Enabled>true</Enabled>
+      <Quantity>${trustedKeyGroupIds.length}</Quantity>
+      <Items>${trustedKeyGroupIds.map(id => `<KeyGroup>${id}</KeyGroup>`).join('')}</Items>
+    </TrustedKeyGroups>`
+      : `<TrustedKeyGroups><Enabled>false</Enabled><Quantity>0</Quantity></TrustedKeyGroups>`
 
     // Build aliases XML
     let aliasesXml = '<Aliases><Quantity>0</Quantity></Aliases>'
@@ -1662,6 +1688,7 @@ export class CloudFrontClient {
     </AllowedMethods>
     <Compress>true</Compress>
     <CachePolicyId>658327ea-f89d-4fab-a63d-7e88639e58f6</CachePolicyId>
+    ${trustedKeyGroupsXml}
   </DefaultCacheBehavior>
   ${aliasesXml}
   ${viewerCertificateXml}
@@ -1669,7 +1696,7 @@ export class CloudFrontClient {
   <Enabled>${enabled}</Enabled>
   <HttpVersion>http2and3</HttpVersion>
   <IsIPV6Enabled>true</IsIPV6Enabled>
-  <CustomErrorResponses>
+  ${mediaDelivery ? '<CustomErrorResponses><Quantity>0</Quantity></CustomErrorResponses>' : `<CustomErrorResponses>
     <Quantity>1</Quantity>
     <Items>
       <CustomErrorResponse>
@@ -1679,7 +1706,7 @@ export class CloudFrontClient {
         <ErrorCachingMinTTL>300</ErrorCachingMinTTL>
       </CustomErrorResponse>
     </Items>
-  </CustomErrorResponses>
+  </CustomErrorResponses>`}
 </DistributionConfig>`
 
     const result = await this.client.request({
@@ -1702,6 +1729,110 @@ export class CloudFrontClient {
       DomainName: dist.DomainName,
       Status: dist.Status,
       ETag: result.headers?.etag || result.ETag || '',
+    }
+  }
+
+  /** Create a private-origin distribution tuned for immutable media and optional signed viewers. */
+  async createMediaDistributionForS3(options: {
+    bucketName: string
+    bucketRegion: string
+    originAccessControlId: string
+    aliases?: string[]
+    certificateArn?: string
+    comment?: string
+    priceClass?: 'PriceClass_100' | 'PriceClass_200' | 'PriceClass_All'
+    enabled?: boolean
+    trustedKeyGroupIds?: string[]
+  }): Promise<{ Id: string, ARN: string, DomainName: string, Status: string, ETag: string }> {
+    return this.createDistributionForS3({
+      ...options,
+      defaultRootObject: '',
+      mediaDelivery: true,
+      comment: options.comment ?? `Media distribution for ${options.bucketName}`,
+    })
+  }
+
+  /** List viewer public keys used by trusted key groups. */
+  async listPublicKeys(): Promise<CloudFrontPublicKey[]> {
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: '/2020-05-31/public-key',
+    })
+    const values = this.collectionItems(result.PublicKeyList ?? result, 'PublicKeySummary')
+    return values.map(value => ({
+      Id: String(value.Id),
+      Name: String(value.Name),
+      Comment: value.Comment ? String(value.Comment) : undefined,
+    }))
+  }
+
+  /** Register an RSA public key for CloudFront signed URLs and cookies. */
+  async createPublicKey(options: {
+    name: string
+    encodedKey: string
+    comment?: string
+    callerReference?: string
+  }): Promise<CloudFrontPublicKey> {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(options.name)) throw new TypeError('CloudFront public key name is invalid')
+    if (!options.encodedKey.includes('BEGIN PUBLIC KEY')) throw new TypeError('CloudFront public key must be PEM encoded')
+    const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/2020-05-31/public-key',
+      headers: { 'Content-Type': 'application/xml' },
+      body: `<PublicKeyConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/"><CallerReference>${escape(options.callerReference ?? `${Date.now()}-${options.name}`)}</CallerReference><Name>${escape(options.name)}</Name><EncodedKey>${escape(options.encodedKey)}</EncodedKey><Comment>${escape(options.comment ?? '')}</Comment></PublicKeyConfig>`,
+    })
+    const value = result.PublicKey ?? result
+    return {
+      Id: String(value.Id),
+      Name: String(value.PublicKeyConfig?.Name ?? options.name),
+      EncodedKey: String(value.PublicKeyConfig?.EncodedKey ?? options.encodedKey),
+      Comment: String(value.PublicKeyConfig?.Comment ?? options.comment ?? ''),
+    }
+  }
+
+  /** List trusted viewer key groups. */
+  async listKeyGroups(): Promise<CloudFrontKeyGroup[]> {
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'GET',
+      path: '/2020-05-31/key-group',
+    })
+    const values = this.collectionItems(result.KeyGroupList ?? result, 'KeyGroupSummary')
+    return values.map(value => ({
+      Id: String(value.KeyGroup?.Id ?? value.Id),
+      Name: String(value.KeyGroup?.KeyGroupConfig?.Name ?? value.KeyGroupConfig?.Name ?? value.Name),
+      Items: this.collectionItems(value.KeyGroup?.KeyGroupConfig?.Items ?? value.KeyGroupConfig?.Items ?? value.Items, 'Item').map(String),
+      Comment: value.KeyGroup?.KeyGroupConfig?.Comment ?? value.KeyGroupConfig?.Comment ?? value.Comment,
+    }))
+  }
+
+  /** Create a trusted key group for one or more registered public keys. */
+  async createKeyGroup(options: { name: string, publicKeyIds: string[], comment?: string }): Promise<CloudFrontKeyGroup> {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(options.name)) throw new TypeError('CloudFront key group name is invalid')
+    const publicKeyIds = [...new Set(options.publicKeyIds)]
+    if (publicKeyIds.length === 0) throw new TypeError('CloudFront key group requires at least one public key')
+    const escape = (value: string): string => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    const items = publicKeyIds.map(id => `<Item>${escape(id)}</Item>`).join('')
+    const result = await this.client.request({
+      service: 'cloudfront',
+      region: 'us-east-1',
+      method: 'POST',
+      path: '/2020-05-31/key-group',
+      headers: { 'Content-Type': 'application/xml' },
+      body: `<KeyGroupConfig xmlns="http://cloudfront.amazonaws.com/doc/2020-05-31/"><Name>${escape(options.name)}</Name><Items>${items}</Items><Comment>${escape(options.comment ?? '')}</Comment></KeyGroupConfig>`,
+    })
+    const value = result.KeyGroup ?? result
+    return {
+      Id: String(value.Id),
+      Name: String(value.KeyGroupConfig?.Name ?? options.name),
+      Items: publicKeyIds,
+      Comment: String(value.KeyGroupConfig?.Comment ?? options.comment ?? ''),
     }
   }
 
