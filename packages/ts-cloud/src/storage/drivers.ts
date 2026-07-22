@@ -1,6 +1,8 @@
 import type { JsonValue } from '../control-plane'
 import type { PersistentVolume, VolumeAttachment, VolumeCapabilities, VolumeDriver, VolumeDriverObservation, VolumeSnapshot } from './model'
 import { volumeCapabilities } from './service'
+import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { basename, join, resolve, sep } from 'node:path'
 
 export interface DockerVolumeCommandResult { code:number,stdout:string,stderr:string }
 export type DockerVolumeCommand = (args:string[])=>Promise<DockerVolumeCommandResult>
@@ -22,6 +24,22 @@ export class DockerNamedVolumeDriver implements VolumeDriver {
   async restore(_volume:PersistentVolume,_snapshot:VolumeSnapshot,_target:PersistentVolume):Promise<VolumeDriverObservation>{throw new Error(this.capabilities().restore.reason)}
   async delete(volume:PersistentVolume):Promise<void>{if(!volume.providerId||!dockerName.test(volume.providerId))throw new Error('Docker volume provider identity is missing or invalid.');await this.run(['volume','rm',volume.providerId])}
   async usage(volume:PersistentVolume):Promise<{usedBytes?:number,capacityBytes?:number}>{const output=await this.run(['system','df','-v','--format','{{json .}}'],true),line=output.split('\n').find(item=>item.includes(`"Name":"${volume.providerId}"`));if(!line)return{};try{const parsed=JSON.parse(line);return{usedBytes:typeof parsed.Size==='number'?parsed.Size:undefined}}catch{return{}}}
+}
+
+export class ServerPathVolumeDriver implements VolumeDriver {
+  readonly provider='server';readonly type='server_path' as const;private readonly root:string
+  constructor(root:string){this.root=resolve(root)}
+  capabilities():VolumeCapabilities{return volumeCapabilities(['create','attach','detach','delete','adopt','usage'],{resize:{supported:false,reason:'Server paths use the capacity of their containing filesystem.'},snapshot:{supported:false,reason:'Attach a filesystem backup policy for verified recovery points.'},restore:{supported:false,reason:'Restore a filesystem recovery point into a new managed path.'}})}
+  private path(name:string):string{if(!dockerName.test(name))throw new Error('Server path volume name is invalid.');const target=resolve(this.root,name);if(!target.startsWith(`${this.root}${sep}`)||basename(target)!==name)throw new Error('Server path escaped the managed volume root.');return target}
+  async discover(_projectId?:string,_environmentId?:string):Promise<VolumeDriverObservation[]>{await mkdir(this.root,{recursive:true,mode:0o750});const entries=await readdir(this.root,{withFileTypes:true});return entries.filter(item=>item.isDirectory()&&dockerName.test(item.name)).map(item=>({providerId:item.name,raw:{path:this.path(item.name)}}))}
+  async create(volume:PersistentVolume):Promise<VolumeDriverObservation>{const name=typeof volume.desiredState.nativeName==='string'?volume.desiredState.nativeName:volume.name,target=this.path(name);await mkdir(this.root,{recursive:true,mode:0o750});await mkdir(target,{recursive:false,mode:0o750});return{providerId:name,filesystem:'host',raw:{path:target}}}
+  async attach(_volume:PersistentVolume,_attachment:VolumeAttachment):Promise<void>{}
+  async detach(_volume:PersistentVolume,_attachment:VolumeAttachment):Promise<void>{}
+  async resize():Promise<VolumeDriverObservation>{throw new Error(this.capabilities().resize.reason)}
+  async snapshot():Promise<{providerId?:string,sizeBytes?:number,checksum?:string}>{throw new Error(this.capabilities().snapshot.reason)}
+  async restore(_volume:PersistentVolume,_snapshot:VolumeSnapshot,_target:PersistentVolume):Promise<VolumeDriverObservation>{throw new Error(this.capabilities().restore.reason)}
+  async delete(volume:PersistentVolume):Promise<void>{if(!volume.providerId)throw new Error('Server path provider identity is unavailable.');await rm(this.path(volume.providerId),{recursive:true,force:false})}
+  async usage(volume:PersistentVolume):Promise<{usedBytes?:number,capacityBytes?:number}>{if(!volume.providerId)return{};const info=await stat(this.path(volume.providerId));return{usedBytes:info.size}}
 }
 
 export interface CloudVolumeTransport {

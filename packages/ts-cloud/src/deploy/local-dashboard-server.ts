@@ -35,7 +35,7 @@ import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, pr
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, synchronizeConfiguredConfiguration, type ConfigurationScope } from '../configuration'
-import { createVolumeQueueHandlers, DockerNamedVolumeDriver, VolumeService, VolumeStore } from '../storage'
+import { createVolumeQueueHandlers, DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore } from '../storage'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -437,6 +437,7 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/volumes/detach',
   'POST /api/volumes/resize',
   'POST /api/volumes/snapshot',
+  'POST /api/volumes/restore',
   'POST /api/volumes/adopt',
   'POST /api/volumes/discover',
   'DELETE /api/volumes',
@@ -1064,7 +1065,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const resolveBackupDestination = (destination: BackupDestination) =>
     destination.provider === 'aws_backup' ? undefined : backupDestination
   const volumeStore = new VolumeStore(controlPlane.store)
-  const volumeDrivers = [new DockerNamedVolumeDriver()]
+  const volumeDrivers = [new DockerNamedVolumeDriver(), new ServerPathVolumeDriver(join(cwd, '.ts-cloud', 'volumes'))]
   const volumeService = new VolumeService(volumeStore, volumeDrivers, operationQueue)
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
@@ -3697,6 +3698,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (url.pathname === '/api/volumes/snapshot' && req.method === 'POST') {
             const body = await readJsonBody(req)
             try { return json({ ok: true, ...volumeService.snapshot(String(body.volumeId ?? ''), { name: body.name ? String(body.name) : undefined, actorId }) }, 202) }
+            catch (error) { return fail(error, 422) }
+          }
+          if (url.pathname === '/api/volumes/restore' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try { return json({ ok: true, ...volumeService.restore(String(body.snapshotId ?? ''), { name: String(body.name ?? ''), actorId }) }, 202) }
             catch (error) { return fail(error, 422) }
           }
           if (url.pathname === '/api/volumes/discover' && req.method === 'POST') {
