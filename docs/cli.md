@@ -68,6 +68,20 @@ See [Serverless](/features/serverless) for the full `app` config.
 
 See [Application onboarding](/features/application-onboarding) for draft JSON, build strategy, registry, and API examples.
 
+## Durable operations
+
+| Command | Description |
+|---|---|
+| `cloud ops:list [--state <state>] [--all-projects]` | List authorized durable jobs, attempts, checkpoints, blocking reasons, and timing. |
+| `cloud ops:show <id> [--after <cursor>]` | Inspect one job and ordered sanitized logs after a sequence cursor. |
+| `cloud ops:cancel <id> [--yes]` | Cancel queued work or request cooperative cancellation of running work. |
+| `cloud ops:retry <id> --class <error> [--delay <ms>]` | Retry a terminal job only within its allow-list and attempt limit. |
+| `cloud ops:concurrency` | Show persisted project, environment, provider, and build limits. |
+| `cloud ops:concurrency:set ... --confirm "update queue limits"` | Audit and update concurrency limits. |
+| `cloud ops:history:clear [--before <date>] [--yes]` | Clear only terminal history whose retention deadline has elapsed. |
+
+See [Durable deployment queue](/features/deployment-queue) for worker recovery, locking, cancellation, SSE cursor resume, and retention behavior.
+
 ## Server management (Forge-style)
 
 | Command | Description |

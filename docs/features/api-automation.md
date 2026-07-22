@@ -62,4 +62,8 @@ The same replay-safe contract is available for guided application creation, incl
 
 Use `GET /api/v1/events/stream?projectId=...&after=...` for authenticated server-sent events. The stream sends event sequence IDs, heartbeats while idle, and rechecks token validity while connected. Reconnect with the last observed sequence in `after`.
 
+Long-running mutations also expose a durable queue. `GET /api/v1/queue` lists only jobs for targets where the token has `deployments:read`. Poll `GET /api/v1/operations/{id}/logs?after=<sequence>` or resume `GET /api/v1/operations/{id}/logs/stream` with `Last-Event-ID`. Cancellation requires `deployments:cancel`, while allow-listed retries require `deployments:create` at the operation target; concurrency and history changes require organization-scoped `automation:manage` plus their exact confirmation phrases.
+
+See [Durable deployment queue](/features/deployment-queue) for the complete state, retry, locking, retention, and endpoint contract.
+
 For webhook delivery, run a subscriber that consumes this stream and signs outbound webhook payloads with a separate destination secret. Store the last delivered sequence, retry destinations with exponential backoff, and dead-letter repeated failures. Do not reuse a ts-cloud API token as a webhook signing secret or place it in destination URLs.
