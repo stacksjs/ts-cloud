@@ -263,11 +263,15 @@ describe('config reconciliation', () => {
       workers: 1,
       drifted: 0,
     })
+    const firstJobs = target.store.list(target.project.id, { environmentId: target.environment.id })
+    const firstWorkers = target.store.listWorkers(target.project.id, target.environment.id)
     expect(synchronizeConfiguredJobs(target.store, config, scope)).toEqual({
       jobs: 2,
       workers: 1,
       drifted: 0,
     })
+    expect(target.store.list(target.project.id, { environmentId: target.environment.id }).map(item => item.version)).toEqual(firstJobs.map(item => item.version))
+    expect(target.store.listWorkers(target.project.id, target.environment.id).map(item => item.version)).toEqual(firstWorkers.map(item => item.version))
     expect(
       target.store.list(target.project.id, {
         environmentId: target.environment.id,

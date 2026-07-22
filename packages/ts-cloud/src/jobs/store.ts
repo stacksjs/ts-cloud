@@ -340,6 +340,20 @@ export class JobStore {
         1,
       ),
       now = this.now().toISOString()
+    const unchanged = existing.resourceId === input.resourceId
+      && existing.name === input.name
+      && existing.provider === input.provider
+      && existing.expression === input.expression
+      && existing.normalizedExpression === preview.normalized
+      && existing.timezone === input.timezone
+      && JSON.stringify(existing.target) === JSON.stringify(input.target)
+      && JSON.stringify(existing.payloadRefs) === JSON.stringify(input.payloadRefs)
+      && existing.missedRunPolicy === input.missedRunPolicy
+      && existing.overlapPolicy === input.overlapPolicy
+      && JSON.stringify(existing.retryPolicy) === JSON.stringify(input.retryPolicy)
+      && existing.timeoutSeconds === input.timeoutSeconds
+      && existing.enabled === input.enabled
+    if (unchanged) return existing
     this.controlPlane.database.run(
       'UPDATE scheduled_jobs SET resource_id=?,name=?,provider=?,expression=?,normalized_expression=?,timezone=?,target=?,payload_refs=?,missed_run_policy=?,overlap_policy=?,retry_policy=?,timeout_seconds=?,enabled=?,observed_state=?,reconciliation_status=?,next_run_at=COALESCE(next_run_at,?),version=version+1,updated_at=? WHERE id=?',
       [
@@ -469,7 +483,7 @@ export class JobStore {
   upsertWorker(
     input: Omit<WorkerDefinition, 'id' | 'version' | 'createdAt' | 'updatedAt'>,
   ): WorkerDefinition {
-    const existing = input.sourceKey
+    const existingRow = input.sourceKey
         ? this.controlPlane.database
             .query<
               Row,
@@ -477,10 +491,24 @@ export class JobStore {
             >('SELECT * FROM worker_definitions WHERE project_id=? AND source_key=? AND environment_id IS ?')
             .get(input.projectId, input.sourceKey, input.environmentId ?? null)
         : undefined,
-      id = existing ? String(existing.id) : crypto.randomUUID(),
+      existing = existingRow ? worker(existingRow) : undefined,
+      id = existing?.id ?? crypto.randomUUID(),
       now = this.now().toISOString()
+    const processes = clamp(input.processes, 1, 0, 1000)
+    const timeoutSeconds = clamp(input.timeoutSeconds, 60, 1, 86400)
+    const unchanged = existing
+      && existing.resourceId === input.resourceId
+      && existing.name === input.name.slice(0, 120)
+      && existing.provider === input.provider
+      && existing.queue === input.queue.slice(0, 200)
+      && existing.processes === processes
+      && existing.timeoutSeconds === timeoutSeconds
+      && existing.restartPolicy === input.restartPolicy
+      && JSON.stringify(existing.target) === JSON.stringify(input.target)
+      && existing.enabled === input.enabled
+    if (unchanged) return existing
     this.controlPlane.database.run(
-      `INSERT INTO worker_definitions (id,organization_id,project_id,environment_id,resource_id,name,provider,queue,processes,timeout_seconds,restart_policy,target,enabled,origin,source_key,owner_actor_id,observed_state,reconciliation_status,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,resource_id=excluded.resource_id,queue=excluded.queue,processes=excluded.processes,timeout_seconds=excluded.timeout_seconds,restart_policy=excluded.restart_policy,target=excluded.target,enabled=excluded.enabled,observed_state=excluded.observed_state,reconciliation_status=excluded.reconciliation_status,version=worker_definitions.version+1,updated_at=excluded.updated_at`,
+      `INSERT INTO worker_definitions (id,organization_id,project_id,environment_id,resource_id,name,provider,queue,processes,timeout_seconds,restart_policy,target,enabled,origin,source_key,owner_actor_id,observed_state,reconciliation_status,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,resource_id=excluded.resource_id,provider=excluded.provider,queue=excluded.queue,processes=excluded.processes,timeout_seconds=excluded.timeout_seconds,restart_policy=excluded.restart_policy,target=excluded.target,enabled=excluded.enabled,observed_state=excluded.observed_state,reconciliation_status=excluded.reconciliation_status,version=worker_definitions.version+1,updated_at=excluded.updated_at`,
       [
         id,
         input.organizationId,
@@ -490,8 +518,8 @@ export class JobStore {
         input.name.slice(0, 120),
         input.provider,
         input.queue.slice(0, 200),
-        clamp(input.processes, 1, 0, 1000),
-        clamp(input.timeoutSeconds, 60, 1, 86400),
+        processes,
+        timeoutSeconds,
         input.restartPolicy,
         JSON.stringify(input.target),
         input.enabled ? 1 : 0,
@@ -501,7 +529,7 @@ export class JobStore {
         JSON.stringify(input.observedState),
         input.reconciliationStatus,
         1,
-        existing ? String(existing.created_at) : now,
+        existing?.createdAt ?? now,
         now,
       ],
     )
