@@ -3,7 +3,7 @@ import type { AuthorizationCapability, AuthorizationEffect, AuthorizationScope, 
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
-import { AuthenticationStore } from '../../src/auth'
+import { AuthenticationStore, discoverOidcProvider, resolveAuthEncryptionKey } from '../../src/auth'
 import * as cli from '../../src/utils/cli'
 import { startLocalDashboardServer } from '../../src/deploy/local-dashboard-server'
 
@@ -47,6 +47,10 @@ function resolveAuthIdentity(authentication: AuthenticationStore, value: string)
   if (!identity)
     throw new Error(`Authentication identity '${value}' was not found.`)
   return identity
+}
+
+function encryptedAuthentication(store: ControlPlaneStore, root?: string): AuthenticationStore {
+  return new AuthenticationStore(store, { encryptionKey: resolveAuthEncryptionKey(resolve(root ?? process.cwd())) })
 }
 
 export function registerDashboardCommands(app: CLI): void {
@@ -375,6 +379,125 @@ export function registerDashboardCommands(app: CLI): void {
         for (const session of authentication.listSessions(identity.id))
           authentication.revokeSession(identity.id, session.id)
         cli.success(`Disabled MFA and revoked active sessions for ${identity.username}.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:oidc:list <organization>', 'List OIDC providers without credential material')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((organizationValue: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        const authentication = encryptedAuthentication(store)
+        cli.header(`${organization.name} OIDC providers`)
+        const providers = authentication.listOidcProviders(organization.id, { includeDisabled: true })
+        if (providers.length === 0)
+          cli.info('No providers configured.')
+        for (const provider of providers)
+          cli.info(`${provider.enabled ? 'enabled' : 'disabled'}  ${provider.slug}  ${provider.issuer}  role=${provider.defaultRole}  enforce=${provider.enforceSso}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:oidc:configure <organization> <slug>', 'Create or update an encrypted OIDC provider configuration')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--auth-root <path>', 'Directory containing .ts-cloud/auth-encryption-key')
+    .option('--name <name>', 'Provider label shown on the sign-in page')
+    .option('--issuer <url>', 'Exact OIDC issuer URL')
+    .option('--client-id <id>', 'OIDC client ID')
+    .option('--secret-env <name>', 'Environment variable containing the client secret', { default: 'TS_CLOUD_OIDC_CLIENT_SECRET' })
+    .option('--domains <domains>', 'Comma-separated verified email domains')
+    .option('--scopes <scopes>', 'Comma-separated scopes (openid is always included)', { default: 'email,profile' })
+    .option('--default-role <role>', 'Role for provisioned users: admin, deployer, operator, viewer, or auditor', { default: 'viewer' })
+    .option('--enforce-sso', 'Require SSO for matching non-owner local accounts')
+    .option('--disabled', 'Save the provider disabled')
+    .action((organizationValue: string, slug: string, options?: {
+      path?: string
+      authRoot?: string
+      name?: string
+      issuer?: string
+      clientId?: string
+      secretEnv?: string
+      domains?: string
+      scopes?: string
+      defaultRole?: string
+      enforceSso?: boolean
+      disabled?: boolean
+    }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        const authentication = encryptedAuthentication(store, options?.authRoot)
+        const existing = authentication.getOidcProviderBySlug(slug)
+        const secretVariable = options?.secretEnv ?? 'TS_CLOUD_OIDC_CLIENT_SECRET'
+        const clientSecret = process.env[secretVariable]?.trim()
+        if (!existing && !clientSecret)
+          throw new Error(`Set ${secretVariable} to the client secret before creating this provider.`)
+        const allowedDomains = (options?.domains ?? existing?.allowedDomains.join(',') ?? '').split(',').map(value => value.trim()).filter(Boolean)
+        const defaultRole = options?.defaultRole ?? existing?.defaultRole ?? 'viewer'
+        if (!['admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(defaultRole))
+          throw new Error('Default role must be admin, deployer, operator, viewer, or auditor.')
+        const provider = authentication.upsertOidcProvider({
+          id: existing?.id,
+          organizationId: organization.id,
+          slug,
+          name: options?.name ?? existing?.name ?? slug,
+          issuer: options?.issuer ?? existing?.issuer ?? '',
+          clientId: options?.clientId ?? existing?.clientId ?? '',
+          clientSecret,
+          allowedDomains,
+          scopes: (options?.scopes ?? existing?.scopes.join(',') ?? 'email,profile').split(',').map(value => value.trim()).filter(Boolean),
+          defaultRole: defaultRole as 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor',
+          enforceSso: options?.enforceSso ?? existing?.enforceSso ?? false,
+          enabled: options?.disabled ? false : existing?.enabled ?? true,
+        })
+        cli.success(`${provider.name} saved as ${provider.enabled ? 'enabled' : 'disabled'} with encrypted credentials.`)
+        cli.info(`Callback path: /auth/oidc/${provider.slug}/callback`)
+        if (provider.enforceSso)
+          cli.info(`Offline recovery: cloud auth:oidc:disable ${provider.slug} --confirm ${provider.slug}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:oidc:test <slug>', 'Validate OIDC discovery for a configured provider')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--auth-root <path>', 'Directory containing .ts-cloud/auth-encryption-key')
+    .action(async (slug: string, options?: { path?: string, authRoot?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = encryptedAuthentication(store, options?.authRoot)
+        const provider = authentication.getOidcProviderBySlug(slug)
+        if (!provider)
+          throw new Error(`OIDC provider '${slug}' was not found.`)
+        const discovery = await discoverOidcProvider(provider)
+        cli.success(`${provider.name} discovery is valid and issuer-bound.`)
+        cli.info(`Authorization: ${discovery.authorization_endpoint}`)
+        cli.info(`Token: ${discovery.token_endpoint}`)
+        cli.info(`JWKS: ${discovery.jwks_uri}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('auth:oidc:disable <slug>', 'Disable an OIDC provider through the offline recovery path')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--auth-root <path>', 'Directory containing .ts-cloud/auth-encryption-key')
+    .option('--confirm <slug>', 'Type the provider slug to confirm')
+    .action((slug: string, options?: { path?: string, authRoot?: string, confirm?: string }) => {
+      if (options?.confirm !== slug)
+        throw new Error(`Pass --confirm ${slug} to disable this provider.`)
+      const store = openControlPlane(options?.path)
+      try {
+        const authentication = encryptedAuthentication(store, options?.authRoot)
+        const provider = authentication.getOidcProviderBySlug(slug)
+        if (!provider)
+          throw new Error(`OIDC provider '${slug}' was not found.`)
+        authentication.setOidcProviderEnabled(provider.id, false)
+        cli.success(`Disabled ${provider.name}, cancelled pending sign-ins, and removed SSO enforcement.`)
       }
       finally { store.close() }
     })

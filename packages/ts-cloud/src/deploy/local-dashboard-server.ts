@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import type { AuthOidcRole } from '../auth'
 import type { AuthorizationCapability, AuthorizationScope, OrganizationRoleTemplate } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
@@ -276,6 +277,8 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'DELETE /api/organization/memberships',
   'POST /api/organization/grants',
   'DELETE /api/organization/grants',
+  'POST /api/auth/oidc/providers',
+  'PATCH /api/auth/oidc/providers',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -1154,6 +1157,58 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               recoveryCodesRemaining: authentication.remainingRecoveryCodes(identity.id),
             } : undefined,
           })
+        }
+
+        if (url.pathname === '/api/auth/oidc/providers' && req.method === 'GET') {
+          return json({
+            providers: authentication.listOidcProviders(controlPlane.organization.id, { includeDisabled: true }),
+            callbackOrigin: oidcOrigin,
+            callbackPattern: oidcOrigin ? `${oidcOrigin}/auth/oidc/{slug}/callback` : undefined,
+            localOwnerRecovery: true,
+          })
+        }
+
+        if (url.pathname === '/api/auth/oidc/providers' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          const enforceSso = body.enforceSso === true
+          if (enforceSso && (!identity?.emailVerifiedAt || authentication.remainingRecoveryCodes(identity.id) < 1)) {
+            return json({ ok: false, error: 'Verify the owner email and generate MFA recovery codes before enforcing SSO.' }, 409)
+          }
+          try {
+            const requestedRole = organizationRole(body.defaultRole)
+            const provider = authentication.upsertOidcProvider({
+              id: typeof body.id === 'string' ? body.id : undefined,
+              organizationId: controlPlane.organization.id,
+              slug: String(body.slug ?? ''),
+              name: String(body.name ?? ''),
+              issuer: String(body.issuer ?? ''),
+              clientId: String(body.clientId ?? ''),
+              clientSecret: typeof body.clientSecret === 'string' && body.clientSecret ? body.clientSecret : undefined,
+              scopes: Array.isArray(body.scopes) ? body.scopes.map(String) : undefined,
+              allowedDomains: Array.isArray(body.allowedDomains) ? body.allowedDomains.map(String) : [],
+              defaultRole: requestedRole && requestedRole !== 'owner' ? requestedRole as AuthOidcRole : undefined,
+              enabled: body.enabled !== false,
+              enforceSso,
+            })
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: principal.actor?.id, type: 'auth.oidc.provider.configured', payload: { providerId: provider.id, issuer: provider.issuer, enabled: provider.enabled, enforceSso: provider.enforceSso } })
+            return json({ ok: true, provider })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'OIDC provider could not be saved.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/auth/oidc/providers' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          const provider = authentication.getOidcProvider(String(body.id ?? ''))
+          if (!provider || provider.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'OIDC provider was not found.' }, 404)
+          const principal = organizationPrincipal(user)
+          const updated = authentication.setOidcProviderEnabled(provider.id, body.enabled === true)
+          controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: principal.actor?.id, type: updated.enabled ? 'auth.oidc.provider.enabled' : 'auth.oidc.provider.disabled', payload: { providerId: provider.id } })
+          return json({ ok: true, provider: updated })
         }
 
         if (url.pathname === '/api/auth/sessions' && req.method === 'GET') {

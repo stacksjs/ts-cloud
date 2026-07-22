@@ -74,6 +74,10 @@ const POLICIES: Record<string, RoutePolicy> = {
   'DELETE /api/auth/mfa': { capability: 'project:read', anyUser: true },
   'POST /api/auth/step-up': { capability: 'project:read', anyUser: true },
 
+  'GET /api/auth/oidc/providers': { capability: 'users:read', scope: 'organization' },
+  'POST /api/auth/oidc/providers': { capability: 'users:manage', scope: 'organization' },
+  'PATCH /api/auth/oidc/providers': { capability: 'users:manage', scope: 'organization' },
+
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },
   'POST /api/organization/invitations': { capability: 'users:manage', scope: 'organization' },

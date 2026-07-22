@@ -28,6 +28,20 @@ const accessDiff = state(null)
 const removing = state(null)
 const removeConfirm = state('')
 const removePassword = state('')
+const oidcProviders = state([])
+const oidcCallbackPattern = state('')
+const oidcFormOpen = state(false)
+const oidcEditing = state(null)
+const oidcSlug = state('')
+const oidcName = state('')
+const oidcIssuer = state('')
+const oidcClientId = state('')
+const oidcClientSecret = state('')
+const oidcDomains = state('')
+const oidcDefaultRole = state('viewer')
+const oidcEnforce = state(false)
+const oidcPassword = state('')
+const oidcCode = state('')
 
 const roleSummary = {
   owner: 'Everything, including ownership transfer',
@@ -67,6 +81,60 @@ async function load() {
     memberships.set(data.memberships || []); invitations.set(data.invitations || [])
     if (!scopeId()) setScope(scopeType(), scopeId)
   } catch (error) { setMessage(error?.message || 'Could not read organization access.', 'bad') }
+}
+
+async function loadOidc() {
+  const response = await fetch('/api/auth/oidc/providers')
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) { setMessage(data.error || 'Could not read SSO providers.', 'bad'); return }
+  oidcProviders.set(data.providers || []); oidcCallbackPattern.set(data.callbackPattern || '')
+}
+
+function resetOidc(provider) {
+  oidcFormOpen.set(true)
+  oidcEditing.set(provider || null)
+  oidcSlug.set(provider?.slug || '')
+  oidcName.set(provider?.name || '')
+  oidcIssuer.set(provider?.issuer || '')
+  oidcClientId.set(provider?.clientId || '')
+  oidcClientSecret.set('')
+  oidcDomains.set((provider?.allowedDomains || []).join(', '))
+  oidcDefaultRole.set(provider?.defaultRole || 'viewer')
+  oidcEnforce.set(provider?.enforceSso === true)
+}
+
+async function oidcStepUp() {
+  const response = await fetch('/api/auth/step-up', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: oidcPassword(), code: oidcCode() }) })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(data.error || 'Recent authentication is required.')
+}
+
+async function saveOidc() {
+  setMessage('Validating owner recovery and saving SSO…', '')
+  try {
+    await oidcStepUp()
+    const response = await fetch('/api/auth/oidc/providers', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        id: oidcEditing()?.id, slug: oidcSlug(), name: oidcName(), issuer: oidcIssuer(), clientId: oidcClientId(), clientSecret: oidcClientSecret(),
+        allowedDomains: oidcDomains().split(',').map(value => value.trim()).filter(Boolean), defaultRole: oidcDefaultRole(), enforceSso: oidcEnforce(), enabled: oidcEditing()?.enabled !== false,
+      }),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error || 'SSO provider could not be saved.')
+    oidcPassword.set(''); oidcCode.set(''); oidcEditing.set(null); oidcSlug.set(''); oidcFormOpen.set(false); setMessage('SSO provider saved. Test sign-in in a private browser before enforcing it.', 'ok'); loadOidc()
+  } catch (error) { setMessage(error?.message || 'SSO provider could not be saved.', 'bad') }
+}
+
+async function setOidcEnabled(provider, enabled) {
+  setMessage((enabled ? 'Enabling' : 'Disabling') + ' SSO provider…', '')
+  try {
+    await oidcStepUp()
+    const response = await fetch('/api/auth/oidc/providers', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: provider.id, enabled }) })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(data.error || 'SSO provider could not be updated.')
+    oidcPassword.set(''); oidcCode.set(''); oidcFormOpen.set(false); oidcEditing.set(null); setMessage(enabled ? 'SSO provider enabled.' : 'SSO provider disabled; enforcement and pending sign-ins were cancelled.', 'ok'); loadOidc()
+  } catch (error) { setMessage(error?.message || 'SSO provider could not be updated.', 'bad') }
 }
 
 async function invite() {
@@ -119,7 +187,7 @@ async function removeMembership() {
   setMessage('Membership removed and active sessions invalidated.', 'ok'); removing.set(null); load()
 }
 
-onMount(() => { load() })
+onMount(() => { load(); loadOidc() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -133,6 +201,37 @@ onMount(() => { load() })
     </header>
 
     <div class="access-message msg" :class="messageKind()" role="status">{{ message() }}</div>
+
+    <div class="section">
+      <h2>Single sign-on</h2>
+      <div class="panel sso-panel">
+        <div class="sso-intro"><div><strong>OpenID Connect providers</strong><p>Discovery, issuer binding, state, nonce, PKCE, signed ID tokens, and verified email-domain policy are enforced. Provider access and refresh tokens are discarded.</p></div><button class="btn" type="button" @click="resetOidc(null)">Add provider</button></div>
+        <div class="recovery-warning"><strong>Keep the recovery path proven.</strong><span>Organization owners can always use local sign-in. Before enforcement, verify the owner email, save MFA recovery codes, and test <code>cloud auth:oidc:disable &lt;slug&gt; --confirm &lt;slug&gt;</code> from the host.</span></div>
+        <div class="callback" @show="!!oidcCallbackPattern()"><span>Callback URI</span><code>{{ oidcCallbackPattern() }}</code></div>
+        <div class="provider-list"><template :for="provider in oidcProviders()"><div class="provider-row">
+          <div><strong>{{ provider.name }}</strong><span>{{ provider.issuer }}</span><small>{{ provider.allowedDomains.join(', ') }} · new users: {{ provider.defaultRole }} · {{ provider.enforceSso ? 'SSO required' : 'local sign-in allowed' }}</small></div>
+          <span class="tag" :class="provider.enabled ? 'ok' : ''">{{ provider.enabled ? 'Enabled' : 'Disabled' }}</span>
+          <div class="table-actions"><button class="btn ghost sm" type="button" @click="resetOidc(provider)">Configure</button></div>
+        </div></template><div class="compact empty" @show="oidcProviders().length === 0"><strong>No SSO providers</strong><span>Local authentication remains available until an OIDC provider is explicitly configured.</span></div></div>
+      </div>
+    </div>
+
+    <div class="section" @show="oidcFormOpen()">
+      <h2>{{ oidcEditing() ? 'Configure SSO provider' : 'Add SSO provider' }}</h2>
+      <div class="panel"><form class="form-grid" @submit.prevent="saveOidc()">
+        <div class="field-block"><label for="oidc-name">Display name</label><input id="oidc-name" :value="oidcName()" @input="oidcName.set($event.target.value)" placeholder="Acme Workforce" required></div>
+        <div class="field-block"><label for="oidc-slug">Slug</label><input id="oidc-slug" :value="oidcSlug()" @input="oidcSlug.set($event.target.value)" pattern="[a-z0-9][a-z0-9-]{1,47}" placeholder="workforce" required></div>
+        <div class="field-block"><label for="oidc-issuer">Exact issuer URL</label><input id="oidc-issuer" type="url" :value="oidcIssuer()" @input="oidcIssuer.set($event.target.value)" placeholder="https://identity.example.com" required><small>HTTPS discovery issuer must match this value exactly.</small></div>
+        <div class="field-block"><label for="oidc-client">Client ID</label><input id="oidc-client" :value="oidcClientId()" @input="oidcClientId.set($event.target.value)" autocomplete="off" required></div>
+        <div class="field-block"><label for="oidc-secret">Client secret</label><input id="oidc-secret" type="password" :value="oidcClientSecret()" @input="oidcClientSecret.set($event.target.value)" autocomplete="new-password" :required="!oidcEditing()"><small>{{ oidcEditing() ? 'Leave empty to preserve the encrypted secret.' : 'Encrypted at rest with the authentication key.' }}</small></div>
+        <div class="field-block"><label for="oidc-domains">Allowed email domains</label><input id="oidc-domains" :value="oidcDomains()" @input="oidcDomains.set($event.target.value)" placeholder="example.com, subsidiary.example.com" required><small>Exact domains only; wildcards are rejected.</small></div>
+        <div class="field-block"><label for="oidc-role">Provisioned-user role</label><select id="oidc-role" :value="oidcDefaultRole()" @change="oidcDefaultRole.set($event.target.value)"><option value="viewer">Viewer</option><option value="auditor">Auditor</option><option value="deployer">Developer / deployer</option><option value="operator">Operator</option><option value="admin">Admin</option></select></div>
+        <label class="check"><input type="checkbox" :checked="oidcEnforce()" @change="oidcEnforce.set($event.target.checked)"><span><b>Require SSO for matching non-owner accounts</b><small>Owners retain local emergency sign-in. Requires verified owner email and unused MFA recovery codes.</small></span></label>
+        <div class="field-block"><label for="oidc-password">Owner password</label><input id="oidc-password" type="password" autocomplete="current-password" :value="oidcPassword()" @input="oidcPassword.set($event.target.value)" required></div>
+        <div class="field-block"><label for="oidc-code">Authenticator or recovery code</label><input id="oidc-code" autocomplete="one-time-code" :value="oidcCode()" @input="oidcCode.set($event.target.value)"><small>Required when MFA is enabled.</small></div>
+        <div class="form-actions"><button class="btn" type="submit">Save provider</button><button class="btn danger" type="button" @show="oidcEditing()?.enabled" @click="setOidcEnabled(oidcEditing(), false)">Disable provider</button><button class="btn ghost" type="button" @show="oidcEditing() && !oidcEditing()?.enabled" @click="setOidcEnabled(oidcEditing(), true)">Enable provider</button><button class="btn ghost" type="button" @click="oidcFormOpen.set(false); oidcEditing.set(null); oidcSlug.set('')">Cancel</button></div>
+      </form></div>
+    </div>
 
     <div class="section">
       <h2>Invite a member</h2>
@@ -196,6 +295,21 @@ onMount(() => { load() })
     .access-diff { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     .access-diff div { display:grid; gap:4px; padding:12px; border:1px solid var(--panel-br); border-radius:10px; }
     .access-diff span { color:var(--txt2); font-size:12px; line-height:1.5; }
+    .sso-panel,.provider-list { display:grid; gap:14px; }
+    .sso-intro { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; }
+    .sso-intro p { color:var(--txt2); font-size:13px; line-height:1.55; max-width:720px; margin-top:4px; }
+    .recovery-warning { display:grid; gap:4px; padding:12px 14px; border:1px solid rgba(240,184,79,.3); background:rgba(240,184,79,.08); border-radius:10px; }
+    .recovery-warning span,.provider-row span,.provider-row small { color:var(--txt2); font-size:12px; line-height:1.5; }
+    .callback { display:grid; gap:5px; }
+    .callback span { color:var(--txt3); text-transform:uppercase; font-size:10px; font-weight:800; letter-spacing:.06em; }
+    .callback code { user-select:all; overflow-wrap:anywhere; }
+    .provider-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:14px; padding:14px; border:1px solid var(--panel-br); border-radius:10px; }
+    .provider-row>div:first-child { min-width:0; display:grid; gap:3px; }
+    .provider-row>div:first-child span { overflow-wrap:anywhere; }
+    .check { display:flex; gap:10px; align-items:flex-start; padding:12px; border:1px solid var(--panel-br); border-radius:10px; }
+    .check input { width:auto; margin-top:3px; }
+    .check span { display:grid; gap:3px; }
+    .check small { color:var(--txt3); line-height:1.45; }
     @media(max-width:640px){.access-diff{grid-template-columns:1fr}}
   </style>
 </body>
