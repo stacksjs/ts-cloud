@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import type { ElastiCacheClient } from '../aws/elasticache'
 import type { RDSClient } from '../aws/rds'
-import {
-  AwsAuroraTransport,
-  AwsElastiCacheTransport,
-  AwsRdsTransport,
-} from './aws-transports'
+import { AwsAuroraTransport, AwsElastiCacheTransport, AwsRdsTransport } from './aws-transports'
 
 describe('AWS data-service transports', () => {
   it('creates encrypted, deletion-protected RDS and deletes through a final snapshot', async () => {
@@ -218,9 +214,7 @@ describe('AWS data-service transports', () => {
         desiredState: { securityGroupIds: ['sg-cache'] },
       }),
     ).toMatchObject({ status: 'creating' })
-    expect(
-      await transport.execute('sessions', 'delete', { retention: 'retain' }),
-    ).toEqual({ status: 'retained' })
+    expect(await transport.execute('sessions', 'delete', { retention: 'retain' })).toEqual({ status: 'retained' })
     expect({ creates, deletes }).toEqual({ creates: 1, deletes: 0 })
   })
 })

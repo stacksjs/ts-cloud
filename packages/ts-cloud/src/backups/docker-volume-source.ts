@@ -23,8 +23,7 @@ async function docker(
     process.stdin!.end()
   }
   const [code, output, error] = await Promise.all([process.exited, stdout, stderr])
-  if (code !== 0 && !allowFailure)
-    throw new Error(`Docker volume command failed (${code}): ${error.trim()}`)
+  if (code !== 0 && !allowFailure) throw new Error(`Docker volume command failed (${code}): ${error.trim()}`)
   return { code, stdout: Buffer.from(output), stderr: error }
 }
 
@@ -42,19 +41,7 @@ export class BunDockerVolumeRuntime implements DockerVolumeRuntime {
   }
   async export(name: string): Promise<Uint8Array> {
     return (
-      await docker([
-        'run',
-        '--rm',
-        '-v',
-        `${name}:/source:ro`,
-        'alpine:3.21',
-        'tar',
-        '-C',
-        '/source',
-        '-czf',
-        '-',
-        '.',
-      ])
+      await docker(['run', '--rm', '-v', `${name}:/source:ro`, 'alpine:3.21', 'tar', '-C', '/source', '-czf', '-', '.'])
     ).stdout
   }
   async import(name: string, archive: Uint8Array, replace = false): Promise<void> {
@@ -117,28 +104,24 @@ export class BunDockerVolumeRuntime implements DockerVolumeRuntime {
 }
 
 export class DockerVolumeBackupSource implements BackupSourceAdapter {
-  constructor(
-    private readonly runtime: DockerVolumeRuntime = new BunDockerVolumeRuntime(),
-  ) {}
-  async create(
-    policy: BackupPolicy,
-    context: QueueExecutionContext,
-  ): Promise<BackupSourceResult> {
+  constructor(private readonly runtime: DockerVolumeRuntime = new BunDockerVolumeRuntime()) {}
+  async create(policy: BackupPolicy, context: QueueExecutionContext): Promise<BackupSourceResult> {
     const volume = String(policy.includePatterns?.[0] ?? policy.resourceId ?? '')
-    if (!validVolume.test(volume))
-      throw new Error('Volume backups require a valid named-volume resource identifier.')
-    if (!(await this.runtime.exists(volume)))
-      throw new Error(`Volume ${volume} was not found.`)
+    if (!validVolume.test(volume)) throw new Error('Volume backups require a valid named-volume resource identifier.')
+    if (!(await this.runtime.exists(volume))) throw new Error(`Volume ${volume} was not found.`)
     const gzip = await this.runtime.export(volume),
       tar = Buffer.from(Bun.gunzipSync(Uint8Array.from(gzip))),
       compression = policy.compression ?? 'gzip',
       body = compression === 'gzip' ? gzip : compressBackup(tar, compression),
-      timestamp = String(context.operation?.id ?? new Date().toISOString()).replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
+      timestamp = String(context.operation?.id ?? new Date().toISOString())
+        .replace(/[^A-Za-z0-9]/g, '')
+        .slice(0, 32)
     return {
       mode: 'object',
       key: `${policy.projectId}/volumes/${volume}/${timestamp}.tar${compression === 'none' ? '' : compression === 'gzip' ? '.gz' : '.zst'}`,
       body,
-      contentType: compression === 'gzip' ? 'application/gzip' : compression === 'zstd' ? 'application/zstd' : 'application/x-tar',
+      contentType:
+        compression === 'gzip' ? 'application/gzip' : compression === 'zstd' ? 'application/zstd' : 'application/x-tar',
       toolVersion: 'alpine-tar',
       manifest: { format: 'docker-volume-tar-v1', archive: 'tar', compression, sourceVolume: volume },
     }
@@ -152,34 +135,27 @@ export class DockerVolumeBackupSource implements BackupSourceAdapter {
     if (!body) throw new Error('Volume backup body is unavailable.')
     const source = String(point.manifest.sourceVolume ?? point.resourceId ?? ''),
       targetVolume = String(target.volumeName ?? target.targetId ?? '')
-    if (!validVolume.test(targetVolume))
-      throw new Error('Volume restore requires a valid target volume name.')
+    if (!validVolume.test(targetVolume)) throw new Error('Volume restore requires a valid target volume name.')
     if (targetVolume === source && target.inPlace !== true)
       throw new Error('An isolated volume restore requires a distinct target.')
     const exists = await this.runtime.exists(targetVolume)
-    if (!target.inPlace && exists)
-      throw new Error(`Restore target volume ${targetVolume} already exists.`)
+    if (!target.inPlace && exists) throw new Error(`Restore target volume ${targetVolume} already exists.`)
     if (target.inPlace === true && targetVolume !== source)
       throw new Error('An in-place volume restore must target the source volume.')
-    if (target.inPlace === true && !exists)
-      throw new Error('The in-place target volume was not found.')
+    if (target.inPlace === true && !exists) throw new Error('The in-place target volume was not found.')
     const compression = String(point.manifest.compression ?? 'gzip') as BackupPolicy['compression'],
-      gzip = compression === 'gzip'
-        ? Buffer.from(body)
-        : Buffer.from(Bun.gzipSync(Uint8Array.from(decompressBackup(body, compression))))
+      gzip =
+        compression === 'gzip'
+          ? Buffer.from(body)
+          : Buffer.from(Bun.gzipSync(Uint8Array.from(decompressBackup(body, compression))))
     await this.runtime.import(targetVolume, gzip, target.inPlace === true)
     const health = await this.runtime.probe(targetVolume)
     return { volumeName: targetVolume, healthy: true, ...health }
   }
-  async cleanup(
-    target: Record<string, JsonValue>,
-    _context: QueueExecutionContext,
-  ): Promise<void> {
-    if (target.inPlace === true)
-      throw new Error('In-place volume restores cannot be cleaned as drills.')
+  async cleanup(target: Record<string, JsonValue>, _context: QueueExecutionContext): Promise<void> {
+    if (target.inPlace === true) throw new Error('In-place volume restores cannot be cleaned as drills.')
     const targetVolume = String(target.volumeName ?? target.targetId ?? '')
-    if (!validVolume.test(targetVolume))
-      throw new Error('Volume cleanup requires a valid target volume name.')
+    if (!validVolume.test(targetVolume)) throw new Error('Volume cleanup requires a valid target volume name.')
     await this.runtime.remove(targetVolume)
   }
 }

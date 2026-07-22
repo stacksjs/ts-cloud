@@ -2,12 +2,7 @@ import type { JsonValue } from '../control-plane'
 
 export type BackupDestinationProvider = 'aws_s3' | 's3_compatible' | 'aws_backup'
 export type BackupResourceKind =
-  | 'managed_database'
-  | 'logical_database'
-  | 'volume'
-  | 'files'
-  | 'control_plane'
-  | 'infrastructure'
+  'managed_database' | 'logical_database' | 'volume' | 'files' | 'control_plane' | 'infrastructure'
 
 export interface BackupDestination {
   id: string

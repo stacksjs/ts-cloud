@@ -74,25 +74,19 @@ afterEach(() => {
 
 describe('data service capability model', () => {
   it('explains provider and engine differences before mutation', () => {
-    expect(
-      dataServiceCapabilities('postgres', 'aws_aurora').actions,
-    ).toMatchObject({
+    expect(dataServiceCapabilities('postgres', 'aws_aurora').actions).toMatchObject({
       backup: { supported: true },
       slow_queries: { supported: false },
       delete: { destructive: true, downtime: 'required' },
     })
-    expect(
-      dataServiceCapabilities('redis', 'aws_elasticache').actions,
-    ).toMatchObject({
+    expect(dataServiceCapabilities('redis', 'aws_elasticache').actions).toMatchObject({
       backup: { supported: false },
       users: { supported: false },
       resize: { supported: false },
       version: { supported: false },
       expose: { supported: false },
     })
-    expect(
-      dataServiceCapabilities('postgres', 'container').actions,
-    ).toMatchObject({
+    expect(dataServiceCapabilities('postgres', 'container').actions).toMatchObject({
       databases: { supported: true },
       logs: { supported: true },
       expose: { supported: false },
@@ -162,9 +156,7 @@ describe('data service capability model', () => {
           managementEnabled: true,
         })
     expect(
-      connectionGuidance(create('redis'), [
-        { type: 'internal', host: 'redis', port: 6379, tls: false },
-      ])[0].command,
+      connectionGuidance(create('redis'), [{ type: 'internal', host: 'redis', port: 6379, tls: false }])[0].command,
     ).toBe('redis-cli -h redis -p 6379')
     expect(
       connectionGuidance(create('mongodb'), [
@@ -178,9 +170,7 @@ describe('data service capability model', () => {
       ])[0].command,
     ).toBe('mongosh "mongodb://mongo:27017/app?tls=true"')
     expect(
-      connectionGuidance(create('libsql'), [
-        { type: 'tunnel', host: 'remote', port: 8080, tls: false },
-      ])[0].command,
+      connectionGuidance(create('libsql'), [{ type: 'tunnel', host: 'remote', port: 8080, tls: false }])[0].command,
     ).toBe('turso db shell http://127.0.0.1:8080')
   })
 })
@@ -206,14 +196,8 @@ describe('data service lifecycle', () => {
         origin: 'managed',
         managementEnabled: true,
       }),
-      lifecycle = new DataServiceLifecycle(
-        target.store,
-        target.queue,
-        target.secrets,
-      )
-    expect(() =>
-      lifecycle.enqueue(service, 'restore', { confirm: 'primary-db' }),
-    ).toThrow('backupId and targetId')
+      lifecycle = new DataServiceLifecycle(target.store, target.queue, target.secrets)
+    expect(() => lifecycle.enqueue(service, 'restore', { confirm: 'primary-db' })).toThrow('backupId and targetId')
     expect(() =>
       lifecycle.enqueue(service, 'restore', {
         confirm: 'primary-db',
@@ -236,9 +220,7 @@ describe('data service lifecycle', () => {
         observe: async (id) => ({
           id,
           status: 'available',
-          endpoints: [
-            { type: 'internal', host: 'db.internal', port: 5432, tls: true },
-          ],
+          endpoints: [{ type: 'internal', host: 'db.internal', port: 5432, tls: true }],
         }),
         apply: async (input, password) => {
           calls.push({ action: 'create', password })
@@ -253,11 +235,7 @@ describe('data service lifecycle', () => {
         },
       },
       adapter = new AwsAuroraDataAdapter(transport),
-      lifecycle = new DataServiceLifecycle(
-        target.store,
-        target.queue,
-        target.secrets,
-      ),
+      lifecycle = new DataServiceLifecycle(target.store, target.queue, target.secrets),
       created = await lifecycle.create({
         organizationId: target.organization.id,
         projectId: target.project.id,
@@ -280,9 +258,7 @@ describe('data service lifecycle', () => {
         ownerActorId: undefined,
       })
     expect(created.credential?.password).toHaveLength(40)
-    expect(JSON.stringify(target.store.get(created.service.id))).not.toContain(
-      created.credential!.password,
-    )
+    expect(JSON.stringify(target.store.get(created.service.id))).not.toContain(created.credential!.password)
     const worker = new DurableQueueWorker(
       target.queue,
       createDataServiceQueueHandlers({
@@ -320,8 +296,7 @@ describe('data service lifecycle', () => {
       secretRef: expect.stringContaining('/v2'),
       dependencies: [target.resource.id],
     })
-    for (const secret of target.values.values())
-      expect(JSON.stringify(rotation)).not.toContain(secret)
+    for (const secret of target.values.values()) expect(JSON.stringify(rotation)).not.toContain(secret)
     target.queue.complete(rotateId, rotation)
     const rotated = target.store.get(created.service.id)!
     lifecycle.enqueue(rotated, 'backup', {})
@@ -339,12 +314,7 @@ describe('data service lifecycle', () => {
     })
     await worker.drain()
     expect(target.store.get(created.service.id)?.status).toBe('retained')
-    expect(calls.map((x) => x.action)).toEqual([
-      'create',
-      'rotate',
-      'backup',
-      'delete',
-    ])
+    expect(calls.map((x) => x.action)).toEqual(['create', 'rotate', 'backup', 'delete'])
   })
   it('keeps adopted services read-only until an explicit reviewed enablement', () => {
     const target = fixture(),
@@ -366,25 +336,14 @@ describe('data service lifecycle', () => {
         origin: 'adopted',
         managementEnabled: false,
       })
-    const lifecycle = new DataServiceLifecycle(
-      target.store,
-      target.queue,
-      target.secrets,
-    )
+    const lifecycle = new DataServiceLifecycle(target.store, target.queue, target.secrets)
     expect(() => lifecycle.enqueue(service, 'restart', {})).toThrow('read-only')
-    expect(lifecycle.plan(service, 'restart').warnings.join(' ')).toContain(
-      'read-only',
-    )
+    expect(lifecycle.plan(service, 'restart').warnings.join(' ')).toContain('read-only')
   })
   it('supports coherent on-box Postgres/MySQL and Redis adapter contracts', () => {
     const transport = {} as DataProviderTransport
-    expect(new ServerDataAdapter(transport).engines).toEqual(
-      expect.arrayContaining(['postgres', 'mysql', 'redis']),
-    )
+    expect(new ServerDataAdapter(transport).engines).toEqual(expect.arrayContaining(['postgres', 'mysql', 'redis']))
     expect(new AwsElastiCacheDataAdapter(transport).engines).toEqual(['redis'])
-    expect(
-      dataServiceCapabilities('redis', 'aws_elasticache').actions.rotate
-        .supported,
-    ).toBe(false)
+    expect(dataServiceCapabilities('redis', 'aws_elasticache').actions.rotate.supported).toBe(false)
   })
 })

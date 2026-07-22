@@ -1,6 +1,6 @@
 import type { JsonValue } from '../control-plane'
-import type { DataAction, DataEngine } from './model'
 import type { DataProviderTransport } from './adapters'
+import type { DataAction, DataEngine } from './model'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
@@ -37,18 +37,13 @@ async function docker(
     process.stdin!.end()
   }
   const [code, out, error] = await Promise.all([process.exited, stdout, stderr])
-  if (code !== 0 && !allowFailure)
-    throw new Error(
-      `Docker command failed (${code}): ${error.trim() || out.trim()}`,
-    )
+  if (code !== 0 && !allowFailure) throw new Error(`Docker command failed (${code}): ${error.trim() || out.trim()}`)
   return { code, stdout: out, stderr: error }
 }
 
 export class BunDockerRuntime implements DockerRuntime {
   async ensureNetwork(name: string): Promise<void> {
-    if (
-      (await docker(['network', 'inspect', name], undefined, true)).code !== 0
-    )
+    if ((await docker(['network', 'inspect', name], undefined, true)).code !== 0)
       await docker(['network', 'create', '--internal', name])
   }
   async seedSecret(volume: string, content: string): Promise<void> {
@@ -92,19 +87,11 @@ export class BunDockerRuntime implements DockerRuntime {
     await docker(['rm', '--force', name], undefined, true)
   }
   async logs(name: string, lines: number): Promise<string> {
-    const result = await docker(
-      ['logs', '--tail', String(Math.min(2000, Math.max(1, lines))), name],
-      undefined,
-      true,
-    )
+    const result = await docker(['logs', '--tail', String(Math.min(2000, Math.max(1, lines))), name], undefined, true)
     return `${result.stdout}${result.stderr}`.slice(-256 * 1024)
   }
   async stats(name: string): Promise<Record<string, JsonValue>> {
-    const result = await docker(
-      ['stats', '--no-stream', '--format', '{{json .}}', name],
-      undefined,
-      true,
-    )
+    const result = await docker(['stats', '--no-stream', '--format', '{{json .}}', name], undefined, true)
     if (result.code !== 0 || !result.stdout.trim()) return {}
     const value = JSON.parse(result.stdout.trim()) as Record<string, unknown>
     return {
@@ -118,10 +105,7 @@ export class BunDockerRuntime implements DockerRuntime {
   }
 }
 
-const engineConfig: Record<
-  Exclude<DataEngine, 'libsql'>,
-  { image: string; port: number; dataPath: string }
-> = {
+const engineConfig: Record<Exclude<DataEngine, 'libsql'>, { image: string; port: number; dataPath: string }> = {
   postgres: {
     image: 'postgres:17-alpine',
     port: 5432,
@@ -136,9 +120,7 @@ const engineConfig: Record<
 function identifier(value: JsonValue | undefined, fallback = 'app'): string {
   const result = String(value ?? fallback)
   if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(result))
-    throw new Error(
-      'Database identifiers must be letters, numbers, or underscores.',
-    )
+    throw new Error('Database identifiers must be letters, numbers, or underscores.')
   return result
 }
 
@@ -151,10 +133,7 @@ function runtimeId(id: string): string {
 function desired(input: Input, key: string): JsonValue | undefined {
   const document = input.desiredState
   return (
-    input[key] ??
-    (document && typeof document === 'object' && !Array.isArray(document)
-      ? document[key]
-      : undefined)
+    input[key] ?? (document && typeof document === 'object' && !Array.isArray(document) ? document[key] : undefined)
   )
 }
 
@@ -174,8 +153,7 @@ export class DockerDataTransport implements DataProviderTransport {
     const metadata = labels(inspect),
       metrics = await this.runtime.stats(name),
       ports = inspect.NetworkSettings?.Ports ?? {},
-      binding = Object.values(ports).flat().find(Boolean) as
-        { HostIp?: string; HostPort?: string } | undefined
+      binding = Object.values(ports).flat().find(Boolean) as { HostIp?: string; HostPort?: string } | undefined
     return {
       providerId: name,
       status: inspect.State?.Status ?? 'unknown',
@@ -195,8 +173,7 @@ export class DockerDataTransport implements DataProviderTransport {
     const id = String(input.id),
       name = runtimeId(id),
       engine = String(input.engine) as DataEngine
-    if (engine === 'libsql')
-      throw new Error('libSQL requires an explicitly configured runtime image.')
+    if (engine === 'libsql') throw new Error('libSQL requires an explicitly configured runtime image.')
     const config = engineConfig[engine]
     if (!config) throw new Error(`Unsupported runtime data engine ${engine}.`)
     if (!credential) throw new Error(`${engine} requires a managed credential.`)
@@ -267,8 +244,7 @@ export class DockerDataTransport implements DataProviderTransport {
         'MONGO_INITDB_ROOT_PASSWORD_FILE=/run/ts-cloud-secrets/credential',
       )
     args.push(config.image)
-    if (engine === 'redis')
-      args.push('redis-server', '/run/ts-cloud-secrets/credential')
+    if (engine === 'redis') args.push('redis-server', '/run/ts-cloud-secrets/credential')
     await this.runtime.run(args)
     return {
       providerId: name,
@@ -307,8 +283,7 @@ export class DockerDataTransport implements DataProviderTransport {
         '-c',
         'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysqldump -u root --all-databases --single-transaction --add-drop-database --routines --events --triggers',
       ])
-    else
-      throw new Error(`${engine} does not support engine-native SQL backups.`)
+    else throw new Error(`${engine} does not support engine-native SQL backups.`)
     return {
       body: new TextEncoder().encode(dump),
       engine,
@@ -337,8 +312,7 @@ export class DockerDataTransport implements DataProviderTransport {
     if (!input.inPlace) {
       if (input.sourceId === input.targetId)
         throw new Error('An isolated restore requires a distinct target identifier.')
-      if (await this.runtime.inspect(targetName))
-        throw new Error(`Restore target ${targetName} already exists.`)
+      if (await this.runtime.inspect(targetName)) throw new Error(`Restore target ${targetName} already exists.`)
       await this.apply(
         {
           id: input.targetId,
@@ -358,11 +332,7 @@ export class DockerDataTransport implements DataProviderTransport {
               '-c',
               'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres',
             ]
-          : [
-              'sh',
-              '-c',
-                'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root',
-            ],
+          : ['sh', '-c', 'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root'],
       sql = new TextDecoder('utf-8', { fatal: true }).decode(input.body)
     let lastError: unknown
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -395,9 +365,7 @@ export class DockerDataTransport implements DataProviderTransport {
         if (attempt < 29) await Bun.sleep(1000)
       }
     }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error('Restored database did not become ready.')
+    throw lastError instanceof Error ? lastError : new Error('Restored database did not become ready.')
   }
   async removeRestoredService(id: string): Promise<void> {
     const name = runtimeId(id)
@@ -415,19 +383,13 @@ export class DockerDataTransport implements DataProviderTransport {
             .replace(/[^0-9]/g, '')
             .slice(0, 14)}`,
       )
-    if (!/^[A-Za-z0-9_.-]{2,120}$/.test(backupId))
-      throw new Error('Backup identifier contains unsupported characters.')
+    if (!/^[A-Za-z0-9_.-]{2,120}$/.test(backupId)) throw new Error('Backup identifier contains unsupported characters.')
     await mkdir(this.backupRoot, { recursive: true, mode: 0o700 })
     const path = join(this.backupRoot, `${backupId}.sql`)
     await writeFile(path, exported.body, { mode: 0o600 })
     return { status: 'available', backupId, path, engine, database, username }
   }
-  async execute(
-    id: string,
-    action: DataAction,
-    input: Input,
-    credential?: string,
-  ): Promise<Input> {
+  async execute(id: string, action: DataAction, input: Input, credential?: string): Promise<Input> {
     const name = runtimeId(id)
     if (action === 'observe') return this.observe(id)
     if (action === 'backup') return this.backup(id, input)
@@ -447,9 +409,7 @@ export class DockerDataTransport implements DataProviderTransport {
       if (!['postgres', 'mysql', 'mariadb'].includes(engine))
         throw new Error(`${action} is available only for SQL runtime engines.`)
       if (action === 'users' && operation !== 'list')
-        throw new Error(
-          'Creating users requires a referenced secondary credential.',
-        )
+        throw new Error('Creating users requires a referenced secondary credential.')
       if (operation === 'list') {
         const command =
           engine === 'postgres'
@@ -466,9 +426,7 @@ export class DockerDataTransport implements DataProviderTransport {
                 'sh',
                 '-c',
                 `export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root -N -e '${
-                  action === 'databases'
-                    ? 'SHOW DATABASES'
-                    : 'SELECT User FROM mysql.user ORDER BY User'
+                  action === 'databases' ? 'SHOW DATABASES' : 'SELECT User FROM mysql.user ORDER BY User'
                 }'`,
               ]
         const result = await this.runtime.exec(name, command)
@@ -482,25 +440,15 @@ export class DockerDataTransport implements DataProviderTransport {
       if (action === 'databases' && ['create', 'delete'].includes(operation)) {
         const database = identifier(input.database)
         if (operation === 'delete' && input.confirm !== database)
-          throw new Error(
-            `Type ${database} to confirm logical database deletion.`,
-          )
+          throw new Error(`Type ${database} to confirm logical database deletion.`)
         const sql =
           engine === 'postgres'
             ? `${operation === 'create' ? 'CREATE' : 'DROP'} DATABASE "${database}";\n`
             : `${operation === 'create' ? 'CREATE' : 'DROP'} DATABASE \`${database}\`;\n`
         const command =
           engine === 'postgres'
-            ? [
-                'sh',
-                '-c',
-                'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -U "$POSTGRES_USER"',
-              ]
-            : [
-                'sh',
-                '-c',
-                'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root',
-              ]
+            ? ['sh', '-c', 'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -U "$POSTGRES_USER"']
+            : ['sh', '-c', 'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root']
         await this.runtime.exec(name, command, sql)
         return { status: 'available', database, operation }
       }
@@ -519,8 +467,7 @@ export class DockerDataTransport implements DataProviderTransport {
       }
     }
     if (action === 'rotate') {
-      if (!credential)
-        throw new Error('Credential rotation requires a generated secret.')
+      if (!credential) throw new Error('Credential rotation requires a generated secret.')
       const inspect = await this.runtime.inspect(name)
       if (!inspect) throw new Error(`Data container ${name} was not found.`)
       const metadata = labels(inspect),
@@ -530,27 +477,16 @@ export class DockerDataTransport implements DataProviderTransport {
       if (engine === 'postgres')
         await this.runtime.exec(
           name,
-          [
-            'sh',
-            '-c',
-            'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -U "$POSTGRES_USER"',
-          ],
+          ['sh', '-c', 'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -U "$POSTGRES_USER"'],
           `ALTER USER "${username}" PASSWORD '${escaped}';\n`,
         )
       else if (engine === 'mysql' || engine === 'mariadb')
         await this.runtime.exec(
           name,
-          [
-            'sh',
-            '-c',
-            'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root',
-          ],
+          ['sh', '-c', 'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root'],
           `ALTER USER '${username}'@'%' IDENTIFIED BY '${escaped}';\n`,
         )
-      else if (engine !== 'redis')
-        throw new Error(
-          `${engine} credential rotation requires an engine runner.`,
-        )
+      else if (engine !== 'redis') throw new Error(`${engine} credential rotation requires an engine runner.`)
       const content =
         engine === 'redis'
           ? `appendonly yes\nprotected-mode yes\nrequirepass ${credential.replaceAll('\\', '\\\\').replaceAll('\n', '')}\n`
@@ -572,9 +508,7 @@ export class DockerDataTransport implements DataProviderTransport {
       }
     }
     if (action === 'expose')
-      throw new Error(
-        'Direct container exposure is refused; use a reviewed firewall and proxy policy.',
-      )
+      throw new Error('Direct container exposure is refused; use a reviewed firewall and proxy policy.')
     throw new Error(`${action} requires a configured engine lifecycle runner.`)
   }
 }

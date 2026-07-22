@@ -1,11 +1,6 @@
 import type { JsonValue } from '../control-plane'
 import type { QueueExecutionContext, QueueOperationHandler } from '../queue'
-import type {
-  BackupDestination,
-  BackupJob,
-  BackupPolicy,
-  RecoveryPoint,
-} from './model'
+import type { BackupDestination, BackupJob, BackupPolicy, RecoveryPoint } from './model'
 import type { MultipartCheckpoint, StoredBackup } from './s3-destination'
 import { createHash } from 'node:crypto'
 import { DurableOperationQueue } from '../queue'
@@ -32,37 +27,18 @@ export type BackupSourceResult =
     }
 
 export interface BackupSourceAdapter {
-  create(
-    policy: BackupPolicy,
-    context: QueueExecutionContext,
-  ): Promise<BackupSourceResult>
-  verifyExternal?(
-    point: RecoveryPoint,
-    context: QueueExecutionContext,
-  ): Promise<Record<string, JsonValue>>
-  verify?(
-    point: RecoveryPoint,
-    body: Uint8Array,
-    context: QueueExecutionContext,
-  ): Promise<Record<string, JsonValue>>
+  create(policy: BackupPolicy, context: QueueExecutionContext): Promise<BackupSourceResult>
+  verifyExternal?(point: RecoveryPoint, context: QueueExecutionContext): Promise<Record<string, JsonValue>>
+  verify?(point: RecoveryPoint, body: Uint8Array, context: QueueExecutionContext): Promise<Record<string, JsonValue>>
   restore(
     point: RecoveryPoint,
     body: Uint8Array | undefined,
     target: Record<string, JsonValue>,
     context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>>
-  validateHealth?(
-    target: Record<string, JsonValue>,
-    context: QueueExecutionContext,
-  ): Promise<Record<string, JsonValue>>
-  cleanup?(
-    target: Record<string, JsonValue>,
-    context: QueueExecutionContext,
-  ): Promise<void>
-  deleteExternal?(
-    point: RecoveryPoint,
-    context: QueueExecutionContext,
-  ): Promise<void>
+  validateHealth?(target: Record<string, JsonValue>, context: QueueExecutionContext): Promise<Record<string, JsonValue>>
+  cleanup?(target: Record<string, JsonValue>, context: QueueExecutionContext): Promise<void>
+  deleteExternal?(point: RecoveryPoint, context: QueueExecutionContext): Promise<void>
 }
 
 export interface BackupDestinationAdapter {
@@ -76,19 +52,12 @@ export interface BackupDestinationAdapter {
       checkpoint?: (value: MultipartCheckpoint) => void
     },
   ): Promise<StoredBackup>
-  download(
-    destination: BackupDestination,
-    stored: Pick<StoredBackup, 'key' | 'checksum' | 'manifest'>,
-  ): Promise<Buffer>
+  download(destination: BackupDestination, stored: Pick<StoredBackup, 'key' | 'checksum' | 'manifest'>): Promise<Buffer>
   delete(destination: BackupDestination, key: string): Promise<void>
-  abortPartial?(
-    destination: BackupDestination,
-    checkpoint: MultipartCheckpoint,
-  ): Promise<void>
+  abortPartial?(destination: BackupDestination, checkpoint: MultipartCheckpoint): Promise<void>
 }
 
-const digest = (value: string) =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}`
+const digest = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`
 
 export class BackupCoordinator {
   constructor(
@@ -97,11 +66,7 @@ export class BackupCoordinator {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  enqueueBackup(
-    policy: BackupPolicy,
-    scheduledFor: string = this.now().toISOString(),
-    actorId?: string,
-  ): BackupJob {
+  enqueueBackup(policy: BackupPolicy, scheduledFor: string = this.now().toISOString(), actorId?: string): BackupJob {
     if (!policy.enabled) throw new Error('Backup policy is disabled.')
     const job = this.store.createJob({
       projectId: policy.projectId,
@@ -192,20 +157,13 @@ export class BackupCoordinator {
     target: Record<string, JsonValue>
     warnings: string[]
   } {
-    if (point.status !== 'available')
-      throw new Error('Only available recovery points can be restored.')
-    if (point.verificationState !== 'verified')
-      throw new Error('Restore requires a verified recovery point.')
+    if (point.status !== 'available') throw new Error('Only available recovery points can be restored.')
+    if (point.verificationState !== 'verified') throw new Error('Restore requires a verified recovery point.')
     if (input.mode === 'in_place') {
-      if (!input.recentAuth)
-        throw new Error('In-place restore requires recent authentication.')
-      if (input.confirm !== input.targetName)
-        throw new Error(`Type ${input.targetName} to confirm in-place restore.`)
-      if (!input.downtimeAcknowledged)
-        throw new Error('In-place restore requires downtime acknowledgement.')
-      const safety = input.safetyBackupId
-        ? this.store.getRecoveryPoint(input.safetyBackupId)
-        : undefined
+      if (!input.recentAuth) throw new Error('In-place restore requires recent authentication.')
+      if (input.confirm !== input.targetName) throw new Error(`Type ${input.targetName} to confirm in-place restore.`)
+      if (!input.downtimeAcknowledged) throw new Error('In-place restore requires downtime acknowledgement.')
+      const safety = input.safetyBackupId ? this.store.getRecoveryPoint(input.safetyBackupId) : undefined
       if (
         !safety ||
         safety.id === point.id ||
@@ -214,9 +172,7 @@ export class BackupCoordinator {
         safety.resourceId !== point.resourceId ||
         safety.dataServiceId !== point.dataServiceId
       )
-        throw new Error(
-          'In-place restore requires a distinct verified safety backup for the same target.',
-        )
+        throw new Error('In-place restore requires a distinct verified safety backup for the same target.')
     }
     return {
       point,
@@ -233,9 +189,7 @@ export class BackupCoordinator {
               'Downtime and data replacement are expected.',
               'Provider cancellation may stop only at a checkpoint.',
             ]
-          : [
-              'An isolated target is created and health-validated before cleanup.',
-            ],
+          : ['An isolated target is created and health-validated before cleanup.'],
     }
   }
 
@@ -330,40 +284,28 @@ export function createBackupQueueHandlers(input: {
   store: BackupStore
   queue: DurableOperationQueue
   resolveSource: (policy: BackupPolicy) => BackupSourceAdapter | undefined
-  resolveDestination: (
-    destination: BackupDestination,
-  ) => BackupDestinationAdapter | undefined
-  validateHealth?: (
-    policy: BackupPolicy,
-    target: Record<string, JsonValue>,
-  ) => Promise<Record<string, JsonValue>>
+  resolveDestination: (destination: BackupDestination) => BackupDestinationAdapter | undefined
+  validateHealth?: (policy: BackupPolicy, target: Record<string, JsonValue>) => Promise<Record<string, JsonValue>>
   now?: () => Date
 }): Record<string, QueueOperationHandler> {
   const now = input.now ?? (() => new Date()),
     coordinator = new BackupCoordinator(input.store, input.queue, now),
     resolve = (job: BackupJob) => {
-      const point = job.recoveryPointId
-          ? input.store.getRecoveryPoint(job.recoveryPointId)
-          : undefined,
+      const point = job.recoveryPointId ? input.store.getRecoveryPoint(job.recoveryPointId) : undefined,
         policy = job.policyId
           ? input.store.getPolicy(job.policyId)
           : point?.policyId
             ? input.store.getPolicy(point.policyId)
             : undefined
       if (!policy) throw new Error('Backup policy was not found.')
-      const destination = input.store.getDestination(
-          point?.destinationId ?? policy.destinationId,
-        ),
+      const destination = input.store.getDestination(point?.destinationId ?? policy.destinationId),
         source = input.resolveSource(policy)
       if (!destination) throw new Error('Backup destination was not found.')
       if (!source) throw new Error(`No ${policy.resourceKind} backup adapter is configured.`)
       return { point, policy, destination, source }
     },
     claimedJob = (context: QueueExecutionContext) => {
-      const operationInput = context.operation.input as Record<
-          string,
-          JsonValue
-        >,
+      const operationInput = context.operation.input as Record<string, JsonValue>,
         job = input.store.getJob(String(operationInput.backupJobId ?? ''))
       if (!job) throw new Error('Backup job was not found.')
       input.store.updateJob(job.id, {
@@ -392,23 +334,25 @@ export function createBackupQueueHandlers(input: {
           stored =
             result.mode === 'object'
               ? await (async () => {
-                  if (!destinationAdapter)
-                    throw new Error('Backup destination adapter is not configured.')
+                  if (!destinationAdapter) throw new Error('Backup destination adapter is not configured.')
                   const progress = input.store.getJob(job.id)?.progress,
                     checkpoint = progress?.multipart,
-                    resume = checkpoint && typeof checkpoint === 'object' && !Array.isArray(checkpoint) && typeof checkpoint.uploadId === 'string' && typeof checkpoint.key === 'string' && Array.isArray(checkpoint.parts)
-                      ? checkpoint as unknown as MultipartCheckpoint
-                      : undefined
+                    resume =
+                      checkpoint &&
+                      typeof checkpoint === 'object' &&
+                      !Array.isArray(checkpoint) &&
+                      typeof checkpoint.uploadId === 'string' &&
+                      typeof checkpoint.key === 'string' &&
+                      Array.isArray(checkpoint.parts)
+                        ? (checkpoint as unknown as MultipartCheckpoint)
+                        : undefined
                   return destinationAdapter.upload(destination, {
                     key: result.key,
                     body: result.body,
                     contentType: result.contentType,
                     resume,
                     checkpoint: (value) => {
-                      context.checkpoint(
-                        'uploading',
-                        `Uploaded ${Number(value.bytesUploaded ?? 0)} backup bytes.`,
-                      )
+                      context.checkpoint('uploading', `Uploaded ${Number(value.bytesUploaded ?? 0)} backup bytes.`)
                       input.store.updateJob(job.id, {
                         progress: { phase: 'uploading', multipart: { ...value } },
                       })
@@ -429,10 +373,7 @@ export function createBackupQueueHandlers(input: {
                   },
                 },
           expiresAt = policy.retention.expireAfterDays
-            ? new Date(
-                now().getTime() +
-                  policy.retention.expireAfterDays * 86_400_000,
-              ).toISOString()
+            ? new Date(now().getTime() + policy.retention.expireAfterDays * 86_400_000).toISOString()
             : undefined,
           startedAt = input.store.getJob(job.id)?.startedAt,
           point = input.store.createRecoveryPoint({
@@ -456,20 +397,13 @@ export function createBackupQueueHandlers(input: {
             engineVersion: result.engineVersion,
             expiresAt,
             lockedUntil: destination.immutability.defaultRetentionDays
-              ? new Date(
-                  now().getTime() +
-                    destination.immutability.defaultRetentionDays * 86_400_000,
-                ).toISOString()
+              ? new Date(now().getTime() + destination.immutability.defaultRetentionDays * 86_400_000).toISOString()
               : undefined,
             held: false,
             pinned: false,
             status: 'available',
             verificationState: 'unverified',
-            durationMs: Math.max(
-              0,
-              now().getTime() -
-                new Date(startedAt ?? now().toISOString()).getTime(),
-            ),
+            durationMs: Math.max(0, now().getTime() - new Date(startedAt ?? now().toISOString()).getTime()),
           })
         if (result.mode === 'external' && destination.provider === 'aws_backup')
           input.store.recordDestinationTest(destination.id, { ok: true })
@@ -497,20 +431,12 @@ export function createBackupQueueHandlers(input: {
             error: error instanceof Error ? error.message : String(error),
           })
         let cleanupRequired = false
-        if (
-          partial &&
-          typeof partial === 'object' &&
-          !Array.isArray(partial) &&
-          resolved
-        ) {
+        if (partial && typeof partial === 'object' && !Array.isArray(partial) && resolved) {
           const adapter = input.resolveDestination(resolved.destination)
           cleanupRequired = true
           if (adapter?.abortPartial) {
             try {
-              await adapter.abortPartial(
-                resolved.destination,
-                partial as unknown as MultipartCheckpoint,
-              )
+              await adapter.abortPartial(resolved.destination, partial as unknown as MultipartCheckpoint)
               cleanupRequired = false
               input.store.updateJob(job.id, {
                 progress: {
@@ -550,25 +476,20 @@ export function createBackupQueueHandlers(input: {
         let evidence: Record<string, JsonValue>
         if (point.uri.startsWith('s3:')) {
           const adapter = input.resolveDestination(destination)
-          if (!adapter)
-            throw new Error('Backup destination adapter is not configured.')
+          if (!adapter) throw new Error('Backup destination adapter is not configured.')
           const body = await adapter.download(destination, {
             key: String(point.manifest.storageKey ?? ''),
             checksum: point.checksum,
             manifest: point.manifest as StoredBackup['manifest'],
           })
-          const sourceEvidence = source.verify
-            ? await source.verify(point, body, context)
-            : {}
+          const sourceEvidence = source.verify ? await source.verify(point, body, context) : {}
           evidence = {
             bytes: body.length,
             checksum: point.checksum,
             ...sourceEvidence,
           }
-        } else if (source.verifyExternal)
-          evidence = await source.verifyExternal(point, context)
-        else
-          throw new Error('External recovery point verification is not supported.')
+        } else if (source.verifyExternal) evidence = await source.verifyExternal(point, context)
+        else throw new Error('External recovery point verification is not supported.')
         input.store.updateRecoveryPoint(point.id, {
           verificationState: 'verified',
           verifiedAt: now().toISOString(),
@@ -607,11 +528,14 @@ export function createBackupQueueHandlers(input: {
           const adapter = input.resolveDestination(destination)
           if (!adapter) throw new Error('Destination cleanup is unavailable.')
           await adapter.delete(destination, String(point.manifest.storageKey ?? ''))
-        } else if (source.deleteExternal)
-          await source.deleteExternal(point, context)
+        } else if (source.deleteExternal) await source.deleteExternal(point, context)
         else throw new Error('External recovery point cleanup is unavailable.')
         input.store.updateRecoveryPoint(point.id, { status: 'deleted' })
-        input.store.updateJob(job.id, { status: 'succeeded', finishedAt: now().toISOString(), progress: { phase: 'deleted' } })
+        input.store.updateJob(job.id, {
+          status: 'succeeded',
+          finishedAt: now().toISOString(),
+          progress: { phase: 'deleted' },
+        })
         return { backupJobId: job.id, recoveryPointId: point.id, deleted: true }
       } catch (error) {
         fail(job, error)
@@ -620,19 +544,13 @@ export function createBackupQueueHandlers(input: {
     },
   }
 
-  async function restore(
-    context: QueueExecutionContext,
-    drill: boolean,
-  ): Promise<Record<string, JsonValue>> {
+  async function restore(context: QueueExecutionContext, drill: boolean): Promise<Record<string, JsonValue>> {
     const job = claimedJob(context)
     try {
       const { point, policy, destination, source } = resolve(job)
       if (!point) throw new Error('Recovery point was not found.')
-      if (drill && !source.cleanup)
-        throw new Error('This backup source cannot safely clean a recovery drill target.')
-      const destinationAdapter = point.uri.startsWith('s3:')
-        ? input.resolveDestination(destination)
-        : undefined
+      if (drill && !source.cleanup) throw new Error('This backup source cannot safely clean a recovery drill target.')
+      const destinationAdapter = point.uri.startsWith('s3:') ? input.resolveDestination(destination) : undefined
       const body = destinationAdapter
         ? await destinationAdapter.download(destination, {
             key: String(point.manifest.storageKey ?? ''),
@@ -649,17 +567,12 @@ export function createBackupQueueHandlers(input: {
           : { healthy: true, mode: 'not_configured' },
         health = {
           ...adapterHealth,
-          healthy:
-            adapterHealth.healthy === true && configuredHealth.healthy === true,
+          healthy: adapterHealth.healthy === true && configuredHealth.healthy === true,
           configured: configuredHealth,
         }
-      if (health.healthy !== true)
-        throw new Error('Restored target did not pass its configured health check.')
+      if (health.healthy !== true) throw new Error('Restored target did not pass its configured health check.')
       if (drill && source.cleanup)
-        await source.cleanup(
-          { ...job.target, provider: point.manifest.provider ?? null },
-          context,
-        )
+        await source.cleanup({ ...job.target, provider: point.manifest.provider ?? null }, context)
       input.store.updateJob(job.id, {
         status: 'succeeded',
         finishedAt: now().toISOString(),
@@ -675,12 +588,12 @@ export function createBackupQueueHandlers(input: {
       }
     } catch (error) {
       const resolved = (() => {
-        try {
-          return resolve(job)
-        } catch {
-          return undefined
-        }
-      })(),
+          try {
+            return resolve(job)
+          } catch {
+            return undefined
+          }
+        })(),
         message = error instanceof Error ? error.message : String(error)
       let cleanupRequired = false
       if (drill && resolved?.source.cleanup) {

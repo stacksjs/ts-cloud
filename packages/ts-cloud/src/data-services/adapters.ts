@@ -5,10 +5,7 @@ import type { DataServiceAdapter } from './service'
 
 export interface DataProviderTransport {
   observe(id: string): Promise<Record<string, JsonValue>>
-  apply(
-    input: Record<string, JsonValue>,
-    credential?: string,
-  ): Promise<Record<string, JsonValue>>
+  apply(input: Record<string, JsonValue>, credential?: string): Promise<Record<string, JsonValue>>
   execute(
     id: string,
     action: DataAction,
@@ -24,10 +21,7 @@ abstract class TransportAdapter implements DataServiceAdapter {
   observe(service: DataService): Promise<Record<string, JsonValue>> {
     return this.transport.observe(service.placement)
   }
-  apply(
-    service: DataService,
-    credential?: string,
-  ): Promise<Record<string, JsonValue>> {
+  apply(service: DataService, credential?: string): Promise<Record<string, JsonValue>> {
     return this.transport.apply(
       {
         id: service.placement,
@@ -81,23 +75,9 @@ export class AwsElastiCacheDataAdapter extends TransportAdapter {
 }
 export class ServerDataAdapter extends TransportAdapter {
   provider = 'server' as const
-  engines = [
-    'postgres',
-    'mysql',
-    'mariadb',
-    'redis',
-    'mongodb',
-    'libsql',
-  ] as DataService['engine'][]
+  engines = ['postgres', 'mysql', 'mariadb', 'redis', 'mongodb', 'libsql'] as DataService['engine'][]
 }
 export class ContainerDataAdapter extends TransportAdapter {
   provider = 'container' as const
-  engines = [
-    'postgres',
-    'mysql',
-    'mariadb',
-    'redis',
-    'mongodb',
-    'libsql',
-  ] as DataService['engine'][]
+  engines = ['postgres', 'mysql', 'mariadb', 'redis', 'mongodb', 'libsql'] as DataService['engine'][]
 }

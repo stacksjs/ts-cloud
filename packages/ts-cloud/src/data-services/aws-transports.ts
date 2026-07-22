@@ -1,8 +1,8 @@
+import type { DBCluster } from '../aws/rds'
 import type { JsonValue } from '../control-plane'
 import type { QueueExecutionContext } from '../queue'
-import type { DBCluster } from '../aws/rds'
-import type { DataAction } from './model'
 import type { DataProviderTransport } from './adapters'
+import type { DataAction } from './model'
 import { ElastiCacheClient } from '../aws/elasticache'
 import { RDSClient } from '../aws/rds'
 
@@ -10,12 +10,7 @@ type Input = Record<string, JsonValue>
 
 const value = (input: Input, key: string): JsonValue | undefined => {
     const desired = input.desiredState
-    return (
-      input[key] ??
-      (desired && typeof desired === 'object' && !Array.isArray(desired)
-        ? desired[key]
-        : undefined)
-    )
+    return input[key] ?? (desired && typeof desired === 'object' && !Array.isArray(desired) ? desired[key] : undefined)
   },
   text = (input: Input, key: string, fallback?: string): string | undefined => {
     const result = value(input, key)
@@ -40,9 +35,7 @@ const value = (input: Input, key: string): JsonValue | undefined => {
       .replace(/[^0-9]/g, '')
       .slice(0, 14)}`
 
-function rdsObservation(
-  instance: Awaited<ReturnType<RDSClient['describeDBInstance']>>,
-): Input {
+function rdsObservation(instance: Awaited<ReturnType<RDSClient['describeDBInstance']>>): Input {
   if (!instance) throw new Error('RDS instance was not found.')
   return {
     providerId: instance.DBInstanceIdentifier ?? null,
@@ -160,9 +153,7 @@ export class AwsRdsTransport implements DataProviderTransport {
       })
       return rdsObservation(result.DBInstance)
     }
-    throw new Error(
-      `RDS action ${action} requires an engine connection runner.`,
-    )
+    throw new Error(`RDS action ${action} requires an engine connection runner.`)
   }
 }
 
@@ -193,10 +184,7 @@ export class AwsAuroraTransport implements DataProviderTransport {
   }
   async apply(input: Input, credential?: string): Promise<Input> {
     const id = String(input.id),
-      engine =
-        String(input.engine) === 'postgres'
-          ? 'aurora-postgresql'
-          : 'aurora-mysql'
+      engine = String(input.engine) === 'postgres' ? 'aurora-postgresql' : 'aurora-mysql'
     await this.client.createDBCluster({
       DBClusterIdentifier: id,
       Engine: engine,
@@ -224,12 +212,7 @@ export class AwsAuroraTransport implements DataProviderTransport {
     })
     return { status: 'creating', providerId: id }
   }
-  async execute(
-    id: string,
-    action: DataAction,
-    input: Input,
-    credential?: string,
-  ): Promise<Input> {
+  async execute(id: string, action: DataAction, input: Input, credential?: string): Promise<Input> {
     if (action === 'observe') return this.observe(id)
     if (action === 'restart') {
       await this.client.rebootDBCluster(id)
@@ -284,8 +267,7 @@ export class AwsAuroraTransport implements DataProviderTransport {
       const result = await this.client.modifyDBCluster({
         DBClusterIdentifier: id,
         ServerlessV2ScalingConfiguration:
-          number(input, 'minCapacity') == null &&
-          number(input, 'maxCapacity') == null
+          number(input, 'minCapacity') == null && number(input, 'maxCapacity') == null
             ? undefined
             : {
                 MinCapacity: number(input, 'minCapacity') ?? 0.5,
@@ -297,19 +279,14 @@ export class AwsAuroraTransport implements DataProviderTransport {
       })
       return clusterObservation(result.DBCluster)
     }
-    throw new Error(
-      `Aurora action ${action} requires an engine connection runner.`,
-    )
+    throw new Error(`Aurora action ${action} requires an engine connection runner.`)
   }
 }
 
 export class AwsElastiCacheTransport implements DataProviderTransport {
-  constructor(
-    private readonly client: ElastiCacheClient = new ElastiCacheClient(),
-  ) {}
+  constructor(private readonly client: ElastiCacheClient = new ElastiCacheClient()) {}
   async observe(id: string): Promise<Input> {
-    const cluster = (await this.client.describeCacheClusters(id))
-      .CacheClusters[0]
+    const cluster = (await this.client.describeCacheClusters(id)).CacheClusters[0]
     if (!cluster) throw new Error('ElastiCache cluster was not found.')
     const endpoint = cluster.CacheNodes?.[0]?.Endpoint
     return {
@@ -343,12 +320,8 @@ export class AwsElastiCacheTransport implements DataProviderTransport {
   async execute(id: string, action: DataAction, input: Input): Promise<Input> {
     if (action === 'observe') return this.observe(id)
     if (action === 'restart') {
-      const cluster = (await this.client.describeCacheClusters(id))
-        .CacheClusters[0]
-      await this.client.rebootCacheCluster(
-        id,
-        cluster?.CacheNodes?.map((node) => node.CacheNodeId) ?? ['0001'],
-      )
+      const cluster = (await this.client.describeCacheClusters(id)).CacheClusters[0]
+      await this.client.rebootCacheCluster(id, cluster?.CacheNodes?.map((node) => node.CacheNodeId) ?? ['0001'])
       return { status: 'rebooting' }
     }
     if (action === 'delete') {
@@ -356,8 +329,6 @@ export class AwsElastiCacheTransport implements DataProviderTransport {
       await this.client.deleteCacheCluster(id)
       return { status: 'deleting' }
     }
-    throw new Error(
-      `ElastiCache action ${action} is not supported by this cluster mode.`,
-    )
+    throw new Error(`ElastiCache action ${action} is not supported by this cluster mode.`)
   }
 }

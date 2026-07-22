@@ -2,10 +2,10 @@ import type { JsonValue } from '../control-plane'
 import type { QueueExecutionContext } from '../queue'
 import type { BackupPolicy, RecoveryPoint } from './model'
 import type { BackupSourceAdapter, BackupSourceResult } from './service'
-import { Database } from 'bun:sqlite'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, resolve, sep } from 'node:path'
+import { Database } from 'bun:sqlite'
 import { ControlPlaneStore } from '../control-plane'
 import { compressBackup, decompressBackup } from './filesystem-source'
 
@@ -35,10 +35,12 @@ function parseArchive(body: Uint8Array): ControlPlaneArchive {
 function databaseIntegrity(body: Uint8Array): { integrity: string; tables: number } {
   const database = Database.deserialize(Uint8Array.from(body))
   try {
-    const integrity = database.query<{ integrity_check: string }, []>('PRAGMA integrity_check').get()?.integrity_check ?? 'unknown',
-      tables = database.query<{ count: number }, []>("SELECT count(*) AS count FROM sqlite_master WHERE type='table'").get()?.count ?? 0
-    if (integrity !== 'ok')
-      throw new Error(`Restored control-plane integrity check failed: ${integrity}.`)
+    const integrity =
+        database.query<{ integrity_check: string }, []>('PRAGMA integrity_check').get()?.integrity_check ?? 'unknown',
+      tables =
+        database.query<{ count: number }, []>("SELECT count(*) AS count FROM sqlite_master WHERE type='table'").get()
+          ?.count ?? 0
+    if (integrity !== 'ok') throw new Error(`Restored control-plane integrity check failed: ${integrity}.`)
     return { integrity, tables }
   } finally {
     database.close()
@@ -58,20 +60,15 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
     this.restoreRoot = resolve(restoreRoot)
   }
 
-  async create(
-    policy: BackupPolicy,
-    context: QueueExecutionContext,
-  ): Promise<BackupSourceResult> {
-    const configured = policy.includePatterns.length
-        ? policy.includePatterns
-        : ['cloud.config.ts'],
+  async create(policy: BackupPolicy, context: QueueExecutionContext): Promise<BackupSourceResult> {
+    const configured = policy.includePatterns.length ? policy.includePatterns : ['cloud.config.ts'],
       config: ControlPlaneArchive['config'] = []
     for (const value of configured) {
-      const name = basename(value), path = resolve(this.root, name)
+      const name = basename(value),
+        path = resolve(this.root, name)
       if (name !== value && value !== `./${name}`)
         throw new Error('Control-plane config paths must be project-root files.')
-      if (existsSync(path))
-        config.push({ name, body: (await readFile(path)).toString('base64') })
+      if (existsSync(path)) config.push({ name, body: (await readFile(path)).toString('base64') })
     }
     const archive: ControlPlaneArchive = {
         format: 'ts-cloud-control-plane-v1',
@@ -88,7 +85,12 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
       mode: 'object',
       key: `${policy.projectId}/control-plane/${token}.json${compression === 'none' ? '' : compression === 'gzip' ? '.gz' : '.zst'}`,
       body,
-      contentType: compression === 'gzip' ? 'application/gzip' : compression === 'zstd' ? 'application/zstd' : 'application/vnd.ts-cloud.control-plane+json',
+      contentType:
+        compression === 'gzip'
+          ? 'application/gzip'
+          : compression === 'zstd'
+            ? 'application/zstd'
+            : 'application/vnd.ts-cloud.control-plane+json',
       manifest: {
         format: archive.format,
         configFiles: config.map((item) => item.name),
@@ -108,11 +110,15 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
     if (!body) throw new Error('Control-plane restore requires an archive payload.')
     if (target.restoreMode === 'in_place')
       throw new Error('A live control plane can only be restored into an isolated recovery target.')
-    const archive = parseArchive(decompressBackup(body, String(point.manifest.compression ?? 'none') as BackupPolicy['compression'])), destination = resolve(this.restoreRoot, restoreName(target))
-    if (existsSync(destination))
-      throw new Error('The isolated control-plane restore target already exists.')
+    const archive = parseArchive(
+        decompressBackup(body, String(point.manifest.compression ?? 'none') as BackupPolicy['compression']),
+      ),
+      destination = resolve(this.restoreRoot, restoreName(target))
+    if (existsSync(destination)) throw new Error('The isolated control-plane restore target already exists.')
     await mkdir(destination, { recursive: true, mode: 0o700 })
-    await writeFile(resolve(destination, 'control-plane.sqlite'), Buffer.from(archive.database, 'base64'), { mode: 0o600 })
+    await writeFile(resolve(destination, 'control-plane.sqlite'), Buffer.from(archive.database, 'base64'), {
+      mode: 0o600,
+    })
     for (const file of archive.config)
       await writeFile(resolve(destination, file.name), Buffer.from(file.body, 'base64'), { mode: 0o600 })
     return { path: destination, isolated: true, configFiles: archive.config.length }
@@ -123,7 +129,9 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
     body: Uint8Array,
     _context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>> {
-    const archive = parseArchive(decompressBackup(body, String(point.manifest.compression ?? 'none') as BackupPolicy['compression'])),
+    const archive = parseArchive(
+        decompressBackup(body, String(point.manifest.compression ?? 'none') as BackupPolicy['compression']),
+      ),
       integrity = databaseIntegrity(Buffer.from(archive.database, 'base64'))
     return { ...integrity, configFiles: archive.config.length }
   }
@@ -132,17 +140,15 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
     target: Record<string, unknown>,
     _context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>> {
-    const path = String(target.path ?? ''), databasePath = resolve(path, 'control-plane.sqlite')
+    const path = String(target.path ?? ''),
+      databasePath = resolve(path, 'control-plane.sqlite')
     if (!path.startsWith(`${this.restoreRoot}${sep}`) || !existsSync(databasePath))
       throw new Error('Isolated control-plane database was not found.')
     const result = databaseIntegrity(await readFile(databasePath))
     return { healthy: true, ...result }
   }
 
-  async cleanup(
-    target: Record<string, unknown>,
-    _context: QueueExecutionContext,
-  ): Promise<void> {
+  async cleanup(target: Record<string, unknown>, _context: QueueExecutionContext): Promise<void> {
     const path = resolve(this.restoreRoot, restoreName(target))
     if (!path.startsWith(`${this.restoreRoot}${sep}`))
       throw new Error('Refusing to clean a control-plane restore outside the restore root.')

@@ -1,13 +1,12 @@
+import type { JsonValue } from '../control-plane'
+import type { DataServiceStore } from '../data-services'
 import type { QueueExecutionContext } from '../queue'
 import type { BackupPolicy, RecoveryPoint } from './model'
 import type { BackupSourceAdapter, BackupSourceResult } from './service'
-import type { DataServiceStore } from '../data-services'
-import type { JsonValue } from '../control-plane'
 import { createHash } from 'node:crypto'
 import { RDSClient } from '../aws/rds'
 
-const checksum = (value: string) =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}`
+const checksum = (value: string) => `sha256:${createHash('sha256').update(value).digest('hex')}`
 
 export class AwsDatabaseBackupSource implements BackupSourceAdapter {
   constructor(
@@ -16,13 +15,9 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
   ) {}
 
   private service(policy: BackupPolicy) {
-    const service = policy.dataServiceId
-      ? this.dataServices.get(policy.dataServiceId)
-      : undefined
+    const service = policy.dataServiceId ? this.dataServices.get(policy.dataServiceId) : undefined
     if (!service || !['aws_rds', 'aws_aurora'].includes(service.provider))
-      throw new Error(
-        'Managed database backup policy requires an RDS or Aurora data service.',
-      )
+      throw new Error('Managed database backup policy requires an RDS or Aurora data service.')
     return service
   }
 
@@ -31,12 +26,14 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     snapshotId: string,
     context: QueueExecutionContext,
   ): Promise<Record<string, any>> {
-    for (;;) {
+    for (;; ) {
       context.throwIfCancellationRequested?.()
       context.heartbeat?.()
-      const snapshot = provider === 'aws_aurora'
-        ? (await this.client.describeDBClusterSnapshots({ DBClusterSnapshotIdentifier: snapshotId })).DBClusterSnapshots[0]
-        : (await this.client.describeDBSnapshots({ DBSnapshotIdentifier: snapshotId })).DBSnapshots?.[0]
+      const snapshot =
+        provider === 'aws_aurora'
+          ? (await this.client.describeDBClusterSnapshots({ DBClusterSnapshotIdentifier: snapshotId }))
+              .DBClusterSnapshots[0]
+          : (await this.client.describeDBSnapshots({ DBSnapshotIdentifier: snapshotId })).DBSnapshots?.[0]
       if (!snapshot) throw new Error('Provider snapshot was not found.')
       const metadata = snapshot as Record<string, any>,
         status = String(metadata.Status ?? metadata.DBSnapshotStatus ?? 'unknown')
@@ -48,17 +45,13 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     }
   }
 
-  async create(
-    policy: BackupPolicy,
-    context: QueueExecutionContext,
-  ): Promise<BackupSourceResult> {
+  async create(policy: BackupPolicy, context: QueueExecutionContext): Promise<BackupSourceResult> {
     const service = this.service(policy),
       token = String(context.operation?.id ?? new Date().toISOString())
         .replace(/[^A-Za-z0-9]/g, '')
         .slice(0, 20),
       snapshotId = `${service.placement.slice(0, 42).replace(/-+$/, '')}-${token}`
-    if (service.provider === 'aws_aurora')
-      await this.client.createDBClusterSnapshot(service.placement, snapshotId)
+    if (service.provider === 'aws_aurora') await this.client.createDBClusterSnapshot(service.placement, snapshotId)
     else
       await this.client.createDBSnapshot({
         DBInstanceIdentifier: service.placement,
@@ -83,10 +76,7 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     }
   }
 
-  async verifyExternal(
-    point: RecoveryPoint,
-    _context: QueueExecutionContext,
-  ): Promise<Record<string, JsonValue>> {
+  async verifyExternal(point: RecoveryPoint, _context: QueueExecutionContext): Promise<Record<string, JsonValue>> {
     const snapshotId = String(point.manifest.snapshotId ?? ''),
       provider = String(point.manifest.provider ?? '')
     if (!snapshotId) throw new Error('Snapshot recovery point has no snapshot ID.')
@@ -110,13 +100,9 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
       provider = String(point.manifest.provider ?? '')
     if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(targetId))
       throw new Error('Managed restore requires a valid distinct targetId.')
-    if (targetId === point.manifest.sourceId)
-      throw new Error('Managed restore target must differ from its source.')
+    if (targetId === point.manifest.sourceId) throw new Error('Managed restore target must differ from its source.')
     if (provider === 'aws_aurora') {
-      const engine =
-        point.manifest.engine === 'postgres'
-          ? 'aurora-postgresql'
-          : 'aurora-mysql'
+      const engine = point.manifest.engine === 'postgres' ? 'aurora-postgresql' : 'aurora-mysql'
       await this.client.restoreDBClusterFromSnapshot({
         DBClusterIdentifier: targetId,
         SnapshotIdentifier: snapshotId,
@@ -151,13 +137,16 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     target: Record<string, JsonValue>,
     context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>> {
-    const targetId = String(target.targetId ?? ''), provider = String(target.provider ?? '')
-    for (;;) {
+    const targetId = String(target.targetId ?? ''),
+      provider = String(target.provider ?? '')
+    for (;; ) {
       context.throwIfCancellationRequested?.()
       context.heartbeat?.()
-      const resource = (provider === 'aws_aurora'
-        ? (await this.client.describeDBClusters({ DBClusterIdentifier: targetId })).DBClusters?.[0]
-        : (await this.client.describeDBInstances({ DBInstanceIdentifier: targetId })).DBInstances?.[0]) as Record<string, any> | undefined
+      const resource = (
+        provider === 'aws_aurora'
+          ? (await this.client.describeDBClusters({ DBClusterIdentifier: targetId })).DBClusters?.[0]
+          : (await this.client.describeDBInstances({ DBInstanceIdentifier: targetId })).DBInstances?.[0]
+      ) as Record<string, any> | undefined
       if (!resource) throw new Error('Restored managed database was not found.')
       const status = String(resource.Status ?? resource.DBInstanceStatus ?? 'unknown')
       context.checkpoint?.('provider_restore', `Restored database ${targetId} is ${status}.`)
@@ -168,10 +157,7 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     }
   }
 
-  async cleanup(
-    target: Record<string, JsonValue>,
-    _context: QueueExecutionContext,
-  ): Promise<void> {
+  async cleanup(target: Record<string, JsonValue>, _context: QueueExecutionContext): Promise<void> {
     const targetId = String(target.targetId ?? ''),
       provider = String(target.provider ?? '')
     if (!targetId) throw new Error('Restore cleanup target is required.')
@@ -200,13 +186,9 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     }
   }
 
-  async deleteExternal(
-    point: RecoveryPoint,
-    _context: QueueExecutionContext,
-  ): Promise<void> {
+  async deleteExternal(point: RecoveryPoint, _context: QueueExecutionContext): Promise<void> {
     const snapshotId = String(point.manifest.snapshotId ?? '')
-    if (point.manifest.provider === 'aws_aurora')
-      await this.client.deleteDBClusterSnapshot(snapshotId)
+    if (point.manifest.provider === 'aws_aurora') await this.client.deleteDBClusterSnapshot(snapshotId)
     else await this.client.deleteDBSnapshot(snapshotId)
   }
 }

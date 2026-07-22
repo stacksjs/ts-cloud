@@ -3,29 +3,352 @@ import type { ControlPlaneStore, JsonValue } from '../control-plane'
 import type { PersistentVolume, VolumeAttachment, VolumeCapabilities, VolumeInventoryItem, VolumeSnapshot } from './model'
 
 type Row = Record<string, unknown>
-const optional = (value: unknown): string | undefined => value == null ? undefined : String(value)
-const json = <T>(value: unknown, fallback: T): T => { try { return JSON.parse(String(value)) as T } catch { return fallback } }
+const optional = (value: unknown): string | undefined => (value == null ? undefined : String(value))
+const json = <T>(value: unknown, fallback: T): T => {
+  try {
+    return JSON.parse(String(value)) as T
+  } catch {
+    return fallback
+  }
+}
 const bool = (value: unknown): boolean => Number(value) === 1
 const nowIso = (now: () => Date): string => now().toISOString()
 
-function volume(row: Row): PersistentVolume { return { id: String(row.id), organizationId: String(row.organization_id), projectId: String(row.project_id), environmentId: optional(row.environment_id), resourceId: optional(row.resource_id), name: String(row.name), provider: String(row.provider), providerId: optional(row.provider_id), type: String(row.type) as PersistentVolume['type'], status: String(row.status) as PersistentVolume['status'], capacityBytes: row.capacity_bytes == null ? undefined : Number(row.capacity_bytes), usedBytes: row.used_bytes == null ? undefined : Number(row.used_bytes), filesystem: optional(row.filesystem), encrypted: bool(row.encrypted), capabilities: json(row.capabilities, {} as VolumeCapabilities), desiredState: json(row.desired_state, {}), observedState: json(row.observed_state, {}), backupPolicyId: optional(row.backup_policy_id), lastBackupAt: optional(row.last_backup_at), orphanedAt: optional(row.orphaned_at), adoptedAt: optional(row.adopted_at), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at), deletedAt: optional(row.deleted_at) } }
-function attachment(row: Row): VolumeAttachment { return { id: String(row.id), volumeId: String(row.volume_id), resourceId: String(row.resource_id), targetPath: String(row.target_path), readOnly: bool(row.read_only), uid: row.uid == null ? undefined : Number(row.uid), gid: row.gid == null ? undefined : Number(row.gid), mode: optional(row.mode), propagation: String(row.propagation) as VolumeAttachment['propagation'], driverOptions: json(row.driver_options, {}), desiredState: String(row.desired_state) as VolumeAttachment['desiredState'], observedState: String(row.observed_state) as VolumeAttachment['observedState'], operationId: optional(row.operation_id), lastError: optional(row.last_error), version: Number(row.version), createdAt: String(row.created_at), updatedAt: String(row.updated_at) } }
-function snapshot(row: Row): VolumeSnapshot { return { id: String(row.id), volumeId: String(row.volume_id), recoveryPointId: optional(row.recovery_point_id), providerId: optional(row.provider_id), name: String(row.name), status: String(row.status) as VolumeSnapshot['status'], sizeBytes: row.size_bytes == null ? undefined : Number(row.size_bytes), encrypted: bool(row.encrypted), checksum: optional(row.checksum), metadata: json(row.metadata, {}), createdAt: String(row.created_at), updatedAt: String(row.updated_at), deletedAt: optional(row.deleted_at) } }
+function volume(row: Row): PersistentVolume {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    projectId: String(row.project_id),
+    environmentId: optional(row.environment_id),
+    resourceId: optional(row.resource_id),
+    name: String(row.name),
+    provider: String(row.provider),
+    providerId: optional(row.provider_id),
+    type: String(row.type) as PersistentVolume['type'],
+    status: String(row.status) as PersistentVolume['status'],
+    capacityBytes: row.capacity_bytes == null ? undefined : Number(row.capacity_bytes),
+    usedBytes: row.used_bytes == null ? undefined : Number(row.used_bytes),
+    filesystem: optional(row.filesystem),
+    encrypted: bool(row.encrypted),
+    capabilities: json(row.capabilities, {} as VolumeCapabilities),
+    desiredState: json(row.desired_state, {}),
+    observedState: json(row.observed_state, {}),
+    backupPolicyId: optional(row.backup_policy_id),
+    lastBackupAt: optional(row.last_backup_at),
+    orphanedAt: optional(row.orphaned_at),
+    adoptedAt: optional(row.adopted_at),
+    version: Number(row.version),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    deletedAt: optional(row.deleted_at),
+  }
+}
+function attachment(row: Row): VolumeAttachment {
+  return {
+    id: String(row.id),
+    volumeId: String(row.volume_id),
+    resourceId: String(row.resource_id),
+    targetPath: String(row.target_path),
+    readOnly: bool(row.read_only),
+    uid: row.uid == null ? undefined : Number(row.uid),
+    gid: row.gid == null ? undefined : Number(row.gid),
+    mode: optional(row.mode),
+    propagation: String(row.propagation) as VolumeAttachment['propagation'],
+    driverOptions: json(row.driver_options, {}),
+    desiredState: String(row.desired_state) as VolumeAttachment['desiredState'],
+    observedState: String(row.observed_state) as VolumeAttachment['observedState'],
+    operationId: optional(row.operation_id),
+    lastError: optional(row.last_error),
+    version: Number(row.version),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+function snapshot(row: Row): VolumeSnapshot {
+  return {
+    id: String(row.id),
+    volumeId: String(row.volume_id),
+    recoveryPointId: optional(row.recovery_point_id),
+    providerId: optional(row.provider_id),
+    name: String(row.name),
+    status: String(row.status) as VolumeSnapshot['status'],
+    sizeBytes: row.size_bytes == null ? undefined : Number(row.size_bytes),
+    encrypted: bool(row.encrypted),
+    checksum: optional(row.checksum),
+    metadata: json(row.metadata, {}),
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+    deletedAt: optional(row.deleted_at),
+  }
+}
 
 export class VolumeStore {
-  constructor(readonly controlPlane: ControlPlaneStore, private readonly now: () => Date = () => new Date(), private readonly id: () => string = () => crypto.randomUUID()) {}
-  get(id: string): PersistentVolume | undefined { const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM persistent_volumes WHERE id=?').get(id); return row ? volume(row) : undefined }
-  list(input: { projectId: string, environmentId?: string, includeDeleted?: boolean } ): PersistentVolume[] { const clauses = ['project_id=?'], values: SQLQueryBindings[] = [input.projectId]; if (input.environmentId) { clauses.push('environment_id=?'); values.push(input.environmentId) } if (!input.includeDeleted) clauses.push('deleted_at IS NULL'); return this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT * FROM persistent_volumes WHERE ${clauses.join(' AND ')} ORDER BY name`).all(...values).map(volume) }
-  create(input: Omit<PersistentVolume, 'id'|'version'|'createdAt'|'updatedAt'> & { id?: string }): PersistentVolume { const timestamp = nowIso(this.now), id = input.id ?? this.id(); this.controlPlane.database.run('INSERT INTO persistent_volumes (id,organization_id,project_id,environment_id,resource_id,name,provider,provider_id,type,status,capacity_bytes,used_bytes,filesystem,encrypted,capabilities,desired_state,observed_state,backup_policy_id,last_backup_at,orphaned_at,adopted_at,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id,input.organizationId,input.projectId,input.environmentId??null,input.resourceId??null,input.name,input.provider,input.providerId??null,input.type,input.status,input.capacityBytes??null,input.usedBytes??null,input.filesystem??null,input.encrypted?1:0,JSON.stringify(input.capabilities),JSON.stringify(input.desiredState),JSON.stringify(input.observedState),input.backupPolicyId??null,input.lastBackupAt??null,input.orphanedAt??null,input.adoptedAt??null,timestamp,timestamp,input.deletedAt??null]); return this.get(id)! }
-  update(id: string, expectedVersion: number, patch: Partial<Omit<PersistentVolume,'id'|'organizationId'|'projectId'|'createdAt'|'version'>>): PersistentVolume { const current = this.get(id); if (!current || current.version !== expectedVersion) throw new Error('Volume changed before this operation could be applied.'); const next = {...current,...patch,updatedAt:nowIso(this.now)}; const changed = this.controlPlane.database.run('UPDATE persistent_volumes SET environment_id=?,resource_id=?,name=?,provider=?,provider_id=?,type=?,status=?,capacity_bytes=?,used_bytes=?,filesystem=?,encrypted=?,capabilities=?,desired_state=?,observed_state=?,backup_policy_id=?,last_backup_at=?,orphaned_at=?,adopted_at=?,deleted_at=?,version=version+1,updated_at=? WHERE id=? AND version=?',[next.environmentId??null,next.resourceId??null,next.name,next.provider,next.providerId??null,next.type,next.status,next.capacityBytes??null,next.usedBytes??null,next.filesystem??null,next.encrypted?1:0,JSON.stringify(next.capabilities),JSON.stringify(next.desiredState),JSON.stringify(next.observedState),next.backupPolicyId??null,next.lastBackupAt??null,next.orphanedAt??null,next.adoptedAt??null,next.deletedAt??null,next.updatedAt,id,expectedVersion]).changes; if(changed!==1) throw new Error('Volume changed before this operation could be applied.'); return this.get(id)! }
-  attachments(volumeId: string): VolumeAttachment[] { return this.controlPlane.database.query<Row,[string]>('SELECT * FROM volume_attachments WHERE volume_id=? ORDER BY target_path').all(volumeId).map(attachment) }
-  attachment(id: string): VolumeAttachment | undefined { const row=this.controlPlane.database.query<Row,[string]>('SELECT * FROM volume_attachments WHERE id=?').get(id); return row?attachment(row):undefined }
-  upsertAttachment(input: Omit<VolumeAttachment,'id'|'version'|'createdAt'|'updatedAt'> & { id?: string }): VolumeAttachment { const existing=this.controlPlane.database.query<Row,[string,string,string]>('SELECT * FROM volume_attachments WHERE volume_id=? AND resource_id=? AND target_path=?').get(input.volumeId,input.resourceId,input.targetPath); const timestamp=nowIso(this.now); if(existing){ const current=attachment(existing); this.controlPlane.database.run('UPDATE volume_attachments SET read_only=?,uid=?,gid=?,mode=?,propagation=?,driver_options=?,desired_state=?,observed_state=?,operation_id=?,last_error=?,version=version+1,updated_at=? WHERE id=?',[input.readOnly?1:0,input.uid??null,input.gid??null,input.mode??null,input.propagation,JSON.stringify(input.driverOptions),input.desiredState,input.observedState,input.operationId??null,input.lastError??null,timestamp,current.id]); return this.attachment(current.id)! } const id=input.id??this.id(); this.controlPlane.database.run('INSERT INTO volume_attachments (id,volume_id,resource_id,target_path,read_only,uid,gid,mode,propagation,driver_options,desired_state,observed_state,operation_id,last_error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,input.volumeId,input.resourceId,input.targetPath,input.readOnly?1:0,input.uid??null,input.gid??null,input.mode??null,input.propagation,JSON.stringify(input.driverOptions),input.desiredState,input.observedState,input.operationId??null,input.lastError??null,timestamp,timestamp]); return this.attachment(id)! }
-  updateAttachment(id:string,patch:Partial<Pick<VolumeAttachment,'desiredState'|'observedState'|'operationId'|'lastError'>>):VolumeAttachment { const current=this.attachment(id); if(!current)throw new Error('Volume attachment was not found.'); const next={...current,...patch}; this.controlPlane.database.run('UPDATE volume_attachments SET desired_state=?,observed_state=?,operation_id=?,last_error=?,version=version+1,updated_at=? WHERE id=?',[next.desiredState,next.observedState,next.operationId??null,next.lastError??null,nowIso(this.now),id]); return this.attachment(id)! }
-  snapshots(volumeId:string):VolumeSnapshot[]{return this.controlPlane.database.query<Row,[string]>('SELECT * FROM volume_snapshots WHERE volume_id=? AND deleted_at IS NULL ORDER BY created_at DESC').all(volumeId).map(snapshot)}
-  snapshot(id:string):VolumeSnapshot|undefined{const row=this.controlPlane.database.query<Row,[string]>('SELECT * FROM volume_snapshots WHERE id=?').get(id);return row?snapshot(row):undefined}
-  createSnapshot(input:Omit<VolumeSnapshot,'id'|'createdAt'|'updatedAt'> & {id?:string}):VolumeSnapshot{const id=input.id??this.id(),timestamp=nowIso(this.now);this.controlPlane.database.run('INSERT INTO volume_snapshots (id,volume_id,recovery_point_id,provider_id,name,status,size_bytes,encrypted,checksum,metadata,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',[id,input.volumeId,input.recoveryPointId??null,input.providerId??null,input.name,input.status,input.sizeBytes??null,input.encrypted?1:0,input.checksum??null,JSON.stringify(input.metadata),timestamp,timestamp,input.deletedAt??null]);return this.snapshot(id)!}
-  updateSnapshot(id:string,patch:Partial<VolumeSnapshot>):VolumeSnapshot{const current=this.snapshot(id);if(!current)throw new Error('Volume snapshot was not found.');const next={...current,...patch};this.controlPlane.database.run('UPDATE volume_snapshots SET recovery_point_id=?,provider_id=?,name=?,status=?,size_bytes=?,encrypted=?,checksum=?,metadata=?,deleted_at=?,updated_at=? WHERE id=?',[next.recoveryPointId??null,next.providerId??null,next.name,next.status,next.sizeBytes??null,next.encrypted?1:0,next.checksum??null,JSON.stringify(next.metadata),next.deletedAt??null,nowIso(this.now),id]);return this.snapshot(id)!}
-  inventory(projectId:string,environmentId?:string):VolumeInventoryItem[]{return this.list({projectId,environmentId}).map(item=>{const attachments=this.attachments(item.id),snapshots=this.snapshots(item.id),age=item.lastBackupAt?Date.now()-new Date(item.lastBackupAt).getTime():Infinity;return {...item,attachments,snapshots,orphaned:item.status==='orphaned',usagePercent:item.capacityBytes&&item.usedBytes!=null?Math.round(item.usedBytes/item.capacityBytes*1000)/10:undefined,backupState:item.backupPolicyId?(age<=24*60*60*1000?'protected':'stale'):'unprotected'}})}
-  audit(input:{organizationId:string,projectId:string,environmentId?:string,actorId?:string,type:string,volumeId:string,payload?:Record<string,JsonValue>}):void{this.controlPlane.appendEvent({organizationId:input.organizationId,projectId:input.projectId,resourceId:this.get(input.volumeId)?.resourceId,actorId:input.actorId,type:input.type,level:'warning',payload:{volumeId:input.volumeId,environmentId:input.environmentId??null,...input.payload}})}
+  constructor(
+    readonly controlPlane: ControlPlaneStore,
+    private readonly now: () => Date = () => new Date(),
+    private readonly id: () => string = () => crypto.randomUUID(),
+  ) {}
+  get(id: string): PersistentVolume | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM persistent_volumes WHERE id=?').get(id)
+    return row ? volume(row) : undefined
+  }
+  list(input: { projectId: string; environmentId?: string; includeDeleted?: boolean }): PersistentVolume[] {
+    const clauses = ['project_id=?'],
+      values: SQLQueryBindings[] = [input.projectId]
+    if (input.environmentId) {
+      clauses.push('environment_id=?')
+      values.push(input.environmentId)
+    }
+    if (!input.includeDeleted) clauses.push('deleted_at IS NULL')
+    return this.controlPlane.database
+      .query<Row, SQLQueryBindings[]>(`SELECT * FROM persistent_volumes WHERE ${clauses.join(' AND ')} ORDER BY name`)
+      .all(...values)
+      .map(volume)
+  }
+  create(
+    input: Omit<PersistentVolume, 'id' | 'version' | 'createdAt' | 'updatedAt'> & { id?: string },
+  ): PersistentVolume {
+    const timestamp = nowIso(this.now),
+      id = input.id ?? this.id()
+    this.controlPlane.database.run(
+      'INSERT INTO persistent_volumes (id,organization_id,project_id,environment_id,resource_id,name,provider,provider_id,type,status,capacity_bytes,used_bytes,filesystem,encrypted,capabilities,desired_state,observed_state,backup_policy_id,last_backup_at,orphaned_at,adopted_at,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [
+        id,
+        input.organizationId,
+        input.projectId,
+        input.environmentId ?? null,
+        input.resourceId ?? null,
+        input.name,
+        input.provider,
+        input.providerId ?? null,
+        input.type,
+        input.status,
+        input.capacityBytes ?? null,
+        input.usedBytes ?? null,
+        input.filesystem ?? null,
+        input.encrypted ? 1 : 0,
+        JSON.stringify(input.capabilities),
+        JSON.stringify(input.desiredState),
+        JSON.stringify(input.observedState),
+        input.backupPolicyId ?? null,
+        input.lastBackupAt ?? null,
+        input.orphanedAt ?? null,
+        input.adoptedAt ?? null,
+        timestamp,
+        timestamp,
+        input.deletedAt ?? null,
+      ],
+    )
+    return this.get(id)!
+  }
+  update(
+    id: string,
+    expectedVersion: number,
+    patch: Partial<Omit<PersistentVolume, 'id' | 'organizationId' | 'projectId' | 'createdAt' | 'version'>>,
+  ): PersistentVolume {
+    const current = this.get(id)
+    if (!current || current.version !== expectedVersion)
+      throw new Error('Volume changed before this operation could be applied.')
+    const next = { ...current, ...patch, updatedAt: nowIso(this.now) }
+    const changed = this.controlPlane.database.run(
+      'UPDATE persistent_volumes SET environment_id=?,resource_id=?,name=?,provider=?,provider_id=?,type=?,status=?,capacity_bytes=?,used_bytes=?,filesystem=?,encrypted=?,capabilities=?,desired_state=?,observed_state=?,backup_policy_id=?,last_backup_at=?,orphaned_at=?,adopted_at=?,deleted_at=?,version=version+1,updated_at=? WHERE id=? AND version=?',
+      [
+        next.environmentId ?? null,
+        next.resourceId ?? null,
+        next.name,
+        next.provider,
+        next.providerId ?? null,
+        next.type,
+        next.status,
+        next.capacityBytes ?? null,
+        next.usedBytes ?? null,
+        next.filesystem ?? null,
+        next.encrypted ? 1 : 0,
+        JSON.stringify(next.capabilities),
+        JSON.stringify(next.desiredState),
+        JSON.stringify(next.observedState),
+        next.backupPolicyId ?? null,
+        next.lastBackupAt ?? null,
+        next.orphanedAt ?? null,
+        next.adoptedAt ?? null,
+        next.deletedAt ?? null,
+        next.updatedAt,
+        id,
+        expectedVersion,
+      ],
+    ).changes
+    if (changed !== 1) throw new Error('Volume changed before this operation could be applied.')
+    return this.get(id)!
+  }
+  attachments(volumeId: string): VolumeAttachment[] {
+    return this.controlPlane.database
+      .query<Row, [string]>('SELECT * FROM volume_attachments WHERE volume_id=? ORDER BY target_path')
+      .all(volumeId)
+      .map(attachment)
+  }
+  attachment(id: string): VolumeAttachment | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM volume_attachments WHERE id=?').get(id)
+    return row ? attachment(row) : undefined
+  }
+  upsertAttachment(
+    input: Omit<VolumeAttachment, 'id' | 'version' | 'createdAt' | 'updatedAt'> & { id?: string },
+  ): VolumeAttachment {
+    const existing = this.controlPlane.database
+      .query<Row, [string, string, string]>(
+        'SELECT * FROM volume_attachments WHERE volume_id=? AND resource_id=? AND target_path=?',
+      )
+      .get(input.volumeId, input.resourceId, input.targetPath)
+    const timestamp = nowIso(this.now)
+    if (existing) {
+      const current = attachment(existing)
+      this.controlPlane.database.run(
+        'UPDATE volume_attachments SET read_only=?,uid=?,gid=?,mode=?,propagation=?,driver_options=?,desired_state=?,observed_state=?,operation_id=?,last_error=?,version=version+1,updated_at=? WHERE id=?',
+        [
+          input.readOnly ? 1 : 0,
+          input.uid ?? null,
+          input.gid ?? null,
+          input.mode ?? null,
+          input.propagation,
+          JSON.stringify(input.driverOptions),
+          input.desiredState,
+          input.observedState,
+          input.operationId ?? null,
+          input.lastError ?? null,
+          timestamp,
+          current.id,
+        ],
+      )
+      return this.attachment(current.id)!
+    }
+    const id = input.id ?? this.id()
+    this.controlPlane.database.run(
+      'INSERT INTO volume_attachments (id,volume_id,resource_id,target_path,read_only,uid,gid,mode,propagation,driver_options,desired_state,observed_state,operation_id,last_error,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [
+        id,
+        input.volumeId,
+        input.resourceId,
+        input.targetPath,
+        input.readOnly ? 1 : 0,
+        input.uid ?? null,
+        input.gid ?? null,
+        input.mode ?? null,
+        input.propagation,
+        JSON.stringify(input.driverOptions),
+        input.desiredState,
+        input.observedState,
+        input.operationId ?? null,
+        input.lastError ?? null,
+        timestamp,
+        timestamp,
+      ],
+    )
+    return this.attachment(id)!
+  }
+  updateAttachment(
+    id: string,
+    patch: Partial<Pick<VolumeAttachment, 'desiredState' | 'observedState' | 'operationId' | 'lastError'>>,
+  ): VolumeAttachment {
+    const current = this.attachment(id)
+    if (!current) throw new Error('Volume attachment was not found.')
+    const next = { ...current, ...patch }
+    this.controlPlane.database.run(
+      'UPDATE volume_attachments SET desired_state=?,observed_state=?,operation_id=?,last_error=?,version=version+1,updated_at=? WHERE id=?',
+      [next.desiredState, next.observedState, next.operationId ?? null, next.lastError ?? null, nowIso(this.now), id],
+    )
+    return this.attachment(id)!
+  }
+  snapshots(volumeId: string): VolumeSnapshot[] {
+    return this.controlPlane.database
+      .query<Row, [string]>(
+        'SELECT * FROM volume_snapshots WHERE volume_id=? AND deleted_at IS NULL ORDER BY created_at DESC',
+      )
+      .all(volumeId)
+      .map(snapshot)
+  }
+  snapshot(id: string): VolumeSnapshot | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM volume_snapshots WHERE id=?').get(id)
+    return row ? snapshot(row) : undefined
+  }
+  createSnapshot(input: Omit<VolumeSnapshot, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): VolumeSnapshot {
+    const id = input.id ?? this.id(),
+      timestamp = nowIso(this.now)
+    this.controlPlane.database.run(
+      'INSERT INTO volume_snapshots (id,volume_id,recovery_point_id,provider_id,name,status,size_bytes,encrypted,checksum,metadata,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [
+        id,
+        input.volumeId,
+        input.recoveryPointId ?? null,
+        input.providerId ?? null,
+        input.name,
+        input.status,
+        input.sizeBytes ?? null,
+        input.encrypted ? 1 : 0,
+        input.checksum ?? null,
+        JSON.stringify(input.metadata),
+        timestamp,
+        timestamp,
+        input.deletedAt ?? null,
+      ],
+    )
+    return this.snapshot(id)!
+  }
+  updateSnapshot(id: string, patch: Partial<VolumeSnapshot>): VolumeSnapshot {
+    const current = this.snapshot(id)
+    if (!current) throw new Error('Volume snapshot was not found.')
+    const next = { ...current, ...patch }
+    this.controlPlane.database.run(
+      'UPDATE volume_snapshots SET recovery_point_id=?,provider_id=?,name=?,status=?,size_bytes=?,encrypted=?,checksum=?,metadata=?,deleted_at=?,updated_at=? WHERE id=?',
+      [
+        next.recoveryPointId ?? null,
+        next.providerId ?? null,
+        next.name,
+        next.status,
+        next.sizeBytes ?? null,
+        next.encrypted ? 1 : 0,
+        next.checksum ?? null,
+        JSON.stringify(next.metadata),
+        next.deletedAt ?? null,
+        nowIso(this.now),
+        id,
+      ],
+    )
+    return this.snapshot(id)!
+  }
+  inventory(projectId: string, environmentId?: string): VolumeInventoryItem[] {
+    return this.list({ projectId, environmentId }).map((item) => {
+      const attachments = this.attachments(item.id),
+        snapshots = this.snapshots(item.id),
+        age = item.lastBackupAt ? Date.now() - new Date(item.lastBackupAt).getTime() : Infinity
+      return {
+        ...item,
+        attachments,
+        snapshots,
+        orphaned: item.status === 'orphaned',
+        usagePercent:
+          item.capacityBytes && item.usedBytes != null
+            ? Math.round((item.usedBytes / item.capacityBytes) * 1000) / 10
+            : undefined,
+        backupState: item.backupPolicyId ? (age <= 24 * 60 * 60 * 1000 ? 'protected' : 'stale') : 'unprotected',
+      }
+    })
+  }
+  audit(input: {
+    organizationId: string
+    projectId: string
+    environmentId?: string
+    actorId?: string
+    type: string
+    volumeId: string
+    payload?: Record<string, JsonValue>
+  }): void {
+    this.controlPlane.appendEvent({
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      resourceId: this.get(input.volumeId)?.resourceId,
+      actorId: input.actorId,
+      type: input.type,
+      level: 'warning',
+      payload: { volumeId: input.volumeId, environmentId: input.environmentId ?? null, ...input.payload },
+    })
+  }
 }

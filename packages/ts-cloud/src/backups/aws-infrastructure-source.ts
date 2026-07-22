@@ -41,15 +41,15 @@ function policySettings(policy: BackupPolicy): {
   roleArn: string
   vaultName: string
 } {
-  const resourceArn = setting(policy.includePatterns, 'resource') ?? policy.includePatterns.find((item) => item.startsWith('arn:')),
+  const resourceArn =
+      setting(policy.includePatterns, 'resource') ?? policy.includePatterns.find((item) => item.startsWith('arn:')),
     roleArn = setting(policy.includePatterns, 'role'),
     vaultName = setting(policy.includePatterns, 'vault') ?? 'Default'
   if (!resourceArn?.startsWith('arn:'))
     throw new Error('Infrastructure backups require resource:<arn> in include patterns.')
   if (!roleArn?.startsWith('arn:'))
     throw new Error('Infrastructure backups require role:<iam-role-arn> in include patterns.')
-  if (!/^[A-Za-z0-9_.-]{2,50}$/.test(vaultName))
-    throw new Error('Infrastructure backup vault name is invalid.')
+  if (!/^[A-Za-z0-9_.-]{2,50}$/.test(vaultName)) throw new Error('Infrastructure backup vault name is invalid.')
   return { resourceArn, roleArn, vaultName }
 }
 
@@ -58,10 +58,11 @@ async function waitForBackup(
   id: string,
   context: QueueExecutionContext,
 ): Promise<{ recoveryPointArn: string; sizeBytes: number }> {
-  for (;;) {
+  for (;; ) {
     context.throwIfCancellationRequested()
     context.heartbeat()
-    const job = await client.describeBackupJob(id), state = String(job.State ?? '')
+    const job = await client.describeBackupJob(id),
+      state = String(job.State ?? '')
     context.checkpoint('provider_backup', `AWS Backup job ${id} is ${state || 'pending'}.`)
     if (state === 'COMPLETED' && job.RecoveryPointArn)
       return { recoveryPointArn: job.RecoveryPointArn, sizeBytes: Number(job.BackupSizeInBytes ?? 0) }
@@ -76,10 +77,11 @@ async function waitForRestore(
   id: string,
   context: QueueExecutionContext,
 ): Promise<string> {
-  for (;;) {
+  for (;; ) {
     context.throwIfCancellationRequested()
     context.heartbeat()
-    const job = await client.describeRestoreJob(id), status = String(job.Status ?? '')
+    const job = await client.describeRestoreJob(id),
+      status = String(job.Status ?? '')
     context.checkpoint('provider_restore', `AWS Backup restore ${id} is ${status || 'pending'}.`)
     if (status === 'COMPLETED' && job.CreatedResourceArn) return job.CreatedResourceArn
     if (['ABORTED', 'FAILED'].includes(status))
@@ -89,16 +91,13 @@ async function waitForRestore(
 }
 
 export class AwsInfrastructureBackupSource implements BackupSourceAdapter {
-  constructor(
-    private readonly client: InfrastructureBackupClient = new AwsBackupClient(),
-  ) {}
+  constructor(private readonly client: InfrastructureBackupClient = new AwsBackupClient()) {}
 
-  async create(
-    policy: BackupPolicy,
-    context: QueueExecutionContext,
-  ): Promise<BackupSourceResult> {
+  async create(policy: BackupPolicy, context: QueueExecutionContext): Promise<BackupSourceResult> {
     const settings = policySettings(policy),
-      token = String(context.operation.id).replace(/[^A-Za-z0-9-]/g, '').slice(0, 64),
+      token = String(context.operation.id)
+        .replace(/[^A-Za-z0-9-]/g, '')
+        .slice(0, 64),
       started = await this.client.startBackupJob({
         BackupVaultName: settings.vaultName,
         ResourceArn: settings.resourceArn,
@@ -124,15 +123,16 @@ export class AwsInfrastructureBackupSource implements BackupSourceAdapter {
     }
   }
 
-  async verifyExternal(
-    point: RecoveryPoint,
-    _context: QueueExecutionContext,
-  ): Promise<Record<string, JsonValue>> {
+  async verifyExternal(point: RecoveryPoint, _context: QueueExecutionContext): Promise<Record<string, JsonValue>> {
     const id = String(point.manifest.providerBackupJobId ?? ''),
       job = await this.client.describeBackupJob(id)
     if (job.State !== 'COMPLETED' || job.RecoveryPointArn !== point.uri)
       throw new Error(`AWS Backup recovery point verification failed: ${job.StatusMessage ?? job.State ?? 'unknown'}.`)
-    return { state: job.State, recoveryPointArn: job.RecoveryPointArn, sizeBytes: Number(job.BackupSizeInBytes ?? point.sizeBytes) }
+    return {
+      state: job.State,
+      recoveryPointArn: job.RecoveryPointArn,
+      sizeBytes: Number(job.BackupSizeInBytes ?? point.sizeBytes),
+    }
   }
 
   async restore(
@@ -141,21 +141,21 @@ export class AwsInfrastructureBackupSource implements BackupSourceAdapter {
     target: Record<string, JsonValue>,
     context: QueueExecutionContext,
   ): Promise<Record<string, JsonValue>> {
-    if (target.inPlace === true)
-      throw new Error('AWS Backup infrastructure restores must create isolated resources.')
+    if (target.inPlace === true) throw new Error('AWS Backup infrastructure restores must create isolated resources.')
     const roleArn = String(target.roleArn ?? point.manifest.roleArn ?? ''),
-      metadata = target.metadata && typeof target.metadata === 'object' && !Array.isArray(target.metadata)
-        ? Object.fromEntries(Object.entries(target.metadata).map(([key, value]) => [key, String(value)]))
-        : {}
-    if (!roleArn.startsWith('arn:'))
-      throw new Error('AWS Backup restore requires an IAM role ARN.')
-    if (!Object.keys(metadata).length)
-      throw new Error('AWS Backup restore requires provider restore metadata.')
+      metadata =
+        target.metadata && typeof target.metadata === 'object' && !Array.isArray(target.metadata)
+          ? Object.fromEntries(Object.entries(target.metadata).map(([key, value]) => [key, String(value)]))
+          : {}
+    if (!roleArn.startsWith('arn:')) throw new Error('AWS Backup restore requires an IAM role ARN.')
+    if (!Object.keys(metadata).length) throw new Error('AWS Backup restore requires provider restore metadata.')
     const started = await this.client.startRestoreJob({
         RecoveryPointArn: point.uri,
         IamRoleArn: roleArn,
         Metadata: metadata,
-        IdempotencyToken: String(context.operation.id).replace(/[^A-Za-z0-9-]/g, '').slice(0, 64),
+        IdempotencyToken: String(context.operation.id)
+          .replace(/[^A-Za-z0-9-]/g, '')
+          .slice(0, 64),
       }),
       createdResourceArn = await waitForRestore(this.client, started.RestoreJobId, context)
     return { providerRestoreJobId: started.RestoreJobId, createdResourceArn, isolated: true, healthy: true }
@@ -169,10 +169,7 @@ export class AwsInfrastructureBackupSource implements BackupSourceAdapter {
     return { healthy: createdResourceArn.startsWith('arn:'), createdResourceArn }
   }
 
-  async deleteExternal(
-    point: RecoveryPoint,
-    _context: QueueExecutionContext,
-  ): Promise<void> {
+  async deleteExternal(point: RecoveryPoint, _context: QueueExecutionContext): Promise<void> {
     await this.client.deleteRecoveryPoint(String(point.manifest.vaultName ?? ''), point.uri)
   }
 }

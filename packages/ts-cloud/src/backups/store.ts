@@ -1,18 +1,11 @@
 import type { SQLQueryBindings } from 'bun:sqlite'
 import type { ControlPlaneStore, JsonValue } from '../control-plane'
-import type {
-  BackupCoverage,
-  BackupDestination,
-  BackupJob,
-  BackupPolicy,
-  RecoveryPoint,
-} from './model'
+import type { BackupCoverage, BackupDestination, BackupJob, BackupPolicy, RecoveryPoint } from './model'
 import { isIP } from 'node:net'
 import { nextScheduleRuns, normalizeScheduleExpression } from '../jobs'
 
 type Row = Record<string, unknown>
-const optional = (value: unknown) =>
-    value == null ? undefined : String(value),
+const optional = (value: unknown) => (value == null ? undefined : String(value)),
   bool = (value: unknown) => Number(value) === 1,
   json = <T>(value: unknown, fallback: T): T => {
     try {
@@ -30,9 +23,7 @@ function destination(row: Row): BackupDestination {
     name: String(row.name),
     provider: String(row.provider) as BackupDestination['provider'],
     endpoint: optional(row.endpoint),
-    endpointPolicy: String(
-      row.endpoint_policy,
-    ) as BackupDestination['endpointPolicy'],
+    endpointPolicy: String(row.endpoint_policy) as BackupDestination['endpointPolicy'],
     bucket: optional(row.bucket),
     prefix: String(row.prefix),
     region: optional(row.region),
@@ -104,12 +95,9 @@ function point(row: Row): RecoveryPoint {
     held: bool(row.held),
     pinned: bool(row.pinned),
     status: String(row.status) as RecoveryPoint['status'],
-    verificationState: String(
-      row.verification_state,
-    ) as RecoveryPoint['verificationState'],
+    verificationState: String(row.verification_state) as RecoveryPoint['verificationState'],
     verifiedAt: optional(row.verified_at),
-    durationMs:
-      row.duration_ms == null ? undefined : Number(row.duration_ms),
+    durationMs: row.duration_ms == null ? undefined : Number(row.duration_ms),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   }
@@ -127,13 +115,9 @@ function job(row: Row): BackupJob {
     idempotencyKey: String(row.idempotency_key),
     target: json(row.target, {}),
     restoreMode: optional(row.restore_mode) as BackupJob['restoreMode'],
-    cancellability: String(
-      row.cancellability,
-    ) as BackupJob['cancellability'],
+    cancellability: String(row.cancellability) as BackupJob['cancellability'],
     safetyBackupId: optional(row.safety_backup_id),
-    healthResult: row.health_result
-      ? json<Record<string, JsonValue>>(row.health_result, {})
-      : undefined,
+    healthResult: row.health_result ? json<Record<string, JsonValue>>(row.health_result, {}) : undefined,
     progress: json(row.progress, {}),
     error: optional(row.error),
     startedAt: optional(row.started_at),
@@ -152,8 +136,7 @@ function privateHost(host: string): boolean {
     normalized.endsWith('.internal')
   )
     return true
-  if (isIP(normalized) === 6)
-    return normalized === '::1' || normalized.startsWith('fe80:')
+  if (isIP(normalized) === 6) return normalized === '::1' || normalized.startsWith('fe80:')
   if (isIP(normalized) !== 4) return false
   const [a, b] = normalized.split('.').map(Number)
   return (
@@ -170,36 +153,22 @@ export function validateBackupDestination(
   input: Omit<BackupDestination, 'id' | 'version' | 'createdAt' | 'updatedAt'>,
 ): void {
   if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(input.name))
-    throw new Error(
-      'Backup destination names must be 2-63 lowercase letters, numbers, or dashes.',
-    )
-  if (input.provider !== 'aws_backup' && !input.bucket)
-    throw new Error('S3 backup destinations require a bucket.')
+    throw new Error('Backup destination names must be 2-63 lowercase letters, numbers, or dashes.')
+  if (input.provider !== 'aws_backup' && !input.bucket) throw new Error('S3 backup destinations require a bucket.')
   if (input.provider === 's3_compatible' && !input.endpoint)
     throw new Error('S3-compatible destinations require an explicit endpoint.')
   if (input.provider === 's3_compatible' && !input.credentialRef)
-    throw new Error(
-      'S3-compatible destinations require a credential reference.',
-    )
+    throw new Error('S3-compatible destinations require a credential reference.')
   if (input.encryption !== 'provider' && !input.encryptionKeyRef)
     throw new Error('Client-side encryption requires an encryption key reference.')
   if (input.endpoint) {
     const url = new URL(input.endpoint)
-    if (
-      url.protocol !== 'https:' ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      url.pathname !== '/'
-    )
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/')
       throw new Error(
         'Backup endpoints must be origin-only HTTPS URLs without credentials, paths, queries, or fragments.',
       )
     if (privateHost(url.hostname) && input.endpointPolicy !== 'allow_private')
-      throw new Error(
-        'Private backup endpoints require endpointPolicy allow_private.',
-      )
+      throw new Error('Private backup endpoints require endpointPolicy allow_private.')
   }
 }
 
@@ -209,9 +178,7 @@ export class BackupStore {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  createDestination(
-    input: Omit<BackupDestination, 'id' | 'version' | 'createdAt' | 'updatedAt'>,
-  ): BackupDestination {
+  createDestination(input: Omit<BackupDestination, 'id' | 'version' | 'createdAt' | 'updatedAt'>): BackupDestination {
     validateBackupDestination(input)
     const id = crypto.randomUUID(),
       now = this.now().toISOString()
@@ -247,25 +214,18 @@ export class BackupStore {
   }
 
   getDestination(id: string): BackupDestination | undefined {
-    const row = this.controlPlane.database
-      .query<Row, [string]>('SELECT * FROM backup_destinations WHERE id=?')
-      .get(id)
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM backup_destinations WHERE id=?').get(id)
     return row ? destination(row) : undefined
   }
 
   listDestinations(projectId: string): BackupDestination[] {
     return this.controlPlane.database
-      .query<Row, [string]>(
-        'SELECT * FROM backup_destinations WHERE project_id=? ORDER BY name',
-      )
+      .query<Row, [string]>('SELECT * FROM backup_destinations WHERE project_id=? ORDER BY name')
       .all(projectId)
       .map(destination)
   }
 
-  recordDestinationTest(
-    id: string,
-    result: { ok: boolean; error?: string },
-  ): BackupDestination {
+  recordDestinationTest(id: string, result: { ok: boolean; error?: string }): BackupDestination {
     const now = this.now().toISOString()
     this.controlPlane.database.run(
       `UPDATE backup_destinations SET status=?,last_tested_at=?,last_success_at=CASE WHEN ? THEN ? ELSE last_success_at END,last_failure_at=CASE WHEN ? THEN last_failure_at ELSE ? END,last_error=?,version=version+1,updated_at=? WHERE id=?`,
@@ -284,43 +244,23 @@ export class BackupStore {
     return this.getDestination(id)!
   }
 
-  createPolicy(
-    input: Omit<BackupPolicy, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'nextRunAt'>,
-  ): BackupPolicy {
-    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(input.name))
-      throw new Error('Backup policy names must be lowercase slugs.')
-    if (
-      !input.resourceId &&
-      !input.dataServiceId &&
-      !['control_plane', 'infrastructure'].includes(input.resourceKind)
-    )
+  createPolicy(input: Omit<BackupPolicy, 'id' | 'version' | 'createdAt' | 'updatedAt' | 'nextRunAt'>): BackupPolicy {
+    if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(input.name)) throw new Error('Backup policy names must be lowercase slugs.')
+    if (!input.resourceId && !input.dataServiceId && !['control_plane', 'infrastructure'].includes(input.resourceKind))
       throw new Error('A backup policy requires a resource or data service target.')
     const destination = this.getDestination(input.destinationId)
-    if (!destination || destination.projectId !== input.projectId)
-      throw new Error('Backup destination was not found.')
-    if (
-      input.resourceKind === 'control_plane' &&
-      destination.encryption === 'provider'
-    )
+    if (!destination || destination.projectId !== input.projectId) throw new Error('Backup destination was not found.')
+    if (input.resourceKind === 'control_plane' && destination.encryption === 'provider')
       throw new Error('Control-plane backups require client-side destination encryption.')
     if (
-      ['logical_database', 'volume', 'files', 'control_plane'].includes(
-        input.resourceKind,
-      ) && destination.provider === 'aws_backup'
+      ['logical_database', 'volume', 'files', 'control_plane'].includes(input.resourceKind) &&
+      destination.provider === 'aws_backup'
     )
       throw new Error(`${input.resourceKind} backups require an object-storage destination.`)
-    if (
-      input.resourceKind === 'infrastructure' &&
-      destination.provider !== 'aws_backup'
-    )
+    if (input.resourceKind === 'infrastructure' && destination.provider !== 'aws_backup')
       throw new Error('Infrastructure backups require an AWS Backup destination.')
     const expression = normalizeScheduleExpression(input.schedule),
-      nextRunAt = nextScheduleRuns(
-        expression.normalized,
-        input.timezone,
-        this.now(),
-        1,
-      )[0],
+      nextRunAt = nextScheduleRuns(expression.normalized, input.timezone, this.now(), 1)[0],
       id = crypto.randomUUID(),
       now = this.now().toISOString()
     this.controlPlane.database.run(
@@ -357,9 +297,7 @@ export class BackupStore {
   }
 
   getPolicy(id: string): BackupPolicy | undefined {
-    const row = this.controlPlane.database
-      .query<Row, [string]>('SELECT * FROM backup_policies WHERE id=?')
-      .get(id)
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM backup_policies WHERE id=?').get(id)
     return row ? policy(row) : undefined
   }
 
@@ -374,9 +312,7 @@ export class BackupStore {
 
   duePolicies(at: Date = this.now()): BackupPolicy[] {
     return this.controlPlane.database
-      .query<Row, [string]>(
-        'SELECT * FROM backup_policies WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at,id',
-      )
+      .query<Row, [string]>('SELECT * FROM backup_policies WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at,id')
       .all(at.toISOString())
       .map(policy)
   }
@@ -384,12 +320,7 @@ export class BackupStore {
   advancePolicy(id: string, scheduledFor: string): BackupPolicy {
     const current = this.getPolicy(id)
     if (!current) throw new Error('Backup policy was not found.')
-    const next = nextScheduleRuns(
-      current.schedule,
-      current.timezone,
-      new Date(scheduledFor),
-      1,
-    )[0]
+    const next = nextScheduleRuns(current.schedule, current.timezone, new Date(scheduledFor), 1)[0]
     this.controlPlane.database.run(
       'UPDATE backup_policies SET last_run_at=?,next_run_at=?,version=version+1,updated_at=? WHERE id=?',
       [scheduledFor, next, this.now().toISOString(), id],
@@ -397,13 +328,9 @@ export class BackupStore {
     return this.getPolicy(id)!
   }
 
-  createJob(
-    input: Omit<BackupJob, 'id' | 'createdAt' | 'updatedAt'>,
-  ): BackupJob {
+  createJob(input: Omit<BackupJob, 'id' | 'createdAt' | 'updatedAt'>): BackupJob {
     const existing = this.controlPlane.database
-      .query<Row, [string]>(
-        'SELECT * FROM backup_jobs WHERE idempotency_key=?',
-      )
+      .query<Row, [string]>('SELECT * FROM backup_jobs WHERE idempotency_key=?')
       .get(input.idempotencyKey)
     if (existing) return job(existing)
     const id = crypto.randomUUID(),
@@ -436,17 +363,13 @@ export class BackupStore {
   }
 
   getJob(id: string): BackupJob | undefined {
-    const row = this.controlPlane.database
-      .query<Row, [string]>('SELECT * FROM backup_jobs WHERE id=?')
-      .get(id)
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM backup_jobs WHERE id=?').get(id)
     return row ? job(row) : undefined
   }
 
   listJobs(projectId: string): BackupJob[] {
     return this.controlPlane.database
-      .query<Row, [string]>(
-        'SELECT * FROM backup_jobs WHERE project_id=? ORDER BY created_at DESC',
-      )
+      .query<Row, [string]>('SELECT * FROM backup_jobs WHERE project_id=? ORDER BY created_at DESC')
       .all(projectId)
       .map(job)
   }
@@ -490,16 +413,11 @@ export class BackupStore {
     return this.getJob(id)!
   }
 
-  createRecoveryPoint(
-    input: Omit<RecoveryPoint, 'id' | 'createdAt' | 'updatedAt'>,
-  ): RecoveryPoint {
-    if (!/^sha256:[a-f0-9]{64}$/i.test(input.checksum))
-      throw new Error('Recovery points require a SHA-256 checksum.')
+  createRecoveryPoint(input: Omit<RecoveryPoint, 'id' | 'createdAt' | 'updatedAt'>): RecoveryPoint {
+    if (!/^sha256:[a-f0-9]{64}$/i.test(input.checksum)) throw new Error('Recovery points require a SHA-256 checksum.')
     if (
       typeof input.uri !== 'string' ||
-      !['s3:', 'aws-backup:', 'file:'].some((scheme) =>
-        input.uri.startsWith(scheme),
-      )
+      !['s3:', 'aws-backup:', 'file:'].some((scheme) => input.uri.startsWith(scheme))
     )
       throw new Error('Recovery point URI uses an unsupported destination scheme.')
     const id = crypto.randomUUID(),
@@ -538,9 +456,7 @@ export class BackupStore {
   }
 
   getRecoveryPoint(id: string): RecoveryPoint | undefined {
-    const row = this.controlPlane.database
-      .query<Row, [string]>('SELECT * FROM recovery_points WHERE id=?')
-      .get(id)
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM recovery_points WHERE id=?').get(id)
     return row ? point(row) : undefined
   }
 
@@ -556,16 +472,7 @@ export class BackupStore {
   updateRecoveryPoint(
     id: string,
     patch: Partial<
-      Pick<
-        RecoveryPoint,
-        | 'status'
-        | 'verificationState'
-        | 'verifiedAt'
-        | 'held'
-        | 'pinned'
-        | 'manifest'
-        | 'durationMs'
-      >
+      Pick<RecoveryPoint, 'status' | 'verificationState' | 'verifiedAt' | 'held' | 'pinned' | 'manifest' | 'durationMs'>
     >,
   ): RecoveryPoint {
     const current = this.getRecoveryPoint(id)
@@ -609,22 +516,15 @@ export class BackupStore {
         const points = this.listRecoveryPoints(policy.projectId, policy.id)
           .filter((item) => item.status === 'available')
           .sort((a, b) => b.pointInTime.localeCompare(a.pointInTime))
-        for (const item of points.slice(0, Math.max(0, policy.retention.keepLast ?? 0)))
-          protectedIds.add(item.id)
-        const buckets: Array<
-          [number | undefined, (date: Date) => string]
-        > = [
+        for (const item of points.slice(0, Math.max(0, policy.retention.keepLast ?? 0))) protectedIds.add(item.id)
+        const buckets: Array<[number | undefined, (date: Date) => string]> = [
           [policy.retention.hourly, (date) => date.toISOString().slice(0, 13)],
           [policy.retention.daily, (date) => date.toISOString().slice(0, 10)],
           [
             policy.retention.weekly,
             (date) => {
               const monday = new Date(
-                Date.UTC(
-                  date.getUTCFullYear(),
-                  date.getUTCMonth(),
-                  date.getUTCDate() - ((date.getUTCDay() + 6) % 7),
-                ),
+                Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() + 6) % 7)),
               )
               return monday.toISOString().slice(0, 10)
             },
@@ -637,8 +537,7 @@ export class BackupStore {
             const key = bucket(new Date(item.pointInTime))
             if (seen.has(key)) continue
             seen.add(key)
-            if (seen.size <= Math.max(0, count ?? 0))
-              protectedIds.add(item.id)
+            if (seen.size <= Math.max(0, count ?? 0)) protectedIds.add(item.id)
           }
         }
       }
@@ -647,27 +546,21 @@ export class BackupStore {
   }
 
   coverage(projectId: string, at: Date = this.now()): BackupCoverage[] {
-    const destinations = new Map(
-      this.listDestinations(projectId).map((item) => [item.id, item]),
-    )
+    const destinations = new Map(this.listDestinations(projectId).map((item) => [item.id, item]))
     return this.listPolicies(projectId).map((item) => {
       const points = this.listRecoveryPoints(projectId, item.id).filter(
           (candidate) => candidate.status === 'available',
         ),
         lastRecoveryPoint = points[0],
         ageMinutes = lastRecoveryPoint
-          ? (at.getTime() - new Date(lastRecoveryPoint.pointInTime).getTime()) /
-            60_000
+          ? (at.getTime() - new Date(lastRecoveryPoint.pointInTime).getTime()) / 60_000
           : Number.POSITIVE_INFINITY
       return {
         policy: item,
         lastRecoveryPoint,
         missedRpo: item.enabled && ageMinutes > item.expectedRpoMinutes,
-        unverified: points.filter(
-          (candidate) => candidate.verificationState !== 'verified',
-        ).length,
-        destinationHealthy:
-          destinations.get(item.destinationId)?.status === 'healthy',
+        unverified: points.filter((candidate) => candidate.verificationState !== 'verified').length,
+        destinationHealthy: destinations.get(item.destinationId)?.status === 'healthy',
       }
     })
   }

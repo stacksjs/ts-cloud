@@ -14,10 +14,7 @@ export interface BackupObjectClient {
     contentType?: string
     metadata?: Record<string, string>
   }): Promise<void>
-  getObjectBytes(
-    bucket: string,
-    key: string,
-  ): Promise<{ body: Uint8Array; contentLength?: number }>
+  getObjectBytes(bucket: string, key: string): Promise<{ body: Uint8Array; contentLength?: number }>
   deleteObject(bucket: string, key: string): Promise<void>
   createMultipartUpload(
     bucket: string,
@@ -37,11 +34,7 @@ export interface BackupObjectClient {
     uploadId: string,
     parts: Array<{ PartNumber: number; ETag: string }>,
   ): Promise<void>
-  abortMultipartUpload(
-    bucket: string,
-    key: string,
-    uploadId: string,
-  ): Promise<void>
+  abortMultipartUpload(bucket: string, key: string, uploadId: string): Promise<void>
 }
 
 export interface MultipartCheckpoint {
@@ -68,8 +61,7 @@ export interface StoredBackup {
 }
 
 const MAGIC = Buffer.from('TSCB1')
-const checksum = (value: Uint8Array) =>
-  `sha256:${createHash('sha256').update(value).digest('hex')}`
+const checksum = (value: Uint8Array) => `sha256:${createHash('sha256').update(value).digest('hex')}`
 
 function encryptionKey(value: string): Buffer {
   return createHash('sha256').update(value).digest()
@@ -105,27 +97,20 @@ function credentials(value: string): {
   try {
     parsed = JSON.parse(value)
   } catch {
-    throw new Error(
-      'Backup destination credential must be a JSON object with accessKeyId and secretAccessKey.',
-    )
+    throw new Error('Backup destination credential must be a JSON object with accessKeyId and secretAccessKey.')
   }
   if (!parsed.accessKeyId || !parsed.secretAccessKey)
-    throw new Error(
-      'Backup destination credential requires accessKeyId and secretAccessKey.',
-    )
+    throw new Error('Backup destination credential requires accessKeyId and secretAccessKey.')
   if (parsed.expiresAt) {
     const expiresAt = new Date(String(parsed.expiresAt))
     if (!Number.isFinite(expiresAt.getTime()))
       throw new Error('Backup destination credential expiresAt must be an ISO timestamp.')
-    if (expiresAt.getTime() <= Date.now())
-      throw new Error('Backup destination credential has expired.')
+    if (expiresAt.getTime() <= Date.now()) throw new Error('Backup destination credential has expired.')
   }
   return {
     accessKeyId: String(parsed.accessKeyId),
     secretAccessKey: String(parsed.secretAccessKey),
-    sessionToken: parsed.sessionToken
-      ? String(parsed.sessionToken)
-      : undefined,
+    sessionToken: parsed.sessionToken ? String(parsed.sessionToken) : undefined,
   }
 }
 
@@ -147,12 +132,7 @@ export async function backupCredentialStatus(
     if (!Number.isFinite(expiresAt.getTime())) return { status: 'invalid' }
     const remaining = expiresAt.getTime() - now.getTime()
     return {
-      status:
-        remaining <= 0
-          ? 'expired'
-          : remaining <= 7 * 86_400_000
-            ? 'expiring'
-            : 'valid',
+      status: remaining <= 0 ? 'expired' : remaining <= 7 * 86_400_000 ? 'expiring' : 'valid',
       expiresAt: expiresAt.toISOString(),
     }
   } catch {
@@ -172,9 +152,7 @@ export class S3BackupDestinationAdapter {
       },
     ) => BackupObjectClient = (destination, explicit) =>
       new S3Client(destination.region ?? 'us-east-1', undefined, {
-        endpoint: destination.endpoint
-          ? new URL(destination.endpoint).host
-          : undefined,
+        endpoint: destination.endpoint ? new URL(destination.endpoint).host : undefined,
         forcePathStyle: destination.forcePathStyle,
         credentials: explicit,
       }),
@@ -182,9 +160,7 @@ export class S3BackupDestinationAdapter {
     private readonly partSize: number = 8 * 1024 * 1024,
   ) {}
 
-  private async client(
-    destination: BackupDestination,
-  ): Promise<BackupObjectClient> {
+  private async client(destination: BackupDestination): Promise<BackupObjectClient> {
     const explicit = destination.credentialRef
       ? credentials(await this.secrets.resolve(destination.credentialRef))
       : undefined
@@ -192,8 +168,7 @@ export class S3BackupDestinationAdapter {
   }
 
   async test(destination: BackupDestination): Promise<void> {
-    if (!destination.bucket)
-      throw new Error('S3 destination has no configured bucket.')
+    if (!destination.bucket) throw new Error('S3 destination has no configured bucket.')
     const client = await this.client(destination),
       key = `${destination.prefix ? `${destination.prefix.replace(/\/$/, '')}/` : ''}.ts-cloud-health/${crypto.randomUUID()}`
     await client.putObject({
@@ -204,10 +179,7 @@ export class S3BackupDestinationAdapter {
     })
     try {
       const downloaded = await client.getObjectBytes(destination.bucket, key)
-      if (
-        Buffer.from(downloaded.body).toString() !==
-        'ts-cloud backup destination health check'
-      )
+      if (Buffer.from(downloaded.body).toString() !== 'ts-cloud backup destination health check')
         throw new Error('Backup destination health object was corrupted.')
     } finally {
       await client.deleteObject(destination.bucket, key)
@@ -224,22 +196,17 @@ export class S3BackupDestinationAdapter {
       checkpoint?: (value: MultipartCheckpoint) => void
     },
   ): Promise<StoredBackup> {
-    if (!destination.bucket)
-      throw new Error('S3 destination has no configured bucket.')
+    if (!destination.bucket) throw new Error('S3 destination has no configured bucket.')
     const client = await this.client(destination),
       plaintextChecksum = checksum(input.body),
       encryptionSecret =
-        destination.encryption !== 'provider'
-          ? await this.secrets.resolve(destination.encryptionKeyRef!)
-          : undefined,
+        destination.encryption !== 'provider' ? await this.secrets.resolve(destination.encryptionKeyRef!) : undefined,
       encryptionIv = encryptionSecret
         ? input.resume?.encryptionIv
           ? Buffer.from(input.resume.encryptionIv, 'base64url')
           : randomBytes(12)
         : undefined,
-      body = encryptionSecret
-        ? encryptBackup(input.body, encryptionSecret, encryptionIv)
-        : Buffer.from(input.body),
+      body = encryptionSecret ? encryptBackup(input.body, encryptionSecret, encryptionIv) : Buffer.from(input.body),
       storageChecksum = checksum(body),
       key = `${destination.prefix ? `${destination.prefix.replace(/\/$/, '')}/` : ''}${input.key.replace(/^\/+/, '')}`,
       contentType = input.contentType ?? 'application/octet-stream',
@@ -252,11 +219,7 @@ export class S3BackupDestinationAdapter {
       throw new Error('Multipart checkpoint does not match the requested backup key.')
     if (input.resume && encryptionSecret && !input.resume.encryptionIv)
       throw new Error('Encrypted multipart checkpoint has no resumable envelope state.')
-    if (
-      input.resume &&
-      encryptionSecret &&
-      input.resume.plaintextChecksum !== plaintextChecksum
-    )
+    if (input.resume && encryptionSecret && input.resume.plaintextChecksum !== plaintextChecksum)
       throw new Error('Encrypted multipart checkpoint does not match the backup payload.')
     if (body.length < this.multipartThreshold) {
       await client.putObject({
@@ -281,9 +244,7 @@ export class S3BackupDestinationAdapter {
           encryptionIv: encryptionIv?.toString('base64url'),
           plaintextChecksum,
         },
-        completed = new Map(
-          state.parts.map((part) => [part.PartNumber, part]),
-        ),
+        completed = new Map(state.parts.map((part) => [part.PartNumber, part])),
         partCount = Math.ceil(body.length / this.partSize)
       for (let index = 0; index < partCount; index++) {
         const partNumber = index + 1
@@ -298,18 +259,11 @@ export class S3BackupDestinationAdapter {
             )
           completed.set(partNumber, { PartNumber: partNumber, ETag: result.ETag })
         }
-        state.parts = [...completed.values()].sort(
-          (a, b) => a.PartNumber - b.PartNumber,
-        )
+        state.parts = [...completed.values()].sort((a, b) => a.PartNumber - b.PartNumber)
         state.bytesUploaded = Math.min(body.length, partNumber * this.partSize)
         input.checkpoint?.(state)
       }
-      await client.completeMultipartUpload(
-        destination.bucket,
-        key,
-        state.uploadId,
-        state.parts,
-      )
+      await client.completeMultipartUpload(destination.bucket, key, state.uploadId, state.parts)
     }
     return {
       uri: `s3://${destination.bucket}/${key}`,
@@ -330,42 +284,26 @@ export class S3BackupDestinationAdapter {
     destination: BackupDestination,
     stored: Pick<StoredBackup, 'key' | 'checksum' | 'manifest'>,
   ): Promise<Buffer> {
-    if (!destination.bucket)
-      throw new Error('S3 destination has no configured bucket.')
+    if (!destination.bucket) throw new Error('S3 destination has no configured bucket.')
     const client = await this.client(destination),
       result = await client.getObjectBytes(destination.bucket, stored.key),
       body = Buffer.from(result.body)
-    if (checksum(body) !== stored.checksum)
-      throw new Error('Backup checksum verification failed; object is corrupt.')
+    if (checksum(body) !== stored.checksum) throw new Error('Backup checksum verification failed; object is corrupt.')
     const plaintext = stored.manifest.encrypted
-      ? decryptBackup(
-          body,
-          await this.secrets.resolve(destination.encryptionKeyRef!),
-        )
+      ? decryptBackup(body, await this.secrets.resolve(destination.encryptionKeyRef!))
       : body
     if (checksum(plaintext) !== stored.manifest.plaintextChecksum)
       throw new Error('Backup plaintext checksum verification failed.')
     return plaintext
   }
 
-  async abortPartial(
-    destination: BackupDestination,
-    checkpoint: MultipartCheckpoint,
-  ): Promise<void> {
-    if (!destination.bucket)
-      throw new Error('S3 destination has no configured bucket.')
-    await (
-      await this.client(destination)
-    ).abortMultipartUpload(
-      destination.bucket,
-      checkpoint.key,
-      checkpoint.uploadId,
-    )
+  async abortPartial(destination: BackupDestination, checkpoint: MultipartCheckpoint): Promise<void> {
+    if (!destination.bucket) throw new Error('S3 destination has no configured bucket.')
+    await (await this.client(destination)).abortMultipartUpload(destination.bucket, checkpoint.key, checkpoint.uploadId)
   }
 
   async delete(destination: BackupDestination, key: string): Promise<void> {
-    if (!destination.bucket)
-      throw new Error('S3 destination has no configured bucket.')
+    if (!destination.bucket) throw new Error('S3 destination has no configured bucket.')
     await (await this.client(destination)).deleteObject(destination.bucket, key)
   }
 }

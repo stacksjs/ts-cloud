@@ -1,19 +1,7 @@
 import type { JsonValue } from '../control-plane'
 
-export type DataEngine =
-  | 'postgres'
-  | 'mysql'
-  | 'mariadb'
-  | 'redis'
-  | 'mongodb'
-  | 'libsql'
-export type DataProvider =
-  | 'aws_rds'
-  | 'aws_aurora'
-  | 'aws_elasticache'
-  | 'server'
-  | 'container'
-  | 'external'
+export type DataEngine = 'postgres' | 'mysql' | 'mariadb' | 'redis' | 'mongodb' | 'libsql'
+export type DataProvider = 'aws_rds' | 'aws_aurora' | 'aws_elasticache' | 'server' | 'container' | 'external'
 export type DataAction =
   | 'create'
   | 'observe'

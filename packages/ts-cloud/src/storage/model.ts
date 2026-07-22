@@ -1,9 +1,27 @@
 import type { JsonValue } from '../control-plane'
 
 export type VolumeType = 'server_path' | 'docker' | 'ebs' | 'efs' | 'provider'
-export type VolumeStatus = 'pending' | 'available' | 'attaching' | 'attached' | 'detaching' | 'resizing' | 'snapshotting' | 'orphaned' | 'deleting' | 'deleted' | 'error'
-export type VolumeAction = 'create' | 'attach' | 'detach' | 'resize' | 'snapshot' | 'restore' | 'delete' | 'adopt' | 'usage'
-export interface VolumeCapability { supported: boolean, reason?: string, online?: boolean, minimumBytes?: number, maximumBytes?: number }
+export type VolumeStatus =
+  | 'pending'
+  | 'available'
+  | 'attaching'
+  | 'attached'
+  | 'detaching'
+  | 'resizing'
+  | 'snapshotting'
+  | 'orphaned'
+  | 'deleting'
+  | 'deleted'
+  | 'error'
+export type VolumeAction =
+  'create' | 'attach' | 'detach' | 'resize' | 'snapshot' | 'restore' | 'delete' | 'adopt' | 'usage'
+export interface VolumeCapability {
+  supported: boolean
+  reason?: string
+  online?: boolean
+  minimumBytes?: number
+  maximumBytes?: number
+}
 export type VolumeCapabilities = Record<VolumeAction, VolumeCapability>
 
 export interface PersistentVolume {
@@ -78,7 +96,15 @@ export interface VolumeInventoryItem extends PersistentVolume {
   backupState: 'protected' | 'stale' | 'unprotected'
 }
 
-export interface VolumeDriverObservation { providerId: string, capacityBytes?: number, usedBytes?: number, filesystem?: string, encrypted?: boolean, attachedResourceIds?: string[], raw?: Record<string, JsonValue> }
+export interface VolumeDriverObservation {
+  providerId: string
+  capacityBytes?: number
+  usedBytes?: number
+  filesystem?: string
+  encrypted?: boolean
+  attachedResourceIds?: string[]
+  raw?: Record<string, JsonValue>
+}
 export interface VolumeDriver {
   readonly provider: string
   readonly type: VolumeType
@@ -88,8 +114,15 @@ export interface VolumeDriver {
   attach(volume: PersistentVolume, attachment: VolumeAttachment): Promise<void>
   detach(volume: PersistentVolume, attachment: VolumeAttachment, options: { force: boolean }): Promise<void>
   resize(volume: PersistentVolume, capacityBytes: number): Promise<VolumeDriverObservation>
-  snapshot(volume: PersistentVolume, snapshot: VolumeSnapshot): Promise<{ providerId?: string, sizeBytes?: number, checksum?: string }>
-  restore(volume: PersistentVolume, snapshot: VolumeSnapshot, target: PersistentVolume): Promise<VolumeDriverObservation>
+  snapshot(
+    volume: PersistentVolume,
+    snapshot: VolumeSnapshot,
+  ): Promise<{ providerId?: string; sizeBytes?: number; checksum?: string }>
+  restore(
+    volume: PersistentVolume,
+    snapshot: VolumeSnapshot,
+    target: PersistentVolume,
+  ): Promise<VolumeDriverObservation>
   delete(volume: PersistentVolume): Promise<void>
-  usage(volume: PersistentVolume): Promise<{ usedBytes?: number, capacityBytes?: number }>
+  usage(volume: PersistentVolume): Promise<{ usedBytes?: number; capacityBytes?: number }>
 }
