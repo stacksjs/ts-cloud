@@ -3,6 +3,7 @@ export * from './auth'
 export * from './automation'
 export * from './api'
 export * from './control-plane'
+export * from './security'
 export * from './generators'
 
 // Validation exports - functions

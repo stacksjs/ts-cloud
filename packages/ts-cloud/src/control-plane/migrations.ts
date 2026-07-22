@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 9
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 10
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -465,6 +465,134 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX api_tokens_account_idx ON api_tokens(service_account_id, revoked_at, expires_at);
       CREATE INDEX api_tokens_expiry_idx ON api_tokens(expires_at, revoked_at);
       CREATE INDEX api_idempotency_expiry_idx ON api_idempotency_records(expires_at);
+    `,
+  },
+  {
+    version: 10,
+    name: 'security_posture_and_deploy_policy',
+    sql: `
+      CREATE TABLE security_scan_runs (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        release_id TEXT,
+        scanner_id TEXT NOT NULL,
+        scanner_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('passed', 'failed', 'skipped', 'unavailable', 'unsupported', 'stale')),
+        error TEXT,
+        metadata TEXT NOT NULL DEFAULT '{}',
+        findings_count INTEGER NOT NULL DEFAULT 0 CHECK (findings_count >= 0),
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL CHECK (duration_ms >= 0)
+      ) STRICT;
+
+      CREATE TABLE security_findings (
+        id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL UNIQUE,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        release_id TEXT,
+        scan_run_id TEXT NOT NULL REFERENCES security_scan_runs(id) ON DELETE CASCADE,
+        scanner_id TEXT NOT NULL,
+        scanner_version TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        severity TEXT NOT NULL CHECK (severity IN ('info', 'low', 'medium', 'high', 'critical')),
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        evidence TEXT NOT NULL DEFAULT '{}',
+        remediation TEXT,
+        subject TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('open', 'acknowledged', 'resolved', 'waived')),
+        owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        recurrence_count INTEGER NOT NULL DEFAULT 0 CHECK (recurrence_count >= 0),
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        resolved_at TEXT,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE security_policies (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        rules TEXT NOT NULL,
+        scanner_fail_mode TEXT NOT NULL CHECK (scanner_fail_mode IN ('open', 'closed')),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, environment_id, name)
+      ) STRICT;
+
+      CREATE TABLE security_waivers (
+        id TEXT PRIMARY KEY,
+        finding_id TEXT NOT NULL REFERENCES security_findings(id) ON DELETE CASCADE,
+        policy_id TEXT REFERENCES security_policies(id) ON DELETE SET NULL,
+        reason TEXT NOT NULL,
+        reference_url TEXT,
+        created_by_actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,
+        expires_at TEXT NOT NULL,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE security_finding_comments (
+        id TEXT PRIMARY KEY,
+        finding_id TEXT NOT NULL REFERENCES security_findings(id) ON DELETE CASCADE,
+        actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE RESTRICT,
+        body TEXT NOT NULL,
+        reference_url TEXT,
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE release_security_artifacts (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        release_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('sbom', 'vulnerability_summary', 'signature', 'provenance')),
+        format TEXT NOT NULL,
+        digest TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '{}',
+        content TEXT,
+        sensitive INTEGER NOT NULL DEFAULT 1 CHECK (sensitive IN (0, 1)),
+        created_at TEXT NOT NULL,
+        UNIQUE(release_id, kind, digest)
+      ) STRICT;
+
+      CREATE TABLE security_deploy_decisions (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT NOT NULL REFERENCES environments(id) ON DELETE CASCADE,
+        operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        policy_id TEXT NOT NULL REFERENCES security_policies(id) ON DELETE RESTRICT,
+        policy_version INTEGER NOT NULL CHECK (policy_version > 0),
+        outcome TEXT NOT NULL CHECK (outcome IN ('allow', 'warn', 'block')),
+        scanner_versions TEXT NOT NULL,
+        finding_ids TEXT NOT NULL,
+        waiver_ids TEXT NOT NULL,
+        explanation TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX security_scan_scope_idx ON security_scan_runs(organization_id, project_id, environment_id, completed_at DESC);
+      CREATE INDEX security_scan_scanner_idx ON security_scan_runs(scanner_id, completed_at DESC);
+      CREATE INDEX security_findings_scope_idx ON security_findings(organization_id, project_id, environment_id, status, severity);
+      CREATE INDEX security_findings_scanner_idx ON security_findings(scanner_id, rule_id, last_seen_at DESC);
+      CREATE INDEX security_waivers_finding_idx ON security_waivers(finding_id, expires_at, revoked_at);
+      CREATE INDEX security_comments_finding_idx ON security_finding_comments(finding_id, created_at);
+      CREATE INDEX release_security_artifacts_release_idx ON release_security_artifacts(release_id, kind);
+      CREATE INDEX security_decisions_environment_idx ON security_deploy_decisions(environment_id, created_at DESC);
     `,
   },
 ]
