@@ -26,6 +26,7 @@ import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities
 import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry, type RuntimeStreamSnapshot } from '../runtime'
 import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
+import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -390,6 +391,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'PATCH /api/notifications/channels',
   'POST /api/notifications/routes',
   'PATCH /api/notifications/routes',
+  'POST /api/jobs',
+  'PATCH /api/jobs',
+  'POST /api/jobs/reconcile',
+  'POST /api/workers/action',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -953,10 +958,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
+  const jobStore = new JobStore(controlPlane.store)
+  const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
   const composeService = new ComposeApplicationService(controlPlane.store)
   const releaseService = new ReleaseService(controlPlane.store)
   const alertStore = new AlertStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  for (const environmentRecord of controlPlane.environments.values()) synchronizeConfiguredJobs(jobStore, config as CloudConfig, { organization: controlPlane.organization, project: controlPlane.project, environment: environmentRecord, resources: controlPlane.store.listResources(controlPlane.project.id, environmentRecord.id) })
   const notificationRouter = new NotificationRouter(alertStore, {
     emailImpl: async input => {
       const { email } = await import('../aws/email')
@@ -989,6 +997,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   alertEvaluationSweep.unref?.()
   const healthCheckSweep = setInterval(() => { void evaluateHealthChecks().catch(error => console.error('ts-cloud health check evaluation failed:', error)) }, 30_000)
   healthCheckSweep.unref?.()
+  const jobScheduleSweep = setInterval(() => { try { jobService.tick() } catch (error) { console.error('ts-cloud scheduled job evaluation failed:', error) } }, 30_000)
+  jobScheduleSweep.unref?.()
   previewService.cleanup()
   const previewCleanupSweep = setInterval(() => {
     try { previewService.cleanup() }
@@ -997,6 +1007,41 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   previewCleanupSweep.unref?.()
   const queueWorkerEnabled = options.queueWorker ?? process.env.NODE_ENV !== 'test'
   const queueSecrets = deploymentLogSecrets()
+  const executeScheduledJob: JobExecutor = async (job, target) => {
+    const environmentRecord = job.environmentId
+      ? controlPlane.store.listEnvironments(job.projectId).find(item => item.id === job.environmentId)
+      : undefined
+    const jobEnvironment = (environmentRecord?.slug ?? String(defaultEnvironment)) as EnvironmentType
+
+    if (target.kind === 'dashboard_operation' && target.operationId) {
+      const data = latestDataByEnvironment.get(jobEnvironment) ?? initialData
+      const operation = resolveDashboardOperation(target.operationId, config as CloudConfig, data)
+      if (!operation)
+        return { ok: false, stderr: 'The allowlisted dashboard operation is no longer available.' }
+
+      const result = await runDashboardOperation(config as CloudConfig, jobEnvironment, operation)
+      return {
+        ok: result.ok,
+        stdout: result.stdout,
+        stderr: result.stderr ?? result.error,
+        retryable: /temporar|unavailable|timeout|network/i.test(result.stderr ?? result.error ?? ''),
+        output: { command: result.command ?? null, operation: result.operation },
+      }
+    }
+
+    if (target.kind === 'serverless_scheduler') {
+      const result = await controlScheduler(config as CloudConfig, jobEnvironment, 'run')
+      return {
+        ok: result.ok,
+        stdout: result.stdout,
+        stderr: result.error,
+        retryable: /temporar|unavailable|timeout|network/i.test(result.error ?? ''),
+        output: { command: result.command ?? null, operation: 'serverless_scheduler' },
+      }
+    }
+
+    return { ok: false, stderr: `No safe executor is configured for ${target.kind}.` }
+  }
   const queueWorker = queueWorkerEnabled
     ? new DurableQueueWorker(operationQueue, { ...createDeploymentQueueHandlers({
         store: controlPlane.store,
@@ -1045,7 +1090,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
         parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
         onError: error => console.error('ts-cloud deployment queue worker failed:', error),
       })
@@ -3095,6 +3140,205 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (url.pathname === '/api/notifications/deliveries/retry' && req.method === 'POST') { const body = await readJsonBody(req); const current = alertStore.getDelivery(String(body.id ?? '')); if (!current) return json({ ok: false, error: 'Delivery was not found.' }, 404); alertStore.updateDelivery(current.id, { state: 'retrying', attempt: Math.max(0, current.attempt - 1), nextAttemptAt: new Date().toISOString() }); return json({ ok: true, delivery: await notificationRouter.deliver(current.id) }) }
         }
 
+        if (url.pathname.startsWith('/api/jobs') || url.pathname.startsWith('/api/workers')) {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const resources = controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id)
+          const environmentWide = user.role === 'admin' || (!!environmentRecord && mayAccessEnvironment(user, environmentRecord.id, 'automation:read'))
+          const readableResources = environmentWide ? resources : resources.filter(resource => mayAccessResource(user, resource.id, 'automation:read'))
+          const visibleResource = (resourceId?: string) => !resourceId || readableResources.some(resource => resource.id === resourceId)
+          const actor = organizationPrincipal(user).actor
+          const currentData = latestDataByEnvironment.get(environment) ?? initialData
+          const operations = buildDashboardOperations(config as CloudConfig, currentData)
+          const deploymentMode = resolveDeploymentMode(config as CloudConfig)
+          const recent = () => {
+            const session = guard.resolveSession(req)
+            return !authEnabled || (!!session && authentication.isRecentlyAuthenticated(session))
+          }
+          const safePayloadRefs = (value: unknown): Record<string, JsonValue> => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+            const entries = Object.entries(value as Record<string, unknown>).slice(0, 50)
+            if (entries.some(([, item]) => typeof item !== 'string' || !/^(?:secret|ssm|arn|env):\/\//.test(item)))
+              throw new Error('Job payload values must be secret or environment references, never inline values.')
+            return Object.fromEntries(entries) as Record<string, JsonValue>
+          }
+          const audit = (type: string, payload: Record<string, JsonValue>, resourceId?: string) => controlPlane.store.appendEvent({
+            organizationId: controlPlane.organization.id,
+            projectId: controlPlane.project.id,
+            resourceId,
+            actorId: actor?.id,
+            type: `job.${type}`,
+            payload,
+          })
+
+          if (url.pathname === '/api/jobs/preview' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            try {
+              return json({ ok: true, productionExecutionCreated: false, preview: previewSchedule(String(body.expression ?? ''), String(body.timezone ?? 'UTC'), new Date(body.from ? String(body.from) : Date.now()), Number(body.count) || 5) })
+            }
+            catch (error) {
+              return json({ ok: false, error: error instanceof Error ? error.message : 'Schedule preview could not be generated.', productionExecutionCreated: false }, 422)
+            }
+          }
+
+          if (url.pathname === '/api/jobs' && req.method === 'GET') {
+            return json({
+              ok: true,
+              jobs: jobStore.list(controlPlane.project.id, { environmentId: environmentRecord?.id })
+                .filter(item => visibleResource(item.resourceId))
+                .map(item => ({ ...item, preview: previewSchedule(item.normalizedExpression, item.timezone, new Date(), 5), capability: jobProviderCapability(item), lastExecution: jobStore.listExecutions(item.id, 1)[0] })),
+            })
+          }
+
+          if (url.pathname === '/api/jobs' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const provider = String(body.provider ?? (deploymentMode === 'serverless' ? 'eventbridge' : 'server')) as import('../jobs').JobProvider
+            const expectedProvider = deploymentMode === 'serverless' ? 'eventbridge' : 'server'
+            if (provider !== expectedProvider)
+              return json({ ok: false, error: `${deploymentMode} environments accept ${expectedProvider} schedules through this adapter.` }, 422)
+            const operationId = body.operationId ? String(body.operationId) : undefined
+            if (provider === 'server' && (!operationId || !operations.some(item => item.id === operationId)))
+              return json({ ok: false, error: 'Server jobs require an allowlisted operation target.' }, 422)
+            const resource = body.resourceId ? resources.find(item => item.id === body.resourceId || item.slug === body.resourceId) : undefined
+            if (body.resourceId && (!resource || !visibleResource(resource.id)))
+              return json({ ok: false, error: 'Job resource was not found.' }, 404)
+            try {
+              const target = provider === 'server'
+                ? { kind: 'dashboard_operation' as const, operationId }
+                : { kind: 'serverless_scheduler' as const, action: 'run' }
+              const created = jobStore.create({
+                organizationId: controlPlane.organization.id,
+                projectId: controlPlane.project.id,
+                environmentId: environmentRecord?.id,
+                resourceId: resource?.id,
+                name: String(body.name ?? ''),
+                provider,
+                expression: String(body.expression ?? ''),
+                timezone: String(body.timezone ?? 'UTC'),
+                startsAt: body.startsAt ? String(body.startsAt) : undefined,
+                endsAt: body.endsAt ? String(body.endsAt) : undefined,
+                flexibleMinutes: Number(body.flexibleMinutes) || 0,
+                target,
+                payloadRefs: safePayloadRefs(body.payloadRefs),
+                missedRunPolicy: body.missedRunPolicy === 'catch_up' ? 'catch_up' : 'skip',
+                overlapPolicy: ['allow', 'forbid', 'replace'].includes(String(body.overlapPolicy)) ? body.overlapPolicy : 'forbid',
+                retryPolicy: { maxAttempts: Number(body.maxAttempts) || 3, backoffSeconds: Number(body.backoffSeconds) || 30, deadLetterRef: body.deadLetterRef ? String(body.deadLetterRef) : undefined },
+                timeoutSeconds: Number(body.timeoutSeconds) || 900,
+                enabled: body.enabled !== false,
+                origin: 'managed',
+                ownerActorId: actor?.id,
+                observedState: {},
+                reconciliationStatus: 'pending',
+              })
+              audit('created', { jobId: created.id, provider: created.provider, expression: created.normalizedExpression }, created.resourceId)
+              return json({ ok: true, job: created, capability: jobProviderCapability(created) }, 201)
+            }
+            catch (error) {
+              return json({ ok: false, error: error instanceof Error ? error.message : 'Scheduled job could not be created.' }, 422)
+            }
+          }
+
+          if (url.pathname === '/api/jobs' && req.method === 'PATCH') {
+            const body = await readJsonBody(req)
+            const current = jobStore.get(String(body.id ?? ''))
+            if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Scheduled job was not found.' }, 404)
+            if (current.origin === 'config') return json({ ok: false, error: 'Config-defined schedules must be edited in cloud.config.ts and reconciled.' }, 409)
+            const missedRunPolicy = body.missedRunPolicy == null ? undefined : String(body.missedRunPolicy)
+            const overlapPolicy = body.overlapPolicy == null ? undefined : String(body.overlapPolicy)
+            if (missedRunPolicy && !['skip', 'catch_up'].includes(missedRunPolicy)) return json({ ok: false, error: 'Missed-run policy must be skip or catch_up.' }, 422)
+            if (overlapPolicy && !['allow', 'forbid', 'replace'].includes(overlapPolicy)) return json({ ok: false, error: 'Overlap policy must be allow, forbid, or replace.' }, 422)
+            try {
+              const updated = jobStore.updateSchedule(current.id, {
+                expression: body.expression ? String(body.expression) : undefined,
+                timezone: body.timezone ? String(body.timezone) : undefined,
+                missedRunPolicy: missedRunPolicy as import('../jobs').ScheduledJob['missedRunPolicy'] | undefined,
+                overlapPolicy: overlapPolicy as import('../jobs').ScheduledJob['overlapPolicy'] | undefined,
+                timeoutSeconds: body.timeoutSeconds == null ? undefined : Number(body.timeoutSeconds),
+              })
+              audit('updated', { jobId: updated.id, expression: updated.normalizedExpression, version: updated.version }, updated.resourceId)
+              return json({ ok: true, job: updated })
+            }
+            catch (error) {
+              return json({ ok: false, error: error instanceof Error ? error.message : 'Scheduled job could not be updated.' }, 422)
+            }
+          }
+
+          if (url.pathname === '/api/jobs/action' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const current = jobStore.get(String(body.id ?? ''))
+            if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Scheduled job was not found.' }, 404)
+            const action = String(body.action ?? '')
+            if (action === 'run') {
+              const execution = jobService.enqueue(current, { trigger: 'manual', actorId: actor?.id })
+              audit('run_queued', { jobId: current.id, executionId: execution.id }, current.resourceId)
+              return json({ ok: true, execution }, 202)
+            }
+            if (['disable', 'delete'].includes(action) && environmentRecord?.kind === 'production') {
+              if (String(body.confirm ?? '') !== action) return json({ ok: false, error: `Type "${action}" to confirm this production change.` }, 409)
+              if (!recent()) return json({ ok: false, error: 'Recent authentication is required for this production change.', stepUpRequired: true }, 401)
+            }
+            if (action === 'enable' || action === 'disable') {
+              const updated = jobStore.setEnabled(current.id, action === 'enable')
+              audit(action === 'enable' ? 'enabled' : 'disabled', { jobId: current.id }, current.resourceId)
+              return json({ ok: true, job: updated })
+            }
+            if (action === 'delete') {
+              try {
+                jobStore.remove(current.id)
+                audit('deleted', { jobId: current.id, name: current.name }, current.resourceId)
+                return json({ ok: true, deleted: current.id })
+              }
+              catch (error) {
+                return json({ ok: false, error: error instanceof Error ? error.message : 'Scheduled job could not be deleted.' }, 409)
+              }
+            }
+            return json({ ok: false, error: 'Action must be run, enable, disable, or delete.' }, 422)
+          }
+
+          if (url.pathname === '/api/jobs/history' && req.method === 'GET') {
+            const current = jobStore.get(String(url.searchParams.get('jobId') ?? ''))
+            if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Scheduled job was not found.' }, 404)
+            return json({ ok: true, executions: jobStore.listExecutions(current.id, Number(url.searchParams.get('limit')) || 100).map(item => ({ ...item, logs: item.operationId ? operationQueue.logs(item.operationId, { limit: 500 }) : [] })) })
+          }
+
+          if (url.pathname === '/api/jobs/reconcile' && req.method === 'POST') {
+            if (!environmentRecord) return json({ ok: false, error: 'Environment was not found.' }, 404)
+            const reconciliation = synchronizeConfiguredJobs(jobStore, config as CloudConfig, { organization: controlPlane.organization, project: controlPlane.project, environment: environmentRecord, resources })
+            audit('reconciled', reconciliation)
+            return json({ ok: true, reconciliation })
+          }
+
+          if (url.pathname === '/api/workers' && req.method === 'GET') {
+            const observedWorkers = Array.isArray(currentData.workersDetail ?? currentData.workers) ? currentData.workersDetail ?? currentData.workers : []
+            return json({
+              ok: true,
+              workers: jobStore.listWorkers(controlPlane.project.id, environmentRecord?.id)
+                .filter(item => visibleResource(item.resourceId))
+                .map(item => {
+                  const observed = observedWorkers.find((candidate: any) => candidate.name === item.name || candidate.site === item.target.site)
+                  return observed ? { ...item, observedState: { ...item.observedState, status: observed.status ?? 'configured', currentJob: observed.currentJob ?? null, failures: Number(observed.failed ?? observed.failures) || 0, processed: Number(observed.processed) || 0 } } : item
+                }),
+            })
+          }
+
+          if (url.pathname === '/api/workers/action' && req.method === 'POST') {
+            const body = await readJsonBody(req)
+            const current = jobStore.getWorker(String(body.id ?? ''))
+            if (!current || !visibleResource(current.resourceId)) return json({ ok: false, error: 'Worker was not found.' }, 404)
+            const action = String(body.action ?? '')
+            if (action === 'restart') {
+              if (String(body.confirm ?? '') !== current.name) return json({ ok: false, error: `Type "${current.name}" to restart this worker.` }, 409)
+              const operation = operations.find(item => item.id === current.target.operationId)
+              if (!operation) return json({ ok: false, error: 'The allowlisted worker restart operation is unavailable.' }, 409)
+              const result = await runDashboardOperation(config as CloudConfig, environment, operation)
+              const worker = jobStore.reconcileWorker(current.id, result.ok ? 'in_sync' : 'unavailable', { ...current.observedState, lastRestartAt: new Date().toISOString(), command: result.command ?? null, error: result.error ?? result.stderr ?? null })
+              audit('worker_restarted', { workerId: current.id, ok: result.ok }, current.resourceId)
+              return json({ ...result, worker }, result.ok ? 200 : 409)
+            }
+            if (action === 'scale') return json({ ok: false, error: current.provider === 'systemd' ? 'Systemd worker scale is config-managed; edit the worker definition and reconcile.' : 'This provider does not expose safe worker scaling through the current adapter.' }, 422)
+            return json({ ok: false, error: 'Action must be restart or scale.' }, 422)
+          }
+        }
+
         if (url.pathname.startsWith('/api/telemetry/')) {
           const environmentRecord = controlPlane.environments.get(environment)
           const telemetry = new TelemetryStore(controlPlane.store)
@@ -3529,6 +3773,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     clearInterval(previewCleanupSweep)
     clearInterval(alertEvaluationSweep)
     clearInterval(healthCheckSweep)
+    clearInterval(jobScheduleSweep)
     clearUiCache()
     runtimeStreams.clear()
     queueWorker?.stop()
