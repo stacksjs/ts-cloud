@@ -156,6 +156,8 @@ const POLICIES: Record<string, RoutePolicy> = {
   'PATCH /api/queue/settings': { capability: 'automation:manage', scope: 'organization' },
   'DELETE /api/queue/history': { capability: 'automation:manage', scope: 'organization' },
   'GET /api/previews': { capability: 'deployments:read', anyUser: true },
+  'GET /api/releases': { capability: 'deployments:read', anyUser: true },
+  'POST /api/releases/action': { capability: 'deployments:create', anyUser: true },
   'POST /api/previews/deploy': { capability: 'deployments:create', anyUser: true },
   'POST /api/previews/destroy': { capability: 'deployments:cancel', anyUser: true },
   'POST /api/previews/extend': { capability: 'deployments:create', anyUser: true },

@@ -26,6 +26,8 @@ describe('routePolicy', () => {
     expect(routePolicy('GET', '/api/queue')).toMatchObject({ capability: 'deployments:read', anyUser: true })
     expect(routePolicy('POST', '/api/queue/cancel')).toMatchObject({ capability: 'deployments:cancel', anyUser: true })
     expect(routePolicy('PATCH', '/api/queue/settings')).toMatchObject({ capability: 'automation:manage', scope: 'organization' })
+    expect(routePolicy('GET', '/api/releases')).toMatchObject({ capability: 'deployments:read', anyUser: true })
+    expect(routePolicy('POST', '/api/releases/action')).toMatchObject({ capability: 'deployments:create', anyUser: true })
   })
 
   it('keeps every shell-equivalent route admin-only', () => {
