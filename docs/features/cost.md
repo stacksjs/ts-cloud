@@ -79,6 +79,26 @@ The monthly-cost column remains unavailable unless Cost and Usage Reports resour
 
 Additional inventory permissions are `tag:GetResources`, `ec2:DescribeInstances`, `ec2:DescribeVolumes`, `ec2:DescribeAddresses`, `rds:DescribeDBInstances`, `lambda:ListFunctions`, and `s3:ListAllMyBuckets`. Only `tag:GetResources` is needed for the cross-service baseline; the direct calls fill gaps and untagged resources.
 
+## Unused-resource analysis
+
+`cloud resources:unused` evaluates real inventory with conservative provider signals:
+
+- EC2 instances: 30-day average CPU below 5%.
+- RDS instances: 14 days with zero average connections and combined read/write IOPS below 1.
+- EBS volumes: detached according to `DescribeVolumes`.
+- Elastic IPs: no association according to `DescribeAddresses`.
+- S3 buckets: zero objects and zero requests over 90 days.
+- Lambda functions: zero invocations over 30 days.
+- ElastiCache clusters: zero connections and cache hit rate below 20% over 14 days.
+
+```sh
+cloud resources:unused
+cloud resources:unused --profile stacks --region us-east-1
+cloud resources:unused --type ec2
+```
+
+Missing CloudWatch data is treated as insufficient evidence, never as zero activity. Each candidate includes the exact signal and a provider-appropriate recommendation. When Cost and Usage Reports resource IDs are enabled, the command groups Cost Explorer by `RESOURCE_ID` and totals known monthly savings; otherwise savings are explicitly shown as unavailable.
+
 ### What it does
 
 - Calls `ce:GetCostAndUsage` for the last fully-closed month, grouping by `SERVICE` with `UnblendedCost`.
@@ -153,7 +173,6 @@ The cost reporting commands above use real Cost Explorer data. Resource discover
 
 | Command | Tracking |
 |---|---|
-| `resources:unused` (CloudWatch idle detection) | [#111](https://github.com/stacksjs/ts-cloud/issues/111) |
 | `optimize` (RI/savings recommendations) | [#112](https://github.com/stacksjs/ts-cloud/issues/112) |
 
 ## See also

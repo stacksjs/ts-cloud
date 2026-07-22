@@ -1,4 +1,5 @@
 import { AWSClient, buildQueryParams } from './client'
+import { resolveCredentials } from './credentials'
 
 /** A single CloudWatch metric datapoint. */
 export interface MetricDatapoint {
@@ -30,9 +31,9 @@ export class CloudWatchClient {
   private client: AWSClient
   private region: string
 
-  constructor(region: string = 'us-east-1') {
+  constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(resolveCredentials(profile))
   }
 
   private async query(params: Record<string, any>): Promise<any> {

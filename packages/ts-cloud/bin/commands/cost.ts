@@ -5,6 +5,7 @@ import { cacheLocation, clearCache } from '../../src/aws/cost-explorer-cache'
 import { S3Client } from '../../src/aws/s3'
 import { compareServiceCosts, egressUsageCosts, monthToDateRange, percentChange, projectedMonthlyCost, rollingComparisonRange } from '../../src/cost/reporting'
 import { ResourceInventoryClient } from '../../src/cost/resource-inventory'
+import { ResourceOptimizationService } from '../../src/cost/resource-optimization'
 
 const S3_SERVICE_NAME = 'Amazon Simple Storage Service'
 
@@ -315,9 +316,38 @@ export function registerCostCommands(app: CLI): void {
   app
     .command('resources:unused', 'Find unused resources')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .action(() => {
-      cli.warn('`resources:unused` is not yet implemented against real AWS data.')
-      cli.info('Tracking: https://github.com/stacksjs/ts-cloud/issues/111')
+    .option('--type <type>', 'Limit analysis to one resource type')
+    .option('--region <region>', 'AWS region for regional resources')
+    .action(async (options?: { profile?: string; type?: string; region?: string }) => {
+      cli.header(`Unused AWS Resources${options?.profile ? ` (profile: ${options.profile})` : ''}`)
+      const spinner = new cli.Spinner('Evaluating inventory and CloudWatch idle signals...')
+      spinner.start()
+      try {
+        const result = await new ResourceOptimizationService(options?.profile, options?.region).unused({
+          type: options?.type,
+        })
+        spinner.stop()
+        if (result.findings.length === 0) cli.info('No resources met the conservative unused-resource thresholds.')
+        else {
+          cli.table(
+            ['Resource', 'Signal', 'Recommendation', 'Monthly savings'],
+            result.findings.map((finding) => [
+              `${finding.resource.service}:${finding.resource.type}/${finding.resource.name}`,
+              finding.signal,
+              finding.recommendation,
+              finding.monthlySavings == null ? '—' : formatUSD(finding.monthlySavings),
+            ]),
+          )
+          const knownSavings = result.findings.reduce((total, finding) => total + (finding.monthlySavings ?? 0), 0)
+          cli.info(
+            `\nKnown monthly savings: ${result.savingsAvailable ? formatUSD(knownSavings) : 'unavailable (enable CUR resource IDs)'}`,
+          )
+        }
+        for (const warning of result.inventory.warnings) cli.warn(warning)
+      } catch (error) {
+        spinner.stop()
+        cli.error(`Unused-resource analysis failed: ${error instanceof Error ? error.message : String(error)}`)
+      }
     })
 
   app
