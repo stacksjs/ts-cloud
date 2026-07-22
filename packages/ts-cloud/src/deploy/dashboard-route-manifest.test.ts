@@ -9,7 +9,7 @@ describe('dashboard route manifest', () => {
 
   it('keeps member navigation on explicitly non-admin server routes', () => {
     const memberRoutes = routesForDashboard('server', true)
-    expect(memberRoutes.map(route => route.id)).toEqual(['services.list', 'deployments.list', 'logs.list', 'sources.integrations', 'applications.create', 'applications.compose', 'operations.queue', 'operations.previews', 'operations.releases', 'security.posture'])
+    expect(memberRoutes.map(route => route.id)).toEqual(['services.list', 'deployments.list', 'logs.list', 'sources.integrations', 'applications.create', 'applications.compose', 'operations.queue', 'operations.previews', 'operations.releases', 'runtime.workloads', 'observability.overview', 'security.posture'])
     expect(memberRoutes.every(route => !route.adminOnly)).toBe(true)
   })
 
