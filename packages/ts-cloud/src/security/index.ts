@@ -1,5 +1,6 @@
 export * from './types'
 export * from './posture-store'
+export * from './scanners'
 export {
   PreDeployScanner,
   SECRET_PATTERNS,
