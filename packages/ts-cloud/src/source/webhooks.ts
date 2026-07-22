@@ -3,6 +3,7 @@ import type { SourceBinding, SourceConnection, SourceProvider, SourceWebhook } f
 import type { SourceConnectionStore } from './store'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { DurableOperationQueue } from '../queue'
+import { PreviewEnvironmentStore } from '../preview'
 
 export interface NormalizedSourceEvent {
   event: 'push' | 'pull_request'
@@ -14,6 +15,8 @@ export interface NormalizedSourceEvent {
   commitSha: string
   changedPaths: string[]
   pullRequestNumber?: number
+  fork?: boolean
+  deleted?: boolean
 }
 
 export interface ProcessSourceWebhookResult {
@@ -82,14 +85,14 @@ export function normalizeSourceEvent(
   if (provider === 'github') {
     const event = header(headers, 'x-github-event')
     const repository = repositoryName(body.repository?.full_name)
-    if (event === 'push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: String(body.ref ?? '').startsWith('refs/tags/') ? String(body.ref).replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.after ?? body.head_commit?.id ?? ''), changedPaths: paths(body.commits ?? []) }
-    if (event === 'pull_request') return { event: 'pull_request', action: String(body.action ?? ''), repository, branch: String(body.pull_request?.head?.ref ?? ''), commitSha: String(body.pull_request?.head?.sha ?? ''), changedPaths: [], pullRequestNumber: Number(body.number) || undefined }
+    if (event === 'push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: String(body.ref ?? '').startsWith('refs/tags/') ? String(body.ref).replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.after ?? body.head_commit?.id ?? ''), changedPaths: paths(body.commits ?? []), deleted: body.deleted === true || /^0{40,64}$/.test(String(body.after ?? '')) }
+    if (event === 'pull_request') return { event: 'pull_request', action: String(body.action ?? ''), repository, branch: String(body.pull_request?.head?.ref ?? ''), commitSha: String(body.pull_request?.head?.sha ?? ''), changedPaths: [], pullRequestNumber: Number(body.number) || undefined, fork: repositoryName(body.pull_request?.head?.repo?.full_name) !== repository }
   }
   if (provider === 'gitlab') {
     const kind = String(body.object_kind ?? '').toLowerCase()
     const repository = repositoryName(body.project?.path_with_namespace)
     if (kind === 'push' || kind === 'tag_push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: kind === 'tag_push' ? String(body.ref ?? '').replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.checkout_sha ?? body.after ?? ''), changedPaths: paths(body.commits ?? []) }
-    if (kind === 'merge_request') return { event: 'pull_request', action: String(body.object_attributes?.action ?? body.object_attributes?.state ?? ''), repository, branch: String(body.object_attributes?.source_branch ?? ''), commitSha: String(body.object_attributes?.last_commit?.id ?? ''), changedPaths: [], pullRequestNumber: Number(body.object_attributes?.iid) || undefined }
+    if (kind === 'merge_request') return { event: 'pull_request', action: String(body.object_attributes?.action ?? body.object_attributes?.state ?? ''), repository, branch: String(body.object_attributes?.source_branch ?? ''), commitSha: String(body.object_attributes?.last_commit?.id ?? ''), changedPaths: [], pullRequestNumber: Number(body.object_attributes?.iid) || undefined, fork: body.object_attributes?.source_project_id !== body.object_attributes?.target_project_id }
   }
   if (provider === 'bitbucket') {
     const event = header(headers, 'x-event-key') ?? ''
@@ -98,18 +101,18 @@ export function normalizeSourceEvent(
       const change = body.push?.changes?.[0] ?? {}; const target = change.new?.target
       return { event: 'push', repository, ref: String(change.new?.name ?? ''), branch: change.new?.type === 'branch' ? String(change.new.name) : undefined, tag: change.new?.type === 'tag' ? String(change.new.name) : undefined, commitSha: String(target?.hash ?? ''), changedPaths: [] }
     }
-    if (event.startsWith('pullrequest:')) return { event: 'pull_request', action: event.replace('pullrequest:', ''), repository, branch: String(body.pullrequest?.source?.branch?.name ?? ''), commitSha: String(body.pullrequest?.source?.commit?.hash ?? ''), changedPaths: [], pullRequestNumber: Number(body.pullrequest?.id) || undefined }
+    if (event.startsWith('pullrequest:')) return { event: 'pull_request', action: event.replace('pullrequest:', ''), repository, branch: String(body.pullrequest?.source?.branch?.name ?? ''), commitSha: String(body.pullrequest?.source?.commit?.hash ?? ''), changedPaths: [], pullRequestNumber: Number(body.pullrequest?.id) || undefined, fork: repositoryName(body.pullrequest?.source?.repository?.full_name) !== repository }
   }
   if (provider === 'gitea') {
     const event = header(headers, 'x-gitea-event')
     const repository = repositoryName(body.repository?.full_name)
     if (event === 'push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: String(body.ref ?? '').startsWith('refs/tags/') ? String(body.ref).replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.after ?? ''), changedPaths: paths(body.commits ?? []) }
-    if (event === 'pull_request') return { event: 'pull_request', action: String(body.action ?? ''), repository, branch: String(body.pull_request?.head?.ref ?? ''), commitSha: String(body.pull_request?.head?.sha ?? ''), changedPaths: [], pullRequestNumber: Number(body.number) || undefined }
+    if (event === 'pull_request') return { event: 'pull_request', action: String(body.action ?? ''), repository, branch: String(body.pull_request?.head?.ref ?? ''), commitSha: String(body.pull_request?.head?.sha ?? ''), changedPaths: [], pullRequestNumber: Number(body.number) || undefined, fork: repositoryName(body.pull_request?.head?.repo?.full_name) !== repository }
   }
   if (provider === 'generic_https' || provider === 'generic_ssh') {
     if (body.event !== 'push' && body.event !== 'pull_request') return undefined
     return { event: body.event, action: typeof body.action === 'string' ? body.action : undefined, repository: repositoryName(body.repository), ref: typeof body.ref === 'string' ? body.ref : undefined,
-      branch: typeof body.branch === 'string' ? body.branch : undefined, tag: typeof body.tag === 'string' ? body.tag : undefined, commitSha: String(body.commitSha ?? ''), changedPaths: Array.isArray(body.changedPaths) ? body.changedPaths.map(String).slice(0, 500) : [], pullRequestNumber: Number(body.pullRequestNumber) || undefined }
+      branch: typeof body.branch === 'string' ? body.branch : undefined, tag: typeof body.tag === 'string' ? body.tag : undefined, commitSha: String(body.commitSha ?? ''), changedPaths: Array.isArray(body.changedPaths) ? body.changedPaths.map(String).slice(0, 500) : [], pullRequestNumber: Number(body.pullRequestNumber) || undefined, fork: body.fork === true, deleted: body.deleted === true }
   }
   return undefined
 }
@@ -178,14 +181,45 @@ export async function processSourceWebhook(input: { sources: SourceConnectionSto
     return { accepted: true, duplicate: recorded.duplicate, status: 'ignored', operations: [], message: 'Verified event did not match an active deployment rule' }
   }
   const queue = new DurableOperationQueue(input.controlPlane)
-  const operations = bindings.map((binding) => {
+  const previews = new PreviewEnvironmentStore(input.controlPlane)
+  const closeActions = new Set(['closed', 'merged', 'declined'])
+  const operations = bindings.flatMap((binding) => {
+    if (event.event === 'pull_request' && binding.resourceId && event.pullRequestNumber) {
+      const policy = previews.getDefinitionForResource(binding.resourceId)
+      if (policy) {
+        const closing = closeActions.has(String(event.action ?? '').toLowerCase())
+        const existing = previews.findForPullRequest(policy.id, event.repository, event.pullRequestNumber)
+        if (closing) {
+          if (!policy.cleanupOnClose || !existing || existing.status === 'destroyed') return []
+          const operation = queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind: 'preview.destroy', idempotencyKey: `preview:${existing.id}:destroy:${providerDeliveryId}`, correlationId: `preview:${existing.id}`, input: { previewId: existing.id, reason: 'pull_request_closed', source: { repository: event.repository, commitSha: event.commitSha, branch: event.branch ?? null, pullRequestNumber: event.pullRequestNumber } }, lockKey: `preview:${existing.id}`, providerKey: connection.provider, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
+          previews.transition(existing.id, 'queued', { operationId: operation.id })
+          return [operation]
+        }
+        try {
+          const persisted = previews.upsert({ definitionId: policy.id, sourceProvider: connection.provider, repository: event.repository, branch: event.branch ?? `pr-${event.pullRequestNumber}`, pullRequestNumber: event.pullRequestNumber, fork: event.fork, commitSha: event.commitSha })
+          if (!persisted.changed) return []
+          const kind = persisted.created ? 'preview.create' : 'preview.update'
+          const operation = queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind, idempotencyKey: `preview:${persisted.preview.id}:${event.commitSha}`, correlationId: `preview:${persisted.preview.id}`, input: { previewId: persisted.preview.id, source: { connectionId: connection.id, bindingId: binding.id, repository: event.repository, commitSha: event.commitSha, branch: event.branch ?? null, pullRequestNumber: event.pullRequestNumber, fork: !!event.fork, monorepoRoot: binding.monorepoRoot, submodules: binding.submodules, cloneDepth: binding.cloneDepth ?? null }, inheritedSecretNames: persisted.inheritedSecrets }, lockKey: `preview:${persisted.preview.id}`, providerKey: connection.provider, buildSlot: true, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
+          previews.transition(persisted.preview.id, 'queued', { operationId: operation.id })
+          return [operation]
+        }
+        catch (error) {
+          input.controlPlane.appendEvent({ projectId: binding.projectId, resourceId: binding.resourceId, type: 'preview.rejected', level: 'warning', payload: { repository: event.repository, pullRequestNumber: event.pullRequestNumber, fork: !!event.fork, reason: error instanceof Error ? error.message : String(error) } })
+          return []
+        }
+      }
+    }
     const kind = event.event === 'pull_request' ? 'deploy.preview' : 'deploy.source'
-    return queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind,
+    return [queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind,
       idempotencyKey: `source:${connection.id}:${providerDeliveryId}:${binding.id}:${event.commitSha}`, correlationId: `source:${providerDeliveryId}`,
       input: { source: { connectionId: connection.id, bindingId: binding.id, repository: event.repository, commitSha: event.commitSha, branch: event.branch ?? null, tag: event.tag ?? null, monorepoRoot: binding.monorepoRoot, submodules: binding.submodules, cloneDepth: binding.cloneDepth ?? null }, preview: event.event === 'pull_request' ? { number: event.pullRequestNumber ?? null, action: event.action ?? null } : null } as JsonValue,
       lockKey: binding.resourceId ? `resource:${binding.resourceId}` : `environment:${binding.environmentId ?? binding.projectId}`, providerKey: connection.provider, buildSlot: true, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: event.event === 'pull_request' ? 14 : 90,
-    }).operation
+    }).operation]
   })
+  if (!operations.length) {
+    input.sources.updateDelivery(recorded.delivery.id, { status: 'ignored' })
+    return { accepted: true, duplicate: recorded.duplicate, status: 'ignored', operations: [], message: 'Verified event required no preview lifecycle change' }
+  }
   input.sources.updateDelivery(recorded.delivery.id, { status: 'enqueued', operationId: operations[0]?.id })
   input.controlPlane.appendEvent({ organizationId: connection.organizationId, projectId: bindings[0]?.projectId, operationId: operations[0]?.id, type: 'source.webhook.enqueued', payload: { webhookId: webhook.id, deliveryId: recorded.delivery.id, repository: event.repository, commitSha: event.commitSha, operationIds: operations.map(operation => operation.id) } })
   return { accepted: true, duplicate: recorded.duplicate, status: 'enqueued', operations, message: `${operations.length} deployment operation${operations.length === 1 ? '' : 's'} enqueued` }

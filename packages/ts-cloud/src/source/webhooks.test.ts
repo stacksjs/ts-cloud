@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { createHmac } from 'node:crypto'
 import { ControlPlaneStore } from '../control-plane'
 import { SourceConnectionStore } from './store'
+import { PreviewEnvironmentStore } from '../preview'
 import { normalizeSourceEvent, processSourceWebhook, webhookEndpoint } from './webhooks'
 
 function fixture(provider: 'github' | 'generic_https' = 'github') {
@@ -80,6 +81,42 @@ describe('source webhook ingestion', () => {
 
     const accepted = await processSourceWebhook({ sources: f.sources, controlPlane: f.controlPlane, endpointToken: 'endpoint-fixture', headers: { ...baseHeaders, 'x-ts-cloud-delivery': 'generic-2', 'x-ts-cloud-timestamp': String(now.getTime() / 1000) }, rawBody: body, now })
     expect(accepted).toMatchObject({ accepted: true, status: 'enqueued', operations: [{ kind: 'deploy.preview', input: { preview: { number: 17, action: 'opened' } } }] })
+  })
+
+  it('creates, updates, and destroys one persistent preview across the PR lifecycle', async () => {
+    const f = fixture('generic_https')
+    const previews = new PreviewEnvironmentStore(f.controlPlane)
+    const policy = previews.createDefinition({ projectId: f.project.id, resourceId: f.resource.id, baseEnvironmentId: f.environment.id, domainPattern: 'https://{name}.preview.example.com', inheritedSecrets: ['PREVIEW_KEY'] })
+    const now = new Date('2026-07-21T12:00:00.000Z')
+    const deliver = async (delivery: string, action: string, sha: string, fork = false) => {
+      const body = raw({ event: 'pull_request', action, repository: 'acme/web', branch: 'feature/preview', commitSha: sha, pullRequestNumber: 23, fork })
+      return processSourceWebhook({ sources: f.sources, controlPlane: f.controlPlane, endpointToken: 'endpoint-fixture', headers: { 'x-ts-cloud-event': 'pull_request', 'x-ts-cloud-delivery': delivery, 'x-ts-cloud-signature': signature(f.secret, body), 'x-ts-cloud-timestamp': String(now.getTime() / 1000) }, rawBody: body, now })
+    }
+
+    const opened = await deliver('preview-open', 'opened', 'a'.repeat(40))
+    expect(opened).toMatchObject({ status: 'enqueued', operations: [{ kind: 'preview.create' }] })
+    const created = previews.findForPullRequest(policy.id, 'acme/web', 23)!
+    expect(created).toMatchObject({ status: 'queued', commitSha: 'a'.repeat(40), latestOperationId: opened.operations[0]?.id })
+
+    const synchronized = await deliver('preview-sync', 'synchronize', 'b'.repeat(40))
+    expect(synchronized).toMatchObject({ status: 'enqueued', operations: [{ kind: 'preview.update', input: { previewId: created.id } }] })
+    expect(previews.getInstance(created.id)?.commitSha).toBe('b'.repeat(40))
+
+    const closed = await deliver('preview-close', 'closed', 'b'.repeat(40))
+    expect(closed).toMatchObject({ status: 'enqueued', operations: [{ kind: 'preview.destroy', input: { previewId: created.id, reason: 'pull_request_closed' } }] })
+    expect(previews.listInstances({ definitionId: policy.id })).toHaveLength(1)
+  })
+
+  it('rejects untrusted fork previews before credentials enter a durable job', async () => {
+    const f = fixture('generic_https')
+    const previews = new PreviewEnvironmentStore(f.controlPlane)
+    const policy = previews.createDefinition({ projectId: f.project.id, resourceId: f.resource.id, baseEnvironmentId: f.environment.id, domainPattern: 'https://{name}.preview.example.com', inheritedSecrets: ['PREVIEW_KEY'] })
+    const now = new Date('2026-07-21T12:00:00.000Z')
+    const body = raw({ event: 'pull_request', action: 'opened', repository: 'acme/web', branch: 'fork/patch', commitSha: 'f'.repeat(40), pullRequestNumber: 31, fork: true })
+    const result = await processSourceWebhook({ sources: f.sources, controlPlane: f.controlPlane, endpointToken: 'endpoint-fixture', headers: { 'x-ts-cloud-event': 'pull_request', 'x-ts-cloud-delivery': 'fork-open', 'x-ts-cloud-signature': signature(f.secret, body), 'x-ts-cloud-timestamp': String(now.getTime() / 1000) }, rawBody: body, now })
+    expect(result).toMatchObject({ accepted: true, status: 'ignored', operations: [] })
+    expect(previews.listInstances({ definitionId: policy.id })).toEqual([])
+    expect(f.controlPlane.listEvents({ projectId: f.project.id }).some(event => event.type === 'preview.rejected' && JSON.stringify(event.payload).includes('fork'))).toBe(true)
   })
 
   it('normalizes hosted provider push and pull-request fixtures', () => {
