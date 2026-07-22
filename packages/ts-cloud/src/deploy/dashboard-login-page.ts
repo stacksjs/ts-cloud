@@ -78,14 +78,27 @@ const STYLES = `
  * redirect the server already does for a serverless deployment.
  */
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
+  return value.replace(
+    /[&<>"']/g,
+    (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!,
+  )
 }
 
-export function renderLoginPage(serverless = false, oidcProviders: readonly { slug: string, name: string }[] = []): string {
+export function renderLoginPage(
+  serverless = false,
+  oidcProviders: readonly { slug: string; name: string }[] = [],
+): string {
   const home = serverless ? '/serverless' : '/'
-  const sso = oidcProviders.length > 0
-    ? `<div class="sso" aria-label="Single sign-on">${oidcProviders.map(provider => `<a class="sso-button" href="/auth/oidc/${encodeURIComponent(provider.slug)}/start?return=${encodeURIComponent(home)}">Continue with ${escapeHtml(provider.name)}</a>`).join('')}</div><div class="separator"><span>or use local recovery</span></div>`
-    : ''
+  const oidcOptions = oidcProviders
+    .map(
+      (provider) =>
+        `<a class="sso-button" href="/auth/oidc/${encodeURIComponent(provider.slug)}/start?return=${encodeURIComponent(home)}">Continue with ${escapeHtml(provider.name)}</a>`,
+    )
+    .join('')
+  const sso =
+    oidcProviders.length > 0
+      ? `<div class="sso" aria-label="Single sign-on">${oidcOptions}</div><div class="separator"><span>or use local recovery</span></div>`
+      : ''
   return `<!doctype html>
 <html lang="en">
 <head>

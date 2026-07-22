@@ -50,16 +50,8 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
 ])
 
 export function isPublicRoute(method: string, pathname: string): boolean {
-  if (
-    method.toUpperCase() === 'GET' &&
-    /^\/auth\/oidc\/[a-z0-9-]+\/(?:start|callback)$/.test(pathname)
-  )
-  return true
-  if (
-    method.toUpperCase() === 'POST' &&
-    /^\/api\/source\/webhooks\/[A-Za-z0-9_-]{16,200}$/.test(pathname)
-  )
-  return true
+  if (method.toUpperCase() === 'GET' && /^\/auth\/oidc\/[a-z0-9-]+\/(?:start|callback)$/.test(pathname)) return true
+  if (method.toUpperCase() === 'POST' && /^\/api\/source\/webhooks\/[A-Za-z0-9_-]{16,200}$/.test(pathname)) return true
   return PUBLIC_ROUTES.has(`${method.toUpperCase()} ${pathname}`)
 }
 
@@ -349,6 +341,19 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/fleet': { capability: 'fleet:read' },
   'POST /api/fleet': { capability: 'fleet:manage' },
   'POST /api/fleet/action': { capability: 'fleet:manage' },
+  'GET /api/capacity': { capability: 'fleet:read' },
+  'POST /api/capacity': { capability: 'fleet:manage' },
+  'POST /api/capacity/member': { capability: 'fleet:manage' },
+  'POST /api/capacity/explain': { capability: 'fleet:read' },
+  'POST /api/capacity/action': { capability: 'fleet:manage' },
+  'GET /api/regions': { capability: 'config:read' },
+  'POST /api/regions': { capability: 'config:write' },
+  'POST /api/regions/action': { capability: 'config:write' },
+  'GET /api/maintenance': { capability: 'automation:read' },
+  'POST /api/maintenance/cleanup-preview': { capability: 'automation:manage' },
+  'POST /api/maintenance/cleanup-apply': { capability: 'automation:manage' },
+  'POST /api/maintenance/drill': { capability: 'automation:manage' },
+  'POST /api/maintenance/drill-run': { capability: 'automation:manage' },
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },
