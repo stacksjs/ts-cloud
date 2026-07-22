@@ -10,6 +10,7 @@ import { detectApplication, scanApplicationDirectory } from './detection'
 import { migrateApplicationDraft } from './migrations'
 import { parseApplicationManifest, planApplication } from './plan'
 import { RegistryConnectionStore } from './registry'
+import { applyApplicationDraft } from './service'
 import { ApplicationDraftStore } from './store'
 
 function base(build: ApplicationDraftInput['build'], runtime: ApplicationDraftInput['runtime']): ApplicationDraftInput {
@@ -133,6 +134,18 @@ describe('resumable application drafts', () => {
     expect(() => drafts.update(created.id, 1, { draft: input, step: 'review' })).toThrow('changed since version')
     expect(drafts.markApplied(created.id, 2)).toMatchObject({ status: 'applied', version: 3 })
     expect(controlPlane.listEvents({ projectId: project.id }).map(event => event.type)).toEqual(['application.draft.created', 'application.draft.updated', 'application.draft.applied'])
+    controlPlane.close()
+  })
+
+  it('requires explicit target confirmation before creating desired state', () => {
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'apply', name: 'Apply' }); const project = controlPlane.createProject({ organizationId: organization.id, slug: 'app', name: 'App' }); const environment = controlPlane.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' }); const drafts = new ApplicationDraftStore(controlPlane)
+    const input = base({ kind: 'static', publishDirectory: 'dist', buildCommand: 'bun run build' }, { target: 'serverless', architecture: 'arm64' }); input.projectId = project.id; input.environmentId = environment.id
+    const draft = drafts.create({ organizationId: organization.id, projectId: project.id, name: 'Static web', draft: input, step: 'review' })
+    expect(() => applyApplicationDraft({ controlPlane, drafts, draftId: draft.id, expectedVersion: draft.version, confirmEnvironment: 'staging' })).toThrow('Type production')
+    expect(controlPlane.listResources(project.id)).toHaveLength(0)
+    const applied = applyApplicationDraft({ controlPlane, drafts, draftId: draft.id, expectedVersion: draft.version, confirmEnvironment: 'production' })
+    expect(applied).toMatchObject({ resource: { slug: 'web', kind: 'application' }, operation: { state: 'queued', kind: 'application.create' }, plan: { valid: true } })
+    expect(() => applyApplicationDraft({ controlPlane, drafts, draftId: draft.id, expectedVersion: draft.version + 1, confirmEnvironment: 'production' })).toThrow('already applied')
     controlPlane.close()
   })
 
