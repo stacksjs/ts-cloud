@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 30
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 31
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1270,6 +1270,34 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX configuration_dependencies_resource_idx ON configuration_dependencies(resource_id,requires_redeploy);
       DROP TABLE configuration_dependencies_old;
       DROP TABLE configuration_entries_old;
+    `,
+  },
+  {
+    version: 31,
+    name: 'persistent_volume_lifecycle',
+    sql: `
+      CREATE TABLE persistent_volumes (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        resource_id TEXT REFERENCES resources(id) ON DELETE SET NULL, name TEXT NOT NULL, provider TEXT NOT NULL, provider_id TEXT, type TEXT NOT NULL CHECK (type IN ('server_path','docker','ebs','efs','provider')),
+        status TEXT NOT NULL CHECK (status IN ('pending','available','attaching','attached','detaching','resizing','snapshotting','orphaned','deleting','deleted','error')), capacity_bytes INTEGER CHECK (capacity_bytes IS NULL OR capacity_bytes >= 0), used_bytes INTEGER CHECK (used_bytes IS NULL OR used_bytes >= 0), filesystem TEXT, encrypted INTEGER NOT NULL DEFAULT 0 CHECK (encrypted IN (0,1)),
+        capabilities TEXT NOT NULL DEFAULT '{}', desired_state TEXT NOT NULL DEFAULT '{}', observed_state TEXT NOT NULL DEFAULT '{}', backup_policy_id TEXT REFERENCES backup_policies(id) ON DELETE SET NULL, last_backup_at TEXT, orphaned_at TEXT, adopted_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT, UNIQUE(project_id,environment_id,name)
+      ) STRICT;
+      CREATE INDEX persistent_volumes_inventory_idx ON persistent_volumes(project_id,environment_id,status,type,updated_at DESC);
+      CREATE UNIQUE INDEX persistent_volumes_provider_idx ON persistent_volumes(provider,provider_id) WHERE provider_id IS NOT NULL AND deleted_at IS NULL;
+      CREATE TABLE volume_attachments (
+        id TEXT PRIMARY KEY, volume_id TEXT NOT NULL REFERENCES persistent_volumes(id) ON DELETE RESTRICT, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        target_path TEXT NOT NULL, read_only INTEGER NOT NULL DEFAULT 0 CHECK (read_only IN (0,1)), uid INTEGER CHECK (uid IS NULL OR uid >= 0), gid INTEGER CHECK (gid IS NULL OR gid >= 0), mode TEXT, propagation TEXT NOT NULL DEFAULT 'private' CHECK (propagation IN ('private','rprivate','shared','rshared','slave','rslave')), driver_options TEXT NOT NULL DEFAULT '{}',
+        desired_state TEXT NOT NULL CHECK (desired_state IN ('attached','detached')), observed_state TEXT NOT NULL CHECK (observed_state IN ('pending','attached','detached','error')), operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, last_error TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(volume_id,resource_id,target_path)
+      ) STRICT;
+      CREATE INDEX volume_attachments_resource_idx ON volume_attachments(resource_id,desired_state,observed_state);
+      CREATE TABLE volume_snapshots (
+        id TEXT PRIMARY KEY, volume_id TEXT NOT NULL REFERENCES persistent_volumes(id) ON DELETE CASCADE, recovery_point_id TEXT REFERENCES recovery_points(id) ON DELETE SET NULL, provider_id TEXT,
+        name TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending','available','restoring','deleting','deleted','error')), size_bytes INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0), encrypted INTEGER NOT NULL DEFAULT 0 CHECK (encrypted IN (0,1)), checksum TEXT, metadata TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT
+      ) STRICT;
+      CREATE INDEX volume_snapshots_inventory_idx ON volume_snapshots(volume_id,status,created_at DESC);
     `,
   },
 ]
