@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { ADMIN_ONLY_SITE_FIELDS, checkMemberSiteFields, checkRouteConflict, MEMBER_EDITABLE_SITE_FIELDS } from './dashboard-site-settings'
+import {
+  ADMIN_ONLY_SITE_FIELDS,
+  checkMemberSiteFields,
+  checkRouteConflict,
+  MEMBER_EDITABLE_SITE_FIELDS,
+} from './dashboard-site-settings'
 
 describe('checkMemberSiteFields', () => {
   it('allows a member their own site settings', () => {
@@ -22,7 +27,7 @@ describe('checkMemberSiteFields', () => {
     }
   })
 
-  it('refuses root, which would serve another tenant\'s files', () => {
+  it("refuses root, which would serve another tenant's files", () => {
     const result = checkMemberSiteFields({ name: 'blog', root: '/var/www/other-tenant' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('filesystem path')
@@ -50,8 +55,7 @@ describe('checkMemberSiteFields', () => {
   })
 
   it('keeps the two field sets disjoint', () => {
-    for (const field of Object.keys(ADMIN_ONLY_SITE_FIELDS))
-      expect(MEMBER_EDITABLE_SITE_FIELDS.has(field)).toBe(false)
+    for (const field of Object.keys(ADMIN_ONLY_SITE_FIELDS)) expect(MEMBER_EDITABLE_SITE_FIELDS.has(field)).toBe(false)
   })
 })
 
@@ -69,17 +73,17 @@ describe('checkRouteConflict', () => {
     expect(check({ domain: 'new.example.com' }).ok).toBe(true)
   })
 
-  it('refuses claiming another tenant\'s domain', () => {
+  it("refuses claiming another tenant's domain", () => {
     const result = check({ domain: 'example.com' })
     expect(result.ok).toBe(false)
     expect(result.error).toContain('example.com')
   })
 
-  it('refuses claiming another tenant\'s alias', () => {
+  it("refuses claiming another tenant's alias", () => {
     expect(check({ domain: 'www.example.com' }).ok).toBe(false)
   })
 
-  it('refuses claiming another tenant\'s host via aliases', () => {
+  it("refuses claiming another tenant's host via aliases", () => {
     expect(check({ aliases: ['www.example.com'] }).ok).toBe(false)
   })
 
@@ -119,7 +123,7 @@ describe('checkRouteConflict', () => {
     expect(check({}).ok).toBe(true)
   })
 
-  it('uses the site\'s current path when the change omits one', () => {
+  it("uses the site's current path when the change omits one", () => {
     // blog is at '/', so claiming example.com collides with marketing at '/'.
     expect(check({ domain: 'example.com' }).ok).toBe(false)
   })

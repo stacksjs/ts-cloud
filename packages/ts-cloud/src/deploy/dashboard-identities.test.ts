@@ -39,7 +39,10 @@ describe('dashboard OIDC identity resolution', () => {
     })
     const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, resolved.identity.actorId)
 
-    expect(resolved).toMatchObject({ provisioned: true, user: { username: 'chris', email: 'chris@acme.test', role: 'member' } })
+    expect(resolved).toMatchObject({
+      provisioned: true,
+      user: { username: 'chris', email: 'chris@acme.test', role: 'member' },
+    })
     expect(membership).toMatchObject({ roleTemplate: 'viewer', scope: { type: 'organization' }, status: 'active' })
     expect(authentication.getOidcSubject(provider.id, 'employee-123')?.identityId).toBe(resolved.identity.id)
     expect(localLoginRequiresSso(authentication, controlPlane, resolved.identity)).toBe(true)
@@ -65,14 +68,25 @@ describe('dashboard OIDC identity resolution', () => {
     expect(loadUsers(cwd)).toHaveLength(1)
 
     const localUser = { username: 'victim', passwordHash: 'hash', role: 'member' as const, sites: {} }
-    const actor = controlPlane.store.createActor({ kind: 'user', externalId: 'dashboard:victim', displayName: 'Victim' })
-    authentication.createIdentity({ actorId: actor.id, username: localUser.username, email: 'victim@acme.test', passwordHash: localUser.passwordHash })
-    expect(() => resolveOidcDashboardIdentity(authentication, controlPlane, cwd, {
-      provider,
-      subject: 'employee-456',
+    const actor = controlPlane.store.createActor({
+      kind: 'user',
+      externalId: 'dashboard:victim',
+      displayName: 'Victim',
+    })
+    authentication.createIdentity({
+      actorId: actor.id,
+      username: localUser.username,
       email: 'victim@acme.test',
-      claims: {},
-    })).toThrow('unverified')
+      passwordHash: localUser.passwordHash,
+    })
+    expect(() =>
+      resolveOidcDashboardIdentity(authentication, controlPlane, cwd, {
+        provider,
+        subject: 'employee-456',
+        email: 'victim@acme.test',
+        claims: {},
+      }),
+    ).toThrow('unverified')
     controlPlane.store.close()
     rmSync(cwd, { recursive: true, force: true })
   })

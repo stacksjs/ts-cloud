@@ -23,7 +23,10 @@ export interface TerminalSessionOptions {
   onExit?: (code: number | null) => void
 }
 
-export function createTerminalSession(onData: (chunk: string) => void, options: TerminalSessionOptions = {}): TerminalSession {
+export function createTerminalSession(
+  onData: (chunk: string) => void,
+  options: TerminalSessionOptions = {},
+): TerminalSession {
   const shell = options.shell || (process.platform === 'win32' ? 'powershell.exe' : 'bash')
   const proc = Bun.spawn([shell, '-i'], {
     stdin: 'pipe',
@@ -35,42 +38,42 @@ export function createTerminalSession(onData: (chunk: string) => void, options: 
 
   const decoder = new TextDecoder()
   const pump = async (stream: ReadableStream<Uint8Array> | undefined): Promise<void> => {
-    if (!stream)
-      return
+    if (!stream) return
     const reader = stream.getReader()
     try {
-      for (;;) {
+      for (;; ) {
         const { done, value } = await reader.read()
-        if (done)
-          break
-        if (value)
-          onData(decoder.decode(value))
+        if (done) break
+        if (value) onData(decoder.decode(value))
       }
+    } catch {
+      /* stream closed */
     }
-    catch { /* stream closed */ }
   }
   void pump(proc.stdout as any)
   void pump(proc.stderr as any)
-  if (options.onExit)
-    proc.exited.then(code => options.onExit!(code)).catch(() => {})
+  if (options.onExit) proc.exited.then((code) => options.onExit!(code)).catch(() => {})
 
   return {
     write(data: string) {
       try {
         proc.stdin.write(data)
         proc.stdin.flush()
+      } catch {
+        /* shell gone */
       }
-      catch { /* shell gone */ }
     },
     close() {
       try {
         proc.stdin.end()
+      } catch {
+        /* already closed */
       }
-      catch { /* already closed */ }
       try {
         proc.kill()
+      } catch {
+        /* already dead */
       }
-      catch { /* already dead */ }
     },
   }
 }

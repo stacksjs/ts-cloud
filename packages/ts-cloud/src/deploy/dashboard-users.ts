@@ -8,7 +8,6 @@
  * dashboard is never reachable without credentials. The generated password is
  * returned to the caller to print once; only its hash is ever written.
  */
-
 import type { BoxRole, DashboardUser, SiteRole } from './dashboard-auth'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -26,16 +25,14 @@ export function isValidUsername(value: string): boolean {
 }
 
 function normalizeUser(raw: any): DashboardUser | null {
-  if (!raw || typeof raw.username !== 'string' || typeof raw.passwordHash !== 'string')
-    return null
+  if (!raw || typeof raw.username !== 'string' || typeof raw.passwordHash !== 'string') return null
   const role: BoxRole = raw.role === 'admin' ? 'admin' : 'member'
   const sites: Record<string, SiteRole> = {}
   if (raw.sites && typeof raw.sites === 'object') {
     for (const [site, siteRole] of Object.entries(raw.sites)) {
       // Anything that isn't a recognized site role is dropped rather than
       // coerced — a typo must not silently widen a grant.
-      if (siteRole === 'owner' || siteRole === 'collaborator')
-        sites[site] = siteRole
+      if (siteRole === 'owner' || siteRole === 'collaborator') sites[site] = siteRole
     }
   }
   return {
@@ -52,11 +49,9 @@ function normalizeUser(raw: any): DashboardUser | null {
 export function parseUsersFile(text: string): DashboardUser[] {
   try {
     const parsed = JSON.parse(text) as UsersFile
-    if (!Array.isArray(parsed?.users))
-      return []
+    if (!Array.isArray(parsed?.users)) return []
     return parsed.users.map(normalizeUser).filter((u): u is DashboardUser => u !== null)
-  }
-  catch {
+  } catch {
     return []
   }
 }
@@ -67,12 +62,10 @@ export function usersFilePath(cwd: string): string {
 
 export function loadUsers(cwd: string): DashboardUser[] {
   const file = usersFilePath(cwd)
-  if (!existsSync(file))
-    return []
+  if (!existsSync(file)) return []
   try {
     return parseUsersFile(readFileSync(file, 'utf8'))
-  }
-  catch {
+  } catch {
     return []
   }
 }
@@ -87,13 +80,13 @@ export function saveUsers(cwd: string, users: DashboardUser[]): void {
 
 export function findUser(users: DashboardUser[], username: string): DashboardUser | undefined {
   const wanted = username.trim().toLowerCase()
-  return users.find(u => u.username.toLowerCase() === wanted)
+  return users.find((u) => u.username.toLowerCase() === wanted)
 }
 
 export interface BootstrapResult {
   users: DashboardUser[]
   /** Set only when an admin was just created — print it once, then it's gone. */
-  generated?: { username: string, password: string }
+  generated?: { username: string; password: string }
 }
 
 /**
@@ -103,8 +96,7 @@ export interface BootstrapResult {
  */
 export function ensureAdminUser(cwd: string, username = 'admin'): BootstrapResult {
   const users = loadUsers(cwd)
-  if (users.some(u => u.role === 'admin'))
-    return { users }
+  if (users.some((u) => u.role === 'admin')) return { users }
 
   const password = process.env.TS_CLOUD_UI_PASSWORD?.trim() || generatePassword()
   const admin: DashboardUser = {
@@ -135,7 +127,7 @@ export interface UpsertMemberInput {
  * Members are created through this path only — it cannot produce an admin, so
  * an invite flow can never escalate someone to box-wide control.
  */
-export function upsertMember(cwd: string, input: UpsertMemberInput): { user: DashboardUser, password?: string } {
+export function upsertMember(cwd: string, input: UpsertMemberInput): { user: DashboardUser; password?: string } {
   const users = loadUsers(cwd)
   const existing = findUser(users, input.username)
 
@@ -153,7 +145,7 @@ export function upsertMember(cwd: string, input: UpsertMemberInput): { user: Das
   }
 
   const next = existing
-    ? users.map(u => (u.username.toLowerCase() === user.username.toLowerCase() ? user : u))
+    ? users.map((u) => (u.username.toLowerCase() === user.username.toLowerCase() ? user : u))
     : [...users, user]
   saveUsers(cwd, next)
   return { user, password }
@@ -163,10 +155,12 @@ export function upsertMember(cwd: string, input: UpsertMemberInput): { user: Das
 export function updateUserPassword(cwd: string, username: string, passwordHash: string): DashboardUser {
   const users = loadUsers(cwd)
   const existing = findUser(users, username)
-  if (!existing)
-    throw new Error('Authentication user was not found')
+  if (!existing) throw new Error('Authentication user was not found')
   const user = { ...existing, passwordHash }
-  saveUsers(cwd, users.map(item => item.username.toLowerCase() === existing.username.toLowerCase() ? user : item))
+  saveUsers(
+    cwd,
+    users.map((item) => (item.username.toLowerCase() === existing.username.toLowerCase() ? user : item)),
+  )
   return user
 }
 
@@ -174,16 +168,18 @@ export function updateUserPassword(cwd: string, username: string, passwordHash: 
  * Remove a user. The last admin cannot be removed — that would lock everyone
  * out of the box with no way back in short of editing the file by hand.
  */
-export function removeUser(cwd: string, username: string): { ok: boolean, error?: string } {
+export function removeUser(cwd: string, username: string): { ok: boolean; error?: string } {
   const users = loadUsers(cwd)
   const target = findUser(users, username)
-  if (!target)
-    return { ok: false, error: `No such user: ${username}` }
+  if (!target) return { ok: false, error: `No such user: ${username}` }
 
-  if (target.role === 'admin' && users.filter(u => u.role === 'admin').length === 1)
+  if (target.role === 'admin' && users.filter((u) => u.role === 'admin').length === 1)
     return { ok: false, error: 'Cannot remove the last admin.' }
 
-  saveUsers(cwd, users.filter(u => u.username.toLowerCase() !== target.username.toLowerCase()))
+  saveUsers(
+    cwd,
+    users.filter((u) => u.username.toLowerCase() !== target.username.toLowerCase()),
+  )
   return { ok: true }
 }
 

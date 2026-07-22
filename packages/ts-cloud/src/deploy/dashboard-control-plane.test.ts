@@ -8,8 +8,7 @@ import { initializeDashboardControlPlane, trackDashboardOperation } from './dash
 let root: string | undefined
 
 afterEach(() => {
-  if (root)
-    rmSync(root, { recursive: true, force: true })
+  if (root) rmSync(root, { recursive: true, force: true })
   root = undefined
 })
 
@@ -48,9 +47,9 @@ describe('dashboard control plane', () => {
 
     const controlPlane = initializeDashboardControlPlane(root, configured)
     const resources = controlPlane.store.listResources(controlPlane.project.id)
-    expect(resources.filter(resource => resource.kind === 'server')).toHaveLength(2)
-    expect(resources.filter(resource => resource.kind === 'database')).toHaveLength(2)
-    expect(resources.find(resource => resource.kind === 'server')).toMatchObject({ provider: 'aws', name: 'Acme' })
+    expect(resources.filter((resource) => resource.kind === 'server')).toHaveLength(2)
+    expect(resources.filter((resource) => resource.kind === 'database')).toHaveLength(2)
+    expect(resources.find((resource) => resource.kind === 'server')).toMatchObject({ provider: 'aws', name: 'Acme' })
     controlPlane.store.close()
   })
 
@@ -70,8 +69,18 @@ describe('dashboard control plane', () => {
     expect(tracked.operation.state).toBe('succeeded')
     expect(tracked.operation.output).toEqual({ ok: true, stdoutBytes: 38, stderrBytes: 0 })
     expect(JSON.stringify(tracked.operation.output)).not.toContain('streamed queue transcript')
-    expect(controlPlane.store.database.query<Record<string, string>, [string]>('SELECT message FROM operation_logs WHERE operation_id=? AND stream=\'stdout\'').get(tracked.operation.id)?.message).toBe('streamed queue transcript is persisted')
-    expect(controlPlane.store.database.query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?').get(tracked.operation.id)?.lock_key).toBe(`resource:${tracked.operation.resourceId}`)
+    expect(
+      controlPlane.store.database
+        .query<Record<string, string>, [string]>(
+          "SELECT message FROM operation_logs WHERE operation_id=? AND stream='stdout'",
+        )
+        .get(tracked.operation.id)?.message,
+    ).toBe('streamed queue transcript is persisted')
+    expect(
+      controlPlane.store.database
+        .query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?')
+        .get(tracked.operation.id)?.lock_key,
+    ).toBe(`resource:${tracked.operation.resourceId}`)
     expect(controlPlane.store.listEvents({ operationId: tracked.operation.id })).toHaveLength(3)
     controlPlane.store.close()
   })

@@ -47,8 +47,7 @@ describe('dashboard data-service integration', () => {
       } as any,
     })
     const base = running.url.replace(/\/$/, ''),
-      call = (path: string, init?: RequestInit) =>
-        running!.server.fetch(new Request(`${base}${path}`, init)),
+      call = (path: string, init?: RequestInit) => running!.server.fetch(new Request(`${base}${path}`, init)),
       login = await call('/api/login', {
         method: 'POST',
         headers: { origin: base, 'content-type': 'application/json' },
@@ -125,9 +124,7 @@ describe('dashboard data-service integration', () => {
       id: created.service.id,
       credential: { configured: true, username: 'app', version: 1 },
     })
-    expect(JSON.stringify(listed)).not.toContain(
-      created.oneTimeCredential.password,
-    )
+    expect(JSON.stringify(listed)).not.toContain(created.oneTimeCredential.password)
     expect(listed.services[0].credentialRef).toBeUndefined()
     const staging = (await (
       await call('/api/data-services?env=staging', {
@@ -143,9 +140,7 @@ describe('dashboard data-service integration', () => {
         body: JSON.stringify({ id: created.service.id }),
       })
     ).json()) as any
-    expect(revealed.credential.password).toBe(
-      created.oneTimeCredential.password,
-    )
+    expect(revealed.credential.password).toBe(created.oneTimeCredential.password)
 
     const deletionPlan = (await (
       await call('/api/data-services/action?env=production', {
@@ -165,32 +160,26 @@ describe('dashboard data-service integration', () => {
         },
       },
     })
-    const unsafeDelete = await call(
-      '/api/data-services/action?env=production',
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          id: created.service.id,
-          action: 'delete',
-          execute: true,
-          changes: { retention: 'final_backup' },
-        }),
-      },
-    )
+    const unsafeDelete = await call('/api/data-services/action?env=production', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: created.service.id,
+        action: 'delete',
+        execute: true,
+        changes: { retention: 'final_backup' },
+      }),
+    })
     expect(unsafeDelete.status).toBe(409)
-    const invalidAction = await call(
-      '/api/data-services/action?env=production',
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          id: created.service.id,
-          action: 'arbitrary-provider-call',
-          execute: true,
-        }),
-      },
-    )
+    const invalidAction = await call('/api/data-services/action?env=production', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: created.service.id,
+        action: 'arbitrary-provider-call',
+        execute: true,
+      }),
+    })
     expect(invalidAction.status).toBe(422)
 
     const adopted = (await (
@@ -210,28 +199,21 @@ describe('dashboard data-service integration', () => {
       readOnly: true,
       service: { status: 'adopted', managementEnabled: false },
     })
-    const adoptedMutation = await call(
-      '/api/data-services/action?env=production',
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          id: adopted.service.id,
-          action: 'restart',
-          execute: true,
-        }),
-      },
-    )
+    const adoptedMutation = await call('/api/data-services/action?env=production', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: adopted.service.id,
+        action: 'restart',
+        execute: true,
+      }),
+    })
     expect(adoptedMutation.status).toBe(409)
 
     store = new ControlPlaneStore({ cwd: root })
-    expect(
-      JSON.stringify(
-        store.listOperations({ projectId: store.getProjectBySlug('acme')!.id }),
-      ),
-    ).not.toContain(created.oneTimeCredential.password)
-    expect(Buffer.from(store.database.serialize()).toString()).not.toContain(
+    expect(JSON.stringify(store.listOperations({ projectId: store.getProjectBySlug('acme')!.id }))).not.toContain(
       created.oneTimeCredential.password,
     )
+    expect(Buffer.from(store.database.serialize()).toString()).not.toContain(created.oneTimeCredential.password)
   }, 15_000)
 })

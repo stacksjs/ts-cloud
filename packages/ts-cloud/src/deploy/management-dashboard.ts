@@ -30,7 +30,6 @@
  * - `TS_CLOUD_UI_USERNAME`  htpasswd user (default `admin`)
  * - `TS_CLOUD_UI_REALM`     browser auth realm
  */
-
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -75,22 +74,24 @@ export interface ResolvedDashboardAuth {
  * Persisting the generated password keeps htpasswd stable across deploys (so a
  * saved credential keeps working) and lets the operator retrieve it locally.
  */
-export function resolveDashboardAuth(cwd: string, username: string, logger: EnsureDashboardLogger): ResolvedDashboardAuth {
+export function resolveDashboardAuth(
+  cwd: string,
+  username: string,
+  logger: EnsureDashboardLogger,
+): ResolvedDashboardAuth {
   const explicit = process.env.TS_CLOUD_UI_PASSWORD?.trim()
-  if (explicit)
-    return { password: explicit, source: 'env' }
-  if (truthy(process.env.TS_CLOUD_UI_PUBLIC))
-    return { password: undefined, source: 'public' }
+  if (explicit) return { password: explicit, source: 'env' }
+  if (truthy(process.env.TS_CLOUD_UI_PUBLIC)) return { password: undefined, source: 'public' }
 
   const file = join(cwd, DASHBOARD_CREDENTIALS_FILE)
   try {
     if (existsSync(file)) {
       const saved = JSON.parse(readFileSync(file, 'utf8')) as { password?: string }
-      if (saved?.password)
-        return { password: saved.password, source: 'generated' }
+      if (saved?.password) return { password: saved.password, source: 'generated' }
     }
+  } catch {
+    /* unreadable/corrupt credentials file — regenerate below */
   }
-  catch { /* unreadable/corrupt credentials file — regenerate below */ }
 
   const password = generatePassword()
   try {
@@ -100,13 +101,16 @@ export function resolveDashboardAuth(cwd: string, username: string, logger: Ensu
     // Deliberately NOT logging the password: deploy output lands in CI logs,
     // terminal scrollback and the systemd journal, all of which outlive the
     // deploy and are readable by more people than the 0600 file is.
-    logger.info(`Management dashboard: generated a password for '${username}' and saved it to ${DASHBOARD_CREDENTIALS_FILE} (read it there — it is not printed). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`)
-  }
-  catch (error: any) {
+    logger.info(
+      `Management dashboard: generated a password for '${username}' and saved it to ${DASHBOARD_CREDENTIALS_FILE} (read it there — it is not printed). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`,
+    )
+  } catch (error: any) {
     // Only place the password is still printed: persisting failed, so this log
     // line is the operator's single copy. Say plainly that it is now in the log
     // so they can rotate it once the underlying write problem is fixed.
-    logger.warn(`Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}\nThis password is now in your deploy log. Set TS_CLOUD_UI_PASSWORD to a value of your own and redeploy once ${DASHBOARD_CREDENTIALS_FILE} is writable.`)
+    logger.warn(
+      `Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}\nThis password is now in your deploy log. Set TS_CLOUD_UI_PASSWORD to a value of your own and redeploy once ${DASHBOARD_CREDENTIALS_FILE} is writable.`,
+    )
   }
   return { password, source: 'generated' }
 }
@@ -132,19 +136,18 @@ export const LIVE_STAGE_DIR: string = join('.ts-cloud', 'dashboard-release')
  */
 export function resolveDashboardVersion(): string {
   const explicit = process.env.TS_CLOUD_UI_VERSION?.trim()
-  if (explicit)
-    return explicit
+  if (explicit) return explicit
 
   const here = dirname(fileURLToPath(import.meta.url))
   // Built layout is dist/deploy/, source layout is src/deploy/ — package.json
   // sits two levels up from either.
   for (const candidate of [join(here, '..', '..', 'package.json'), join(here, '..', 'package.json')]) {
     try {
-      const pkg = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string, version?: string }
-      if (pkg.name === '@stacksjs/ts-cloud' && pkg.version)
-        return `^${pkg.version}`
+      const pkg = JSON.parse(readFileSync(candidate, 'utf8')) as { name?: string; version?: string }
+      if (pkg.name === '@stacksjs/ts-cloud' && pkg.version) return `^${pkg.version}`
+    } catch {
+      /* not this one — try the next */
     }
-    catch { /* not this one — try the next */ }
   }
   return 'latest'
 }
@@ -180,8 +183,7 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
     }
     writeFileSync(join(stage, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
     return LIVE_STAGE_DIR
-  }
-  catch (error: any) {
+  } catch (error: any) {
     logger.warn(`Management dashboard: could not stage the live release (${error?.message ?? error}) — skipping.`)
     return null
   }
@@ -193,7 +195,7 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
  * `packages/ui/` (built on the deploy machine), then the prebuilt UI bundled in
  * the installed package. Returns `{ uiRoot, build }` or null when unavailable.
  */
-export function resolveUiSource(cwd: string): { uiRoot: string, build: string | false } | null {
+export function resolveUiSource(cwd: string): { uiRoot: string; build: string | false } | null {
   // 1. Local checkout (repo dogfooding): build packages/ui → packages/ui/dist on the deploy host.
   if (existsSync(join(cwd, 'packages', 'ui', 'pages')) || existsSync(join(cwd, 'packages', 'ui', 'package.json'))) {
     return { uiRoot: 'packages/ui/dist', build: 'cd packages/ui && bun install && bun run build' }
@@ -222,7 +224,7 @@ export function resolveUiSource(cwd: string): { uiRoot: string, build: string | 
  */
 export function ensureManagementDashboard(
   config: CloudConfig,
-  options: { cwd?: string, logger?: EnsureDashboardLogger } = {},
+  options: { cwd?: string; logger?: EnsureDashboardLogger } = {},
 ): CloudConfig {
   const logger = options.logger ?? noopLogger
   const cwd = options.cwd ?? process.cwd()
@@ -231,8 +233,7 @@ export function ensureManagementDashboard(
     logger.info('Management dashboard: skipped (TS_CLOUD_UI_DISABLE set).')
     return config
   }
-  if (hasManagementDashboardSite(config))
-    return config
+  if (hasManagementDashboardSite(config)) return config
 
   const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined
   const domain = process.env.TS_CLOUD_UI_DOMAIN?.trim() || undefined
@@ -245,8 +246,7 @@ export function ensureManagementDashboard(
     // Staged before the dashboard site is injected, so the box's config
     // describes the project's sites and not the dashboard itself.
     const uiRoot = stageLiveDashboardRoot(config, cwd, logger)
-    if (!uiRoot)
-      return config
+    if (!uiRoot) return config
 
     const resolved = resolveManagementDashboardSites(config, environment ?? 'production', {
       uiRoot,
@@ -256,13 +256,17 @@ export function ensureManagementDashboard(
       live: true,
     })
     if (resolved.length === 0) {
-      logger.info('Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.')
+      logger.info(
+        'Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.',
+      )
       return config
     }
 
     for (const { name, site } of resolved) {
       sites[name] = site
-      logger.info(`Management dashboard → https://${site.domain} (sign in with your ts-cloud account; the first deploy prints an admin password once)`)
+      logger.info(
+        `Management dashboard → https://${site.domain} (sign in with your ts-cloud account; the first deploy prints an admin password once)`,
+      )
     }
     config.sites = sites
     return config
@@ -289,16 +293,21 @@ export function ensureManagementDashboard(
   })
 
   if (resolved.length === 0) {
-    logger.info('Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.')
+    logger.info(
+      'Management dashboard: no domain resolved (set TS_CLOUD_UI_DOMAIN or configure a site domain) — skipping.',
+    )
     return config
   }
 
-  const authNote = auth.source === 'public'
-    ? 'NO AUTH — TS_CLOUD_UI_PUBLIC is set (dashboard is publicly reachable)'
-    : auth.source === 'env'
-      ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
-      : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
-  logger.warn('Management dashboard: static mode — one shared password, and no per-site collaborators. Unset TS_CLOUD_UI_STATIC for the live dashboard.')
+  const authNote =
+    auth.source === 'public'
+      ? 'NO AUTH — TS_CLOUD_UI_PUBLIC is set (dashboard is publicly reachable)'
+      : auth.source === 'env'
+        ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
+        : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
+  logger.warn(
+    'Management dashboard: static mode — one shared password, and no per-site collaborators. Unset TS_CLOUD_UI_STATIC for the live dashboard.',
+  )
   for (const { name, site } of resolved) {
     sites[name] = site
     logger.info(`Management dashboard → https://${site.domain} (${authNote})`)
@@ -330,11 +339,10 @@ export interface BuildDashboardArtifactOptions {
  * rather than throwing — the surrounding app deploy must never be blocked by it.
  */
 export function buildManagementDashboardArtifact(
-  site: { root?: string, build?: string | false } | undefined,
+  site: { root?: string; build?: string | false } | undefined,
   options: BuildDashboardArtifactOptions,
 ): string | null {
-  if (!site?.root)
-    return null
+  if (!site?.root) return null
   const cwd = options.cwd ?? process.cwd()
   const logger = options.logger ?? noopLogger
   try {
@@ -347,12 +355,16 @@ export function buildManagementDashboardArtifact(
       logger.warn(`Management dashboard: build output not found at ${root} — skipping dashboard artifact.`)
       return null
     }
-    const tarball = join(tmpdir(), `${options.slug}-${options.siteName ?? MANAGEMENT_DASHBOARD_SITE}-${options.sha}.tar.gz`)
+    const tarball = join(
+      tmpdir(),
+      `${options.slug}-${options.siteName ?? MANAGEMENT_DASHBOARD_SITE}-${options.sha}.tar.gz`,
+    )
     execSync(`tar czf "${tarball}" -C "${root}" .`, { stdio: 'inherit' })
     return tarball
-  }
-  catch (error: any) {
-    logger.warn(`Management dashboard: failed to build artifact — ${error?.message ?? error}. Skipping dashboard deploy.`)
+  } catch (error: any) {
+    logger.warn(
+      `Management dashboard: failed to build artifact — ${error?.message ?? error}. Skipping dashboard deploy.`,
+    )
     return null
   }
 }

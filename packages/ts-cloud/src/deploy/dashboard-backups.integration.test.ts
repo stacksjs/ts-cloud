@@ -22,13 +22,15 @@ afterEach(() => {
 describe('dashboard recovery integration', () => {
   it('creates scoped destinations and policies, queues work, and plans guarded restores', async () => {
     root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-backups-'))
-    saveUsers(root, [{
-      username: 'owner',
-      passwordHash: hashPassword('correct horse battery staple'),
-      role: 'admin',
-      sites: {},
-      createdAt: new Date().toISOString(),
-    }])
+    saveUsers(root, [
+      {
+        username: 'owner',
+        passwordHash: hashPassword('correct horse battery staple'),
+        role: 'admin',
+        sites: {},
+        createdAt: new Date().toISOString(),
+      },
+    ])
     running = await startLocalDashboardServer({
       cwd: root,
       host: '127.0.0.1',
@@ -66,7 +68,7 @@ describe('dashboard recovery integration', () => {
         }),
       })
     expect(destinationResponse.status).toBe(201)
-    const destination = (await destinationResponse.json() as any).destination
+    const destination = ((await destinationResponse.json()) as any).destination
     expect(destination).toMatchObject({
       name: 'recovery-archive',
       credentialsConfigured: true,
@@ -96,7 +98,7 @@ describe('dashboard recovery integration', () => {
       }),
     })
     expect(policyResponse.status).toBe(201)
-    const policy = (await policyResponse.json() as any).policy
+    const policy = ((await policyResponse.json()) as any).policy
     const run = await call('/api/backups/run?env=production', {
       method: 'POST',
       headers,
@@ -172,7 +174,7 @@ describe('dashboard recovery integration', () => {
     })
     expect(await hold.json()).toMatchObject({ ok: true, recoveryPoint: { held: true } })
     const inventory = await call('/api/backups?env=production', { headers: { cookie: session } }),
-      body = await inventory.json() as any
+      body = (await inventory.json()) as any
     expect(body).toMatchObject({
       ok: true,
       destinations: [{ credentialsConfigured: true }],

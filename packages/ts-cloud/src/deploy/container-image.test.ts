@@ -17,13 +17,27 @@ describe('container image artifacts', () => {
     const calls: string[] = []
     const dependencies: ContainerImageDependencies = {
       ecr: {
-        describeRepositories: async () => { throw Object.assign(new Error('missing'), { code: 'RepositoryNotFoundException' }) },
-        createRepository: async options => { calls.push(`repository:${options.imageTagMutability}:${options.imageScanningConfiguration?.scanOnPush}`); return { repository: { repositoryUri: '923076644019.dkr.ecr.us-east-1.amazonaws.com/example' } } },
-        putLifecyclePolicy: async () => { calls.push('lifecycle'); return {} },
-        getAuthorizationToken: async () => ({ authorizationData: [{ authorizationToken: 'token', proxyEndpoint: 'https://923076644019.dkr.ecr.us-east-1.amazonaws.com' }] }),
+        describeRepositories: async () => {
+          throw Object.assign(new Error('missing'), { code: 'RepositoryNotFoundException' })
+        },
+        createRepository: async (options) => {
+          calls.push(`repository:${options.imageTagMutability}:${options.imageScanningConfiguration?.scanOnPush}`)
+          return { repository: { repositoryUri: '923076644019.dkr.ecr.us-east-1.amazonaws.com/example' } }
+        },
+        putLifecyclePolicy: async () => {
+          calls.push('lifecycle')
+          return {}
+        },
+        getAuthorizationToken: async () => ({
+          authorizationData: [
+            { authorizationToken: 'token', proxyEndpoint: 'https://923076644019.dkr.ecr.us-east-1.amazonaws.com' },
+          ],
+        }),
         describeImages: async () => ({ imageDetails: [{ imageDigest: `sha256:${'b'.repeat(64)}` }] }),
       },
-      run: (command, args) => { calls.push(`${command}:${args[0]}`) },
+      run: (command, args) => {
+        calls.push(`${command}:${args[0]}`)
+      },
     }
     const result = await buildAndPushContainerImage({ context, repository: 'example' }, dependencies)
     expect(result.tag).toStartWith('sha-')

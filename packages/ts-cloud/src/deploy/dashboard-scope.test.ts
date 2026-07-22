@@ -98,7 +98,7 @@ describe('scopeDashboardData', () => {
     expect(JSON.stringify(scoped)).not.toContain('hetzner')
   })
 
-  it('keeps only the member\'s sites, workers and deployments', () => {
+  it("keeps only the member's sites, workers and deployments", () => {
     const scoped = scopeMember()
     expect(scoped.sites.map((s: any) => s.name)).toEqual(['blog'])
     expect(scoped.sitesDetail.map((s: any) => s.name)).toEqual(['blog'])
@@ -106,7 +106,7 @@ describe('scopeDashboardData', () => {
     expect(scoped.serverDeploymentsDetail.map((d: any) => d.site)).toEqual(['blog'])
   })
 
-  it('keeps the member\'s own app, queue and daemon logs but no box logs', () => {
+  it("keeps the member's own app, queue and daemon logs but no box logs", () => {
     const sources = scopeMember().serverLogs.map((l: any) => l.source)
     expect(sources).toEqual(['acme-blog', 'acme-blog-queues'])
   })
@@ -115,7 +115,7 @@ describe('scopeDashboardData', () => {
     expect(scopeMember().security.tlsCertificates.map((c: any) => c.domain)).toEqual(['blog.example.com'])
   })
 
-  it('filters activity to the member\'s sites and drops ssh events', () => {
+  it("filters activity to the member's sites and drops ssh events", () => {
     const activity = scopeMember().activity
     expect(activity.map((a: any) => a.title)).toEqual(['blog deployed aaa1111', 'acme-blog error'])
   })

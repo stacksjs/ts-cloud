@@ -1,9 +1,18 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { buildBackupScript, buildCreateDatabaseScript, buildCreateUserScript, buildListScript, isValidDbIdentifier, parseBackups, parseDbList, resolveDbEngine } from './dashboard-database'
+import {
+  buildBackupScript,
+  buildCreateDatabaseScript,
+  buildCreateUserScript,
+  buildListScript,
+  isValidDbIdentifier,
+  parseBackups,
+  parseDbList,
+  resolveDbEngine,
+} from './dashboard-database'
 
 describe('resolveDbEngine', () => {
-  const cfg = (infra: any): CloudConfig => ({ project: { name: 'a', slug: 'a' }, infrastructure: infra } as any)
+  const cfg = (infra: any): CloudConfig => ({ project: { name: 'a', slug: 'a' }, infrastructure: infra }) as any
   it('prefers the appDatabase engine, then managed services, default mysql', () => {
     expect(resolveDbEngine(cfg({ appDatabase: { engine: 'postgres' } }))).toBe('postgres')
     expect(resolveDbEngine(cfg({ appDatabase: { engine: 'pgsql' } }))).toBe('postgres')
@@ -41,7 +50,13 @@ describe('buildCreateDatabaseScript', () => {
     expect(cmds).toContain('\\gexec')
   })
   it('postgres: an external database host keeps TCP with credentials', () => {
-    const external = { engine: 'postgres' as const, name: 'acme', host: 'db.example.com', username: 'admin', password: 's3cret' }
+    const external = {
+      engine: 'postgres' as const,
+      name: 'acme',
+      host: 'db.example.com',
+      username: 'admin',
+      password: 's3cret',
+    }
     const cmds = buildCreateDatabaseScript('postgres', 'acme', external).join('\n')
     expect(cmds).toContain(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w`)
   })
@@ -49,20 +64,36 @@ describe('buildCreateDatabaseScript', () => {
 
 describe('buildCreateUserScript', () => {
   it('mysql: creates user for %/localhost and grants on the database', () => {
-    const cmds = buildCreateUserScript('mysql', { username: 'app', password: 's3cret', database: 'acme', access: 'all' }).join('\n')
+    const cmds = buildCreateUserScript('mysql', {
+      username: 'app',
+      password: 's3cret',
+      database: 'acme',
+      access: 'all',
+    }).join('\n')
     expect(cmds).toContain("CREATE USER IF NOT EXISTS 'app'@'%' IDENTIFIED BY 's3cret';")
     expect(cmds).toContain("CREATE USER IF NOT EXISTS 'app'@'localhost'")
     expect(cmds).toContain("GRANT ALL PRIVILEGES ON `acme`.* TO 'app'@'%';")
     expect(cmds).toContain('FLUSH PRIVILEGES;')
   })
   it('mysql readonly grants SELECT only', () => {
-    expect(buildCreateUserScript('mysql', { username: 'ro', password: 'p', database: 'acme', access: 'readonly' }).join('\n')).toContain('GRANT SELECT ON `acme`.*')
+    expect(
+      buildCreateUserScript('mysql', { username: 'ro', password: 'p', database: 'acme', access: 'readonly' }).join(
+        '\n',
+      ),
+    ).toContain('GRANT SELECT ON `acme`.*')
   })
   it('escapes a single quote in the password', () => {
-    expect(buildCreateUserScript('mysql', { username: 'app', password: "a'b" }).join('\n')).toContain("IDENTIFIED BY 'a\\'b'")
+    expect(buildCreateUserScript('mysql', { username: 'app', password: "a'b" }).join('\n')).toContain(
+      "IDENTIFIED BY 'a\\'b'",
+    )
   })
   it('postgres: ensures a login role and grants', () => {
-    const cmds = buildCreateUserScript('postgres', { username: 'app', password: 'p', database: 'acme', access: 'all' }).join('\n')
+    const cmds = buildCreateUserScript('postgres', {
+      username: 'app',
+      password: 'p',
+      database: 'acme',
+      access: 'all',
+    }).join('\n')
     expect(cmds).toContain('CREATE ROLE "app" LOGIN PASSWORD')
     expect(cmds).toContain('GRANT ALL PRIVILEGES ON DATABASE "acme" TO "app";')
   })
@@ -72,7 +103,7 @@ describe('buildListScript + parseDbList', () => {
   it('lists databases + users, excluding system schemas', () => {
     const cmds = buildListScript('mysql').join('\n')
     expect(cmds).toContain("schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')")
-    expect(cmds).toContain('CONCAT(\'USER=\', User)')
+    expect(cmds).toContain("CONCAT('USER=', User)")
   })
   it('parses DB=/USER= lines, ignores noise, and dedupes', () => {
     const parsed = parseDbList('DB=acme\nDB=acme\nDB=blog\nUSER=app\nrandom noise line\nUSER=app')
@@ -89,12 +120,20 @@ describe('buildListScript + parseDbList', () => {
     expect(pg).toContain('pg_dump -p 5432 -U postgres acme')
     expect(pg).not.toContain('pg_dump -h')
     // External host: TCP with credentials.
-    const ext = buildBackupScript('postgres', 'acme', '/var/backups/ts-cloud/databases', { engine: 'postgres', name: 'acme', host: 'db.example.com', username: 'admin', password: 'pw' }).join('\n')
+    const ext = buildBackupScript('postgres', 'acme', '/var/backups/ts-cloud/databases', {
+      engine: 'postgres',
+      name: 'acme',
+      host: 'db.example.com',
+      username: 'admin',
+      password: 'pw',
+    }).join('\n')
     expect(ext).toContain(`PGPASSWORD='pw' pg_dump -h db.example.com -p 5432 -U admin -w acme`)
   })
 
   it('parses BACKUP= lines into database + file, deriving the db from the filename', () => {
-    const parsed = parseBackups('BACKUP=/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz\nnoise\nBACKUP=/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz')
+    const parsed = parseBackups(
+      'BACKUP=/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz\nnoise\nBACKUP=/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz',
+    )
     expect(parsed).toEqual([
       { file: '/var/backups/ts-cloud/databases/acme-20260702-101500.sql.gz', database: 'acme' },
       { file: '/var/backups/ts-cloud/databases/blog-20260701-090000.sql.gz', database: 'blog' },

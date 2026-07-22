@@ -6,10 +6,9 @@
  * this file and {@link import('./dashboard-policy')} together are the complete
  * authorization story for the HTTP API.
  */
-
-import type { DashboardUser } from './dashboard-auth'
 import type { AuthenticationStore, AuthSession } from '../auth'
 import type { ControlPlaneStore } from '../control-plane'
+import type { DashboardUser } from './dashboard-auth'
 import { authorizeOrganization } from '../control-plane'
 import { routePolicy } from './dashboard-policy'
 import { readCookie, SESSION_COOKIE, verifySessionToken } from './dashboard-session'
@@ -63,15 +62,16 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
   const { cwd, enabled, secret, authorization, authentication } = options
 
   const durableSession = (req: Request) => {
-    if (!authentication)
-      return undefined
+    if (!authentication) return undefined
     const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE)
     return token?.startsWith('v2.') ? authentication.verifySessionToken(token) : undefined
   }
 
   const identity = (user: DashboardUser) => {
     const actor = authorization.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
-    const membership = actor ? authorization.store.getMembershipForActor(authorization.organizationId, actor.id) : undefined
+    const membership = actor
+      ? authorization.store.getMembershipForActor(authorization.organizationId, actor.id)
+      : undefined
     return { actor, membership }
   }
 
@@ -79,24 +79,25 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
     enabled,
 
     resolveUser(req: Request): DashboardUser | null {
-      if (!enabled)
-        return LOCAL_ADMIN
+      if (!enabled) return LOCAL_ADMIN
 
       const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE)
       const durable = durableSession(req)
       const payload = durable ? undefined : verifySessionToken(token, secret)
       const username = durable?.identity.username ?? payload?.u
-      if (!username)
-        return null
+      if (!username) return null
 
       // Re-read the user and membership on every request rather than trusting the token's
       // claims: revoking a grant or deleting a user then takes effect at once,
       // instead of lingering until the session expires.
       const user = findUser(loadUsers(cwd), username)
-      if (!user)
-        return null
+      if (!user) return null
       const { membership } = identity(user)
-      if (!membership || membership.status !== 'active' || (!durable && payload?.mv?.[authorization.organizationId] !== membership.sessionVersion))
+      if (
+        !membership ||
+        membership.status !== 'active' ||
+        (!durable && payload?.mv?.[authorization.organizationId] !== membership.sessionVersion)
+      )
         return null
       if (!membership.lastActiveAt || Date.now() - new Date(membership.lastActiveAt).getTime() > 5 * 60 * 1000)
         authorization.store.touchMembership(membership.id)
@@ -108,39 +109,48 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
     },
 
     check(req: Request, pathname: string, user: DashboardUser | null, site?: string): GuardDecision {
-      if (!enabled)
-        return { ok: true }
+      if (!enabled) return { ok: true }
 
-      if (!user)
-        return { ok: false, status: 401, error: 'Sign in to continue.', unauthenticated: true }
+      if (!user) return { ok: false, status: 401, error: 'Sign in to continue.', unauthenticated: true }
 
       const policy = routePolicy(req.method, pathname)
-      if (policy.anyUser)
-        return { ok: true }
+      if (policy.anyUser) return { ok: true }
 
       if (policy.siteFrom === 'body' && !site) {
         return { ok: false, status: 400, error: 'This request must name a site.' }
       }
 
       const { membership } = identity(user)
-      if (!membership)
-        return { ok: false, status: 401, error: 'Sign in to continue.', unauthenticated: true }
+      if (!membership) return { ok: false, status: 401, error: 'Sign in to continue.', unauthenticated: true }
 
-      let target = policy.scope === 'organization'
-        ? { organizationId: authorization.organizationId }
-        : authorization.store.resolveAuthorizationTarget(authorization.organizationId, { type: 'project', id: authorization.projectId })
+      let target =
+        policy.scope === 'organization'
+          ? { organizationId: authorization.organizationId }
+          : authorization.store.resolveAuthorizationTarget(authorization.organizationId, {
+              type: 'project',
+              id: authorization.projectId,
+            })
       if (policy.scope === 'site') {
         const environmentSlug = new URL(req.url).searchParams.get('env') ?? authorization.defaultEnvironment
         const environment = authorization.store.getEnvironmentBySlug(authorization.projectId, environmentSlug)
-        const resource = authorization.store.listResources(authorization.projectId, environment?.id)
-          .find(candidate => candidate.kind === 'application' && candidate.slug === site)
+        const resource = authorization.store
+          .listResources(authorization.projectId, environment?.id)
+          .find((candidate) => candidate.kind === 'application' && candidate.slug === site)
         target = resource
-          ? authorization.store.resolveAuthorizationTarget(authorization.organizationId, { type: 'resource', id: resource.id })
+          ? authorization.store.resolveAuthorizationTarget(authorization.organizationId, {
+              type: 'resource',
+              id: resource.id,
+            })
           : undefined
       }
 
       const decision = target
-        ? authorizeOrganization({ membership, grants: authorization.store.listGrants(membership.id), capability: policy.capability, target })
+        ? authorizeOrganization({
+            membership,
+            grants: authorization.store.listGrants(membership.id),
+            capability: policy.capability,
+            target,
+          })
         : { allowed: false }
       if (!decision.allowed) {
         // Say the same thing whether the site exists or the grant is missing, so
@@ -153,7 +163,11 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
   }
 }
 
-export function dashboardMembershipVersions(store: ControlPlaneStore, organizationId: string, user: DashboardUser): Record<string, number> {
+export function dashboardMembershipVersions(
+  store: ControlPlaneStore,
+  organizationId: string,
+  user: DashboardUser,
+): Record<string, number> {
   const actor = store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
   const membership = actor ? store.getMembershipForActor(organizationId, actor.id) : undefined
   return membership?.status === 'active' ? { [organizationId]: membership.sessionVersion } : {}
@@ -165,14 +179,12 @@ export function dashboardMembershipVersions(store: ControlPlaneStore, organizati
  */
 export async function siteFromRequest(req: Request, pathname: string): Promise<string | undefined> {
   const policy = routePolicy(req.method, pathname)
-  if (policy.siteFrom !== 'body')
-    return undefined
+  if (policy.siteFrom !== 'body') return undefined
   try {
-    const body = await req.clone().json() as Record<string, any>
+    const body = (await req.clone().json()) as Record<string, any>
     const name = String(body?.name ?? '').trim()
     return name || undefined
-  }
-  catch {
+  } catch {
     return undefined
   }
 }

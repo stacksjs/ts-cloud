@@ -1,6 +1,6 @@
-import type { AuthIdentity, AuthenticationStore, VerifiedOidcIdentity } from '../auth'
-import type { DashboardControlPlane } from './dashboard-control-plane'
+import type { AuthenticationStore, AuthIdentity, VerifiedOidcIdentity } from '../auth'
 import type { DashboardUser } from './dashboard-auth'
+import type { DashboardControlPlane } from './dashboard-control-plane'
 import { createHash } from 'node:crypto'
 import { ensureDashboardActor } from './dashboard-control-plane'
 import { findUser, loadUsers, upsertMember } from './dashboard-users'
@@ -17,8 +17,7 @@ export function synchronizeDashboardIdentities(
 ): void {
   for (const user of users) {
     const actor = ensureDashboardActor(controlPlane.store, user)
-    if (authentication.getIdentityByActor(actor.id))
-      continue
+    if (authentication.getIdentityByActor(actor.id)) continue
     authentication.createIdentity({
       actorId: actor.id,
       username: user.username,
@@ -31,10 +30,14 @@ export function synchronizeDashboardIdentities(
 }
 
 function availableOidcUsername(authentication: AuthenticationStore, users: DashboardUser[], email: string): string {
-  const localPart = email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 24)
+  const localPart = email
+    .split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/^[^a-z0-9]+/, '')
+    .slice(0, 24)
   const base = /^[a-z0-9][a-z0-9._-]{1,31}$/.test(localPart) ? localPart : 'sso-user'
-  if (!authentication.getIdentityByUsername(base) && !findUser(users, base))
-    return base
+  if (!authentication.getIdentityByUsername(base) && !findUser(users, base)) return base
   const suffix = createHash('sha256').update(email).digest('hex').slice(0, 7)
   return `${base.slice(0, 24)}-${suffix}`
 }
@@ -44,22 +47,22 @@ export function resolveOidcDashboardIdentity(
   controlPlane: DashboardControlPlane,
   cwd: string,
   verified: VerifiedOidcIdentity,
-): { identity: AuthIdentity, user: DashboardUser, provisioned: boolean } {
+): { identity: AuthIdentity; user: DashboardUser; provisioned: boolean } {
   if (verified.provider.organizationId !== controlPlane.organization.id)
     throw new Error('OIDC provider is not configured for this organization')
 
   const linked = authentication.getOidcSubject(verified.provider.id, verified.subject)
-  let identity = linked ? authentication.getIdentity(linked.identityId) : authentication.getIdentityByEmail(verified.email)
-  if (identity?.disabledAt)
-    throw new Error('OIDC identity is disabled')
+  let identity = linked
+    ? authentication.getIdentity(linked.identityId)
+    : authentication.getIdentityByEmail(verified.email)
+  if (identity?.disabledAt) throw new Error('OIDC identity is disabled')
   if (!linked && identity && !identity.emailVerifiedAt)
     throw new Error('OIDC cannot automatically link an unverified local email address')
 
   const users = loadUsers(cwd)
   let provisioned = false
   let user = identity ? findUser(users, identity.username) : undefined
-  if (identity && !user)
-    throw new Error('OIDC identity has no dashboard user')
+  if (identity && !user) throw new Error('OIDC identity has no dashboard user')
 
   if (!identity) {
     const username = availableOidcUsername(authentication, users, verified.email)
@@ -79,17 +82,14 @@ export function resolveOidcDashboardIdentity(
       passwordHash: user.passwordHash,
     })
     provisioned = true
-  }
-  else if (identity.email !== verified.email) {
+  } else if (identity.email !== verified.email) {
     identity = authentication.setVerifiedEmail(identity.id, verified.email)
   }
 
   const actor = controlPlane.store.getActor(identity.actorId)
-  if (!actor)
-    throw new Error('OIDC identity actor was not found')
+  if (!actor) throw new Error('OIDC identity actor was not found')
   const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id)
-  if (membership?.status === 'revoked')
-    throw new Error('OIDC organization membership is revoked')
+  if (membership?.status === 'revoked') throw new Error('OIDC organization membership is revoked')
   if (!membership) {
     controlPlane.store.createMembership({
       organizationId: controlPlane.organization.id,
@@ -109,9 +109,16 @@ export function localLoginRequiresSso(
   identity: AuthIdentity,
 ): boolean {
   const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, identity.actorId)
-  if (!membership || membership.status !== 'active' || membership.roleTemplate === 'owner' || !identity.emailVerifiedAt || !identity.email)
+  if (
+    !membership ||
+    membership.status !== 'active' ||
+    membership.roleTemplate === 'owner' ||
+    !identity.emailVerifiedAt ||
+    !identity.email
+  )
     return false
   const domain = identity.email.split('@')[1]?.toLowerCase()
-  return authentication.listOidcProviders(controlPlane.organization.id)
-    .some(provider => provider.enforceSso && !!domain && provider.allowedDomains.includes(domain))
+  return authentication
+    .listOidcProviders(controlPlane.organization.id)
+    .some((provider) => provider.enforceSso && !!domain && provider.allowedDomains.includes(domain))
 }

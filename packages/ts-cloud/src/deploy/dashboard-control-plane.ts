@@ -1,12 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
-import type {
-  ControlPlaneActor,
-  ControlPlaneEnvironment,
-  ControlPlaneOperation,
-  ControlPlaneOrganization,
-  ControlPlaneProject,
-  JsonValue,
-} from '../control-plane'
+import type { ControlPlaneActor, ControlPlaneEnvironment, ControlPlaneOperation, ControlPlaneOrganization, ControlPlaneProject, JsonValue } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { createHash } from 'node:crypto'
 import { ControlPlaneStore, roleCapabilities, sanitizeControlPlaneValue } from '../control-plane'
@@ -17,7 +10,7 @@ export interface DashboardControlPlane {
   organization: ControlPlaneOrganization
   project: ControlPlaneProject
   environments: Map<string, ControlPlaneEnvironment>
-  reconciliation: { requeued: number, failed: number }
+  reconciliation: { requeued: number; failed: number }
 }
 
 export interface TrackDashboardOperationInput<T extends { ok: boolean }> {
@@ -40,8 +33,7 @@ function stableConfigHash(config: CloudConfig): string {
 }
 
 function stableJson(value: unknown): string {
-  if (Array.isArray(value))
-    return `[${value.map(item => stableJson(item)).join(',')}]`
+  if (Array.isArray(value)) return `[${value.map((item) => stableJson(item)).join(',')}]`
   if (value && typeof value === 'object') {
     return `{${Object.entries(value)
       .filter(([, child]) => child !== undefined && typeof child !== 'function')
@@ -54,12 +46,15 @@ function stableJson(value: unknown): string {
 
 export function ensureDashboardActor(store: ControlPlaneStore, user: DashboardUser): ControlPlaneActor {
   const externalId = `dashboard:${user.username.toLowerCase()}`
-  return store.getActorByExternalId('user', externalId) ?? store.createActor({
-    kind: 'user',
-    externalId,
-    displayName: user.name ?? user.username,
-    metadata: { source: 'dashboard', role: user.role },
-  })
+  return (
+    store.getActorByExternalId('user', externalId) ??
+    store.createActor({
+      kind: 'user',
+      externalId,
+      displayName: user.name ?? user.username,
+      metadata: { source: 'dashboard', role: user.role },
+    })
+  )
 }
 
 export function initializeDashboardControlPlane(cwd: string, config: CloudConfig): DashboardControlPlane {
@@ -67,29 +62,47 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
   const hash = stableConfigHash(config)
   const existing = store.getProjectBySlug(config.project.slug)
   const organizationSlug = config.project.slug.length >= 3 ? config.project.slug : `${config.project.slug}-org`
-  const organization = (existing?.organizationId ? store.getOrganization(existing.organizationId) : undefined)
-    ?? store.getOrganizationBySlug(organizationSlug)
-    ?? store.createOrganization({ id: existing?.organizationId, slug: organizationSlug, name: config.project.name })
+  const organization =
+    (existing?.organizationId ? store.getOrganization(existing.organizationId) : undefined) ??
+    store.getOrganizationBySlug(organizationSlug) ??
+    store.createOrganization({ id: existing?.organizationId, slug: organizationSlug, name: config.project.name })
   const project = existing
-    ? (existing.name !== config.project.name || existing.desiredConfigHash !== hash || existing.organizationId !== organization.id
-        ? store.updateProject(existing.id, existing.version, { name: config.project.name, organizationId: organization.id, desiredConfigHash: hash })
-        : existing)
-    : store.createProject({ organizationId: organization.id, slug: config.project.slug, name: config.project.name, desiredConfigHash: hash })
+    ? existing.name !== config.project.name ||
+      existing.desiredConfigHash !== hash ||
+      existing.organizationId !== organization.id
+      ? store.updateProject(existing.id, existing.version, {
+          name: config.project.name,
+          organizationId: organization.id,
+          desiredConfigHash: hash,
+        })
+      : existing
+    : store.createProject({
+        organizationId: organization.id,
+        slug: config.project.slug,
+        name: config.project.name,
+        desiredConfigHash: hash,
+      })
 
   const environments = new Map<string, ControlPlaneEnvironment>()
   for (const [slug, desired] of Object.entries(config.environments ?? {})) {
     const found = store.getEnvironmentBySlug(project.id, slug)
-    const environment = found ?? store.createEnvironment({
-      projectId: project.id,
-      slug,
-      name: slug.replace(/(^|[-_])(\w)/g, (_match, _separator, letter: string) => letter.toUpperCase()),
-      kind: String((desired as { type?: string })?.type ?? slug),
-      region: (desired as { region?: string })?.region ?? config.project.region,
-      desiredState: sanitizeControlPlaneValue(desired),
-    })
+    const environment =
+      found ??
+      store.createEnvironment({
+        projectId: project.id,
+        slug,
+        name: slug.replace(/(^|[-_])(\w)/g, (_match, _separator, letter: string) => letter.toUpperCase()),
+        kind: String((desired as { type?: string })?.type ?? slug),
+        region: (desired as { region?: string })?.region ?? config.project.region,
+        desiredState: sanitizeControlPlaneValue(desired),
+      })
     environments.set(slug, environment)
 
-    const existingResources = new Map(store.listResources(project.id, environment.id).map(resource => [`${resource.kind}:${resource.slug}`, resource]))
+    const existingResources = new Map(
+      store
+        .listResources(project.id, environment.id)
+        .map((resource) => [`${resource.kind}:${resource.slug}`, resource]),
+    )
     const syncResource = (kind: string, slug: string, name: string, desiredState: JsonValue) => {
       const key = `${kind}:${slug}`
       const found = existingResources.get(key)
@@ -117,8 +130,12 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
     }
 
     const serverlessApp = (desired as { app?: Record<string, unknown> })?.app
-    if (serverlessApp) for (const functionName of ['http', 'queue', 'cli'])
-      syncResource('function', functionName, `${functionName.toUpperCase()} function`, { ...sanitizeControlPlaneValue(serverlessApp) as Record<string, JsonValue>, function: functionName })
+    if (serverlessApp)
+      for (const functionName of ['http', 'queue', 'cli'])
+        syncResource('function', functionName, `${functionName.toUpperCase()} function`, {
+          ...(sanitizeControlPlaneValue(serverlessApp) as Record<string, JsonValue>),
+          function: functionName,
+        })
 
     const infrastructure = config.infrastructure
     for (const [functionSlug, definition] of Object.entries(infrastructure?.functions ?? {}))
@@ -132,18 +149,33 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
     for (const [databaseSlug, database] of Object.entries(infrastructure?.databases ?? {}))
       syncResource('database', databaseSlug, databaseSlug, database as JsonValue)
     if (infrastructure?.appDatabase)
-      syncResource('database', 'application-database', 'Application database', infrastructure.appDatabase as unknown as JsonValue)
+      syncResource(
+        'database',
+        'application-database',
+        'Application database',
+        infrastructure.appDatabase as unknown as JsonValue,
+      )
     else if (infrastructure?.database)
       syncResource('database', 'application-database', 'Application database', { engine: infrastructure.database })
   }
 
   const queueRecovery = new DurableOperationQueue(store).recoverExpired()
   const legacyRecovery = store.reconcileOrphanedOperations({ policy: 'fail' })
-  const reconciliation = { requeued: queueRecovery.requeued + legacyRecovery.requeued, failed: queueRecovery.failed + queueRecovery.cancelled + legacyRecovery.failed }
+  const reconciliation = {
+    requeued: queueRecovery.requeued + legacyRecovery.requeued,
+    failed: queueRecovery.failed + queueRecovery.cancelled + legacyRecovery.failed,
+  }
   return { store, organization, project, environments, reconciliation }
 }
 
-const LEGACY_MEMBER_CAPABILITIES = ['project:read', 'config:read', 'deployments:read', 'deployments:create', 'runtime:read', 'runtime:logs'] as const
+const LEGACY_MEMBER_CAPABILITIES = [
+  'project:read',
+  'config:read',
+  'deployments:read',
+  'deployments:create',
+  'runtime:read',
+  'runtime:logs',
+] as const
 
 export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, users: readonly DashboardUser[]): void {
   const { store, organization, project } = controlPlane
@@ -152,38 +184,42 @@ export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, u
     const actor = ensureDashboardActor(store, user)
     activeActorIds.add(actor.id)
     const existing = store.getMembershipForActor(organization.id, actor.id)
-    if (existing && existing.source !== 'legacy')
-      continue
+    if (existing && existing.source !== 'legacy') continue
 
-    const siteResources = store.listResources(project.id)
-      .filter(resource => resource.kind === 'application' && Object.hasOwn(user.sites, resource.slug))
+    const siteResources = store
+      .listResources(project.id)
+      .filter((resource) => resource.kind === 'application' && Object.hasOwn(user.sites, resource.slug))
     const desiredRole = user.role === 'admin' ? 'owner' : 'viewer'
-    const desiredScope = user.role === 'admin' || siteResources.length === 0
-      ? { type: 'organization' as const }
-      : { type: 'resource' as const, id: siteResources[0].id }
+    const desiredScope =
+      user.role === 'admin' || siteResources.length === 0
+        ? { type: 'organization' as const }
+        : { type: 'resource' as const, id: siteResources[0].id }
     const membership = existing
-      ? (existing.roleTemplate !== desiredRole || stableJson(existing.scope) !== stableJson(desiredScope)
-          ? store.updateMembership({ id: existing.id, roleTemplate: desiredRole, scope: desiredScope, actorId: actor.id })
-          : existing)
-      : store.createMembership({ organizationId: organization.id, actorId: actor.id, roleTemplate: desiredRole, scope: desiredScope, source: 'legacy' })
+      ? existing.roleTemplate !== desiredRole || stableJson(existing.scope) !== stableJson(desiredScope)
+        ? store.updateMembership({ id: existing.id, roleTemplate: desiredRole, scope: desiredScope, actorId: actor.id })
+        : existing
+      : store.createMembership({
+          organizationId: organization.id,
+          actorId: actor.id,
+          roleTemplate: desiredRole,
+          scope: desiredScope,
+          source: 'legacy',
+        })
 
     const desiredGrants = new Set<string>()
     if (user.role === 'member' && siteResources.length === 0) {
-      for (const capability of roleCapabilities('viewer'))
-        desiredGrants.add(`deny|${capability}|organization|`)
+      for (const capability of roleCapabilities('viewer')) desiredGrants.add(`deny|${capability}|organization|`)
     }
     for (const resource of siteResources) {
       const role = user.sites[resource.slug]
       for (const capability of LEGACY_MEMBER_CAPABILITIES)
         desiredGrants.add(`allow|${capability}|resource|${resource.id}`)
-      if (role === 'owner')
-        desiredGrants.add(`allow|config:write|resource|${resource.id}`)
+      if (role === 'owner') desiredGrants.add(`allow|config:write|resource|${resource.id}`)
     }
 
-    for (const grant of store.listGrants(membership.id).filter(grant => grant.source === 'legacy')) {
+    for (const grant of store.listGrants(membership.id).filter((grant) => grant.source === 'legacy')) {
       const key = `${grant.effect}|${grant.capability}|${grant.scope.type}|${grant.scope.id ?? ''}`
-      if (!desiredGrants.has(key))
-        store.removeGrant(grant.id, actor.id)
+      if (!desiredGrants.has(key)) store.removeGrant(grant.id, actor.id)
     }
     for (const key of desiredGrants) {
       const [effect, capability, scopeType, scopeId] = key.split('|')
@@ -199,18 +235,22 @@ export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, u
   }
 
   for (const membership of store.listMemberships(organization.id)) {
-    if (membership.source === 'legacy' && !activeActorIds.has(membership.actorId))
-      store.revokeMembership(membership.id)
+    if (membership.source === 'legacy' && !activeActorIds.has(membership.actorId)) store.revokeMembership(membership.id)
   }
 }
 
-export async function trackDashboardOperation<T extends { ok: boolean }>(input: TrackDashboardOperationInput<T>): Promise<TrackedDashboardOperationResult<T>> {
+export async function trackDashboardOperation<T extends { ok: boolean }>(
+  input: TrackDashboardOperationInput<T>,
+): Promise<TrackedDashboardOperationResult<T>> {
   const { controlPlane, environment, actor: user } = input
   const actor = ensureDashboardActor(controlPlane.store, user)
   const environmentRecord = controlPlane.environments.get(environment)
-  const resource = input.resourceSlug && environmentRecord
-    ? controlPlane.store.listResources(controlPlane.project.id, environmentRecord.id).find(item => item.slug === input.resourceSlug)
-    : undefined
+  const resource =
+    input.resourceSlug && environmentRecord
+      ? controlPlane.store
+          .listResources(controlPlane.project.id, environmentRecord.id)
+          .find((item) => item.slug === input.resourceSlug)
+      : undefined
   const queue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
   const operation = queue.enqueue({
     projectId: controlPlane.project.id,
@@ -219,7 +259,11 @@ export async function trackDashboardOperation<T extends { ok: boolean }>(input: 
     actorId: actor.id,
     kind: input.kind,
     input: input.input ?? {},
-    lockKey: resource ? `resource:${resource.id}` : environmentRecord ? `environment:${environmentRecord.id}` : `project:${controlPlane.project.id}`,
+    lockKey: resource
+      ? `resource:${resource.id}`
+      : environmentRecord
+        ? `environment:${environmentRecord.id}`
+        : `project:${controlPlane.project.id}`,
     providerKey: resource?.provider ?? 'dashboard',
     buildSlot: input.kind.includes('deploy'),
     maxAttempts: 1,
@@ -229,19 +273,25 @@ export async function trackDashboardOperation<T extends { ok: boolean }>(input: 
     retentionDays: 90,
   }).operation
   const running = queue.claim(operation.id)?.operation
-  if (!running)
-    throw new Error(`Could not claim control-plane operation ${operation.id}`)
+  if (!running) throw new Error(`Could not claim control-plane operation ${operation.id}`)
 
   try {
     const result = await input.execute()
-    const stdout = typeof (result as Record<string, unknown>).stdout === 'string' ? String((result as Record<string, unknown>).stdout) : ''
-    const stderr = typeof (result as Record<string, unknown>).stderr === 'string' ? String((result as Record<string, unknown>).stderr) : ''
+    const stdout =
+      typeof (result as Record<string, unknown>).stdout === 'string'
+        ? String((result as Record<string, unknown>).stdout)
+        : ''
+    const stderr =
+      typeof (result as Record<string, unknown>).stderr === 'string'
+        ? String((result as Record<string, unknown>).stderr)
+        : ''
     if (stdout) queue.appendLog(operation.id, stdout, { stream: 'stdout' })
     if (stderr) queue.appendLog(operation.id, stderr, { stream: 'stderr' })
-    const record = result.ok ? queue.complete(operation.id, summarizeResult(result)) : queue.fail(operation.id, operationError(result), summarizeResult(result))
+    const record = result.ok
+      ? queue.complete(operation.id, summarizeResult(result))
+      : queue.fail(operation.id, operationError(result), summarizeResult(result))
     return { result, operation: record }
-  }
-  catch (error) {
+  } catch (error) {
     queue.fail(operation.id, error instanceof Error ? error.message : String(error), { ok: false, threw: true })
     throw error
   }
@@ -261,9 +311,7 @@ function summarizeResult(result: { ok: boolean }): JsonValue {
     stdoutBytes: Buffer.byteLength(stdout),
     stderrBytes: Buffer.byteLength(stderr),
   }
-  if (typeof record.operation === 'string')
-    summary.operation = record.operation
-  if (typeof record.error === 'string')
-    summary.error = record.error
+  if (typeof record.operation === 'string') summary.operation = record.operation
+  if (typeof record.error === 'string') summary.error = record.error
   return sanitizeControlPlaneValue(summary)
 }

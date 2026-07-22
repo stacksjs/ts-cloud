@@ -2,12 +2,11 @@
  * Static Site Deployment with External DNS Provider Support
  * Deploys static sites to AWS (S3 + CloudFront + ACM) with DNS managed by external providers (Porkbun, GoDaddy, etc.)
  */
-
-import { CloudFormationClient } from '../aws/cloudformation'
-import { S3Client } from '../aws/s3'
-import { CloudFrontClient } from '../aws/cloudfront'
-import { ACMClient } from '../aws/acm'
 import type { DnsProvider, DnsProviderConfig } from '../dns/types'
+import { ACMClient } from '../aws/acm'
+import { CloudFormationClient } from '../aws/cloudformation'
+import { CloudFrontClient } from '../aws/cloudfront'
+import { S3Client } from '../aws/s3'
 import { createDnsProvider } from '../dns'
 import { Route53Provider } from '../dns/route53-adapter'
 import { UnifiedDnsValidator } from '../dns/validator'
@@ -119,9 +118,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
   const defaultAllowedMethods = useComputeOrigin
     ? ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
     : ['GET', 'HEAD']
-  const defaultCachedMethods = useComputeOrigin
-    ? ['GET', 'HEAD']
-    : ['GET', 'HEAD']
+  const defaultCachedMethods = useComputeOrigin ? ['GET', 'HEAD'] : ['GET', 'HEAD']
 
   const resources: Record<string, any> = {}
   const outputs: Record<string, any> = {}
@@ -274,10 +271,12 @@ export function generateExternalDnsStaticSiteTemplate(config: {
             OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac',
             ...(passthroughUrls && installRootRedirectLogicalId
               ? {
-                  FunctionAssociations: [{
-                    EventType: 'viewer-request',
-                    FunctionARN: { 'Fn::GetAtt': [installRootRedirectLogicalId, 'FunctionARN'] },
-                  }],
+                  FunctionAssociations: [
+                    {
+                      EventType: 'viewer-request',
+                      FunctionARN: { 'Fn::GetAtt': [installRootRedirectLogicalId, 'FunctionARN'] },
+                    },
+                  ],
                 }
               : {}),
           }
@@ -348,8 +347,7 @@ export function generateExternalDnsStaticSiteTemplate(config: {
       SslSupportMethod: 'sni-only',
       MinimumProtocolVersion: 'TLSv1.2_2021',
     }
-  }
-  else {
+  } else {
     distributionConfig.ViewerCertificate = {
       CloudFrontDefaultCertificate: true,
     }
@@ -464,8 +462,7 @@ export async function deployStaticSiteWithExternalDns(
       }
     }
     console.log(`DNS provider '${dnsProvider.name}' verified for ${domain}`)
-  }
-  else {
+  } else {
     console.log(`Skipping DNS verification for ${domain}`)
   }
 
@@ -487,18 +484,17 @@ export async function deployStaticSiteWithExternalDns(
     if (existingCert && existingCert.Status === 'ISSUED') {
       // Check if the existing cert also covers www
       if (wwwDomain && existingCert.SubjectAlternativeNames) {
-        existingCertCoversWww = existingCert.SubjectAlternativeNames.includes(wwwDomain)
-          || existingCert.SubjectAlternativeNames.some(san => san === `*.${domain}`)
-      }
-      else {
+        existingCertCoversWww =
+          existingCert.SubjectAlternativeNames.includes(wwwDomain) ||
+          existingCert.SubjectAlternativeNames.some((san) => san === `*.${domain}`)
+      } else {
         existingCertCoversWww = true // Not apex domain, no www needed
       }
 
       if (existingCertCoversWww) {
         certificateArn = existingCert.CertificateArn
         console.log(`Found existing certificate with www coverage: ${certificateArn}`)
-      }
-      else {
+      } else {
         console.log(`Existing certificate doesn't cover ${wwwDomain}, requesting new one...`)
       }
     }
@@ -552,22 +548,18 @@ export async function deployStaticSiteWithExternalDns(
         console.log('Previous stack is still being deleted, waiting...')
         await cf.waitForStack(stackName, 'stack-delete-complete')
         stackExists = false
-      }
-      else if (stackStatus === 'DELETE_COMPLETE') {
+      } else if (stackStatus === 'DELETE_COMPLETE') {
         stackExists = false
-      }
-      else {
+      } else {
         stackExists = true
         const outputs = stack.Outputs || []
-        existingBucketName = outputs.find(o => o.OutputKey === 'BucketName')?.OutputValue
+        existingBucketName = outputs.find((o) => o.OutputKey === 'BucketName')?.OutputValue
       }
     }
-  }
-  catch (err: any) {
+  } catch (err: any) {
     if (err.message?.includes('does not exist') || err.code === 'ValidationError') {
       stackExists = false
-    }
-    else {
+    } else {
       throw err
     }
   }
@@ -590,13 +582,11 @@ export async function deployStaticSiteWithExternalDns(
           if (dist.Aliases?.Items) {
             if (Array.isArray(dist.Aliases.Items)) {
               aliases = dist.Aliases.Items
-            }
-            else if (typeof dist.Aliases.Items === 'object') {
+            } else if (typeof dist.Aliases.Items === 'object') {
               const cname = (dist.Aliases.Items as any).CNAME
               if (typeof cname === 'string') {
                 aliases = [cname]
-              }
-              else if (Array.isArray(cname)) {
+              } else if (Array.isArray(cname)) {
                 aliases = cname
               }
             }
@@ -616,11 +606,9 @@ export async function deployStaticSiteWithExternalDns(
               let originList: any[] = []
               if (Array.isArray(originsData)) {
                 originList = originsData
-              }
-              else if (originsData.Origin) {
+              } else if (originsData.Origin) {
                 originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-              }
-              else {
+              } else {
                 originList = [originsData]
               }
 
@@ -652,8 +640,7 @@ export async function deployStaticSiteWithExternalDns(
             }
           }
         }
-      }
-      catch {
+      } catch {
         // No distributions or error listing them
       }
     }
@@ -671,16 +658,14 @@ export async function deployStaticSiteWithExternalDns(
             )
             await Promise.race([cleanupPromise, timeoutPromise])
             console.log(`Deleted orphaned S3 bucket ${bucket}`)
-          }
-          catch (cleanupErr: any) {
+          } catch (cleanupErr: any) {
             console.log(`Note: Could not clean up S3 bucket: ${cleanupErr.message}`)
             const suffix = Date.now().toString(36)
             finalBucket = `${bucket}-${suffix}`
             console.log(`Using alternative bucket name: ${finalBucket}`)
           }
         }
-      }
-      catch {
+      } catch {
         // Bucket doesn't exist, good
       }
     }
@@ -729,13 +714,12 @@ export async function deployStaticSiteWithExternalDns(
       })
       stackId = result.StackId
       console.log(`Update initiated, stack ID: ${stackId}`)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       if (err.message?.includes('No updates are to be performed')) {
         const stacks = await cf.describeStacks({ stackName })
         stackId = stacks.Stacks[0].StackId
         const outputs = stacks.Stacks[0]?.Outputs || []
-        const getOutput = (key: string) => outputs.find(o => o.OutputKey === key)?.OutputValue
+        const getOutput = (key: string) => outputs.find((o) => o.OutputKey === key)?.OutputValue
 
         // Still need to ensure DNS records exist
         const distributionDomain = getOutput('DistributionDomain')
@@ -754,13 +738,11 @@ export async function deployStaticSiteWithExternalDns(
           certificateArn,
           message: 'Static site infrastructure is already up to date',
         }
-      }
-      else {
+      } else {
         throw err
       }
     }
-  }
-  else {
+  } else {
     console.log(`Creating CloudFormation stack: ${stackName}`)
     console.log(`Bucket name: ${finalBucket}`)
     console.log(`Domain: ${domain}`)
@@ -781,8 +763,7 @@ export async function deployStaticSiteWithExternalDns(
   try {
     await cf.waitForStack(stackName, isUpdate ? 'stack-update-complete' : 'stack-create-complete')
     console.log('Stack operation completed successfully!')
-  }
-  catch (err: any) {
+  } catch (err: any) {
     // Check for CloudFront account verification error
     if (err.message?.includes('must be verified') || err.message?.includes('Access denied for operation')) {
       console.log('CloudFront account verification required - checking for existing infrastructure...')
@@ -797,13 +778,11 @@ export async function deployStaticSiteWithExternalDns(
           if (dist.Aliases?.Items) {
             if (Array.isArray(dist.Aliases.Items)) {
               aliases = dist.Aliases.Items
-            }
-            else if (typeof dist.Aliases.Items === 'object') {
+            } else if (typeof dist.Aliases.Items === 'object') {
               const cname = (dist.Aliases.Items as any).CNAME
               if (typeof cname === 'string') {
                 aliases = [cname]
-              }
-              else if (Array.isArray(cname)) {
+              } else if (Array.isArray(cname)) {
                 aliases = cname
               }
             }
@@ -822,11 +801,9 @@ export async function deployStaticSiteWithExternalDns(
               let originList: any[] = []
               if (Array.isArray(originsData)) {
                 originList = originsData
-              }
-              else if (originsData.Origin) {
+              } else if (originsData.Origin) {
                 originList = Array.isArray(originsData.Origin) ? originsData.Origin : [originsData.Origin]
-              }
-              else {
+              } else {
                 originList = [originsData]
               }
 
@@ -862,8 +839,7 @@ export async function deployStaticSiteWithExternalDns(
             }
           }
         }
-      }
-      catch {
+      } catch {
         // Couldn't find existing infrastructure
       }
 
@@ -909,7 +885,7 @@ export async function deployStaticSiteWithExternalDns(
   // Get stack outputs
   const stacks = await cf.describeStacks({ stackName })
   const outputs = stacks.Stacks[0]?.Outputs || []
-  const getOutput = (key: string) => outputs.find(o => o.OutputKey === key)?.OutputValue
+  const getOutput = (key: string) => outputs.find((o) => o.OutputKey === key)?.OutputValue
 
   const distributionDomain = getOutput('DistributionDomain')
 
@@ -917,8 +893,7 @@ export async function deployStaticSiteWithExternalDns(
   if (distributionDomain && dnsProvider) {
     console.log(`Creating DNS records via ${dnsProvider.name}...`)
     await ensureDnsRecords(dnsProvider, domain, distributionDomain)
-  }
-  else if (distributionDomain && !dnsProvider) {
+  } else if (distributionDomain && !dnsProvider) {
     console.log(`Skipping DNS record creation (DNS verification was skipped)`)
   }
 
@@ -971,8 +946,7 @@ async function ensureDnsRecords(
         console.warn(`Warning: Could not create Route53 alias record: ${result.message}`)
         console.warn(`Please manually create an A-record alias in Route53:`)
         console.warn(`  ${domain} -> ${cloudfrontDomain}`)
-      }
-      else {
+      } else {
         console.log(`Created Route53 alias record: ${domain} -> ${cloudfrontDomain}`)
       }
 
@@ -989,12 +963,10 @@ async function ensureDnsRecords(
         console.warn(`Warning: Could not create www Route53 alias: ${wwwResult.message}`)
         console.warn(`Please manually create an A-record alias in Route53:`)
         console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
-      }
-      else {
+      } else {
         console.log(`Created Route53 alias record: ${wwwDomain} -> ${cloudfrontDomain}`)
       }
-    }
-    else {
+    } else {
       // External DNS providers (Porkbun, Cloudflare, etc.): use ALIAS record type
       //
       // First, remove any existing A record at the root that would conflict
@@ -1016,8 +988,7 @@ async function ensureDnsRecords(
             }
           }
         }
-      }
-      catch (err) {
+      } catch (err) {
         // Non-fatal: if we can't list/delete, the upsert will just fail and we'll fall through
         console.log(`Note: Could not check for conflicting A records: ${err instanceof Error ? err.message : err}`)
       }
@@ -1035,8 +1006,7 @@ async function ensureDnsRecords(
         console.warn(`Warning: Could not create ALIAS record: ${result.message}`)
         console.warn(`Please manually create an ALIAS record in your DNS provider:`)
         console.warn(`  ${domain} -> ${cloudfrontDomain}`)
-      }
-      else {
+      } else {
         console.log(`Created ALIAS record: ${domain} -> ${cloudfrontDomain}`)
       }
 
@@ -1054,13 +1024,11 @@ async function ensureDnsRecords(
         console.warn(`Warning: Could not create www DNS record: ${wwwResult.message}`)
         console.warn(`Please manually create a CNAME record:`)
         console.warn(`  ${wwwDomain} -> ${cloudfrontDomain}`)
-      }
-      else {
+      } else {
         console.log(`Created CNAME record: ${wwwDomain} -> ${cloudfrontDomain}`)
       }
     }
-  }
-  else {
+  } else {
     // For subdomains, use standard CNAME
     console.log(`Creating CNAME record for ${domain} -> ${cloudfrontDomain}`)
 
@@ -1075,8 +1043,7 @@ async function ensureDnsRecords(
       console.warn(`Warning: Could not create DNS record: ${result.message}`)
       console.warn(`Please manually create a CNAME record:`)
       console.warn(`  ${domain} -> ${cloudfrontDomain}`)
-    }
-    else {
+    } else {
       console.log(`Created CNAME record: ${domain} -> ${cloudfrontDomain}`)
     }
   }
@@ -1085,11 +1052,13 @@ async function ensureDnsRecords(
 /**
  * Full deployment with external DNS: infrastructure + files + cache invalidation
  */
-export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsStaticSiteConfig & {
-  sourceDir: string
-  cleanBucket?: boolean
-  onProgress?: (stage: string, detail?: string) => void
-}): Promise<ExternalDnsDeployResult> {
+export async function deployStaticSiteWithExternalDnsFull(
+  config: ExternalDnsStaticSiteConfig & {
+    sourceDir: string
+    cleanBucket?: boolean
+    onProgress?: (stage: string, detail?: string) => void
+  },
+): Promise<ExternalDnsDeployResult> {
   const { sourceDir, cleanBucket = false, onProgress, ...siteConfig } = config
 
   // Step 1: Deploy infrastructure
@@ -1106,8 +1075,7 @@ export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsSta
     try {
       const s3 = new S3Client(siteConfig.region || 'us-east-1')
       await s3.emptyBucket(infraResult.bucket)
-    }
-    catch (err: any) {
+    } catch (err: any) {
       console.log(`Note: Could not clean bucket: ${err.message}`)
     }
   }
@@ -1143,9 +1111,10 @@ export async function deployStaticSiteWithExternalDnsFull(config: ExternalDnsSta
 
   onProgress?.('complete', 'Deployment complete!')
 
-  const message = uploadResult.skipped > 0
-    ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged) with external DNS`
-    : `Deployed ${uploadResult.uploaded} files successfully with external DNS`
+  const message =
+    uploadResult.skipped > 0
+      ? `Deployed ${uploadResult.uploaded} files (${uploadResult.skipped} unchanged) with external DNS`
+      : `Deployed ${uploadResult.uploaded} files successfully with external DNS`
 
   return {
     ...infraResult,

@@ -1,6 +1,14 @@
 import type { DashboardUser } from './dashboard-auth'
 import { describe, expect, it } from 'bun:test'
-import { authorize, generatePassword, hashPassword, isBoxCapability, passwordNeedsRehash, verifyPassword, visibleSites } from './dashboard-auth'
+import {
+  authorize,
+  generatePassword,
+  hashPassword,
+  isBoxCapability,
+  passwordNeedsRehash,
+  verifyPassword,
+  visibleSites,
+} from './dashboard-auth'
 import { createSessionToken, readCookie, serializeSessionCookie, verifySessionToken } from './dashboard-session'
 
 const admin: Pick<DashboardUser, 'role' | 'sites'> = { role: 'admin', sites: {} }
@@ -15,7 +23,14 @@ describe('authorize', () => {
   })
 
   it('never grants a member box-level capabilities, even on a site they own', () => {
-    for (const capability of ['box:shell', 'box:ssh', 'box:firewall', 'box:database', 'box:config', 'box:users'] as const) {
+    for (const capability of [
+      'box:shell',
+      'box:ssh',
+      'box:firewall',
+      'box:database',
+      'box:config',
+      'box:users',
+    ] as const) {
       expect(authorize({ user: siteOwner, capability })).toBe(false)
       // Passing a granted site must not unlock a box capability.
       expect(authorize({ user: siteOwner, capability, site: 'blog' })).toBe(false)
@@ -131,7 +146,9 @@ describe('session tokens', () => {
 
   it('rejects a tampered payload', () => {
     const token = createSessionToken('member', secret)
-    const forgedPayload = Buffer.from(JSON.stringify({ u: 'admin', exp: Date.now() + 10_000 }), 'utf8').toString('base64url')
+    const forgedPayload = Buffer.from(JSON.stringify({ u: 'admin', exp: Date.now() + 10_000 }), 'utf8').toString(
+      'base64url',
+    )
     const forged = `${forgedPayload}.${token.split('.')[1]}`
     expect(verifySessionToken(forged, secret)).toBeNull()
   })

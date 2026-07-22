@@ -25,16 +25,25 @@ describe('routePolicy', () => {
   it('allows scoped queue reads and controls while protecting global settings', () => {
     expect(routePolicy('GET', '/api/queue')).toMatchObject({ capability: 'deployments:read', anyUser: true })
     expect(routePolicy('POST', '/api/queue/cancel')).toMatchObject({ capability: 'deployments:cancel', anyUser: true })
-    expect(routePolicy('PATCH', '/api/queue/settings')).toMatchObject({ capability: 'automation:manage', scope: 'organization' })
+    expect(routePolicy('PATCH', '/api/queue/settings')).toMatchObject({
+      capability: 'automation:manage',
+      scope: 'organization',
+    })
     expect(routePolicy('GET', '/api/releases')).toMatchObject({ capability: 'deployments:read', anyUser: true })
-    expect(routePolicy('POST', '/api/releases/action')).toMatchObject({ capability: 'deployments:create', anyUser: true })
+    expect(routePolicy('POST', '/api/releases/action')).toMatchObject({
+      capability: 'deployments:create',
+      anyUser: true,
+    })
   })
 
   it('keeps telemetry reads, live tail, exports, and policy changes capability-gated', () => {
     expect(routePolicy('GET', '/api/telemetry/query').capability).toBe('runtime:logs')
     expect(routePolicy('GET', '/api/telemetry/tail').capability).toBe('runtime:logs')
     expect(routePolicy('POST', '/api/telemetry/export').capability).toBe('runtime:logs')
-    expect(routePolicy('PATCH', '/api/telemetry/settings')).toMatchObject({ capability: 'config:write', scope: 'organization' })
+    expect(routePolicy('PATCH', '/api/telemetry/settings')).toMatchObject({
+      capability: 'config:write',
+      scope: 'organization',
+    })
   })
 
   it('keeps every shell-equivalent route admin-only', () => {
@@ -59,14 +68,12 @@ describe('routePolicy', () => {
   it('uses resource scope only for explicitly site-scoped routes', () => {
     const siteRoutes = Object.entries(allRoutePolicies()).filter(([, policy]) => policy.scope === 'site')
     expect(siteRoutes.map(([route]) => route).sort()).toEqual(['PATCH /api/sites', 'POST /api/sites/deploy'])
-    for (const [, policy] of siteRoutes)
-      expect(policy.siteFrom).toBe('body')
+    for (const [, policy] of siteRoutes) expect(policy.siteFrom).toBe('body')
   })
 
   it('gives every site-scoped policy a way to resolve its site', () => {
     for (const policy of Object.values(allRoutePolicies())) {
-      if (policy.scope === 'site')
-        expect(policy.siteFrom).toBe('body')
+      if (policy.scope === 'site') expect(policy.siteFrom).toBe('body')
     }
   })
 })
@@ -94,7 +101,7 @@ describe('policy coverage', () => {
     // matching can't turn this into a vacuous pass.
     expect(routes.size).toBeGreaterThan(20)
 
-    const missing = [...routes].filter(route => !(route in policies) && !PUBLIC_ROUTES.has(route))
+    const missing = [...routes].filter((route) => !(route in policies) && !PUBLIC_ROUTES.has(route))
     expect(missing).toEqual([])
   })
 
@@ -122,7 +129,6 @@ describe('policy coverage', () => {
   it('never marks a public route as also policy-governed', () => {
     // A route in both sets would be ambiguous: the gate skips public routes, so
     // its policy would be silently dead.
-    for (const route of PUBLIC_ROUTES)
-      expect(route in allRoutePolicies()).toBe(false)
+    for (const route of PUBLIC_ROUTES) expect(route in allRoutePolicies()).toBe(false)
   })
 })

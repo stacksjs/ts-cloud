@@ -14,8 +14,7 @@ let running: Awaited<ReturnType<typeof startLocalDashboardServer>> | undefined
 afterEach(() => {
   running?.server.stop(true)
   running = undefined
-  if (root)
-    rmSync(root, { recursive: true, force: true })
+  if (root) rmSync(root, { recursive: true, force: true })
   root = undefined
 })
 
@@ -30,14 +29,16 @@ function cookie(response: Response): string {
 describe('dashboard OIDC integration', () => {
   it('configures, signs in, provisions, and disables a provider without exposing tokens', async () => {
     root = mkdtempSync(join(tmpdir(), 'ts-cloud-dashboard-oidc-'))
-    saveUsers(root, [{
-      username: 'owner',
-      passwordHash: hashPassword('correct horse battery staple'),
-      role: 'admin',
-      sites: {},
-      name: 'Owner',
-      createdAt: new Date().toISOString(),
-    }])
+    saveUsers(root, [
+      {
+        username: 'owner',
+        passwordHash: hashPassword('correct horse battery staple'),
+        role: 'admin',
+        sites: {},
+        name: 'Owner',
+        createdAt: new Date().toISOString(),
+      },
+    ])
     const issuer = 'http://localhost:9143'
     const keys = generateKeyPairSync('rsa', { modulusLength: 2048 })
     const jwk = keys.publicKey.export({ format: 'jwk' })
@@ -58,8 +59,7 @@ describe('dashboard OIDC integration', () => {
           token_endpoint_auth_methods_supported: ['client_secret_basic'],
         })
       }
-      if (url.endsWith('/keys'))
-        return json({ keys: [jwk] })
+      if (url.endsWith('/keys')) return json({ keys: [jwk] })
       if (url.endsWith('/token')) {
         const body = init?.body as URLSearchParams
         expect(body.get('code')).toBe('signed-code')
@@ -67,20 +67,26 @@ describe('dashboard OIDC integration', () => {
         tokenExchange = true
         const now = Math.floor(Date.now() / 1000)
         const header = Buffer.from(JSON.stringify({ alg: 'RS256', kid: 'dashboard-test-key' })).toString('base64url')
-        const payload = Buffer.from(JSON.stringify({
-          iss: issuer,
-          aud: 'dashboard-client',
-          sub: 'employee-123',
-          nonce,
-          email: 'chris@acme.test',
-          email_verified: true,
-          name: 'Chris',
-          iat: now,
-          exp: now + 300,
-        })).toString('base64url')
+        const payload = Buffer.from(
+          JSON.stringify({
+            iss: issuer,
+            aud: 'dashboard-client',
+            sub: 'employee-123',
+            nonce,
+            email: 'chris@acme.test',
+            email_verified: true,
+            name: 'Chris',
+            iat: now,
+            exp: now + 300,
+          }),
+        ).toString('base64url')
         const input = `${header}.${payload}`
         const signature = createSign('SHA256').update(input).end().sign(keys.privateKey).toString('base64url')
-        return json({ access_token: 'must-not-persist', refresh_token: 'must-not-persist-either', id_token: `${input}.${signature}` })
+        return json({
+          access_token: 'must-not-persist',
+          refresh_token: 'must-not-persist-either',
+          id_token: `${input}.${signature}`,
+        })
       }
       throw new Error(`Unexpected OIDC request: ${url}`)
     }
@@ -96,7 +102,8 @@ describe('dashboard OIDC integration', () => {
       } as any,
     })
     const base = running.url.replace(/\/$/, '')
-    const dashboardFetch = (path: string, init?: RequestInit): Response | Promise<Response> => running!.server.fetch(new Request(`${base}${path}`, init))
+    const dashboardFetch = (path: string, init?: RequestInit): Response | Promise<Response> =>
+      running!.server.fetch(new Request(`${base}${path}`, init))
     const login = await dashboardFetch('/api/login', {
       method: 'POST',
       headers: { 'content-type': 'application/json', origin: base },
@@ -120,28 +127,37 @@ describe('dashboard OIDC integration', () => {
       }),
     })
     expect(configured.status).toBe(200)
-    const provider = (await configured.json() as any).provider
+    const provider = ((await configured.json()) as any).provider
     expect(provider.hasClientSecret).toBe(true)
     expect(JSON.stringify(provider)).not.toContain('dashboard-secret')
 
-    const started = await dashboardFetch(`/auth/oidc/workforce/start?return=${encodeURIComponent('/server/sites?env=production')}`)
+    const started = await dashboardFetch(
+      `/auth/oidc/workforce/start?return=${encodeURIComponent('/server/sites?env=production')}`,
+    )
     expect(started.status).toBe(302)
     const authorization = new URL(started.headers.get('location')!)
     nonce = authorization.searchParams.get('nonce')!
     const state = authorization.searchParams.get('state')!
     expect(authorization.searchParams.get('redirect_uri')).toBe(`${base}/auth/oidc/workforce/callback`)
 
-    const callback = await dashboardFetch(`/auth/oidc/workforce/callback?code=signed-code&state=${encodeURIComponent(state)}`)
+    const callback = await dashboardFetch(
+      `/auth/oidc/workforce/callback?code=signed-code&state=${encodeURIComponent(state)}`,
+    )
     expect(callback.status).toBe(302)
     expect(callback.headers.get('location')).toBe('/server/sites?env=production')
     expect(tokenExchange).toBe(true)
     const oidcCookie = cookie(callback)
     const me = await dashboardFetch('/api/me', { headers: { cookie: oidcCookie } })
     expect(me.status).toBe(200)
-    expect(await me.json()).toMatchObject({ user: { username: 'chris', email: 'chris@acme.test' }, membership: { roleTemplate: 'viewer', status: 'active' } })
+    expect(await me.json()).toMatchObject({
+      user: { username: 'chris', email: 'chris@acme.test' },
+      membership: { roleTemplate: 'viewer', status: 'active' },
+    })
     const security = await dashboardFetch('/api/auth/security', { headers: { cookie: oidcCookie } })
-    const securityBody = await security.json() as any
-    expect(securityBody.sessions.find((session: any) => session.id === securityBody.currentSessionId)?.authMethod).toBe('oidc')
+    const securityBody = (await security.json()) as any
+    expect(securityBody.sessions.find((session: any) => session.id === securityBody.currentSessionId)?.authMethod).toBe(
+      'oidc',
+    )
 
     const disabled = await dashboardFetch('/api/auth/oidc/providers', {
       method: 'PATCH',
@@ -153,22 +169,36 @@ describe('dashboard OIDC integration', () => {
     const unavailable = await dashboardFetch('/auth/oidc/workforce/start')
     expect(unavailable.headers.get('location')).toBe('/login?sso_error=start')
 
-    const organization = await (await dashboardFetch('/api/organization', { headers: { cookie: ownerCookie } })).json() as any
+    const organization = (await (
+      await dashboardFetch('/api/organization', { headers: { cookie: ownerCookie } })
+    ).json()) as any
     const environment = organization.environments[0]
     const serviceAccountResponse = await dashboardFetch('/api/automation/service-accounts', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
-      body: JSON.stringify({ slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scopeType: 'environment', scopeId: environment.id }),
+      body: JSON.stringify({
+        slug: 'production-ci',
+        name: 'Production CI',
+        roleTemplate: 'deployer',
+        scopeType: 'environment',
+        scopeId: environment.id,
+      }),
     })
     expect(serviceAccountResponse.status).toBe(201)
-    const serviceAccount = await serviceAccountResponse.json() as any
+    const serviceAccount = (await serviceAccountResponse.json()) as any
     const tokenResponse = await dashboardFetch('/api/automation/tokens', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },
-      body: JSON.stringify({ serviceAccountId: serviceAccount.serviceAccount.id, name: 'CI token', capabilities: ['project:read', 'deployments:read', 'deployments:create'], scopeType: 'environment', scopeId: environment.id }),
+      body: JSON.stringify({
+        serviceAccountId: serviceAccount.serviceAccount.id,
+        name: 'CI token',
+        capabilities: ['project:read', 'deployments:read', 'deployments:create'],
+        scopeType: 'environment',
+        scopeId: environment.id,
+      }),
     })
     expect(tokenResponse.status).toBe(201)
-    const token = await tokenResponse.json() as any
+    const token = (await tokenResponse.json()) as any
     const bearer = { authorization: `Bearer ${token.secret}` }
     const projects = await dashboardFetch('/api/v1/projects', { headers: bearer })
     expect(await projects.json()).toMatchObject({ data: [{ id: organization.project.id }] })
@@ -178,7 +208,9 @@ describe('dashboard OIDC integration', () => {
       body: JSON.stringify({ projectId: organization.project.id, environmentId: environment.id }),
     })
     expect(deployment.status).toBe(202)
-    expect(await deployment.json()).toMatchObject({ operation: { state: 'queued', kind: 'deployment.create', actorId: serviceAccount.serviceAccount.actorId } })
+    expect(await deployment.json()).toMatchObject({
+      operation: { state: 'queued', kind: 'deployment.create', actorId: serviceAccount.serviceAccount.actorId },
+    })
     const revoked = await dashboardFetch('/api/automation/tokens', {
       method: 'DELETE',
       headers: { 'content-type': 'application/json', cookie: ownerCookie, origin: base },

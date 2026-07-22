@@ -15,8 +15,7 @@ const secret = 'guard-test-secret'
 let root: string | undefined
 
 afterEach(() => {
-  if (root)
-    rmSync(root, { recursive: true, force: true })
+  if (root) rmSync(root, { recursive: true, force: true })
   root = undefined
 })
 
@@ -52,17 +51,27 @@ function setup() {
     },
   })
   const request = (user: DashboardUser, path: string, method = 'GET', body?: Record<string, unknown>) => {
-    const token = createSessionToken(user.username, secret, undefined, dashboardMembershipVersions(controlPlane.store, controlPlane.organization.id, user))
+    const token = createSessionToken(
+      user.username,
+      secret,
+      undefined,
+      dashboardMembershipVersions(controlPlane.store, controlPlane.organization.id, user),
+    )
     return new Request(`http://localhost${path}`, {
       method,
-      headers: { cookie: serializeSessionCookie(token, { secure: false }), ...(body ? { 'content-type': 'application/json' } : {}) },
+      headers: {
+        cookie: serializeSessionCookie(token, { secure: false }),
+        ...(body ? { 'content-type': 'application/json' } : {}),
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
   }
   const durableRequest = (user: DashboardUser, path: string) => {
     const identity = authentication.getIdentityByUsername(user.username)!
     const issued = authentication.createSession({ identityId: identity.id })
-    return new Request(`http://localhost${path}`, { headers: { cookie: serializeSessionCookie(issued.token, { secure: false }) } })
+    return new Request(`http://localhost${path}`, {
+      headers: { cookie: serializeSessionCookie(issued.token, { secure: false }) },
+    })
   }
   return { authentication, controlPlane, durableRequest, guard, users, request }
 }
@@ -77,13 +86,21 @@ describe('dashboard organization guard', () => {
 
     const guessedRequest = request(users[1], '/api/sites/deploy?env=production', 'POST', { name: 'private' })
     const guessedUser = guard.resolveUser(guessedRequest)
-    expect(guard.check(guessedRequest, '/api/sites/deploy', guessedUser, 'private')).toMatchObject({ ok: false, status: 403, error: 'You do not have access to this.' })
+    expect(guard.check(guessedRequest, '/api/sites/deploy', guessedUser, 'private')).toMatchObject({
+      ok: false,
+      status: 403,
+      error: 'You do not have access to this.',
+    })
     controlPlane.store.close()
   })
 
   it('keeps viewers out of terminal, data mutations, and project-wide writes', () => {
     const { controlPlane, guard, users, request } = setup()
-    for (const [method, path] of [['GET', '/api/terminal'], ['POST', '/api/databases'], ['POST', '/api/sites']] as const) {
+    for (const [method, path] of [
+      ['GET', '/api/terminal'],
+      ['POST', '/api/databases'],
+      ['POST', '/api/sites'],
+    ] as const) {
       const req = request(users[1], path, method)
       expect(guard.check(req, path, guard.resolveUser(req))).toMatchObject({ ok: false, status: 403 })
     }
@@ -96,7 +113,11 @@ describe('dashboard organization guard', () => {
     expect(guard.resolveUser(req)?.username).toBe('dev')
     const actor = controlPlane.store.getActorByExternalId('user', 'dashboard:dev')!
     const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id)!
-    controlPlane.store.updateMembership({ id: membership.id, roleTemplate: membership.roleTemplate, scope: membership.scope })
+    controlPlane.store.updateMembership({
+      id: membership.id,
+      roleTemplate: membership.roleTemplate,
+      scope: membership.scope,
+    })
     expect(guard.resolveUser(req)).toBeNull()
     controlPlane.store.close()
   })
@@ -107,7 +128,7 @@ describe('dashboard organization guard', () => {
     expect(guard.resolveUser(req)?.username).toBe('dev')
     const actor = controlPlane.store.getActorByExternalId('user', 'dashboard:dev')!
     const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id)!
-    const grant = controlPlane.store.listGrants(membership.id).find(item => item.capability === 'deployments:create')!
+    const grant = controlPlane.store.listGrants(membership.id).find((item) => item.capability === 'deployments:create')!
     controlPlane.store.removeGrant(grant.id)
     expect(guard.resolveUser(req)).toBeNull()
     controlPlane.store.close()

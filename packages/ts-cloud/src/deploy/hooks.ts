@@ -29,8 +29,7 @@ export async function runHook(
   logger: HookLogger = {},
   cwd: string = process.cwd(),
 ): Promise<void> {
-  if (!hook)
-    return
+  if (!hook) return
   logger.step?.(`Running ${name} hook`)
   if (typeof hook === 'string') {
     execSync(hook, { stdio: 'inherit', cwd })
@@ -52,8 +51,7 @@ export async function runConfigHook(
   try {
     await runHook(config.hooks?.[name], config, name, logger, cwd)
     return true
-  }
-  catch (err: any) {
+  } catch (err: any) {
     logger.error?.(`${name} hook failed: ${err?.message || err}`)
     return false
   }

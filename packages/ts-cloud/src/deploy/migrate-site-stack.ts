@@ -1,11 +1,11 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { resolveSiteBucketName, resolveSiteStackName } from '@ts-cloud/core'
-import { CloudFormationClient } from '../aws/cloudformation'
 import { ACMClient } from '../aws/acm'
+import { CloudFormationClient } from '../aws/cloudformation'
+import { invalidateCache, uploadStaticFiles } from './static-site'
 import { generateExternalDnsStaticSiteTemplate } from './static-site-external-dns'
-import { uploadStaticFiles, invalidateCache } from './static-site'
 
 export interface SiteStackMigrationPlan {
   oldStackName: string
@@ -86,10 +86,16 @@ export function buildSiteStackMigrationPlan(
   mkdirSync(outputDir, { recursive: true })
 
   // Import template: no Outputs (added on follow-up deploy); S3BucketPolicy created after import.
-  const importTemplate = JSON.parse(JSON.stringify(template)) as { Resources: Record<string, unknown>, Outputs?: unknown }
+  const importTemplate = JSON.parse(JSON.stringify(template)) as {
+    Resources: Record<string, unknown>
+    Outputs?: unknown
+  }
   delete importTemplate.Outputs
   delete importTemplate.Resources.S3BucketPolicy
-  for (const resource of Object.values(importTemplate.Resources) as Array<{ DeletionPolicy?: string, UpdateReplacePolicy?: string }>) {
+  for (const resource of Object.values(importTemplate.Resources) as Array<{
+    DeletionPolicy?: string
+    UpdateReplacePolicy?: string
+  }>) {
     resource.DeletionPolicy = 'Retain'
     resource.UpdateReplacePolicy = 'Retain'
   }
@@ -129,14 +135,19 @@ export async function deployRetainPoliciesToStack(
   region: string,
 ): Promise<void> {
   const templateBody = readFileSync(templatePath, 'utf8')
-  const template = JSON.parse(templateBody) as { Resources: Record<string, { DeletionPolicy?: string, UpdateReplacePolicy?: string }> }
+  const template = JSON.parse(templateBody) as {
+    Resources: Record<string, { DeletionPolicy?: string; UpdateReplacePolicy?: string }>
+  }
   for (const resource of Object.values(template.Resources)) {
     resource.DeletionPolicy = 'Retain'
     resource.UpdateReplacePolicy = 'Retain'
   }
 
   const cfn = new CloudFormationClient(region)
-  const exists = await cfn.describeStacks({ stackName }).then(r => (r.Stacks?.length ?? 0) > 0).catch(() => false)
+  const exists = await cfn
+    .describeStacks({ stackName })
+    .then((r) => (r.Stacks?.length ?? 0) > 0)
+    .catch(() => false)
   if (!exists) {
     throw new Error(`Stack ${stackName} does not exist`)
   }
@@ -155,23 +166,17 @@ export async function deleteStackRetainResources(stackName: string, region: stri
   await cfn.waitForStack(stackName, 'stack-delete-complete')
 }
 
-export async function importSiteStack(
-  plan: SiteStackMigrationPlan,
-  region: string,
-): Promise<void> {
+export async function importSiteStack(plan: SiteStackMigrationPlan, region: string): Promise<void> {
   const { execSync } = await import('node:child_process')
-  const templateBody = readFileSync(plan.templatePath, 'utf8').replace(
-    'PLACEHOLDER_CERT',
-    plan.certificateArn,
-  )
+  const templateBody = readFileSync(plan.templatePath, 'utf8').replace('PLACEHOLDER_CERT', plan.certificateArn)
   const importTemplatePath = join(dirname(plan.templatePath), 'site-stack-import-template.json')
-  const importTemplateBody = readFileSync(importTemplatePath, 'utf8').replace(
-    'PLACEHOLDER_CERT',
-    plan.certificateArn,
-  )
+  const importTemplateBody = readFileSync(importTemplatePath, 'utf8').replace('PLACEHOLDER_CERT', plan.certificateArn)
   const cfn = new CloudFormationClient(region)
 
-  const exists = await cfn.describeStacks({ stackName: plan.newStackName }).then(r => (r.Stacks?.length ?? 0) > 0).catch(() => false)
+  const exists = await cfn
+    .describeStacks({ stackName: plan.newStackName })
+    .then((r) => (r.Stacks?.length ?? 0) > 0)
+    .catch(() => false)
   if (exists) {
     writeFileSync(plan.templatePath, templateBody)
     await cfn.updateStack({
@@ -187,49 +192,55 @@ export async function importSiteStack(
   writeFileSync(templateFile, importTemplateBody)
 
   const changeSetName = `${plan.newStackName}-import`
-  execSync([
-    'aws cloudformation create-change-set',
-    `--stack-name ${plan.newStackName}`,
-    `--change-set-name ${changeSetName}`,
-    '--change-set-type IMPORT',
-    `--template-body file://${templateFile}`,
-    `--resources-to-import file://${plan.importPath}`,
-    '--capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM',
-    `--region ${region}`,
-    '--tags Key=ManagedBy,Value=ts-cloud Key=Project,Value=pantry',
-  ].join(' '), { stdio: 'inherit' })
+  execSync(
+    [
+      'aws cloudformation create-change-set',
+      `--stack-name ${plan.newStackName}`,
+      `--change-set-name ${changeSetName}`,
+      '--change-set-type IMPORT',
+      `--template-body file://${templateFile}`,
+      `--resources-to-import file://${plan.importPath}`,
+      '--capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM',
+      `--region ${region}`,
+      '--tags Key=ManagedBy,Value=ts-cloud Key=Project,Value=pantry',
+    ].join(' '),
+    { stdio: 'inherit' },
+  )
 
-  execSync([
-    'aws cloudformation wait change-set-create-complete',
-    `--stack-name ${plan.newStackName}`,
-    `--change-set-name ${changeSetName}`,
-    `--region ${region}`,
-  ].join(' '), { stdio: 'inherit' })
+  execSync(
+    [
+      'aws cloudformation wait change-set-create-complete',
+      `--stack-name ${plan.newStackName}`,
+      `--change-set-name ${changeSetName}`,
+      `--region ${region}`,
+    ].join(' '),
+    { stdio: 'inherit' },
+  )
 
-  execSync([
-    'aws cloudformation execute-change-set',
-    `--stack-name ${plan.newStackName}`,
-    `--change-set-name ${changeSetName}`,
-    `--region ${region}`,
-  ].join(' '), { stdio: 'inherit' })
+  execSync(
+    [
+      'aws cloudformation execute-change-set',
+      `--stack-name ${plan.newStackName}`,
+      `--change-set-name ${changeSetName}`,
+      `--region ${region}`,
+    ].join(' '),
+    { stdio: 'inherit' },
+  )
 
-  execSync([
-    'aws cloudformation wait stack-import-complete',
-    `--stack-name ${plan.newStackName}`,
-    `--region ${region}`,
-  ].join(' '), { stdio: 'inherit' })
+  execSync(
+    ['aws cloudformation wait stack-import-complete', `--stack-name ${plan.newStackName}`, `--region ${region}`].join(
+      ' ',
+    ),
+    { stdio: 'inherit' },
+  )
 }
 
-export async function syncSiteBucket(
-  oldBucket: string,
-  newBucket: string,
-  region: string,
-): Promise<void> {
+export async function syncSiteBucket(oldBucket: string, newBucket: string, region: string): Promise<void> {
   const { S3Client } = await import('../aws/s3')
   const s3 = new S3Client(region)
 
   const buckets = await s3.listBuckets()
-  const names = buckets.Buckets?.map(b => b.Name) || []
+  const names = buckets.Buckets?.map((b) => b.Name) || []
   if (!names.includes(newBucket)) {
     await s3.createBucket(newBucket)
   }
@@ -238,11 +249,7 @@ export async function syncSiteBucket(
   execSync(`aws s3 sync s3://${oldBucket} s3://${newBucket} --region ${region}`, { stdio: 'inherit' })
 }
 
-export async function uploadSiteAssets(
-  plan: SiteStackMigrationPlan,
-  sourceDir: string,
-  region: string,
-): Promise<void> {
+export async function uploadSiteAssets(plan: SiteStackMigrationPlan, sourceDir: string, region: string): Promise<void> {
   await uploadStaticFiles({
     sourceDir,
     bucket: plan.newBucket,

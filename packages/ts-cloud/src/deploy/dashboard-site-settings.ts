@@ -56,37 +56,37 @@ export interface FieldCheck {
  * a caller who asked to set `start` should be told it did not happen.
  */
 export function checkMemberSiteFields(body: Record<string, any>): FieldCheck {
-  const touched = Object.keys(body).filter(key => body[key] !== undefined)
+  const touched = Object.keys(body).filter((key) => body[key] !== undefined)
 
-  const forbidden = touched.filter(key => key in ADMIN_ONLY_SITE_FIELDS)
+  const forbidden = touched.filter((key) => key in ADMIN_ONLY_SITE_FIELDS)
   if (forbidden.length) {
-    const reasons = forbidden.map(key => `${key} (${ADMIN_ONLY_SITE_FIELDS[key]})`).join(', ')
+    const reasons = forbidden.map((key) => `${key} (${ADMIN_ONLY_SITE_FIELDS[key]})`).join(', ')
     return { ok: false, error: `Only the server owner can change ${reasons}.` }
   }
 
-  const unknown = touched.filter(key => !MEMBER_EDITABLE_SITE_FIELDS.has(key))
-  if (unknown.length)
-    return { ok: false, error: `Only the server owner can change ${unknown.join(', ')}.` }
+  const unknown = touched.filter((key) => !MEMBER_EDITABLE_SITE_FIELDS.has(key))
+  if (unknown.length) return { ok: false, error: `Only the server owner can change ${unknown.join(', ')}.` }
 
   return { ok: true }
 }
 
 function normalizeHost(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase().replace(/\.$/, '')
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/\.$/, '')
 }
 
 function normalizePath(value: unknown): string {
   const path = String(value ?? '/').trim()
-  if (!path || path === '/')
-    return '/'
+  if (!path || path === '/') return '/'
   return (path.startsWith('/') ? path : `/${path}`).replace(/\/+$/, '') || '/'
 }
 
 /** Every host a site answers on: its domain plus any aliases. */
 function siteHosts(site: any): string[] {
   const hosts = [normalizeHost(site?.domain)]
-  if (Array.isArray(site?.aliases))
-    hosts.push(...site.aliases.map(normalizeHost))
+  if (Array.isArray(site?.aliases)) hosts.push(...site.aliases.map(normalizeHost))
   return hosts.filter(Boolean)
 }
 
@@ -111,25 +111,20 @@ export function checkRouteConflict({ siteName, body, sites, ownSites }: RouteCon
   const owned = new Set(ownSites)
 
   const wantedHosts = new Set<string>()
-  if (body.domain !== undefined)
-    wantedHosts.add(normalizeHost(body.domain))
-  if (Array.isArray(body.aliases))
-    for (const alias of body.aliases) wantedHosts.add(normalizeHost(alias))
+  if (body.domain !== undefined) wantedHosts.add(normalizeHost(body.domain))
+  if (Array.isArray(body.aliases)) for (const alias of body.aliases) wantedHosts.add(normalizeHost(alias))
   wantedHosts.delete('')
 
-  if (wantedHosts.size === 0)
-    return { ok: true }
+  if (wantedHosts.size === 0) return { ok: true }
 
   const wantedPath = normalizePath(body.path !== undefined ? body.path : current.path)
 
   for (const [otherName, other] of Object.entries(sites)) {
-    if (otherName === siteName || owned.has(otherName))
-      continue
+    if (otherName === siteName || owned.has(otherName)) continue
 
     const otherPath = normalizePath(other?.path)
     for (const host of siteHosts(other)) {
-      if (!wantedHosts.has(host))
-        continue
+      if (!wantedHosts.has(host)) continue
       // Same host is only a conflict when the paths overlap; two sites can
       // share a domain on different paths (example.com and example.com/docs),
       // which is a supported layout.

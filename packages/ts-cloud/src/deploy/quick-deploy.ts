@@ -6,7 +6,8 @@
  * The provider can come from a configured site repository or from the CLI's
  * origin-remote detection, while the branch belongs to the target environment.
  */
-import { type CloudConfig, resolveCloudProvider } from '@ts-cloud/core'
+import type { CloudConfig } from '@ts-cloud/core'
+import { resolveCloudProvider } from '@ts-cloud/core'
 
 export type QuickDeployProvider = 'github' | 'gitlab' | 'bitbucket'
 
@@ -35,11 +36,10 @@ export interface QuickDeployFile {
 }
 
 /** First site that declares a git repository (legacy provider/branch fallback). */
-function primaryRepoSite(config: CloudConfig): { provider?: string, branch?: string } | undefined {
+function primaryRepoSite(config: CloudConfig): { provider?: string; branch?: string } | undefined {
   const sites = config.sites || {}
   for (const site of Object.values(sites)) {
-    if (site?.repository?.url)
-      return { provider: site.repository.provider, branch: site.repository.branch }
+    if (site?.repository?.url) return { provider: site.repository.provider, branch: site.repository.branch }
   }
   return undefined
 }
@@ -62,11 +62,7 @@ function githubExpressionString(value: string): string {
 }
 
 function deployCommand(environment: string, options: QuickDeployOptions): string {
-  const parts = [
-    'bunx --bun @stacksjs/ts-cloud deploy',
-    '--env',
-    shellArg(environment),
-  ]
+  const parts = ['bunx --bun @stacksjs/ts-cloud deploy', '--env', shellArg(environment)]
   if (options.site) parts.push('--site', shellArg(options.site))
   if (options.skipDnsVerification) parts.push('--skip-dns-verification')
   parts.push('--yes')
@@ -85,21 +81,23 @@ export function buildQuickDeployCi(
 ): QuickDeployFile | null {
   const repo = primaryRepoSite(config)
   const provider = options.provider || repo?.provider
-  if (provider !== 'github' && provider !== 'gitlab' && provider !== 'bitbucket')
-    return null
+  if (provider !== 'github' && provider !== 'gitlab' && provider !== 'bitbucket') return null
   const environmentConfig = config.environments?.[environment as keyof typeof config.environments]
   const branch = environmentConfig?.deployBranch || repo?.branch || 'main'
   const cmd = deployCommand(environment, options)
   const yamlBranch = JSON.stringify(branch)
   const yamlEnvironment = JSON.stringify(environment)
   const environmentUrl = environmentConfig?.domain
-    ? environmentConfig.domain.startsWith('http') ? environmentConfig.domain : `https://${environmentConfig.domain}`
+    ? environmentConfig.domain.startsWith('http')
+      ? environmentConfig.domain
+      : `https://${environmentConfig.domain}`
     : undefined
   const githubEnvironmentUrl = environmentUrl ? `\n      url: ${JSON.stringify(environmentUrl)}` : ''
-  const githubSetup = options.setup === 'pantry'
-    ? `      - name: Setup Pantry
+  const githubSetup =
+    options.setup === 'pantry'
+      ? `      - name: Setup Pantry
         uses: home-lang/pantry/packages/action@main`
-    : `      - uses: oven-sh/setup-bun@v2
+      : `      - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile`
   const needsSshKey = resolveCloudProvider(config) === 'hetzner' && !!config.infrastructure?.compute
   const sshPrivateKeySecret = options.sshPrivateKeySecret || 'SSH_PRIVATE_KEY'

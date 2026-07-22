@@ -59,13 +59,10 @@ export function isPhpSite(site: SiteConfig): boolean {
  *  3. else → `'bucket'`.
  */
 export function resolveSiteDeployTarget(site: SiteConfig): SiteDeployTarget {
-  if (site.deploy)
-    return site.deploy
+  if (site.deploy) return site.deploy
   // PHP/Laravel sites are always server-deployed (nginx + php-fpm on the box).
-  if (isPhpSite(site))
-    return 'server'
-  if (site.start)
-    return 'server'
+  if (isPhpSite(site)) return 'server'
+  if (site.start) return 'server'
   return 'bucket'
 }
 
@@ -80,15 +77,12 @@ export function resolveSiteDeployTarget(site: SiteConfig): SiteDeployTarget {
 export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
   // A redirect-only site ships nothing — the gateway answers `domain` with a
   // redirect. Wins over every other kind (`root`/`start`/`type` are ignored).
-  if (site.redirect)
-    return 'redirect'
+  if (site.redirect) return 'redirect'
   // PHP/Laravel sites always deploy to the box via git + atomic releases,
   // regardless of `deploy`/`start`.
-  if (isPhpSite(site))
-    return 'server-php'
+  if (isPhpSite(site)) return 'server-php'
   const target = resolveSiteDeployTarget(site)
-  if (target === 'bucket')
-    return 'bucket'
+  if (target === 'bucket') return 'bucket'
   return site.start ? 'server-app' : 'server-static'
 }
 
@@ -120,8 +114,7 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
   // declare both `infrastructure.compute` (server) and `environments.<env>.app`
   // (serverless Lambda). Surface it up front as a hard error.
   const coexistence = deploymentCoexistenceError(config)
-  if (coexistence)
-    errors.push(coexistence)
+  if (coexistence) errors.push(coexistence)
 
   // Track ports across server-app sites to catch collisions on a shared box.
   const portOwners = new Map<number, string>()
@@ -137,8 +130,7 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
     // A redirect-only site is gateway-only: it needs a `domain` to answer and a
     // redirect target, but ships nothing (no `root`/`start`).
     if (kind === 'redirect') {
-      if (!site.domain)
-        errors.push(`Site '${name}' is a redirect site but has no \`domain\` to redirect from.`)
+      if (!site.domain) errors.push(`Site '${name}' is a redirect site but has no \`domain\` to redirect from.`)
       const to = typeof site.redirect === 'string' ? site.redirect : site.redirect?.to
       if (!to)
         errors.push(`Site '${name}' is a redirect site but has no redirect target (\`redirect\` / \`redirect.to\`).`)
@@ -148,10 +140,8 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
         )
       }
       const serverOnly: string[] = []
-      if (site.start)
-        serverOnly.push('start')
-      if (site.root)
-        serverOnly.push('root')
+      if (site.start) serverOnly.push('start')
+      if (site.root) serverOnly.push('root')
       if (serverOnly.length > 0)
         warnings.push(`Site '${name}' is a redirect site but also sets ${serverOnly.join(', ')}. These are ignored.`)
       continue
@@ -177,8 +167,7 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
           `Site '${name}' is a PHP site (type:'${site.type}') but has no \`repository.url\` to clone. PHP sites deploy via git.`,
         )
       }
-    }
-    else if (kind === 'server-app') {
+    } else if (kind === 'server-app') {
       // A server-app needs a place to run. Without a compute server this is the
       // old silent runtime failure — surface it now.
       if (!computeConfigured) {
@@ -193,15 +182,15 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
           errors.push(
             `Sites '${existing}' and '${name}' both use port ${site.port}. Server apps sharing a box must use distinct ports.`,
           )
-        }
-        else {
+        } else {
           portOwners.set(site.port, name)
         }
       }
-    }
-    else if (kind === 'server-static') {
+    } else if (kind === 'server-static') {
       if (!site.root) {
-        errors.push(`Site '${name}' is a server static site (deploy:'server', no \`start\`) but has no \`root\` directory to serve.`)
+        errors.push(
+          `Site '${name}' is a server static site (deploy:'server', no \`start\`) but has no \`root\` directory to serve.`,
+        )
       }
       // A static site served on the box still needs the box to exist.
       if (!computeConfigured) {
@@ -209,8 +198,7 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
           `Site '${name}' deploys to a server (deploy:'server') but no \`infrastructure.compute\` is configured. Set deploy:'bucket' or add a server (infrastructure.compute).`,
         )
       }
-    }
-    else {
+    } else {
       // bucket
       if (!site.root) {
         errors.push(`Site '${name}' deploys to a bucket but has no \`root\` directory to upload.`)
@@ -218,12 +206,9 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
       // Server-only fields on a bucket site are ignored — warn so they're not
       // mistaken for active configuration.
       const serverOnly: string[] = []
-      if (site.start)
-        serverOnly.push('start')
-      if (typeof site.port === 'number')
-        serverOnly.push('port')
-      if (site.preStart && site.preStart.length > 0)
-        serverOnly.push('preStart')
+      if (site.start) serverOnly.push('start')
+      if (typeof site.port === 'number') serverOnly.push('port')
+      if (site.preStart && site.preStart.length > 0) serverOnly.push('preStart')
       if (serverOnly.length > 0) {
         warnings.push(
           `Site '${name}' deploys to a bucket but sets server-only field(s): ${serverOnly.join(', ')}. These are ignored. Set deploy:'server' to use them.`,

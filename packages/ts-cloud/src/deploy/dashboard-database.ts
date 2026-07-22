@@ -22,30 +22,25 @@ export function isValidDbIdentifier(value: string): boolean {
 }
 
 function normalizeEngine(engine: string | undefined): DbEngine {
-  if (engine === 'postgres' || engine === 'pgsql')
-    return 'postgres'
-  if (engine === 'mariadb')
-    return 'mariadb'
+  if (engine === 'postgres' || engine === 'pgsql') return 'postgres'
+  if (engine === 'mariadb') return 'mariadb'
   return 'mysql'
 }
 
 export function resolveDbEngine(config: CloudConfig): DbEngine {
   const compute = config.infrastructure?.compute as any
   const declared = resolveAppDatabase(config)?.engine
-  if (declared)
-    return normalizeEngine(declared)
+  if (declared) return normalizeEngine(declared)
   const managed = compute?.managedServices ?? {}
-  if (managed.postgres)
-    return 'postgres'
-  if (managed.mariadb)
-    return 'mariadb'
+  if (managed.postgres) return 'postgres'
+  if (managed.mariadb) return 'mariadb'
   return 'mysql'
 }
 
 const mysqlIdent = (v: string): string => v.replace(/`/g, '``')
-const mysqlLit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, '\\\'')
+const mysqlLit = (v: string): string => v.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
 const pgIdent = (v: string): string => `"${v.replace(/"/g, '""')}"`
-const pgLit = (v: string): string => `'${v.replace(/'/g, '\'\'')}'`
+const pgLit = (v: string): string => `'${v.replace(/'/g, "''")}'`
 
 function mysqlExec(engine: DbEngine, sql: string[]): string[] {
   const sock = engine === 'mariadb' ? SOCKETS.mariadb : SOCKETS.mysql
@@ -58,22 +53,28 @@ function pgExec(sql: string[], database?: DatabaseConfig): string[] {
 
 export function buildListScript(engine: DbEngine, database?: DatabaseConfig): string[] {
   if (engine === 'postgres') {
-    return pgExec([
-      'SELECT \'DB=\' || datname FROM pg_database WHERE datistemplate = false;',
-      'SELECT \'USER=\' || usename FROM pg_user;',
-    ], database)
+    return pgExec(
+      [
+        "SELECT 'DB=' || datname FROM pg_database WHERE datistemplate = false;",
+        "SELECT 'USER=' || usename FROM pg_user;",
+      ],
+      database,
+    )
   }
   return mysqlExec(engine, [
-    'SELECT CONCAT(\'DB=\', schema_name) FROM information_schema.schemata WHERE schema_name NOT IN (\'information_schema\', \'mysql\', \'performance_schema\', \'sys\');',
-    'SELECT DISTINCT CONCAT(\'USER=\', User) FROM mysql.user WHERE User NOT IN (\'root\', \'mysql.sys\', \'mysql.session\', \'mysql.infoschema\', \'debian-sys-maint\');',
+    "SELECT CONCAT('DB=', schema_name) FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys');",
+    "SELECT DISTINCT CONCAT('USER=', User) FROM mysql.user WHERE User NOT IN ('root', 'mysql.sys', 'mysql.session', 'mysql.infoschema', 'debian-sys-maint');",
   ])
 }
 
 export function buildCreateDatabaseScript(engine: DbEngine, name: string, database?: DatabaseConfig): string[] {
   if (engine === 'postgres') {
-    return pgExec([
-      `SELECT 'CREATE DATABASE ${pgIdent(name)}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
-    ], database)
+    return pgExec(
+      [
+        `SELECT 'CREATE DATABASE ${pgIdent(name)}' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ${pgLit(name)})\\gexec`,
+      ],
+      database,
+    )
   }
   return mysqlExec(engine, [
     `CREATE DATABASE IF NOT EXISTS \`${mysqlIdent(name)}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
@@ -97,9 +98,11 @@ export function buildCreateUserScript(engine: DbEngine, input: CreateUserInput, 
       'END $$;',
     ]
     if (grantDb) {
-      lines.push(access === 'readonly'
-        ? `GRANT CONNECT ON DATABASE ${pgIdent(grantDb)} TO ${pgIdent(username)};`
-        : `GRANT ALL PRIVILEGES ON DATABASE ${pgIdent(grantDb)} TO ${pgIdent(username)};`)
+      lines.push(
+        access === 'readonly'
+          ? `GRANT CONNECT ON DATABASE ${pgIdent(grantDb)} TO ${pgIdent(username)};`
+          : `GRANT ALL PRIVILEGES ON DATABASE ${pgIdent(grantDb)} TO ${pgIdent(username)};`,
+      )
     }
     return pgExec(lines, database)
   }
@@ -121,15 +124,13 @@ export function buildCreateUserScript(engine: DbEngine, input: CreateUserInput, 
   return mysqlExec(engine, lines)
 }
 
-export function parseDbList(output: string): { databases: string[], users: string[] } {
+export function parseDbList(output: string): { databases: string[]; users: string[] } {
   const databases: string[] = []
   const users: string[] = []
   for (const rawLine of output.split('\n')) {
     const line = rawLine.trim()
-    if (line.startsWith('DB='))
-      databases.push(line.slice(3))
-    else if (line.startsWith('USER='))
-      users.push(line.slice(5))
+    if (line.startsWith('DB=')) databases.push(line.slice(3))
+    else if (line.startsWith('USER=')) users.push(line.slice(5))
   }
   return {
     databases: [...new Set(databases)].filter(Boolean).sort(),
@@ -144,18 +145,21 @@ interface DbRunResult {
   error?: string
 }
 
-async function runDb(config: CloudConfig, environment: EnvironmentType, commands: string[], comment: string): Promise<DbRunResult> {
+async function runDb(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  commands: string[],
+  comment: string,
+): Promise<DbRunResult> {
   let driver: ReturnType<typeof createCloudDriver>
   try {
     driver = createCloudDriver({ config })
-  }
-  catch (error: any) {
+  } catch (error: any) {
     return { ok: false, error: `Could not initialize the cloud driver: ${error?.message ?? error}` }
   }
   const slug = config.project.slug
   const targets = await driver.findComputeTargets({ slug, environment, role: 'app' })
-  if (!targets.length)
-    return { ok: false, error: 'No app server target was found for this environment.' }
+  if (!targets.length) return { ok: false, error: 'No app server target was found for this environment.' }
 
   const result = await driver.runRemoteDeploy({
     targets: [targets[0]],
@@ -163,24 +167,49 @@ async function runDb(config: CloudConfig, environment: EnvironmentType, commands
     comment,
     tags: { Project: slug, Environment: environment, Role: 'app' },
   })
-  return { ok: result.success, stdout: result.perInstance?.[0]?.output ?? '', stderr: result.perInstance?.[0]?.error ?? result.error ?? '' }
+  return {
+    ok: result.success,
+    stdout: result.perInstance?.[0]?.output ?? '',
+    stderr: result.perInstance?.[0]?.error ?? result.error ?? '',
+  }
 }
 
-export async function listDatabases(config: CloudConfig, environment: EnvironmentType): Promise<DbRunResult & { engine: DbEngine, databases: string[], users: string[] }> {
+export async function listDatabases(
+  config: CloudConfig,
+  environment: EnvironmentType,
+): Promise<DbRunResult & { engine: DbEngine; databases: string[]; users: string[] }> {
   const engine = resolveDbEngine(config)
   const r = await runDb(config, environment, buildListScript(engine, resolveAppDatabase(config)), 'ts-cloud db:list')
   const parsed = r.ok && r.stdout ? parseDbList(r.stdout) : { databases: [], users: [] }
   return { ...r, engine, ...parsed }
 }
 
-export async function createDatabase(config: CloudConfig, environment: EnvironmentType, name: string): Promise<DbRunResult> {
+export async function createDatabase(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  name: string,
+): Promise<DbRunResult> {
   const engine = resolveDbEngine(config)
-  return runDb(config, environment, buildCreateDatabaseScript(engine, name, resolveAppDatabase(config)), `ts-cloud db:create ${name}`)
+  return runDb(
+    config,
+    environment,
+    buildCreateDatabaseScript(engine, name, resolveAppDatabase(config)),
+    `ts-cloud db:create ${name}`,
+  )
 }
 
-export async function createDatabaseUser(config: CloudConfig, environment: EnvironmentType, input: CreateUserInput): Promise<DbRunResult> {
+export async function createDatabaseUser(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  input: CreateUserInput,
+): Promise<DbRunResult> {
   const engine = resolveDbEngine(config)
-  return runDb(config, environment, buildCreateUserScript(engine, input, resolveAppDatabase(config)), `ts-cloud db:user ${input.username}`)
+  return runDb(
+    config,
+    environment,
+    buildCreateUserScript(engine, input, resolveAppDatabase(config)),
+    `ts-cloud db:user ${input.username}`,
+  )
 }
 
 /** Where per-database dumps are written on the box. */
@@ -193,13 +222,28 @@ export const DB_BACKUP_DIR = '/var/backups/ts-cloud/databases'
  * the local unix socket for a co-located engine, or TCP with credentials for
  * an external host (see {@link pgAdminCommand}).
  */
-export function buildBackupScript(engine: DbEngine, name: string, destDir: string = DB_BACKUP_DIR, database?: DatabaseConfig): string[] {
+export function buildBackupScript(
+  engine: DbEngine,
+  name: string,
+  destDir: string = DB_BACKUP_DIR,
+  database?: DatabaseConfig,
+): string[] {
   const file = `${destDir}/${name}-$(date +%Y%m%d-%H%M%S).sql.gz`
   const mkdir = `mkdir -p ${destDir}`
   if (engine === 'postgres')
-    return [mkdir, `${pgAdminCommand(database, 'pg_dump')} ${name} | gzip > "${file}"`, `echo "BACKUP=${file}"`, `ls -l "${file}"`]
+    return [
+      mkdir,
+      `${pgAdminCommand(database, 'pg_dump')} ${name} | gzip > "${file}"`,
+      `echo "BACKUP=${file}"`,
+      `ls -l "${file}"`,
+    ]
   const sock = engine === 'mariadb' ? SOCKETS.mariadb : SOCKETS.mysql
-  return [mkdir, `mysqldump --socket=${sock} -u root ${name} | gzip > "${file}"`, `echo "BACKUP=${file}"`, `ls -l "${file}"`]
+  return [
+    mkdir,
+    `mysqldump --socket=${sock} -u root ${name} | gzip > "${file}"`,
+    `echo "BACKUP=${file}"`,
+    `ls -l "${file}"`,
+  ]
 }
 
 /** Script that lists the most recent dumps (newest first). */
@@ -207,32 +251,42 @@ export function buildListBackupsScript(destDir: string = DB_BACKUP_DIR): string[
   return [`ls -1t ${destDir}/*.sql.gz 2>/dev/null | head -50 | sed 's|^|BACKUP=|' || true`]
 }
 
-export function parseBackups(output: string): Array<{ file: string, database: string }> {
-  const out: Array<{ file: string, database: string }> = []
+export function parseBackups(output: string): Array<{ file: string; database: string }> {
+  const out: Array<{ file: string; database: string }> = []
   for (const rawLine of output.split('\n')) {
     const line = rawLine.trim()
-    if (!line.startsWith('BACKUP='))
-      continue
+    if (!line.startsWith('BACKUP=')) continue
     const file = line.slice(7)
     const base = file.split('/').pop() ?? file
     const database = base.replace(/-\d{8}-\d{6}\.sql\.gz$/, '')
-    if (file)
-      out.push({ file, database })
+    if (file) out.push({ file, database })
   }
   return out
 }
 
 /** Dump a single database to a gzipped file on the box. */
-export async function backupDatabase(config: CloudConfig, environment: EnvironmentType, name: string): Promise<DbRunResult & { database: string }> {
+export async function backupDatabase(
+  config: CloudConfig,
+  environment: EnvironmentType,
+  name: string,
+): Promise<DbRunResult & { database: string }> {
   if (!isValidDbIdentifier(name))
     return { ok: false, error: 'Database name must be a valid identifier.', database: name }
   const engine = resolveDbEngine(config)
-  const r = await runDb(config, environment, buildBackupScript(engine, name, DB_BACKUP_DIR, resolveAppDatabase(config)), `ts-cloud db:backup ${name}`)
+  const r = await runDb(
+    config,
+    environment,
+    buildBackupScript(engine, name, DB_BACKUP_DIR, resolveAppDatabase(config)),
+    `ts-cloud db:backup ${name}`,
+  )
   return { ...r, database: name }
 }
 
 /** List the per-database dumps present on the box. */
-export async function listDatabaseBackups(config: CloudConfig, environment: EnvironmentType): Promise<DbRunResult & { backups: Array<{ file: string, database: string }> }> {
+export async function listDatabaseBackups(
+  config: CloudConfig,
+  environment: EnvironmentType,
+): Promise<DbRunResult & { backups: Array<{ file: string; database: string }> }> {
   const r = await runDb(config, environment, buildListBackupsScript(), 'ts-cloud db:backups')
   const backups = r.ok && r.stdout ? parseBackups(r.stdout) : []
   return { ...r, backups }
