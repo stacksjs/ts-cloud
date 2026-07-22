@@ -29,6 +29,41 @@ AWS WAF                                                        -            $15.
 Total: $307.63 across 19 services
 ```
 
+## Current month projection
+
+`cloud cost` queries each billed service from the first day of the current UTC month through today. It projects the total with `month-to-date spend / elapsed calendar days × days in month` and compares that projection with the previous full month.
+
+```sh
+cloud cost
+cloud cost --profile stacks
+cloud cost --no-cache
+```
+
+The projection is deliberately naive: it is useful for spotting trajectory changes, but it does not model reservations, one-time charges, seasonality, or future usage changes.
+
+## Rolling service breakdown
+
+`cost:breakdown` compares adjacent windows of equal length and calculates the trend independently for every service.
+
+```sh
+cloud cost:breakdown                 # last 30 days vs the preceding 30
+cloud cost:breakdown --days 7
+cloud cost:breakdown --days 90 --profile stacks
+```
+
+The accepted range is 1–366 days. A service with no spend in the previous window is labeled `new` instead of showing a misleading infinite percentage.
+
+## Egress usage types
+
+`cost:egress` groups real Cost Explorer data by `USAGE_TYPE` and ranks billed NAT Gateway, internet, inter-AZ, inter-region, and other data-transfer line items.
+
+```sh
+cloud cost:egress
+cloud cost:egress --days 7 --profile stacks
+```
+
+Cost Explorer usage types identify the transfer category, not the workload or destination that caused it. Correlating a line item to destination IP, port, or instance requires VPC Flow Logs; the command states this boundary explicitly instead of inventing attribution.
+
 ### What it does
 
 - Calls `ce:GetCostAndUsage` for the last fully-closed month, grouping by `SERVICE` with `UnblendedCost`.
@@ -59,10 +94,10 @@ Cost Explorer charges **$0.01 per request**. ts-cloud caches every successful `g
 
 | Where | `~/.cache/ts-cloud/cost-explorer/<profile>/<sha>.json` (honors `XDG_CACHE_HOME`) |
 |---|---|
-| Key | `(profile, start, end, granularity, metrics, groupBy)` — anything that affects response shape |
+| Key | `(profile, start, end, granularity, metrics, groupBy, filter)` — anything that affects response shape |
 | TTL — open period | 1 hour (the current month is still moving) |
 | TTL — closed period | 30 days (closed months are immutable in Cost Explorer) |
-| Skip cache | `--no-cache` on `cost:analyze` |
+| Skip cache | `--no-cache` on any cost query command |
 
 When a cached response is used, you'll see a one-line notice:
 
@@ -97,19 +132,15 @@ _Profile: `stacks`_
 **Total: $307.63 across 19 services**
 ```
 
-## Status of related commands
+## Status of resource commands
 
-A handful of stub commands ship with hardcoded output and are guarded with a "not implemented" warning until they're wired against real AWS APIs:
+The cost reporting commands above use real Cost Explorer data. Resource discovery and recommendation commands remain guarded until their provider inventory and CloudWatch signal paths are complete:
 
 | Command | Tracking |
 |---|---|
-| `cost` (current MTD + naive projection) | [#108](https://github.com/stacksjs/ts-cloud/issues/108) |
-| `cost:breakdown` (N-day window with trend) | [#109](https://github.com/stacksjs/ts-cloud/issues/109) |
 | `resources` (Resource Groups Tagging API) | [#110](https://github.com/stacksjs/ts-cloud/issues/110) |
 | `resources:unused` (CloudWatch idle detection) | [#111](https://github.com/stacksjs/ts-cloud/issues/111) |
 | `optimize` (RI/savings recommendations) | [#112](https://github.com/stacksjs/ts-cloud/issues/112) |
-
-Use `cost:analyze` for real numbers in the meantime.
 
 ## See also
 

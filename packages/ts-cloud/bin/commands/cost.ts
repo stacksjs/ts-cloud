@@ -3,6 +3,7 @@ import * as cli from '../../src/utils/cli'
 import { CostExplorerClient } from '../../src/aws/cost-explorer'
 import { cacheLocation, clearCache } from '../../src/aws/cost-explorer-cache'
 import { S3Client } from '../../src/aws/s3'
+import { compareServiceCosts, egressUsageCosts, monthToDateRange, percentChange, projectedMonthlyCost, rollingComparisonRange } from '../../src/cost/reporting'
 
 const S3_SERVICE_NAME = 'Amazon Simple Storage Service'
 
@@ -18,6 +19,17 @@ function lastFullMonthRange(): { start: string; end: string; label: string } {
 
 function formatUSD(amount: number): string {
   return `$${amount.toFixed(2)}`
+}
+
+function formatTrend(change: number | null): string {
+  if (change === null) return 'new'
+  if (Math.abs(change) < 0.05) return '→ 0.0%'
+  return `${change > 0 ? '↑' : '↓'} ${Math.abs(change).toFixed(1)}%`
+}
+
+function costError(error: unknown): void {
+  cli.error(`Cost Explorer request failed: ${error instanceof Error ? error.message : String(error)}`)
+  cli.info('\nThis command needs the ce:GetCostAndUsage IAM permission.')
 }
 
 function renderMarkdownReport(params: {
@@ -130,28 +142,139 @@ export function registerCostCommands(app: CLI): void {
       cli.info(`(${before})`)
     })
 
-  // The five commands below are stubs — they used to return hardcoded
-  // mock data, which is dangerous next to a real `cost:analyze`. Until
-  // each is implemented against real AWS APIs (tracked issues below),
-  // they refuse to run with a clear pointer rather than print fake
-  // numbers users could act on.
   app
-    .command('cost', 'Show estimated monthly cost')
+    .command('cost', 'Show current month-to-date AWS spend and projected total')
     .option('--env <environment>', 'Environment (production, staging, development)')
-    .action(() => {
-      cli.warn('`cost` is not yet implemented against real AWS data. Use `cost:analyze` for real numbers.')
-      cli.info('Tracking: https://github.com/stacksjs/ts-cloud/issues/108')
+    .option('--no-cache', 'Skip the local response cache')
+    .action(async (options?: { profile?: string; cache?: boolean }) => {
+      const range = monthToDateRange()
+      const client = new CostExplorerClient(options?.profile, { useCache: options?.cache !== false })
+      cli.header(`AWS Cost — ${range.label}${options?.profile ? ` (profile: ${options.profile})` : ''}`)
+      const spinner = new cli.Spinner('Querying month-to-date AWS spend...')
+      spinner.start()
+      try {
+        const [current, previous] = await Promise.all([
+          client.getCostByService({ start: range.start, end: range.end, granularity: 'DAILY' }),
+          client.getCostByService({
+            start: range.previous.start,
+            end: range.previous.end,
+            granularity: 'MONTHLY',
+          }),
+        ])
+        spinner.stop()
+        const compared = compareServiceCosts(current, previous)
+        const rows = compared.map((cost) => {
+          const projected = projectedMonthlyCost(cost.amount, range.daysElapsed, range.daysInMonth)
+          return [
+            cost.service,
+            formatUSD(cost.amount),
+            formatUSD(projected),
+            formatUSD(cost.previousAmount),
+            formatTrend(percentChange(projected, cost.previousAmount)),
+          ]
+        })
+        cli.table(['Service', 'MTD', 'Projected', range.previous.label, 'Change'], rows)
+        const total = current.reduce((sum, cost) => sum + cost.amount, 0)
+        const previousTotal = previous.reduce((sum, cost) => sum + cost.amount, 0)
+        const projected = projectedMonthlyCost(total, range.daysElapsed, range.daysInMonth)
+        cli.info(`\nMTD: ${formatUSD(total)} through day ${range.daysElapsed} of ${range.daysInMonth}`)
+        cli.info(
+          `Projected: ${formatUSD(projected)} (${formatTrend(percentChange(projected, previousTotal))} vs ${range.previous.label})`,
+        )
+      } catch (error) {
+        spinner.stop()
+        costError(error)
+      }
     })
 
   app
     .command('cost:breakdown', 'Cost breakdown by service')
     .option('--env <environment>', 'Environment (production, staging, development)')
     .option('--days <days>', 'Number of days to analyze', { default: '30' })
-    .action(() => {
-      cli.warn(
-        '`cost:breakdown` is not yet implemented against real AWS data. Use `cost:analyze` for the latest full month.',
+    .option('--no-cache', 'Skip the local response cache')
+    .action(async (options?: { profile?: string; days?: string; cache?: boolean }) => {
+      const days = Number.parseInt(options?.days ?? '30', 10)
+      let ranges: ReturnType<typeof rollingComparisonRange>
+      try {
+        ranges = rollingComparisonRange(days)
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+        return
+      }
+      const client = new CostExplorerClient(options?.profile, { useCache: options?.cache !== false })
+      cli.header(
+        `AWS Cost Breakdown — ${ranges.current.label}${options?.profile ? ` (profile: ${options.profile})` : ''}`,
       )
-      cli.info('Tracking: https://github.com/stacksjs/ts-cloud/issues/109')
+      const spinner = new cli.Spinner('Comparing AWS service spend...')
+      spinner.start()
+      try {
+        const [current, previous] = await Promise.all([
+          client.getCostByService({ start: ranges.current.start, end: ranges.current.end, granularity: 'DAILY' }),
+          client.getCostByService({ start: ranges.previous.start, end: ranges.previous.end, granularity: 'DAILY' }),
+        ])
+        spinner.stop()
+        const compared = compareServiceCosts(current, previous)
+        cli.table(
+          ['Service', `Last ${days}d`, `Previous ${days}d`, 'Trend'],
+          compared.map((cost) => [
+            cost.service,
+            formatUSD(cost.amount),
+            formatUSD(cost.previousAmount),
+            formatTrend(cost.changePercent),
+          ]),
+        )
+        const total = current.reduce((sum, cost) => sum + cost.amount, 0)
+        const previousTotal = previous.reduce((sum, cost) => sum + cost.amount, 0)
+        cli.info(`\nTotal: ${formatUSD(total)} (${formatTrend(percentChange(total, previousTotal))})`)
+      } catch (error) {
+        spinner.stop()
+        costError(error)
+      }
+    })
+
+  app
+    .command('cost:egress', 'Rank AWS data-transfer usage types by cost')
+    .option('--days <days>', 'Number of days to analyze', { default: '30' })
+    .option('--no-cache', 'Skip the local response cache')
+    .action(async (options?: { profile?: string; days?: string; cache?: boolean }) => {
+      const days = Number.parseInt(options?.days ?? '30', 10)
+      let range: ReturnType<typeof rollingComparisonRange>['current']
+      try {
+        range = rollingComparisonRange(days).current
+      } catch (error) {
+        cli.error(error instanceof Error ? error.message : String(error))
+        return
+      }
+      const client = new CostExplorerClient(options?.profile, { useCache: options?.cache !== false })
+      cli.header(`AWS Egress Cost — ${range.label}${options?.profile ? ` (profile: ${options.profile})` : ''}`)
+      const spinner = new cli.Spinner('Querying data-transfer usage types...')
+      spinner.start()
+      try {
+        const costs = egressUsageCosts(
+          await client.getCostByDimension({
+            start: range.start,
+            end: range.end,
+            dimension: 'USAGE_TYPE',
+            granularity: 'DAILY',
+          }),
+        )
+        spinner.stop()
+        if (costs.length === 0) {
+          cli.info('No billed data-transfer usage types were found in this period.')
+          return
+        }
+        cli.table(
+          ['Usage type', 'Cost'],
+          costs.map((cost) => [cost.key, formatUSD(cost.amount)]),
+        )
+        cli.info(`\nTotal ranked egress: ${formatUSD(costs.reduce((sum, cost) => sum + cost.amount, 0))}`)
+        cli.info(
+          'Usage types classify NAT, internet, inter-AZ, and inter-region transfer; destination correlation requires VPC Flow Logs.',
+        )
+      } catch (error) {
+        spinner.stop()
+        costError(error)
+      }
     })
 
   app

@@ -197,7 +197,7 @@ See [Laravel / Forge-style](/features/laravel) for the `infrastructure.compute` 
 
 ## Cost, status & tunnel
 
-`cloud cost` · `cost:analyze` · `cost:breakdown` · `optimize` · `resources` · `resources:unused` ·
+`cloud cost` · `cost:analyze` · `cost:breakdown` · `cost:egress` · `optimize` · `resources` · `resources:unused` ·
 `status` · `status:alarms` · `status:costs` ·
 `tunnel` · `tunnel:server/deploy/status/info/logs/test/destroy`.
 
