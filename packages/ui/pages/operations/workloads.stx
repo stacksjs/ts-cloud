@@ -3,6 +3,7 @@ let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const viewerCapabilities = __d?.viewer?.capabilities ?? []
 const canOperate = viewerCapabilities.length === 0 || viewerCapabilities.includes('runtime:restart')
+const canElevated = viewerCapabilities.length === 0 || viewerCapabilities.includes('runtime:terminal')
 </script>
 <script client>
 import { usePolling } from '../../functions/usePolling.ts'
@@ -16,10 +17,17 @@ const serviceFilter = state(params.get('service') || '')
 const selectedId = state('')
 const logs = state([])
 const logsBusy = state(false)
+const streamState = state('idle')
+const streamSession = state(null)
 const operationBusy = state(false)
 const message = state('')
 const typed = state('')
 const replicas = state('1')
+const execCommand = state('')
+const filePath = state('')
+const uploadBase64 = state('')
+const uploadName = state('')
+const fileBusy = state(false)
 const columns = state({ replicas: true, image: true, resources: true, age: true })
 const selected = derived(() => inventory().workloads.find(item => item.id === selectedId()) || null)
 const sources = derived(() => inventory().sources || [])
@@ -42,8 +50,10 @@ async function load() {
   if (selectedId() && !body.workloads.some(item => item.id === selectedId())) selectedId.set('')
 }
 const { pollingState, pollingError, pollingLabel, lastUpdatedAt, refresh } = usePolling(load, 10000)
-function open(item) { selectedId.set(item.id); logs.set([]); message.set(''); typed.set(''); replicas.set(String(item.desiredReplicas ?? 1)) }
-function close() { selectedId.set(''); logs.set([]); message.set(''); typed.set('') }
+let eventStream = null
+function disconnectStream() { eventStream?.close(); eventStream = null; streamState.set('idle'); streamSession.set(null) }
+function open(item) { disconnectStream(); selectedId.set(item.id); logs.set([]); message.set(''); typed.set(''); replicas.set(String(item.desiredReplicas ?? 1)); filePath.set(item.mounts?.[0]?.target || `/var/www/${item.links?.project || ''}/${item.links?.service || ''}`) }
+function close() { disconnectStream(); selectedId.set(''); logs.set([]); message.set(''); typed.set('') }
 async function readLogs() {
   const item = selected(); if (!item || logsBusy()) return; logsBusy.set(true); message.set('')
   try { const response = await fetch('/api/runtime/logs?workload=' + encodeURIComponent(item.id) + '&limit=300'); const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Logs could not be loaded.'); logs.set(body.lines || []) }
@@ -56,6 +66,47 @@ async function run(action) {
     const body = await response.json(); if (!response.ok || !body.ok) throw new Error(body.error || 'Operation failed.')
     message.set(`${action} accepted as ${body.controlPlaneOperation?.id || 'a durable operation'}.`); typed.set(''); await refresh()
   } catch (error) { message.set(error.message || String(error)) } finally { operationBusy.set(false) }
+}
+function connectStream(session, streamUrl) {
+  disconnectStream(); streamSession.set(session); streamState.set('connecting')
+  eventStream = new EventSource(streamUrl)
+  eventStream.onopen = () => streamState.set('live')
+  const append = event => { const chunk = JSON.parse(event.data); logs.set([...logs(), { timestamp: chunk.at, message: chunk.data, stream: chunk.stream }].slice(-1000)); streamState.set('live') }
+  eventStream.addEventListener('stdout', append); eventStream.addEventListener('stderr', append); eventStream.addEventListener('system', append)
+  eventStream.addEventListener('reset', event => { const info = JSON.parse(event.data); logs.set([{ message: `[${info.droppedBytes} buffered bytes were dropped; stream resumed at the newest output]`, stream: 'system' }]) })
+  eventStream.addEventListener('state', event => { const info = JSON.parse(event.data); streamState.set(info.state); eventStream?.close(); eventStream = null; if (info.error) message.set(info.error) })
+  eventStream.onerror = () => { if (eventStream) streamState.set('reconnecting') }
+}
+async function startLogFollow() {
+  const item = selected(); if (!item || streamState() === 'live') return; logs.set([]); message.set('')
+  try { const response = await fetch('/api/runtime/log-sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workloadId: item.id }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Log follow could not start.'); connectStream(body.session, body.streamUrl) }
+  catch (error) { message.set(error.message || String(error)); streamState.set('failed') }
+}
+async function startExec(preset) {
+  const item = selected(); if (!item || typed() !== item.name) return; logs.set([]); message.set('')
+  try { const response = await fetch('/api/runtime/exec-sessions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workloadId: item.id, preset, command: preset ? undefined : execCommand(), confirm: typed() }) }); const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Exec session could not start.'); connectStream(body.session, body.streamUrl); typed.set('') }
+  catch (error) { message.set(error.message || String(error)); streamState.set('failed') }
+}
+async function stopStream() {
+  const session = streamSession(); const item = selected(); if (!session || !item) return
+  const path = session.kind === 'exec' ? '/api/runtime/exec-sessions' : '/api/runtime/log-sessions'
+  await fetch(path, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: session.id, workloadId: item.id }) }).catch(() => null)
+  disconnectStream()
+}
+async function chooseUpload(event) {
+  const file = event.target.files?.[0]; if (!file) return
+  if (file.size > 49152) { message.set('Uploads are limited to 48 KB.'); event.target.value = ''; return }
+  const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte)
+  uploadBase64.set(btoa(binary)); uploadName.set(file.name); message.set(`${file.name} is ready to upload.`)
+}
+async function fileRequest(action) {
+  const item = selected(); if (!item || typed() !== item.name || fileBusy()) return; fileBusy.set(true); message.set('')
+  try {
+    const response = await fetch(`/api/runtime/files/${action}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workloadId: item.id, path: filePath(), contentBase64: action === 'write' ? uploadBase64() : undefined, confirm: typed() }) })
+    const body = await response.json(); if (!response.ok || !body.ok) throw new Error(body.error || `File ${action} failed.`)
+    if (action === 'read') { const binary = atob(body.contentBase64 || ''); const bytes = Uint8Array.from(binary, char => char.charCodeAt(0)); const url = URL.createObjectURL(new Blob([bytes])); const link = document.createElement('a'); link.href = url; link.download = filePath().split('/').pop() || 'download'; link.click(); URL.revokeObjectURL(url); message.set(body.truncated ? `Downloaded the first 48 KB of ${body.size} bytes.` : `Downloaded ${body.size} bytes.`) }
+    else { message.set(`Uploaded ${body.size} bytes atomically.`); uploadBase64.set(''); uploadName.set(''); typed.set('') }
+  } catch (error) { message.set(error.message || String(error)) } finally { fileBusy.set(false) }
 }
 </script>
 <!DOCTYPE html>
@@ -86,7 +137,8 @@ async function run(action) {
         <h3>Lifecycle</h3>@if (canOperate)<div class="capability-grid"><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'start').supported" :title="capability(selected(), 'start').supported ? `start ${selected().name}` : capability(selected(), 'start').reason" @click="run('start')">start</button><button class="btn danger sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'stop').supported" :title="capability(selected(), 'stop').supported ? `stop ${selected().name}` : capability(selected(), 'stop').reason" @click="run('stop')">stop</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'restart').supported" :title="capability(selected(), 'restart').supported ? `restart ${selected().name}` : capability(selected(), 'restart').reason" @click="run('restart')">restart</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'redeploy').supported" :title="capability(selected(), 'redeploy').supported ? `redeploy ${selected().name}` : capability(selected(), 'redeploy').reason" @click="run('redeploy')">redeploy</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'scale').supported" :title="capability(selected(), 'scale').supported ? `scale ${selected().name}` : capability(selected(), 'scale').reason" @click="run('scale')">scale</button></div><div class="scale-row" @show="capability(selected(), 'scale').supported"><label>Desired replicas<input type="number" min="0" max="10000" :value="replicas()" @input="replicas.set($event.target.value)"></label></div><label class="confirm-label">Type <b>{{ selected().name }}</b> to run a mutation<input :value="typed()" @input="typed.set($event.target.value)" autocomplete="off"></label>@else<p class="note">Your current role can inspect this workload but cannot mutate it.</p>@endif<p class="notice" role="status" @show="!!message()">{{ message() }}</p>
         <details open><summary>Replicas / processes ({{ selected().replicas?.length || 0 }})</summary><div class="detail-list"><template :for="replica in selected().replicas || []"><div><b>{{ replica.name || replica.id }}</b><span>{{ replica.status }} · PID {{ replica.pid || '—' }} · restarts {{ replica.restartCount || 0 }}</span></div></template><span @show="!(selected().replicas || []).length">Provider-managed or no active replica.</span></div></details>
         <details><summary>Networks ({{ selected().networks?.length || 0 }})</summary><pre>{{ JSON.stringify(selected().networks || [], null, 2) }}</pre></details><details><summary>Mounts ({{ selected().mounts?.length || 0 }})</summary><pre>{{ JSON.stringify(selected().mounts || [], null, 2) }}</pre></details><details><summary>Redacted configuration</summary><pre>{{ JSON.stringify(selected().config || {}, null, 2) }}</pre></details><details><summary>Provider capabilities</summary><div class="detail-list"><template :for="entry in Object.entries(selected().capabilities || {})"><div><b>{{ entry[0] }}</b><span>{{ entry[1].supported ? 'supported' : entry[1].reason }}</span></div></template></div></details>
-        <div class="logs-head"><h3>Logs</h3><button class="btn ghost sm" type="button" :disabled="logsBusy() || !capability(selected(), 'logs').supported" :title="capability(selected(), 'logs').reason || ''" @click="readLogs()">{{ logsBusy() ? 'Loading…' : 'Load logs' }}</button></div><div class="logs" aria-live="polite"><template :for="line in logs()"><div><span class="ts">{{ line.timestamp || '—' }}</span> {{ line.message }}</div></template><span @show="!logs().length">No log lines loaded.</span></div>
+        @if (canElevated)<details @show="capability(selected(), 'exec').supported"><summary>Elevated diagnostics and exec</summary><p class="note">Target: <b>{{ selected().name }}</b> on {{ selected().links?.server || selected().provider }}. Presets are read-only; free-form access is container-only.</p><div class="capability-grid"><button class="btn ghost sm" type="button" :disabled="typed() !== selected().name || streamState() === 'live'" @click="startExec('process')">Process status</button><button class="btn ghost sm" type="button" :disabled="typed() !== selected().name || streamState() === 'live'" @click="startExec('sockets')">Listening sockets</button><button class="btn ghost sm" type="button" :disabled="typed() !== selected().name || streamState() === 'live'" @click="startExec('filesystem')">Filesystem usage</button></div><label class="confirm-label" @show="selected().provider === 'docker'">Container command<input :value="execCommand()" @input="execCommand.set($event.target.value)" placeholder="id"></label><button class="btn danger sm" type="button" @show="selected().provider === 'docker'" :disabled="typed() !== selected().name || !execCommand().trim() || streamState() === 'live'" @click="startExec('')">Run container command</button></details><details @show="capability(selected(), 'files').supported"><summary>Scoped file transfer</summary><p class="note">Only service-owned roots and discovered mount targets are allowed. Transfers are capped at 48 KB and uploads replace files atomically with mode 0600.</p><label class="confirm-label">Absolute path<input :value="filePath()" @input="filePath.set($event.target.value)" placeholder="/var/www/project/service/file.txt"></label><label class="confirm-label">Upload file<input type="file" @change="chooseUpload($event)"></label><small @show="!!uploadName()">Ready: {{ uploadName() }}</small><div class="capability-grid"><button class="btn ghost sm" type="button" :disabled="typed() !== selected().name || !filePath() || fileBusy()" @click="fileRequest('read')">Download</button><button class="btn danger sm" type="button" :disabled="typed() !== selected().name || !filePath() || !uploadBase64() || fileBusy()" @click="fileRequest('write')">Upload and replace</button></div></details>@endif
+        <div class="logs-head"><h3>Logs <small>{{ streamState() }}</small></h3><div class="capability-grid"><button class="btn ghost sm" type="button" :disabled="logsBusy() || !capability(selected(), 'logs').supported" :title="capability(selected(), 'logs').reason || ''" @click="readLogs()">{{ logsBusy() ? 'Loading…' : 'Load logs' }}</button><button class="btn ghost sm" type="button" :disabled="streamState() === 'live' || !capability(selected(), 'logs').supported" @click="startLogFollow()">Follow</button><button class="btn danger sm" type="button" :disabled="!streamSession()" @click="stopStream()">Close stream</button></div></div><div class="logs" aria-live="polite"><template :for="line in logs()"><div :class="line.stream === 'stderr' ? 'bad' : ''"><span class="ts">{{ line.timestamp || '—' }}</span> {{ line.message }}</div></template><span @show="!logs().length">No log lines loaded.</span></div>
       </div></template></aside>
     </div>
   </main>
