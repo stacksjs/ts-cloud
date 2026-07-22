@@ -29,7 +29,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'automation.jobs', path: '/operations/jobs', label: 'Workers & schedules', group: 'operations', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/server/workers', '/serverless/scheduler'] },
   { id: 'metrics.overview', path: '/server/metrics', label: 'Metrics', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'runtime.services', path: '/server/services', label: 'Runtime services', group: 'operations', modes: ['server'], adminOnly: true },
-  { id: 'backups.list', path: '/server/backups', label: 'Backups', group: 'operations', modes: ['server'], adminOnly: true },
+  { id: 'backups.list', path: '/data/backups', label: 'Backups & recovery', group: 'operations', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/server/backups'] },
   { id: 'operations.run', path: '/server/actions', label: 'Run operations', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'data.services', path: '/data/services', label: 'Data services', group: 'infrastructure', modes: ['server', 'serverless'], adminOnly: false, legacyPaths: ['/database', '/databases', '/server/database', '/serverless/data'] },
   { id: 'network.firewall', path: '/server/firewall', label: 'Network & firewall', group: 'infrastructure', modes: ['server'], adminOnly: true },

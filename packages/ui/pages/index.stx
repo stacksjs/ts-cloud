@@ -177,7 +177,7 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
         <div class="stat">{{ pDisp(diskP()) }}<small></small></div>
         <div :class="barCss(diskP())"><i :style="barStyle(diskP())"></i></div>
       </a>
-      <a class="panel" href="/server/backups">
+      <a class="panel" href="/data/backups">
         <h3>Backups</h3>
         <div class="stat">{{ backup.size }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">Last {{ backup.last }}</p>
@@ -309,7 +309,7 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
           <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="ok pill">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
         </div>
         <div style="height: 16px"></div>
-        <h2>Backups <a class="more" href="/server/backups">Details →</a></h2>
+        <h2>Backups <a class="more" href="/data/backups">Details →</a></h2>
         <div class="panel">
           <div class="kv"><span>destination</span> <span class="mono">{{ backup.destination }}</span></div>
           <div class="kv"><span>retention</span> <span>{{ backup.retention }} copies</span></div>

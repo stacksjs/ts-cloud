@@ -3,7 +3,7 @@ import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest, resolveO
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
-    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/operations/releases', '/operations/jobs', '/security', '/account/security'])
+    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/operations/releases', '/operations/jobs', '/data/backups', '/security', '/account/security'])
       expect(isBoxOnlyPage(page)).toBe(false)
   })
 
@@ -20,7 +20,6 @@ describe('isBoxOnlyPage', () => {
       '/server/firewall',
       '/server/ssh-keys',
       '/server/terminal',
-      '/server/backups',
       '/server/metrics',
       '/server/security',
       '/server/services',
@@ -90,7 +89,7 @@ describe('canOpenDashboardPage', () => {
       organizationSource: 'invitation',
     }
     expect(canOpenDashboardPage('/server/metrics', operator as any)).toBe(true)
-    expect(canOpenDashboardPage('/server/backups', operator as any)).toBe(true)
+    expect(canOpenDashboardPage('/data/backups', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/operations/jobs', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/account/security', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/server/terminal', operator as any)).toBe(false)

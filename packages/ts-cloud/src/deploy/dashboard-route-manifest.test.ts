@@ -9,7 +9,7 @@ describe('dashboard route manifest', () => {
 
   it('keeps member navigation on explicitly non-admin server routes', () => {
     const memberRoutes = routesForDashboard('server', true)
-    expect(memberRoutes.map(route => route.id)).toEqual(['services.list', 'deployments.list', 'logs.list', 'sources.integrations', 'applications.create', 'applications.compose', 'operations.queue', 'operations.previews', 'operations.releases', 'runtime.workloads', 'observability.overview', 'alerts.overview', 'automation.jobs', 'data.services', 'security.posture'])
+    expect(memberRoutes.map(route => route.id)).toEqual(['services.list', 'deployments.list', 'logs.list', 'sources.integrations', 'applications.create', 'applications.compose', 'operations.queue', 'operations.previews', 'operations.releases', 'runtime.workloads', 'observability.overview', 'alerts.overview', 'automation.jobs', 'backups.list', 'data.services', 'security.posture'])
     expect(memberRoutes.every(route => !route.adminOnly)).toBe(true)
   })
 
@@ -20,6 +20,7 @@ describe('dashboard route manifest', () => {
     expect(resolveLegacyDashboardRoute('/serverless/data')).toBe('/data/services')
     expect(resolveLegacyDashboardRoute('/server/workers')).toBe('/operations/jobs')
     expect(resolveLegacyDashboardRoute('/serverless/scheduler')).toBe('/operations/jobs')
+    expect(resolveLegacyDashboardRoute('/server/backups')).toBe('/data/backups')
     expect(resolveLegacyDashboardRoute('/unknown')).toBeUndefined()
   })
 })

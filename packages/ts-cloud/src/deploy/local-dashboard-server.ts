@@ -720,6 +720,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/operations/observability',
   '/operations/alerts',
   '/operations/jobs',
+  '/data/backups',
   '/account/security',
   '/security',
   '/access-denied',
@@ -745,7 +746,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/logs': 'runtime:logs',
   '/server/metrics': 'runtime:read',
   '/server/services': 'runtime:read',
-  '/server/backups': 'backups:read',
+  '/data/backups': 'backups:read',
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
@@ -3539,6 +3540,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             recoveryPoints,
             jobs,
             coverage: backupStore.coverage(controlPlane.project.id).filter(item => policyIds.has(item.policy.id)),
+            resources: environmentRecord
+              ? controlPlane.store.listResources(controlPlane.project.id, environmentRecord.id).map(item => ({ id: item.id, name: item.name, slug: item.slug, kind: item.kind }))
+              : [],
           })
         }
 

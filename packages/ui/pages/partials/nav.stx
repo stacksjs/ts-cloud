@@ -84,7 +84,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
           @if (canView('automation:read'))<a class="{{ isActive('jobs') ? 'active' : '' }}" href="{{ envHref('/operations/jobs') }}">Workers & schedules</a>@endif
-          @if (canView('backups:read'))<a href="{{ envHref('/server/backups') }}">Backups</a>@endif
+          @if (canView('backups:read'))<a class="{{ isActive('backups') ? 'active' : '' }}" href="{{ envHref('/data/backups') }}">Backups &amp; recovery</a>@endif
           @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
       @endif
@@ -107,11 +107,12 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('runtime:read'))<a href="{{ envHref('/serverless/metrics') }}">Metrics</a><a href="{{ envHref('/serverless/traces') }}">Traces</a>@endif
         </section>
       @endif
-      @if (canView('config:read') || canView('data:read') || canView('automation:read') || canView('project:read'))
+      @if (canView('config:read') || canView('data:read') || canView('automation:read') || canView('backups:read') || canView('project:read'))
         <section class="nav-group">
           <h2>Compute & data</h2>
           @if (canView('config:read'))<a href="{{ envHref('/serverless/functions') }}">Functions</a>@endif
           @if (canView('data:read'))<a href="{{ envHref('/serverless/queues') }}">Queues</a><a class="{{ isActive('data-services') ? 'active' : '' }}" href="{{ envHref('/data/services') }}">Data services</a>@endif
+          @if (canView('backups:read'))<a class="{{ isActive('backups') ? 'active' : '' }}" href="{{ envHref('/data/backups') }}">Backups &amp; recovery</a>@endif
           @if (canView('project:read'))<a href="{{ envHref('/serverless/assets') }}">Assets</a>@endif
         </section>
       @endif
