@@ -26,6 +26,28 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     return service
   }
 
+  private async waitForSnapshot(
+    provider: string,
+    snapshotId: string,
+    context: QueueExecutionContext,
+  ): Promise<Record<string, any>> {
+    for (;;) {
+      context.throwIfCancellationRequested?.()
+      context.heartbeat?.()
+      const snapshot = provider === 'aws_aurora'
+        ? (await this.client.describeDBClusterSnapshots({ DBClusterSnapshotIdentifier: snapshotId })).DBClusterSnapshots[0]
+        : (await this.client.describeDBSnapshots({ DBSnapshotIdentifier: snapshotId })).DBSnapshots?.[0]
+      if (!snapshot) throw new Error('Provider snapshot was not found.')
+      const metadata = snapshot as Record<string, any>,
+        status = String(metadata.Status ?? metadata.DBSnapshotStatus ?? 'unknown')
+      context.checkpoint?.('provider_snapshot', `Database snapshot ${snapshotId} is ${status}.`)
+      if (status === 'available') return metadata
+      if (['deleted', 'deleting', 'failed'].includes(status))
+        throw new Error(`Provider snapshot ${snapshotId} failed with state ${status}.`)
+      await Bun.sleep(5_000)
+    }
+  }
+
   async create(
     policy: BackupPolicy,
     context: QueueExecutionContext,
@@ -42,6 +64,7 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
         DBInstanceIdentifier: service.placement,
         DBSnapshotIdentifier: snapshotId,
       })
+    await this.waitForSnapshot(service.provider, snapshotId, context)
     const identity = `${service.provider}:${service.placement}:${snapshotId}`
     return {
       mode: 'external',
@@ -67,23 +90,8 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
     const snapshotId = String(point.manifest.snapshotId ?? ''),
       provider = String(point.manifest.provider ?? '')
     if (!snapshotId) throw new Error('Snapshot recovery point has no snapshot ID.')
-    const snapshot =
-      provider === 'aws_aurora'
-        ? (
-            await this.client.describeDBClusterSnapshots({
-              DBClusterSnapshotIdentifier: snapshotId,
-            })
-          ).DBClusterSnapshots[0]
-        : (
-            await this.client.describeDBSnapshots({
-              DBSnapshotIdentifier: snapshotId,
-            })
-          ).DBSnapshots?.[0]
-    if (!snapshot) throw new Error('Provider snapshot was not found.')
-    const metadata = snapshot as Record<string, any>,
+    const metadata = await this.waitForSnapshot(provider, snapshotId, _context),
       status = String(metadata.Status ?? metadata.DBSnapshotStatus ?? 'unknown')
-    if (status !== 'available')
-      throw new Error(`Provider snapshot is ${status}; verification is pending.`)
     return {
       snapshotId,
       status,
@@ -136,7 +144,28 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
         DeletionProtection: true,
         Tags: [{ Key: 'managed-by', Value: 'ts-cloud-restore' }],
       })
-    return { targetId, status: 'creating', isolated: true }
+    return { targetId, provider, status: 'creating', isolated: true }
+  }
+
+  async validateHealth(
+    target: Record<string, JsonValue>,
+    context: QueueExecutionContext,
+  ): Promise<Record<string, JsonValue>> {
+    const targetId = String(target.targetId ?? ''), provider = String(target.provider ?? '')
+    for (;;) {
+      context.throwIfCancellationRequested?.()
+      context.heartbeat?.()
+      const resource = (provider === 'aws_aurora'
+        ? (await this.client.describeDBClusters({ DBClusterIdentifier: targetId })).DBClusters?.[0]
+        : (await this.client.describeDBInstances({ DBInstanceIdentifier: targetId })).DBInstances?.[0]) as Record<string, any> | undefined
+      if (!resource) throw new Error('Restored managed database was not found.')
+      const status = String(resource.Status ?? resource.DBInstanceStatus ?? 'unknown')
+      context.checkpoint?.('provider_restore', `Restored database ${targetId} is ${status}.`)
+      if (status === 'available') return { healthy: true, targetId, provider, status }
+      if (['deleted', 'deleting', 'failed', 'incompatible-restore'].includes(status))
+        throw new Error(`Restored managed database ${targetId} failed with state ${status}.`)
+      await Bun.sleep(5_000)
+    }
   }
 
   async cleanup(

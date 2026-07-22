@@ -471,6 +471,8 @@ export function createBackupQueueHandlers(input: {
                 new Date(startedAt ?? now().toISOString()).getTime(),
             ),
           })
+        if (result.mode === 'external' && destination.provider === 'aws_backup')
+          input.store.recordDestinationTest(destination.id, { ok: true })
         input.store.updateJob(job.id, {
           status: 'succeeded',
           recoveryPointId: point.id,
@@ -489,6 +491,11 @@ export function createBackupQueueHandlers(input: {
               return undefined
             }
           })()
+        if (resolved?.destination.provider === 'aws_backup')
+          input.store.recordDestinationTest(resolved.destination.id, {
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          })
         let cleanupRequired = false
         if (
           partial &&
