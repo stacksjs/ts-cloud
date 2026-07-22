@@ -82,6 +82,18 @@ See [Application onboarding](/features/application-onboarding) for draft JSON, b
 
 See [Durable deployment queue](/features/deployment-queue) for worker recovery, locking, cancellation, SSE cursor resume, and retention behavior.
 
+## Preview environments
+
+| Command | Description |
+|---|---|
+| `cloud env:preview <branch> --sha <commit> [--pr <n>]` | Create or update an isolated preview at an exact immutable commit. |
+| `cloud env:preview <branch> --get-url\|--extend <hours>\|--rebuild` | Inspect or operate on the persistent preview identity. |
+| `cloud env:preview <branch> --destroy` | Confirm and queue teardown of only tagged preview resources. |
+| `cloud env:previews [--site <name>]` | List status, source, URL, expiry, and cost. |
+| `cloud env:cleanup --dry-run [--max-age <hours>] [--keep <n>]` | Preview TTL/retention cleanup candidates. Omit `--dry-run` to queue teardown. |
+
+See [Preview environments](/features/preview-environments) for policy, source lifecycle, fork safety, API, and cleanup behavior.
+
 ## Server management (Forge-style)
 
 | Command | Description |

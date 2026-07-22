@@ -332,26 +332,11 @@ const deployment = await manager.deploy(config, {
 console.log(deployment.status, deployment.regions)
 ```
 
-### Preview Environments
+### Preview environments
 
-`PreviewEnvironmentManager` manages ephemeral, TTL-bound stacks for PR previews.
+Preview environments are persistent control-plane records backed by durable create, update, and teardown jobs. Signed pull-request and branch events deploy an exact immutable SHA to a collision-safe stack and stable HTTPS URL; TTL and retention cleanup remove only resources carrying the preview's complete tag set.
 
-```typescript
-import { PreviewEnvironmentManager } from '@stacksjs/ts-cloud'
-
-const manager = new PreviewEnvironmentManager()
-
-const preview = await manager.createPreviewEnvironment({
-  branch: 'feature/new-feature',
-  pr: 123,
-  commitSha: 'abc1234',
-  ttl: 24, // hours
-  baseConfig: config,
-  region: 'us-east-1',
-})
-
-console.log('Preview:', preview.stackName, preview.url)
-```
+Configure the policy and inspect lifecycle state under **Operations → Preview environments**, or use `cloud env:preview` and the automation API. See [Preview environments](/features/preview-environments) for the complete workflow and security model.
 
 ## CI/CD Integration
 

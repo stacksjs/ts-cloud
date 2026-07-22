@@ -51,6 +51,8 @@ Bindings are evaluated independently, so one monorepo can deploy several applica
 
 Each provider delivery ID is persisted before work is queued. Replays return the original outcome and do not create a second deployment operation.
 
+Pull-request and selected branch events can instead reconcile one persistent preview environment. The provider receives deployment status for the exact commit, and close/merge/delete events queue isolated cleanup. Configure URL, TTL, fork, secret, database, and resource policies under **Operations → Preview environments**. See [Preview environments](/features/preview-environments).
+
 ## SSH deploy keys
 
 Generic SSH connections require all of the following:
@@ -143,5 +145,6 @@ If repository discovery returns nothing, verify that the repository was granted 
 ## See also
 
 - [API & automation](/features/api-automation)
+- [Preview environments](/features/preview-environments)
 - [Laravel deployments](/features/laravel)
 - [Security posture](/features/security-posture)
