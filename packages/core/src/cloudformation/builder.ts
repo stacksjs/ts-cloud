@@ -161,6 +161,7 @@ export class CloudFormationBuilder {
    * Initialize default outputs in the template
    */
   private initializeOutputs(): void {
+    const resourceOutputs = this.template.Outputs || {}
     this.template.Outputs = {
       StackName: {
         Description: 'Stack name',
@@ -176,6 +177,7 @@ export class CloudFormationBuilder {
           Name: Fn.sub('${AWS::StackName}-Region'),
         },
       },
+      ...resourceOutputs,
     }
 
     // Add domain output if configured

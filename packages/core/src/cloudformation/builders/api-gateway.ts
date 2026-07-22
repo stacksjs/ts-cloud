@@ -6,6 +6,8 @@ export interface ApiGatewayConfig {
   customDomain?: {
     domain: string
     certificateArn: string
+    /** Route53 creates the alias in-stack; external returns DNS targets as outputs. */
+    dnsProvider?: 'route53' | 'external'
   }
   cors?: {
     allowOrigins: string[]
@@ -341,7 +343,7 @@ function addWebSocketRoute(
 function addApiCustomDomain(
   builder: CloudFormationBuilder,
   apiLogicalId: string,
-  customDomain: { domain: string, certificateArn: string },
+  customDomain: { domain: string, certificateArn: string, dnsProvider?: 'route53' | 'external' },
   apiType: 'HTTP' | 'REST' | 'WEBSOCKET',
 ): void {
   // Domain name
@@ -385,18 +387,34 @@ function addApiCustomDomain(
     })
   }
 
-  // Route53 DNS record
-  builder.addResource('ApiDNSRecord', 'AWS::Route53::RecordSet', {
-    HostedZoneName: Fn.sub(`${extractRootDomain(customDomain.domain)}.`),
-    Name: customDomain.domain,
-    Type: 'A',
-    AliasTarget: {
-      HostedZoneId: Fn.getAtt('ApiCustomDomain', 'RegionalHostedZoneId'),
-      DNSName: Fn.getAtt('ApiCustomDomain', 'RegionalDomainName'),
-      EvaluateTargetHealth: false,
+  if (customDomain.dnsProvider !== 'external') {
+    builder.addResource('ApiDNSRecord', 'AWS::Route53::RecordSet', {
+      HostedZoneName: Fn.sub(`${extractRootDomain(customDomain.domain)}.`),
+      Name: customDomain.domain,
+      Type: 'A',
+      AliasTarget: {
+        HostedZoneId: Fn.getAtt('ApiCustomDomain', 'RegionalHostedZoneId'),
+        DNSName: Fn.getAtt('ApiCustomDomain', 'RegionalDomainName'),
+        EvaluateTargetHealth: false,
+      },
+    }, {
+      dependsOn: 'ApiCustomDomain',
+    })
+  }
+
+  builder.addOutputs({
+    ApiCustomDomainName: {
+      Description: 'Configured API custom domain',
+      Value: customDomain.domain,
     },
-  }, {
-    dependsOn: 'ApiCustomDomain',
+    ApiCustomDomainTarget: {
+      Description: 'DNS target for Route53 or an external DNS provider',
+      Value: Fn.getAtt('ApiCustomDomain', 'RegionalDomainName'),
+    },
+    ApiCustomDomainHostedZoneId: {
+      Description: 'Regional API Gateway hosted zone ID',
+      Value: Fn.getAtt('ApiCustomDomain', 'RegionalHostedZoneId'),
+    },
   })
 }
 

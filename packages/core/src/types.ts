@@ -262,6 +262,7 @@ export interface ApiGatewayConfig {
   customDomain?: {
     domain?: string
     certificateArn?: string
+    dnsProvider?: 'route53' | 'external'
   }
   authorizer?: {
     type?: string
