@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 34
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 35
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1374,5 +1374,34 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE INDEX regional_executions_active ON regional_executions(topology_id,status,created_at DESC);
+  ` },
+  { version: 35, name: 'platform_maintenance_and_dr', sql: `
+    CREATE TABLE platform_trusted_keys (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, name TEXT NOT NULL, algorithm TEXT NOT NULL CHECK(algorithm='ed25519'), public_key_pem TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE, revoked_at TEXT, created_at TEXT NOT NULL, UNIQUE(organization_id,name)) STRICT;
+    CREATE TABLE platform_update_manifests (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, version TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('stable','preview','nightly')), published_at TEXT NOT NULL, key_id TEXT NOT NULL REFERENCES platform_trusted_keys(id) ON DELETE RESTRICT,
+      digest TEXT NOT NULL UNIQUE, document TEXT NOT NULL, signature TEXT NOT NULL, verification_status TEXT NOT NULL CHECK(verification_status IN ('verified','invalid','revoked')), compatibility TEXT NOT NULL, created_at TEXT NOT NULL, UNIQUE(organization_id,version,channel)
+    ) STRICT;
+    CREATE TABLE maintenance_windows (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, name TEXT NOT NULL, schedule TEXT NOT NULL, timezone TEXT NOT NULL, duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 5 AND 1440), allowed_operations TEXT NOT NULL, require_approval INTEGER NOT NULL DEFAULT 1 CHECK(require_approval IN (0,1)), enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,name)
+    ) STRICT;
+    CREATE TABLE platform_upgrade_campaigns (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, manifest_id TEXT NOT NULL REFERENCES platform_update_manifests(id) ON DELETE RESTRICT, window_id TEXT REFERENCES maintenance_windows(id) ON DELETE SET NULL, from_version TEXT NOT NULL, strategy TEXT NOT NULL CHECK(strategy IN ('canary','rolling')), batch_size INTEGER NOT NULL CHECK(batch_size > 0), health_gate TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('planned','queued','running','paused','rolling_back','succeeded','failed','rolled_back','cancelled')), current_stage TEXT, backup_id TEXT, approved_by TEXT REFERENCES actors(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE platform_upgrade_targets (
+      id TEXT PRIMARY KEY, campaign_id TEXT NOT NULL REFERENCES platform_upgrade_campaigns(id) ON DELETE CASCADE, server_id TEXT REFERENCES fleet_servers(id) ON DELETE SET NULL, target TEXT NOT NULL, cohort INTEGER NOT NULL, previous_version TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('pending','downloading','installing','healthy','failed','rolling_back','rolled_back','skipped')), evidence TEXT NOT NULL DEFAULT '{}', error TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(campaign_id,target)
+    ) STRICT;
+    CREATE TABLE cleanup_plans (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, kind TEXT NOT NULL CHECK(kind IN ('releases','artifacts','operations','logs','previews','snapshots','orphaned_resources')), criteria TEXT NOT NULL, candidates TEXT NOT NULL, candidate_digest TEXT NOT NULL, estimated_bytes INTEGER NOT NULL DEFAULT 0, status TEXT NOT NULL CHECK(status IN ('preview','approved','running','succeeded','partial','failed','expired')), confirmation TEXT, expires_at TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE disaster_recovery_drills (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, backup_policy_id TEXT REFERENCES backup_policies(id) ON DELETE SET NULL, recovery_point_id TEXT REFERENCES recovery_points(id) ON DELETE SET NULL, topology_id TEXT REFERENCES regional_topologies(id) ON DELETE SET NULL,
+      scenario TEXT NOT NULL CHECK(scenario IN ('control_plane','database','volume','regional')), isolated_target TEXT NOT NULL, expected_rpo_minutes INTEGER NOT NULL, expected_rto_minutes INTEGER NOT NULL, status TEXT NOT NULL CHECK(status IN ('planned','queued','restoring','verifying','cleaning','passed','failed','cleanup_required','cancelled')),
+      operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, evidence TEXT NOT NULL DEFAULT '{}', measured_rpo_minutes REAL, measured_rto_minutes REAL, cleanup_verified INTEGER NOT NULL DEFAULT 0 CHECK(cleanup_verified IN (0,1)), error TEXT, started_at TEXT, finished_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX platform_campaign_status ON platform_upgrade_campaigns(project_id,status,created_at DESC);
+    CREATE INDEX cleanup_plan_status ON cleanup_plans(project_id,status,expires_at);
+    CREATE INDEX dr_drill_status ON disaster_recovery_drills(project_id,status,created_at DESC);
   ` },
 ]
