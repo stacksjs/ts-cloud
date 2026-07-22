@@ -12,6 +12,14 @@ export class PreviewEnvironmentService {
   readonly queue: DurableOperationQueue
   constructor(readonly controlPlane: ControlPlaneStore) { this.previews = new PreviewEnvironmentStore(controlPlane); this.queue = new DurableOperationQueue(controlPlane) }
 
+  enqueueDeploy(preview: PreviewInstance, input: { created?: boolean, actorId?: string, reason?: string } = {}): ControlPlaneOperation {
+    const kind = input.created ? 'preview.create' : 'preview.update'
+    const nonce = input.reason === 'manual_rebuild' ? `:${crypto.randomUUID()}` : ''
+    const operation = this.queue.enqueue({ projectId: preview.projectId, environmentId: preview.baseEnvironmentId, resourceId: preview.resourceId, actorId: input.actorId, kind, correlationId: `preview:${preview.id}`, idempotencyKey: `preview:${preview.id}:${preview.commitSha}${nonce}`, input: { previewId: preview.id, reason: input.reason ?? (input.created ? 'create' : 'commit_update'), source: { repository: preview.repository ?? null, branch: preview.branch, commitSha: preview.commitSha, pullRequestNumber: preview.pullRequestNumber ?? null, fork: preview.fork } }, lockKey: `preview:${preview.id}`, providerKey: 'preview', buildSlot: true, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
+    this.previews.transition(preview.id, 'queued', { operationId: operation.id })
+    return operation
+  }
+
   enqueueDestroy(preview: PreviewInstance, reason: string, actorId?: string): ControlPlaneOperation {
     if (preview.status === 'destroyed') throw new Error('Preview is already destroyed')
     const operation = this.queue.enqueue({ projectId: preview.projectId, environmentId: preview.baseEnvironmentId, resourceId: preview.resourceId, actorId, kind: 'preview.destroy', correlationId: `preview:${preview.id}`, idempotencyKey: `preview:${preview.id}:destroy:${reason}`, input: { previewId: preview.id, reason }, lockKey: `preview:${preview.id}`, providerKey: 'preview', maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
@@ -37,7 +45,7 @@ export class PreviewEnvironmentService {
     }
     const selected = [...candidates.values()].sort((left, right) => left.preview.createdAt.localeCompare(right.preview.createdAt))
     const operations = input.dryRun ? [] : selected.map(item => this.enqueueDestroy(item.preview, item.reasons.sort().join('+'), input.actorId))
-    this.controlPlane.appendEvent({ actorId: input.actorId, type: input.dryRun ? 'preview.cleanup.planned' : 'preview.cleanup.queued', payload: { previewIds: selected.map(item => item.preview.id), reasons: Object.fromEntries(selected.map(item => [item.preview.id, item.reasons])), dryRun: !!input.dryRun } })
+    if (selected.length) this.controlPlane.appendEvent({ actorId: input.actorId, type: input.dryRun ? 'preview.cleanup.planned' : 'preview.cleanup.queued', payload: { previewIds: selected.map(item => item.preview.id), reasons: Object.fromEntries(selected.map(item => [item.preview.id, item.reasons])), dryRun: !!input.dryRun } })
     return { candidates: selected, operations, dryRun: !!input.dryRun }
   }
 

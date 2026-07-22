@@ -19,6 +19,7 @@ import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardH
 import { cloneSourceBinding, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
+import { PreviewEnvironmentService } from '../preview'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -855,6 +856,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
+  const previewService = new PreviewEnvironmentService(controlPlane.store)
+  previewService.cleanup()
+  const previewCleanupSweep = setInterval(() => {
+    try { previewService.cleanup() }
+    catch (error) { console.error('ts-cloud preview cleanup failed:', error) }
+  }, 60 * 60 * 1000)
+  previewCleanupSweep.unref?.()
   const queueWorkerEnabled = options.queueWorker ?? process.env.NODE_ENV !== 'test'
   const queueSecrets = deploymentLogSecrets()
   const queueWorker = queueWorkerEnabled
@@ -2914,6 +2922,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     clearInterval(throttleSweep)
     clearInterval(recoveryThrottleSweep)
     clearInterval(mfaThrottleSweep)
+    clearInterval(previewCleanupSweep)
     clearUiCache()
     queueWorker?.stop()
     const result = stop(closeActiveConnections)

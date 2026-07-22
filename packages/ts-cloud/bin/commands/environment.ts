@@ -5,6 +5,8 @@ import { resolveServerlessAppStackName } from '@ts-cloud/core'
 import { CloudFormationClient } from '../../src/aws/cloudformation'
 import { LambdaClient } from '../../src/aws/lambda'
 import { assertEnvWithinLimit, resolveServerlessFunctions } from '../../src/deploy/serverless-app'
+import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { PreviewEnvironmentService } from '../../src/preview'
 import * as cli from '../../src/utils/cli'
 import { loadValidatedConfig } from './shared'
 
@@ -226,14 +228,75 @@ export function registerEnvironmentCommands(app: CLI): void {
   }
 
   app
-    .command('env:preview <branch>', 'Create preview environment from branch')
-    .action(async (branch: string) => {
-      notImplemented(`env:preview ${branch}`, 'Ephemeral preview environments are not implemented. Define a dedicated environment and deploy to it.')
+    .command('env:preview <branch>', 'Create, inspect, rebuild, extend, or destroy an immutable preview')
+    .option('--sha <commit>', 'Exact 40-64 character source commit')
+    .option('--pr <number>', 'Pull request number')
+    .option('--site <name>', 'Application site (defaults to the first site)')
+    .option('--env <environment>', 'Base environment', { default: 'production' })
+    .option('--domain <pattern>', 'HTTPS URL pattern containing {name}')
+    .option('--ttl <hours>', 'Preview lifetime in hours')
+    .option('--destroy', 'Queue teardown for this preview')
+    .option('--rebuild', 'Rebuild the currently recorded commit')
+    .option('--extend <hours>', 'Extend expiry from now/current expiry')
+    .option('--get-url', 'Print the stable preview URL without mutation')
+    .option('--yes', 'Skip destructive confirmation')
+    .action(async (branch: string, options: { sha?: string, pr?: string, site?: string, env?: string, domain?: string, ttl?: string, destroy?: boolean, rebuild?: boolean, extend?: string, getUrl?: boolean, yes?: boolean }) => {
+      let controlPlane: ReturnType<typeof initializeDashboardControlPlane> | undefined
+      try {
+        const config = await loadValidatedConfig(); const base = options.env || 'production'; const site = options.site || Object.keys(config.sites ?? {})[0]
+        if (!site) throw new Error('No application site is configured; pass --site after adding one')
+        controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+        const environment = controlPlane.environments.get(base); const resource = environment ? controlPlane.store.listResources(controlPlane.project.id, environment.id).find(item => item.kind === 'application' && item.slug === site) : undefined
+        if (!environment || !resource) throw new Error(`Application ${site} was not found in base environment ${base}`)
+        const service = new PreviewEnvironmentService(controlPlane.store)
+        let policy = service.previews.getDefinitionForResource(resource.id)
+        if (!policy) {
+          const siteDomain = (config.sites as Record<string, { domain?: string }> | undefined)?.[site]?.domain
+          const domainPattern = options.domain || (siteDomain ? `https://{name}.preview.${siteDomain}` : undefined)
+          if (!domainPattern) throw new Error('Pass --domain with an HTTPS pattern containing {name} to configure previews')
+          policy = service.previews.createDefinition({ projectId: controlPlane.project.id, resourceId: resource.id, baseEnvironmentId: environment.id, domainPattern, ttlHours: Number(options.ttl) || undefined })
+        }
+        const pr = Number(options.pr) || undefined
+        const preview = pr ? service.previews.findForPullRequest(policy.id, 'local', pr) : service.previews.findForBranch(policy.id, 'local', branch)
+        if (options.getUrl) { if (!preview) throw new Error('Preview was not found'); cli.info(preview.url ?? 'URL unavailable'); return }
+        if (options.extend) { if (!preview) throw new Error('Preview was not found'); const extended = service.previews.extend(preview.id, Number(options.extend)); cli.success(`Extended ${extended.name} until ${extended.expiresAt}`); return }
+        if (options.destroy) {
+          if (!preview) throw new Error('Preview was not found')
+          if (!options.yes && !(await cli.confirm(`Destroy ${preview.name} and only its tagged resources?`, false))) return
+          const operation = service.enqueueDestroy(preview, 'manual'); cli.success(`Preview teardown queued: ${operation.id}`); return
+        }
+        if (options.rebuild) { if (!preview) throw new Error('Preview was not found'); const operation = service.enqueueDeploy(preview, { reason: 'manual_rebuild' }); cli.success(`Preview rebuild queued: ${operation.id}`); return }
+        if (!options.sha) throw new Error('Pass --sha with the exact immutable commit to deploy')
+        const persisted = service.previews.upsert({ definitionId: policy.id, repository: 'local', branch, pullRequestNumber: pr, commitSha: options.sha })
+        const operation = service.enqueueDeploy(persisted.preview, { created: persisted.created })
+        cli.success(`${persisted.created ? 'Preview creation' : 'Preview update'} queued: ${operation.id}`)
+        cli.info(`${persisted.preview.url} · expires ${persisted.preview.expiresAt}`)
+      }
+      catch (error) { cli.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+      finally { controlPlane?.store.close() }
     })
 
   app
     .command('env:cleanup', 'Remove stale preview environments')
-    .action(async () => {
-      notImplemented('env:cleanup', 'Delete unused stacks with `cloud stack:delete <name>` (or via the AWS console).')
+    .option('--dry-run', 'List cleanup candidates without queuing teardown')
+    .option('--max-age <hours>', 'Also remove previews older than this age')
+    .option('--keep <count>', 'Keep this many newest previews per application')
+    .action(async (options: { dryRun?: boolean, maxAge?: string, keep?: string }) => {
+      let controlPlane: ReturnType<typeof initializeDashboardControlPlane> | undefined
+      try {
+        const config = await loadValidatedConfig(); controlPlane = initializeDashboardControlPlane(process.cwd(), config); const service = new PreviewEnvironmentService(controlPlane.store)
+        const result = service.cleanup({ dryRun: options.dryRun, maxAgeHours: Number(options.maxAge) || undefined, keepCount: Number(options.keep) || undefined })
+        cli.table(['Preview', 'Status', 'Expires', 'Reason'], result.candidates.map(item => [item.preview.name, item.preview.status, item.preview.expiresAt, item.reasons.join(', ')]))
+        cli.success(options.dryRun ? `${result.candidates.length} cleanup candidate(s)` : `${result.operations.length} teardown job(s) queued`)
+      }
+      catch (error) { cli.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+      finally { controlPlane?.store.close() }
     })
+
+  app.command('env:previews', 'List persistent preview environments').option('--site <name>', 'Filter application site').action(async (options: { site?: string }) => {
+    let controlPlane: ReturnType<typeof initializeDashboardControlPlane> | undefined
+    try { const config = await loadValidatedConfig(); controlPlane = initializeDashboardControlPlane(process.cwd(), config); const service = new PreviewEnvironmentService(controlPlane.store); const resourceIds = options.site ? new Set(controlPlane.store.listResources(controlPlane.project.id).filter(item => item.slug === options.site).map(item => item.id)) : undefined; const values = service.previews.listInstances({ projectId: controlPlane.project.id }).filter(item => !resourceIds || resourceIds.has(item.resourceId)); cli.table(['ID', 'Name', 'Status', 'Branch / PR', 'Commit', 'URL', 'Expires', 'Cost'], values.map(item => [item.id, item.name, item.status, item.pullRequestNumber ? `PR #${item.pullRequestNumber}` : item.branch, item.commitSha.slice(0, 12), item.url ?? '—', item.expiresAt, item.costEstimate == null ? '—' : `$${item.costEstimate.toFixed(2)}`])) }
+    catch (error) { cli.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+    finally { controlPlane?.store.close() }
+  })
 }
