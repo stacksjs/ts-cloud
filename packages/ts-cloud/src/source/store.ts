@@ -196,6 +196,10 @@ export class SourceConnectionStore {
       : this.controlPlane.database.query<Row, [string, number]>('SELECT * FROM source_repositories WHERE connection_id = ? ORDER BY full_name LIMIT ?').all(connectionId, Math.min(500, limit))
     return rows.map(mapRepository)
   }
+  getRepository(id: string): SourceRepository | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_repositories WHERE id = ?').get(id)
+    return row ? mapRepository(row) : undefined
+  }
 
   createDeployKey(input: { connectionId: string, name: string, publicKey: string, privateKey: string, host: string, hostKey: string, actorId?: string }): SourceDeployKey {
     if (!/^ssh-(?:ed25519|rsa)\s+[A-Za-z0-9+/=]+/.test(input.publicKey.trim())) throw new Error('A valid SSH public key is required')
@@ -239,6 +243,20 @@ export class SourceConnectionStore {
     const rows = this.controlPlane.database.query<Row, []>('SELECT * FROM source_bindings ORDER BY created_at DESC').all()
     return rows.map(mapBinding).filter(item => (!input.connectionId || item.connectionId === input.connectionId) && (!input.projectId || item.projectId === input.projectId) && (!input.status || item.status === input.status))
   }
+  updateBinding(id: string, expectedVersion: number, input: { defaultBranch?: string, branchRule?: string, tagRule?: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, cloneDepth?: number | null, deployKeyId?: string | null, autoDeploy?: boolean, pullRequestPreviews?: boolean, status?: SourceBinding['status'], disabledReason?: string, actorId?: string }): SourceBinding {
+    const binding = this.getBinding(id)
+    if (!binding || binding.version !== expectedVersion) throw new Error(`Source binding ${id} changed since version ${expectedVersion}`)
+    if (input.deployKeyId && this.getDeployKey(input.deployKeyId)?.connectionId !== binding.connectionId) throw new Error('Deploy key does not belong to this connection')
+    const now = this.now()
+    const result = this.controlPlane.database.run(`UPDATE source_bindings SET default_branch=?, branch_rule=?, tag_rule=?, monorepo_root=?, include_paths=?, exclude_paths=?, submodules=?, clone_depth=?, deploy_key_id=?, auto_deploy=?, pull_request_previews=?, status=?, disabled_reason=?, version=version+1, updated_at=? WHERE id=? AND version=?`,
+      [input.defaultBranch?.trim() || binding.defaultBranch, input.branchRule === undefined ? binding.branchRule ?? null : input.branchRule.trim() || null, input.tagRule === undefined ? binding.tagRule ?? null : input.tagRule.trim() || null, input.monorepoRoot === undefined ? binding.monorepoRoot : normalizePath(input.monorepoRoot),
+        json(input.includePaths === undefined ? binding.includePaths : normalizePatterns(input.includePaths)), json(input.excludePaths === undefined ? binding.excludePaths : normalizePatterns(input.excludePaths)), (input.submodules ?? binding.submodules) ? 1 : 0, input.cloneDepth === undefined ? binding.cloneDepth ?? null : input.cloneDepth,
+        input.deployKeyId === undefined ? binding.deployKeyId ?? null : input.deployKeyId, (input.autoDeploy ?? binding.autoDeploy) ? 1 : 0, (input.pullRequestPreviews ?? binding.pullRequestPreviews) ? 1 : 0, input.status ?? binding.status, input.disabledReason === undefined ? binding.disabledReason ?? null : input.disabledReason.slice(0, 1000), now, id, expectedVersion])
+    if (result.changes !== 1) throw new Error(`Source binding ${id} changed since version ${expectedVersion}`)
+    const connection = this.getConnection(binding.connectionId)!
+    this.controlPlane.appendEvent({ organizationId: connection.organizationId, projectId: binding.projectId, actorId: input.actorId, type: 'source.binding.updated', payload: { bindingId: id, fromVersion: expectedVersion, toVersion: expectedVersion + 1, status: input.status ?? binding.status } })
+    return this.getBinding(id)!
+  }
 
   createWebhook(input: { connectionId: string, repositoryId?: string, repositoryFullName: string, events?: string[], endpointToken?: string, secret?: string }): { webhook: SourceWebhook, secret: string } {
     const connection = this.getConnection(input.connectionId)
@@ -246,8 +264,8 @@ export class SourceConnectionStore {
     const id = this.idFn(); const now = this.now(); const endpointToken = input.endpointToken ?? randomBytes(24).toString('base64url'); const secret = input.secret ?? randomBytes(32).toString('base64url')
     const events = [...new Set(input.events ?? ['push', 'pull_request'])].filter(value => ['push', 'pull_request'].includes(value))
     if (!events.length) throw new Error('At least one supported webhook event is required')
-    this.run(`INSERT INTO source_webhooks (id, connection_id, repository_id, repository_full_name, endpoint_token_hash, secret_ciphertext, events, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      [id, input.connectionId, input.repositoryId ?? null, normalizeRepository(input.repositoryFullName), hash(endpointToken), this.encrypt(secret), json(events), now, now])
+    this.run(`INSERT INTO source_webhooks (id, connection_id, repository_id, repository_full_name, endpoint_token_hash, endpoint_token_ciphertext, secret_ciphertext, events, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [id, input.connectionId, input.repositoryId ?? null, normalizeRepository(input.repositoryFullName), hash(endpointToken), this.encrypt(endpointToken), this.encrypt(secret), json(events), now, now])
     this.controlPlane.appendEvent({ organizationId: connection.organizationId, type: 'source.webhook.created', payload: { webhookId: id, connectionId: connection.id, repository: input.repositoryFullName, events } })
     return { webhook: { ...this.getWebhook(id)!, endpointToken }, secret }
   }
@@ -263,6 +281,11 @@ export class SourceConnectionStore {
     const row = this.controlPlane.database.query<Row, [string]>('SELECT secret_ciphertext FROM source_webhooks WHERE id = ?').get(id)
     if (!row) throw new Error('Source webhook was not found')
     return this.decrypt(String(row.secret_ciphertext))
+  }
+  getWebhookEndpointToken(id: string): string {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT endpoint_token_ciphertext FROM source_webhooks WHERE id = ?').get(id)
+    if (!row?.endpoint_token_ciphertext) throw new Error('Source webhook endpoint token is unavailable')
+    return this.decrypt(String(row.endpoint_token_ciphertext))
   }
   listWebhooks(connectionId: string): SourceWebhook[] {
     return this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_webhooks WHERE connection_id = ? ORDER BY repository_full_name').all(connectionId).map(mapWebhook)

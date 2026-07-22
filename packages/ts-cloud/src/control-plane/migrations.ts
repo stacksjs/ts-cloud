@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 12
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 13
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -732,6 +732,13 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX source_bindings_repository_idx ON source_bindings(connection_id, repository_full_name, status);
       CREATE INDEX source_webhooks_connection_idx ON source_webhooks(connection_id, status);
       CREATE INDEX source_deliveries_webhook_idx ON source_webhook_deliveries(webhook_id, received_at DESC);
+    `,
+  },
+  {
+    version: 13,
+    name: 'encrypted_source_webhook_endpoint_tokens',
+    sql: `
+      ALTER TABLE source_webhooks ADD COLUMN endpoint_token_ciphertext TEXT;
     `,
   },
 ]
