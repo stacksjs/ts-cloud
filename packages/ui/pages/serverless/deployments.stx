@@ -44,7 +44,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         @if (deployments.length)
         <table>
-          <thead><tr><th>Build</th><th>Status</th><th>Version</th><th>Deploy hooks</th><th>By</th><th>Took</th><th>When</th></tr></thead>
+          <thead><tr><th scope="col">Build</th><th scope="col">Status</th><th scope="col">Version</th><th scope="col">Deploy hooks</th><th scope="col">By</th><th scope="col">Took</th><th scope="col">When</th></tr></thead>
           <tbody>
             @foreach (deployments as d)
               <tr>

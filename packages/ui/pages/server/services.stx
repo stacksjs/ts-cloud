@@ -38,7 +38,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         @if (services.length)
         <table>
-          <thead><tr><th>Service</th><th>Status</th><th>Uptime</th><th>Memory</th><th>Autostart</th><th>Manage</th></tr></thead>
+          <thead><tr><th scope="col">Service</th><th scope="col">Status</th><th scope="col">Uptime</th><th scope="col">Memory</th><th scope="col">Autostart</th><th scope="col">Manage</th></tr></thead>
           <tbody>
             @foreach (services as s)
               <tr>
@@ -49,12 +49,12 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
                 <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
                 <td>
                   <div class="action-runner">
-                    <button class="btn ghost sm" type="button" @click="askOp('restart:{{ s.name }}', 'restart {{ s.name }}', 'restart {{ s.name }}', null, '{{ s.name }}')">Restart</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('reload:{{ s.name }}', 'reload {{ s.name }}', 'reload {{ s.name }}', null, '{{ s.name }}')">Reload</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('start:{{ s.name }}', 'start {{ s.name }}', 'start {{ s.name }}', null, '{{ s.name }}')">Start</button>
-                    <button class="btn danger sm" type="button" @click="askOp('stop:{{ s.name }}', 'stop {{ s.name }}', 'stop {{ s.name }}', null, '{{ s.name }}')">Stop</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('enable:{{ s.name }}', 'enable {{ s.name }}', 'enable {{ s.name }}', null, '{{ s.name }}')">Enable</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('disable:{{ s.name }}', 'disable {{ s.name }}', 'disable {{ s.name }}', null, '{{ s.name }}')">Disable</button>
+                    <button class="btn ghost sm" type="button" aria-label="Restart {{ s.name }}" @click="askOp('restart:{{ s.name }}', 'restart {{ s.name }}', 'restart {{ s.name }}', null, '{{ s.name }}')">Restart</button>
+                    <button class="btn ghost sm" type="button" aria-label="Reload {{ s.name }}" @click="askOp('reload:{{ s.name }}', 'reload {{ s.name }}', 'reload {{ s.name }}', null, '{{ s.name }}')">Reload</button>
+                    <button class="btn ghost sm" type="button" aria-label="Start {{ s.name }}" @click="askOp('start:{{ s.name }}', 'start {{ s.name }}', 'start {{ s.name }}', null, '{{ s.name }}')">Start</button>
+                    <button class="btn danger sm" type="button" aria-label="Stop {{ s.name }}" @click="askOp('stop:{{ s.name }}', 'stop {{ s.name }}', 'stop {{ s.name }}', null, '{{ s.name }}')">Stop</button>
+                    <button class="btn ghost sm" type="button" aria-label="Enable {{ s.name }}" @click="askOp('enable:{{ s.name }}', 'enable {{ s.name }}', 'enable {{ s.name }}', null, '{{ s.name }}')">Enable</button>
+                    <button class="btn ghost sm" type="button" aria-label="Disable {{ s.name }}" @click="askOp('disable:{{ s.name }}', 'disable {{ s.name }}', 'disable {{ s.name }}', null, '{{ s.name }}')">Disable</button>
                   </div>
                 </td>
               </tr>

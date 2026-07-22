@@ -63,12 +63,12 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
         <div class="panel">
           <div class="form-grid">
             <div class="field-block">
-              <label>Min ACUs</label>
-              <input type="number" step="0.5" min="0.5" :value="scaleMin()" @input="scaleMin.set($event.target.value)" placeholder="{{ seedMin }}" autocomplete="off">
+              <label for="aurora-min">Min ACUs</label>
+              <input id="aurora-min" type="number" step="0.5" min="0.5" :value="scaleMin()" @input="scaleMin.set($event.target.value)" placeholder="{{ seedMin }}" autocomplete="off">
             </div>
             <div class="field-block">
-              <label>Max ACUs</label>
-              <input type="number" step="0.5" min="0.5" :value="scaleMax()" @input="scaleMax.set($event.target.value)" placeholder="{{ seedMax }}" autocomplete="off">
+              <label for="aurora-max">Max ACUs</label>
+              <input id="aurora-max" type="number" step="0.5" min="0.5" :value="scaleMax()" @input="scaleMax.set($event.target.value)" placeholder="{{ seedMax }}" autocomplete="off">
             </div>
           </div>
           <div class="form-actions">

@@ -37,7 +37,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         @if (workers.length)
           <table>
-            <thead><tr><th>Queue</th><th>Processes</th><th>Connection</th><th>Processed</th><th>Failed</th><th>Status</th><th>Restart</th></tr></thead>
+            <thead><tr><th scope="col">Queue</th><th scope="col">Processes</th><th scope="col">Connection</th><th scope="col">Processed</th><th scope="col">Failed</th><th scope="col">Status</th><th scope="col">Restart</th></tr></thead>
             <tbody>
               @foreach (workers as w)
                 <tr>
@@ -47,7 +47,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
                   <td style="color:var(--txt2)">{{ fmt(w.processed) }}</td>
                   <td>@if ((w.failed ?? 0) > 0)<span class="bad pill">{{ w.failed }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
                   <td><span class="pill {{ tone(w.status) }}">{{ w.status }}</span></td>
-                  <td class="table-actions"><button class="btn ghost sm" type="button" @click="askOp('worker:restart:{{ w.site ?? w.name }}', '{{ w.site ?? w.name }}', 'restart workers for')">Restart</button></td>
+                  <td class="table-actions"><button class="btn ghost sm" type="button" aria-label="Restart workers for {{ w.site ?? w.name }}" @click="askOp('worker:restart:{{ w.site ?? w.name }}', '{{ w.site ?? w.name }}', 'restart workers for')">Restart</button></td>
                 </tr>
               @endforeach
             </tbody>

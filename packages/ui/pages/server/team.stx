@@ -270,13 +270,13 @@ onMount(() => { load(); loadOidc() })
     <div class="section">
       <h2>Members</h2>
       <div class="panel">
-        <table><thead><tr><th>Person</th><th>Role</th><th>Effective scope</th><th>Last activity</th><th></th></tr></thead><tbody>
+        <table><thead><tr><th scope="col">Person</th><th scope="col">Role</th><th scope="col">Effective scope</th><th scope="col">Last activity</th><th scope="col"></th></tr></thead><tbody>
           <template :for="member in memberships()"><tr>
             <td><b>{{ actorName(member) }}</b><span class="mono uname">{{ member.actor?.externalId?.replace('dashboard:', '') }}</span></td>
             <td><span class="tag">{{ member.roleTemplate }}</span><small class="role-detail">{{ roleSummary[member.roleTemplate] }}</small></td>
             <td><b>{{ scopeLabel(member.scope) }}</b><small class="role-detail">{{ member.source === 'legacy' ? 'Migrated direct access' : 'Inherited from membership' }}</small></td>
             <td>{{ member.lastActiveAt ? new Date(member.lastActiveAt).toLocaleString() : 'Never' }}</td>
-            <td class="table-actions"><button class="btn ghost sm" type="button" @click="beginEdit(member)">Edit access</button><button class="btn danger sm" type="button" @click="beginRemove(member)">Remove</button></td>
+            <td class="table-actions"><button class="btn ghost sm" type="button" :aria-label="'Edit access for ' + actorName(member)" @click="beginEdit(member)">Edit access</button><button class="btn danger sm" type="button" :aria-label="'Remove ' + actorName(member)" @click="beginRemove(member)">Remove</button></td>
           </tr></template>
         </tbody></table>
         <div class="compact empty" @show="memberships().length === 0"><strong>No members</strong><span>Create an invitation to add someone.</span></div>
@@ -298,7 +298,7 @@ onMount(() => { load(); loadOidc() })
 
     <div class="section" @show="pending() !== null"><h2>Remove membership</h2><div class="panel"><div class="field-block"><label for="remove-owner-password">Your password (required when removing an owner)</label><input id="remove-owner-password" type="password" autocomplete="current-password" :value="removePassword()" @input="removePassword.set($event.target.value)"></div>@include('../partials/op-confirm')</div></div>
 
-    <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>State</th><th></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" :disabled="pageBusy()" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" :disabled="pageBusy()" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
+    <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Scope</th><th scope="col">State</th><th scope="col"></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" :disabled="pageBusy()" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" :disabled="pageBusy()" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
   </div>
   <style>
     .access-message { min-height: 20px; margin-top: 12px; }

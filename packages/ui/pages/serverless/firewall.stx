@@ -39,7 +39,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
       <div class="panel">
         @if (rules.length)
         <table>
-          <thead><tr><th>Rule</th><th>Detail</th><th>Action</th><th>Blocked (24h)</th></tr></thead>
+          <thead><tr><th scope="col">Rule</th><th scope="col">Detail</th><th scope="col">Action</th><th scope="col">Blocked (24h)</th></tr></thead>
           <tbody>
             @foreach (rules as r)
               <tr>

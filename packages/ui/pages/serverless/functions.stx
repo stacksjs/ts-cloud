@@ -140,20 +140,20 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         <div class="form-grid">
           <div class="field-block">
-            <label>Function</label>
-            <select :value="mode()" @change="mode.set($event.target.value)">
+            <label for="function-mode">Function</label>
+            <select id="function-mode" :value="mode()" @change="mode.set($event.target.value)">
               @foreach (modes as m)
                 <option value="{{ m }}">{{ m }}</option>
               @endforeach
             </select>
           </div>
           <div class="field-block">
-            <label>Memory (MB)</label>
-            <input type="number" min="128" max="10240" :value="mem()" @input="mem.set($event.target.value)" placeholder="1024" autocomplete="off">
+            <label for="function-memory">Memory (MB)</label>
+            <input id="function-memory" type="number" min="128" max="10240" :value="mem()" @input="mem.set($event.target.value)" placeholder="1024" autocomplete="off">
           </div>
           <div class="field-block">
-            <label>Timeout (s)</label>
-            <input type="number" min="1" max="900" :value="to()" @input="to.set($event.target.value)" placeholder="28" autocomplete="off">
+            <label for="function-timeout">Timeout (s)</label>
+            <input id="function-timeout" type="number" min="1" max="900" :value="to()" @input="to.set($event.target.value)" placeholder="28" autocomplete="off">
           </div>
           <div class="form-actions">
             <button class="btn" type="button" @click="applyConfig()">Apply</button>

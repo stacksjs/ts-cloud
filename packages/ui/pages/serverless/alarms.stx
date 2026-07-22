@@ -85,7 +85,7 @@ function askDelete(name) { askOp('alarm:delete:' + name, name, 'delete alarm ' +
     <div class="section">
       <div class="panel">
         <table>
-          <thead><tr><th>Alarm</th><th>Metric</th><th>Condition</th><th>State</th><th class="table-actions">Actions</th></tr></thead>
+          <thead><tr><th scope="col">Alarm</th><th scope="col">Metric</th><th scope="col">Condition</th><th scope="col">State</th><th scope="col" class="table-actions">Actions</th></tr></thead>
           <tbody>
             <template :for="a in rows()">
               <tr>
@@ -95,7 +95,7 @@ function askDelete(name) { askOp('alarm:delete:' + name, name, 'delete alarm ' +
                 <td><span class="pill {{ toneOf(a.StateValue) }}">{{ a.StateValue }}</span></td>
                 <td class="table-actions">
                   <div class="row-actions" style="justify-content:flex-end">
-                    <button class="btn danger sm" type="button" @click="askDelete(a.AlarmName)">Delete</button>
+                    <button class="btn danger sm" type="button" :aria-label="'Delete alarm ' + a.AlarmName" @click="askDelete(a.AlarmName)">Delete</button>
                   </div>
                 </td>
               </tr>
@@ -115,16 +115,16 @@ function askDelete(name) { askOp('alarm:delete:' + name, name, 'delete alarm ' +
       <div class="panel">
         <div class="form-grid">
           <div class="field-block">
-            <label>Metric preset</label>
-            <select :value="preset()" @change="preset.set($event.target.value)">
+            <label for="alarm-preset">Metric preset</label>
+            <select id="alarm-preset" :value="preset()" @change="preset.set($event.target.value)">
               <template :for="p in presets()">
                 <option value="{{ p.key }}">{{ p.label }}</option>
               </template>
             </select>
           </div>
           <div class="field-block">
-            <label>Threshold</label>
-            <input type="number" :value="threshold()" @input="threshold.set($event.target.value)" placeholder="5" autocomplete="off">
+            <label for="alarm-threshold">Threshold</label>
+            <input id="alarm-threshold" type="number" :value="threshold()" @input="threshold.set($event.target.value)" placeholder="5" autocomplete="off">
           </div>
           <div class="form-actions">
             <button class="btn" type="button" :disabled="busy()" @click="createAlarm()">Create</button>

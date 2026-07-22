@@ -97,7 +97,7 @@ onMount(() => { refresh(); const timer = setInterval(refresh, 3000); return () =
         </div>
         <div class="queue-table-wrap">
           <table class="queue-table">
-            <thead><tr><th>Status</th><th>Target</th><th>Operation</th><th>Actor / trigger</th><th>Commit</th><th>Progress</th><th>Attempt</th><th>Timing</th></tr></thead>
+            <thead><tr><th scope="col">Status</th><th scope="col">Target</th><th scope="col">Operation</th><th scope="col">Actor / trigger</th><th scope="col">Commit</th><th scope="col">Progress</th><th scope="col">Attempt</th><th scope="col">Timing</th></tr></thead>
             <tbody>
               <template :for="item in visible()">
                 <tr class="queue-row" :class="{ selected: item.operation.id === selectedId() }" @click="openDetail(item)" tabindex="0">

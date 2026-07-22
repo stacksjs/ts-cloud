@@ -249,7 +249,7 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
         @if (sites.length)
         <table>
           <thead>
-            <tr><th>Site</th><th>Route</th><th>Kind</th><th>Runtime</th><th>TLS</th><th>Deploy</th><th>Status</th></tr>
+            <tr><th scope="col">Site</th><th scope="col">Route</th><th scope="col">Kind</th><th scope="col">Runtime</th><th scope="col">TLS</th><th scope="col">Deploy</th><th scope="col">Status</th></tr>
           </thead>
           <tbody>
             @foreach (sites as site)

@@ -88,7 +88,8 @@ async function runServerCmd() {
       <h2>Run a command on the server</h2>
       <div class="panel">
         <div class="field">
-          <input :value="serverCmd()" @input="serverCmd.set($event.target.value)" @keydown.enter="askServerCmd()" placeholder="e.g. systemctl status rpx-gateway, or df -h" autocomplete="off" aria-label="Command to run on the server">
+          <label class="sr-only" for="server-command">Command to run on the server</label>
+          <input id="server-command" :value="serverCmd()" @input="serverCmd.set($event.target.value)" @keydown.enter="askServerCmd()" placeholder="e.g. systemctl status rpx-gateway, or df -h" autocomplete="off">
           <button class="btn" type="button" :disabled="cmdBusy()" @click="askServerCmd()">Run</button>
         </div>
         <div class="op-confirm" @show="cmdPending() !== null" style="margin-top:14px">
@@ -97,7 +98,7 @@ async function runServerCmd() {
           <button type="button" class="btn danger sm" :disabled="!cmdCanRun()" @click="runServerCmd()">Run command</button>
           <button type="button" class="btn ghost sm" @click="cancelServerCmd()">Cancel</button>
         </div>
-        <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
+        <pre class="action-output" @show="cmdShown()" aria-live="polite">{{ cmdOut() }}</pre>
         <p class="note">Runs on the app box over the active driver (SSH/SSM). Use it for one-off recipes, service inspection, or installing software. Prefer declarative config for anything you want reproduced on the next deploy.</p>
       </div>
     </div>

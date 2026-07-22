@@ -106,14 +106,14 @@ async function saveEdit(name) {
         <h2>Add site</h2>
         <div class="panel">
           <form class="form-grid" @submit.prevent="addSite()">
-            <div class="field-block"><label>Name</label><input placeholder="docs" :value="addName()" @input="addName.set($event.target.value)"></div>
-            <div class="field-block"><label>Root</label><input placeholder="dist/docs" :value="addRoot()" @input="addRoot.set($event.target.value)"></div>
-            <div class="field-block"><label>Domain</label><input placeholder="example.com" :value="addDomain()" @input="addDomain.set($event.target.value)"></div>
-            <div class="field-block"><label>Path</label><input placeholder="/docs" :value="addPath()" @input="addPath.set($event.target.value)"></div>
-            <div class="field-block"><label>Deploy</label><input :value="addDeploy()" @input="addDeploy.set($event.target.value)"></div>
-            <div class="field-block"><label>Port</label><input placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
-            <div class="field-block wide"><label>Build command</label><input placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
-            <div class="field-block wide"><label>Start command</label><input placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-name">Name</label><input id="site-add-name" placeholder="docs" :value="addName()" @input="addName.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-root">Root</label><input id="site-add-root" placeholder="dist/docs" :value="addRoot()" @input="addRoot.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-domain">Domain</label><input id="site-add-domain" placeholder="example.com" :value="addDomain()" @input="addDomain.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-path">Path</label><input id="site-add-path" placeholder="/docs" :value="addPath()" @input="addPath.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-deploy">Deploy</label><input id="site-add-deploy" :value="addDeploy()" @input="addDeploy.set($event.target.value)"></div>
+            <div class="field-block"><label for="site-add-port">Port</label><input id="site-add-port" placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
+            <div class="field-block wide"><label for="site-add-build">Build command</label><input id="site-add-build" placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
+            <div class="field-block wide"><label for="site-add-start">Start command</label><input id="site-add-start" placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
             <div class="form-actions"><button class="btn" type="submit" :disabled="addBusy()">Add site</button><span class="msg" :class="addMsgKind()" role="status">{{ addMsg() }}</span></div>
           </form>
         </div>
@@ -149,22 +149,23 @@ async function saveEdit(name) {
           @if (canDeploy)<button class="btn sm" type="button" @click="askDeploy(site.name)">Deploy</button>@endif
           @if (canEdit)<button class="btn ghost sm" type="button" @click="toggleEdit(site.name)">Edit</button>@endif
           @if (!isMember)
-            <button class="btn danger sm" type="button" @click="askRemove(site.name)">Remove</button>
+            <button class="btn danger sm" type="button" :aria-label="'Remove site ' + site.name" @click="askRemove(site.name)">Remove</button>
           @endif
         </div>
         @if (!canDeploy && !canEdit)<p class="note">This membership is read-only for {{ site.name }}. Ask an organization owner for deployment or configuration access.</p>@endif
         <form class="form-grid" style="margin-top:14px;" @show="editing() === site.name" @submit.prevent="saveEdit(site.name)">
           <div class="field-block">
-            <label>TLS</label>
+            <label>TLS
             <select :value="editSsl()" @change="editSsl.set($event.target.value)">
               <option value="">(unchanged)</option>
               <option value="letsencrypt">letsencrypt</option>
               <option value="false">disable</option>
             </select>
+            </label>
           </div>
-          <div class="field-block"><label>Domain</label><input :placeholder="site.domain" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
+          <div class="field-block"><label>Domain<input :placeholder="site.domain" :value="editDomain()" @input="editDomain.set($event.target.value)"></label></div>
           <div class="field-block">
-            <label>PHP version</label>
+            <label>PHP version
             <select :value="editPhp()" @change="editPhp.set($event.target.value)">
               <option value="">(unchanged)</option>
               <option value="8.1">8.1</option>
@@ -172,10 +173,11 @@ async function saveEdit(name) {
               <option value="8.3">8.3</option>
               <option value="8.4">8.4</option>
             </select>
+            </label>
           </div>
-          <div class="field-block wide"><label>Domain aliases (space or comma separated)</label><input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></div>
-          <div class="field-block wide"><label>Redirects (from = to per line)</label><textarea rows="2" placeholder="/old = /new" :value="editRedirects()" @input="editRedirects.set($event.target.value)"></textarea></div>
-          <div class="field-block wide"><label>Env vars (KEY=value per line)</label><textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></div>
+          <div class="field-block wide"><label>Domain aliases (space or comma separated)<input placeholder="www.example.com, cdn.example.com" :value="editAliases()" @input="editAliases.set($event.target.value)"></label></div>
+          <div class="field-block wide"><label>Redirects (from = to per line)<textarea rows="2" placeholder="/old = /new" :value="editRedirects()" @input="editRedirects.set($event.target.value)"></textarea></label></div>
+          <div class="field-block wide"><label>Env vars (KEY=value per line)<textarea rows="3" placeholder="NODE_ENV=production" :value="editEnv()" @input="editEnv.set($event.target.value)"></textarea></label></div>
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
       </div>

@@ -163,7 +163,7 @@ async function runAppCmd() {
       <div class="panel">
         <table>
           <thead>
-            <tr><th>Function</th><th>Name</th><th>Memory</th><th>Timeout</th><th>Invocations</th><th>Errors</th><th>p95</th><th>Status</th></tr>
+            <tr><th scope="col">Function</th><th scope="col">Name</th><th scope="col">Memory</th><th scope="col">Timeout</th><th scope="col">Invocations</th><th scope="col">Errors</th><th scope="col">p95</th><th scope="col">Status</th></tr>
           </thead>
           <tbody>
             @foreach (functions as fn)
@@ -189,7 +189,7 @@ async function runAppCmd() {
         <div class="panel">
           <table>
             <thead>
-              <tr><th>Queue</th><th>Visible</th><th>In-flight</th><th>Processed</th><th>DLQ</th></tr>
+              <tr><th scope="col">Queue</th><th scope="col">Visible</th><th scope="col">In-flight</th><th scope="col">Processed</th><th scope="col">DLQ</th></tr>
             </thead>
             <tbody>
               @foreach (queues as q)
@@ -277,7 +277,8 @@ async function runAppCmd() {
       <h2>Run a command</h2>
       <div class="panel">
         <div class="field">
-          <input :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="askAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off" aria-label="App command to run">
+          <label class="sr-only" for="app-command">Application command to run</label>
+          <input id="app-command" :value="appCmd()" @input="appCmd.set($event.target.value)" @keydown.enter="askAppCmd()" placeholder="e.g. migrate --force, cache:clear, queue:retry all" autocomplete="off">
           <button class="btn" type="button" :disabled="cmdBusy()" @click="askAppCmd()">Run</button>
         </div>
         <div class="op-confirm" @show="cmdPending() !== null" style="margin-top:14px">
@@ -286,7 +287,7 @@ async function runAppCmd() {
           <button type="button" class="btn danger sm" :disabled="!cmdCanRun()" @click="runAppCmd()">Run command</button>
           <button type="button" class="btn ghost sm" @click="cancelAppCmd()">Cancel</button>
         </div>
-        <pre class="action-output" @show="cmdShown()">{{ cmdOut() }}</pre>
+        <pre class="action-output" @show="cmdShown()" aria-live="polite">{{ cmdOut() }}</pre>
         <p class="note">Invokes the app command through the CLI Lambda function (RequestResponse), the same path as <span class="mono">cloud command "..."</span>. Output is clamped.</p>
       </div>
     </div>

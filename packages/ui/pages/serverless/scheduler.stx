@@ -55,7 +55,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         @if (tasks.length)
         <table>
-          <thead><tr><th>Command</th><th>Schedule</th><th>Cron</th><th>Last run</th><th>Status</th></tr></thead>
+          <thead><tr><th scope="col">Command</th><th scope="col">Schedule</th><th scope="col">Cron</th><th scope="col">Last run</th><th scope="col">Status</th></tr></thead>
           <tbody>
             @foreach (tasks as t)
               <tr>

@@ -125,7 +125,7 @@ const maxTrend = Math.max(1, ...trend)
         <div class="panel">
           @if (perFn.length)
           <table>
-            <thead><tr><th>Fn</th><th>Requests</th><th>GB-sec</th><th>Cost</th></tr></thead>
+            <thead><tr><th scope="col">Fn</th><th scope="col">Requests</th><th scope="col">GB-sec</th><th scope="col">Cost</th></tr></thead>
             <tbody>
               @foreach (perFn as f)
                 <tr>

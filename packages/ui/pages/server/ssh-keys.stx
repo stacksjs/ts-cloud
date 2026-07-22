@@ -85,7 +85,7 @@ onMount(() => { load() })
       <h2>Configured keys</h2>
       <div class="panel">
         <table>
-          <thead><tr><th>Name</th><th>Type</th><th>Fingerprint</th><th>Added</th><th></th></tr></thead>
+          <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Added</th><th scope="col"></th></tr></thead>
           <tbody>
             <template :for="k in keys()">
               <tr>

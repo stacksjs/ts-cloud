@@ -87,7 +87,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
           </label>
         </div>
         <table>
-          <thead><tr><th>Build</th><th>Site</th><th>Branch</th><th>Status</th><th>Steps</th><th>By</th><th>Took</th><th>When</th><th>Action</th></tr></thead>
+          <thead><tr><th scope="col">Build</th><th scope="col">Site</th><th scope="col">Branch</th><th scope="col">Status</th><th scope="col">Steps</th><th scope="col">By</th><th scope="col">Took</th><th scope="col">When</th><th scope="col">Action</th></tr></thead>
           <tbody>
             <template :for="d in filtered()">
               <tr>
@@ -99,7 +99,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
                 <td style="color:var(--txt2)">{{ d.by }}</td>
                 <td class="mono">{{ d.took }}</td>
                 <td style="color:var(--txt3)">{{ d.when }}</td>
-                <td class="table-actions">@if (canRollback)<button class="btn danger sm" type="button" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button>@else<span class="mono">read only</span>@endif</td>
+                <td class="table-actions">@if (canRollback)<button class="btn danger sm" type="button" :aria-label="'Roll back ' + d.site + ' deployment ' + d.sha" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button>@else<span class="mono">read only</span>@endif</td>
               </tr>
             </template>
           </tbody>

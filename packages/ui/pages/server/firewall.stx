@@ -113,7 +113,7 @@ onMount(() => { load() })
         <div class="port-grid" @show="ports().length > 0">
           <template :for="p in ports()">
             <div class="port-card">
-              <div class="top"><span class="tag">tcp</span><button type="button" class="btn danger sm" @click="askRemove(p)">Remove</button></div>
+              <div class="top"><span class="tag">tcp</span><button type="button" class="btn danger sm" :aria-label="'Remove firewall port ' + p" @click="askRemove(p)">Remove</button></div>
               <div class="listen mono">{{ p }}</div>
               <div class="proc">Allowed via cloud config</div>
             </div>

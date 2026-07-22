@@ -117,7 +117,7 @@ onMount(() => { load(); loadBackups() })
       </div>
     </div>
 
-    <pre class="action-output" @show="outputShown()">{{ output() }}</pre>
+    <pre class="action-output" @show="outputShown()" aria-live="polite">{{ output() }}</pre>
 
     <div class="cols section">
       <div>

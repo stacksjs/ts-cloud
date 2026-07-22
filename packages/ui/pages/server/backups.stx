@@ -55,7 +55,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       <div class="panel">
         @if (history.length)
           <table>
-            <thead><tr><th>Snapshot</th><th>Kind</th><th>Size</th><th>Status</th><th>When</th></tr></thead>
+            <thead><tr><th scope="col">Snapshot</th><th scope="col">Kind</th><th scope="col">Size</th><th scope="col">Status</th><th scope="col">When</th></tr></thead>
             <tbody>
               @foreach (history as b)
                 <tr>

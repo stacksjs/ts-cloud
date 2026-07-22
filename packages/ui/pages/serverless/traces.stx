@@ -63,7 +63,7 @@ onMount(() => { load() })
         </div>
 
         <table @show="shown().length > 0">
-          <thead><tr><th>Trace</th><th>Method</th><th>URL</th><th>HTTP</th><th>Response</th><th>Duration</th><th>Status</th></tr></thead>
+          <thead><tr><th scope="col">Trace</th><th scope="col">Method</th><th scope="col">URL</th><th scope="col">HTTP</th><th scope="col">Response</th><th scope="col">Duration</th><th scope="col">Status</th></tr></thead>
           <tbody>
             <template :for="t in shown()">
               <tr>
