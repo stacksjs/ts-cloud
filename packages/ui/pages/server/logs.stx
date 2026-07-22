@@ -9,6 +9,8 @@ const initialLogs = __d?.serverLogs ?? []
 const emptyReason = __d?.serverLogsEmptyReason ?? 'No server logs are available yet.'
 </script>
 <script client>
+import { usePolling } from '../../functions/usePolling.ts'
+
 // Reactive log viewer: seeded from build-time data (stx server→client bridge),
 // then filters by level + source and auto-refreshes - all via signals +
 // directives (no manual DOM).
@@ -19,15 +21,13 @@ const sources = derived(() => [...new Set(logs().map(l => l.source).filter(Boole
 const filtered = derived(() => logs().filter(l =>
   (level() === 'all' || l.level === level()) && (source() === 'all' || l.source === source())))
 function tone(l) { return l === 'error' ? 'bad' : (l === 'warn' ? 'warn' : 'ok') }
-async function refresh() {
-  try {
-    const res = await fetch('/api/dashboard-data')
-    if (!res.ok) return
-    const data = await res.json()
-    if (Array.isArray(data.serverLogs)) logs.set(data.serverLogs)
-  } catch {}
-}
-onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => clearInterval(id) })
+const { pollingState, pollingError, pollingLabel } = usePolling(async () => {
+  const res = await fetch('/api/dashboard-data')
+  if (!res.ok) throw new Error('Log refresh failed with HTTP ' + res.status + '.')
+  const data = await res.json()
+  if (!Array.isArray(data.serverLogs)) throw new Error('Log refresh returned an invalid payload.')
+  logs.set(data.serverLogs)
+}, 8000)
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -53,6 +53,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         </div>
         <div class="cmds header-actions"><span class="accent cmd">cloud server:logs {{ server.name }}</span></div>
       @endif
+      <div class="header-actions"><span class="pill" :class="{ ok: pollingState() === 'live', warn: pollingState() !== 'live' }">{{ pollingLabel() }}</span></div>
     </header>
 
     <div class="section">
@@ -89,6 +90,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         </div>
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or source filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
+        <p class="note bad" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
 
         @if (isMember)
           <p class="note">Live <span class="mono">journalctl</span> for your sites' services, <b>queue workers</b> and daemons. Auto-refreshes every 8s.</p>

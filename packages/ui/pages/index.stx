@@ -100,6 +100,8 @@ const resourceChart = renderResourceBars([
 const initialData = __d ?? null
 </script>
 <script client>
+import { usePolling } from '../functions/usePolling.ts'
+
 // Live at-a-glance metrics: seeded from build-time data (stx server→client
 // bridge) so the cards render real numbers on first paint, then polled from
 // /api/dashboard-data - bind cards, health pill, indicator, and service
@@ -126,11 +128,14 @@ const cpuSub = derived(() => { const m = (data() && data().systemMetrics) || {};
 const memSub = derived(() => { const m = (data() && data().systemMetrics) || {}; return liveData() ? ' · ' + gbVal(m.memUsedMb) + '/' + gbVal(m.memTotalMb) + ' GB' : 'probe unavailable' })
 const overallC = derived(() => { if (!liveData()) return 'warn'; const r = { ok: 0, warn: 1, bad: 2 }; return [pTone(loadP()), pTone(memP()), pTone(diskP())].sort((a, b) => r[b] - r[a])[0] })
 const overallWordC = derived(() => liveData() ? ({ ok: 'healthy', warn: 'elevated', bad: 'critical' }[overallC()]) : 'probe unavailable')
-const indicator = derived(() => liveData() ? 'live' : 'snapshot')
 const servicesC = derived(() => (data() && data().services) || [])
 function svcTone(s) { return (s === 'running' || s === 'active') ? 'ok' : ((s === 'failed' || s === 'stopped') ? 'bad' : 'warn') }
-async function refresh() { try { const res = await fetch('/api/dashboard-data'); if (!res.ok) return; data.set(await res.json()) } catch {} }
-onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => clearInterval(id) })
+const { pollingState, pollingError } = usePolling(async () => {
+  const response = await fetch('/api/dashboard-data')
+  if (!response.ok) throw new Error('Dashboard refresh failed with HTTP ' + response.status + '.')
+  data.set(await response.json())
+}, 10000)
+const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData() ? 'live' : 'snapshot')
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -153,7 +158,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 10000); return () => 
           <span class="pill" :class="overallC()">{{ overallWordC() }}</span>
         </div>
       </div>
-      <div class="header-actions"><span class="env" title="Auto-refreshing every 10s">{{ indicator() }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
+      <div class="header-actions"><span class="env" :class="{ bad: pollingState() === 'stale' }" :title="pollingState() === 'stale' ? pollingError() : 'Auto-refreshing every 10s'">{{ indicator() }}</span><a class="btn ghost" href="/server/actions">Operations</a></div>
     </header>
 
     <div class="grid cards">

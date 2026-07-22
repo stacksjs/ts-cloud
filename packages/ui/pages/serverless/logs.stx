@@ -6,6 +6,8 @@ const initialLogs = __d?.serverlessLogs ?? []
 const emptyReason = __d?.serverlessLogsEmptyReason ?? 'No function logs are available yet.'
 </script>
 <script client>
+import { usePolling } from '../../functions/usePolling.ts'
+
 // Reactive aggregated CloudWatch logs across the functions, with level + function
 // filtering and auto-refresh - seeded from build-time data (stx server→client
 // bridge), then live-refreshed. Signals + directives only (no manual DOM).
@@ -16,15 +18,13 @@ const sources = derived(() => [...new Set(logs().map(l => l.source).filter(Boole
 const filtered = derived(() => logs().filter(l =>
   (level() === 'all' || l.level === level()) && (source() === 'all' || l.source === source())))
 function tone(l) { return l === 'error' ? 'bad' : (l === 'warn' ? 'warn' : 'ok') }
-async function refresh() {
-  try {
-    const res = await fetch('/api/dashboard-data')
-    if (!res.ok) return
-    const data = await res.json()
-    if (Array.isArray(data.serverlessLogs)) logs.set(data.serverlessLogs)
-  } catch {}
-}
-onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => clearInterval(id) })
+const { pollingState, pollingError, pollingLabel } = usePolling(async () => {
+  const res = await fetch('/api/dashboard-data')
+  if (!res.ok) throw new Error('Log refresh failed with HTTP ' + res.status + '.')
+  const data = await res.json()
+  if (!Array.isArray(data.serverlessLogs)) throw new Error('Log refresh returned an invalid payload.')
+  logs.set(data.serverlessLogs)
+}, 8000)
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -38,7 +38,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         <h1>Function logs</h1>
         <p>Aggregated CloudWatch logs across the {{ app.name }} functions ({{ app.env }}).</p>
       </div>
-      <div class="cmds header-actions"><span class="accent cmd">cloud logs --env {{ app.env }}</span></div>
+      <div class="cmds header-actions"><span class="pill" :class="{ ok: pollingState() === 'live', warn: pollingState() !== 'live' }">{{ pollingLabel() }}</span><span class="accent cmd">cloud logs --env {{ app.env }}</span></div>
     </header>
 
     <div class="section">
@@ -75,6 +75,7 @@ onMount(() => { refresh(); const id = setInterval(refresh, 8000); return () => c
         </div>
         <div class="compact empty" @show="logs().length > 0 && filtered().length === 0"><strong>No matching logs</strong><span>Try a different level or function filter.</span></div>
         <div class="empty" @show="logs().length === 0"><strong>No logs available</strong><span>{{ emptyReason }}</span></div>
+        <p class="note bad" role="status" @show="pollingState() === 'stale'">Showing the last successful snapshot. {{ pollingError() }}</p>
 
         <p class="note">Live CloudWatch logs (REPORT/START/END boilerplate stripped) across <span class="mono">http</span>, <span class="mono">queue</span>, <span class="mono">cli</span> and scheduler functions. Auto-refreshes every 8s.</p>
       </div>
