@@ -6,6 +6,7 @@ import type { ApiDeploymentRequest, ApiErrorEnvelope, ApiPage } from './types'
 import { createHash } from 'node:crypto'
 import { listSourceReferences, reconcileSourceWebhook, syncSourceRepositories, webhookEndpoint } from '../source'
 import { applyApplicationDraft, detectApplication, planApplication } from '../onboarding'
+import { DurableOperationQueue } from '../queue'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
@@ -52,6 +53,7 @@ function page<T extends Record<string, unknown>>(items: T[], url: URL, requestId
 
 export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Request, networkHint?: string) => Promise<Response | undefined> {
   const service = new AutomationApiService(options.controlPlane, options.identities)
+  const queue = new DurableOperationQueue(options.controlPlane)
   const windows = new Map<string, { start: number, count: number }>()
   const now = options.now ?? (() => new Date())
   const limit = options.rateLimit ?? 120
@@ -93,6 +95,8 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
         catch { throw new ApiServiceError('invalid_json', 'Request body must be valid JSON.', 400) }
       }
       const projectEnvironments = /^\/api\/v1\/projects\/([^/]+)\/environments$/.exec(url.pathname)
+      const operationLogs = /^\/api\/v1\/operations\/([^/]+)\/logs(?:\/(stream))?$/.exec(url.pathname)
+      const operationAction = /^\/api\/v1\/operations\/([^/]+)\/(cancel|retry)$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
       else if (request.method === 'GET' && projectEnvironments)
@@ -105,6 +109,74 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       }
       else if (request.method === 'GET' && url.pathname === '/api/v1/operations')
         body = page(service.listOperations(principal, url.searchParams.get('projectId') ?? undefined), url, requestId)
+      else if (request.method === 'GET' && url.pathname === '/api/v1/queue') {
+        const projectId = url.searchParams.get('projectId') ?? undefined
+        const state = url.searchParams.get('state') as any
+        const values = queue.list({ projectId, state: ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'].includes(state) ? state : undefined, limit: 500 }).filter((item) => {
+          const requested = item.operation.resourceId ? { type: 'resource' as const, id: item.operation.resourceId } : item.operation.environmentId ? { type: 'environment' as const, id: item.operation.environmentId } : item.operation.projectId ? { type: 'project' as const, id: item.operation.projectId } : { type: 'organization' as const }
+          try { service.authorize(principal, 'deployments:read', requested); return true } catch { return false }
+        }).map(item => ({ ...service.operation(item.operation), queue: item.job, approximatePosition: item.approximatePosition }))
+        body = page(values, url, requestId)
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/queue/settings') {
+        service.authorize(principal, 'deployments:read', principal.token.scope)
+        body = { concurrency: queue.limits, requestId }
+      }
+      else if (request.method === 'PATCH' && url.pathname === '/api/v1/queue/settings') {
+        service.authorize(principal, 'automation:manage', { type: 'organization' })
+        const input = await readBody()
+        if (input.confirm !== 'update queue limits') throw new ApiServiceError('confirmation_required', 'Type update queue limits to confirm production concurrency changes.', 409)
+        body = { concurrency: queue.configureConcurrency(input.concurrency ?? {}, { organizationId: principal.serviceAccount.organizationId, actorId: principal.actor.id }), requestId }
+      }
+      else if (request.method === 'DELETE' && url.pathname === '/api/v1/queue/history') {
+        service.authorize(principal, 'automation:manage', { type: 'organization' })
+        const input = await readBody()
+        if (input.confirm !== 'clear completed') throw new ApiServiceError('confirmation_required', 'Type clear completed to confirm queue retention cleanup.', 409)
+        body = { deleted: queue.clearCompleted({ before: typeof input.before === 'string' ? input.before : undefined, actorId: principal.actor.id, projectId: typeof input.projectId === 'string' ? input.projectId : undefined }), requestId }
+      }
+      else if (request.method === 'GET' && operationLogs) {
+        const operation = options.controlPlane.getOperation(decodeURIComponent(operationLogs[1]))
+        if (!operation) throw new ApiServiceError('not_found', 'Operation was not found.', 404)
+        const requested = operation.resourceId ? { type: 'resource' as const, id: operation.resourceId } : operation.environmentId ? { type: 'environment' as const, id: operation.environmentId } : operation.projectId ? { type: 'project' as const, id: operation.projectId } : { type: 'organization' as const }
+        service.authorize(principal, 'deployments:read', requested)
+        const lastEventId = request.headers.get('last-event-id')?.trim()
+        const after = Number(lastEventId || url.searchParams.get('after') || 0)
+        if (operationLogs[2] === 'stream') {
+          const encoder = new TextEncoder(); let cursor = after; let timer: ReturnType<typeof setInterval> | undefined; let closed = false
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              const flush = () => {
+                if (closed) return
+                if (!options.identities.verifyToken(bearerToken, networkHint)) { closed = true; if (timer) clearInterval(timer); controller.close(); return }
+                const entries = queue.logs(operation.id, { after: cursor, limit: 500 })
+                for (const entry of entries) { cursor = entry.sequence; controller.enqueue(encoder.encode(`id: ${entry.sequence}\nevent: log\ndata: ${JSON.stringify(entry)}\n\n`)) }
+                const current = options.controlPlane.getOperation(operation.id)
+                if (current && ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(current.state) && !queue.logs(operation.id, { after: cursor, limit: 1 }).length) { closed = true; if (timer) clearInterval(timer); controller.enqueue(encoder.encode(`event: complete\ndata: ${JSON.stringify({ state: current.state, cursor })}\n\n`)); controller.close() }
+              }
+              flush(); if (!closed) timer = setInterval(flush, 500)
+              request.signal.addEventListener('abort', () => { closed = true; if (timer) clearInterval(timer); try { controller.close() } catch {} }, { once: true })
+            },
+            cancel() { closed = true; if (timer) clearInterval(timer) },
+          })
+          return new Response(stream, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store', 'x-accel-buffering': 'no', 'x-request-id': requestId, ...rateHeaders } })
+        }
+        const entries = queue.logs(operation.id, { after, limit: Number(url.searchParams.get('limit')) || undefined })
+        body = { data: entries, cursor: entries.at(-1)?.sequence ?? after, hasMore: entries.length >= Math.min(1000, Math.max(1, Number(url.searchParams.get('limit')) || 200)), requestId }
+      }
+      else if (request.method === 'POST' && operationAction) {
+        const operation = options.controlPlane.getOperation(decodeURIComponent(operationAction[1]))
+        if (!operation) throw new ApiServiceError('not_found', 'Operation was not found.', 404)
+        const requested = operation.resourceId ? { type: 'resource' as const, id: operation.resourceId } : operation.environmentId ? { type: 'environment' as const, id: operation.environmentId } : operation.projectId ? { type: 'project' as const, id: operation.projectId } : { type: 'organization' as const }
+        const input = await readBody()
+        if (operationAction[2] === 'cancel') {
+          service.authorize(principal, 'deployments:cancel', requested)
+          body = { operation: service.operation(queue.requestCancellation(operation.id, principal.actor.id)), requestId }
+        }
+        else {
+          service.authorize(principal, 'deployments:create', requested)
+          body = { operation: service.operation(queue.retry(operation.id, String(input.errorClass ?? 'manual'), { delayMs: Number(input.delayMs) || 0, actorId: principal.actor.id })), requestId }
+        }
+      }
       else if (request.method === 'GET' && url.pathname === '/api/v1/source/connections') {
         if (!options.sources) throw new ApiServiceError('not_found', 'Source integrations are unavailable.', 404)
         service.authorize(principal, 'sources:read', principal.token.scope)

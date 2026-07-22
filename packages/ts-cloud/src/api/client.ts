@@ -1,5 +1,6 @@
 import type { ApplicationArtifactRecord, ApplicationDraftRecord, RegistryConnection } from '../onboarding'
-import type { ApiApplicationCreateRequest, ApiApplicationCreateResponse, ApiApplicationDetectionRequest, ApiApplicationDetectionResponse, ApiApplicationDraftCreateRequest, ApiApplicationDraftUpdateRequest, ApiApplicationPlanRequest, ApiApplicationPlanResponse, ApiDeploymentRequest, ApiOperationResponse, ApiPage, ApiRegistryConnectionCreateRequest, ApiRegistryConnectionUpdateRequest } from './types'
+import type { QueueConcurrencyLimits } from '../queue'
+import type { ApiApplicationCreateRequest, ApiApplicationCreateResponse, ApiApplicationDetectionRequest, ApiApplicationDetectionResponse, ApiApplicationDraftCreateRequest, ApiApplicationDraftUpdateRequest, ApiApplicationPlanRequest, ApiApplicationPlanResponse, ApiDeploymentRequest, ApiOperationLogsResponse, ApiOperationResponse, ApiPage, ApiQueueOperation, ApiQueueSettingsResponse, ApiRegistryConnectionCreateRequest, ApiRegistryConnectionUpdateRequest } from './types'
 
 export interface TsCloudClientOptions {
   baseUrl: string
@@ -90,5 +91,33 @@ export class TsCloudClient {
 
   disconnectRegistryConnection(id: string): Promise<{ registry: RegistryConnection, requestId: string }> {
     return this.request('/api/v1/registry-connections', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+  }
+
+  listQueue(input: { projectId?: string, state?: string, limit?: number, cursor?: string } = {}): Promise<ApiPage<ApiQueueOperation>> {
+    const query = new URLSearchParams(Object.entries(input).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)] as [string, string]))
+    return this.request(`/api/v1/queue?${query}`)
+  }
+
+  operationLogs(operationId: string, input: { after?: number, limit?: number } = {}): Promise<ApiOperationLogsResponse> {
+    const query = new URLSearchParams(Object.entries(input).filter(([, value]) => value !== undefined).map(([key, value]) => [key, String(value)] as [string, string]))
+    return this.request(`/api/v1/operations/${encodeURIComponent(operationId)}/logs?${query}`)
+  }
+
+  streamOperationLogs(operationId: string, after = 0): Promise<Response> {
+    return this.fetchFn(`${this.baseUrl}/api/v1/operations/${encodeURIComponent(operationId)}/logs/stream`, { headers: { accept: 'text/event-stream', authorization: `Bearer ${this.options.token}`, 'last-event-id': String(after) } })
+  }
+
+  cancelOperation(operationId: string): Promise<{ operation: ApiOperationResponse['operation'], requestId: string }> {
+    return this.request(`/api/v1/operations/${encodeURIComponent(operationId)}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+  }
+
+  retryOperation(operationId: string, errorClass: string, delayMs = 0): Promise<{ operation: ApiOperationResponse['operation'], requestId: string }> {
+    return this.request(`/api/v1/operations/${encodeURIComponent(operationId)}/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ errorClass, delayMs }) })
+  }
+
+  queueSettings(): Promise<ApiQueueSettingsResponse> { return this.request('/api/v1/queue/settings') }
+
+  updateQueueSettings(concurrency: Partial<QueueConcurrencyLimits>): Promise<ApiQueueSettingsResponse> {
+    return this.request('/api/v1/queue/settings', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'update queue limits', concurrency }) })
   }
 }

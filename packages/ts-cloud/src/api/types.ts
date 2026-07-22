@@ -1,5 +1,6 @@
 import type { ControlPlaneId, JsonValue } from '../control-plane'
 import type { ApplicationDraftInput, ApplicationDraftRecord, ApplicationPlan, DetectionCandidate, DetectionFile, RegistryConnection } from '../onboarding'
+import type { OperationLogEntry, OperationJob, QueueConcurrencyLimits } from '../queue'
 
 export interface ApiErrorEnvelope {
   error: {
@@ -51,3 +52,7 @@ export interface ApiRegistryConnectionCreateRequest { provider: RegistryConnecti
 export type ApiRegistryConnectionUpdateRequest =
   | { id: ControlPlaneId, action: 'test', image?: string }
   | { id: ControlPlaneId, action: 'rotate', username?: string, password?: string, token?: string, expiresAt?: string }
+
+export type ApiQueueOperation = ApiOperationResponse['operation'] & { queue: OperationJob, approximatePosition?: { ahead: number, precision: 'bounded' } }
+export interface ApiOperationLogsResponse { data: OperationLogEntry[], cursor: number, hasMore: boolean, requestId: string }
+export interface ApiQueueSettingsResponse { concurrency: QueueConcurrencyLimits, requestId: string }

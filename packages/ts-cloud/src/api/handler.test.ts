@@ -20,7 +20,7 @@ function fixture(rateLimit = 120) {
   const applicationDrafts = new ApplicationDraftStore(controlPlane)
   const registryConnections = new RegistryConnectionStore(controlPlane, { encryptionKey: 'api-registry-fixture-key' })
   const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scope: { type: 'environment', id: production.id } }).serviceAccount
-  const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create', 'applications:read', 'applications:manage'], scope: { type: 'environment', id: production.id } })
+  const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create', 'deployments:cancel', 'applications:read', 'applications:manage'], scope: { type: 'environment', id: production.id } })
   const handler = createApiV1Handler({ controlPlane, identities, sources, applications: { drafts: applicationDrafts, registries: registryConnections }, rateLimit })
   const call = (path: string, init: RequestInit = {}, token = issued.secret) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } })) as Promise<Response>
   return { controlPlane, organization, project, production, staging, productionService, identities, sources, applicationDrafts, registryConnections, account, issued, handler, call }
@@ -173,6 +173,39 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('lists durable jobs, resumes log cursors, and controls cancellation, retry, and concurrency', async () => {
+    const { controlPlane, organization, project, production, productionService, identities, handler, call } = fixture()
+    const deployment = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'queue-api-deploy-1' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, serviceId: productionService.id }) })
+    const operation = (await deployment.json() as any).operation
+    const listed = await (await call(`/api/v1/queue?projectId=${project.id}`)).json() as any
+    expect(listed.data).toMatchObject([{ id: operation.id, state: 'queued', queue: { lockKey: `resource:${productionService.id}`, maxAttempts: 3 }, approximatePosition: { precision: 'bounded' } }])
+    const firstLogs = await (await call(`/api/v1/operations/${operation.id}/logs?after=0&limit=1`)).json() as any
+    expect(firstLogs).toMatchObject({ data: [{ stream: 'system', message: 'Queued for durable execution.' }] })
+    expect(typeof firstLogs.cursor).toBe('number')
+    expect(firstLogs.cursor).toBe(firstLogs.data[0].sequence)
+    const noDuplicates = await (await call(`/api/v1/operations/${operation.id}/logs?after=${firstLogs.cursor}`)).json() as any
+    expect(noDuplicates.data).toEqual([])
+    const cancelled = await call(`/api/v1/operations/${operation.id}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    expect(await cancelled.json()).toMatchObject({ operation: { state: 'cancelled', id: operation.id } })
+    const stream = await call(`/api/v1/operations/${operation.id}/logs/stream`, { headers: { 'last-event-id': String(firstLogs.cursor) } })
+    expect(stream.headers.get('content-type')).toBe('text/event-stream')
+    const streamText = await stream.text()
+    expect(streamText).toContain('event: log')
+    expect(streamText).toContain('event: complete')
+    const retried = await call(`/api/v1/operations/${operation.id}/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ errorClass: 'provider_unavailable' }) })
+    expect(await retried.json()).toMatchObject({ operation: { state: 'queued', id: operation.id } })
+
+    const admin = identities.createServiceAccount({ organizationId: organization.id, slug: 'queue-admin', name: 'Queue Admin', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
+    const adminToken = identities.createToken({ serviceAccountId: admin.id, name: 'Queue settings', capabilities: ['deployments:read', 'automation:manage'], scope: { type: 'organization' } })
+    const adminCall = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${adminToken.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
+    const unconfirmed = await adminCall('/api/v1/queue/settings', { method: 'PATCH', body: JSON.stringify({ concurrency: { project: 4 } }) })
+    expect(unconfirmed.status).toBe(409)
+    const configured = await adminCall('/api/v1/queue/settings', { method: 'PATCH', body: JSON.stringify({ confirm: 'update queue limits', concurrency: { project: 4, environment: 2, provider: 3, builds: 2 } }) })
+    expect(await configured.json()).toMatchObject({ concurrency: { project: 4, environment: 2, provider: 3, builds: 2 } })
+    expect(controlPlane.getSetting('queue.concurrency')).toEqual({ project: 4, environment: 2, provider: 3, builds: 2 })
+    controlPlane.close()
+  })
+
   it('authenticates event streams and closes them after token revocation', async () => {
     const { controlPlane, organization, production, identities, handler } = fixture()
     const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'event-relay', name: 'Event Relay', roleTemplate: 'admin', scope: { type: 'environment', id: production.id } }).serviceAccount
@@ -188,7 +221,7 @@ describe('/api/v1 contract', () => {
 
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
     expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })

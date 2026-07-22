@@ -39,11 +39,12 @@ export class DurableOperationQueue {
     this.leaseMs = positive(options.leaseMs, 60_000, 60 * 60 * 1000)
     this.nowFn = options.now ?? (() => new Date())
     this.idFn = options.id ?? (() => crypto.randomUUID())
+    const stored = controlPlane.getSetting('queue.concurrency') as Partial<QueueConcurrencyLimits> | undefined
     this.limits = {
-      project: positive(options.limits?.project, DEFAULT_LIMITS.project, 100),
-      environment: positive(options.limits?.environment, DEFAULT_LIMITS.environment, 100),
-      provider: positive(options.limits?.provider, DEFAULT_LIMITS.provider, 100),
-      builds: positive(options.limits?.builds, DEFAULT_LIMITS.builds, 100),
+      project: positive(options.limits?.project ?? stored?.project, DEFAULT_LIMITS.project, 100),
+      environment: positive(options.limits?.environment ?? stored?.environment, DEFAULT_LIMITS.environment, 100),
+      provider: positive(options.limits?.provider ?? stored?.provider, DEFAULT_LIMITS.provider, 100),
+      builds: positive(options.limits?.builds ?? stored?.builds, DEFAULT_LIMITS.builds, 100),
     }
   }
 
@@ -87,6 +88,19 @@ export class DurableOperationQueue {
 
   list(input: { projectId?: string, state?: OperationState, limit?: number } = {}): QueueOperationView[] {
     return this.controlPlane.listOperations({ projectId: input.projectId, state: input.state, limit: input.limit ?? 200 }).map(operation => this.view(operation.id)).filter((value): value is QueueOperationView => !!value)
+  }
+
+  configureConcurrency(limits: Partial<QueueConcurrencyLimits>, input: { organizationId?: string, actorId?: string } = {}): QueueConcurrencyLimits {
+    const next = {
+      project: positive(limits.project, this.limits.project, 100),
+      environment: positive(limits.environment, this.limits.environment, 100),
+      provider: positive(limits.provider, this.limits.provider, 100),
+      builds: positive(limits.builds, this.limits.builds, 100),
+    }
+    Object.assign(this.limits, next)
+    this.controlPlane.setSetting('queue.concurrency', next)
+    this.controlPlane.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'queue.concurrency.updated', level: 'warning', payload: next })
+    return next
   }
 
   private runningCount(sql: string, bindings: SQLQueryBindings[]): number {
