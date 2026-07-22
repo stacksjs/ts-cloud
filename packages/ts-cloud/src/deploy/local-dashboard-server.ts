@@ -606,6 +606,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/integrations',
   '/applications/new',
   '/operations/queue',
+  '/operations/previews',
   '/account/security',
   '/security',
   '/access-denied',
@@ -641,6 +642,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/integrations': 'sources:read',
   '/applications/new': 'applications:read',
   '/operations/queue': 'deployments:read',
+  '/operations/previews': 'deployments:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -973,6 +975,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     if (!operation || !principal.membership) return false
     const scope: AuthorizationScope = operation.resourceId ? { type: 'resource', id: operation.resourceId } : operation.environmentId ? { type: 'environment', id: operation.environmentId } : operation.projectId ? { type: 'project', id: operation.projectId } : { type: 'organization' }
     const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, scope)
+    return !!target && authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
+  }
+  const mayAccessResource = (user: DashboardUser, resourceId: string, capability: AuthorizationCapability): boolean => {
+    if (user.role === 'admin') return true
+    const principal = organizationPrincipal(user); if (!principal.membership) return false
+    const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'resource', id: resourceId })
     return !!target && authorizeOrganization({ membership: principal.membership, grants: principal.grants, capability, target }).allowed
   }
 
@@ -2080,6 +2088,46 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (body.confirm !== 'clear completed') return json({ ok: false, error: 'Type "clear completed" to confirm retained history cleanup.' }, 409)
           const actor = ensureDashboardActor(controlPlane.store, user)
           return json({ ok: true, deleted: operationQueue.clearCompleted({ projectId: controlPlane.project.id, before: typeof body.before === 'string' ? body.before : undefined, actorId: actor.id }) })
+        }
+
+        if (url.pathname === '/api/previews' && req.method === 'GET') {
+          const previews = previewService.previews.listInstances({ projectId: controlPlane.project.id }).filter(item => mayAccessResource(user, item.resourceId, 'deployments:read'))
+          const definitions = previewService.previews.listDefinitions(controlPlane.project.id).filter(item => mayAccessResource(user, item.resourceId, 'project:read'))
+          const resources = controlPlane.store.listResources(controlPlane.project.id).filter(item => item.kind === 'application' && mayAccessResource(user, item.id, 'project:read')).map(item => ({ id: item.id, slug: item.slug, name: item.name, environmentId: item.environmentId }))
+          return json({ previews, definitions, resources, environments: [...controlPlane.environments.values()] })
+        }
+        if (url.pathname === '/api/previews/definitions' && req.method === 'POST') {
+          const body = await readJsonBody(req); const resourceId = String(body.resourceId ?? '')
+          if (!mayAccessResource(user, resourceId, 'config:write')) return json({ ok: false, error: 'Application was not found in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try { return json({ ok: true, definition: previewService.previews.createDefinition({ ...body, projectId: controlPlane.project.id, resourceId, baseEnvironmentId: String(body.baseEnvironmentId ?? ''), domainPattern: String(body.domainPattern ?? ''), createdByActorId: actor.id }) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Preview policy could not be created.' }, 409) }
+        }
+        if (url.pathname === '/api/previews/deploy' && req.method === 'POST') {
+          const body = await readJsonBody(req); const policy = previewService.previews.getDefinition(String(body.definitionId ?? ''))
+          if (!policy || !mayAccessResource(user, policy.resourceId, 'deployments:create')) return json({ ok: false, error: 'Preview policy was not found in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user)
+          try { const persisted = previewService.previews.upsert({ definitionId: policy.id, sourceProvider: 'dashboard', repository: 'dashboard', branch: String(body.branch ?? ''), pullRequestNumber: Number(body.pullRequestNumber) || undefined, commitSha: String(body.commitSha ?? ''), createdByActorId: actor.id }); return json({ ok: true, preview: persisted.preview, operation: previewService.enqueueDeploy(persisted.preview, { created: persisted.created, actorId: actor.id }) }) } catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Preview could not be queued.' }, 409) }
+        }
+        if (url.pathname === '/api/previews/destroy' && req.method === 'POST') {
+          const body = await readJsonBody(req); const preview = previewService.previews.getInstance(String(body.id ?? ''))
+          if (!preview || !mayAccessResource(user, preview.resourceId, 'deployments:cancel')) return json({ ok: false, error: 'Preview was not found in this scope.' }, 404)
+          if (body.confirm !== preview.name) return json({ ok: false, error: `Type "${preview.name}" to confirm tagged teardown.` }, 409)
+          const actor = ensureDashboardActor(controlPlane.store, user); return json({ ok: true, operation: previewService.enqueueDestroy(preview, 'dashboard', actor.id) })
+        }
+        if (url.pathname === '/api/previews/extend' && req.method === 'POST') {
+          const body = await readJsonBody(req); const preview = previewService.previews.getInstance(String(body.id ?? ''))
+          if (!preview || !mayAccessResource(user, preview.resourceId, 'deployments:create')) return json({ ok: false, error: 'Preview was not found in this scope.' }, 404)
+          return json({ ok: true, preview: previewService.previews.extend(preview.id, Number(body.hours)) })
+        }
+        if (url.pathname === '/api/previews/rebuild' && req.method === 'POST') {
+          const body = await readJsonBody(req); const preview = previewService.previews.getInstance(String(body.id ?? ''))
+          if (!preview || !mayAccessResource(user, preview.resourceId, 'deployments:create')) return json({ ok: false, error: 'Preview was not found in this scope.' }, 404)
+          const actor = ensureDashboardActor(controlPlane.store, user); return json({ ok: true, operation: previewService.enqueueDeploy(preview, { actorId: actor.id, reason: 'manual_rebuild' }) })
+        }
+        if (url.pathname === '/api/previews/cleanup' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          if (!body.dryRun && body.confirm !== 'cleanup previews') return json({ ok: false, error: 'Type "cleanup previews" to confirm teardown.' }, 409)
+          const actor = ensureDashboardActor(controlPlane.store, user); return json({ ok: true, ...previewService.cleanup({ dryRun: body.dryRun === true, maxAgeHours: Number(body.maxAgeHours) || undefined, keepCount: Number(body.keepCount) || undefined, actorId: actor.id }) })
         }
 
         if (url.pathname === '/api/control-plane/events') {
