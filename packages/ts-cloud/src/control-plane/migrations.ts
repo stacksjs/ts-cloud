@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 32
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 33
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1311,5 +1311,40 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     CREATE UNIQUE INDEX fleet_servers_provider_identity ON fleet_servers(organization_id,provider,provider_id) WHERE provider_id IS NOT NULL AND archived_at IS NULL;
     CREATE INDEX fleet_servers_status ON fleet_servers(project_id,status,heartbeat_at);
     CREATE TABLE fleet_bootstrap_plans (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES fleet_servers(id) ON DELETE CASCADE, plan_version TEXT NOT NULL, facts_hash TEXT NOT NULL, steps TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('preview','queued','running','succeeded','failed')), operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+  ` },
+  { version: 33, name: 'capacity_pools_and_placement', sql: `
+    CREATE TABLE capacity_pools (
+      id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      name TEXT NOT NULL, purpose TEXT NOT NULL CHECK(purpose IN ('application','build','worker','monitoring','backup')), backend TEXT NOT NULL CHECK(backend IN ('server','ecs','asg')),
+      region TEXT, architecture TEXT, labels TEXT NOT NULL DEFAULT '{}', required_server_labels TEXT NOT NULL DEFAULT '{}', tolerated_taints TEXT NOT NULL DEFAULT '[]',
+      capacity TEXT NOT NULL, reserved TEXT NOT NULL DEFAULT '{}', max_workloads INTEGER NOT NULL CHECK(max_workloads > 0), cost_weight REAL NOT NULL DEFAULT 1 CHECK(cost_weight >= 0), spread_key TEXT,
+      concurrency INTEGER NOT NULL DEFAULT 1 CHECK(concurrency > 0), ephemeral_workspaces INTEGER NOT NULL DEFAULT 1 CHECK(ephemeral_workspaces IN (0,1)), allow_production_secrets INTEGER NOT NULL DEFAULT 0 CHECK(allow_production_secrets IN (0,1)),
+      status TEXT NOT NULL CHECK(status IN ('active','draining','disabled')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id,name)
+    ) STRICT;
+    CREATE INDEX capacity_pools_scope ON capacity_pools(project_id,purpose,status,region,architecture);
+    CREATE TABLE capacity_pool_members (
+      pool_id TEXT NOT NULL REFERENCES capacity_pools(id) ON DELETE CASCADE, server_id TEXT NOT NULL REFERENCES fleet_servers(id) ON DELETE CASCADE,
+      capacity_override TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL CHECK(status IN ('active','draining','offline')), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY(pool_id,server_id)
+    ) STRICT;
+    CREATE TABLE workload_placements (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+      release_id TEXT REFERENCES releases(id) ON DELETE SET NULL, pool_id TEXT NOT NULL REFERENCES capacity_pools(id) ON DELETE RESTRICT, server_id TEXT REFERENCES fleet_servers(id) ON DELETE SET NULL,
+      purpose TEXT NOT NULL, requirements TEXT NOT NULL, decision TEXT NOT NULL, stateful INTEGER NOT NULL DEFAULT 0 CHECK(stateful IN (0,1)), auto_reschedule INTEGER NOT NULL DEFAULT 0 CHECK(auto_reschedule IN (0,1)),
+      status TEXT NOT NULL CHECK(status IN ('reserved','active','moving','blocked','released','failed')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX workload_placements_target ON workload_placements(project_id,resource_id,status,pool_id);
+    CREATE TABLE capacity_leases (
+      id TEXT PRIMARY KEY, placement_id TEXT NOT NULL REFERENCES workload_placements(id) ON DELETE CASCADE, pool_id TEXT NOT NULL REFERENCES capacity_pools(id) ON DELETE CASCADE, server_id TEXT REFERENCES fleet_servers(id) ON DELETE SET NULL,
+      resources TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN ('active','released','expired')), expires_at TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX capacity_leases_active ON capacity_leases(placement_id) WHERE state='active';
+    CREATE INDEX capacity_leases_pool ON capacity_leases(pool_id,state,expires_at);
+    CREATE TABLE remote_builds (
+      id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE SET NULL, pool_id TEXT NOT NULL REFERENCES capacity_pools(id) ON DELETE RESTRICT,
+      placement_id TEXT REFERENCES workload_placements(id) ON DELETE SET NULL, operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, source_sha TEXT NOT NULL, build_spec TEXT NOT NULL, credential_policy TEXT NOT NULL,
+      workspace TEXT, cache_key TEXT, artifact_uri TEXT, artifact_digest TEXT, status TEXT NOT NULL CHECK(status IN ('queued','running','uploading','succeeded','failed','cancelled','cleanup_required')),
+      cleanup_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE INDEX remote_builds_pool ON remote_builds(pool_id,status,created_at);
   ` },
 ]

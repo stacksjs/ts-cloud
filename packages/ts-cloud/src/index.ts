@@ -15,6 +15,7 @@ export * from './jobs'
 export * from './data-services'
 export * from './storage'
 export * from './fleet'
+export * from './placement'
 export * from './generators'
 
 // Validation exports - functions
