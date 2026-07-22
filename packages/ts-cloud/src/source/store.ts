@@ -153,10 +153,15 @@ export class SourceConnectionStore {
 
   getConnection(id: string): SourceConnection | undefined {
     const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_connections WHERE id = ?').get(id)
-    return row ? mapConnection(row) : undefined
+    return row ? this.currentConnection(row) : undefined
   }
   listConnections(organizationId: string): SourceConnection[] {
-    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_connections WHERE organization_id = ? ORDER BY name').all(organizationId).map(mapConnection)
+    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_connections WHERE organization_id = ? ORDER BY name').all(organizationId).map(row => this.currentConnection(row))
+  }
+  private currentConnection(row: Row): SourceConnection {
+    const connection = mapConnection(row)
+    if (connection.status !== 'disconnected' && connection.credentialExpiresAt && new Date(connection.credentialExpiresAt).getTime() <= this.nowFn().getTime()) return { ...connection, status: 'expired', healthMessage: 'Source credential expired; rotate it before deploying.' }
+    return connection
   }
   getCredential(id: string): SourceCredential | undefined {
     const row = this.controlPlane.database.query<Row, [string]>('SELECT credential_ciphertext FROM source_connections WHERE id = ?').get(id)
@@ -173,7 +178,7 @@ export class SourceConnectionStore {
   }
   updateHealth(id: string, input: { status: 'healthy' | 'degraded' | 'expired', message?: string, tested?: boolean, synced?: boolean }): SourceConnection {
     const connection = this.getConnection(id)
-    if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
     const now = this.now()
     this.run(`UPDATE source_connections SET status = ?, health_message = ?, last_tested_at = COALESCE(?, last_tested_at), last_synced_at = COALESCE(?, last_synced_at), version = version + 1, updated_at = ? WHERE id = ?`,
       [input.status, input.message?.slice(0, 1000) ?? null, input.tested ? now : null, input.synced ? now : null, now, id])
@@ -181,6 +186,8 @@ export class SourceConnectionStore {
   }
 
   upsertRepository(input: Omit<SourceRepository, 'id' | 'syncedAt'>): SourceRepository {
+    const connection = this.getConnection(input.connectionId)
+    if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
     const now = this.now()
     const existing = this.controlPlane.database.query<Row, [string, string]>('SELECT id FROM source_repositories WHERE connection_id = ? AND provider_repository_id = ?').get(input.connectionId, input.providerRepositoryId)
     const id = existing ? String(existing.id) : this.idFn()
@@ -203,7 +210,7 @@ export class SourceConnectionStore {
 
   createDeployKey(input: { connectionId: string, name: string, publicKey: string, privateKey: string, host: string, hostKey: string, actorId?: string }): SourceDeployKey {
     const connection = this.getConnection(input.connectionId)
-    if (!connection || connection.status === 'disconnected' || !connection.capabilities.deployKeys) throw new Error('An active deploy-key capable source connection is required')
+    if (!connection || ['disconnected', 'expired'].includes(connection.status) || !connection.capabilities.deployKeys) throw new Error('An active deploy-key capable source connection is required')
     if (!/^ssh-(?:ed25519|rsa)\s+[A-Za-z0-9+/=]+/.test(input.publicKey.trim())) throw new Error('A valid SSH public key is required')
     if (!/BEGIN (?:OPENSSH|RSA) PRIVATE KEY/.test(input.privateKey)) throw new Error('A valid SSH private key is required')
     if (!/^(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+)\s+[A-Za-z0-9+/=]+/.test(input.hostKey.trim())) throw new Error('A pinned SSH host key is required')
@@ -243,7 +250,7 @@ export class SourceConnectionStore {
 
   createBinding(input: { projectId: string, environmentId?: string, resourceId?: string, connectionId: string, repositoryId?: string, repositoryFullName: string, defaultBranch?: string, branchRule?: string, tagRule?: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, cloneDepth?: number, deployKeyId?: string, autoDeploy?: boolean, pullRequestPreviews?: boolean, actorId?: string }): SourceBinding {
     const connection = this.getConnection(input.connectionId)
-    if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
     if (input.repositoryId && this.getRepository(input.repositoryId)?.connectionId !== connection.id) throw new Error('Repository does not belong to this connection')
     if (input.deployKeyId && this.getDeployKey(input.deployKeyId)?.connectionId !== connection.id) throw new Error('Deploy key does not belong to this connection')
     const id = this.idFn(); const now = this.now()
@@ -264,6 +271,8 @@ export class SourceConnectionStore {
   updateBinding(id: string, expectedVersion: number, input: { defaultBranch?: string, branchRule?: string, tagRule?: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, cloneDepth?: number | null, deployKeyId?: string | null, autoDeploy?: boolean, pullRequestPreviews?: boolean, status?: SourceBinding['status'], disabledReason?: string, actorId?: string }): SourceBinding {
     const binding = this.getBinding(id)
     if (!binding || binding.version !== expectedVersion) throw new Error(`Source binding ${id} changed since version ${expectedVersion}`)
+    const sourceConnection = this.getConnection(binding.connectionId)
+    if ((!sourceConnection || ['disconnected', 'expired'].includes(sourceConnection.status)) && (input.status === 'active' || input.autoDeploy === true)) throw new Error('Rotate or reconnect the source credential before enabling this binding')
     if (input.deployKeyId && this.getDeployKey(input.deployKeyId)?.connectionId !== binding.connectionId) throw new Error('Deploy key does not belong to this connection')
     const now = this.now()
     const result = this.controlPlane.database.run(`UPDATE source_bindings SET default_branch=?, branch_rule=?, tag_rule=?, monorepo_root=?, include_paths=?, exclude_paths=?, submodules=?, clone_depth=?, deploy_key_id=?, auto_deploy=?, pull_request_previews=?, status=?, disabled_reason=?, version=version+1, updated_at=? WHERE id=? AND version=?`,
@@ -278,7 +287,7 @@ export class SourceConnectionStore {
 
   createWebhook(input: { connectionId: string, repositoryId?: string, repositoryFullName: string, events?: string[], endpointToken?: string, secret?: string }): { webhook: SourceWebhook, secret: string } {
     const connection = this.getConnection(input.connectionId)
-    if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
     if (input.repositoryId && this.getRepository(input.repositoryId)?.connectionId !== connection.id) throw new Error('Repository does not belong to this connection')
     const id = this.idFn(); const now = this.now(); const endpointToken = input.endpointToken ?? randomBytes(24).toString('base64url'); const secret = input.secret ?? randomBytes(32).toString('base64url')
     const events = [...new Set(input.events ?? ['push', 'pull_request'])].filter(value => ['push', 'pull_request'].includes(value))

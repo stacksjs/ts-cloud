@@ -10,7 +10,7 @@ function hosted(provider: string): boolean {
 
 export async function testSourceConnection(sources: SourceConnectionStore, connectionId: string, repositoryId?: string): Promise<ReturnType<SourceConnectionStore['updateHealth']>> {
   const connection = sources.getConnection(connectionId)
-  if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+  if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
   try {
     if (hosted(connection.provider)) {
       const result = await createSourceAdapter(connection, sources.getCredential(connection.id)).testConnection()
@@ -31,7 +31,7 @@ export async function testSourceConnection(sources: SourceConnectionStore, conne
 
 export async function syncSourceRepositories(sources: SourceConnectionStore, connectionId: string, input: { search?: string, maxPages?: number } = {}): Promise<SourceRepository[]> {
   const connection = sources.getConnection(connectionId)
-  if (!connection || !hosted(connection.provider) || connection.status === 'disconnected') throw new Error('A hosted active source connection is required for repository discovery')
+  if (!connection || !hosted(connection.provider) || ['disconnected', 'expired'].includes(connection.status)) throw new Error('A hosted active source connection is required for repository discovery')
   const adapter = createSourceAdapter(connection, sources.getCredential(connection.id))
   const synced: SourceRepository[] = []
   let cursor: string | undefined
@@ -47,7 +47,7 @@ export async function syncSourceRepositories(sources: SourceConnectionStore, con
 
 export async function listSourceReferences(sources: SourceConnectionStore, input: { connectionId: string, repository: string, repositoryId?: string, type: 'branches' | 'tags', cursor?: string, limit?: number, deployKeyId?: string }): Promise<SourceRefPage> {
   const connection = sources.getConnection(input.connectionId)
-  if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+  if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
   if (hosted(connection.provider)) {
     const adapter = createSourceAdapter(connection, sources.getCredential(connection.id))
     return input.type === 'tags' ? adapter.listTags(input.repository, input) : adapter.listBranches(input.repository, input)
@@ -64,7 +64,7 @@ export async function listSourceReferences(sources: SourceConnectionStore, input
 export async function reconcileSourceWebhook(sources: SourceConnectionStore, webhookId: string, baseUrl: string): Promise<SourceWebhook> {
   const webhook = sources.getWebhook(webhookId)
   const connection = webhook ? sources.getConnection(webhook.connectionId) : undefined
-  if (!webhook || !connection || connection.status === 'disconnected') throw new Error('Active source webhook was not found')
+  if (!webhook || !connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source webhook was not found')
   const endpoint = webhookEndpoint(baseUrl, { ...webhook, endpointToken: sources.getWebhookEndpointToken(webhook.id) })
   if (!hosted(connection.provider)) return sources.updateWebhookState(webhook.id, { status: 'healthy', healthMessage: 'Manual webhook endpoint is ready.', reconciled: true })
   try {
@@ -84,7 +84,7 @@ export async function removeSourceWebhook(sources: SourceConnectionStore, webhoo
   const webhook = sources.getWebhook(webhookId)
   const connection = webhook ? sources.getConnection(webhook.connectionId) : undefined
   if (!webhook || !connection) throw new Error('Source webhook was not found')
-  if (hosted(connection.provider) && webhook.providerWebhookId && connection.status !== 'disconnected') {
+  if (hosted(connection.provider) && webhook.providerWebhookId && !['disconnected', 'expired'].includes(connection.status)) {
     await createSourceAdapter(connection, sources.getCredential(connection.id)).deleteWebhook(webhook.repositoryFullName, webhook.providerWebhookId)
   }
   return sources.updateWebhookState(webhook.id, { status: 'disabled', healthMessage: 'Webhook disabled.' })

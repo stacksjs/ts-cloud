@@ -15,6 +15,20 @@ function fixture() {
 }
 
 describe('SourceConnectionStore', () => {
+  it('fails closed after credential expiry and allows explicit rotation', () => {
+    let now = new Date('2026-01-01T00:00:00.000Z')
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' })
+    const organization = controlPlane.createOrganization({ slug: 'expiry', name: 'Expiry' })
+    const sources = new SourceConnectionStore(controlPlane, { encryptionKey: 'fixture-key', now: () => now })
+    const connection = sources.createConnection({ organizationId: organization.id, provider: 'github', name: 'Expiring GitHub', host: 'https://github.com', authKind: 'access_token', credential: { token: 'old' }, credentialExpiresAt: '2026-01-02T00:00:00.000Z' })
+    expect(sources.getConnection(connection.id)?.status).toBe('pending')
+    now = new Date('2026-01-03T00:00:00.000Z')
+    expect(sources.getConnection(connection.id)).toMatchObject({ status: 'expired', healthMessage: expect.stringContaining('rotate') })
+    expect(() => sources.upsertRepository({ connectionId: connection.id, providerRepositoryId: '1', fullName: 'acme/web', cloneUrl: 'https://github.com/acme/web.git', defaultBranch: 'main', visibility: 'private', archived: false, metadata: {} })).toThrow('Active source connection')
+    expect(sources.rotateCredential(connection.id, { token: 'new' }, { expiresAt: '2027-01-01T00:00:00.000Z' })).toMatchObject({ status: 'pending' })
+    controlPlane.close()
+  })
+
   it('encrypts credentials and exposes only metadata and a one-way fingerprint', () => {
     const f = fixture()
     const connection = f.sources.createConnection({ organizationId: f.organization.id, provider: 'github', name: 'GitHub production', host: 'https://github.com/', owner: 'acme', authKind: 'app',
