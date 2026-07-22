@@ -83,6 +83,7 @@ export interface SecurityPolicy {
   environmentId?: string
   name: string
   rules: SecurityPolicyRule[]
+  requiredScanners: string[]
   scannerFailMode: 'open' | 'closed'
   enabled: boolean
   version: number

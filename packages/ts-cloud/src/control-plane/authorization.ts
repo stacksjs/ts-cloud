@@ -33,6 +33,9 @@ export const AUTHORIZATION_CAPABILITIES: readonly AuthorizationCapability[] = [
   'users:manage',
   'users:transfer-ownership',
   'audit:read',
+  'security:read',
+  'security:manage',
+  'security:waive',
   'automation:read',
   'automation:manage',
   'tags:manage',
@@ -46,15 +49,16 @@ const VIEWER_CAPABILITIES: readonly AuthorizationCapability[] = [
   'runtime:logs',
   'data:read',
   'backups:read',
+  'security:read',
 ]
 
 const ROLE_CAPABILITIES: Record<OrganizationRoleTemplate, ReadonlySet<AuthorizationCapability>> = {
   owner: new Set(AUTHORIZATION_CAPABILITIES),
   admin: new Set(AUTHORIZATION_CAPABILITIES.filter(capability => capability !== 'users:transfer-ownership')),
   deployer: new Set([...VIEWER_CAPABILITIES, 'deployments:create', 'deployments:cancel', 'deployments:rollback']),
-  operator: new Set([...VIEWER_CAPABILITIES, 'runtime:restart', 'backups:create']),
+  operator: new Set([...VIEWER_CAPABILITIES, 'runtime:restart', 'backups:create', 'security:manage']),
   viewer: new Set(VIEWER_CAPABILITIES),
-  auditor: new Set(['project:read', 'config:read', 'deployments:read', 'runtime:read', 'data:read', 'backups:read', 'audit:read']),
+  auditor: new Set(['project:read', 'config:read', 'deployments:read', 'runtime:read', 'data:read', 'backups:read', 'audit:read', 'security:read']),
 }
 
 export interface AuthorizationDecision {

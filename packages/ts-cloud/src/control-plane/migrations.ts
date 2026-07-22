@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 10
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 11
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -593,6 +593,13 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX security_comments_finding_idx ON security_finding_comments(finding_id, created_at);
       CREATE INDEX release_security_artifacts_release_idx ON release_security_artifacts(release_id, kind);
       CREATE INDEX security_decisions_environment_idx ON security_deploy_decisions(environment_id, created_at DESC);
+    `,
+  },
+  {
+    version: 11,
+    name: 'required_security_scanners',
+    sql: `
+      ALTER TABLE security_policies ADD COLUMN required_scanners TEXT NOT NULL DEFAULT '[]';
     `,
   },
 ]

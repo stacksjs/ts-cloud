@@ -15,6 +15,7 @@ import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorizati
 import { AutomationIdentityStore } from '../automation'
 import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
+import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -290,6 +291,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/automation/tokens',
   'POST /api/automation/tokens/rotate',
   'DELETE /api/automation/tokens',
+  'POST /api/security/policies',
+  'PATCH /api/security/policies',
+  'POST /api/security/waivers',
+  'DELETE /api/security/waivers',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -562,6 +567,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/database': 'data:read',
   '/server/firewall': 'fleet:read',
   '/server/security': 'audit:read',
+  '/security': 'security:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -771,6 +777,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const bootstrap = authEnabled ? ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin') : undefined
   const authentication = new AuthenticationStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const automationIdentities = new AutomationIdentityStore(controlPlane.store)
+  const securityPosture = new SecurityPostureStore(controlPlane.store)
+  ensureDefaultSecurityPolicies(controlPlane)
+  recordDashboardHostPosture(securityPosture, securityScope(controlPlane, String(defaultEnvironment)), initialData)
   if (bootstrap) {
     synchronizeDashboardUsers(controlPlane, bootstrap.users)
     synchronizeDashboardIdentities(authentication, controlPlane, bootstrap.users)
@@ -1319,6 +1328,130 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (!token || account?.organizationId !== controlPlane.organization.id)
             return json({ ok: false, error: 'API token was not found.' }, 404)
           return json({ ok: true, token: automationIdentities.revokeToken(token.id, principal.actor?.id) })
+        }
+
+        if (url.pathname === '/api/security/posture' && req.method === 'GET') {
+          const scope = securityScope(controlPlane, String(environment))
+          const findings = securityPosture.listFindings({ ...scope, limit: 500 })
+          return json({
+            scope,
+            summary: securityPosture.summary(scope.organizationId, scope.projectId, scope.environmentId),
+            findings,
+            scans: securityPosture.listScanRuns({ ...scope, limit: 100 }),
+            policies: securityPosture.listPolicies(scope.organizationId).filter(policy => !policy.environmentId || policy.environmentId === scope.environmentId),
+            waivers: findings.flatMap(finding => securityPosture.listWaivers(finding.id)),
+            decisions: securityPosture.listDecisions(scope.environmentId, 50),
+          })
+        }
+
+        if (url.pathname === '/api/security/export' && req.method === 'GET')
+          return json(securityPosture.exportPosture(controlPlane.organization.id))
+
+        if (url.pathname === '/api/security/scan' && req.method === 'POST') {
+          const scope = securityScope(controlPlane, String(environment))
+          const source = await new SecurityScannerRunner(securityPosture).run(new SecretFindingScanner(), { ...scope, artifactRoot: cwd })
+          const host = recordDashboardHostPosture(securityPosture, scope, latestData ?? {})
+          return json({ ok: true, source, host, summary: securityPosture.summary(scope.organizationId, scope.projectId, scope.environmentId) })
+        }
+
+        if (url.pathname === '/api/security/review' && req.method === 'POST') {
+          try {
+            const scope = securityScope(controlPlane, String(environment))
+            return json({ ok: true, ...productionChangeReview(securityPosture, { scope, desiredConfigHash: controlPlane.project.desiredConfigHash }) })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Security change review failed.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/security/policies' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          if (!principal.actor)
+            return json({ ok: false, error: 'An organization actor is required.' }, 403)
+          try {
+            const policy = securityPosture.createPolicy({
+              organizationId: controlPlane.organization.id,
+              environmentId: body.environmentId === null ? undefined : String(body.environmentId ?? securityScope(controlPlane, String(environment)).environmentId),
+              name: String(body.name ?? ''),
+              scannerFailMode: body.scannerFailMode === 'open' ? 'open' : 'closed',
+              requiredScanners: Array.isArray(body.requiredScanners) ? body.requiredScanners.map(String) : [],
+              rules: Array.isArray(body.rules) ? body.rules.map((rule: Record<string, unknown>) => ({ minimumSeverity: String(rule.minimumSeverity), action: String(rule.action), scannerId: rule.scannerId ? String(rule.scannerId) : undefined })) as any : [],
+              actorId: principal.actor.id,
+            })
+            return json({ ok: true, policy }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Security policy could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/security/policies' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const policy = securityPosture.getPolicy(String(body.id ?? ''))
+          if (!principal.actor || !policy || policy.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Security policy was not found.' }, 404)
+          try {
+            return json({ ok: true, policy: securityPosture.updatePolicy(policy.id, Number(body.version), {
+              name: typeof body.name === 'string' ? body.name : undefined,
+              scannerFailMode: body.scannerFailMode === 'open' || body.scannerFailMode === 'closed' ? body.scannerFailMode : undefined,
+              requiredScanners: Array.isArray(body.requiredScanners) ? body.requiredScanners.map(String) : undefined,
+              rules: Array.isArray(body.rules) ? body.rules.map((rule: Record<string, unknown>) => ({ minimumSeverity: String(rule.minimumSeverity), action: String(rule.action), scannerId: rule.scannerId ? String(rule.scannerId) : undefined })) as any : undefined,
+              enabled: typeof body.enabled === 'boolean' ? body.enabled : undefined,
+              actorId: principal.actor.id,
+            }) })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Security policy could not be updated.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/security/waivers' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          if (!principal.actor)
+            return json({ ok: false, error: 'An organization actor is required.' }, 403)
+          try {
+            return json({ ok: true, waiver: securityPosture.createWaiver({ findingId: String(body.findingId ?? ''), policyId: typeof body.policyId === 'string' ? body.policyId : undefined,
+              reason: String(body.reason ?? ''), referenceUrl: typeof body.referenceUrl === 'string' ? body.referenceUrl : undefined, expiresAt: String(body.expiresAt ?? ''), actorId: principal.actor.id }) }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Security waiver could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/security/waivers' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          if (!principal.actor)
+            return json({ ok: false, error: 'An organization actor is required.' }, 403)
+          try { return json({ ok: true, waiver: securityPosture.revokeWaiver(String(body.id ?? ''), principal.actor.id) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Security waiver could not be revoked.' }, 404) }
+        }
+
+        if (url.pathname === '/api/security/findings' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const finding = securityPosture.getFinding(String(body.id ?? ''))
+          if (!principal.actor || !finding || finding.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Security finding was not found.' }, 404)
+          try {
+            const updated = body.action === 'acknowledge'
+              ? securityPosture.acknowledgeFinding(finding.id, principal.actor.id)
+              : securityPosture.assignFinding(finding.id, typeof body.ownerActorId === 'string' && body.ownerActorId ? body.ownerActorId : undefined, principal.actor.id)
+            return json({ ok: true, finding: updated })
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Security finding could not be updated.' }, 422) }
+        }
+
+        if (url.pathname === '/api/security/comments' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          if (!principal.actor)
+            return json({ ok: false, error: 'An organization actor is required.' }, 403)
+          try { return json({ ok: true, comment: securityPosture.addComment({ findingId: String(body.findingId ?? ''), actorId: principal.actor.id, body: String(body.body ?? ''), referenceUrl: typeof body.referenceUrl === 'string' ? body.referenceUrl : undefined }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Comment could not be saved.' }, 422) }
         }
 
         if (url.pathname === '/api/auth/sessions' && req.method === 'GET') {
@@ -1987,6 +2120,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: `Site '${name}' was not found.` }, 404)
           if (body.confirm !== name)
             return json({ ok: false, error: `Type "${name}" to deploy this site.` }, 409)
+          const postureScope = securityScope(controlPlane, String(environment))
+          await new SecurityScannerRunner(securityPosture).run(new SecretFindingScanner(), { ...postureScope, artifactRoot: cwd })
+          recordDashboardHostPosture(securityPosture, postureScope, latestData ?? {})
+          const securityReview = productionChangeReview(securityPosture, { scope: postureScope, desiredConfigHash: controlPlane.project.desiredConfigHash })
+          if (securityReview.decision.outcome === 'block') {
+            return json({ ok: false, error: `Deployment blocked by security policy: ${securityReview.decision.explanation}`, securityReview }, 409)
+          }
           const action: DashboardAction = {
             id: `deploy:${name}`,
             label: `Deploy ${name}`,
@@ -2003,7 +2143,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             input: { site: name },
             execute: () => runAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
           })
-          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation, securityReview })
         }
 
         if (url.pathname === '/api/actions')
@@ -2138,6 +2278,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Unknown or unavailable server operation.' }, 404)
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
+          const postureScope = securityScope(controlPlane, String(environment))
+          await new SecurityScannerRunner(securityPosture).run(new SecretFindingScanner(), { ...postureScope, artifactRoot: cwd })
+          const securityReview = productionChangeReview(securityPosture, { scope: postureScope, desiredConfigHash: controlPlane.project.desiredConfigHash })
+          if (securityReview.decision.outcome === 'block')
+            return json({ ok: false, error: `Operation blocked by security policy: ${securityReview.decision.explanation}`, securityReview }, 409)
           const tracked = await trackDashboardOperation({
             controlPlane,
             environment,
@@ -2147,7 +2292,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             input: { operation: operation.id, target: operation.target, to: body.to ?? null },
             execute: () => runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }),
           })
-          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation, securityReview })
         }
 
         if (url.pathname === '/api/server/command' && req.method === 'POST') {

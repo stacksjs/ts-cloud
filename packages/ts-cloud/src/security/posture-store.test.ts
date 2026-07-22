@@ -87,4 +87,13 @@ describe('SecurityPostureStore finding lifecycle', () => {
     expect(f.posture.addComment({ findingId: finding.id, actorId: f.actor.id, body: 'Tracked in the host hardening sprint.', referenceUrl: 'https://tickets.example/SEC-2' }).body).toContain('hardening')
     expect(f.posture.exportPosture(f.organization.id)).toMatchObject({ format: 'ts-cloud-security-posture', version: 1 })
   })
+
+  it('makes a missing required scanner an explicit fail-closed decision', () => {
+    const f = fixture()
+    const scope = { organizationId: f.organization.id, projectId: f.project.id, environmentId: f.environment.id }
+    const policy = f.posture.createPolicy({ ...scope, name: 'Required checks', scannerFailMode: 'closed', requiredScanners: ['source-secrets'], rules: [{ minimumSeverity: 'critical', action: 'block' }] })
+    const decision = f.posture.evaluateGate({ ...scope, policyId: policy.id })
+    expect(decision).toMatchObject({ outcome: 'block', scannerVersions: { 'source-secrets': 'unavailable' } })
+    expect(decision.explanation).toContain('failed closed')
+  })
 })

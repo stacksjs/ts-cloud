@@ -84,6 +84,17 @@ const POLICIES: Record<string, RoutePolicy> = {
   'POST /api/automation/tokens/rotate': { capability: 'users:manage', scope: 'organization' },
   'DELETE /api/automation/tokens': { capability: 'users:manage', scope: 'organization' },
 
+  'GET /api/security/posture': { capability: 'security:read' },
+  'GET /api/security/export': { capability: 'security:read' },
+  'POST /api/security/scan': { capability: 'security:manage' },
+  'POST /api/security/review': { capability: 'deployments:create' },
+  'POST /api/security/policies': { capability: 'security:manage' },
+  'PATCH /api/security/policies': { capability: 'security:manage' },
+  'POST /api/security/waivers': { capability: 'security:waive' },
+  'DELETE /api/security/waivers': { capability: 'security:waive' },
+  'PATCH /api/security/findings': { capability: 'security:manage' },
+  'POST /api/security/comments': { capability: 'security:manage' },
+
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },
   'POST /api/organization/invitations': { capability: 'users:manage', scope: 'organization' },

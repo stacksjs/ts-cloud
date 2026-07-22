@@ -72,7 +72,7 @@ function mapFinding(row: Row): SecurityPostureFinding {
 function mapPolicy(row: Row): SecurityPolicy {
   return {
     id: String(row.id), organizationId: String(row.organization_id), environmentId: optionalString(row.environment_id),
-    name: String(row.name), rules: parseJson(row.rules, []), scannerFailMode: String(row.scanner_fail_mode) as 'open' | 'closed',
+    name: String(row.name), rules: parseJson(row.rules, []), requiredScanners: parseJson(row.required_scanners, []), scannerFailMode: String(row.scanner_fail_mode) as 'open' | 'closed',
     enabled: Number(row.enabled) === 1, version: Number(row.version), createdByActorId: optionalString(row.created_by_actor_id),
     createdAt: String(row.created_at), updatedAt: String(row.updated_at),
   }
@@ -384,29 +384,31 @@ export class SecurityPostureStore {
     return rows.length
   }
 
-  createPolicy(input: { organizationId: string, environmentId?: string, name: string, rules: SecurityPolicyRule[], scannerFailMode: 'open' | 'closed', actorId?: string }): SecurityPolicy {
+  createPolicy(input: { organizationId: string, environmentId?: string, name: string, rules: SecurityPolicyRule[], requiredScanners?: string[], scannerFailMode: 'open' | 'closed', actorId?: string }): SecurityPolicy {
     const name = input.name.trim()
     if (!name)
       throw new Error('Security policy name is required')
     const rules = validateRules(input.rules)
     const id = this.idFn()
     const now = this.now()
-    this.run(`INSERT INTO security_policies (id, organization_id, environment_id, name, rules, scanner_fail_mode, created_by_actor_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.organizationId, input.environmentId ?? null, name, json(rules), input.scannerFailMode, input.actorId ?? null, now, now])
+    const requiredScanners = [...new Set((input.requiredScanners ?? []).map(value => value.trim()).filter(Boolean))].sort()
+    this.run(`INSERT INTO security_policies (id, organization_id, environment_id, name, rules, required_scanners, scanner_fail_mode, created_by_actor_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.organizationId, input.environmentId ?? null, name, json(rules), json(requiredScanners), input.scannerFailMode, input.actorId ?? null, now, now])
     this.controlPlane.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'security.policy.created',
-      payload: { policyId: id, environmentId: input.environmentId ?? null, scannerFailMode: input.scannerFailMode, rules: sanitizeControlPlaneValue(rules) } })
+      payload: { policyId: id, environmentId: input.environmentId ?? null, scannerFailMode: input.scannerFailMode, requiredScanners, rules: sanitizeControlPlaneValue(rules) } })
     return this.getPolicy(id)!
   }
 
-  updatePolicy(id: string, expectedVersion: number, input: { name?: string, rules?: SecurityPolicyRule[], scannerFailMode?: 'open' | 'closed', enabled?: boolean, actorId?: string }): SecurityPolicy {
+  updatePolicy(id: string, expectedVersion: number, input: { name?: string, rules?: SecurityPolicyRule[], requiredScanners?: string[], scannerFailMode?: 'open' | 'closed', enabled?: boolean, actorId?: string }): SecurityPolicy {
     const policy = this.getPolicy(id)
     if (!policy || policy.version !== expectedVersion)
       throw new Error(`Security policy ${id} changed since version ${expectedVersion}`)
     const rules = input.rules ? validateRules(input.rules) : policy.rules
+    const requiredScanners = input.requiredScanners ? [...new Set(input.requiredScanners.map(value => value.trim()).filter(Boolean))].sort() : policy.requiredScanners
     const now = this.now()
     const result = this.controlPlane.database.run(
-      `UPDATE security_policies SET name = ?, rules = ?, scanner_fail_mode = ?, enabled = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
-      [input.name?.trim() || policy.name, json(rules), input.scannerFailMode ?? policy.scannerFailMode, (input.enabled ?? policy.enabled) ? 1 : 0, now, id, expectedVersion],
+      `UPDATE security_policies SET name = ?, rules = ?, required_scanners = ?, scanner_fail_mode = ?, enabled = ?, version = version + 1, updated_at = ? WHERE id = ? AND version = ?`,
+      [input.name?.trim() || policy.name, json(rules), json(requiredScanners), input.scannerFailMode ?? policy.scannerFailMode, (input.enabled ?? policy.enabled) ? 1 : 0, now, id, expectedVersion],
     )
     if (result.changes !== 1)
       throw new Error(`Security policy ${id} changed since version ${expectedVersion}`)
@@ -460,8 +462,15 @@ export class SecurityPostureStore {
     const staleAfterMs = input.staleAfterMs ?? 24 * 60 * 60 * 1_000
     const nowMs = this.nowFn().getTime()
     const latest = latestRows.map(mapScan).map(run => nowMs - new Date(run.completedAt).getTime() > staleAfterMs ? { ...run, status: 'stale' as const } : run)
-    const degraded = latest.filter(run => DEGRADED_CHECKS.has(run.status))
-    const scannerVersions = Object.fromEntries(latest.map(run => [run.scannerId, run.scannerVersion]))
+    const observedScanners = new Set(latest.map(run => run.scannerId))
+    const missing = resolvedPolicy.requiredScanners.filter(scannerId => !observedScanners.has(scannerId)).map(scannerId => ({
+      id: `missing:${scannerId}`, organizationId: input.organizationId, projectId: input.projectId, environmentId: input.environmentId,
+      scannerId, scannerVersion: 'unavailable', status: 'unavailable' as const, metadata: {}, findingsCount: 0,
+      startedAt: this.now(), completedAt: this.now(), durationMs: 0,
+    }))
+    const evaluatedScans = [...latest, ...missing]
+    const degraded = evaluatedScans.filter(run => DEGRADED_CHECKS.has(run.status))
+    const scannerVersions = Object.fromEntries(evaluatedScans.map(run => [run.scannerId, run.scannerVersion]))
     const unavailableBlocks = resolvedPolicy.scannerFailMode === 'closed' && degraded.length > 0
     const outcome: SecurityDeployDecision['outcome'] = blockers.length || unavailableBlocks ? 'block' : warnings.length || degraded.length ? 'warn' : 'allow'
     const details: string[] = []
