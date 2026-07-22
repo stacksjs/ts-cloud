@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 16
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 17
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -808,6 +808,57 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         UNIQUE(project_id, sha256)
       );
       CREATE INDEX application_artifacts_project_idx ON application_artifacts(project_id, created_at DESC);
+    `,
+  },
+  {
+    version: 17,
+    name: 'durable_operation_queue',
+    sql: `
+      CREATE TABLE operation_jobs (
+        operation_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,
+        lock_key TEXT,
+        provider_key TEXT,
+        build_slot INTEGER NOT NULL DEFAULT 0 CHECK (build_slot IN (0, 1)),
+        max_attempts INTEGER NOT NULL DEFAULT 1 CHECK (max_attempts > 0),
+        available_at TEXT NOT NULL,
+        timeout_seconds INTEGER NOT NULL DEFAULT 1800 CHECK (timeout_seconds > 0),
+        heartbeat_at TEXT,
+        current_step TEXT,
+        blocked_reason TEXT,
+        retry_classes TEXT NOT NULL DEFAULT '[]',
+        resume_policy TEXT NOT NULL DEFAULT 'fail' CHECK (resume_policy IN ('fail', 'requeue')),
+        cancellation_mode TEXT NOT NULL DEFAULT 'cooperative' CHECK (cancellation_mode IN ('cooperative', 'provider_non_cancellable')),
+        retention_until TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE operation_logs (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        operation_id TEXT NOT NULL REFERENCES operations(id) ON DELETE CASCADE,
+        stream TEXT NOT NULL CHECK (stream IN ('stdout', 'stderr', 'system', 'step')),
+        step TEXT,
+        message TEXT NOT NULL,
+        redacted INTEGER NOT NULL DEFAULT 0 CHECK (redacted IN (0, 1)),
+        truncated INTEGER NOT NULL DEFAULT 0 CHECK (truncated IN (0, 1)),
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE operation_locks (
+        lock_key TEXT PRIMARY KEY,
+        operation_id TEXT NOT NULL UNIQUE REFERENCES operations(id) ON DELETE CASCADE,
+        lease_owner TEXT NOT NULL,
+        lease_expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX operation_jobs_available_idx ON operation_jobs(available_at, operation_id);
+      CREATE INDEX operation_jobs_provider_idx ON operation_jobs(provider_key, build_slot, operation_id);
+      CREATE INDEX operation_jobs_retention_idx ON operation_jobs(retention_until);
+      CREATE INDEX operation_logs_operation_idx ON operation_logs(operation_id, sequence);
+      CREATE INDEX operation_locks_expiry_idx ON operation_locks(lease_expires_at);
     `,
   },
 ]
