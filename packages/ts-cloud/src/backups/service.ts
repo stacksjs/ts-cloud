@@ -621,6 +621,8 @@ export function createBackupQueueHandlers(input: {
     try {
       const { point, policy, destination, source } = resolve(job)
       if (!point) throw new Error('Recovery point was not found.')
+      if (drill && !source.cleanup)
+        throw new Error('This backup source cannot safely clean a recovery drill target.')
       const destinationAdapter = point.uri.startsWith('s3:')
         ? input.resolveDestination(destination)
         : undefined

@@ -309,6 +309,11 @@ export class BackupStore {
       ) && destination.provider === 'aws_backup'
     )
       throw new Error(`${input.resourceKind} backups require an object-storage destination.`)
+    if (
+      input.resourceKind === 'infrastructure' &&
+      destination.provider !== 'aws_backup'
+    )
+      throw new Error('Infrastructure backups require an AWS Backup destination.')
     const expression = normalizeScheduleExpression(input.schedule),
       nextRunAt = nextScheduleRuns(
         expression.normalized,

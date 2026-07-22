@@ -4,6 +4,7 @@
  */
 
 export * from './client'
+export * from './backup'
 // Multi-provider object storage factory (AWS S3 / Backblaze B2 / Hetzner),
 // re-exported here for convenience since the S3Client it builds lives in this module.
 export * from '../object-storage'

@@ -22,6 +22,7 @@ import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft,
 import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { ElastiCacheClient } from '../aws/elasticache'
 import { RDSClient } from '../aws/rds'
+import { AwsBackupClient } from '../aws/backup'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
@@ -30,7 +31,7 @@ import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEst
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
-import { AwsDatabaseBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
+import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -1014,6 +1015,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     volume: new DockerVolumeBackupSource(),
     files: new FilesystemBackupSource(cwd),
     control_plane: new ControlPlaneBackupSource(controlPlane.store, cwd),
+    infrastructure: new AwsInfrastructureBackupSource(new AwsBackupClient(dataServiceRegion)),
   } as const
   const resolveBackupSource = (policy: BackupPolicy) =>
     backupSources[policy.resourceKind as keyof typeof backupSources]
@@ -3660,6 +3662,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'File policies require a scoped resource and at least one project-relative include path.' }, 422)
           if (resourceKind === 'control_plane' && destination.encryption === 'provider')
             return json({ ok: false, error: 'Control-plane policies require a destination with client-side encryption.' }, 422)
+          if (resourceKind === 'infrastructure' && (destination.provider !== 'aws_backup' || !includePatterns.some(item => item.startsWith('resource:arn:')) || !includePatterns.some(item => item.startsWith('role:arn:'))))
+            return json({ ok: false, error: 'Infrastructure policies require an AWS Backup destination plus resource:<arn> and role:<arn> include values.' }, 422)
           try {
             const policy = backupStore.createPolicy({
               organizationId: controlPlane.organization.id,
