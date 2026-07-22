@@ -3,6 +3,7 @@ export * from './posture-store'
 export * from './scanners'
 export * from './artifacts'
 export * from './integration'
+export * from './container-release'
 export {
   PreDeployScanner,
   SECRET_PATTERNS,

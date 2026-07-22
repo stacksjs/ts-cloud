@@ -109,16 +109,24 @@ export function attachVulnerabilitySummary(posture: SecurityPostureStore, scope:
   return posture.addReleaseArtifact({ ...scope, kind: 'vulnerability_summary', format: 'ts-cloud-vulnerability-summary+json', digest: `sha256:${sha256(content)}`, summary, content, sensitive: true })
 }
 
-export function createReleaseProvenance(input: { artifactName: string, artifact: string | Uint8Array, invocationId: string, startedAt: string, completedAt: string, externalParameters?: JsonValue, resolvedDependencies?: JsonValue[] }): ReleaseProvenance {
+export function createReleaseProvenance(input: { artifactName: string, artifact?: string | Uint8Array, artifactSha256?: string, invocationId: string, startedAt: string, completedAt: string, externalParameters?: JsonValue, resolvedDependencies?: JsonValue[] }): ReleaseProvenance {
+  if (!input.artifact && !input.artifactSha256)
+    throw new Error('Release provenance requires artifact content or a SHA-256 digest')
   return {
     _type: 'https://in-toto.io/Statement/v1',
-    subject: [{ name: input.artifactName, digest: { sha256: sha256(input.artifact) } }],
+    subject: [{ name: input.artifactName, digest: { sha256: input.artifactSha256?.replace(/^sha256:/, '') ?? sha256(input.artifact!) } }],
     predicateType: 'https://slsa.dev/provenance/v1',
     predicate: {
       buildDefinition: { buildType: 'https://ts-cloud.dev/build/v1', externalParameters: input.externalParameters ?? {}, internalParameters: {}, resolvedDependencies: input.resolvedDependencies ?? [] },
       runDetails: { builder: { id: 'https://ts-cloud.dev/builders/local/v1' }, metadata: { invocationId: input.invocationId, startedOn: input.startedAt, finishedOn: input.completedAt } },
     },
   }
+}
+
+export function attachProvenanceToRelease(posture: SecurityPostureStore, scope: { organizationId: string, projectId: string, environmentId?: string, releaseId: string }, provenance: ReleaseProvenance): ReleaseSecurityArtifact {
+  const content = JSON.stringify(provenance)
+  return posture.addReleaseArtifact({ ...scope, kind: 'provenance', format: 'in-toto+slsa-v1+json', digest: `sha256:${sha256(content)}`,
+    summary: { subjects: provenance.subject.length, builder: provenance.predicate.runDetails.builder.id, buildType: provenance.predicate.buildDefinition.buildType }, content, sensitive: true })
 }
 
 export function verifyArtifactSignature(input: { artifact: string | Uint8Array, expectedSha256: string, signature?: string, publicKey?: string }): { digestValid: boolean, signature: 'verified' | 'invalid' | 'not_configured' } {

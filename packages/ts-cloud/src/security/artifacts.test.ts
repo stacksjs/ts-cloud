@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { ControlPlaneStore } from '../control-plane'
-import { attachSbomToRelease, createReleaseProvenance, generateCycloneDxSbom, verifyArtifactSignature } from './artifacts'
+import { attachProvenanceToRelease, attachSbomToRelease, createReleaseProvenance, generateCycloneDxSbom, verifyArtifactSignature } from './artifacts'
 import { SecurityPostureStore } from './posture-store'
 
 function fixture() {
@@ -47,5 +47,10 @@ describe('release security artifacts', () => {
     const provenance = createReleaseProvenance({ artifactName: 'release.tar.gz', artifact, invocationId: 'deploy-1', startedAt: '2026-07-21T12:00:00.000Z', completedAt: '2026-07-21T12:01:00.000Z' })
     expect(provenance.subject[0]).toEqual({ name: 'release.tar.gz', digest: { sha256: digest } })
     expect(provenance.predicate.runDetails.builder.id).toContain('ts-cloud.dev')
+
+    const f = fixture()
+    const digestProvenance = createReleaseProvenance({ artifactName: 'image', artifactSha256: `sha256:${digest}`, invocationId: 'deploy-2', startedAt: '2026-07-21T12:00:00.000Z', completedAt: '2026-07-21T12:01:00.000Z' })
+    expect(digestProvenance.subject[0]?.digest.sha256).toBe(digest)
+    expect(attachProvenanceToRelease(f.posture, { organizationId: f.organization.id, projectId: f.project.id, environmentId: f.environment.id, releaseId: 'release-2' }, digestProvenance)).toMatchObject({ kind: 'provenance', sensitive: true })
   })
 })
