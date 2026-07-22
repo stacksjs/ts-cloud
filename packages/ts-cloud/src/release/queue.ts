@@ -13,7 +13,7 @@ function inputRecord(value: JsonValue): Record<string, JsonValue> {
 
 export type ReleaseDriverResolver = (release: ReleaseRecord) => ReleaseActivationDriver | Promise<ReleaseActivationDriver>
 
-export function createReleaseQueueHandlers(input: { store: ControlPlaneStore, resolveDriver: ReleaseDriverResolver }): Record<string, QueueOperationHandler> {
+export function createReleaseQueueHandlers(input: { store: ControlPlaneStore, resolveDriver: ReleaseDriverResolver, resolveHealthGate?: (name: string, release: ReleaseRecord) => Promise<{ healthy: boolean, evidence?: JsonValue, message?: string }> }): Record<string, QueueOperationHandler> {
   const releases = new ReleaseService(input.store)
   const handler: QueueOperationHandler = async (context: QueueExecutionContext) => {
     const operationInput = inputRecord(context.operation.input)
@@ -48,6 +48,19 @@ export function createReleaseQueueHandlers(input: { store: ControlPlaneStore, re
     if (!result.activated || !result.healthy) {
       if (context.operation.kind === 'release.activate' && releases.releases.get(release.id)?.status === 'activating') releases.completeHealthGate(release.id, { healthy: false, operationId: context.operation.id, health: { resourceVersions: result.resourceVersions }, message: result.error ?? 'Provider health gate failed.' })
       throw new Error(result.error ?? `${driver.name} reported an unhealthy release`)
+    }
+    if (context.operation.kind === 'release.activate' && release.healthGate?.name) {
+      if (!input.resolveHealthGate) {
+        releases.completeHealthGate(release.id, { healthy: false, operationId: context.operation.id, message: `Named health gate ${release.healthGate.name} is not available to this worker.` })
+        throw new Error(`Named health gate ${release.healthGate.name} is unavailable`)
+      }
+      context.checkpoint('named-health-gate', `Waiting on ${release.healthGate.name}.`)
+      const gate = await input.resolveHealthGate(release.healthGate.name, release)
+      context.log(`${release.healthGate.name}: ${gate.healthy ? 'healthy' : 'unhealthy'}${gate.message ? ` — ${gate.message}` : ''}.`, { stream: gate.healthy ? 'step' : 'stderr', step: 'health' })
+      if (!gate.healthy) {
+        releases.completeHealthGate(release.id, { healthy: false, operationId: context.operation.id, health: gate.evidence, message: gate.message ?? `Named health gate ${release.healthGate.name} failed.` })
+        throw new Error(gate.message ?? `Named health gate ${release.healthGate.name} failed`)
+      }
     }
     if (context.operation.kind === 'release.rollback') {
       const failed = releases.releases.get(release.id)!
