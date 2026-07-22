@@ -91,22 +91,22 @@ export function normalizeSourceEvent(
   if (provider === 'gitlab') {
     const kind = String(body.object_kind ?? '').toLowerCase()
     const repository = repositoryName(body.project?.path_with_namespace)
-    if (kind === 'push' || kind === 'tag_push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: kind === 'tag_push' ? String(body.ref ?? '').replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.checkout_sha ?? body.after ?? ''), changedPaths: paths(body.commits ?? []) }
+    if (kind === 'push' || kind === 'tag_push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: kind === 'tag_push' ? String(body.ref ?? '').replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.checkout_sha ?? body.after ?? ''), changedPaths: paths(body.commits ?? []), deleted: /^0{40,64}$/.test(String(body.after ?? '')) }
     if (kind === 'merge_request') return { event: 'pull_request', action: String(body.object_attributes?.action ?? body.object_attributes?.state ?? ''), repository, branch: String(body.object_attributes?.source_branch ?? ''), commitSha: String(body.object_attributes?.last_commit?.id ?? ''), changedPaths: [], pullRequestNumber: Number(body.object_attributes?.iid) || undefined, fork: body.object_attributes?.source_project_id !== body.object_attributes?.target_project_id }
   }
   if (provider === 'bitbucket') {
     const event = header(headers, 'x-event-key') ?? ''
     const repository = repositoryName(body.repository?.full_name)
     if (event === 'repo:push') {
-      const change = body.push?.changes?.[0] ?? {}; const target = change.new?.target
-      return { event: 'push', repository, ref: String(change.new?.name ?? ''), branch: change.new?.type === 'branch' ? String(change.new.name) : undefined, tag: change.new?.type === 'tag' ? String(change.new.name) : undefined, commitSha: String(target?.hash ?? ''), changedPaths: [] }
+      const change = body.push?.changes?.[0] ?? {}; const reference = change.new ?? change.old ?? {}; const target = change.new?.target ?? change.old?.target
+      return { event: 'push', repository, ref: String(reference.name ?? ''), branch: reference.type === 'branch' ? String(reference.name) : undefined, tag: reference.type === 'tag' ? String(reference.name) : undefined, commitSha: String(target?.hash ?? ''), changedPaths: [], deleted: change.closed === true || change.new == null }
     }
     if (event.startsWith('pullrequest:')) return { event: 'pull_request', action: event.replace('pullrequest:', ''), repository, branch: String(body.pullrequest?.source?.branch?.name ?? ''), commitSha: String(body.pullrequest?.source?.commit?.hash ?? ''), changedPaths: [], pullRequestNumber: Number(body.pullrequest?.id) || undefined, fork: repositoryName(body.pullrequest?.source?.repository?.full_name) !== repository }
   }
   if (provider === 'gitea') {
     const event = header(headers, 'x-gitea-event')
     const repository = repositoryName(body.repository?.full_name)
-    if (event === 'push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: String(body.ref ?? '').startsWith('refs/tags/') ? String(body.ref).replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.after ?? ''), changedPaths: paths(body.commits ?? []) }
+    if (event === 'push') return { event: 'push', repository, ref: String(body.ref ?? ''), branch: String(body.ref ?? '').replace(/^refs\/heads\//, ''), tag: String(body.ref ?? '').startsWith('refs/tags/') ? String(body.ref).replace(/^refs\/tags\//, '') : undefined, commitSha: String(body.after ?? ''), changedPaths: paths(body.commits ?? []), deleted: body.deleted === true || /^0{40,64}$/.test(String(body.after ?? '')) }
     if (event === 'pull_request') return { event: 'pull_request', action: String(body.action ?? ''), repository, branch: String(body.pull_request?.head?.ref ?? ''), commitSha: String(body.pull_request?.head?.sha ?? ''), changedPaths: [], pullRequestNumber: Number(body.number) || undefined, fork: repositoryName(body.pull_request?.head?.repo?.full_name) !== repository }
   }
   if (provider === 'generic_https' || provider === 'generic_ssh') {

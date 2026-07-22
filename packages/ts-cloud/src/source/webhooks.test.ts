@@ -135,6 +135,9 @@ describe('source webhook ingestion', () => {
     expect(normalizeSourceEvent('gitlab', { 'x-gitlab-event': 'Push Hook' }, { object_kind: 'push', ref: 'refs/heads/main', checkout_sha: 'a'.repeat(40), project: { path_with_namespace: 'acme/web' }, commits: [] })).toMatchObject({ event: 'push', repository: 'acme/web', branch: 'main' })
     expect(normalizeSourceEvent('bitbucket', { 'x-event-key': 'pullrequest:created' }, { repository: { full_name: 'acme/web' }, pullrequest: { id: 9, source: { branch: { name: 'feature' }, commit: { hash: 'b'.repeat(40) } } } })).toMatchObject({ event: 'pull_request', action: 'created', pullRequestNumber: 9 })
     expect(normalizeSourceEvent('gitea', { 'x-gitea-event': 'push' }, { ref: 'refs/tags/v2', after: 'c'.repeat(40), repository: { full_name: 'acme/web' }, commits: [] })).toMatchObject({ event: 'push', tag: 'v2' })
+    expect(normalizeSourceEvent('gitlab', { 'x-gitlab-event': 'Push Hook' }, { object_kind: 'push', ref: 'refs/heads/preview/old', after: '0'.repeat(40), project: { path_with_namespace: 'acme/web' }, commits: [] })).toMatchObject({ branch: 'preview/old', deleted: true })
+    expect(normalizeSourceEvent('bitbucket', { 'x-event-key': 'repo:push' }, { repository: { full_name: 'acme/web' }, push: { changes: [{ closed: true, new: null, old: { type: 'branch', name: 'preview/old', target: { hash: 'd'.repeat(40) } } }] } })).toMatchObject({ branch: 'preview/old', deleted: true })
+    expect(normalizeSourceEvent('gitea', { 'x-gitea-event': 'push' }, { ref: 'refs/heads/preview/old', after: '0'.repeat(40), repository: { full_name: 'acme/web' }, commits: [] })).toMatchObject({ branch: 'preview/old', deleted: true })
   })
 
   it('only reveals endpoint tokens at creation time and requires secure public endpoints', () => {

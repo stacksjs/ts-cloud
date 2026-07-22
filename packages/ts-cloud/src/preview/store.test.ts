@@ -32,6 +32,16 @@ describe('preview environment persistence and policy', () => {
     expect(update).toMatchObject({ created: false, changed: true, preview: { id: created.preview.id, commitSha: 'b'.repeat(40) } })
   })
 
+  it('reconfigures an existing resource policy and extends from the injected clock', () => {
+    const target = setup(':memory:', new Date('2026-07-21T12:00:00.000Z'))
+    const original = target.previews.createDefinition({ projectId: target.project.id, resourceId: target.resource.id, baseEnvironmentId: target.environment.id, domainPattern: 'https://{name}.preview.example.com', ttlHours: 1 })
+    const updated = target.previews.createDefinition({ projectId: target.project.id, resourceId: target.resource.id, baseEnvironmentId: target.environment.id, domainPattern: 'https://{name}.staging.example.com', ttlHours: 12, allowForks: true })
+    expect(updated).toMatchObject({ id: original.id, version: 2, ttlHours: 12, allowForks: true })
+    expect(target.previews.listDefinitions(target.project.id)).toHaveLength(1)
+    const preview = target.previews.upsert({ definitionId: updated.id, repository: 'acme/web', branch: 'feature/policy', commitSha: 'a'.repeat(40) }).preview
+    expect(target.previews.extend(preview.id, 3).expiresAt).toBe('2026-07-22T03:00:00.000Z')
+  })
+
   it('uses collision-safe branch names and never inherits secrets into fork previews', () => {
     const target = setup()
     const policy = target.previews.createDefinition({ projectId: target.project.id, resourceId: target.resource.id, baseEnvironmentId: target.environment.id, domainPattern: 'https://{name}.example.com', allowForks: true, inheritedSecrets: ['PREVIEW_TOKEN'] })
