@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 8
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 9
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -408,6 +408,63 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX auth_oidc_providers_org_idx ON auth_oidc_providers(organization_id, enabled, name);
       CREATE INDEX auth_oidc_subjects_identity_idx ON auth_oidc_subjects(identity_id, provider_id);
       CREATE INDEX auth_oidc_transactions_expiry_idx ON auth_oidc_transactions(expires_at, consumed_at);
+    `,
+  },
+  {
+    version: 9,
+    name: 'service_accounts_and_api_tokens',
+    sql: `
+      CREATE TABLE service_accounts (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        actor_id TEXT NOT NULL UNIQUE REFERENCES actors(id) ON DELETE CASCADE,
+        slug TEXT NOT NULL COLLATE NOCASE,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        disabled_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, slug)
+      ) STRICT;
+
+      CREATE TABLE api_tokens (
+        id TEXT PRIMARY KEY,
+        service_account_id TEXT NOT NULL REFERENCES service_accounts(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_prefix TEXT NOT NULL UNIQUE,
+        capabilities TEXT NOT NULL,
+        scope_type TEXT NOT NULL CHECK (scope_type IN ('organization', 'project', 'environment', 'resource')),
+        scope_id TEXT,
+        expires_at TEXT NOT NULL,
+        last_used_at TEXT,
+        last_network_hint TEXT,
+        revoked_at TEXT,
+        rotated_from_token_id TEXT REFERENCES api_tokens(id) ON DELETE SET NULL,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK ((scope_type = 'organization' AND scope_id IS NULL) OR (scope_type != 'organization' AND scope_id IS NOT NULL))
+      ) STRICT;
+
+      CREATE TABLE api_idempotency_records (
+        id TEXT PRIMARY KEY,
+        token_id TEXT NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
+        idempotency_key TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        response_status INTEGER NOT NULL,
+        response_body TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(token_id, idempotency_key)
+      ) STRICT;
+
+      CREATE INDEX service_accounts_org_idx ON service_accounts(organization_id, disabled_at, name);
+      CREATE INDEX api_tokens_account_idx ON api_tokens(service_account_id, revoked_at, expires_at);
+      CREATE INDEX api_tokens_expiry_idx ON api_tokens(expires_at, revoked_at);
+      CREATE INDEX api_idempotency_expiry_idx ON api_idempotency_records(expires_at);
     `,
   },
 ]
