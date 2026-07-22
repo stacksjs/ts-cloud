@@ -9,9 +9,9 @@
     "dev": "stx dev --pages pages"
   },
   "dependencies": {
-    "@ts-charts/charts": "^0.2.0"
+    "@ts-charts/charts": "^0.2.3"
   },
   "devDependencies": {
-    "@stacksjs/stx": "^0.2.73"
+    "@stacksjs/stx": "^0.2.99"
   }
 }

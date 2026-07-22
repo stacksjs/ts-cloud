@@ -57,7 +57,7 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "devDependencies": {
-    "better-dx": "^0.2.18"
+    "better-dx": "^0.2.20"
   },
   "overrides": {
     "typescript": "^7.0.2"
