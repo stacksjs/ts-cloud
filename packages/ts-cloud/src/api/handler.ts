@@ -106,7 +106,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       const previewAction = /^\/api\/v1\/previews\/([^/]+)\/(destroy|extend|rebuild)$/.exec(url.pathname)
       const composeAction = /^\/api\/v1\/compose-applications\/([^/]+)\/(deploy|redeploy|start|stop|scale|delete)$/.exec(url.pathname)
       const composeServices = /^\/api\/v1\/compose-applications\/([^/]+)\/services$/.exec(url.pathname)
-      const releaseAction = /^\/api\/v1\/releases\/([^/]+)\/(promote|approve|activate|health|pin)$/.exec(url.pathname)
+      const releaseAction = /^\/api\/v1\/releases\/([^/]+)\/(promote|approve|activate|rollback|health|pin)$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
       else if (request.method === 'GET' && projectEnvironments)
@@ -147,6 +147,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
         if (action === 'promote') { const targetResourceId = String(input.targetResourceId ?? ''); service.authorize(principal, 'deployments:create', { type: 'resource', id: targetResourceId }); body = { release: releases.releases.promote(release.id, { targetEnvironmentId: String(input.targetEnvironmentId ?? ''), targetResourceId, config: input.config as any ?? {}, strategy: input.strategy as any, healthGate: input.healthGate as any, actorId: principal.actor.id, approvalRequired: input.approvalRequired === true }), requestId } }
         else if (action === 'approve') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { release: releases.releases.approve(release.id, { actorId: principal.actor.id, decision: input.decision === 'rejected' ? 'rejected' : 'approved', comment: typeof input.comment === 'string' ? input.comment : undefined }), requestId } }
         else if (action === 'activate') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { operation: service.operation(releases.enqueueActivation(release, { actorId: principal.actor.id })), requestId } }
+        else if (action === 'rollback') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { operation: service.operation(releases.enqueueRollback(release, { actorId: principal.actor.id, targetReleaseId: typeof input.targetReleaseId === 'string' ? input.targetReleaseId : undefined })), requestId } }
         else if (action === 'health') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); const result = releases.completeHealthGate(release.id, { healthy: input.healthy === true, operationId: typeof input.operationId === 'string' ? input.operationId : undefined, health: input.health as any, message: typeof input.message === 'string' ? input.message : undefined }); body = { release: result.release, rollbackOperation: result.rollbackOperation ? service.operation(result.rollbackOperation) : undefined, requestId } }
         else { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { release: releases.releases.pin(release.id, input.pinned !== false, typeof input.reason === 'string' ? input.reason : undefined), requestId } }
       }
