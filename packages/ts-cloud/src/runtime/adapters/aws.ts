@@ -6,7 +6,7 @@ import { ageSeconds, normalizeRuntimeStatus, redactRuntimeConfig } from '../norm
 
 function arnName(value?: string): string { return value?.split('/').at(-1) ?? value?.split(':').at(-1) ?? 'unknown' }
 
-export function ecsWorkloads(services: EcsService[], tasks: EcsTask[], context: RuntimeDiscoveryContext, sourceId = 'ecs:aws'): RuntimeWorkload[] {
+export function ecsWorkloads(services: EcsService[], tasks: EcsTask[], context: RuntimeDiscoveryContext, sourceId = 'ecs:aws', taskDefinitions: any[] = []): RuntimeWorkload[] {
   const now = context.now ?? new Date()
   return services.map((service) => {
     const name = service.serviceName ?? arnName(service.serviceArn)
@@ -17,22 +17,29 @@ export function ecsWorkloads(services: EcsService[], tasks: EcsTask[], context: 
     const status = service.status === 'ACTIVE'
       ? ((service.runningCount ?? 0) < (service.desiredCount ?? 0) ? 'degraded' : 'running')
       : normalizeRuntimeStatus(service.status)
+    const definition = taskDefinitions.find(item => item.taskDefinitionArn === service.taskDefinition)
+    const containers = Array.isArray(definition?.containerDefinitions) ? definition.containerDefinitions : []
+    const logGroups = [...new Set(containers.map((container: any) => container.logConfiguration?.options?.['awslogs-group']).filter((value: unknown): value is string => typeof value === 'string'))]
+    const mounts = containers.flatMap((container: any) => (container.mountPoints ?? []).map((mount: any) => ({ source: mount.sourceVolume, target: mount.containerPath, type: 'volume', readOnly: !!mount.readOnly })))
+    const networks = containers.flatMap((container: any) => (container.portMappings ?? []).map((port: any, index: number) => ({ id: `${container.name ?? 'container'}:${index}`, name: container.name, mode: definition?.networkMode, ports: [{ container: port.containerPort, host: port.hostPort, protocol: port.protocol }] })))
+    const serviceName = context.project && context.environment && name.startsWith(`${context.project}-${context.environment}-`) ? name.slice(`${context.project}-${context.environment}-`.length) : name
     return {
       id: runtimeId('ecs', sourceId, service.serviceArn ?? name), provider: 'ecs', kind: 'service', name, status, rawStatus: service.status,
       health: status === 'running' ? 'healthy' : (status === 'failed' || status === 'degraded' ? 'unhealthy' : 'unknown'),
-      desiredReplicas: service.desiredCount, runningReplicas: service.runningCount, image: undefined, runtime: service.launchType ?? 'ECS', version: arnName(service.taskDefinition),
+      desiredReplicas: service.desiredCount, runningReplicas: service.runningCount, image: containers[0]?.image, runtime: service.launchType ?? 'ECS', version: arnName(service.taskDefinition),
       ageSeconds: ageSeconds(service.deployments?.[0]?.createdAt, now), restartCount: 0, tags: {},
-      links: { project: context.project, environment: context.environment, service: name, providerId: service.serviceArn },
+      links: { project: context.project, environment: context.environment, service: serviceName, release: arnName(service.taskDefinition), providerId: service.serviceArn },
       replicas: serviceTasks.map((task) => {
         const taskStatus = normalizeRuntimeStatus(task.lastStatus)
         return {
           id: runtimeId('ecs', sourceId, task.taskArn ?? arnName(task.taskArn)), name: arnName(task.taskArn), status: taskStatus, rawStatus: task.lastStatus,
           createdAt: task.createdAt, startedAt: task.startedAt, stoppedAt: task.stoppedAt,
-          containers: (task.containers ?? []).map(container => ({ id: container.containerArn ?? container.name ?? 'container', name: container.name ?? 'container', status: normalizeRuntimeStatus(container.lastStatus), rawStatus: container.lastStatus, exitCode: container.exitCode, reason: container.reason, runtime: 'ecs' })),
+          host: (task as any).containerInstanceArn,
+          containers: (task.containers ?? []).map(container => ({ id: container.containerArn ?? container.name ?? 'container', name: container.name ?? 'container', image: containers.find((item: any) => item.name === container.name)?.image, imageDigest: (container as any).imageDigest, status: normalizeRuntimeStatus(container.lastStatus), rawStatus: container.lastStatus, exitCode: container.exitCode, reason: container.reason, runtime: 'ecs' })),
         }
       }),
-      networks: [], mounts: [], capabilities: capabilities(['start', 'stop', 'restart', 'redeploy', 'scale', 'inspect'], 'This ECS runtime does not expose host logs, exec, or file transfer without task-definition integration'),
-      config: redactRuntimeConfig({ clusterArn: service.clusterArn, taskDefinition: service.taskDefinition, launchType: service.launchType, pendingCount: service.pendingCount, deployments: service.deployments }),
+      networks, mounts, capabilities: capabilities(['start', 'stop', 'restart', 'redeploy', 'scale', 'inspect', ...(logGroups.length ? ['logs' as const] : [])], 'This ECS runtime does not expose exec or file transfer; logs require an awslogs task-definition driver'),
+      config: redactRuntimeConfig({ clusterArn: service.clusterArn, taskDefinition: service.taskDefinition, launchType: service.launchType, pendingCount: service.pendingCount, deployments: service.deployments, logGroups, executionRoleArn: definition?.executionRoleArn, taskRoleArn: definition?.taskRoleArn, cpu: definition?.cpu, memory: definition?.memory }),
       discoveredAt: now.toISOString(), sourceId,
     }
   })

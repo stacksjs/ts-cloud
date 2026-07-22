@@ -9,7 +9,9 @@ import { SystemdDiscoveryAdapter } from './adapters/systemd'
 import { discoverRuntimeInventory } from './inventory'
 import type { RuntimeDiscoveryAdapter, RuntimeDiscoveryContext, RuntimeInventory } from './model'
 
-interface EcsReader extends Pick<ECSClient, 'listClusters' | 'listServices' | 'describeServices' | 'listTasks' | 'describeTasks'> {}
+interface EcsReader extends Pick<ECSClient, 'listClusters' | 'listServices' | 'describeServices' | 'listTasks' | 'describeTasks'> {
+  describeTaskDefinition?: ECSClient['describeTaskDefinition']
+}
 interface LambdaReader extends Pick<LambdaClient, 'listFunctions'> {}
 
 export interface RuntimeServiceDependencies {
@@ -40,7 +42,9 @@ function systemdDiscoveryScript(): string[] {
     '  restarts=$(systemctl show "$unit" -p NRestarts --value 2>/dev/null || true)',
     '  since=$(systemctl show "$unit" -p ActiveEnterTimestamp --value 2>/dev/null || true)',
     '  fragment=$(systemctl show "$unit" -p FragmentPath --value 2>/dev/null || true)',
-    '  printf "TSCLOUD_SYSTEMD\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$(clean "$unit")" "$(clean "$load")" "$(clean "$active")" "$(clean "$sub")" "$(clean "$description")" "$(clean "$enabled")" "$(clean "$pid")" "$(clean "$memory")" "$(clean "$restarts")" "$(clean "$since")" "$(clean "$fragment")"',
+    '  working=$(systemctl show "$unit" -p WorkingDirectory --value 2>/dev/null || true)',
+    '  user=$(systemctl show "$unit" -p User --value 2>/dev/null || true)',
+    '  printf "TSCLOUD_SYSTEMD\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n" "$(clean "$unit")" "$(clean "$load")" "$(clean "$active")" "$(clean "$sub")" "$(clean "$description")" "$(clean "$enabled")" "$(clean "$pid")" "$(clean "$memory")" "$(clean "$restarts")" "$(clean "$since")" "$(clean "$fragment")" "$(clean "$working")" "$(clean "$user")"',
     'done',
   ]
 }
@@ -96,6 +100,7 @@ export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
     })
     const services = []
     const tasks = []
+    const taskDefinitions: any[] = []
     for (const cluster of clusters) {
       const serviceArns = (await collectPages(async nextToken => {
         const page = await this.client.listServices(cluster, { nextToken, maxResults: 100 })
@@ -116,7 +121,13 @@ export class EcsRuntimeAdapter implements RuntimeDiscoveryAdapter {
         }
       }
     }
-    return ecsWorkloads(services, tasks, context, this.id)
+    if (this.client.describeTaskDefinition) {
+      for (const arn of [...new Set(services.map(service => service.taskDefinition).filter((value): value is string => !!value))]) {
+        const described = await this.client.describeTaskDefinition(arn)
+        if (described.taskDefinition) taskDefinitions.push(described.taskDefinition)
+      }
+    }
+    return ecsWorkloads(services, tasks, context, this.id, taskDefinitions)
   }
 }
 

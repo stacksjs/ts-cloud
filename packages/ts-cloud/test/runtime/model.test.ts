@@ -24,12 +24,14 @@ describe('runtime model', () => {
 
 describe('systemd adapter fixtures', () => {
   it('parses and normalizes service records', () => {
-    const output = 'TSCLOUD_SYSTEMD\tacme-web@r1.service\tloaded\tactive\trunning\tAcme web\tenabled\t431\t1048576\t2\t2026-07-21T11:00:00Z\t/etc/systemd/system/acme.service\nnoise'
+    const output = 'TSCLOUD_SYSTEMD\tacme-web@r1.service\tloaded\tactive\trunning\tAcme web\tenabled\t431\t1048576\t2\t2026-07-21T11:00:00Z\t/etc/systemd/system/acme.service\t/var/www/web/releases/r1\tweb\nnoise'
     const records = parseSystemdRecords(output)
     const [workload] = systemdWorkloads(records, context, 'systemd:box-1')
     expect(workload).toMatchObject({ provider: 'systemd', name: 'acme-web@r1', status: 'running', runningReplicas: 1, restartCount: 2, ageSeconds: 3600 })
     expect(workload.capabilities.scale.supported).toBeFalse()
-    expect(workload.capabilities.exec).toMatchObject({ supported: false, reason: expect.any(String) })
+    expect(workload.capabilities.exec).toMatchObject({ supported: true, requiresRecentAuth: true })
+    expect(workload.links).toMatchObject({ service: 'web', release: 'r1' })
+    expect(workload.mounts).toEqual([{ target: '/var/www/web/releases/r1', type: 'working-directory' }])
   })
 
   it('rejects unsafe unit names', () => {
@@ -48,10 +50,13 @@ describe('container and cloud adapter fixtures', () => {
   })
 
   it('maps ECS services and tasks', () => {
-    const [workload] = ecsWorkloads([{ serviceArn: 'arn/service/acme/api', serviceName: 'api', clusterArn: 'arn/cluster/acme', status: 'ACTIVE', desiredCount: 2, runningCount: 1, pendingCount: 1, taskDefinition: 'arn/task-definition/api:42', launchType: 'FARGATE' }], [{ taskArn: 'arn/task/one', clusterArn: 'arn/cluster/acme', lastStatus: 'RUNNING', containers: [{ name: 'api', lastStatus: 'RUNNING' }] }], context)
-    expect(workload).toMatchObject({ provider: 'ecs', name: 'api', status: 'degraded', desiredReplicas: 2, runningReplicas: 1, version: 'api:42' })
+    const [workload] = ecsWorkloads([{ serviceArn: 'arn/service/acme/api', serviceName: 'api', clusterArn: 'arn/cluster/acme', status: 'ACTIVE', desiredCount: 2, runningCount: 1, pendingCount: 1, taskDefinition: 'arn/task-definition/api:42', launchType: 'FARGATE' }], [{ taskArn: 'arn/task/one', clusterArn: 'arn/cluster/acme', lastStatus: 'RUNNING', containers: [{ name: 'api', lastStatus: 'RUNNING' }] }], context, 'ecs:aws', [{ taskDefinitionArn: 'arn/task-definition/api:42', networkMode: 'awsvpc', containerDefinitions: [{ name: 'api', image: 'registry/acme/api@sha256:42', portMappings: [{ containerPort: 3000, protocol: 'tcp' }], mountPoints: [{ sourceVolume: 'data', containerPath: '/app/data', readOnly: false }], logConfiguration: { options: { 'awslogs-group': '/ecs/acme-api' } } }] }])
+    expect(workload).toMatchObject({ provider: 'ecs', name: 'api', status: 'degraded', desiredReplicas: 2, runningReplicas: 1, version: 'api:42', image: 'registry/acme/api@sha256:42' })
     expect(workload.replicas).toHaveLength(1)
     expect(workload.capabilities.scale.supported).toBeTrue()
+    expect(workload.capabilities.logs.supported).toBeTrue()
+    expect(workload.mounts[0]).toMatchObject({ source: 'data', target: '/app/data' })
+    expect(workload.networks[0].ports?.[0]).toMatchObject({ container: 3000, protocol: 'tcp' })
   })
 
   it('does not attach another ECS service task to this workload', () => {

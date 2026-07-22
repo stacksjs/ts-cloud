@@ -14,6 +14,8 @@ export interface SystemdUnitRecord {
   restartCount?: number
   activeSince?: string
   fragmentPath?: string
+  workingDirectory?: string
+  user?: string
   environment?: Record<string, string>
 }
 
@@ -21,7 +23,7 @@ export function parseSystemdRecords(output: string): SystemdUnitRecord[] {
   const records: SystemdUnitRecord[] = []
   for (const line of output.split('\n')) {
     if (!line.startsWith('TSCLOUD_SYSTEMD\t')) continue
-    const [, unit, load, active, sub, description, enabled, pid, memory, restarts, since, fragment] = line.split('\t')
+    const [, unit, load, active, sub, description, enabled, pid, memory, restarts, since, fragment, workingDirectory, user] = line.split('\t')
     if (!unit || !/^[A-Za-z0-9_.@:-]+\.service$/.test(unit)) continue
     records.push({
       unit,
@@ -35,6 +37,8 @@ export function parseSystemdRecords(output: string): SystemdUnitRecord[] {
       restartCount: Number(restarts) || 0,
       activeSince: since || undefined,
       fragmentPath: fragment || undefined,
+      workingDirectory: workingDirectory?.startsWith('/') ? workingDirectory : undefined,
+      user: user || undefined,
     })
   }
   return records
@@ -45,6 +49,11 @@ export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeD
   return records.map((record) => {
     const status = normalizeRuntimeStatus(record.active === 'active' ? record.sub || record.active : record.active)
     const name = record.unit.replace(/\.service$/, '')
+    const managedService = /^(.*?) (?:release [^ ]+|queue worker|daemon |scheduler)(?: |$)/.exec(record.description ?? '')?.[1]
+      ?? (context.project && name.startsWith(`${context.project}-`) ? name.slice(context.project.length + 1).split('@', 1)[0] : undefined)
+    const release = name.includes('@') ? name.slice(name.indexOf('@') + 1) : undefined
+    const mounts = record.workingDirectory ? [{ target: record.workingDirectory, type: 'working-directory' }] : []
+    const supported = ['start', 'stop', 'restart', 'logs', 'exec', 'inspect', ...(mounts.length ? ['files'] : [])] as import('../model').LifecycleAction[]
     return {
       id: runtimeId('systemd', sourceId, record.unit),
       provider: 'systemd',
@@ -59,13 +68,13 @@ export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeD
       ageSeconds: ageSeconds(record.activeSince, now),
       restartCount: record.restartCount,
       tags: { enabled: record.enabled ?? 'unknown' },
-      links: { project: context.project, environment: context.environment, server: context.server ?? sourceId.replace(/^systemd:/, ''), service: name, providerId: record.unit },
+      links: { project: context.project, environment: context.environment, server: context.server ?? sourceId.replace(/^systemd:/, ''), service: managedService, release, providerId: record.unit },
       resources: { memoryBytes: record.memoryBytes },
       replicas: [{ id: runtimeId('systemd', sourceId, `${record.unit}:main`), name: 'main', status, pid: record.pid, startedAt: record.activeSince, restartCount: record.restartCount, resources: { memoryBytes: record.memoryBytes } }],
       networks: [],
-      mounts: [],
-      capabilities: capabilities(['start', 'stop', 'restart', 'logs', 'inspect'], 'This systemd runtime does not support that action through the scoped explorer'),
-      config: redactRuntimeConfig({ fragmentPath: record.fragmentPath, environment: record.environment, enabled: record.enabled }),
+      mounts,
+      capabilities: capabilities(supported, mounts.length ? 'This systemd runtime does not support redeploy or replica scaling through the scoped explorer' : 'File transfer requires a provider-reported service working directory; redeploy and scaling are unavailable'),
+      config: redactRuntimeConfig({ fragmentPath: record.fragmentPath, workingDirectory: record.workingDirectory, user: record.user, environment: record.environment, enabled: record.enabled }),
       discoveredAt: now.toISOString(),
       sourceId,
     }
