@@ -24,6 +24,7 @@ import {
   registerAssetsCommands,
   registerTeamCommands,
   registerDeployCommands,
+  registerFullStackCommands,
   registerComputeLifecycleCommands,
   registerStackCommands,
   registerUtilsCommands,
@@ -80,6 +81,7 @@ registerConfigCommands(app)
 registerSiteCommands(app)
 registerGenerateCommands(app)
 registerDeployCommands(app)
+registerFullStackCommands(app)
 registerComputeLifecycleCommands(app)
 registerStackCommands(app)
 

@@ -85,6 +85,7 @@ function validateOptions(options: ExistingStaticFullStackOptions): { stackName: 
   const originId = options.originId || `${options.slug}-backend`
   if (!/^[A-Za-z0-9_.-]{1,128}$/.test(originId)) throw new Error('CloudFront origin ID is invalid')
   if (options.originVerifySecret && options.originVerifySecret.length < 24) throw new Error('Origin verification secret must contain at least 24 characters')
+  if (!!options.originDomain !== !!options.certificateArn) throw new Error('A custom origin domain and matching ACM certificate ARN must be provided together')
   return { stackName, region: options.region || 'us-east-1', pathPattern, originId, digest }
 }
 
