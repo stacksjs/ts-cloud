@@ -179,6 +179,19 @@ describe('dashboard data-service integration', () => {
       },
     )
     expect(unsafeDelete.status).toBe(409)
+    const invalidAction = await call(
+      '/api/data-services/action?env=production',
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          id: created.service.id,
+          action: 'arbitrary-provider-call',
+          execute: true,
+        }),
+      },
+    )
+    expect(invalidAction.status).toBe(422)
 
     const adopted = (await (
       await call('/api/data-services?env=production', {

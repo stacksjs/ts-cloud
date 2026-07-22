@@ -29,7 +29,7 @@ import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry
 import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
-import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataEngine, type DataProvider, type DataService } from '../data-services'
+import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -820,6 +820,22 @@ async function serveStatic(uiRoot: string, pathname: string): Promise<Response> 
   const type = contentTypes[extname(file)] ?? 'application/octet-stream'
   return new Response(body, { headers: { 'content-type': type } })
 }
+
+const DATA_SERVICE_ACTIONS = [
+  'observe',
+  'backup',
+  'restore',
+  'restart',
+  'resize',
+  'version',
+  'rotate',
+  'expose',
+  'delete',
+  'logs',
+  'slow_queries',
+  'users',
+  'databases',
+] as const satisfies readonly DataAction[]
 
 export async function startLocalDashboardServer(options: LocalDashboardServerOptions = {}): Promise<LocalDashboardServer> {
   pruneDashboardTempRoots()
@@ -3493,10 +3509,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const body = await readJsonBody(req)
           if (body.id) {
             const service = dataServiceStore.get(String(body.id)),
-              environmentRecord = controlPlane.environments.get(environment)
+              environmentRecord = controlPlane.environments.get(environment),
+              action = String(body.action ?? '')
             if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
               return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
-            try { return json({ ok: true, plan: dataServiceLifecycle.plan(service, String(body.action ?? 'observe') as any, body.changes ?? {}) }) }
+            if (!DATA_SERVICE_ACTIONS.includes(action as any))
+              return json({ ok: false, error: `Action must be one of: ${DATA_SERVICE_ACTIONS.join(', ')}.` }, 422)
+            try { return json({ ok: true, plan: dataServiceLifecycle.plan(service, action as DataAction, body.changes ?? {}) }) }
             catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422) }
           }
           const engine = String(body.engine ?? '') as DataEngine,
@@ -3557,12 +3576,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
           const endpoint = typeof service.observedState.endpoint === 'string' ? service.observedState.endpoint : undefined,
             reader = typeof service.observedState.readerEndpoint === 'string' ? service.observedState.readerEndpoint : undefined,
-            port = Number(service.observedState.port) || (service.engine === 'postgres' ? 5432 : service.engine === 'redis' ? 6379 : 3306),
+            port = Number(service.observedState.port) || (service.engine === 'postgres' ? 5432 : service.engine === 'redis' ? 6379 : service.engine === 'mongodb' ? 27017 : service.engine === 'libsql' ? 8080 : 3306),
             database = typeof service.observedState.database === 'string' ? service.observedState.database : undefined,
+            tls = typeof service.observedState.tls === 'boolean' ? service.observedState.tls : service.provider.startsWith('aws_'),
             endpoints = [
-              ...(endpoint ? [{ type: service.publicExposure ? 'external' as const : 'internal' as const, host: endpoint, port, database, tls: true }] : []),
-              ...(reader ? [{ type: 'internal' as const, host: reader, port, database, tls: true }] : []),
-              { type: 'tunnel' as const, host: endpoint ?? service.placement, port, database, tls: true },
+              ...(endpoint ? [{ type: service.publicExposure ? 'external' as const : 'internal' as const, host: endpoint, port, database, tls }] : []),
+              ...(reader ? [{ type: 'internal' as const, host: reader, port, database, tls }] : []),
+              { type: 'tunnel' as const, host: endpoint ?? service.placement, port, database, tls },
             ]
           return json({ ok: true, serviceId: service.id, guidance: connectionGuidance(service, endpoints) })
         }
@@ -3571,14 +3591,16 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const body = await readJsonBody(req),
             service = dataServiceStore.get(String(body.id ?? '')),
             environmentRecord = controlPlane.environments.get(environment),
-            action = String(body.action ?? '') as any
+            action = String(body.action ?? '')
           if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
             return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          if (!DATA_SERVICE_ACTIONS.includes(action as any))
+            return json({ ok: false, error: `Action must be one of: ${DATA_SERVICE_ACTIONS.join(', ')}.` }, 422)
           const changes = body.changes && typeof body.changes === 'object' && !Array.isArray(body.changes) ? body.changes : {}
           try {
-            const plan = dataServiceLifecycle.plan(service, action, changes)
+            const plan = dataServiceLifecycle.plan(service, action as DataAction, changes)
             if (body.execute !== true) return json({ ok: true, plan, productionExecutionCreated: false })
-            const operationId = dataServiceLifecycle.enqueue(service, action, changes, organizationPrincipal(user).actor?.id)
+            const operationId = dataServiceLifecycle.enqueue(service, action as DataAction, changes, organizationPrincipal(user).actor?.id)
             return json({ ok: true, plan, operationId }, 202)
           }
           catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409) }

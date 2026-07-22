@@ -222,6 +222,10 @@ function endpoints(service: DataService) {
         ? 5432
         : service.engine === 'redis'
           ? 6379
+          : service.engine === 'mongodb'
+            ? 27017
+            : service.engine === 'libsql'
+              ? 8080
           : 3306),
     database = typeof service.observedState.database === 'string'
       ? service.observedState.database
@@ -232,9 +236,19 @@ function endpoints(service: DataService) {
       host,
       port,
       database,
-      tls: true,
+      tls: typeof service.observedState.tls === 'boolean'
+        ? service.observedState.tls
+        : service.provider.startsWith('aws_'),
     },
-    { type: 'tunnel' as const, host, port, database, tls: true },
+    {
+      type: 'tunnel' as const,
+      host,
+      port,
+      database,
+      tls: typeof service.observedState.tls === 'boolean'
+        ? service.observedState.tls
+        : service.provider.startsWith('aws_'),
+    },
   ]
 }
 

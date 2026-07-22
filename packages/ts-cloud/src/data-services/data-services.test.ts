@@ -138,6 +138,49 @@ describe('data service capability model', () => {
       },
     ])
   })
+  it('generates engine-specific TLS-aware connection commands', () => {
+    const target = fixture(),
+      create = (engine: 'redis' | 'mongodb' | 'libsql') =>
+        target.store.create({
+          organizationId: target.organization.id,
+          projectId: target.project.id,
+          environmentId: target.environment.id,
+          name: `${engine}-service`,
+          engine,
+          provider: 'container',
+          placement: `${engine}-service`,
+          plan: 'small',
+          highAvailability: false,
+          publicExposure: false,
+          allowedCidrs: [],
+          desiredState: {},
+          observedState: {},
+          status: 'available',
+          origin: 'managed',
+          managementEnabled: true,
+        })
+    expect(
+      connectionGuidance(create('redis'), [
+        { type: 'internal', host: 'redis', port: 6379, tls: false },
+      ])[0].command,
+    ).toBe('redis-cli -h redis -p 6379')
+    expect(
+      connectionGuidance(create('mongodb'), [
+        {
+          type: 'internal',
+          host: 'mongo',
+          port: 27017,
+          database: 'app',
+          tls: true,
+        },
+      ])[0].command,
+    ).toBe('mongosh "mongodb://mongo:27017/app?tls=true"')
+    expect(
+      connectionGuidance(create('libsql'), [
+        { type: 'tunnel', host: 'remote', port: 8080, tls: false },
+      ])[0].command,
+    ).toBe('turso db shell http://127.0.0.1:8080')
+  })
 })
 
 describe('data service lifecycle', () => {

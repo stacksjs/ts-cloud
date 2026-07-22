@@ -50,10 +50,14 @@ export function connectionGuidance(
     const host = endpoint.type === 'tunnel' ? '127.0.0.1' : endpoint.host
     const command =
       service.engine === 'redis'
-        ? `redis-cli -h ${host} -p ${endpoint.port} --tls`
+        ? `redis-cli -h ${host} -p ${endpoint.port}${endpoint.tls ? ' --tls' : ''}`
         : service.engine === 'postgres'
-          ? `psql "host=${host} port=${endpoint.port} dbname=${endpoint.database ?? 'postgres'} sslmode=${endpoint.tls ? 'require' : 'prefer'}"`
-          : `mysql --host=${host} --port=${endpoint.port} --database=${endpoint.database ?? 'mysql'} --ssl-mode=${endpoint.tls ? 'REQUIRED' : 'PREFERRED'}`
+          ? `psql "host=${host} port=${endpoint.port} dbname=${endpoint.database ?? 'postgres'} sslmode=${endpoint.tls ? 'require' : 'disable'}"`
+          : service.engine === 'mongodb'
+            ? `mongosh "mongodb://${host}:${endpoint.port}/${endpoint.database ?? 'admin'}${endpoint.tls ? '?tls=true' : ''}"`
+            : service.engine === 'libsql'
+              ? `turso db shell ${endpoint.tls ? 'https' : 'http'}://${host}:${endpoint.port}`
+              : `mysql --host=${host} --port=${endpoint.port} --database=${endpoint.database ?? 'mysql'} --ssl-mode=${endpoint.tls ? 'REQUIRED' : 'DISABLED'}`
     return { type: endpoint.type, command, secretRef: service.credentialRef }
   })
 }
