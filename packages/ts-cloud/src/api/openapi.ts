@@ -4,76 +4,807 @@ export function openApiDocument(): Record<string, unknown> {
   const error = {
     type: 'object',
     required: ['error'],
-    properties: { error: { type: 'object', required: ['code', 'message', 'requestId'], properties: { code: { type: 'string' }, message: { type: 'string' }, requestId: { type: 'string', format: 'uuid' }, details: {} } } },
+    properties: {
+      error: {
+        type: 'object',
+        required: ['code', 'message', 'requestId'],
+        properties: {
+          code: { type: 'string' },
+          message: { type: 'string' },
+          requestId: { type: 'string', format: 'uuid' },
+          details: {},
+        },
+      },
+    },
   }
   const page = (schema: Record<string, unknown>) => ({
-    type: 'object', required: ['data', 'page', 'requestId'], properties: { data: { type: 'array', items: schema }, page: { type: 'object', required: ['hasMore'], properties: { nextCursor: { type: 'string' }, hasMore: { type: 'boolean' } } }, requestId: { type: 'string', format: 'uuid' } },
+    type: 'object',
+    required: ['data', 'page', 'requestId'],
+    properties: {
+      data: { type: 'array', items: schema },
+      page: {
+        type: 'object',
+        required: ['hasMore'],
+        properties: { nextCursor: { type: 'string' }, hasMore: { type: 'boolean' } },
+      },
+      requestId: { type: 'string', format: 'uuid' },
+    },
   })
-  const listResponses = (schema: Record<string, unknown>) => ({ '200': { description: 'A stable cursor page.', content: { 'application/json': { schema: page(schema) } } }, default: { $ref: '#/components/responses/Error' } })
+  const listResponses = (schema: Record<string, unknown>) => ({
+    '200': { description: 'A stable cursor page.', content: { 'application/json': { schema: page(schema) } } },
+    default: { $ref: '#/components/responses/Error' },
+  })
   return {
     openapi: '3.1.0',
-    info: { title: 'ts-cloud API', version: API_VERSION, description: 'Additive changes are released within v1. Breaking request or response changes require a new URL version.' },
+    info: {
+      title: 'ts-cloud API',
+      version: API_VERSION,
+      description:
+        'Additive changes are released within v1. Breaking request or response changes require a new URL version.',
+    },
     servers: [{ url: '/' }],
     security: [{ bearerAuth: [] }],
     paths: {
-      '/api/v1/projects': { get: { operationId: 'listProjects', summary: 'List accessible projects', parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/Project' }) } },
-      '/api/v1/projects/{projectId}/environments': { get: { operationId: 'listEnvironments', summary: 'List accessible project environments', parameters: [{ $ref: '#/components/parameters/ProjectId' }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/Environment' }) } },
-      '/api/v1/services': { get: { operationId: 'listServices', summary: 'List accessible services', parameters: [{ name: 'projectId', in: 'query', required: true, schema: { type: 'string' } }, { name: 'environmentId', in: 'query', schema: { type: 'string' } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/Service' }) } },
+      '/api/v1/projects': {
+        get: {
+          operationId: 'listProjects',
+          summary: 'List accessible projects',
+          parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }],
+          responses: listResponses({ $ref: '#/components/schemas/Project' }),
+        },
+      },
+      '/api/v1/projects/{projectId}/environments': {
+        get: {
+          operationId: 'listEnvironments',
+          summary: 'List accessible project environments',
+          parameters: [
+            { $ref: '#/components/parameters/ProjectId' },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/Environment' }),
+        },
+      },
+      '/api/v1/services': {
+        get: {
+          operationId: 'listServices',
+          summary: 'List accessible services',
+          parameters: [
+            { name: 'projectId', in: 'query', required: true, schema: { type: 'string' } },
+            { name: 'environmentId', in: 'query', schema: { type: 'string' } },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/Service' }),
+        },
+      },
       '/api/v1/source/connections': {
-        get: { operationId: 'listSourceConnections', summary: 'List safe Git connection metadata', parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/SourceConnection' }) },
-        post: { operationId: 'createSourceConnection', summary: 'Create an encrypted Git connection', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['provider', 'name', 'host'], properties: { provider: { type: 'string', enum: ['github', 'gitlab', 'bitbucket', 'gitea', 'generic_https', 'generic_ssh'] }, name: { type: 'string' }, host: { type: 'string', format: 'uri' }, token: { type: 'string', writeOnly: true }, repositoryFullName: { type: 'string' }, repositoryUrl: { type: 'string' } } } } } }, responses: { '201': { description: 'Encrypted connection created.' }, default: { $ref: '#/components/responses/Error' } } },
-        delete: { operationId: 'disconnectSourceConnection', summary: 'Preview or safely disconnect a Git connection', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['id'], properties: { id: { type: 'string' }, preview: { type: 'boolean' } } } } } }, responses: { '200': { description: 'Impact preview or disconnected connection.' }, default: { $ref: '#/components/responses/Error' } } },
+        get: {
+          operationId: 'listSourceConnections',
+          summary: 'List safe Git connection metadata',
+          parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }],
+          responses: listResponses({ $ref: '#/components/schemas/SourceConnection' }),
+        },
+        post: {
+          operationId: 'createSourceConnection',
+          summary: 'Create an encrypted Git connection',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['provider', 'name', 'host'],
+                  properties: {
+                    provider: {
+                      type: 'string',
+                      enum: ['github', 'gitlab', 'bitbucket', 'gitea', 'generic_https', 'generic_ssh'],
+                    },
+                    name: { type: 'string' },
+                    host: { type: 'string', format: 'uri' },
+                    token: { type: 'string', writeOnly: true },
+                    repositoryFullName: { type: 'string' },
+                    repositoryUrl: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Encrypted connection created.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+        delete: {
+          operationId: 'disconnectSourceConnection',
+          summary: 'Preview or safely disconnect a Git connection',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['id'],
+                  properties: { id: { type: 'string' }, preview: { type: 'boolean' } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Impact preview or disconnected connection.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
       },
-      '/api/v1/source/repositories': { get: { operationId: 'listSourceRepositories', summary: 'List or synchronize granted repositories', parameters: [{ name: 'connectionId', in: 'query', required: true, schema: { type: 'string' } }, { name: 'sync', in: 'query', schema: { type: 'boolean' } }, { name: 'search', in: 'query', schema: { type: 'string' } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/SourceRepository' }) } },
-      '/api/v1/source/refs': { get: { operationId: 'listSourceRefs', summary: 'List repository branches or tags', parameters: [{ name: 'connectionId', in: 'query', required: true, schema: { type: 'string' } }, { name: 'repository', in: 'query', required: true, schema: { type: 'string' } }, { name: 'repositoryId', in: 'query', schema: { type: 'string' } }, { name: 'type', in: 'query', schema: { type: 'string', enum: ['branches', 'tags'] } }], responses: { '200': { description: 'Provider reference page.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/source/bindings': { post: { operationId: 'createSourceBinding', summary: 'Bind a repository to an application', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SourceBindingRequest' } } } }, responses: { '201': { description: 'Source binding created.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/source/webhooks': { post: { operationId: 'createSourceWebhook', summary: 'Create and optionally reconcile a signed webhook', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['connectionId', 'repositoryFullName', 'baseUrl'], properties: { connectionId: { type: 'string' }, repositoryId: { type: 'string' }, repositoryFullName: { type: 'string' }, baseUrl: { type: 'string', format: 'uri' }, events: { type: 'array', items: { type: 'string', enum: ['push', 'pull_request'] } }, reconcile: { type: 'boolean' } } } } } }, responses: { '201': { description: 'Webhook endpoint created; endpoint is revealed once.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/application-detections': { post: { operationId: 'detectApplication', summary: 'Detect bounded application build candidates', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['files'], properties: { files: { type: 'array', maxItems: 10000, items: { $ref: '#/components/schemas/DetectionFile' } } } } } } }, responses: { '200': { description: 'Ranked detection candidates with evidence.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/application-plans': { post: { operationId: 'planApplication', summary: 'Validate and normalize an application manifest', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['draft'], properties: { draft: { $ref: '#/components/schemas/ApplicationInput' }, suppliedSecretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } } } } } } }, responses: { '200': { description: 'Validated plan, config patch, capabilities, costs, and missing secret names.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/source/repositories': {
+        get: {
+          operationId: 'listSourceRepositories',
+          summary: 'List or synchronize granted repositories',
+          parameters: [
+            { name: 'connectionId', in: 'query', required: true, schema: { type: 'string' } },
+            { name: 'sync', in: 'query', schema: { type: 'boolean' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/SourceRepository' }),
+        },
+      },
+      '/api/v1/source/refs': {
+        get: {
+          operationId: 'listSourceRefs',
+          summary: 'List repository branches or tags',
+          parameters: [
+            { name: 'connectionId', in: 'query', required: true, schema: { type: 'string' } },
+            { name: 'repository', in: 'query', required: true, schema: { type: 'string' } },
+            { name: 'repositoryId', in: 'query', schema: { type: 'string' } },
+            { name: 'type', in: 'query', schema: { type: 'string', enum: ['branches', 'tags'] } },
+          ],
+          responses: {
+            '200': { description: 'Provider reference page.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/source/bindings': {
+        post: {
+          operationId: 'createSourceBinding',
+          summary: 'Bind a repository to an application',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/SourceBindingRequest' } } },
+          },
+          responses: {
+            '201': { description: 'Source binding created.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/source/webhooks': {
+        post: {
+          operationId: 'createSourceWebhook',
+          summary: 'Create and optionally reconcile a signed webhook',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['connectionId', 'repositoryFullName', 'baseUrl'],
+                  properties: {
+                    connectionId: { type: 'string' },
+                    repositoryId: { type: 'string' },
+                    repositoryFullName: { type: 'string' },
+                    baseUrl: { type: 'string', format: 'uri' },
+                    events: { type: 'array', items: { type: 'string', enum: ['push', 'pull_request'] } },
+                    reconcile: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Webhook endpoint created; endpoint is revealed once.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/application-detections': {
+        post: {
+          operationId: 'detectApplication',
+          summary: 'Detect bounded application build candidates',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['files'],
+                  properties: {
+                    files: { type: 'array', maxItems: 10000, items: { $ref: '#/components/schemas/DetectionFile' } },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Ranked detection candidates with evidence.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/application-plans': {
+        post: {
+          operationId: 'planApplication',
+          summary: 'Validate and normalize an application manifest',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['draft'],
+                  properties: {
+                    draft: { $ref: '#/components/schemas/ApplicationInput' },
+                    suppliedSecretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Validated plan, config patch, capabilities, costs, and missing secret names.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
       '/api/v1/application-drafts': {
-        get: { operationId: 'listApplicationDrafts', summary: 'List resumable secret-free drafts', parameters: [{ name: 'projectId', in: 'query', required: true, schema: { type: 'string' } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/ApplicationDraft' }) },
-        post: { operationId: 'createApplicationDraft', summary: 'Create a resumable application draft', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/ApplicationDraftCreateRequest' } } } }, responses: { '201': { description: 'Draft created.' }, default: { $ref: '#/components/responses/Error' } } },
-        patch: { operationId: 'updateApplicationDraft', summary: 'Optimistically update a draft', requestBody: { required: true, content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/ApplicationDraftCreateRequest' }, { type: 'object', required: ['id', 'version', 'step'], properties: { id: { type: 'string' }, version: { type: 'integer', minimum: 1 } } }] } } } }, responses: { '200': { description: 'Updated draft.' }, default: { $ref: '#/components/responses/Error' } } },
+        get: {
+          operationId: 'listApplicationDrafts',
+          summary: 'List resumable secret-free drafts',
+          parameters: [
+            { name: 'projectId', in: 'query', required: true, schema: { type: 'string' } },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/ApplicationDraft' }),
+        },
+        post: {
+          operationId: 'createApplicationDraft',
+          summary: 'Create a resumable application draft',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ApplicationDraftCreateRequest' } } },
+          },
+          responses: { '201': { description: 'Draft created.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+        patch: {
+          operationId: 'updateApplicationDraft',
+          summary: 'Optimistically update a draft',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/ApplicationDraftCreateRequest' },
+                    {
+                      type: 'object',
+                      required: ['id', 'version', 'step'],
+                      properties: { id: { type: 'string' }, version: { type: 'integer', minimum: 1 } },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          responses: { '200': { description: 'Updated draft.' }, default: { $ref: '#/components/responses/Error' } },
+        },
       },
-      '/api/v1/applications': { post: { operationId: 'createApplication', summary: 'Confirm and queue an application plan', parameters: [{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['draftId', 'version', 'confirmEnvironment'], properties: { draftId: { type: 'string' }, version: { type: 'integer', minimum: 1 }, confirmEnvironment: { type: 'string', description: 'Exact target environment slug.' } } } } } }, responses: { '202': { description: 'Application operation queued; identical requests replay safely.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/application-artifacts': { post: { operationId: 'uploadApplicationArtifact', summary: 'Inspect and store a bounded ZIP or TAR source artifact', parameters: [{ name: 'X-Project-Id', in: 'header', required: true, schema: { type: 'string' } }, { name: 'X-Artifact-Filename', in: 'header', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary', maxLength: 104857600 } } } }, responses: { '201': { description: 'Deduplicated artifact metadata; archive contents are never executed.' }, '413': { $ref: '#/components/responses/Error' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/applications': {
+        post: {
+          operationId: 'createApplication',
+          summary: 'Confirm and queue an application plan',
+          parameters: [
+            {
+              name: 'Idempotency-Key',
+              in: 'header',
+              required: true,
+              schema: { type: 'string', minLength: 8, maxLength: 128 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['draftId', 'version', 'confirmEnvironment'],
+                  properties: {
+                    draftId: { type: 'string' },
+                    version: { type: 'integer', minimum: 1 },
+                    confirmEnvironment: { type: 'string', description: 'Exact target environment slug.' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Application operation queued; identical requests replay safely.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/application-artifacts': {
+        post: {
+          operationId: 'uploadApplicationArtifact',
+          summary: 'Inspect and store a bounded ZIP or TAR source artifact',
+          parameters: [
+            { name: 'X-Project-Id', in: 'header', required: true, schema: { type: 'string' } },
+            { name: 'X-Artifact-Filename', in: 'header', required: true, schema: { type: 'string' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/octet-stream': { schema: { type: 'string', format: 'binary', maxLength: 104857600 } },
+            },
+          },
+          responses: {
+            '201': { description: 'Deduplicated artifact metadata; archive contents are never executed.' },
+            '413': { $ref: '#/components/responses/Error' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
       '/api/v1/registry-connections': {
-        get: { operationId: 'listRegistryConnections', summary: 'List safe private-registry metadata', parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/RegistryConnection' }) },
-        post: { operationId: 'createRegistryConnection', summary: 'Create an encrypted private-registry connection', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/RegistryConnectionRequest' } } } }, responses: { '201': { description: 'Encrypted registry connection created.' }, default: { $ref: '#/components/responses/Error' } } },
-        patch: { operationId: 'updateRegistryConnection', summary: 'Test access or rotate write-only credentials', requestBody: { required: true, content: { 'application/json': { schema: { allOf: [{ $ref: '#/components/schemas/RegistryConnectionRequest' }, { type: 'object', required: ['id', 'action'], properties: { id: { type: 'string' }, action: { type: 'string', enum: ['test', 'rotate'] }, image: { type: 'string' } } }] } } } }, responses: { '200': { description: 'Safe connection health metadata.' }, default: { $ref: '#/components/responses/Error' } } },
-        delete: { operationId: 'disconnectRegistryConnection', summary: 'Disconnect and erase registry credentials', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['id'], properties: { id: { type: 'string' } } } } } }, responses: { '200': { description: 'Credentials erased and connection disconnected.' }, default: { $ref: '#/components/responses/Error' } } },
+        get: {
+          operationId: 'listRegistryConnections',
+          summary: 'List safe private-registry metadata',
+          parameters: [{ $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }],
+          responses: listResponses({ $ref: '#/components/schemas/RegistryConnection' }),
+        },
+        post: {
+          operationId: 'createRegistryConnection',
+          summary: 'Create an encrypted private-registry connection',
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/RegistryConnectionRequest' } } },
+          },
+          responses: {
+            '201': { description: 'Encrypted registry connection created.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+        patch: {
+          operationId: 'updateRegistryConnection',
+          summary: 'Test access or rotate write-only credentials',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [
+                    { $ref: '#/components/schemas/RegistryConnectionRequest' },
+                    {
+                      type: 'object',
+                      required: ['id', 'action'],
+                      properties: {
+                        id: { type: 'string' },
+                        action: { type: 'string', enum: ['test', 'rotate'] },
+                        image: { type: 'string' },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Safe connection health metadata.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+        delete: {
+          operationId: 'disconnectRegistryConnection',
+          summary: 'Disconnect and erase registry credentials',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['id'],
+                  properties: { id: { type: 'string' } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Credentials erased and connection disconnected.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
       },
-      '/api/v1/queue': { get: { operationId: 'listQueue', summary: 'List authorized durable operations and blocking metadata', parameters: [{ name: 'projectId', in: 'query', schema: { type: 'string' } }, { name: 'state', in: 'query', schema: { type: 'string', enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'] } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/QueueOperation' }) } },
-      '/api/v1/preview-definitions': { get: { operationId: 'listPreviewDefinitions', summary: 'List preview policies', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createPreviewDefinition', summary: 'Configure bounded preview policy', responses: { '200': { description: 'Preview definition created.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/previews': { get: { operationId: 'listPreviews', summary: 'List authorized persistent previews', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createPreview', summary: 'Create or update one immutable preview identity', responses: { '200': { description: 'Preview deployment queued.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/previews/{previewId}/destroy': { post: { operationId: 'destroyPreview', summary: 'Confirm tagged preview teardown', responses: { '200': { description: 'Teardown queued.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/previews/{previewId}/extend': { post: { operationId: 'extendPreview', summary: 'Extend preview TTL', responses: { '200': { description: 'Expiry extended.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/previews/{previewId}/rebuild': { post: { operationId: 'rebuildPreview', summary: 'Rebuild the exact recorded commit', responses: { '200': { description: 'Rebuild queued.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/previews/cleanup': { post: { operationId: 'cleanupPreviews', summary: 'Dry-run or queue TTL/keep-count teardown', responses: { '200': { description: 'Cleanup plan or operations.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/compose-templates': { get: { operationId: 'listComposeTemplates', summary: 'List pinned verified application templates', responses: listResponses({ type: 'object' }) } },
-      '/api/v1/compose-applications': { get: { operationId: 'listComposeApplications', summary: 'List authorized multi-service applications', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createComposeApplication', summary: 'Import Compose or materialize a template', responses: { '200': { description: 'Editable normalized application.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/compose-applications/preview': { post: { operationId: 'previewComposeApplication', summary: 'Parse and diagnose Compose without mutation', responses: { '200': { description: 'Normalized preview and actionable diagnostics.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/compose-applications/{applicationId}/services': { get: { operationId: 'listComposeServices', summary: 'Inspect per-service desired and observed state', responses: { '200': { description: 'Service topology and status.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/compose-applications/{applicationId}/{action}': { post: { operationId: 'operateComposeApplication', summary: 'Deploy, redeploy, start, stop, scale, or delete through the durable queue', responses: { '200': { description: 'Scoped operation queued.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/release-artifacts': { post: { operationId: 'createReleaseArtifact', summary: 'Register a verified content-addressed artifact', responses: { '200': { description: 'Artifact identity registered.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/releases': { get: { operationId: 'listReleases', summary: 'List unified authorized release history', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createRelease', summary: 'Create an immutable release from an existing artifact', responses: { '200': { description: 'Release record created.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/releases/capabilities': { get: { operationId: 'getReleaseCapabilities', summary: 'Explain supported strategies, capacity, cost, and rollback', responses: { '200': { description: 'Provider-aware strategy capabilities.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/releases/{releaseId}': { get: { operationId: 'getRelease', summary: 'Inspect provenance, approvals, health, and transitions', responses: { '200': { description: 'Release detail.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/releases/{releaseId}/{action}': { post: { operationId: 'operateRelease', summary: 'Promote, approve, activate, roll back, report health, or pin', responses: { '200': { description: 'Release lifecycle updated.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/queue': {
+        get: {
+          operationId: 'listQueue',
+          summary: 'List authorized durable operations and blocking metadata',
+          parameters: [
+            { name: 'projectId', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'state',
+              in: 'query',
+              schema: { type: 'string', enum: ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'] },
+            },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/QueueOperation' }),
+        },
+      },
+      '/api/v1/preview-definitions': {
+        get: {
+          operationId: 'listPreviewDefinitions',
+          summary: 'List preview policies',
+          responses: listResponses({ type: 'object' }),
+        },
+        post: {
+          operationId: 'createPreviewDefinition',
+          summary: 'Configure bounded preview policy',
+          responses: {
+            '200': { description: 'Preview definition created.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/previews': {
+        get: {
+          operationId: 'listPreviews',
+          summary: 'List authorized persistent previews',
+          responses: listResponses({ type: 'object' }),
+        },
+        post: {
+          operationId: 'createPreview',
+          summary: 'Create or update one immutable preview identity',
+          responses: {
+            '200': { description: 'Preview deployment queued.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/previews/{previewId}/destroy': {
+        post: {
+          operationId: 'destroyPreview',
+          summary: 'Confirm tagged preview teardown',
+          responses: { '200': { description: 'Teardown queued.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+      },
+      '/api/v1/previews/{previewId}/extend': {
+        post: {
+          operationId: 'extendPreview',
+          summary: 'Extend preview TTL',
+          responses: { '200': { description: 'Expiry extended.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+      },
+      '/api/v1/previews/{previewId}/rebuild': {
+        post: {
+          operationId: 'rebuildPreview',
+          summary: 'Rebuild the exact recorded commit',
+          responses: { '200': { description: 'Rebuild queued.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+      },
+      '/api/v1/previews/cleanup': {
+        post: {
+          operationId: 'cleanupPreviews',
+          summary: 'Dry-run or queue TTL/keep-count teardown',
+          responses: {
+            '200': { description: 'Cleanup plan or operations.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/compose-templates': {
+        get: {
+          operationId: 'listComposeTemplates',
+          summary: 'List pinned verified application templates',
+          responses: listResponses({ type: 'object' }),
+        },
+      },
+      '/api/v1/compose-applications': {
+        get: {
+          operationId: 'listComposeApplications',
+          summary: 'List authorized multi-service applications',
+          responses: listResponses({ type: 'object' }),
+        },
+        post: {
+          operationId: 'createComposeApplication',
+          summary: 'Import Compose or materialize a template',
+          responses: {
+            '200': { description: 'Editable normalized application.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/compose-applications/preview': {
+        post: {
+          operationId: 'previewComposeApplication',
+          summary: 'Parse and diagnose Compose without mutation',
+          responses: {
+            '200': { description: 'Normalized preview and actionable diagnostics.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/compose-applications/{applicationId}/services': {
+        get: {
+          operationId: 'listComposeServices',
+          summary: 'Inspect per-service desired and observed state',
+          responses: {
+            '200': { description: 'Service topology and status.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/compose-applications/{applicationId}/{action}': {
+        post: {
+          operationId: 'operateComposeApplication',
+          summary: 'Deploy, redeploy, start, stop, scale, or delete through the durable queue',
+          responses: {
+            '200': { description: 'Scoped operation queued.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/release-artifacts': {
+        post: {
+          operationId: 'createReleaseArtifact',
+          summary: 'Register a verified content-addressed artifact',
+          responses: {
+            '200': { description: 'Artifact identity registered.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/releases': {
+        get: {
+          operationId: 'listReleases',
+          summary: 'List unified authorized release history',
+          responses: listResponses({ type: 'object' }),
+        },
+        post: {
+          operationId: 'createRelease',
+          summary: 'Create an immutable release from an existing artifact',
+          responses: {
+            '200': { description: 'Release record created.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/releases/capabilities': {
+        get: {
+          operationId: 'getReleaseCapabilities',
+          summary: 'Explain supported strategies, capacity, cost, and rollback',
+          responses: {
+            '200': { description: 'Provider-aware strategy capabilities.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/releases/{releaseId}': {
+        get: {
+          operationId: 'getRelease',
+          summary: 'Inspect provenance, approvals, health, and transitions',
+          responses: { '200': { description: 'Release detail.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+      },
+      '/api/v1/releases/{releaseId}/{action}': {
+        post: {
+          operationId: 'operateRelease',
+          summary: 'Promote, approve, activate, roll back, report health, or pin',
+          responses: {
+            '200': { description: 'Release lifecycle updated.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
       '/api/v1/queue/settings': {
-        get: { operationId: 'getQueueSettings', summary: 'Get effective concurrency limits', responses: { '200': { description: 'Queue concurrency settings.' }, default: { $ref: '#/components/responses/Error' } } },
-        patch: { operationId: 'updateQueueSettings', summary: 'Confirm and audit production concurrency changes', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confirm', 'concurrency'], properties: { confirm: { const: 'update queue limits' }, concurrency: { $ref: '#/components/schemas/QueueConcurrency' } } } } } }, responses: { '200': { description: 'Updated effective limits.' }, default: { $ref: '#/components/responses/Error' } } },
+        get: {
+          operationId: 'getQueueSettings',
+          summary: 'Get effective concurrency limits',
+          responses: {
+            '200': { description: 'Queue concurrency settings.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+        patch: {
+          operationId: 'updateQueueSettings',
+          summary: 'Confirm and audit production concurrency changes',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['confirm', 'concurrency'],
+                  properties: {
+                    confirm: { const: 'update queue limits' },
+                    concurrency: { $ref: '#/components/schemas/QueueConcurrency' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Updated effective limits.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
       },
-      '/api/v1/queue/history': { delete: { operationId: 'clearQueueHistory', summary: 'Clear terminal jobs whose retention has elapsed', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confirm'], properties: { confirm: { const: 'clear completed' }, before: { type: 'string', format: 'date-time' }, projectId: { type: 'string' } } } } } }, responses: { '200': { description: 'Eligible history cleared with an audit event.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/operations/{operationId}/logs': { get: { operationId: 'listOperationLogs', summary: 'Resume ordered sanitized operation logs from a cursor', parameters: [{ $ref: '#/components/parameters/OperationId' }, { name: 'after', in: 'query', schema: { type: 'integer', minimum: 0 } }, { $ref: '#/components/parameters/Limit' }], responses: { '200': { description: 'Ordered log chunks and next cursor.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/operations/{operationId}/logs/stream': { get: { operationId: 'streamOperationLogs', summary: 'Stream authorized operation logs with Last-Event-ID resume', parameters: [{ $ref: '#/components/parameters/OperationId' }, { name: 'Last-Event-ID', in: 'header', schema: { type: 'integer', minimum: 0 } }], responses: { '200': { description: 'Server-sent log and completion events.', content: { 'text/event-stream': { schema: { type: 'string' } } } }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/operations/{operationId}/cancel': { post: { operationId: 'cancelOperation', summary: 'Cancel queued work or request cooperative running cancellation', parameters: [{ $ref: '#/components/parameters/OperationId' }], requestBody: { content: { 'application/json': { schema: { type: 'object' } } } }, responses: { '200': { description: 'Cancellation state recorded.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/operations/{operationId}/retry': { post: { operationId: 'retryOperation', summary: 'Retry an allow-listed failure class within the attempt limit', parameters: [{ $ref: '#/components/parameters/OperationId' }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['errorClass'], properties: { errorClass: { type: 'string' }, delayMs: { type: 'integer', minimum: 0 } } } } } }, responses: { '200': { description: 'Retry queued.' }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/deployments': { post: { operationId: 'createDeployment', summary: 'Queue a deployment', parameters: [{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 8, maxLength: 128 } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/DeploymentRequest' } } } }, responses: { '202': { description: 'Queued operation.', content: { 'application/json': { schema: { $ref: '#/components/schemas/OperationResponse' } } } }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/operations': { get: { operationId: 'listOperations', summary: 'List scoped operations', parameters: [{ name: 'projectId', in: 'query', schema: { type: 'string' } }, { $ref: '#/components/parameters/Limit' }, { $ref: '#/components/parameters/Cursor' }], responses: listResponses({ $ref: '#/components/schemas/Operation' }) } },
-      '/api/v1/events': { get: { operationId: 'listEvents', summary: 'List scoped audit events', parameters: [{ name: 'projectId', in: 'query', schema: { type: 'string' } }, { name: 'after', in: 'query', schema: { type: 'integer', minimum: 0 } }, { $ref: '#/components/parameters/Limit' }], responses: listResponses({ $ref: '#/components/schemas/Event' }) } },
-      '/api/v1/events/stream': { get: { operationId: 'streamEvents', summary: 'Stream scoped audit events', responses: { '200': { description: 'Authenticated server-sent event stream.', content: { 'text/event-stream': { schema: { type: 'string' } } } }, default: { $ref: '#/components/responses/Error' } } } },
-      '/api/v1/openapi.json': { get: { operationId: 'getOpenApi', summary: 'Get the OpenAPI contract', security: [], responses: { '200': { description: 'OpenAPI 3.1 contract.' } } } },
+      '/api/v1/queue/history': {
+        delete: {
+          operationId: 'clearQueueHistory',
+          summary: 'Clear terminal jobs whose retention has elapsed',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['confirm'],
+                  properties: {
+                    confirm: { const: 'clear completed' },
+                    before: { type: 'string', format: 'date-time' },
+                    projectId: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Eligible history cleared with an audit event.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/operations/{operationId}/logs': {
+        get: {
+          operationId: 'listOperationLogs',
+          summary: 'Resume ordered sanitized operation logs from a cursor',
+          parameters: [
+            { $ref: '#/components/parameters/OperationId' },
+            { name: 'after', in: 'query', schema: { type: 'integer', minimum: 0 } },
+            { $ref: '#/components/parameters/Limit' },
+          ],
+          responses: {
+            '200': { description: 'Ordered log chunks and next cursor.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/operations/{operationId}/logs/stream': {
+        get: {
+          operationId: 'streamOperationLogs',
+          summary: 'Stream authorized operation logs with Last-Event-ID resume',
+          parameters: [
+            { $ref: '#/components/parameters/OperationId' },
+            { name: 'Last-Event-ID', in: 'header', schema: { type: 'integer', minimum: 0 } },
+          ],
+          responses: {
+            '200': {
+              description: 'Server-sent log and completion events.',
+              content: { 'text/event-stream': { schema: { type: 'string' } } },
+            },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/operations/{operationId}/cancel': {
+        post: {
+          operationId: 'cancelOperation',
+          summary: 'Cancel queued work or request cooperative running cancellation',
+          parameters: [{ $ref: '#/components/parameters/OperationId' }],
+          requestBody: { content: { 'application/json': { schema: { type: 'object' } } } },
+          responses: {
+            '200': { description: 'Cancellation state recorded.' },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/operations/{operationId}/retry': {
+        post: {
+          operationId: 'retryOperation',
+          summary: 'Retry an allow-listed failure class within the attempt limit',
+          parameters: [{ $ref: '#/components/parameters/OperationId' }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['errorClass'],
+                  properties: { errorClass: { type: 'string' }, delayMs: { type: 'integer', minimum: 0 } },
+                },
+              },
+            },
+          },
+          responses: { '200': { description: 'Retry queued.' }, default: { $ref: '#/components/responses/Error' } },
+        },
+      },
+      '/api/v1/deployments': {
+        post: {
+          operationId: 'createDeployment',
+          summary: 'Queue a deployment',
+          parameters: [
+            {
+              name: 'Idempotency-Key',
+              in: 'header',
+              required: true,
+              schema: { type: 'string', minLength: 8, maxLength: 128 },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/DeploymentRequest' } } },
+          },
+          responses: {
+            '202': {
+              description: 'Queued operation.',
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/OperationResponse' } } },
+            },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/operations': {
+        get: {
+          operationId: 'listOperations',
+          summary: 'List scoped operations',
+          parameters: [
+            { name: 'projectId', in: 'query', schema: { type: 'string' } },
+            { $ref: '#/components/parameters/Limit' },
+            { $ref: '#/components/parameters/Cursor' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/Operation' }),
+        },
+      },
+      '/api/v1/events': {
+        get: {
+          operationId: 'listEvents',
+          summary: 'List scoped audit events',
+          parameters: [
+            { name: 'projectId', in: 'query', schema: { type: 'string' } },
+            { name: 'after', in: 'query', schema: { type: 'integer', minimum: 0 } },
+            { $ref: '#/components/parameters/Limit' },
+          ],
+          responses: listResponses({ $ref: '#/components/schemas/Event' }),
+        },
+      },
+      '/api/v1/events/stream': {
+        get: {
+          operationId: 'streamEvents',
+          summary: 'Stream scoped audit events',
+          responses: {
+            '200': {
+              description: 'Authenticated server-sent event stream.',
+              content: { 'text/event-stream': { schema: { type: 'string' } } },
+            },
+            default: { $ref: '#/components/responses/Error' },
+          },
+        },
+      },
+      '/api/v1/openapi.json': {
+        get: {
+          operationId: 'getOpenApi',
+          summary: 'Get the OpenAPI contract',
+          security: [],
+          responses: { '200': { description: 'OpenAPI 3.1 contract.' } },
+        },
+      },
     },
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'tsc_v1' } },
@@ -83,26 +814,325 @@ export function openApiDocument(): Record<string, unknown> {
         ProjectId: { name: 'projectId', in: 'path', required: true, schema: { type: 'string' } },
         OperationId: { name: 'operationId', in: 'path', required: true, schema: { type: 'string' } },
       },
-      responses: { Error: { description: 'Stable error envelope.', content: { 'application/json': { schema: error } } } },
+      responses: {
+        Error: { description: 'Stable error envelope.', content: { 'application/json': { schema: error } } },
+      },
       schemas: {
-        Project: { type: 'object', required: ['id', 'slug', 'name'], properties: { id: { type: 'string' }, slug: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' } } },
-        Environment: { type: 'object', required: ['id', 'projectId', 'slug', 'name', 'kind'], properties: { id: { type: 'string' }, projectId: { type: 'string' }, slug: { type: 'string' }, name: { type: 'string' }, kind: { type: 'string' }, region: { type: 'string' } } },
-        Service: { type: 'object', required: ['id', 'projectId', 'kind', 'slug', 'name'], properties: { id: { type: 'string' }, projectId: { type: 'string' }, environmentId: { type: 'string' }, kind: { type: 'string' }, slug: { type: 'string' }, name: { type: 'string' }, metadata: { type: 'object', additionalProperties: true } } },
-        SourceConnection: { type: 'object', required: ['id', 'provider', 'name', 'host', 'status', 'credentialConfigured'], properties: { id: { type: 'string' }, provider: { type: 'string' }, name: { type: 'string' }, host: { type: 'string' }, status: { type: 'string' }, credentialConfigured: { type: 'boolean' }, credentialFingerprint: { type: 'string' }, grantedScopes: { type: 'array', items: { type: 'string' } } } },
-        SourceRepository: { type: 'object', required: ['id', 'connectionId', 'fullName', 'cloneUrl', 'defaultBranch'], properties: { id: { type: 'string' }, connectionId: { type: 'string' }, fullName: { type: 'string' }, cloneUrl: { type: 'string' }, defaultBranch: { type: 'string' }, visibility: { type: 'string' }, archived: { type: 'boolean' } } },
-        SourceBindingRequest: { type: 'object', additionalProperties: false, required: ['projectId', 'connectionId', 'repositoryFullName'], properties: { projectId: { type: 'string' }, environmentId: { type: 'string' }, resourceId: { type: 'string' }, connectionId: { type: 'string' }, repositoryId: { type: 'string' }, repositoryFullName: { type: 'string' }, defaultBranch: { type: 'string' }, branchRule: { type: 'string' }, tagRule: { type: 'string' }, monorepoRoot: { type: 'string' }, includePaths: { type: 'array', items: { type: 'string' } }, excludePaths: { type: 'array', items: { type: 'string' } }, submodules: { type: 'boolean' }, cloneDepth: { type: 'integer', minimum: 1 }, deployKeyId: { type: 'string' }, autoDeploy: { type: 'boolean' }, pullRequestPreviews: { type: 'boolean' } } },
-        DetectionFile: { type: 'object', additionalProperties: false, required: ['path'], properties: { path: { type: 'string' }, size: { type: 'integer', minimum: 0 }, content: { type: 'string', maxLength: 262144 } } },
-        ApplicationInput: { type: 'object', additionalProperties: false, required: ['schemaVersion', 'name', 'slug', 'projectId', 'environmentId', 'source', 'build', 'runtime'], properties: { schemaVersion: { const: 1 }, name: { type: 'string' }, slug: { type: 'string' }, projectId: { type: 'string' }, environmentId: { type: 'string' }, source: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: ['git', 'local', 'artifact', 'image'] } }, additionalProperties: true }, build: { type: 'object', required: ['kind'], properties: { kind: { type: 'string', enum: ['dockerfile', 'buildpack', 'static', 'server', 'serverless', 'prebuilt_image'] }, secretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } } }, additionalProperties: true }, runtime: { type: 'object', required: ['architecture', 'target'], properties: { architecture: { type: 'string', enum: ['x86_64', 'arm64'] }, target: { type: 'string', enum: ['server', 'serverless', 'container'] }, port: { type: 'integer', minimum: 1, maximum: 65535 }, healthCheck: { type: 'object', additionalProperties: true } }, additionalProperties: true }, environment: { type: 'object', additionalProperties: { oneOf: [{ type: 'string' }, { type: 'object', additionalProperties: false, required: ['secretRef'], properties: { secretRef: { type: 'string' } } }] } }, requiredSecretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } }, domain: { type: 'object', properties: { hostname: { type: 'string' }, path: { type: 'string' }, tls: { type: 'boolean' } } } } },
-        ApplicationDraftCreateRequest: { type: 'object', additionalProperties: false, required: ['projectId', 'draft'], properties: { projectId: { type: 'string' }, name: { type: 'string' }, draft: { $ref: '#/components/schemas/ApplicationInput' }, step: { type: 'string', enum: ['source', 'build', 'runtime', 'environment', 'domain', 'review'] }, suppliedSecretNames: { type: 'array', uniqueItems: true, description: 'Names only; values must use the secrets boundary.', items: { type: 'string' } } } },
-        ApplicationDraft: { type: 'object', required: ['id', 'projectId', 'input', 'step', 'status', 'version'], properties: { id: { type: 'string' }, projectId: { type: 'string' }, input: { $ref: '#/components/schemas/ApplicationInput' }, step: { type: 'string' }, suppliedSecretNames: { type: 'array', items: { type: 'string' } }, status: { type: 'string', enum: ['draft', 'ready', 'applied'] }, version: { type: 'integer' }, createdAt: { type: 'string', format: 'date-time' }, updatedAt: { type: 'string', format: 'date-time' } } },
-        RegistryConnectionRequest: { type: 'object', properties: { provider: { type: 'string', enum: ['docker_hub', 'ghcr', 'ecr', 'gcr', 'generic'] }, name: { type: 'string' }, host: { type: 'string' }, username: { type: 'string', writeOnly: true }, password: { type: 'string', writeOnly: true }, token: { type: 'string', writeOnly: true }, credentialExpiresAt: { type: 'string', format: 'date-time' }, expiresAt: { type: 'string', format: 'date-time' } } },
-        RegistryConnection: { type: 'object', required: ['id', 'provider', 'name', 'host', 'credentialConfigured', 'status', 'version'], properties: { id: { type: 'string' }, provider: { type: 'string' }, name: { type: 'string' }, host: { type: 'string' }, credentialConfigured: { type: 'boolean' }, credentialFingerprint: { type: 'string' }, credentialExpiresAt: { type: 'string', format: 'date-time' }, status: { type: 'string', enum: ['pending', 'healthy', 'degraded', 'expired', 'disconnected'] }, healthMessage: { type: 'string' }, lastTestedAt: { type: 'string', format: 'date-time' }, version: { type: 'integer' } } },
-        QueueConcurrency: { type: 'object', additionalProperties: false, properties: { project: { type: 'integer', minimum: 1, maximum: 100 }, environment: { type: 'integer', minimum: 1, maximum: 100 }, provider: { type: 'integer', minimum: 1, maximum: 100 }, builds: { type: 'integer', minimum: 1, maximum: 100 } } },
-        QueueOperation: { allOf: [{ $ref: '#/components/schemas/Operation' }, { type: 'object', required: ['queue'], properties: { queue: { type: 'object', required: ['maxAttempts', 'availableAt', 'timeoutSeconds', 'retryClasses', 'resumePolicy', 'cancellationMode', 'retentionUntil'], properties: { lockKey: { type: 'string' }, providerKey: { type: 'string' }, buildSlot: { type: 'boolean' }, maxAttempts: { type: 'integer' }, availableAt: { type: 'string', format: 'date-time' }, timeoutSeconds: { type: 'integer' }, heartbeatAt: { type: 'string', format: 'date-time' }, currentStep: { type: 'string' }, blockedReason: { type: 'string' }, retryClasses: { type: 'array', items: { type: 'string' } }, resumePolicy: { type: 'string', enum: ['fail', 'requeue'] }, cancellationMode: { type: 'string', enum: ['cooperative', 'provider_non_cancellable'] }, retentionUntil: { type: 'string', format: 'date-time' } } }, approximatePosition: { type: 'object', properties: { ahead: { type: 'integer' }, precision: { const: 'bounded' } } } } }] },
-        DeploymentRequest: { type: 'object', additionalProperties: false, required: ['projectId', 'environmentId'], properties: { projectId: { type: 'string' }, environmentId: { type: 'string' }, serviceId: { type: 'string' }, action: { type: 'string', enum: ['deploy', 'rollback'], default: 'deploy' }, revision: { type: 'string' } } },
-        Operation: { type: 'object', required: ['id', 'state', 'kind', 'correlationId', 'createdAt'], properties: { id: { type: 'string' }, state: { type: 'string' }, kind: { type: 'string' }, correlationId: { type: 'string' }, createdAt: { type: 'string', format: 'date-time' } } },
-        OperationResponse: { type: 'object', required: ['operation', 'idempotentReplay', 'requestId'], properties: { operation: { $ref: '#/components/schemas/Operation' }, idempotentReplay: { type: 'boolean' }, requestId: { type: 'string', format: 'uuid' } } },
-        Event: { type: 'object', required: ['id', 'sequence', 'type', 'level', 'correlationId', 'createdAt'], properties: { id: { type: 'string' }, sequence: { type: 'integer' }, type: { type: 'string' }, level: { type: 'string' }, correlationId: { type: 'string' }, payload: {}, createdAt: { type: 'string', format: 'date-time' } } },
+        Project: {
+          type: 'object',
+          required: ['id', 'slug', 'name'],
+          properties: {
+            id: { type: 'string' },
+            slug: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string' },
+          },
+        },
+        Environment: {
+          type: 'object',
+          required: ['id', 'projectId', 'slug', 'name', 'kind'],
+          properties: {
+            id: { type: 'string' },
+            projectId: { type: 'string' },
+            slug: { type: 'string' },
+            name: { type: 'string' },
+            kind: { type: 'string' },
+            region: { type: 'string' },
+          },
+        },
+        Service: {
+          type: 'object',
+          required: ['id', 'projectId', 'kind', 'slug', 'name'],
+          properties: {
+            id: { type: 'string' },
+            projectId: { type: 'string' },
+            environmentId: { type: 'string' },
+            kind: { type: 'string' },
+            slug: { type: 'string' },
+            name: { type: 'string' },
+            metadata: { type: 'object', additionalProperties: true },
+          },
+        },
+        SourceConnection: {
+          type: 'object',
+          required: ['id', 'provider', 'name', 'host', 'status', 'credentialConfigured'],
+          properties: {
+            id: { type: 'string' },
+            provider: { type: 'string' },
+            name: { type: 'string' },
+            host: { type: 'string' },
+            status: { type: 'string' },
+            credentialConfigured: { type: 'boolean' },
+            credentialFingerprint: { type: 'string' },
+            grantedScopes: { type: 'array', items: { type: 'string' } },
+          },
+        },
+        SourceRepository: {
+          type: 'object',
+          required: ['id', 'connectionId', 'fullName', 'cloneUrl', 'defaultBranch'],
+          properties: {
+            id: { type: 'string' },
+            connectionId: { type: 'string' },
+            fullName: { type: 'string' },
+            cloneUrl: { type: 'string' },
+            defaultBranch: { type: 'string' },
+            visibility: { type: 'string' },
+            archived: { type: 'boolean' },
+          },
+        },
+        SourceBindingRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['projectId', 'connectionId', 'repositoryFullName'],
+          properties: {
+            projectId: { type: 'string' },
+            environmentId: { type: 'string' },
+            resourceId: { type: 'string' },
+            connectionId: { type: 'string' },
+            repositoryId: { type: 'string' },
+            repositoryFullName: { type: 'string' },
+            defaultBranch: { type: 'string' },
+            branchRule: { type: 'string' },
+            tagRule: { type: 'string' },
+            monorepoRoot: { type: 'string' },
+            includePaths: { type: 'array', items: { type: 'string' } },
+            excludePaths: { type: 'array', items: { type: 'string' } },
+            submodules: { type: 'boolean' },
+            cloneDepth: { type: 'integer', minimum: 1 },
+            deployKeyId: { type: 'string' },
+            autoDeploy: { type: 'boolean' },
+            pullRequestPreviews: { type: 'boolean' },
+          },
+        },
+        DetectionFile: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['path'],
+          properties: {
+            path: { type: 'string' },
+            size: { type: 'integer', minimum: 0 },
+            content: { type: 'string', maxLength: 262144 },
+          },
+        },
+        ApplicationInput: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['schemaVersion', 'name', 'slug', 'projectId', 'environmentId', 'source', 'build', 'runtime'],
+          properties: {
+            schemaVersion: { const: 1 },
+            name: { type: 'string' },
+            slug: { type: 'string' },
+            projectId: { type: 'string' },
+            environmentId: { type: 'string' },
+            source: {
+              type: 'object',
+              required: ['kind'],
+              properties: { kind: { type: 'string', enum: ['git', 'local', 'artifact', 'image'] } },
+              additionalProperties: true,
+            },
+            build: {
+              type: 'object',
+              required: ['kind'],
+              properties: {
+                kind: {
+                  type: 'string',
+                  enum: ['dockerfile', 'buildpack', 'static', 'server', 'serverless', 'prebuilt_image'],
+                },
+                secretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } },
+              },
+              additionalProperties: true,
+            },
+            runtime: {
+              type: 'object',
+              required: ['architecture', 'target'],
+              properties: {
+                architecture: { type: 'string', enum: ['x86_64', 'arm64'] },
+                target: { type: 'string', enum: ['server', 'serverless', 'container'] },
+                port: { type: 'integer', minimum: 1, maximum: 65535 },
+                healthCheck: { type: 'object', additionalProperties: true },
+              },
+              additionalProperties: true,
+            },
+            environment: {
+              type: 'object',
+              additionalProperties: {
+                oneOf: [
+                  { type: 'string' },
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['secretRef'],
+                    properties: { secretRef: { type: 'string' } },
+                  },
+                ],
+              },
+            },
+            requiredSecretNames: { type: 'array', uniqueItems: true, items: { type: 'string' } },
+            domain: {
+              type: 'object',
+              properties: { hostname: { type: 'string' }, path: { type: 'string' }, tls: { type: 'boolean' } },
+            },
+          },
+        },
+        ApplicationDraftCreateRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['projectId', 'draft'],
+          properties: {
+            projectId: { type: 'string' },
+            name: { type: 'string' },
+            draft: { $ref: '#/components/schemas/ApplicationInput' },
+            step: { type: 'string', enum: ['source', 'build', 'runtime', 'environment', 'domain', 'review'] },
+            suppliedSecretNames: {
+              type: 'array',
+              uniqueItems: true,
+              description: 'Names only; values must use the secrets boundary.',
+              items: { type: 'string' },
+            },
+          },
+        },
+        ApplicationDraft: {
+          type: 'object',
+          required: ['id', 'projectId', 'input', 'step', 'status', 'version'],
+          properties: {
+            id: { type: 'string' },
+            projectId: { type: 'string' },
+            input: { $ref: '#/components/schemas/ApplicationInput' },
+            step: { type: 'string' },
+            suppliedSecretNames: { type: 'array', items: { type: 'string' } },
+            status: { type: 'string', enum: ['draft', 'ready', 'applied'] },
+            version: { type: 'integer' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        RegistryConnectionRequest: {
+          type: 'object',
+          properties: {
+            provider: { type: 'string', enum: ['docker_hub', 'ghcr', 'ecr', 'gcr', 'generic'] },
+            name: { type: 'string' },
+            host: { type: 'string' },
+            username: { type: 'string', writeOnly: true },
+            password: { type: 'string', writeOnly: true },
+            token: { type: 'string', writeOnly: true },
+            credentialExpiresAt: { type: 'string', format: 'date-time' },
+            expiresAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        RegistryConnection: {
+          type: 'object',
+          required: ['id', 'provider', 'name', 'host', 'credentialConfigured', 'status', 'version'],
+          properties: {
+            id: { type: 'string' },
+            provider: { type: 'string' },
+            name: { type: 'string' },
+            host: { type: 'string' },
+            credentialConfigured: { type: 'boolean' },
+            credentialFingerprint: { type: 'string' },
+            credentialExpiresAt: { type: 'string', format: 'date-time' },
+            status: { type: 'string', enum: ['pending', 'healthy', 'degraded', 'expired', 'disconnected'] },
+            healthMessage: { type: 'string' },
+            lastTestedAt: { type: 'string', format: 'date-time' },
+            version: { type: 'integer' },
+          },
+        },
+        QueueConcurrency: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            project: { type: 'integer', minimum: 1, maximum: 100 },
+            environment: { type: 'integer', minimum: 1, maximum: 100 },
+            provider: { type: 'integer', minimum: 1, maximum: 100 },
+            builds: { type: 'integer', minimum: 1, maximum: 100 },
+          },
+        },
+        QueueOperation: {
+          allOf: [
+            { $ref: '#/components/schemas/Operation' },
+            {
+              type: 'object',
+              required: ['queue'],
+              properties: {
+                queue: {
+                  type: 'object',
+                  required: [
+                    'maxAttempts',
+                    'availableAt',
+                    'timeoutSeconds',
+                    'retryClasses',
+                    'resumePolicy',
+                    'cancellationMode',
+                    'retentionUntil',
+                  ],
+                  properties: {
+                    lockKey: { type: 'string' },
+                    providerKey: { type: 'string' },
+                    buildSlot: { type: 'boolean' },
+                    maxAttempts: { type: 'integer' },
+                    availableAt: { type: 'string', format: 'date-time' },
+                    timeoutSeconds: { type: 'integer' },
+                    heartbeatAt: { type: 'string', format: 'date-time' },
+                    currentStep: { type: 'string' },
+                    blockedReason: { type: 'string' },
+                    retryClasses: { type: 'array', items: { type: 'string' } },
+                    resumePolicy: { type: 'string', enum: ['fail', 'requeue'] },
+                    cancellationMode: { type: 'string', enum: ['cooperative', 'provider_non_cancellable'] },
+                    retentionUntil: { type: 'string', format: 'date-time' },
+                  },
+                },
+                approximatePosition: {
+                  type: 'object',
+                  properties: { ahead: { type: 'integer' }, precision: { const: 'bounded' } },
+                },
+              },
+            },
+          ],
+        },
+        DeploymentRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['projectId', 'environmentId'],
+          properties: {
+            projectId: { type: 'string' },
+            environmentId: { type: 'string' },
+            serviceId: { type: 'string' },
+            action: { type: 'string', enum: ['deploy', 'rollback'], default: 'deploy' },
+            revision: { type: 'string' },
+          },
+        },
+        Operation: {
+          type: 'object',
+          required: ['id', 'state', 'kind', 'correlationId', 'createdAt'],
+          properties: {
+            id: { type: 'string' },
+            state: { type: 'string' },
+            kind: { type: 'string' },
+            correlationId: { type: 'string' },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        OperationResponse: {
+          type: 'object',
+          required: ['operation', 'idempotentReplay', 'requestId'],
+          properties: {
+            operation: { $ref: '#/components/schemas/Operation' },
+            idempotentReplay: { type: 'boolean' },
+            requestId: { type: 'string', format: 'uuid' },
+          },
+        },
+        Event: {
+          type: 'object',
+          required: ['id', 'sequence', 'type', 'level', 'correlationId', 'createdAt'],
+          properties: {
+            id: { type: 'string' },
+            sequence: { type: 'integer' },
+            type: { type: 'string' },
+            level: { type: 'string' },
+            correlationId: { type: 'string' },
+            payload: {},
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
       },
     },
   }

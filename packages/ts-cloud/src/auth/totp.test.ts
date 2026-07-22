@@ -14,6 +14,8 @@ describe('TOTP', () => {
     const secret = encodeBase32(Buffer.from('12345678901234567890'))
     expect(verifyTotp(secret, hotp(secret, 100), 100 * 30_000)).toBe(true)
     expect(verifyTotp(secret, hotp(secret, 98), 100 * 30_000)).toBe(false)
-    expect(totpUri({ secret, account: 'chris@example.com', issuer: 'Acme Cloud' })).toContain('otpauth://totp/Acme%20Cloud%3Achris%40example.com')
+    expect(totpUri({ secret, account: 'chris@example.com', issuer: 'Acme Cloud' })).toContain(
+      'otpauth://totp/Acme%20Cloud%3Achris%40example.com',
+    )
   })
 })

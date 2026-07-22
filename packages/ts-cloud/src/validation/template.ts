@@ -2,7 +2,6 @@
  * CloudFormation Template Validation
  * Validates templates before deployment
  */
-
 import type { CloudFormationTemplate } from '@ts-cloud/aws-types'
 
 export interface ValidationError {
@@ -31,8 +30,7 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
       message: 'AWSTemplateFormatVersion is required',
       severity: 'error',
     })
-  }
-  else if (template.AWSTemplateFormatVersion !== '2010-09-09') {
+  } else if (template.AWSTemplateFormatVersion !== '2010-09-09') {
     warnings.push({
       path: 'AWSTemplateFormatVersion',
       message: 'AWSTemplateFormatVersion should be "2010-09-09"',
@@ -47,8 +45,7 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
       message: 'At least one resource is required',
       severity: 'error',
     })
-  }
-  else {
+  } else {
     // Validate each resource
     for (const [logicalId, resource] of Object.entries(template.Resources)) {
       validateResource(logicalId, resource, errors, warnings)
@@ -148,8 +145,7 @@ function validateResource(
           severity: 'error',
         })
       }
-    }
-    else if (Array.isArray(resource.DependsOn)) {
+    } else if (Array.isArray(resource.DependsOn)) {
       if (resource.DependsOn.includes(logicalId)) {
         errors.push({
           path: `Resources.${logicalId}.DependsOn`,
@@ -229,8 +225,7 @@ function findCircularDependencies(resources: Record<string, any>): string[] {
     if (resource.DependsOn) {
       if (typeof resource.DependsOn === 'string') {
         graph[logicalId].push(resource.DependsOn)
-      }
-      else if (Array.isArray(resource.DependsOn)) {
+      } else if (Array.isArray(resource.DependsOn)) {
         graph[logicalId].push(...resource.DependsOn)
       }
     }
@@ -256,8 +251,7 @@ function findCircularDependencies(resources: Record<string, any>): string[] {
         if (dfs(neighbor, path)) {
           return true
         }
-      }
-      else if (recursionStack.has(neighbor)) {
+      } else if (recursionStack.has(neighbor)) {
         // Cycle detected
         const cycleStart = path.indexOf(neighbor)
         cycle.push(...path.slice(cycleStart), neighbor)
@@ -337,8 +331,7 @@ export function validateTemplateSize(templateBody: string): ValidationResult {
         message: `Template size (${sizeInBytes} bytes) exceeds maximum allowed size of ${maxS3Size} bytes`,
         severity: 'error',
       })
-    }
-    else {
+    } else {
       warnings.push({
         path: 'template',
         message: `Template size (${sizeInBytes} bytes) exceeds direct upload limit (${maxBodySize} bytes). You must upload to S3 first.`,
@@ -372,8 +365,7 @@ export function validateResourceLimits(template: CloudFormationTemplate): Valida
       message: `Template has ${resourceCount} resources, exceeding the limit of 500`,
       severity: 'error',
     })
-  }
-  else if (resourceCount > 200) {
+  } else if (resourceCount > 200) {
     warnings.push({
       path: 'Resources',
       message: `Template has ${resourceCount} resources. Consider using nested stacks for better organization.`,

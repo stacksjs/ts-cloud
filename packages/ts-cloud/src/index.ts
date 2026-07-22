@@ -9,8 +9,28 @@ export * from './compose'
 export * from './release'
 export * from './runtime'
 export * from './telemetry'
-export { AlertEvaluator, AlertStore, HealthCheckRunner, NotificationRouter, evaluateTelemetryAlertRules, isQuietHours } from './alerts'
-export type { Alert, AlertEvaluation, AlertRule, AlertSample, AlertSeverity, AlertState, HealthCheck as AlertHealthCheck, HealthResult as AlertHealthResult, HealthStatus as AlertHealthStatus, NotificationChannel as AlertNotificationChannel, NotificationDelivery as AlertNotificationDelivery, NotificationRoute as AlertNotificationRoute } from './alerts'
+export {
+  AlertEvaluator,
+  AlertStore,
+  HealthCheckRunner,
+  NotificationRouter,
+  evaluateTelemetryAlertRules,
+  isQuietHours,
+} from './alerts'
+export type {
+  Alert,
+  AlertEvaluation,
+  AlertRule,
+  AlertSample,
+  AlertSeverity,
+  AlertState,
+  HealthCheck as AlertHealthCheck,
+  HealthResult as AlertHealthResult,
+  HealthStatus as AlertHealthStatus,
+  NotificationChannel as AlertNotificationChannel,
+  NotificationDelivery as AlertNotificationDelivery,
+  NotificationRoute as AlertNotificationRoute,
+} from './alerts'
 export * from './jobs'
 export * from './data-services'
 export * from './storage'
@@ -21,11 +41,7 @@ export * from './maintenance'
 export * from './generators'
 
 // Validation exports - functions
-export {
-  validateTemplate,
-  validateTemplateSize,
-  validateResourceLimits,
-} from './validation'
+export { validateTemplate, validateTemplateSize, validateResourceLimits } from './validation'
 
 // Validation exports - types with prefixed names for conflicts with @ts-cloud/core
 export type {
@@ -131,22 +147,14 @@ export type {
 } from './aws'
 
 // Multi-provider object storage (AWS S3, Backblaze B2, Hetzner Object Storage)
-export {
-  createObjectStorageClient,
-  providerEndpoint,
-  resolveObjectStorage,
-} from './object-storage'
+export { createObjectStorageClient, providerEndpoint, resolveObjectStorage } from './object-storage'
 export type {
   ObjectStorageConfig,
   ObjectStorageCredentials,
   ObjectStorageProvider,
   ResolvedObjectStorage,
 } from './object-storage'
-export {
-  keyMatchesFilters,
-  migrateObjectStorage,
-  remapKey,
-} from './object-storage/migrate'
+export { keyMatchesFilters, migrateObjectStorage, remapKey } from './object-storage/migrate'
 export type {
   MigrateEndpoint,
   MigrateError,
@@ -194,10 +202,7 @@ export {
   resolveDashboardAuth,
   resolveUiSource,
 } from './deploy'
-export {
-  collectServerDnsDomains,
-  removeStaleServerAddressRecords,
-} from './deploy/server-dns'
+export { collectServerDnsDomains, removeStaleServerAddressRecords } from './deploy/server-dns'
 export type {
   EnsureDashboardLogger,
   ResolvedDashboardAuth,

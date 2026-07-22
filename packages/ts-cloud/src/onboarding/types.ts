@@ -1,23 +1,63 @@
 import type { JsonValue } from '../control-plane'
 
 export type ApplicationSource =
-  | { kind: 'git', connectionId: string, repositoryId: string, repositoryFullName: string, ref: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, sparsePaths?: string[], deployKeyId?: string }
-  | { kind: 'local', root: string }
-  | { kind: 'artifact', artifactId: string, filename: string, sha256: string, size: number }
-  | { kind: 'image', image: string, registryConnectionId?: string, digest?: string }
+  | {
+      kind: 'git'
+      connectionId: string
+      repositoryId: string
+      repositoryFullName: string
+      ref: string
+      monorepoRoot?: string
+      includePaths?: string[]
+      excludePaths?: string[]
+      submodules?: boolean
+      sparsePaths?: string[]
+      deployKeyId?: string
+    }
+  | { kind: 'local'; root: string }
+  | { kind: 'artifact'; artifactId: string; filename: string; sha256: string; size: number }
+  | { kind: 'image'; image: string; registryConnectionId?: string; digest?: string }
 
 export type BuildStrategy =
-  | { kind: 'dockerfile', context: string, dockerfile: string, target?: string, buildArgs?: Record<string, string>, secretNames?: string[] }
-  | { kind: 'buildpack', runtime: 'bun' | 'node' | 'php', runtimeVersion?: string, installCommand?: string, buildCommand?: string, startCommand?: string, publishDirectory?: string }
-  | { kind: 'static', publishDirectory: string, installCommand?: string, buildCommand?: string }
-  | { kind: 'server', runtime: 'bun' | 'node' | 'php', runtimeVersion?: string, installCommand?: string, buildCommand?: string, startCommand: string }
-  | { kind: 'serverless', runtime: 'bun' | 'node' | 'php', runtimeVersion?: string, handler?: string, packageRoot?: string }
-  | { kind: 'prebuilt_image', image: string, registryConnectionId?: string, digest?: string }
+  | {
+      kind: 'dockerfile'
+      context: string
+      dockerfile: string
+      target?: string
+      buildArgs?: Record<string, string>
+      secretNames?: string[]
+    }
+  | {
+      kind: 'buildpack'
+      runtime: 'bun' | 'node' | 'php'
+      runtimeVersion?: string
+      installCommand?: string
+      buildCommand?: string
+      startCommand?: string
+      publishDirectory?: string
+    }
+  | { kind: 'static'; publishDirectory: string; installCommand?: string; buildCommand?: string }
+  | {
+      kind: 'server'
+      runtime: 'bun' | 'node' | 'php'
+      runtimeVersion?: string
+      installCommand?: string
+      buildCommand?: string
+      startCommand: string
+    }
+  | {
+      kind: 'serverless'
+      runtime: 'bun' | 'node' | 'php'
+      runtimeVersion?: string
+      handler?: string
+      packageRoot?: string
+    }
+  | { kind: 'prebuilt_image'; image: string; registryConnectionId?: string; digest?: string }
 
 export interface ApplicationRuntime {
   architecture: 'x86_64' | 'arm64'
   port?: number
-  healthCheck?: { protocol: 'http' | 'https' | 'tcp', path?: string, intervalSeconds?: number, timeoutSeconds?: number }
+  healthCheck?: { protocol: 'http' | 'https' | 'tcp'; path?: string; intervalSeconds?: number; timeoutSeconds?: number }
   cpu?: number
   memoryMb?: number
   minInstances?: number
@@ -36,11 +76,19 @@ export interface ApplicationDraftInput {
   runtime: ApplicationRuntime
   environment?: Record<string, string | { secretRef: string }>
   requiredSecretNames?: string[]
-  domain?: { hostname: string, path?: string, tls?: boolean }
+  domain?: { hostname: string; path?: string; tls?: boolean }
 }
 
-export interface DetectionFile { path: string, content?: string, size?: number }
-export interface DetectionEvidence { path: string, reason: string, weight: number }
+export interface DetectionFile {
+  path: string
+  content?: string
+  size?: number
+}
+export interface DetectionEvidence {
+  path: string
+  reason: string
+  weight: number
+}
 export interface DetectionCandidate {
   framework: 'bun' | 'node' | 'laravel' | 'php' | 'static' | 'dockerfile' | 'unknown'
   strategy: BuildStrategy['kind']
@@ -50,12 +98,17 @@ export interface DetectionCandidate {
   description: string
 }
 
-export interface ApplicationValidationIssue { path: string, code: string, message: string, alternatives?: string[] }
+export interface ApplicationValidationIssue {
+  path: string
+  code: string
+  message: string
+  alternatives?: string[]
+}
 
 export interface ApplicationManifestV1 {
   apiVersion: 'ts-cloud.dev/v1'
   kind: 'Application'
-  metadata: { name: string, slug: string, projectId: string, environmentId: string }
+  metadata: { name: string; slug: string; projectId: string; environmentId: string }
   spec: {
     source: ApplicationSource
     build: BuildStrategy
@@ -110,7 +163,11 @@ export interface RegistryConnection {
   updatedAt: string
 }
 
-export interface RegistryCredential { username?: string, password?: string, token?: string }
+export interface RegistryCredential {
+  username?: string
+  password?: string
+  token?: string
+}
 
 export interface ApplicationArtifactRecord {
   id: string

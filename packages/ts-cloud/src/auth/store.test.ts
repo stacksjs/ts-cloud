@@ -44,7 +44,12 @@ describe('AuthenticationStore identities', () => {
 
   it('rehashes legacy credentials without revoking otherwise valid sessions', () => {
     const { controlPlane, auth, actor } = stores()
-    const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', passwordHash: 'legacy', requiresPasswordUpgrade: true })
+    const identity = auth.createIdentity({
+      actorId: actor.id,
+      username: 'chris',
+      passwordHash: 'legacy',
+      requiresPasswordUpgrade: true,
+    })
     const issued = auth.createSession({ identityId: identity.id })
     const upgraded = auth.rehashPassword(identity.id, 'modern')
 
@@ -61,13 +66,18 @@ describe('AuthenticationStore MFA', () => {
     const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', passwordHash: 'hash' })
     const enrollment = auth.beginTotpEnrollment(identity.id, { issuer: 'Acme' })
 
-    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_mfa_factors').get())).not.toContain(enrollment.secret)
+    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_mfa_factors').get())).not.toContain(
+      enrollment.secret,
+    )
     const verified = auth.verifyTotpEnrollment(identity.id, totp(enrollment.secret, now.getTime()))
     expect(verified.factor.state).toBe('active')
     expect(verified.recoveryCodes).toHaveLength(10)
     expect(auth.verifyMfaCode(identity.id, totp(enrollment.secret, now.getTime())).valid).toBe(false)
     expect(auth.remainingRecoveryCodes(identity.id)).toBe(10)
-    expect(auth.verifyMfaCode(identity.id, verified.recoveryCodes[0])).toMatchObject({ valid: true, method: 'recovery' })
+    expect(auth.verifyMfaCode(identity.id, verified.recoveryCodes[0])).toMatchObject({
+      valid: true,
+      method: 'recovery',
+    })
     expect(auth.verifyMfaCode(identity.id, verified.recoveryCodes[0]).valid).toBe(false)
     expect(auth.remainingRecoveryCodes(identity.id)).toBe(9)
     controlPlane.close()
@@ -82,17 +92,25 @@ describe('AuthenticationStore MFA', () => {
     now = new Date('2026-07-21T12:00:31.000Z')
     const issued = auth.createMfaChallenge(identity.id, 'login')
 
-    expect(auth.completeMfaChallenge(issued.token, totp(enrollment.secret, now.getTime()), 'login').challenge.state).toBe('consumed')
-    expect(() => auth.completeMfaChallenge(issued.token, totp(enrollment.secret, now.getTime()), 'login')).toThrow('consumed')
+    expect(
+      auth.completeMfaChallenge(issued.token, totp(enrollment.secret, now.getTime()), 'login').challenge.state,
+    ).toBe('consumed')
+    expect(() => auth.completeMfaChallenge(issued.token, totp(enrollment.secret, now.getTime()), 'login')).toThrow(
+      'consumed',
+    )
 
     const locked = auth.createMfaChallenge(identity.id, 'login')
     for (let attempt = 0; attempt < 5; attempt++)
       expect(() => auth.completeMfaChallenge(locked.token, '000000', 'login')).toThrow('invalid')
-    expect(() => auth.completeMfaChallenge(locked.token, totp(enrollment.secret, now.getTime()), 'login')).toThrow('locked')
+    expect(() => auth.completeMfaChallenge(locked.token, totp(enrollment.secret, now.getTime()), 'login')).toThrow(
+      'locked',
+    )
 
     const expired = auth.createMfaChallenge(identity.id, 'step_up')
     now = new Date('2026-07-21T12:06:00.000Z')
-    expect(() => auth.completeMfaChallenge(expired.token, totp(enrollment.secret, now.getTime()), 'step_up')).toThrow('expired')
+    expect(() => auth.completeMfaChallenge(expired.token, totp(enrollment.secret, now.getTime()), 'step_up')).toThrow(
+      'expired',
+    )
     controlPlane.close()
   })
 })
@@ -104,7 +122,9 @@ describe('AuthenticationStore action tokens', () => {
     const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', passwordHash: 'hash' })
     const reset = auth.createActionToken(identity.id, 'password_reset', { ttlMs: 60_000 })
 
-    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_action_tokens').get())).not.toContain(reset.token)
+    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_action_tokens').get())).not.toContain(
+      reset.token,
+    )
     expect(auth.consumeActionToken(reset.token, 'password_reset').state).toBe('consumed')
     expect(() => auth.consumeActionToken(reset.token, 'password_reset')).toThrow('consumed')
 
@@ -129,15 +149,28 @@ describe('AuthenticationStore OIDC', () => {
       allowedDomains: ['ACME.test', 'acme.test'],
       enforceSso: true,
     })
-    const issued = auth.beginOidcTransaction(provider.id, 'https://cloud.acme.test/auth/oidc/workforce/callback', '/projects')
+    const issued = auth.beginOidcTransaction(
+      provider.id,
+      'https://cloud.acme.test/auth/oidc/workforce/callback',
+      '/projects',
+    )
     const persisted = JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_transactions').get())
 
-    expect(provider).toMatchObject({ issuer: 'https://identity.acme.test', allowedDomains: ['acme.test'], scopes: ['openid', 'email', 'profile'] })
-    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_providers').get())).not.toContain('provider-secret')
+    expect(provider).toMatchObject({
+      issuer: 'https://identity.acme.test',
+      allowedDomains: ['acme.test'],
+      scopes: ['openid', 'email', 'profile'],
+    })
+    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_providers').get())).not.toContain(
+      'provider-secret',
+    )
     expect(persisted).not.toContain(issued.state)
     expect(persisted).not.toContain(issued.nonce)
     expect(persisted).not.toContain(issued.verifier)
-    expect(auth.consumeOidcTransaction(provider.id, issued.state)).toMatchObject({ nonce: issued.nonce, verifier: issued.verifier })
+    expect(auth.consumeOidcTransaction(provider.id, issued.state)).toMatchObject({
+      nonce: issued.nonce,
+      verifier: issued.verifier,
+    })
     expect(() => auth.consumeOidcTransaction(provider.id, issued.state)).toThrow('consumed')
     controlPlane.close()
   })
@@ -154,7 +187,13 @@ describe('AuthenticationStore OIDC', () => {
       clientSecret: 'secret',
       allowedDomains: ['acme.test'],
     })
-    const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', email: 'chris@acme.test', emailVerified: true, passwordHash: 'hash' })
+    const identity = auth.createIdentity({
+      actorId: actor.id,
+      username: 'chris',
+      email: 'chris@acme.test',
+      emailVerified: true,
+      passwordHash: 'hash',
+    })
     const linked = auth.linkOidcSubject(provider.id, identity.id, 'external-123', 'CHRIS@acme.test')
 
     expect(linked).toMatchObject({ identityId: identity.id, subject: 'external-123', email: 'chris@acme.test' })
@@ -188,11 +227,18 @@ describe('AuthenticationStore sessions', () => {
     let now = new Date('2026-07-21T12:00:00.000Z')
     const { controlPlane, auth, actor } = stores(() => now)
     const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', passwordHash: 'hash' })
-    const first = auth.createSession({ identityId: identity.id, idleTtlMs: 60_000, absoluteTtlMs: 120_000, userAgent: 'Browser' })
+    const first = auth.createSession({
+      identityId: identity.id,
+      idleTtlMs: 60_000,
+      absoluteTtlMs: 120_000,
+      userAgent: 'Browser',
+    })
     const second = auth.createSession({ identityId: identity.id, idleTtlMs: 60_000, absoluteTtlMs: 120_000 })
 
     expect(first.token).toStartWith(`v2.${first.session.id}.`)
-    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_sessions WHERE id = ?').get(first.session.id))).not.toContain(first.token)
+    expect(
+      JSON.stringify(controlPlane.database.query('SELECT * FROM auth_sessions WHERE id = ?').get(first.session.id)),
+    ).not.toContain(first.token)
     now = new Date('2026-07-21T12:00:30.000Z')
     expect(auth.verifySessionToken(first.token)?.identity.username).toBe('chris')
     expect(auth.isRecentlyAuthenticated(first.session, 20_000)).toBe(false)

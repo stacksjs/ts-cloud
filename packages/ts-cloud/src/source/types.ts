@@ -179,12 +179,19 @@ export interface SourceProviderAdapter {
   readonly provider: SourceProvider
   readonly capabilities: SourceCapabilities
   testConnection: () => Promise<SourceConnectionTest>
-  listRepositories: (input?: { cursor?: string, search?: string, limit?: number }) => Promise<SourceRepositoryPage>
-  listBranches: (repository: string, input?: { cursor?: string, limit?: number }) => Promise<SourceRefPage>
-  listTags: (repository: string, input?: { cursor?: string, limit?: number }) => Promise<SourceRefPage>
-  createWebhook: (repository: string, input: { url: string, secret: string, events: string[] }) => Promise<SourceWebhookRegistration>
+  listRepositories: (input?: { cursor?: string; search?: string; limit?: number }) => Promise<SourceRepositoryPage>
+  listBranches: (repository: string, input?: { cursor?: string; limit?: number }) => Promise<SourceRefPage>
+  listTags: (repository: string, input?: { cursor?: string; limit?: number }) => Promise<SourceRefPage>
+  createWebhook: (
+    repository: string,
+    input: { url: string; secret: string; events: string[] },
+  ) => Promise<SourceWebhookRegistration>
   listWebhooks: (repository: string) => Promise<SourceWebhookRegistration[]>
-  updateWebhook: (repository: string, webhookId: string, input: { url: string, secret: string, events: string[] }) => Promise<SourceWebhookRegistration>
+  updateWebhook: (
+    repository: string,
+    webhookId: string,
+    input: { url: string; secret: string; events: string[] },
+  ) => Promise<SourceWebhookRegistration>
   deleteWebhook: (repository: string, webhookId: string) => Promise<void>
   setCommitStatus: (repository: string, commitSha: string, status: SourceCommitStatus) => Promise<void>
 }

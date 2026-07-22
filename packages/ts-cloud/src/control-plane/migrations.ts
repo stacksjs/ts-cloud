@@ -1300,7 +1300,10 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX volume_snapshots_inventory_idx ON volume_snapshots(volume_id,status,created_at DESC);
     `,
   },
-  { version: 32, name: 'provider_neutral_fleet', sql: `
+  {
+    version: 32,
+    name: 'provider_neutral_fleet',
+    sql: `
     CREATE TABLE fleet_servers (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
       name TEXT NOT NULL, provider TEXT NOT NULL CHECK(provider IN ('aws','hetzner','ssh')), provider_id TEXT, region TEXT, zone TEXT, endpoint TEXT NOT NULL, ssh_user TEXT NOT NULL, ssh_port INTEGER NOT NULL CHECK(ssh_port BETWEEN 1 AND 65535), credential_ref TEXT NOT NULL,
@@ -1311,8 +1314,12 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     CREATE UNIQUE INDEX fleet_servers_provider_identity ON fleet_servers(organization_id,provider,provider_id) WHERE provider_id IS NOT NULL AND archived_at IS NULL;
     CREATE INDEX fleet_servers_status ON fleet_servers(project_id,status,heartbeat_at);
     CREATE TABLE fleet_bootstrap_plans (id TEXT PRIMARY KEY, server_id TEXT NOT NULL REFERENCES fleet_servers(id) ON DELETE CASCADE, plan_version TEXT NOT NULL, facts_hash TEXT NOT NULL, steps TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN ('preview','queued','running','succeeded','failed')), operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-  ` },
-  { version: 33, name: 'capacity_pools_and_placement', sql: `
+  `,
+  },
+  {
+    version: 33,
+    name: 'capacity_pools_and_placement',
+    sql: `
     CREATE TABLE capacity_pools (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
       name TEXT NOT NULL, purpose TEXT NOT NULL CHECK(purpose IN ('application','build','worker','monitoring','backup')), backend TEXT NOT NULL CHECK(backend IN ('server','ecs','asg')),
@@ -1346,8 +1353,12 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       cleanup_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE INDEX remote_builds_pool ON remote_builds(pool_id,status,created_at);
-  ` },
-  { version: 34, name: 'multi_region_orchestration', sql: `
+  `,
+  },
+  {
+    version: 34,
+    name: 'multi_region_orchestration',
+    sql: `
     CREATE TABLE regional_topologies (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
       name TEXT NOT NULL, hostname TEXT NOT NULL, home_region TEXT NOT NULL, regions TEXT NOT NULL, traffic_policy TEXT NOT NULL CHECK(traffic_policy IN ('active_passive','weighted','latency')),
@@ -1374,8 +1385,12 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL
     ) STRICT;
     CREATE INDEX regional_executions_active ON regional_executions(topology_id,status,created_at DESC);
-  ` },
-  { version: 35, name: 'platform_maintenance_and_dr', sql: `
+  `,
+  },
+  {
+    version: 35,
+    name: 'platform_maintenance_and_dr',
+    sql: `
     CREATE TABLE platform_trusted_keys (id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, name TEXT NOT NULL, algorithm TEXT NOT NULL CHECK(algorithm='ed25519'), public_key_pem TEXT NOT NULL, fingerprint TEXT NOT NULL UNIQUE, revoked_at TEXT, created_at TEXT NOT NULL, UNIQUE(organization_id,name)) STRICT;
     CREATE TABLE platform_update_manifests (
       id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, version TEXT NOT NULL, channel TEXT NOT NULL CHECK(channel IN ('stable','preview','nightly')), published_at TEXT NOT NULL, key_id TEXT NOT NULL REFERENCES platform_trusted_keys(id) ON DELETE RESTRICT,
@@ -1403,5 +1418,6 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     CREATE INDEX platform_campaign_status ON platform_upgrade_campaigns(project_id,status,created_at DESC);
     CREATE INDEX cleanup_plan_status ON cleanup_plans(project_id,status,expires_at);
     CREATE INDEX dr_drill_status ON disaster_recovery_drills(project_id,status,created_at DESC);
-  ` },
+  `,
+  },
 ]

@@ -13,29 +13,101 @@ function fixture(rateLimit = 120) {
   const controlPlane = new ControlPlaneStore({ path: ':memory:' })
   const organization = controlPlane.createOrganization({ slug: 'acme', name: 'Acme' })
   const project = controlPlane.createProject({ organizationId: organization.id, slug: 'web', name: 'Web' })
-  const production = controlPlane.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' })
-  const staging = controlPlane.createEnvironment({ projectId: project.id, slug: 'staging', name: 'Staging', kind: 'staging' })
-  const productionService = controlPlane.createResource({ projectId: project.id, environmentId: production.id, kind: 'application', slug: 'web', name: 'Web', metadata: { apiKey: 'redact-me', revision: 'abc123' } })
-  controlPlane.createResource({ projectId: project.id, environmentId: staging.id, kind: 'application', slug: 'web-staging', name: 'Staging Web' })
+  const production = controlPlane.createEnvironment({
+    projectId: project.id,
+    slug: 'production',
+    name: 'Production',
+    kind: 'production',
+  })
+  const staging = controlPlane.createEnvironment({
+    projectId: project.id,
+    slug: 'staging',
+    name: 'Staging',
+    kind: 'staging',
+  })
+  const productionService = controlPlane.createResource({
+    projectId: project.id,
+    environmentId: production.id,
+    kind: 'application',
+    slug: 'web',
+    name: 'Web',
+    metadata: { apiKey: 'redact-me', revision: 'abc123' },
+  })
+  controlPlane.createResource({
+    projectId: project.id,
+    environmentId: staging.id,
+    kind: 'application',
+    slug: 'web-staging',
+    name: 'Staging Web',
+  })
   const identities = new AutomationIdentityStore(controlPlane)
   const sources = new SourceConnectionStore(controlPlane, { encryptionKey: 'api-fixture-key' })
   const applicationDrafts = new ApplicationDraftStore(controlPlane)
   const registryConnections = new RegistryConnectionStore(controlPlane, { encryptionKey: 'api-registry-fixture-key' })
-  const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'production-ci', name: 'Production CI', roleTemplate: 'deployer', scope: { type: 'environment', id: production.id } }).serviceAccount
-  const issued = identities.createToken({ serviceAccountId: account.id, name: 'CI', capabilities: ['project:read', 'deployments:read', 'deployments:create', 'deployments:cancel', 'applications:read', 'applications:manage'], scope: { type: 'environment', id: production.id } })
-  const handler = createApiV1Handler({ controlPlane, identities, sources, applications: { drafts: applicationDrafts, registries: registryConnections }, rateLimit })
-  const call = (path: string, init: RequestInit = {}, token = issued.secret) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${token}`, ...init.headers } })) as Promise<Response>
-  return { controlPlane, organization, project, production, staging, productionService, identities, sources, applicationDrafts, registryConnections, account, issued, handler, call }
+  const account = identities.createServiceAccount({
+    organizationId: organization.id,
+    slug: 'production-ci',
+    name: 'Production CI',
+    roleTemplate: 'deployer',
+    scope: { type: 'environment', id: production.id },
+  }).serviceAccount
+  const issued = identities.createToken({
+    serviceAccountId: account.id,
+    name: 'CI',
+    capabilities: [
+      'project:read',
+      'deployments:read',
+      'deployments:create',
+      'deployments:cancel',
+      'applications:read',
+      'applications:manage',
+    ],
+    scope: { type: 'environment', id: production.id },
+  })
+  const handler = createApiV1Handler({
+    controlPlane,
+    identities,
+    sources,
+    applications: { drafts: applicationDrafts, registries: registryConnections },
+    rateLimit,
+  })
+  const call = (path: string, init: RequestInit = {}, token = issued.secret) =>
+    handler(
+      new Request(`https://cloud.acme.test${path}`, {
+        ...init,
+        headers: { authorization: `Bearer ${token}`, ...init.headers },
+      }),
+    ) as Promise<Response>
+  return {
+    controlPlane,
+    organization,
+    project,
+    production,
+    staging,
+    productionService,
+    identities,
+    sources,
+    applicationDrafts,
+    registryConnections,
+    account,
+    issued,
+    handler,
+    call,
+  }
 }
 
 describe('/api/v1 contract', () => {
   it('serves a versioned OpenAPI document and stable unauthorized errors', async () => {
     const { controlPlane, handler } = fixture()
-    const document = await handler(new Request('https://cloud.acme.test/api/v1/openapi.json')) as Response
+    const document = (await handler(new Request('https://cloud.acme.test/api/v1/openapi.json'))) as Response
     expect(document.status).toBe(200)
-    expect(await document.json()).toMatchObject({ openapi: '3.1.0', info: { title: 'ts-cloud API' }, paths: { '/api/v1/deployments': {} } })
-    const unauthorized = await handler(new Request('https://cloud.acme.test/api/v1/projects')) as Response
-    const body = await unauthorized.json() as any
+    expect(await document.json()).toMatchObject({
+      openapi: '3.1.0',
+      info: { title: 'ts-cloud API' },
+      paths: { '/api/v1/deployments': {} },
+    })
+    const unauthorized = (await handler(new Request('https://cloud.acme.test/api/v1/projects'))) as Response
+    const body = (await unauthorized.json()) as any
     expect(unauthorized.status).toBe(401)
     expect(unauthorized.headers.get('www-authenticate')).toContain('invalid_token')
     expect(body.error).toMatchObject({ code: 'unauthorized', requestId: unauthorized.headers.get('x-request-id') })
@@ -44,12 +116,14 @@ describe('/api/v1 contract', () => {
 
   it('limits an environment token to its own services and redacts metadata', async () => {
     const { controlPlane, project, production, staging, call } = fixture()
-    const projects = await (await call('/api/v1/projects')).json() as any
+    const projects = (await (await call('/api/v1/projects')).json()) as any
     expect(projects.data.map((item: any) => item.id)).toEqual([project.id])
-    const environments = await (await call(`/api/v1/projects/${project.id}/environments`)).json() as any
+    const environments = (await (await call(`/api/v1/projects/${project.id}/environments`)).json()) as any
     expect(environments.data.map((item: any) => item.id)).toEqual([production.id])
     expect(environments.data.map((item: any) => item.id)).not.toContain(staging.id)
-    const services = await (await call(`/api/v1/services?projectId=${project.id}&environmentId=${production.id}`)).json() as any
+    const services = (await (
+      await call(`/api/v1/services?projectId=${project.id}&environmentId=${production.id}`)
+    ).json()) as any
     expect(services.data).toHaveLength(1)
     expect(services.data[0].metadata).toEqual({ apiKey: '[REDACTED]', revision: 'abc123' })
     const forbidden = await call(`/api/v1/services?projectId=${project.id}&environmentId=${staging.id}`)
@@ -59,18 +133,46 @@ describe('/api/v1 contract', () => {
 
   it('requires idempotency and returns the same operation for a replay', async () => {
     const { controlPlane, project, production, productionService, call } = fixture()
-    const input = { projectId: project.id, environmentId: production.id, serviceId: productionService.id, action: 'deploy' }
-    const missing = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) })
+    const input = {
+      projectId: project.id,
+      environmentId: production.id,
+      serviceId: productionService.id,
+      action: 'deploy',
+    }
+    const missing = await call('/api/v1/deployments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    })
     expect(missing.status).toBe(428)
-    const first = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' }, body: JSON.stringify(input) })
-    const firstBody = await first.json() as any
+    const first = await call('/api/v1/deployments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' },
+      body: JSON.stringify(input),
+    })
+    const firstBody = (await first.json()) as any
     expect(first.status).toBe(202)
-    expect(firstBody).toMatchObject({ operation: { state: 'queued', kind: 'deployment.create', actorId: expect.any(String) }, idempotentReplay: false })
-    expect(controlPlane.database.query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?').get(firstBody.operation.id)?.lock_key).toBe(`resource:${productionService.id}`)
-    const replay = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' }, body: JSON.stringify(input) })
+    expect(firstBody).toMatchObject({
+      operation: { state: 'queued', kind: 'deployment.create', actorId: expect.any(String) },
+      idempotentReplay: false,
+    })
+    expect(
+      controlPlane.database
+        .query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?')
+        .get(firstBody.operation.id)?.lock_key,
+    ).toBe(`resource:${productionService.id}`)
+    const replay = await call('/api/v1/deployments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' },
+      body: JSON.stringify(input),
+    })
     expect(await replay.json()).toMatchObject({ operation: { id: firstBody.operation.id }, idempotentReplay: true })
     expect(replay.headers.get('idempotent-replayed')).toBe('true')
-    const conflict = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' }, body: JSON.stringify({ ...input, action: 'rollback' }) })
+    const conflict = await call('/api/v1/deployments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' },
+      body: JSON.stringify({ ...input, action: 'rollback' }),
+    })
     expect(await conflict.json()).toMatchObject({ error: { code: 'idempotency_conflict' } })
     expect(controlPlane.listOperations({ projectId: project.id })).toHaveLength(1)
     controlPlane.close()
@@ -91,45 +193,141 @@ describe('/api/v1 contract', () => {
 
   it('uses the generated TypeScript client against the same handler', async () => {
     const { controlPlane, issued, handler, project, production, productionService } = fixture()
-    const mockFetch = (async (input: string | URL | Request, init?: RequestInit) => handler(new Request(String(input), init)) as Promise<Response>) as typeof fetch
+    const mockFetch = (async (input: string | URL | Request, init?: RequestInit) =>
+      handler(new Request(String(input), init)) as Promise<Response>) as typeof fetch
     const client = new TsCloudClient({ baseUrl: 'https://cloud.acme.test', token: issued.secret, fetch: mockFetch })
     expect((await client.listProjects()).data[0].id).toBe(project.id)
-    expect((await client.detectApplication({ files: [{ path: 'package.json', content: '{"scripts":{"start":"bun server.ts"}}' }, { path: 'bun.lock' }] })).candidates[0]).toMatchObject({ framework: 'bun' })
-    const deployed = await client.createDeployment({ projectId: project.id, environmentId: production.id, serviceId: productionService.id }, 'client-build-123')
+    expect(
+      (
+        await client.detectApplication({
+          files: [{ path: 'package.json', content: '{"scripts":{"start":"bun server.ts"}}' }, { path: 'bun.lock' }],
+        })
+      ).candidates[0],
+    ).toMatchObject({ framework: 'bun' })
+    const deployed = await client.createDeployment(
+      { projectId: project.id, environmentId: production.id, serviceId: productionService.id },
+      'client-build-123',
+    )
     expect(deployed.operation).toMatchObject({ state: 'queued', resourceId: productionService.id })
     controlPlane.close()
   })
 
   it('manages encrypted source connections through organization-scoped automation', async () => {
     const { controlPlane, organization, project, production, productionService, identities, handler } = fixture()
-    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'source-automation', name: 'Source Automation', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
-    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Sources', capabilities: ['sources:read', 'sources:manage'], scope: { type: 'organization' } })
-    const call = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
-    const createdResponse = await call('/api/v1/source/connections', { method: 'POST', body: JSON.stringify({ provider: 'generic_https', name: 'Private Git', host: 'https://git.example', authKind: 'access_token', token: 'runtime-source-secret', repositoryFullName: 'acme/web', repositoryUrl: 'https://git.example/acme/web.git' }) })
+    const account = identities.createServiceAccount({
+      organizationId: organization.id,
+      slug: 'source-automation',
+      name: 'Source Automation',
+      roleTemplate: 'admin',
+      scope: { type: 'organization' },
+    }).serviceAccount
+    const issued = identities.createToken({
+      serviceAccountId: account.id,
+      name: 'Sources',
+      capabilities: ['sources:read', 'sources:manage'],
+      scope: { type: 'organization' },
+    })
+    const call = (path: string, init: RequestInit = {}) =>
+      handler(
+        new Request(`https://cloud.acme.test${path}`, {
+          ...init,
+          headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers },
+        }),
+      ) as Promise<Response>
+    const createdResponse = await call('/api/v1/source/connections', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'generic_https',
+        name: 'Private Git',
+        host: 'https://git.example',
+        authKind: 'access_token',
+        token: 'runtime-source-secret',
+        repositoryFullName: 'acme/web',
+        repositoryUrl: 'https://git.example/acme/web.git',
+      }),
+    })
     expect(createdResponse.status).toBe(201)
-    const created = await createdResponse.json() as any
+    const created = (await createdResponse.json()) as any
     expect(created.connection).toMatchObject({ provider: 'generic_https', credentialConfigured: true })
     expect(JSON.stringify(created)).not.toContain('runtime-source-secret')
-    const listed = await (await call('/api/v1/source/connections')).json() as any
+    const listed = (await (await call('/api/v1/source/connections')).json()) as any
     expect(listed.data).toMatchObject([{ id: created.connection.id, name: 'Private Git' }])
-    const bindingResponse = await call('/api/v1/source/bindings', { method: 'POST', body: JSON.stringify({ projectId: project.id, environmentId: production.id, resourceId: productionService.id, connectionId: created.connection.id, repositoryId: created.repository.id, repositoryFullName: 'acme/web', defaultBranch: 'main' }) })
+    const bindingResponse = await call('/api/v1/source/bindings', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: project.id,
+        environmentId: production.id,
+        resourceId: productionService.id,
+        connectionId: created.connection.id,
+        repositoryId: created.repository.id,
+        repositoryFullName: 'acme/web',
+        defaultBranch: 'main',
+      }),
+    })
     expect(bindingResponse.status).toBe(201)
-    expect(await bindingResponse.json()).toMatchObject({ binding: { status: 'active', resourceId: productionService.id } })
-    const webhookResponse = await call('/api/v1/source/webhooks', { method: 'POST', body: JSON.stringify({ connectionId: created.connection.id, repositoryId: created.repository.id, repositoryFullName: 'acme/web', baseUrl: 'https://deploy.example', reconcile: false }) })
+    expect(await bindingResponse.json()).toMatchObject({
+      binding: { status: 'active', resourceId: productionService.id },
+    })
+    const webhookResponse = await call('/api/v1/source/webhooks', {
+      method: 'POST',
+      body: JSON.stringify({
+        connectionId: created.connection.id,
+        repositoryId: created.repository.id,
+        repositoryFullName: 'acme/web',
+        baseUrl: 'https://deploy.example',
+        reconcile: false,
+      }),
+    })
     expect(webhookResponse.status).toBe(201)
-    expect(await webhookResponse.json()).toMatchObject({ endpointRevealOnce: true, endpoint: expect.stringContaining('/api/source/webhooks/') })
-    const preview = await (await call('/api/v1/source/connections', { method: 'DELETE', body: JSON.stringify({ id: created.connection.id, preview: true }) })).json() as any
+    expect(await webhookResponse.json()).toMatchObject({
+      endpointRevealOnce: true,
+      endpoint: expect.stringContaining('/api/source/webhooks/'),
+    })
+    const preview = (await (
+      await call('/api/v1/source/connections', {
+        method: 'DELETE',
+        body: JSON.stringify({ id: created.connection.id, preview: true }),
+      })
+    ).json()) as any
     expect(preview.affectedBindings).toHaveLength(1)
     controlPlane.close()
   })
 
   it('plans, resumes, and idempotently creates applications without returning secrets', async () => {
     const { controlPlane, organization, project, production, identities, handler } = fixture()
-    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'application-automation', name: 'Application Automation', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
-    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Applications', capabilities: ['applications:read', 'applications:manage'], scope: { type: 'organization' } })
-    const call = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
-    const detected = await (await call('/api/v1/application-detections', { method: 'POST', body: JSON.stringify({ files: [{ path: 'package.json', content: '{"scripts":{"start":"bun run server.ts"}}' }, { path: 'bun.lock' }] }) })).json() as any
-    expect(detected.candidates[0]).toMatchObject({ framework: 'bun', strategy: 'server', confidence: expect.any(Number) })
+    const account = identities.createServiceAccount({
+      organizationId: organization.id,
+      slug: 'application-automation',
+      name: 'Application Automation',
+      roleTemplate: 'admin',
+      scope: { type: 'organization' },
+    }).serviceAccount
+    const issued = identities.createToken({
+      serviceAccountId: account.id,
+      name: 'Applications',
+      capabilities: ['applications:read', 'applications:manage'],
+      scope: { type: 'organization' },
+    })
+    const call = (path: string, init: RequestInit = {}) =>
+      handler(
+        new Request(`https://cloud.acme.test${path}`, {
+          ...init,
+          headers: { authorization: `Bearer ${issued.secret}`, 'content-type': 'application/json', ...init.headers },
+        }),
+      ) as Promise<Response>
+    const detected = (await (
+      await call('/api/v1/application-detections', {
+        method: 'POST',
+        body: JSON.stringify({
+          files: [{ path: 'package.json', content: '{"scripts":{"start":"bun run server.ts"}}' }, { path: 'bun.lock' }],
+        }),
+      })
+    ).json()) as any
+    expect(detected.candidates[0]).toMatchObject({
+      framework: 'bun',
+      strategy: 'server',
+      confidence: expect.any(Number),
+    })
     const draftInput = {
       schemaVersion: 1,
       name: 'API Worker',
@@ -138,81 +336,207 @@ describe('/api/v1 contract', () => {
       environmentId: production.id,
       source: { kind: 'local', root: '.' },
       build: { kind: 'server', runtime: 'bun', startCommand: 'bun run server.ts' },
-      runtime: { architecture: 'arm64', port: 3000, target: 'server', healthCheck: { protocol: 'http', path: '/health' } },
+      runtime: {
+        architecture: 'arm64',
+        port: 3000,
+        target: 'server',
+        healthCheck: { protocol: 'http', path: '/health' },
+      },
       environment: { NODE_ENV: 'production', DATABASE_URL: { secretRef: 'DATABASE_URL' } },
       requiredSecretNames: ['DATABASE_URL'],
     }
-    const planned = await (await call('/api/v1/application-plans', { method: 'POST', body: JSON.stringify({ draft: draftInput, suppliedSecretNames: ['DATABASE_URL'] }) })).json() as any
-    expect(planned.plan).toMatchObject({ valid: true, missingSecrets: [], manifest: { spec: { build: { kind: 'server' } } } })
-    const createdResponse = await call('/api/v1/application-drafts', { method: 'POST', body: JSON.stringify({ projectId: project.id, name: 'API draft', draft: draftInput, step: 'review', suppliedSecretNames: ['DATABASE_URL'] }) })
+    const planned = (await (
+      await call('/api/v1/application-plans', {
+        method: 'POST',
+        body: JSON.stringify({ draft: draftInput, suppliedSecretNames: ['DATABASE_URL'] }),
+      })
+    ).json()) as any
+    expect(planned.plan).toMatchObject({
+      valid: true,
+      missingSecrets: [],
+      manifest: { spec: { build: { kind: 'server' } } },
+    })
+    const createdResponse = await call('/api/v1/application-drafts', {
+      method: 'POST',
+      body: JSON.stringify({
+        projectId: project.id,
+        name: 'API draft',
+        draft: draftInput,
+        step: 'review',
+        suppliedSecretNames: ['DATABASE_URL'],
+      }),
+    })
     expect(createdResponse.status).toBe(201)
-    const created = await createdResponse.json() as any
+    const created = (await createdResponse.json()) as any
     expect(created.draft).toMatchObject({ status: 'ready', version: 1, suppliedSecretNames: ['DATABASE_URL'] })
     expect(JSON.stringify(created)).not.toContain('database-password')
-    const listed = await (await call(`/api/v1/application-drafts?projectId=${project.id}`)).json() as any
+    const listed = (await (await call(`/api/v1/application-drafts?projectId=${project.id}`)).json()) as any
     expect(listed.data).toMatchObject([{ id: created.draft.id, step: 'review' }])
     const before = controlPlane.listResources(project.id, production.id).length
-    const wrong = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-wrong-target' }, body: JSON.stringify({ draftId: created.draft.id, version: 1, confirmEnvironment: 'staging' }) })
+    const wrong = await call('/api/v1/applications', {
+      method: 'POST',
+      headers: { 'idempotency-key': 'application-wrong-target' },
+      body: JSON.stringify({ draftId: created.draft.id, version: 1, confirmEnvironment: 'staging' }),
+    })
     expect(wrong.status).toBe(422)
     expect(controlPlane.listResources(project.id, production.id)).toHaveLength(before)
     const request = { draftId: created.draft.id, version: 1, confirmEnvironment: 'production' }
-    const applied = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-create-1' }, body: JSON.stringify(request) })
-    const appliedBody = await applied.json() as any
+    const applied = await call('/api/v1/applications', {
+      method: 'POST',
+      headers: { 'idempotency-key': 'application-create-1' },
+      body: JSON.stringify(request),
+    })
+    const appliedBody = (await applied.json()) as any
     expect(applied.status).toBe(202)
-    expect(appliedBody).toMatchObject({ resource: { slug: 'api-worker' }, operation: { kind: 'application.create', state: 'queued' }, plan: { valid: true }, idempotentReplay: false })
-    const replay = await call('/api/v1/applications', { method: 'POST', headers: { 'idempotency-key': 'application-create-1' }, body: JSON.stringify(request) })
+    expect(appliedBody).toMatchObject({
+      resource: { slug: 'api-worker' },
+      operation: { kind: 'application.create', state: 'queued' },
+      plan: { valid: true },
+      idempotentReplay: false,
+    })
+    const replay = await call('/api/v1/applications', {
+      method: 'POST',
+      headers: { 'idempotency-key': 'application-create-1' },
+      body: JSON.stringify(request),
+    })
     expect(replay.headers.get('idempotent-replayed')).toBe('true')
     expect(await replay.json()).toMatchObject({ operation: { id: appliedBody.operation.id }, idempotentReplay: true })
-    expect(controlPlane.listOperations({ projectId: project.id }).filter(item => item.kind === 'application.create')).toHaveLength(1)
+    expect(
+      controlPlane.listOperations({ projectId: project.id }).filter((item) => item.kind === 'application.create'),
+    ).toHaveLength(1)
 
-    const registryResponse = await call('/api/v1/registry-connections', { method: 'POST', body: JSON.stringify({ provider: 'ghcr', name: 'Private images', host: 'ghcr.io', username: 'acme', token: 'registry-super-secret' }) })
-    const registry = await registryResponse.json() as any
+    const registryResponse = await call('/api/v1/registry-connections', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'ghcr',
+        name: 'Private images',
+        host: 'ghcr.io',
+        username: 'acme',
+        token: 'registry-super-secret',
+      }),
+    })
+    const registry = (await registryResponse.json()) as any
     expect(registryResponse.status).toBe(201)
     expect(registry.registry).toMatchObject({ credentialConfigured: true, status: 'pending' })
     expect(JSON.stringify(registry)).not.toContain('registry-super-secret')
-    const disconnected = await call('/api/v1/registry-connections', { method: 'DELETE', body: JSON.stringify({ id: registry.registry.id }) })
-    expect(await disconnected.json()).toMatchObject({ registry: { status: 'disconnected', credentialConfigured: false } })
+    const disconnected = await call('/api/v1/registry-connections', {
+      method: 'DELETE',
+      body: JSON.stringify({ id: registry.registry.id }),
+    })
+    expect(await disconnected.json()).toMatchObject({
+      registry: { status: 'disconnected', credentialConfigured: false },
+    })
     controlPlane.close()
   })
 
   it('lists durable jobs, resumes log cursors, and controls cancellation, retry, and concurrency', async () => {
     const { controlPlane, organization, project, production, productionService, identities, handler, call } = fixture()
-    const deployment = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'queue-api-deploy-1' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, serviceId: productionService.id }) })
-    const operation = (await deployment.json() as any).operation
-    const listed = await (await call(`/api/v1/queue?projectId=${project.id}`)).json() as any
-    expect(listed.data).toMatchObject([{ id: operation.id, state: 'queued', queue: { lockKey: `resource:${productionService.id}`, maxAttempts: 3 }, approximatePosition: { precision: 'bounded' } }])
-    const firstLogs = await (await call(`/api/v1/operations/${operation.id}/logs?after=0&limit=1`)).json() as any
+    const deployment = await call('/api/v1/deployments', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'queue-api-deploy-1' },
+      body: JSON.stringify({ projectId: project.id, environmentId: production.id, serviceId: productionService.id }),
+    })
+    const operation = ((await deployment.json()) as any).operation
+    const listed = (await (await call(`/api/v1/queue?projectId=${project.id}`)).json()) as any
+    expect(listed.data).toMatchObject([
+      {
+        id: operation.id,
+        state: 'queued',
+        queue: { lockKey: `resource:${productionService.id}`, maxAttempts: 3 },
+        approximatePosition: { precision: 'bounded' },
+      },
+    ])
+    const firstLogs = (await (await call(`/api/v1/operations/${operation.id}/logs?after=0&limit=1`)).json()) as any
     expect(firstLogs).toMatchObject({ data: [{ stream: 'system', message: 'Queued for durable execution.' }] })
     expect(typeof firstLogs.cursor).toBe('number')
     expect(firstLogs.cursor).toBe(firstLogs.data[0].sequence)
-    const noDuplicates = await (await call(`/api/v1/operations/${operation.id}/logs?after=${firstLogs.cursor}`)).json() as any
+    const noDuplicates = (await (
+      await call(`/api/v1/operations/${operation.id}/logs?after=${firstLogs.cursor}`)
+    ).json()) as any
     expect(noDuplicates.data).toEqual([])
-    const cancelled = await call(`/api/v1/operations/${operation.id}/cancel`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
+    const cancelled = await call(`/api/v1/operations/${operation.id}/cancel`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
     expect(await cancelled.json()).toMatchObject({ operation: { state: 'cancelled', id: operation.id } })
-    const stream = await call(`/api/v1/operations/${operation.id}/logs/stream`, { headers: { 'last-event-id': String(firstLogs.cursor) } })
+    const stream = await call(`/api/v1/operations/${operation.id}/logs/stream`, {
+      headers: { 'last-event-id': String(firstLogs.cursor) },
+    })
     expect(stream.headers.get('content-type')).toBe('text/event-stream')
     const streamText = await stream.text()
     expect(streamText).toContain('event: log')
     expect(streamText).toContain('event: complete')
-    const retried = await call(`/api/v1/operations/${operation.id}/retry`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ errorClass: 'provider_unavailable' }) })
+    const retried = await call(`/api/v1/operations/${operation.id}/retry`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ errorClass: 'provider_unavailable' }),
+    })
     expect(await retried.json()).toMatchObject({ operation: { state: 'queued', id: operation.id } })
 
-    const admin = identities.createServiceAccount({ organizationId: organization.id, slug: 'queue-admin', name: 'Queue Admin', roleTemplate: 'admin', scope: { type: 'organization' } }).serviceAccount
-    const adminToken = identities.createToken({ serviceAccountId: admin.id, name: 'Queue settings', capabilities: ['deployments:read', 'automation:manage'], scope: { type: 'organization' } })
-    const adminCall = (path: string, init: RequestInit = {}) => handler(new Request(`https://cloud.acme.test${path}`, { ...init, headers: { authorization: `Bearer ${adminToken.secret}`, 'content-type': 'application/json', ...init.headers } })) as Promise<Response>
-    const unconfirmed = await adminCall('/api/v1/queue/settings', { method: 'PATCH', body: JSON.stringify({ concurrency: { project: 4 } }) })
+    const admin = identities.createServiceAccount({
+      organizationId: organization.id,
+      slug: 'queue-admin',
+      name: 'Queue Admin',
+      roleTemplate: 'admin',
+      scope: { type: 'organization' },
+    }).serviceAccount
+    const adminToken = identities.createToken({
+      serviceAccountId: admin.id,
+      name: 'Queue settings',
+      capabilities: ['deployments:read', 'automation:manage'],
+      scope: { type: 'organization' },
+    })
+    const adminCall = (path: string, init: RequestInit = {}) =>
+      handler(
+        new Request(`https://cloud.acme.test${path}`, {
+          ...init,
+          headers: {
+            authorization: `Bearer ${adminToken.secret}`,
+            'content-type': 'application/json',
+            ...init.headers,
+          },
+        }),
+      ) as Promise<Response>
+    const unconfirmed = await adminCall('/api/v1/queue/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ concurrency: { project: 4 } }),
+    })
     expect(unconfirmed.status).toBe(409)
-    const configured = await adminCall('/api/v1/queue/settings', { method: 'PATCH', body: JSON.stringify({ confirm: 'update queue limits', concurrency: { project: 4, environment: 2, provider: 3, builds: 2 } }) })
-    expect(await configured.json()).toMatchObject({ concurrency: { project: 4, environment: 2, provider: 3, builds: 2 } })
+    const configured = await adminCall('/api/v1/queue/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        confirm: 'update queue limits',
+        concurrency: { project: 4, environment: 2, provider: 3, builds: 2 },
+      }),
+    })
+    expect(await configured.json()).toMatchObject({
+      concurrency: { project: 4, environment: 2, provider: 3, builds: 2 },
+    })
     expect(controlPlane.getSetting('queue.concurrency')).toEqual({ project: 4, environment: 2, provider: 3, builds: 2 })
     controlPlane.close()
   })
 
   it('authenticates event streams and closes them after token revocation', async () => {
     const { controlPlane, organization, production, identities, handler } = fixture()
-    const account = identities.createServiceAccount({ organizationId: organization.id, slug: 'event-relay', name: 'Event Relay', roleTemplate: 'admin', scope: { type: 'environment', id: production.id } }).serviceAccount
-    const issued = identities.createToken({ serviceAccountId: account.id, name: 'Events', capabilities: ['audit:read'], scope: { type: 'environment', id: production.id } })
-    const response = await handler(new Request('https://cloud.acme.test/api/v1/events/stream', { headers: { authorization: `Bearer ${issued.secret}` } })) as Response
+    const account = identities.createServiceAccount({
+      organizationId: organization.id,
+      slug: 'event-relay',
+      name: 'Event Relay',
+      roleTemplate: 'admin',
+      scope: { type: 'environment', id: production.id },
+    }).serviceAccount
+    const issued = identities.createToken({
+      serviceAccountId: account.id,
+      name: 'Events',
+      capabilities: ['audit:read'],
+      scope: { type: 'environment', id: production.id },
+    })
+    const response = (await handler(
+      new Request('https://cloud.acme.test/api/v1/events/stream', {
+        headers: { authorization: `Bearer ${issued.secret}` },
+      }),
+    )) as Response
     expect(response.headers.get('content-type')).toBe('text/event-stream')
     const reader = response.body!.getReader()
     expect(new TextDecoder().decode((await reader.read()).value)).toContain('connected')
@@ -224,64 +548,254 @@ describe('/api/v1 contract', () => {
   it('creates, lists, extends, rebuilds, and confirms preview teardown at resource scope', async () => {
     const { controlPlane, project, production, productionService, call } = fixture()
     const previews = new PreviewEnvironmentStore(controlPlane)
-    const policy = previews.createDefinition({ projectId: project.id, resourceId: productionService.id, baseEnvironmentId: production.id, domainPattern: 'https://{name}.preview.example.com' })
-    const created = await (await call('/api/v1/previews', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ definitionId: policy.id, repository: 'acme/web', branch: 'feature/api', pullRequestNumber: 12, commitSha: 'a'.repeat(40) }) })).json() as any
-    expect(created).toMatchObject({ preview: { status: 'queued', pullRequestNumber: 12, commitSha: 'a'.repeat(40) }, operation: { kind: 'preview.create', state: 'queued' } })
-    const listed = await (await call(`/api/v1/previews?projectId=${project.id}`)).json() as any
+    const policy = previews.createDefinition({
+      projectId: project.id,
+      resourceId: productionService.id,
+      baseEnvironmentId: production.id,
+      domainPattern: 'https://{name}.preview.example.com',
+    })
+    const created = (await (
+      await call('/api/v1/previews', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          definitionId: policy.id,
+          repository: 'acme/web',
+          branch: 'feature/api',
+          pullRequestNumber: 12,
+          commitSha: 'a'.repeat(40),
+        }),
+      })
+    ).json()) as any
+    expect(created).toMatchObject({
+      preview: { status: 'queued', pullRequestNumber: 12, commitSha: 'a'.repeat(40) },
+      operation: { kind: 'preview.create', state: 'queued' },
+    })
+    const listed = (await (await call(`/api/v1/previews?projectId=${project.id}`)).json()) as any
     expect(listed.data).toMatchObject([{ id: created.preview.id, latestOperationId: created.operation.id }])
-    const extended = await (await call(`/api/v1/previews/${created.preview.id}/extend`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ hours: 6 }) })).json() as any
-    expect(new Date(extended.preview.expiresAt).getTime()).toBeGreaterThan(new Date(created.preview.expiresAt).getTime())
-    expect(await (await call(`/api/v1/previews/${created.preview.id}/rebuild`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json()).toMatchObject({ operation: { kind: 'preview.update' } })
-    expect((await call(`/api/v1/previews/${created.preview.id}/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'wrong' }) })).status).toBe(409)
-    expect(await (await call(`/api/v1/previews/${created.preview.id}/destroy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: created.preview.name }) })).json()).toMatchObject({ operation: { kind: 'preview.destroy' } })
+    const extended = (await (
+      await call(`/api/v1/previews/${created.preview.id}/extend`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ hours: 6 }),
+      })
+    ).json()) as any
+    expect(new Date(extended.preview.expiresAt).getTime()).toBeGreaterThan(
+      new Date(created.preview.expiresAt).getTime(),
+    )
+    expect(
+      await (
+        await call(`/api/v1/previews/${created.preview.id}/rebuild`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        })
+      ).json(),
+    ).toMatchObject({ operation: { kind: 'preview.update' } })
+    expect(
+      (
+        await call(`/api/v1/previews/${created.preview.id}/destroy`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirm: 'wrong' }),
+        })
+      ).status,
+    ).toBe(409)
+    expect(
+      await (
+        await call(`/api/v1/previews/${created.preview.id}/destroy`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirm: created.preview.name }),
+        })
+      ).json(),
+    ).toMatchObject({ operation: { kind: 'preview.destroy' } })
     controlPlane.close()
   })
 
   it('previews, imports, inspects, and operates Compose applications at resource scope', async () => {
     const { controlPlane, project, production, call } = fixture()
     const source = `services:\n  web:\n    image: acme/web:1.0.0\n    environment:\n      API_TOKEN: \${API_TOKEN}\n  worker:\n    image: acme/worker:1.0.0\n    depends_on: [web]\n`
-    const previewed = await (await call('/api/v1/compose-applications/preview', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }) })).json() as any
+    const previewed = (await (
+      await call('/api/v1/compose-applications/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }),
+      })
+    ).json()) as any
     expect(previewed.result).toMatchObject({ valid: true, manifest: { spec: { dependencyOrder: ['web', 'worker'] } } })
-    const createdResponse = await call('/api/v1/compose-applications', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }) })
+    const createdResponse = await call('/api/v1/compose-applications', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ projectId: project.id, environmentId: production.id, name: 'Commerce', source }),
+    })
     expect(createdResponse.status).toBe(200)
-    const created = await createdResponse.json() as any
-    expect(created.application).toMatchObject({ status: 'ready', redactedSource: expect.not.stringContaining('literal-secret') })
-    const services = await (await call(`/api/v1/compose-applications/${created.application.id}/services`)).json() as any
+    const created = (await createdResponse.json()) as any
+    expect(created.application).toMatchObject({
+      status: 'ready',
+      redactedSource: expect.not.stringContaining('literal-secret'),
+    })
+    const services = (await (
+      await call(`/api/v1/compose-applications/${created.application.id}/services`)
+    ).json()) as any
     expect(services.services.map((service: any) => service.serviceName)).toEqual(['web', 'worker'])
-    expect(await (await call(`/api/v1/compose-applications/${created.application.id}/deploy`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json()).toMatchObject({ operation: { kind: 'compose.deploy' } })
-    expect((await call(`/api/v1/compose-applications/${created.application.id}/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'wrong' }) })).status).toBe(422)
-    expect(await (await call(`/api/v1/compose-applications/${created.application.id}/delete`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: created.application.slug }) })).json()).toMatchObject({ operation: { kind: 'compose.delete', input: { removeVolumes: false } } })
+    expect(
+      await (
+        await call(`/api/v1/compose-applications/${created.application.id}/deploy`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        })
+      ).json(),
+    ).toMatchObject({ operation: { kind: 'compose.deploy' } })
+    expect(
+      (
+        await call(`/api/v1/compose-applications/${created.application.id}/delete`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirm: 'wrong' }),
+        })
+      ).status,
+    ).toBe(422)
+    expect(
+      await (
+        await call(`/api/v1/compose-applications/${created.application.id}/delete`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ confirm: created.application.slug }),
+        })
+      ).json(),
+    ).toMatchObject({ operation: { kind: 'compose.delete', input: { removeVolumes: false } } })
     controlPlane.close()
   })
 
   it('creates, inspects, activates, and health-gates immutable releases', async () => {
     const { controlPlane, organization, project, production, productionService, call } = fixture()
     const releases = new ReleaseStore(controlPlane)
-    const artifact = releases.registerArtifact({ organizationId: organization.id, digest: `sha256:${'a'.repeat(64)}`, kind: 'static', uri: 'oci:acme/web@sha256:immutable', size: 42, provenance: { builder: 'api-test' }, attestation: { verified: true } })
-    const capabilities = await (await call('/api/v1/releases/capabilities?kind=static&health=false&replicas=1')).json() as any
-    expect(capabilities.capabilities).toEqual(expect.arrayContaining([expect.objectContaining({ strategy: 'atomic', supported: true })]))
-    const createdResponse = await call('/api/v1/releases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, resourceId: productionService.id, artifactId: artifact.id, kind: 'static', sourceSha: 'b'.repeat(40), config: { PUBLIC_URL: 'https://example.test', API_TOKEN: 'redact-me' }, manifest: { routes: ['/'] }, strategy: 'atomic' }) })
+    const artifact = releases.registerArtifact({
+      organizationId: organization.id,
+      digest: `sha256:${'a'.repeat(64)}`,
+      kind: 'static',
+      uri: 'oci:acme/web@sha256:immutable',
+      size: 42,
+      provenance: { builder: 'api-test' },
+      attestation: { verified: true },
+    })
+    const capabilities = (await (
+      await call('/api/v1/releases/capabilities?kind=static&health=false&replicas=1')
+    ).json()) as any
+    expect(capabilities.capabilities).toEqual(
+      expect.arrayContaining([expect.objectContaining({ strategy: 'atomic', supported: true })]),
+    )
+    const createdResponse = await call('/api/v1/releases', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: project.id,
+        environmentId: production.id,
+        resourceId: productionService.id,
+        artifactId: artifact.id,
+        kind: 'static',
+        sourceSha: 'b'.repeat(40),
+        config: { PUBLIC_URL: 'https://example.test', API_TOKEN: 'redact-me' },
+        manifest: { routes: ['/'] },
+        strategy: 'atomic',
+      }),
+    })
     expect(createdResponse.status).toBe(200)
-    const created = await createdResponse.json() as any
+    const created = (await createdResponse.json()) as any
     expect(created.release).toMatchObject({ artifactId: artifact.id, status: 'built', sourceSha: 'b'.repeat(40) })
     expect(JSON.stringify(created)).not.toContain('redact-me')
-    const listed = await (await call(`/api/v1/releases?projectId=${project.id}&environmentId=${production.id}`)).json() as any
-    expect(listed.data).toMatchObject([{ id: created.release.id, artifact: { digest: artifact.digest }, transitions: [{ toStatus: 'built' }] }])
-    const detail = await (await call(`/api/v1/releases/${created.release.id}`)).json() as any
-    expect(detail).toMatchObject({ release: { id: created.release.id }, artifact: { attestation: { verified: true } }, approvals: [] })
-    const activation = await (await call(`/api/v1/releases/${created.release.id}/activate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json() as any
-    expect(activation.operation).toMatchObject({ kind: 'release.activate', state: 'queued', resourceId: productionService.id })
-    const healthy = await (await call(`/api/v1/releases/${created.release.id}/health`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ healthy: true, operationId: activation.operation.id, health: { status: 200 } }) })).json() as any
+    const listed = (await (
+      await call(`/api/v1/releases?projectId=${project.id}&environmentId=${production.id}`)
+    ).json()) as any
+    expect(listed.data).toMatchObject([
+      { id: created.release.id, artifact: { digest: artifact.digest }, transitions: [{ toStatus: 'built' }] },
+    ])
+    const detail = (await (await call(`/api/v1/releases/${created.release.id}`)).json()) as any
+    expect(detail).toMatchObject({
+      release: { id: created.release.id },
+      artifact: { attestation: { verified: true } },
+      approvals: [],
+    })
+    const activation = (await (
+      await call(`/api/v1/releases/${created.release.id}/activate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      })
+    ).json()) as any
+    expect(activation.operation).toMatchObject({
+      kind: 'release.activate',
+      state: 'queued',
+      resourceId: productionService.id,
+    })
+    const healthy = (await (
+      await call(`/api/v1/releases/${created.release.id}/health`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ healthy: true, operationId: activation.operation.id, health: { status: 200 } }),
+      })
+    ).json()) as any
     expect(healthy.release).toMatchObject({ status: 'active' })
     controlPlane.close()
   })
 
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/compose-templates', '/api/v1/compose-applications', '/api/v1/compose-applications/preview', '/api/v1/compose-applications/{applicationId}/services', '/api/v1/compose-applications/{applicationId}/{action}', '/api/v1/release-artifacts', '/api/v1/releases', '/api/v1/releases/capabilities', '/api/v1/releases/{releaseId}', '/api/v1/releases/{releaseId}/{action}', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining([
+        '/api/v1/projects',
+        '/api/v1/services',
+        '/api/v1/deployments',
+        '/api/v1/operations',
+        '/api/v1/events',
+        '/api/v1/events/stream',
+        '/api/v1/source/connections',
+        '/api/v1/source/repositories',
+        '/api/v1/source/refs',
+        '/api/v1/source/bindings',
+        '/api/v1/source/webhooks',
+        '/api/v1/application-detections',
+        '/api/v1/application-plans',
+        '/api/v1/application-drafts',
+        '/api/v1/applications',
+        '/api/v1/application-artifacts',
+        '/api/v1/registry-connections',
+        '/api/v1/queue',
+        '/api/v1/queue/settings',
+        '/api/v1/queue/history',
+        '/api/v1/preview-definitions',
+        '/api/v1/previews',
+        '/api/v1/previews/{previewId}/destroy',
+        '/api/v1/previews/{previewId}/extend',
+        '/api/v1/previews/{previewId}/rebuild',
+        '/api/v1/previews/cleanup',
+        '/api/v1/compose-templates',
+        '/api/v1/compose-applications',
+        '/api/v1/compose-applications/preview',
+        '/api/v1/compose-applications/{applicationId}/services',
+        '/api/v1/compose-applications/{applicationId}/{action}',
+        '/api/v1/release-artifacts',
+        '/api/v1/releases',
+        '/api/v1/releases/capabilities',
+        '/api/v1/releases/{releaseId}',
+        '/api/v1/releases/{releaseId}/{action}',
+        '/api/v1/operations/{operationId}/logs',
+        '/api/v1/operations/{operationId}/logs/stream',
+        '/api/v1/operations/{operationId}/cancel',
+        '/api/v1/operations/{operationId}/retry',
+      ]),
+    )
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
-    expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
-    expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
+    expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({
+      name: 'Idempotency-Key',
+      required: true,
+    })
+    expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({
+      name: 'Idempotency-Key',
+      required: true,
+    })
     expect(document.components.schemas.RegistryConnectionRequest.properties.token).toMatchObject({ writeOnly: true })
   })
 })

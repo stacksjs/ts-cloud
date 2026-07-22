@@ -75,7 +75,13 @@ export function header(message: string): void {
 /**
  * Simple spinner
  */
-const isCI = !!(process.env.CI || process.env.GITHUB_ACTIONS || process.env.BUILDKITE || process.env.CIRCLECI || process.env.GITLAB_CI)
+const isCI = !!(
+  process.env.CI ||
+  process.env.GITHUB_ACTIONS ||
+  process.env.BUILDKITE ||
+  process.env.CIRCLECI ||
+  process.env.GITLAB_CI
+)
 
 export class Spinner {
   private frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
@@ -94,8 +100,7 @@ export class Spinner {
   set text(value: string) {
     this.message = value
     // In CI, print each status change as a new line
-    if (isCI && this.interval)
-      console.log(`  ${value}`)
+    if (isCI && this.interval) console.log(`  ${value}`)
   }
 
   start(): void {
@@ -128,10 +133,8 @@ export class Spinner {
 
   stop(): void {
     if (this.interval) {
-      if (!isCI)
-        process.stdout.write('\r')
-      if (typeof this.interval === 'object')
-        clearInterval(this.interval)
+      if (!isCI) process.stdout.write('\r')
+      if (typeof this.interval === 'object') clearInterval(this.interval)
       this.interval = null
     }
   }
@@ -228,7 +231,7 @@ export async function select(message: string, options: string[]): Promise<string
 export function table(headers: string[], rows: string[][]): void {
   // Calculate column widths
   const widths = headers.map((header, i) => {
-    const maxRowWidth = Math.max(...rows.map(row => (row[i] || '').length))
+    const maxRowWidth = Math.max(...rows.map((row) => (row[i] || '').length))
     return Math.max(header.length, maxRowWidth)
   })
 
@@ -248,8 +251,7 @@ export function table(headers: string[], rows: string[][]): void {
  * Format bytes to human readable
  */
 export function formatBytes(bytes: number): string {
-  if (bytes === 0)
-    return '0 B'
+  if (bytes === 0) return '0 B'
 
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -262,18 +264,15 @@ export function formatBytes(bytes: number): string {
  * Format duration to human readable
  */
 export function formatDuration(ms: number): string {
-  if (ms < 1000)
-    return `${ms}ms`
+  if (ms < 1000) return `${ms}ms`
 
   const seconds = Math.floor(ms / 1000)
-  if (seconds < 60)
-    return `${seconds}s`
+  if (seconds < 60) return `${seconds}s`
 
   const minutes = Math.floor(seconds / 60)
   const remainingSeconds = seconds % 60
 
-  if (minutes < 60)
-    return `${minutes}m ${remainingSeconds}s`
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`
 
   const hours = Math.floor(minutes / 60)
   const remainingMinutes = minutes % 60
@@ -286,7 +285,7 @@ export function formatDuration(ms: number): string {
  */
 export function box(message: string, color: keyof typeof colors = 'cyan'): void {
   const lines = message.split('\n')
-  const maxLength = Math.max(...lines.map(line => line.length))
+  const maxLength = Math.max(...lines.map((line) => line.length))
   const border = '─'.repeat(maxLength + 2)
 
   console.log(colorize(`┌${border}┐`, color))
@@ -326,8 +325,7 @@ export async function checkAwsCredentials(): Promise<boolean> {
     })
 
     return true
-  }
-  catch {
+  } catch {
     return false
   }
 }
@@ -352,8 +350,7 @@ export async function getAwsAccountId(): Promise<string | null> {
     })
 
     return result.Account || result.GetCallerIdentityResult?.Account || null
-  }
-  catch {
+  } catch {
     return null
   }
 }
@@ -380,16 +377,13 @@ export async function getAwsRegions(): Promise<string[]> {
     // Parse regions from response
     const regions: string[] = []
     if (result.regionInfo) {
-      const regionData = Array.isArray(result.regionInfo)
-        ? result.regionInfo
-        : [result.regionInfo]
+      const regionData = Array.isArray(result.regionInfo) ? result.regionInfo : [result.regionInfo]
 
       regions.push(...regionData.map((r: any) => r.regionName))
     }
 
     return regions.length > 0 ? regions : getCommonAwsRegions()
-  }
-  catch {
+  } catch {
     // Return common regions as fallback
     return getCommonAwsRegions()
   }

@@ -52,18 +52,15 @@ function fixture() {
 function providerFetch(
   discovery: Record<string, unknown>,
   jwk: object,
-  token: (request: { url: string, init?: RequestInit }) => Record<string, unknown>,
+  token: (request: { url: string; init?: RequestInit }) => Record<string, unknown>,
 ): OidcFetch {
-  return (async (input: string | URL | Request, init?: RequestInit) => {
+  return async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input)
-    if (url.endsWith('/.well-known/openid-configuration'))
-      return json(discovery)
-    if (url.endsWith('/keys'))
-      return json({ keys: [jwk] })
-    if (url.endsWith('/token'))
-      return json(token({ url, init }))
+    if (url.endsWith('/.well-known/openid-configuration')) return json(discovery)
+    if (url.endsWith('/keys')) return json({ keys: [jwk] })
+    if (url.endsWith('/token')) return json(token({ url, init }))
     throw new Error(`Unexpected OIDC request: ${url}`)
-  })
+  }
 }
 
 describe('OIDC authorization code flow', () => {
@@ -74,7 +71,9 @@ describe('OIDC authorization code flow', () => {
     const mockFetch = providerFetch(discovery, jwk, ({ init }) => {
       const body = init?.body as URLSearchParams
       requestBodies.push(body)
-      expect(init?.headers).toMatchObject({ authorization: `Basic ${Buffer.from('ts-cloud:client-secret').toString('base64')}` })
+      expect(init?.headers).toMatchObject({
+        authorization: `Basic ${Buffer.from('ts-cloud:client-secret').toString('base64')}`,
+      })
       return {
         access_token: 'discard-this-access-token',
         refresh_token: 'discard-this-refresh-token',
@@ -92,7 +91,13 @@ describe('OIDC authorization code flow', () => {
         }),
       }
     })
-    const started = await beginOidcAuthorization(auth, 'workforce', ORIGIN, '/projects?environment=production', mockFetch)
+    const started = await beginOidcAuthorization(
+      auth,
+      'workforce',
+      ORIGIN,
+      '/projects?environment=production',
+      mockFetch,
+    )
     const authorization = new URL(started.authorizationUrl)
     nonce = authorization.searchParams.get('nonce')!
 
@@ -100,13 +105,17 @@ describe('OIDC authorization code flow', () => {
     expect(authorization.searchParams.get('code_challenge_method')).toBe('S256')
     expect(authorization.searchParams.get('code_challenge')).toHaveLength(43)
     expect(authorization.searchParams.get('redirect_uri')).toBe(`${ORIGIN}/auth/oidc/workforce/callback`)
-    const completed = await completeOidcAuthorization(auth, {
-      providerSlug: 'workforce',
-      state: authorization.searchParams.get('state')!,
-      code: 'authorization-code',
-      origin: ORIGIN,
-      now: NOW,
-    }, mockFetch)
+    const completed = await completeOidcAuthorization(
+      auth,
+      {
+        providerSlug: 'workforce',
+        state: authorization.searchParams.get('state')!,
+        code: 'authorization-code',
+        origin: ORIGIN,
+        now: NOW,
+      },
+      mockFetch,
+    )
 
     expect(completed).toMatchObject({
       returnPath: '/projects?environment=production',
@@ -114,7 +123,9 @@ describe('OIDC authorization code flow', () => {
     })
     expect(requestBodies[0].get('code_verifier')?.length).toBeGreaterThanOrEqual(43)
     expect(requestBodies[0].get('redirect_uri')).toBe(`${ORIGIN}/auth/oidc/workforce/callback`)
-    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_transactions').get())).not.toContain('discard-this')
+    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_transactions').get())).not.toContain(
+      'discard-this',
+    )
     controlPlane.close()
   })
 
@@ -145,10 +156,26 @@ describe('OIDC authorization code flow', () => {
     const started = await beginOidcAuthorization(auth, 'workforce', ORIGIN, '/', mockFetch)
     const state = new URL(started.authorizationUrl).searchParams.get('state')!
 
-    await expect(completeOidcAuthorization(auth, { providerSlug: 'workforce', state: 'invalid', code: 'code', origin: ORIGIN }, mockFetch)).rejects.toThrow('transaction is invalid')
-    await expect(completeOidcAuthorization(auth, { providerSlug: 'other', state, code: 'code', origin: ORIGIN }, mockFetch)).rejects.toThrow('transaction is invalid')
-    await expect(completeOidcAuthorization(auth, { providerSlug: 'workforce', state, code: 'code', origin: ORIGIN, now: NOW }, mockFetch)).rejects.toThrow('nonce is invalid')
-    await expect(completeOidcAuthorization(auth, { providerSlug: 'workforce', state, code: 'code', origin: ORIGIN }, mockFetch)).rejects.toThrow('consumed')
+    await expect(
+      completeOidcAuthorization(
+        auth,
+        { providerSlug: 'workforce', state: 'invalid', code: 'code', origin: ORIGIN },
+        mockFetch,
+      ),
+    ).rejects.toThrow('transaction is invalid')
+    await expect(
+      completeOidcAuthorization(auth, { providerSlug: 'other', state, code: 'code', origin: ORIGIN }, mockFetch),
+    ).rejects.toThrow('transaction is invalid')
+    await expect(
+      completeOidcAuthorization(
+        auth,
+        { providerSlug: 'workforce', state, code: 'code', origin: ORIGIN, now: NOW },
+        mockFetch,
+      ),
+    ).rejects.toThrow('nonce is invalid')
+    await expect(
+      completeOidcAuthorization(auth, { providerSlug: 'workforce', state, code: 'code', origin: ORIGIN }, mockFetch),
+    ).rejects.toThrow('consumed')
     controlPlane.close()
   })
 
@@ -159,7 +186,10 @@ describe('OIDC authorization code flow', () => {
 
     const unavailable: OidcFetch = async () => json({ error: 'unavailable' }, 503)
     await expect(beginOidcAuthorization(auth, 'workforce', ORIGIN, '/', unavailable)).rejects.toThrow('HTTP 503')
-    expect(controlPlane.database.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM auth_oidc_transactions').get()?.count).toBe(0)
+    expect(
+      controlPlane.database.query<{ count: number }, []>('SELECT COUNT(*) AS count FROM auth_oidc_transactions').get()
+        ?.count,
+    ).toBe(0)
     controlPlane.close()
   })
 

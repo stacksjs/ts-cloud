@@ -22,16 +22,17 @@ function hash(value: string): string {
 function parseCapabilities(value: unknown): AuthorizationCapability[] {
   try {
     const parsed = JSON.parse(String(value)) as unknown[]
-    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string' && CAPABILITIES.has(item)) as AuthorizationCapability[] : []
-  }
-  catch {
+    return Array.isArray(parsed)
+      ? (parsed.filter((item) => typeof item === 'string' && CAPABILITIES.has(item)) as AuthorizationCapability[])
+      : []
+  } catch {
     return []
   }
 }
 
 function scope(row: Row): AuthorizationScope {
   const type = String(row.scope_type) as AuthorizationScope['type']
-  return type === 'organization' ? { type } : { type, id: String(row.scope_id) } as AuthorizationScope
+  return type === 'organization' ? { type } : ({ type, id: String(row.scope_id) } as AuthorizationScope)
 }
 
 function mapServiceAccount(row: Row): ServiceAccount {
@@ -75,8 +76,11 @@ function mapToken(row: Row, now: string): ApiToken {
 
 function mapIdempotency(row: Row): ApiIdempotencyRecord {
   let responseBody: unknown = {}
-  try { responseBody = JSON.parse(String(row.response_body)) }
-  catch { /* invalid historical response is treated as empty */ }
+  try {
+    responseBody = JSON.parse(String(row.response_body))
+  } catch {
+    /* invalid historical response is treated as empty */
+  }
   return {
     id: String(row.id),
     tokenId: String(row.token_id),
@@ -94,26 +98,33 @@ export class AutomationIdentityStore {
   private readonly nowFn: () => Date
   private readonly idFn: () => string
 
-  constructor(private readonly controlPlane: ControlPlaneStore, options: { now?: () => Date, id?: () => string } = {}) {
+  constructor(
+    private readonly controlPlane: ControlPlaneStore,
+    options: { now?: () => Date; id?: () => string } = {},
+  ) {
     this.nowFn = options.now ?? (() => new Date())
     this.idFn = options.id ?? (() => crypto.randomUUID())
   }
 
-  private now(): string { return this.nowFn().toISOString() }
+  private now(): string {
+    return this.nowFn().toISOString()
+  }
 
   private run(sql: string, bindings: SQLQueryBindings[]): void {
     this.controlPlane.database.run(sql, bindings)
   }
 
-  createServiceAccount(input: CreateServiceAccountInput): { serviceAccount: ServiceAccount, membership: ApiTokenPrincipal['membership'] } {
+  createServiceAccount(input: CreateServiceAccountInput): {
+    serviceAccount: ServiceAccount
+    membership: ApiTokenPrincipal['membership']
+  } {
     if (!this.controlPlane.getOrganization(input.organizationId))
       throw new Error('Service-account organization was not found')
     const slug = input.slug.trim().toLowerCase()
     if (!/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug))
       throw new Error('Service-account slug must be 2-48 lowercase letters, numbers or dashes')
     const name = input.name.trim().slice(0, 100)
-    if (!name)
-      throw new Error('Service-account name is required')
+    if (!name) throw new Error('Service-account name is required')
     const actor = this.controlPlane.createActor({
       kind: 'service_account',
       externalId: `service-account:${input.organizationId}:${slug}`,
@@ -125,7 +136,17 @@ export class AutomationIdentityStore {
     this.run(
       `INSERT INTO service_accounts (id, organization_id, actor_id, slug, name, description, created_by_actor_id, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.organizationId, actor.id, slug, name, input.description?.trim().slice(0, 500) || null, input.createdByActorId ?? null, now, now],
+      [
+        id,
+        input.organizationId,
+        actor.id,
+        slug,
+        name,
+        input.description?.trim().slice(0, 500) || null,
+        input.createdByActorId ?? null,
+        now,
+        now,
+      ],
     )
     const membership = this.controlPlane.createMembership({
       organizationId: input.organizationId,
@@ -136,7 +157,16 @@ export class AutomationIdentityStore {
       performedByActorId: input.createdByActorId,
     })
     const membershipScope = input.scope ?? { type: 'organization' as const }
-    this.controlPlane.appendEvent({ organizationId: input.organizationId, actorId: input.createdByActorId, type: 'api.service_account.created', payload: { serviceAccountId: id, roleTemplate: input.roleTemplate, scope: { type: membershipScope.type, id: membershipScope.id ?? null } } })
+    this.controlPlane.appendEvent({
+      organizationId: input.organizationId,
+      actorId: input.createdByActorId,
+      type: 'api.service_account.created',
+      payload: {
+        serviceAccountId: id,
+        roleTemplate: input.roleTemplate,
+        scope: { type: membershipScope.type, id: membershipScope.id ?? null },
+      },
+    })
     return { serviceAccount: this.getServiceAccount(id)!, membership }
   }
 
@@ -146,51 +176,70 @@ export class AutomationIdentityStore {
   }
 
   getServiceAccountBySlug(organizationId: string, slug: string): ServiceAccount | undefined {
-    const row = this.controlPlane.database.query<Row, [string, string]>('SELECT * FROM service_accounts WHERE organization_id = ? AND slug = ? COLLATE NOCASE').get(organizationId, slug.trim())
+    const row = this.controlPlane.database
+      .query<Row, [string, string]>(
+        'SELECT * FROM service_accounts WHERE organization_id = ? AND slug = ? COLLATE NOCASE',
+      )
+      .get(organizationId, slug.trim())
     return row ? mapServiceAccount(row) : undefined
   }
 
   listServiceAccounts(organizationId: string, options: { includeDisabled?: boolean } = {}): ServiceAccount[] {
-    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM service_accounts WHERE organization_id = ? ORDER BY name COLLATE NOCASE').all(organizationId)
-      .map(mapServiceAccount).filter(account => options.includeDisabled || account.state === 'active')
+    return this.controlPlane.database
+      .query<Row, [string]>('SELECT * FROM service_accounts WHERE organization_id = ? ORDER BY name COLLATE NOCASE')
+      .all(organizationId)
+      .map(mapServiceAccount)
+      .filter((account) => options.includeDisabled || account.state === 'active')
   }
 
   disableServiceAccount(id: string, actorId?: string): ServiceAccount {
     const account = this.getServiceAccount(id)
-    if (!account)
-      throw new Error('Service account was not found')
+    if (!account) throw new Error('Service account was not found')
     const now = this.now()
     this.controlPlane.transaction(() => {
       this.run('UPDATE service_accounts SET disabled_at = ?, updated_at = ? WHERE id = ?', [now, now, id])
-      this.run('UPDATE api_tokens SET revoked_at = ?, updated_at = ? WHERE service_account_id = ? AND revoked_at IS NULL', [now, now, id])
+      this.run(
+        'UPDATE api_tokens SET revoked_at = ?, updated_at = ? WHERE service_account_id = ? AND revoked_at IS NULL',
+        [now, now, id],
+      )
       const membership = this.controlPlane.getMembershipForActor(account.organizationId, account.actorId)
-      if (membership?.status === 'active')
-        this.controlPlane.revokeMembership(membership.id)
+      if (membership?.status === 'active') this.controlPlane.revokeMembership(membership.id)
     })
-    this.controlPlane.appendEvent({ organizationId: account.organizationId, actorId, type: 'api.service_account.disabled', payload: { serviceAccountId: id } })
+    this.controlPlane.appendEvent({
+      organizationId: account.organizationId,
+      actorId,
+      type: 'api.service_account.disabled',
+      payload: { serviceAccountId: id },
+    })
     return this.getServiceAccount(id)!
   }
 
-  createToken(input: CreateApiTokenInput): { token: ApiToken, secret: string } {
+  createToken(input: CreateApiTokenInput): { token: ApiToken; secret: string } {
     const account = this.getServiceAccount(input.serviceAccountId)
-    if (!account || account.state !== 'active')
-      throw new Error('Service account is unavailable')
+    if (!account || account.state !== 'active') throw new Error('Service account is unavailable')
     const membership = this.controlPlane.getMembershipForActor(account.organizationId, account.actorId)
-    if (!membership || membership.status !== 'active')
-      throw new Error('Service-account membership is unavailable')
+    if (!membership || membership.status !== 'active') throw new Error('Service-account membership is unavailable')
     const capabilities = [...new Set(input.capabilities)]
-    if (capabilities.length === 0 || capabilities.some(capability => !CAPABILITIES.has(capability)))
+    if (capabilities.length === 0 || capabilities.some((capability) => !CAPABILITIES.has(capability)))
       throw new Error('API token requires valid explicit capabilities')
     const tokenScope = input.scope ?? membership.scope
     const target = this.controlPlane.resolveAuthorizationTarget(account.organizationId, tokenScope)
-    if (!target)
-      throw new Error('API token scope was not found in this organization')
+    if (!target) throw new Error('API token scope was not found in this organization')
     for (const capability of capabilities) {
-      if (!authorizeOrganization({ membership, grants: this.controlPlane.listGrants(membership.id), capability, target }).allowed)
+      if (
+        !authorizeOrganization({ membership, grants: this.controlPlane.listGrants(membership.id), capability, target })
+          .allowed
+      )
         throw new Error(`Service-account membership does not grant ${capability} at the token scope`)
     }
-    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : new Date(this.nowFn().getTime() + API_TOKEN_DEFAULT_TTL_MS)
-    if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= this.nowFn().getTime() + 60_000 || expiresAt.getTime() > this.nowFn().getTime() + API_TOKEN_MAX_TTL_MS)
+    const expiresAt = input.expiresAt
+      ? new Date(input.expiresAt)
+      : new Date(this.nowFn().getTime() + API_TOKEN_DEFAULT_TTL_MS)
+    if (
+      !Number.isFinite(expiresAt.getTime()) ||
+      expiresAt.getTime() <= this.nowFn().getTime() + 60_000 ||
+      expiresAt.getTime() > this.nowFn().getTime() + API_TOKEN_MAX_TTL_MS
+    )
       throw new Error('API token expiry must be between one minute and one year from now')
     const id = this.idFn()
     const raw = randomBytes(32).toString('base64url')
@@ -200,10 +249,36 @@ export class AutomationIdentityStore {
     this.run(
       `INSERT INTO api_tokens (id, service_account_id, name, token_hash, token_prefix, capabilities, scope_type, scope_id,
       expires_at, rotated_from_token_id, created_by_actor_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, account.id, input.name.trim().slice(0, 100) || 'API token', hash(secret), prefix, JSON.stringify(capabilities.sort()), tokenScope.type,
-        tokenScope.type === 'organization' ? null : tokenScope.id ?? null, expiresAt.toISOString(), input.rotatedFromTokenId ?? null, input.createdByActorId ?? null, now, now],
+      [
+        id,
+        account.id,
+        input.name.trim().slice(0, 100) || 'API token',
+        hash(secret),
+        prefix,
+        JSON.stringify(capabilities.sort()),
+        tokenScope.type,
+        tokenScope.type === 'organization' ? null : (tokenScope.id ?? null),
+        expiresAt.toISOString(),
+        input.rotatedFromTokenId ?? null,
+        input.createdByActorId ?? null,
+        now,
+        now,
+      ],
     )
-    this.controlPlane.appendEvent({ organizationId: account.organizationId, actorId: input.createdByActorId, type: 'api.token.created', payload: { serviceAccountId: account.id, tokenId: id, prefix, capabilities, scope: { type: tokenScope.type, id: tokenScope.id ?? null }, expiresAt: expiresAt.toISOString(), rotatedFromTokenId: input.rotatedFromTokenId ?? null } })
+    this.controlPlane.appendEvent({
+      organizationId: account.organizationId,
+      actorId: input.createdByActorId,
+      type: 'api.token.created',
+      payload: {
+        serviceAccountId: account.id,
+        tokenId: id,
+        prefix,
+        capabilities,
+        scope: { type: tokenScope.type, id: tokenScope.id ?? null },
+        expiresAt: expiresAt.toISOString(),
+        rotatedFromTokenId: input.rotatedFromTokenId ?? null,
+      },
+    })
     return { token: this.getToken(id)!, secret }
   }
 
@@ -213,37 +288,48 @@ export class AutomationIdentityStore {
   }
 
   listTokens(serviceAccountId: string, options: { includeInactive?: boolean } = {}): ApiToken[] {
-    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM api_tokens WHERE service_account_id = ? ORDER BY created_at DESC').all(serviceAccountId)
-      .map(row => mapToken(row, this.now())).filter(token => options.includeInactive || token.state === 'active')
+    return this.controlPlane.database
+      .query<Row, [string]>('SELECT * FROM api_tokens WHERE service_account_id = ? ORDER BY created_at DESC')
+      .all(serviceAccountId)
+      .map((row) => mapToken(row, this.now()))
+      .filter((token) => options.includeInactive || token.state === 'active')
   }
 
   verifyToken(secret: string, networkHint?: string): ApiTokenPrincipal | undefined {
     const match = /^tsc_v1\.([^.]+)\.[A-Za-z0-9_-]{40,}$/.exec(secret)
-    if (!match)
-      return undefined
-    const row = this.controlPlane.database.query<Row, [string, string]>('SELECT * FROM api_tokens WHERE id = ? AND token_hash = ?').get(match[1], hash(secret))
-    if (!row)
-      return undefined
+    if (!match) return undefined
+    const row = this.controlPlane.database
+      .query<Row, [string, string]>('SELECT * FROM api_tokens WHERE id = ? AND token_hash = ?')
+      .get(match[1], hash(secret))
+    if (!row) return undefined
     const token = mapToken(row, this.now())
     const serviceAccount = this.getServiceAccount(token.serviceAccountId)
-    if (!serviceAccount || serviceAccount.state !== 'active' || token.state !== 'active')
-      return undefined
+    if (!serviceAccount || serviceAccount.state !== 'active' || token.state !== 'active') return undefined
     const actor = this.controlPlane.getActor(serviceAccount.actorId)
     const membership = this.controlPlane.getMembershipForActor(serviceAccount.organizationId, serviceAccount.actorId)
-    if (!actor || actor.disabledAt || !membership || membership.status !== 'active')
-      return undefined
+    if (!actor || actor.disabledAt || !membership || membership.status !== 'active') return undefined
     const now = this.now()
-    const shouldAuditUse = !token.lastUsedAt || this.nowFn().getTime() - new Date(token.lastUsedAt).getTime() >= 60 * 60 * 1000
-    this.run('UPDATE api_tokens SET last_used_at = ?, last_network_hint = ?, updated_at = ? WHERE id = ?', [now, networkHint?.slice(0, 128) ?? null, now, token.id])
+    const shouldAuditUse =
+      !token.lastUsedAt || this.nowFn().getTime() - new Date(token.lastUsedAt).getTime() >= 60 * 60 * 1000
+    this.run('UPDATE api_tokens SET last_used_at = ?, last_network_hint = ?, updated_at = ? WHERE id = ?', [
+      now,
+      networkHint?.slice(0, 128) ?? null,
+      now,
+      token.id,
+    ])
     if (shouldAuditUse)
-      this.controlPlane.appendEvent({ organizationId: serviceAccount.organizationId, actorId: actor.id, type: 'api.token.used', payload: { serviceAccountId: serviceAccount.id, tokenId: token.id, prefix: token.prefix } })
+      this.controlPlane.appendEvent({
+        organizationId: serviceAccount.organizationId,
+        actorId: actor.id,
+        type: 'api.token.used',
+        payload: { serviceAccountId: serviceAccount.id, tokenId: token.id, prefix: token.prefix },
+      })
     return { serviceAccount, token: this.getToken(token.id)!, actor, membership }
   }
 
-  rotateToken(tokenId: string, createdByActorId?: string): { token: ApiToken, secret: string } {
+  rotateToken(tokenId: string, createdByActorId?: string): { token: ApiToken; secret: string } {
     const current = this.getToken(tokenId)
-    if (!current || current.state !== 'active')
-      throw new Error('Active API token was not found')
+    if (!current || current.state !== 'active') throw new Error('Active API token was not found')
     const rotated = this.createToken({
       serviceAccountId: current.serviceAccountId,
       name: `${current.name} (rotated)`,
@@ -254,25 +340,38 @@ export class AutomationIdentityStore {
       rotatedFromTokenId: current.id,
     })
     const account = this.getServiceAccount(current.serviceAccountId)
-    this.controlPlane.appendEvent({ organizationId: account?.organizationId, actorId: createdByActorId, type: 'api.token.rotated', payload: { serviceAccountId: current.serviceAccountId, previousTokenId: current.id, tokenId: rotated.token.id } })
+    this.controlPlane.appendEvent({
+      organizationId: account?.organizationId,
+      actorId: createdByActorId,
+      type: 'api.token.rotated',
+      payload: { serviceAccountId: current.serviceAccountId, previousTokenId: current.id, tokenId: rotated.token.id },
+    })
     return rotated
   }
 
   revokeToken(tokenId: string, actorId?: string): ApiToken {
     const token = this.getToken(tokenId)
-    if (!token)
-      throw new Error('API token was not found')
+    if (!token) throw new Error('API token was not found')
     if (token.state === 'active') {
       const now = this.now()
       this.run('UPDATE api_tokens SET revoked_at = ?, updated_at = ? WHERE id = ?', [now, now, tokenId])
       const account = this.getServiceAccount(token.serviceAccountId)
-      this.controlPlane.appendEvent({ organizationId: account?.organizationId, actorId, type: 'api.token.revoked', payload: { serviceAccountId: token.serviceAccountId, tokenId } })
+      this.controlPlane.appendEvent({
+        organizationId: account?.organizationId,
+        actorId,
+        type: 'api.token.revoked',
+        payload: { serviceAccountId: token.serviceAccountId, tokenId },
+      })
     }
     return this.getToken(tokenId)!
   }
 
   getIdempotency(tokenId: string, key: string): ApiIdempotencyRecord | undefined {
-    const row = this.controlPlane.database.query<Row, [string, string, string]>('SELECT * FROM api_idempotency_records WHERE token_id = ? AND idempotency_key = ? AND expires_at > ?').get(tokenId, key, this.now())
+    const row = this.controlPlane.database
+      .query<Row, [string, string, string]>(
+        'SELECT * FROM api_idempotency_records WHERE token_id = ? AND idempotency_key = ? AND expires_at > ?',
+      )
+      .get(tokenId, key, this.now())
     return row ? mapIdempotency(row) : undefined
   }
 
@@ -291,15 +390,30 @@ export class AutomationIdentityStore {
     this.run(
       `INSERT INTO api_idempotency_records (id, token_id, idempotency_key, request_hash, operation_id, response_status, response_body, expires_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.tokenId, input.key, input.requestHash, input.operationId ?? null, input.responseStatus, JSON.stringify(input.responseBody), expiresAt, now],
+      [
+        id,
+        input.tokenId,
+        input.key,
+        input.requestHash,
+        input.operationId ?? null,
+        input.responseStatus,
+        JSON.stringify(input.responseBody),
+        expiresAt,
+        now,
+      ],
     )
     return this.getIdempotency(input.tokenId, input.key)!
   }
 
-  purgeExpired(): { tokens: number, idempotency: number } {
+  purgeExpired(): { tokens: number; idempotency: number } {
     const now = this.now()
-    const tokens = this.controlPlane.database.run('DELETE FROM api_tokens WHERE (expires_at < ? OR revoked_at IS NOT NULL) AND created_at < ?', [now, new Date(this.nowFn().getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()]).changes
-    const idempotency = this.controlPlane.database.run('DELETE FROM api_idempotency_records WHERE expires_at < ?', [now]).changes
+    const tokens = this.controlPlane.database.run(
+      'DELETE FROM api_tokens WHERE (expires_at < ? OR revoked_at IS NOT NULL) AND created_at < ?',
+      [now, new Date(this.nowFn().getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()],
+    ).changes
+    const idempotency = this.controlPlane.database.run('DELETE FROM api_idempotency_records WHERE expires_at < ?', [
+      now,
+    ]).changes
     return { tokens, idempotency }
   }
 }
