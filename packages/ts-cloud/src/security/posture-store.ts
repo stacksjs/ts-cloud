@@ -453,12 +453,14 @@ export class SecurityPostureStore {
     const blockers = findings.filter(finding => !activeWaivers.has(finding.id) && actionFor(finding) === 'block')
     const warnings = findings.filter(finding => !activeWaivers.has(finding.id) && actionFor(finding) === 'warn')
 
-    const latestRows = this.controlPlane.database.query<Row, [string, string, string, string, string, string]>(
+    const latestRows = this.controlPlane.database.query<Row, [string, string, string]>(
       `SELECT run.* FROM security_scan_runs run
-      JOIN (SELECT scanner_id, MAX(completed_at) completed_at FROM security_scan_runs WHERE organization_id = ? AND project_id = ? AND environment_id = ? GROUP BY scanner_id) latest
-      ON latest.scanner_id = run.scanner_id AND latest.completed_at = run.completed_at
-      WHERE run.organization_id = ? AND run.project_id = ? AND run.environment_id = ?`,
-    ).all(input.organizationId, input.projectId, input.environmentId, input.organizationId, input.projectId, input.environmentId)
+      WHERE run.organization_id = ? AND run.project_id = ? AND run.environment_id = ?
+      AND run.id = (SELECT candidate.id FROM security_scan_runs candidate
+        WHERE candidate.organization_id = run.organization_id AND candidate.project_id = run.project_id
+        AND candidate.environment_id = run.environment_id AND candidate.scanner_id = run.scanner_id
+        ORDER BY candidate.completed_at DESC, candidate.rowid DESC LIMIT 1)`,
+    ).all(input.organizationId, input.projectId, input.environmentId)
     const staleAfterMs = input.staleAfterMs ?? 24 * 60 * 60 * 1_000
     const nowMs = this.nowFn().getTime()
     const latest = latestRows.map(mapScan).map(run => nowMs - new Date(run.completedAt).getTime() > staleAfterMs ? { ...run, status: 'stale' as const } : run)

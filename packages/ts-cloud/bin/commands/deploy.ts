@@ -26,6 +26,8 @@ import { createCloudDriver } from '../../src/drivers'
 import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { ensureDefaultSecurityPolicies, productionChangeReview, recordPreDeploySecretScan, recordSkippedSecretScan, securityScope, SecurityPostureStore } from '../../src/security'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -286,6 +288,38 @@ function displaySecurityResults(result: ScanResult): void {
   }
 }
 
+function policyEnvironment(config: any, preferred?: string): string {
+  const configured = Object.keys(config.environments ?? {})
+  if (preferred && configured.includes(preferred))
+    return preferred
+  if (configured.includes('production'))
+    return 'production'
+  if (configured[0])
+    return configured[0]
+  throw new Error('A configured environment is required for security policy evaluation')
+}
+
+function enforceSecurityPolicy(config: any, environmentValue: string | undefined, scan?: ScanResult): { allowed: boolean, explanation: string } {
+  const environment = policyEnvironment(config, environmentValue)
+  const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+  try {
+    const posture = new SecurityPostureStore(controlPlane.store)
+    ensureDefaultSecurityPolicies(controlPlane)
+    const scope = securityScope(controlPlane, environment)
+    if (scan)
+      recordPreDeploySecretScan(posture, scope, scan)
+    else
+      recordSkippedSecretScan(posture, scope)
+    const review = productionChangeReview(posture, { scope, desiredConfigHash: controlPlane.project.desiredConfigHash })
+    cli.info(`Security policy: ${review.decision.policyId} v${review.decision.policyVersion} — ${review.decision.outcome.toUpperCase()}`)
+    cli.info(`Security decision: ${review.decision.explanation}`)
+    return { allowed: review.decision.outcome !== 'block', explanation: review.decision.explanation }
+  }
+  finally {
+    controlPlane.store.close()
+  }
+}
+
 export function registerDeployCommands(app: CLI): void {
   // Security scan command
   app
@@ -419,28 +453,28 @@ export function registerDeployCommands(app: CLI): void {
         }
 
         // Run security scan before deployment (unless skipped)
+        let policyScan: ScanResult | undefined
         if (!options?.skipSecurityScan) {
           const projectRoot = process.cwd()
-          const { passed, result } = await runSecurityScan({
+          const { result } = await runSecurityScan({
             sourceDir: projectRoot,
             failOnSeverity: options?.securityFailOn || 'critical',
           })
 
           displaySecurityResults(result)
-
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
-            cli.info('To change sensitivity, use --security-fail-on <severity>')
-            process.exitCode = 1
-            return
-          }
-
-          cli.success('✓ Security scan passed\n')
+          policyScan = result
         }
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
+        const securityDecision = enforceSecurityPolicy(config, environment, policyScan)
+        if (!securityDecision.allowed) {
+          cli.error(`\n✗ Deployment blocked by security policy: ${securityDecision.explanation}`)
+          cli.info('Remediate the findings or create an authorized, time-limited waiver in the Security posture center.')
+          process.exitCode = 1
+          return
+        }
+        cli.success('✓ Security policy allows this deployment\n')
 
         // Server and serverless are mutually exclusive. When the project is a
         // serverless app (`environments.<env>.app`), `cloud deploy` routes to the
@@ -1663,30 +1697,29 @@ https://console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/stac
         const source = options?.source || 'dist'
 
         // Run security scan on the source directory before deployment
+        let policyScan: ScanResult | undefined
         if (!options?.skipSecurityScan) {
           cli.step('Scanning source directory for leaked secrets...')
 
-          const { passed, result } = await runSecurityScan({
+          const { result } = await runSecurityScan({
             sourceDir: source,
             failOnSeverity: options?.securityFailOn || 'critical',
           })
 
           displaySecurityResults(result)
-
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nPotential secrets detected in frontend build:')
-            cli.info('  - API keys, tokens, or credentials may be bundled in your code')
-            cli.info('  - These would be publicly accessible once deployed')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
-            return
-          }
-
-          cli.success('✓ Security scan passed\n')
+          policyScan = result
         }
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
+        const securityDecision = enforceSecurityPolicy(config, undefined, policyScan)
+        if (!securityDecision.allowed) {
+          cli.error(`\n✗ Static deployment blocked by security policy: ${securityDecision.explanation}`)
+          cli.info('Remediate the findings or create an authorized, time-limited waiver in the Security posture center.')
+          process.exitCode = 1
+          return
+        }
+        cli.success('✓ Security policy allows this deployment\n')
         const bucket = options?.bucket
         const distributionId = options?.distribution
         const prefix = options?.prefix
@@ -1836,30 +1869,29 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         }
 
         // Run security scan on the build context before deployment
+        let policyScan: ScanResult | undefined
         if (!options?.skipSecurityScan) {
           cli.step('Scanning build context for leaked secrets...')
 
-          const { passed, result } = await runSecurityScan({
+          const { result } = await runSecurityScan({
             sourceDir: context,
             failOnSeverity: options?.securityFailOn || 'critical',
           })
 
           displaySecurityResults(result)
-
-          if (!passed) {
-            cli.error('\n✗ Security scan failed - deployment blocked')
-            cli.info('\nPotential secrets detected in container build context:')
-            cli.info('  - Credentials may be baked into the Docker image')
-            cli.info('  - Use Docker secrets or environment variables instead')
-            cli.info('\nTo proceed anyway, use --skip-security-scan flag')
-            return
-          }
-
-          cli.success('✓ Security scan passed\n')
+          policyScan = result
         }
         else {
           cli.warn('Security scan skipped (--skip-security-scan)\n')
         }
+        const securityDecision = enforceSecurityPolicy(config, undefined, policyScan)
+        if (!securityDecision.allowed) {
+          cli.error(`\n✗ Container deployment blocked by security policy: ${securityDecision.explanation}`)
+          cli.info('Remediate the findings or create an authorized, time-limited waiver in the Security posture center.')
+          process.exitCode = 1
+          return
+        }
+        cli.success('✓ Security policy allows this deployment\n')
 
         cli.info(`Cluster: ${cluster}`)
         cli.info(`Service: ${service}`)
