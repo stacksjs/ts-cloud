@@ -45,6 +45,8 @@ export interface Task {
   taskArn?: string
   taskDefinitionArn?: string
   clusterArn?: string
+  /** ECS sets this to `service:<serviceName>` for service-owned tasks. */
+  group?: string
   lastStatus?: string
   desiredStatus?: string
   containers?: Container[]
@@ -70,7 +72,7 @@ export class ECSClient {
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(undefined, { profile })
   }
 
   /**
@@ -100,9 +102,10 @@ export class ECSClient {
   /**
    * List ECS services in a cluster
    */
-  async listServices(cluster: string): Promise<{ serviceArns?: string[] }> {
+  async listServices(cluster: string, options: { nextToken?: string, maxResults?: number } = {}): Promise<{ serviceArns?: string[], nextToken?: string }> {
     const params: Record<string, any> = {
       cluster,
+      ...options,
     }
 
     const result = await this.client.request({
@@ -123,9 +126,10 @@ export class ECSClient {
   /**
    * List tasks in a cluster
    */
-  async listTasks(cluster: string, serviceName?: string): Promise<{ taskArns?: string[] }> {
+  async listTasks(cluster: string, serviceName?: string, options: { nextToken?: string, maxResults?: number } = {}): Promise<{ taskArns?: string[], nextToken?: string }> {
     const params: Record<string, any> = {
       cluster,
+      ...options,
     }
 
     if (serviceName) {
@@ -317,7 +321,7 @@ export class ECSClient {
   /**
    * List ECS clusters
    */
-  async listClusters(): Promise<{ clusterArns?: string[] }> {
+  async listClusters(options: { nextToken?: string, maxResults?: number } = {}): Promise<{ clusterArns?: string[], nextToken?: string }> {
     const result = await this.client.request({
       service: 'ecs',
       region: this.region,
@@ -327,7 +331,7 @@ export class ECSClient {
         'X-Amz-Target': 'AmazonEC2ContainerServiceV20141113.ListClusters',
         'Content-Type': 'application/x-amz-json-1.1',
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify(options),
     })
 
     return result

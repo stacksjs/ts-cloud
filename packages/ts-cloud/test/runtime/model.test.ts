@@ -54,6 +54,18 @@ describe('container and cloud adapter fixtures', () => {
     expect(workload.capabilities.scale.supported).toBeTrue()
   })
 
+  it('does not attach another ECS service task to this workload', () => {
+    const workloads = ecsWorkloads([
+      { serviceName: 'api', clusterArn: 'cluster', status: 'ACTIVE', desiredCount: 1, runningCount: 1 },
+      { serviceName: 'worker', clusterArn: 'cluster', status: 'ACTIVE', desiredCount: 1, runningCount: 1 },
+    ], [
+      { taskArn: 'api-task', clusterArn: 'cluster', group: 'service:api', lastStatus: 'RUNNING' },
+      { taskArn: 'worker-task', clusterArn: 'cluster', group: 'service:worker', lastStatus: 'RUNNING' },
+    ], context)
+    expect(workloads.find(item => item.name === 'api')?.replicas.map(item => item.name)).toEqual(['api-task'])
+    expect(workloads.find(item => item.name === 'worker')?.replicas.map(item => item.name)).toEqual(['worker-task'])
+  })
+
   it('maps Lambda without exposing environment values', () => {
     const [workload] = lambdaWorkloads([{ FunctionName: 'acme-production-http', FunctionArn: 'arn:lambda:http', Runtime: 'provided.al2023', State: 'Active', MemorySize: 1024, Environment: { Variables: { APP_ENV: 'prod', DB_PASSWORD: 'hidden' } } }], context)
     expect(workload).toMatchObject({ provider: 'lambda', kind: 'function', status: 'running', runtime: 'provided.al2023' })

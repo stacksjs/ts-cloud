@@ -1,6 +1,7 @@
 export * from './model'
 export * from './normalize'
 export * from './inventory'
+export * from './service'
 export * from './adapters/systemd'
 export * from './adapters/docker'
 export * from './adapters/aws'

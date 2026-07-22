@@ -40,7 +40,7 @@ export function parseSystemdRecords(output: string): SystemdUnitRecord[] {
   return records
 }
 
-export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeDiscoveryContext, sourceId = context.server ?? 'local'): RuntimeWorkload[] {
+export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeDiscoveryContext, sourceId: string = context.server ?? 'local'): RuntimeWorkload[] {
   const now = context.now ?? new Date()
   return records.map((record) => {
     const status = normalizeRuntimeStatus(record.active === 'active' ? record.sub || record.active : record.active)

@@ -10,7 +10,10 @@ export function ecsWorkloads(services: EcsService[], tasks: EcsTask[], context: 
   const now = context.now ?? new Date()
   return services.map((service) => {
     const name = service.serviceName ?? arnName(service.serviceArn)
-    const serviceTasks = tasks.filter(task => !service.clusterArn || task.clusterArn === service.clusterArn)
+    const clusterTasks = tasks.filter(task => !service.clusterArn || task.clusterArn === service.clusterArn)
+    const serviceTasks = clusterTasks.some(task => !!task.group)
+      ? clusterTasks.filter(task => task.group === `service:${name}`)
+      : clusterTasks
     const status = service.status === 'ACTIVE'
       ? ((service.runningCount ?? 0) < (service.desiredCount ?? 0) ? 'degraded' : 'running')
       : normalizeRuntimeStatus(service.status)

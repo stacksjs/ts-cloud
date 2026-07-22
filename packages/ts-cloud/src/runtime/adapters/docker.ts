@@ -40,7 +40,7 @@ function dockerMounts(record: DockerInspectRecord): RuntimeMount[] {
   return (record.Mounts ?? []).filter(mount => !!mount.Destination).map(mount => ({ source: mount.Source, target: mount.Destination!, type: mount.Type, readOnly: mount.RW === false }))
 }
 
-export function dockerWorkloads(records: DockerInspectRecord[], context: RuntimeDiscoveryContext, sourceId = context.server ?? 'local'): RuntimeWorkload[] {
+export function dockerWorkloads(records: DockerInspectRecord[], context: RuntimeDiscoveryContext, sourceId: string = context.server ?? 'local'): RuntimeWorkload[] {
   const now = context.now ?? new Date()
   return records.map((record) => {
     const rawStatus = record.State?.OOMKilled ? 'oomkilled' : (record.State?.Restarting ? 'starting' : record.State?.Status)
