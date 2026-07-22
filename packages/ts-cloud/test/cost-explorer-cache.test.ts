@@ -57,6 +57,13 @@ describe('cost explorer cache', () => {
     expect(loadCache('alice', otherKey)).toBeNull()
   })
 
+  it('includes filters in the cache identity', () => {
+    const filtered: CostCacheKey = { ...baseKey, filter: { Dimensions: { Key: 'SERVICE', Values: ['EC2'] } } }
+    saveCache('alice', filtered, [{ service: 'EC2', amount: 10 }])
+    expect(loadCache('alice', baseKey)).toBeNull()
+    expect(loadCache('alice', filtered)).not.toBeNull()
+  })
+
   it('canonicalizes order-insensitive params', () => {
     saveCache('alice', baseKey, [{ service: 'S3', amount: 10 }])
     const reordered: CostCacheKey = {

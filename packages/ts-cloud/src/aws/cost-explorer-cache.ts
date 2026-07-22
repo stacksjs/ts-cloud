@@ -31,6 +31,7 @@ export interface CostCacheKey {
   granularity: string
   metrics: string[]
   groupBy: Array<{ Type: string; Key: string }>
+  filter?: unknown
 }
 
 interface CacheEntry<T> {
@@ -62,6 +63,7 @@ function hashKey(key: CostCacheKey): string {
     g: key.granularity,
     m: [...key.metrics].sort(),
     gb: [...key.groupBy].map((g) => `${g.Type}:${g.Key}`).sort(),
+    f: key.filter ?? null,
   }
   return createHash('sha256').update(JSON.stringify(canonical)).digest('hex').slice(0, 24)
 }
