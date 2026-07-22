@@ -1,7 +1,7 @@
 import type { JsonValue } from '../control-plane'
 
 export type ApplicationSource =
-  | { kind: 'git', connectionId: string, repositoryId: string, repositoryFullName: string, ref: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, sparsePaths?: string[] }
+  | { kind: 'git', connectionId: string, repositoryId: string, repositoryFullName: string, ref: string, monorepoRoot?: string, includePaths?: string[], excludePaths?: string[], submodules?: boolean, sparsePaths?: string[], deployKeyId?: string }
   | { kind: 'local', root: string }
   | { kind: 'artifact', artifactId: string, filename: string, sha256: string, size: number }
   | { kind: 'image', image: string, registryConnectionId?: string, digest?: string }

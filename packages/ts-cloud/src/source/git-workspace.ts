@@ -96,16 +96,23 @@ export async function discoverGitRefs(remoteValue: string, options: GitTransport
 }
 
 /** Clone/fetch is argv-only, timeout-bounded, non-interactive, and never embeds credentials in the remote URL. */
-export async function cloneSourceBinding(input: { remote: string, binding: SourceBinding, destination: string, ref?: string }, options: GitTransportOptions = {}): Promise<ClonedSource> {
+export async function cloneSourceBinding(input: { remote: string, binding: SourceBinding, destination: string, ref?: string, sparsePaths?: string[] }, options: GitTransportOptions = {}): Promise<ClonedSource> {
   const remote = validateRemote(input.remote, options.deployKey)
   const destination = resolve(input.destination)
   const reference = input.ref?.trim() || input.binding.defaultBranch
   if (!/^[A-Za-z0-9._/-]{1,255}$/.test(reference) || reference.startsWith('-') || reference.includes('..')) throw new Error('Git ref contains unsupported characters')
   const args = ['clone', '--no-tags', '--single-branch', '--branch', reference]
+  const sparsePaths = [...new Set(input.sparsePaths ?? [])]
+  if (sparsePaths.some(path => !path || path.startsWith('/') || path.split('/').includes('..') || /[\0\r\n]/.test(path))) throw new Error('Sparse checkout paths must stay inside the repository')
+  if (sparsePaths.length) args.push('--filter=blob:none', '--no-checkout')
   if (input.binding.cloneDepth) args.push('--depth', String(input.binding.cloneDepth))
   if (input.binding.submodules) args.push('--recurse-submodules', '--shallow-submodules')
   args.push('--', remote, destination)
   await runGit(args, remote, options)
+  if (sparsePaths.length) {
+    await runGit(['-C', destination, 'sparse-checkout', 'set', '--cone', '--', ...sparsePaths], remote, options)
+    await runGit(['-C', destination, 'checkout', '--force'], remote, options)
+  }
   const commitSha = (await runGit(['-C', destination, 'rev-parse', 'HEAD'], remote, options)).trim()
   if (!/^[a-f0-9]{40,64}$/i.test(commitSha)) throw new Error('Git clone did not produce a valid commit SHA')
   return { directory: input.binding.monorepoRoot === '.' ? destination : join(destination, input.binding.monorepoRoot), commitSha }

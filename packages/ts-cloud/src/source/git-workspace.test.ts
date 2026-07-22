@@ -60,6 +60,17 @@ case "$*" in *rev-parse*) printf '${'e'.repeat(40)}\\n';; *clone*) exit 0;; *) e
     finally { rmSync(fake.directory, { recursive: true, force: true }) }
   })
 
+  it('uses safe cone-mode sparse checkout when paths are selected', async () => {
+    const fake = executable(`
+case "$*" in *rev-parse*) printf '${'f'.repeat(40)}\n';; *clone*--filter=blob:none*--no-checkout*) exit 0;; *sparse-checkout*set*--cone*apps/web*) exit 0;; *checkout*--force*) exit 0;; *) exit 24;; esac
+`)
+    try {
+      expect(await cloneSourceBinding({ remote: 'https://git.example/acme/web.git', binding: binding(), destination: join(fake.directory, 'sparse'), sparsePaths: ['apps/web'], ref: 'main' }, { executable: fake.path })).toMatchObject({ commitSha: 'f'.repeat(40) })
+      expect(cloneSourceBinding({ remote: 'https://git.example/acme/web.git', binding: binding(), destination: join(fake.directory, 'unsafe-sparse'), sparsePaths: ['../secret'] }, { executable: fake.path })).rejects.toThrow('Sparse checkout paths')
+    }
+    finally { rmSync(fake.directory, { recursive: true, force: true }) }
+  })
+
   it('bounds hung Git processes and rejects secret-bearing remotes and unsafe refs', async () => {
     const fake = executable('sleep 2')
     try {

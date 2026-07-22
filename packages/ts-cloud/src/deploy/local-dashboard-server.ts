@@ -16,7 +16,7 @@ import { AutomationIdentityStore } from '../automation'
 import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
-import { listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
+import { cloneSourceBinding, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
@@ -1376,6 +1376,19 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         if (url.pathname === '/api/onboarding/detect' && req.method === 'POST') {
           const body = await readJsonBody(req)
           try {
+            if (body.source?.kind === 'git') {
+              const connection = sourceConnections.getConnection(String(body.source.connectionId ?? '')); const repository = sourceConnections.getRepository(String(body.source.repositoryId ?? ''))
+              if (!connection || connection.organizationId !== controlPlane.organization.id || !repository || repository.connectionId !== connection.id) throw new Error('Authorized Git repository was not found')
+              const deployKey = typeof body.source.deployKeyId === 'string' ? sourceConnections.getDeployKey(body.source.deployKeyId) : undefined
+              if (deployKey && deployKey.connectionId !== connection.id) throw new Error('Deploy key does not belong to this connection')
+              const temporary = mkdtempSync(join(tmpdir(), 'ts-cloud-onboarding-git-'))
+              try {
+                const cloned = await cloneSourceBinding({ remote: repository.cloneUrl, destination: join(temporary, 'checkout'), ref: String(body.source.ref ?? repository.defaultBranch), sparsePaths: Array.isArray(body.source.sparsePaths) ? body.source.sparsePaths.map(String) : undefined, binding: { id: 'detection', projectId: controlPlane.project.id, connectionId: connection.id, repositoryId: repository.id, repositoryFullName: repository.fullName, defaultBranch: repository.defaultBranch, monorepoRoot: String(body.source.monorepoRoot ?? '.'), includePaths: [], excludePaths: [], submodules: body.source.submodules === true, cloneDepth: 1, deployKeyId: deployKey?.id, autoDeploy: false, pullRequestPreviews: false, status: 'active', version: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+                }, { credential: sourceConnections.getCredential(connection.id), deployKey: deployKey ? { ...deployKey, privateKey: sourceConnections.getDeployPrivateKey(deployKey.id) } : undefined, timeoutMs: 120_000 })
+                return json({ ok: true, commitSha: cloned.commitSha, candidates: detectApplication(scanApplicationDirectory(cloned.directory)) })
+              }
+              finally { rmSync(temporary, { recursive: true, force: true }) }
+            }
             if (Array.isArray(body.files)) {
               if (body.files.length > 10_000) throw new Error('Detection file-count limit exceeded')
               const files = body.files.map((item: any) => ({ path: String(item.path ?? ''), size: Number(item.size ?? 0), content: typeof item.content === 'string' ? item.content.slice(0, 256 * 1024) : undefined }))
