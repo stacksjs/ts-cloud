@@ -138,7 +138,12 @@ describe('HetznerDriver', () => {
 
   it('provisions server + firewall and writes local state', async () => {
     const client = mockHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const outputs = await driver.provisionComputeInfrastructure!({
       config: baseConfig,
@@ -171,14 +176,17 @@ describe('HetznerDriver', () => {
       server_type: { name: 'cx22' },
       datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
     })
-    const createServer = mock(async () => { throw new Error('must not create a server') })
-    const createFirewall = mock(async () => { throw new Error('must not create a firewall') })
-    const createSshKey = mock(async () => { throw new Error('must not create an SSH key') })
+    const createServer = mock(async () => {
+      throw new Error('must not create a server')
+    })
+    const createFirewall = mock(async () => {
+      throw new Error('must not create a firewall')
+    })
+    const createSshKey = mock(async () => {
+      throw new Error('must not create an SSH key')
+    })
     const client = mockHetznerClient({
-      listServers: mock(async () => [
-        ownerServer(501, 'app', '203.0.113.50'),
-        ownerServer(502, 'lb', '203.0.113.51'),
-      ]),
+      listServers: mock(async () => [ownerServer(501, 'app', '203.0.113.50'), ownerServer(502, 'lb', '203.0.113.51')]),
       createServer,
       createFirewall,
       createSshKey,
@@ -203,26 +211,39 @@ describe('HetznerDriver', () => {
     expect(state.appServerIds).toEqual([501])
     expect(state.lbServerId).toBe(502)
 
-    expect((await driver.findComputeTargets({
-      slug: 'white-paper',
-      environment: 'production',
-      role: 'app',
-      stackName: attachedStack,
-    })).map(target => target.id)).toEqual(['501'])
-    expect((await driver.findComputeTargets({
-      slug: 'white-paper',
-      environment: 'production',
-      role: 'lb',
-      stackName: attachedStack,
-    })).map(target => target.id)).toEqual(['502'])
+    expect(
+      (
+        await driver.findComputeTargets({
+          slug: 'white-paper',
+          environment: 'production',
+          role: 'app',
+          stackName: attachedStack,
+        })
+      ).map((target) => target.id),
+    ).toEqual(['501'])
+    expect(
+      (
+        await driver.findComputeTargets({
+          slug: 'white-paper',
+          environment: 'production',
+          role: 'lb',
+          stackName: attachedStack,
+        })
+      ).map((target) => target.id),
+    ).toEqual(['502'])
   })
 
   it('stages each site under a site-specific path so a shared SHA cannot collide', async () => {
     const client = mockHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     // Capture the remote staging path scp targets, without touching the network.
-    const scpCalls: Array<{ localPath: string, remotePath: string }> = []
+    const scpCalls: Array<{ localPath: string; remotePath: string }> = []
     ;(driver as any).scpToHost = (_host: string, localPath: string, remotePath: string) => {
       scpCalls.push({ localPath, remotePath })
     }
@@ -232,12 +253,18 @@ describe('HetznerDriver', () => {
     // Two distinct sites, SAME commit SHA — the real production case that
     // cross-contaminated releases when the staging file dropped the site name.
     const a = await driver.uploadRelease!({
-      config: baseConfig, environment: 'production', targets,
-      localPath: '/tmp/my-app-verygoodadblock.tar.gz', remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
+      config: baseConfig,
+      environment: 'production',
+      targets,
+      localPath: '/tmp/my-app-verygoodadblock.tar.gz',
+      remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
     })
     const b = await driver.uploadRelease!({
-      config: baseConfig, environment: 'production', targets,
-      localPath: '/tmp/my-app-verygoodadblockWww.tar.gz', remoteKey: `releases/verygoodadblockWww/${sha}.tar.gz`,
+      config: baseConfig,
+      environment: 'production',
+      targets,
+      localPath: '/tmp/my-app-verygoodadblockWww.tar.gz',
+      remoteKey: `releases/verygoodadblockWww/${sha}.tar.gz`,
     })
 
     // The two staging paths must differ (each carries its site name), so the
@@ -245,7 +272,7 @@ describe('HetznerDriver', () => {
     expect(a.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblock-${sha}.tar.gz`)
     expect(b.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblockWww-${sha}.tar.gz`)
     expect(a.artifactRef).not.toBe(b.artifactRef)
-    expect(scpCalls.map(c => c.remotePath)).toEqual([a.artifactRef, b.artifactRef])
+    expect(scpCalls.map((c) => c.remotePath)).toEqual([a.artifactRef, b.artifactRef])
   })
 
   it('does not provision a gateway by default (no proxy configured)', async () => {
@@ -262,7 +289,12 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -285,7 +317,12 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const config: CloudConfig = {
       ...baseConfig,
@@ -327,7 +364,12 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createSshKey, createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -338,13 +380,17 @@ describe('HetznerDriver', () => {
   })
 
   it('reuses an already-registered SSH key instead of creating a duplicate', async () => {
-    const createSshKey = mock(async () => { throw new Error('should not create a new SSH key') })
-    const listSshKeys = mock(async () => [{
-      id: 7,
-      name: 'existing',
-      fingerprint: 'aa:bb:cc',
-      public_key: `${TEST_PUBLIC_KEY} a-different-comment`,
-    }])
+    const createSshKey = mock(async () => {
+      throw new Error('should not create a new SSH key')
+    })
+    const listSshKeys = mock(async () => [
+      {
+        id: 7,
+        name: 'existing',
+        fingerprint: 'aa:bb:cc',
+        public_key: `${TEST_PUBLIC_KEY} a-different-comment`,
+      },
+    ])
     const createServer = mock(async () => ({
       server: {
         id: 42,
@@ -358,7 +404,12 @@ describe('HetznerDriver', () => {
       action: { id: 1, status: 'running' as const },
     }))
     const client = mockHetznerClient({ createSshKey, listSshKeys, createServer })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -371,26 +422,28 @@ describe('HetznerDriver', () => {
     const client = mockHetznerClient()
     const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: `${tempCwd}/missing.pub` })
 
-    await expect(driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' }))
-      .rejects
-      .toThrow(/SSH public key not found/)
+    await expect(
+      driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' }),
+    ).rejects.toThrow(/SSH public key not found/)
   })
 
   it('finds compute targets by ts-cloud labels', async () => {
     const client = mockHetznerClient({
-      listServers: mock(async () => [{
-        id: 7,
-        name: 'my-app-production-app',
-        status: 'running',
-        public_net: { ipv4: { ip: '203.0.113.7' } },
-        labels: {
-          'ts-cloud/project': 'my-app',
-          'ts-cloud/environment': 'production',
-          'ts-cloud/role': 'app',
+      listServers: mock(async () => [
+        {
+          id: 7,
+          name: 'my-app-production-app',
+          status: 'running',
+          public_net: { ipv4: { ip: '203.0.113.7' } },
+          labels: {
+            'ts-cloud/project': 'my-app',
+            'ts-cloud/environment': 'production',
+            'ts-cloud/role': 'app',
+          },
+          server_type: { name: 'cx22' },
+          datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
         },
-        server_type: { name: 'cx22' },
-        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
-      }]),
+      ]),
     })
 
     const driver = new HetznerDriver({ client, apiToken: 'test-token' })
@@ -400,13 +453,15 @@ describe('HetznerDriver', () => {
       role: 'app',
     })
 
-    expect(targets).toEqual([{
-      id: '7',
-      name: 'my-app-production-app',
-      publicIp: '203.0.113.7',
-      privateIp: undefined,
-      status: 'running',
-    }])
+    expect(targets).toEqual([
+      {
+        id: '7',
+        name: 'my-app-production-app',
+        publicIp: '203.0.113.7',
+        privateIp: undefined,
+        status: 'running',
+      },
+    ])
   })
 
   it('pins targets from driver state when the box is shared (labels belong to another project)', async () => {
@@ -436,13 +491,16 @@ describe('HetznerDriver', () => {
     })
 
     await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
-    await writeFile(driverStatePath(stackName), JSON.stringify({
-      provider: 'hetzner',
-      stackName,
-      serverId: 501,
-      serverName: 'stacks-production-app',
-      publicIp: '203.0.113.50',
-    }))
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 501,
+        serverName: 'stacks-production-app',
+        publicIp: '203.0.113.50',
+      }),
+    )
 
     const driver = new HetznerDriver({ client, apiToken: 'test-token' })
     const targets = await driver.findComputeTargets({
@@ -451,7 +509,7 @@ describe('HetznerDriver', () => {
       role: 'app',
     })
 
-    expect(targets.map(t => t.id)).toEqual(['501'])
+    expect(targets.map((t) => t.id)).toEqual(['501'])
     expect(targets[0]?.publicIp).toBe('203.0.113.50')
   })
 
@@ -472,15 +530,20 @@ describe('HetznerDriver', () => {
     }
     const client = mockHetznerClient({
       listServers: mock(async () => [survivor]),
-      getServer: mock(async () => { throw new Error('server 999 gone') }),
+      getServer: mock(async () => {
+        throw new Error('server 999 gone')
+      }),
     })
 
     await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
-    await writeFile(driverStatePath(stackName), JSON.stringify({
-      provider: 'hetzner',
-      stackName,
-      serverId: 999,
-    }))
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 999,
+      }),
+    )
 
     const driver = new HetznerDriver({ client, apiToken: 'test-token' })
     const targets = await driver.findComputeTargets({
@@ -489,22 +552,27 @@ describe('HetznerDriver', () => {
       role: 'app',
     })
 
-    expect(targets.map(t => t.id)).toEqual(['700'])
+    expect(targets.map((t) => t.id)).toEqual(['700'])
   })
 
   it('reuses existing state instead of creating duplicate servers', async () => {
     await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
-    await writeFile(driverStatePath(stackName), JSON.stringify({
-      provider: 'hetzner',
-      stackName,
-      serverId: 42,
-      serverName: 'my-app-production-app',
-      firewallId: 10,
-      publicIp: '203.0.113.10',
-      deployStoragePath: '/var/ts-cloud/staging',
-    }))
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 42,
+        serverName: 'my-app-production-app',
+        firewallId: 10,
+        publicIp: '203.0.113.10',
+        deployStoragePath: '/var/ts-cloud/staging',
+      }),
+    )
 
-    const createServer = mock(async () => { throw new Error('should not create server') })
+    const createServer = mock(async () => {
+      throw new Error('should not create server')
+    })
     const client = mockHetznerClient({ createServer })
     const driver = new HetznerDriver({ client, apiToken: 'test-token' })
 
@@ -520,24 +588,33 @@ describe('HetznerDriver', () => {
   it('does not create a duplicate server when one already exists (no local state)', async () => {
     // Simulate CI on a fresh checkout: no .ts-cloud/state, but a server with
     // matching ts-cloud labels already exists in the Hetzner project.
-    const createServer = mock(async () => { throw new Error('should not create server') })
+    const createServer = mock(async () => {
+      throw new Error('should not create server')
+    })
     const client = mockHetznerClient({
       createServer,
-      listServers: mock(async () => [{
-        id: 77,
-        name: 'my-app-production-app',
-        status: 'running',
-        public_net: { ipv4: { ip: '203.0.113.77' } },
-        labels: {
-          'ts-cloud/project': 'my-app',
-          'ts-cloud/environment': 'production',
-          'ts-cloud/role': 'app',
+      listServers: mock(async () => [
+        {
+          id: 77,
+          name: 'my-app-production-app',
+          status: 'running',
+          public_net: { ipv4: { ip: '203.0.113.77' } },
+          labels: {
+            'ts-cloud/project': 'my-app',
+            'ts-cloud/environment': 'production',
+            'ts-cloud/role': 'app',
+          },
+          server_type: { name: 'cx22' },
+          datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
         },
-        server_type: { name: 'cx22' },
-        datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
-      }]),
+      ]),
     })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const outputs = await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
@@ -551,22 +628,29 @@ describe('HetznerDriver', () => {
   })
 
   it('reuses an existing firewall (updating its rules) instead of creating one', async () => {
-    const createFirewall = mock(async () => { throw new Error('should not create firewall') })
+    const createFirewall = mock(async () => {
+      throw new Error('should not create firewall')
+    })
     const setFirewallRules = mock(async () => [])
     const client = mockHetznerClient({
       createFirewall,
       setFirewallRules,
       listFirewalls: mock(async () => [{ id: 55, name: 'my-app-production-app-fw', rules: [] }]),
     })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
     expect(createFirewall).not.toHaveBeenCalled()
     expect(setFirewallRules).toHaveBeenCalledTimes(1)
-    const ruleArgs = (setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>])
+    const ruleArgs = setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>]
     expect(ruleArgs[0]).toBe(55)
-    const ports = ruleArgs[1].map(r => r.port).sort()
+    const ports = ruleArgs[1].map((r) => r.port).sort()
     // ts-cloud runs no reverse proxy — the site's app port is opened directly
     // alongside the base 80/443 + SSH rules.
     expect(ports).toEqual(['22', '3000', '443', '80'])
@@ -578,7 +662,12 @@ describe('HetznerDriver', () => {
       setFirewallRules,
       listFirewalls: mock(async () => [{ id: 55, name: 'my-app-production-app-fw', rules: [] }]),
     })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
     const config: CloudConfig = {
       ...baseConfig,
       infrastructure: {
@@ -592,7 +681,7 @@ describe('HetznerDriver', () => {
     await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
 
     const rules = (setFirewallRules.mock.calls[0] as unknown as [number, Array<{ port: string }>])[1]
-    expect(rules.map(rule => Number(rule.port)).sort((a, b) => a - b)).toEqual([
+    expect(rules.map((rule) => Number(rule.port)).sort((a, b) => a - b)).toEqual([
       22, 25, 80, 143, 443, 465, 587, 993, 3000,
     ])
   })
@@ -607,7 +696,12 @@ describe('HetznerDriver', () => {
         return { firewall: { id: 10, name: opts.name, rules: opts.rules }, actions: [] }
       }),
     })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const config: CloudConfig = {
       ...baseConfig,
@@ -615,7 +709,7 @@ describe('HetznerDriver', () => {
     }
     await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
 
-    const ports = createdRules.map(r => r.port).sort()
+    const ports = createdRules.map((r) => r.port).sort()
     expect(ports).toContain('4000')
   })
 
@@ -638,7 +732,12 @@ describe('HetznerDriver', () => {
         }
       }),
     })
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 

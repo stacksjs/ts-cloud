@@ -28,7 +28,7 @@ const phpConfig: CloudConfig = {
 describe('awsComputeIngressRules', () => {
   it('opens SSH/HTTP/HTTPS plus app ports', () => {
     const rules = awsComputeIngressRules(phpConfig)
-    const ports = rules.map(r => r.port).sort((a, b) => a - b)
+    const ports = rules.map((r) => r.port).sort((a, b) => a - b)
     expect(ports).toContain(22)
     expect(ports).toContain(80)
     expect(ports).toContain(443)
@@ -110,14 +110,16 @@ describe('readPinnedInstanceId', () => {
     try {
       process.chdir(dir)
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-      await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }))
+      await writeFile(
+        'storage/cloud/state/acme-production.json',
+        JSON.stringify({ provider: 'aws', instanceId: 'i-0abc123' }),
+      )
       expect(readPinnedInstanceId('acme-production')).toBe('i-0abc123')
       await writeFile('storage/cloud/state/acme-production.json', JSON.stringify({ instanceId: 42 }))
       expect(readPinnedInstanceId('acme-production')).toBeNull()
       await writeFile('storage/cloud/state/acme-production.json', 'not json')
       expect(readPinnedInstanceId('acme-production')).toBeNull()
-    }
-    finally {
+    } finally {
       process.chdir(cwd)
       await rm(dir, { recursive: true, force: true })
     }

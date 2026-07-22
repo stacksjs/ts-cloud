@@ -23,7 +23,10 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
   const opts = {
     siteName: 'web',
     slug: 'my-app',
-    artifactFetch: buildLocalArtifactFetch('/var/ts-cloud/staging/release.tar.gz', '/tmp/my-app-web-abc123-release.tar.gz'),
+    artifactFetch: buildLocalArtifactFetch(
+      '/var/ts-cloud/staging/release.tar.gz',
+      '/tmp/my-app-web-abc123-release.tar.gz',
+    ),
     releaseId: 'abc123',
     execStart: '/usr/local/bin/bun run server.ts',
     envEntries: { NODE_ENV: 'production' },
@@ -52,14 +55,14 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
 
   it('health-gates the new instance BEFORE stopping the old one, and aborts without flipping current on failure', () => {
     const script = buildSiteDeployScript(opts)
-    const startIdx = script.findIndex(l => l === 'systemctl start my-app-web@abc123.service')
-    const gateIdx = script.findIndex(l => l.includes('failed its health gate'))
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
-    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    const startIdx = script.findIndex((l) => l === 'systemctl start my-app-web@abc123.service')
+    const gateIdx = script.findIndex((l) => l.includes('failed its health gate'))
+    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
+    const stopOldIdx = script.findIndex((l) => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
     expect(startIdx).toBeGreaterThan(-1)
     expect(gateIdx).toBeGreaterThan(startIdx)
     // Old instances captured before the new one starts, stopped only after the gate + flip.
-    const captureIdx = script.findIndex(l => l.startsWith('TS_CLOUD_OLD_UNITS='))
+    const captureIdx = script.findIndex((l) => l.startsWith('TS_CLOUD_OLD_UNITS='))
     expect(captureIdx).toBeLessThan(startIdx)
     expect(gateIdx).toBeLessThan(activateIdx)
     expect(activateIdx).toBeLessThan(stopOldIdx)
@@ -73,15 +76,15 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     // First gate records whether the overlap held instead of aborting outright.
     expect(joined).toContain('TS_CLOUD_GATE_OK=1')
     // On overlap failure: retire the old instances, restart the new one, re-gate.
-    const healIdx = script.findIndex(l => l.includes('could not overlap the previous release'))
+    const healIdx = script.findIndex((l) => l.includes('could not overlap the previous release'))
     expect(healIdx).toBeGreaterThan(-1)
     expect(script[healIdx]).toContain('systemctl restart my-app-web@abc123.service')
     // The retry still aborts (exit 1) if the release is genuinely broken.
     expect(script[healIdx]).toContain('exit 1')
     // The self-heal loop uses its own var so it does not shadow the post-flip
     // stop-old loop (which must still run only after `current` is promoted).
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
-    const stopOldIdx = script.findIndex(l => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
+    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
+    const stopOldIdx = script.findIndex((l) => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
     expect(healIdx).toBeLessThan(activateIdx)
     expect(activateIdx).toBeLessThan(stopOldIdx)
   })
@@ -90,8 +93,8 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     const script = buildSiteDeployScript({ ...opts, healthCheckPath: 'health' })
     const joined = script.join('\n')
     expect(joined).toContain('http://127.0.0.1:3000/health')
-    const curlIdx = script.findIndex(l => l.includes('curl -sf'))
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const curlIdx = script.findIndex((l) => l.includes('curl -sf'))
+    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
     expect(curlIdx).toBeGreaterThan(-1)
     expect(curlIdx).toBeLessThan(activateIdx)
   })
@@ -110,7 +113,7 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
   it('prunes old releases after promotion', () => {
     const script = buildSiteDeployScript(opts)
     expect(script.join('\n')).toContain('mv -Tf /var/www/web/current.tmp /var/www/web/current')
-    expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
+    expect(script.some((l) => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
   })
 
   it('guards the unit prune grep so an empty match list cannot fail the deploy under set -euo pipefail', () => {
@@ -119,21 +122,25 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     // The prune pipeline wraps grep in a brace group so `|| true` guards only
     // the grep — without it, grep exits 1 on "nothing to prune" and kills the
     // script at the very last step, after the new release is already live.
-    expect(joined).toContain('| { grep -v -e "^my-app-web@abc123.service$" -e "^my-app-web@\\.service$" || true; } | while read -r TS_CLOUD_U')
+    expect(joined).toContain(
+      '| { grep -v -e "^my-app-web@abc123.service$" -e "^my-app-web@\\.service$" || true; } | while read -r TS_CLOUD_U',
+    )
     // Every `grep -v` in the generated script is guarded against exit 1.
     for (const line of script) {
-      if (line.includes('grep -v'))
-        expect(line).toContain('|| true')
+      if (line.includes('grep -v')) expect(line).toContain('|| true')
     }
   })
 
   it('runs preStart in the new release dir after extraction, before the new instance starts', () => {
-    const script = buildSiteDeployScript({ ...opts, preStartCommands: ['bun install --frozen-lockfile', 'bun run build'] })
+    const script = buildSiteDeployScript({
+      ...opts,
+      preStartCommands: ['bun install --frozen-lockfile', 'bun run build'],
+    })
     const joined = script.join('\n')
     expect(joined).toContain('cd /var/www/web/releases/abc123')
-    const extractIdx = script.findIndex(l => l.includes('tar xzf'))
-    const installIdx = script.findIndex(l => l === 'bun install --frozen-lockfile')
-    const startIdx = script.findIndex(l => l === 'systemctl start my-app-web@abc123.service')
+    const extractIdx = script.findIndex((l) => l.includes('tar xzf'))
+    const installIdx = script.findIndex((l) => l === 'bun install --frozen-lockfile')
+    const startIdx = script.findIndex((l) => l === 'systemctl start my-app-web@abc123.service')
     expect(extractIdx).toBeLessThan(installIdx)
     expect(installIdx).toBeLessThan(startIdx)
   })
@@ -156,8 +163,8 @@ describe('buildSiteDeployScript (restart cutover: portless sites / zeroDowntime 
     expect(joined).toContain('systemctl restart my-app-worker.service')
     expect(joined).not.toContain('my-app-worker@')
     // Promote atomically BEFORE restarting.
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
-    const restartIdx = script.findIndex(l => l === 'systemctl restart my-app-worker.service')
+    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
+    const restartIdx = script.findIndex((l) => l === 'systemctl restart my-app-worker.service')
     expect(activateIdx).toBeLessThan(restartIdx)
   })
 
@@ -190,13 +197,13 @@ describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
     expect(joined).not.toContain('find /var/www/docs -mindepth')
     expect(joined).not.toContain('systemctl')
     // Old releases pruned.
-    expect(script.some(l => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
+    expect(script.some((l) => l.includes('rm -rf "$TS_CLOUD_OLD"'))).toBe(true)
   })
 
   it('runs preStart (on-box build) in the release dir before the swap', () => {
     const script = buildStaticSiteDeployScript({ ...opts, preStartCommands: ['bun run docs:build'] })
-    const buildIdx = script.findIndex(l => l === 'bun run docs:build')
-    const activateIdx = script.findIndex(l => l.includes('mv -Tf') && l.includes('/current'))
+    const buildIdx = script.findIndex((l) => l === 'bun run docs:build')
+    const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
     expect(buildIdx).toBeGreaterThan(-1)
     expect(buildIdx).toBeLessThan(activateIdx)
   })
@@ -204,10 +211,16 @@ describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
 
 describe('buildAwsArtifactFetch', () => {
   it('pulls tarball from S3 before extraction', () => {
-    expect(buildAwsArtifactFetch('my-app-production-deploy', 'releases/web/abc.tar.gz', 'us-east-1', '/tmp/my-app-web-abc-release.tar.gz'))
-      .toEqual([
-        'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/my-app-web-abc-release.tar.gz --region us-east-1',
-      ])
+    expect(
+      buildAwsArtifactFetch(
+        'my-app-production-deploy',
+        'releases/web/abc.tar.gz',
+        'us-east-1',
+        '/tmp/my-app-web-abc-release.tar.gz',
+      ),
+    ).toEqual([
+      'aws s3 cp "s3://my-app-production-deploy/releases/web/abc.tar.gz" /tmp/my-app-web-abc-release.tar.gz --region us-east-1',
+    ])
   })
 })
 

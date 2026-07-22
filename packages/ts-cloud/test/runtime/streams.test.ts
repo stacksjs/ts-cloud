@@ -7,7 +7,7 @@ describe('runtime stream registry', () => {
     const session = streams.create('logs', 'workload:one')
     streams.append(session.id, 'one')
     streams.append(session.id, 'two')
-    expect(streams.read(session.id, 'workload:one', 1)?.chunks.map(chunk => chunk.data)).toEqual(['two'])
+    expect(streams.read(session.id, 'workload:one', 1)?.chunks.map((chunk) => chunk.data)).toEqual(['two'])
     expect(streams.read(session.id, 'workload:two', 0)).toBeUndefined()
   })
 
@@ -27,7 +27,7 @@ describe('runtime stream registry', () => {
     const streams = new RuntimeStreamRegistry()
     const session = streams.create('exec', 'workload:one')
     let state = 'open'
-    streams.subscribe(session.id, session.workloadId, snapshot => state = snapshot.state)
+    streams.subscribe(session.id, session.workloadId, (snapshot) => (state = snapshot.state))
     streams.cancel(session.id, session.workloadId)
     expect(state).toBe('cancelled')
     expect(streams.signal(session.id)?.aborted).toBeTrue()

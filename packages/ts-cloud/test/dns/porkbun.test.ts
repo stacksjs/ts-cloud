@@ -11,21 +11,24 @@ afterEach(() => {
 describe('PorkbunProvider retries', () => {
   it('times out a stalled request and retries it', async () => {
     let calls = 0
-    globalThis.fetch = Object.assign(async (...args: Parameters<typeof fetch>) => {
-      calls += 1
-      if (calls > 1) {
-        return Response.json({
-          status: 'SUCCESS',
-          records: [],
-        })
-      }
+    globalThis.fetch = Object.assign(
+      async (...args: Parameters<typeof fetch>) => {
+        calls += 1
+        if (calls > 1) {
+          return Response.json({
+            status: 'SUCCESS',
+            records: [],
+          })
+        }
 
-      const signal = args[1]?.signal
-      await new Promise((resolve, reject) => {
-        signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
-      })
-      throw new Error('unreachable')
-    }, { preconnect: originalFetch.preconnect })
+        const signal = args[1]?.signal
+        await new Promise((resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(signal.reason), { once: true })
+        })
+        throw new Error('unreachable')
+      },
+      { preconnect: originalFetch.preconnect },
+    )
 
     const result = await new PorkbunProvider('api-key', 'secret-key', 5).listRecords('example.com')
     expect(result.success).toBe(true)
@@ -34,19 +37,22 @@ describe('PorkbunProvider retries', () => {
 
   it('retries transient API failures before returning records', async () => {
     let calls = 0
-    globalThis.fetch = Object.assign(async (..._args: Parameters<typeof fetch>) => {
-      calls += 1
-      if (calls === 1) {
-        return new Response('temporarily unavailable', {
-          status: 503,
-          headers: { 'retry-after': '0' },
+    globalThis.fetch = Object.assign(
+      async (..._args: Parameters<typeof fetch>) => {
+        calls += 1
+        if (calls === 1) {
+          return new Response('temporarily unavailable', {
+            status: 503,
+            headers: { 'retry-after': '0' },
+          })
+        }
+        return Response.json({
+          status: 'SUCCESS',
+          records: [{ id: '1', name: 'www.example.com', type: 'A', content: '192.0.2.1', ttl: '600' }],
         })
-      }
-      return Response.json({
-        status: 'SUCCESS',
-        records: [{ id: '1', name: 'www.example.com', type: 'A', content: '192.0.2.1', ttl: '600' }],
-      })
-    }, { preconnect: originalFetch.preconnect })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
 
     const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
     expect(result.success).toBe(true)
@@ -56,10 +62,13 @@ describe('PorkbunProvider retries', () => {
 
   it('deletes a listed record directly by its Porkbun id', async () => {
     const requests: string[] = []
-    globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
-      requests.push(String(input))
-      return Response.json({ status: 'SUCCESS' })
-    }, { preconnect: originalFetch.preconnect })
+    globalThis.fetch = Object.assign(
+      async (input: string | URL | Request) => {
+        requests.push(String(input))
+        return Response.json({ status: 'SUCCESS' })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
 
     const result = await new PorkbunProvider('api-key', 'secret-key').deleteRecord('example.com', {
       id: '12345',
@@ -74,10 +83,13 @@ describe('PorkbunProvider retries', () => {
 
   it('does not retry permanent authorization failures', async () => {
     let calls = 0
-    globalThis.fetch = Object.assign(async (..._args: Parameters<typeof fetch>) => {
-      calls += 1
-      return new Response('forbidden', { status: 403 })
-    }, { preconnect: originalFetch.preconnect })
+    globalThis.fetch = Object.assign(
+      async (..._args: Parameters<typeof fetch>) => {
+        calls += 1
+        return new Response('forbidden', { status: 403 })
+      },
+      { preconnect: originalFetch.preconnect },
+    )
 
     const result = await new PorkbunProvider('api-key', 'secret-key').listRecords('example.com')
     expect(result.success).toBe(false)

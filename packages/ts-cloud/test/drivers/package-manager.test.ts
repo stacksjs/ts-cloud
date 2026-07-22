@@ -30,7 +30,7 @@ describe('buildPantryBootstrapScript', () => {
   it('defaults to the latest release but can pin a version', () => {
     expect(buildPantryBootstrapScript().join('\n')).toContain('PANTRY_VERSION:-latest')
     const pinned = buildPantryBootstrapScript({ version: '0.9.39' }).join('\n')
-    expect(pinned).toContain('export PANTRY_VERSION=\'0.9.39\'')
+    expect(pinned).toContain("export PANTRY_VERSION='0.9.39'")
   })
 })
 
@@ -42,8 +42,8 @@ describe('buildPantryInstallScript', () => {
 
   it('supports pinned versions and dedupes', () => {
     const script = buildPantryInstallScript(['php.net@8.3', 'php.net@8.3', 'redis.io']).join('\n')
-    expect(script).toContain('\'php.net@8.3\'')
-    expect(script).toContain('\'redis.io\'')
+    expect(script).toContain("'php.net@8.3'")
+    expect(script).toContain("'redis.io'")
     // Deduped: php.net@8.3 appears once.
     expect(script.match(/php\.net@8\.3/g)?.length).toBe(1)
   })

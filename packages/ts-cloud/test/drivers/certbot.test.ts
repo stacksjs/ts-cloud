@@ -55,8 +55,13 @@ describe('buildSslScript', () => {
 
   it('issues a wildcard cert via DNS-01 (cloudflare) when configured', () => {
     const script = buildSslScript({
-      root: '.', type: 'laravel', domain: 'x.com',
-      ssl: { wildcard: true, dns: { provider: 'cloudflare', credentials: { dns_cloudflare_api_token: 'tok' }, propagationSeconds: 30 } },
+      root: '.',
+      type: 'laravel',
+      domain: 'x.com',
+      ssl: {
+        wildcard: true,
+        dns: { provider: 'cloudflare', credentials: { dns_cloudflare_api_token: 'tok' }, propagationSeconds: 30 },
+      },
     }).join('\n')
     expect(script).toContain('python3-certbot-dns-cloudflare')
     expect(script).toContain('--dns-cloudflare')
@@ -72,7 +77,9 @@ describe('buildSslScript', () => {
     expect(buildSslScript({ root: '.', type: 'laravel', domain: 'x.com', ssl: { wildcard: true } })).toEqual([])
   })
   it('is empty for a custom-cert site (handled in the vhost)', () => {
-    expect(buildSslScript({ root: '.', domain: 'x.com', ssl: { provider: 'custom', certPath: '/c', keyPath: '/k' } })).toEqual([])
+    expect(
+      buildSslScript({ root: '.', domain: 'x.com', ssl: { provider: 'custom', certPath: '/c', keyPath: '/k' } }),
+    ).toEqual([])
   })
 })
 

@@ -42,10 +42,11 @@ describe('buildRollbackScript', () => {
     // The instance-retire pipeline wraps grep in a brace group so `|| true`
     // guards only the grep — otherwise grep exits 1 when there is nothing to
     // retire and fails the rollback after current has already flipped.
-    expect(joined).toContain('| { grep -v "^myapp-web@${TS_CLOUD_RB_ID}.service$" || true; } | while read -r TS_CLOUD_U')
+    expect(joined).toContain(
+      '| { grep -v "^myapp-web@${TS_CLOUD_RB_ID}.service$" || true; } | while read -r TS_CLOUD_U',
+    )
     for (const line of script) {
-      if (line.includes('grep -v'))
-        expect(line).toContain('|| true')
+      if (line.includes('grep -v')) expect(line).toContain('|| true')
     }
   })
 })
@@ -103,7 +104,9 @@ describe('buildGitCheckoutScript', () => {
       repository: { url: 'git@github.com:acme/app.git', branch: 'main' },
       releaseDir: paths.release,
     }).join('\n')
-    expect(script).toContain('git clone -q --depth 1 --branch \'main\' \'git@github.com:acme/app.git\' /var/www/app/releases/20240601120000')
+    expect(script).toContain(
+      "git clone -q --depth 1 --branch 'main' 'git@github.com:acme/app.git' /var/www/app/releases/20240601120000",
+    )
     expect(script).toContain('rev-parse HEAD > /var/www/app/releases/20240601120000/.ts-cloud-sha')
   })
 
@@ -113,7 +116,7 @@ describe('buildGitCheckoutScript', () => {
       releaseDir: paths.release,
       commit: 'abc1234',
     }).join('\n')
-    expect(script).toContain('fetch -q --depth 1 origin \'abc1234\'')
+    expect(script).toContain("fetch -q --depth 1 origin 'abc1234'")
     expect(script).toContain('checkout -q FETCH_HEAD')
     expect(script).not.toContain('git clone')
   })
@@ -123,7 +126,7 @@ describe('buildGitCheckoutScript', () => {
       repository: { url: 'git@github.com:acme/app.git', strategy: 'tag', tag: 'v1.4.2' },
       releaseDir: paths.release,
     }).join('\n')
-    expect(script).toContain('git clone -q --depth 1 --branch \'v1.4.2\' \'git@github.com:acme/app.git\'')
+    expect(script).toContain("git clone -q --depth 1 --branch 'v1.4.2' 'git@github.com:acme/app.git'")
     expect(script).toContain('.ts-cloud-tag')
   })
 
@@ -148,7 +151,11 @@ describe('buildGitCheckoutScript', () => {
 
 describe('buildDeployHistoryHeader', () => {
   it('captures output + records success/failure via an EXIT trap', () => {
-    const script = buildDeployHistoryHeader('/var/www/app', { releaseId: 'abc123', commit: 'abc123', branch: 'main' }).join('\n')
+    const script = buildDeployHistoryHeader('/var/www/app', {
+      releaseId: 'abc123',
+      commit: 'abc123',
+      branch: 'main',
+    }).join('\n')
     // Per-deploy output is teed to a log under the site's .ts-cloud dir.
     expect(script).toContain(`exec > >(tee -a ${deployLogPath('/var/www/app', 'abc123')}) 2>&1`)
     // History line appended on exit, for both success and failure.
@@ -172,7 +179,7 @@ describe('buildDeployHistoryHeader', () => {
 
 describe('buildSiteOwnerGuard', () => {
   /** Run the generated guard script with bash against a real temp dir. */
-  function runGuard(base: string, slug: string): { status: number | null, stderr: string } {
+  function runGuard(base: string, slug: string): { status: number | null; stderr: string } {
     const r = spawnSync('bash', ['-c', buildSiteOwnerGuard(base, slug).join('\n')], { encoding: 'utf8' })
     return { status: r.status, stderr: r.stderr }
   }
@@ -182,8 +189,9 @@ describe('buildSiteOwnerGuard', () => {
     try {
       expect(runGuard(base, 'acme').status).toBe(0)
       expect(readFileSync(siteOwnerPath(base), 'utf8').trim()).toBe('acme')
+    } finally {
+      rmSync(base, { recursive: true, force: true })
     }
-    finally { rmSync(base, { recursive: true, force: true }) }
   })
 
   it('same project deploys again without friction', () => {
@@ -191,8 +199,9 @@ describe('buildSiteOwnerGuard', () => {
     try {
       expect(runGuard(base, 'acme').status).toBe(0)
       expect(runGuard(base, 'acme').status).toBe(0)
+    } finally {
+      rmSync(base, { recursive: true, force: true })
     }
-    finally { rmSync(base, { recursive: true, force: true }) }
   })
 
   it('a DIFFERENT project is refused loudly instead of overwriting releases', () => {
@@ -205,8 +214,9 @@ describe('buildSiteOwnerGuard', () => {
       expect(other.stderr).toContain(`belongs to project 'acme'`)
       // The original owner marker is untouched.
       expect(readFileSync(siteOwnerPath(base), 'utf8').trim()).toBe('acme')
+    } finally {
+      rmSync(base, { recursive: true, force: true })
     }
-    finally { rmSync(base, { recursive: true, force: true }) }
   })
 
   it('stamps the marker under the site meta dir', () => {

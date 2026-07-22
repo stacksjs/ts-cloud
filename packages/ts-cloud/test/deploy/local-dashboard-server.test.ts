@@ -10,12 +10,14 @@ import {
 } from '../../src/deploy/local-dashboard-server'
 
 const roots: string[] = []
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+})
 
 describe('local dashboard server helpers', () => {
   it('exposes an allowlisted action model with explicit mutation confirmation', () => {
     const actions = dashboardActions('production' as any)
-    expect(actions.map(action => action.id)).toEqual(['status', 'doctor', 'security-scan', 'deploy'])
+    expect(actions.map((action) => action.id)).toEqual(['status', 'doctor', 'security-scan', 'deploy'])
     expect(resolveDashboardAction('deploy', 'production' as any)?.confirm).toBe('deploy')
     expect(resolveDashboardAction('deploy', 'production' as any)?.mutates).toBe(true)
     expect(resolveDashboardAction('rm -rf', 'production' as any)).toBeUndefined()
@@ -57,22 +59,25 @@ describe('local dashboard server helpers', () => {
   })
 
   it('streams child process output and terminates it on cancellation', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-action-')); roots.push(root)
+    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-action-'))
+    roots.push(root)
     const cliEntry = join(root, 'fixture.ts')
     writeFileSync(cliEntry, `console.log('started')\nawait Bun.sleep(5_000)\nconsole.error('should-not-finish')\n`)
     const controller = new AbortController()
     const chunks: string[] = []
     const startedAt = Date.now()
-    const result = await runDashboardAction({ id: 'stream', label: 'Stream', description: 'Stream', command: [], mutates: true }, {
-      cwd: root,
-      cliEntry,
-      signal: controller.signal,
-      onOutput: (_stream, chunk) => {
-        chunks.push(chunk)
-        if (chunk.includes('started'))
-          controller.abort()
+    const result = await runDashboardAction(
+      { id: 'stream', label: 'Stream', description: 'Stream', command: [], mutates: true },
+      {
+        cwd: root,
+        cliEntry,
+        signal: controller.signal,
+        onOutput: (_stream, chunk) => {
+          chunks.push(chunk)
+          if (chunk.includes('started')) controller.abort()
+        },
       },
-    })
+    )
     expect(chunks.join('')).toContain('started')
     expect(chunks.join('')).not.toContain('should-not-finish')
     expect(result.ok).toBe(false)

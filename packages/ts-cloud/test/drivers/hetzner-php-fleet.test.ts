@@ -33,7 +33,11 @@ const baseConfig: CloudConfig = {
  * append to an in-memory server list so label-based reconcile sees them, plus
  * the native Load Balancer product the PHP fleet fronts its app servers with.
  */
-function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient, servers: any[], loadBalancers: any[] } {
+function fakeHetznerClient(initialServers: any[] = []): {
+  client: HetznerClient
+  servers: any[]
+  loadBalancers: any[]
+} {
   const servers: any[] = [...initialServers]
   let nextId = (initialServers.reduce((m, s) => Math.max(m, s.id), 0) || 100) + 1
   const firewalls: any[] = []
@@ -53,7 +57,7 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
       public_key: TEST_PUBLIC_KEY,
     })),
     getServer: mock(async (id: number) => {
-      const s = servers.find(s => s.id === id)
+      const s = servers.find((s) => s.id === id)
       if (!s) throw new Error(`server ${id} not found`)
       return s
     }),
@@ -72,7 +76,12 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
     }),
     listLoadBalancers: mock(async () => loadBalancers),
     createLoadBalancer: mock(async (opts: any) => {
-      const lb = { id: nextLbId++, name: opts.name, public_net: { ipv4: { ip: '203.0.113.90' } }, labels: opts.labels ?? {} }
+      const lb = {
+        id: nextLbId++,
+        name: opts.name,
+        public_net: { ipv4: { ip: '203.0.113.90' } },
+        labels: opts.labels ?? {},
+      }
       loadBalancers.push(lb)
       return lb
     }),
@@ -93,7 +102,7 @@ function fakeHetznerClient(initialServers: any[] = []): { client: HetznerClient,
     }),
     waitForAction: mock(async (id: number) => ({ id, status: 'success' as const })),
     waitForServerRunning: mock(async (id: number) => {
-      const s = servers.find(s => s.id === id)
+      const s = servers.find((s) => s.id === id)
       if (!s) throw new Error(`server ${id} not found`)
       return s
     }),
@@ -131,15 +140,20 @@ describe('HetznerDriver PHP fleet', () => {
 
   it('provisions N app servers + a services box + the native load balancer', async () => {
     const { client, servers, loadBalancers } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     const outputs = await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 
-    expect(servers.filter(s => s.labels?.['ts-cloud/role'] === 'app')).toHaveLength(2)
-    expect(servers.filter(s => s.labels?.['ts-cloud/role'] === 'services')).toHaveLength(1)
+    expect(servers.filter((s) => s.labels?.['ts-cloud/role'] === 'app')).toHaveLength(2)
+    expect(servers.filter((s) => s.labels?.['ts-cloud/role'] === 'services')).toHaveLength(1)
     // The PHP fleet fronts app servers with Hetzner's native LB, never an rpx box.
     expect(loadBalancers).toHaveLength(1)
-    expect(servers.filter(s => s.labels?.['ts-cloud/role'] === 'lb')).toHaveLength(0)
+    expect(servers.filter((s) => s.labels?.['ts-cloud/role'] === 'lb')).toHaveLength(0)
     expect(outputs.loadBalancerIp).toBe('203.0.113.90')
   })
 
@@ -152,7 +166,12 @@ describe('HetznerDriver PHP fleet', () => {
       },
     }
     const { client } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: configWithBackups, environment: 'production' })
 
@@ -175,7 +194,12 @@ describe('HetznerDriver PHP fleet', () => {
 
   it('installs no backup runner anywhere when backups are not enabled', async () => {
     const { client } = fakeHetznerClient()
-    const driver = new HetznerDriver({ client, apiToken: 'test-token', sshPublicKeyPath: await writeTestPublicKey(), waitForBoot: false })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
 
     await driver.provisionComputeInfrastructure!({ config: baseConfig, environment: 'production' })
 

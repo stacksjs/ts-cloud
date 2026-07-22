@@ -12,7 +12,11 @@ function driver(): CloudDriver {
     getComputeOutputs: mock(async () => ({ deployStoragePath: '/var/ts-cloud/staging' })),
     uploadRelease: mock(async () => ({ artifactRef: '/var/ts-cloud/staging/x.tar.gz' })),
     findComputeTargets: mock(async () => [{ id: 'i-1', publicIp: '203.0.113.1', status: 'running' }]),
-    runRemoteDeploy: mock(async () => ({ success: true, instanceCount: 1, perInstance: [{ instanceId: 'i-1', status: 'Success' }] })),
+    runRemoteDeploy: mock(async () => ({
+      success: true,
+      instanceCount: 1,
+      perInstance: [{ instanceId: 'i-1', status: 'Success' }],
+    })),
   } as unknown as CloudDriver
 }
 
@@ -57,7 +61,9 @@ describe('single-site deploy keeps every route', () => {
     })
     expect(ok).toBe(true)
 
-    const all = (d.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n')).join('\n')
+    const all = (d.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+      .map((c) => c[0].commands.join('\n'))
+      .join('\n')
     // The gateway config still carries the sites we did NOT deploy.
     expect(all).toContain('blog.app.com')
     expect(all).toContain('/docs')

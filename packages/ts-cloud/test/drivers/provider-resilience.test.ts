@@ -7,10 +7,11 @@ type ResilienceRenderer = (config: CloudConfig) => string
 
 const renderers = {
   aws: buildAwsUserData,
-  hetzner: (config) => generateUbuntuAppCloudInit({
-    runtime: config.infrastructure?.compute?.runtime,
-    swapGb: config.infrastructure?.compute?.swapGb,
-  }),
+  hetzner: (config) =>
+    generateUbuntuAppCloudInit({
+      runtime: config.infrastructure?.compute?.runtime,
+      swapGb: config.infrastructure?.compute?.swapGb,
+    }),
 } satisfies CloudProviderContract<ResilienceRenderer>
 
 describe('compute resilience provider contract', () => {
@@ -21,7 +22,6 @@ describe('compute resilience provider contract', () => {
       infrastructure: { compute: { runtime: 'bun', swapGb: 3 } },
     }
 
-    for (const render of Object.values(renderers))
-      expect(render(config)).toContain('fallocate -l 3G /swapfile')
+    for (const render of Object.values(renderers)) expect(render(config)).toContain('fallocate -l 3G /swapfile')
   })
 })

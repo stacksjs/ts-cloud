@@ -24,7 +24,7 @@ describe('buildUbuntuBootstrapScript', () => {
     expect(disabled).not.toContain('/swapfile')
   })
 
-  it('exports HOME before piping bun.sh\'s installer, so its internal $HOME reference does not trip set -u', () => {
+  it("exports HOME before piping bun.sh's installer, so its internal $HOME reference does not trip set -u", () => {
     const script = buildUbuntuBootstrapScript({ runtime: 'bun' })
 
     const homeExportIdx = script.indexOf('export HOME=')

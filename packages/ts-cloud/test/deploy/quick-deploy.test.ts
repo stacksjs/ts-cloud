@@ -5,7 +5,9 @@ import { buildQuickDeployCi, inferQuickDeployProvider } from '../../src/deploy/q
 function cfg(provider?: string, branch?: string): CloudConfig {
   return {
     project: { name: 'Acme', slug: 'acme' },
-    sites: { main: { root: '.', repository: { url: 'git@github.com:acme/app.git', provider: provider as any, branch } } },
+    sites: {
+      main: { root: '.', repository: { url: 'git@github.com:acme/app.git', provider: provider as any, branch } },
+    },
   } as unknown as CloudConfig
 }
 
@@ -87,10 +89,12 @@ describe('buildQuickDeployCi', () => {
   })
 
   it('rejects unsafe SSH secret names before interpolating workflow YAML', () => {
-    expect(() => buildQuickDeployCi(environmentCfg('main', 'hetzner'), 'production', {
-      provider: 'github',
-      sshPrivateKeySecret: 'KEY }} injected: true',
-    })).toThrow("Invalid SSH private key secret name 'KEY }} injected: true'")
+    expect(() =>
+      buildQuickDeployCi(environmentCfg('main', 'hetzner'), 'production', {
+        provider: 'github',
+        sshPrivateKeySecret: 'KEY }} injected: true',
+      }),
+    ).toThrow("Invalid SSH private key secret name 'KEY }} injected: true'")
   })
 
   it('infers supported providers from common git remote formats', () => {

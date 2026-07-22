@@ -54,16 +54,25 @@ describe('resolveSiteKind', () => {
 
   it('redirect (set redirect → gateway-only, wins over root/start)', () => {
     expect(resolveSiteKind({ domain: 'alt.com', redirect: 'https://canonical.com' })).toBe('redirect')
-    expect(resolveSiteKind({ domain: 'alt.com', redirect: { to: 'https://canonical.com' }, root: 'dist', start: 'bun run x' })).toBe('redirect')
+    expect(
+      resolveSiteKind({
+        domain: 'alt.com',
+        redirect: { to: 'https://canonical.com' },
+        root: 'dist',
+        start: 'bun run x',
+      }),
+    ).toBe('redirect')
   })
 })
 
 describe('validateDeploymentConfig', () => {
   it('a bucket-only project with NO server validates clean', () => {
-    const { errors, warnings } = validateDeploymentConfig(makeConfig({
-      web: { root: 'dist', domain: 'example.com' },
-      docs: { root: 'docs/dist', domain: 'docs.example.com' },
-    }))
+    const { errors, warnings } = validateDeploymentConfig(
+      makeConfig({
+        web: { root: 'dist', domain: 'example.com' },
+        docs: { root: 'docs/dist', domain: 'docs.example.com' },
+      }),
+    )
     expect(errors).toEqual([])
     expect(warnings).toEqual([])
   })
@@ -72,57 +81,93 @@ describe('validateDeploymentConfig', () => {
     const config = makeConfig({ web: { root: 'dist', domain: 'example.com' } }, true)
     ;(config.environments as any).production.app = { kind: 'bun' }
     const { errors } = validateDeploymentConfig(config)
-    expect(errors.some(e => /cannot be both a server and a serverless/i.test(e))).toBe(true)
+    expect(errors.some((e) => /cannot be both a server and a serverless/i.test(e))).toBe(true)
   })
 
   it('errors when a server-app site has no compute configured', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      app: { root: '.output', domain: 'app.example.com', start: 'bun run server.ts', port: 3000 },
-    }, false))
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          app: { root: '.output', domain: 'app.example.com', start: 'bun run server.ts', port: 3000 },
+        },
+        false,
+      ),
+    )
     expect(errors.length).toBe(1)
     expect(errors[0]).toContain('app')
     expect(errors[0]).toContain('infrastructure.compute')
   })
 
   it('passes when a server-app site HAS compute configured', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      app: { root: '.output', domain: 'app.example.com', start: 'bun run server.ts', port: 3000 },
-    }, true))
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          app: { root: '.output', domain: 'app.example.com', start: 'bun run server.ts', port: 3000 },
+        },
+        true,
+      ),
+    )
     expect(errors).toEqual([])
   })
 
   it('errors when a server-static site has compute but no root', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      docs: { domain: 'docs.example.com', deploy: 'server' },
-    }, true))
-    expect(errors.some(e => e.includes('docs') && e.includes('root'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          docs: { domain: 'docs.example.com', deploy: 'server' },
+        },
+        true,
+      ),
+    )
+    expect(errors.some((e) => e.includes('docs') && e.includes('root'))).toBe(true)
   })
 
   it('errors when a server-static site has no compute configured', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      docs: { root: 'docs/dist', domain: 'docs.example.com', deploy: 'server' },
-    }, false))
-    expect(errors.some(e => e.includes('docs') && e.includes('infrastructure.compute'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          docs: { root: 'docs/dist', domain: 'docs.example.com', deploy: 'server' },
+        },
+        false,
+      ),
+    )
+    expect(errors.some((e) => e.includes('docs') && e.includes('infrastructure.compute'))).toBe(true)
   })
 
   it('errors when a bucket site is missing root', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      web: { domain: 'example.com' },
-    }))
-    expect(errors.some(e => e.includes('web') && e.includes('root'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig({
+        web: { domain: 'example.com' },
+      }),
+    )
+    expect(errors.some((e) => e.includes('web') && e.includes('root'))).toBe(true)
   })
 
   it("errors when deploy:'server' has neither start nor root", () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      x: { domain: 'x.example.com', deploy: 'server' },
-    }, true))
-    expect(errors.some(e => e.includes('neither'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          x: { domain: 'x.example.com', deploy: 'server' },
+        },
+        true,
+      ),
+    )
+    expect(errors.some((e) => e.includes('neither'))).toBe(true)
   })
 
   it('warns (not errors) when a bucket site sets server-only fields', () => {
-    const { errors, warnings } = validateDeploymentConfig(makeConfig({
-      web: { root: 'dist', domain: 'example.com', deploy: 'bucket', start: 'bun run x', port: 3000, preStart: ['bun i'] },
-    }))
+    const { errors, warnings } = validateDeploymentConfig(
+      makeConfig({
+        web: {
+          root: 'dist',
+          domain: 'example.com',
+          deploy: 'bucket',
+          start: 'bun run x',
+          port: 3000,
+          preStart: ['bun i'],
+        },
+      }),
+    )
     expect(errors).toEqual([])
     expect(warnings.length).toBe(1)
     expect(warnings[0]).toContain('start')
@@ -131,45 +176,70 @@ describe('validateDeploymentConfig', () => {
   })
 
   it('errors on duplicate ports among server-app sites', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      a: { root: '.', domain: 'a.example.com', start: 'bun run a', port: 3000 },
-      b: { root: '.', domain: 'b.example.com', start: 'bun run b', port: 3000 },
-    }, true))
-    expect(errors.some(e => e.includes('3000') && e.includes('distinct ports'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          a: { root: '.', domain: 'a.example.com', start: 'bun run a', port: 3000 },
+          b: { root: '.', domain: 'b.example.com', start: 'bun run b', port: 3000 },
+        },
+        true,
+      ),
+    )
+    expect(errors.some((e) => e.includes('3000') && e.includes('distinct ports'))).toBe(true)
   })
 
   it('allows distinct ports among server-app sites', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      a: { root: '.', domain: 'a.example.com', start: 'bun run a', port: 3000 },
-      b: { root: '.', domain: 'b.example.com', start: 'bun run b', port: 3001 },
-    }, true))
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          a: { root: '.', domain: 'a.example.com', start: 'bun run a', port: 3000 },
+          b: { root: '.', domain: 'b.example.com', start: 'bun run b', port: 3001 },
+        },
+        true,
+      ),
+    )
     expect(errors).toEqual([])
   })
 
   it('validates a mixed stacks-style config: app=server-app, docs/blog=server-static, plus compute', () => {
-    const { errors, warnings } = validateDeploymentConfig(makeConfig({
-      app: { root: '.output', domain: 'example.com', start: 'bun run server.ts', port: 3000 },
-      docs: { root: 'docs/dist', domain: 'docs.example.com', deploy: 'server', build: 'bun run docs:build' },
-      blog: { root: 'blog/dist', domain: 'blog.example.com', deploy: 'server' },
-    }, true))
+    const { errors, warnings } = validateDeploymentConfig(
+      makeConfig(
+        {
+          app: { root: '.output', domain: 'example.com', start: 'bun run server.ts', port: 3000 },
+          docs: { root: 'docs/dist', domain: 'docs.example.com', deploy: 'server', build: 'bun run docs:build' },
+          blog: { root: 'blog/dist', domain: 'blog.example.com', deploy: 'server' },
+        },
+        true,
+      ),
+    )
     expect(errors).toEqual([])
     expect(warnings).toEqual([])
   })
 
   it('accepts a redirect site (domain + target, no root) with compute', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      alt: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
-    }, true))
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          alt: { domain: 'very-good-adblock.org', redirect: 'https://verygoodadblock.org' },
+        },
+        true,
+      ),
+    )
     expect(errors).toEqual([])
   })
 
   it('flags a redirect site missing a domain or target', () => {
-    const { errors } = validateDeploymentConfig(makeConfig({
-      noDomain: { redirect: 'https://x.com' },
-      noTarget: { domain: 'a.com', redirect: { to: '' } },
-    }, true))
-    expect(errors.some(e => e.includes('noDomain') && e.includes('domain'))).toBe(true)
-    expect(errors.some(e => e.includes('noTarget') && e.includes('target'))).toBe(true)
+    const { errors } = validateDeploymentConfig(
+      makeConfig(
+        {
+          noDomain: { redirect: 'https://x.com' },
+          noTarget: { domain: 'a.com', redirect: { to: '' } },
+        },
+        true,
+      ),
+    )
+    expect(errors.some((e) => e.includes('noDomain') && e.includes('domain'))).toBe(true)
+    expect(errors.some((e) => e.includes('noTarget') && e.includes('target'))).toBe(true)
   })
 })
 

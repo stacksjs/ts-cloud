@@ -24,8 +24,9 @@ describe('buildBackupRestoreScript', () => {
   })
 
   it('uses the mariadb socket for mariadb', () => {
-    expect(buildBackupRestoreScript({ engine: 'mariadb', name: 'app' }).join('\n'))
-      .toContain('mysql --socket=/var/lib/pantry/mariadb/mariadbd.sock')
+    expect(buildBackupRestoreScript({ engine: 'mariadb', name: 'app' }).join('\n')).toContain(
+      'mysql --socket=/var/lib/pantry/mariadb/mariadbd.sock',
+    )
   })
 
   it('restores postgres via psql over the local unix socket (pg_hba trust; TCP demands md5)', () => {
@@ -35,12 +36,21 @@ describe('buildBackupRestoreScript', () => {
   })
 
   it('restores an external postgres host over TCP with credentials', () => {
-    const s = buildBackupRestoreScript({ engine: 'postgres', name: 'app', host: 'db.example.com', username: 'admin', password: 's3cret' }).join('\n')
+    const s = buildBackupRestoreScript({
+      engine: 'postgres',
+      name: 'app',
+      host: 'db.example.com',
+      username: 'admin',
+      password: 's3cret',
+    }).join('\n')
     expect(s).toContain(`PGPASSWORD='s3cret' psql -h db.example.com -p 5432 -U admin -w -d "app"`)
   })
 
   it('restores a specific dump file when given', () => {
-    const s = buildBackupRestoreScript({ engine: 'mysql', name: 'acme' }, { from: '/var/backups/ts-cloud/acme_2024.sql' }).join('\n')
+    const s = buildBackupRestoreScript(
+      { engine: 'mysql', name: 'acme' },
+      { from: '/var/backups/ts-cloud/acme_2024.sql' },
+    ).join('\n')
     expect(s).toContain('TS_CLOUD_DUMP="/var/backups/ts-cloud/acme_2024.sql"')
     expect(s).not.toContain('find /var/backups')
   })

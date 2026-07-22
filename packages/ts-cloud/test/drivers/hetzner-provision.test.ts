@@ -14,8 +14,7 @@ function fakeClient(routes: Record<string, (body: any) => unknown>, calls: strin
       const key = `${method} ${path}`
       calls.push(key)
       const handler = routes[key]
-      if (!handler)
-        return new Response(JSON.stringify({ error: { message: `no route for ${key}` } }), { status: 404 })
+      if (!handler) return new Response(JSON.stringify({ error: { message: `no route for ${key}` } }), { status: 404 })
       const body = init?.body ? JSON.parse(String(init.body)) : undefined
       return new Response(JSON.stringify(handler(body)), { status: 200 })
     },
@@ -27,11 +26,21 @@ const ED25519_KEY = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTBODY chris@laptop'
 describe('ensureSshKey', () => {
   it('reuses a registered key with the same body even under a different name/comment', async () => {
     const calls: string[] = []
-    const client = fakeClient({
-      'GET /ssh_keys': () => ({
-        ssh_keys: [{ id: 7, name: 'old-name', fingerprint: 'ff', public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTBODY other@host' }],
-      }),
-    }, calls)
+    const client = fakeClient(
+      {
+        'GET /ssh_keys': () => ({
+          ssh_keys: [
+            {
+              id: 7,
+              name: 'old-name',
+              fingerprint: 'ff',
+              public_key: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTBODY other@host',
+            },
+          ],
+        }),
+      },
+      calls,
+    )
 
     const result = await ensureSshKey(client, { name: 'new-name', publicKey: ED25519_KEY })
     expect(result).toEqual({ id: 7, name: 'old-name', created: false })
@@ -41,7 +50,9 @@ describe('ensureSshKey', () => {
   it('registers the key when no body matches', async () => {
     const client = fakeClient({
       'GET /ssh_keys': () => ({ ssh_keys: [] }),
-      'POST /ssh_keys': body => ({ ssh_key: { id: 11, name: body.name, fingerprint: 'aa', public_key: body.public_key } }),
+      'POST /ssh_keys': (body) => ({
+        ssh_key: { id: 11, name: body.name, fingerprint: 'aa', public_key: body.public_key },
+      }),
     })
 
     const result = await ensureSshKey(client, { name: 'deploy-key', publicKey: ED25519_KEY })
@@ -50,16 +61,17 @@ describe('ensureSshKey', () => {
 })
 
 describe('ensureFirewall', () => {
-  const rules = [
-    { direction: 'in' as const, protocol: 'tcp' as const, port: '22', source_ips: ['0.0.0.0/0'] },
-  ]
+  const rules = [{ direction: 'in' as const, protocol: 'tcp' as const, port: '22', source_ips: ['0.0.0.0/0'] }]
 
   it('syncs rules on an existing firewall instead of recreating it', async () => {
     const calls: string[] = []
-    const client = fakeClient({
-      'GET /firewalls': () => ({ firewalls: [{ id: 3, name: 'my-fw' }] }),
-      'POST /firewalls/3/actions/set_rules': () => ({ actions: [] }),
-    }, calls)
+    const client = fakeClient(
+      {
+        'GET /firewalls': () => ({ firewalls: [{ id: 3, name: 'my-fw' }] }),
+        'POST /firewalls/3/actions/set_rules': () => ({ actions: [] }),
+      },
+      calls,
+    )
 
     const result = await ensureFirewall(client, { name: 'my-fw', rules })
     expect(result).toEqual({ id: 3, name: 'my-fw', created: false })
@@ -69,7 +81,7 @@ describe('ensureFirewall', () => {
   it('creates the firewall when missing', async () => {
     const client = fakeClient({
       'GET /firewalls': () => ({ firewalls: [] }),
-      'POST /firewalls': body => ({ firewall: { id: 4, name: body.name }, actions: [] }),
+      'POST /firewalls': (body) => ({ firewall: { id: 4, name: body.name }, actions: [] }),
     })
 
     const result = await ensureFirewall(client, { name: 'new-fw', rules })
@@ -89,21 +101,24 @@ describe('ensureServer', () => {
 
   it('reuses an existing server by name and waits for running', async () => {
     const calls: string[] = []
-    const client = fakeClient({
-      'GET /servers': () => ({ servers: [{ ...running, status: 'starting' }] }),
-      'GET /servers/9': () => ({ server: running }),
-    }, calls)
+    const client = fakeClient(
+      {
+        'GET /servers': () => ({ servers: [{ ...running, status: 'starting' }] }),
+        'GET /servers/9': () => ({ server: running }),
+      },
+      calls,
+    )
 
     const result = await ensureServer(client, { name: 'box', serverType: 'cx23', image: 'ubuntu-24.04' })
     expect(result.created).toBe(false)
     expect(result.server.status).toBe('running')
-    expect(calls.filter(c => c === 'POST /servers')).toEqual([])
+    expect(calls.filter((c) => c === 'POST /servers')).toEqual([])
   })
 
   it('creates the server when missing', async () => {
     const client = fakeClient({
       'GET /servers': () => ({ servers: [] }),
-      'POST /servers': body => ({ server: { ...running, name: body.name }, action: { id: 1, status: 'success' } }),
+      'POST /servers': (body) => ({ server: { ...running, name: body.name }, action: { id: 1, status: 'success' } }),
       'GET /servers/9': () => ({ server: running }),
     })
 
@@ -114,11 +129,19 @@ describe('ensureServer', () => {
 
   it('skips the running wait when waitForRunning is false', async () => {
     const calls: string[] = []
-    const client = fakeClient({
-      'GET /servers': () => ({ servers: [{ ...running, status: 'initializing' }] }),
-    }, calls)
+    const client = fakeClient(
+      {
+        'GET /servers': () => ({ servers: [{ ...running, status: 'initializing' }] }),
+      },
+      calls,
+    )
 
-    const result = await ensureServer(client, { name: 'box', serverType: 'cx23', image: 'ubuntu-24.04', waitForRunning: false })
+    const result = await ensureServer(client, {
+      name: 'box',
+      serverType: 'cx23',
+      image: 'ubuntu-24.04',
+      waitForRunning: false,
+    })
     expect(result.server.status).toBe('initializing')
     expect(calls).toEqual(['GET /servers'])
   })
@@ -126,7 +149,9 @@ describe('ensureServer', () => {
 
 describe('serverPublicIpv4', () => {
   it('returns the public IPv4', () => {
-    expect(serverPublicIpv4({ public_net: { ipv4: { ip: '198.51.100.7' } }, id: 1, name: 'a' } as any)).toBe('198.51.100.7')
+    expect(serverPublicIpv4({ public_net: { ipv4: { ip: '198.51.100.7' } }, id: 1, name: 'a' } as any)).toBe(
+      '198.51.100.7',
+    )
   })
 
   it('throws when the server has none', () => {

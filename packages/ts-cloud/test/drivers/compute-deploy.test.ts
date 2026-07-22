@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
 import { deriveManagementDashboardPort } from '@ts-cloud/core'
-import { deployAllComputeSites, deploySiteRelease, reloadRpxGateway, renewRpxCertificates } from '../../src/drivers/shared/compute-deploy'
+import {
+  deployAllComputeSites,
+  deploySiteRelease,
+  reloadRpxGateway,
+  renewRpxCertificates,
+} from '../../src/drivers/shared/compute-deploy'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -32,13 +37,14 @@ function createMockDriver(overrides: Partial<CloudDriver> = {}): CloudDriver {
     // Role-aware like a real single-box driver: only the app role resolves —
     // there is no dedicated lb box for the gateway-reload fleet probe to find.
     findComputeTargets: mock(async (options?: { role?: string }) => {
-      if (options?.role && options.role !== 'app')
-        return []
-      return [{
-        id: 'i-abc123',
-        publicIp: '203.0.113.1',
-        status: 'running',
-      }]
+      if (options?.role && options.role !== 'app') return []
+      return [
+        {
+          id: 'i-abc123',
+          publicIp: '203.0.113.1',
+          status: 'running',
+        },
+      ]
     }),
     runRemoteDeploy: mock(async () => ({
       success: true,
@@ -78,7 +84,9 @@ describe('deploySiteRelease', () => {
       Environment: 'production',
       Role: 'app',
     })
-    expect(deployCall.commands.join('\n')).toContain('aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"')
+    expect(deployCall.commands.join('\n')).toContain(
+      'aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"',
+    )
     expect(deployCall.commands.join('\n')).toContain('systemctl start my-app-web@abc123.service')
     expect(deployCall.commands.join('\n')).toContain('/var/www/my-app-web/.ts-cloud/deploy-history.log')
     expect(deployCall.commands.join('\n')).toContain('ts_cloud_record_deploy')
@@ -110,7 +118,9 @@ describe('deploySiteRelease', () => {
     })
 
     const deployCall = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
-    expect(deployCall.commands.join('\n')).toContain('mv "/var/ts-cloud/staging/web-abc.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
+    expect(deployCall.commands.join('\n')).toContain(
+      'mv "/var/ts-cloud/staging/web-abc.tar.gz" /tmp/my-app-web-abc123-release.tar.gz',
+    )
     expect(deployCall.commands.join('\n')).toContain('[ts-cloud] host cleanup (disk before)')
     expect(deployCall.commands.join('\n')).not.toContain('aws s3 cp')
   })
@@ -371,17 +381,31 @@ describe('reloadRpxGateway', () => {
       usesCloudFormation: false,
       findComputeTargets: mock(async (options?: { role?: string }) => {
         if (options?.role === 'lb') {
-          return [{
-            id: '55',
-            name: 'my-app-production-lb',
-            publicIp: '203.0.113.55',
-            privateIp: '10.0.0.55',
-            status: 'running',
-          }]
+          return [
+            {
+              id: '55',
+              name: 'my-app-production-lb',
+              publicIp: '203.0.113.55',
+              privateIp: '10.0.0.55',
+              status: 'running',
+            },
+          ]
         }
         return [
-          { id: '51', name: 'my-app-production-app-1', publicIp: '203.0.113.51', privateIp: '10.0.0.51', status: 'running' },
-          { id: '52', name: 'my-app-production-app-2', publicIp: '203.0.113.52', privateIp: '10.0.0.52', status: 'running' },
+          {
+            id: '51',
+            name: 'my-app-production-app-1',
+            publicIp: '203.0.113.51',
+            privateIp: '10.0.0.51',
+            status: 'running',
+          },
+          {
+            id: '52',
+            name: 'my-app-production-app-2',
+            publicIp: '203.0.113.52',
+            privateIp: '10.0.0.52',
+            status: 'running',
+          },
         ]
       }),
     })
@@ -426,9 +450,9 @@ describe('reloadRpxGateway', () => {
     })
     expect(ok).toBe(true)
     // The lb probe ran first (and found nothing on a single-box driver)…
-    const findCalls = (driver.findComputeTargets as ReturnType<typeof mock>).mock.calls.map(c => c[0])
+    const findCalls = (driver.findComputeTargets as ReturnType<typeof mock>).mock.calls.map((c) => c[0])
     expect(findCalls[0]).toMatchObject({ role: 'lb' })
-    expect(findCalls.some(c => c?.role === 'app')).toBe(true)
+    expect(findCalls.some((c) => c?.role === 'app')).toBe(true)
     // …then the full provision script ran on the app targets, as before.
     const call = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
     expect(call.targets[0].id).toBe('i-abc123')
@@ -469,9 +493,11 @@ describe('renewRpxCertificates', () => {
     const driver = createMockDriver({
       name: 'hetzner',
       usesCloudFormation: false,
-      findComputeTargets: mock(async (options?: { role?: string }) => options?.role === 'lb'
-        ? [{ id: 'lb-1', publicIp: '203.0.113.10', status: 'running' }]
-        : [{ id: 'app-1', publicIp: '203.0.113.11', status: 'running' }]),
+      findComputeTargets: mock(async (options?: { role?: string }) =>
+        options?.role === 'lb'
+          ? [{ id: 'lb-1', publicIp: '203.0.113.10', status: 'running' }]
+          : [{ id: 'app-1', publicIp: '203.0.113.11', status: 'running' }],
+      ),
     })
     const ok = await renewRpxCertificates({
       config: tlsConfig,
@@ -517,8 +543,9 @@ describe('deployAllComputeSites with rpx gateway', () => {
         runtime: 'bun',
         tarballForSite: () => tarball,
       })
+    } finally {
+      delete process.env.TS_CLOUD_UI_DISABLE
     }
-    finally { delete process.env.TS_CLOUD_UI_DISABLE }
     expect(ok).toBe(true)
     // One deploy call for the site + one for the gateway reload.
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
@@ -537,7 +564,9 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     }
   }
 
-  afterEach(() => { delete process.env.TS_CLOUD_UI_DISABLE })
+  afterEach(() => {
+    delete process.env.TS_CLOUD_UI_DISABLE
+  })
 
   it('injects, builds, and ships the dashboard for a driver-API consumer (e.g. Stacks)', async () => {
     // The repo root has packages/ui, so resolveUiSource finds + builds it. The
@@ -556,7 +585,10 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
       runtime: 'bun',
       cwd: process.cwd(),
       // The consumer only knows about its own sites — not the dashboard.
-      tarballForSite: (name) => { if (name === 'web') return webTar; throw new Error(`Missing tarball for site '${name}'`) },
+      tarballForSite: (name) => {
+        if (name === 'web') return webTar
+        throw new Error(`Missing tarball for site '${name}'`)
+      },
     })
 
     expect(ok).toBe(true)
@@ -564,12 +596,16 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     // across tenants sharing a box via attachTo.
     expect((config.sites as any)['dashboard-my-app-example-com']?.domain).toBe('dashboard.my-app.example.com')
     expect((config.sites as any).dashboard).toBeUndefined()
-    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-my-app-example-com'))).toBe(true)
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map((c) =>
+      c[0].commands.join('\n'),
+    )
+    expect(allCommands.some((c) => c.includes('/var/www/my-app-dashboard-my-app-example-com'))).toBe(true)
     // Every site deploy is ownership-guarded so another attachTo tenant deriving
     // the same site key is refused instead of overwriting releases.
-    expect(allCommands.some(c => c.includes('/var/www/my-app-web/.ts-cloud/owner'))).toBe(true)
-    expect(allCommands.some(c => c.includes('/var/www/my-app-dashboard-my-app-example-com/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some((c) => c.includes('/var/www/my-app-web/.ts-cloud/owner'))).toBe(true)
+    expect(allCommands.some((c) => c.includes('/var/www/my-app-dashboard-my-app-example-com/.ts-cloud/owner'))).toBe(
+      true,
+    )
   }, 60_000)
 
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {
@@ -581,7 +617,12 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
 
     const config = baseConfig()
     const ok = await deployAllComputeSites({
-      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: process.cwd(),
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: process.cwd(),
       tarballForSite: () => webTar,
     })
 
@@ -598,7 +639,12 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
     const config = baseConfig()
     const ok = await deployAllComputeSites({
-      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: repo,
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: repo,
       tarballForSite: () => webTar,
     })
 
@@ -610,8 +656,10 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect(dashboard.port).toBe(deriveManagementDashboardPort(dashboard.domain))
     expect(dashboard.auth).toBeUndefined()
 
-    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    const dashboardCommands = allCommands.filter(c => c.includes('dashboard-my-app-example-com'))
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map((c) =>
+      c[0].commands.join('\n'),
+    )
+    const dashboardCommands = allCommands.filter((c) => c.includes('dashboard-my-app-example-com'))
     expect(dashboardCommands.length).toBeGreaterThan(0)
     const text = dashboardCommands.join('\n')
     // Installs the CLI, runs it by module path, and keeps its state in shared/.
@@ -635,15 +683,25 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
     const config = baseConfig()
     const ok = await deployAllComputeSites({
-      config, environment: 'production', driver, sha: 'abc', runtime: 'bun', cwd: fakeRepo,
-      tarballForSite: (name) => { if (name === 'web') return webTar; throw new Error(`Missing tarball for site '${name}'`) },
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: fakeRepo,
+      tarballForSite: (name) => {
+        if (name === 'web') return webTar
+        throw new Error(`Missing tarball for site '${name}'`)
+      },
     })
 
     expect(ok).toBe(true)
     // Injected then dropped because the build failed → no dashboard left behind.
     expect((config.sites as any)['dashboard-my-app-example-com']).toBeUndefined()
-    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(c => c[0].commands.join('\n'))
-    expect(allCommands.some(c => c.includes('/var/www/dashboard'))).toBe(false)
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map((c) =>
+      c[0].commands.join('\n'),
+    )
+    expect(allCommands.some((c) => c.includes('/var/www/dashboard'))).toBe(false)
     rmSync(fakeRepo, { recursive: true, force: true })
     delete process.env.TS_CLOUD_UI_STATIC
   }, 60_000)
@@ -691,8 +749,9 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
         runtime: 'bun',
         tarballForSite: () => tarball,
       })
+    } finally {
+      delete process.env.TS_CLOUD_UI_DISABLE
     }
-    finally { delete process.env.TS_CLOUD_UI_DISABLE }
     return { ok, driver }
   }
 
@@ -705,7 +764,7 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const ensure = calls[0][0]
     const sql = ensure.commands.join('\n')
     // Same idempotent script the provisioning path runs at first boot.
-    expect(sql).toContain('IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = \'training\')')
+    expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'training')")
     expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
     expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
     // Local pantry engine: admin psql over the unix socket (pg_hba trust),
@@ -751,7 +810,12 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
       runRemoteDeploy: mock(async () => {
         call++
         return call === 1
-          ? { success: false, instanceCount: 1, error: 'psql: connection refused', perInstance: [{ instanceId: '42', status: 'Failed', error: 'psql: connection refused' }] }
+          ? {
+              success: false,
+              instanceCount: 1,
+              error: 'psql: connection refused',
+              perInstance: [{ instanceId: '42', status: 'Failed', error: 'psql: connection refused' }],
+            }
           : { success: true, instanceCount: 1, perInstance: [{ instanceId: '42', status: 'Success' }] }
       }),
     })

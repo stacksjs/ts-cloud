@@ -34,20 +34,23 @@ async function build() {
     process.exit(1)
   }
 
-  const declarations = Bun.spawn([
-    'bunx',
-    'tsc',
-    '-p',
-    join(__dirname, 'tsconfig.json'),
-    '--emitDeclarationOnly',
-    '--noEmit',
-    'false',
-    '--declarationMap',
-    'false',
-  ], {
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
+  const declarations = Bun.spawn(
+    [
+      'bunx',
+      'tsc',
+      '-p',
+      join(__dirname, 'tsconfig.json'),
+      '--emitDeclarationOnly',
+      '--noEmit',
+      'false',
+      '--declarationMap',
+      'false',
+    ],
+    {
+      stdout: 'inherit',
+      stderr: 'inherit',
+    },
+  )
 
   const declarationExitCode = await declarations.exited
   if (declarationExitCode !== 0) process.exit(declarationExitCode)
@@ -143,7 +146,10 @@ async function bundleManagementUiSource(): Promise<void> {
   writeFileSync(join(dest, 'src', 'charts.ts'), await charts.outputs[0].text())
 
   // Minimal package.json so resolveUiSourceDir detects the bundle and stx builds it.
-  writeFileSync(join(dest, 'package.json'), `${JSON.stringify({ name: '@ts-cloud/ui', type: 'module', private: true }, null, 2)}\n`)
+  writeFileSync(
+    join(dest, 'package.json'),
+    `${JSON.stringify({ name: '@ts-cloud/ui', type: 'module', private: true }, null, 2)}\n`,
+  )
   console.warn(`UI source bundle: shipped live-rebuildable source → ${dest}`)
 }
 

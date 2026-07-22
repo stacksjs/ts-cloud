@@ -83,7 +83,7 @@ describe('cost explorer cache', () => {
 
     // Manually rewind savedAt to 2 hours ago.
     const dir = cacheLocation('alice')
-    const file = readdirSync(dir).find(f => f.endsWith('.json'))!
+    const file = readdirSync(dir).find((f) => f.endsWith('.json'))!
     const path = join(dir, file)
     const entry = JSON.parse(readFileSync(path, 'utf-8'))
     entry.savedAt = Date.now() - 2 * 60 * 60 * 1000
@@ -97,7 +97,7 @@ describe('cost explorer cache', () => {
     saveCache('alice', baseKey, [{ service: 'S3', amount: 10 }])
 
     const dir = cacheLocation('alice')
-    const file = readdirSync(dir).find(f => f.endsWith('.json'))!
+    const file = readdirSync(dir).find((f) => f.endsWith('.json'))!
     const path = join(dir, file)
     const entry = JSON.parse(readFileSync(path, 'utf-8'))
     entry.savedAt = Date.now() - 2 * 60 * 60 * 1000

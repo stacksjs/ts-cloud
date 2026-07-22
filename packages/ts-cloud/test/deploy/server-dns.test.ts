@@ -4,12 +4,14 @@ import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../
 
 describe('collectServerDnsDomains', () => {
   it('includes server, process, and redirect-only sites', () => {
-    expect([...collectServerDnsDomains({
-      static: { domain: 'example.com', deploy: 'server' },
-      api: { domain: 'example.com', start: 'bun server.ts' },
-      redirect: { domain: 'www.example.com', redirect: 'https://example.com' },
-      bucket: { domain: 'assets.example.com', deploy: 's3' },
-    })]).toEqual(['example.com', 'www.example.com'])
+    expect([
+      ...collectServerDnsDomains({
+        static: { domain: 'example.com', deploy: 'server' },
+        api: { domain: 'example.com', start: 'bun server.ts' },
+        redirect: { domain: 'www.example.com', redirect: 'https://example.com' },
+        bucket: { domain: 'assets.example.com', deploy: 's3' },
+      }),
+    ]).toEqual(['example.com', 'www.example.com'])
   })
 })
 
@@ -33,7 +35,9 @@ describe('removeStaleServerAddressRecords', () => {
       },
     } as unknown as DnsProvider
 
-    expect(await removeStaleServerAddressRecords(provider, 'example.com', 'www.example.com', '178.105.248.188')).toEqual([])
+    expect(
+      await removeStaleServerAddressRecords(provider, 'example.com', 'www.example.com', '178.105.248.188'),
+    ).toEqual([])
     expect(listTypes).toEqual([undefined])
     expect(deleted).toEqual([{ id: '2', name: 'www', type: 'A', content: '49.12.8.203' }])
   })

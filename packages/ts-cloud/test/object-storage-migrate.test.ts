@@ -10,11 +10,7 @@
 
 import type { S3Client } from '../src/aws/s3'
 import { describe, expect, it } from 'bun:test'
-import {
-  keyMatchesFilters,
-  migrateObjectStorage,
-  remapKey,
-} from '../src/object-storage/migrate'
+import { keyMatchesFilters, migrateObjectStorage, remapKey } from '../src/object-storage/migrate'
 
 interface StoredObject {
   body: Uint8Array
@@ -30,7 +26,7 @@ class MockStore {
     this.objects.set(key, { body: bytes, contentType })
   }
 
-  async listAllObjects({ bucket: _bucket, prefix }: { bucket: string, prefix?: string }) {
+  async listAllObjects({ bucket: _bucket, prefix }: { bucket: string; prefix?: string }) {
     return [...this.objects.entries()]
       .filter(([key]) => !prefix || key.startsWith(prefix))
       .map(([key, obj]) => ({ Key: key, LastModified: '', Size: obj.body.byteLength, ETag: undefined }))
@@ -38,19 +34,17 @@ class MockStore {
 
   async headObject(_bucket: string, key: string) {
     const obj = this.objects.get(key)
-    if (!obj)
-      return null
+    if (!obj) return null
     return { ContentLength: obj.body.byteLength, ContentType: obj.contentType }
   }
 
   async getObjectBytes(_bucket: string, key: string) {
     const obj = this.objects.get(key)
-    if (!obj)
-      throw new Error(`not found: ${key}`)
+    if (!obj) throw new Error(`not found: ${key}`)
     return { body: obj.body, contentType: obj.contentType, contentLength: obj.body.byteLength }
   }
 
-  async putObject({ key, body, contentType }: { bucket: string, key: string, body: any, contentType?: string }) {
+  async putObject({ key, body, contentType }: { bucket: string; key: string; body: any; contentType?: string }) {
     const bytes = body instanceof Uint8Array ? body : new TextEncoder().encode(String(body))
     this.objects.set(key, { body: bytes, contentType })
   }
@@ -191,7 +185,7 @@ describe('migrateObjectStorage', () => {
     expect(dst.objects.size).toBe(0)
     expect(result.copied).toBe(0)
     expect(result.plan).toBeDefined()
-    expect(result.plan!.map(p => p.key)).toEqual(['inbox/att.bin'])
+    expect(result.plan!.map((p) => p.key)).toEqual(['inbox/att.bin'])
     // Everything not under inbox/ shows up as excluded in the plan accounting.
     expect(result.excluded).toBe(4)
   })
@@ -221,10 +215,8 @@ describe('migrateObjectStorage', () => {
     // both a missing key and a size mismatch during verification.
     const original = dst.putObject.bind(dst)
     dst.putObject = async (opts: any) => {
-      if (opts.key === 'sent/2.eml')
-        return // dropped -> missing
-      if (opts.key === 'inbox/att.bin')
-        return original({ ...opts, body: new Uint8Array([9]) }) // wrong size -> mismatch
+      if (opts.key === 'sent/2.eml') return // dropped -> missing
+      if (opts.key === 'inbox/att.bin') return original({ ...opts, body: new Uint8Array([9]) }) // wrong size -> mismatch
       return original(opts)
     }
 
@@ -237,7 +229,7 @@ describe('migrateObjectStorage', () => {
 
     expect(result.verification!.ok).toBe(false)
     expect(result.verification!.missing).toContain('sent/2.eml')
-    expect(result.verification!.sizeMismatches.map(m => m.key)).toContain('inbox/att.bin')
+    expect(result.verification!.sizeMismatches.map((m) => m.key)).toContain('inbox/att.bin')
   })
 
   it('delete-extraneous removes destination keys not in the source', async () => {

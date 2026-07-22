@@ -16,15 +16,20 @@ describe('deploy hooks', () => {
       await runHook(`echo hi > ${join(dir, 'out.txt')}`, cfg({}), 'beforeBuild')
       expect(existsSync(join(dir, 'out.txt'))).toBe(true)
       expect(readFileSync(join(dir, 'out.txt'), 'utf8').trim()).toBe('hi')
-    }
-    finally {
+    } finally {
       rmSync(dir, { recursive: true, force: true })
     }
   })
 
   it('awaits a function hook with the config', async () => {
     let seen = ''
-    await runHook(async (c) => { seen = c.project.slug }, cfg({}), 'afterDeploy')
+    await runHook(
+      async (c) => {
+        seen = c.project.slug
+      },
+      cfg({}),
+      'afterDeploy',
+    )
     expect(seen).toBe('x')
   })
 
@@ -35,14 +40,14 @@ describe('deploy hooks', () => {
 
   it('runConfigHook returns false (and logs) when a string hook fails', async () => {
     const errors: string[] = []
-    const ok = await runConfigHook(cfg({ beforeDeploy: 'exit 3' }), 'beforeDeploy', { error: m => errors.push(m) })
+    const ok = await runConfigHook(cfg({ beforeDeploy: 'exit 3' }), 'beforeDeploy', { error: (m) => errors.push(m) })
     expect(ok).toBe(false)
     expect(errors[0]).toContain('beforeDeploy hook failed')
   })
 
   it('runConfigHook runs the named hook and returns true on success', async () => {
     const steps: string[] = []
-    const ok = await runConfigHook(cfg({ afterBuild: 'true' }), 'afterBuild', { step: m => steps.push(m) })
+    const ok = await runConfigHook(cfg({ afterBuild: 'true' }), 'afterBuild', { step: (m) => steps.push(m) })
     expect(ok).toBe(true)
     expect(steps).toContain('Running afterBuild hook')
   })

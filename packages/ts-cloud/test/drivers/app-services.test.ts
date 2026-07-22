@@ -24,7 +24,9 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
   it('runs bun buddy queue:work with a bare ExecStart + Environment= (no shell wrapper)', () => {
     const site: SiteConfig = { root: '.', queues: [{ queue: 'default', tries: 5 }] }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
-    expect(script).toContain('ExecStart=/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work')
+    expect(script).toContain(
+      'ExecStart=/usr/local/bin/bun /var/www/app/current/storage/framework/core/buddy/src/cli.ts queue:work',
+    )
     expect(script).toContain('--tries=5')
     expect(script).toContain('Environment="BUN_INSTALL=/root/.bun"')
     // No login-shell wrapper (that would hang `systemctl restart` over SSH).
@@ -86,7 +88,9 @@ describe('buildSiteServicesScript — scheduler', () => {
     const site: SiteConfig = { root: '.', type: 'laravel', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain(`cat > ${schedulerCronPath('acme', 'app')}`)
-    expect(script).toContain('cd /var/www/app/current && eval "$(cd /opt/pantry && pantry env 2>/dev/null)" && php artisan schedule:run')
+    expect(script).toContain(
+      'cd /var/www/app/current && eval "$(cd /opt/pantry && pantry env 2>/dev/null)" && php artisan schedule:run',
+    )
   })
 
   it('removes the cron entry when scheduler is disabled', () => {
@@ -102,7 +106,9 @@ describe('buildSiteServicesScript — scheduler', () => {
       scheduler: { heartbeatUrl: 'https://hc-ping.com/abc-123' },
     }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
-    expect(script).toContain('php artisan schedule:run >> /dev/null 2>&1 && curl -fsS -m 10 \'https://hc-ping.com/abc-123\'')
+    expect(script).toContain(
+      "php artisan schedule:run >> /dev/null 2>&1 && curl -fsS -m 10 'https://hc-ping.com/abc-123'",
+    )
   })
 
   it('escapes cron % and honors a custom heartbeat method', () => {

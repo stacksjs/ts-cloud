@@ -58,7 +58,11 @@ describe('backups (ts-backups integration)', () => {
   })
 
   it('configures a native S3 destination (no aws-cli sync) when a bucket is set', () => {
-    const cfg = buildBackupsConfigTs(database, { enabled: true, bucket: 'my-backups', endpoint: 'https://hel1.your-objectstorage.com' })
+    const cfg = buildBackupsConfigTs(database, {
+      enabled: true,
+      bucket: 'my-backups',
+      endpoint: 'https://hel1.your-objectstorage.com',
+    })
     expect(cfg).toContain('destinations: [')
     expect(cfg).toContain("type: 's3'")
     expect(cfg).toContain("bucket: 'my-backups'")
@@ -69,7 +73,12 @@ describe('backups (ts-backups integration)', () => {
   it('installs Bun + ts-backups and schedules a cron (native upload, no aws-cli)', () => {
     const script = buildBackupProvisionScript({
       database,
-      backups: { enabled: true, bucket: 'my-backups', endpoint: 'https://hel1.your-objectstorage.com', schedule: '0 3 * * *' },
+      backups: {
+        enabled: true,
+        bucket: 'my-backups',
+        endpoint: 'https://hel1.your-objectstorage.com',
+        schedule: '0 3 * * *',
+      },
     }).join('\n')
     expect(script).toContain('bun.sh/install')
     expect(script).toContain('bun add -g ts-backups')

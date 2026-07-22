@@ -75,7 +75,12 @@ describe('S3 object-key URI encoding (+ in SemVer build metadata)', () => {
   it('string-body putObject encodes + in the signed path', async () => {
     const c = client()
     const cap = captureRequestPath(c)
-    await c.putObject({ bucket: 'pantry-registry', key: `${KEY}.sha256`, body: 'abc123  file\n', contentType: 'text/plain' })
+    await c.putObject({
+      bucket: 'pantry-registry',
+      key: `${KEY}.sha256`,
+      body: 'abc123  file\n',
+      contentType: 'text/plain',
+    })
     expect(cap.last()).toContain('%2B')
     expect(cap.last()).not.toContain('+')
   })

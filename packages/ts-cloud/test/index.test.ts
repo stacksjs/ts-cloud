@@ -7,7 +7,7 @@ function add(a: number, b: number): number {
 
 // Example async function to test
 async function fetchData(): Promise<string> {
-  return new Promise(resolve => setTimeout(() => resolve('data'), 100))
+  return new Promise((resolve) => setTimeout(() => resolve('data'), 100))
 }
 
 // Example module to mock

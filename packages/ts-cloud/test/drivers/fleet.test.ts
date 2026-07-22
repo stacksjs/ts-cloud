@@ -1,6 +1,10 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import { describe, expect, it } from 'bun:test'
-import { buildFleetServicesBoxProvision, buildFleetServicesEnv, resolveFleetTopology } from '../../src/drivers/shared/fleet'
+import {
+  buildFleetServicesBoxProvision,
+  buildFleetServicesEnv,
+  resolveFleetTopology,
+} from '../../src/drivers/shared/fleet'
 
 describe('resolveFleetTopology', () => {
   it('single server by default — services co-located, no LB', () => {
