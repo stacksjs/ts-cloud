@@ -196,6 +196,9 @@ const POLICIES: Record<string, RoutePolicy> = {
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },
+  'GET /api/runtime/workloads': { capability: 'runtime:read' },
+  'GET /api/runtime/logs': { capability: 'runtime:logs' },
+  'POST /api/runtime/operations': { capability: 'runtime:restart' },
   'POST /api/actions/run': { capability: 'fleet:manage' },
   'GET /api/server/operations': { capability: 'fleet:read' },
   'POST /api/server/operations/run': { capability: 'fleet:manage' },

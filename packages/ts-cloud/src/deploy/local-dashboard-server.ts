@@ -23,6 +23,7 @@ import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorke
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
+import { resolveRuntimeInventory, RuntimeOperationService } from '../runtime'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -606,7 +607,7 @@ export async function runDashboardAction(action: DashboardAction, options: Requi
 
 function deploymentLogSecrets(): string[] {
   return Object.entries(process.env)
-    .filter(([name, value]) => !!value && value.length >= 8 && /(secret|token|password|passwd|private|credential|api.?key|access.?key)/i.test(name))
+    .filter(([name, value]) => !!value && value.length >= 8 && /(?:secret|token|password|passwd|private|credential|api.?key|access.?key)/i.test(name))
     .map(([, value]) => value!)
 }
 
@@ -900,7 +901,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const source = operationInput.source && typeof operationInput.source === 'object' ? operationInput.source as Record<string, any> : undefined
           let actionCwd = cwd
           let checkoutRoot: string | undefined
-          let publishStatus: ((state: 'pending' | 'success' | 'failure' | 'error', description: string) => Promise<void>) | undefined
+          let publishStatus: ((_state: 'pending' | 'success' | 'failure' | 'error', _description: string) => Promise<void>) | undefined
           try {
             if (source?.bindingId && source?.connectionId && source?.commitSha) {
               const binding = sourceConnections.getBinding(String(source.bindingId))
@@ -2771,6 +2772,54 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/server/operations')
           return json(buildDashboardOperations(config as CloudConfig, latestData))
+
+        if (url.pathname === '/api/runtime/workloads' && req.method === 'GET') {
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          return json(inventory)
+        }
+
+        if (url.pathname === '/api/runtime/logs' && req.method === 'GET') {
+          const workloadId = String(url.searchParams.get('workload') ?? '')
+          if (!workloadId)
+            return json({ ok: false, error: 'A workload query parameter is required.' }, 422)
+          const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get('limit')) || 200))
+          try {
+            return json(await new RuntimeOperationService(config as CloudConfig, environment).logs(workloadId, { limit }))
+          }
+          catch (error: any) {
+            return json({ ok: false, error: String(error?.message ?? error) }, 404)
+          }
+        }
+
+        if (url.pathname === '/api/runtime/operations' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const workloadId = String(body.workloadId ?? '')
+          const action = String(body.action ?? '') as import('../runtime').LifecycleAction
+          if (!workloadId || !['start', 'stop', 'restart', 'redeploy', 'scale', 'inspect'].includes(action))
+            return json({ ok: false, error: 'A valid workloadId and lifecycle action are required.' }, 422)
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          const workload = inventory.workloads.find(item => item.id === workloadId)
+          if (!workload)
+            return json({ ok: false, error: 'Workload was not found in the current project and environment.' }, 404)
+          const session = guard.resolveSession(req)
+          const service = new RuntimeOperationService(config as CloudConfig, environment, { inventory: async () => inventory })
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: `runtime.${action}`,
+            resourceSlug: workload.links.service,
+            input: { workloadId, provider: workload.provider, action, replicas: body.replicas == null ? null : Number(body.replicas) },
+            execute: () => service.run({
+              workloadId,
+              action,
+              replicas: body.replicas == null ? undefined : Number(body.replicas),
+              confirm: String(body.confirm ?? ''),
+              recentAuth: !authEnabled || (!!session && authentication.isRecentlyAuthenticated(session)),
+            }),
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation }, tracked.result.ok ? 200 : 409)
+        }
 
         if (url.pathname === '/api/databases' && req.method === 'GET')
           return json(await listDatabases(config as CloudConfig, environment))
