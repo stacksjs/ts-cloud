@@ -52,6 +52,7 @@ import {
   registerApiCommands,
   registerOperationQueueCommands,
   registerRuntimeCommands,
+  registerTelemetryCommands,
   registerTunnelCommands,
 } from './commands'
 
@@ -126,6 +127,7 @@ registerBackupCommands(app)
 registerApiCommands(app)
 registerOperationQueueCommands(app)
 registerRuntimeCommands(app)
+registerTelemetryCommands(app)
 
 // Cost & Resources
 registerCostCommands(app)

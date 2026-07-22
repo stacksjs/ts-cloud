@@ -53,6 +53,7 @@ export { registerBackupCommands } from './backup'
 export { registerApiCommands } from './api'
 export { registerOperationQueueCommands } from './operation-queue'
 export { registerRuntimeCommands } from './runtime'
+export { registerTelemetryCommands } from './telemetry'
 export { registerTunnelCommands } from './tunnel'
 
 export { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'
