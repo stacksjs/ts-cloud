@@ -149,6 +149,37 @@ describe('resumable application drafts', () => {
     controlPlane.close()
   })
 
+  it('queues reproducible create flows for Bun, Laravel, static, Dockerfile, and prebuilt images', () => {
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' })
+    const organization = controlPlane.createOrganization({ slug: 'strategies', name: 'Strategies' })
+    const project = controlPlane.createProject({ organizationId: organization.id, slug: 'matrix', name: 'Matrix' })
+    const environment = controlPlane.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' })
+    const drafts = new ApplicationDraftStore(controlPlane)
+    const strategies: Array<{ slug: string, build: ApplicationDraftInput['build'], runtime: ApplicationDraftInput['runtime'], source?: ApplicationDraftInput['source'] }> = [
+      { slug: 'bun-api', build: { kind: 'server', runtime: 'bun', installCommand: 'bun install --frozen-lockfile', startCommand: 'bun run start' }, runtime: { target: 'server', architecture: 'arm64', port: 3000 } },
+      { slug: 'laravel-api', build: { kind: 'server', runtime: 'php', installCommand: 'composer install --no-dev', startCommand: 'php artisan serve --host=0.0.0.0 --port=8080' }, runtime: { target: 'server', architecture: 'x86_64', port: 8080 } },
+      { slug: 'static-site', build: { kind: 'static', publishDirectory: 'dist', buildCommand: 'bun run build' }, runtime: { target: 'serverless', architecture: 'arm64' } },
+      { slug: 'docker-app', build: { kind: 'dockerfile', context: '.', dockerfile: 'Dockerfile', target: 'release' }, runtime: { target: 'container', architecture: 'x86_64', port: 8080 } },
+      { slug: 'oci-app', build: { kind: 'prebuilt_image', image: 'registry.example/acme/web@sha256:abc' }, runtime: { target: 'container', architecture: 'arm64', port: 8080 }, source: { kind: 'image', image: 'registry.example/acme/web@sha256:abc' } },
+    ]
+    for (const strategy of strategies) {
+      const input = base(strategy.build, strategy.runtime)
+      input.name = strategy.slug
+      input.slug = strategy.slug
+      input.projectId = project.id
+      input.environmentId = environment.id
+      if (strategy.source) input.source = strategy.source
+      const draft = drafts.create({ organizationId: organization.id, projectId: project.id, name: `${strategy.slug} import`, draft: input, step: 'review' })
+      const applied = applyApplicationDraft({ controlPlane, drafts, draftId: draft.id, expectedVersion: draft.version, confirmEnvironment: 'production' })
+      expect(applied.plan.manifest.spec.build.kind).toBe(strategy.build.kind)
+      expect(applied.resource.desiredState).toMatchObject({ manifest: { spec: { build: { kind: strategy.build.kind } } } })
+      expect(applied.operation).toMatchObject({ kind: 'application.create', state: 'queued', resourceId: applied.resource.id })
+    }
+    expect(controlPlane.listOperations({ projectId: project.id }).map(operation => operation.kind)).toEqual(Array(5).fill('application.create'))
+    expect(controlPlane.listResources(project.id, environment.id).map(resource => resource.slug).sort()).toEqual(strategies.map(strategy => strategy.slug).sort())
+    controlPlane.close()
+  })
+
   it('migrates prototype drafts and refuses embedded secret values', () => {
     const migrated = migrateApplicationDraft({ schemaVersion: 0, appName: 'Legacy', applicationSlug: 'legacy', projectId: 'project', environmentId: 'prod', strategy: 'static', publishDirectory: 'public', secretNames: ['API_TOKEN'] })
     expect(migrated).toMatchObject({ schemaVersion: 1, name: 'Legacy', slug: 'legacy', build: { kind: 'static', publishDirectory: 'public' }, requiredSecretNames: ['API_TOKEN'] })
