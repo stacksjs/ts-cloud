@@ -45,7 +45,7 @@ const TRANSITIONS: Readonly<Record<OperationState, readonly OperationState[]>> =
   cancelled: ['queued'],
   timed_out: ['queued'],
 }
-const SENSITIVE_KEY = /(^|_)(authorization|cookie|credential|password|passwd|secret|token|api_?key|private_?key|access_?key)($|_)/i
+const SENSITIVE_KEY = /(?:^|_)(?:authorization|cookie|credential|password|passwd|secret|token|api_?key|private_?key|access_?key)(?:$|_)/i
 const SENSITIVE_TEXT = /(?:authorization|password|secret|token|api[_-]?key|private[_-]?key|access[_-]?key)\s*[=:]\s*[^\s,;]+/gi
 
 type Row = Record<string, unknown>
@@ -194,13 +194,20 @@ export class ControlPlaneStore {
       this.database.run('PRAGMA synchronous = NORMAL')
     }
     this.migrate()
-    if (!inMemory) {
-      try { chmodSync(this.path, 0o600) } catch {}
-    }
+    if (!inMemory)
+      this.secureDatabaseFiles()
   }
 
   private now(): string {
     return this.nowFn().toISOString()
+  }
+
+  private secureDatabaseFiles(): void {
+    for (const path of [this.path, `${this.path}-wal`, `${this.path}-shm`]) {
+      if (!existsSync(path))
+        continue
+      try { chmodSync(path, 0o600) } catch {}
+    }
   }
 
   private migrate(): void {
@@ -238,6 +245,8 @@ export class ControlPlaneStore {
   }
 
   close(): void {
+    if (this.path !== ':memory:')
+      this.secureDatabaseFiles()
     this.database.close()
   }
 
@@ -479,7 +488,7 @@ export class ControlPlaneStore {
     const cutoff = (options.now ?? this.nowFn()).toISOString()
     const policy = options.policy ?? 'fail'
     const rows = this.database.query<Row, [string]>(
-      "SELECT * FROM operations WHERE state = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= ?)",
+      `SELECT * FROM operations WHERE state = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
     ).all(cutoff).map(mapOperation)
     let requeued = 0
     let failed = 0
@@ -541,7 +550,7 @@ export class ControlPlaneStore {
     const counts = this.transaction(() => {
       const events = run(this.database, 'DELETE FROM events WHERE created_at < ?', [eventCutoff]).changes
       const operations = run(this.database,
-        "DELETE FROM operations WHERE created_at < ? AND state IN ('succeeded', 'failed', 'cancelled', 'timed_out')",
+        `DELETE FROM operations WHERE created_at < ? AND state IN ('succeeded', 'failed', 'cancelled', 'timed_out')`,
         [operationCutoff],
       ).changes
       return { events, operations }

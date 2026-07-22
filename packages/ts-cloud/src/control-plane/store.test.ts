@@ -30,6 +30,8 @@ describe('ControlPlaneStore schema and persistence', () => {
     expect(health.schemaVersion).toBe(health.supportedSchemaVersion)
     expect(health.journalMode).toBe('wal')
     expect(statSync(path).mode & 0o777).toBe(0o600)
+    expect(statSync(`${path}-shm`).mode & 0o777).toBe(0o600)
+    expect(statSync(`${path}-wal`).mode & 0o777).toBe(0o600)
     expect(statSync(join(path, '..')).mode & 0o777).toBe(0o700)
     store.close()
   })
