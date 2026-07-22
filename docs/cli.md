@@ -98,6 +98,18 @@ See [Compose applications and templates](/features/compose-applications) for sup
 
 See [Releases, promotion, and rollback](/features/releases) for immutable identity, strategy support, provider driver contracts, health gates, and safety boundaries.
 
+## Existing static site API
+
+| Command | Purpose |
+|---|---|
+| `cloud cdn:api:deploy <distribution> <alias>` | Plan a private Lambda URL origin and an isolated `/api/*` behavior. |
+| `cloud cdn:api:deploy … --apply --confirm '<distribution>:/api/*'` | Provision the API and submit the guarded CloudFront patch. |
+| `cloud cdn:api:verify <alias> --frontend-sha256 <digest>` | Prove frontend integrity and collect API health, latency, and cold-start evidence. |
+| `cloud cdn:api:cost <monthly-requests>` | Compare the low-volume Lambda estimate with one always-on Fargate task and ALB. |
+| `cloud cdn:origin:remove <distribution> <origin-host> …` | Roll back one exact path behavior without touching the static default. |
+
+See [Add a private API to an existing static site](/features/static-site-api-origin) for the architecture, permissions, confirmation boundary, payload constraint, verification procedure, and rollback order.
+
 ## Durable operations
 
 | Command | Description |
