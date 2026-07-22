@@ -1,40 +1,27 @@
 import type { CLI } from '@stacksjs/clapp'
 import * as cli from '../../src/utils/cli'
+import { FleetService,FleetStore,SshFleetDriver,type ServerProvider,type ServerRole } from '../../src/fleet'
+import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
+import { loadValidatedConfig } from './shared'
+async function fleetContext(){const config=await loadValidatedConfig(),controlPlane=initializeDashboardControlPlane(process.cwd(),config),store=new FleetStore(controlPlane.store),service=new FleetService(store,[new SshFleetDriver('aws'),new SshFleetDriver('hetzner'),new SshFleetDriver('ssh')]);return{controlPlane,store,service}}
+async function withFleet<T>(callback:(value:Awaited<ReturnType<typeof fleetContext>>)=>Promise<T>){const value=await fleetContext();try{return await callback(value)}finally{value.controlPlane.store.close()}}
+const findServer=(store:FleetStore,projectId:string,name:string)=>{const server=store.list(projectId).find(item=>item.id===name||item.name===name);if(!server)throw new Error(`Server ${name} was not found.`);return server}
 
 export function registerServerCommands(app: CLI): void {
   app
     .command('server:list', 'List all servers')
-    .action(async () => {
-      cli.header('Listing Servers')
-
-      // TODO: Fetch from AWS
-      const servers = [
-        ['web-1', 'i-1234567890abcdef0', 't3.micro', 'running', 'us-east-1a'],
-        ['web-2', 'i-0987654321fedcba0', 't3.micro', 'running', 'us-east-1b'],
-      ]
-
-      cli.table(
-        ['Name', 'Instance ID', 'Type', 'Status', 'AZ'],
-        servers,
-      )
-    })
+    .option('--json','Print structured JSON').action(async(options:{json?:boolean})=>withFleet(async value=>{const servers=value.store.list(value.controlPlane.project.id);if(options.json)console.log(JSON.stringify(servers,null,2));else cli.table(['Name','Provider ID','Provider / region','Status / trust','Roles','CPU / memory','Heartbeat'],servers.map(item=>[item.name,item.providerId??'—',`${item.provider} / ${item.region??'external'}`,`${item.status} / ${item.trustState}`,item.roles.join(','),`${item.capacity.cpu??0} / ${item.capacity.memoryBytes??0}`,item.heartbeatAt??'never']))}))
 
   app
-    .command('server:create <name>', 'Create a new server')
-    .option('--type <type>', 'Instance type (e.g., t3.micro)', { default: 't3.micro' })
-    .option('--ami <ami>', 'AMI ID')
-    .action(async (name: string, options?: { type?: string, ami?: string }) => {
-      cli.header(`Creating Server: ${name}`)
+    .command('server:create <name>', 'Enroll a provisioned or existing server into fleet inventory')
+    .option('--provider <provider>','aws, hetzner, or ssh',{default:'ssh'}).option('--provider-id <id>','Stable provider instance ID').option('--endpoint <host>','SSH hostname or IP').option('--user <user>','Non-root SSH user',{default:'deploy'}).option('--credential-ref <ref>','Secret reference',{default:'secret://fleet/agent'}).option('--region <region>','Provider region').option('--roles <roles>','Comma-separated roles',{default:'application'}).option('--labels <labels>','Comma-separated key=value labels')
+    .action(async(name:string,options:{provider?:string;providerId?:string;endpoint?:string;user?:string;credentialRef?:string;region?:string;roles?:string;labels?:string})=>withFleet(async value=>{const provider=options.provider as ServerProvider;if(!['aws','hetzner','ssh'].includes(provider))throw new Error('--provider must be aws, hetzner, or ssh.');if(!options.endpoint)throw new Error('--endpoint is required; provisioning and enrollment are separate explicit operations.');const labels=Object.fromEntries((options.labels??'').split(',').map(v=>v.split('=')).filter(v=>v[0]&&v[1])),server=value.service.enroll({organizationId:value.controlPlane.organization.id,projectId:value.controlPlane.project.id,name,provider,providerId:options.providerId,endpoint:options.endpoint,sshUser:options.user??'deploy',credentialRef:options.credentialRef??'secret://fleet/agent',region:options.region,roles:(options.roles??'application').split(',').map(v=>v.trim()) as ServerRole[],labels});cli.success(`Enrolled ${server.name} as ${server.id}; no remote mutation was performed.`)}))
 
-      const spinner = new cli.Spinner(`Creating server ${name}...`)
-      spinner.start()
-
-      // TODO: Implement server creation
-      await new Promise(resolve => setTimeout(resolve, 2000))
-
-      spinner.succeed(`Server ${name} created successfully`)
-      cli.info(`Instance type: ${options?.type || 't3.micro'}`)
-    })
+  app.command('server:validate <name>','Test pinned trust and produce an actionable validation report').option('--accept-host-key <fingerprint>','Explicitly accept a pending rotation').option('--json','Print structured JSON').action(async(name:string,options:{acceptHostKey?:string;json?:boolean})=>withFleet(async value=>{let server=findServer(value.store,value.controlPlane.project.id,name);server=await value.service.test(server.id);if(server.trustState==='rotation_pending'){if(!options.acceptHostKey)throw new Error(`Host key changed to ${server.pendingHostKey}; review and pass --accept-host-key.`);server=value.service.reviewHostKey(server.id,options.acceptHostKey)}const validated=await value.service.validate(server.id);if(options.json)console.log(JSON.stringify(validated.validation,null,2));else cli.table(['Severity','Code','Finding','Remediation'],(validated.validation?.findings??[]).map(item=>[item.severity,item.code,item.message,item.remediation??'—']));if(!validated.validation?.valid)process.exitCode=1}))
+  app.command('server:bootstrap <name>','Preview or queue idempotent server bootstrap').option('--apply','Queue the reviewed plan').action(async(name:string,options:{apply?:boolean})=>withFleet(async value=>{const server=findServer(value.store,value.controlPlane.project.id,name),result=value.service.bootstrap(server.id,!!options.apply);if(result.preview)cli.table(['Step'],result.steps.map(step=>[step]));else cli.success(`Bootstrap queued: ${result.operation?.id}`)}))
+  app.command('server:drain <name>','Drain a server without terminating it').option('--complete','Mark workload movement complete').action(async(name:string,options:{complete?:boolean})=>withFleet(async value=>{const server=findServer(value.store,value.controlPlane.project.id,name);cli.success(`${value.service.drain(server.id,!!options.complete).status}: ${server.name}`)}))
+  app.command('server:uncordon <name>','Return a drained server to scheduling').action(async(name:string)=>withFleet(async value=>{const server=findServer(value.store,value.controlPlane.project.id,name);value.service.uncordon(server.id);cli.success(`Uncordoned ${server.name}.`)}))
+  app.command('server:archive <name>','Remove a server from inventory without terminating it').option('--confirm <name>','Exact server name').action(async(name:string,options:{confirm?:string})=>withFleet(async value=>{const server=findServer(value.store,value.controlPlane.project.id,name);value.service.archive(server.id,options.confirm??'');cli.success(`Archived ${server.name}; provider infrastructure was not terminated.`)}))
 
   app
     .command('server:ssh <name>', 'SSH into a server')
