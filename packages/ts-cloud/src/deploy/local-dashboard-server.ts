@@ -34,7 +34,7 @@ import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, Notificatio
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { AwsDatabaseBackupSource, AwsInfrastructureBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, ControlPlaneBackupSource, createBackupQueueHandlers, DockerVolumeBackupSource, FilesystemBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
-import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, type ConfigurationScope } from '../configuration'
+import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, ConfigurationService, ConfigurationStore, ExternalConfigurationBackend, LocalEncryptedConfigurationBackend, synchronizeConfiguredConfiguration, type ConfigurationScope } from '../configuration'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -1028,6 +1028,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       new ExternalConfigurationBackend(),
     ],
   })
+  await synchronizeConfiguredConfiguration(configurationService, controlPlane, config as CloudConfig)
   const rdsClient = new RDSClient(dataServiceRegion)
   const dataAdapters = {
     aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(rdsClient)),
