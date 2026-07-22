@@ -6,6 +6,101 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type OperationState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
 export type TerminalOperationState = Extract<OperationState, 'succeeded' | 'failed' | 'cancelled' | 'timed_out'>
 
+export type OrganizationRoleTemplate = 'owner' | 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor'
+export type AuthorizationScopeType = 'organization' | 'project' | 'environment' | 'resource'
+export type AuthorizationEffect = 'allow' | 'deny'
+export type AuthorizationCapability
+  = | 'project:read'
+    | 'config:read'
+    | 'config:write'
+    | 'deployments:read'
+    | 'deployments:create'
+    | 'deployments:cancel'
+    | 'deployments:rollback'
+    | 'runtime:read'
+    | 'runtime:restart'
+    | 'runtime:logs'
+    | 'runtime:terminal'
+    | 'data:read'
+    | 'data:write'
+    | 'data:admin'
+    | 'backups:read'
+    | 'backups:create'
+    | 'backups:restore'
+    | 'secrets:read'
+    | 'secrets:write'
+    | 'fleet:read'
+    | 'fleet:manage'
+    | 'users:read'
+    | 'users:manage'
+    | 'users:transfer-ownership'
+    | 'audit:read'
+    | 'automation:read'
+    | 'automation:manage'
+    | 'tags:manage'
+
+export interface AuthorizationScope {
+  type: AuthorizationScopeType
+  id?: ControlPlaneId
+}
+
+export interface AuthorizationTarget {
+  organizationId: ControlPlaneId
+  projectId?: ControlPlaneId
+  environmentId?: ControlPlaneId
+  resourceId?: ControlPlaneId
+}
+
+export interface ControlPlaneOrganization {
+  id: ControlPlaneId
+  slug: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OrganizationMembership {
+  id: ControlPlaneId
+  organizationId: ControlPlaneId
+  actorId: ControlPlaneId
+  roleTemplate: OrganizationRoleTemplate
+  scope: AuthorizationScope
+  status: 'active' | 'revoked'
+  sessionVersion: number
+  lastActiveAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface OrganizationInvitation {
+  id: ControlPlaneId
+  organizationId: ControlPlaneId
+  email: string
+  roleTemplate: OrganizationRoleTemplate
+  scope: AuthorizationScope
+  invitedByActorId?: ControlPlaneId
+  acceptedByActorId?: ControlPlaneId
+  /** Present only in encrypted/administrator snapshots; never returned by invitation APIs. */
+  tokenHash?: string
+  expiresAt: string
+  acceptedAt?: string
+  revokedAt?: string
+  state: 'pending' | 'accepted' | 'expired' | 'revoked'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AuthorizationGrant {
+  id: ControlPlaneId
+  organizationId: ControlPlaneId
+  membershipId: ControlPlaneId
+  effect: AuthorizationEffect
+  capability: AuthorizationCapability
+  scope: AuthorizationScope
+  createdAt: string
+  updatedAt: string
+}
+
 export interface ControlPlaneProject {
   id: ControlPlaneId
   slug: string
@@ -89,6 +184,7 @@ export interface ControlPlaneOperation {
 export interface ControlPlaneEvent {
   id: ControlPlaneId
   sequence: number
+  organizationId?: ControlPlaneId
   projectId?: ControlPlaneId
   operationId?: ControlPlaneId
   resourceId?: ControlPlaneId
@@ -182,6 +278,7 @@ export interface TransitionOperationInput {
 
 export interface AppendEventInput {
   id?: ControlPlaneId
+  organizationId?: ControlPlaneId
   projectId?: ControlPlaneId
   operationId?: ControlPlaneId
   resourceId?: ControlPlaneId
@@ -201,6 +298,7 @@ export interface OperationListOptions {
 }
 
 export interface EventListOptions {
+  organizationId?: ControlPlaneId
   projectId?: ControlPlaneId
   operationId?: ControlPlaneId
   resourceId?: ControlPlaneId
@@ -236,6 +334,10 @@ export interface ControlPlaneSnapshot {
   format: 'ts-cloud-control-plane'
   schemaVersion: number
   exportedAt: string
+  organizations: ControlPlaneOrganization[]
+  memberships: OrganizationMembership[]
+  invitations: OrganizationInvitation[]
+  grants: AuthorizationGrant[]
   projects: ControlPlaneProject[]
   environments: ControlPlaneEnvironment[]
   resources: ControlPlaneResource[]
@@ -247,6 +349,39 @@ export interface ControlPlaneSnapshot {
   resourceTags: Array<{ resourceId: ControlPlaneId, tagId: ControlPlaneId, createdAt: string }>
   savedFilters: SavedFilter[]
   navigationItems: NavigationPreference[]
+}
+
+export interface CreateOrganizationInput {
+  id?: ControlPlaneId
+  slug: string
+  name: string
+}
+
+export interface CreateMembershipInput {
+  id?: ControlPlaneId
+  organizationId: ControlPlaneId
+  actorId: ControlPlaneId
+  roleTemplate: OrganizationRoleTemplate
+  scope?: AuthorizationScope
+}
+
+export interface CreateInvitationInput {
+  id?: ControlPlaneId
+  organizationId: ControlPlaneId
+  email: string
+  roleTemplate: OrganizationRoleTemplate
+  scope?: AuthorizationScope
+  invitedByActorId?: ControlPlaneId
+  expiresInMs?: number
+}
+
+export interface CreateGrantInput {
+  id?: ControlPlaneId
+  organizationId: ControlPlaneId
+  membershipId: ControlPlaneId
+  effect: AuthorizationEffect
+  capability: AuthorizationCapability
+  scope?: AuthorizationScope
 }
 
 export interface ControlPlaneTag {

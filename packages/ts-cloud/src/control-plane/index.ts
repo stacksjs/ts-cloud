@@ -10,3 +10,11 @@ export {
 export * from './types'
 export { searchControlPlane } from './search'
 export type { ControlPlaneSearchOptions, ControlPlaneSearchResult, ControlPlaneSearchResultType } from './search'
+export {
+  AUTHORIZATION_CAPABILITIES,
+  authorizeOrganization,
+  effectiveCapabilities,
+  roleCapabilities,
+  scopeContains,
+} from './authorization'
+export type { AuthorizationDecision } from './authorization'

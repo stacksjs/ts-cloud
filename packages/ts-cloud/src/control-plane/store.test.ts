@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test'
 import { Database } from 'bun:sqlite'
-import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { controlPlaneMigrations } from './migrations'
@@ -57,24 +57,10 @@ describe('ControlPlaneStore schema and persistence', () => {
   it('backs up an existing schema before applying a forward migration', () => {
     const { path } = temporaryDatabase()
     const parent = join(path, '..')
-    const setup = new ControlPlaneStore({ path })
-    setup.close()
-
-    const database = new Database(path)
-    database.run('DROP INDEX events_correlation_idx')
-    database.run('DROP INDEX resources_environment_idx')
-    database.run('DROP INDEX events_resource_idx')
-    database.run('DROP INDEX events_operation_idx')
-    database.run('DROP INDEX events_project_idx')
-    database.run('DROP INDEX operations_correlation_idx')
-    database.run('DROP INDEX operations_lease_idx')
-    database.run('DROP INDEX operations_project_idx')
-    database.run('DROP INDEX operations_queue_idx')
-    database.run('DROP TABLE resource_tags')
-    database.run('DROP TABLE tags')
-    database.run('DROP TABLE saved_filters')
-    database.run('DROP TABLE navigation_items')
-    database.run('DELETE FROM schema_migrations WHERE version > 1')
+    mkdirSync(parent, { recursive: true })
+    const database = new Database(path, { create: true })
+    database.run(controlPlaneMigrations[0].sql)
+    database.run("INSERT INTO schema_migrations (version, name, applied_at) VALUES (1, 'core_control_plane', '2025-01-01T00:00:00.000Z')")
     database.run('PRAGMA user_version = 1')
     database.close()
 
@@ -82,13 +68,13 @@ describe('ControlPlaneStore schema and persistence', () => {
     const backup = migrated.getSetting('storage.last_backup') as { path: string }
     expect(existsSync(backup.path)).toBe(true)
     expect(backup.path.startsWith(`${path}.v1.`)).toBe(true)
-    expect(migrated.health().schemaVersion).toBe(3)
+    expect(migrated.health().schemaVersion).toBe(4)
     expect(existsSync(parent)).toBe(true)
     migrated.close()
   })
 
   it('keeps migration numbering contiguous', () => {
-    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2, 3])
+    expect(controlPlaneMigrations.map(migration => migration.version)).toEqual([1, 2, 3, 4])
   })
 })
 
@@ -156,7 +142,12 @@ describe('ControlPlaneStore safety and portability', () => {
 
   it('exports and imports a complete portable snapshot', () => {
     const source = new ControlPlaneStore({ path: ':memory:' })
-    const project = source.createProject({ slug: 'acme', name: 'Acme' })
+    const organization = source.createOrganization({ slug: 'acme-inc', name: 'Acme Inc' })
+    const actor = source.createActor({ kind: 'user', externalId: 'dashboard:chris', displayName: 'Chris' })
+    const project = source.createProject({ organizationId: organization.id, slug: 'acme', name: 'Acme' })
+    const membership = source.createMembership({ organizationId: organization.id, actorId: actor.id, roleTemplate: 'owner' })
+    source.upsertGrant({ organizationId: organization.id, membershipId: membership.id, effect: 'deny', capability: 'runtime:terminal' })
+    source.createInvitation({ organizationId: organization.id, email: 'dev@acme.test', roleTemplate: 'deployer' })
     source.createResource({ projectId: project.id, kind: 'database', slug: 'primary', name: 'Primary' })
     source.createOperation({ projectId: project.id, kind: 'backup' })
     source.setSetting('ui.theme', 'system')
@@ -169,6 +160,10 @@ describe('ControlPlaneStore safety and portability', () => {
     const target = new ControlPlaneStore({ path: ':memory:' })
     target.importSnapshot(snapshot)
     expect(target.exportSnapshot()).toMatchObject({
+      organizations: [{ slug: 'acme-inc' }],
+      memberships: [{ roleTemplate: 'owner' }],
+      invitations: [{ email: 'dev@acme.test', state: 'pending' }],
+      grants: [{ effect: 'deny', capability: 'runtime:terminal' }],
       projects: [{ slug: 'acme' }],
       resources: [{ slug: 'primary' }],
       operations: [{ kind: 'backup', state: 'queued' }],

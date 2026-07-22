@@ -1,6 +1,10 @@
 import type { Changes, SQLQueryBindings } from 'bun:sqlite'
 import type {
   AppendEventInput,
+  AuthorizationGrant,
+  AuthorizationScope,
+  AuthorizationScopeType,
+  AuthorizationTarget,
   CompactResult,
   ControlPlaneActor,
   ControlPlaneEnvironment,
@@ -12,9 +16,14 @@ import type {
   ControlPlaneSnapshot,
   ControlPlaneStoreOptions,
   ControlPlaneTag,
+  ControlPlaneOrganization,
   CreateActorInput,
   CreateEnvironmentInput,
+  CreateGrantInput,
+  CreateInvitationInput,
+  CreateMembershipInput,
   CreateOperationInput,
+  CreateOrganizationInput,
   CreateProjectInput,
   CreateResourceInput,
   EventListOptions,
@@ -23,16 +32,20 @@ import type {
   OperationListOptions,
   OperationState,
   NavigationPreference,
+  OrganizationInvitation,
+  OrganizationMembership,
   ReconcileResult,
   SavedFilter,
   TransitionOperationInput,
   UpdateProjectInput,
   UpdateResourceInput,
 } from './types'
+import { createHash, randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { Database } from 'bun:sqlite'
 import { CONTROL_PLANE_SCHEMA_VERSION, controlPlaneMigrations } from './migrations'
+import { AUTHORIZATION_CAPABILITIES } from './authorization'
 import { InvalidOperationTransitionError, OptimisticConcurrencyError, UnsupportedSchemaVersionError } from './types'
 
 export const CONTROL_PLANE_DATABASE_FILE: string = join('.ts-cloud', 'control-plane.sqlite')
@@ -159,7 +172,7 @@ function mapOperation(row: Row): ControlPlaneOperation {
 
 function mapEvent(row: Row): ControlPlaneEvent {
   return {
-    id: String(row.id), sequence: Number(row.sequence), projectId: optionalString(row.project_id),
+    id: String(row.id), sequence: Number(row.sequence), organizationId: optionalString(row.organization_id), projectId: optionalString(row.project_id),
     operationId: optionalString(row.operation_id), resourceId: optionalString(row.resource_id), actorId: optionalString(row.actor_id),
     correlationId: String(row.correlation_id), type: String(row.type), level: String(row.level) as ControlPlaneEvent['level'],
     payload: parseJson(row.payload), createdAt: String(row.created_at),
@@ -185,6 +198,52 @@ function mapNavigationPreference(row: Row): NavigationPreference {
     actorKey: String(row.actor_key), entityType: String(row.entity_type), entityId: String(row.entity_id),
     favorite: Number(row.favorite) === 1, lastVisitedAt: String(row.last_visited_at), visitCount: Number(row.visit_count),
   }
+}
+
+function mapOrganization(row: Row): ControlPlaneOrganization {
+  return {
+    id: String(row.id), slug: String(row.slug), name: String(row.name),
+    createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function mapScope(row: Row): AuthorizationScope {
+  const type = String(row.scope_type) as AuthorizationScopeType
+  return { type, ...(type === 'organization' ? {} : { id: String(row.scope_id) }) }
+}
+
+function mapMembership(row: Row): OrganizationMembership {
+  return {
+    id: String(row.id), organizationId: String(row.organization_id), actorId: String(row.actor_id),
+    roleTemplate: String(row.role_template) as OrganizationMembership['roleTemplate'], scope: mapScope(row),
+    status: String(row.status) as OrganizationMembership['status'], sessionVersion: Number(row.session_version),
+    lastActiveAt: optionalString(row.last_active_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function mapInvitation(row: Row, now: string): OrganizationInvitation {
+  const acceptedAt = optionalString(row.accepted_at)
+  const revokedAt = optionalString(row.revoked_at)
+  const expiresAt = String(row.expires_at)
+  const state: OrganizationInvitation['state'] = revokedAt ? 'revoked' : acceptedAt ? 'accepted' : expiresAt <= now ? 'expired' : 'pending'
+  return {
+    id: String(row.id), organizationId: String(row.organization_id), email: String(row.email),
+    roleTemplate: String(row.role_template) as OrganizationInvitation['roleTemplate'], scope: mapScope(row),
+    invitedByActorId: optionalString(row.invited_by_actor_id), acceptedByActorId: optionalString(row.accepted_by_actor_id),
+    expiresAt, acceptedAt, revokedAt, state, createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function mapGrant(row: Row): AuthorizationGrant {
+  return {
+    id: String(row.id), organizationId: String(row.organization_id), membershipId: String(row.membership_id),
+    effect: String(row.effect) as AuthorizationGrant['effect'], capability: String(row.capability) as AuthorizationGrant['capability'],
+    scope: mapScope(row), createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+  }
+}
+
+function scopePayload(scope: AuthorizationScope): JsonValue {
+  return { type: scope.type, id: scope.id ?? null }
 }
 
 function placeholders(count: number): string {
@@ -404,6 +463,296 @@ export class ControlPlaneStore {
     return row ? mapActor(row) : undefined
   }
 
+  getActor(id: string): ControlPlaneActor | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM actors WHERE id = ?').get(id)
+    return row ? mapActor(row) : undefined
+  }
+
+  createOrganization(input: CreateOrganizationInput): ControlPlaneOrganization {
+    const slug = input.slug.trim().toLowerCase()
+    if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(slug))
+      throw new Error('Organization slugs must contain 3-64 lowercase letters, numbers, or dashes')
+    const name = input.name.trim()
+    if (!name || name.length > 100)
+      throw new Error('Organization names must contain 1-100 characters')
+    const id = input.id ?? this.idFn()
+    const now = this.now()
+    run(this.database, 'INSERT INTO organizations (id, slug, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)', [id, slug, name, now, now])
+    return this.getOrganization(id)!
+  }
+
+  getOrganization(id: string): ControlPlaneOrganization | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM organizations WHERE id = ?').get(id)
+    return row ? mapOrganization(row) : undefined
+  }
+
+  getOrganizationBySlug(slug: string): ControlPlaneOrganization | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM organizations WHERE slug = ?').get(slug.trim().toLowerCase())
+    return row ? mapOrganization(row) : undefined
+  }
+
+  listOrganizations(actorId?: string): ControlPlaneOrganization[] {
+    const rows = actorId
+      ? this.database.query<Row, [string]>(
+          `SELECT organizations.* FROM organizations JOIN organization_memberships ON organization_memberships.organization_id = organizations.id
+          WHERE organization_memberships.actor_id = ? AND organization_memberships.status = 'active' ORDER BY organizations.name COLLATE NOCASE`,
+        ).all(actorId)
+      : this.database.query<Row, []>('SELECT * FROM organizations ORDER BY name COLLATE NOCASE').all()
+    return rows.map(mapOrganization)
+  }
+
+  private normalizeAuthorizationScope(organizationId: string, scope: AuthorizationScope = { type: 'organization' }): AuthorizationScope {
+    if (scope.type === 'organization') {
+      if (scope.id && scope.id !== organizationId)
+        throw new Error('Organization scope does not match the requested organization')
+      return { type: 'organization' }
+    }
+    if (!scope.id)
+      throw new Error(`${scope.type} scopes require an ID`)
+    const target = this.resolveAuthorizationTarget(organizationId, scope)
+    if (!target)
+      throw new Error('Authorization scope was not found in this organization')
+    return { type: scope.type, id: scope.id }
+  }
+
+  resolveAuthorizationTarget(organizationId: string, scope: AuthorizationScope): AuthorizationTarget | undefined {
+    if (!this.getOrganization(organizationId))
+      return undefined
+    if (scope.type === 'organization')
+      return { organizationId }
+    if (!scope.id)
+      return undefined
+    if (scope.type === 'project') {
+      const project = this.database.query<Row, [string, string]>('SELECT id FROM projects WHERE id = ? AND organization_id = ?').get(scope.id, organizationId)
+      return project ? { organizationId, projectId: String(project.id) } : undefined
+    }
+    if (scope.type === 'environment') {
+      const environment = this.database.query<Row, [string, string]>(
+        'SELECT environments.id, environments.project_id FROM environments JOIN projects ON projects.id = environments.project_id WHERE environments.id = ? AND projects.organization_id = ?',
+      ).get(scope.id, organizationId)
+      return environment ? { organizationId, projectId: String(environment.project_id), environmentId: String(environment.id) } : undefined
+    }
+    const resource = this.database.query<Row, [string, string]>(
+      `SELECT resources.id, resources.project_id, resources.environment_id FROM resources
+      JOIN projects ON projects.id = resources.project_id WHERE resources.id = ? AND projects.organization_id = ?`,
+    ).get(scope.id, organizationId)
+    return resource
+      ? { organizationId, projectId: String(resource.project_id), environmentId: optionalString(resource.environment_id), resourceId: String(resource.id) }
+      : undefined
+  }
+
+  createMembership(input: CreateMembershipInput): OrganizationMembership {
+    if (!this.getActor(input.actorId))
+      throw new Error('Membership actor was not found')
+    const scope = this.normalizeAuthorizationScope(input.organizationId, input.scope)
+    if (input.roleTemplate === 'owner' && scope.type !== 'organization')
+      throw new Error('Owners must be scoped to the organization')
+    const id = input.id ?? this.idFn()
+    const now = this.now()
+    run(this.database,
+      `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, input.actorId, input.roleTemplate, scope.type, scope.id ?? null, now, now],
+    )
+    const membership = this.getMembership(id)!
+    this.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'organization.membership.created', payload: { membershipId: id, roleTemplate: input.roleTemplate, scope: scopePayload(scope) } })
+    return membership
+  }
+
+  getMembership(id: string): OrganizationMembership | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM organization_memberships WHERE id = ?').get(id)
+    return row ? mapMembership(row) : undefined
+  }
+
+  getMembershipForActor(organizationId: string, actorId: string): OrganizationMembership | undefined {
+    const row = this.database.query<Row, [string, string]>('SELECT * FROM organization_memberships WHERE organization_id = ? AND actor_id = ?').get(organizationId, actorId)
+    return row ? mapMembership(row) : undefined
+  }
+
+  listMemberships(organizationId: string, options: { includeRevoked?: boolean } = {}): OrganizationMembership[] {
+    const revoked = options.includeRevoked ? '' : 'AND status = \'active\''
+    return this.database.query<Row, [string]>(
+      `SELECT * FROM organization_memberships WHERE organization_id = ? ${revoked} ORDER BY created_at, id`,
+    ).all(organizationId).map(mapMembership)
+  }
+
+  updateMembership(input: { id: string, roleTemplate: OrganizationMembership['roleTemplate'], scope?: AuthorizationScope, actorId?: string }): OrganizationMembership {
+    const current = this.getMembership(input.id)
+    if (!current)
+      throw new Error('Membership was not found')
+    const scope = this.normalizeAuthorizationScope(current.organizationId, input.scope ?? current.scope)
+    if (input.roleTemplate === 'owner' && scope.type !== 'organization')
+      throw new Error('Owners must be scoped to the organization')
+    if (current.roleTemplate === 'owner' && current.status === 'active' && (input.roleTemplate !== 'owner' || scope.type !== 'organization'))
+      this.assertAnotherOwner(current)
+    run(this.database,
+      `UPDATE organization_memberships SET role_template = ?, scope_type = ?, scope_id = ?, session_version = session_version + 1, updated_at = ? WHERE id = ?`,
+      [input.roleTemplate, scope.type, scope.id ?? null, this.now(), current.id],
+    )
+    this.appendEvent({ organizationId: current.organizationId, actorId: input.actorId, type: 'organization.membership.updated', payload: { membershipId: current.id, from: { roleTemplate: current.roleTemplate, scope: scopePayload(current.scope) }, to: { roleTemplate: input.roleTemplate, scope: scopePayload(scope) } } })
+    return this.getMembership(current.id)!
+  }
+
+  revokeMembership(id: string, actorId?: string): OrganizationMembership {
+    const current = this.getMembership(id)
+    if (!current)
+      throw new Error('Membership was not found')
+    if (current.status === 'revoked')
+      return current
+    if (current.roleTemplate === 'owner')
+      this.assertAnotherOwner(current)
+    run(this.database,
+      `UPDATE organization_memberships SET status = 'revoked', session_version = session_version + 1, updated_at = ? WHERE id = ?`,
+      [this.now(), id],
+    )
+    this.appendEvent({ organizationId: current.organizationId, actorId, type: 'organization.membership.revoked', payload: { membershipId: id } })
+    return this.getMembership(id)!
+  }
+
+  touchMembership(id: string): OrganizationMembership {
+    const now = this.now()
+    run(this.database, 'UPDATE organization_memberships SET last_active_at = ?, updated_at = ? WHERE id = ? AND status = ?', [now, now, id, 'active'])
+    const membership = this.getMembership(id)
+    if (!membership)
+      throw new Error('Membership was not found')
+    return membership
+  }
+
+  private assertAnotherOwner(current: OrganizationMembership): void {
+    const owners = Number(this.database.query<Row, [string, string]>('SELECT COUNT(*) AS count FROM organization_memberships WHERE organization_id = ? AND status = ? AND role_template = \'owner\'').get(current.organizationId, 'active')?.count ?? 0)
+    if (owners <= 1)
+      throw new Error('Cannot remove or demote the last organization owner')
+  }
+
+  createInvitation(input: CreateInvitationInput): { invitation: OrganizationInvitation, token: string } {
+    const email = input.email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
+      throw new Error('A valid invitation email is required')
+    const scope = this.normalizeAuthorizationScope(input.organizationId, input.scope)
+    if (input.roleTemplate === 'owner' && scope.type !== 'organization')
+      throw new Error('Owners must be scoped to the organization')
+    const token = randomBytes(32).toString('base64url')
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    const id = input.id ?? this.idFn()
+    const now = this.now()
+    const expiresAt = new Date(this.nowFn().getTime() + Math.min(30 * 86_400_000, Math.max(60_000, input.expiresInMs ?? 7 * 86_400_000))).toISOString()
+    run(this.database,
+      `INSERT INTO organization_invitations (id, organization_id, email, role_template, scope_type, scope_id, token_hash, invited_by_actor_id, expires_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, email, input.roleTemplate, scope.type, scope.id ?? null, tokenHash, input.invitedByActorId ?? null, expiresAt, now, now],
+    )
+    this.appendEvent({ organizationId: input.organizationId, actorId: input.invitedByActorId, type: 'organization.invitation.created', payload: { invitationId: id, email, roleTemplate: input.roleTemplate, scope: scopePayload(scope), expiresAt } })
+    return { invitation: this.getInvitation(id)!, token }
+  }
+
+  getInvitation(id: string): OrganizationInvitation | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM organization_invitations WHERE id = ?').get(id)
+    return row ? mapInvitation(row, this.now()) : undefined
+  }
+
+  listInvitations(organizationId: string): OrganizationInvitation[] {
+    return this.database.query<Row, [string]>('SELECT * FROM organization_invitations WHERE organization_id = ? ORDER BY created_at DESC').all(organizationId).map(row => mapInvitation(row, this.now()))
+  }
+
+  acceptInvitation(token: string, actorId: string): { invitation: OrganizationInvitation, membership: OrganizationMembership } {
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    return this.transaction(() => {
+      const row = this.database.query<Row, [string]>('SELECT * FROM organization_invitations WHERE token_hash = ?').get(tokenHash)
+      if (!row)
+        throw new Error('Invitation is invalid')
+      const invitation = mapInvitation(row, this.now())
+      if (invitation.state !== 'pending')
+        throw new Error(`Invitation is ${invitation.state}`)
+      if (!this.getActor(actorId))
+        throw new Error('Invitation actor was not found')
+      const changed = run(this.database,
+        'UPDATE organization_invitations SET accepted_by_actor_id = ?, accepted_at = ?, updated_at = ? WHERE id = ? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > ?',
+        [actorId, this.now(), this.now(), invitation.id, this.now()],
+      )
+      if (changed.changes !== 1)
+        throw new Error('Invitation is no longer available')
+      const existing = this.getMembershipForActor(invitation.organizationId, actorId)
+      const membership = existing ?? this.createMembership({
+        organizationId: invitation.organizationId,
+        actorId,
+        roleTemplate: invitation.roleTemplate,
+        scope: invitation.scope,
+      })
+      this.appendEvent({ organizationId: invitation.organizationId, actorId, type: 'organization.invitation.accepted', payload: { invitationId: invitation.id, membershipId: membership.id } })
+      return { invitation: this.getInvitation(invitation.id)!, membership }
+    })
+  }
+
+  revokeInvitation(id: string, actorId?: string): OrganizationInvitation {
+    const invitation = this.getInvitation(id)
+    if (!invitation)
+      throw new Error('Invitation was not found')
+    if (invitation.acceptedAt)
+      throw new Error('Accepted invitations cannot be revoked')
+    if (!invitation.revokedAt)
+      run(this.database, 'UPDATE organization_invitations SET revoked_at = ?, updated_at = ? WHERE id = ?', [this.now(), this.now(), id])
+    this.appendEvent({ organizationId: invitation.organizationId, actorId, type: 'organization.invitation.revoked', payload: { invitationId: id } })
+    return this.getInvitation(id)!
+  }
+
+  reissueInvitation(id: string, actorId?: string): { invitation: OrganizationInvitation, token: string } {
+    const previous = this.getInvitation(id)
+    if (!previous)
+      throw new Error('Invitation was not found')
+    if (previous.state === 'accepted')
+      throw new Error('Accepted invitations cannot be reissued')
+    this.revokeInvitation(id, actorId)
+    return this.createInvitation({
+      organizationId: previous.organizationId,
+      email: previous.email,
+      roleTemplate: previous.roleTemplate,
+      scope: previous.scope,
+      invitedByActorId: actorId,
+    })
+  }
+
+  upsertGrant(input: CreateGrantInput): AuthorizationGrant {
+    if (!AUTHORIZATION_CAPABILITIES.includes(input.capability))
+      throw new Error('Unknown authorization capability')
+    const membership = this.getMembership(input.membershipId)
+    if (!membership || membership.organizationId !== input.organizationId)
+      throw new Error('Grant membership was not found in this organization')
+    const scope = this.normalizeAuthorizationScope(input.organizationId, input.scope)
+    const now = this.now()
+    const existing = this.database.query<Row, [string, string, string, string, string | null]>(
+      'SELECT * FROM authorization_grants WHERE membership_id = ? AND effect = ? AND capability = ? AND scope_type = ? AND scope_id IS ?',
+    ).get(input.membershipId, input.effect, input.capability, scope.type, scope.id ?? null)
+    if (existing)
+      return mapGrant(existing)
+    const id = input.id ?? this.idFn()
+    run(this.database,
+      `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, input.membershipId, input.effect, input.capability, scope.type, scope.id ?? null, now, now],
+    )
+    this.appendEvent({ organizationId: input.organizationId, type: 'organization.grant.created', payload: { grantId: id, membershipId: input.membershipId, effect: input.effect, capability: input.capability, scope: scopePayload(scope) } })
+    return this.getGrant(id)!
+  }
+
+  getGrant(id: string): AuthorizationGrant | undefined {
+    const row = this.database.query<Row, [string]>('SELECT * FROM authorization_grants WHERE id = ?').get(id)
+    return row ? mapGrant(row) : undefined
+  }
+
+  listGrants(membershipId: string): AuthorizationGrant[] {
+    return this.database.query<Row, [string]>('SELECT * FROM authorization_grants WHERE membership_id = ? ORDER BY effect DESC, capability, scope_type, scope_id').all(membershipId).map(mapGrant)
+  }
+
+  removeGrant(id: string, actorId?: string): boolean {
+    const grant = this.getGrant(id)
+    if (!grant)
+      return false
+    const removed = run(this.database, 'DELETE FROM authorization_grants WHERE id = ?', [id]).changes === 1
+    if (removed)
+      this.appendEvent({ organizationId: grant.organizationId, actorId, type: 'organization.grant.removed', payload: { grantId: id, membershipId: grant.membershipId } })
+    return removed
+  }
+
   createOperation(input: CreateOperationInput): ControlPlaneOperation {
     if (input.idempotencyKey) {
       const existing = this.database.query<Row, [string]>('SELECT * FROM operations WHERE idempotency_key = ?').get(input.idempotencyKey)
@@ -561,10 +910,13 @@ export class ControlPlaneStore {
   appendEvent(input: AppendEventInput): ControlPlaneEvent {
     const id = input.id ?? this.idFn()
     const correlationId = input.correlationId ?? this.idFn()
+    const organizationId = input.organizationId ?? (input.projectId
+      ? optionalString(this.database.query<Row, [string]>('SELECT organization_id FROM projects WHERE id = ?').get(input.projectId)?.organization_id)
+      : undefined)
     run(this.database,
-      `INSERT INTO events (id, project_id, operation_id, resource_id, actor_id, correlation_id, type, level, payload, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, input.projectId ?? null, input.operationId ?? null, input.resourceId ?? null, input.actorId ?? null,
+      `INSERT INTO events (id, organization_id, project_id, operation_id, resource_id, actor_id, correlation_id, type, level, payload, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, organizationId ?? null, input.projectId ?? null, input.operationId ?? null, input.resourceId ?? null, input.actorId ?? null,
         correlationId, input.type, input.level ?? 'info', json(input.payload ?? {}), this.now()],
     )
     return mapEvent(this.database.query<Row, [string]>('SELECT * FROM events WHERE id = ?').get(id)!)
@@ -573,6 +925,7 @@ export class ControlPlaneStore {
   listEvents(options: EventListOptions = {}): ControlPlaneEvent[] {
     const filters: string[] = []
     const bindings: SQLQueryBindings[] = []
+    if (options.organizationId) { filters.push('organization_id = ?'); bindings.push(options.organizationId) }
     if (options.projectId) { filters.push('project_id = ?'); bindings.push(options.projectId) }
     if (options.operationId) { filters.push('operation_id = ?'); bindings.push(options.operationId) }
     if (options.resourceId) { filters.push('resource_id = ?'); bindings.push(options.resourceId) }
@@ -758,6 +1111,10 @@ export class ControlPlaneStore {
       format: 'ts-cloud-control-plane',
       schemaVersion: CONTROL_PLANE_SCHEMA_VERSION,
       exportedAt: this.now(),
+      organizations: this.database.query<Row, []>('SELECT * FROM organizations ORDER BY id').all().map(mapOrganization),
+      memberships: this.database.query<Row, []>('SELECT * FROM organization_memberships ORDER BY id').all().map(mapMembership),
+      invitations: this.database.query<Row, []>('SELECT * FROM organization_invitations ORDER BY id').all().map(row => ({ ...mapInvitation(row, this.now()), tokenHash: String(row.token_hash) })),
+      grants: this.database.query<Row, []>('SELECT * FROM authorization_grants ORDER BY id').all().map(mapGrant),
       projects: this.database.query<Row, []>('SELECT * FROM projects ORDER BY id').all().map(mapProject),
       environments: this.database.query<Row, []>('SELECT * FROM environments ORDER BY id').all().map(mapEnvironment),
       resources: this.database.query<Row, []>('SELECT * FROM resources ORDER BY id').all().map(mapResource),
@@ -784,6 +1141,9 @@ export class ControlPlaneStore {
       if (populated && !options.replace)
         throw new Error('Control plane is not empty; pass replace: true to import this snapshot')
       if (options.replace) {
+        this.database.run('DELETE FROM authorization_grants')
+        this.database.run('DELETE FROM organization_invitations')
+        this.database.run('DELETE FROM organization_memberships')
         this.database.run('DELETE FROM resource_tags')
         this.database.run('DELETE FROM tags')
         this.database.run('DELETE FROM saved_filters')
@@ -794,9 +1154,14 @@ export class ControlPlaneStore {
         this.database.run('DELETE FROM environments')
         this.database.run('DELETE FROM projects')
         this.database.run('DELETE FROM actors')
+        this.database.run('DELETE FROM organizations')
         this.database.run('DELETE FROM settings')
       }
 
+      for (const item of snapshot.organizations ?? []) {
+        run(this.database, 'INSERT INTO organizations (id, slug, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+          [item.id, item.slug, item.name, item.createdAt, item.updatedAt])
+      }
       for (const item of snapshot.projects) {
         run(this.database,
           `INSERT INTO projects (id, slug, name, description, organization_id, desired_config_hash, version, created_at, updated_at)
@@ -826,6 +1191,29 @@ export class ControlPlaneStore {
           [item.id, item.kind, item.externalId ?? null, item.displayName, json(item.metadata), item.disabledAt ?? null, item.version, item.createdAt, item.updatedAt],
         )
       }
+      for (const item of snapshot.memberships ?? []) {
+        run(this.database,
+          `INSERT INTO organization_memberships (id, organization_id, actor_id, role_template, scope_type, scope_id, status, session_version, last_active_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.id, item.organizationId, item.actorId, item.roleTemplate, item.scope.type, item.scope.id ?? null, item.status, item.sessionVersion, item.lastActiveAt ?? null, item.createdAt, item.updatedAt],
+        )
+      }
+      for (const item of snapshot.invitations ?? []) {
+        const tokenHash = item.tokenHash ?? createHash('sha256').update(`revoked:${item.id}:${this.idFn()}`).digest('hex')
+        run(this.database,
+          `INSERT INTO organization_invitations (id, organization_id, email, role_template, scope_type, scope_id, token_hash, invited_by_actor_id, accepted_by_actor_id, expires_at, accepted_at, revoked_at, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.id, item.organizationId, item.email, item.roleTemplate, item.scope.type, item.scope.id ?? null, tokenHash, item.invitedByActorId ?? null,
+            item.acceptedByActorId ?? null, item.expiresAt, item.acceptedAt ?? null, item.tokenHash ? (item.revokedAt ?? null) : (item.revokedAt ?? this.now()), item.createdAt, item.updatedAt],
+        )
+      }
+      for (const item of snapshot.grants ?? []) {
+        run(this.database,
+          `INSERT INTO authorization_grants (id, organization_id, membership_id, effect, capability, scope_type, scope_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.id, item.organizationId, item.membershipId, item.effect, item.capability, item.scope.type, item.scope.id ?? null, item.createdAt, item.updatedAt],
+        )
+      }
       for (const item of snapshot.operations) {
         run(this.database,
           `INSERT INTO operations (id, project_id, environment_id, resource_id, actor_id, kind, state, correlation_id, idempotency_key,
@@ -839,9 +1227,9 @@ export class ControlPlaneStore {
       }
       for (const item of snapshot.events) {
         run(this.database,
-          `INSERT INTO events (sequence, id, project_id, operation_id, resource_id, actor_id, correlation_id, type, level, payload, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [item.sequence, item.id, item.projectId ?? null, item.operationId ?? null, item.resourceId ?? null, item.actorId ?? null,
+          `INSERT INTO events (sequence, id, organization_id, project_id, operation_id, resource_id, actor_id, correlation_id, type, level, payload, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [item.sequence, item.id, item.organizationId ?? null, item.projectId ?? null, item.operationId ?? null, item.resourceId ?? null, item.actorId ?? null,
             item.correlationId, item.type, item.level, json(item.payload), item.createdAt],
         )
       }

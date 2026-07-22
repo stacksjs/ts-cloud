@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 3
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 4
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -183,6 +183,77 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX resource_tags_tag_idx ON resource_tags(tag_id, resource_id);
       CREATE INDEX saved_filters_actor_idx ON saved_filters(actor_key, updated_at DESC);
       CREATE INDEX navigation_actor_idx ON navigation_items(actor_key, favorite DESC, last_visited_at DESC);
+    `,
+  },
+  {
+    version: 4,
+    name: 'organizations_and_scoped_authorization',
+    sql: `
+      CREATE TABLE organizations (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      ALTER TABLE events ADD COLUMN organization_id TEXT REFERENCES organizations(id) ON DELETE SET NULL;
+
+      CREATE TABLE organization_memberships (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        actor_id TEXT NOT NULL REFERENCES actors(id) ON DELETE CASCADE,
+        role_template TEXT NOT NULL CHECK (role_template IN ('owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor')),
+        scope_type TEXT NOT NULL CHECK (scope_type IN ('organization', 'project', 'environment', 'resource')),
+        scope_id TEXT,
+        status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+        session_version INTEGER NOT NULL DEFAULT 1 CHECK (session_version > 0),
+        last_active_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, actor_id),
+        CHECK ((scope_type = 'organization' AND scope_id IS NULL) OR (scope_type != 'organization' AND scope_id IS NOT NULL))
+      ) STRICT;
+
+      CREATE TABLE organization_invitations (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        email TEXT NOT NULL,
+        role_template TEXT NOT NULL CHECK (role_template IN ('owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor')),
+        scope_type TEXT NOT NULL CHECK (scope_type IN ('organization', 'project', 'environment', 'resource')),
+        scope_id TEXT,
+        token_hash TEXT NOT NULL UNIQUE,
+        invited_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        accepted_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        expires_at TEXT NOT NULL,
+        accepted_at TEXT,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK ((scope_type = 'organization' AND scope_id IS NULL) OR (scope_type != 'organization' AND scope_id IS NOT NULL))
+      ) STRICT;
+
+      CREATE TABLE authorization_grants (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        membership_id TEXT NOT NULL REFERENCES organization_memberships(id) ON DELETE CASCADE,
+        effect TEXT NOT NULL CHECK (effect IN ('allow', 'deny')),
+        capability TEXT NOT NULL,
+        scope_type TEXT NOT NULL CHECK (scope_type IN ('organization', 'project', 'environment', 'resource')),
+        scope_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(membership_id, effect, capability, scope_type, scope_id),
+        CHECK ((scope_type = 'organization' AND scope_id IS NULL) OR (scope_type != 'organization' AND scope_id IS NOT NULL))
+      ) STRICT;
+
+      CREATE INDEX memberships_org_idx ON organization_memberships(organization_id, status, role_template);
+      CREATE INDEX memberships_actor_idx ON organization_memberships(actor_id, status);
+      CREATE INDEX invitations_org_idx ON organization_invitations(organization_id, accepted_at, revoked_at, expires_at);
+      CREATE INDEX grants_membership_idx ON authorization_grants(membership_id, capability, effect);
+      CREATE UNIQUE INDEX grants_unique_idx ON authorization_grants(membership_id, effect, capability, scope_type, COALESCE(scope_id, ''));
+      CREATE INDEX projects_organization_idx ON projects(organization_id, slug);
+      CREATE INDEX events_organization_idx ON events(organization_id, sequence DESC);
     `,
   },
 ]
