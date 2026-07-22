@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 20
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 21
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1002,6 +1002,63 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX releases_active_idx ON releases(resource_id, status, activated_at DESC);
       CREATE INDEX releases_artifact_idx ON releases(artifact_id, status);
       CREATE INDEX release_transitions_release_idx ON release_transitions(release_id, sequence);
+    `,
+  },
+  {
+    version: 21,
+    name: 'normalized_telemetry',
+    sql: `
+      CREATE TABLE telemetry_records (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('metric','log','trace','request','event')),
+        source TEXT NOT NULL,
+        name TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        value REAL,
+        unit TEXT,
+        level TEXT,
+        message TEXT,
+        duration_ms REAL,
+        status_code INTEGER,
+        method TEXT,
+        host TEXT,
+        path_template TEXT,
+        bytes_in INTEGER,
+        bytes_out INTEGER,
+        region TEXT,
+        cache_result TEXT,
+        upstream TEXT,
+        trace_id TEXT,
+        request_id TEXT,
+        deployment_id TEXT,
+        release_id TEXT,
+        workload_id TEXT,
+        sampled INTEGER NOT NULL DEFAULT 1 CHECK (sampled IN (0,1)),
+        attributes TEXT NOT NULL DEFAULT '{}',
+        ingested_bytes INTEGER NOT NULL DEFAULT 0 CHECK (ingested_bytes >= 0)
+      ) STRICT;
+      CREATE INDEX telemetry_scope_time_idx ON telemetry_records(project_id, environment_id, timestamp DESC, id DESC);
+      CREATE INDEX telemetry_resource_time_idx ON telemetry_records(resource_id, timestamp DESC, id DESC);
+      CREATE INDEX telemetry_kind_name_time_idx ON telemetry_records(kind, name, timestamp DESC);
+      CREATE INDEX telemetry_trace_idx ON telemetry_records(trace_id, timestamp ASC);
+      CREATE INDEX telemetry_request_idx ON telemetry_records(request_id, timestamp ASC);
+      CREATE INDEX telemetry_release_idx ON telemetry_records(release_id, timestamp DESC);
+
+      CREATE TABLE telemetry_saved_queries (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        actor_id TEXT REFERENCES actors(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        query TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(project_id, actor_id, name)
+      ) STRICT;
+      CREATE INDEX telemetry_saved_queries_actor_idx ON telemetry_saved_queries(project_id, actor_id, updated_at DESC);
     `,
   },
 ]

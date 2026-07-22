@@ -8,6 +8,7 @@ export * from './preview'
 export * from './compose'
 export * from './release'
 export * from './runtime'
+export * from './telemetry'
 export * from './generators'
 
 // Validation exports - functions
