@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 7
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 8
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -357,6 +357,57 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX auth_recovery_codes_identity_idx ON auth_recovery_codes(identity_id, consumed_at);
       CREATE INDEX auth_mfa_challenges_identity_idx ON auth_mfa_challenges(identity_id, purpose, expires_at);
       CREATE INDEX auth_mfa_challenges_expiry_idx ON auth_mfa_challenges(expires_at, consumed_at);
+    `,
+  },
+  {
+    version: 8,
+    name: 'openid_connect_authentication',
+    sql: `
+      CREATE TABLE auth_oidc_providers (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        slug TEXT NOT NULL COLLATE NOCASE UNIQUE,
+        name TEXT NOT NULL,
+        issuer TEXT NOT NULL UNIQUE,
+        client_id TEXT NOT NULL,
+        client_secret_ciphertext TEXT,
+        scopes TEXT NOT NULL DEFAULT '["openid","email","profile"]',
+        allowed_domains TEXT NOT NULL,
+        default_role TEXT NOT NULL DEFAULT 'viewer' CHECK (default_role IN ('admin', 'deployer', 'operator', 'viewer', 'auditor')),
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+        enforce_sso INTEGER NOT NULL DEFAULT 0 CHECK (enforce_sso IN (0, 1)),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE auth_oidc_subjects (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL REFERENCES auth_oidc_providers(id) ON DELETE CASCADE,
+        identity_id TEXT NOT NULL REFERENCES auth_identities(id) ON DELETE CASCADE,
+        subject TEXT NOT NULL,
+        email TEXT NOT NULL COLLATE NOCASE,
+        linked_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        UNIQUE(provider_id, subject),
+        UNIQUE(provider_id, identity_id)
+      ) STRICT;
+
+      CREATE TABLE auth_oidc_transactions (
+        id TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL REFERENCES auth_oidc_providers(id) ON DELETE CASCADE,
+        state_hash TEXT NOT NULL UNIQUE,
+        nonce_ciphertext TEXT NOT NULL,
+        verifier_ciphertext TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        return_path TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT,
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX auth_oidc_providers_org_idx ON auth_oidc_providers(organization_id, enabled, name);
+      CREATE INDEX auth_oidc_subjects_identity_idx ON auth_oidc_subjects(identity_id, provider_id);
+      CREATE INDEX auth_oidc_transactions_expiry_idx ON auth_oidc_transactions(expires_at, consumed_at);
     `,
   },
 ]

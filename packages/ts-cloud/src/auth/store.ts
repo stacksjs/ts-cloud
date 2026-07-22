@@ -7,10 +7,14 @@ import type {
   AuthIdentity,
   AuthMfaChallenge,
   AuthMfaFactor,
+  AuthOidcProvider,
+  AuthOidcSubject,
+  AuthOidcTransaction,
   AuthenticationStoreOptions,
   AuthSession,
   CreateAuthIdentityInput,
   CreateAuthSessionInput,
+  UpsertAuthOidcProviderInput,
 } from './types'
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { encodeBase32, matchTotpCounter, totpUri } from './totp'
@@ -21,6 +25,7 @@ export const AUTH_SESSION_IDLE_TTL_MS: number = 30 * 60 * 1000
 export const AUTH_SESSION_ABSOLUTE_TTL_MS: number = 12 * 60 * 60 * 1000
 export const AUTH_ACTION_TOKEN_TTL_MS: number = 60 * 60 * 1000
 export const AUTH_MFA_CHALLENGE_TTL_MS: number = 5 * 60 * 1000
+export const AUTH_OIDC_TRANSACTION_TTL_MS: number = 10 * 60 * 1000
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -51,6 +56,38 @@ function normalizeEmail(value: string | undefined): string | undefined {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254)
     throw new Error('A valid email address is required')
   return email
+}
+
+function normalizeOidcSlug(value: string): string {
+  const slug = value.trim().toLowerCase()
+  if (!/^[a-z0-9][a-z0-9-]{1,47}$/.test(slug))
+    throw new Error('OIDC provider slug must be 2-48 lowercase letters, numbers or dashes')
+  return slug
+}
+
+function normalizeOidcIssuer(value: string): string {
+  const issuer = new URL(value.trim())
+  if (issuer.search || issuer.hash || issuer.username || issuer.password)
+    throw new Error('OIDC issuer cannot contain credentials, a query, or a fragment')
+  if (issuer.protocol !== 'https:' && !(issuer.protocol === 'http:' && ['127.0.0.1', '::1', 'localhost'].includes(issuer.hostname)))
+    throw new Error('OIDC issuer must use HTTPS')
+  return issuer.href.replace(/\/$/, '')
+}
+
+function normalizeOidcDomains(values: string[]): string[] {
+  const domains = [...new Set(values.map(value => value.trim().toLowerCase()).filter(Boolean))]
+  if (domains.length === 0)
+    throw new Error('At least one explicit OIDC email domain is required')
+  if (domains.some(domain => !/^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/.test(domain) || !domain.includes('.') || domain.includes('..')))
+    throw new Error('OIDC email domains must be explicit DNS names without wildcards')
+  return domains
+}
+
+function normalizeOidcScopes(values: string[] | undefined): string[] {
+  const scopes = [...new Set(['openid', ...(values ?? ['email', 'profile'])].map(value => value.trim()).filter(Boolean))]
+  if (scopes.some(scope => !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope)))
+    throw new Error('OIDC scopes contain unsupported characters')
+  return scopes
 }
 
 function hashToken(token: string): string {
@@ -142,6 +179,57 @@ function mapMfaChallenge(row: Row, now: string): AuthMfaChallenge {
   }
 }
 
+function stringArray(value: unknown): string[] {
+  const parsed = parseJson(value)
+  return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : []
+}
+
+function mapOidcProvider(row: Row): AuthOidcProvider {
+  return {
+    id: String(row.id),
+    organizationId: String(row.organization_id),
+    slug: String(row.slug),
+    name: String(row.name),
+    issuer: String(row.issuer),
+    clientId: String(row.client_id),
+    hasClientSecret: typeof row.client_secret_ciphertext === 'string' && row.client_secret_ciphertext.length > 0,
+    scopes: stringArray(row.scopes),
+    allowedDomains: stringArray(row.allowed_domains),
+    defaultRole: String(row.default_role) as AuthOidcProvider['defaultRole'],
+    enabled: Number(row.enabled) === 1,
+    enforceSso: Number(row.enforce_sso) === 1,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  }
+}
+
+function mapOidcTransaction(row: Row, now: string): AuthOidcTransaction {
+  const consumedAt = optionalString(row.consumed_at)
+  const expiresAt = String(row.expires_at)
+  return {
+    id: String(row.id),
+    providerId: String(row.provider_id),
+    redirectUri: String(row.redirect_uri),
+    returnPath: String(row.return_path),
+    expiresAt,
+    consumedAt,
+    createdAt: String(row.created_at),
+    state: consumedAt ? 'consumed' : expiresAt <= now ? 'expired' : 'pending',
+  }
+}
+
+function mapOidcSubject(row: Row): AuthOidcSubject {
+  return {
+    id: String(row.id),
+    providerId: String(row.provider_id),
+    identityId: String(row.identity_id),
+    subject: String(row.subject),
+    email: String(row.email),
+    linkedAt: String(row.linked_at),
+    lastLoginAt: String(row.last_login_at),
+  }
+}
+
 export class AuthenticationStore {
   private readonly nowFn: () => Date
   private readonly idFn: () => string
@@ -163,7 +251,7 @@ export class AuthenticationStore {
 
   private encrypt(value: string): string {
     if (!this.encryptionKey)
-      throw new Error('MFA encryption key is not configured')
+      throw new Error('Authentication encryption key is not configured')
     const iv = randomBytes(12)
     const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv)
     const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
@@ -172,10 +260,10 @@ export class AuthenticationStore {
 
   private decrypt(value: string): string {
     if (!this.encryptionKey)
-      throw new Error('MFA encryption key is not configured')
+      throw new Error('Authentication encryption key is not configured')
     const [version, ivRaw, tagRaw, ciphertextRaw] = value.split('.')
     if (version !== 'v1' || !ivRaw || !tagRaw || !ciphertextRaw)
-      throw new Error('MFA secret is unavailable')
+      throw new Error('Encrypted authentication value is unavailable')
     const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(ivRaw, 'base64url'))
     decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'))
     return Buffer.concat([decipher.update(Buffer.from(ciphertextRaw, 'base64url')), decipher.final()]).toString('utf8')
@@ -564,11 +652,173 @@ export class AuthenticationStore {
     return this.nowFn().getTime() - new Date(session.recentAuthAt).getTime() <= maxAgeMs
   }
 
+  upsertOidcProvider(input: UpsertAuthOidcProviderInput): AuthOidcProvider {
+    if (!this.controlPlane.getOrganization(input.organizationId))
+      throw new Error('OIDC provider organization was not found')
+    const slug = normalizeOidcSlug(input.slug)
+    const name = input.name.trim().slice(0, 80)
+    if (!name)
+      throw new Error('OIDC provider name is required')
+    const issuer = normalizeOidcIssuer(input.issuer)
+    const clientId = input.clientId.trim()
+    if (!clientId || clientId.length > 512)
+      throw new Error('OIDC client ID is required')
+    const scopes = normalizeOidcScopes(input.scopes)
+    const domains = normalizeOidcDomains(input.allowedDomains)
+    const existing = input.id ? this.getOidcProvider(input.id) : this.getOidcProviderBySlug(slug)
+    const now = this.now()
+    if (existing) {
+      if (existing.organizationId !== input.organizationId)
+        throw new Error('OIDC provider belongs to another organization')
+      this.run(
+        `UPDATE auth_oidc_providers SET slug = ?, name = ?, issuer = ?, client_id = ?,
+        client_secret_ciphertext = COALESCE(?, client_secret_ciphertext), scopes = ?, allowed_domains = ?,
+        default_role = ?, enabled = ?, enforce_sso = ?, updated_at = ? WHERE id = ?`,
+        [slug, name, issuer, clientId, input.clientSecret ? this.encrypt(input.clientSecret) : null,
+          JSON.stringify(scopes), JSON.stringify(domains), input.defaultRole ?? existing.defaultRole,
+          input.enabled ?? existing.enabled ? 1 : 0, input.enforceSso ?? existing.enforceSso ? 1 : 0, now, existing.id],
+      )
+      return this.getOidcProvider(existing.id)!
+    }
+    if (!input.clientSecret)
+      throw new Error('OIDC client secret is required for a new provider')
+    const id = input.id ?? this.idFn()
+    this.run(
+      `INSERT INTO auth_oidc_providers (id, organization_id, slug, name, issuer, client_id,
+      client_secret_ciphertext, scopes, allowed_domains, default_role, enabled, enforce_sso, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.organizationId, slug, name, issuer, clientId, this.encrypt(input.clientSecret), JSON.stringify(scopes),
+        JSON.stringify(domains), input.defaultRole ?? 'viewer', input.enabled === false ? 0 : 1, input.enforceSso ? 1 : 0, now, now],
+    )
+    return this.getOidcProvider(id)!
+  }
+
+  getOidcProvider(id: string): AuthOidcProvider | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_oidc_providers WHERE id = ?').get(id)
+    return row ? mapOidcProvider(row) : undefined
+  }
+
+  getOidcProviderBySlug(slug: string): AuthOidcProvider | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_oidc_providers WHERE slug = ? COLLATE NOCASE').get(slug.trim())
+    return row ? mapOidcProvider(row) : undefined
+  }
+
+  listOidcProviders(organizationId?: string, options: { includeDisabled?: boolean } = {}): AuthOidcProvider[] {
+    const rows = organizationId
+      ? this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_oidc_providers WHERE organization_id = ? ORDER BY name COLLATE NOCASE').all(organizationId)
+      : this.controlPlane.database.query<Row, []>('SELECT * FROM auth_oidc_providers ORDER BY name COLLATE NOCASE').all()
+    return rows.map(mapOidcProvider).filter(provider => options.includeDisabled || provider.enabled)
+  }
+
+  setOidcProviderEnabled(providerId: string, enabled: boolean): AuthOidcProvider {
+    const now = this.now()
+    const result = this.controlPlane.database.run(
+      'UPDATE auth_oidc_providers SET enabled = ?, enforce_sso = CASE WHEN ? = 0 THEN 0 ELSE enforce_sso END, updated_at = ? WHERE id = ?',
+      [enabled ? 1 : 0, enabled ? 1 : 0, now, providerId],
+    )
+    if (result.changes !== 1)
+      throw new Error('OIDC provider was not found')
+    if (!enabled)
+      this.run('UPDATE auth_oidc_transactions SET consumed_at = ? WHERE provider_id = ? AND consumed_at IS NULL', [now, providerId])
+    return this.getOidcProvider(providerId)!
+  }
+
+  getOidcProviderCredentials(providerId: string): { provider: AuthOidcProvider, clientSecret: string } {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_oidc_providers WHERE id = ?').get(providerId)
+    if (!row || typeof row.client_secret_ciphertext !== 'string')
+      throw new Error('OIDC provider credentials are unavailable')
+    return { provider: mapOidcProvider(row), clientSecret: this.decrypt(row.client_secret_ciphertext) }
+  }
+
+  beginOidcTransaction(providerId: string, redirectUri: string, returnPath: string): {
+    transaction: AuthOidcTransaction
+    state: string
+    nonce: string
+    verifier: string
+  } {
+    const provider = this.getOidcProvider(providerId)
+    if (!provider?.enabled)
+      throw new Error('OIDC provider is unavailable')
+    const id = this.idFn()
+    const state = randomBytes(32).toString('base64url')
+    const nonce = randomBytes(32).toString('base64url')
+    const verifier = randomBytes(64).toString('base64url')
+    const now = this.now()
+    const expiresAt = new Date(this.nowFn().getTime() + AUTH_OIDC_TRANSACTION_TTL_MS).toISOString()
+    this.run(
+      `INSERT INTO auth_oidc_transactions (id, provider_id, state_hash, nonce_ciphertext, verifier_ciphertext,
+      redirect_uri, return_path, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, providerId, hashToken(state), this.encrypt(nonce), this.encrypt(verifier), redirectUri, returnPath, expiresAt, now],
+    )
+    return { transaction: this.getOidcTransaction(id)!, state, nonce, verifier }
+  }
+
+  getOidcTransaction(id: string): AuthOidcTransaction | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_oidc_transactions WHERE id = ?').get(id)
+    return row ? mapOidcTransaction(row, this.now()) : undefined
+  }
+
+  consumeOidcTransaction(providerId: string, state: string): { transaction: AuthOidcTransaction, nonce: string, verifier: string } {
+    return this.controlPlane.transaction(() => {
+      const row = this.controlPlane.database.query<Row, [string, string]>(
+        'SELECT * FROM auth_oidc_transactions WHERE provider_id = ? AND state_hash = ?',
+      ).get(providerId, hashToken(state))
+      if (!row)
+        throw new Error('OIDC transaction is invalid')
+      const transaction = mapOidcTransaction(row, this.now())
+      if (transaction.state !== 'pending')
+        throw new Error(`OIDC transaction is ${transaction.state}`)
+      const consumed = this.controlPlane.database.run(
+        'UPDATE auth_oidc_transactions SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?',
+        [this.now(), transaction.id, this.now()],
+      ).changes
+      if (consumed !== 1)
+        throw new Error('OIDC transaction is no longer available')
+      return {
+        transaction: this.getOidcTransaction(transaction.id)!,
+        nonce: this.decrypt(String(row.nonce_ciphertext)),
+        verifier: this.decrypt(String(row.verifier_ciphertext)),
+      }
+    })
+  }
+
+  getOidcSubject(providerId: string, subject: string): AuthOidcSubject | undefined {
+    const row = this.controlPlane.database.query<Row, [string, string]>(
+      'SELECT * FROM auth_oidc_subjects WHERE provider_id = ? AND subject = ?',
+    ).get(providerId, subject)
+    return row ? mapOidcSubject(row) : undefined
+  }
+
+  linkOidcSubject(providerId: string, identityId: string, subject: string, email: string): AuthOidcSubject {
+    const provider = this.getOidcProvider(providerId)
+    const identity = this.getIdentity(identityId)
+    if (!provider || !identity)
+      throw new Error('OIDC provider or identity was not found')
+    const normalizedEmail = normalizeEmail(email)!
+    if (!subject.trim() || subject.length > 512)
+      throw new Error('OIDC subject is invalid')
+    const existing = this.getOidcSubject(providerId, subject)
+    if (existing && existing.identityId !== identityId)
+      throw new Error('OIDC subject is already linked to another identity')
+    const now = this.now()
+    if (existing) {
+      this.run('UPDATE auth_oidc_subjects SET email = ?, last_login_at = ? WHERE id = ?', [normalizedEmail, now, existing.id])
+      return this.getOidcSubject(providerId, subject)!
+    }
+    const id = this.idFn()
+    this.run(
+      'INSERT INTO auth_oidc_subjects (id, provider_id, identity_id, subject, email, linked_at, last_login_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, providerId, identityId, subject, normalizedEmail, now, now],
+    )
+    return this.getOidcSubject(providerId, subject)!
+  }
+
   purgeExpired(): { actionTokens: number, sessions: number } {
     const now = this.now()
     const actionTokens = this.controlPlane.database.run('DELETE FROM auth_action_tokens WHERE expires_at < ? OR consumed_at IS NOT NULL', [now]).changes
     const sessions = this.controlPlane.database.run('DELETE FROM auth_sessions WHERE revoked_at IS NOT NULL OR idle_expires_at < ? OR absolute_expires_at < ?', [now, now]).changes
     this.controlPlane.database.run('DELETE FROM auth_mfa_challenges WHERE consumed_at IS NOT NULL OR expires_at < ?', [now])
+    this.controlPlane.database.run('DELETE FROM auth_oidc_transactions WHERE consumed_at IS NOT NULL OR expires_at < ?', [now])
     return { actionTokens, sessions }
   }
 }

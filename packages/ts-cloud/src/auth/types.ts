@@ -74,6 +74,61 @@ export interface AuthenticationStoreOptions {
   encryptionKey?: string
 }
 
+export type AuthOidcRole = 'admin' | 'deployer' | 'operator' | 'viewer' | 'auditor'
+
+export interface AuthOidcProvider {
+  id: ControlPlaneId
+  organizationId: ControlPlaneId
+  slug: string
+  name: string
+  issuer: string
+  clientId: string
+  hasClientSecret: boolean
+  scopes: string[]
+  allowedDomains: string[]
+  defaultRole: AuthOidcRole
+  enabled: boolean
+  enforceSso: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface UpsertAuthOidcProviderInput {
+  id?: ControlPlaneId
+  organizationId: ControlPlaneId
+  slug: string
+  name: string
+  issuer: string
+  clientId: string
+  clientSecret?: string
+  scopes?: string[]
+  allowedDomains: string[]
+  defaultRole?: AuthOidcRole
+  enabled?: boolean
+  enforceSso?: boolean
+}
+
+export interface AuthOidcTransaction {
+  id: ControlPlaneId
+  providerId: ControlPlaneId
+  redirectUri: string
+  returnPath: string
+  expiresAt: string
+  consumedAt?: string
+  createdAt: string
+  state: 'pending' | 'consumed' | 'expired'
+}
+
+export interface AuthOidcSubject {
+  id: ControlPlaneId
+  providerId: ControlPlaneId
+  identityId: ControlPlaneId
+  subject: string
+  email: string
+  linkedAt: string
+  lastLoginAt: string
+}
+
 export interface AuthMfaFactor {
   id: ControlPlaneId
   identityId: ControlPlaneId

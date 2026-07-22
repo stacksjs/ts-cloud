@@ -115,6 +115,74 @@ describe('AuthenticationStore action tokens', () => {
   })
 })
 
+describe('AuthenticationStore OIDC', () => {
+  it('encrypts provider and transaction secrets and consumes state once', () => {
+    const { controlPlane, auth } = stores()
+    const organization = controlPlane.createOrganization({ slug: 'acme', name: 'Acme' })
+    const provider = auth.upsertOidcProvider({
+      organizationId: organization.id,
+      slug: 'workforce',
+      name: 'Acme Workforce',
+      issuer: 'https://identity.acme.test/',
+      clientId: 'ts-cloud',
+      clientSecret: 'provider-secret',
+      allowedDomains: ['ACME.test', 'acme.test'],
+      enforceSso: true,
+    })
+    const issued = auth.beginOidcTransaction(provider.id, 'https://cloud.acme.test/auth/oidc/workforce/callback', '/projects')
+    const persisted = JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_transactions').get())
+
+    expect(provider).toMatchObject({ issuer: 'https://identity.acme.test', allowedDomains: ['acme.test'], scopes: ['openid', 'email', 'profile'] })
+    expect(JSON.stringify(controlPlane.database.query('SELECT * FROM auth_oidc_providers').get())).not.toContain('provider-secret')
+    expect(persisted).not.toContain(issued.state)
+    expect(persisted).not.toContain(issued.nonce)
+    expect(persisted).not.toContain(issued.verifier)
+    expect(auth.consumeOidcTransaction(provider.id, issued.state)).toMatchObject({ nonce: issued.nonce, verifier: issued.verifier })
+    expect(() => auth.consumeOidcTransaction(provider.id, issued.state)).toThrow('consumed')
+    controlPlane.close()
+  })
+
+  it('links an external subject to exactly one local identity', () => {
+    const { controlPlane, auth, actor } = stores()
+    const organization = controlPlane.createOrganization({ slug: 'acme', name: 'Acme' })
+    const provider = auth.upsertOidcProvider({
+      organizationId: organization.id,
+      slug: 'workforce',
+      name: 'Workforce',
+      issuer: 'https://identity.acme.test',
+      clientId: 'ts-cloud',
+      clientSecret: 'secret',
+      allowedDomains: ['acme.test'],
+    })
+    const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', email: 'chris@acme.test', emailVerified: true, passwordHash: 'hash' })
+    const linked = auth.linkOidcSubject(provider.id, identity.id, 'external-123', 'CHRIS@acme.test')
+
+    expect(linked).toMatchObject({ identityId: identity.id, subject: 'external-123', email: 'chris@acme.test' })
+    expect(auth.getOidcSubject(provider.id, 'external-123')).toEqual(linked)
+    controlPlane.close()
+  })
+
+  it('disables SSO enforcement and pending transactions when a provider is disabled', () => {
+    const { controlPlane, auth } = stores()
+    const organization = controlPlane.createOrganization({ slug: 'acme', name: 'Acme' })
+    const provider = auth.upsertOidcProvider({
+      organizationId: organization.id,
+      slug: 'workforce',
+      name: 'Workforce',
+      issuer: 'https://identity.acme.test',
+      clientId: 'ts-cloud',
+      clientSecret: 'secret',
+      allowedDomains: ['acme.test'],
+      enforceSso: true,
+    })
+    const transaction = auth.beginOidcTransaction(provider.id, 'https://cloud.acme.test/callback', '/')
+
+    expect(auth.setOidcProviderEnabled(provider.id, false)).toMatchObject({ enabled: false, enforceSso: false })
+    expect(auth.getOidcTransaction(transaction.transaction.id)?.state).toBe('consumed')
+    controlPlane.close()
+  })
+})
+
 describe('AuthenticationStore sessions', () => {
   it('uses opaque versioned tokens, enforces idle and absolute expiry, and supports revocation', () => {
     let now = new Date('2026-07-21T12:00:00.000Z')
