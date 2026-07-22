@@ -1,6 +1,7 @@
 import type { CLI } from '@stacksjs/clapp'
 import type { EnvironmentType } from '@ts-cloud/core'
 import type { LifecycleAction, RuntimeInventory, RuntimeWorkload } from '../../src/runtime'
+import { readFile, writeFile } from 'node:fs/promises'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
 import { DurableOperationQueue } from '../../src/queue'
 import { RuntimeOperationService } from '../../src/runtime'
@@ -73,6 +74,16 @@ async function durableOperation(
   environment: EnvironmentType,
   service: RuntimeOperationService,
 ): Promise<{ result: Awaited<ReturnType<RuntimeOperationService['run']>>, operationId: string }> {
+  return durableRuntimeTask(workload, `runtime.${action}`, { workloadId: workload.id, provider: workload.provider, action, replicas: replicas ?? null }, environment, () => service.run({ workloadId: workload.id, action, replicas, confirm, recentAuth: true }))
+}
+
+async function durableRuntimeTask<T extends { ok: boolean, stdout?: string, stderr?: string, error?: string, command?: string }>(
+  workload: RuntimeWorkload,
+  kind: string,
+  input: Record<string, unknown>,
+  environment: EnvironmentType,
+  execute: () => Promise<T>,
+): Promise<{ result: T, operationId: string }> {
   const config = await loadValidatedConfig()
   const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
   const queue = new DurableOperationQueue(controlPlane.store, { workerId: `cli:${process.pid}` })
@@ -85,8 +96,8 @@ async function durableOperation(
       environmentId: environmentRecord?.id,
       resourceId: resource?.id,
       actorId: actor.id,
-      kind: `runtime.${action}`,
-      input: { workloadId: workload.id, provider: workload.provider, action, replicas: replicas ?? null },
+      kind,
+      input,
       lockKey: resource ? `resource:${resource.id}` : `runtime:${workload.id}`,
       providerKey: workload.provider,
       maxAttempts: 1,
@@ -97,7 +108,7 @@ async function durableOperation(
     }).operation
     if (!queue.claim(queued.id)) throw new Error(`Workload is locked by another operation. Inspect ${queued.id} with cloud ops:show.`)
     try {
-      const result = await service.run({ workloadId: workload.id, action, replicas, confirm, recentAuth: true })
+      const result = await execute()
       if (result.stdout) queue.appendLog(queued.id, result.stdout, { stream: 'stdout' })
       if (result.stderr) queue.appendLog(queued.id, result.stderr, { stream: 'stderr' })
       if (result.ok) queue.complete(queued.id, { ok: true, command: result.command ?? null })
@@ -177,6 +188,62 @@ export function registerRuntimeCommands(app: CLI): void {
         if (!result.result.ok) throw new Error(result.result.error ?? result.result.stderr ?? 'Runtime operation failed')
         output.success(`${action} completed for ${workload.name} · operation ${result.operationId}`)
         if (result.result.stdout) output.info(result.result.stdout)
+      }
+      catch (error) { output.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+    })
+
+  app.command('runtime:exec <workload>', 'Run a scoped diagnostic preset or container command')
+    .option('--env <environment>', 'Target environment')
+    .option('--preset <preset>', 'Read-only preset: process, sockets, or filesystem')
+    .option('--command <command>', 'Free-form command (Docker containers only)')
+    .option('--confirm <name>', 'Exact workload name confirmation')
+    .action(async (id: string, options: { env?: string, preset?: string, command?: string, confirm?: string }) => {
+      try {
+        const { env, service } = await context(options.env)
+        const inventory = await service.inventory(); const workload = inventory.workloads.find(item => item.id === id)
+        if (!workload) throw new Error('Workload was not found in this project and environment')
+        const preset = ['process', 'sockets', 'filesystem'].includes(String(options.preset)) ? options.preset as 'process' | 'sockets' | 'filesystem' : undefined
+        if (options.preset && !preset) throw new Error('Preset must be process, sockets, or filesystem')
+        if (!preset && !options.command) throw new Error('Pass --preset or --command')
+        const confirm = await confirmedName(workload, options.confirm)
+        const result = await durableRuntimeTask(workload, 'runtime.exec', { workloadId: id, provider: workload.provider, preset: preset ?? null, freeForm: !!options.command }, env, () => service.exec({ workloadId: id, preset, command: options.command, confirm, recentAuth: true }))
+        if (!result.result.ok) throw new Error(result.result.error ?? result.result.stderr ?? 'Exec failed')
+        if (result.result.stdout) output.info(result.result.stdout)
+        if (result.result.stderr) output.warn(result.result.stderr)
+        output.success(`Exec completed for ${workload.name} · operation ${result.operationId}`)
+      }
+      catch (error) { output.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+    })
+
+  app.command('runtime:download <workload> <remote> <local>', 'Download a bounded file from a service-owned path')
+    .option('--env <environment>', 'Target environment')
+    .option('--confirm <name>', 'Exact workload name confirmation')
+    .action(async (id: string, remote: string, local: string, options: { env?: string, confirm?: string }) => {
+      try {
+        const { env, service } = await context(options.env)
+        const inventory = await service.inventory(); const workload = inventory.workloads.find(item => item.id === id)
+        if (!workload) throw new Error('Workload was not found in this project and environment')
+        const confirm = await confirmedName(workload, options.confirm)
+        const result = await durableRuntimeTask(workload, 'runtime.file.read', { workloadId: id, provider: workload.provider, path: remote }, env, () => service.readFile({ workloadId: id, path: remote, confirm, recentAuth: true }))
+        if (!result.result.ok || !result.result.contentBase64) throw new Error(result.result.error ?? 'File download failed')
+        await writeFile(local, Buffer.from(result.result.contentBase64, 'base64'))
+        output.success(`Downloaded ${result.result.size ?? 0} bytes to ${local} · operation ${result.operationId}${result.result.truncated ? ' (truncated)' : ''}`)
+      }
+      catch (error) { output.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
+    })
+
+  app.command('runtime:upload <workload> <local> <remote>', 'Upload and atomically replace a file in a service-owned path')
+    .option('--env <environment>', 'Target environment')
+    .option('--confirm <name>', 'Exact workload name confirmation')
+    .action(async (id: string, local: string, remote: string, options: { env?: string, confirm?: string }) => {
+      try {
+        const { env, service } = await context(options.env)
+        const inventory = await service.inventory(); const workload = inventory.workloads.find(item => item.id === id)
+        if (!workload) throw new Error('Workload was not found in this project and environment')
+        const confirm = await confirmedName(workload, options.confirm); const contentBase64 = (await readFile(local)).toString('base64')
+        const result = await durableRuntimeTask(workload, 'runtime.file.write', { workloadId: id, provider: workload.provider, path: remote, bytes: Buffer.from(contentBase64, 'base64').byteLength }, env, () => service.writeFile({ workloadId: id, path: remote, contentBase64, confirm, recentAuth: true }))
+        if (!result.result.ok) throw new Error(result.result.error ?? 'File upload failed')
+        output.success(`Uploaded ${result.result.size ?? 0} bytes to ${remote} · operation ${result.operationId}`)
       }
       catch (error) { output.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1 }
     })
