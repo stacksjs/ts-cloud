@@ -44,7 +44,8 @@ describe('SourceConnectionStore', () => {
     const rotated = f.sources.rotateCredential(connection.id, { token: 'replacement-token' }, { actorId: f.actor.id, expiresAt: '2027-01-01T00:00:00.000Z' })
     expect(rotated.version).toBe(2)
     expect(f.sources.getCredential(connection.id)).toEqual({ token: 'replacement-token' })
-    expect(f.controlPlane.listEvents({ organizationId: f.organization.id }).map(event => event.type)).toEqual(['source.connection.created', 'source.credential.rotated'])
+    expect(f.sources.updateHealth(connection.id, { status: 'healthy', tested: true, grantedScopes: ['metadata:read', 'contents:read', 'webhooks:write'] }).grantedScopes).toEqual(['contents:read', 'metadata:read', 'webhooks:write'])
+    expect(f.controlPlane.listEvents({ organizationId: f.organization.id }).map(event => event.type)).toEqual(['source.connection.created', 'source.credential.rotated', 'source.connection.scopes_updated'])
   })
 
   it('stores safe repository metadata and disables every dependent binding on disconnect', () => {

@@ -176,12 +176,14 @@ export class SourceConnectionStore {
     this.controlPlane.appendEvent({ organizationId: connection.organizationId, actorId: input.actorId, type: 'source.credential.rotated', payload: { connectionId: id, fingerprint: hash(encoded).slice(0, 16), expiresAt: input.expiresAt ?? null } })
     return this.getConnection(id)!
   }
-  updateHealth(id: string, input: { status: 'healthy' | 'degraded' | 'expired', message?: string, tested?: boolean, synced?: boolean }): SourceConnection {
+  updateHealth(id: string, input: { status: 'healthy' | 'degraded' | 'expired', message?: string, tested?: boolean, synced?: boolean, grantedScopes?: string[] }): SourceConnection {
     const connection = this.getConnection(id)
     if (!connection || ['disconnected', 'expired'].includes(connection.status)) throw new Error('Active source connection was not found')
     const now = this.now()
-    this.run(`UPDATE source_connections SET status = ?, health_message = ?, last_tested_at = COALESCE(?, last_tested_at), last_synced_at = COALESCE(?, last_synced_at), version = version + 1, updated_at = ? WHERE id = ?`,
-      [input.status, input.message?.slice(0, 1000) ?? null, input.tested ? now : null, input.synced ? now : null, now, id])
+    const grantedScopes = input.grantedScopes ? [...new Set(input.grantedScopes.map(scope => scope.trim()).filter(Boolean))].sort() : undefined
+    this.run(`UPDATE source_connections SET status = ?, health_message = ?, granted_scopes = COALESCE(?, granted_scopes), last_tested_at = COALESCE(?, last_tested_at), last_synced_at = COALESCE(?, last_synced_at), version = version + 1, updated_at = ? WHERE id = ?`,
+      [input.status, input.message?.slice(0, 1000) ?? null, grantedScopes ? json(grantedScopes) : null, input.tested ? now : null, input.synced ? now : null, now, id])
+    if (grantedScopes && JSON.stringify(grantedScopes) !== JSON.stringify([...connection.grantedScopes].sort())) this.controlPlane.appendEvent({ organizationId: connection.organizationId, type: 'source.connection.scopes_updated', payload: { connectionId: id, grantedScopes } })
     return this.getConnection(id)!
   }
 
@@ -324,6 +326,8 @@ export class SourceConnectionStore {
     const now = this.now()
     this.run(`UPDATE source_webhooks SET provider_webhook_id=COALESCE(?, provider_webhook_id), status=?, health_message=?, last_reconciled_at=COALESCE(?, last_reconciled_at), updated_at=? WHERE id=?`,
       [input.providerWebhookId ?? null, input.status, input.healthMessage?.slice(0, 1000) ?? null, input.reconciled ? now : null, now, id])
+    const connection = this.getConnection(webhook.connectionId)
+    if (connection) this.controlPlane.appendEvent({ organizationId: connection.organizationId, type: 'source.webhook.updated', payload: { webhookId: id, connectionId: connection.id, repository: webhook.repositoryFullName, status: input.status, reconciled: input.reconciled ?? false, providerWebhookId: input.providerWebhookId ?? webhook.providerWebhookId ?? null } })
     return this.getWebhook(id)!
   }
   getDeliveryByProviderId(connectionId: string, providerDeliveryId: string): SourceWebhookDelivery | undefined {

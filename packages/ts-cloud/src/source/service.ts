@@ -14,7 +14,7 @@ export async function testSourceConnection(sources: SourceConnectionStore, conne
   try {
     if (hosted(connection.provider)) {
       const result = await createSourceAdapter(connection, sources.getCredential(connection.id)).testConnection()
-      return sources.updateHealth(connection.id, { status: result.ok ? 'healthy' : 'degraded', message: result.message, tested: true })
+      return sources.updateHealth(connection.id, { status: result.ok ? 'healthy' : 'degraded', message: result.message, tested: true, grantedScopes: result.scopes })
     }
     const repository = repositoryId ? sources.getRepository(repositoryId) : sources.listRepositories(connection.id, undefined, 1)[0]
     if (!repository) return sources.updateHealth(connection.id, { status: 'degraded', message: 'Add a repository URL before testing this generic connection.', tested: true })
