@@ -3,6 +3,7 @@ import type { AuthorizationCapability, AuthorizationScope, AuthorizationTarget, 
 import type { ApiDeploymentRequest } from './types'
 import { createHash } from 'node:crypto'
 import { authorizeOrganization, sanitizeControlPlaneValue } from '../control-plane'
+import { DurableOperationQueue } from '../queue'
 
 export class ApiServiceError extends Error {
   constructor(public readonly code: string, message: string, public readonly status: number, public readonly details?: Record<string, unknown>) {
@@ -27,7 +28,8 @@ export function requestHash(method: string, pathname: string, body: unknown): st
 }
 
 export class AutomationApiService {
-  constructor(private readonly controlPlane: ControlPlaneStore, private readonly identities: AutomationIdentityStore) {}
+  private readonly queue: DurableOperationQueue
+  constructor(private readonly controlPlane: ControlPlaneStore, private readonly identities: AutomationIdentityStore) { this.queue = new DurableOperationQueue(controlPlane) }
 
   target(principal: ApiTokenPrincipal, requested: AuthorizationScope): AuthorizationTarget {
     const target = this.controlPlane.resolveAuthorizationTarget(principal.serviceAccount.organizationId, requested)
@@ -132,7 +134,8 @@ export class AutomationApiService {
       if (!service || service.projectId !== input.projectId || service.environmentId !== input.environmentId)
         throw new ApiServiceError('not_found', 'Service was not found in this environment.', 404)
     }
-    const operation = this.controlPlane.createOperation({
+    const resource = input.serviceId ? this.controlPlane.getResource(input.serviceId) : undefined
+    const operation = this.queue.enqueue({
       projectId: input.projectId,
       environmentId: input.environmentId,
       resourceId: input.serviceId,
@@ -140,7 +143,15 @@ export class AutomationApiService {
       kind: input.action === 'rollback' ? 'deployment.rollback' : 'deployment.create',
       idempotencyKey: `api:${principal.token.id}:${idempotencyKey}`,
       input: sanitizeControlPlaneValue({ action: input.action ?? 'deploy', revision: input.revision ?? null }),
-    })
+      lockKey: input.serviceId ? `resource:${input.serviceId}` : `environment:${input.environmentId}`,
+      providerKey: resource?.provider ?? 'default',
+      buildSlot: input.action !== 'rollback',
+      maxAttempts: 3,
+      retryClasses: ['network', 'provider_throttled', 'provider_unavailable'],
+      resumePolicy: 'fail',
+      cancellationMode: 'provider_non_cancellable',
+      retentionDays: 90,
+    }).operation
     this.identities.saveIdempotency({ tokenId: principal.token.id, key: idempotencyKey, requestHash: bodyHash, operationId: operation.id, responseStatus: 202, responseBody: { operationId: operation.id } })
     return { operation: this.operation(operation), replay: false }
   }

@@ -105,32 +105,38 @@ export class DurableOperationQueue {
     return undefined
   }
 
-  claimNext(kinds?: readonly string[]): QueueOperationView | undefined {
+  claim(operationId: string): QueueOperationView | undefined {
     return this.controlPlane.transaction(() => {
       const now = this.now()
       this.controlPlane.database.run('DELETE FROM operation_locks WHERE lease_expires_at<=?', [now])
-      const kindSql = kinds?.length ? `AND o.kind IN (${kinds.map(() => '?').join(',')})` : ''
-      const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? ${kindSql} ORDER BY o.priority DESC, o.created_at ASC, o.id ASC LIMIT 100`).all(now, ...(kinds ?? []))
-      for (const row of rows) {
-        const operation = this.controlPlane.getOperation(String(row.id)); const metadata = operation ? this.getJob(operation.id) : undefined
-        if (!operation || !metadata) continue
-        if (operation.cancelRequestedAt) {
-          this.controlPlane.transitionOperation(operation.id, { to: 'cancelled', expectedVersion: operation.version, output: { cancelledBeforeStart: true } })
-          this.appendLog(operation.id, 'Cancelled before execution began.', { stream: 'system' })
-          continue
-        }
-        const blocked = this.blockReason(operation, metadata)
-        if (blocked) { this.controlPlane.database.run('UPDATE operation_jobs SET blocked_reason=?, updated_at=? WHERE operation_id=?', [blocked, now, operation.id]); continue }
-        const claimed = this.controlPlane.claimOperation(operation.id, this.workerId, this.leaseMs)
-        if (!claimed) continue
-        const expiry = claimed.leaseExpiresAt ?? this.leaseExpiry()
-        if (metadata.lockKey) this.controlPlane.database.run('INSERT INTO operation_locks (lock_key, operation_id, lease_owner, lease_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [metadata.lockKey, operation.id, this.workerId, expiry, now, now])
-        this.controlPlane.database.run('UPDATE operation_jobs SET heartbeat_at=?, blocked_reason=NULL, updated_at=? WHERE operation_id=?', [now, now, operation.id])
-        this.appendLog(operation.id, `Claimed by ${this.workerId}; attempt ${claimed.attempt}.`, { stream: 'system' })
-        return this.view(operation.id)
+      const operation = this.controlPlane.getOperation(operationId); const metadata = operation ? this.getJob(operation.id) : undefined
+      if (!operation || !metadata || operation.state !== 'queued' || metadata.availableAt > now) return undefined
+      if (operation.cancelRequestedAt) {
+        this.controlPlane.transitionOperation(operation.id, { to: 'cancelled', expectedVersion: operation.version, output: { cancelledBeforeStart: true } })
+        this.appendLog(operation.id, 'Cancelled before execution began.', { stream: 'system' })
+        return undefined
       }
-      return undefined
+      const blocked = this.blockReason(operation, metadata)
+      if (blocked) { this.controlPlane.database.run('UPDATE operation_jobs SET blocked_reason=?, updated_at=? WHERE operation_id=?', [blocked, now, operation.id]); return undefined }
+      const claimed = this.controlPlane.claimOperation(operation.id, this.workerId, this.leaseMs)
+      if (!claimed) return undefined
+      const expiry = claimed.leaseExpiresAt ?? this.leaseExpiry()
+      if (metadata.lockKey) this.controlPlane.database.run('INSERT INTO operation_locks (lock_key, operation_id, lease_owner, lease_expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', [metadata.lockKey, operation.id, this.workerId, expiry, now, now])
+      this.controlPlane.database.run('UPDATE operation_jobs SET heartbeat_at=?, blocked_reason=NULL, updated_at=? WHERE operation_id=?', [now, now, operation.id])
+      this.appendLog(operation.id, `Claimed by ${this.workerId}; attempt ${claimed.attempt}.`, { stream: 'system' })
+      return this.view(operation.id)
     })
+  }
+
+  claimNext(kinds?: readonly string[]): QueueOperationView | undefined {
+    const now = this.now()
+    const kindSql = kinds?.length ? `AND o.kind IN (${kinds.map(() => '?').join(',')})` : ''
+    const rows = this.controlPlane.database.query<Row, SQLQueryBindings[]>(`SELECT o.id FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? ${kindSql} ORDER BY o.priority DESC, o.created_at ASC, o.id ASC LIMIT 100`).all(now, ...(kinds ?? []))
+    for (const row of rows) {
+      const claimed = this.claim(String(row.id))
+      if (claimed) return claimed
+    }
+    return undefined
   }
 
   heartbeat(operationId: string, step?: string): void {

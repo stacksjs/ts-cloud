@@ -2,6 +2,7 @@ import type { ControlPlaneOperation, ControlPlaneResource, ControlPlaneStore, Js
 import type { ApplicationDraftStore } from './store'
 import type { ApplicationPlan } from './types'
 import { planApplication } from './plan'
+import { DurableOperationQueue } from '../queue'
 
 export interface ApplyApplicationResult { plan: ApplicationPlan, resource: ControlPlaneResource, operation: ControlPlaneOperation }
 
@@ -19,7 +20,7 @@ export function applyApplicationDraft(input: { controlPlane: ControlPlaneStore, 
   const resource = existing
     ? input.controlPlane.updateResource(existing.id, existing.version, { name: draft.input.name, desiredState })
     : input.controlPlane.createResource({ projectId: project.id, environmentId: environment.id, kind: 'application', slug: draft.input.slug, name: draft.input.name, desiredState, metadata: { source: 'application-onboarding', draftId: draft.id } })
-  const operation = input.controlPlane.createOperation({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, actorId: input.actorId, kind: 'application.create', idempotencyKey: `application-draft:${draft.id}:v${draft.version}`, correlationId: `application-draft:${draft.id}`, input: desiredState })
+  const operation = new DurableOperationQueue(input.controlPlane).enqueue({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, actorId: input.actorId, kind: 'application.create', idempotencyKey: `application-draft:${draft.id}:v${draft.version}`, correlationId: `application-draft:${draft.id}`, input: desiredState, lockKey: `resource:${resource.id}`, providerKey: resource.provider ?? 'default', buildSlot: draft.input.build.kind !== 'prebuilt_image', maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: 90 }).operation
   input.drafts.markApplied(draft.id, draft.version, input.actorId)
   input.controlPlane.appendEvent({ organizationId: draft.organizationId, projectId: project.id, resourceId: resource.id, operationId: operation.id, actorId: input.actorId, type: 'application.create.queued', payload: { draftId: draft.id, environment: environment.slug, strategy: draft.input.build.kind, costDrivers: plan.costDrivers } })
   return { plan, resource, operation }

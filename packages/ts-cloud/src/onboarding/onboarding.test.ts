@@ -174,6 +174,7 @@ describe('resumable application drafts', () => {
       expect(applied.plan.manifest.spec.build.kind).toBe(strategy.build.kind)
       expect(applied.resource.desiredState).toMatchObject({ manifest: { spec: { build: { kind: strategy.build.kind } } } })
       expect(applied.operation).toMatchObject({ kind: 'application.create', state: 'queued', resourceId: applied.resource.id })
+      expect(controlPlane.database.query<Record<string, number>, [string]>('SELECT build_slot FROM operation_jobs WHERE operation_id=?').get(applied.operation.id)?.build_slot).toBe(strategy.build.kind === 'prebuilt_image' ? 0 : 1)
     }
     expect(controlPlane.listOperations({ projectId: project.id }).map(operation => operation.kind)).toEqual(Array(5).fill('application.create'))
     expect(controlPlane.listResources(project.id, environment.id).map(resource => resource.slug).sort()).toEqual(strategies.map(strategy => strategy.slug).sort())

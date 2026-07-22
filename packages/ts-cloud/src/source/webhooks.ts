@@ -2,6 +2,7 @@ import type { ControlPlaneOperation, ControlPlaneStore, JsonValue } from '../con
 import type { SourceBinding, SourceConnection, SourceProvider, SourceWebhook } from './types'
 import type { SourceConnectionStore } from './store'
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { DurableOperationQueue } from '../queue'
 
 export interface NormalizedSourceEvent {
   event: 'push' | 'pull_request'
@@ -70,7 +71,14 @@ function paths(values: unknown[]): string[] {
   }).filter(value => value && !value.includes('\0')).slice(0, 500))]
 }
 
-export function normalizeSourceEvent(provider: SourceProvider, headers: Headers | Record<string, string | undefined>, body: Record<string, any>): NormalizedSourceEvent | undefined {
+export function normalizeSourceEvent(
+  _provider: SourceProvider,
+  _headers: Headers | Record<string, string | undefined>,
+  _body: Record<string, any>,
+): NormalizedSourceEvent | undefined {
+  const provider = _provider
+  const headers = _headers
+  const body = _body
   if (provider === 'github') {
     const event = header(headers, 'x-github-event')
     const repository = repositoryName(body.repository?.full_name)
@@ -169,11 +177,14 @@ export async function processSourceWebhook(input: { sources: SourceConnectionSto
     input.sources.updateDelivery(recorded.delivery.id, { status: 'ignored' })
     return { accepted: true, duplicate: recorded.duplicate, status: 'ignored', operations: [], message: 'Verified event did not match an active deployment rule' }
   }
+  const queue = new DurableOperationQueue(input.controlPlane)
   const operations = bindings.map((binding) => {
     const kind = event.event === 'pull_request' ? 'deploy.preview' : 'deploy.source'
-    return input.controlPlane.createOperation({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind,
+    return queue.enqueue({ projectId: binding.projectId, environmentId: binding.environmentId, resourceId: binding.resourceId, kind,
       idempotencyKey: `source:${connection.id}:${providerDeliveryId}:${binding.id}:${event.commitSha}`, correlationId: `source:${providerDeliveryId}`,
-      input: { source: { connectionId: connection.id, bindingId: binding.id, repository: event.repository, commitSha: event.commitSha, branch: event.branch ?? null, tag: event.tag ?? null, monorepoRoot: binding.monorepoRoot, submodules: binding.submodules, cloneDepth: binding.cloneDepth ?? null }, preview: event.event === 'pull_request' ? { number: event.pullRequestNumber ?? null, action: event.action ?? null } : null } as JsonValue })
+      input: { source: { connectionId: connection.id, bindingId: binding.id, repository: event.repository, commitSha: event.commitSha, branch: event.branch ?? null, tag: event.tag ?? null, monorepoRoot: binding.monorepoRoot, submodules: binding.submodules, cloneDepth: binding.cloneDepth ?? null }, preview: event.event === 'pull_request' ? { number: event.pullRequestNumber ?? null, action: event.action ?? null } : null } as JsonValue,
+      lockKey: binding.resourceId ? `resource:${binding.resourceId}` : `environment:${binding.environmentId ?? binding.projectId}`, providerKey: connection.provider, buildSlot: true, maxAttempts: 3, retryClasses: ['network', 'provider_throttled', 'provider_unavailable'], resumePolicy: 'fail', cancellationMode: 'provider_non_cancellable', retentionDays: event.event === 'pull_request' ? 14 : 90,
+    }).operation
   })
   input.sources.updateDelivery(recorded.delivery.id, { status: 'enqueued', operationId: operations[0]?.id })
   input.controlPlane.appendEvent({ organizationId: connection.organizationId, projectId: bindings[0]?.projectId, operationId: operations[0]?.id, type: 'source.webhook.enqueued', payload: { webhookId: webhook.id, deliveryId: recorded.delivery.id, repository: event.repository, commitSha: event.commitSha, operationIds: operations.map(operation => operation.id) } })

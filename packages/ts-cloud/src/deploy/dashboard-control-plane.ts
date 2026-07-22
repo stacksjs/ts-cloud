@@ -10,6 +10,7 @@ import type {
 import type { DashboardUser } from './dashboard-auth'
 import { createHash } from 'node:crypto'
 import { ControlPlaneStore, roleCapabilities, sanitizeControlPlaneValue } from '../control-plane'
+import { DurableOperationQueue } from '../queue'
 
 export interface DashboardControlPlane {
   store: ControlPlaneStore
@@ -130,7 +131,9 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
       syncResource('database', 'application-database', 'Application database', { engine: infrastructure.database })
   }
 
-  const reconciliation = store.reconcileOrphanedOperations({ policy: 'fail' })
+  const queueRecovery = new DurableOperationQueue(store).recoverExpired()
+  const legacyRecovery = store.reconcileOrphanedOperations({ policy: 'fail' })
+  const reconciliation = { requeued: queueRecovery.requeued + legacyRecovery.requeued, failed: queueRecovery.failed + queueRecovery.cancelled + legacyRecovery.failed }
   return { store, organization, project, environments, reconciliation }
 }
 
@@ -202,35 +205,38 @@ export async function trackDashboardOperation<T extends { ok: boolean }>(input: 
   const resource = input.resourceSlug && environmentRecord
     ? controlPlane.store.listResources(controlPlane.project.id, environmentRecord.id).find(item => item.slug === input.resourceSlug)
     : undefined
-  const operation = controlPlane.store.createOperation({
+  const queue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
+  const operation = queue.enqueue({
     projectId: controlPlane.project.id,
     environmentId: environmentRecord?.id,
     resourceId: resource?.id,
     actorId: actor.id,
     kind: input.kind,
     input: input.input ?? {},
-  })
-  const running = controlPlane.store.claimOperation(operation.id, `dashboard:${process.pid}`, 15 * 60 * 1000)
+    lockKey: resource ? `resource:${resource.id}` : environmentRecord ? `environment:${environmentRecord.id}` : `project:${controlPlane.project.id}`,
+    providerKey: resource?.provider ?? 'dashboard',
+    buildSlot: input.kind.includes('deploy'),
+    maxAttempts: 1,
+    timeoutSeconds: 60 * 60,
+    resumePolicy: 'fail',
+    cancellationMode: 'provider_non_cancellable',
+    retentionDays: 90,
+  }).operation
+  const running = queue.claim(operation.id)?.operation
   if (!running)
     throw new Error(`Could not claim control-plane operation ${operation.id}`)
 
   try {
     const result = await input.execute()
-    const record = controlPlane.store.transitionOperation(operation.id, {
-      to: result.ok ? 'succeeded' : 'failed',
-      expectedVersion: running.version,
-      error: result.ok ? undefined : operationError(result),
-      output: summarizeResult(result),
-    })
+    const stdout = typeof (result as Record<string, unknown>).stdout === 'string' ? String((result as Record<string, unknown>).stdout) : ''
+    const stderr = typeof (result as Record<string, unknown>).stderr === 'string' ? String((result as Record<string, unknown>).stderr) : ''
+    if (stdout) queue.appendLog(operation.id, stdout, { stream: 'stdout' })
+    if (stderr) queue.appendLog(operation.id, stderr, { stream: 'stderr' })
+    const record = result.ok ? queue.complete(operation.id, summarizeResult(result)) : queue.fail(operation.id, operationError(result), summarizeResult(result))
     return { result, operation: record }
   }
   catch (error) {
-    controlPlane.store.transitionOperation(operation.id, {
-      to: 'failed',
-      expectedVersion: running.version,
-      error: error instanceof Error ? error.message : String(error),
-      output: { ok: false, threw: true },
-    })
+    queue.fail(operation.id, error instanceof Error ? error.message : String(error), { ok: false, threw: true })
     throw error
   }
 }

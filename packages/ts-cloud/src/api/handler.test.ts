@@ -64,6 +64,7 @@ describe('/api/v1 contract', () => {
     const firstBody = await first.json() as any
     expect(first.status).toBe(202)
     expect(firstBody).toMatchObject({ operation: { state: 'queued', kind: 'deployment.create', actorId: expect.any(String) }, idempotentReplay: false })
+    expect(controlPlane.database.query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?').get(firstBody.operation.id)?.lock_key).toBe(`resource:${productionService.id}`)
     const replay = await call('/api/v1/deployments', { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': 'build-12345678' }, body: JSON.stringify(input) })
     expect(await replay.json()).toMatchObject({ operation: { id: firstBody.operation.id }, idempotentReplay: true })
     expect(replay.headers.get('idempotent-replayed')).toBe('true')

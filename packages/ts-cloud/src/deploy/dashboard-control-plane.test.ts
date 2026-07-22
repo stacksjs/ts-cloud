@@ -64,12 +64,14 @@ describe('dashboard control plane', () => {
       kind: 'dashboard.server.restart',
       resourceSlug: 'web',
       input: { target: 'web' },
-      execute: async () => ({ ok: true, stdout: 'full transcript must not be persisted' }),
+      execute: async () => ({ ok: true, stdout: 'streamed queue transcript is persisted' }),
     })
 
     expect(tracked.operation.state).toBe('succeeded')
-    expect(tracked.operation.output).toEqual({ ok: true, stdoutBytes: 37, stderrBytes: 0 })
-    expect(JSON.stringify(tracked.operation.output)).not.toContain('full transcript')
+    expect(tracked.operation.output).toEqual({ ok: true, stdoutBytes: 38, stderrBytes: 0 })
+    expect(JSON.stringify(tracked.operation.output)).not.toContain('streamed queue transcript')
+    expect(controlPlane.store.database.query<Record<string, string>, [string]>('SELECT message FROM operation_logs WHERE operation_id=? AND stream=\'stdout\'').get(tracked.operation.id)?.message).toBe('streamed queue transcript is persisted')
+    expect(controlPlane.store.database.query<Record<string, string>, [string]>('SELECT lock_key FROM operation_jobs WHERE operation_id=?').get(tracked.operation.id)?.lock_key).toBe(`resource:${tracked.operation.resourceId}`)
     expect(controlPlane.store.listEvents({ operationId: tracked.operation.id })).toHaveLength(3)
     controlPlane.store.close()
   })
