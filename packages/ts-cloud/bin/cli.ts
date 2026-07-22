@@ -8,6 +8,7 @@ import {
   registerGenerateCommands,
   registerServerCommands,
   registerPlacementCommands,
+  registerRegionCommands,
   registerFunctionCommands,
   registerContainerCommands,
   registerDomainCommands,
@@ -94,6 +95,7 @@ registerStackCommands(app)
 // Infrastructure Management
 registerServerCommands(app)
 registerPlacementCommands(app)
+registerRegionCommands(app)
 registerFunctionCommands(app)
 registerContainerCommands(app)
 registerCdnCommands(app)

@@ -38,6 +38,7 @@ import { AwsSecretsManagerConfigurationBackend, AwsSsmConfigurationBackend, Conf
 import { createVolumeQueueHandlers, DockerNamedVolumeDriver, ServerPathVolumeDriver, VolumeService, VolumeStore } from '../storage'
 import { createFleetQueueHandlers, FleetService, FleetStore, SshFleetDriver } from '../fleet'
 import { PlacementService, PlacementStore } from '../placement'
+import { createRegionQueueHandlers, RegionService, RegionStore, UnavailableRegionalDriver } from '../regions'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -449,6 +450,8 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/capacity/member',
   'POST /api/capacity/action',
   'POST /api/capacity/explain',
+  'POST /api/regions',
+  'POST /api/regions/action',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -799,6 +802,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/operations/queue': 'deployments:read',
   '/operations/previews': 'deployments:read',
   '/operations/releases': 'deployments:read',
+  '/operations/regions': 'deployments:read',
   '/operations/workloads': 'runtime:read',
   '/operations/observability': 'runtime:logs',
   '/operations/alerts': 'runtime:read',
@@ -1081,6 +1085,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const fleetService = new FleetService(fleetStore, [new SshFleetDriver('aws'), new SshFleetDriver('hetzner'), new SshFleetDriver('ssh')], operationQueue)
   const placementStore = new PlacementStore(controlPlane.store)
   const placementService = new PlacementService(placementStore, fleetStore)
+  const regionStore = new RegionStore(controlPlane.store)
+  const regionService = new RegionService(regionStore, operationQueue)
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -1233,7 +1239,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createFleetQueueHandlers(fleetStore, fleetService.drivers), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createFleetQueueHandlers(fleetStore, fleetService.drivers), ...createRegionQueueHandlers(regionStore,[new UnavailableRegionalDriver('aws','AWS regional execution requires an injected AwsRegionalTransport; topology and plans were preserved without provider mutation.')]), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
         if (!policy.healthCheckId) return { healthy: true, mode: 'adapter' }
         const check = alertStore.getHealthCheck(policy.healthCheckId)
         if (!check || check.projectId !== policy.projectId) return { healthy: false, error: 'Configured restore health check was not found.' }
@@ -3693,6 +3699,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if(url.pathname==='/api/capacity/member'&&req.method==='POST'){const body=await readJsonBody(req);try{placementStore.addMember(String(body.poolId??''),String(body.serverId??''));return json({ok:true,pool:placementStore.getPool(String(body.poolId??''))})}catch(error){return capacityFail(error,422)}}
           if(url.pathname==='/api/capacity/explain'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,decisions:placementService.explain(controlPlane.project.id,{purpose:String(body.purpose??'application') as any,resources:body.resources&&typeof body.resources==='object'?body.resources:{},region:body.region?String(body.region):undefined,architecture:body.architecture?String(body.architecture):undefined,labels:body.labels&&typeof body.labels==='object'?body.labels:{}})})}catch(error){return capacityFail(error,422)}}
           if(url.pathname==='/api/capacity/action'&&req.method==='POST'){const body=await readJsonBody(req);try{if(body.action==='drain')return json({ok:true,...placementService.drainPool(String(body.poolId??''))});if(body.action==='enable')return json({ok:true,pool:placementStore.updatePool(String(body.poolId??''),{status:'active'})});if(body.action==='disable')return json({ok:true,pool:placementStore.updatePool(String(body.poolId??''),{status:'disabled'})});return capacityFail('Unsupported capacity action.',422)}catch(error){return capacityFail(error,422)}}
+        }
+        if(url.pathname.startsWith('/api/regions')){
+          const regionFail=(error:unknown,status=409)=>json({ok:false,error:error instanceof Error?error.message:String(error)},status,{'cache-control':'no-store'})
+          if(url.pathname==='/api/regions'&&req.method==='GET')return json({ok:true,topologies:regionStore.list(controlPlane.project.id).map(topology=>({topology,targets:regionStore.targets(topology.id),channels:regionStore.channels(topology.id),route:regionStore.route(topology.id),executions:regionStore.executions(topology.id)}))},200,{'cache-control':'no-store'})
+          if(url.pathname==='/api/regions'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,topology:regionService.create({organizationId:controlPlane.organization.id,projectId:controlPlane.project.id,environmentId:controlPlane.environments.get(environment)?.id,name:String(body.name??''),hostname:String(body.hostname??''),regions:Array.isArray(body.regions)?body.regions:[],trafficPolicy:body.trafficPolicy==='weighted'||body.trafficPolicy==='latency'?body.trafficPolicy:'active_passive',dataPolicy:{replicate:Array.isArray(body.replicate)?body.replicate:['s3','dynamodb','secrets'],maxLagSeconds:Number(body.maxLagSeconds??30),retainOnDestroy:body.retainOnDestroy!==false},dnsProvider:'route53',cdnEnabled:body.cdnEnabled===true,wafEnabled:body.wafEnabled===true})},201)}catch(error){return regionFail(error,422)}}
+          if(url.pathname==='/api/regions/action'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,...regionService.enqueue({topologyId:String(body.topologyId??''),kind:String(body.action??'') as any,targetRegion:body.targetRegion?String(body.targetRegion):undefined,revision:body.revision?String(body.revision):undefined,manifest:body.manifest&&typeof body.manifest==='object'?body.manifest:{},confirmation:body.confirmation?String(body.confirmation):undefined,deleteData:body.deleteData===true})},202)}catch(error){return regionFail(error,422)}}
         }
 
         if (url.pathname.startsWith('/api/volumes')) {
