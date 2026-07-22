@@ -18,7 +18,7 @@ import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilitie
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
 import { cloneSourceBinding, listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
-import { DurableOperationQueue } from '../queue'
+import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorker } from '../queue'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -75,6 +75,10 @@ export interface LocalDashboardServerOptions {
   config?: CloudConfig
   /** Injectable OIDC transport for deterministic integration tests. */
   oidcFetch?: OidcFetch
+  /** Run the persistent deployment worker in this process. Defaults off in tests. */
+  queueWorker?: boolean
+  /** Maximum number of operations this process may execute in parallel. */
+  queueParallelism?: number
 }
 
 export interface LocalDashboardServer {
@@ -518,7 +522,31 @@ function clampOutput(output: string): string {
   return `${output.slice(0, MAX_OUTPUT_BYTES)}\n\n[output truncated]`
 }
 
-async function runAction(action: DashboardAction, options: Required<Pick<LocalDashboardServerOptions, 'cwd' | 'cliEntry'>>): Promise<Record<string, any>> {
+async function readProcessOutput(stream: ReadableStream<Uint8Array>, kind: 'stdout' | 'stderr', onOutput?: (kind: 'stdout' | 'stderr', chunk: string) => void): Promise<string> {
+  const reader = stream.getReader()
+  const decoder = new TextDecoder()
+  let output = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done)
+      break
+    const chunk = decoder.decode(value, { stream: true })
+    output += chunk
+    if (chunk)
+      onOutput?.(kind, chunk)
+  }
+  const trailing = decoder.decode()
+  if (trailing) {
+    output += trailing
+    onOutput?.(kind, trailing)
+  }
+  return output
+}
+
+export async function runDashboardAction(action: DashboardAction, options: Required<Pick<LocalDashboardServerOptions, 'cwd' | 'cliEntry'>> & {
+  signal?: AbortSignal
+  onOutput?: (kind: 'stdout' | 'stderr', chunk: string) => void
+}): Promise<Record<string, any>> {
   const proc = Bun.spawn([process.execPath, options.cliEntry, ...action.command], {
     cwd: options.cwd,
     stdout: 'pipe',
@@ -526,20 +554,40 @@ async function runAction(action: DashboardAction, options: Required<Pick<LocalDa
     env: process.env,
   })
 
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-
-  return {
-    action: action.id,
-    command: ['cloud', ...action.command].join(' '),
-    exitCode,
-    ok: exitCode === 0,
-    stdout: clampOutput(stdout),
-    stderr: clampOutput(stderr),
+  const abort = () => {
+    try { proc.kill() }
+    catch { /* already exited */ }
   }
+  if (options.signal?.aborted)
+    abort()
+  else
+    options.signal?.addEventListener('abort', abort, { once: true })
+
+  try {
+    const [stdout, stderr, exitCode] = await Promise.all([
+      readProcessOutput(proc.stdout, 'stdout', options.onOutput),
+      readProcessOutput(proc.stderr, 'stderr', options.onOutput),
+      proc.exited,
+    ])
+
+    return {
+      action: action.id,
+      command: ['cloud', ...action.command].join(' '),
+      exitCode,
+      ok: exitCode === 0,
+      stdout: clampOutput(stdout),
+      stderr: clampOutput(stderr),
+    }
+  }
+  finally {
+    options.signal?.removeEventListener('abort', abort)
+  }
+}
+
+function deploymentLogSecrets(): string[] {
+  return Object.entries(process.env)
+    .filter(([name, value]) => !!value && value.length >= 8 && /(secret|token|password|passwd|private|credential|api.?key|access.?key)/i.test(name))
+    .map(([, value]) => value!)
 }
 
 /**
@@ -807,6 +855,22 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
+  const queueWorkerEnabled = options.queueWorker ?? process.env.NODE_ENV !== 'test'
+  const queueSecrets = deploymentLogSecrets()
+  const queueWorker = queueWorkerEnabled
+    ? new DurableQueueWorker(operationQueue, createDeploymentQueueHandlers({
+        store: controlPlane.store,
+        execute: async (command, context) => runDashboardAction(command, {
+          cwd,
+          cliEntry,
+          signal: context.signal,
+          onOutput: (stream, chunk) => context.log(chunk, { stream, step: 'execute', secrets: queueSecrets }),
+        }) as Promise<{ ok: boolean, exitCode: number, command?: string, stderr?: string }>,
+      }), {
+        parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
+        onError: error => console.error('ts-cloud deployment queue worker failed:', error),
+      })
+    : undefined
   ensureDefaultSecurityPolicies(controlPlane)
   recordDashboardHostPosture(securityPosture, securityScope(controlPlane, String(defaultEnvironment)), initialData)
   if (bootstrap) {
@@ -2509,7 +2573,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             kind: 'dashboard.site.deploy',
             resourceSlug: name,
             input: { site: name },
-            execute: () => runAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
+            execute: () => runDashboardAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
           })
           return json({ ...tracked.result, controlPlaneOperation: tracked.operation, securityReview })
         }
@@ -2634,7 +2698,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             actor: user,
             kind: `dashboard.action.${action.id}`,
             input: { action: action.id },
-            execute: () => runAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
+            execute: () => runDashboardAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
           })
           return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
@@ -2817,14 +2881,18 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     },
   })
 
+  queueWorker?.start()
+
   const stop = server.stop.bind(server)
   server.stop = ((closeActiveConnections?: boolean) => {
     clearInterval(throttleSweep)
     clearInterval(recoveryThrottleSweep)
     clearInterval(mfaThrottleSweep)
     clearUiCache()
+    queueWorker?.stop()
     const result = stop(closeActiveConnections)
-    controlPlane.store.close()
+    if (queueWorker) void queueWorker.settled().finally(() => controlPlane.store.close())
+    else controlPlane.store.close()
     return result
   }) as typeof server.stop
 
