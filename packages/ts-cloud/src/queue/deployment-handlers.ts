@@ -3,6 +3,7 @@ import type { QueueExecutionContext, QueueOperationHandler } from './types'
 import { RetryableOperationError } from './types'
 import { PreviewEnvironmentStore } from '../preview'
 import { ComposeApplicationStore } from '../compose'
+import { completeComposeVolumeDeletion } from '../storage/compose'
 
 export const DEPLOYMENT_QUEUE_KINDS = [
   'deployment.create',
@@ -135,7 +136,8 @@ export function createDeploymentQueueHandlers(input: {
       const application = compose.get(command.target.composeId)!
       const selected = typeof record(context.operation.input).service === 'string' ? String(record(context.operation.input).service) : undefined
       const status = context.operation.kind === 'compose.delete' ? 'deleted' : context.operation.kind === 'compose.stop' ? 'stopped' : 'running'
-      compose.transition(application.id, status, { operationId: context.operation.id, services: Object.values(application.manifest.spec.services).filter(service => !selected || service.name === selected).map(service => ({ name: service.name, status: status === 'stopped' || status === 'deleted' ? 'stopped' : 'running', replicas: status === 'deleted' ? 0 : service.replicas, healthyReplicas: status === 'running' ? service.replicas : 0, observedState: { command: result.command ?? null, healthGatePassed: status === 'running' } })) })
+      const completed = compose.transition(application.id, status, { operationId: context.operation.id, services: Object.values(application.manifest.spec.services).filter(service => !selected || service.name === selected).map(service => ({ name: service.name, status: status === 'stopped' || status === 'deleted' ? 'stopped' : 'running', replicas: status === 'deleted' ? 0 : service.replicas, healthyReplicas: status === 'running' ? service.replicas : 0, observedState: { command: result.command ?? null, healthGatePassed: status === 'running' } })) })
+      if (status === 'deleted') completeComposeVolumeDeletion(input.store, completed, record(context.operation.input).removeVolumes === true)
     }
     context.checkpoint('finalize', 'Deployment command completed; persisting the terminal result.')
     return { command: result.command ?? `cloud ${command.command.join(' ')}`, exitCode: result.exitCode, environment: command.target.environment, resource: command.target.resource ?? null }

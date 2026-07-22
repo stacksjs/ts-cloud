@@ -3,6 +3,7 @@ import type { ComposeApplicationManifest, ComposeApplicationRecord, ComposeDiagn
 import { parseCompose } from './parser'
 import { renderComposeTemplate } from './templates'
 import { sanitizeControlPlaneValue } from '../control-plane'
+import { synchronizeComposeVolumes } from '../storage/compose'
 
 type Row = Record<string, unknown>
 function optional(value: unknown): string | undefined { return typeof value === 'string' && value ? value : undefined }
@@ -30,14 +31,18 @@ export class ComposeApplicationStore {
       if (serviceNames.length) this.controlPlane.database.run(`DELETE FROM compose_service_states WHERE application_id=? AND service_name NOT IN (${serviceNames.map(() => '?').join(',')})`, [existing.id, ...serviceNames])
       for (const service of Object.values(parsed.manifest.spec.services)) this.controlPlane.database.run(`INSERT INTO compose_service_states (application_id, service_name, status, replicas, healthy_replicas, observed_state, updated_at) VALUES (?, ?, 'pending', ?, 0, '{}', ?) ON CONFLICT(application_id, service_name) DO UPDATE SET replicas=excluded.replicas, updated_at=excluded.updated_at`, [existing.id, service.name, service.replicas, now])
       this.controlPlane.appendEvent({ projectId, resourceId: existing.resourceId, actorId: input.createdByActorId, type: 'compose.application.updated', payload: { applicationId: existing.id, sourceHash: parsed.sourceHash, diagnosticCount: parsed.diagnostics.length, templateId: input.templateId ?? null, templateVersion: input.templateVersion ?? null } })
-      return this.get(existing.id)!
+      const updated = this.get(existing.id)!
+      synchronizeComposeVolumes(this.controlPlane, updated)
+      return updated
     }
     const resource = this.controlPlane.createResource({ projectId, environmentId, kind: 'compose_application', slug, name, desiredState: parsed.manifest as unknown as JsonValue, metadata: { sourceKind: input.sourceKind, templateId: input.templateId ?? null, templateVersion: input.templateVersion ?? null, sourceHash: parsed.sourceHash } })
     const id = this.id()
     this.controlPlane.database.run(`INSERT INTO compose_applications (id, resource_id, project_id, environment_id, name, slug, status, source_kind, source_hash, redacted_source, manifest, diagnostics, template_id, template_version, created_by_actor_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, resource.id, projectId, environmentId, name, slug, input.sourceKind, parsed.sourceHash, parsed.redactedSource, manifest, diagnostics, input.templateId ?? null, input.templateVersion ?? null, input.createdByActorId ?? null, now, now])
     for (const service of Object.values(parsed.manifest.spec.services)) this.controlPlane.database.run(`INSERT INTO compose_service_states (application_id, service_name, status, replicas, healthy_replicas, observed_state, updated_at) VALUES (?, ?, 'pending', ?, 0, '{}', ?)`, [id, service.name, service.replicas, now])
     this.controlPlane.appendEvent({ projectId, resourceId: resource.id, actorId: input.createdByActorId, type: 'compose.application.created', payload: { applicationId: id, sourceHash: parsed.sourceHash, serviceNames: Object.keys(parsed.manifest.spec.services), templateId: input.templateId ?? null } })
-    return this.get(id)!
+    const created = this.get(id)!
+    synchronizeComposeVolumes(this.controlPlane, created)
+    return created
   }
 
   import(source: string, input: { name: string, slug?: string, projectId: string, environmentId: string, createdByActorId?: string }): { application: ComposeApplicationRecord, parsed: ComposeParseResult } { const parsed = parseCompose(source, input); return { application: this.persist(parsed, { sourceKind: 'compose', createdByActorId: input.createdByActorId }), parsed } }
