@@ -23,7 +23,7 @@ import { createDeploymentQueueHandlers, DurableOperationQueue, DurableQueueWorke
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, buildComposeLogsCommand, buildComposeShellCommand, listComposeTemplates } from '../compose'
 import { createReleaseQueueHandlers, ReleaseService, releaseStrategyCapabilities } from '../release'
-import { resolveRuntimeInventory, RuntimeOperationService } from '../runtime'
+import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry, type RuntimeStreamSnapshot } from '../runtime'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -162,6 +162,54 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
   })
+}
+
+function runtimeEventStream(registry: RuntimeStreamRegistry, session: RuntimeStreamSnapshot, after: number, signal: AbortSignal): Response {
+  const encoder = new TextEncoder()
+  let cursor = Math.max(0, Math.floor(after))
+  let unsubscribe: (() => void) | undefined
+  let heartbeat: ReturnType<typeof setInterval> | undefined
+  let ended = false
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const cleanup = () => {
+        if (ended) return
+        ended = true
+        unsubscribe?.()
+        if (heartbeat) clearInterval(heartbeat)
+        signal.removeEventListener('abort', cleanup)
+        try { controller.close() } catch { /* already closed */ }
+      }
+      const send = (snapshot: RuntimeStreamSnapshot) => {
+        if (ended) return
+        if (snapshot.reset) controller.enqueue(encoder.encode(`event: reset\ndata: ${JSON.stringify({ cursor: snapshot.cursor, droppedBytes: snapshot.droppedBytes })}\n\n`))
+        for (const chunk of snapshot.chunks.filter(item => item.cursor > cursor)) {
+          cursor = chunk.cursor
+          controller.enqueue(encoder.encode(`id: ${chunk.cursor}\nevent: ${chunk.stream}\ndata: ${JSON.stringify(chunk)}\n\n`))
+        }
+        if (snapshot.state !== 'open') {
+          controller.enqueue(encoder.encode(`event: state\ndata: ${JSON.stringify({ state: snapshot.state, error: snapshot.error, cursor: snapshot.cursor })}\n\n`))
+          cleanup()
+        }
+      }
+      unsubscribe = registry.subscribe(session.id, session.workloadId, snapshot => send(registry.read(snapshot.id, snapshot.workloadId, cursor) ?? snapshot))
+      const initial = registry.read(session.id, session.workloadId, cursor)
+      if (!initial) return cleanup()
+      send(initial)
+      if (ended) return
+      heartbeat = setInterval(() => {
+        if (!ended) controller.enqueue(encoder.encode(`event: heartbeat\ndata: ${JSON.stringify({ cursor, at: new Date().toISOString() })}\n\n`))
+      }, 15_000)
+      heartbeat.unref?.()
+      signal.addEventListener('abort', cleanup, { once: true })
+    },
+    cancel() {
+      ended = true
+      unsubscribe?.()
+      if (heartbeat) clearInterval(heartbeat)
+    },
+  })
+  return new Response(body, { headers: { 'cache-control': 'no-cache, no-transform', 'connection': 'keep-alive', 'content-type': 'text/event-stream; charset=utf-8', 'x-accel-buffering': 'no' } })
 }
 
 const DASHBOARD_AUDIT_FIELDS = new Set(['action', 'operation', 'site', 'name', 'username', 'database', 'secretId', 'port', 'key', 'resourceId', 'environmentId'])
@@ -334,6 +382,9 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/onboarding/registries',
   'PATCH /api/onboarding/registries',
   'DELETE /api/onboarding/registries',
+  'POST /api/runtime/exec-sessions',
+  'POST /api/runtime/files/read',
+  'POST /api/runtime/files/write',
   'POST /api/onboarding/apply',
   'PATCH /api/queue/settings',
   'DELETE /api/queue/history',
@@ -964,6 +1015,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       defaultEnvironment: String(defaultEnvironment),
     },
   })
+  const runtimeStreams = new RuntimeStreamRegistry()
+  const runtimeStreamSweep = setInterval(() => runtimeStreams.sweep(), 60_000)
+  runtimeStreamSweep.unref?.()
 
   // The login is internet-facing and guards a box hosting other people's sites,
   // so failed attempts are rate-limited. Pruned periodically so the counters
@@ -2791,6 +2845,120 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           }
         }
 
+        if (url.pathname === '/api/runtime/log-sessions' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const workloadId = String(body.workloadId ?? '')
+          if (!workloadId) return json({ ok: false, error: 'A workloadId is required.' }, 422)
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          const workload = inventory.workloads.find(item => item.id === workloadId)
+          if (!workload) return json({ ok: false, error: 'Workload was not found in the current project and environment.' }, 404)
+          if (!workload.capabilities.logs.supported) return json({ ok: false, error: workload.capabilities.logs.reason ?? 'Logs are unsupported for this workload.' }, 409)
+          const service = new RuntimeOperationService(config as CloudConfig, environment, { inventory: async () => inventory })
+          const session = runtimeStreams.create('logs', workloadId)
+          void (async () => {
+            let since = new Date(Date.now() - Math.min(3_600_000, Math.max(1_000, Number(body.sinceMs) || 60_000)))
+            try {
+              for (let attempt = 0; attempt < 200 && !runtimeStreams.signal(session.id)?.aborted; attempt++) {
+                const result = await service.logs(workloadId, { limit: Math.min(500, Math.max(1, Number(body.limit) || 200)), since })
+                for (const line of result.lines) {
+                  runtimeStreams.append(session.id, `${line.timestamp ? `${line.timestamp} ` : ''}${line.message}\n`)
+                  if (line.timestamp) since = new Date(Math.max(since.getTime(), new Date(line.timestamp).getTime() + 1))
+                }
+                await Bun.sleep(3_000)
+              }
+              if (!runtimeStreams.signal(session.id)?.aborted) runtimeStreams.close(session.id, 'complete')
+            }
+            catch (error) {
+              runtimeStreams.append(session.id, error instanceof Error ? error.message : String(error), 'stderr')
+              runtimeStreams.close(session.id, 'failed', error instanceof Error ? error.message : String(error))
+            }
+          })()
+          return json({ ok: true, session, streamUrl: `/api/runtime/log-stream?id=${encodeURIComponent(session.id)}&workload=${encodeURIComponent(workloadId)}` }, 201)
+        }
+
+        if ((url.pathname === '/api/runtime/log-stream' || url.pathname === '/api/runtime/exec-stream') && req.method === 'GET') {
+          const id = String(url.searchParams.get('id') ?? '')
+          const workloadId = String(url.searchParams.get('workload') ?? '')
+          const after = Number(req.headers.get('last-event-id') ?? url.searchParams.get('after') ?? 0) || 0
+          const session = runtimeStreams.read(id, workloadId, after)
+          const expectedKind = url.pathname.includes('exec') ? 'exec' : 'logs'
+          if (!session || session.kind !== expectedKind) return json({ ok: false, error: 'Runtime stream was not found in this workload scope.' }, 404)
+          return runtimeEventStream(runtimeStreams, session, after, req.signal)
+        }
+
+        if ((url.pathname === '/api/runtime/log-sessions' || url.pathname === '/api/runtime/exec-sessions') && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const cancelled = runtimeStreams.cancel(String(body.id ?? ''), String(body.workloadId ?? ''))
+          if (!cancelled) return json({ ok: false, error: 'Runtime stream was not found in this workload scope.' }, 404)
+          return json({ ok: true, session: cancelled })
+        }
+
+        if (url.pathname === '/api/runtime/exec-sessions' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const workloadId = String(body.workloadId ?? '')
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          const workload = inventory.workloads.find(item => item.id === workloadId)
+          if (!workload) return json({ ok: false, error: 'Workload was not found in the current project and environment.' }, 404)
+          const sessionRecord = guard.resolveSession(req)
+          const service = new RuntimeOperationService(config as CloudConfig, environment, { inventory: async () => inventory })
+          const stream = runtimeStreams.create('exec', workloadId)
+          void trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: 'runtime.exec',
+            resourceSlug: workload.links.service,
+            input: { workloadId, provider: workload.provider, preset: body.preset ? String(body.preset) : null, freeForm: !!String(body.command ?? '').trim() },
+            execute: () => service.exec({
+              workloadId,
+              preset: ['process', 'sockets', 'filesystem'].includes(String(body.preset)) ? String(body.preset) as 'process' | 'sockets' | 'filesystem' : undefined,
+              command: typeof body.command === 'string' ? body.command : undefined,
+              confirm: String(body.confirm ?? ''),
+              recentAuth: !authEnabled || (!!sessionRecord && authentication.isRecentlyAuthenticated(sessionRecord)),
+            }),
+          }).then(({ result, operation }) => {
+            runtimeStreams.append(stream.id, `operation ${operation.id}\n`, 'system')
+            if (result.stdout) runtimeStreams.append(stream.id, result.stdout, 'stdout')
+            if (result.stderr) runtimeStreams.append(stream.id, result.stderr, 'stderr')
+            runtimeStreams.close(stream.id, result.ok ? 'complete' : 'failed', result.error)
+          }).catch((error) => {
+            const message = error instanceof Error ? error.message : String(error)
+            runtimeStreams.append(stream.id, message, 'stderr')
+            runtimeStreams.close(stream.id, 'failed', message)
+          })
+          return json({ ok: true, session: stream, streamUrl: `/api/runtime/exec-stream?id=${encodeURIComponent(stream.id)}&workload=${encodeURIComponent(workloadId)}` }, 202)
+        }
+
+        if (url.pathname === '/api/runtime/files/read' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          const sessionRecord = guard.resolveSession(req)
+          const result = await new RuntimeOperationService(config as CloudConfig, environment, { inventory: async () => inventory }).readFile({
+            workloadId: String(body.workloadId ?? ''), path: String(body.path ?? ''), confirm: String(body.confirm ?? ''),
+            recentAuth: !authEnabled || (!!sessionRecord && authentication.isRecentlyAuthenticated(sessionRecord)),
+          })
+          return json(result, result.ok ? 200 : 409)
+        }
+
+        if (url.pathname === '/api/runtime/files/write' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const inventory = await resolveRuntimeInventory(config as CloudConfig, environment)
+          const workloadId = String(body.workloadId ?? '')
+          const workload = inventory.workloads.find(item => item.id === workloadId)
+          if (!workload) return json({ ok: false, error: 'Workload was not found in the current project and environment.' }, 404)
+          const sessionRecord = guard.resolveSession(req)
+          const service = new RuntimeOperationService(config as CloudConfig, environment, { inventory: async () => inventory })
+          const tracked = await trackDashboardOperation({
+            controlPlane, environment, actor: user, kind: 'runtime.file.write', resourceSlug: workload.links.service,
+            input: { workloadId, provider: workload.provider, path: String(body.path ?? ''), bytes: Buffer.from(String(body.contentBase64 ?? ''), 'base64').byteLength },
+            execute: () => service.writeFile({
+              workloadId, path: String(body.path ?? ''), contentBase64: String(body.contentBase64 ?? ''), confirm: String(body.confirm ?? ''),
+              recentAuth: !authEnabled || (!!sessionRecord && authentication.isRecentlyAuthenticated(sessionRecord)),
+            }),
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation }, tracked.result.ok ? 200 : 409)
+        }
+
         if (url.pathname === '/api/runtime/operations' && req.method === 'POST') {
           const body = await readJsonBody(req)
           const workloadId = String(body.workloadId ?? '')
@@ -3146,8 +3314,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     clearInterval(throttleSweep)
     clearInterval(recoveryThrottleSweep)
     clearInterval(mfaThrottleSweep)
+    clearInterval(runtimeStreamSweep)
     clearInterval(previewCleanupSweep)
     clearUiCache()
+    runtimeStreams.clear()
     queueWorker?.stop()
     const result = stop(closeActiveConnections)
     if (queueWorker) void queueWorker.settled().finally(() => controlPlane.store.close())
