@@ -50,12 +50,7 @@ export class EmailTemplateManager {
   /**
    * Create template
    */
-  createTemplate(template: {
-    name: string
-    subject: string
-    htmlPart: string
-    textPart: string
-  }): EmailTemplate {
+  createTemplate(template: { name: string; subject: string; htmlPart: string; textPart: string }): EmailTemplate {
     const id = `template-${Date.now()}-${this.templateCounter++}`
 
     const variables = this.extractVariables(template.subject + template.htmlPart + template.textPart)
@@ -87,10 +82,7 @@ export class EmailTemplateManager {
   /**
    * Create welcome email template
    */
-  createWelcomeTemplate(options: {
-    name: string
-    companyName: string
-  }): EmailTemplate {
+  createWelcomeTemplate(options: { name: string; companyName: string }): EmailTemplate {
     return this.createTemplate({
       name: options.name,
       subject: `Welcome to {{companyName}}!`,
@@ -111,10 +103,7 @@ export class EmailTemplateManager {
   /**
    * Create password reset template
    */
-  createPasswordResetTemplate(options: {
-    name: string
-    companyName: string
-  }): EmailTemplate {
+  createPasswordResetTemplate(options: { name: string; companyName: string }): EmailTemplate {
     return this.createTemplate({
       name: options.name,
       subject: 'Reset your password',
@@ -144,7 +133,7 @@ export class EmailTemplateManager {
       htmlPart?: string
       textPart?: string
     },
-    changelog?: string
+    changelog?: string,
   ): EmailTemplate {
     const template = this.templates.get(templateId)
 
@@ -211,7 +200,10 @@ export class EmailTemplateManager {
   /**
    * Render template
    */
-  renderTemplate(templateId: string, data: Record<string, any>): {
+  renderTemplate(
+    templateId: string,
+    data: Record<string, any>,
+  ): {
     subject: string
     html: string
     text: string
@@ -291,7 +283,7 @@ export class EmailTemplateManager {
     }
 
     const versions = this.versions.get(templateId) || []
-    const targetVersion = versions.find(v => v.version === versionNumber)
+    const targetVersion = versions.find((v) => v.version === versionNumber)
 
     if (!targetVersion) {
       throw new Error(`Version ${versionNumber} not found for template ${templateId}`)

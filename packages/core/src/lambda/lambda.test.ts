@@ -314,7 +314,7 @@ describe('Lambda Concurrency Manager', () => {
       expect(config.status).toBe('pending')
 
       // Wait for provisioning
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(config.status).toBe('ready')
       expect(config.allocatedConcurrency).toBe(5)
@@ -607,7 +607,7 @@ describe('Lambda VPC Manager', () => {
       expect(enis[0].subnetId).toBe('subnet-1')
 
       // Wait for ENIs to become available
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await new Promise((resolve) => setTimeout(resolve, 150))
 
       expect(enis[0].status).toBe('available')
     })
@@ -766,7 +766,7 @@ describe('Lambda DLQ Manager', () => {
       expect(reprocessing.status).toBe('pending')
 
       // Wait for reprocessing to complete
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise((resolve) => setTimeout(resolve, 200))
 
       expect(['success', 'failed']).toContain(reprocessing.status)
     })

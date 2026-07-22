@@ -256,7 +256,7 @@ export class SecurityHubManager {
         },
       ],
       criteria: {
-        resourceType: resourceTypes.map(type => ({
+        resourceType: resourceTypes.map((type) => ({
           value: type,
           comparison: 'EQUALS' as const,
         })),
@@ -355,7 +355,7 @@ export class SecurityHubManager {
             comparison: 'EQUALS',
           },
         ],
-        title: titlePatterns.map(pattern => ({
+        title: titlePatterns.map((pattern) => ({
           value: pattern,
           comparison: 'PREFIX' as const,
         })),
@@ -411,7 +411,7 @@ export class SecurityHubManager {
     }
 
     if (standard.disabledControls && standard.disabledControls.length > 0) {
-      cf.Properties.DisabledStandardsControls = standard.disabledControls.map(controlId => ({
+      cf.Properties.DisabledStandardsControls = standard.disabledControls.map((controlId) => ({
         StandardsControlArn: controlId,
         Reason: 'Disabled by configuration',
       }))
@@ -429,7 +429,7 @@ export class SecurityHubManager {
       Properties: {
         RuleName: rule.ruleName,
         Description: rule.description,
-        Actions: rule.actions.map(action => ({
+        Actions: rule.actions.map((action) => ({
           Type: action.type,
           FindingFieldsUpdate: action.findingFieldsUpdate,
         })),

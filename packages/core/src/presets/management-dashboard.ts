@@ -82,7 +82,7 @@ function apexOf(domain: string): string {
 
 /** 32-bit FNV-1a hash — deterministic, dependency-free, good spread for hostnames. */
 function fnv1a(str: string): number {
-  let h = 0x811C9DC5
+  let h = 0x811c9dc5
   for (let i = 0; i < str.length; i++) {
     h ^= str.charCodeAt(i)
     h = Math.imul(h, 0x01000193)
@@ -130,11 +130,9 @@ export function deriveManagementDashboardPort(dashboardHost: string): number {
  */
 function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): string {
   const apex = apexOf(domain)
-  if (apex === domain)
-    return `dashboard.${apex}`
+  if (apex === domain) return `dashboard.${apex}`
   for (const owned of ownedDomains) {
-    if (owned === apex)
-      return `dashboard.${apex}`
+    if (owned === apex) return `dashboard.${apex}`
   }
   return `dashboard.${domain}`
 }
@@ -158,7 +156,7 @@ function collectDomains(
   if (environment && config.environments?.[environment]?.domain)
     candidates.push(config.environments[environment].domain!)
   for (const site of Object.values(config.sites ?? {})) {
-    const s = site as { domain?: string | string[], redirect?: string } | undefined
+    const s = site as { domain?: string | string[]; redirect?: string } | undefined
     // Redirect-only sites (a `redirect` target, e.g. www → apex) serve no app and
     // get no dashboard — otherwise every alias would spawn a redundant cert.
     if (!s || s.redirect) continue
@@ -167,7 +165,7 @@ function collectDomains(
     else if (Array.isArray(d)) candidates.push(...d.filter((x): x is string => typeof x === 'string'))
   }
 
-  return candidates.filter(d => d && !d.startsWith('dashboard.'))
+  return candidates.filter((d) => d && !d.startsWith('dashboard.'))
 }
 
 /**
@@ -181,13 +179,11 @@ export function resolveDashboardDomain(
   environment?: EnvironmentType,
   explicit?: string,
 ): string | null {
-  if (explicit)
-    return explicit
+  if (explicit) return explicit
 
   const domains = collectDomains(config, environment)
   const base = domains[0]
-  if (!base)
-    return null
+  if (!base) return null
   // Pass the full owned set so the apex is only claimed when this project
   // actually serves it (see dashboardHostFor).
   return dashboardHostFor(base, domains)
@@ -207,8 +203,7 @@ export function resolveDashboardDomains(
   environment?: EnvironmentType,
   explicit?: string,
 ): string[] {
-  if (explicit)
-    return [explicit]
+  if (explicit) return [explicit]
 
   const domains = collectDomains(config, environment)
   const hosts: string[] = []
@@ -227,7 +222,12 @@ export function hasManagementDashboardSite(config: Pick<CloudConfig, 'sites'>): 
   return Object.entries(config.sites ?? {}).some(([name, site]) => {
     if (!site) return false
     const root = (site as { root?: string }).root ?? ''
-    return isManagementDashboardSiteName(name) || root === 'ui/dist' || root.endsWith('/ui/dist') || root.endsWith('/dist/ui')
+    return (
+      isManagementDashboardSiteName(name) ||
+      root === 'ui/dist' ||
+      root.endsWith('/ui/dist') ||
+      root.endsWith('/dist/ui')
+    )
   })
 }
 
@@ -271,9 +271,8 @@ export function resolveManagementDashboardSites(
   config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
-): Array<{ name: string, site: SiteConfig }> {
-  if (hasManagementDashboardSite(config))
-    return []
+): Array<{ name: string; site: SiteConfig }> {
+  if (hasManagementDashboardSite(config)) return []
 
   const auth = opts.password
     ? { auth: { username: opts.username || 'admin', password: opts.password, realm: opts.realm } }
@@ -283,8 +282,7 @@ export function resolveManagementDashboardSites(
   // Live is the default: one control panel per box, authenticating itself.
   if (opts.live !== false) {
     const domain = resolveDashboardDomain(config, environment, opts.domain)
-    if (!domain)
-      return []
+    if (!domain) return []
 
     const port = opts.port ?? deriveManagementDashboardPort(domain)
     const site: SiteConfig = {
@@ -318,7 +316,7 @@ export function resolveManagementDashboardSites(
   }
 
   const domains = resolveDashboardDomains(config, environment, opts.domain)
-  return domains.map(domain => ({
+  return domains.map((domain) => ({
     name: managementDashboardSiteName(domain),
     site: {
       root: opts.uiRoot,
@@ -343,6 +341,6 @@ export function resolveManagementDashboardSite(
   config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
-): { name: string, site: SiteConfig } | null {
+): { name: string; site: SiteConfig } | null {
   return resolveManagementDashboardSites(config, environment, opts)[0] ?? null
 }

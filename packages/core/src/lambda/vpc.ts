@@ -137,10 +137,7 @@ export class LambdaVPCManager {
   /**
    * Create S3 VPC endpoint
    */
-  createS3Endpoint(options: {
-    vpcId: string
-    routeTableIds: string[]
-  }): VPCEndpoint {
+  createS3Endpoint(options: { vpcId: string; routeTableIds: string[] }): VPCEndpoint {
     return this.createVPCEndpoint({
       vpcId: options.vpcId,
       serviceName: 'com.amazonaws.us-east-1.s3',
@@ -152,10 +149,7 @@ export class LambdaVPCManager {
   /**
    * Create DynamoDB VPC endpoint
    */
-  createDynamoDBEndpoint(options: {
-    vpcId: string
-    routeTableIds: string[]
-  }): VPCEndpoint {
+  createDynamoDBEndpoint(options: { vpcId: string; routeTableIds: string[] }): VPCEndpoint {
     return this.createVPCEndpoint({
       vpcId: options.vpcId,
       serviceName: 'com.amazonaws.us-east-1.dynamodb',
@@ -185,10 +179,7 @@ export class LambdaVPCManager {
   /**
    * Create network interface
    */
-  private createNetworkInterface(options: {
-    functionName: string
-    subnetId: string
-  }): NetworkInterface {
+  private createNetworkInterface(options: { functionName: string; subnetId: string }): NetworkInterface {
     const id = `eni-${Date.now()}-${this.eniCounter++}`
 
     const networkInterface: NetworkInterface = {
@@ -221,13 +212,11 @@ export class LambdaVPCManager {
   }): VPCConnectivity {
     const id = `connectivity-${Date.now()}-${this.connectivityCounter++}`
 
-    const config = Array.from(this.vpcConfigs.values()).find(
-      c => c.functionName === options.functionName
-    )
+    const config = Array.from(this.vpcConfigs.values()).find((c) => c.functionName === options.functionName)
 
     const vpcEndpoints = Array.from(this.endpoints.values())
-      .filter(e => e.vpcId === config?.vpcId)
-      .map(e => e.serviceName)
+      .filter((e) => e.vpcId === config?.vpcId)
+      .map((e) => e.serviceName)
 
     const recommendations: string[] = []
 
@@ -273,18 +262,14 @@ export class LambdaVPCManager {
    */
   listVPCConfigs(functionName?: string): LambdaVPCConfig[] {
     const configs = Array.from(this.vpcConfigs.values())
-    return functionName
-      ? configs.filter(c => c.functionName === functionName)
-      : configs
+    return functionName ? configs.filter((c) => c.functionName === functionName) : configs
   }
 
   /**
    * Get network interfaces
    */
   getNetworkInterfaces(functionName: string): NetworkInterface[] {
-    return Array.from(this.networkInterfaces.values()).filter(
-      eni => eni.functionName === functionName
-    )
+    return Array.from(this.networkInterfaces.values()).filter((eni) => eni.functionName === functionName)
   }
 
   /**
@@ -292,7 +277,7 @@ export class LambdaVPCManager {
    */
   listVPCEndpoints(vpcId?: string): VPCEndpoint[] {
     const endpoints = Array.from(this.endpoints.values())
-    return vpcId ? endpoints.filter(e => e.vpcId === vpcId) : endpoints
+    return vpcId ? endpoints.filter((e) => e.vpcId === vpcId) : endpoints
   }
 
   /**
@@ -356,7 +341,7 @@ export class LambdaVPCManager {
         GroupDescription: `Security group for Lambda ${options.groupName}`,
         VpcId: options.vpcId,
         ...(options.ingressRules && {
-          SecurityGroupIngress: options.ingressRules.map(rule => ({
+          SecurityGroupIngress: options.ingressRules.map((rule) => ({
             IpProtocol: rule.protocol,
             FromPort: rule.fromPort,
             ToPort: rule.toPort,
@@ -367,7 +352,7 @@ export class LambdaVPCManager {
           })),
         }),
         ...(options.egressRules && {
-          SecurityGroupEgress: options.egressRules.map(rule => ({
+          SecurityGroupEgress: options.egressRules.map((rule) => ({
             IpProtocol: rule.protocol,
             FromPort: rule.fromPort,
             ToPort: rule.toPort,

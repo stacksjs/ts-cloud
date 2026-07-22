@@ -36,10 +36,7 @@ export interface StorageConfig {
 /**
  * Add S3 and EFS storage resources to CloudFormation template
  */
-export function addStorageResources(
-  builder: CloudFormationBuilder,
-  config: StorageConfig,
-): void {
+export function addStorageResources(builder: CloudFormationBuilder, config: StorageConfig): void {
   for (const [bucketName, bucketConfig] of Object.entries(config)) {
     // Check if this is an EFS configuration
     if (bucketConfig.type === 'efs') {
@@ -55,17 +52,11 @@ export function addStorageResources(
 /**
  * Add S3 bucket resource
  */
-function addS3Bucket(
-  builder: CloudFormationBuilder,
-  bucketName: string,
-  config: StorageConfig[string],
-): void {
+function addS3Bucket(builder: CloudFormationBuilder, bucketName: string, config: StorageConfig[string]): void {
   const logicalId = builder.toLogicalId(`${bucketName}-bucket`)
   const properties: Record<string, any> = {
     BucketName: Fn.sub(`\${AWS::StackName}-${bucketName}`),
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${bucketName}`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${bucketName}`) }],
   }
 
   // Versioning
@@ -78,11 +69,13 @@ function addS3Bucket(
   // Encryption
   if (config.encryption) {
     properties.BucketEncryption = {
-      ServerSideEncryptionConfiguration: [{
-        ServerSideEncryptionByDefault: {
-          SSEAlgorithm: 'AES256',
+      ServerSideEncryptionConfiguration: [
+        {
+          ServerSideEncryptionByDefault: {
+            SSEAlgorithm: 'AES256',
+          },
         },
-      }],
+      ],
     }
   }
 
@@ -107,7 +100,7 @@ function addS3Bucket(
   // CORS configuration
   if (config.cors && config.cors.length > 0) {
     properties.CorsConfiguration = {
-      CorsRules: config.cors.map(rule => ({
+      CorsRules: config.cors.map((rule) => ({
         AllowedOrigins: rule.allowedOrigins,
         AllowedMethods: rule.allowedMethods,
         AllowedHeaders: rule.allowedHeaders || ['*'],
@@ -119,11 +112,11 @@ function addS3Bucket(
   // Lifecycle rules
   if (config.lifecycleRules && config.lifecycleRules.length > 0) {
     properties.LifecycleConfiguration = {
-      Rules: config.lifecycleRules.map(rule => ({
+      Rules: config.lifecycleRules.map((rule) => ({
         Id: rule.id,
         Status: rule.enabled ? 'Enabled' : 'Disabled',
         ExpirationInDays: rule.expirationDays,
-        Transitions: rule.transitions?.map(t => ({
+        Transitions: rule.transitions?.map((t) => ({
           TransitionInDays: t.days,
           StorageClass: t.storageClass,
         })),
@@ -133,20 +126,22 @@ function addS3Bucket(
 
   // Intelligent tiering
   if (config.intelligentTiering) {
-    properties.IntelligentTieringConfigurations = [{
-      Id: 'EntireBucket',
-      Status: 'Enabled',
-      Tierings: [
-        {
-          AccessTier: 'ARCHIVE_ACCESS',
-          Days: 90,
-        },
-        {
-          AccessTier: 'DEEP_ARCHIVE_ACCESS',
-          Days: 180,
-        },
-      ],
-    }]
+    properties.IntelligentTieringConfigurations = [
+      {
+        Id: 'EntireBucket',
+        Status: 'Enabled',
+        Tierings: [
+          {
+            AccessTier: 'ARCHIVE_ACCESS',
+            Days: 90,
+          },
+          {
+            AccessTier: 'DEEP_ARCHIVE_ACCESS',
+            Days: 180,
+          },
+        ],
+      },
+    ]
   }
 
   builder.addResource(logicalId, 'AWS::S3::Bucket', properties, {
@@ -155,21 +150,28 @@ function addS3Bucket(
 
   // Bucket policy for public access if needed
   if (config.public) {
-    builder.addResource(`${logicalId}Policy`, 'AWS::S3::BucketPolicy', {
-      Bucket: Fn.ref(logicalId),
-      PolicyDocument: {
-        Version: '2012-10-17',
-        Statement: [{
-          Sid: 'PublicReadGetObject',
-          Effect: 'Allow',
-          Principal: '*',
-          Action: 's3:GetObject',
-          Resource: Fn.join('', [Arn.s3Bucket(Fn.ref(logicalId) as any), '/*']),
-        }],
+    builder.addResource(
+      `${logicalId}Policy`,
+      'AWS::S3::BucketPolicy',
+      {
+        Bucket: Fn.ref(logicalId),
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [
+            {
+              Sid: 'PublicReadGetObject',
+              Effect: 'Allow',
+              Principal: '*',
+              Action: 's3:GetObject',
+              Resource: Fn.join('', [Arn.s3Bucket(Fn.ref(logicalId) as any), '/*']),
+            },
+          ],
+        },
       },
-    }, {
-      dependsOn: logicalId,
-    })
+      {
+        dependsOn: logicalId,
+      },
+    )
   }
 
   // Output bucket name and ARN
@@ -203,11 +205,7 @@ function addS3Bucket(
 /**
  * Add EFS file system resource
  */
-function addEFSResource(
-  builder: CloudFormationBuilder,
-  name: string,
-  config: StorageConfig[string],
-): void {
+function addEFSResource(builder: CloudFormationBuilder, name: string, config: StorageConfig[string]): void {
   const logicalId = builder.toLogicalId(`${name}-efs`)
 
   // EFS File System
@@ -215,9 +213,7 @@ function addEFSResource(
     Encrypted: config.encryption !== false,
     PerformanceMode: config.performanceMode || 'generalPurpose',
     ThroughputMode: config.throughputMode || 'bursting',
-    FileSystemTags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}`) },
-    ],
+    FileSystemTags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}`) }],
   }
 
   // Lifecycle policy
@@ -246,31 +242,41 @@ function addEFSResource(
   // In a real implementation, you'd get the subnet IDs from the VPC configuration
   const availabilityZones = 2 // Should come from network config
   for (let i = 0; i < availabilityZones; i++) {
-    builder.addResource(`${logicalId}MountTarget${i + 1}`, 'AWS::EFS::MountTarget', {
-      FileSystemId: Fn.ref(logicalId),
-      SubnetId: Fn.ref(`PrivateSubnet${i + 1}`),
-      SecurityGroups: [Fn.ref('EFSSecurityGroup')],
-    }, {
-      dependsOn: [logicalId, `PrivateSubnet${i + 1}`],
-    })
+    builder.addResource(
+      `${logicalId}MountTarget${i + 1}`,
+      'AWS::EFS::MountTarget',
+      {
+        FileSystemId: Fn.ref(logicalId),
+        SubnetId: Fn.ref(`PrivateSubnet${i + 1}`),
+        SecurityGroups: [Fn.ref('EFSSecurityGroup')],
+      },
+      {
+        dependsOn: [logicalId, `PrivateSubnet${i + 1}`],
+      },
+    )
   }
 
   // Security group for EFS
-  builder.addResource('EFSSecurityGroup', 'AWS::EC2::SecurityGroup', {
-    GroupDescription: 'Security group for EFS mount targets',
-    VpcId: Fn.ref('VPC'),
-    SecurityGroupIngress: [{
-      IpProtocol: 'tcp',
-      FromPort: 2049,
-      ToPort: 2049,
-      SourceSecurityGroupId: Fn.ref('AppSecurityGroup'), // Assumes app security group exists
-    }],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub('${AWS::StackName}-efs-sg') },
-    ],
-  }, {
-    dependsOn: 'VPC',
-  })
+  builder.addResource(
+    'EFSSecurityGroup',
+    'AWS::EC2::SecurityGroup',
+    {
+      GroupDescription: 'Security group for EFS mount targets',
+      VpcId: Fn.ref('VPC'),
+      SecurityGroupIngress: [
+        {
+          IpProtocol: 'tcp',
+          FromPort: 2049,
+          ToPort: 2049,
+          SourceSecurityGroupId: Fn.ref('AppSecurityGroup'), // Assumes app security group exists
+        },
+      ],
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-efs-sg') }],
+    },
+    {
+      dependsOn: 'VPC',
+    },
+  )
 
   // Output EFS ID
   builder.addOutputs({

@@ -198,7 +198,7 @@ export class LambdaLayersManager {
    * Get layer versions
    */
   getLayerVersions(layerName: string): LayerVersion[] {
-    return Array.from(this.versions.values()).filter(v => v.layerName === layerName)
+    return Array.from(this.versions.values()).filter((v) => v.layerName === layerName)
   }
 
   /**
@@ -210,17 +210,18 @@ export class LambdaLayersManager {
       Properties: {
         LayerName: layer.layerName,
         Description: layer.description,
-        Content: layer.content.type === 's3'
-          ? {
-              S3Bucket: layer.content.s3Bucket,
-              S3Key: layer.content.s3Key,
-              ...(layer.content.s3ObjectVersion && {
-                S3ObjectVersion: layer.content.s3ObjectVersion,
-              }),
-            }
-          : {
-              ZipFile: layer.content.zipFile,
-            },
+        Content:
+          layer.content.type === 's3'
+            ? {
+                S3Bucket: layer.content.s3Bucket,
+                S3Key: layer.content.s3Key,
+                ...(layer.content.s3ObjectVersion && {
+                  S3ObjectVersion: layer.content.s3ObjectVersion,
+                }),
+              }
+            : {
+                ZipFile: layer.content.zipFile,
+              },
         CompatibleRuntimes: layer.compatibleRuntimes,
         ...(layer.licenseInfo && { LicenseInfo: layer.licenseInfo }),
       },

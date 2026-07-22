@@ -2,7 +2,6 @@
  * Stack Diff Analyzer
  * Analyzes differences between CloudFormation templates for stack updates
  */
-
 import type { CloudFormationResource, CloudFormationTemplate } from '@ts-cloud/aws-types'
 
 export interface ResourceDiff {
@@ -36,10 +35,7 @@ export interface StackDiff {
 /**
  * Analyze differences between two CloudFormation templates
  */
-export function analyzeStackDiff(
-  oldTemplate: CloudFormationTemplate,
-  newTemplate: CloudFormationTemplate,
-): StackDiff {
+export function analyzeStackDiff(oldTemplate: CloudFormationTemplate, newTemplate: CloudFormationTemplate): StackDiff {
   const added: ResourceDiff[] = []
   const removed: ResourceDiff[] = []
   const updated: ResourceDiff[] = []
@@ -49,10 +45,7 @@ export function analyzeStackDiff(
   const oldResources = oldTemplate.Resources || {}
   const newResources = newTemplate.Resources || {}
 
-  const allLogicalIds = new Set([
-    ...Object.keys(oldResources),
-    ...Object.keys(newResources),
-  ])
+  const allLogicalIds = new Set([...Object.keys(oldResources), ...Object.keys(newResources)])
 
   for (const logicalId of allLogicalIds) {
     const oldResource = oldResources[logicalId]
@@ -65,16 +58,14 @@ export function analyzeStackDiff(
         action: 'add',
         resourceType: newResource.Type,
       })
-    }
-    else if (oldResource && !newResource) {
+    } else if (oldResource && !newResource) {
       // Resource removed
       removed.push({
         logicalId,
         action: 'remove',
         resourceType: oldResource.Type,
       })
-    }
-    else if (oldResource && newResource) {
+    } else if (oldResource && newResource) {
       // Resource exists in both - check for changes
       if (oldResource.Type !== newResource.Type) {
         // Type changed - this is a replacement
@@ -84,18 +75,11 @@ export function analyzeStackDiff(
           resourceType: newResource.Type,
           reason: `Type changed from ${oldResource.Type} to ${newResource.Type}`,
         })
-      }
-      else {
-        const changes = compareProperties(
-          oldResource.Properties || {},
-          newResource.Properties || {},
-        )
+      } else {
+        const changes = compareProperties(oldResource.Properties || {}, newResource.Properties || {})
 
         if (changes.length > 0) {
-          const requiresReplacement = checkIfReplacementRequired(
-            oldResource.Type,
-            changes,
-          )
+          const requiresReplacement = checkIfReplacementRequired(oldResource.Type, changes)
 
           if (requiresReplacement) {
             replaced.push({
@@ -105,8 +89,7 @@ export function analyzeStackDiff(
               changes,
               reason: 'Property changes require replacement',
             })
-          }
-          else {
+          } else {
             updated.push({
               logicalId,
               action: 'update',
@@ -114,19 +97,14 @@ export function analyzeStackDiff(
               changes,
             })
           }
-        }
-        else {
+        } else {
           unchanged.push(logicalId)
         }
       }
     }
   }
 
-  const dangerousChanges = identifyDangerousChanges([
-    ...removed,
-    ...replaced,
-    ...updated,
-  ])
+  const dangerousChanges = identifyDangerousChanges([...removed, ...replaced, ...updated])
 
   return {
     added,
@@ -145,11 +123,7 @@ export function analyzeStackDiff(
 /**
  * Compare properties of two resources
  */
-function compareProperties(
-  oldProps: Record<string, any>,
-  newProps: Record<string, any>,
-  path = '',
-): PropertyChange[] {
+function compareProperties(oldProps: Record<string, any>, newProps: Record<string, any>, path = ''): PropertyChange[] {
   const changes: PropertyChange[] = []
   const allKeys = new Set([...Object.keys(oldProps), ...Object.keys(newProps)])
 
@@ -164,22 +138,19 @@ function compareProperties(
         oldValue: undefined,
         newValue,
       })
-    }
-    else if (oldValue !== undefined && newValue === undefined) {
+    } else if (oldValue !== undefined && newValue === undefined) {
       changes.push({
         path: currentPath,
         oldValue,
         newValue: undefined,
       })
-    }
-    else if (typeof oldValue !== typeof newValue) {
+    } else if (typeof oldValue !== typeof newValue) {
       changes.push({
         path: currentPath,
         oldValue,
         newValue,
       })
-    }
-    else if (typeof oldValue === 'object' && oldValue !== null) {
+    } else if (typeof oldValue === 'object' && oldValue !== null) {
       if (Array.isArray(oldValue) && Array.isArray(newValue)) {
         if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
           changes.push({
@@ -188,20 +159,17 @@ function compareProperties(
             newValue,
           })
         }
-      }
-      else if (!Array.isArray(oldValue) && !Array.isArray(newValue)) {
+      } else if (!Array.isArray(oldValue) && !Array.isArray(newValue)) {
         const nestedChanges = compareProperties(oldValue, newValue, currentPath)
         changes.push(...nestedChanges)
-      }
-      else {
+      } else {
         changes.push({
           path: currentPath,
           oldValue,
           newValue,
         })
       }
-    }
-    else if (oldValue !== newValue) {
+    } else if (oldValue !== newValue) {
       changes.push({
         path: currentPath,
         oldValue,
@@ -217,10 +185,7 @@ function compareProperties(
  * Check if property changes require resource replacement
  * Based on CloudFormation resource specifications
  */
-function checkIfReplacementRequired(
-  resourceType: string,
-  changes: PropertyChange[],
-): boolean {
+function checkIfReplacementRequired(resourceType: string, changes: PropertyChange[]): boolean {
   // Map of resource types to properties that require replacement
   const replacementProperties: Record<string, Set<string>> = {
     'AWS::S3::Bucket': new Set(['BucketName']),
@@ -262,26 +227,28 @@ function identifyDangerousChanges(diffs: ResourceDiff[]): string[] {
 
   for (const diff of diffs) {
     // Removing databases is dangerous
-    if (diff.action === 'remove' && (
-      diff.resourceType === 'AWS::RDS::DBInstance'
-      || diff.resourceType === 'AWS::DynamoDB::Table'
-      || diff.resourceType === 'AWS::ElastiCache::CacheCluster'
-    )) {
+    if (
+      diff.action === 'remove' &&
+      (diff.resourceType === 'AWS::RDS::DBInstance' ||
+        diff.resourceType === 'AWS::DynamoDB::Table' ||
+        diff.resourceType === 'AWS::ElastiCache::CacheCluster')
+    ) {
       dangerous.push(`Removing ${diff.resourceType} ${diff.logicalId} - data loss risk!`)
     }
 
     // Replacing databases is dangerous
-    if (diff.action === 'replace' && (
-      diff.resourceType === 'AWS::RDS::DBInstance'
-      || diff.resourceType === 'AWS::DynamoDB::Table'
-    )) {
+    if (
+      diff.action === 'replace' &&
+      (diff.resourceType === 'AWS::RDS::DBInstance' || diff.resourceType === 'AWS::DynamoDB::Table')
+    ) {
       dangerous.push(`Replacing ${diff.resourceType} ${diff.logicalId} - data loss risk!`)
     }
 
     // Removing/replacing S3 buckets
-    if ((diff.action === 'remove' || diff.action === 'replace')
-      && diff.resourceType === 'AWS::S3::Bucket') {
-      dangerous.push(`${diff.action === 'remove' ? 'Removing' : 'Replacing'} S3 bucket ${diff.logicalId} - data loss risk!`)
+    if ((diff.action === 'remove' || diff.action === 'replace') && diff.resourceType === 'AWS::S3::Bucket') {
+      dangerous.push(
+        `${diff.action === 'remove' ? 'Removing' : 'Replacing'} S3 bucket ${diff.logicalId} - data loss risk!`,
+      )
     }
 
     // Replacing EC2 instances
@@ -295,10 +262,10 @@ function identifyDangerousChanges(diffs: ResourceDiff[]): string[] {
     }
 
     // IAM role/policy changes
-    if ((diff.action === 'update' || diff.action === 'replace') && (
-      diff.resourceType === 'AWS::IAM::Role'
-      || diff.resourceType === 'AWS::IAM::Policy'
-    )) {
+    if (
+      (diff.action === 'update' || diff.action === 'replace') &&
+      (diff.resourceType === 'AWS::IAM::Role' || diff.resourceType === 'AWS::IAM::Policy')
+    ) {
       dangerous.push(`Modifying IAM ${diff.resourceType.split('::')[2]} ${diff.logicalId} - may affect permissions`)
     }
   }

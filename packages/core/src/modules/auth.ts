@@ -1,11 +1,4 @@
-import type {
-  CognitoUserPool,
-  CognitoUserPoolClient,
-  CognitoUserPoolDomain,
-  CognitoIdentityPool,
-  CognitoIdentityPoolRoleAttachment,
-  IAMRole,
-} from '@ts-cloud/aws-types'
+import type { CognitoIdentityPool, CognitoIdentityPoolRoleAttachment, CognitoUserPool, CognitoUserPoolClient, CognitoUserPoolDomain, IAMRole } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -122,18 +115,21 @@ export interface IdentityPoolRoleAttachmentOptions {
   environment: EnvironmentType
   authenticatedRole: string
   unauthenticatedRole?: string
-  roleMappings?: Record<string, {
-    Type: 'Token' | 'Rules'
-    AmbiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
-    RulesConfiguration?: {
-      Rules: Array<{
-        Claim: string
-        MatchType: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
-        Value: string
-        RoleARN: string
-      }>
+  roleMappings?: Record<
+    string,
+    {
+      Type: 'Token' | 'Rules'
+      AmbiguousRoleResolution?: 'AuthenticatedRole' | 'Deny'
+      RulesConfiguration?: {
+        Rules: Array<{
+          Claim: string
+          MatchType: 'Equals' | 'Contains' | 'StartsWith' | 'NotEqual'
+          Value: string
+          RoleARN: string
+        }>
+      }
     }
-  }>
+  >
 }
 
 /**
@@ -163,11 +159,13 @@ export class Auth {
       accountRecoverySetting,
     } = options
 
-    const resourceName = userPoolName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'user-pool',
-    })
+    const resourceName =
+      userPoolName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'user-pool',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -261,9 +259,9 @@ export class Auth {
     userPoolLogicalId: string,
     options: UserPoolClientOptions,
   ): {
-      client: CognitoUserPoolClient
-      logicalId: string
-    } {
+    client: CognitoUserPoolClient
+    logicalId: string
+  } {
     const {
       slug,
       environment,
@@ -286,11 +284,13 @@ export class Auth {
       supportedIdentityProviders,
     } = options
 
-    const resourceName = clientName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'user-pool-client',
-    })
+    const resourceName =
+      clientName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'user-pool-client',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -328,15 +328,10 @@ export class Auth {
     userPoolLogicalId: string,
     options: UserPoolDomainOptions,
   ): {
-      domain: CognitoUserPoolDomain
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      domain,
-      customDomainConfig,
-    } = options
+    domain: CognitoUserPoolDomain
+    logicalId: string
+  } {
+    const { slug, environment, domain, customDomainConfig } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -376,11 +371,13 @@ export class Auth {
       openIdConnectProviderARNs,
     } = options
 
-    const resourceName = identityPoolName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'identity-pool',
-    })
+    const resourceName =
+      identityPoolName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'identity-pool',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -406,16 +403,10 @@ export class Auth {
     identityPoolLogicalId: string,
     options: IdentityPoolRoleAttachmentOptions,
   ): {
-      attachment: CognitoIdentityPoolRoleAttachment
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      authenticatedRole,
-      unauthenticatedRole,
-      roleMappings,
-    } = options
+    attachment: CognitoIdentityPoolRoleAttachment
+    logicalId: string
+  } {
+    const { slug, environment, authenticatedRole, unauthenticatedRole, roleMappings } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -498,10 +489,7 @@ export class Auth {
               Statement: [
                 {
                   Effect: 'Allow',
-                  Action: [
-                    'cognito-sync:*',
-                    'cognito-identity:*',
-                  ],
+                  Action: ['cognito-sync:*', 'cognito-identity:*'],
                   Resource: '*',
                 },
               ],
@@ -571,9 +559,7 @@ export class Auth {
               Statement: [
                 {
                   Effect: 'Allow',
-                  Action: [
-                    'cognito-sync:*',
-                  ],
+                  Action: ['cognito-sync:*'],
                   Resource: '*',
                 },
               ],
@@ -638,26 +624,17 @@ export class Auth {
     /**
      * Standard auth flows (SRP, refresh token)
      */
-    standard: [
-      'ALLOW_USER_SRP_AUTH',
-      'ALLOW_REFRESH_TOKEN_AUTH',
-    ],
+    standard: ['ALLOW_USER_SRP_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'],
 
     /**
      * Admin auth flows (for server-side authentication)
      */
-    admin: [
-      'ALLOW_ADMIN_USER_PASSWORD_AUTH',
-      'ALLOW_REFRESH_TOKEN_AUTH',
-    ],
+    admin: ['ALLOW_ADMIN_USER_PASSWORD_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'],
 
     /**
      * Custom auth flows
      */
-    custom: [
-      'ALLOW_CUSTOM_AUTH',
-      'ALLOW_REFRESH_TOKEN_AUTH',
-    ],
+    custom: ['ALLOW_CUSTOM_AUTH', 'ALLOW_REFRESH_TOKEN_AUTH'],
 
     /**
      * All auth flows (not recommended for production)
@@ -678,22 +655,12 @@ export class Auth {
     /**
      * Basic OAuth scopes
      */
-    basic: [
-      'openid',
-      'email',
-      'profile',
-    ],
+    basic: ['openid', 'email', 'profile'],
 
     /**
      * All standard scopes
      */
-    all: [
-      'openid',
-      'email',
-      'profile',
-      'phone',
-      'aws.cognito.signin.user.admin',
-    ],
+    all: ['openid', 'email', 'profile', 'phone', 'aws.cognito.signin.user.admin'],
   } as const
 
   /**
@@ -703,7 +670,11 @@ export class Auth {
     /**
      * Create a basic user pool for web application
      */
-    webApp: (slug: string, environment: EnvironmentType, callbackUrl: string): {
+    webApp: (
+      slug: string,
+      environment: EnvironmentType,
+      callbackUrl: string,
+    ): {
       userPool: CognitoUserPool
       poolId: string
       client: CognitoUserPoolClient
@@ -734,7 +705,10 @@ export class Auth {
     /**
      * Create a user pool with identity pool for mobile app
      */
-    mobileApp: (slug: string, environment: EnvironmentType): {
+    mobileApp: (
+      slug: string,
+      environment: EnvironmentType,
+    ): {
       userPool: CognitoUserPool
       poolId: string
       client: CognitoUserPoolClient
@@ -779,14 +753,11 @@ export class Auth {
         identityPoolLogicalId: identityPoolId,
       })
 
-      const { attachment, logicalId: attachmentId } = Auth.createIdentityPoolRoleAttachment(
-        identityPoolId,
-        {
-          slug,
-          environment,
-          authenticatedRole: Fn.GetAtt(authRoleId, 'Arn') as unknown as string,
-        },
-      )
+      const { attachment, logicalId: attachmentId } = Auth.createIdentityPoolRoleAttachment(identityPoolId, {
+        slug,
+        environment,
+        authenticatedRole: Fn.GetAtt(authRoleId, 'Arn') as unknown as string,
+      })
 
       return {
         userPool,

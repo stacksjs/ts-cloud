@@ -16,12 +16,7 @@ export {
   isWebCryptoAvailable,
 } from './signature'
 
-export type {
-  SignatureOptions,
-  SignedRequest,
-  PresignedUrlOptions,
-  RetryOptions,
-} from './signature'
+export type { SignatureOptions, SignedRequest, PresignedUrlOptions, RetryOptions } from './signature'
 
 // AWS Credentials
 export {
@@ -39,30 +34,15 @@ export {
   getAccountId,
 } from './credentials'
 
-export type {
-  AWSCredentials,
-  AWSProfile,
-  CredentialProviderOptions,
-} from './credentials'
+export type { AWSCredentials, AWSProfile, CredentialProviderOptions } from './credentials'
 
 // CloudFormation Client
-export {
-  CloudFormationClient,
-} from './cloudformation'
+export { CloudFormationClient } from './cloudformation'
 
-export type {
-  CloudFormationStack,
-  CreateStackOptions,
-  UpdateStackOptions,
-  StackEvent,
-} from './cloudformation'
+export type { CloudFormationStack, CreateStackOptions, UpdateStackOptions, StackEvent } from './cloudformation'
 
 // S3 Client (High-Level API)
-export {
-  S3Client,
-  S3Error,
-  createS3Client,
-} from './s3'
+export { S3Client, S3Error, createS3Client } from './s3'
 
 export type {
   S3ClientOptions,
@@ -78,10 +58,6 @@ export type {
 } from './s3'
 
 // CloudFront Client
-export {
-  CloudFrontClient,
-} from './cloudfront'
+export { CloudFrontClient } from './cloudfront'
 
-export type {
-  InvalidationOptions,
-} from './cloudfront'
+export type { InvalidationOptions } from './cloudfront'

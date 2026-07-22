@@ -1,6 +1,6 @@
-import type { ECRRepository, ECRLifecyclePolicy } from '@ts-cloud/aws-types'
-import { generateLogicalId, generateResourceName } from '../resource-naming'
+import type { ECRLifecyclePolicy, ECRRepository } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
+import { generateLogicalId, generateResourceName } from '../resource-naming'
 
 export interface RegistryOptions {
   name: string
@@ -28,7 +28,7 @@ export class Registry {
   /**
    * Create an ECR repository with the specified options
    */
-  static createRepository(options: RegistryOptions): { repository: ECRRepository, logicalId: string } {
+  static createRepository(options: RegistryOptions): { repository: ECRRepository; logicalId: string } {
     const {
       name,
       slug,
@@ -68,9 +68,7 @@ export class Registry {
     // Add lifecycle policy if specified
     if (lifecyclePolicy) {
       repository.Properties!.LifecyclePolicy = {
-        LifecyclePolicyText: JSON.stringify(
-          Registry.generateLifecyclePolicy(lifecyclePolicy),
-        ),
+        LifecyclePolicyText: JSON.stringify(Registry.generateLifecyclePolicy(lifecyclePolicy)),
       }
     }
 
@@ -215,10 +213,7 @@ export class Registry {
   /**
    * Set lifecycle policy on an existing repository
    */
-  static setLifecyclePolicy(
-    repository: ECRRepository,
-    config: LifecyclePolicyConfig,
-  ): ECRRepository {
+  static setLifecyclePolicy(repository: ECRRepository, config: LifecyclePolicyConfig): ECRRepository {
     if (!repository.Properties) {
       repository.Properties = {}
     }
@@ -233,10 +228,7 @@ export class Registry {
   /**
    * Add repository policy for cross-account access
    */
-  static addCrossAccountAccess(
-    repository: ECRRepository,
-    accountIds: string[],
-  ): ECRRepository {
+  static addCrossAccountAccess(repository: ECRRepository, accountIds: string[]): ECRRepository {
     if (!repository.Properties) {
       repository.Properties = {}
     }
@@ -248,13 +240,9 @@ export class Registry {
           Sid: 'CrossAccountPull',
           Effect: 'Allow',
           Principal: {
-            AWS: accountIds.map(id => `arn:aws:iam::${id}:root`),
+            AWS: accountIds.map((id) => `arn:aws:iam::${id}:root`),
           },
-          Action: [
-            'ecr:GetDownloadUrlForLayer',
-            'ecr:BatchGetImage',
-            'ecr:BatchCheckLayerAvailability',
-          ],
+          Action: ['ecr:GetDownloadUrlForLayer', 'ecr:BatchGetImage', 'ecr:BatchCheckLayerAvailability'],
         },
       ],
     }
@@ -279,10 +267,7 @@ export class Registry {
           Principal: {
             Service: 'lambda.amazonaws.com',
           },
-          Action: [
-            'ecr:GetDownloadUrlForLayer',
-            'ecr:BatchGetImage',
-          ],
+          Action: ['ecr:GetDownloadUrlForLayer', 'ecr:BatchGetImage'],
         },
       ],
     }
@@ -450,14 +435,10 @@ CMD ["bun", "run", "${serverPath}"]
     buildCmd += ` ${context}`
 
     // Tag commands
-    const tagCommands = allTags.slice(1).map(t =>
-      `docker tag ${imageUri} ${repositoryUri}:${t}`,
-    )
+    const tagCommands = allTags.slice(1).map((t) => `docker tag ${imageUri} ${repositoryUri}:${t}`)
 
     // Push commands
-    const pushCommands = allTags.map(t =>
-      `docker push ${repositoryUri}:${t}`,
-    )
+    const pushCommands = allTags.map((t) => `docker push ${repositoryUri}:${t}`)
 
     return {
       build: buildCmd,
@@ -477,11 +458,7 @@ CMD ["bun", "run", "${serverPath}"]
   /**
    * Build ECR repository URI
    */
-  static buildRepositoryUri(options: {
-    accountId: string
-    region: string
-    repositoryName: string
-  }): string {
+  static buildRepositoryUri(options: { accountId: string; region: string; repositoryName: string }): string {
     return `${options.accountId}.dkr.ecr.${options.region}.amazonaws.com/${options.repositoryName}`
   }
 
@@ -516,9 +493,7 @@ CMD ["bun", "run", "${serverPath}"]
 
     if (options.gitBranch) {
       // Sanitize branch name for Docker tag
-      const sanitizedBranch = options.gitBranch
-        .replace(/[^a-zA-Z0-9.-]/g, '-')
-        .replace(/^-+|-+$/g, '')
+      const sanitizedBranch = options.gitBranch.replace(/[^a-zA-Z0-9.-]/g, '-').replace(/^-+|-+$/g, '')
       tags.push(sanitizedBranch)
     }
 
@@ -574,10 +549,13 @@ ${Registry.generateEcrLoginCommand(options.region, options.accountId)}
 echo "=== Building Image ==="
 docker build -f $DOCKERFILE -t $IMAGE_URI:${primaryTag} --platform linux/amd64 .
 
-${tags.slice(1).map(t => `echo "=== Tagging: ${t} ===" && docker tag $IMAGE_URI:${primaryTag} $IMAGE_URI:${t}`).join('\n')}
+${tags
+  .slice(1)
+  .map((t) => `echo "=== Tagging: ${t} ===" && docker tag $IMAGE_URI:${primaryTag} $IMAGE_URI:${t}`)
+  .join('\n')}
 
 echo "=== Pushing Images ==="
-${tags.map(t => `docker push $IMAGE_URI:${t}`).join('\n')}
+${tags.map((t) => `docker push $IMAGE_URI:${t}`).join('\n')}
 
 echo "=== Deployment Complete ==="
 echo "Image: $IMAGE_URI:${primaryTag}"
@@ -610,7 +588,7 @@ echo "Image: $IMAGE_URI:${primaryTag}"
             'runs-on': 'ubuntu-latest',
             permissions: {
               'id-token': 'write',
-              'contents': 'read',
+              contents: 'read',
             },
             steps: [
               {
@@ -641,10 +619,12 @@ docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest`,
               },
               ...(options.ecsCluster && options.ecsService
-                ? [{
-                    name: 'Deploy to ECS',
-                    run: `aws ecs update-service --cluster ${options.ecsCluster} --service ${options.ecsService} --force-new-deployment`,
-                  }]
+                ? [
+                    {
+                      name: 'Deploy to ECS',
+                      run: `aws ecs update-service --cluster ${options.ecsCluster} --service ${options.ecsService} --force-new-deployment`,
+                    },
+                  ]
                 : []),
             ],
           },
@@ -663,37 +643,41 @@ ${JSON.stringify(workflow, null, 2).replace(/"/g, '').replace(/,\n/g, '\n')}`
     /**
      * Minimal Bun server
      */
-    bunServer: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
-      serverPath,
-      port,
-    }),
+    bunServer: (serverPath: string, port = 3000): string =>
+      Registry.generateBunDockerfile({
+        serverPath,
+        port,
+      }),
 
     /**
      * Bun with build step
      */
-    bunWithBuild: (serverPath: string, buildCommand: string, port = 3000): string => Registry.generateBunDockerfile({
-      serverPath,
-      port,
-      buildCommands: [buildCommand],
-    }),
+    bunWithBuild: (serverPath: string, buildCommand: string, port = 3000): string =>
+      Registry.generateBunDockerfile({
+        serverPath,
+        port,
+        buildCommands: [buildCommand],
+      }),
 
     /**
      * Full-stack Bun app with static files
      */
-    bunFullStack: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
-      serverPath,
-      port,
-      additionalDirs: ['public', 'views', 'dist'],
-      buildCommands: ['bun run build'],
-    }),
+    bunFullStack: (serverPath: string, port = 3000): string =>
+      Registry.generateBunDockerfile({
+        serverPath,
+        port,
+        additionalDirs: ['public', 'views', 'dist'],
+        buildCommands: ['bun run build'],
+      }),
 
     /**
      * API-only Bun server
      */
-    bunApi: (serverPath: string, port = 3000): string => Registry.generateBunDockerfile({
-      serverPath,
-      port,
-      healthCheckEndpoint: '/api/health',
-    }),
+    bunApi: (serverPath: string, port = 3000): string =>
+      Registry.generateBunDockerfile({
+        serverPath,
+        port,
+        healthCheckEndpoint: '/api/health',
+      }),
   }
 }

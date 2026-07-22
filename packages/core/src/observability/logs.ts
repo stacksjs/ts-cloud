@@ -105,11 +105,7 @@ export class LogsManager {
   /**
    * Create ECS log group
    */
-  createECSLogGroup(options: {
-    clusterName: string
-    serviceName: string
-    retentionDays?: number
-  }): LogGroup {
+  createECSLogGroup(options: { clusterName: string; serviceName: string; retentionDays?: number }): LogGroup {
     return this.createLogGroup({
       name: `/ecs/${options.clusterName}/${options.serviceName}`,
       retentionDays: options.retentionDays || 14,
@@ -414,7 +410,7 @@ export class LogsManager {
         FilterName: filter.name,
         FilterPattern: filter.filterPattern,
         LogGroupName: logGroup.name,
-        MetricTransformations: filter.metricTransformations.map(t => ({
+        MetricTransformations: filter.metricTransformations.map((t) => ({
           MetricName: t.metricName,
           MetricNamespace: t.metricNamespace,
           MetricValue: t.metricValue,
@@ -463,7 +459,7 @@ export class LogsManager {
   createLogAggregation(
     logGroup: string,
     filters: Array<{ pattern: string; metric: string }>,
-    retention = 7
+    retention = 7,
   ): {
     id: string
     logGroup: string
@@ -479,7 +475,7 @@ export class LogsManager {
     })
 
     // Create metric filters for each pattern
-    filters.forEach(filter => {
+    filters.forEach((filter) => {
       this.createMetricFilter(group.id, {
         name: filter.metric,
         filterPattern: filter.pattern,

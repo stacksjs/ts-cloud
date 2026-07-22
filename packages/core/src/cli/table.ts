@@ -59,7 +59,14 @@ export function formatTable(options: TableOptions): string {
 
   // Header
   if (header) {
-    lines.push(createRow(columns.map(col => col.label), colWidths, columns.map(col => col.align || 'left'), border))
+    lines.push(
+      createRow(
+        columns.map((col) => col.label),
+        colWidths,
+        columns.map((col) => col.align || 'left'),
+        border,
+      ),
+    )
 
     // Header separator
     if (border) {
@@ -74,7 +81,14 @@ export function formatTable(options: TableOptions): string {
       return truncate(value, colWidths[columns.indexOf(col)])
     })
 
-    lines.push(createRow(values, colWidths, columns.map(col => col.align || 'left'), border))
+    lines.push(
+      createRow(
+        values,
+        colWidths,
+        columns.map((col) => col.align || 'left'),
+        border,
+      ),
+    )
   }
 
   // Bottom border
@@ -118,10 +132,10 @@ function createBorder(widths: number[], position: 'top' | 'middle' | 'bottom', c
   const horizontal = '─'
 
   if (compact) {
-    return left + widths.map(w => horizontal.repeat(w + 2)).join(cross) + right
+    return left + widths.map((w) => horizontal.repeat(w + 2)).join(cross) + right
   }
 
-  return left + widths.map(w => horizontal.repeat(w + 2)).join(cross) + right
+  return left + widths.map((w) => horizontal.repeat(w + 2)).join(cross) + right
 }
 
 /**
@@ -309,7 +323,7 @@ export function formatDuration(ms: number): string {
  * Format list with bullets
  */
 export function formatList(items: string[], bullet = '•'): string {
-  return items.map(item => `${bullet} ${item}`).join('\n')
+  return items.map((item) => `${bullet} ${item}`).join('\n')
 }
 
 /**
@@ -321,7 +335,7 @@ export function formatKeyValue(
 ): string {
   const { indent = '', separator = ': ' } = options
 
-  const maxKeyLength = Math.max(...Object.keys(data).map(k => k.length))
+  const maxKeyLength = Math.max(...Object.keys(data).map((k) => k.length))
 
   return Object.entries(data)
     .map(([key, value]) => {

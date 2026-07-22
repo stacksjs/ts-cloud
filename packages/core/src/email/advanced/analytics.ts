@@ -281,12 +281,8 @@ catch (error) {
         Properties: {
           TableName: `${config.slug}-email-analytics`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'messageId', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'messageId', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'messageId', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'messageId', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -392,11 +388,7 @@ catch (error) {
   /**
    * Inject tracking into email HTML
    */
-  static injectTracking(params: {
-    html: string
-    messageId: string
-    trackingDomain: string
-  }): string {
+  static injectTracking(params: { html: string; messageId: string; trackingDomain: string }): string {
     const { html, messageId, trackingDomain } = params
 
     // Inject tracking pixel before </body>
@@ -410,7 +402,7 @@ catch (error) {
       (_match, url) => {
         const encodedUrl = encodeURIComponent(url)
         return `href="https://${trackingDomain}/track/click/${messageId}?url=${encodedUrl}"`
-      }
+      },
     )
 
     return trackedHtml
@@ -420,13 +412,13 @@ catch (error) {
    * Calculate email metrics for a period
    */
   static calculateMetrics(analytics: EmailAnalytics[]): EmailMetrics {
-    const sent = analytics.filter(a => a.sent).length
-    const delivered = analytics.filter(a => a.delivered).length
-    const opened = analytics.filter(a => a.opened).length
-    const clicked = analytics.filter(a => a.clicked).length
-    const bounced = analytics.filter(a => a.bounced).length
-    const complained = analytics.filter(a => a.complained).length
-    const unsubscribed = analytics.filter(a => a.unsubscribed).length
+    const sent = analytics.filter((a) => a.sent).length
+    const delivered = analytics.filter((a) => a.delivered).length
+    const opened = analytics.filter((a) => a.opened).length
+    const clicked = analytics.filter((a) => a.clicked).length
+    const bounced = analytics.filter((a) => a.bounced).length
+    const complained = analytics.filter((a) => a.complained).length
+    const unsubscribed = analytics.filter((a) => a.unsubscribed).length
 
     return {
       period: new Date().toISOString(),

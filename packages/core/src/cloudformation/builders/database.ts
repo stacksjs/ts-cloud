@@ -62,10 +62,7 @@ export interface DynamoDBTableConfig {
 /**
  * Add database resources (RDS, DynamoDB) to CloudFormation template
  */
-export function addDatabaseResources(
-  builder: CloudFormationBuilder,
-  config: DatabaseConfig,
-): void {
+export function addDatabaseResources(builder: CloudFormationBuilder, config: DatabaseConfig): void {
   if (config.postgres) {
     addRDSInstance(builder, 'postgres', config.postgres)
   }
@@ -75,7 +72,7 @@ export function addDatabaseResources(
   }
 
   if (config.dynamodb?.tables) {
-    config.dynamodb.tables.forEach(table => {
+    config.dynamodb.tables.forEach((table) => {
       addDynamoDBTable(builder, table)
     })
   }
@@ -95,65 +92,72 @@ function addRDSInstance(
   const logicalId = builder.toLogicalId(`${engineName}-db`)
 
   // DB Subnet Group
-  builder.addResource('DBSubnetGroup', 'AWS::RDS::DBSubnetGroup', {
-    DBSubnetGroupDescription: 'Subnet group for RDS instance',
-    SubnetIds: [
-      Fn.ref('PrivateSubnet1'),
-      Fn.ref('PrivateSubnet2'),
-    ],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-subnet-group') },
-    ],
-  }, {
-    dependsOn: ['PrivateSubnet1', 'PrivateSubnet2'],
-  })
+  builder.addResource(
+    'DBSubnetGroup',
+    'AWS::RDS::DBSubnetGroup',
+    {
+      DBSubnetGroupDescription: 'Subnet group for RDS instance',
+      SubnetIds: [Fn.ref('PrivateSubnet1'), Fn.ref('PrivateSubnet2')],
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-subnet-group') }],
+    },
+    {
+      dependsOn: ['PrivateSubnet1', 'PrivateSubnet2'],
+    },
+  )
 
   // DB Security Group
-  builder.addResource('DBSecurityGroup', 'AWS::EC2::SecurityGroup', {
-    GroupDescription: 'Security group for RDS instance',
-    VpcId: Fn.ref('VPC'),
-    SecurityGroupIngress: [{
-      IpProtocol: 'tcp',
-      FromPort: engine === 'postgres' ? 5432 : 3306,
-      ToPort: engine === 'postgres' ? 5432 : 3306,
-      SourceSecurityGroupId: Fn.ref('AppSecurityGroup'),
-    }],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-sg') },
-    ],
-  }, {
-    dependsOn: ['VPC', 'AppSecurityGroup'],
-  })
+  builder.addResource(
+    'DBSecurityGroup',
+    'AWS::EC2::SecurityGroup',
+    {
+      GroupDescription: 'Security group for RDS instance',
+      VpcId: Fn.ref('VPC'),
+      SecurityGroupIngress: [
+        {
+          IpProtocol: 'tcp',
+          FromPort: engine === 'postgres' ? 5432 : 3306,
+          ToPort: engine === 'postgres' ? 5432 : 3306,
+          SourceSecurityGroupId: Fn.ref('AppSecurityGroup'),
+        },
+      ],
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-sg') }],
+    },
+    {
+      dependsOn: ['VPC', 'AppSecurityGroup'],
+    },
+  )
 
   // DB Parameter Group
-  const parameterGroupFamily = engine === 'postgres'
-    ? `postgres${config.version.split('.')[0]}`
-    : `mysql${config.version.split('.')[0]}.${config.version.split('.')[1] || '0'}`
+  const parameterGroupFamily =
+    engine === 'postgres'
+      ? `postgres${config.version.split('.')[0]}`
+      : `mysql${config.version.split('.')[0]}.${config.version.split('.')[1] || '0'}`
 
   if (config.parameters && Object.keys(config.parameters).length > 0) {
     builder.addResource('DBParameterGroup', 'AWS::RDS::DBParameterGroup', {
       Description: `Parameter group for ${engineName}`,
       Family: parameterGroupFamily,
       Parameters: config.parameters,
-      Tags: [
-        { Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-params') },
-      ],
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-params') }],
     })
   }
 
   // Secrets Manager secret for DB credentials
-  builder.addResource('DBSecret', 'AWS::SecretsManager::Secret', {
-    Description: 'Database credentials',
-    GenerateSecretString: {
-      SecretStringTemplate: JSON.stringify({ username: 'admin' }),
-      GenerateStringKey: 'password',
-      PasswordLength: 32,
-      ExcludeCharacters: '"@/\\',
+  builder.addResource(
+    'DBSecret',
+    'AWS::SecretsManager::Secret',
+    {
+      Description: 'Database credentials',
+      GenerateSecretString: {
+        SecretStringTemplate: JSON.stringify({ username: 'admin' }),
+        GenerateStringKey: 'password',
+        PasswordLength: 32,
+        ExcludeCharacters: '"@/\\',
+      },
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-secret') }],
     },
-    Tags: [
-      { Key: 'Name', Value: Fn.sub('${AWS::StackName}-db-secret') },
-    ],
-  }, { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' })
+    { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' },
+  )
 
   // RDS Instance
   const dbProperties: Record<string, any> = {
@@ -176,12 +180,8 @@ function addRDSInstance(
     PerformanceInsightsRetentionPeriod: config.performanceInsightsRetention || 7,
     DeletionProtection: config.deletionProtection !== false,
     CopyTagsToSnapshot: true,
-    EnableCloudwatchLogsExports: engine === 'postgres'
-      ? ['postgresql']
-      : ['error', 'general', 'slowquery'],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${engineName}-db`) },
-    ],
+    EnableCloudwatchLogsExports: engine === 'postgres' ? ['postgresql'] : ['error', 'general', 'slowquery'],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${engineName}-db`) }],
   }
 
   if (config.parameters && Object.keys(config.parameters).length > 0) {
@@ -195,13 +195,18 @@ function addRDSInstance(
   })
 
   // Attach secret to RDS instance
-  builder.addResource('DBSecretAttachment', 'AWS::SecretsManager::SecretTargetAttachment', {
-    SecretId: Fn.ref('DBSecret'),
-    TargetId: Fn.ref(logicalId),
-    TargetType: 'AWS::RDS::DBInstance',
-  }, {
-    dependsOn: [logicalId, 'DBSecret'],
-  })
+  builder.addResource(
+    'DBSecretAttachment',
+    'AWS::SecretsManager::SecretTargetAttachment',
+    {
+      SecretId: Fn.ref('DBSecret'),
+      TargetId: Fn.ref(logicalId),
+      TargetType: 'AWS::RDS::DBInstance',
+    },
+    {
+      dependsOn: [logicalId, 'DBSecret'],
+    },
+  )
 
   // Outputs
   builder.addOutputs({
@@ -232,10 +237,7 @@ function addRDSInstance(
 /**
  * Add DynamoDB table
  */
-function addDynamoDBTable(
-  builder: CloudFormationBuilder,
-  config: DynamoDBTableConfig,
-): void {
+function addDynamoDBTable(builder: CloudFormationBuilder, config: DynamoDBTableConfig): void {
   const logicalId = builder.toLogicalId(`${config.name}-table`)
 
   const tableProperties: Record<string, any> = {
@@ -253,9 +255,7 @@ function addDynamoDBTable(
         KeyType: 'HASH',
       },
     ],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) }],
   }
 
   // Sort key
@@ -302,11 +302,9 @@ function addDynamoDBTable(
 
   // Global Secondary Indexes
   if (config.globalSecondaryIndexes && config.globalSecondaryIndexes.length > 0) {
-    tableProperties.GlobalSecondaryIndexes = config.globalSecondaryIndexes.map(gsi => {
+    tableProperties.GlobalSecondaryIndexes = config.globalSecondaryIndexes.map((gsi) => {
       // Add GSI key attributes to AttributeDefinitions if not already present
-      const existingAttributes = new Set(
-        tableProperties.AttributeDefinitions.map((attr: any) => attr.AttributeName),
-      )
+      const existingAttributes = new Set(tableProperties.AttributeDefinitions.map((attr: any) => attr.AttributeName))
 
       if (!existingAttributes.has(gsi.partitionKey)) {
         tableProperties.AttributeDefinitions.push({

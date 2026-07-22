@@ -1,12 +1,8 @@
-import type {
-  CodeDeployApplication,
-  CodeDeployDeploymentGroup,
-  CodeDeployDeploymentConfig,
-} from '@ts-cloud/aws-types'
+import type { CodeDeployApplication, CodeDeployDeploymentConfig, CodeDeployDeploymentGroup } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { createHash } from 'node:crypto'
-import { readFileSync, readdirSync, statSync, existsSync, writeFileSync, renameSync, copyFileSync } from 'node:fs'
-import { join, basename, dirname, extname } from 'node:path'
+import { copyFileSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { basename, dirname, extname, join } from 'node:path'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
@@ -125,18 +121,15 @@ export class Deployment {
     application: CodeDeployApplication
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      applicationName,
-      computePlatform,
-    } = options
+    const { slug, environment, applicationName, computePlatform } = options
 
-    const resourceName = applicationName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'deploy-app',
-    })
+    const resourceName =
+      applicationName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'deploy-app',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -162,9 +155,9 @@ export class Deployment {
     applicationLogicalId: string,
     options: CodeDeployDeploymentGroupOptions,
   ): {
-      deploymentGroup: CodeDeployDeploymentGroup
-      logicalId: string
-    } {
+    deploymentGroup: CodeDeployDeploymentGroup
+    logicalId: string
+  } {
     const {
       slug,
       environment,
@@ -179,11 +172,13 @@ export class Deployment {
       blueGreenDeploymentConfiguration,
     } = options
 
-    const resourceName = deploymentGroupName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'deploy-group',
-    })
+    const resourceName =
+      deploymentGroupName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'deploy-group',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -194,38 +189,55 @@ export class Deployment {
         DeploymentGroupName: resourceName,
         ServiceRoleArn: serviceRoleArn,
         AutoScalingGroups: autoScalingGroups,
-        Ec2TagFilters: ec2TagFilters?.map(f => ({
+        Ec2TagFilters: ec2TagFilters?.map((f) => ({
           Key: f.key,
           Value: f.value,
           Type: f.type,
         })),
         DeploymentConfigName: deploymentConfigName,
-        AutoRollbackConfiguration: autoRollbackConfiguration ? {
-          Enabled: autoRollbackConfiguration.enabled,
-          Events: autoRollbackConfiguration.events,
-        } : undefined,
-        AlarmConfiguration: alarmConfiguration ? {
-          Enabled: alarmConfiguration.enabled,
-          Alarms: alarmConfiguration.alarms?.map(a => ({ Name: a.name })),
-          IgnorePollAlarmFailure: alarmConfiguration.ignorePollAlarmFailure,
-        } : undefined,
-        LoadBalancerInfo: loadBalancerInfo ? {
-          TargetGroupInfoList: loadBalancerInfo.targetGroupInfoList?.map(t => ({ Name: t.name })),
-          ElbInfoList: loadBalancerInfo.elbInfoList?.map(e => ({ Name: e.name })),
-        } : undefined,
-        BlueGreenDeploymentConfiguration: blueGreenDeploymentConfiguration ? {
-          TerminateBlueInstancesOnDeploymentSuccess: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess ? {
-            Action: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess.action,
-            TerminationWaitTimeInMinutes: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess.terminationWaitTimeInMinutes,
-          } : undefined,
-          DeploymentReadyOption: blueGreenDeploymentConfiguration.deploymentReadyOption ? {
-            ActionOnTimeout: blueGreenDeploymentConfiguration.deploymentReadyOption.actionOnTimeout,
-            WaitTimeInMinutes: blueGreenDeploymentConfiguration.deploymentReadyOption.waitTimeInMinutes,
-          } : undefined,
-          GreenFleetProvisioningOption: blueGreenDeploymentConfiguration.greenFleetProvisioningOption ? {
-            Action: blueGreenDeploymentConfiguration.greenFleetProvisioningOption.action,
-          } : undefined,
-        } : undefined,
+        AutoRollbackConfiguration: autoRollbackConfiguration
+          ? {
+              Enabled: autoRollbackConfiguration.enabled,
+              Events: autoRollbackConfiguration.events,
+            }
+          : undefined,
+        AlarmConfiguration: alarmConfiguration
+          ? {
+              Enabled: alarmConfiguration.enabled,
+              Alarms: alarmConfiguration.alarms?.map((a) => ({ Name: a.name })),
+              IgnorePollAlarmFailure: alarmConfiguration.ignorePollAlarmFailure,
+            }
+          : undefined,
+        LoadBalancerInfo: loadBalancerInfo
+          ? {
+              TargetGroupInfoList: loadBalancerInfo.targetGroupInfoList?.map((t) => ({ Name: t.name })),
+              ElbInfoList: loadBalancerInfo.elbInfoList?.map((e) => ({ Name: e.name })),
+            }
+          : undefined,
+        BlueGreenDeploymentConfiguration: blueGreenDeploymentConfiguration
+          ? {
+              TerminateBlueInstancesOnDeploymentSuccess:
+                blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess
+                  ? {
+                      Action: blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess.action,
+                      TerminationWaitTimeInMinutes:
+                        blueGreenDeploymentConfiguration.terminateBlueInstancesOnDeploymentSuccess
+                          .terminationWaitTimeInMinutes,
+                    }
+                  : undefined,
+              DeploymentReadyOption: blueGreenDeploymentConfiguration.deploymentReadyOption
+                ? {
+                    ActionOnTimeout: blueGreenDeploymentConfiguration.deploymentReadyOption.actionOnTimeout,
+                    WaitTimeInMinutes: blueGreenDeploymentConfiguration.deploymentReadyOption.waitTimeInMinutes,
+                  }
+                : undefined,
+              GreenFleetProvisioningOption: blueGreenDeploymentConfiguration.greenFleetProvisioningOption
+                ? {
+                    Action: blueGreenDeploymentConfiguration.greenFleetProvisioningOption.action,
+                  }
+                : undefined,
+            }
+          : undefined,
         Tags: [
           { Key: 'Name', Value: resourceName },
           { Key: 'Environment', Value: environment },
@@ -243,19 +255,15 @@ export class Deployment {
     deploymentConfig: CodeDeployDeploymentConfig
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      deploymentConfigName,
-      minimumHealthyHosts,
-      trafficRoutingConfig,
-    } = options
+    const { slug, environment, deploymentConfigName, minimumHealthyHosts, trafficRoutingConfig } = options
 
-    const resourceName = deploymentConfigName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'deploy-config',
-    })
+    const resourceName =
+      deploymentConfigName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'deploy-config',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -263,21 +271,29 @@ export class Deployment {
       Type: 'AWS::CodeDeploy::DeploymentConfig',
       Properties: {
         DeploymentConfigName: resourceName,
-        MinimumHealthyHosts: minimumHealthyHosts ? {
-          Type: minimumHealthyHosts.type,
-          Value: minimumHealthyHosts.value,
-        } : undefined,
-        TrafficRoutingConfig: trafficRoutingConfig ? {
-          Type: trafficRoutingConfig.type,
-          TimeBasedCanary: trafficRoutingConfig.timeBasedCanary ? {
-            CanaryPercentage: trafficRoutingConfig.timeBasedCanary.canaryPercentage,
-            CanaryInterval: trafficRoutingConfig.timeBasedCanary.canaryInterval,
-          } : undefined,
-          TimeBasedLinear: trafficRoutingConfig.timeBasedLinear ? {
-            LinearPercentage: trafficRoutingConfig.timeBasedLinear.linearPercentage,
-            LinearInterval: trafficRoutingConfig.timeBasedLinear.linearInterval,
-          } : undefined,
-        } : undefined,
+        MinimumHealthyHosts: minimumHealthyHosts
+          ? {
+              Type: minimumHealthyHosts.type,
+              Value: minimumHealthyHosts.value,
+            }
+          : undefined,
+        TrafficRoutingConfig: trafficRoutingConfig
+          ? {
+              Type: trafficRoutingConfig.type,
+              TimeBasedCanary: trafficRoutingConfig.timeBasedCanary
+                ? {
+                    CanaryPercentage: trafficRoutingConfig.timeBasedCanary.canaryPercentage,
+                    CanaryInterval: trafficRoutingConfig.timeBasedCanary.canaryInterval,
+                  }
+                : undefined,
+              TimeBasedLinear: trafficRoutingConfig.timeBasedLinear
+                ? {
+                    LinearPercentage: trafficRoutingConfig.timeBasedLinear.linearPercentage,
+                    LinearInterval: trafficRoutingConfig.timeBasedLinear.linearInterval,
+                  }
+                : undefined,
+            }
+          : undefined,
       },
     }
 
@@ -701,7 +717,7 @@ export class AssetHasher {
    */
   static shouldHashFile(relativePath: string, customNoHashPatterns?: RegExp[]): boolean {
     const patterns = [...AssetHasher.NoHashPatterns, ...(customNoHashPatterns || [])]
-    return !patterns.some(pattern => pattern.test(relativePath))
+    return !patterns.some((pattern) => pattern.test(relativePath))
   }
 
   /**
@@ -737,8 +753,7 @@ export class AssetHasher {
 
       if (entry.isDirectory()) {
         files.push(...AssetHasher.collectFiles(fullPath, baseDir))
-      }
-      else if (entry.isFile()) {
+      } else if (entry.isFile()) {
         files.push(fullPath)
       }
     }
@@ -756,13 +771,7 @@ export class AssetHasher {
     hashAlgorithm?: 'md5' | 'sha256' | 'sha1'
     copyUnhashed?: boolean
   }): AssetManifest {
-    const {
-      sourceDir,
-      outputDir,
-      excludePatterns = [],
-      hashAlgorithm = 'md5',
-      copyUnhashed = true,
-    } = options
+    const { sourceDir, outputDir, excludePatterns = [], hashAlgorithm = 'md5', copyUnhashed = true } = options
 
     const files = AssetHasher.collectFiles(sourceDir)
     const assets: HashedAsset[] = []
@@ -773,9 +782,7 @@ export class AssetHasher {
       const shouldHash = AssetHasher.shouldHashFile(relativePath, excludePatterns)
       const stats = statSync(filePath)
       const hash = shouldHash ? AssetHasher.computeFileHash(filePath, hashAlgorithm).slice(0, 8) : ''
-      const hashedRelativePath = shouldHash
-        ? AssetHasher.generateHashedFilename(relativePath, hash)
-        : relativePath
+      const hashedRelativePath = shouldHash ? AssetHasher.generateHashedFilename(relativePath, hash) : relativePath
 
       const asset: HashedAsset = {
         originalPath: relativePath,
@@ -825,10 +832,7 @@ export class AssetHasher {
    * Get paths that need CloudFront invalidation
    * Compares old and new manifests to find changed files
    */
-  static getInvalidationPaths(
-    oldManifest: AssetManifest | null,
-    newManifest: AssetManifest,
-  ): string[] {
+  static getInvalidationPaths(oldManifest: AssetManifest | null, newManifest: AssetManifest): string[] {
     const invalidationPaths: string[] = []
 
     if (!oldManifest) {
@@ -872,15 +876,10 @@ export class AssetHasher {
   /**
    * Update HTML files to reference hashed assets
    */
-  static updateHtmlReferences(options: {
-    htmlDir: string
-    manifest: AssetManifest
-    basePath?: string
-  }): void {
+  static updateHtmlReferences(options: { htmlDir: string; manifest: AssetManifest; basePath?: string }): void {
     const { htmlDir, manifest, basePath = '' } = options
 
-    const htmlFiles = AssetHasher.collectFiles(htmlDir)
-      .filter(f => f.endsWith('.html') || f.endsWith('.htm'))
+    const htmlFiles = AssetHasher.collectFiles(htmlDir).filter((f) => f.endsWith('.html') || f.endsWith('.htm'))
 
     for (const htmlFile of htmlFiles) {
       let content = readFileSync(htmlFile, 'utf-8')
@@ -911,15 +910,10 @@ export class AssetHasher {
   /**
    * Update CSS files to reference hashed assets
    */
-  static updateCssReferences(options: {
-    cssDir: string
-    manifest: AssetManifest
-    basePath?: string
-  }): void {
+  static updateCssReferences(options: { cssDir: string; manifest: AssetManifest; basePath?: string }): void {
     const { cssDir, manifest, basePath = '' } = options
 
-    const cssFiles = AssetHasher.collectFiles(cssDir)
-      .filter(f => f.endsWith('.css'))
+    const cssFiles = AssetHasher.collectFiles(cssDir).filter((f) => f.endsWith('.css'))
 
     for (const cssFile of cssFiles) {
       let content = readFileSync(cssFile, 'utf-8')
@@ -928,10 +922,7 @@ export class AssetHasher {
       for (const [originalPath, hashedPath] of Object.entries(manifest.hashMap)) {
         if (originalPath === hashedPath) continue
 
-        const pattern = new RegExp(
-          `url\\(["']?${basePath}/?${AssetHasher.escapeRegExp(originalPath)}["']?\\)`,
-          'g',
-        )
+        const pattern = new RegExp(`url\\(["']?${basePath}/?${AssetHasher.escapeRegExp(originalPath)}["']?\\)`, 'g')
 
         content = content.replace(pattern, `url(${basePath}/${hashedPath})`)
       }
@@ -990,8 +981,7 @@ export class AssetHasher {
       let cc = cacheControl.unhashed || 'public, max-age=3600'
       if (isHtml) {
         cc = cacheControl.html || 'public, max-age=0, must-revalidate'
-      }
-      else if (isHashed) {
+      } else if (isHashed) {
         cc = cacheControl.hashed || 'public, max-age=31536000, immutable'
       }
 
@@ -1008,7 +998,10 @@ export class AssetHasher {
   /**
    * Compare two asset manifests to detect changes
    */
-  static compareManifests(oldManifest: AssetManifest, newManifest: AssetManifest): {
+  static compareManifests(
+    oldManifest: AssetManifest,
+    newManifest: AssetManifest,
+  ): {
     added: string[]
     removed: string[]
     changed: string[]
@@ -1043,8 +1036,7 @@ export class AssetHasher {
       if (oldPaths.has(path)) {
         if (oldManifest.hashMap[path] !== newManifest.hashMap[path]) {
           result.changed.push(path)
-        }
-        else {
+        } else {
           result.unchanged.push(path)
         }
       }
@@ -1064,8 +1056,7 @@ export class AssetHasher {
     try {
       const content = readFileSync(manifestPath, 'utf-8')
       return JSON.parse(content) as AssetManifest
-    }
-    catch {
+    } catch {
       return null
     }
   }

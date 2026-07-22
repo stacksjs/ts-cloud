@@ -2,9 +2,8 @@
  * Caching utilities for performance optimization
  * Caches CloudFormation templates, credentials, and other data
  */
-
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 export interface CacheOptions {
@@ -99,7 +98,7 @@ export class Cache<T = any> {
   /**
    * Get cache stats
    */
-  stats(): { size: number, ttl: number, maxSize: number } {
+  stats(): { size: number; ttl: number; maxSize: number } {
     return {
       size: this.cache.size,
       ttl: this.ttl,
@@ -154,8 +153,7 @@ export class FileCache<T = any> {
       }
 
       return entry.value
-    }
-    catch {
+    } catch {
       // If cache file is corrupted, delete it
       unlinkSync(cachePath)
       return undefined
@@ -211,8 +209,7 @@ export class FileCache<T = any> {
         if (now - entry.timestamp > this.ttl) {
           unlinkSync(filePath)
         }
-      }
-      catch {
+      } catch {
         // If file is corrupted, delete it
         unlinkSync(filePath)
       }

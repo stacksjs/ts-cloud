@@ -16,12 +16,7 @@ export interface SecurityScan {
 }
 
 export type ScanType =
-  | 'vulnerability'
-  | 'container_image'
-  | 'code_quality'
-  | 'secrets_detection'
-  | 'compliance'
-  | 'penetration_test'
+  'vulnerability' | 'container_image' | 'code_quality' | 'secrets_detection' | 'compliance' | 'penetration_test'
 
 export interface ScanTarget {
   type: 'ecr_image' | 'ec2_instance' | 'lambda' | 'api' | 'repository'
@@ -132,11 +127,7 @@ export class SecurityScanningManager {
   /**
    * Create container image scan
    */
-  createContainerScan(options: {
-    name: string
-    imageUri: string
-    region?: string
-  }): SecurityScan {
+  createContainerScan(options: { name: string; imageUri: string; region?: string }): SecurityScan {
     return this.createScan({
       name: options.name,
       scanType: 'container_image',
@@ -151,11 +142,7 @@ export class SecurityScanningManager {
   /**
    * Create Lambda function scan
    */
-  createLambdaScan(options: {
-    name: string
-    functionName: string
-    region?: string
-  }): SecurityScan {
+  createLambdaScan(options: { name: string; functionName: string; region?: string }): SecurityScan {
     return this.createScan({
       name: options.name,
       scanType: 'vulnerability',
@@ -170,10 +157,7 @@ export class SecurityScanningManager {
   /**
    * Create secrets detection scan
    */
-  createSecretsDetectionScan(options: {
-    name: string
-    repositoryUrl: string
-  }): SecurityScan {
+  createSecretsDetectionScan(options: { name: string; repositoryUrl: string }): SecurityScan {
     return this.createScan({
       name: options.name,
       scanType: 'secrets_detection',
@@ -214,11 +198,11 @@ export class SecurityScanningManager {
       // Generate summary
       scan.summary = {
         totalFindings: findings.length,
-        criticalCount: findings.filter(f => f.severity === 'CRITICAL').length,
-        highCount: findings.filter(f => f.severity === 'HIGH').length,
-        mediumCount: findings.filter(f => f.severity === 'MEDIUM').length,
-        lowCount: findings.filter(f => f.severity === 'LOW').length,
-        infoCount: findings.filter(f => f.severity === 'INFO').length,
+        criticalCount: findings.filter((f) => f.severity === 'CRITICAL').length,
+        highCount: findings.filter((f) => f.severity === 'HIGH').length,
+        mediumCount: findings.filter((f) => f.severity === 'MEDIUM').length,
+        lowCount: findings.filter((f) => f.severity === 'LOW').length,
+        infoCount: findings.filter((f) => f.severity === 'INFO').length,
         executionTime: scan.completedAt.getTime() - scan.startedAt.getTime(),
       }
 
@@ -230,8 +214,7 @@ export class SecurityScanningManager {
       console.log(`    Low: ${scan.summary.lowCount}`)
 
       return scan
-    }
-catch (error) {
+    } catch (error) {
       scan.status = 'failed'
       scan.completedAt = new Date()
       throw error
@@ -258,7 +241,7 @@ catch (error) {
           status: 'OPEN',
           firstDetected: now,
           lastSeen: now,
-        })
+        }),
       )
 
       findings.push(
@@ -273,10 +256,9 @@ catch (error) {
           status: 'OPEN',
           firstDetected: now,
           lastSeen: now,
-        })
+        }),
       )
-    }
-else if (scan.scanType === 'secrets_detection') {
+    } else if (scan.scanType === 'secrets_detection') {
       findings.push(
         this.createFinding({
           severity: 'CRITICAL',
@@ -287,7 +269,7 @@ else if (scan.scanType === 'secrets_detection') {
           status: 'OPEN',
           firstDetected: now,
           lastSeen: now,
-        })
+        }),
       )
     }
 
@@ -381,7 +363,7 @@ else if (scan.scanType === 'secrets_detection') {
           severity: 'CRITICAL',
           resourceType: options.resourceType,
           resourceId: options.resourceId,
-        })
+        }),
       )
 
       checks.push(
@@ -395,7 +377,7 @@ else if (scan.scanType === 'secrets_detection') {
           resourceType: options.resourceType,
           resourceId: options.resourceId,
           remediation: 'Enable CloudTrail in all regions',
-        })
+        }),
       )
     }
 
@@ -421,15 +403,12 @@ else if (scan.scanType === 'secrets_detection') {
   /**
    * Assess security posture
    */
-  assessSecurityPosture(options: {
-    accountId: string
-    region: string
-  }): SecurityPosture {
+  assessSecurityPosture(options: { accountId: string; region: string }): SecurityPosture {
     const id = `posture-${Date.now()}-${this.postureCounter++}`
 
     // Calculate score based on compliance checks and findings
     const allChecks = Array.from(this.complianceChecks.values())
-    const passedChecks = allChecks.filter(c => c.status === 'PASS').length
+    const passedChecks = allChecks.filter((c) => c.status === 'PASS').length
     const totalChecks = allChecks.length
 
     const score = totalChecks > 0 ? Math.round((passedChecks / totalChecks) * 100) : 0
@@ -448,11 +427,7 @@ else if (scan.scanType === 'secrets_detection') {
       score,
       grade,
       assessedAt: new Date(),
-      strengths: [
-        'IAM password policy enforced',
-        'Multi-factor authentication enabled',
-        'CloudTrail logging enabled',
-      ],
+      strengths: ['IAM password policy enforced', 'Multi-factor authentication enabled', 'CloudTrail logging enabled'],
       weaknesses: [
         'Some S3 buckets are publicly accessible',
         'Security groups allow unrestricted ingress',
@@ -490,7 +465,7 @@ else if (scan.scanType === 'secrets_detection') {
    */
   getOpenFindings(severity?: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'): SecurityFinding[] {
     return Array.from(this.findings.values()).filter(
-      f => f.status === 'OPEN' && (!severity || f.severity === severity)
+      (f) => f.status === 'OPEN' && (!severity || f.severity === severity),
     )
   }
 
@@ -498,7 +473,7 @@ else if (scan.scanType === 'secrets_detection') {
    * Get compliance checks by status
    */
   getComplianceChecksByStatus(status: 'PASS' | 'FAIL' | 'WARNING' | 'NOT_APPLICABLE'): ComplianceCheck[] {
-    return Array.from(this.complianceChecks.values()).filter(c => c.status === status)
+    return Array.from(this.complianceChecks.values()).filter((c) => c.status === status)
   }
 
   /**

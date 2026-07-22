@@ -113,10 +113,7 @@ export class XRayManager {
   /**
    * Create Lambda X-Ray configuration
    */
-  createLambdaConfig(options: {
-    functionName: string
-    samplingRate?: number
-  }): XRayConfig {
+  createLambdaConfig(options: { functionName: string; samplingRate?: number }): XRayConfig {
     return this.createConfig({
       name: `${options.functionName}-xray`,
       serviceName: options.functionName,
@@ -128,11 +125,7 @@ export class XRayManager {
   /**
    * Create ECS X-Ray configuration
    */
-  createECSConfig(options: {
-    serviceName: string
-    clusterName: string
-    samplingRate?: number
-  }): XRayConfig {
+  createECSConfig(options: { serviceName: string; clusterName: string; samplingRate?: number }): XRayConfig {
     return this.createConfig({
       name: `${options.serviceName}-xray`,
       serviceName: `${options.clusterName}/${options.serviceName}`,
@@ -144,11 +137,7 @@ export class XRayManager {
   /**
    * Create API Gateway X-Ray configuration
    */
-  createAPIGatewayConfig(options: {
-    apiName: string
-    stage: string
-    samplingRate?: number
-  }): XRayConfig {
+  createAPIGatewayConfig(options: { apiName: string; stage: string; samplingRate?: number }): XRayConfig {
     return this.createConfig({
       name: `${options.apiName}-${options.stage}-xray`,
       serviceName: `${options.apiName}/${options.stage}`,
@@ -176,11 +165,7 @@ export class XRayManager {
   /**
    * Create high-priority sampling rule (always trace)
    */
-  createHighPrioritySamplingRule(options: {
-    ruleName: string
-    serviceName: string
-    urlPath: string
-  }): SamplingRule {
+  createHighPrioritySamplingRule(options: { ruleName: string; serviceName: string; urlPath: string }): SamplingRule {
     return this.createSamplingRule({
       ruleName: options.ruleName,
       priority: 100,
@@ -326,7 +311,7 @@ export class XRayManager {
    */
   createTrace(
     traceId: string,
-    spans: Array<{ spanId: string; name: string; duration: number; tags: Record<string, any> }>
+    spans: Array<{ spanId: string; name: string; duration: number; tags: Record<string, any> }>,
   ): {
     id: string
     traceId: string

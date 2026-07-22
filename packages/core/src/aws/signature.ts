@@ -12,8 +12,7 @@
 let nodeCrypto: typeof import('node:crypto') | undefined
 try {
   nodeCrypto = await import('node:crypto')
-}
-catch {
+} catch {
   // Running in browser - nodeCrypto stays undefined
 }
 
@@ -29,13 +28,13 @@ const MAX_CACHE_SIZE = 100
  * Service name mappings for hosts that don't follow standard naming
  */
 const HOST_SERVICES: Record<string, string> = {
-  'appstream2': 'appstream',
-  'cloudhsmv2': 'cloudhsm',
-  'email': 'ses',
-  'marketplace': 'aws-marketplace',
-  'mobile': 'AWSMobileHubService',
-  'pinpoint': 'mobiletargeting',
-  'queue': 'sqs',
+  appstream2: 'appstream',
+  cloudhsmv2: 'cloudhsm',
+  email: 'ses',
+  marketplace: 'aws-marketplace',
+  mobile: 'AWSMobileHubService',
+  pinpoint: 'mobiletargeting',
+  queue: 'sqs',
   'git-codecommit': 'codecommit',
   'mturk-requester-sandbox': 'mturk-requester',
   'personalize-runtime': 'personalize',
@@ -117,7 +116,7 @@ export interface RetryOptions {
  * Detect service and region from AWS URL
  * Supports standard AWS endpoints, Lambda URLs, R2, and Backblaze B2
  */
-export function detectServiceRegion(url: string | URL): { service: string, region: string } {
+export function detectServiceRegion(url: string | URL): { service: string; region: string } {
   const urlObj = typeof url === 'string' ? new URL(url) : url
   const { hostname, pathname } = urlObj
 
@@ -145,9 +144,7 @@ export function detectServiceRegion(url: string | URL): { service: string, regio
   }
 
   // Standard AWS endpoints: service.region.amazonaws.com
-  const match = hostname
-    .replace('dualstack.', '')
-    .match(/([^.]+)\.(?:([^.]+)\.)?amazonaws\.com(?:\.cn)?$/)
+  const match = hostname.replace('dualstack.', '').match(/([^.]+)\.(?:([^.]+)\.)?amazonaws\.com(?:\.cn)?$/)
 
   if (!match) {
     return { service: '', region: '' }
@@ -159,36 +156,28 @@ export function detectServiceRegion(url: string | URL): { service: string, regio
   // Handle special cases
   if (region === 'us-gov') {
     region = 'us-gov-west-1'
-  }
-else if (region === 's3' || region === 's3-accelerate') {
+  } else if (region === 's3' || region === 's3-accelerate') {
     region = 'us-east-1'
     service = 's3'
-  }
-else if (service === 'iot') {
+  } else if (service === 'iot') {
     if (hostname.startsWith('iot.')) {
       service = 'execute-api'
-    }
-else if (hostname.startsWith('data.jobs.iot.')) {
+    } else if (hostname.startsWith('data.jobs.iot.')) {
       service = 'iot-jobs-data'
-    }
-else {
+    } else {
       service = pathname === '/mqtt' ? 'iotdevicegateway' : 'iotdata'
     }
-  }
-else if (service === 'autoscaling') {
+  } else if (service === 'autoscaling') {
     // Could be application-autoscaling or autoscaling-plans based on target
     // Default to autoscaling
-  }
-else if (!region && service.startsWith('s3-')) {
+  } else if (!region && service.startsWith('s3-')) {
     region = service.slice(3).replace(/^fips-|^external-1/, '')
     service = 's3'
-  }
-else if (service.endsWith('-fips')) {
+  } else if (service.endsWith('-fips')) {
     service = service.slice(0, -5)
-  }
-else if (region && /-\d$/.test(service) && !/-\d$/.test(region)) {
+  } else if (region && /-\d$/.test(service) && !/-\d$/.test(region)) {
     // Swap service and region if they appear reversed
-    [service, region] = [region, service]
+    ;[service, region] = [region, service]
   }
 
   // Apply service name mappings
@@ -259,7 +248,7 @@ export function signRequest(options: SignatureOptions): SignedRequest {
   const query = canonicalQueryString(urlObj.searchParams)
 
   const headers: Record<string, string> = {
-    'host': host,
+    host: host,
     'x-amz-date': timestamp,
     ...options.headers,
   }
@@ -269,7 +258,7 @@ export function signRequest(options: SignatureOptions): SignedRequest {
   }
 
   // Add content-type for requests with body (case-insensitive check)
-  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type')
+  const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')
   if (body && !hasContentType) {
     headers['content-type'] = 'application/x-amz-json-1.0'
   }
@@ -283,35 +272,16 @@ export function signRequest(options: SignatureOptions): SignedRequest {
   const signedHeaders = getSignedHeaders(headers)
   const payloadHash = headers['x-amz-content-sha256'] || hash(body)
 
-  const canonicalRequest = [
-    method,
-    encodePath(path),
-    query,
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n')
+  const canonicalRequest = [method, encodePath(path), query, canonicalHeaders, signedHeaders, payloadHash].join('\n')
 
   // Step 2: Create string to sign
   const canonicalRequestHash = hash(canonicalRequest)
 
-  const stringToSign = [
-    algorithm,
-    timestamp,
-    credentialScope,
-    canonicalRequestHash,
-  ].join('\n')
+  const stringToSign = [algorithm, timestamp, credentialScope, canonicalRequestHash].join('\n')
 
   // Step 3: Calculate signature (with key caching for performance)
   const cache = options.cache ?? signingKeyCache
-  const signature = calculateSignature(
-    secretAccessKey,
-    date,
-    region,
-    service,
-    stringToSign,
-    cache,
-  )
+  const signature = calculateSignature(secretAccessKey, date, region, service, stringToSign, cache)
 
   // Step 4: Add authorization header
   const authorization = [
@@ -393,7 +363,7 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
   const query = canonicalQueryString(urlObj.searchParams)
 
   const headers: Record<string, string> = {
-    'host': host,
+    host: host,
     'x-amz-date': timestamp,
     ...options.headers,
   }
@@ -403,7 +373,7 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
   }
 
   // Add content-type for requests with body (case-insensitive check)
-  const hasContentType = Object.keys(headers).some(k => k.toLowerCase() === 'content-type')
+  const hasContentType = Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')
   if (body && !hasContentType) {
     headers['content-type'] = 'application/x-amz-json-1.0'
   }
@@ -418,35 +388,16 @@ export async function signRequestAsync(options: SignatureOptions): Promise<Signe
   const signedHeaders = getSignedHeaders(headers)
   const payloadHash = headers['x-amz-content-sha256'] || bodyHash
 
-  const canonicalRequest = [
-    method,
-    encodePath(path),
-    query,
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n')
+  const canonicalRequest = [method, encodePath(path), query, canonicalHeaders, signedHeaders, payloadHash].join('\n')
 
   // Step 2: Create string to sign
   const canonicalRequestHash = await hashAsync(canonicalRequest)
 
-  const stringToSign = [
-    algorithm,
-    timestamp,
-    credentialScope,
-    canonicalRequestHash,
-  ].join('\n')
+  const stringToSign = [algorithm, timestamp, credentialScope, canonicalRequestHash].join('\n')
 
   // Step 3: Calculate signature (with key caching for performance)
   const cache = options.cache ?? signingKeyCache
-  const signature = await calculateSignatureAsync(
-    secretAccessKey,
-    date,
-    region,
-    service,
-    stringToSign,
-    cache,
-  )
+  const signature = await calculateSignatureAsync(secretAccessKey, date, region, service, stringToSign, cache)
 
   // Step 4: Add authorization header
   const authorization = [
@@ -529,33 +480,14 @@ function signWithQueryString(params: {
   const canonicalHeaders = `host:${signedUrl.hostname}\n`
   const query = canonicalQueryString(signedUrl.searchParams)
 
-  const canonicalRequest = [
-    method,
-    path,
-    query,
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n')
+  const canonicalRequest = [method, path, query, canonicalHeaders, signedHeaders, payloadHash].join('\n')
 
   // Create string to sign
-  const stringToSign = [
-    algorithm,
-    timestamp,
-    credentialScope,
-    hash(canonicalRequest),
-  ].join('\n')
+  const stringToSign = [algorithm, timestamp, credentialScope, hash(canonicalRequest)].join('\n')
 
   // Calculate signature
   const signingCache = cache ?? signingKeyCache
-  const signature = calculateSignature(
-    secretAccessKey,
-    date,
-    region,
-    service,
-    stringToSign,
-    signingCache,
-  )
+  const signature = calculateSignature(secretAccessKey, date, region, service, stringToSign, signingCache)
 
   // Add signature to URL
   signedUrl.searchParams.set('X-Amz-Signature', signature)
@@ -632,33 +564,14 @@ async function signWithQueryStringAsync(params: {
   const canonicalHeaders = `host:${signedUrl.hostname}\n`
   const query = canonicalQueryString(signedUrl.searchParams)
 
-  const canonicalRequest = [
-    method,
-    path,
-    query,
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join('\n')
+  const canonicalRequest = [method, path, query, canonicalHeaders, signedHeaders, payloadHash].join('\n')
 
   // Create string to sign
-  const stringToSign = [
-    algorithm,
-    timestamp,
-    credentialScope,
-    await hashAsync(canonicalRequest),
-  ].join('\n')
+  const stringToSign = [algorithm, timestamp, credentialScope, await hashAsync(canonicalRequest)].join('\n')
 
   // Calculate signature
   const signingCache = cache ?? signingKeyCache
-  const signature = await calculateSignatureAsync(
-    secretAccessKey,
-    date,
-    region,
-    service,
-    stringToSign,
-    signingCache,
-  )
+  const signature = await calculateSignatureAsync(secretAccessKey, date, region, service, stringToSign, signingCache)
 
   // Add signature to URL
   signedUrl.searchParams.set('X-Amz-Signature', signature)
@@ -675,12 +588,7 @@ async function signWithQueryStringAsync(params: {
  * Generate a presigned URL for AWS requests (e.g., S3 GetObject, PutObject)
  */
 export function createPresignedUrl(options: PresignedUrlOptions): string {
-  const {
-    url,
-    method = 'GET',
-    expiresIn = 3600,
-    ...rest
-  } = options
+  const { url, method = 'GET', expiresIn = 3600, ...rest } = options
 
   // Max expiration is 7 days for most services
   const clampedExpires = Math.min(expiresIn, 604800)
@@ -700,12 +608,7 @@ export function createPresignedUrl(options: PresignedUrlOptions): string {
  * Generate a presigned URL for AWS requests (async - browser compatible)
  */
 export async function createPresignedUrlAsync(options: PresignedUrlOptions): Promise<string> {
-  const {
-    url,
-    method = 'GET',
-    expiresIn = 3600,
-    ...rest
-  } = options
+  const { url, method = 'GET', expiresIn = 3600, ...rest } = options
 
   // Max expiration is 7 days for most services
   const clampedExpires = Math.min(expiresIn, 604800)
@@ -725,10 +628,12 @@ export async function createPresignedUrlAsync(options: PresignedUrlOptions): Pro
  * Create canonical headers string
  */
 function getCanonicalHeaders(headers: Record<string, string>): string {
-  return Object.keys(headers)
-    .sort()
-    .map(key => `${key.toLowerCase()}:${headers[key].trim().replace(/\s+/g, ' ')}`)
-    .join('\n') + '\n'
+  return (
+    Object.keys(headers)
+      .sort()
+      .map((key) => `${key.toLowerCase()}:${headers[key].trim().replace(/\s+/g, ' ')}`)
+      .join('\n') + '\n'
+  )
 }
 
 /**
@@ -737,7 +642,7 @@ function getCanonicalHeaders(headers: Record<string, string>): string {
 function getSignedHeaders(headers: Record<string, string>): string {
   return Object.keys(headers)
     .sort()
-    .map(key => key.toLowerCase())
+    .map((key) => key.toLowerCase())
     .join(';')
 }
 
@@ -768,7 +673,7 @@ function canonicalQueryString(params: URLSearchParams): string {
 function encodePath(path: string): string {
   return path
     .split('/')
-    .map(segment => encodeRfc3986(segment))
+    .map((segment) => encodeRfc3986(segment))
     .join('/')
 }
 
@@ -776,7 +681,7 @@ function encodePath(path: string): string {
  * RFC 3986 URI encoding (stricter than encodeURIComponent)
  */
 function encodeRfc3986(str: string): string {
-  return encodeURIComponent(str).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+  return encodeURIComponent(str).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
 }
 
 /**
@@ -834,7 +739,7 @@ async function hmacAsync(key: Uint8Array | string, data: string): Promise<Uint8A
  */
 function bufferToHex(buffer: Uint8Array): string {
   return Array.from(buffer)
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('')
 }
 
@@ -866,8 +771,7 @@ function calculateSignature(
     if (cache.size >= MAX_CACHE_SIZE) {
       // Remove oldest entry (first key)
       const firstKey = cache.keys().next().value
-      if (firstKey)
-        cache.delete(firstKey)
+      if (firstKey) cache.delete(firstKey)
     }
 
     cache.set(cacheKey, kSigning)
@@ -904,8 +808,7 @@ async function calculateSignatureAsync(
     if (cache.size >= MAX_CACHE_SIZE) {
       // Remove oldest entry (first key)
       const firstKey = cache.keys().next().value
-      if (firstKey)
-        cache.delete(firstKey)
+      if (firstKey) cache.delete(firstKey)
     }
 
     cache.set(cacheKey, kSigning)
@@ -935,16 +838,13 @@ function calculateBackoff(attempt: number, initialDelayMs: number, maxDelayMs: n
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
  * Make a signed AWS API request with automatic retry
  */
-export async function makeAWSRequest(
-  options: SignatureOptions,
-  retryOptions?: RetryOptions,
-): Promise<Response> {
+export async function makeAWSRequest(options: SignatureOptions, retryOptions?: RetryOptions): Promise<Response> {
   const {
     maxRetries = 3,
     initialDelayMs = 100,
@@ -994,8 +894,7 @@ export async function makeAWSRequest(
       // Non-retryable error or max retries reached
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
-    }
-catch (error) {
+    } catch (error) {
       clearTimeout(timeoutId)
       lastError = error as Error
 
@@ -1022,9 +921,7 @@ catch (error) {
 /**
  * Make a signed AWS API request without retry (for backwards compatibility)
  */
-export async function makeAWSRequestOnce(
-  options: SignatureOptions,
-): Promise<Response> {
+export async function makeAWSRequestOnce(options: SignatureOptions): Promise<Response> {
   return makeAWSRequest(options, { maxRetries: 0 })
 }
 
@@ -1032,10 +929,7 @@ export async function makeAWSRequestOnce(
  * Make a signed AWS API request with automatic retry (async - browser compatible)
  * Use this in browser environments where crypto.subtle is available
  */
-export async function makeAWSRequestAsync(
-  options: SignatureOptions,
-  retryOptions?: RetryOptions,
-): Promise<Response> {
+export async function makeAWSRequestAsync(options: SignatureOptions, retryOptions?: RetryOptions): Promise<Response> {
   const {
     maxRetries = 3,
     initialDelayMs = 100,
@@ -1083,8 +977,7 @@ export async function makeAWSRequestAsync(
       // Non-retryable error or max retries reached
       const errorText = await response.text()
       throw new Error(`AWS API request failed (${response.status}): ${errorText}`)
-    }
-catch (error) {
+    } catch (error) {
       clearTimeout(timeoutId)
       lastError = error as Error
 
@@ -1133,7 +1026,7 @@ export async function parseXMLResponse<T = any>(response: Response): Promise<T> 
  * Parse JSON response from AWS
  */
 export async function parseJSONResponse<T = any>(response: Response): Promise<T> {
-  return await response.json() as T
+  return (await response.json()) as T
 }
 
 /**

@@ -11,12 +11,7 @@ export function createJamstackPreset(options: {
   domain: string
   apiDomain?: string
 }): Partial<CloudConfig> {
-  const {
-    name,
-    slug,
-    domain,
-    apiDomain,
-  } = options
+  const { name, slug, domain, apiDomain } = options
 
   return {
     project: {
@@ -38,15 +33,19 @@ export function createJamstackPreset(options: {
           versioning: true,
           website: true,
           encryption: false,
-          cors: [{
-            allowedOrigins: ['*'],
-            allowedMethods: ['GET', 'HEAD'],
-          }],
-          lifecycleRules: [{
-            id: 'DeleteOldVersions',
-            enabled: true,
-            expirationDays: 90, // Clean up old versions after 90 days
-          }],
+          cors: [
+            {
+              allowedOrigins: ['*'],
+              allowedMethods: ['GET', 'HEAD'],
+            },
+          ],
+          lifecycleRules: [
+            {
+              id: 'DeleteOldVersions',
+              enabled: true,
+              expirationDays: 90, // Clean up old versions after 90 days
+            },
+          ],
         },
       },
       cdn: {
@@ -67,11 +66,13 @@ export function createJamstackPreset(options: {
           500: '/500.html',
         },
         // Lambda@Edge for SSR/ISR
-        edgeFunctions: [{
-          eventType: 'origin-request',
-          functionArn: 'TO_BE_CREATED',
-          name: 'ssr-handler',
-        }],
+        edgeFunctions: [
+          {
+            eventType: 'origin-request',
+            functionArn: 'TO_BE_CREATED',
+            name: 'ssr-handler',
+          },
+        ],
       },
       functions: {
         ssr: {
@@ -81,32 +82,38 @@ export function createJamstackPreset(options: {
           timeout: 5, // Edge functions have strict limits
         },
         // API routes as Lambda functions
-        ...(apiDomain ? {
-          api: {
-            runtime: 'nodejs20.x',
-            handler: 'dist/api/index.handler',
-            memory: 1024,
-            timeout: 30,
-            events: [{
-              type: 'http',
-              path: '/{proxy+}',
-              method: 'ANY',
-            }],
-          },
-        } : {}),
+        ...(apiDomain
+          ? {
+              api: {
+                runtime: 'nodejs20.x',
+                handler: 'dist/api/index.handler',
+                memory: 1024,
+                timeout: 30,
+                events: [
+                  {
+                    type: 'http',
+                    path: '/{proxy+}',
+                    method: 'ANY',
+                  },
+                ],
+              },
+            }
+          : {}),
       },
-      apiGateway: apiDomain ? {
-        type: 'HTTP',
-        customDomain: {
-          domain: apiDomain,
-          certificateArn: 'TO_BE_GENERATED',
-        },
-        cors: {
-          allowOrigins: [domain],
-          allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
-          allowHeaders: ['Content-Type', 'Authorization'],
-        },
-      } : undefined,
+      apiGateway: apiDomain
+        ? {
+            type: 'HTTP',
+            customDomain: {
+              domain: apiDomain,
+              certificateArn: 'TO_BE_GENERATED',
+            },
+            cors: {
+              allowOrigins: [domain],
+              allowMethods: ['GET', 'POST', 'PUT', 'DELETE'],
+              allowHeaders: ['Content-Type', 'Authorization'],
+            },
+          }
+        : undefined,
       databases: {
         dynamodb: {
           tables: {

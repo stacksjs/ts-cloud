@@ -6,7 +6,8 @@ export interface AlarmConfig {
   metric: string
   threshold: number
   evaluationPeriods?: number
-  comparisonOperator?: 'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
+  comparisonOperator?:
+    'GreaterThanThreshold' | 'LessThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanOrEqualToThreshold'
   statistic?: 'Average' | 'Sum' | 'Minimum' | 'Maximum' | 'SampleCount'
   period?: number
   treatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
@@ -20,7 +21,7 @@ export interface MonitoringConfig {
     name: string
     widgets?: Array<{
       type: 'metric' | 'log' | 'text'
-      metrics?: string[] | Array<{ service?: string, metric: string }>
+      metrics?: string[] | Array<{ service?: string; metric: string }>
       logGroup?: string
       text?: string
       width?: number
@@ -37,18 +38,13 @@ export interface MonitoringConfig {
 /**
  * Add CloudWatch monitoring resources to CloudFormation template
  */
-export function addMonitoringResources(
-  builder: CloudFormationBuilder,
-  config: MonitoringConfig,
-): void {
+export function addMonitoringResources(builder: CloudFormationBuilder, config: MonitoringConfig): void {
   // SNS Topic for alarms
   if (config.alarms && config.alarms.length > 0) {
     builder.addResource('AlarmTopic', 'AWS::SNS::Topic', {
       TopicName: Fn.sub('${AWS::StackName}-alarms'),
       DisplayName: 'CloudWatch Alarms',
-      Tags: [
-        { Key: 'Name', Value: Fn.sub('${AWS::StackName}-alarms') },
-      ],
+      Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-alarms') }],
     })
 
     // Add alarms
@@ -64,7 +60,7 @@ export function addMonitoringResources(
 
   // Log Groups
   if (config.logs?.groups) {
-    config.logs.groups.forEach(group => {
+    config.logs.groups.forEach((group) => {
       addLogGroup(builder, group, config.logs?.retention)
     })
   }
@@ -73,11 +69,7 @@ export function addMonitoringResources(
 /**
  * Add CloudWatch alarm
  */
-function addCloudWatchAlarm(
-  builder: CloudFormationBuilder,
-  config: AlarmConfig,
-  index: number,
-): void {
+function addCloudWatchAlarm(builder: CloudFormationBuilder, config: AlarmConfig, index: number): void {
   const alarmId = builder.toLogicalId(`alarm-${config.name || config.metric}-${index}`)
 
   const alarmProperties: Record<string, any> = {
@@ -101,8 +93,7 @@ function addCloudWatchAlarm(
       Name: name,
       Value: value,
     }))
-  }
-  else if (config.service) {
+  } else if (config.service) {
     // Auto-generate dimensions based on service
     alarmProperties.Dimensions = generateDimensionsForService(config.service)
   }
@@ -115,10 +106,7 @@ function addCloudWatchAlarm(
 /**
  * Add CloudWatch Dashboard
  */
-function addCloudWatchDashboard(
-  builder: CloudFormationBuilder,
-  config: MonitoringConfig['dashboard'],
-): void {
+function addCloudWatchDashboard(builder: CloudFormationBuilder, config: MonitoringConfig['dashboard']): void {
   if (!config) return
 
   const widgets: any[] = []
@@ -126,18 +114,17 @@ function addCloudWatchDashboard(
   let y = 0
 
   // Build dashboard widgets
-  config.widgets?.forEach(widget => {
+  config.widgets?.forEach((widget) => {
     const width = widget.width || 12
     const height = widget.height || 6
 
     if (widget.type === 'metric' && widget.metrics) {
-      const metrics = widget.metrics.map(metric => {
+      const metrics = widget.metrics.map((metric) => {
         if (typeof metric === 'string') {
           // Simple metric name - infer namespace
           const namespace = getNamespaceForMetric(metric)
           return [namespace, metric]
-        }
-        else {
+        } else {
           // Metric with service specified
           const namespace = getNamespaceForMetric(metric.metric, metric.service)
           return [namespace, metric.metric]
@@ -155,15 +142,15 @@ function addCloudWatchDashboard(
           period: 300,
           stat: 'Average',
           region: Fn.ref('AWS::Region'),
-          title: widget.metrics.length > 1
-            ? 'Multiple Metrics'
-            : typeof widget.metrics[0] === 'string'
-              ? widget.metrics[0]
-              : widget.metrics[0].metric,
+          title:
+            widget.metrics.length > 1
+              ? 'Multiple Metrics'
+              : typeof widget.metrics[0] === 'string'
+                ? widget.metrics[0]
+                : widget.metrics[0].metric,
         },
       })
-    }
-    else if (widget.type === 'log' && widget.logGroup) {
+    } else if (widget.type === 'log' && widget.logGroup) {
       widgets.push({
         type: 'log',
         x,
@@ -176,8 +163,7 @@ function addCloudWatchDashboard(
           title: `Logs: ${widget.logGroup}`,
         },
       })
-    }
-    else if (widget.type === 'text' && widget.text) {
+    } else if (widget.type === 'text' && widget.text) {
       widgets.push({
         type: 'text',
         x,
@@ -217,19 +203,13 @@ function addCloudWatchDashboard(
 /**
  * Add CloudWatch Log Group
  */
-function addLogGroup(
-  builder: CloudFormationBuilder,
-  groupName: string,
-  retention?: number,
-): void {
+function addLogGroup(builder: CloudFormationBuilder, groupName: string, retention?: number): void {
   const logicalId = builder.toLogicalId(`${groupName}-log-group`)
 
   builder.addResource(logicalId, 'AWS::Logs::LogGroup', {
     LogGroupName: Fn.sub(`/aws/\${AWS::StackName}/${groupName}`),
     RetentionInDays: retention || 14,
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${groupName}`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${groupName}`) }],
   })
 }
 
@@ -239,20 +219,20 @@ function addLogGroup(
 function getNamespaceForMetric(metric: string, service?: string): string {
   if (service) {
     const namespaceMap: Record<string, string> = {
-      'ec2': 'AWS/EC2',
-      'ecs': 'AWS/ECS',
-      'lambda': 'AWS/Lambda',
-      'rds': 'AWS/RDS',
-      'dynamodb': 'AWS/DynamoDB',
-      's3': 'AWS/S3',
-      'cloudfront': 'AWS/CloudFront',
-      'alb': 'AWS/ApplicationELB',
-      'nlb': 'AWS/NetworkELB',
-      'apigateway': 'AWS/ApiGateway',
-      'sqs': 'AWS/SQS',
-      'sns': 'AWS/SNS',
-      'kinesis': 'AWS/Kinesis',
-      'elasticache': 'AWS/ElastiCache',
+      ec2: 'AWS/EC2',
+      ecs: 'AWS/ECS',
+      lambda: 'AWS/Lambda',
+      rds: 'AWS/RDS',
+      dynamodb: 'AWS/DynamoDB',
+      s3: 'AWS/S3',
+      cloudfront: 'AWS/CloudFront',
+      alb: 'AWS/ApplicationELB',
+      nlb: 'AWS/NetworkELB',
+      apigateway: 'AWS/ApiGateway',
+      sqs: 'AWS/SQS',
+      sns: 'AWS/SNS',
+      kinesis: 'AWS/Kinesis',
+      elasticache: 'AWS/ElastiCache',
     }
     return namespaceMap[service.toLowerCase()] || 'AWS/CloudWatch'
   }
@@ -284,16 +264,16 @@ function getNamespaceForMetric(metric: string, service?: string): string {
  */
 function generateDimensionsForService(service: string): any[] {
   const dimensionMap: Record<string, any[]> = {
-    'ec2': [{ Name: 'InstanceId', Value: Fn.ref('EC2Instance') }],
-    'ecs': [
+    ec2: [{ Name: 'InstanceId', Value: Fn.ref('EC2Instance') }],
+    ecs: [
       { Name: 'ClusterName', Value: Fn.ref('ECSCluster') },
       { Name: 'ServiceName', Value: Fn.getAtt('ECSService', 'Name') },
     ],
-    'lambda': [{ Name: 'FunctionName', Value: Fn.ref('LambdaFunction') }],
-    'rds': [{ Name: 'DBInstanceIdentifier', Value: Fn.ref('Database') }],
-    'dynamodb': [{ Name: 'TableName', Value: Fn.ref('DynamoDBTable') }],
-    'alb': [{ Name: 'LoadBalancer', Value: Fn.getAtt('LoadBalancer', 'LoadBalancerFullName') }],
-    'apigateway': [{ Name: 'ApiName', Value: Fn.ref('HttpApi') }],
+    lambda: [{ Name: 'FunctionName', Value: Fn.ref('LambdaFunction') }],
+    rds: [{ Name: 'DBInstanceIdentifier', Value: Fn.ref('Database') }],
+    dynamodb: [{ Name: 'TableName', Value: Fn.ref('DynamoDBTable') }],
+    alb: [{ Name: 'LoadBalancer', Value: Fn.getAtt('LoadBalancer', 'LoadBalancerFullName') }],
+    apigateway: [{ Name: 'ApiName', Value: Fn.ref('HttpApi') }],
   }
 
   return dimensionMap[service.toLowerCase()] || []

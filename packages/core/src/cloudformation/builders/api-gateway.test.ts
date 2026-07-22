@@ -8,7 +8,11 @@ function template(dnsProvider?: 'route53' | 'external') {
     infrastructure: {
       apiGateway: {
         type: 'http',
-        customDomain: { domain: 'api.example.com', certificateArn: 'arn:aws:acm:us-east-1:123:certificate/one', dnsProvider },
+        customDomain: {
+          domain: 'api.example.com',
+          certificateArn: 'arn:aws:acm:us-east-1:123:certificate/one',
+          dnsProvider,
+        },
       },
     } as any,
   }).build()
@@ -25,6 +29,8 @@ describe('API Gateway custom domain DNS ownership', () => {
     const result = template('external')
     expect(result.Resources.ApiDNSRecord).toBeUndefined()
     expect(result.Resources.ApiCustomDomain).toBeDefined()
-    expect(result.Outputs?.ApiCustomDomainTarget?.Value).toEqual({ 'Fn::GetAtt': ['ApiCustomDomain', 'RegionalDomainName'] })
+    expect(result.Outputs?.ApiCustomDomainTarget?.Value).toEqual({
+      'Fn::GetAtt': ['ApiCustomDomain', 'RegionalDomainName'],
+    })
   })
 })

@@ -75,9 +75,7 @@ export class BatchProcessingManager {
   /**
    * Create high-throughput batch config
    */
-  createHighThroughputConfig(options: {
-    queueUrl: string
-  }): BatchConfig {
+  createHighThroughputConfig(options: { queueUrl: string }): BatchConfig {
     return this.createBatchConfig({
       queueUrl: options.queueUrl,
       batchSize: 10, // Max for SQS
@@ -91,9 +89,7 @@ export class BatchProcessingManager {
   /**
    * Create low-latency batch config
    */
-  createLowLatencyConfig(options: {
-    queueUrl: string
-  }): BatchConfig {
+  createLowLatencyConfig(options: { queueUrl: string }): BatchConfig {
     return this.createBatchConfig({
       queueUrl: options.queueUrl,
       batchSize: 1,
@@ -107,10 +103,7 @@ export class BatchProcessingManager {
   /**
    * Create batch job
    */
-  createBatchJob(options: {
-    configId: string
-    messageCount: number
-  }): BatchJob {
+  createBatchJob(options: { configId: string; messageCount: number }): BatchJob {
     const id = `batch-job-${Date.now()}-${this.jobCounter++}`
 
     const config = this.configs.get(options.configId)
@@ -172,8 +165,8 @@ export class BatchProcessingManager {
     }
 
     // Update job status
-    job.processedCount = job.messages.filter(m => m.status === 'success').length
-    job.failedCount = job.messages.filter(m => m.status === 'failed').length
+    job.processedCount = job.messages.filter((m) => m.status === 'success').length
+    job.failedCount = job.messages.filter((m) => m.status === 'failed').length
     job.status = job.failedCount === 0 ? 'completed' : 'failed'
     job.completedAt = new Date()
 
@@ -187,7 +180,7 @@ export class BatchProcessingManager {
    * Process single batch
    */
   private async processBatch(messages: BatchMessage[], config: BatchConfig): Promise<void> {
-    const promises = messages.map(msg => this.processMessage(msg, config))
+    const promises = messages.map((msg) => this.processMessage(msg, config))
     await Promise.all(promises)
   }
 
@@ -200,7 +193,7 @@ export class BatchProcessingManager {
     const startTime = Date.now()
 
     // Simulate processing with random delay
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 100))
+    await new Promise((resolve) => setTimeout(resolve, Math.random() * 100))
 
     const processingTime = Date.now() - startTime
     message.processingTime = processingTime
@@ -210,8 +203,7 @@ export class BatchProcessingManager {
 
     if (success) {
       message.status = 'success'
-    }
-else {
+    } else {
       message.status = 'failed'
       message.error = 'Processing error'
     }
@@ -234,24 +226,17 @@ else {
   private collectProcessorMetrics(configId: string, job: BatchJob): void {
     const id = `metrics-${Date.now()}-${this.metricsCounter++}`
 
-    const successfulMessages = job.messages.filter(m => m.status === 'success')
-    const processingTimes = successfulMessages
-      .map(m => m.processingTime || 0)
-      .filter(t => t > 0)
+    const successfulMessages = job.messages.filter((m) => m.status === 'success')
+    const processingTimes = successfulMessages.map((m) => m.processingTime || 0).filter((t) => t > 0)
 
-    const averageProcessingTime = processingTimes.length > 0
-      ? processingTimes.reduce((sum, t) => sum + t, 0) / processingTimes.length
-      : 0
+    const averageProcessingTime =
+      processingTimes.length > 0 ? processingTimes.reduce((sum, t) => sum + t, 0) / processingTimes.length : 0
 
-    const duration = job.completedAt && job.startedAt
-      ? (job.completedAt.getTime() - job.startedAt.getTime()) / 1000
-      : 1
+    const duration = job.completedAt && job.startedAt ? (job.completedAt.getTime() - job.startedAt.getTime()) / 1000 : 1
 
     const throughput = job.processedCount / duration
 
-    const errorRate = job.messages.length > 0
-      ? (job.failedCount / job.messages.length) * 100
-      : 0
+    const errorRate = job.messages.length > 0 ? (job.failedCount / job.messages.length) * 100 : 0
 
     const metrics: ProcessorMetrics = {
       id,
@@ -293,7 +278,8 @@ else {
     const totalMessagesProcessed = metricsHistory.reduce((sum, m) => sum + m.messagesProcessed, 0)
     const averageThroughput = metricsHistory.reduce((sum, m) => sum + m.throughput, 0) / metricsHistory.length
     const averageErrorRate = metricsHistory.reduce((sum, m) => sum + m.errorRate, 0) / metricsHistory.length
-    const averageProcessingTime = metricsHistory.reduce((sum, m) => sum + m.averageProcessingTime, 0) / metricsHistory.length
+    const averageProcessingTime =
+      metricsHistory.reduce((sum, m) => sum + m.averageProcessingTime, 0) / metricsHistory.length
 
     return {
       totalJobsProcessed: metricsHistory.length,
@@ -362,7 +348,7 @@ else {
     let jobs = Array.from(this.jobs.values())
 
     if (configId) {
-      jobs = jobs.filter(j => j.configId === configId)
+      jobs = jobs.filter((j) => j.configId === configId)
     }
 
     return jobs

@@ -211,18 +211,14 @@ export class LambdaDestinationsManager {
     error?: string
   }): DestinationRecord | null {
     // Find destination config
-    const destination = Array.from(this.destinations.values()).find(
-      d => d.functionName === options.functionName
-    )
+    const destination = Array.from(this.destinations.values()).find((d) => d.functionName === options.functionName)
 
     if (!destination) {
       return null
     }
 
     const destinationConfig =
-      options.status === 'success'
-        ? destination.successDestination
-        : destination.failureDestination
+      options.status === 'success' ? destination.successDestination : destination.failureDestination
 
     if (!destinationConfig) {
       return null
@@ -259,9 +255,7 @@ export class LambdaDestinationsManager {
    */
   listDestinations(functionName?: string): LambdaDestination[] {
     const destinations = Array.from(this.destinations.values())
-    return functionName
-      ? destinations.filter(d => d.functionName === functionName)
-      : destinations
+    return functionName ? destinations.filter((d) => d.functionName === functionName) : destinations
   }
 
   /**
@@ -269,9 +263,7 @@ export class LambdaDestinationsManager {
    */
   getDestinationRecords(functionName?: string): DestinationRecord[] {
     const records = Array.from(this.records.values())
-    return functionName
-      ? records.filter(r => r.functionName === functionName)
-      : records
+    return functionName ? records.filter((r) => r.functionName === functionName) : records
   }
 
   /**

@@ -48,13 +48,15 @@ export function createNodeJsServerlessPreset(options: {
           taskDefinition: {
             cpu: taskCpu,
             memory: taskMemory,
-            containerDefinitions: [{
-              name: 'app',
-              image: `${slug}-app:latest`,
-              portMappings: [{ containerPort: 3000 }],
-              environment: [],
-              secrets: [],
-            }],
+            containerDefinitions: [
+              {
+                name: 'app',
+                image: `${slug}-app:latest`,
+                portMappings: [{ containerPort: 3000 }],
+                environment: [],
+                secrets: [],
+              },
+            ],
           },
           service: {
             desiredCount,
@@ -96,18 +98,22 @@ export function createNodeJsServerlessPreset(options: {
           handler: 'dist/workers/queue.handler',
           memory: 512,
           timeout: 60,
-          events: [{
-            type: 'sqs',
-            queueName: `${slug}-queue`,
-          }],
+          events: [
+            {
+              type: 'sqs',
+              queueName: `${slug}-queue`,
+            },
+          ],
         },
       },
       security: {
-        certificate: domain ? {
-          domain,
-          subdomains: [`*.${domain}`],
-          validationMethod: 'DNS',
-        } : undefined,
+        certificate: domain
+          ? {
+              domain,
+              subdomains: [`*.${domain}`],
+              validationMethod: 'DNS',
+            }
+          : undefined,
       },
     },
   }

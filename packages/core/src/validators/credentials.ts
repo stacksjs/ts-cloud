@@ -2,9 +2,8 @@
  * AWS Credentials Validation
  * Validate credentials before deployment
  */
-
 import type { AWSCredentials } from '../aws/credentials'
-import { resolveCredentials, getAccountId } from '../aws/credentials'
+import { getAccountId, resolveCredentials } from '../aws/credentials'
 import { CredentialError, DebugLogger } from '../errors'
 
 export interface CredentialValidationResult {
@@ -17,9 +16,7 @@ export interface CredentialValidationResult {
 /**
  * Validate AWS credentials
  */
-export async function validateCredentials(
-  profile: string = 'default',
-): Promise<CredentialValidationResult> {
+export async function validateCredentials(profile: string = 'default'): Promise<CredentialValidationResult> {
   try {
     DebugLogger.verbose('Resolving AWS credentials...')
 
@@ -44,28 +41,18 @@ export async function validateCredentials(
       accountId = await getAccountId(credentials)
       DebugLogger.verbose('Credentials are valid')
       DebugLogger.debug('Account ID:', accountId)
-    }
-    catch (error) {
+    } catch (error) {
       if (error instanceof Error) {
         if (error.message.includes('InvalidClientTokenId')) {
-          throw new CredentialError(
-            'Invalid AWS access key ID',
-            'Check that your AWS_ACCESS_KEY_ID is correct',
-          )
-        }
-        else if (error.message.includes('SignatureDoesNotMatch')) {
-          throw new CredentialError(
-            'Invalid AWS secret access key',
-            'Check that your AWS_SECRET_ACCESS_KEY is correct',
-          )
-        }
-        else if (error.message.includes('ExpiredToken')) {
+          throw new CredentialError('Invalid AWS access key ID', 'Check that your AWS_ACCESS_KEY_ID is correct')
+        } else if (error.message.includes('SignatureDoesNotMatch')) {
+          throw new CredentialError('Invalid AWS secret access key', 'Check that your AWS_SECRET_ACCESS_KEY is correct')
+        } else if (error.message.includes('ExpiredToken')) {
           throw new CredentialError(
             'AWS credentials have expired',
             'Refresh your temporary credentials or use long-term credentials',
           )
-        }
-        else {
+        } else {
           throw new CredentialError(
             `Failed to validate credentials: ${error.message}`,
             'Verify your AWS credentials are correct and have the necessary permissions',
@@ -80,8 +67,7 @@ export async function validateCredentials(
       accountId,
       region: credentials.region,
     }
-  }
-  catch (error) {
+  } catch (error) {
     if (error instanceof CredentialError) {
       throw error
     }
@@ -99,7 +85,7 @@ export async function validateCredentials(
 export async function checkIAMPermissions(
   _credentials: AWSCredentials,
   requiredActions: string[],
-): Promise<{ allowed: string[], denied: string[] }> {
+): Promise<{ allowed: string[]; denied: string[] }> {
   // TODO: Implement using IAM SimulatePrincipalPolicy API
   // For now, return all as allowed
   return {
@@ -222,12 +208,18 @@ export function getRequiredPermissions(config: any): string[] {
 export function suggestIAMPolicy(config: any): string {
   const permissions = getRequiredPermissions(config)
 
-  return JSON.stringify({
-    Version: '2012-10-17',
-    Statement: [{
-      Effect: 'Allow',
-      Action: permissions,
-      Resource: '*',
-    }],
-  }, null, 2)
+  return JSON.stringify(
+    {
+      Version: '2012-10-17',
+      Statement: [
+        {
+          Effect: 'Allow',
+          Action: permissions,
+          Resource: '*',
+        },
+      ],
+    },
+    null,
+    2,
+  )
 }

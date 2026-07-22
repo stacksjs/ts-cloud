@@ -312,7 +312,7 @@ describe('PreviewEnvironmentManager', () => {
       })
 
       // Wait a tiny bit to ensure different creation times
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 10))
 
       const env2 = await manager.createPreviewEnvironment({
         branch: 'feature/payments',
@@ -322,7 +322,7 @@ describe('PreviewEnvironmentManager', () => {
         } as any,
       })
 
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await new Promise((resolve) => setTimeout(resolve, 10))
 
       const env3 = await manager.createPreviewEnvironment({
         branch: 'feature/search',

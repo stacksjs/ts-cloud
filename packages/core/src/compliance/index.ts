@@ -4,24 +4,12 @@
  */
 
 // AWS Config
-export {
-  AWSConfigManager,
-  awsConfigManager,
-} from './aws-config'
+export { AWSConfigManager, awsConfigManager } from './aws-config'
 
-export type {
-  ConfigRule,
-  ConfigScope,
-  ConfigRecorder,
-  RecordingGroup,
-  DeliveryChannel,
-} from './aws-config'
+export type { ConfigRule, ConfigScope, ConfigRecorder, RecordingGroup, DeliveryChannel } from './aws-config'
 
 // CloudTrail
-export {
-  CloudTrailManager,
-  cloudTrailManager,
-} from './cloudtrail'
+export { CloudTrailManager, cloudTrailManager } from './cloudtrail'
 
 export type {
   CloudTrailConfig,
@@ -33,10 +21,7 @@ export type {
 } from './cloudtrail'
 
 // GuardDuty
-export {
-  GuardDutyManager,
-  guardDutyManager,
-} from './guardduty'
+export { GuardDutyManager, guardDutyManager } from './guardduty'
 
 export type {
   GuardDutyDetector,
@@ -49,10 +34,7 @@ export type {
 } from './guardduty'
 
 // Security Hub
-export {
-  SecurityHubManager,
-  securityHubManager,
-} from './security-hub'
+export { SecurityHubManager, securityHubManager } from './security-hub'
 
 export type {
   SecurityHubConfig,

@@ -1,18 +1,18 @@
 import type { CloudConfig } from '../types'
-import type { CloudFormationTemplate, CloudFormationResource } from './types'
-import { Fn } from './types'
-import { addNetworkResources } from './builders/network'
-import { addStorageResources } from './builders/storage'
+import type { CloudFormationResource, CloudFormationTemplate } from './types'
+import { addApiGatewayResources } from './builders/api-gateway'
+import { addCacheResources } from './builders/cache'
+import { addCDNResources } from './builders/cdn'
 import { addComputeResources } from './builders/compute'
 import { addDatabaseResources } from './builders/database'
 import { addFunctionResources } from './builders/functions'
-import { addCacheResources } from './builders/cache'
-import { addQueueResources } from './builders/queue'
 import { addMessagingResources } from './builders/messaging'
-import { addCDNResources } from './builders/cdn'
-import { addApiGatewayResources } from './builders/api-gateway'
 import { addMonitoringResources } from './builders/monitoring'
+import { addNetworkResources } from './builders/network'
+import { addQueueResources } from './builders/queue'
 import { addSecurityResources } from './builders/security'
+import { addStorageResources } from './builders/storage'
+import { Fn } from './types'
 
 /**
  * CloudFormation Template Builder
@@ -269,7 +269,7 @@ export class CloudFormationBuilder {
     }
 
     const deps = Array.isArray(dependencies) ? dependencies : [dependencies]
-    deps.forEach(dep => this.resourceDependencies.get(resource)!.add(dep))
+    deps.forEach((dep) => this.resourceDependencies.get(resource)!.add(dep))
   }
 
   /**
@@ -315,7 +315,7 @@ export class CloudFormationBuilder {
   toLogicalId(name: string): string {
     return name
       .split(/[-_\s]/)
-      .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
       .join('')
   }
 

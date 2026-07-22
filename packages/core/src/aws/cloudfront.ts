@@ -2,7 +2,6 @@
  * AWS CloudFront API Client
  * Direct API calls for CloudFront invalidations without AWS SDK
  */
-
 import type { AWSCredentials } from './credentials'
 import { resolveCredentials } from './credentials'
 import { makeAWSRequest, parseXMLResponse } from './signature'
@@ -19,9 +18,7 @@ export interface InvalidationOptions {
 export class CloudFrontClient {
   private credentials: AWSCredentials | null = null
 
-  constructor(
-    private readonly profile: string = 'default',
-  ) {}
+  constructor(private readonly profile: string = 'default') {}
 
   /**
    * Initialize client with credentials
@@ -53,7 +50,7 @@ export class CloudFrontClient {
   <Paths>
     <Quantity>${options.paths.length}</Quantity>
     <Items>
-      ${options.paths.map(path => `<Path>${path}</Path>`).join('')}
+      ${options.paths.map((path) => `<Path>${path}</Path>`).join('')}
     </Items>
   </Paths>
   <CallerReference>${callerReference}</CallerReference>
@@ -139,7 +136,7 @@ export class CloudFrontClient {
       }
 
       if (i < maxAttempts - 1) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval))
+        await new Promise((resolve) => setTimeout(resolve, pollInterval))
       }
     }
 

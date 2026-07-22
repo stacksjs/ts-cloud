@@ -1,11 +1,4 @@
-import type {
-  CloudWatchAlarm,
-  CloudWatchDashboard,
-  CloudWatchLogGroup,
-  CloudWatchLogStream,
-  CloudWatchMetricFilter,
-  CloudWatchCompositeAlarm,
-} from '@ts-cloud/aws-types'
+import type { CloudWatchAlarm, CloudWatchCompositeAlarm, CloudWatchDashboard, CloudWatchLogGroup, CloudWatchLogStream, CloudWatchMetricFilter } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -20,7 +13,8 @@ export interface AlarmOptions {
   period?: number
   evaluationPeriods?: number
   threshold: number
-  comparisonOperator: 'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
+  comparisonOperator:
+    'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
   treatMissingData?: 'breaching' | 'notBreaching' | 'ignore' | 'missing'
   actionsEnabled?: boolean
   alarmActions?: string[]
@@ -121,11 +115,13 @@ export class Monitoring {
       datapointsToAlarm,
     } = options
 
-    const resourceName = alarmName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'alarm',
-    })
+    const resourceName =
+      alarmName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'alarm',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -193,11 +189,13 @@ export class Monitoring {
       insufficientDataActions,
     } = options
 
-    const resourceName = alarmName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'composite-alarm',
-    })
+    const resourceName =
+      alarmName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'composite-alarm',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -232,23 +230,20 @@ export class Monitoring {
     dashboard: CloudWatchDashboard
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      dashboardName,
-      widgets,
-    } = options
+    const { slug, environment, dashboardName, widgets } = options
 
-    const resourceName = dashboardName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'dashboard',
-    })
+    const resourceName =
+      dashboardName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'dashboard',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
     const dashboardBody = {
-      widgets: widgets.map(widget => ({
+      widgets: widgets.map((widget) => ({
         type: widget.type,
         x: widget.x,
         y: widget.y,
@@ -276,19 +271,15 @@ export class Monitoring {
     logGroup: CloudWatchLogGroup
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      logGroupName,
-      retentionInDays,
-      kmsKeyId,
-    } = options
+    const { slug, environment, logGroupName, retentionInDays, kmsKeyId } = options
 
-    const resourceName = logGroupName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'log-group',
-    })
+    const resourceName =
+      logGroupName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'log-group',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -300,7 +291,8 @@ export class Monitoring {
     }
 
     if (retentionInDays !== undefined) {
-      logGroup.Properties!.RetentionInDays = retentionInDays as 1 | 3 | 5 | 7 | 14 | 30 | 60 | 90 | 120 | 150 | 180 | 365 | 400 | 545 | 731 | 1827 | 3653
+      logGroup.Properties!.RetentionInDays = retentionInDays as
+        1 | 3 | 5 | 7 | 14 | 30 | 60 | 90 | 120 | 150 | 180 | 365 | 400 | 545 | 731 | 1827 | 3653
     }
 
     if (kmsKeyId) {
@@ -317,20 +309,18 @@ export class Monitoring {
     logGroupLogicalId: string,
     options: LogStreamOptions,
   ): {
-      logStream: CloudWatchLogStream
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      logStreamName,
-    } = options
+    logStream: CloudWatchLogStream
+    logicalId: string
+  } {
+    const { slug, environment, logStreamName } = options
 
-    const resourceName = logStreamName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'log-stream',
-    })
+    const resourceName =
+      logStreamName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'log-stream',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -352,22 +342,18 @@ export class Monitoring {
     logGroupLogicalId: string,
     options: MetricFilterOptions,
   ): {
-      metricFilter: CloudWatchMetricFilter
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      filterName,
-      filterPattern,
-      metricTransformations,
-    } = options
+    metricFilter: CloudWatchMetricFilter
+    logicalId: string
+  } {
+    const { slug, environment, filterName, filterPattern, metricTransformations } = options
 
-    const resourceName = filterName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'metric-filter',
-    })
+    const resourceName =
+      filterName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'metric-filter',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -376,7 +362,7 @@ export class Monitoring {
       Properties: {
         LogGroupName: Fn.Ref(logGroupLogicalId) as unknown as string,
         FilterPattern: filterPattern,
-        MetricTransformations: metricTransformations.map(t => ({
+        MetricTransformations: metricTransformations.map((t) => ({
           MetricName: t.metricName,
           MetricNamespace: t.metricNamespace,
           MetricValue: t.metricValue,
@@ -829,13 +815,7 @@ export class Monitoring {
     /**
      * Text widget
      */
-    text: (
-      x: number,
-      y: number,
-      width: number,
-      height: number,
-      markdown: string,
-    ): DashboardWidget => ({
+    text: (x: number, y: number, width: number, height: number, markdown: string): DashboardWidget => ({
       type: 'text',
       x,
       y,
@@ -954,12 +934,7 @@ export class Monitoring {
     dashboard: CloudWatchDashboard
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      region = 'us-east-1',
-      components = {},
-    } = options
+    const { slug, environment, region = 'us-east-1', components = {} } = options
 
     const widgets: DashboardWidget[] = []
     let currentY = 0
@@ -1001,12 +976,7 @@ export class Monitoring {
         properties: {
           title: 'CPU Utilization',
           region,
-          metrics: components.ec2InstanceIds.map(id => [
-            'AWS/EC2',
-            'CPUUtilization',
-            'InstanceId',
-            id,
-          ]),
+          metrics: components.ec2InstanceIds.map((id) => ['AWS/EC2', 'CPUUtilization', 'InstanceId', id]),
           period: 300,
           stat: 'Average',
         },
@@ -1023,7 +993,7 @@ export class Monitoring {
           title: 'Network Traffic',
           region,
           metrics: [
-            ...components.ec2InstanceIds.flatMap(id => [
+            ...components.ec2InstanceIds.flatMap((id) => [
               ['AWS/EC2', 'NetworkIn', 'InstanceId', id, { label: `${id} In` }],
               ['AWS/EC2', 'NetworkOut', 'InstanceId', id, { label: `${id} Out` }],
             ]),
@@ -1043,12 +1013,7 @@ export class Monitoring {
         properties: {
           title: 'Status Checks',
           region,
-          metrics: components.ec2InstanceIds.map(id => [
-            'AWS/EC2',
-            'StatusCheckFailed',
-            'InstanceId',
-            id,
-          ]),
+          metrics: components.ec2InstanceIds.map((id) => ['AWS/EC2', 'StatusCheckFailed', 'InstanceId', id]),
           period: 60,
           stat: 'Maximum',
         },
@@ -1081,12 +1046,7 @@ export class Monitoring {
         properties: {
           title: 'Invocations',
           region,
-          metrics: components.lambdaFunctionNames.map(name => [
-            'AWS/Lambda',
-            'Invocations',
-            'FunctionName',
-            name,
-          ]),
+          metrics: components.lambdaFunctionNames.map((name) => ['AWS/Lambda', 'Invocations', 'FunctionName', name]),
           period: 300,
           stat: 'Sum',
         },
@@ -1102,12 +1062,7 @@ export class Monitoring {
         properties: {
           title: 'Duration',
           region,
-          metrics: components.lambdaFunctionNames.map(name => [
-            'AWS/Lambda',
-            'Duration',
-            'FunctionName',
-            name,
-          ]),
+          metrics: components.lambdaFunctionNames.map((name) => ['AWS/Lambda', 'Duration', 'FunctionName', name]),
           period: 300,
           stat: 'Average',
         },
@@ -1123,12 +1078,7 @@ export class Monitoring {
         properties: {
           title: 'Errors',
           region,
-          metrics: components.lambdaFunctionNames.map(name => [
-            'AWS/Lambda',
-            'Errors',
-            'FunctionName',
-            name,
-          ]),
+          metrics: components.lambdaFunctionNames.map((name) => ['AWS/Lambda', 'Errors', 'FunctionName', name]),
           period: 300,
           stat: 'Sum',
         },
@@ -1162,7 +1112,14 @@ export class Monitoring {
           title: 'CPU Utilization',
           region,
           metrics: [
-            ['AWS/ECS', 'CPUUtilization', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+            [
+              'AWS/ECS',
+              'CPUUtilization',
+              'ClusterName',
+              components.ecsClusterName,
+              'ServiceName',
+              components.ecsServiceName,
+            ],
           ],
           period: 300,
           stat: 'Average',
@@ -1180,7 +1137,14 @@ export class Monitoring {
           title: 'Memory Utilization',
           region,
           metrics: [
-            ['AWS/ECS', 'MemoryUtilization', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+            [
+              'AWS/ECS',
+              'MemoryUtilization',
+              'ClusterName',
+              components.ecsClusterName,
+              'ServiceName',
+              components.ecsServiceName,
+            ],
           ],
           period: 300,
           stat: 'Average',
@@ -1198,7 +1162,14 @@ export class Monitoring {
           title: 'Running Tasks',
           region,
           metrics: [
-            ['ECS/ContainerInsights', 'RunningTaskCount', 'ClusterName', components.ecsClusterName, 'ServiceName', components.ecsServiceName],
+            [
+              'ECS/ContainerInsights',
+              'RunningTaskCount',
+              'ClusterName',
+              components.ecsClusterName,
+              'ServiceName',
+              components.ecsServiceName,
+            ],
           ],
           period: 60,
           stat: 'Average',
@@ -1232,9 +1203,7 @@ export class Monitoring {
         properties: {
           title: 'Request Count',
           region,
-          metrics: [
-            ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', components.albName],
-          ],
+          metrics: [['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', components.albName]],
           period: 60,
           stat: 'Sum',
         },
@@ -1250,9 +1219,7 @@ export class Monitoring {
         properties: {
           title: 'Response Time',
           region,
-          metrics: [
-            ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', components.albName],
-          ],
+          metrics: [['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', components.albName]],
           period: 60,
           stat: 'Average',
         },
@@ -1304,9 +1271,7 @@ export class Monitoring {
         properties: {
           title: 'CPU Utilization',
           region,
-          metrics: [
-            ['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', components.rdsInstanceId],
-          ],
+          metrics: [['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', components.rdsInstanceId]],
           period: 300,
           stat: 'Average',
         },
@@ -1322,9 +1287,7 @@ export class Monitoring {
         properties: {
           title: 'Database Connections',
           region,
-          metrics: [
-            ['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', components.rdsInstanceId],
-          ],
+          metrics: [['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', components.rdsInstanceId]],
           period: 60,
           stat: 'Sum',
         },
@@ -1340,9 +1303,7 @@ export class Monitoring {
         properties: {
           title: 'Free Storage Space',
           region,
-          metrics: [
-            ['AWS/RDS', 'FreeStorageSpace', 'DBInstanceIdentifier', components.rdsInstanceId],
-          ],
+          metrics: [['AWS/RDS', 'FreeStorageSpace', 'DBInstanceIdentifier', components.rdsInstanceId]],
           period: 300,
           stat: 'Average',
         },
@@ -1375,7 +1336,7 @@ export class Monitoring {
         properties: {
           title: 'Messages Visible',
           region,
-          metrics: components.sqsQueueNames.map(name => [
+          metrics: components.sqsQueueNames.map((name) => [
             'AWS/SQS',
             'ApproximateNumberOfMessagesVisible',
             'QueueName',
@@ -1396,7 +1357,7 @@ export class Monitoring {
         properties: {
           title: 'Message Age',
           region,
-          metrics: components.sqsQueueNames.map(name => [
+          metrics: components.sqsQueueNames.map((name) => [
             'AWS/SQS',
             'ApproximateAgeOfOldestMessage',
             'QueueName',
@@ -1504,8 +1465,24 @@ export class Monitoring {
             title: 'Error Rate',
             region: 'us-east-1',
             metrics: [
-              ['AWS/CloudFront', '4xxErrorRate', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global', { label: '4XX' }],
-              ['AWS/CloudFront', '5xxErrorRate', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global', { label: '5XX' }],
+              [
+                'AWS/CloudFront',
+                '4xxErrorRate',
+                'DistributionId',
+                options.cloudFrontDistributionId,
+                'Region',
+                'Global',
+                { label: '4XX' },
+              ],
+              [
+                'AWS/CloudFront',
+                '5xxErrorRate',
+                'DistributionId',
+                options.cloudFrontDistributionId,
+                'Region',
+                'Global',
+                { label: '5XX' },
+              ],
             ],
             period: 300,
             stat: 'Average',
@@ -1521,7 +1498,14 @@ export class Monitoring {
             title: 'Bytes Downloaded',
             region: 'us-east-1',
             metrics: [
-              ['AWS/CloudFront', 'BytesDownloaded', 'DistributionId', options.cloudFrontDistributionId, 'Region', 'Global'],
+              [
+                'AWS/CloudFront',
+                'BytesDownloaded',
+                'DistributionId',
+                options.cloudFrontDistributionId,
+                'Region',
+                'Global',
+              ],
             ],
             period: 300,
             stat: 'Sum',
@@ -1594,9 +1578,7 @@ export class Monitoring {
           properties: {
             title: 'API Requests',
             region: options.region || 'us-east-1',
-            metrics: [
-              ['AWS/ApiGateway', 'Count', 'ApiName', options.apiGatewayName],
-            ],
+            metrics: [['AWS/ApiGateway', 'Count', 'ApiName', options.apiGatewayName]],
             period: 60,
             stat: 'Sum',
           },
@@ -1610,9 +1592,7 @@ export class Monitoring {
           properties: {
             title: 'API Latency',
             region: options.region || 'us-east-1',
-            metrics: [
-              ['AWS/ApiGateway', 'Latency', 'ApiName', options.apiGatewayName],
-            ],
+            metrics: [['AWS/ApiGateway', 'Latency', 'ApiName', options.apiGatewayName]],
             period: 60,
             stat: 'Average',
           },
@@ -1691,7 +1671,14 @@ export class Monitoring {
             title: 'ECS CPU',
             region: options.region || 'us-east-1',
             metrics: [
-              ['AWS/ECS', 'CPUUtilization', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+              [
+                'AWS/ECS',
+                'CPUUtilization',
+                'ClusterName',
+                options.ecsClusterName,
+                'ServiceName',
+                options.ecsServiceName,
+              ],
             ],
             period: 60,
             stat: 'Average',
@@ -1707,7 +1694,14 @@ export class Monitoring {
             title: 'ECS Memory',
             region: options.region || 'us-east-1',
             metrics: [
-              ['AWS/ECS', 'MemoryUtilization', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+              [
+                'AWS/ECS',
+                'MemoryUtilization',
+                'ClusterName',
+                options.ecsClusterName,
+                'ServiceName',
+                options.ecsServiceName,
+              ],
             ],
             period: 60,
             stat: 'Average',
@@ -1723,7 +1717,14 @@ export class Monitoring {
             title: 'Running Tasks',
             region: options.region || 'us-east-1',
             metrics: [
-              ['ECS/ContainerInsights', 'RunningTaskCount', 'ClusterName', options.ecsClusterName, 'ServiceName', options.ecsServiceName],
+              [
+                'ECS/ContainerInsights',
+                'RunningTaskCount',
+                'ClusterName',
+                options.ecsClusterName,
+                'ServiceName',
+                options.ecsServiceName,
+              ],
             ],
             period: 60,
             stat: 'Average',
@@ -1739,9 +1740,7 @@ export class Monitoring {
           properties: {
             title: 'ALB Requests',
             region: options.region || 'us-east-1',
-            metrics: [
-              ['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', options.albName],
-            ],
+            metrics: [['AWS/ApplicationELB', 'RequestCount', 'LoadBalancer', options.albName]],
             period: 60,
             stat: 'Sum',
           },
@@ -1755,9 +1754,7 @@ export class Monitoring {
           properties: {
             title: 'Response Time',
             region: options.region || 'us-east-1',
-            metrics: [
-              ['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', options.albName],
-            ],
+            metrics: [['AWS/ApplicationELB', 'TargetResponseTime', 'LoadBalancer', options.albName]],
             period: 60,
             stat: 'Average',
           },
@@ -1771,9 +1768,7 @@ export class Monitoring {
           properties: {
             title: 'Healthy Hosts',
             region: options.region || 'us-east-1',
-            metrics: [
-              ['AWS/ApplicationELB', 'HealthyHostCount', 'LoadBalancer', options.albName],
-            ],
+            metrics: [['AWS/ApplicationELB', 'HealthyHostCount', 'LoadBalancer', options.albName]],
             period: 60,
             stat: 'Average',
           },
@@ -1789,9 +1784,7 @@ export class Monitoring {
                 properties: {
                   title: 'RDS CPU',
                   region: options.region || 'us-east-1',
-                  metrics: [
-                    ['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', options.rdsInstanceId],
-                  ],
+                  metrics: [['AWS/RDS', 'CPUUtilization', 'DBInstanceIdentifier', options.rdsInstanceId]],
                   period: 300,
                   stat: 'Average',
                 },
@@ -1805,9 +1798,7 @@ export class Monitoring {
                 properties: {
                   title: 'RDS Connections',
                   region: options.region || 'us-east-1',
-                  metrics: [
-                    ['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', options.rdsInstanceId],
-                  ],
+                  metrics: [['AWS/RDS', 'DatabaseConnections', 'DBInstanceIdentifier', options.rdsInstanceId]],
                   period: 60,
                   stat: 'Sum',
                 },
@@ -1830,7 +1821,8 @@ export class Monitoring {
       metricName: string
       namespace: string
       threshold: number
-      comparisonOperator?: 'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
+      comparisonOperator?:
+        'GreaterThanThreshold' | 'GreaterThanOrEqualToThreshold' | 'LessThanThreshold' | 'LessThanOrEqualToThreshold'
       evaluationPeriods?: number
       period?: number
       statistic?: 'Average' | 'Sum' | 'Maximum' | 'Minimum' | 'SampleCount'
@@ -1946,13 +1938,15 @@ export class Monitoring {
       /**
        * High CPU alarm
        */
-      highCpu: (threshold: number = 80): {
-        metricName: string;
-        threshold: number;
-        comparisonOperator: 'GreaterThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Average';
+      highCpu: (
+        threshold: number = 80,
+      ): {
+        metricName: string
+        threshold: number
+        comparisonOperator: 'GreaterThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Average'
       } => ({
         metricName: 'CPUUtilization',
         threshold,
@@ -1965,13 +1959,15 @@ export class Monitoring {
       /**
        * High memory alarm (for ECS)
        */
-      highMemory: (threshold: number = 80): {
-        metricName: string;
-        threshold: number;
-        comparisonOperator: 'GreaterThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Average';
+      highMemory: (
+        threshold: number = 80,
+      ): {
+        metricName: string
+        threshold: number
+        comparisonOperator: 'GreaterThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Average'
       } => ({
         metricName: 'MemoryUtilization',
         threshold,
@@ -1984,13 +1980,15 @@ export class Monitoring {
       /**
        * High error rate alarm
        */
-      highErrors: (threshold: number = 10): {
-        metricName: string;
-        threshold: number;
-        comparisonOperator: 'GreaterThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Sum';
+      highErrors: (
+        threshold: number = 10,
+      ): {
+        metricName: string
+        threshold: number
+        comparisonOperator: 'GreaterThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Sum'
       } => ({
         metricName: 'Errors',
         threshold,
@@ -2003,13 +2001,15 @@ export class Monitoring {
       /**
        * High latency alarm
        */
-      highLatency: (threshold: number = 5000): {
-        metricName: string;
-        threshold: number;
-        comparisonOperator: 'GreaterThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Average';
+      highLatency: (
+        threshold: number = 5000,
+      ): {
+        metricName: string
+        threshold: number
+        comparisonOperator: 'GreaterThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Average'
       } => ({
         metricName: 'Duration',
         threshold,
@@ -2022,14 +2022,16 @@ export class Monitoring {
       /**
        * Low healthy hosts alarm
        */
-      lowHealthyHosts: (threshold: number = 1): {
-        metricName: string;
-        namespace: string;
-        threshold: number;
-        comparisonOperator: 'LessThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Minimum';
+      lowHealthyHosts: (
+        threshold: number = 1,
+      ): {
+        metricName: string
+        namespace: string
+        threshold: number
+        comparisonOperator: 'LessThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Minimum'
       } => ({
         metricName: 'HealthyHostCount',
         namespace: 'AWS/ApplicationELB',
@@ -2043,14 +2045,16 @@ export class Monitoring {
       /**
        * Queue depth alarm
        */
-      queueDepth: (threshold: number = 1000): {
-        metricName: string;
-        namespace: string;
-        threshold: number;
-        comparisonOperator: 'GreaterThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Average';
+      queueDepth: (
+        threshold: number = 1000,
+      ): {
+        metricName: string
+        namespace: string
+        threshold: number
+        comparisonOperator: 'GreaterThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Average'
       } => ({
         metricName: 'ApproximateNumberOfMessagesVisible',
         namespace: 'AWS/SQS',
@@ -2064,15 +2068,18 @@ export class Monitoring {
       /**
        * Low storage alarm
        */
-      lowStorage: (threshold: number = 10737418240): {
-        metricName: string;
-        namespace: string;
-        threshold: number;
-        comparisonOperator: 'LessThanThreshold';
-        evaluationPeriods: number;
-        period: number;
-        statistic: 'Average';
-      } => ({ // 10 GB
+      lowStorage: (
+        threshold: number = 10737418240,
+      ): {
+        metricName: string
+        namespace: string
+        threshold: number
+        comparisonOperator: 'LessThanThreshold'
+        evaluationPeriods: number
+        period: number
+        statistic: 'Average'
+      } => ({
+        // 10 GB
         metricName: 'FreeStorageSpace',
         namespace: 'AWS/RDS',
         threshold,

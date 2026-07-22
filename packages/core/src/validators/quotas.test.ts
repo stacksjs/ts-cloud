@@ -3,12 +3,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import {
-  DEFAULT_SERVICE_LIMITS,
-  checkServiceQuotas,
-  getQuotaUsageSummary,
-  suggestQuotaIncrease,
-} from './quotas'
+import { DEFAULT_SERVICE_LIMITS, checkServiceQuotas, getQuotaUsageSummary, suggestQuotaIncrease } from './quotas'
 
 describe('DEFAULT_SERVICE_LIMITS', () => {
   it('should have EC2 limits', () => {
@@ -63,7 +58,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const ec2Quota = quotas.find(q => q.quotaName === 'Running On-Demand Instances')
+    const ec2Quota = quotas.find((q) => q.quotaName === 'Running On-Demand Instances')
     expect(ec2Quota).toBeDefined()
     expect(ec2Quota?.service).toBe('EC2')
     expect(ec2Quota?.currentValue).toBe(10)
@@ -86,7 +81,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const ec2Quota = quotas.find(q => q.quotaName === 'Running On-Demand Instances')
+    const ec2Quota = quotas.find((q) => q.quotaName === 'Running On-Demand Instances')
     expect(ec2Quota?.warning).toBe(true)
   })
 
@@ -100,7 +95,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const vpcQuota = quotas.find(q => q.quotaName === 'VPCs')
+    const vpcQuota = quotas.find((q) => q.quotaName === 'VPCs')
     expect(vpcQuota).toBeDefined()
     expect(vpcQuota?.service).toBe('EC2')
     expect(vpcQuota?.currentValue).toBe(1)
@@ -117,7 +112,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const rdsQuota = quotas.find(q => q.quotaName === 'DB Instances')
+    const rdsQuota = quotas.find((q) => q.quotaName === 'DB Instances')
     expect(rdsQuota).toBeDefined()
     expect(rdsQuota?.service).toBe('RDS')
     expect(rdsQuota?.currentValue).toBe(1)
@@ -136,7 +131,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const s3Quota = quotas.find(q => q.quotaName === 'Buckets')
+    const s3Quota = quotas.find((q) => q.quotaName === 'Buckets')
     expect(s3Quota).toBeDefined()
     expect(s3Quota?.service).toBe('S3')
     expect(s3Quota?.currentValue).toBe(3)
@@ -156,7 +151,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const s3Quota = quotas.find(q => q.quotaName === 'Buckets')
+    const s3Quota = quotas.find((q) => q.quotaName === 'Buckets')
     expect(s3Quota?.warning).toBe(true)
   })
 
@@ -173,7 +168,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const lambdaQuota = quotas.find(q => q.quotaName === 'Functions (estimated)')
+    const lambdaQuota = quotas.find((q) => q.quotaName === 'Functions (estimated)')
     expect(lambdaQuota).toBeDefined()
     expect(lambdaQuota?.service).toBe('Lambda')
     expect(lambdaQuota?.currentValue).toBe(2)
@@ -195,7 +190,7 @@ describe('checkServiceQuotas', () => {
       },
     })
 
-    const dynamoQuota = quotas.find(q => q.quotaName === 'Tables')
+    const dynamoQuota = quotas.find((q) => q.quotaName === 'Tables')
     expect(dynamoQuota).toBeDefined()
     expect(dynamoQuota?.service).toBe('DynamoDB')
     expect(dynamoQuota?.currentValue).toBe(2)
@@ -224,9 +219,9 @@ describe('checkServiceQuotas', () => {
     })
 
     expect(quotas.length).toBeGreaterThan(0)
-    expect(quotas.some(q => q.service === 'EC2')).toBe(true)
-    expect(quotas.some(q => q.service === 'S3')).toBe(true)
-    expect(quotas.some(q => q.service === 'RDS')).toBe(true)
+    expect(quotas.some((q) => q.service === 'EC2')).toBe(true)
+    expect(quotas.some((q) => q.service === 'S3')).toBe(true)
+    expect(quotas.some((q) => q.service === 'RDS')).toBe(true)
   })
 })
 

@@ -248,12 +248,14 @@ export interface ApiGatewayConfig {
   name?: string
   description?: string
   stageName?: string
-  cors?: boolean | {
-    allowOrigins?: string[]
-    allowMethods?: string[]
-    allowHeaders?: string[]
-    maxAge?: number
-  }
+  cors?:
+    | boolean
+    | {
+        allowOrigins?: string[]
+        allowMethods?: string[]
+        allowHeaders?: string[]
+        maxAge?: number
+      }
   authorization?: 'NONE' | 'IAM' | 'COGNITO' | 'LAMBDA'
   throttling?: {
     rateLimit?: number
@@ -269,31 +271,39 @@ export interface ApiGatewayConfig {
     identitySource?: string
     audience?: string[]
   }
-  routes?: Array<{
-    path?: string
-    method?: string
-    integration?: string | { type?: string; service?: string }
-    authorizer?: string
-  }> | Record<string, {
-    path?: string
-    method?: string
-    integration?: string | { type?: string; service?: string }
-  }>
+  routes?:
+    | Array<{
+        path?: string
+        method?: string
+        integration?: string | { type?: string; service?: string }
+        authorizer?: string
+      }>
+    | Record<
+        string,
+        {
+          path?: string
+          method?: string
+          integration?: string | { type?: string; service?: string }
+        }
+      >
 }
 
 /**
  * Messaging (SNS) configuration
  */
 export interface MessagingConfig {
-  topics?: Record<string, {
-    name?: string
-    displayName?: string
-    subscriptions?: Array<{
-      protocol: 'email' | 'sqs' | 'lambda' | 'http' | 'https'
-      endpoint: string
-      filterPolicy?: Record<string, string[]>
-    }>
-  }>
+  topics?: Record<
+    string,
+    {
+      name?: string
+      displayName?: string
+      subscriptions?: Array<{
+        protocol: 'email' | 'sqs' | 'lambda' | 'http' | 'https'
+        endpoint: string
+        filterPolicy?: Record<string, string[]>
+      }>
+    }
+  >
 }
 
 export interface InfrastructureConfig {
@@ -472,12 +482,15 @@ export interface InfrastructureConfig {
    * }
    */
   redirects?: RedirectsConfig
-  streaming?: Record<string, {
-    name?: string
-    shardCount?: number
-    retentionPeriod?: number
-    encryption?: boolean | string
-  }>
+  streaming?: Record<
+    string,
+    {
+      name?: string
+      shardCount?: number
+      retentionPeriod?: number
+      encryption?: boolean | string
+    }
+  >
   machineLearning?: {
     sagemakerEndpoint?: string
     modelBucket?: string
@@ -512,12 +525,15 @@ export interface InfrastructureConfig {
   }
   analytics?: {
     enabled?: boolean
-    firehose?: Record<string, {
-      name?: string
-      destination?: string
-      bufferSize?: number
-      bufferInterval?: number
-    }>
+    firehose?: Record<
+      string,
+      {
+        name?: string
+        destination?: string
+        bufferSize?: number
+        bufferInterval?: number
+      }
+    >
     athena?: {
       database?: string
       workgroup?: string
@@ -1251,7 +1267,7 @@ export interface SiteSslConfig {
    * `true` uses a 1-year max-age with `includeSubDomains`; an object customizes
    * it. Only meaningful when the site serves TLS.
    */
-  hsts?: boolean | { maxAge?: number, includeSubDomains?: boolean, preload?: boolean }
+  hsts?: boolean | { maxAge?: number; includeSubDomains?: boolean; preload?: boolean }
   /**
    * `ssl_protocols` for the vhost (e.g. `['TLSv1.2', 'TLSv1.3']`). Applied to
    * the `custom`-cert :443 block; for Let's Encrypt the protocols are managed by
@@ -1369,11 +1385,11 @@ export interface NotificationsConfig {
   /** Discord webhook URL. */
   discord?: { webhookUrl: string }
   /** Telegram bot token + chat id. */
-  telegram?: { botToken: string, chatId: string }
+  telegram?: { botToken: string; chatId: string }
   /** Email recipients (sent via ts-cloud's email/SES client). */
-  email?: { to: string | string[], from?: string }
+  email?: { to: string | string[]; from?: string }
   /** Generic webhook — receives `{ event, message }` as JSON. */
-  webhook?: { url: string, method?: 'POST' | 'GET' }
+  webhook?: { url: string; method?: 'POST' | 'GET' }
   /**
    * Which events to notify on. @default all events
    */
@@ -1497,11 +1513,14 @@ export interface CdnConfig {
 
 export interface SftpConfig {
   bucket: string
-  users: Record<string, {
-    sshPublicKeys: string[]
-    homeDirectory?: string
-    roleArn?: string
-  }>
+  users: Record<
+    string,
+    {
+      sshPublicKeys: string[]
+      homeDirectory?: string
+      roleArn?: string
+    }
+  >
   endpointType?: 'PUBLIC' | 'VPC'
   endpointDetails?: {
     vpcId: string
@@ -1538,20 +1557,23 @@ export interface SecurityConfig {
   /**
    * Security groups configuration
    */
-  securityGroups?: Record<string, {
-    ingress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-      source?: string
-    }>
-    egress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-      destination?: string
-    }>
-  }>
+  securityGroups?: Record<
+    string,
+    {
+      ingress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+        source?: string
+      }>
+      egress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+        destination?: string
+      }>
+    }
+  >
 }
 
 export interface WafConfig {
@@ -1576,10 +1598,12 @@ export interface MonitoringConfig {
     name?: string
     widgets?: Array<{
       type?: string
-      metrics?: string[] | Array<{
-        service?: string
-        metric?: string
-      }>
+      metrics?:
+        | string[]
+        | Array<{
+            service?: string
+            metric?: string
+          }>
     }>
   }
   /**
@@ -1636,10 +1660,12 @@ export interface StorageItemConfig {
   versioning?: boolean
   encryption?: boolean
   encrypted?: boolean // Alias for encryption (for EFS compatibility)
-  website?: boolean | {
-    indexDocument?: string
-    errorDocument?: string
-  }
+  website?:
+    | boolean
+    | {
+        indexDocument?: string
+        errorDocument?: string
+      }
   /**
    * Explicit CloudFront distribution aliases for this bucket.
    * Overrides the default alias logic based on bucket name.
@@ -1974,12 +2000,14 @@ export interface ServerlessAppConfig {
    * otherwise attach an existing access point by ARN. The mount path defaults
    * to `/mnt/local`.
    */
-  efs?: boolean | {
-    /** Existing EFS Access Point ARN to attach (skips provisioning). */
-    accessPointArn?: string
-    /** Mount path inside the functions. @default '/mnt/local' */
-    mountPath?: string
-  }
+  efs?:
+    | boolean
+    | {
+        /** Existing EFS Access Point ARN to attach (skips provisioning). */
+        accessPointArn?: string
+        /** Mount path inside the functions. @default '/mnt/local' */
+        mountPath?: string
+      }
 
   /** Managed WAF in front of the HTTP API / CloudFront. */
   firewall?: WafConfig
@@ -2073,13 +2101,13 @@ export interface FileSystemItemConfig {
  * Provider-agnostic sizing that maps to appropriate instance types
  */
 export type InstanceSize =
-  | 'nano'      // ~0.5 vCPU, 0.5GB RAM
-  | 'micro'     // ~1 vCPU, 1GB RAM
-  | 'small'     // ~1 vCPU, 2GB RAM
-  | 'medium'    // ~2 vCPU, 4GB RAM
-  | 'large'     // ~2 vCPU, 8GB RAM
-  | 'xlarge'    // ~4 vCPU, 16GB RAM
-  | '2xlarge'   // ~8 vCPU, 32GB RAM
+  | 'nano' // ~0.5 vCPU, 0.5GB RAM
+  | 'micro' // ~1 vCPU, 1GB RAM
+  | 'small' // ~1 vCPU, 2GB RAM
+  | 'medium' // ~2 vCPU, 4GB RAM
+  | 'large' // ~2 vCPU, 8GB RAM
+  | 'xlarge' // ~4 vCPU, 16GB RAM
+  | '2xlarge' // ~8 vCPU, 32GB RAM
   | (string & {}) // Allow provider-specific types like 't3.micro'
 
 /**
@@ -2383,10 +2411,12 @@ export interface ComputeConfig {
         duration?: number
       }
     }
-    userData?: string | {
-      packages?: string[]
-      commands?: string[]
-    }
+    userData?:
+      | string
+      | {
+          packages?: string[]
+          commands?: string[]
+        }
   }
 
   /**
@@ -2966,29 +2996,34 @@ export interface DatabaseItemConfig {
   databaseName?: string
   enablePerformanceInsights?: boolean
   performanceInsightsRetention?: number
-  tables?: Record<string, {
-    name?: string
-    partitionKey?: string | { name: string; type: string }
-    sortKey?: string | { name: string; type: string }
-    billing?: string
-    billingMode?: string
-    streamEnabled?: boolean
-    pointInTimeRecovery?: boolean
-    globalSecondaryIndexes?: Array<{
-      name: string
-      partitionKey: { name: string; type: string }
-      sortKey?: { name: string; type: string }
-      projection: string
-    }>
-  }>
+  tables?: Record<
+    string,
+    {
+      name?: string
+      partitionKey?: string | { name: string; type: string }
+      sortKey?: string | { name: string; type: string }
+      billing?: string
+      billingMode?: string
+      streamEnabled?: boolean
+      pointInTimeRecovery?: boolean
+      globalSecondaryIndexes?: Array<{
+        name: string
+        partitionKey: { name: string; type: string }
+        sortKey?: { name: string; type: string }
+        projection: string
+      }>
+    }
+  >
 }
 
 export interface CdnItemConfig {
   origin?: string
-  customDomain?: string | {
-    domain: string
-    certificateArn?: string
-  }
+  customDomain?:
+    | string
+    | {
+        domain: string
+        certificateArn?: string
+      }
   certificateArn?: string
   /**
    * Custom domain configuration
@@ -3582,10 +3617,12 @@ export interface RealtimeServerConfig {
    * Prometheus metrics endpoint
    * @default false
    */
-  metrics?: boolean | {
-    enabled: boolean
-    path?: string
-  }
+  metrics?:
+    | boolean
+    | {
+        enabled: boolean
+        path?: string
+      }
 
   /**
    * Health check endpoint path

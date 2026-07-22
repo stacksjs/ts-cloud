@@ -16,10 +16,7 @@ export interface QueueConfig {
 /**
  * Add SQS queue resources to CloudFormation template
  */
-export function addQueueResources(
-  builder: CloudFormationBuilder,
-  config: QueueConfig,
-): void {
+export function addQueueResources(builder: CloudFormationBuilder, config: QueueConfig): void {
   for (const [queueName, queueConfig] of Object.entries(config)) {
     addQueue(builder, queueName, queueConfig)
   }
@@ -28,11 +25,7 @@ export function addQueueResources(
 /**
  * Add SQS queue
  */
-function addQueue(
-  builder: CloudFormationBuilder,
-  name: string,
-  config: QueueConfig[string],
-): void {
+function addQueue(builder: CloudFormationBuilder, name: string, config: QueueConfig[string]): void {
   const logicalId = builder.toLogicalId(`${name}-queue`)
   const isFifo = config.fifo || false
 
@@ -41,32 +34,29 @@ function addQueue(
   if (config.deadLetterQueue) {
     const dlqLogicalId = `${logicalId}DLQ`
 
-    builder.addResource(dlqLogicalId, 'AWS::SQS::Queue', {
-      QueueName: isFifo
-        ? Fn.sub(`\${AWS::StackName}-${name}-dlq.fifo`)
-        : Fn.sub(`\${AWS::StackName}-${name}-dlq`),
-      FifoQueue: isFifo,
-      MessageRetentionPeriod: 1209600, // 14 days max retention for DLQ
-      Tags: [
-        { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}-dlq`) },
-      ],
-    }, { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' })
+    builder.addResource(
+      dlqLogicalId,
+      'AWS::SQS::Queue',
+      {
+        QueueName: isFifo ? Fn.sub(`\${AWS::StackName}-${name}-dlq.fifo`) : Fn.sub(`\${AWS::StackName}-${name}-dlq`),
+        FifoQueue: isFifo,
+        MessageRetentionPeriod: 1209600, // 14 days max retention for DLQ
+        Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}-dlq`) }],
+      },
+      { deletionPolicy: 'Retain', updateReplacePolicy: 'Retain' },
+    )
 
     dlqArn = Fn.getAtt(dlqLogicalId, 'Arn')
   }
 
   // Main Queue
   const queueProperties: Record<string, any> = {
-    QueueName: isFifo
-      ? Fn.sub(`\${AWS::StackName}-${name}.fifo`)
-      : Fn.sub(`\${AWS::StackName}-${name}`),
+    QueueName: isFifo ? Fn.sub(`\${AWS::StackName}-${name}.fifo`) : Fn.sub(`\${AWS::StackName}-${name}`),
     FifoQueue: isFifo,
     VisibilityTimeout: config.visibilityTimeout || 30,
     MessageRetentionPeriod: config.messageRetentionPeriod || 345600, // 4 days
     ReceiveMessageWaitTimeSeconds: config.receiveMessageWaitTime || 0,
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}`) }],
   }
 
   // FIFO-specific settings
@@ -89,33 +79,34 @@ function addQueue(
   })
 
   // Queue Policy (allow common AWS services to send messages)
-  builder.addResource(`${logicalId}Policy`, 'AWS::SQS::QueuePolicy', {
-    Queues: [Fn.ref(logicalId)],
-    PolicyDocument: {
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: {
-            Service: [
-              'lambda.amazonaws.com',
-              'events.amazonaws.com',
-              'sns.amazonaws.com',
-            ],
-          },
-          Action: 'sqs:SendMessage',
-          Resource: Fn.getAtt(logicalId, 'Arn'),
-          Condition: {
-            ArnEquals: {
-              'aws:SourceArn': Fn.sub('arn:aws:*:${AWS::Region}:${AWS::AccountId}:*'),
+  builder.addResource(
+    `${logicalId}Policy`,
+    'AWS::SQS::QueuePolicy',
+    {
+      Queues: [Fn.ref(logicalId)],
+      PolicyDocument: {
+        Version: '2012-10-17',
+        Statement: [
+          {
+            Effect: 'Allow',
+            Principal: {
+              Service: ['lambda.amazonaws.com', 'events.amazonaws.com', 'sns.amazonaws.com'],
+            },
+            Action: 'sqs:SendMessage',
+            Resource: Fn.getAtt(logicalId, 'Arn'),
+            Condition: {
+              ArnEquals: {
+                'aws:SourceArn': Fn.sub('arn:aws:*:${AWS::Region}:${AWS::AccountId}:*'),
+              },
             },
           },
-        },
-      ],
+        ],
+      },
     },
-  }, {
-    dependsOn: logicalId,
-  })
+    {
+      dependsOn: logicalId,
+    },
+  )
 
   // Outputs
   builder.addOutputs({

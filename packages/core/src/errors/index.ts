@@ -146,7 +146,8 @@ export const ErrorCodes = {
 
   INSUFFICIENT_PERMISSIONS: {
     message: 'Insufficient IAM permissions',
-    solution: 'Ensure your IAM user/role has the necessary permissions for CloudFormation and the resources you\'re deploying',
+    solution:
+      "Ensure your IAM user/role has the necessary permissions for CloudFormation and the resources you're deploying",
   },
 
   RESOURCE_LIMIT_EXCEEDED: {
@@ -178,7 +179,7 @@ export const ErrorCodes = {
   // Network errors
   VPC_CIDR_CONFLICT: {
     message: 'VPC CIDR block conflicts with existing VPC',
-    solution: 'Use a different CIDR block that doesn\'t overlap with existing VPCs',
+    solution: "Use a different CIDR block that doesn't overlap with existing VPCs",
   },
 
   SUBNET_CIDR_INVALID: {
@@ -235,17 +236,9 @@ export function getErrorDetails(code: keyof typeof ErrorCodes): { message: strin
 /**
  * Create error from code
  */
-export function createError(
-  code: keyof typeof ErrorCodes,
-  additionalDetails?: Record<string, any>,
-): CloudError {
+export function createError(code: keyof typeof ErrorCodes, additionalDetails?: Record<string, any>): CloudError {
   const errorDetails = getErrorDetails(code)
-  return new CloudError(
-    errorDetails.message,
-    code,
-    errorDetails.solution,
-    additionalDetails,
-  )
+  return new CloudError(errorDetails.message, code, errorDetails.solution, additionalDetails)
 }
 
 /**
@@ -289,8 +282,7 @@ export class DebugLogger {
     if (error) {
       if (error instanceof CloudError) {
         console.error(error.toString())
-      }
-      else {
+      } else {
         console.error(error.message)
       }
 
@@ -323,11 +315,9 @@ export function validateConfiguration(config: any): void {
   }
 
   if (!config.project.name) {
-    throw new ConfigurationError(
-      'Missing required field: project.name',
-      'Add a project name to your configuration',
-      { field: 'project.name' },
-    )
+    throw new ConfigurationError('Missing required field: project.name', 'Add a project name to your configuration', {
+      field: 'project.name',
+    })
   }
 
   if (!config.project.slug) {
@@ -340,20 +330,28 @@ export function validateConfiguration(config: any): void {
 
   // Validate slug format
   if (!/^[a-z0-9-]+$/.test(config.project.slug)) {
-    throw new ValidationError(
-      'Invalid project slug format',
-      'Use only lowercase letters, numbers, and hyphens',
-      { slug: config.project.slug },
-    )
+    throw new ValidationError('Invalid project slug format', 'Use only lowercase letters, numbers, and hyphens', {
+      slug: config.project.slug,
+    })
   }
 
   // Validate region
   if (config.project.region) {
     const validRegions = [
-      'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-      'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1',
-      'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2',
-      'sa-east-1', 'ca-central-1',
+      'us-east-1',
+      'us-east-2',
+      'us-west-1',
+      'us-west-2',
+      'eu-west-1',
+      'eu-west-2',
+      'eu-west-3',
+      'eu-central-1',
+      'ap-southeast-1',
+      'ap-southeast-2',
+      'ap-northeast-1',
+      'ap-northeast-2',
+      'sa-east-1',
+      'ca-central-1',
     ]
 
     if (!validRegions.includes(config.project.region)) {

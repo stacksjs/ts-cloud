@@ -1,7 +1,4 @@
-import type {
-  StepFunctionsStateMachine,
-  IAMRole,
-} from '@ts-cloud/aws-types'
+import type { IAMRole, StepFunctionsStateMachine } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -32,14 +29,7 @@ export interface StateMachineDefinition {
 }
 
 export type State =
-  | TaskState
-  | PassState
-  | WaitState
-  | ChoiceState
-  | ParallelState
-  | MapState
-  | SucceedState
-  | FailState
+  TaskState | PassState | WaitState | ChoiceState | ParallelState | MapState | SucceedState | FailState
 
 export interface BaseState {
   Type: 'Task' | 'Pass' | 'Wait' | 'Choice' | 'Parallel' | 'Map' | 'Succeed' | 'Fail'
@@ -172,11 +162,13 @@ export class Workflow {
       tracingConfiguration,
     } = options
 
-    const resourceName = stateMachineName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'state-machine',
-    })
+    const resourceName =
+      stateMachineName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'state-machine',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -187,8 +179,7 @@ export class Workflow {
 
     if (roleArn) {
       finalRoleArn = roleArn
-    }
-    else {
+    } else {
       const roleResourceName = generateResourceName({
         slug,
         environment,
@@ -212,9 +203,7 @@ export class Workflow {
               },
             ],
           },
-          ManagedPolicyArns: [
-            'arn:aws:iam::aws:policy/CloudWatchLogsFullAccess',
-          ],
+          ManagedPolicyArns: ['arn:aws:iam::aws:policy/CloudWatchLogsFullAccess'],
           Tags: [
             { Key: 'Name', Value: roleResourceName },
             { Key: 'Environment', Value: environment },
@@ -243,7 +232,9 @@ export class Workflow {
       stateMachine.Properties!.LoggingConfiguration = {
         Level: loggingConfiguration.level,
         IncludeExecutionData: loggingConfiguration.includeExecutionData,
-        Destinations: loggingConfiguration.destinations?.map(arn => ({ CloudWatchLogsLogGroup: { LogGroupArn: arn } })),
+        Destinations: loggingConfiguration.destinations?.map((arn) => ({
+          CloudWatchLogsLogGroup: { LogGroupArn: arn },
+        })),
       }
     }
 
@@ -425,10 +416,7 @@ export class Workflow {
   /**
    * Create a Choice state
    */
-  static createChoiceState(
-    choices: ChoiceRule[],
-    defaultState?: string,
-  ): ChoiceState {
+  static createChoiceState(choices: ChoiceRule[], defaultState?: string): ChoiceState {
     return {
       Type: 'Choice',
       Choices: choices,
@@ -581,7 +569,7 @@ export class Workflow {
     sequential: (
       slug: string,
       environment: EnvironmentType,
-      tasks: { name: string, state: State }[],
+      tasks: { name: string; state: State }[],
     ): StateMachineDefinition => {
       const states: Record<string, State> = {}
 
@@ -607,7 +595,7 @@ export class Workflow {
     fanout: (
       slug: string,
       environment: EnvironmentType,
-      branches: { name: string, definition: StateMachineDefinition }[],
+      branches: { name: string; definition: StateMachineDefinition }[],
     ): StateMachineDefinition => {
       return {
         Comment: 'Fan-out workflow',
@@ -615,7 +603,7 @@ export class Workflow {
         States: {
           Parallel: {
             Type: 'Parallel',
-            Branches: branches.map(b => b.definition),
+            Branches: branches.map((b) => b.definition),
             End: true,
           },
         },

@@ -178,12 +178,8 @@ function generateShortId() {
         Properties: {
           TableName: `${config.slug}-short-links`,
           BillingMode: 'PAY_PER_REQUEST',
-          AttributeDefinitions: [
-            { AttributeName: 'id', AttributeType: 'S' },
-          ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          AttributeDefinitions: [{ AttributeName: 'id', AttributeType: 'S' }],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
           TimeToLiveSpecification: {
             AttributeName: 'ttl',
             Enabled: true,
@@ -229,7 +225,11 @@ function generateShortId() {
   /**
    * Shorten URLs in message text
    */
-  static shortenUrlsInMessage(message: string, shortDomain: string, linkIdPrefix: string): {
+  static shortenUrlsInMessage(
+    message: string,
+    shortDomain: string,
+    linkIdPrefix: string,
+  ): {
     message: string
     links: Array<{ original: string; short: string; id: string }>
   } {

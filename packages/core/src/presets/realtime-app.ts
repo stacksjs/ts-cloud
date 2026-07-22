@@ -28,10 +28,12 @@ export function createRealtimeAppPreset(options: {
     infrastructure: {
       apiGateway: {
         type: 'websocket',
-        customDomain: domain ? {
-          domain,
-          certificateArn: 'TO_BE_GENERATED',
-        } : undefined,
+        customDomain: domain
+          ? {
+              domain,
+              certificateArn: 'TO_BE_GENERATED',
+            }
+          : undefined,
         routes: [
           {
             path: '$connect',
@@ -97,12 +99,14 @@ export function createRealtimeAppPreset(options: {
           handler: 'dist/streams/broadcast.handler',
           memory: 1024,
           timeout: 60,
-          events: [{
-            type: 'dynamodb-stream',
-            tableName: `${slug}-messages`,
-            startingPosition: 'LATEST',
-            batchSize: 100,
-          }],
+          events: [
+            {
+              type: 'dynamodb-stream',
+              tableName: `${slug}-messages`,
+              startingPosition: 'LATEST',
+              batchSize: 100,
+            },
+          ],
         },
       },
       databases: {
@@ -111,12 +115,14 @@ export function createRealtimeAppPreset(options: {
             [`${slug}-connections`]: {
               partitionKey: { name: 'connectionId', type: 'S' },
               billingMode: 'PAY_PER_REQUEST',
-              globalSecondaryIndexes: [{
-                name: 'RoomIndex',
-                partitionKey: { name: 'roomId', type: 'S' },
-                sortKey: { name: 'connectionId', type: 'S' },
-                projection: 'ALL',
-              }],
+              globalSecondaryIndexes: [
+                {
+                  name: 'RoomIndex',
+                  partitionKey: { name: 'roomId', type: 'S' },
+                  sortKey: { name: 'connectionId', type: 'S' },
+                  projection: 'ALL',
+                },
+              ],
             },
             [`${slug}-messages`]: {
               partitionKey: { name: 'roomId', type: 'S' },
@@ -124,12 +130,14 @@ export function createRealtimeAppPreset(options: {
               billingMode: 'PAY_PER_REQUEST',
               streamEnabled: true,
               pointInTimeRecovery: true,
-              globalSecondaryIndexes: [{
-                name: 'UserIndex',
-                partitionKey: { name: 'userId', type: 'S' },
-                sortKey: { name: 'timestamp', type: 'S' },
-                projection: 'ALL',
-              }],
+              globalSecondaryIndexes: [
+                {
+                  name: 'UserIndex',
+                  partitionKey: { name: 'userId', type: 'S' },
+                  sortKey: { name: 'timestamp', type: 'S' },
+                  projection: 'ALL',
+                },
+              ],
             },
             [`${slug}-rooms`]: {
               partitionKey: { name: 'roomId', type: 'S' },
@@ -148,32 +156,35 @@ export function createRealtimeAppPreset(options: {
         },
       },
       monitoring: {
-        alarms: [{
-          metric: 'WebSocketConnections',
-          threshold: 10000,
-          evaluationPeriods: 1,
-        }, {
-          metric: 'IntegrationLatency',
-          threshold: 1000, // 1 second
-          evaluationPeriods: 2,
-        }],
+        alarms: [
+          {
+            metric: 'WebSocketConnections',
+            threshold: 10000,
+            evaluationPeriods: 1,
+          },
+          {
+            metric: 'IntegrationLatency',
+            threshold: 1000, // 1 second
+            evaluationPeriods: 2,
+          },
+        ],
         dashboard: {
           name: `${slug}-realtime`,
-          widgets: [{
-            type: 'metric',
-            metrics: [
-              'WebSocketConnections',
-              'MessagesSent',
-              'IntegrationLatency',
-            ],
-          }],
+          widgets: [
+            {
+              type: 'metric',
+              metrics: ['WebSocketConnections', 'MessagesSent', 'IntegrationLatency'],
+            },
+          ],
         },
       },
       security: {
-        certificate: domain ? {
-          domain,
-          validationMethod: 'DNS',
-        } : undefined,
+        certificate: domain
+          ? {
+              domain,
+              validationMethod: 'DNS',
+            }
+          : undefined,
         waf: {
           enabled: true,
           rules: ['rateLimit', 'connectionLimit'],

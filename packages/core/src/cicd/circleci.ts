@@ -94,7 +94,9 @@ jobs:
           name: Deploy to AWS
           command: ${deployCommand}
 
-${workflows ? `workflows:
+${
+  workflows
+    ? `workflows:
   version: 2
   build-test-deploy:
     jobs:
@@ -108,7 +110,9 @@ ${workflows ? `workflows:
           filters:
             branches:
               only: main
-` : ''}
+`
+    : ''
+}
 `
 }
 
@@ -121,7 +125,9 @@ export function generateMultiEnvConfig(options: {
 }): string {
   const { environments, awsRegion = 'us-east-1' } = options
 
-  const deployJobs = environments.map(env => `
+  const deployJobs = environments
+    .map(
+      (env) => `
   deploy-${env.name}:
     executor: bun-executor
     steps:
@@ -138,16 +144,22 @@ export function generateMultiEnvConfig(options: {
       - run:
           name: Deploy to ${env.name}
           command: bun run cloud deploy --env=${env.name}
-`).join('\n')
+`,
+    )
+    .join('\n')
 
-  const workflowJobs = environments.map(env => `
+  const workflowJobs = environments
+    .map(
+      (env) => `
       - deploy-${env.name}:
           requires:
             - build
           filters:
             branches:
               only: ${env.branch}
-`).join('')
+`,
+    )
+    .join('')
 
   return `version: 2.1
 
@@ -256,13 +268,12 @@ workflows:
 /**
  * Generate approval workflow config
  */
-export function generateApprovalConfig(options: {
-  environments: string[]
-  awsRegion?: string
-}): string {
+export function generateApprovalConfig(options: { environments: string[]; awsRegion?: string }): string {
   const { environments, awsRegion = 'us-east-1' } = options
 
-  const deployJobs = environments.map(env => `
+  const deployJobs = environments
+    .map(
+      (env) => `
   deploy-${env}:
     executor: bun-executor
     steps:
@@ -275,9 +286,13 @@ export function generateApprovalConfig(options: {
             - dependencies-{{ checksum "package.json" }}
       - run: bun install
       - run: bun run cloud deploy --env=${env}
-`).join('\n')
+`,
+    )
+    .join('\n')
 
-  const workflowJobs = environments.map(env => `
+  const workflowJobs = environments
+    .map(
+      (env) => `
       - hold-${env}:
           type: approval
           requires:
@@ -288,7 +303,9 @@ export function generateApprovalConfig(options: {
       - deploy-${env}:
           requires:
             - hold-${env}
-`).join('')
+`,
+    )
+    .join('')
 
   return `version: 2.1
 
@@ -354,7 +371,9 @@ export function generateParallelConfig(options: {
 }): string {
   const { regions, environment } = options
 
-  const deployJobs = regions.map(region => `
+  const deployJobs = regions
+    .map(
+      (region) => `
   deploy-${region.replace(/-/g, '_')}:
     executor: bun-executor
     environment:
@@ -369,13 +388,19 @@ export function generateParallelConfig(options: {
             - dependencies-{{ checksum "package.json" }}
       - run: bun install
       - run: bun run cloud deploy --env=${environment} --region=${region}
-`).join('\n')
+`,
+    )
+    .join('\n')
 
-  const workflowJobs = regions.map(region => `
+  const workflowJobs = regions
+    .map(
+      (region) => `
       - deploy-${region.replace(/-/g, '_')}:
           requires:
             - build
-`).join('')
+`,
+    )
+    .join('')
 
   return `version: 2.1
 

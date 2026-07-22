@@ -39,15 +39,15 @@ describe('packageServerlessApp', () => {
       skipBuild: true,
     })
 
-    expect(artifact.zip.readUInt32LE(0)).toBe(0x04034B50) // valid ZIP
+    expect(artifact.zip.readUInt32LE(0)).toBe(0x04034b50) // valid ZIP
     expect(artifact.sha256).toMatch(/^[a-f0-9]{64}$/)
     expect(artifact.handlers).toEqual({ http: 'index.http', queue: 'index.queue', cli: 'index.cli' })
     expect(artifact.bundleBytes).toBeGreaterThan(0)
   })
 
   it('throws a clear error when entry is missing', async () => {
-    await expect(packageServerlessApp({ projectRoot, app: { kind: 'node' }, skipBuild: true }))
-      .rejects
-      .toThrow(/entry.*required/)
+    await expect(packageServerlessApp({ projectRoot, app: { kind: 'node' }, skipBuild: true })).rejects.toThrow(
+      /entry.*required/,
+    )
   })
 })

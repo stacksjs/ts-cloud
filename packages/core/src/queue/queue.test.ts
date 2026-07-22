@@ -396,7 +396,7 @@ describe('Queue Management Manager', () => {
 
     expect(purgeOp.status).toBe('in_progress')
 
-    await new Promise(resolve => setTimeout(resolve, 150))
+    await new Promise((resolve) => setTimeout(resolve, 150))
 
     expect(purgeOp.status).toBe('completed')
   })

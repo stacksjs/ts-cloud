@@ -296,7 +296,7 @@ export class ABTestManager {
       throw new Error(`Test not found: ${testId}`)
     }
 
-    const variant = test.variants.find(v => v.id === variantId)
+    const variant = test.variants.find((v) => v.id === variantId)
 
     if (!variant) {
       throw new Error(`Variant not found: ${variantId}`)
@@ -339,13 +339,13 @@ export class ABTestManager {
     const controlMetrics = test.metrics.variants['control'] || test.metrics.variants[test.variants[0].id]
     const winnerMetrics = test.metrics.variants[winningVariant.id]
 
-    const improvement
-      = ((winnerMetrics.conversionRate - controlMetrics.conversionRate) / controlMetrics.conversionRate) * 100
+    const improvement =
+      ((winnerMetrics.conversionRate - controlMetrics.conversionRate) / controlMetrics.conversionRate) * 100
 
     // Simple statistical significance check (would use proper chi-square test in production)
     const minSampleSize = 100
-    const statisticalSignificance
-      = winnerMetrics.requests > minSampleSize && controlMetrics.requests > minSampleSize && Math.abs(improvement) > 10
+    const statisticalSignificance =
+      winnerMetrics.requests > minSampleSize && controlMetrics.requests > minSampleSize && Math.abs(improvement) > 10
 
     return {
       testId,
@@ -368,7 +368,7 @@ export class ABTestManager {
       throw new Error(`Test not found: ${testId}`)
     }
 
-    const winner = test.variants.find(v => v.id === variantId)
+    const winner = test.variants.find((v) => v.id === variantId)
 
     if (!winner) {
       throw new Error(`Variant not found: ${variantId}`)
@@ -379,8 +379,7 @@ export class ABTestManager {
       if (v.id === variantId) {
         v.trafficPercentage = 100
         v.weight = 100
-      }
-      else {
+      } else {
         v.trafficPercentage = 0
         v.weight = 0
       }
@@ -432,11 +431,7 @@ export class ABTestManager {
   /**
    * Generate recommendation
    */
-  private generateRecommendation(
-    improvement: number,
-    significant: boolean,
-    winnerName: string,
-  ): string {
+  private generateRecommendation(improvement: number, significant: boolean, winnerName: string): string {
     if (!significant) {
       return 'Continue test - sample size too small or no significant difference detected'
     }
@@ -489,7 +484,7 @@ export class ABTestManager {
           {
             Type: 'forward',
             ForwardConfig: {
-              TargetGroups: test.variants.map(variant => ({
+              TargetGroups: test.variants.map((variant) => ({
                 TargetGroupArn: variant.targetGroupArn,
                 Weight: variant.weight,
               })),
@@ -558,7 +553,7 @@ exports.handler = (event, _context, _callback) => {
   // Route to appropriate origin based on variant
   ${test.variants
     .map(
-      v => `if (variant === '${v.id}') {
+      (v) => `if (variant === '${v.id}') {
     request.origin.custom.domainName = '${v.originId}';
   }`,
     )

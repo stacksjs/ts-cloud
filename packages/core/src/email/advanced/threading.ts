@@ -181,11 +181,7 @@ catch {
   /**
    * Create threading Lambda function
    */
-  static createThreadingLambda(config: {
-    slug: string
-    roleArn: string
-    emailBucket: string
-  }): Record<string, any> {
+  static createThreadingLambda(config: { slug: string; roleArn: string; emailBucket: string }): Record<string, any> {
     return {
       [`${config.slug}EmailThreadingLambda`]: {
         Type: 'AWS::Lambda::Function',
@@ -221,9 +217,7 @@ catch {
   }): Promise<EmailThread[]> {
     const { s3Client, bucket, mailbox, limit = 50, offset = 0 } = params
 
-    const [localPart, domain] = mailbox.includes('@')
-      ? mailbox.split('@')
-      : [mailbox, 'default']
+    const [localPart, domain] = mailbox.includes('@') ? mailbox.split('@') : [mailbox, 'default']
 
     const threadsKey = `mailboxes/${domain}/${localPart}/threads.json`
 
@@ -237,13 +231,10 @@ catch {
       const threadList = Object.values(threads) as EmailThread[]
 
       // Sort by last message date
-      threadList.sort((a, b) =>
-        new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime()
-      )
+      threadList.sort((a, b) => new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime())
 
       return threadList.slice(offset, offset + limit)
-    }
-    catch {
+    } catch {
       return []
     }
   }
@@ -259,9 +250,7 @@ catch {
   }): Promise<EmailThread | null> {
     const { s3Client, bucket, mailbox, threadId } = params
 
-    const [localPart, domain] = mailbox.includes('@')
-      ? mailbox.split('@')
-      : [mailbox, 'default']
+    const [localPart, domain] = mailbox.includes('@') ? mailbox.split('@') : [mailbox, 'default']
 
     const threadsKey = `mailboxes/${domain}/${localPart}/threads.json`
 
@@ -273,8 +262,7 @@ catch {
 
       const threads = JSON.parse(result.Body)
       return threads[threadId] || null
-    }
-    catch {
+    } catch {
       return null
     }
   }

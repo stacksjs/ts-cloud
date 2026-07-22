@@ -43,7 +43,7 @@ export function generateDeploymentWorkflow(options: GitHubActionsOptions = {}): 
 on:
   ${trigger}:
     branches:
-${branches.map(b => `      - ${b}`).join('\n')}
+${branches.map((b) => `      - ${b}`).join('\n')}
 
 env:
   AWS_REGION: ${awsRegion}
@@ -90,18 +90,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Deploy to AWS
         run: ${deployCommand}
@@ -127,7 +129,7 @@ export function generateMultiEnvWorkflow(options: {
 on:
   push:
     branches:
-${environments.map(env => `      - ${env.branch}`).join('\n')}
+${environments.map((env) => `      - ${env.branch}`).join('\n')}
 
 env:
   AWS_REGION: ${awsRegion}
@@ -141,8 +143,12 @@ jobs:
       - name: Determine environment
         id: set-env
         run: |
-${environments.map((env, i) => `          ${i > 0 ? 'elif' : 'if'} [[ "\${{ github.ref }}" == "refs/heads/${env.branch}" ]]; then
-            echo "environment=${env.name}" >> $GITHUB_OUTPUT`).join('\n')}
+${environments
+  .map(
+    (env, i) => `          ${i > 0 ? 'elif' : 'if'} [[ "\${{ github.ref }}" == "refs/heads/${env.branch}" ]]; then
+            echo "environment=${env.name}" >> $GITHUB_OUTPUT`,
+  )
+  .join('\n')}
           fi
 
   deploy:
@@ -163,18 +169,20 @@ ${environments.map((env, i) => `          ${i > 0 ? 'elif' : 'if'} [[ "\${{ gith
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Deploy
         run: bun run cloud deploy --env=\${{ needs.determine-environment.outputs.environment }}
@@ -184,11 +192,13 @@ ${environments.map((env, i) => `          ${i > 0 ? 'elif' : 'if'} [[ "\${{ gith
 /**
  * Generate PR preview workflow
  */
-export function generatePRPreviewWorkflow(options: {
-  awsRegion?: string
-  awsRole?: string
-  ttl?: number
-} = {}): string {
+export function generatePRPreviewWorkflow(
+  options: {
+    awsRegion?: string
+    awsRole?: string
+    ttl?: number
+  } = {},
+): string {
   const { awsRegion = 'us-east-1', awsRole, ttl = 24 } = options
   const usesOIDC = !!awsRole
 
@@ -221,18 +231,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Deploy preview environment
         id: deploy
@@ -283,18 +295,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Destroy preview environment
         run: |
@@ -345,18 +359,20 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ env.AWS_REGION }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ env.AWS_REGION }}`}
+          aws-region: \${{ env.AWS_REGION }}`
+      }
 
       - name: Deploy
         run: bun run cloud deploy --env=\${{ env.ENVIRONMENT }}
@@ -389,8 +405,12 @@ jobs:
     strategy:
       matrix:
         include:
-${matrix.map(m => `          - environment: ${m.environment}
-            region: ${m.region}${m.account ? `\n            account: ${m.account}` : ''}`).join('\n')}
+${matrix
+  .map(
+    (m) => `          - environment: ${m.environment}
+            region: ${m.region}${m.account ? `\n            account: ${m.account}` : ''}`,
+  )
+  .join('\n')}
     permissions:
       id-token: write
       contents: read
@@ -405,18 +425,20 @@ ${matrix.map(m => `          - environment: ${m.environment}
       - name: Install dependencies
         run: bun install
 
-      ${usesOIDC
-        ? `- name: Configure AWS credentials (OIDC)
+      ${
+        usesOIDC
+          ? `- name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${awsRole}
           aws-region: \${{ matrix.region }}`
-        : `- name: Configure AWS credentials
+          : `- name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: \${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: \${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: \${{ matrix.region }}`}
+          aws-region: \${{ matrix.region }}`
+      }
 
       - name: Deploy to \${{ matrix.environment }} (\${{ matrix.region }})
         run: bun run cloud deploy --env=\${{ matrix.environment }} --region=\${{ matrix.region }}

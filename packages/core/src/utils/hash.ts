@@ -2,7 +2,6 @@
  * File hashing utilities for deployment optimization
  * Fast hashing for detecting changed files
  */
-
 import { createHash } from 'node:crypto'
 import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -23,10 +22,7 @@ export interface HashOptions {
 /**
  * Hash a file using streaming for large files
  */
-export async function hashFile(
-  filePath: string,
-  options: HashOptions = {},
-): Promise<string> {
+export async function hashFile(filePath: string, options: HashOptions = {}): Promise<string> {
   const algorithm = options.algorithm || 'sha256'
   const chunkSize = options.chunkSize || 64 * 1024 // 64KB chunks
 
@@ -34,7 +30,7 @@ export async function hashFile(
     const hash = createHash(algorithm)
     const stream = createReadStream(filePath, { highWaterMark: chunkSize })
 
-    stream.on('data', chunk => hash.update(chunk))
+    stream.on('data', (chunk) => hash.update(chunk))
     stream.on('end', () => resolve(hash.digest('hex')))
     stream.on('error', reject)
   })
@@ -57,17 +53,8 @@ export function hashBuffer(buffer: Buffer, algorithm: 'md5' | 'sha1' | 'sha256' 
 /**
  * Hash all files in a directory
  */
-export async function hashDirectory(
-  dirPath: string,
-  options: HashOptions = {},
-): Promise<FileHash[]> {
-  const ignorePatterns = options.ignorePatterns || [
-    'node_modules',
-    '.git',
-    'dist',
-    'build',
-    '.ts-cloud',
-  ]
+export async function hashDirectory(dirPath: string, options: HashOptions = {}): Promise<FileHash[]> {
+  const ignorePatterns = options.ignorePatterns || ['node_modules', '.git', 'dist', 'build', '.ts-cloud']
 
   const files: FileHash[] = []
 
@@ -79,14 +66,13 @@ export async function hashDirectory(
       const relativePath = relative(dirPath, fullPath)
 
       // Skip ignored patterns
-      if (ignorePatterns.some(pattern => relativePath.includes(pattern))) {
+      if (ignorePatterns.some((pattern) => relativePath.includes(pattern))) {
         continue
       }
 
       if (entry.isDirectory()) {
         await walk(fullPath)
-      }
-      else if (entry.isFile()) {
+      } else if (entry.isFile()) {
         const stats = statSync(fullPath)
         const hash = await hashFile(fullPath, options)
 
@@ -111,7 +97,7 @@ export async function hashDirectory(
  */
 export function hashManifest(fileHashes: FileHash[]): string {
   const sorted = [...fileHashes].sort((a, b) => a.path.localeCompare(b.path))
-  const content = sorted.map(f => `${f.path}:${f.hash}`).join('\n')
+  const content = sorted.map((f) => `${f.path}:${f.hash}`).join('\n')
   return hashString(content)
 }
 
@@ -132,12 +118,12 @@ export function findChangedFiles(
   oldHashes: FileHash[],
   newHashes: FileHash[],
 ): {
-    added: FileHash[]
-    modified: FileHash[]
-    deleted: FileHash[]
-  } {
-  const oldMap = new Map(oldHashes.map(f => [f.path, f]))
-  const newMap = new Map(newHashes.map(f => [f.path, f]))
+  added: FileHash[]
+  modified: FileHash[]
+  deleted: FileHash[]
+} {
+  const oldMap = new Map(oldHashes.map((f) => [f.path, f]))
+  const newMap = new Map(newHashes.map((f) => [f.path, f]))
 
   const added: FileHash[] = []
   const modified: FileHash[] = []
@@ -149,8 +135,7 @@ export function findChangedFiles(
 
     if (!oldFile) {
       added.push(newFile)
-    }
-    else if (oldFile.hash !== newFile.hash) {
+    } else if (oldFile.hash !== newFile.hash) {
       modified.push(newFile)
     }
   }
@@ -169,7 +154,7 @@ export function findChangedFiles(
  * Cache for file hashes
  */
 export class HashCache {
-  private cache: Map<string, { hash: string, mtime: number, size: number }>
+  private cache: Map<string, { hash: string; mtime: number; size: number }>
 
   constructor() {
     this.cache = new Map()

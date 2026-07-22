@@ -1,18 +1,4 @@
-import type {
-  ApplicationLoadBalancer,
-  AutoScalingGroup,
-  AutoScalingLaunchConfiguration,
-  AutoScalingScalingPolicy,
-  EC2Instance,
-  EC2SecurityGroup,
-  ECSCluster,
-  ECSService,
-  ECSTaskDefinition,
-  IAMRole,
-  LambdaFunction,
-  Listener,
-  TargetGroup,
-} from '@ts-cloud/aws-types'
+import type { ApplicationLoadBalancer, AutoScalingGroup, AutoScalingLaunchConfiguration, AutoScalingScalingPolicy, EC2Instance, EC2SecurityGroup, ECSCluster, ECSService, ECSTaskDefinition, IAMRole, LambdaFunction, Listener, TargetGroup } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -87,7 +73,7 @@ export interface FargateServiceOptions {
   desiredCount?: number
   containerPort?: number
   environmentVariables?: Record<string, string>
-  secrets?: Array<{ name: string, valueFrom: string }>
+  secrets?: Array<{ name: string; valueFrom: string }>
   healthCheck?: {
     command: string[]
     interval?: number
@@ -156,7 +142,8 @@ export interface ScalingPolicyOptions {
   autoScalingGroupName: string | { Ref: string }
   policyType?: 'TargetTrackingScaling' | 'StepScaling' | 'SimpleScaling'
   targetValue?: number
-  predefinedMetricType?: 'ASGAverageCPUUtilization' | 'ASGAverageNetworkIn' | 'ASGAverageNetworkOut' | 'ALBRequestCountPerTarget'
+  predefinedMetricType?:
+    'ASGAverageCPUUtilization' | 'ASGAverageNetworkIn' | 'ASGAverageNetworkOut' | 'ALBRequestCountPerTarget'
   scaleInCooldown?: number
   scaleOutCooldown?: number
 }
@@ -247,14 +234,7 @@ export class Compute {
     securityGroup: EC2SecurityGroup
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      vpcId,
-      description,
-      ingress = [],
-      egress = [],
-    } = options
+    const { slug, environment, vpcId, description, ingress = [], egress = [] } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -280,7 +260,7 @@ export class Compute {
     }
 
     if (ingress.length > 0) {
-      securityGroup.Properties.SecurityGroupIngress = ingress.map(rule => ({
+      securityGroup.Properties.SecurityGroupIngress = ingress.map((rule) => ({
         IpProtocol: rule.protocol,
         FromPort: rule.fromPort,
         ToPort: rule.toPort,
@@ -290,7 +270,7 @@ export class Compute {
     }
 
     if (egress.length > 0) {
-      securityGroup.Properties.SecurityGroupEgress = egress.map(rule => ({
+      securityGroup.Properties.SecurityGroupEgress = egress.map((rule) => ({
         IpProtocol: rule.protocol,
         FromPort: rule.fromPort,
         ToPort: rule.toPort,
@@ -310,9 +290,9 @@ export class Compute {
     environment: EnvironmentType,
     vpcId?: string,
   ): {
-      securityGroup: EC2SecurityGroup
-      logicalId: string
-    } {
+    securityGroup: EC2SecurityGroup
+    logicalId: string
+  } {
     return Compute.createSecurityGroup({
       slug,
       environment,
@@ -336,14 +316,7 @@ export class Compute {
     loadBalancer: ApplicationLoadBalancer
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      scheme = 'internet-facing',
-      subnets,
-      securityGroups,
-      type = 'application',
-    } = options
+    const { slug, environment, scheme = 'internet-facing', subnets, securityGroups, type = 'application' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -435,15 +408,10 @@ export class Compute {
     loadBalancerLogicalId: string,
     options: ListenerOptions,
   ): {
-      listener: Listener
-      logicalId: string
-    } {
-    const {
-      port,
-      protocol = 'HTTP',
-      certificateArn,
-      defaultTargetGroupArn,
-    } = options
+    listener: Listener
+    logicalId: string
+  } {
+    const { port, protocol = 'HTTP', certificateArn, defaultTargetGroupArn } = options
 
     const logicalId = generateLogicalId(`listener-${loadBalancerLogicalId}-${port}`)
 
@@ -477,9 +445,9 @@ export class Compute {
     slug: string,
     environment: EnvironmentType,
   ): {
-      cluster: ECSCluster
-      logicalId: string
-    } {
+    cluster: ECSCluster
+    logicalId: string
+  } {
     const resourceName = generateResourceName({
       slug,
       environment,
@@ -560,9 +528,7 @@ export class Compute {
             },
           ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy',
-        ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'],
       },
     }
 
@@ -613,7 +579,7 @@ export class Compute {
               Name,
               Value,
             })),
-            Secrets: secrets.map(s => ({
+            Secrets: secrets.map((s) => ({
               Name: s.name,
               ValueFrom: s.valueFrom,
             })),
@@ -744,17 +710,13 @@ export class Compute {
             },
           ],
         },
-        ManagedPolicyArns: [
-          'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-        ],
+        ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'],
       },
     }
 
     // Add VPC execution role if VPC config provided
     if (vpcConfig) {
-      role.Properties.ManagedPolicyArns!.push(
-        'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole',
-      )
+      role.Properties.ManagedPolicyArns!.push('arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole')
     }
 
     const lambdaFunction: LambdaFunction = {
@@ -797,11 +759,13 @@ export class Compute {
   /**
    * Generate Node.js server user data script
    */
-  static generateNodeServerUserData(options: {
-    nodeVersion?: string
-    appRepo?: string
-    environment?: Record<string, string>
-  } = {}): string {
+  static generateNodeServerUserData(
+    options: {
+      nodeVersion?: string
+      appRepo?: string
+      environment?: Record<string, string>
+    } = {},
+  ): string {
     const { nodeVersion = '20', appRepo, environment = {} } = options
 
     const envVars = Object.entries(environment)
@@ -828,7 +792,9 @@ yum install -y caddy
 ${envVars}
 
 # Clone application (if repo provided)
-${appRepo ? `
+${
+  appRepo
+    ? `
 cd /var/www
 git clone ${appRepo} app
 cd app
@@ -836,7 +802,9 @@ npm install
 pm2 start npm --name 'app' -- start
 pm2 save
 pm2 startup systemd -u ec2-user --hp /home/ec2-user
-` : '# No repository specified'}
+`
+    : '# No repository specified'
+}
 
 # Configure Caddy
 cat > /etc/caddy/Caddyfile <<'EOF'
@@ -856,10 +824,12 @@ echo "Server setup complete!"
   /**
    * Generate Bun server user data script
    */
-  static generateBunServerUserData(options: {
-    appRepo?: string
-    environment?: Record<string, string>
-  } = {}): string {
+  static generateBunServerUserData(
+    options: {
+      appRepo?: string
+      environment?: Record<string, string>
+    } = {},
+  ): string {
     const { appRepo, environment = {} } = options
 
     const envVars = Object.entries(environment)
@@ -885,7 +855,9 @@ yum install -y caddy
 ${envVars}
 
 # Clone application (if repo provided)
-${appRepo ? `
+${
+  appRepo
+    ? `
 cd /var/www
 git clone ${appRepo} app
 cd app
@@ -910,7 +882,9 @@ SERVICE
 
 systemctl enable app
 systemctl start app
-` : '# No repository specified'}
+`
+    : '# No repository specified'
+}
 
 # Configure Caddy
 cat > /etc/caddy/Caddyfile <<'EOF'
@@ -1237,7 +1211,7 @@ echo "Bun server setup complete!"
      * Convert environment variables to ECS secrets configuration
      * This takes environment variable names and their corresponding Secrets Manager ARNs
      */
-    fromSecretsManager: (secrets: Record<string, string>): Array<{ name: string, valueFrom: string }> => {
+    fromSecretsManager: (secrets: Record<string, string>): Array<{ name: string; valueFrom: string }> => {
       return Object.entries(secrets).map(([name, secretArn]) => ({
         name,
         valueFrom: secretArn,
@@ -1271,7 +1245,9 @@ echo "Bun server setup complete!"
     /**
      * Create IAM policy for Secrets Manager access
      */
-    createAccessPolicy: (secretArns: string[]): {
+    createAccessPolicy: (
+      secretArns: string[],
+    ): {
       PolicyName: string
       PolicyDocument: {
         Version: '2012-10-17'
@@ -1285,21 +1261,22 @@ echo "Bun server setup complete!"
       PolicyName: 'SecretsManagerAccess',
       PolicyDocument: {
         Version: '2012-10-17' as const,
-        Statement: [{
-          Effect: 'Allow' as const,
-          Action: [
-            'secretsmanager:GetSecretValue',
-            'secretsmanager:DescribeSecret',
-          ],
-          Resource: secretArns,
-        }],
+        Statement: [
+          {
+            Effect: 'Allow' as const,
+            Action: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+            Resource: secretArns,
+          },
+        ],
       },
     }),
 
     /**
      * Create IAM policy for KMS decryption (when secrets are encrypted with KMS)
      */
-    createKmsPolicy: (kmsKeyArns: string[]): {
+    createKmsPolicy: (
+      kmsKeyArns: string[],
+    ): {
       PolicyName: string
       PolicyDocument: {
         Version: '2012-10-17'
@@ -1313,22 +1290,20 @@ echo "Bun server setup complete!"
       PolicyName: 'KMSDecryptAccess',
       PolicyDocument: {
         Version: '2012-10-17' as const,
-        Statement: [{
-          Effect: 'Allow' as const,
-          Action: ['kms:Decrypt'],
-          Resource: kmsKeyArns,
-        }],
+        Statement: [
+          {
+            Effect: 'Allow' as const,
+            Action: ['kms:Decrypt'],
+            Resource: kmsKeyArns,
+          },
+        ],
       },
     }),
 
     /**
      * Build secret ARN from components
      */
-    buildSecretArn: (params: {
-      region: string
-      accountId: string
-      secretName: string
-    }): string => {
+    buildSecretArn: (params: { region: string; accountId: string; secretName: string }): string => {
       return `arn:aws:secretsmanager:${params.region}:${params.accountId}:secret:${params.secretName}`
     },
 
@@ -1336,11 +1311,7 @@ echo "Bun server setup complete!"
      * Build secret ARN pattern for wildcard matching
      * Useful for IAM policies
      */
-    buildSecretArnPattern: (params: {
-      region?: string
-      accountId?: string
-      secretNamePrefix: string
-    }): string => {
+    buildSecretArnPattern: (params: { region?: string; accountId?: string; secretNamePrefix: string }): string => {
       const region = params.region || '*'
       const accountId = params.accountId || '*'
       return `arn:aws:secretsmanager:${region}:${accountId}:secret:${params.secretNamePrefix}*`
@@ -1369,10 +1340,12 @@ echo "Bun server setup complete!"
   /**
    * Create ECS Fargate service with full Secrets Manager integration
    */
-  static createFargateServiceWithSecrets(options: FargateServiceOptions & {
-    secretArns?: string[]
-    kmsKeyArns?: string[]
-  }): {
+  static createFargateServiceWithSecrets(
+    options: FargateServiceOptions & {
+      secretArns?: string[]
+      kmsKeyArns?: string[]
+    },
+  ): {
     cluster: ECSCluster
     taskDefinition: ECSTaskDefinition
     service: ECSService
@@ -1384,11 +1357,7 @@ echo "Bun server setup complete!"
     taskRoleLogicalId: string
     executionRoleLogicalId: string
   } {
-    const {
-      secretArns = [],
-      kmsKeyArns = [],
-      ...baseOptions
-    } = options
+    const { secretArns = [], kmsKeyArns = [], ...baseOptions } = options
 
     // Create base Fargate service
     const result = Compute.createFargateService(baseOptions)
@@ -1399,15 +1368,11 @@ echo "Bun server setup complete!"
         result.executionRole.Properties.Policies = []
       }
 
-      result.executionRole.Properties.Policies.push(
-        Compute.Secrets.createAccessPolicy(secretArns),
-      )
+      result.executionRole.Properties.Policies.push(Compute.Secrets.createAccessPolicy(secretArns))
 
       // Add KMS policy if KMS keys are specified
       if (kmsKeyArns.length > 0) {
-        result.executionRole.Properties.Policies.push(
-          Compute.Secrets.createKmsPolicy(kmsKeyArns),
-        )
+        result.executionRole.Properties.Policies.push(Compute.Secrets.createKmsPolicy(kmsKeyArns))
       }
     }
 
@@ -1423,7 +1388,7 @@ echo "Bun server setup complete!"
     accountId: string
     secretPrefix: string
     secrets: string[]
-  }): Array<{ name: string, valueFrom: string }> {
+  }): Array<{ name: string; valueFrom: string }> {
     return params.secrets.map((secretName) => {
       const secretArn = `arn:aws:secretsmanager:${params.region}:${params.accountId}:secret:${params.secretPrefix}/${secretName}`
       return {
@@ -1440,48 +1405,48 @@ echo "Bun server setup complete!"
     /**
      * Database credentials as secrets
      */
-    database: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
+    database: (secretArn: string): Array<{ name: string; valueFrom: string }> => [
       { name: 'DB_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'DB_PORT', valueFrom: `${secretArn}:port::` },
       { name: 'DB_USERNAME', valueFrom: `${secretArn}:username::` },
       { name: 'DB_PASSWORD', valueFrom: `${secretArn}:password::` },
       { name: 'DB_NAME', valueFrom: `${secretArn}:dbname::` },
-    ]),
+    ],
 
     /**
      * Redis credentials as secrets
      */
-    redis: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
+    redis: (secretArn: string): Array<{ name: string; valueFrom: string }> => [
       { name: 'REDIS_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'REDIS_PORT', valueFrom: `${secretArn}:port::` },
       { name: 'REDIS_PASSWORD', valueFrom: `${secretArn}:password::` },
-    ]),
+    ],
 
     /**
      * API credentials as secrets
      */
-    apiCredentials: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
+    apiCredentials: (secretArn: string): Array<{ name: string; valueFrom: string }> => [
       { name: 'API_KEY', valueFrom: `${secretArn}:apiKey::` },
       { name: 'API_SECRET', valueFrom: `${secretArn}:apiSecret::` },
-    ]),
+    ],
 
     /**
      * Mail credentials as secrets
      */
-    mail: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
+    mail: (secretArn: string): Array<{ name: string; valueFrom: string }> => [
       { name: 'MAIL_HOST', valueFrom: `${secretArn}:host::` },
       { name: 'MAIL_PORT', valueFrom: `${secretArn}:port::` },
       { name: 'MAIL_USERNAME', valueFrom: `${secretArn}:username::` },
       { name: 'MAIL_PASSWORD', valueFrom: `${secretArn}:password::` },
-    ]),
+    ],
 
     /**
      * AWS credentials as secrets (for cross-account access)
      */
-    awsCredentials: (secretArn: string): Array<{ name: string, valueFrom: string }> => ([
+    awsCredentials: (secretArn: string): Array<{ name: string; valueFrom: string }> => [
       { name: 'AWS_ACCESS_KEY_ID', valueFrom: `${secretArn}:accessKeyId::` },
       { name: 'AWS_SECRET_ACCESS_KEY', valueFrom: `${secretArn}:secretAccessKey::` },
-    ]),
+    ],
   }
 
   /**
@@ -1537,18 +1502,20 @@ echo "Bun server setup complete!"
         GroupName: `${resourceName}-sg`,
         GroupDescription: `Security group for ${resourceName} JumpBox SSH access`,
         VpcId: vpcId,
-        SecurityGroupIngress: allowedCidrs.map(cidr => ({
+        SecurityGroupIngress: allowedCidrs.map((cidr) => ({
           IpProtocol: 'tcp',
           FromPort: 22,
           ToPort: 22,
           CidrIp: cidr,
           Description: `SSH access from ${cidr}`,
         })),
-        SecurityGroupEgress: [{
-          IpProtocol: '-1',
-          CidrIp: '0.0.0.0/0',
-          Description: 'Allow all outbound traffic',
-        }],
+        SecurityGroupEgress: [
+          {
+            IpProtocol: '-1',
+            CidrIp: '0.0.0.0/0',
+            Description: 'Allow all outbound traffic',
+          },
+        ],
         Tags: [
           { Key: 'Name', Value: `${resourceName}-sg` },
           { Key: 'Environment', Value: environment },
@@ -1564,33 +1531,39 @@ echo "Bun server setup complete!"
         RoleName: `${resourceName}-role`,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: {
-              Service: 'ec2.amazonaws.com',
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: {
+                Service: 'ec2.amazonaws.com',
+              },
+              Action: 'sts:AssumeRole',
             },
-            Action: 'sts:AssumeRole',
-          }],
+          ],
         },
         ManagedPolicyArns: [
           'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore', // For SSM Session Manager
         ],
         Policies: mountEfs
-          ? [{
-              PolicyName: 'EFSAccess',
-              PolicyDocument: {
-                Version: '2012-10-17',
-                Statement: [{
-                  Effect: 'Allow',
-                  Action: [
-                    'elasticfilesystem:ClientMount',
-                    'elasticfilesystem:ClientWrite',
-                    'elasticfilesystem:ClientRootAccess',
+          ? [
+              {
+                PolicyName: 'EFSAccess',
+                PolicyDocument: {
+                  Version: '2012-10-17',
+                  Statement: [
+                    {
+                      Effect: 'Allow',
+                      Action: [
+                        'elasticfilesystem:ClientMount',
+                        'elasticfilesystem:ClientWrite',
+                        'elasticfilesystem:ClientRootAccess',
+                      ],
+                      Resource: '*',
+                    },
                   ],
-                  Resource: '*',
-                }],
+                },
               },
-            }]
+            ]
           : undefined,
       },
     }
@@ -1635,15 +1608,17 @@ echo "${mountEfs.fileSystemId}:/ ${mountPath} efs defaults,_netdev 0 0" >> /etc/
         SecurityGroupIds: [Fn.Ref(securityGroupLogicalId)] as any,
         IamInstanceProfile: Fn.Ref(instanceProfileLogicalId) as any,
         UserData: Fn.Base64(userDataScript) as any,
-        BlockDeviceMappings: [{
-          DeviceName: '/dev/xvda',
-          Ebs: {
-            VolumeSize: 20,
-            VolumeType: 'gp3',
-            Encrypted: true,
-            DeleteOnTermination: true,
+        BlockDeviceMappings: [
+          {
+            DeviceName: '/dev/xvda',
+            Ebs: {
+              VolumeSize: 20,
+              VolumeType: 'gp3',
+              Encrypted: true,
+              DeleteOnTermination: true,
+            },
           },
-        }],
+        ],
         Tags: [
           { Key: 'Name', Value: resourceName },
           { Key: 'Environment', Value: environment },
@@ -1839,8 +1814,8 @@ echo "Database tools installed!"
      */
     toFargateSpecs: (
       size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
-    ): { cpu: string, memory: string } => {
-      const mapping: Record<string, { cpu: string, memory: string }> = {
+    ): { cpu: string; memory: string } => {
+      const mapping: Record<string, { cpu: string; memory: string }> = {
         nano: { cpu: '256', memory: '512' },
         micro: { cpu: '256', memory: '1024' },
         small: { cpu: '512', memory: '1024' },
@@ -1855,9 +1830,7 @@ echo "Database tools installed!"
     /**
      * Get Lambda memory from size
      */
-    toLambdaMemory: (
-      size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge',
-    ): number => {
+    toLambdaMemory: (size: 'nano' | 'micro' | 'small' | 'medium' | 'large' | 'xlarge' | '2xlarge'): number => {
       const mapping: Record<string, number> = {
         nano: 128,
         micro: 256,
@@ -2074,7 +2047,7 @@ echo "Database tools installed!"
      * Create mixed instances policy for ASG
      */
     create: (options: {
-      instanceTypes: Array<{ size: string, weight?: number }>
+      instanceTypes: Array<{ size: string; weight?: number }>
       baseCapacity?: number
       onDemandPercentage?: number
       spotAllocationStrategy?: 'lowest-price' | 'capacity-optimized' | 'capacity-optimized-prioritized'
@@ -2168,9 +2141,7 @@ echo "Database tools installed!"
         baseCapacity: 2,
         onDemandPercentage: 80,
         spotAllocationStrategy: 'capacity-optimized-prioritized',
-        instanceTypes: [
-          { size: 'medium', weight: 1 },
-        ] as const,
+        instanceTypes: [{ size: 'medium', weight: 1 }] as const,
       },
     },
   }
@@ -2253,7 +2224,7 @@ echo "Database tools installed!"
     } => {
       const { min, max, cpuTarget = 70, memoryTarget } = options
 
-      const policies: Array<{ predefinedMetricType: string, targetValue: number }> = [
+      const policies: Array<{ predefinedMetricType: string; targetValue: number }> = [
         {
           predefinedMetricType: 'ECSServiceAverageCPUUtilization',
           targetValue: cpuTarget,
@@ -2424,31 +2395,30 @@ echo "Database tools installed!"
       Protocol: string
       Certificates: Array<{ CertificateArn: string }>
       SslPolicy: string
-      DefaultActions: Array<{ Type: string, TargetGroupArn: string }>
+      DefaultActions: Array<{ Type: string; TargetGroupArn: string }>
     } => {
-      const {
-        certificateArn,
-        targetGroupArn,
-        port = 443,
-        sslPolicy = 'ELBSecurityPolicy-TLS13-1-2-2021-06',
-      } = options
+      const { certificateArn, targetGroupArn, port = 443, sslPolicy = 'ELBSecurityPolicy-TLS13-1-2-2021-06' } = options
 
       return {
         Port: port,
         Protocol: 'HTTPS',
         Certificates: [{ CertificateArn: certificateArn }],
         SslPolicy: sslPolicy,
-        DefaultActions: [{
-          Type: 'forward',
-          TargetGroupArn: targetGroupArn,
-        }],
+        DefaultActions: [
+          {
+            Type: 'forward',
+            TargetGroupArn: targetGroupArn,
+          },
+        ],
       }
     },
 
     /**
      * Create HTTP to HTTPS redirect listener
      */
-    httpRedirectListener: (port: number = 80): {
+    httpRedirectListener: (
+      port: number = 80,
+    ): {
       Port: number
       Protocol: string
       DefaultActions: Array<{
@@ -2462,14 +2432,16 @@ echo "Database tools installed!"
     } => ({
       Port: port,
       Protocol: 'HTTP',
-      DefaultActions: [{
-        Type: 'redirect',
-        RedirectConfig: {
-          Protocol: 'HTTPS',
-          Port: '443',
-          StatusCode: 'HTTP_301',
+      DefaultActions: [
+        {
+          Type: 'redirect',
+          RedirectConfig: {
+            Protocol: 'HTTPS',
+            Port: '443',
+            StatusCode: 'HTTP_301',
+          },
         },
-      }],
+      ],
     }),
 
     /**
@@ -2640,8 +2612,7 @@ apt-get install -y curl wget git jq htop unzip
       // Install runtime
       if (runtime === 'bun') {
         script += Compute.UserData.Scripts.bun(runtimeVersion)
-      }
-      else {
+      } else {
         script += Compute.UserData.Scripts.nodeJs(runtimeVersion)
       }
 
@@ -2651,8 +2622,7 @@ apt-get install -y curl wget git jq htop unzip
         if (domain && enableSsl) {
           script += Compute.UserData.Scripts.nginxProxy(domain, appPort)
         }
-      }
-      else if (webServer === 'caddy') {
+      } else if (webServer === 'caddy') {
         script += Compute.UserData.Scripts.caddy()
         if (domain) {
           script += Compute.UserData.Scripts.caddyProxy(domain, appPort)
@@ -2751,24 +2721,15 @@ systemctl enable stacks-api
        */
       caddyfile?: string
     }): string => {
-      const {
-        runtime = 'bun',
-        runtimeVersion = 'latest',
-        systemPackages = [],
-        database,
-        caddyfile,
-      } = options
+      const { runtime = 'bun', runtimeVersion = 'latest', systemPackages = [], database, caddyfile } = options
 
       // Auto-add a database client when a database engine is configured.
       const packages = new Set(systemPackages)
-      if (database === 'sqlite')
-        packages.add('sqlite')
+      if (database === 'sqlite') packages.add('sqlite')
       // For mysql/postgres the actual DB lives in RDS — install only the
       // client lib, useful for shell debugging.
-      else if (database === 'mysql')
-        packages.add('mysql')
-      else if (database === 'postgres')
-        packages.add('postgresql15')
+      else if (database === 'mysql') packages.add('mysql')
+      else if (database === 'postgres') packages.add('postgresql15')
 
       let script = `#!/bin/bash
 set -euo pipefail
@@ -2806,17 +2767,15 @@ ln -sf /root/.bun/bin/bun /usr/local/bin/bun
 echo 'export BUN_INSTALL="/root/.bun"' > /etc/profile.d/bun.sh
 echo 'export PATH="$BUN_INSTALL/bin:$PATH"' >> /etc/profile.d/bun.sh
 `
-      }
-      else if (runtime === 'node') {
-        const nodeMajor = (runtimeVersion === 'latest' || !runtimeVersion) ? '20' : runtimeVersion.split('.')[0]
+      } else if (runtime === 'node') {
+        const nodeMajor = runtimeVersion === 'latest' || !runtimeVersion ? '20' : runtimeVersion.split('.')[0]
         script += `
 # Node.js (major ${nodeMajor})
 dnf install -y nodejs${nodeMajor}
 ln -sf /usr/bin/node /usr/local/bin/node
 ln -sf /usr/bin/npm /usr/local/bin/npm
 `
-      }
-      else if (runtime === 'deno') {
+      } else if (runtime === 'deno') {
         script += `
 # Deno runtime
 curl -fsSL https://deno.land/install.sh | sh
@@ -3041,14 +3000,7 @@ systemctl start redis-server
         user?: string
         environmentVars?: Record<string, string>
       }): string => {
-        const {
-          serviceName,
-          description,
-          workingDirectory,
-          execStart,
-          user = 'root',
-          environmentVars = {},
-        } = options
+        const { serviceName, description, workingDirectory, execStart, user = 'root', environmentVars = {} } = options
 
         const envLines = Object.entries(environmentVars)
           .map(([key, value]) => `Environment="${key}=${value}"`)
@@ -3103,7 +3055,7 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 apt-get install -y ufw
 ufw default deny incoming
 ufw default allow outgoing
-${allowPorts.map(p => `ufw allow ${p}`).join('\n')}
+${allowPorts.map((p) => `ufw allow ${p}`).join('\n')}
 ufw --force enable
 `,
     },
@@ -3296,18 +3248,20 @@ ufw --force enable
         GroupName: sgResourceName,
         GroupDescription: `Security group for ${slug} server`,
         VpcId: vpcId,
-        SecurityGroupIngress: allowedPorts.map(port => ({
+        SecurityGroupIngress: allowedPorts.map((port) => ({
           IpProtocol: 'tcp',
           FromPort: port,
           ToPort: port,
           CidrIp: '0.0.0.0/0',
           Description: `Port ${port}`,
         })),
-        SecurityGroupEgress: [{
-          IpProtocol: '-1',
-          CidrIp: '0.0.0.0/0',
-          Description: 'Allow all outbound',
-        }],
+        SecurityGroupEgress: [
+          {
+            IpProtocol: '-1',
+            CidrIp: '0.0.0.0/0',
+            Description: 'Allow all outbound',
+          },
+        ],
         Tags: [
           { Key: 'Name', Value: sgResourceName },
           { Key: 'Environment', Value: environment },
@@ -3326,11 +3280,13 @@ ufw --force enable
         RoleName: roleResourceName,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: { Service: 'ec2.amazonaws.com' },
-            Action: 'sts:AssumeRole',
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'ec2.amazonaws.com' },
+              Action: 'sts:AssumeRole',
+            },
+          ],
         },
         ManagedPolicyArns: [
           'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore',
@@ -3357,11 +3313,7 @@ ufw --force enable
                 },
                 {
                   Effect: 'Allow',
-                  Action: [
-                    's3:GetObject',
-                    's3:PutObject',
-                    's3:ListBucket',
-                  ],
+                  Action: ['s3:GetObject', 's3:PutObject', 's3:ListBucket'],
                   Resource: '*',
                 },
                 {
@@ -3375,10 +3327,7 @@ ufw --force enable
                 },
                 {
                   Effect: 'Allow',
-                  Action: [
-                    'ssm:GetParameter',
-                    'ssm:GetParameters',
-                  ],
+                  Action: ['ssm:GetParameter', 'ssm:GetParameters'],
                   Resource: '*',
                 },
               ],
@@ -3416,15 +3365,17 @@ ufw --force enable
         SubnetId: subnetId,
         SecurityGroupIds: [Fn.Ref(securityGroupLogicalId) as unknown as string],
         IamInstanceProfile: Fn.Ref(profileLogicalId) as unknown as string,
-        BlockDeviceMappings: [{
-          DeviceName: '/dev/xvda',
-          Ebs: {
-            VolumeSize: volumeSize,
-            VolumeType: volumeType,
-            Encrypted: true,
-            DeleteOnTermination: true,
+        BlockDeviceMappings: [
+          {
+            DeviceName: '/dev/xvda',
+            Ebs: {
+              VolumeSize: volumeSize,
+              VolumeType: volumeType,
+              Encrypted: true,
+              DeleteOnTermination: true,
+            },
           },
-        }],
+        ],
         Tags: [
           { Key: 'Name', Value: instanceResourceName },
           { Key: 'Environment', Value: environment },
@@ -3440,7 +3391,13 @@ ufw --force enable
     resources[instanceLogicalId] = instance
 
     // Create Elastic IP
-    const { eip, eipAssociation, eipLogicalId, associationLogicalId, resources: eipResources } = Compute.createElasticIp({
+    const {
+      eip,
+      eipAssociation,
+      eipLogicalId,
+      associationLogicalId,
+      resources: eipResources,
+    } = Compute.createElasticIp({
       slug,
       environment,
       domain,

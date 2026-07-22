@@ -10,9 +10,8 @@
  * stack updates never revert the deployed code. Alias-based blue/green is a v2
  * refinement.
  */
-
-import type { CloudConfig, EnvironmentType, ServerlessAppConfig } from '../types'
 import type { CloudFormationTemplate } from '../cloudformation/types'
+import type { CloudConfig, EnvironmentType, ServerlessAppConfig } from '../types'
 import { Fn } from '../cloudformation/types'
 import { resolveServerlessAssetBucketName } from '../stack-naming'
 import { resolveServerlessRuntime } from './runtime-resolve'
@@ -22,7 +21,7 @@ export interface ComposeOptions {
   environment: EnvironmentType
   app: ServerlessAppConfig
   /** Lambda handler strings per function (from packaging). */
-  handlers: { http: string, queue: string, cli: string }
+  handlers: { http: string; queue: string; cli: string }
   /** Custom-runtime layer ARNs (PHP). */
   runtimeLayers?: string[]
 }
@@ -30,7 +29,7 @@ export interface ComposeOptions {
 export interface ComposedTemplate {
   template: CloudFormationTemplate
   /** Deterministic Lambda function names the orchestrator drives directly. */
-  functionNames: { http: string, queue: string, cli: string }
+  functionNames: { http: string; queue: string; cli: string }
   /** SQS queue names created (for the orchestrator + CLI commands). */
   queueNames: string[]
   /** Count of resources by CloudFormation type (for deploy summaries). */
@@ -60,7 +59,7 @@ export function resolveQueues(app: ServerlessAppConfig, slug: string, env: Envir
 
 /** Resolve just the SQS queue names from the manifest. */
 export function resolveQueueNames(app: ServerlessAppConfig, slug: string, env: EnvironmentType): string[] {
-  return resolveQueues(app, slug, env).map(q => q.name)
+  return resolveQueues(app, slug, env).map((q) => q.name)
 }
 
 export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemplate {
@@ -78,15 +77,19 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // HTTP API (v2) is the only supported gateway. Fail loudly rather than silently
   // ignoring `gatewayVersion: 1` (REST API), which the composer does not emit.
   if (app.gatewayVersion === 1)
-    throw new Error('serverless app: `gatewayVersion: 1` (REST API) is not supported — ts-cloud uses API Gateway HTTP API (v2). Remove `gatewayVersion` or set it to 2.')
+    throw new Error(
+      'serverless app: `gatewayVersion: 1` (REST API) is not supported — ts-cloud uses API Gateway HTTP API (v2). Remove `gatewayVersion` or set it to 2.',
+    )
 
   const queues = resolveQueues(app, slug, environment)
-  const queueNames = queues.map(q => q.name)
+  const queueNames = queues.map((q) => q.name)
   const hasQueue = queueNames.length > 0
   const logRetention = app.logRetention ?? 14
   const imageMode = app.packaging === 'image'
   if (imageMode && app.lambdaInsights) {
-    throw new Error('serverless app: `lambdaInsights` layer attachment is only supported for zip packaging. Container images must install the Lambda Insights extension in the image.')
+    throw new Error(
+      'serverless app: `lambdaInsights` layer attachment is only supported for zip packaging. Container images must install the Lambda Insights extension in the image.',
+    )
   }
   const schedulerEnabled = (app.scheduler ?? 'on') !== 'off'
   const cacheEnabled = (app.cache?.driver ?? 'dynamodb') === 'dynamodb'
@@ -119,7 +122,12 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           // Secrets Manager (project-scoped)
           {
             Effect: 'Allow',
-            Action: ['secretsmanager:GetSecretValue', 'ssm:GetParameter', 'ssm:GetParameters', 'ssm:GetParametersByPath'],
+            Action: [
+              'secretsmanager:GetSecretValue',
+              'ssm:GetParameter',
+              'ssm:GetParameters',
+              'ssm:GetParametersByPath',
+            ],
             Resource: [
               Fn.sub('arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:' + `${slug}/${environment}/*`),
               Fn.sub('arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/' + `${slug}/${environment}/*`),
@@ -145,14 +153,29 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   if (hasQueue) {
     inlinePolicies[0].PolicyDocument.Statement.push({
       Effect: 'Allow',
-      Action: ['sqs:SendMessage', 'sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes', 'sqs:GetQueueUrl'],
+      Action: [
+        'sqs:SendMessage',
+        'sqs:ReceiveMessage',
+        'sqs:DeleteMessage',
+        'sqs:GetQueueAttributes',
+        'sqs:GetQueueUrl',
+      ],
       Resource: Fn.sub('arn:aws:sqs:${AWS::Region}:${AWS::AccountId}:' + `${slug}-${environment}-*`),
     })
   }
   if (cacheEnabled) {
     inlinePolicies[0].PolicyDocument.Statement.push({
       Effect: 'Allow',
-      Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan', 'dynamodb:BatchGetItem', 'dynamodb:BatchWriteItem'],
+      Action: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        'dynamodb:BatchGetItem',
+        'dynamodb:BatchWriteItem',
+      ],
       Resource: Fn.sub('arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/' + `${slug}-${environment}-cache*`),
     })
   }
@@ -160,8 +183,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   const managedPolicies = ['arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole']
   if (app.vpc?.subnets?.length)
     managedPolicies.push('arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole')
-  if (app.lambdaInsights)
-    managedPolicies.push('arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy')
+  if (app.lambdaInsights) managedPolicies.push('arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy')
 
   resources.AppRole = {
     Type: 'AWS::IAM::Role',
@@ -197,12 +219,15 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // Data services (ElastiCache/Aurora/RDS Proxy/EFS) require the functions in a VPC.
   const subnets = app.vpc?.subnets ?? []
   const hasVpc = subnets.length > 0
-  const needsDataVpc = app.cache?.driver === 'elasticache'
-    || app.database?.connection === 'aurora-serverless'
-    || Boolean(app.rdsProxy)
-    || efsEnabled
+  const needsDataVpc =
+    app.cache?.driver === 'elasticache' ||
+    app.database?.connection === 'aurora-serverless' ||
+    Boolean(app.rdsProxy) ||
+    efsEnabled
   if (needsDataVpc && !hasVpc) {
-    throw new Error('serverless app: elasticache / aurora-serverless / rdsProxy / efs require app.vpc.subnets (private subnets) to be set.')
+    throw new Error(
+      'serverless app: elasticache / aurora-serverless / rdsProxy / efs require app.vpc.subnets (private subnets) to be set.',
+    )
   }
 
   const vpcConfig = hasVpc
@@ -219,19 +244,31 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
 
   // Functions must wait for the EFS mount targets before they can mount.
   const efsDependsOn = efsProvision ? subnets.map((_, i) => `EfsMountTarget${i}`) : []
-  const efsConfig = efsEnabled
-    ? { FileSystemConfigs: [{ Arn: efsAccessPoint, LocalMountPath: efsMountPath }] }
-    : {}
+  const efsConfig = efsEnabled ? { FileSystemConfigs: [{ Arn: efsAccessPoint, LocalMountPath: efsMountPath }] } : {}
   if (efsEnabled) {
     // `inlinePolicies` is referenced by AppRole; pushing here still applies.
     inlinePolicies[0].PolicyDocument.Statement.push({
       Effect: 'Allow',
-      Action: ['elasticfilesystem:ClientMount', 'elasticfilesystem:ClientWrite', 'elasticfilesystem:ClientRootAccess', 'elasticfilesystem:DescribeMountTargets'],
+      Action: [
+        'elasticfilesystem:ClientMount',
+        'elasticfilesystem:ClientWrite',
+        'elasticfilesystem:ClientRootAccess',
+        'elasticfilesystem:DescribeMountTargets',
+      ],
       Resource: '*',
     })
   }
 
-  function addFunction(logicalId: string, name: string, handler: string, mode: string, memory: number, timeout: number, reservedConcurrency?: number, tmp: number = tmpStorage): void {
+  function addFunction(
+    logicalId: string,
+    name: string,
+    handler: string,
+    mode: string,
+    memory: number,
+    timeout: number,
+    reservedConcurrency?: number,
+    tmp: number = tmpStorage,
+  ): void {
     resources[`${logicalId}LogGroup`] = {
       Type: 'AWS::Logs::LogGroup',
       Properties: { LogGroupName: `/aws/lambda/${name}`, RetentionInDays: logRetention },
@@ -274,10 +311,37 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     }
   }
 
-  addFunction('HttpFunction', functionNames.http, handlers.http, 'http', app.memory ?? 1024, app.timeout ?? 28, app.concurrency, tmpStorage)
-  addFunction('CliFunction', functionNames.cli, handlers.cli, 'cli', app.cliMemory ?? 1024, app.cliTimeout ?? 900, undefined, app.cliTmpStorage ?? tmpStorage)
+  addFunction(
+    'HttpFunction',
+    functionNames.http,
+    handlers.http,
+    'http',
+    app.memory ?? 1024,
+    app.timeout ?? 28,
+    app.concurrency,
+    tmpStorage,
+  )
+  addFunction(
+    'CliFunction',
+    functionNames.cli,
+    handlers.cli,
+    'cli',
+    app.cliMemory ?? 1024,
+    app.cliTimeout ?? 900,
+    undefined,
+    app.cliTmpStorage ?? tmpStorage,
+  )
   if (hasQueue)
-    addFunction('QueueFunction', functionNames.queue, handlers.queue, 'queue', app.queueMemory ?? 1024, app.queueTimeout ?? 120, undefined, app.queueTmpStorage ?? tmpStorage)
+    addFunction(
+      'QueueFunction',
+      functionNames.queue,
+      handlers.queue,
+      'queue',
+      app.queueMemory ?? 1024,
+      app.queueTimeout ?? 120,
+      undefined,
+      app.queueTmpStorage ?? tmpStorage,
+    )
 
   // ── Provisioned concurrency (alias/version model) ───────────────────────────
   // When opted in, each function gets a bootstrap Version + a `live` alias that
@@ -366,7 +430,9 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   const domains = (Array.isArray(app.domain) ? app.domain : app.domain ? [app.domain] : []).filter(Boolean)
   if (domains.length) {
     if (!app.certificateArn && !app.hostedZoneId) {
-      throw new Error('serverless app: a custom `domain` needs either `certificateArn` (pre-issued, regional) or `hostedZoneId` (to auto-issue + validate an ACM cert).')
+      throw new Error(
+        'serverless app: a custom `domain` needs either `certificateArn` (pre-issued, regional) or `hostedZoneId` (to auto-issue + validate an ACM cert).',
+      )
     }
 
     let certRef: any = app.certificateArn
@@ -377,7 +443,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           DomainName: domains[0],
           ...(domains.length > 1 ? { SubjectAlternativeNames: domains.slice(1) } : {}),
           ValidationMethod: 'DNS',
-          DomainValidationOptions: domains.map(d => ({ DomainName: d, HostedZoneId: app.hostedZoneId })),
+          DomainValidationOptions: domains.map((d) => ({ DomainName: d, HostedZoneId: app.hostedZoneId })),
         },
       }
       certRef = Fn.ref('HttpCertificate')
@@ -455,9 +521,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           FunctionName: invokeName('QueueFunction'),
           BatchSize: 1,
           FunctionResponseTypes: ['ReportBatchItemFailures'],
-          ...(concurrency
-            ? { ScalingConfig: { MaximumConcurrency: Math.max(2, concurrency) } }
-            : {}),
+          ...(concurrency ? { ScalingConfig: { MaximumConcurrency: Math.max(2, concurrency) } } : {}),
         },
       }
       outputs[`QueueUrl${i}`] = { Description: `Queue URL: ${q.name}`, Value: Fn.ref(qId) }
@@ -472,11 +536,13 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Name: `${slug}-${environment}-scheduler`,
         ScheduleExpression: 'rate(1 minute)',
         State: 'ENABLED',
-        Targets: [{
-          Id: 'cli',
-          Arn: invokeArn('CliFunction'),
-          Input: JSON.stringify({ command: 'schedule:run' }),
-        }],
+        Targets: [
+          {
+            Id: 'cli',
+            Arn: invokeArn('CliFunction'),
+            Input: JSON.stringify({ command: 'schedule:run' }),
+          },
+        ],
       },
     }
     resources.SchedulerPermission = {
@@ -496,8 +562,12 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // warmed functions default to HTTP only (queue/cli are latency-tolerant).
   if (app.warm && app.warm > 0) {
     const TARGETS_PER_RULE = 5
-    const fnResource: Record<'http' | 'queue' | 'cli', string> = { http: 'HttpFunction', queue: 'QueueFunction', cli: 'CliFunction' }
-    const warmModes = (app.warmFunctions ?? ['http']).filter(m => m !== 'queue' || hasQueue)
+    const fnResource: Record<'http' | 'queue' | 'cli', string> = {
+      http: 'HttpFunction',
+      queue: 'QueueFunction',
+      cli: 'CliFunction',
+    }
+    const warmModes = (app.warmFunctions ?? ['http']).filter((m) => m !== 'queue' || hasQueue)
     for (const mode of warmModes) {
       const cap = mode.charAt(0).toUpperCase() + mode.slice(1)
       const ruleCount = Math.ceil(app.warm / TARGETS_PER_RULE)
@@ -525,7 +595,9 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           FunctionName: Fn.ref(fnResource[mode]),
           Action: 'lambda:InvokeFunction',
           Principal: 'events.amazonaws.com',
-          SourceArn: Fn.sub('arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/' + `${slug}-${environment}-warmer-${mode}-*`),
+          SourceArn: Fn.sub(
+            'arn:aws:events:${AWS::Region}:${AWS::AccountId}:rule/' + `${slug}-${environment}-warmer-${mode}-*`,
+          ),
         },
       }
     }
@@ -582,12 +654,14 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
             Compress: true,
             CachePolicyId: '658327ea-f89d-4fab-a63d-7e88639e58f6', // Managed-CachingOptimized
           },
-          Origins: [{
-            Id: 'assets',
-            DomainName: Fn.getAtt('AssetsBucket', 'RegionalDomainName'),
-            OriginAccessControlId: Fn.ref('AssetsOAC'),
-            S3OriginConfig: { OriginAccessIdentity: '' },
-          }],
+          Origins: [
+            {
+              Id: 'assets',
+              DomainName: Fn.getAtt('AssetsBucket', 'RegionalDomainName'),
+              OriginAccessControlId: Fn.ref('AssetsOAC'),
+              S3OriginConfig: { OriginAccessIdentity: '' },
+            },
+          ],
           // Custom asset CDN host (Vapor `asset-domain`). CloudFront requires a
           // us-east-1 ACM cert — supplied via assetCertificateArn, or auto-issued
           // + DNS-validated (AssetsCertificate) when a us-east-1 app provides a
@@ -611,9 +685,13 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
       // the user must supply a pre-issued us-east-1 cert via assetCertificateArn.
       if (!app.assetCertificateArn) {
         if (!app.hostedZoneId)
-          throw new Error('serverless app: `assetDomain` requires either `assetCertificateArn` (a us-east-1 ACM cert) or `hostedZoneId` (to auto-issue + validate one). CloudFront only accepts certs from us-east-1.')
+          throw new Error(
+            'serverless app: `assetDomain` requires either `assetCertificateArn` (a us-east-1 ACM cert) or `hostedZoneId` (to auto-issue + validate one). CloudFront only accepts certs from us-east-1.',
+          )
         if (region !== 'us-east-1')
-          throw new Error(`serverless app: auto-issuing an asset-domain cert needs a us-east-1 app (CloudFront certs must be us-east-1); this app is in ${region}. Supply a pre-issued us-east-1 \`assetCertificateArn\` instead.`)
+          throw new Error(
+            `serverless app: auto-issuing an asset-domain cert needs a us-east-1 app (CloudFront certs must be us-east-1); this app is in ${region}. Supply a pre-issued us-east-1 \`assetCertificateArn\` instead.`,
+          )
         resources.AssetsCertificate = {
           Type: 'AWS::CertificateManager::Certificate',
           Properties: {
@@ -645,18 +723,27 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Bucket: Fn.ref('AssetsBucket'),
         PolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: { Service: 'cloudfront.amazonaws.com' },
-            Action: 's3:GetObject',
-            Resource: Fn.sub(`arn:aws:s3:::${assetsBucket}/*`),
-            Condition: { StringEquals: { 'AWS:SourceArn': Fn.sub('arn:aws:cloudfront::${AWS::AccountId}:distribution/${AssetsDistribution}') } },
-          }],
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: { Service: 'cloudfront.amazonaws.com' },
+              Action: 's3:GetObject',
+              Resource: Fn.sub(`arn:aws:s3:::${assetsBucket}/*`),
+              Condition: {
+                StringEquals: {
+                  'AWS:SourceArn': Fn.sub('arn:aws:cloudfront::${AWS::AccountId}:distribution/${AssetsDistribution}'),
+                },
+              },
+            },
+          ],
         },
       },
     }
     outputs.AssetsBucketName = { Description: 'Assets bucket', Value: Fn.ref('AssetsBucket') }
-    outputs.AssetsCdnDomain = { Description: 'Assets CloudFront domain', Value: Fn.getAtt('AssetsDistribution', 'DomainName') }
+    outputs.AssetsCdnDomain = {
+      Description: 'Assets CloudFront domain',
+      Value: Fn.getAtt('AssetsDistribution', 'DomainName'),
+    }
   }
 
   // ── WAF (firewall) in front of the HTTP API ─────────────────────────────────
@@ -669,7 +756,11 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Priority: priority++,
         Action: { Block: {} },
         Statement: { RateBasedStatement: { Limit: app.firewall.rateLimit, AggregateKeyType: 'IP' } },
-        VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: `${slug}-${environment}-rate` },
+        VisibilityConfig: {
+          SampledRequestsEnabled: true,
+          CloudWatchMetricsEnabled: true,
+          MetricName: `${slug}-${environment}-rate`,
+        },
       })
     }
     const managed: Record<string, string> = {
@@ -687,7 +778,11 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Priority: priority++,
         OverrideAction: { None: {} },
         Statement: { ManagedRuleGroupStatement: { VendorName: 'AWS', Name: name } },
-        VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: `${slug}-${environment}-${rule}` },
+        VisibilityConfig: {
+          SampledRequestsEnabled: true,
+          CloudWatchMetricsEnabled: true,
+          MetricName: `${slug}-${environment}-${rule}`,
+        },
       })
     }
     resources.WebAcl = {
@@ -697,7 +792,11 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         Scope: 'REGIONAL',
         DefaultAction: { Allow: {} },
         Rules: wafRules,
-        VisibilityConfig: { SampledRequestsEnabled: true, CloudWatchMetricsEnabled: true, MetricName: `${slug}-${environment}-waf` },
+        VisibilityConfig: {
+          SampledRequestsEnabled: true,
+          CloudWatchMetricsEnabled: true,
+          MetricName: `${slug}-${environment}-waf`,
+        },
       },
     }
     // AWS WAFv2 supports REST APIs, ALBs, AppSync, etc. — but a web ACL cannot be
@@ -705,14 +804,20 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
     // HTTP API v2, so we create the web ACL (rules + CloudWatch metrics) and skip
     // the WebACLAssociation (it would fail with an invalid-ARN error). Attach this
     // ACL to a CloudFront distribution fronting the API to actually enforce it.
-    outputs.WafAclArn = { Description: 'WAF web ACL ARN. Attach to a CloudFront distribution fronting the API to enforce (HTTP API v2 stages do not support direct WAF association).', Value: Fn.getAtt('WebAcl', 'Arn') }
+    outputs.WafAclArn = {
+      Description:
+        'WAF web ACL ARN. Attach to a CloudFront distribution fronting the API to enforce (HTTP API v2 stages do not support direct WAF association).',
+      Value: Fn.getAtt('WebAcl', 'Arn'),
+    }
   }
 
   // ── VPC-attached data services (ElastiCache / Aurora / RDS Proxy) ────────────
   // These require the functions to be in a VPC; AWS requires private subnets.
   if (hasVpc && needsDataVpc) {
     if (!app.vpc?.id)
-      throw new Error('serverless app: data services (elasticache / aurora-serverless / rdsProxy / efs) need app.vpc.id (the VPC id) so the managed security group is created in the right VPC.')
+      throw new Error(
+        'serverless app: data services (elasticache / aurora-serverless / rdsProxy / efs) need app.vpc.id (the VPC id) so the managed security group is created in the right VPC.',
+      )
     // A managed security group shared by the data services + functions. The
     // intra-VPC ingress also covers NFS (2049) for the EFS mount targets.
     resources.DataSecurityGroup = {
@@ -780,7 +885,10 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
         TransitEncryptionEnabled: false,
       },
     }
-    outputs.CacheEndpoint = { Description: 'Redis primary endpoint', Value: Fn.getAtt('CacheCluster', 'PrimaryEndPoint.Address') }
+    outputs.CacheEndpoint = {
+      Description: 'Redis primary endpoint',
+      Value: Fn.getAtt('CacheCluster', 'PrimaryEndPoint.Address'),
+    }
   }
 
   // Aurora Serverless v2 cluster (MySQL by default) + RDS Proxy.
@@ -838,19 +946,22 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
           Version: '2012-10-17',
           Statement: [{ Effect: 'Allow', Principal: { Service: 'rds.amazonaws.com' }, Action: 'sts:AssumeRole' }],
         },
-        Policies: [{
-          PolicyName: 'read-db-secret',
-          PolicyDocument: {
-            Version: '2012-10-17',
-            Statement: [{ Effect: 'Allow', Action: ['secretsmanager:GetSecretValue'], Resource: Fn.ref('DbSecret') }],
+        Policies: [
+          {
+            PolicyName: 'read-db-secret',
+            PolicyDocument: {
+              Version: '2012-10-17',
+              Statement: [{ Effect: 'Allow', Action: ['secretsmanager:GetSecretValue'], Resource: Fn.ref('DbSecret') }],
+            },
           },
-        }],
+        ],
       },
     }
     resources.DbProxy = {
       Type: 'AWS::RDS::DBProxy',
       Properties: {
-        DBProxyName: typeof app.rdsProxy === 'object' && app.rdsProxy.name ? app.rdsProxy.name : `${slug}-${environment}-proxy`,
+        DBProxyName:
+          typeof app.rdsProxy === 'object' && app.rdsProxy.name ? app.rdsProxy.name : `${slug}-${environment}-proxy`,
         EngineFamily: 'MYSQL',
         RoleArn: Fn.getAtt('DbProxyRole', 'Arn'),
         Auth: [{ AuthScheme: 'SECRETS', SecretArn: Fn.ref('DbSecret'), IAMAuth: 'DISABLED' }],
@@ -876,8 +987,7 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   // ── Outputs: function names ─────────────────────────────────────────────────
   outputs.HttpFunctionName = { Description: 'HTTP function name', Value: Fn.ref('HttpFunction') }
   outputs.CliFunctionName = { Description: 'CLI function name', Value: Fn.ref('CliFunction') }
-  if (hasQueue)
-    outputs.QueueFunctionName = { Description: 'Queue function name', Value: Fn.ref('QueueFunction') }
+  if (hasQueue) outputs.QueueFunctionName = { Description: 'Queue function name', Value: Fn.ref('QueueFunction') }
 
   const template: CloudFormationTemplate = {
     AWSTemplateFormatVersion: '2010-09-09',
@@ -899,7 +1009,6 @@ export function composeServerlessAppTemplate(opts: ComposeOptions): ComposedTemp
   for (const r of Object.values(resources)) {
     resourceSummary[(r as any).Type] = (resourceSummary[(r as any).Type] ?? 0) + 1
   }
-
 
   return { template, functionNames, queueNames, resourceSummary }
 }

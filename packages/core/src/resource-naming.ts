@@ -15,11 +15,7 @@ export interface NamingOptions {
 export function generateResourceName(options: NamingOptions): string {
   const { slug, environment, resourceType, timestamp, suffix } = options
 
-  const parts = [
-    slug,
-    environment,
-    resourceType,
-  ]
+  const parts = [slug, environment, resourceType]
 
   if (timestamp) {
     parts.push(timestamp)
@@ -39,7 +35,7 @@ export function generateResourceName(options: NamingOptions): string {
 export function generateLogicalId(name: string): string {
   return name
     .split('-')
-    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('')
 }
 

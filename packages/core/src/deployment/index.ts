@@ -4,24 +4,12 @@
  */
 
 // Blue/Green Deployments
-export {
-  BlueGreenManager,
-  blueGreenManager,
-} from './blue-green'
+export { BlueGreenManager, blueGreenManager } from './blue-green'
 
-export type {
-  BlueGreenDeployment,
-  Environment,
-  RoutingConfig,
-  HealthCheckConfig,
-  DeploymentResult,
-} from './blue-green'
+export type { BlueGreenDeployment, Environment, RoutingConfig, HealthCheckConfig, DeploymentResult } from './blue-green'
 
 // Canary Deployments
-export {
-  CanaryManager,
-  canaryManager,
-} from './canary'
+export { CanaryManager, canaryManager } from './canary'
 
 export type {
   CanaryDeployment,
@@ -34,28 +22,11 @@ export type {
 } from './canary'
 
 // A/B Testing
-export {
-  ABTestManager,
-  abTestManager,
-} from './ab-testing'
+export { ABTestManager, abTestManager } from './ab-testing'
 
-export type {
-  ABTest,
-  ABVariant,
-  RoutingStrategy,
-  ABMetrics,
-  VariantMetrics,
-  ABTestResult,
-} from './ab-testing'
+export type { ABTest, ABVariant, RoutingStrategy, ABMetrics, VariantMetrics, ABTestResult } from './ab-testing'
 
 // Progressive Deployments
-export {
-  ProgressiveDeploymentManager,
-  progressiveDeploymentManager,
-} from './progressive'
+export { ProgressiveDeploymentManager, progressiveDeploymentManager } from './progressive'
 
-export type {
-  ProgressiveRollout,
-  FeatureFlag,
-  DeploymentGate,
-} from './progressive'
+export type { ProgressiveRollout, FeatureFlag, DeploymentGate } from './progressive'

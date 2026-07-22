@@ -1,9 +1,4 @@
-import type {
-  EC2SecurityGroup,
-  EFSAccessPoint,
-  EFSFileSystem,
-  EFSMountTarget,
-} from '@ts-cloud/aws-types'
+import type { EC2SecurityGroup, EFSAccessPoint, EFSFileSystem, EFSMountTarget } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -109,16 +104,10 @@ export class FileSystem {
     fileSystemLogicalId: string,
     options: MountTargetOptions,
   ): {
-      mountTarget: EFSMountTarget
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      subnetId,
-      securityGroups,
-      ipAddress,
-    } = options
+    mountTarget: EFSMountTarget
+    logicalId: string
+  } {
+    const { slug, environment, subnetId, securityGroups, ipAddress } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -151,17 +140,10 @@ export class FileSystem {
     fileSystemLogicalId: string,
     options: AccessPointOptions,
   ): {
-      accessPoint: EFSAccessPoint
-      logicalId: string
-    } {
-    const {
-      slug,
-      environment,
-      path = '/',
-      uid = '1000',
-      gid = '1000',
-      permissions = '755',
-    } = options
+    accessPoint: EFSAccessPoint
+    logicalId: string
+  } {
+    const { slug, environment, path = '/', uid = '1000', gid = '1000', permissions = '755' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -200,10 +182,7 @@ export class FileSystem {
   /**
    * Set lifecycle policy for cost optimization
    */
-  static setLifecyclePolicy(
-    fileSystem: EFSFileSystem,
-    options: LifecyclePolicyOptions,
-  ): EFSFileSystem {
+  static setLifecyclePolicy(fileSystem: EFSFileSystem, options: LifecyclePolicyOptions): EFSFileSystem {
     const { transitionToIA, transitionToPrimary = false } = options
 
     if (!fileSystem.Properties) {
@@ -261,10 +240,7 @@ export class FileSystem {
   /**
    * Set provisioned throughput mode
    */
-  static setProvisionedThroughput(
-    fileSystem: EFSFileSystem,
-    throughputInMibps: number,
-  ): EFSFileSystem {
+  static setProvisionedThroughput(fileSystem: EFSFileSystem, throughputInMibps: number): EFSFileSystem {
     if (!fileSystem.Properties) {
       fileSystem.Properties = {}
     }
@@ -316,14 +292,7 @@ export class FileSystem {
     securityGroup: EC2SecurityGroup
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      vpcId,
-      sourceSecurityGroupIds = [],
-      sourceCidrBlocks = [],
-      description,
-    } = options
+    const { slug, environment, vpcId, sourceSecurityGroupIds = [], sourceCidrBlocks = [], description } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -489,15 +458,12 @@ export class FileSystem {
     resources[sgLogicalId] = securityGroup
 
     // Create mount targets
-    const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(
-      fsLogicalId,
-      {
-        slug,
-        environment,
-        subnetIds,
-        securityGroupId: Fn.Ref(sgLogicalId) as any,
-      },
-    )
+    const { mountTargets, logicalIds: mtLogicalIds } = FileSystem.createMultiAzMountTargets(fsLogicalId, {
+      slug,
+      environment,
+      subnetIds,
+      securityGroupId: Fn.Ref(sgLogicalId) as any,
+    })
 
     for (let i = 0; i < mountTargets.length; i++) {
       resources[mtLogicalIds[i]] = mountTargets[i]

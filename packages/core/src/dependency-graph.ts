@@ -35,9 +35,8 @@ export class DependencyGraph {
     // Add explicit DependsOn
     if (resource.DependsOn) {
       if (Array.isArray(resource.DependsOn)) {
-        resource.DependsOn.forEach(dep => dependencies.add(dep))
-      }
-      else {
+        resource.DependsOn.forEach((dep) => dependencies.add(dep))
+      } else {
         dependencies.add(resource.DependsOn)
       }
     }
@@ -52,8 +51,7 @@ export class DependencyGraph {
    * Find all Ref references in an object
    */
   private findReferences(obj: any, dependencies: Set<string>): void {
-    if (!obj || typeof obj !== 'object')
-      return
+    if (!obj || typeof obj !== 'object') return
 
     if ('Ref' in obj && typeof obj.Ref === 'string') {
       // Ignore pseudo parameters
@@ -83,8 +81,7 @@ export class DependencyGraph {
     const visiting = new Set<string>()
 
     const visit = (nodeId: string): void => {
-      if (visited.has(nodeId))
-        return
+      if (visited.has(nodeId)) return
 
       if (visiting.has(nodeId)) {
         throw new Error(`Circular dependency detected: ${nodeId}`)
@@ -118,9 +115,7 @@ export class DependencyGraph {
     for (const [nodeId, node] of this.nodes.entries()) {
       for (const dep of node.dependencies) {
         if (!this.nodes.has(dep)) {
-          throw new Error(
-            `Resource "${nodeId}" depends on "${dep}" which does not exist`,
-          )
+          throw new Error(`Resource "${nodeId}" depends on "${dep}" which does not exist`)
         }
       }
     }

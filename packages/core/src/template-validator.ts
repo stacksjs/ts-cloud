@@ -2,8 +2,7 @@
  * CloudFormation Template Validator
  * Validates CloudFormation templates for correctness and best practices
  */
-
-import type { CloudFormationTemplate, CloudFormationResource } from '@ts-cloud/aws-types'
+import type { CloudFormationResource, CloudFormationTemplate } from '@ts-cloud/aws-types'
 
 export interface ValidationError {
   path: string
@@ -32,8 +31,7 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
   // 2. Validate resources
   if (template.Resources) {
     validateResources(template.Resources, errors, warnings)
-  }
-  else {
+  } else {
     errors.push({
       path: 'Resources',
       message: 'Template must contain at least one resource',
@@ -80,18 +78,14 @@ export function validateTemplate(template: CloudFormationTemplate): ValidationRe
 /**
  * Validate template structure
  */
-function validateTemplateStructure(
-  template: CloudFormationTemplate,
-  errors: ValidationError[],
-): void {
+function validateTemplateStructure(template: CloudFormationTemplate, errors: ValidationError[]): void {
   if (!template.AWSTemplateFormatVersion) {
     errors.push({
       path: 'AWSTemplateFormatVersion',
       message: 'Template should specify AWSTemplateFormatVersion',
       severity: 'error',
     })
-  }
-  else if (template.AWSTemplateFormatVersion !== '2010-09-09') {
+  } else if (template.AWSTemplateFormatVersion !== '2010-09-09') {
     errors.push({
       path: 'AWSTemplateFormatVersion',
       message: 'AWSTemplateFormatVersion must be "2010-09-09"',
@@ -146,8 +140,7 @@ function validateResources(
         message: 'Resource Type is required',
         severity: 'error',
       })
-    }
-    else if (!resource.Type.startsWith('AWS::') && !resource.Type.startsWith('Custom::')) {
+    } else if (!resource.Type.startsWith('AWS::') && !resource.Type.startsWith('Custom::')) {
       errors.push({
         path: `Resources.${logicalId}.Type`,
         message: 'Resource Type must start with "AWS::" or "Custom::"',
@@ -156,8 +149,7 @@ function validateResources(
     }
 
     // Validate DeletionPolicy
-    if (resource.DeletionPolicy
-      && !['Delete', 'Retain', 'Snapshot'].includes(resource.DeletionPolicy)) {
+    if (resource.DeletionPolicy && !['Delete', 'Retain', 'Snapshot'].includes(resource.DeletionPolicy)) {
       errors.push({
         path: `Resources.${logicalId}.DeletionPolicy`,
         message: 'DeletionPolicy must be "Delete", "Retain", or "Snapshot"',
@@ -205,17 +197,32 @@ function validateParameters(
       })
     }
 
-    const validTypes = ['String', 'Number', 'List<Number>', 'CommaDelimitedList',
-      'AWS::EC2::AvailabilityZone::Name', 'AWS::EC2::Image::Id',
-      'AWS::EC2::Instance::Id', 'AWS::EC2::KeyPair::KeyName',
-      'AWS::EC2::SecurityGroup::GroupName', 'AWS::EC2::SecurityGroup::Id',
-      'AWS::EC2::Subnet::Id', 'AWS::EC2::Volume::Id', 'AWS::EC2::VPC::Id',
-      'AWS::Route53::HostedZone::Id', 'List<AWS::EC2::AvailabilityZone::Name>',
-      'List<AWS::EC2::Image::Id>', 'List<AWS::EC2::Instance::Id>',
-      'List<AWS::EC2::SecurityGroup::GroupName>', 'List<AWS::EC2::SecurityGroup::Id>',
-      'List<AWS::EC2::Subnet::Id>', 'List<AWS::EC2::Volume::Id>',
-      'List<AWS::EC2::VPC::Id>', 'List<AWS::Route53::HostedZone::Id>',
-      'AWS::SSM::Parameter::Name', 'AWS::SSM::Parameter::Value<String>',
+    const validTypes = [
+      'String',
+      'Number',
+      'List<Number>',
+      'CommaDelimitedList',
+      'AWS::EC2::AvailabilityZone::Name',
+      'AWS::EC2::Image::Id',
+      'AWS::EC2::Instance::Id',
+      'AWS::EC2::KeyPair::KeyName',
+      'AWS::EC2::SecurityGroup::GroupName',
+      'AWS::EC2::SecurityGroup::Id',
+      'AWS::EC2::Subnet::Id',
+      'AWS::EC2::Volume::Id',
+      'AWS::EC2::VPC::Id',
+      'AWS::Route53::HostedZone::Id',
+      'List<AWS::EC2::AvailabilityZone::Name>',
+      'List<AWS::EC2::Image::Id>',
+      'List<AWS::EC2::Instance::Id>',
+      'List<AWS::EC2::SecurityGroup::GroupName>',
+      'List<AWS::EC2::SecurityGroup::Id>',
+      'List<AWS::EC2::Subnet::Id>',
+      'List<AWS::EC2::Volume::Id>',
+      'List<AWS::EC2::VPC::Id>',
+      'List<AWS::Route53::HostedZone::Id>',
+      'AWS::SSM::Parameter::Name',
+      'AWS::SSM::Parameter::Value<String>',
       'AWS::SSM::Parameter::Value<List<String>>',
       'AWS::SSM::Parameter::Value<CommaDelimitedList>',
     ]
@@ -233,10 +240,7 @@ function validateParameters(
 /**
  * Validate outputs
  */
-function validateOutputs(
-  outputs: Record<string, any>,
-  errors: ValidationError[],
-): void {
+function validateOutputs(outputs: Record<string, any>, errors: ValidationError[]): void {
   const outputNames = Object.keys(outputs)
 
   for (const outputName of outputNames) {
@@ -255,22 +259,28 @@ function validateOutputs(
 /**
  * Validate references between resources
  */
-function validateReferences(
-  template: CloudFormationTemplate,
-  errors: ValidationError[],
-): void {
+function validateReferences(template: CloudFormationTemplate, errors: ValidationError[]): void {
   const resources = template.Resources || {}
   const parameters = template.Parameters || {}
   const resourceIds = new Set(Object.keys(resources))
   const parameterNames = new Set(Object.keys(parameters))
 
   function checkReferences(obj: any, path: string): void {
-    if (typeof obj !== 'object' || obj === null)
-      return
+    if (typeof obj !== 'object' || obj === null) return
 
     if (obj.Ref) {
       const ref = obj.Ref
-      if (!resourceIds.has(ref) && !parameterNames.has(ref) && ref !== 'AWS::Region' && ref !== 'AWS::AccountId' && ref !== 'AWS::StackName' && ref !== 'AWS::StackId' && ref !== 'AWS::URLSuffix' && ref !== 'AWS::Partition' && ref !== 'AWS::NoValue') {
+      if (
+        !resourceIds.has(ref) &&
+        !parameterNames.has(ref) &&
+        ref !== 'AWS::Region' &&
+        ref !== 'AWS::AccountId' &&
+        ref !== 'AWS::StackName' &&
+        ref !== 'AWS::StackId' &&
+        ref !== 'AWS::URLSuffix' &&
+        ref !== 'AWS::Partition' &&
+        ref !== 'AWS::NoValue'
+      ) {
         errors.push({
           path,
           message: `Reference to non-existent resource or parameter: ${ref}`,
@@ -327,16 +337,15 @@ function detectCircularDependencies(template: CloudFormationTemplate): string[][
     const resource = resources[logicalId]
     if (resource.DependsOn) {
       if (Array.isArray(resource.DependsOn)) {
-        resource.DependsOn.forEach(dep => deps.add(dep))
-      }
-      else {
+        resource.DependsOn.forEach((dep) => deps.add(dep))
+      } else {
         deps.add(resource.DependsOn)
       }
     }
 
     // Check Ref and GetAtt
     const refDeps = extractDependencies(resource)
-    refDeps.forEach(dep => deps.add(dep))
+    refDeps.forEach((dep) => deps.add(dep))
 
     graph.set(logicalId, deps)
   }
@@ -355,8 +364,7 @@ function detectCircularDependencies(template: CloudFormationTemplate): string[][
     for (const dep of deps) {
       if (!visited.has(dep)) {
         dfs(dep, [...path])
-      }
-      else if (recursionStack.has(dep)) {
+      } else if (recursionStack.has(dep)) {
         // Cycle detected
         const cycleStart = path.indexOf(dep)
         const cycle = [...path.slice(cycleStart), dep]
@@ -383,8 +391,7 @@ function extractDependencies(obj: any): Set<string> {
   const deps = new Set<string>()
 
   function traverse(value: any): void {
-    if (typeof value !== 'object' || value === null)
-      return
+    if (typeof value !== 'object' || value === null) return
 
     if (value.Ref && typeof value.Ref === 'string') {
       // Skip pseudo-parameters
@@ -511,8 +518,7 @@ export function validateTemplateSize(templateJson: string): ValidationResult {
       message: `Template size (${sizeInKB.toFixed(2)} KB) exceeds maximum size of 450 KB`,
       severity: 'error',
     })
-  }
-  else if (sizeInBytes > maxSize) {
+  } else if (sizeInBytes > maxSize) {
     warnings.push({
       path: 'Template',
       message: `Template size (${sizeInKB.toFixed(2)} KB) exceeds 50 KB. Must use S3 for deployment.`,

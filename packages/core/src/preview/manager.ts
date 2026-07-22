@@ -2,7 +2,6 @@
  * Preview Environment Manager
  * Manages ephemeral environments for PR previews
  */
-
 import type { CloudConfig } from '../types'
 
 export interface PreviewEnvironment {
@@ -95,8 +94,7 @@ export class PreviewEnvironmentManager {
       environment.url = `https://${name}.preview.example.com`
 
       return environment
-    }
-    catch (error) {
+    } catch (error) {
       environment.status = 'failed'
       throw error
     }
@@ -123,8 +121,7 @@ export class PreviewEnvironmentManager {
 
       environment.status = 'destroyed'
       this.environments.delete(id)
-    }
-    catch (error) {
+    } catch (error) {
       throw new Error(`Failed to destroy preview environment: ${error}`)
     }
   }
@@ -140,14 +137,14 @@ export class PreviewEnvironmentManager {
    * Get preview environment by branch
    */
   getPreviewEnvironmentByBranch(branch: string): PreviewEnvironment | undefined {
-    return Array.from(this.environments.values()).find(env => env.branch === branch)
+    return Array.from(this.environments.values()).find((env) => env.branch === branch)
   }
 
   /**
    * Get preview environment by PR number
    */
   getPreviewEnvironmentByPR(pr: number): PreviewEnvironment | undefined {
-    return Array.from(this.environments.values()).find(env => env.pr === pr)
+    return Array.from(this.environments.values()).find((env) => env.pr === pr)
   }
 
   /**
@@ -161,7 +158,7 @@ export class PreviewEnvironmentManager {
    * List active preview environments
    */
   listActivePreviewEnvironments(): PreviewEnvironment[] {
-    return this.listPreviewEnvironments().filter(env => env.status === 'active')
+    return this.listPreviewEnvironments().filter((env) => env.status === 'active')
   }
 
   /**
@@ -178,9 +175,7 @@ export class PreviewEnvironmentManager {
     const now = new Date()
 
     // Get all environments sorted by creation date (newest first)
-    const environments = this.listPreviewEnvironments().sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
-    )
+    const environments = this.listPreviewEnvironments().sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 
     for (let i = 0; i < environments.length; i++) {
       const env = environments[i]
@@ -213,13 +208,11 @@ export class PreviewEnvironmentManager {
       if (shouldDestroy) {
         if (dryRun) {
           destroyed.push(env.id)
-        }
-        else {
+        } else {
           try {
             await this.destroyPreviewEnvironment(env.id)
             destroyed.push(env.id)
-          }
-          catch (error) {
+          } catch (error) {
             failed.push(env.id)
           }
         }
@@ -252,8 +245,7 @@ export class PreviewEnvironmentManager {
       environment.status = 'active'
 
       return environment
-    }
-    catch (error) {
+    } catch (error) {
       environment.status = 'failed'
       throw error
     }

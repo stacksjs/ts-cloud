@@ -34,12 +34,9 @@ export interface FunctionsConfig {
 /**
  * Add Lambda function resources to CloudFormation template
  */
-export function addFunctionResources(
-  builder: CloudFormationBuilder,
-  config: FunctionsConfig,
-): void {
+export function addFunctionResources(builder: CloudFormationBuilder, config: FunctionsConfig): void {
   for (const [category, functions] of Object.entries(config)) {
-    functions.forEach(func => {
+    functions.forEach((func) => {
       addLambdaFunction(builder, func, category)
     })
   }
@@ -48,11 +45,7 @@ export function addFunctionResources(
 /**
  * Add a single Lambda function
  */
-function addLambdaFunction(
-  builder: CloudFormationBuilder,
-  config: FunctionItem,
-  category: string,
-): void {
+function addLambdaFunction(builder: CloudFormationBuilder, config: FunctionItem, category: string): void {
   const logicalId = builder.toLogicalId(`${category}-${config.name}-function`)
 
   // Lambda Execution Role
@@ -60,29 +53,31 @@ function addLambdaFunction(
   builder.addResource(roleName, 'AWS::IAM::Role', {
     AssumeRolePolicyDocument: {
       Version: '2012-10-17',
-      Statement: [{
-        Effect: 'Allow',
-        Principal: { Service: 'lambda.amazonaws.com' },
-        Action: 'sts:AssumeRole',
-      }],
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: { Service: 'lambda.amazonaws.com' },
+          Action: 'sts:AssumeRole',
+        },
+      ],
     },
     ManagedPolicyArns: [
       'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
       'arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole',
     ],
-    Policies: [{
-      PolicyName: 'LambdaExecutionPolicy',
-      PolicyDocument: {
-        Version: '2012-10-17',
-        Statement: [
-          // Add specific permissions based on events
-          ...generateEventPermissions(config.events || []),
-        ],
+    Policies: [
+      {
+        PolicyName: 'LambdaExecutionPolicy',
+        PolicyDocument: {
+          Version: '2012-10-17',
+          Statement: [
+            // Add specific permissions based on events
+            ...generateEventPermissions(config.events || []),
+          ],
+        },
       },
-    }],
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}-role`) },
     ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}-role`) }],
   })
 
   // Lambda Function
@@ -100,21 +95,19 @@ function addLambdaFunction(
   return { statusCode: 200, body: 'Function not yet implemented' };
 };`,
     },
-    Environment: config.environment ? {
-      Variables: config.environment,
-    } : undefined,
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) },
-    ],
+    Environment: config.environment
+      ? {
+          Variables: config.environment,
+        }
+      : undefined,
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${config.name}`) }],
   }
 
   // VPC configuration if needed
-  if (category !== 'edge') { // Edge functions can't be in VPC
+  if (category !== 'edge') {
+    // Edge functions can't be in VPC
     functionProperties.VpcConfig = {
-      SubnetIds: [
-        Fn.ref('PrivateSubnet1'),
-        Fn.ref('PrivateSubnet2'),
-      ],
+      SubnetIds: [Fn.ref('PrivateSubnet1'), Fn.ref('PrivateSubnet2')],
       SecurityGroupIds: [Fn.ref('AppSecurityGroup')],
     }
   }
@@ -169,14 +162,19 @@ function addEventSource(
         const bucketLogicalId = builder.toLogicalId(`${event.bucket}-bucket`)
 
         // Lambda permission for S3
-        builder.addResource(`${eventSourceId}Permission`, 'AWS::Lambda::Permission', {
-          FunctionName: Fn.ref(functionLogicalId),
-          Action: 'lambda:InvokeFunction',
-          Principal: 's3.amazonaws.com',
-          SourceArn: Arn.s3Bucket(Fn.ref(bucketLogicalId) as any),
-        }, {
-          dependsOn: [functionLogicalId, bucketLogicalId],
-        })
+        builder.addResource(
+          `${eventSourceId}Permission`,
+          'AWS::Lambda::Permission',
+          {
+            FunctionName: Fn.ref(functionLogicalId),
+            Action: 'lambda:InvokeFunction',
+            Principal: 's3.amazonaws.com',
+            SourceArn: Arn.s3Bucket(Fn.ref(bucketLogicalId) as any),
+          },
+          {
+            dependsOn: [functionLogicalId, bucketLogicalId],
+          },
+        )
 
         // Note: S3 bucket notification configuration should be added to the bucket itself
       }
@@ -186,13 +184,18 @@ function addEventSource(
       if (event.queueName) {
         const queueLogicalId = builder.toLogicalId(`${event.queueName}-queue`)
 
-        builder.addResource(eventSourceId, 'AWS::Lambda::EventSourceMapping', {
-          EventSourceArn: Fn.getAtt(queueLogicalId, 'Arn'),
-          FunctionName: Fn.ref(functionLogicalId),
-          BatchSize: event.batchSize || 10,
-        }, {
-          dependsOn: [functionLogicalId, queueLogicalId],
-        })
+        builder.addResource(
+          eventSourceId,
+          'AWS::Lambda::EventSourceMapping',
+          {
+            EventSourceArn: Fn.getAtt(queueLogicalId, 'Arn'),
+            FunctionName: Fn.ref(functionLogicalId),
+            BatchSize: event.batchSize || 10,
+          },
+          {
+            dependsOn: [functionLogicalId, queueLogicalId],
+          },
+        )
       }
       break
 
@@ -200,15 +203,20 @@ function addEventSource(
       if (event.streamName) {
         const streamLogicalId = builder.toLogicalId(`${event.streamName}-stream`)
 
-        builder.addResource(eventSourceId, 'AWS::Lambda::EventSourceMapping', {
-          EventSourceArn: Fn.getAtt(streamLogicalId, 'Arn'),
-          FunctionName: Fn.ref(functionLogicalId),
-          BatchSize: event.batchSize || 100,
-          StartingPosition: event.startingPosition || 'LATEST',
-          ParallelizationFactor: event.parallelizationFactor || 1,
-        }, {
-          dependsOn: [functionLogicalId, streamLogicalId],
-        })
+        builder.addResource(
+          eventSourceId,
+          'AWS::Lambda::EventSourceMapping',
+          {
+            EventSourceArn: Fn.getAtt(streamLogicalId, 'Arn'),
+            FunctionName: Fn.ref(functionLogicalId),
+            BatchSize: event.batchSize || 100,
+            StartingPosition: event.startingPosition || 'LATEST',
+            ParallelizationFactor: event.parallelizationFactor || 1,
+          },
+          {
+            dependsOn: [functionLogicalId, streamLogicalId],
+          },
+        )
       }
       break
 
@@ -216,40 +224,57 @@ function addEventSource(
       if (event.tableName) {
         const tableLogicalId = builder.toLogicalId(`${event.tableName}-table`)
 
-        builder.addResource(eventSourceId, 'AWS::Lambda::EventSourceMapping', {
-          EventSourceArn: Fn.getAtt(tableLogicalId, 'StreamArn'),
-          FunctionName: Fn.ref(functionLogicalId),
-          BatchSize: event.batchSize || 100,
-          StartingPosition: event.startingPosition || 'LATEST',
-        }, {
-          dependsOn: [functionLogicalId, tableLogicalId],
-        })
+        builder.addResource(
+          eventSourceId,
+          'AWS::Lambda::EventSourceMapping',
+          {
+            EventSourceArn: Fn.getAtt(tableLogicalId, 'StreamArn'),
+            FunctionName: Fn.ref(functionLogicalId),
+            BatchSize: event.batchSize || 100,
+            StartingPosition: event.startingPosition || 'LATEST',
+          },
+          {
+            dependsOn: [functionLogicalId, tableLogicalId],
+          },
+        )
       }
       break
 
     case 'schedule':
       if (event.expression) {
         // EventBridge Rule
-        builder.addResource(`${eventSourceId}Rule`, 'AWS::Events::Rule', {
-          ScheduleExpression: event.expression,
-          State: 'ENABLED',
-          Targets: [{
-            Arn: Fn.getAtt(functionLogicalId, 'Arn'),
-            Id: `${functionLogicalId}Target`,
-          }],
-        }, {
-          dependsOn: functionLogicalId,
-        })
+        builder.addResource(
+          `${eventSourceId}Rule`,
+          'AWS::Events::Rule',
+          {
+            ScheduleExpression: event.expression,
+            State: 'ENABLED',
+            Targets: [
+              {
+                Arn: Fn.getAtt(functionLogicalId, 'Arn'),
+                Id: `${functionLogicalId}Target`,
+              },
+            ],
+          },
+          {
+            dependsOn: functionLogicalId,
+          },
+        )
 
         // Lambda permission for EventBridge
-        builder.addResource(`${eventSourceId}Permission`, 'AWS::Lambda::Permission', {
-          FunctionName: Fn.ref(functionLogicalId),
-          Action: 'lambda:InvokeFunction',
-          Principal: 'events.amazonaws.com',
-          SourceArn: Fn.getAtt(`${eventSourceId}Rule`, 'Arn'),
-        }, {
-          dependsOn: [functionLogicalId, `${eventSourceId}Rule`],
-        })
+        builder.addResource(
+          `${eventSourceId}Permission`,
+          'AWS::Lambda::Permission',
+          {
+            FunctionName: Fn.ref(functionLogicalId),
+            Action: 'lambda:InvokeFunction',
+            Principal: 'events.amazonaws.com',
+            SourceArn: Fn.getAtt(`${eventSourceId}Rule`, 'Arn'),
+          },
+          {
+            dependsOn: [functionLogicalId, `${eventSourceId}Rule`],
+          },
+        )
       }
       break
   }
@@ -258,24 +283,19 @@ function addEventSource(
 /**
  * Generate IAM policy statements based on function events
  */
-function generateEventPermissions(
-  events: FunctionEvent[] | undefined,
-): any[] {
+function generateEventPermissions(events: FunctionEvent[] | undefined): any[] {
   const statements: any[] = []
 
   if (!events) {
     return statements
   }
 
-  events.forEach(event => {
+  events.forEach((event) => {
     switch (event.type) {
       case 's3':
         statements.push({
           Effect: 'Allow',
-          Action: [
-            's3:GetObject',
-            's3:GetObjectVersion',
-          ],
+          Action: ['s3:GetObject', 's3:GetObjectVersion'],
           Resource: event.bucket ? `arn:aws:s3:::${event.bucket}/*` : 'arn:aws:s3:::*/*',
         })
         break
@@ -283,29 +303,16 @@ function generateEventPermissions(
       case 'sqs':
         statements.push({
           Effect: 'Allow',
-          Action: [
-            'sqs:ReceiveMessage',
-            'sqs:DeleteMessage',
-            'sqs:GetQueueAttributes',
-          ],
-          Resource: event.queueName
-            ? Arn.sqs(event.queueName)
-            : 'arn:aws:sqs:*:*:*',
+          Action: ['sqs:ReceiveMessage', 'sqs:DeleteMessage', 'sqs:GetQueueAttributes'],
+          Resource: event.queueName ? Arn.sqs(event.queueName) : 'arn:aws:sqs:*:*:*',
         })
         break
 
       case 'kinesis':
         statements.push({
           Effect: 'Allow',
-          Action: [
-            'kinesis:GetRecords',
-            'kinesis:GetShardIterator',
-            'kinesis:DescribeStream',
-            'kinesis:ListStreams',
-          ],
-          Resource: event.streamName
-            ? Arn.kinesis(event.streamName)
-            : 'arn:aws:kinesis:*:*:stream/*',
+          Action: ['kinesis:GetRecords', 'kinesis:GetShardIterator', 'kinesis:DescribeStream', 'kinesis:ListStreams'],
+          Resource: event.streamName ? Arn.kinesis(event.streamName) : 'arn:aws:kinesis:*:*:stream/*',
         })
         break
 
@@ -330,11 +337,7 @@ function generateEventPermissions(
   if (statements.length === 0) {
     statements.push({
       Effect: 'Allow',
-      Action: [
-        'logs:CreateLogGroup',
-        'logs:CreateLogStream',
-        'logs:PutLogEvents',
-      ],
+      Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
       Resource: 'arn:aws:logs:*:*:*',
     })
   }

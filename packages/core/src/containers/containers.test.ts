@@ -227,9 +227,7 @@ describe('Build Optimization Manager', () => {
 
       const optimization = manager.generateOptimizations(analysis.id)
 
-      const layerReduction = optimization.recommendations.find(
-        r => r.type === 'layer_reduction'
-      )
+      const layerReduction = optimization.recommendations.find((r) => r.type === 'layer_reduction')
 
       expect(layerReduction).toBeDefined()
       expect(layerReduction?.priority).toBe('high')
@@ -292,10 +290,7 @@ describe('Container Registry Manager', () => {
         name: 'replicated-app',
       })
 
-      manager.enableReplication(registry.id, [
-        { region: 'us-west-2' },
-        { region: 'eu-west-1' },
-      ])
+      manager.enableReplication(registry.id, [{ region: 'us-west-2' }, { region: 'eu-west-1' }])
 
       expect(registry.replication?.enabled).toBe(true)
       expect(registry.replication?.destinations).toHaveLength(2)
@@ -319,10 +314,7 @@ describe('Container Registry Manager', () => {
     it('should generate replication configuration', () => {
       const replication = {
         enabled: true,
-        destinations: [
-          { region: 'us-west-2' },
-          { region: 'eu-west-1' },
-        ],
+        destinations: [{ region: 'us-west-2' }, { region: 'eu-west-1' }],
       }
 
       const cf = manager.generateReplicationConfigCF(replication)

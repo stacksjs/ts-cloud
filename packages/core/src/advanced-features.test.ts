@@ -55,10 +55,13 @@ describe('S3 Advanced Manager', () => {
   })
 
   it('should create lifecycle policy', () => {
-    const policy = manager.createLifecyclePolicy([
-      { days: 30, storageClass: 'STANDARD_IA' },
-      { days: 90, storageClass: 'GLACIER' },
-    ], 365)
+    const policy = manager.createLifecyclePolicy(
+      [
+        { days: 30, storageClass: 'STANDARD_IA' },
+        { days: 90, storageClass: 'GLACIER' },
+      ],
+      365,
+    )
     expect(policy.transitions).toHaveLength(2)
     expect(policy.expiration).toBe(365)
   })
@@ -291,14 +294,15 @@ describe('Network Security Manager', () => {
   })
 
   it('should enable Shield', () => {
-    const protection = manager.enableShield('arn:aws:elasticloadbalancing:us-east-1:123:loadbalancer/app/my-lb', 'advanced')
+    const protection = manager.enableShield(
+      'arn:aws:elasticloadbalancing:us-east-1:123:loadbalancer/app/my-lb',
+      'advanced',
+    )
     expect(protection.protectionType).toBe('advanced')
   })
 
   it('should create security group', () => {
-    const sg = manager.createSecurityGroup('web-sg', 'vpc-123', [
-      { protocol: 'tcp', port: 443, source: '0.0.0.0/0' },
-    ])
+    const sg = manager.createSecurityGroup('web-sg', 'vpc-123', [{ protocol: 'tcp', port: 443, source: '0.0.0.0/0' }])
     expect(sg.rules).toHaveLength(1)
   })
 
@@ -327,7 +331,11 @@ describe('Backup Advanced Manager', () => {
   })
 
   it('should create backup vault', () => {
-    const vault = { name: 'production-vault', region: 'us-east-1', encryptionKeyArn: 'arn:aws:kms:us-east-1:123:key/abc' }
+    const vault = {
+      name: 'production-vault',
+      region: 'us-east-1',
+      encryptionKeyArn: 'arn:aws:kms:us-east-1:123:key/abc',
+    }
     manager.createVault(vault)
     expect(manager.getVault('production-vault')?.name).toBe('production-vault')
   })
@@ -345,10 +353,10 @@ describe('Resource Management Manager', () => {
   })
 
   it('should create tagging strategy', () => {
-    const strategy = manager.createTaggingStrategy(
-      { Environment: 'production', Team: 'platform' },
-      ['resource-1', 'resource-2']
-    )
+    const strategy = manager.createTaggingStrategy({ Environment: 'production', Team: 'platform' }, [
+      'resource-1',
+      'resource-2',
+    ])
     expect(strategy.tags.Environment).toBe('production')
   })
 
@@ -361,9 +369,11 @@ describe('Resource Management Manager', () => {
   })
 
   it('should create resource group', () => {
-    const group = manager.createResourceGroup('web-servers', ['AWS::EC2::Instance'], [
-      { key: 'Environment', values: ['production'] },
-    ])
+    const group = manager.createResourceGroup(
+      'web-servers',
+      ['AWS::EC2::Instance'],
+      [{ key: 'Environment', values: ['production'] }],
+    )
     expect(group.name).toBe('web-servers')
   })
 
@@ -452,9 +462,11 @@ describe('Observability Advanced - Log Aggregation', () => {
   })
 
   it('should create log aggregation', () => {
-    const aggregation = manager.createLogAggregation('/aws/lambda/my-function', [
-      { pattern: 'ERROR', metric: 'ErrorCount' },
-    ], 14)
+    const aggregation = manager.createLogAggregation(
+      '/aws/lambda/my-function',
+      [{ pattern: 'ERROR', metric: 'ErrorCount' }],
+      14,
+    )
     expect(aggregation.filters).toHaveLength(1)
     expect(aggregation.retention).toBe(14)
   })

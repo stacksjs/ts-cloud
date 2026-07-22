@@ -31,7 +31,10 @@ export class ProgressiveDeploymentManager {
   private gates = new Map<string, DeploymentGate>()
   private counter = 0
 
-  createProgressiveRollout(name: string, stages: Array<{ percentage: number; durationMinutes: number }>): ProgressiveRollout {
+  createProgressiveRollout(
+    name: string,
+    stages: Array<{ percentage: number; durationMinutes: number }>,
+  ): ProgressiveRollout {
     const id = `rollout-${Date.now()}-${this.counter++}`
     const rollout = { id, name, stages, currentStage: 0 }
     this.rollouts.set(id, rollout)
@@ -45,7 +48,12 @@ export class ProgressiveDeploymentManager {
     return flag
   }
 
-  createDeploymentGate(name: string, type: 'manual' | 'automated', approvers?: string[], conditions?: Array<{ metric: string; threshold: number }>): DeploymentGate {
+  createDeploymentGate(
+    name: string,
+    type: 'manual' | 'automated',
+    approvers?: string[],
+    conditions?: Array<{ metric: string; threshold: number }>,
+  ): DeploymentGate {
     const id = `gate-${Date.now()}-${this.counter++}`
     const gate = { id, name, type, approvers, conditions }
     this.gates.set(id, gate)

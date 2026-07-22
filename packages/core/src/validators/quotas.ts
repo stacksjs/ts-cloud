@@ -2,7 +2,6 @@
  * AWS Service Quota Checking
  * Check if deployment will exceed service limits
  */
-
 import { DebugLogger } from '../errors'
 
 export interface ServiceQuota {
@@ -21,7 +20,7 @@ export const DEFAULT_SERVICE_LIMITS = {
   ec2: {
     'Running On-Demand Instances': 20,
     'Elastic IPs': 5,
-    'VPCs': 5,
+    VPCs: 5,
     'Internet Gateways': 5,
     'NAT Gateways': 5,
     'Security Groups': 500,
@@ -33,24 +32,24 @@ export const DEFAULT_SERVICE_LIMITS = {
   },
   lambda: {
     'Concurrent Executions': 1000,
-    'Function Storage': 75 * 1024 * 1024 * 1024 as number, // 75 GB
+    'Function Storage': (75 * 1024 * 1024 * 1024) as number, // 75 GB
   },
   s3: {
-    'Buckets': 100,
+    Buckets: 100,
   },
   cloudformation: {
-    'Stacks': 200,
-    'StackSets': 100,
+    Stacks: 200,
+    StackSets: 100,
   },
   elasticache: {
-    'Nodes': 100,
-    'Clusters': 100,
+    Nodes: 100,
+    Clusters: 100,
   },
   dynamodb: {
-    'Tables': 256,
+    Tables: 256,
   },
   ecs: {
-    'Clusters': 10000,
+    Clusters: 10000,
     'Services per Cluster': 2000,
   },
 }
@@ -150,14 +149,15 @@ export async function checkServiceQuotas(config: any): Promise<ServiceQuota[]> {
   }
 
   // Log warnings
-  const warnings = quotas.filter(q => q.warning)
+  const warnings = quotas.filter((q) => q.warning)
   if (warnings.length > 0) {
     DebugLogger.warn('Service quota warnings detected:')
     for (const warning of warnings) {
-      DebugLogger.warn(`  ${warning.service} - ${warning.quotaName}: ${warning.currentValue}/${warning.limit} (${warning.percentage.toFixed(1)}%)`)
+      DebugLogger.warn(
+        `  ${warning.service} - ${warning.quotaName}: ${warning.currentValue}/${warning.limit} (${warning.percentage.toFixed(1)}%)`,
+      )
     }
-  }
-  else {
+  } else {
     DebugLogger.verbose('All service quotas are within limits')
   }
 
@@ -174,13 +174,16 @@ export function getQuotaUsageSummary(quotas: ServiceQuota[]): string {
 
   let summary = 'Service Quota Usage:\n\n'
 
-  const byService = quotas.reduce((acc, quota) => {
-    if (!acc[quota.service]) {
-      acc[quota.service] = []
-    }
-    acc[quota.service].push(quota)
-    return acc
-  }, {} as Record<string, ServiceQuota[]>)
+  const byService = quotas.reduce(
+    (acc, quota) => {
+      if (!acc[quota.service]) {
+        acc[quota.service] = []
+      }
+      acc[quota.service].push(quota)
+      return acc
+    },
+    {} as Record<string, ServiceQuota[]>,
+  )
 
   for (const [service, serviceQuotas] of Object.entries(byService)) {
     summary += `${service}:\n`
@@ -202,11 +205,8 @@ export function suggestQuotaIncrease(quotas: ServiceQuota[]): string[] {
 
   for (const quota of quotas) {
     if (quota.percentage >= 100) {
-      suggestions.push(
-        `Request quota increase for ${quota.service} - ${quota.quotaName} (currently ${quota.limit})`,
-      )
-    }
-    else if (quota.warning) {
+      suggestions.push(`Request quota increase for ${quota.service} - ${quota.quotaName} (currently ${quota.limit})`)
+    } else if (quota.warning) {
       suggestions.push(
         `Consider requesting quota increase for ${quota.service} - ${quota.quotaName} (${quota.percentage.toFixed(1)}% used)`,
       )

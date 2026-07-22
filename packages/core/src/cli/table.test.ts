@@ -33,9 +33,7 @@ describe('Table Formatting', () => {
 
     it('should handle empty data', () => {
       const result = formatTable({
-        columns: [
-          { key: 'name', label: 'Name' },
-        ],
+        columns: [{ key: 'name', label: 'Name' }],
         data: [],
       })
 
@@ -52,9 +50,7 @@ describe('Table Formatting', () => {
             formatter: (val) => `$${val}`,
           },
         ],
-        data: [
-          { name: 'Item', amount: 100 },
-        ],
+        data: [{ name: 'Item', amount: 100 }],
       })
 
       expect(result).toContain('$100')
@@ -66,9 +62,7 @@ describe('Table Formatting', () => {
           { key: 'name', label: 'Name', align: 'left' },
           { key: 'age', label: 'Age', align: 'right' },
         ],
-        data: [
-          { name: 'Alice', age: 25 },
-        ],
+        data: [{ name: 'Alice', age: 25 }],
       })
 
       expect(result).toContain('Alice')
@@ -95,10 +89,7 @@ describe('Table Formatting', () => {
       const result = formatTree([
         {
           label: 'Root',
-          children: [
-            { label: 'Child 1' },
-            { label: 'Child 2' },
-          ],
+          children: [{ label: 'Child 1' }, { label: 'Child 2' }],
         },
       ])
 
@@ -134,9 +125,7 @@ describe('Table Formatting', () => {
           children: [
             {
               label: 'Level 2',
-              children: [
-                { label: 'Level 3' },
-              ],
+              children: [{ label: 'Level 3' }],
             },
           ],
         },
@@ -299,19 +288,13 @@ describe('Table Formatting', () => {
     })
 
     it('should use custom separator', () => {
-      const result = formatKeyValue(
-        { name: 'Alice' },
-        { separator: ' = ' },
-      )
+      const result = formatKeyValue({ name: 'Alice' }, { separator: ' = ' })
 
       expect(result).toContain('name = Alice')
     })
 
     it('should indent output', () => {
-      const result = formatKeyValue(
-        { name: 'Alice' },
-        { indent: '  ' },
-      )
+      const result = formatKeyValue({ name: 'Alice' }, { indent: '  ' })
 
       expect(result).toMatch(/^\s+name/)
     })

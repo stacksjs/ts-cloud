@@ -167,32 +167,20 @@ export class BuildOptimizationManager {
           name: 'dependencies',
           baseImage: `node:${nodeVersion}`,
           workdir: '/app',
-          commands: [
-            'COPY package*.json ./',
-            'RUN npm ci --only=production',
-          ],
+          commands: ['COPY package*.json ./', 'RUN npm ci --only=production'],
         },
         {
           name: 'build',
           baseImage: `node:${nodeVersion}`,
           workdir: '/app',
-          commands: [
-            'COPY package*.json ./',
-            'RUN npm ci',
-            'COPY . .',
-            'RUN npm run build',
-          ],
+          commands: ['COPY package*.json ./', 'RUN npm ci', 'COPY . .', 'RUN npm run build'],
         },
         {
           name: 'production',
           baseImage: `node:${nodeVersion}`,
           workdir: '/app',
           copyFrom: ['dependencies:/app/node_modules', 'build:/app/dist'],
-          commands: [
-            'COPY package*.json ./',
-            'ENV NODE_ENV=production',
-            'CMD ["node", "dist/index.js"]',
-          ],
+          commands: ['COPY package*.json ./', 'ENV NODE_ENV=production', 'CMD ["node", "dist/index.js"]'],
         },
       ],
     })
@@ -240,15 +228,13 @@ export class BuildOptimizationManager {
   analyzeImage(imageId: string, layers: Omit<ImageLayer, 'cacheable'>[]): LayerAnalysis {
     const id = `analysis-${Date.now()}-${this.analysisCounter++}`
 
-    const analyzedLayers: ImageLayer[] = layers.map(layer => ({
+    const analyzedLayers: ImageLayer[] = layers.map((layer) => ({
       ...layer,
       cacheable: this.isLayerCacheable(layer.command),
     }))
 
     const totalSize = analyzedLayers.reduce((sum, layer) => sum + layer.size, 0)
-    const unnecessaryLayers = analyzedLayers.filter(
-      layer => !layer.cacheable && layer.size > 100
-    ).length
+    const unnecessaryLayers = analyzedLayers.filter((layer) => !layer.cacheable && layer.size > 100).length
 
     const analysis: LayerAnalysis = {
       id,
@@ -296,7 +282,7 @@ export class BuildOptimizationManager {
     const recommendations: OptimizationRecommendation[] = []
 
     // Check for layer reduction opportunities
-    const runLayers = analysis.layers.filter(l => l.command.startsWith('RUN'))
+    const runLayers = analysis.layers.filter((l) => l.command.startsWith('RUN'))
     if (runLayers.length > 5) {
       recommendations.push({
         type: 'layer_reduction',
@@ -322,7 +308,7 @@ export class BuildOptimizationManager {
     }
 
     // Check for cache optimization
-    const copyLayers = analysis.layers.filter(l => l.command.startsWith('COPY'))
+    const copyLayers = analysis.layers.filter((l) => l.command.startsWith('COPY'))
     if (copyLayers.length > 0 && copyLayers[0].index > 3) {
       recommendations.push({
         type: 'cache_optimization',

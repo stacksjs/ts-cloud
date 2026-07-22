@@ -172,18 +172,14 @@ export class BackupManager {
       lifecycle: {
         deleteAfterDays: retentionDays,
       },
-      tags: crossRegionCopy ? { 'CrossRegionCopy': crossRegionCopy.join(',') } : undefined,
+      tags: crossRegionCopy ? { CrossRegionCopy: crossRegionCopy.join(',') } : undefined,
     })
   }
 
   /**
    * Create automated backup schedule for EFS
    */
-  createEFSBackupPlan(options: {
-    fileSystemArn: string
-    schedule?: string
-    retentionDays?: number
-  }): BackupPlan {
+  createEFSBackupPlan(options: { fileSystemArn: string; schedule?: string; retentionDays?: number }): BackupPlan {
     const {
       fileSystemArn,
       schedule = '0 1 * * *', // 1 AM daily
@@ -233,7 +229,10 @@ export class BackupManager {
   /**
    * Create point-in-time recovery configuration
    */
-  enablePointInTimeRecovery(resourceArn: string, resourceType: 'rds' | 'dynamodb'): {
+  enablePointInTimeRecovery(
+    resourceArn: string,
+    resourceType: 'rds' | 'dynamodb',
+  ): {
     enabled: boolean
     earliestRestorableTime: Date
     latestRestorableTime: Date
@@ -301,7 +300,9 @@ export class BackupManager {
 
     this.restoreJobs.set(restoreJob.id, restoreJob)
 
-    console.log(`Restoring ${resourceType} from ${sourceResourceArn} to ${targetResourceName} at ${restoreTime.toISOString()}`)
+    console.log(
+      `Restoring ${resourceType} from ${sourceResourceArn} to ${targetResourceName} at ${restoreTime.toISOString()}`,
+    )
 
     // Simulate restore
     setTimeout(() => {
@@ -329,11 +330,7 @@ export class BackupManager {
   /**
    * Cross-region backup replication
    */
-  setupCrossRegionReplication(options: {
-    sourceVault: string
-    sourceRegion: string
-    targetRegions: string[]
-  }): void {
+  setupCrossRegionReplication(options: { sourceVault: string; sourceRegion: string; targetRegions: string[] }): void {
     const { sourceVault, sourceRegion, targetRegions } = options
 
     console.log(`Setting up cross-region replication:`)
@@ -377,14 +374,16 @@ export class BackupManager {
               ScheduleExpression: `cron(${plan.schedule})`,
               StartWindowMinutes: 60,
               CompletionWindowMinutes: 120,
-              Lifecycle: plan.lifecycle ? {
-                ...(plan.lifecycle.moveTocoldStorageAfterDays && {
-                  MoveToColdStorageAfterDays: plan.lifecycle.moveTocoldStorageAfterDays,
-                }),
-                ...(plan.lifecycle.deleteAfterDays && {
-                  DeleteAfterDays: plan.lifecycle.deleteAfterDays,
-                }),
-              } : undefined,
+              Lifecycle: plan.lifecycle
+                ? {
+                    ...(plan.lifecycle.moveTocoldStorageAfterDays && {
+                      MoveToColdStorageAfterDays: plan.lifecycle.moveTocoldStorageAfterDays,
+                    }),
+                    ...(plan.lifecycle.deleteAfterDays && {
+                      DeleteAfterDays: plan.lifecycle.deleteAfterDays,
+                    }),
+                  }
+                : undefined,
             },
           ],
         },
@@ -406,7 +405,7 @@ export class BackupManager {
         BackupSelection: {
           SelectionName: `${plan.name}Selection`,
           IamRoleArn: 'arn:aws:iam::123456789012:role/service-role/AWSBackupDefaultServiceRole',
-          Resources: plan.resources.map(r => r.resourceArn),
+          Resources: plan.resources.map((r) => r.resourceArn),
         },
       },
     }

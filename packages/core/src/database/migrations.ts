@@ -191,14 +191,12 @@ export class MigrationManager {
           migration.executionTimeMs = Date.now() - migrationStart
 
           console.log(`✓ Applied in ${migration.executionTimeMs}ms\n`)
-        }
-else {
+        } else {
           console.log(`[SKIPPED - DRY RUN]\n`)
         }
 
         appliedMigrations.push(migration.version)
-      }
-catch (error) {
+      } catch (error) {
         console.error(`✗ Failed: ${error instanceof Error ? error.message : String(error)}\n`)
         failedMigrations.push(migration.version)
 
@@ -239,7 +237,7 @@ catch (error) {
    */
   private async rollbackMigrations(versions: string[], plan: MigrationPlan): Promise<void> {
     for (const version of versions) {
-      const migration = plan.migrations.find(m => m.version === version)
+      const migration = plan.migrations.find((m) => m.version === version)
       if (migration) {
         console.log(`Rolling back: ${migration.version} - ${migration.name}`)
         // Execute down SQL
@@ -259,8 +257,8 @@ catch (error) {
       throw new Error(`Migration plan not found: ${planId}`)
     }
 
-    const appliedMigrations = plan.migrations.filter(m => m.appliedAt && !m.rolledBackAt)
-    const pendingMigrations = plan.migrations.filter(m => !m.appliedAt)
+    const appliedMigrations = plan.migrations.filter((m) => m.appliedAt && !m.rolledBackAt)
+    const pendingMigrations = plan.migrations.filter((m) => !m.appliedAt)
 
     return {
       currentVersion: appliedMigrations[appliedMigrations.length - 1]?.version || '0.0.0',
@@ -276,7 +274,7 @@ catch (error) {
   private generateSchemaSQL(
     changes: SchemaChange[],
     tableName: string,
-    engine: 'postgres' | 'mysql' = 'postgres'
+    engine: 'postgres' | 'mysql' = 'postgres',
   ): { up: string; down: string } {
     const upStatements: string[] = []
     const downStatements: string[] = []
@@ -287,7 +285,7 @@ catch (error) {
           upStatements.push(
             `ALTER TABLE ${tableName} ADD COLUMN ${change.columnName} ${change.columnType}${
               change.nullable === false ? ' NOT NULL' : ''
-            }${change.defaultValue ? ` DEFAULT ${change.defaultValue}` : ''};`
+            }${change.defaultValue ? ` DEFAULT ${change.defaultValue}` : ''}; `,
           )
           downStatements.push(`ALTER TABLE ${tableName} DROP COLUMN ${change.columnName};`)
           break
@@ -300,22 +298,15 @@ catch (error) {
 
         case 'modify_column':
           if (engine === 'postgres') {
-            upStatements.push(
-              `ALTER TABLE ${tableName} ALTER COLUMN ${change.columnName} TYPE ${change.newType};`
-            )
-          }
-else {
-            upStatements.push(
-              `ALTER TABLE ${tableName} MODIFY COLUMN ${change.columnName} ${change.newType};`
-            )
+            upStatements.push(`ALTER TABLE ${tableName} ALTER COLUMN ${change.columnName} TYPE ${change.newType};`)
+          } else {
+            upStatements.push(`ALTER TABLE ${tableName} MODIFY COLUMN ${change.columnName} ${change.newType};`)
           }
           downStatements.push(`-- Reverting ${change.columnName} type change requires manual intervention`)
           break
 
         case 'add_index':
-          upStatements.push(
-            `CREATE INDEX ${change.indexName} ON ${tableName} (${(change.columns ?? []).join(', ')});`
-          )
+          upStatements.push(`CREATE INDEX ${change.indexName} ON ${tableName} (${(change.columns ?? []).join(', ')});`)
           downStatements.push(`DROP INDEX ${change.indexName};`)
           break
 

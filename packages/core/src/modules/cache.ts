@@ -1,9 +1,4 @@
-import type {
-  ElastiCacheCluster,
-  ElastiCacheParameterGroup,
-  ElastiCacheReplicationGroup,
-  ElastiCacheSubnetGroup,
-} from '@ts-cloud/aws-types'
+import type { ElastiCacheCluster, ElastiCacheParameterGroup, ElastiCacheReplicationGroup, ElastiCacheSubnetGroup } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -143,8 +138,7 @@ export class Cache {
     if (clusterMode) {
       replicationGroup.Properties.NumNodeGroups = numNodeGroups
       replicationGroup.Properties.ReplicasPerNodeGroup = replicasPerNodeGroup
-    }
-    else {
+    } else {
       replicationGroup.Properties.NumCacheClusters = numCacheClusters
     }
 
@@ -309,9 +303,9 @@ export class Cache {
       parameters?: Record<string, string>
     },
   ): {
-      parameterGroup: ElastiCacheParameterGroup
-      logicalId: string
-    } {
+    parameterGroup: ElastiCacheParameterGroup
+    logicalId: string
+  } {
     const { slug, environment, parameters = {} } = options
 
     const resourceName = generateResourceName({
@@ -352,9 +346,9 @@ export class Cache {
       parameters?: Record<string, string>
     },
   ): {
-      parameterGroup: ElastiCacheParameterGroup
-      logicalId: string
-    } {
+    parameterGroup: ElastiCacheParameterGroup
+    logicalId: string
+  } {
     const { slug, environment, parameters = {} } = options
 
     const resourceName = generateResourceName({

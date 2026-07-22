@@ -50,10 +50,7 @@ export class DNSSECManager {
   /**
    * Enable DNSSEC
    */
-  enableDNSSEC(options: {
-    hostedZoneId: string
-    kmsKeyArn?: string
-  }): DNSSECConfig {
+  enableDNSSEC(options: { hostedZoneId: string; kmsKeyArn?: string }): DNSSECConfig {
     const id = `dnssec-${Date.now()}-${this.configCounter++}`
 
     const config: DNSSECConfig = {
@@ -107,11 +104,7 @@ export class DNSSECManager {
   /**
    * Create KSK (Key-Signing Key)
    */
-  createKSK(options: {
-    name: string
-    hostedZoneId: string
-    kmsKeyArn: string
-  }): KSK {
+  createKSK(options: { name: string; hostedZoneId: string; kmsKeyArn: string }): KSK {
     const id = `ksk-${Date.now()}-${this.kskCounter++}`
 
     const ksk: KSK = {
@@ -156,11 +149,7 @@ export class DNSSECManager {
   /**
    * Validate DNSSEC
    */
-  validateDNSSEC(options: {
-    domain: string
-    checkDNSKEY?: boolean
-    checkRRSIG?: boolean
-  }): DNSSECValidation {
+  validateDNSSEC(options: { domain: string; checkDNSKEY?: boolean; checkRRSIG?: boolean }): DNSSECValidation {
     const id = `validation-${Date.now()}-${this.validationCounter++}`
 
     const dnskeyPresent = options.checkDNSKEY !== false ? Math.random() > 0.1 : false
@@ -179,15 +168,12 @@ export class DNSSECManager {
 
     if (!dnskeyPresent && !rrsigPresent) {
       validationStatus = 'INSECURE'
-    }
-else if (dnskeyPresent && rrsigPresent && validSignature) {
+    } else if (dnskeyPresent && rrsigPresent && validSignature) {
       validationStatus = 'VALID'
-    }
-else if (dnskeyPresent || rrsigPresent) {
+    } else if (dnskeyPresent || rrsigPresent) {
       validationStatus = 'BOGUS'
       errors.push('Invalid signature or incomplete DNSSEC chain')
-    }
-else {
+    } else {
       validationStatus = 'INVALID'
     }
 
@@ -232,7 +218,7 @@ else {
    */
   listKSKs(hostedZoneId?: string): KSK[] {
     const ksks = Array.from(this.ksks.values())
-    return hostedZoneId ? ksks.filter(k => k.hostedZoneId === hostedZoneId) : ksks
+    return hostedZoneId ? ksks.filter((k) => k.hostedZoneId === hostedZoneId) : ksks
   }
 
   /**

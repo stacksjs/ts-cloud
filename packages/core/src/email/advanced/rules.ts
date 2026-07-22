@@ -18,7 +18,16 @@ export interface EmailRule {
 
 export interface RuleCondition {
   field: 'from' | 'to' | 'subject' | 'body' | 'headers' | 'attachments' | 'size'
-  operator: 'contains' | 'not-contains' | 'equals' | 'not-equals' | 'starts-with' | 'ends-with' | 'regex' | 'greater-than' | 'less-than'
+  operator:
+    | 'contains'
+    | 'not-contains'
+    | 'equals'
+    | 'not-equals'
+    | 'starts-with'
+    | 'ends-with'
+    | 'regex'
+    | 'greater-than'
+    | 'less-than'
   value: string
   caseSensitive?: boolean
 }
@@ -435,7 +444,12 @@ async function invokeLambda(functionName, metadata) {
     spamFilter: {
       name: 'Spam Filter',
       conditions: [
-        { field: 'subject', operator: 'regex', value: '(viagra|lottery|winner|prince|inheritance)', caseSensitive: false },
+        {
+          field: 'subject',
+          operator: 'regex',
+          value: '(viagra|lottery|winner|prince|inheritance)',
+          caseSensitive: false,
+        },
       ],
       conditionOperator: 'or',
       actions: [
@@ -445,19 +459,13 @@ async function invokeLambda(functionName, metadata) {
     },
     autoLabel: {
       name: 'Auto Label Invoices',
-      conditions: [
-        { field: 'subject', operator: 'contains', value: 'invoice', caseSensitive: false },
-      ],
+      conditions: [{ field: 'subject', operator: 'contains', value: 'invoice', caseSensitive: false }],
       conditionOperator: 'and',
-      actions: [
-        { type: 'label', params: { label: 'invoices' } },
-      ],
+      actions: [{ type: 'label', params: { label: 'invoices' } }],
     },
     forwardUrgent: {
       name: 'Forward Urgent',
-      conditions: [
-        { field: 'subject', operator: 'contains', value: 'urgent', caseSensitive: false },
-      ],
+      conditions: [{ field: 'subject', operator: 'contains', value: 'urgent', caseSensitive: false }],
       conditionOperator: 'and',
       actions: [
         { type: 'forward', params: { to: 'admin@example.com' } },

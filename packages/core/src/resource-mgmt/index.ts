@@ -2,9 +2,21 @@
  * Resource Management - Tagging strategies, cost allocation, resource groups
  */
 
-export interface TaggingStrategy { id: string; tags: Record<string, string>; resources: string[] }
-export interface CostAllocation { id: string; tagKey: string; allocations: Array<{ tagValue: string; cost: number }> }
-export interface ResourceGroup { id: string; name: string; query: { resourceTypeFilters: string[]; tagFilters: Array<{ key: string; values: string[] }> } }
+export interface TaggingStrategy {
+  id: string
+  tags: Record<string, string>
+  resources: string[]
+}
+export interface CostAllocation {
+  id: string
+  tagKey: string
+  allocations: Array<{ tagValue: string; cost: number }>
+}
+export interface ResourceGroup {
+  id: string
+  name: string
+  query: { resourceTypeFilters: string[]; tagFilters: Array<{ key: string; values: string[] }> }
+}
 
 export class ResourceManagementManager {
   private strategies = new Map<string, TaggingStrategy>()
@@ -26,14 +38,22 @@ export class ResourceManagementManager {
     return allocation
   }
 
-  createResourceGroup(name: string, resourceTypeFilters: string[], tagFilters: Array<{ key: string; values: string[] }>): ResourceGroup {
+  createResourceGroup(
+    name: string,
+    resourceTypeFilters: string[],
+    tagFilters: Array<{ key: string; values: string[] }>,
+  ): ResourceGroup {
     const id = `group-${Date.now()}-${this.counter++}`
     const group = { id, name, query: { resourceTypeFilters, tagFilters } }
     this.groups.set(id, group)
     return group
   }
 
-  clear(): void { this.strategies.clear(); this.allocations.clear(); this.groups.clear() }
+  clear(): void {
+    this.strategies.clear()
+    this.allocations.clear()
+    this.groups.clear()
+  }
 }
 
 export const resourceManagementManager: ResourceManagementManager = new ResourceManagementManager()

@@ -209,7 +209,7 @@ export class BlueGreenManager {
     console.log(`\\n1. Deploying to ${targetEnv} environment`)
     if (!dryRun) {
       // Simulate deployment
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
 
     // Step 2: Run health checks
@@ -230,8 +230,7 @@ export class BlueGreenManager {
         this.recordDeployment(deploymentId, result)
         return result
       }
-    }
-    else {
+    } else {
       result.healthChecksPassed = true
     }
 
@@ -245,7 +244,7 @@ export class BlueGreenManager {
     // Step 4: Monitor
     console.log(`\\n4. Monitoring ${targetEnv} environment`)
     if (!dryRun) {
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
     }
 
     result.success = true
@@ -316,7 +315,7 @@ export class BlueGreenManager {
     const maxAttempts = config.healthyThreshold + 2
 
     for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(resolve => setTimeout(resolve, 50))
+      await new Promise((resolve) => setTimeout(resolve, 50))
 
       const healthy = Math.random() > 0.1 // 90% success rate
 
@@ -327,8 +326,7 @@ export class BlueGreenManager {
         if (consecutiveSuccesses >= config.healthyThreshold) {
           return true
         }
-      }
-      else {
+      } else {
         consecutiveSuccesses = 0
         console.log(`  Check ${i + 1}: ✗ Unhealthy`)
       }
@@ -373,8 +371,7 @@ export class BlueGreenManager {
    * Generate CloudFormation for ALB target group switching
    */
   generateALBListenerCF(deployment: BlueGreenDeployment): any {
-    const activeEnv
-      = deployment.activeEnvironment === 'blue' ? deployment.blueEnvironment : deployment.greenEnvironment
+    const activeEnv = deployment.activeEnvironment === 'blue' ? deployment.blueEnvironment : deployment.greenEnvironment
 
     return {
       Type: 'AWS::ElasticLoadBalancingV2::ListenerRule',

@@ -7,22 +7,23 @@ export interface SftpResources {
 
 function logicalPart(value: string): string {
   const clean = value.replace(/[^a-zA-Z0-9]/g, ' ').trim()
-  const part = clean.split(/\s+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('')
+  const part = clean
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
   return part || 'User'
 }
 
 function normalizeHomeDirectory(value: string | undefined, username: string): string {
   const path = (value || username).replace(/^\/+|\/+$/g, '')
-  if (!path || path.split('/').includes('..'))
-    throw new Error(`sftp: invalid homeDirectory for user ${username}`)
+  if (!path || path.split('/').includes('..')) throw new Error(`sftp: invalid homeDirectory for user ${username}`)
   return path
 }
 
 /** Build an AWS Transfer Family SFTP server with service-managed users. */
 export class Sftp {
-  static create(options: SftpConfig & { slug: string, environment: EnvironmentType }): SftpResources {
-    if (!options.bucket.trim())
-      throw new Error('sftp: bucket is required')
+  static create(options: SftpConfig & { slug: string; environment: EnvironmentType }): SftpResources {
+    if (!options.bucket.trim()) throw new Error('sftp: bucket is required')
 
     const endpointType = options.endpointType ?? 'PUBLIC'
     if (endpointType === 'VPC' && (!options.endpointDetails?.vpcId || !options.endpointDetails.subnetIds.length))
@@ -40,19 +41,30 @@ export class Sftp {
         Properties: {
           AssumeRolePolicyDocument: {
             Version: '2012-10-17',
-            Statement: [{ Effect: 'Allow', Principal: { Service: 'transfer.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+            Statement: [
+              { Effect: 'Allow', Principal: { Service: 'transfer.amazonaws.com' }, Action: 'sts:AssumeRole' },
+            ],
           },
-          Policies: [{
-            PolicyName: 'TransferLogging',
-            PolicyDocument: {
-              Version: '2012-10-17',
-              Statement: [{
-                Effect: 'Allow',
-                Action: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:DescribeLogStreams', 'logs:PutLogEvents'],
-                Resource: 'arn:aws:logs:*:*:log-group:/aws/transfer/*',
-              }],
+          Policies: [
+            {
+              PolicyName: 'TransferLogging',
+              PolicyDocument: {
+                Version: '2012-10-17',
+                Statement: [
+                  {
+                    Effect: 'Allow',
+                    Action: [
+                      'logs:CreateLogGroup',
+                      'logs:CreateLogStream',
+                      'logs:DescribeLogStreams',
+                      'logs:PutLogEvents',
+                    ],
+                    Resource: 'arn:aws:logs:*:*:log-group:/aws/transfer/*',
+                  },
+                ],
+              },
             },
-          }],
+          ],
         },
       }
       loggingRoleArn = { 'Fn::GetAtt': [loggingRoleLogicalId, 'Arn'] }
@@ -70,8 +82,12 @@ export class Sftp {
               EndpointDetails: {
                 VpcId: options.endpointDetails!.vpcId,
                 SubnetIds: options.endpointDetails!.subnetIds,
-                ...(options.endpointDetails!.securityGroupIds?.length ? { SecurityGroupIds: options.endpointDetails!.securityGroupIds } : {}),
-                ...(options.endpointDetails!.addressAllocationIds?.length ? { AddressAllocationIds: options.endpointDetails!.addressAllocationIds } : {}),
+                ...(options.endpointDetails!.securityGroupIds?.length
+                  ? { SecurityGroupIds: options.endpointDetails!.securityGroupIds }
+                  : {}),
+                ...(options.endpointDetails!.addressAllocationIds?.length
+                  ? { AddressAllocationIds: options.endpointDetails!.addressAllocationIds }
+                  : {}),
               },
             }
           : {}),
@@ -86,10 +102,8 @@ export class Sftp {
     }
 
     for (const [username, user] of Object.entries(options.users)) {
-      if (!/^[a-zA-Z0-9_.@-]{3,100}$/.test(username))
-        throw new Error(`sftp: invalid username ${username}`)
-      if (!user.sshPublicKeys.length)
-        throw new Error(`sftp: user ${username} requires at least one SSH public key`)
+      if (!/^[a-zA-Z0-9_.@-]{3,100}$/.test(username)) throw new Error(`sftp: invalid username ${username}`)
+      if (!user.sshPublicKeys.length) throw new Error(`sftp: user ${username} requires at least one SSH public key`)
 
       const userPart = logicalPart(username)
       const home = normalizeHomeDirectory(user.homeDirectory, username)
@@ -104,27 +118,31 @@ export class Sftp {
           Properties: {
             AssumeRolePolicyDocument: {
               Version: '2012-10-17',
-              Statement: [{ Effect: 'Allow', Principal: { Service: 'transfer.amazonaws.com' }, Action: 'sts:AssumeRole' }],
+              Statement: [
+                { Effect: 'Allow', Principal: { Service: 'transfer.amazonaws.com' }, Action: 'sts:AssumeRole' },
+              ],
             },
-            Policies: [{
-              PolicyName: 'SftpHomeDirectory',
-              PolicyDocument: {
-                Version: '2012-10-17',
-                Statement: [
-                  {
-                    Effect: 'Allow',
-                    Action: ['s3:ListBucket', 's3:GetBucketLocation'],
-                    Resource: bucketArn,
-                    Condition: { StringLike: { 's3:prefix': [home, `${home}/*`] } },
-                  },
-                  {
-                    Effect: 'Allow',
-                    Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:GetObjectVersion'],
-                    Resource: `${bucketArn}/${home}/*`,
-                  },
-                ],
+            Policies: [
+              {
+                PolicyName: 'SftpHomeDirectory',
+                PolicyDocument: {
+                  Version: '2012-10-17',
+                  Statement: [
+                    {
+                      Effect: 'Allow',
+                      Action: ['s3:ListBucket', 's3:GetBucketLocation'],
+                      Resource: bucketArn,
+                      Condition: { StringLike: { 's3:prefix': [home, `${home}/*`] } },
+                    },
+                    {
+                      Effect: 'Allow',
+                      Action: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:GetObjectVersion'],
+                      Resource: `${bucketArn}/${home}/*`,
+                    },
+                  ],
+                },
               },
-            }],
+            ],
           },
         }
         roleArn = { 'Fn::GetAtt': [roleLogicalId, 'Arn'] }

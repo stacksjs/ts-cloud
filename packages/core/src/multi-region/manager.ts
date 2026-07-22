@@ -2,7 +2,6 @@
  * Multi-Region Deployment Manager
  * Deploys infrastructure across multiple AWS regions
  */
-
 import type { CloudConfig } from '../types'
 
 export interface Region {
@@ -59,15 +58,12 @@ export class MultiRegionManager {
   /**
    * Deploy to multiple regions
    */
-  async deploy(
-    config: CloudConfig,
-    multiRegionConfig: MultiRegionConfig,
-  ): Promise<MultiRegionDeployment> {
+  async deploy(config: CloudConfig, multiRegionConfig: MultiRegionConfig): Promise<MultiRegionDeployment> {
     const deploymentId = this.generateDeploymentId()
 
     const deployment: MultiRegionDeployment = {
       id: deploymentId,
-      regions: multiRegionConfig.regions.map(region => ({
+      regions: multiRegionConfig.regions.map((region) => ({
         region: region.code,
         stackName: this.getStackName(config, region.code),
         status: 'pending',
@@ -80,19 +76,14 @@ export class MultiRegionManager {
 
     try {
       // Deploy to primary region first
-      const primaryRegion = multiRegionConfig.regions.find(r => r.isPrimary)
-        || multiRegionConfig.regions[0]
+      const primaryRegion = multiRegionConfig.regions.find((r) => r.isPrimary) || multiRegionConfig.regions[0]
 
       await this.deployToRegion(config, primaryRegion, deployment)
 
       // Deploy to secondary regions in parallel
-      const secondaryRegions = multiRegionConfig.regions.filter(
-        r => r.code !== primaryRegion.code,
-      )
+      const secondaryRegions = multiRegionConfig.regions.filter((r) => r.code !== primaryRegion.code)
 
-      await Promise.all(
-        secondaryRegions.map(region => this.deployToRegion(config, region, deployment)),
-      )
+      await Promise.all(secondaryRegions.map((region) => this.deployToRegion(config, region, deployment)))
 
       // Deploy global resources if configured
       if (multiRegionConfig.globalResources) {
@@ -113,8 +104,7 @@ export class MultiRegionManager {
       deployment.endTime = new Date()
 
       return deployment
-    }
-    catch (error) {
+    } catch (error) {
       deployment.status = 'failed'
       deployment.endTime = new Date()
       throw error
@@ -124,12 +114,8 @@ export class MultiRegionManager {
   /**
    * Deploy to a single region
    */
-  private async deployToRegion(
-    config: CloudConfig,
-    region: Region,
-    deployment: MultiRegionDeployment,
-  ): Promise<void> {
-    const regionDeployment = deployment.regions.find(r => r.region === region.code)
+  private async deployToRegion(config: CloudConfig, region: Region, deployment: MultiRegionDeployment): Promise<void> {
+    const regionDeployment = deployment.regions.find((r) => r.region === region.code)
 
     if (!regionDeployment) {
       throw new Error(`Region deployment not found: ${region.code}`)
@@ -153,8 +139,7 @@ export class MultiRegionManager {
         stackId: `arn:aws:cloudformation:${region.code}:123456789012:stack/${regionDeployment.stackName}/guid`,
         endpoint: `https://${regionDeployment.stackName}.${region.code}.example.com`,
       }
-    }
-    catch (error) {
+    } catch (error) {
       regionDeployment.status = 'failed'
       regionDeployment.endTime = new Date()
       regionDeployment.error = error instanceof Error ? error.message : String(error)
@@ -165,10 +150,7 @@ export class MultiRegionManager {
   /**
    * Deploy global resources (Route53, CloudFront, WAF)
    */
-  private async deployGlobalResources(
-    deployment: MultiRegionDeployment,
-    config: MultiRegionConfig,
-  ): Promise<void> {
+  private async deployGlobalResources(deployment: MultiRegionDeployment, config: MultiRegionConfig): Promise<void> {
     const globalResources: Record<string, any> = {}
 
     // Deploy Route53 health checks and routing policies
@@ -192,10 +174,7 @@ export class MultiRegionManager {
   /**
    * Deploy Route53 for multi-region routing
    */
-  private async deployRoute53(
-    deployment: MultiRegionDeployment,
-    config: MultiRegionConfig,
-  ): Promise<any> {
+  private async deployRoute53(deployment: MultiRegionDeployment, config: MultiRegionConfig): Promise<any> {
     const healthChecks: any[] = []
     const recordSets: any[] = []
 
@@ -233,12 +212,9 @@ export class MultiRegionManager {
   /**
    * Deploy CloudFront distribution
    */
-  private async deployCloudFront(
-    deployment: MultiRegionDeployment,
-    config: MultiRegionConfig,
-  ): Promise<any> {
+  private async deployCloudFront(deployment: MultiRegionDeployment, config: MultiRegionConfig): Promise<any> {
     const origins = deployment.regions
-      .filter(r => r.status === 'deployed')
+      .filter((r) => r.status === 'deployed')
       .map((r, index) => {
         const region = config.regions[index]
         return {
@@ -269,10 +245,7 @@ export class MultiRegionManager {
   /**
    * Set up cross-region replication
    */
-  private async setupReplication(
-    deployment: MultiRegionDeployment,
-    config: MultiRegionConfig,
-  ): Promise<void> {
+  private async setupReplication(deployment: MultiRegionDeployment, config: MultiRegionConfig): Promise<void> {
     // Set up S3 bucket replication
     if (config.replication?.s3) {
       await this.setupS3Replication(deployment)
@@ -294,7 +267,7 @@ export class MultiRegionManager {
    */
   private async setupS3Replication(deployment: MultiRegionDeployment): Promise<void> {
     // Create replication rules between regions
-    const regions = deployment.regions.filter(r => r.status === 'deployed')
+    const regions = deployment.regions.filter((r) => r.status === 'deployed')
 
     for (let i = 0; i < regions.length - 1; i++) {
       const source = regions[i]
@@ -310,9 +283,7 @@ export class MultiRegionManager {
    * Set up DynamoDB global tables
    */
   private async setupDynamoDBReplication(deployment: MultiRegionDeployment): Promise<void> {
-    const regions = deployment.regions
-      .filter(r => r.status === 'deployed')
-      .map(r => r.region)
+    const regions = deployment.regions.filter((r) => r.status === 'deployed').map((r) => r.region)
 
     // Create global table with replicas in all regions
     // This is a placeholder - actual implementation would use DynamoDB client
@@ -323,9 +294,7 @@ export class MultiRegionManager {
    * Set up Secrets Manager replication
    */
   private async setupSecretsReplication(deployment: MultiRegionDeployment): Promise<void> {
-    const regions = deployment.regions
-      .filter(r => r.status === 'deployed')
-      .map(r => r.region)
+    const regions = deployment.regions.filter((r) => r.status === 'deployed').map((r) => r.region)
 
     // Replicate secrets to all regions
     // This is a placeholder - actual implementation would use Secrets Manager client
@@ -335,17 +304,16 @@ export class MultiRegionManager {
   /**
    * Set up failover configuration
    */
-  private async setupFailover(
-    deployment: MultiRegionDeployment,
-    config: MultiRegionConfig,
-  ): Promise<void> {
+  private async setupFailover(deployment: MultiRegionDeployment, config: MultiRegionConfig): Promise<void> {
     // Configure Route53 failover routing
-    const primaryRegion = deployment.regions.find((_, index) => config.regions[index]?.isPrimary)
-      || deployment.regions[0]
+    const primaryRegion =
+      deployment.regions.find((_, index) => config.regions[index]?.isPrimary) || deployment.regions[0]
 
-    const secondaryRegions = deployment.regions.filter(r => r.region !== primaryRegion.region)
+    const secondaryRegions = deployment.regions.filter((r) => r.region !== primaryRegion.region)
 
-    console.log(`Setting up failover: primary=${primaryRegion.region}, secondary=${secondaryRegions.map(r => r.region).join(', ')}`)
+    console.log(
+      `Setting up failover: primary=${primaryRegion.region}, secondary=${secondaryRegions.map((r) => r.region).join(', ')}`,
+    )
   }
 
   /**
@@ -367,13 +335,10 @@ export class MultiRegionManager {
       }
 
       // Destroy regional stacks in parallel
-      await Promise.all(
-        deployment.regions.map(region => this.destroyRegionStack(region)),
-      )
+      await Promise.all(deployment.regions.map((region) => this.destroyRegionStack(region)))
 
       this.deployments.delete(deploymentId)
-    }
-    catch (error) {
+    } catch (error) {
       deployment.status = 'failed'
       throw error
     }
@@ -410,8 +375,7 @@ export class MultiRegionManager {
       console.log(`Destroying stack ${region.stackName} in ${region.region}`)
 
       region.status = 'pending'
-    }
-    catch (error) {
+    } catch (error) {
       region.status = 'failed'
       region.error = error instanceof Error ? error.message : String(error)
       throw error
@@ -456,11 +420,7 @@ export class MultiRegionManager {
   /**
    * Deploy stack (placeholder)
    */
-  private async deployStack(
-    stackName: string,
-    config: CloudConfig,
-    region: string,
-  ): Promise<void> {
+  private async deployStack(stackName: string, config: CloudConfig, region: string): Promise<void> {
     // This is a placeholder - actual implementation would:
     // 1. Generate CloudFormation template
     // 2. Upload to S3

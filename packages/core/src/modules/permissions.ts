@@ -1,11 +1,4 @@
-import type {
-  IAMAccessKey,
-  IAMGroup,
-  IAMInstanceProfile,
-  IAMManagedPolicy,
-  IAMRole,
-  IAMUser,
-} from '@ts-cloud/aws-types'
+import type { IAMAccessKey, IAMGroup, IAMInstanceProfile, IAMManagedPolicy, IAMRole, IAMUser } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -62,19 +55,15 @@ export class Permissions {
     user: IAMUser
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      userName,
-      groups,
-      managedPolicyArns,
-    } = options
+    const { slug, environment, userName, groups, managedPolicyArns } = options
 
-    const resourceName = userName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'user',
-    })
+    const resourceName =
+      userName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'user',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -107,20 +96,15 @@ export class Permissions {
     role: IAMRole
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      roleName,
-      servicePrincipal,
-      awsPrincipal,
-      managedPolicyArns,
-    } = options
+    const { slug, environment, roleName, servicePrincipal, awsPrincipal, managedPolicyArns } = options
 
-    const resourceName = roleName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'role',
-    })
+    const resourceName =
+      roleName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'role',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -169,18 +153,15 @@ export class Permissions {
     group: IAMGroup
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      groupName,
-      managedPolicyArns,
-    } = options
+    const { slug, environment, groupName, managedPolicyArns } = options
 
-    const resourceName = groupName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'group',
-    })
+    const resourceName =
+      groupName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'group',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -205,23 +186,19 @@ export class Permissions {
     policy: IAMManagedPolicy
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      policyName,
-      description,
-      statements,
-    } = options
+    const { slug, environment, policyName, description, statements } = options
 
-    const resourceName = policyName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'policy',
-    })
+    const resourceName =
+      policyName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'policy',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
-    const policyStatements = statements.map(stmt => ({
+    const policyStatements = statements.map((stmt) => ({
       Sid: stmt.sid,
       Effect: stmt.effect || 'Allow',
       Action: stmt.actions,
@@ -247,10 +224,7 @@ export class Permissions {
   /**
    * Attach a policy to a role
    */
-  static attachPolicyToRole(
-    role: IAMRole,
-    policyArn: string,
-  ): IAMRole {
+  static attachPolicyToRole(role: IAMRole, policyArn: string): IAMRole {
     if (!role.Properties.ManagedPolicyArns) {
       role.Properties.ManagedPolicyArns = []
     }
@@ -265,10 +239,7 @@ export class Permissions {
   /**
    * Attach a policy to a user
    */
-  static attachPolicyToUser(
-    user: IAMUser,
-    policyArn: string,
-  ): IAMUser {
+  static attachPolicyToUser(user: IAMUser, policyArn: string): IAMUser {
     if (!user.Properties.ManagedPolicyArns) {
       user.Properties.ManagedPolicyArns = []
     }
@@ -283,10 +254,7 @@ export class Permissions {
   /**
    * Attach a policy to a group
    */
-  static attachPolicyToGroup(
-    group: IAMGroup,
-    policyArn: string,
-  ): IAMGroup {
+  static attachPolicyToGroup(group: IAMGroup, policyArn: string): IAMGroup {
     if (!group.Properties.ManagedPolicyArns) {
       group.Properties.ManagedPolicyArns = []
     }
@@ -301,16 +269,12 @@ export class Permissions {
   /**
    * Add inline policy to a role
    */
-  static addInlinePolicyToRole(
-    role: IAMRole,
-    policyName: string,
-    statements: PolicyStatement[],
-  ): IAMRole {
+  static addInlinePolicyToRole(role: IAMRole, policyName: string, statements: PolicyStatement[]): IAMRole {
     if (!role.Properties.Policies) {
       role.Properties.Policies = []
     }
 
-    const policyStatements = statements.map(stmt => ({
+    const policyStatements = statements.map((stmt) => ({
       Effect: stmt.effect || 'Allow',
       Action: stmt.actions,
       Resource: stmt.resources,
@@ -330,16 +294,12 @@ export class Permissions {
   /**
    * Add inline policy to a user
    */
-  static addInlinePolicyToUser(
-    user: IAMUser,
-    policyName: string,
-    statements: PolicyStatement[],
-  ): IAMUser {
+  static addInlinePolicyToUser(user: IAMUser, policyName: string, statements: PolicyStatement[]): IAMUser {
     if (!user.Properties.Policies) {
       user.Properties.Policies = []
     }
 
-    const policyStatements = statements.map(stmt => ({
+    const policyStatements = statements.map((stmt) => ({
       Effect: stmt.effect || 'Allow',
       Action: stmt.actions,
       Resource: stmt.resources,
@@ -367,9 +327,9 @@ export class Permissions {
       status?: 'Active' | 'Inactive'
     },
   ): {
-      accessKey: IAMAccessKey
-      logicalId: string
-    } {
+    accessKey: IAMAccessKey
+    logicalId: string
+  } {
     const { slug, environment, status = 'Active' } = options
 
     const resourceName = generateResourceName({
@@ -402,16 +362,18 @@ export class Permissions {
       profileName?: string
     },
   ): {
-      instanceProfile: IAMInstanceProfile
-      logicalId: string
-    } {
+    instanceProfile: IAMInstanceProfile
+    logicalId: string
+  } {
     const { slug, environment, profileName } = options
 
-    const resourceName = profileName || generateResourceName({
-      slug,
-      environment,
-      resourceType: 'instance-profile',
-    })
+    const resourceName =
+      profileName ||
+      generateResourceName({
+        slug,
+        environment,
+        resourceType: 'instance-profile',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -525,12 +487,7 @@ export class Permissions {
     policyLogicalId: string
     resources: Record<string, any>
   } {
-    const {
-      slug,
-      environment,
-      permissions,
-      createAccessKey = true,
-    } = options
+    const { slug, environment, permissions, createAccessKey = true } = options
 
     const resources: Record<string, any> = {}
 
@@ -550,10 +507,7 @@ export class Permissions {
           's3:ListBucketMultipartUploads',
           's3:AbortMultipartUpload',
         ],
-        resources: [
-          ...permissions.s3Buckets,
-          ...permissions.s3Buckets.map(b => `${b}/*`),
-        ],
+        resources: [...permissions.s3Buckets, ...permissions.s3Buckets.map((b) => `${b}/*`)],
       })
     }
 
@@ -620,10 +574,7 @@ export class Permissions {
       // Task definition registration requires broader permissions
       statements.push({
         sid: 'ECSTaskDefinitions',
-        actions: [
-          'ecs:RegisterTaskDefinition',
-          'ecs:DeregisterTaskDefinition',
-        ],
+        actions: ['ecs:RegisterTaskDefinition', 'ecs:DeregisterTaskDefinition'],
         resources: '*',
       })
 
@@ -679,10 +630,7 @@ export class Permissions {
     if (permissions.secretsManagerSecrets && permissions.secretsManagerSecrets.length > 0) {
       statements.push({
         sid: 'SecretsManagerAccess',
-        actions: [
-          'secretsmanager:GetSecretValue',
-          'secretsmanager:DescribeSecret',
-        ],
+        actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
         resources: permissions.secretsManagerSecrets,
       })
     }
@@ -753,14 +701,7 @@ export class Permissions {
     policyLogicalId: string
     resources: Record<string, any>
   } {
-    const {
-      slug,
-      environment,
-      trustedAccountIds,
-      externalId,
-      permissions,
-      maxSessionDuration = 3600,
-    } = options
+    const { slug, environment, trustedAccountIds, externalId, permissions, maxSessionDuration = 3600 } = options
 
     const resources: Record<string, any> = {}
 
@@ -801,14 +742,16 @@ export class Permissions {
         MaxSessionDuration: maxSessionDuration,
         AssumeRolePolicyDocument: {
           Version: '2012-10-17',
-          Statement: [{
-            Effect: 'Allow',
-            Principal: {
-              AWS: trustedAccountIds.map(id => `arn:aws:iam::${id}:root`),
+          Statement: [
+            {
+              Effect: 'Allow',
+              Principal: {
+                AWS: trustedAccountIds.map((id) => `arn:aws:iam::${id}:root`),
+              },
+              Action: 'sts:AssumeRole',
+              ...(Object.keys(conditions).length > 0 ? { Condition: conditions } : {}),
             },
-            Action: 'sts:AssumeRole',
-            ...(Object.keys(conditions).length > 0 ? { Condition: conditions } : {}),
-          }],
+          ],
         },
         ManagedPolicyArns: [Fn.Ref(policyLogicalId) as unknown as string],
         Tags: [
@@ -845,11 +788,7 @@ export class Permissions {
     policyLogicalId?: string
     resources: Record<string, any>
   } {
-    const {
-      slug,
-      environment,
-      permissions = 'readonly',
-    } = options
+    const { slug, environment, permissions = 'readonly' } = options
 
     const resources: Record<string, any> = {}
 
@@ -943,10 +882,10 @@ export class Permissions {
     resources[userLogicalId] = user
 
     // Create access key
-    const { accessKey, logicalId: accessKeyLogicalId } = Permissions.createAccessKey(
-      userLogicalId,
-      { slug, environment },
-    )
+    const { accessKey, logicalId: accessKeyLogicalId } = Permissions.createAccessKey(userLogicalId, {
+      slug,
+      environment,
+    })
     resources[accessKeyLogicalId] = accessKey
 
     return {
@@ -976,7 +915,7 @@ export class Permissions {
       {
         sid: 'S3Objects',
         actions: ['s3:GetObject', 's3:PutObject', 's3:DeleteObject'],
-        resources: bucketArns.map(arn => `${arn}/*`),
+        resources: bucketArns.map((arn) => `${arn}/*`),
       },
     ],
 
@@ -986,11 +925,7 @@ export class Permissions {
     cloudFrontInvalidation: (distributionArns: string[]): PolicyStatement[] => [
       {
         sid: 'CloudFrontInvalidation',
-        actions: [
-          'cloudfront:CreateInvalidation',
-          'cloudfront:GetInvalidation',
-          'cloudfront:ListInvalidations',
-        ],
+        actions: ['cloudfront:CreateInvalidation', 'cloudfront:GetInvalidation', 'cloudfront:ListInvalidations'],
         resources: distributionArns,
       },
     ],

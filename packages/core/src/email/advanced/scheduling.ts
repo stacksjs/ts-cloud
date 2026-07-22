@@ -170,11 +170,7 @@ else {
   /**
    * Create scheduler Lambda function
    */
-  static createSchedulerLambda(config: {
-    slug: string
-    roleArn: string
-    emailBucket: string
-  }): Record<string, any> {
+  static createSchedulerLambda(config: { slug: string; roleArn: string; emailBucket: string }): Record<string, any> {
     return {
       [`${config.slug}EmailSchedulerLambda`]: {
         Type: 'AWS::Lambda::Function',
@@ -270,11 +266,7 @@ else {
   /**
    * Cancel a scheduled email
    */
-  static async cancelScheduledEmail(params: {
-    s3Client: any
-    bucket: string
-    id: string
-  }): Promise<boolean> {
+  static async cancelScheduledEmail(params: { s3Client: any; bucket: string; id: string }): Promise<boolean> {
     const { s3Client, bucket, id } = params
 
     try {
@@ -301,8 +293,7 @@ else {
       })
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -338,16 +329,13 @@ else {
         if (!status || scheduled.status === status) {
           emails.push(scheduled)
         }
-      }
-      catch {
+      } catch {
         // Skip invalid files
       }
     }
 
     // Sort by scheduled time
-    emails.sort((a, b) =>
-      new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
-    )
+    emails.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
 
     return emails
   }

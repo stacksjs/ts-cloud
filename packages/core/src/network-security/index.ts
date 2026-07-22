@@ -2,10 +2,29 @@
  * Network Security - WAF, Shield, security groups, NACLs
  */
 
-export interface WAFRule { id: string; name: string; priority: number; action: 'allow' | 'block' | 'count'; conditions: string[] }
-export interface ShieldProtection { id: string; resourceArn: string; protectionType: 'standard' | 'advanced' }
-export interface SecurityGroup { id: string; name: string; vpcId: string; rules: Array<{ protocol: string; port: number; source: string }> }
-export interface NACL { id: string; vpcId: string; rules: Array<{ ruleNumber: number; protocol: string; action: 'allow' | 'deny' }> }
+export interface WAFRule {
+  id: string
+  name: string
+  priority: number
+  action: 'allow' | 'block' | 'count'
+  conditions: string[]
+}
+export interface ShieldProtection {
+  id: string
+  resourceArn: string
+  protectionType: 'standard' | 'advanced'
+}
+export interface SecurityGroup {
+  id: string
+  name: string
+  vpcId: string
+  rules: Array<{ protocol: string; port: number; source: string }>
+}
+export interface NACL {
+  id: string
+  vpcId: string
+  rules: Array<{ ruleNumber: number; protocol: string; action: 'allow' | 'deny' }>
+}
 
 export class NetworkSecurityManager {
   private wafRules = new Map<string, WAFRule>()
@@ -28,7 +47,11 @@ export class NetworkSecurityManager {
     return protection
   }
 
-  createSecurityGroup(name: string, vpcId: string, rules: Array<{ protocol: string; port: number; source: string }>): SecurityGroup {
+  createSecurityGroup(
+    name: string,
+    vpcId: string,
+    rules: Array<{ protocol: string; port: number; source: string }>,
+  ): SecurityGroup {
     const id = `sg-${Date.now()}-${this.counter++}`
     const sg = { id, name, vpcId, rules }
     this.securityGroups.set(id, sg)
@@ -42,7 +65,12 @@ export class NetworkSecurityManager {
     return nacl
   }
 
-  clear(): void { this.wafRules.clear(); this.shieldProtections.clear(); this.securityGroups.clear(); this.nacls.clear() }
+  clear(): void {
+    this.wafRules.clear()
+    this.shieldProtections.clear()
+    this.securityGroups.clear()
+    this.nacls.clear()
+  }
 }
 
 export const networkSecurityManager: NetworkSecurityManager = new NetworkSecurityManager()

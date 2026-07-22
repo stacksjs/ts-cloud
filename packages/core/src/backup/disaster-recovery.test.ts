@@ -165,7 +165,7 @@ describe('DisasterRecoveryManager', () => {
       expect(plan.runbook.steps).toHaveLength(7)
 
       // Verify step sequence
-      const stepNames = plan.runbook.steps.map(s => s.name)
+      const stepNames = plan.runbook.steps.map((s) => s.name)
       expect(stepNames).toContain('Verify Primary Database Failure')
       expect(stepNames).toContain('Check Replication Lag')
       expect(stepNames).toContain('Promote Read Replica')
@@ -183,7 +183,7 @@ describe('DisasterRecoveryManager', () => {
         secondaryRegion: 'us-west-2',
       })
 
-      const automatableSteps = plan.runbook.steps.filter(s => s.automatable)
+      const automatableSteps = plan.runbook.steps.filter((s) => s.automatable)
       expect(automatableSteps.length).toBeGreaterThan(4)
     })
   })
@@ -226,7 +226,7 @@ describe('DisasterRecoveryManager', () => {
       expect(plan.runbook.estimatedDuration).toBe(15)
       expect(plan.runbook.steps).toHaveLength(4)
 
-      const stepNames = plan.runbook.steps.map(s => s.name)
+      const stepNames = plan.runbook.steps.map((s) => s.name)
       expect(stepNames).toContain('Verify Primary Region Failure')
       expect(stepNames).toContain('Update Route53 Failover')
       expect(stepNames).toContain('Update Application Endpoints')
@@ -239,7 +239,7 @@ describe('DisasterRecoveryManager', () => {
         regions: ['us-east-1', 'us-west-2'],
       })
 
-      const allAutomatable = plan.runbook.steps.every(s => s.automatable)
+      const allAutomatable = plan.runbook.steps.every((s) => s.automatable)
       expect(allAutomatable).toBe(true)
     })
   })
@@ -275,9 +275,7 @@ describe('DisasterRecoveryManager', () => {
     })
 
     it('should throw error for non-existent plan', async () => {
-      await expect(manager.executeFailover('non-existent', true)).rejects.toThrow(
-        'DR plan not found: non-existent',
-      )
+      await expect(manager.executeFailover('non-existent', true)).rejects.toThrow('DR plan not found: non-existent')
     })
 
     it('should execute all steps in order', async () => {
@@ -330,9 +328,7 @@ describe('DisasterRecoveryManager', () => {
     })
 
     it('should throw error for non-existent plan in test', async () => {
-      await expect(manager.runFailoverTest('non-existent')).rejects.toThrow(
-        'DR plan not found: non-existent',
-      )
+      await expect(manager.runFailoverTest('non-existent')).rejects.toThrow('DR plan not found: non-existent')
     })
 
     it('should record test results for all steps', async () => {
@@ -437,17 +433,20 @@ describe('DisasterRecoveryManager', () => {
             replicationEnabled: true,
           },
         ],
-        runbook: { estimatedDuration: 60, steps: [
-          {
-            order: 1,
-            name: 'Test',
-            description: 'Test',
-            action: 'test',
-            automatable: true,
-            estimatedDuration: 5,
-            rollbackable: false,
-          },
-        ] },
+        runbook: {
+          estimatedDuration: 60,
+          steps: [
+            {
+              order: 1,
+              name: 'Test',
+              description: 'Test',
+              action: 'test',
+              automatable: true,
+              estimatedDuration: 5,
+              rollbackable: false,
+            },
+          ],
+        },
       })
 
       const validation = manager.validateDRPlan(plan)
@@ -470,17 +469,20 @@ describe('DisasterRecoveryManager', () => {
             replicationEnabled: true,
           },
         ],
-        runbook: { estimatedDuration: 60, steps: [
-          {
-            order: 1,
-            name: 'Test',
-            description: 'Test',
-            action: 'test',
-            automatable: true,
-            estimatedDuration: 5,
-            rollbackable: false,
-          },
-        ] },
+        runbook: {
+          estimatedDuration: 60,
+          steps: [
+            {
+              order: 1,
+              name: 'Test',
+              description: 'Test',
+              action: 'test',
+              automatable: true,
+              estimatedDuration: 5,
+              rollbackable: false,
+            },
+          ],
+        },
       })
 
       const validation = manager.validateDRPlan(plan)
@@ -496,17 +498,20 @@ describe('DisasterRecoveryManager', () => {
         rto: 60,
         rpo: 5,
         resources: [],
-        runbook: { estimatedDuration: 60, steps: [
-          {
-            order: 1,
-            name: 'Test',
-            description: 'Test',
-            action: 'test',
-            automatable: true,
-            estimatedDuration: 5,
-            rollbackable: false,
-          },
-        ] },
+        runbook: {
+          estimatedDuration: 60,
+          steps: [
+            {
+              order: 1,
+              name: 'Test',
+              description: 'Test',
+              action: 'test',
+              automatable: true,
+              estimatedDuration: 5,
+              rollbackable: false,
+            },
+          ],
+        },
       })
 
       const validation = manager.validateDRPlan(plan)
@@ -530,17 +535,20 @@ describe('DisasterRecoveryManager', () => {
             replicationEnabled: false,
           },
         ],
-        runbook: { estimatedDuration: 60, steps: [
-          {
-            order: 1,
-            name: 'Test',
-            description: 'Test',
-            action: 'test',
-            automatable: true,
-            estimatedDuration: 5,
-            rollbackable: false,
-          },
-        ] },
+        runbook: {
+          estimatedDuration: 60,
+          steps: [
+            {
+              order: 1,
+              name: 'Test',
+              description: 'Test',
+              action: 'test',
+              automatable: true,
+              estimatedDuration: 5,
+              rollbackable: false,
+            },
+          ],
+        },
       })
 
       const validation = manager.validateDRPlan(plan)
@@ -563,17 +571,20 @@ describe('DisasterRecoveryManager', () => {
             replicationEnabled: true,
           },
         ],
-        runbook: { estimatedDuration: 60, steps: [
-          {
-            order: 1,
-            name: 'Test',
-            description: 'Test',
-            action: 'test',
-            automatable: true,
-            estimatedDuration: 5,
-            rollbackable: false,
-          },
-        ] },
+        runbook: {
+          estimatedDuration: 60,
+          steps: [
+            {
+              order: 1,
+              name: 'Test',
+              description: 'Test',
+              action: 'test',
+              automatable: true,
+              estimatedDuration: 5,
+              rollbackable: false,
+            },
+          ],
+        },
       })
 
       const validation = manager.validateDRPlan(plan)

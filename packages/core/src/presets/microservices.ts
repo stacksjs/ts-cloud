@@ -41,23 +41,25 @@ export function createMicroservicesPreset(options: {
         },
       },
       compute: {
-        services: services.map(service => ({
+        services: services.map((service) => ({
           name: service.name,
           type: 'fargate',
           taskDefinition: {
             cpu: service.cpu || '256',
             memory: service.memory || '512',
-            containerDefinitions: [{
-              name: service.name,
-              image: `${slug}-${service.name}:latest`,
-              portMappings: [{ containerPort: service.port }],
-              healthCheck: {
-                command: ['CMD-SHELL', `curl -f http://localhost:${service.port}/health || exit 1`],
-                interval: 30,
-                timeout: 5,
-                retries: 3,
+            containerDefinitions: [
+              {
+                name: service.name,
+                image: `${slug}-${service.name}:latest`,
+                portMappings: [{ containerPort: service.port }],
+                healthCheck: {
+                  command: ['CMD-SHELL', `curl -f http://localhost:${service.port}/health || exit 1`],
+                  interval: 30,
+                  timeout: 5,
+                  retries: 3,
+                },
               },
-            }],
+            ],
           },
           service: {
             desiredCount: service.desiredCount || 2,
@@ -83,7 +85,7 @@ export function createMicroservicesPreset(options: {
           allowOrigins: ['*'],
           allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
         },
-        routes: services.map(service => ({
+        routes: services.map((service) => ({
           path: `/${service.name}/{proxy+}`,
           integration: {
             type: 'vpc-link',
@@ -94,7 +96,7 @@ export function createMicroservicesPreset(options: {
       databases: {
         dynamodb: {
           tables: Object.fromEntries(
-            services.map(service => [
+            services.map((service) => [
               `${slug}-${service.name}`,
               {
                 partitionKey: { name: 'id', type: 'S' },
@@ -118,7 +120,7 @@ export function createMicroservicesPreset(options: {
         topics: {
           events: {
             name: `${slug}-events`,
-            subscriptions: services.map(service => ({
+            subscriptions: services.map((service) => ({
               protocol: 'sqs' as const,
               endpoint: `${slug}-${service.name}-queue`,
               filterPolicy: {
@@ -131,7 +133,7 @@ export function createMicroservicesPreset(options: {
       monitoring: {
         dashboard: {
           name: `${slug}-microservices`,
-          widgets: services.map(service => ({
+          widgets: services.map((service) => ({
             type: 'metric',
             metrics: [
               { service: service.name, metric: 'CPUUtilization' },
@@ -140,17 +142,20 @@ export function createMicroservicesPreset(options: {
             ],
           })),
         },
-        alarms: services.flatMap(service => [{
-          name: `${service.name}-high-cpu`,
-          metric: 'CPUUtilization',
-          threshold: 80,
-          service: service.name,
-        }, {
-          name: `${service.name}-errors`,
-          metric: 'Errors',
-          threshold: 10,
-          service: service.name,
-        }]),
+        alarms: services.flatMap((service) => [
+          {
+            name: `${service.name}-high-cpu`,
+            metric: 'CPUUtilization',
+            threshold: 80,
+            service: service.name,
+          },
+          {
+            name: `${service.name}-errors`,
+            metric: 'Errors',
+            threshold: 10,
+            service: service.name,
+          },
+        ]),
       },
       security: {
         certificate: {

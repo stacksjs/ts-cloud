@@ -67,32 +67,28 @@ export class CommandHistory {
   search(query: string): HistoryEntry[] {
     const lowerQuery = query.toLowerCase()
 
-    return this.entries.filter(entry =>
-      entry.command.toLowerCase().includes(lowerQuery),
-    )
+    return this.entries.filter((entry) => entry.command.toLowerCase().includes(lowerQuery))
   }
 
   /**
    * Search history by date range
    */
   searchByDate(startDate: Date, endDate: Date): HistoryEntry[] {
-    return this.entries.filter(
-      entry => entry.timestamp >= startDate && entry.timestamp <= endDate,
-    )
+    return this.entries.filter((entry) => entry.timestamp >= startDate && entry.timestamp <= endDate)
   }
 
   /**
    * Get successful commands
    */
   getSuccessful(): HistoryEntry[] {
-    return this.entries.filter(entry => entry.success)
+    return this.entries.filter((entry) => entry.success)
   }
 
   /**
    * Get failed commands
    */
   getFailed(): HistoryEntry[] {
-    return this.entries.filter(entry => !entry.success)
+    return this.entries.filter((entry) => !entry.success)
   }
 
   /**
@@ -123,13 +119,14 @@ export class CommandHistory {
     mostUsed: string
   } {
     const total = this.entries.length
-    const successful = this.entries.filter(e => e.success).length
-    const failed = this.entries.filter(e => !e.success).length
+    const successful = this.entries.filter((e) => e.success).length
+    const failed = this.entries.filter((e) => !e.success).length
 
-    const durationsWithValue = this.entries.filter(e => e.duration !== undefined)
-    const averageDuration = durationsWithValue.length > 0
-      ? durationsWithValue.reduce((sum, e) => sum + (e.duration || 0), 0) / durationsWithValue.length
-      : 0
+    const durationsWithValue = this.entries.filter((e) => e.duration !== undefined)
+    const averageDuration =
+      durationsWithValue.length > 0
+        ? durationsWithValue.reduce((sum, e) => sum + (e.duration || 0), 0) / durationsWithValue.length
+        : 0
 
     const mostUsedList = this.getMostUsed(1)
     const mostUsed = mostUsedList.length > 0 ? mostUsedList[0].command : 'N/A'
@@ -179,8 +176,7 @@ export class CommandHistory {
       const fs = await import('node:fs/promises')
       const data = JSON.stringify(this.entries, null, 2)
       await fs.writeFile(this.persistFile, data, 'utf-8')
-    }
-    catch (error) {
+    } catch (error) {
       throw new Error(`Failed to save history: ${error}`)
     }
   }
@@ -200,8 +196,7 @@ export class CommandHistory {
         ...entry,
         timestamp: new Date(entry.timestamp),
       }))
-    }
-    catch {
+    } catch {
       // File doesn't exist or can't be read - that's ok
       this.entries = []
     }
@@ -219,7 +214,7 @@ export class CommandHistory {
    */
   exportCSV(): string {
     const header = 'Timestamp,Command,Success,Duration'
-    const rows = this.entries.map(entry =>
+    const rows = this.entries.map((entry) =>
       [
         entry.timestamp.toISOString(),
         `"${entry.command.replace(/"/g, '""')}"`, // Escape quotes
@@ -304,8 +299,8 @@ export class CommandHistory {
 
     // Find commands that start with the partial
     const matches = this.entries
-      .filter(entry => entry.command.toLowerCase().startsWith(lowerPartial))
-      .map(entry => entry.command)
+      .filter((entry) => entry.command.toLowerCase().startsWith(lowerPartial))
+      .map((entry) => entry.command)
 
     // Remove duplicates and limit
     return [...new Set(matches)].slice(0, limit)
@@ -330,9 +325,7 @@ export class CommandHistory {
       dayOfWeek.set(day, (dayOfWeek.get(day) || 0) + 1)
     }
 
-    const successRate = this.entries.length > 0
-      ? this.getSuccessful().length / this.entries.length
-      : 0
+    const successRate = this.entries.length > 0 ? this.getSuccessful().length / this.entries.length : 0
 
     return {
       timeOfDay,

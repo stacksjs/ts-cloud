@@ -54,7 +54,7 @@ export class MultiAccountManager {
    * Get account by alias
    */
   getAccountByAlias(alias: string): AWSAccount | undefined {
-    return Array.from(this.accounts.values()).find(acc => acc.alias === alias)
+    return Array.from(this.accounts.values()).find((acc) => acc.alias === alias)
   }
 
   /**
@@ -68,7 +68,7 @@ export class MultiAccountManager {
    * Get accounts by role
    */
   getAccountsByRole(role: AWSAccount['role']): AWSAccount[] {
-    return Array.from(this.accounts.values()).filter(acc => acc.role === role)
+    return Array.from(this.accounts.values()).filter((acc) => acc.role === role)
   }
 
   /**
@@ -147,11 +147,7 @@ export class MultiAccountManager {
   /**
    * Map environment to account
    */
-  mapEnvironmentToAccount(
-    environment: string,
-    accountId: string,
-    region: string,
-  ): void {
+  mapEnvironmentToAccount(environment: string, accountId: string, region: string): void {
     this.accountMappings.push({
       environment,
       accountId,
@@ -163,7 +159,7 @@ export class MultiAccountManager {
    * Get account for environment
    */
   getAccountForEnvironment(environment: string): AccountMapping | undefined {
-    return this.accountMappings.find(mapping => mapping.environment === environment)
+    return this.accountMappings.find((mapping) => mapping.environment === environment)
   }
 
   /**
@@ -207,10 +203,7 @@ export class MultiAccountManager {
 
     // If account has assume role ARN, assume the role
     if (account.assumeRoleArn) {
-      const credentials = await this.assumeRole(
-        account.assumeRoleArn,
-        `ts-cloud-${Date.now()}`,
-      )
+      const credentials = await this.assumeRole(account.assumeRoleArn, `ts-cloud-${Date.now()}`)
 
       return {
         accessKeyId: credentials.accessKeyId,
@@ -236,7 +229,7 @@ export class MultiAccountManager {
    */
   getCrossAccountRolesForAccount(accountId: string): CrossAccountRole[] {
     return this.crossAccountRoles.filter(
-      role => role.sourceAccountId === accountId || role.targetAccountId === accountId,
+      (role) => role.sourceAccountId === accountId || role.targetAccountId === accountId,
     )
   }
 
@@ -251,8 +244,7 @@ export class MultiAccountManager {
       console.log(`Validating access to account: ${accountId}`)
 
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -366,7 +358,7 @@ export class OrganizationManager {
       throw new Error(`Organizational unit not found: ${ouId}`)
     }
 
-    ou.accounts = ou.accounts.filter(id => id !== accountId)
+    ou.accounts = ou.accounts.filter((id) => id !== accountId)
   }
 
   /**
@@ -385,10 +377,7 @@ export class OrganizationManager {
   /**
    * Apply service control policy
    */
-  applyServiceControlPolicy(
-    targetId: string,
-    policyDocument: any,
-  ): ServiceControlPolicy {
+  applyServiceControlPolicy(targetId: string, policyDocument: any): ServiceControlPolicy {
     return {
       id: `scp-${Date.now()}`,
       name: 'Custom SCP',

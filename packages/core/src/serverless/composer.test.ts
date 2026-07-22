@@ -14,8 +14,10 @@ describe('resolveQueueNames', () => {
   it('defaults to a single queue, supports arrays, and disables with false', () => {
     expect(resolveQueueNames({}, 'demo', 'production')).toEqual(['demo-production-default'])
     expect(resolveQueueNames({ queues: false }, 'demo', 'production')).toEqual([])
-    expect(resolveQueueNames({ queues: ['emails', { invoices: 5 }] }, 'demo', 'production'))
-      .toEqual(['demo-production-emails', 'demo-production-invoices'])
+    expect(resolveQueueNames({ queues: ['emails', { invoices: 5 }] }, 'demo', 'production')).toEqual([
+      'demo-production-emails',
+      'demo-production-invoices',
+    ])
   })
 })
 
@@ -31,7 +33,11 @@ describe('resolveQueues', () => {
 describe('composeServerlessAppTemplate', () => {
   it('wires three functions sharing one artifact via parameters', () => {
     const { template, functionNames } = compose({ kind: 'node', entry: 'src/server.ts' })
-    expect(functionNames).toEqual({ http: 'demo-production-http', queue: 'demo-production-queue', cli: 'demo-production-cli' })
+    expect(functionNames).toEqual({
+      http: 'demo-production-http',
+      queue: 'demo-production-queue',
+      cli: 'demo-production-cli',
+    })
 
     for (const id of ['HttpFunction', 'QueueFunction', 'CliFunction']) {
       const fn = template.Resources[id] as any
@@ -102,17 +108,26 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('creates a WAF WebACL when firewall is enabled, but NOT an association (WAFv2 cannot attach to HTTP API v2)', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', firewall: { enabled: true, rateLimit: 2000, rules: ['common', 'sqlInjection'] } })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      firewall: { enabled: true, rateLimit: 2000, rules: ['common', 'sqlInjection'] },
+    })
     expect((template.Resources.WebAcl as any).Properties.Scope).toBe('REGIONAL')
     expect((template.Resources.WebAcl as any).Properties.Rules).toHaveLength(3)
     // No WebACLAssociation — AWS rejects associating a web ACL with an HTTP API
     // (v2) stage; the ARN is surfaced as an output to attach via CloudFront.
     expect(template.Resources.WebAclAssociation).toBeUndefined()
-    expect(((template.Outputs as any).WafAclArn).Value).toEqual({ 'Fn::GetAtt': ['WebAcl', 'Arn'] })
+    expect((template.Outputs as any).WafAclArn.Value).toEqual({ 'Fn::GetAtt': ['WebAcl', 'Arn'] })
   })
 
   it('creates ElastiCache + security group when cache.driver is elasticache', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', cache: { driver: 'elasticache' }, vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] } })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      cache: { driver: 'elasticache' },
+      vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
+    })
     expect((template.Resources.CacheCluster as any).Type).toBe('AWS::ElastiCache::ReplicationGroup')
     expect((template.Resources.DataSecurityGroup as any).Type).toBe('AWS::EC2::SecurityGroup')
     // No DynamoDB cache table when using elasticache.
@@ -128,7 +143,8 @@ describe('composeServerlessAppTemplate', () => {
   // locks the contract — it would have caught the EfsId/`-redis` drift bugs.
   it('emits the exact output keys + resource names the dashboard resolver depends on', () => {
     const { template } = compose({
-      kind: 'node', entry: 'a.ts',
+      kind: 'node',
+      entry: 'a.ts',
       vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
       database: { connection: 'aurora-serverless' },
       rdsProxy: true,
@@ -140,7 +156,16 @@ describe('composeServerlessAppTemplate', () => {
     } as ServerlessAppConfig)
     const outputs = template.Outputs as Record<string, any>
     // Output keys read by resolveDashboardData / resolveServerlessFunctions.
-    for (const key of ['DbEndpoint', 'DbProxyEndpoint', 'CacheEndpoint', 'EfsFileSystemId', 'AssetsCdnDomain', 'AssetsBucketName', 'HttpApiEndpoint', 'WafAclArn'])
+    for (const key of [
+      'DbEndpoint',
+      'DbProxyEndpoint',
+      'CacheEndpoint',
+      'EfsFileSystemId',
+      'AssetsCdnDomain',
+      'AssetsBucketName',
+      'HttpApiEndpoint',
+      'WafAclArn',
+    ])
       expect(outputs[key], `dashboard reads output '${key}'`).toBeDefined()
     // Resource-name conventions the resolver reconstructs from slug/env.
     expect((template.Resources.DbCluster as any).Properties.DBClusterIdentifier).toBe('demo-production-db')
@@ -162,7 +187,10 @@ describe('composeServerlessAppTemplate', () => {
       rdsProxy: true,
       vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
     } as ServerlessAppConfig)
-    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({ MinCapacity: 0.5, MaxCapacity: 4 })
+    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({
+      MinCapacity: 0.5,
+      MaxCapacity: 4,
+    })
     expect((template.Resources.DbInstance as any).Properties.DBInstanceClass).toBe('db.serverless')
     expect((template.Resources.DbProxy as any).Type).toBe('AWS::RDS::DBProxy')
   })
@@ -173,7 +201,10 @@ describe('composeServerlessAppTemplate', () => {
       database: { connection: 'aurora-serverless', minCapacity: 2, maxCapacity: 16 },
       vpc: { id: 'vpc-test', subnets: ['subnet-a', 'subnet-b'] },
     } as ServerlessAppConfig)
-    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({ MinCapacity: 2, MaxCapacity: 16 })
+    expect((template.Resources.DbCluster as any).Properties.ServerlessV2ScalingConfiguration).toEqual({
+      MinCapacity: 2,
+      MaxCapacity: 16,
+    })
   })
 
   it('adds warmer rules sized to the warm count (5 targets/rule)', () => {
@@ -217,12 +248,14 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('requires image deployments to bake in the Lambda Insights extension', () => {
-    expect(() => compose({
-      kind: 'node',
-      entry: 'a.ts',
-      packaging: 'image',
-      lambdaInsights: { layerArn: 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64' },
-    })).toThrow(/install the Lambda Insights extension in the image/)
+    expect(() =>
+      compose({
+        kind: 'node',
+        entry: 'a.ts',
+        packaging: 'image',
+        lambdaInsights: { layerArn: 'arn:aws:lambda:us-east-1:580247275435:layer:LambdaInsightsExtension:64' },
+      }),
+    ).toThrow(/install the Lambda Insights extension in the image/)
   })
 
   it('sets TSCLOUD_OCTANE on functions when octane is enabled', () => {
@@ -231,8 +264,9 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('throws when data services are requested without VPC subnets', () => {
-    expect(() => compose({ kind: 'node', entry: 'a.ts', cache: { driver: 'elasticache' } }))
-      .toThrow(/require app\.vpc\.subnets/)
+    expect(() => compose({ kind: 'node', entry: 'a.ts', cache: { driver: 'elasticache' } })).toThrow(
+      /require app\.vpc\.subnets/,
+    )
   })
 
   it('uses PackageType Image + ImageUri parameter in image mode', () => {
@@ -284,19 +318,34 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('uses a pre-issued certificateArn without creating a cert', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', domain: ['a.acme.com', 'b.acme.com'], certificateArn: 'arn:aws:acm:us-east-1:1:certificate/x' })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      domain: ['a.acme.com', 'b.acme.com'],
+      certificateArn: 'arn:aws:acm:us-east-1:1:certificate/x',
+    })
     expect(template.Resources.HttpCertificate).toBeUndefined()
-    expect((template.Resources.HttpDomain0 as any).Properties.DomainNameConfigurations[0].CertificateArn).toBe('arn:aws:acm:us-east-1:1:certificate/x')
+    expect((template.Resources.HttpDomain0 as any).Properties.DomainNameConfigurations[0].CertificateArn).toBe(
+      'arn:aws:acm:us-east-1:1:certificate/x',
+    )
     expect((template.Resources.HttpDomain1 as any).Properties.DomainName).toBe('b.acme.com')
   })
 
   it('throws when a custom domain has neither certificateArn nor hostedZoneId', () => {
-    expect(() => compose({ kind: 'node', entry: 'a.ts', domain: 'app.acme.com' }))
-      .toThrow(/certificateArn.*hostedZoneId/s)
+    expect(() => compose({ kind: 'node', entry: 'a.ts', domain: 'app.acme.com' })).toThrow(
+      /certificateArn.*hostedZoneId/s,
+    )
   })
 
   it('applies per-function ephemeral storage (cli/queue tmp)', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', tmpStorage: 512, cliTmpStorage: 2048, queueTmpStorage: 1024, queues: ['jobs'] })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      tmpStorage: 512,
+      cliTmpStorage: 2048,
+      queueTmpStorage: 1024,
+      queues: ['jobs'],
+    })
     expect((template.Resources.HttpFunction as any).Properties.EphemeralStorage.Size).toBe(512)
     expect((template.Resources.CliFunction as any).Properties.EphemeralStorage.Size).toBe(2048)
     expect((template.Resources.QueueFunction as any).Properties.EphemeralStorage.Size).toBe(1024)
@@ -304,7 +353,9 @@ describe('composeServerlessAppTemplate', () => {
 
   it('sets TSCLOUD_SCHEDULER=sub-minute env when scheduler is sub-minute', () => {
     const { template } = compose({ kind: 'php', scheduler: 'sub-minute' })
-    expect((template.Resources.CliFunction as any).Properties.Environment.Variables.TSCLOUD_SCHEDULER).toBe('sub-minute')
+    expect((template.Resources.CliFunction as any).Properties.Environment.Variables.TSCLOUD_SCHEDULER).toBe(
+      'sub-minute',
+    )
   })
 
   it('provisions + mounts EFS at /mnt/local when efs:true (with VPC)', () => {
@@ -319,9 +370,16 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('attaches an existing EFS access point without provisioning', () => {
-    const { template } = compose({ kind: 'php', vpc: { id: 'vpc-test', subnets: ['subnet-a'] }, efs: { accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', mountPath: '/mnt/shared' } })
+    const { template } = compose({
+      kind: 'php',
+      vpc: { id: 'vpc-test', subnets: ['subnet-a'] },
+      efs: { accessPointArn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', mountPath: '/mnt/shared' },
+    })
     expect(template.Resources.EfsFileSystem).toBeUndefined()
-    expect((template.Resources.HttpFunction as any).Properties.FileSystemConfigs[0]).toEqual({ Arn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x', LocalMountPath: '/mnt/shared' })
+    expect((template.Resources.HttpFunction as any).Properties.FileSystemConfigs[0]).toEqual({
+      Arn: 'arn:aws:elasticfilesystem:us-east-1:1:access-point/fsap-x',
+      LocalMountPath: '/mnt/shared',
+    })
   })
 
   it('throws when efs is requested without VPC subnets', () => {
@@ -329,16 +387,31 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('adds a custom asset CDN host (Aliases + viewer cert) and errors without a cert', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', assetCertificateArn: 'arn:aws:acm:us-east-1:1:certificate/c', hostedZoneId: 'Z1' })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      assets: 'public',
+      assetDomain: 'cdn.acme.com',
+      assetCertificateArn: 'arn:aws:acm:us-east-1:1:certificate/c',
+      hostedZoneId: 'Z1',
+    })
     const cfg = (template.Resources.AssetsDistribution as any).Properties.DistributionConfig
     expect(cfg.Aliases).toEqual(['cdn.acme.com'])
     expect(cfg.ViewerCertificate.AcmCertificateArn).toBe('arn:aws:acm:us-east-1:1:certificate/c')
     expect((template.Resources.AssetsDomainRecord as any).Properties.AliasTarget.HostedZoneId).toBe('Z2FDTNDATAQYW2')
-    expect(() => compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com' })).toThrow(/assetCertificateArn/)
+    expect(() => compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com' })).toThrow(
+      /assetCertificateArn/,
+    )
   })
 
   it('auto-issues a DNS-validated asset cert when only a hostedZoneId is given (us-east-1)', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      assets: 'public',
+      assetDomain: 'cdn.acme.com',
+      hostedZoneId: 'Z1',
+    })
     const cert = template.Resources.AssetsCertificate as any
     expect(cert.Type).toBe('AWS::CertificateManager::Certificate')
     expect(cert.Properties.ValidationMethod).toBe('DNS')
@@ -349,7 +422,14 @@ describe('composeServerlessAppTemplate', () => {
 
   it('refuses to auto-issue an asset cert outside us-east-1 (CloudFront cert region)', () => {
     const euConfig = { project: { name: 'Demo', slug: 'demo', region: 'eu-west-1' } } as Pick<CloudConfig, 'project'>
-    expect(() => composeServerlessAppTemplate({ config: euConfig, environment: 'production', handlers, app: { kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' } })).toThrow(/us-east-1/)
+    expect(() =>
+      composeServerlessAppTemplate({
+        config: euConfig,
+        environment: 'production',
+        handlers,
+        app: { kind: 'node', entry: 'a.ts', assets: 'public', assetDomain: 'cdn.acme.com', hostedZoneId: 'Z1' },
+      }),
+    ).toThrow(/us-east-1/)
   })
 
   it('sets SQS visibility timeout to 6x the function timeout (capped at 12h)', () => {
@@ -360,7 +440,12 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('applies per-queue concurrency, falling back to the global queueConcurrency', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['emails', { invoices: 10 }], queueConcurrency: 3 })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      queues: ['emails', { invoices: 10 }],
+      queueConcurrency: 3,
+    })
     expect((template.Resources.AppQueue0Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(3) // global
     expect((template.Resources.AppQueue1Mapping as any).Properties.ScalingConfig.MaximumConcurrency).toBe(10) // per-queue wins
   })
@@ -374,7 +459,13 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('warms the configured set of functions', () => {
-    const { template } = compose({ kind: 'node', entry: 'a.ts', warm: 1, warmFunctions: ['http', 'cli'], queues: false })
+    const { template } = compose({
+      kind: 'node',
+      entry: 'a.ts',
+      warm: 1,
+      warmFunctions: ['http', 'cli'],
+      queues: false,
+    })
     expect((template.Resources.WarmerHttpRule0 as any).Type).toBe('AWS::Events::Rule')
     expect((template.Resources.WarmerCliRule0 as any).Type).toBe('AWS::Events::Rule')
     expect((template.Resources.WarmerCliPermission as any).Properties.FunctionName).toEqual({ Ref: 'CliFunction' })
@@ -403,7 +494,9 @@ describe('composeServerlessAppTemplate', () => {
     const { template } = compose({ kind: 'node', entry: 'a.ts', queues: ['jobs'] })
     expect(template.Resources.HttpFunctionAlias).toBeUndefined()
     expect(template.Resources.HttpFunctionVersion).toBeUndefined()
-    expect((template.Resources.HttpIntegration as any).Properties.IntegrationUri).toEqual({ 'Fn::GetAtt': ['HttpFunction', 'Arn'] })
+    expect((template.Resources.HttpIntegration as any).Properties.IntegrationUri).toEqual({
+      'Fn::GetAtt': ['HttpFunction', 'Arn'],
+    })
     expect((template.Resources.AppQueue0Mapping as any).Properties.FunctionName).toEqual({ Ref: 'QueueFunction' })
   })
 
@@ -413,7 +506,9 @@ describe('composeServerlessAppTemplate', () => {
   })
 
   it('throws on the unsupported REST API (gatewayVersion: 1)', () => {
-    expect(() => compose({ kind: 'node', entry: 'a.ts', gatewayVersion: 1 })).toThrow(/gatewayVersion: 1.*not supported/)
+    expect(() => compose({ kind: 'node', entry: 'a.ts', gatewayVersion: 1 })).toThrow(
+      /gatewayVersion: 1.*not supported/,
+    )
   })
 
   it('passes structural + resource-limit validation', () => {

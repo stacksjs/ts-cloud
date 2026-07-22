@@ -20,12 +20,7 @@ import {
 
 describe('CloudError', () => {
   it('should create a CloudError with message, code, and solution', () => {
-    const error = new CloudError(
-      'Test error message',
-      'TEST_ERROR',
-      'This is the solution',
-      { detail1: 'value1' },
-    )
+    const error = new CloudError('Test error message', 'TEST_ERROR', 'This is the solution', { detail1: 'value1' })
 
     expect(error.message).toBe('Test error message')
     expect(error.code).toBe('TEST_ERROR')
@@ -35,12 +30,7 @@ describe('CloudError', () => {
   })
 
   it('should format toString() with solution and details', () => {
-    const error = new CloudError(
-      'Test error',
-      'TEST_ERROR',
-      'Fix it like this',
-      { key: 'value' },
-    )
+    const error = new CloudError('Test error', 'TEST_ERROR', 'Fix it like this', { key: 'value' })
 
     const str = error.toString()
     expect(str).toContain('CloudError [TEST_ERROR]: Test error')
@@ -200,27 +190,27 @@ describe('DebugLogger', () => {
   it('should always log info messages', () => {
     DebugLogger.info('Info message')
 
-    expect(logs.some(log => log.includes('Info message'))).toBe(true)
+    expect(logs.some((log) => log.includes('Info message'))).toBe(true)
   })
 
   it('should always log warning messages', () => {
     DebugLogger.warn('Warning message')
 
-    expect(logs.some(log => log.includes('Warning message'))).toBe(true)
+    expect(logs.some((log) => log.includes('Warning message'))).toBe(true)
   })
 
   it('should always log error messages', () => {
     DebugLogger.error('Error message')
 
-    expect(logs.some(log => log.includes('Error message'))).toBe(true)
+    expect(logs.some((log) => log.includes('Error message'))).toBe(true)
   })
 
   it('should log CloudError with formatted output', () => {
     const error = new CloudError('Test error', 'TEST', 'Test solution')
     DebugLogger.error('Something failed', error)
 
-    expect(logs.some(log => log.includes('Something failed'))).toBe(true)
-    expect(logs.some(log => log.includes('Test error'))).toBe(true)
+    expect(logs.some((log) => log.includes('Something failed'))).toBe(true)
+    expect(logs.some((log) => log.includes('Test error'))).toBe(true)
   })
 
   it('should log stack trace in debug mode', () => {
@@ -228,13 +218,13 @@ describe('DebugLogger', () => {
     const error = new Error('Test error')
     DebugLogger.error('Failed', error)
 
-    expect(logs.some(log => log.includes('Stack trace'))).toBe(true)
+    expect(logs.some((log) => log.includes('Stack trace'))).toBe(true)
   })
 
   it('should log success messages', () => {
     DebugLogger.success('Success message')
 
-    expect(logs.some(log => log.includes('Success message'))).toBe(true)
+    expect(logs.some((log) => log.includes('Success message'))).toBe(true)
   })
 })
 
@@ -287,13 +277,7 @@ describe('validateConfiguration', () => {
   })
 
   it('should accept valid regions', () => {
-    const validRegions = [
-      'us-east-1',
-      'us-west-2',
-      'eu-west-1',
-      'eu-central-1',
-      'ap-southeast-1',
-    ]
+    const validRegions = ['us-east-1', 'us-west-2', 'eu-west-1', 'eu-central-1', 'ap-southeast-1']
 
     for (const region of validRegions) {
       expect(() =>
@@ -356,9 +340,7 @@ describe('detectMisconfigurations', () => {
       },
     })
 
-    expect(warnings).not.toContain(
-      'Production database should use Multi-AZ for high availability',
-    )
+    expect(warnings).not.toContain('Production database should use Multi-AZ for high availability')
   })
 
   it('should warn about unencrypted storage', () => {
@@ -373,7 +355,7 @@ describe('detectMisconfigurations', () => {
       },
     })
 
-    expect(warnings.some(w => w.includes('not encrypted'))).toBe(true)
+    expect(warnings.some((w) => w.includes('not encrypted'))).toBe(true)
   })
 
   it('should warn about public S3 buckets', () => {
@@ -388,7 +370,7 @@ describe('detectMisconfigurations', () => {
       },
     })
 
-    expect(warnings.some(w => w.includes('publicly accessible'))).toBe(true)
+    expect(warnings.some((w) => w.includes('publicly accessible'))).toBe(true)
   })
 
   it('should warn about low backup retention', () => {
@@ -403,7 +385,7 @@ describe('detectMisconfigurations', () => {
       },
     })
 
-    expect(warnings.some(w => w.includes('backup retention'))).toBe(true)
+    expect(warnings.some((w) => w.includes('backup retention'))).toBe(true)
   })
 
   it('should warn about missing monitoring', () => {
@@ -416,7 +398,7 @@ describe('detectMisconfigurations', () => {
       },
     })
 
-    expect(warnings.some(w => w.includes('No monitoring configured'))).toBe(true)
+    expect(warnings.some((w) => w.includes('No monitoring configured'))).toBe(true)
   })
 
   it('should not warn if monitoring is configured', () => {

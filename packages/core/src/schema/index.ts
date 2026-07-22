@@ -1,7 +1,6 @@
 /**
  * JSON Schema export for IDE integration
  */
-
 import schema from './cloud-config.schema.json'
 
 export { schema as cloudConfigSchema }
@@ -19,8 +18,7 @@ export function validateAgainstSchema(config: any): {
   // Check required fields
   if (!config.project) {
     errors.push('Missing required field: project')
-  }
-  else {
+  } else {
     if (!config.project.name) {
       errors.push('Missing required field: project.name')
     }

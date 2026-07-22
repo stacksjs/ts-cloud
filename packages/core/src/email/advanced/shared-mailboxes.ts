@@ -310,15 +310,11 @@ function unmarshallMailbox(item) {
             { AttributeName: 'type', AttributeType: 'S' },
             { AttributeName: 'mailboxId', AttributeType: 'S' },
           ],
-          KeySchema: [
-            { AttributeName: 'id', KeyType: 'HASH' },
-          ],
+          KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
           GlobalSecondaryIndexes: [
             {
               IndexName: 'type-index',
-              KeySchema: [
-                { AttributeName: 'type', KeyType: 'HASH' },
-              ],
+              KeySchema: [{ AttributeName: 'type', KeyType: 'HASH' }],
               Projection: { ProjectionType: 'ALL' },
             },
             {

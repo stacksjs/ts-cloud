@@ -166,9 +166,12 @@ describe('withMonitoring', () => {
       },
     }
 
-    const result = extendPreset(base, withMonitoring({
-      alarms: [],
-    }))
+    const result = extendPreset(
+      base,
+      withMonitoring({
+        alarms: [],
+      }),
+    )
 
     expect(result.infrastructure?.monitoring).toBeDefined()
   })
@@ -182,9 +185,12 @@ describe('withMonitoring', () => {
       },
     }
 
-    const result = extendPreset(base, withMonitoring({
-      alarms: [],
-    }))
+    const result = extendPreset(
+      base,
+      withMonitoring({
+        alarms: [],
+      }),
+    )
 
     expect(result.infrastructure?.storage?.uploads).toBeDefined()
     expect(result.infrastructure?.monitoring).toBeDefined()
@@ -201,9 +207,12 @@ describe('withSecurity', () => {
       },
     }
 
-    const result = extendPreset(base, withSecurity({
-      waf: { enabled: true },
-    }))
+    const result = extendPreset(
+      base,
+      withSecurity({
+        waf: { enabled: true },
+      }),
+    )
 
     expect(result.infrastructure?.security).toBeDefined()
     expect(result.infrastructure?.security?.waf?.enabled).toBe(true)
@@ -220,11 +229,14 @@ describe('withDatabase', () => {
       },
     }
 
-    const result = extendPreset(base, withDatabase({
-      postgres: {
-        instanceClass: 'db.t3.micro',
-      },
-    }))
+    const result = extendPreset(
+      base,
+      withDatabase({
+        postgres: {
+          instanceClass: 'db.t3.micro',
+        },
+      }),
+    )
 
     expect(result.infrastructure?.databases?.postgres).toBeDefined()
     expect(result.infrastructure?.databases?.postgres?.instanceClass).toBe('db.t3.micro')
@@ -241,11 +253,14 @@ describe('withCache', () => {
       },
     }
 
-    const result = extendPreset(base, withCache({
-      redis: {
-        nodeType: 'cache.t3.small',
-      },
-    }))
+    const result = extendPreset(
+      base,
+      withCache({
+        redis: {
+          nodeType: 'cache.t3.small',
+        },
+      }),
+    )
 
     expect(result.infrastructure?.cache?.redis).toBeDefined()
     expect(result.infrastructure?.cache?.redis?.nodeType).toBe('cache.t3.small')
@@ -262,10 +277,13 @@ describe('withCDN', () => {
       },
     }
 
-    const result = extendPreset(base, withCDN({
-      enabled: true,
-      compress: true,
-    }))
+    const result = extendPreset(
+      base,
+      withCDN({
+        enabled: true,
+        compress: true,
+      }),
+    )
 
     expect(result.infrastructure?.cdn).toBeDefined()
     expect(result.infrastructure?.cdn?.enabled).toBe(true)
@@ -283,11 +301,14 @@ describe('withQueue', () => {
       },
     }
 
-    const result = extendPreset(base, withQueue({
-      jobs: {
-        fifo: false,
-      },
-    }))
+    const result = extendPreset(
+      base,
+      withQueue({
+        jobs: {
+          fifo: false,
+        },
+      }),
+    )
 
     expect(result.infrastructure?.queues?.jobs).toBeDefined()
     expect(result.infrastructure?.queues?.jobs?.fifo).toBe(false)

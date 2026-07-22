@@ -22,7 +22,9 @@ describe('Sftp', () => {
     expect(server.Properties).toMatchObject({ Domain: 'S3', EndpointType: 'PUBLIC', Protocols: ['SFTP'] })
     expect(user.Properties.HomeDirectory).toBe('/demo-uploads/incoming/deploy')
     expect(user.Properties.ServerId).toEqual({ Ref: 'DemoProductionSftpServer' })
-    expect(role.Properties.Policies[0].PolicyDocument.Statement[1].Resource).toBe('arn:aws:s3:::demo-uploads/incoming/deploy/*')
+    expect(role.Properties.Policies[0].PolicyDocument.Statement[1].Resource).toBe(
+      'arn:aws:s3:::demo-uploads/incoming/deploy/*',
+    )
   })
 
   it('uses an existing role without creating another role', () => {
@@ -45,19 +47,23 @@ describe('Sftp', () => {
   })
 
   it('validates VPC endpoint details and user home directories', () => {
-    expect(() => Sftp.create({
-      slug: 'demo',
-      environment: 'production',
-      bucket: 'demo-uploads',
-      endpointType: 'VPC',
-      users: {},
-    })).toThrow(/endpointDetails/)
+    expect(() =>
+      Sftp.create({
+        slug: 'demo',
+        environment: 'production',
+        bucket: 'demo-uploads',
+        endpointType: 'VPC',
+        users: {},
+      }),
+    ).toThrow(/endpointDetails/)
 
-    expect(() => Sftp.create({
-      slug: 'demo',
-      environment: 'production',
-      bucket: 'demo-uploads',
-      users: { deploy: { sshPublicKeys: ['key'], homeDirectory: '../other' } },
-    })).toThrow(/homeDirectory/)
+    expect(() =>
+      Sftp.create({
+        slug: 'demo',
+        environment: 'production',
+        bucket: 'demo-uploads',
+        users: { deploy: { sshPublicKeys: ['key'], homeDirectory: '../other' } },
+      }),
+    ).toThrow(/homeDirectory/)
   })
 })

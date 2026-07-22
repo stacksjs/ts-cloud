@@ -13,28 +13,28 @@ export interface SecurityConfig {
     rateLimit?: number
     scope?: 'REGIONAL' | 'CLOUDFRONT'
   }
-  securityGroups?: Record<string, {
-    ingress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-      source?: string
-    }>
-    egress?: Array<{
-      port: number
-      protocol: string
-      cidr?: string
-    }>
-  }>
+  securityGroups?: Record<
+    string,
+    {
+      ingress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+        source?: string
+      }>
+      egress?: Array<{
+        port: number
+        protocol: string
+        cidr?: string
+      }>
+    }
+  >
 }
 
 /**
  * Add security resources (ACM certificates, WAF, security groups) to CloudFormation template
  */
-export function addSecurityResources(
-  builder: CloudFormationBuilder,
-  config: SecurityConfig,
-): void {
+export function addSecurityResources(builder: CloudFormationBuilder, config: SecurityConfig): void {
   // ACM Certificate
   if (config.certificate) {
     addCertificate(builder, config.certificate)
@@ -56,10 +56,7 @@ export function addSecurityResources(
 /**
  * Add ACM SSL/TLS Certificate
  */
-function addCertificate(
-  builder: CloudFormationBuilder,
-  config: SecurityConfig['certificate'],
-): void {
+function addCertificate(builder: CloudFormationBuilder, config: SecurityConfig['certificate']): void {
   if (!config) return
 
   const domains = [config.domain]
@@ -71,13 +68,11 @@ function addCertificate(
     DomainName: config.domain,
     SubjectAlternativeNames: config.subdomains,
     ValidationMethod: config.validationMethod || 'DNS',
-    DomainValidationOptions: domains.map(domain => ({
+    DomainValidationOptions: domains.map((domain) => ({
       DomainName: domain,
       HostedZoneId: Fn.ref('HostedZone'),
     })),
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-certificate`) },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-certificate`) }],
   })
 
   // Output
@@ -95,10 +90,7 @@ function addCertificate(
 /**
  * Add AWS WAF Web ACL
  */
-function addWAF(
-  builder: CloudFormationBuilder,
-  config: SecurityConfig['waf'],
-): void {
+function addWAF(builder: CloudFormationBuilder, config: SecurityConfig['waf']): void {
   if (!config) return
 
   const rules: any[] = []
@@ -310,19 +302,22 @@ function addWAF(
       CloudWatchMetricsEnabled: true,
       MetricName: Fn.sub('${AWS::StackName}-waf'),
     },
-    Tags: [
-      { Key: 'Name', Value: Fn.sub('${AWS::StackName}-waf') },
-    ],
+    Tags: [{ Key: 'Name', Value: Fn.sub('${AWS::StackName}-waf') }],
   })
 
   // Associate WAF with ALB (if exists)
   if (builder.hasResource('LoadBalancer')) {
-    builder.addResource('WebACLAssociation', 'AWS::WAFv2::WebACLAssociation', {
-      ResourceArn: Fn.ref('LoadBalancer'),
-      WebACLArn: Fn.getAtt('WebACL', 'Arn'),
-    }, {
-      dependsOn: ['WebACL', 'LoadBalancer'],
-    })
+    builder.addResource(
+      'WebACLAssociation',
+      'AWS::WAFv2::WebACLAssociation',
+      {
+        ResourceArn: Fn.ref('LoadBalancer'),
+        WebACLArn: Fn.getAtt('WebACL', 'Arn'),
+      },
+      {
+        dependsOn: ['WebACL', 'LoadBalancer'],
+      },
+    )
   }
 
   // Output
@@ -356,35 +351,45 @@ function addSecurityGroup(
 
   const logicalId = builder.toLogicalId(`${name}-security-group`)
 
-  const ingressRules = config.ingress?.map((rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['ingress']>[number]) => ({
-    IpProtocol: rule.protocol,
-    FromPort: rule.port,
-    ToPort: rule.port,
-    CidrIp: rule.cidr,
-    SourceSecurityGroupId: rule.source ? Fn.ref(rule.source) : undefined,
-  })) || []
+  const ingressRules =
+    config.ingress?.map(
+      (rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['ingress']>[number]) => ({
+        IpProtocol: rule.protocol,
+        FromPort: rule.port,
+        ToPort: rule.port,
+        CidrIp: rule.cidr,
+        SourceSecurityGroupId: rule.source ? Fn.ref(rule.source) : undefined,
+      }),
+    ) || []
 
-  const egressRules = config.egress?.map((rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['egress']>[number]) => ({
-    IpProtocol: rule.protocol,
-    FromPort: rule.port,
-    ToPort: rule.port,
-    CidrIp: rule.cidr || '0.0.0.0/0',
-  })) || [{
-    IpProtocol: '-1',
-    CidrIp: '0.0.0.0/0',
-  }]
+  const egressRules = config.egress?.map(
+    (rule: NonNullable<NonNullable<SecurityConfig['securityGroups']>[string]['egress']>[number]) => ({
+      IpProtocol: rule.protocol,
+      FromPort: rule.port,
+      ToPort: rule.port,
+      CidrIp: rule.cidr || '0.0.0.0/0',
+    }),
+  ) || [
+    {
+      IpProtocol: '-1',
+      CidrIp: '0.0.0.0/0',
+    },
+  ]
 
-  builder.addResource(logicalId, 'AWS::EC2::SecurityGroup', {
-    GroupDescription: `Security group for ${name}`,
-    VpcId: Fn.ref('VPC'),
-    SecurityGroupIngress: ingressRules,
-    SecurityGroupEgress: egressRules,
-    Tags: [
-      { Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}-sg`) },
-    ],
-  }, {
-    dependsOn: 'VPC',
-  })
+  builder.addResource(
+    logicalId,
+    'AWS::EC2::SecurityGroup',
+    {
+      GroupDescription: `Security group for ${name}`,
+      VpcId: Fn.ref('VPC'),
+      SecurityGroupIngress: ingressRules,
+      SecurityGroupEgress: egressRules,
+      Tags: [{ Key: 'Name', Value: Fn.sub(`\${AWS::StackName}-${name}-sg`) }],
+    },
+    {
+      dependsOn: 'VPC',
+    },
+  )
 
   // Output
   builder.addOutputs({

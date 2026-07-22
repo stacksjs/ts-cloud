@@ -10,7 +10,6 @@
  *   base with /opt (runtime) + /var/task (app) baked in; the bootstrap selects
  *   the mode from `TSCLOUD_LAMBDA_MODE`.
  */
-
 import { phpLayerBuildStage } from '../serverless-php/dockerfile'
 
 export interface AppImageDockerfileOptions {

@@ -7,13 +7,13 @@
  * Build hooks (composer install + artisan caches) run before packaging because
  * the Lambda filesystem is read-only at runtime.
  */
-
+import type { ZipEntry } from '../serverless/zip'
 import type { ServerlessAppConfig } from '../types'
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
-import { createZip, type ZipEntry } from '../serverless/zip'
+import { createZip } from '../serverless/zip'
 import { LARAVEL_SERVERLESS_BUILD_STEPS } from './runtime-assets'
 
 /** Paths excluded from the PHP deployment artifact by default. */
@@ -45,12 +45,12 @@ export interface PackagePhpOptions {
 export interface PackagedPhpArtifact {
   zip: Buffer
   sha256: string
-  handlers: { http: string, queue: string, cli: string }
+  handlers: { http: string; queue: string; cli: string }
   fileCount: number
 }
 
 function isExcluded(rel: string, excludes: string[]): boolean {
-  return excludes.some(ex => rel === ex || rel.startsWith(`${ex}/`))
+  return excludes.some((ex) => rel === ex || rel.startsWith(`${ex}/`))
 }
 
 function* walk(dir: string, root: string, excludes: string[]): Generator<string> {
@@ -58,7 +58,7 @@ function* walk(dir: string, root: string, excludes: string[]): Generator<string>
     const full = join(dir, entry)
     const rel = relative(root, full).replace(/\\/g, '/')
     if (isExcluded(rel, excludes)) continue
-    if (statSync(full).isDirectory()) yield * walk(full, root, excludes)
+    if (statSync(full).isDirectory()) yield* walk(full, root, excludes)
     else yield full
   }
 }
@@ -101,8 +101,7 @@ export function packagePhpApp(opts: PackagePhpOptions): PackagedPhpArtifact {
 
   opts.onStep?.('packaging application tree')
   const entries = collectPhpAppEntries(projectRoot, opts.exclude)
-  if (!entries.length)
-    throw new Error(`No files to package under ${projectRoot}`)
+  if (!entries.length) throw new Error(`No files to package under ${projectRoot}`)
 
   const zip = createZip(entries)
 

@@ -32,17 +32,12 @@ export interface ApiGatewayConfig {
 /**
  * Add API Gateway resources to CloudFormation template
  */
-export function addApiGatewayResources(
-  builder: CloudFormationBuilder,
-  config: ApiGatewayConfig,
-): void {
+export function addApiGatewayResources(builder: CloudFormationBuilder, config: ApiGatewayConfig): void {
   if (config.type === 'http') {
     addHttpApi(builder, config)
-  }
-  else if (config.type === 'rest') {
+  } else if (config.type === 'rest') {
     addRestApi(builder, config)
-  }
-  else if (config.type === 'websocket') {
+  } else if (config.type === 'websocket') {
     addWebSocketApi(builder, config)
   }
 }
@@ -50,10 +45,7 @@ export function addApiGatewayResources(
 /**
  * Add HTTP API (API Gateway v2)
  */
-function addHttpApi(
-  builder: CloudFormationBuilder,
-  config: ApiGatewayConfig,
-): void {
+function addHttpApi(builder: CloudFormationBuilder, config: ApiGatewayConfig): void {
   // HTTP API
   const apiProperties: any = {
     Name: Fn.sub('${AWS::StackName}-http-api'),
@@ -73,21 +65,28 @@ function addHttpApi(
   builder.addResource('HttpApi', 'AWS::ApiGatewayV2::Api', apiProperties)
 
   // Default stage
-  builder.addResource('HttpApiStage', 'AWS::ApiGatewayV2::Stage', {
-    ApiId: Fn.ref('HttpApi'),
-    StageName: '$default',
-    AutoDeploy: true,
-    DefaultRouteSettings: config.throttling ? {
-      ThrottlingBurstLimit: config.throttling.burstLimit,
-      ThrottlingRateLimit: config.throttling.rateLimit,
-    } : undefined,
-    AccessLogSettings: {
-      DestinationArn: Fn.getAtt('ApiLogGroup', 'Arn'),
-      Format: '$context.requestId $context.error.message $context.error.messageString',
+  builder.addResource(
+    'HttpApiStage',
+    'AWS::ApiGatewayV2::Stage',
+    {
+      ApiId: Fn.ref('HttpApi'),
+      StageName: '$default',
+      AutoDeploy: true,
+      DefaultRouteSettings: config.throttling
+        ? {
+            ThrottlingBurstLimit: config.throttling.burstLimit,
+            ThrottlingRateLimit: config.throttling.rateLimit,
+          }
+        : undefined,
+      AccessLogSettings: {
+        DestinationArn: Fn.getAtt('ApiLogGroup', 'Arn'),
+        Format: '$context.requestId $context.error.message $context.error.messageString',
+      },
     },
-  }, {
-    dependsOn: ['HttpApi', 'ApiLogGroup'],
-  })
+    {
+      dependsOn: ['HttpApi', 'ApiLogGroup'],
+    },
+  )
 
   // CloudWatch Logs for API Gateway
   builder.addResource('ApiLogGroup', 'AWS::Logs::LogGroup', {
@@ -127,10 +126,7 @@ function addHttpApi(
 /**
  * Add REST API (API Gateway v1)
  */
-function addRestApi(
-  builder: CloudFormationBuilder,
-  config: ApiGatewayConfig,
-): void {
+function addRestApi(builder: CloudFormationBuilder, config: ApiGatewayConfig): void {
   // REST API
   builder.addResource('RestApi', 'AWS::ApiGateway::RestApi', {
     Name: Fn.sub('${AWS::StackName}-rest-api'),
@@ -141,34 +137,44 @@ function addRestApi(
   })
 
   // API Gateway Account (for CloudWatch logging)
-  builder.addResource('ApiGatewayAccount', 'AWS::ApiGateway::Account', {
-    CloudWatchRoleArn: Fn.getAtt('ApiGatewayCloudWatchRole', 'Arn'),
-  }, {
-    dependsOn: 'ApiGatewayCloudWatchRole',
-  })
+  builder.addResource(
+    'ApiGatewayAccount',
+    'AWS::ApiGateway::Account',
+    {
+      CloudWatchRoleArn: Fn.getAtt('ApiGatewayCloudWatchRole', 'Arn'),
+    },
+    {
+      dependsOn: 'ApiGatewayCloudWatchRole',
+    },
+  )
 
   // IAM Role for API Gateway CloudWatch logging
   builder.addResource('ApiGatewayCloudWatchRole', 'AWS::IAM::Role', {
     AssumeRolePolicyDocument: {
       Version: '2012-10-17',
-      Statement: [{
-        Effect: 'Allow',
-        Principal: { Service: 'apigateway.amazonaws.com' },
-        Action: 'sts:AssumeRole',
-      }],
+      Statement: [
+        {
+          Effect: 'Allow',
+          Principal: { Service: 'apigateway.amazonaws.com' },
+          Action: 'sts:AssumeRole',
+        },
+      ],
     },
-    ManagedPolicyArns: [
-      'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs',
-    ],
+    ManagedPolicyArns: ['arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'],
   })
 
   // Deployment
-  builder.addResource('RestApiDeployment', 'AWS::ApiGateway::Deployment', {
-    RestApiId: Fn.ref('RestApi'),
-    Description: 'Initial deployment',
-  }, {
-    dependsOn: 'RestApi',
-  })
+  builder.addResource(
+    'RestApiDeployment',
+    'AWS::ApiGateway::Deployment',
+    {
+      RestApiId: Fn.ref('RestApi'),
+      Description: 'Initial deployment',
+    },
+    {
+      dependsOn: 'RestApi',
+    },
+  )
 
   // Stage
   const stageProperties: any = {
@@ -176,13 +182,15 @@ function addRestApi(
     DeploymentId: Fn.ref('RestApiDeployment'),
     StageName: 'prod',
     Description: 'Production stage',
-    MethodSettings: [{
-      ResourcePath: '/*',
-      HttpMethod: '*',
-      LoggingLevel: 'INFO',
-      DataTraceEnabled: true,
-      MetricsEnabled: true,
-    }],
+    MethodSettings: [
+      {
+        ResourcePath: '/*',
+        HttpMethod: '*',
+        LoggingLevel: 'INFO',
+        DataTraceEnabled: true,
+        MetricsEnabled: true,
+      },
+    ],
   }
 
   if (config.throttling) {
@@ -221,10 +229,7 @@ function addRestApi(
 /**
  * Add WebSocket API
  */
-function addWebSocketApi(
-  builder: CloudFormationBuilder,
-  config: ApiGatewayConfig,
-): void {
+function addWebSocketApi(builder: CloudFormationBuilder, config: ApiGatewayConfig): void {
   // WebSocket API
   builder.addResource('WebSocketApi', 'AWS::ApiGatewayV2::Api', {
     Name: Fn.sub('${AWS::StackName}-websocket-api'),
@@ -258,17 +263,24 @@ function addWebSocketApi(
   }
 
   // Stage
-  builder.addResource('WebSocketApiStage', 'AWS::ApiGatewayV2::Stage', {
-    ApiId: Fn.ref('WebSocketApi'),
-    StageName: 'prod',
-    AutoDeploy: true,
-    DefaultRouteSettings: config.throttling ? {
-      ThrottlingBurstLimit: config.throttling.burstLimit,
-      ThrottlingRateLimit: config.throttling.rateLimit,
-    } : undefined,
-  }, {
-    dependsOn: 'WebSocketApi',
-  })
+  builder.addResource(
+    'WebSocketApiStage',
+    'AWS::ApiGatewayV2::Stage',
+    {
+      ApiId: Fn.ref('WebSocketApi'),
+      StageName: 'prod',
+      AutoDeploy: true,
+      DefaultRouteSettings: config.throttling
+        ? {
+            ThrottlingBurstLimit: config.throttling.burstLimit,
+            ThrottlingRateLimit: config.throttling.rateLimit,
+          }
+        : undefined,
+    },
+    {
+      dependsOn: 'WebSocketApi',
+    },
+  )
 
   // Custom domain
   if (config.customDomain) {
@@ -297,44 +309,55 @@ function addWebSocketApi(
 /**
  * Add WebSocket route
  */
-function addWebSocketRoute(
-  builder: CloudFormationBuilder,
-  routeKey: string,
-  functionName: string,
-): void {
+function addWebSocketRoute(builder: CloudFormationBuilder, routeKey: string, functionName: string): void {
   const routeId = builder.toLogicalId(`websocket-route-${routeKey}`)
   const integrationId = builder.toLogicalId(`websocket-integration-${routeKey}`)
   const functionLogicalId = builder.toLogicalId(`${functionName}-function`)
 
   // Integration
-  builder.addResource(integrationId, 'AWS::ApiGatewayV2::Integration', {
-    ApiId: Fn.ref('WebSocketApi'),
-    IntegrationType: 'AWS_PROXY',
-    IntegrationUri: Fn.sub(
-      `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${functionLogicalId}.Arn}/invocations`,
-    ),
-  }, {
-    dependsOn: ['WebSocketApi', functionLogicalId],
-  })
+  builder.addResource(
+    integrationId,
+    'AWS::ApiGatewayV2::Integration',
+    {
+      ApiId: Fn.ref('WebSocketApi'),
+      IntegrationType: 'AWS_PROXY',
+      IntegrationUri: Fn.sub(
+        `arn:aws:apigateway:\${AWS::Region}:lambda:path/2015-03-31/functions/\${${functionLogicalId}.Arn}/invocations`,
+      ),
+    },
+    {
+      dependsOn: ['WebSocketApi', functionLogicalId],
+    },
+  )
 
   // Route
-  builder.addResource(routeId, 'AWS::ApiGatewayV2::Route', {
-    ApiId: Fn.ref('WebSocketApi'),
-    RouteKey: routeKey,
-    Target: Fn.join('/', ['integrations', Fn.ref(integrationId)]),
-  }, {
-    dependsOn: ['WebSocketApi', integrationId],
-  })
+  builder.addResource(
+    routeId,
+    'AWS::ApiGatewayV2::Route',
+    {
+      ApiId: Fn.ref('WebSocketApi'),
+      RouteKey: routeKey,
+      Target: Fn.join('/', ['integrations', Fn.ref(integrationId)]),
+    },
+    {
+      dependsOn: ['WebSocketApi', integrationId],
+    },
+  )
 
   // Lambda permission
-  builder.addResource(`${routeId}Permission`, 'AWS::Lambda::Permission', {
-    FunctionName: Fn.ref(functionLogicalId),
-    Action: 'lambda:InvokeFunction',
-    Principal: 'apigateway.amazonaws.com',
-    SourceArn: Fn.sub(`arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${WebSocketApi}/*`),
-  }, {
-    dependsOn: [functionLogicalId, 'WebSocketApi'],
-  })
+  builder.addResource(
+    `${routeId}Permission`,
+    'AWS::Lambda::Permission',
+    {
+      FunctionName: Fn.ref(functionLogicalId),
+      Action: 'lambda:InvokeFunction',
+      Principal: 'apigateway.amazonaws.com',
+      SourceArn: Fn.sub(`arn:aws:execute-api:\${AWS::Region}:\${AWS::AccountId}:\${WebSocketApi}/*`),
+    },
+    {
+      dependsOn: [functionLogicalId, 'WebSocketApi'],
+    },
+  )
 }
 
 /**
@@ -343,7 +366,7 @@ function addWebSocketRoute(
 function addApiCustomDomain(
   builder: CloudFormationBuilder,
   apiLogicalId: string,
-  customDomain: { domain: string, certificateArn: string, dnsProvider?: 'route53' | 'external' },
+  customDomain: { domain: string; certificateArn: string; dnsProvider?: 'route53' | 'external' },
   apiType: 'HTTP' | 'REST' | 'WEBSOCKET',
 ): void {
   // Domain name
@@ -360,46 +383,62 @@ function addApiCustomDomain(
     builder.addResource('ApiCustomDomain', 'AWS::ApiGateway::DomainName', domainProperties)
 
     // Base path mapping
-    builder.addResource('ApiBasePathMapping', 'AWS::ApiGateway::BasePathMapping', {
-      DomainName: Fn.ref('ApiCustomDomain'),
-      RestApiId: Fn.ref(apiLogicalId),
-      Stage: Fn.ref('RestApiStage'),
-    }, {
-      dependsOn: ['ApiCustomDomain', apiLogicalId, 'RestApiStage'],
-    })
-  }
-  else {
+    builder.addResource(
+      'ApiBasePathMapping',
+      'AWS::ApiGateway::BasePathMapping',
+      {
+        DomainName: Fn.ref('ApiCustomDomain'),
+        RestApiId: Fn.ref(apiLogicalId),
+        Stage: Fn.ref('RestApiStage'),
+      },
+      {
+        dependsOn: ['ApiCustomDomain', apiLogicalId, 'RestApiStage'],
+      },
+    )
+  } else {
     // HTTP or WebSocket API
-    domainProperties.DomainNameConfigurations = [{
-      CertificateArn: customDomain.certificateArn,
-      EndpointType: 'REGIONAL',
-    }]
+    domainProperties.DomainNameConfigurations = [
+      {
+        CertificateArn: customDomain.certificateArn,
+        EndpointType: 'REGIONAL',
+      },
+    ]
 
     builder.addResource('ApiCustomDomain', 'AWS::ApiGatewayV2::DomainName', domainProperties)
 
     // API mapping
-    builder.addResource('ApiMapping', 'AWS::ApiGatewayV2::ApiMapping', {
-      ApiId: Fn.ref(apiLogicalId),
-      DomainName: Fn.ref('ApiCustomDomain'),
-      Stage: apiType === 'HTTP' ? Fn.ref('HttpApiStage') : Fn.ref('WebSocketApiStage'),
-    }, {
-      dependsOn: ['ApiCustomDomain', apiLogicalId],
-    })
+    builder.addResource(
+      'ApiMapping',
+      'AWS::ApiGatewayV2::ApiMapping',
+      {
+        ApiId: Fn.ref(apiLogicalId),
+        DomainName: Fn.ref('ApiCustomDomain'),
+        Stage: apiType === 'HTTP' ? Fn.ref('HttpApiStage') : Fn.ref('WebSocketApiStage'),
+      },
+      {
+        dependsOn: ['ApiCustomDomain', apiLogicalId],
+      },
+    )
   }
 
   if (customDomain.dnsProvider !== 'external') {
-    builder.addResource('ApiDNSRecord', 'AWS::Route53::RecordSet', {
-      HostedZoneName: Fn.sub(`${extractRootDomain(customDomain.domain)}.`),
-      Name: customDomain.domain,
-      Type: 'A',
-      AliasTarget: {
-        HostedZoneId: Fn.getAtt('ApiCustomDomain', 'RegionalHostedZoneId'),
-        DNSName: Fn.getAtt('ApiCustomDomain', 'RegionalDomainName'),
-        EvaluateTargetHealth: false,
+    builder.addResource(
+      'ApiDNSRecord',
+      'AWS::Route53::RecordSet',
+      {
+        HostedZoneName: Fn.sub(`${extractRootDomain(customDomain.domain)}.`),
+        Name: customDomain.domain,
+        Type: 'A',
+        AliasTarget: {
+          HostedZoneId: Fn.getAtt('ApiCustomDomain', 'RegionalHostedZoneId'),
+          DNSName: Fn.getAtt('ApiCustomDomain', 'RegionalDomainName'),
+          EvaluateTargetHealth: false,
+        },
       },
-    }, {
-      dependsOn: 'ApiCustomDomain',
-    })
+      {
+        dependsOn: 'ApiCustomDomain',
+      },
+    )
   }
 
   builder.addOutputs({
@@ -429,29 +468,38 @@ function addAuthorizer(
   if (!config) return
 
   if (config.type === 'jwt') {
-    builder.addResource('ApiAuthorizer', 'AWS::ApiGatewayV2::Authorizer', {
-      ApiId: Fn.ref(apiLogicalId),
-      AuthorizerType: 'JWT',
-      IdentitySource: [config.identitySource || '$request.header.Authorization'],
-      JwtConfiguration: {
-        Issuer: config.issuer,
-        Audience: config.audience,
+    builder.addResource(
+      'ApiAuthorizer',
+      'AWS::ApiGatewayV2::Authorizer',
+      {
+        ApiId: Fn.ref(apiLogicalId),
+        AuthorizerType: 'JWT',
+        IdentitySource: [config.identitySource || '$request.header.Authorization'],
+        JwtConfiguration: {
+          Issuer: config.issuer,
+          Audience: config.audience,
+        },
+        Name: 'JWTAuthorizer',
       },
-      Name: 'JWTAuthorizer',
-    }, {
-      dependsOn: apiLogicalId,
-    })
-  }
-  else if (config.type === 'lambda') {
-    builder.addResource('ApiAuthorizer', 'AWS::ApiGatewayV2::Authorizer', {
-      ApiId: Fn.ref(apiLogicalId),
-      AuthorizerType: 'REQUEST',
-      AuthorizerUri: config.authorizerUri,
-      IdentitySource: [config.identitySource || '$request.header.Authorization'],
-      Name: 'LambdaAuthorizer',
-    }, {
-      dependsOn: apiLogicalId,
-    })
+      {
+        dependsOn: apiLogicalId,
+      },
+    )
+  } else if (config.type === 'lambda') {
+    builder.addResource(
+      'ApiAuthorizer',
+      'AWS::ApiGatewayV2::Authorizer',
+      {
+        ApiId: Fn.ref(apiLogicalId),
+        AuthorizerType: 'REQUEST',
+        AuthorizerUri: config.authorizerUri,
+        IdentitySource: [config.identitySource || '$request.header.Authorization'],
+        Name: 'LambdaAuthorizer',
+      },
+      {
+        dependsOn: apiLogicalId,
+      },
+    )
   }
 }
 

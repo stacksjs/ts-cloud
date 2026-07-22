@@ -157,7 +157,19 @@ export class EmailAnalyticsManager {
   /**
    * Create campaign
    */
-  createCampaign(campaign: Omit<EmailCampaign, 'id' | 'sentCount' | 'deliveredCount' | 'openCount' | 'clickCount' | 'bounceCount' | 'complaintCount' | 'createdAt'>): EmailCampaign {
+  createCampaign(
+    campaign: Omit<
+      EmailCampaign,
+      | 'id'
+      | 'sentCount'
+      | 'deliveredCount'
+      | 'openCount'
+      | 'clickCount'
+      | 'bounceCount'
+      | 'complaintCount'
+      | 'createdAt'
+    >,
+  ): EmailCampaign {
     const id = `campaign-${Date.now()}-${this.campaignCounter++}`
 
     const emailCampaign: EmailCampaign = {
@@ -212,25 +224,21 @@ export class EmailAnalyticsManager {
   /**
    * Generate analytics report
    */
-  generateReport(options: {
-    campaignId?: string
-    startDate: Date
-    endDate: Date
-  }): AnalyticsReport {
+  generateReport(options: { campaignId?: string; startDate: Date; endDate: Date }): AnalyticsReport {
     const id = `report-${Date.now()}-${this.reportCounter++}`
 
-    const events = Array.from(this.events.values()).filter(e => {
+    const events = Array.from(this.events.values()).filter((e) => {
       const inDateRange = e.timestamp >= options.startDate && e.timestamp <= options.endDate
       const matchesCampaign = !options.campaignId || e.tags?.campaignId === options.campaignId
       return inDateRange && matchesCampaign
     })
 
-    const totalSent = events.filter(e => e.eventType === 'send').length
-    const totalDelivered = events.filter(e => e.eventType === 'delivery').length
-    const totalOpened = events.filter(e => e.eventType === 'open').length
-    const totalClicked = events.filter(e => e.eventType === 'click').length
-    const totalBounced = events.filter(e => e.eventType === 'bounce').length
-    const totalComplaints = events.filter(e => e.eventType === 'complaint').length
+    const totalSent = events.filter((e) => e.eventType === 'send').length
+    const totalDelivered = events.filter((e) => e.eventType === 'delivery').length
+    const totalOpened = events.filter((e) => e.eventType === 'open').length
+    const totalClicked = events.filter((e) => e.eventType === 'click').length
+    const totalBounced = events.filter((e) => e.eventType === 'bounce').length
+    const totalComplaints = events.filter((e) => e.eventType === 'complaint').length
 
     const deliveryRate = totalSent > 0 ? (totalDelivered / totalSent) * 100 : 0
     const openRate = totalDelivered > 0 ? (totalOpened / totalDelivered) * 100 : 0
@@ -266,14 +274,11 @@ export class EmailAnalyticsManager {
         const ua = (event as OpenEvent | ClickEvent).userAgent.toLowerCase()
         if (ua.includes('mobile')) {
           deviceBreakdown.mobile++
-        }
-else if (ua.includes('tablet')) {
+        } else if (ua.includes('tablet')) {
           deviceBreakdown.tablet++
-        }
-else if (ua.includes('mozilla')) {
+        } else if (ua.includes('mozilla')) {
           deviceBreakdown.desktop++
-        }
-else {
+        } else {
           deviceBreakdown.unknown++
         }
       }
@@ -401,28 +406,23 @@ else {
   /**
    * Get events
    */
-  getEvents(options?: {
-    messageId?: string
-    eventType?: string
-    startDate?: Date
-    endDate?: Date
-  }): EmailEvent[] {
+  getEvents(options?: { messageId?: string; eventType?: string; startDate?: Date; endDate?: Date }): EmailEvent[] {
     let events = Array.from(this.events.values())
 
     if (options?.messageId) {
-      events = events.filter(e => e.messageId === options.messageId)
+      events = events.filter((e) => e.messageId === options.messageId)
     }
 
     if (options?.eventType) {
-      events = events.filter(e => e.eventType === options.eventType)
+      events = events.filter((e) => e.eventType === options.eventType)
     }
 
     if (options?.startDate) {
-      events = events.filter(e => e.timestamp >= options.startDate!)
+      events = events.filter((e) => e.timestamp >= options.startDate!)
     }
 
     if (options?.endDate) {
-      events = events.filter(e => e.timestamp <= options.endDate!)
+      events = events.filter((e) => e.timestamp <= options.endDate!)
     }
 
     return events

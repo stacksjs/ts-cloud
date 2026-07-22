@@ -33,20 +33,24 @@ export function createStaticSitePreset(options: {
           versioning: false,
           website: true,
           encryption: false, // Public bucket doesn't need encryption
-          cors: [{
-            allowedOrigins: ['*'],
-            allowedMethods: ['GET', 'HEAD'],
-            allowedHeaders: ['*'],
-            maxAge: 3600,
-          }],
+          cors: [
+            {
+              allowedOrigins: ['*'],
+              allowedMethods: ['GET', 'HEAD'],
+              allowedHeaders: ['*'],
+              maxAge: 3600,
+            },
+          ],
         },
       },
       cdn: {
         enabled: true,
-        customDomain: domain ? {
-          domain: subdomain && domain ? `${subdomain}.${domain}` : domain,
-          certificateArn: 'TO_BE_GENERATED', // Will be created automatically
-        } : undefined,
+        customDomain: domain
+          ? {
+              domain: subdomain && domain ? `${subdomain}.${domain}` : domain,
+              certificateArn: 'TO_BE_GENERATED', // Will be created automatically
+            }
+          : undefined,
         cachePolicy: {
           minTTL: 0,
           defaultTTL: 86400, // 1 day

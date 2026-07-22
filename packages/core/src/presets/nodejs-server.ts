@@ -13,14 +13,7 @@ export function createNodeJsServerPreset(options: {
   minInstances?: number
   maxInstances?: number
 }): Partial<CloudConfig> {
-  const {
-    name,
-    slug,
-    domain,
-    instanceType = 't3.small',
-    minInstances = 2,
-    maxInstances = 10,
-  } = options
+  const { name, slug, domain, instanceType = 't3.small', minInstances = 2, maxInstances = 10 } = options
 
   return {
     project: {
@@ -66,10 +59,7 @@ export function createNodeJsServerPreset(options: {
           },
           userData: {
             packages: ['nodejs', 'npm', 'nginx'],
-            commands: [
-              'curl -fsSL https://bun.sh/install | bash',
-              'npm install -g pm2',
-            ],
+            commands: ['curl -fsSL https://bun.sh/install | bash', 'npm install -g pm2'],
           },
         },
       },
@@ -93,11 +83,13 @@ export function createNodeJsServerPreset(options: {
         },
       },
       security: {
-        certificate: domain ? {
-          domain,
-          subdomains: [`*.${domain}`],
-          validationMethod: 'DNS',
-        } : undefined,
+        certificate: domain
+          ? {
+              domain,
+              subdomains: [`*.${domain}`],
+              validationMethod: 'DNS',
+            }
+          : undefined,
       },
     },
   }

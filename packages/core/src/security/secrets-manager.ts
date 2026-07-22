@@ -26,14 +26,7 @@ export interface SecretAudit {
   error?: string
 }
 
-export type SecretAction =
-  | 'CREATE'
-  | 'READ'
-  | 'UPDATE'
-  | 'DELETE'
-  | 'ROTATE'
-  | 'RESTORE'
-  | 'REPLICATE'
+export type SecretAction = 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'ROTATE' | 'RESTORE' | 'REPLICATE'
 
 export interface ExternalSecretManager {
   id: string
@@ -127,9 +120,7 @@ export class SecretsManager {
    * Get secret version by stage
    */
   getVersionByStage(secretId: string, stage: string): SecretVersion | undefined {
-    return Array.from(this.versions.values()).find(
-      v => v.secretId === secretId && v.versionStages.includes(stage)
-    )
+    return Array.from(this.versions.values()).find((v) => v.secretId === secretId && v.versionStages.includes(stage))
   }
 
   /**
@@ -137,7 +128,7 @@ export class SecretsManager {
    */
   listVersions(secretId: string): SecretVersion[] {
     return Array.from(this.versions.values())
-      .filter(v => v.secretId === secretId)
+      .filter((v) => v.secretId === secretId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
   }
 
@@ -145,11 +136,11 @@ export class SecretsManager {
    * Deprecate version
    */
   deprecateVersion(versionId: string): void {
-    const version = Array.from(this.versions.values()).find(v => v.versionId === versionId)
+    const version = Array.from(this.versions.values()).find((v) => v.versionId === versionId)
 
     if (version) {
       version.deprecatedAt = new Date()
-      version.versionStages = version.versionStages.filter(s => s !== 'AWSCURRENT')
+      version.versionStages = version.versionStages.filter((s) => s !== 'AWSCURRENT')
 
       this.auditAction({
         secretId: version.secretId,
@@ -165,14 +156,14 @@ export class SecretsManager {
    * Restore version
    */
   restoreVersion(versionId: string): void {
-    const version = Array.from(this.versions.values()).find(v => v.versionId === versionId)
+    const version = Array.from(this.versions.values()).find((v) => v.versionId === versionId)
 
     if (version) {
       // Remove AWSCURRENT from other versions
       Array.from(this.versions.values())
-        .filter(v => v.secretId === version.secretId && v.versionId !== versionId)
-        .forEach(v => {
-          v.versionStages = v.versionStages.filter(s => s !== 'AWSCURRENT')
+        .filter((v) => v.secretId === version.secretId && v.versionId !== versionId)
+        .forEach((v) => {
+          v.versionStages = v.versionStages.filter((s) => s !== 'AWSCURRENT')
         })
 
       // Set this version as current
@@ -211,7 +202,7 @@ export class SecretsManager {
    */
   getAuditTrail(secretId: string, limit: number = 100): SecretAudit[] {
     return Array.from(this.audits.values())
-      .filter(audit => audit.secretId === secretId)
+      .filter((audit) => audit.secretId === secretId)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
       .slice(0, limit)
   }
@@ -223,10 +214,7 @@ export class SecretsManager {
     const cutoffTime = Date.now() - hours * 60 * 60 * 1000
 
     return Array.from(this.audits.values()).filter(
-      audit =>
-        audit.secretId === secretId &&
-        !audit.success &&
-        audit.timestamp.getTime() > cutoffTime
+      (audit) => audit.secretId === secretId && !audit.success && audit.timestamp.getTime() > cutoffTime,
     )
   }
 
@@ -332,11 +320,7 @@ export class SecretsManager {
   /**
    * Create secret policy
    */
-  createPolicy(options: {
-    secretId: string
-    allowedPrincipals: string[]
-    allowedActions: string[]
-  }): SecretPolicy {
+  createPolicy(options: { secretId: string; allowedPrincipals: string[]; allowedActions: string[] }): SecretPolicy {
     const id = `policy-${Date.now()}-${this.policyCounter++}`
 
     const policy: SecretPolicy = {
@@ -365,14 +349,8 @@ export class SecretsManager {
   /**
    * Create cross-account access policy
    */
-  createCrossAccountPolicy(options: {
-    secretId: string
-    accountId: string
-    roleNames: string[]
-  }): SecretPolicy {
-    const principals = options.roleNames.map(
-      role => `arn:aws:iam::${options.accountId}:role/${role}`
-    )
+  createCrossAccountPolicy(options: { secretId: string; accountId: string; roleNames: string[] }): SecretPolicy {
+    const principals = options.roleNames.map((role) => `arn:aws:iam::${options.accountId}:role/${role}`)
 
     return this.createPolicy({
       secretId: options.secretId,
@@ -419,12 +397,7 @@ export class SecretsManager {
   /**
    * Generate CloudFormation for secret
    */
-  generateSecretCF(options: {
-    name: string
-    description?: string
-    kmsKeyId?: string
-    replicaRegions?: string[]
-  }): any {
+  generateSecretCF(options: { name: string; description?: string; kmsKeyId?: string; replicaRegions?: string[] }): any {
     return {
       Type: 'AWS::SecretsManager::Secret',
       Properties: {
@@ -432,7 +405,7 @@ export class SecretsManager {
         Description: options.description,
         ...(options.kmsKeyId && { KmsKeyId: options.kmsKeyId }),
         ...(options.replicaRegions && {
-          ReplicaRegions: options.replicaRegions.map(region => ({
+          ReplicaRegions: options.replicaRegions.map((region) => ({
             Region: region,
           })),
         }),

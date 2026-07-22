@@ -362,7 +362,7 @@ describe('A/B Testing', () => {
       })
 
       expect(test.variants).toHaveLength(4)
-      expect(test.variants.every(v => v.trafficPercentage === 25)).toBe(true)
+      expect(test.variants.every((v) => v.trafficPercentage === 25)).toBe(true)
     })
 
     it('should throw error if percentages do not sum to 100', () => {
@@ -452,7 +452,7 @@ describe('A/B Testing', () => {
       manager.updateTrafficSplit(test.id, 'variant-a', 75)
 
       const updated = manager.getTest(test.id)
-      const variant = updated?.variants.find(v => v.id === 'variant-a')
+      const variant = updated?.variants.find((v) => v.id === 'variant-a')
       expect(variant?.trafficPercentage).toBe(75)
     })
   })
@@ -487,7 +487,7 @@ describe('A/B Testing', () => {
       expect(updated?.status).toBe('completed')
       expect(updated?.winner).toBe('variant-a')
 
-      const winner = updated?.variants.find(v => v.id === 'variant-a')
+      const winner = updated?.variants.find((v) => v.id === 'variant-a')
       expect(winner?.trafficPercentage).toBe(100)
     })
   })

@@ -1,15 +1,4 @@
-import type {
-  EC2EIP,
-  EC2FlowLog,
-  EC2InternetGateway,
-  EC2NatGateway,
-  EC2Route,
-  EC2RouteTable,
-  EC2Subnet,
-  EC2SubnetRouteTableAssociation,
-  EC2VPC,
-  EC2VPCGatewayAttachment,
-} from '@ts-cloud/aws-types'
+import type { EC2EIP, EC2FlowLog, EC2InternetGateway, EC2NatGateway, EC2Route, EC2RouteTable, EC2Subnet, EC2SubnetRouteTableAssociation, EC2VPC, EC2VPCGatewayAttachment } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { Fn } from '../intrinsic-functions'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
@@ -60,13 +49,7 @@ export class Network {
     vpc: EC2VPC
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      cidr = '10.0.0.0/16',
-      enableDnsHostnames = true,
-      enableDnsSupport = true,
-    } = options
+    const { slug, environment, cidr = '10.0.0.0/16', enableDnsHostnames = true, enableDnsSupport = true } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -99,15 +82,7 @@ export class Network {
     subnet: EC2Subnet
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      vpcId,
-      type,
-      cidr,
-      availabilityZone,
-      mapPublicIp = type === 'public',
-    } = options
+    const { slug, environment, vpcId, type, cidr, availabilityZone, mapPublicIp = type === 'public' } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -142,9 +117,9 @@ export class Network {
     slug: string,
     environment: EnvironmentType,
   ): {
-      internetGateway: EC2InternetGateway
-      logicalId: string
-    } {
+    internetGateway: EC2InternetGateway
+    logicalId: string
+  } {
     const resourceName = generateResourceName({
       slug,
       environment,
@@ -173,9 +148,9 @@ export class Network {
     vpcLogicalId: string,
     igwLogicalId: string,
   ): {
-      attachment: EC2VPCGatewayAttachment
-      logicalId: string
-    } {
+    attachment: EC2VPCGatewayAttachment
+    logicalId: string
+  } {
     const logicalId = generateLogicalId(`${vpcLogicalId}-igw-attachment`)
 
     const attachment: EC2VPCGatewayAttachment = {
@@ -196,9 +171,9 @@ export class Network {
     slug: string,
     environment: EnvironmentType,
   ): {
-      eip: EC2EIP
-      logicalId: string
-    } {
+    eip: EC2EIP
+    logicalId: string
+  } {
     const resourceName = generateResourceName({
       slug,
       environment,
@@ -228,9 +203,9 @@ export class Network {
     options: NatGatewayOptions,
     eipLogicalId: string,
   ): {
-      natGateway: EC2NatGateway
-      logicalId: string
-    } {
+    natGateway: EC2NatGateway
+    logicalId: string
+  } {
     const { slug, environment, subnetId } = options
 
     const resourceName = generateResourceName({
@@ -266,9 +241,9 @@ export class Network {
     vpcLogicalId: string,
     type: 'public' | 'private',
   ): {
-      routeTable: EC2RouteTable
-      logicalId: string
-    } {
+    routeTable: EC2RouteTable
+    logicalId: string
+  } {
     const resourceName = generateResourceName({
       slug,
       environment,
@@ -303,9 +278,9 @@ export class Network {
       logicalId: string
     },
   ): {
-      route: EC2Route
-      logicalId: string
-    } {
+    route: EC2Route
+    logicalId: string
+  } {
     const logicalId = generateLogicalId(`${routeTableLogicalId}-route-${target.type}`)
 
     const route: EC2Route = {
@@ -319,11 +294,9 @@ export class Network {
     // Set the appropriate gateway based on type
     if (target.type === 'igw') {
       route.Properties.GatewayId = Fn.Ref(target.logicalId)
-    }
-    else if (target.type === 'nat') {
+    } else if (target.type === 'nat') {
       route.Properties.NatGatewayId = Fn.Ref(target.logicalId)
-    }
-    else if (target.type === 'instance') {
+    } else if (target.type === 'instance') {
       route.Properties.InstanceId = Fn.Ref(target.logicalId)
     }
 
@@ -337,9 +310,9 @@ export class Network {
     subnetLogicalId: string,
     routeTableLogicalId: string,
   ): {
-      association: EC2SubnetRouteTableAssociation
-      logicalId: string
-    } {
+    association: EC2SubnetRouteTableAssociation
+    logicalId: string
+  } {
     const logicalId = generateLogicalId(`${subnetLogicalId}-rt-assoc`)
 
     const association: EC2SubnetRouteTableAssociation = {
@@ -360,14 +333,7 @@ export class Network {
     flowLog: EC2FlowLog
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      resourceId,
-      resourceType,
-      trafficType = 'ALL',
-      logGroupName,
-    } = options
+    const { slug, environment, resourceId, resourceType, trafficType = 'ALL', logGroupName } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -424,10 +390,10 @@ export class Network {
     for (let i = 0; i < zones * subnetsPerZone; i++) {
       const subnetIpNum = baseIpNum + i * subnetSize
       const subnetIp = [
-        (subnetIpNum >>> 24) & 0xFF,
-        (subnetIpNum >>> 16) & 0xFF,
-        (subnetIpNum >>> 8) & 0xFF,
-        subnetIpNum & 0xFF,
+        (subnetIpNum >>> 24) & 0xff,
+        (subnetIpNum >>> 16) & 0xff,
+        (subnetIpNum >>> 8) & 0xff,
+        subnetIpNum & 0xff,
       ].join('.')
       cidrs.push(`${subnetIp}/${subnetMask}`)
     }
@@ -441,7 +407,7 @@ export class Network {
    */
   static getAvailabilityZones(region: string, count: number): string[] {
     const zoneSuffixes = ['a', 'b', 'c', 'd', 'e', 'f']
-    return zoneSuffixes.slice(0, count).map(suffix => `${region}${suffix}`)
+    return zoneSuffixes.slice(0, count).map((suffix) => `${region}${suffix}`)
   }
 
   /**
@@ -586,11 +552,10 @@ export class Network {
         privateRouteTables.push(privateRtLogicalId)
 
         // Create route to NAT in private route table
-        const { route: natRoute, logicalId: natRouteLogicalId } = Network.createRoute(
-          privateRtLogicalId,
-          '0.0.0.0/0',
-          { type: 'nat', logicalId: natLogicalId },
-        )
+        const { route: natRoute, logicalId: natRouteLogicalId } = Network.createRoute(privateRtLogicalId, '0.0.0.0/0', {
+          type: 'nat',
+          logicalId: natLogicalId,
+        })
         resources[natRouteLogicalId] = natRoute
 
         // Associate private subnet with its route table
@@ -599,16 +564,14 @@ export class Network {
           privateRtLogicalId,
         )
         resources[privateAssocLogicalId] = privateAssoc
-      }
-      else if (enableNatGateway && singleNatGateway && i > 0) {
+      } else if (enableNatGateway && singleNatGateway && i > 0) {
         // Reuse single NAT gateway for all private subnets
         const { association: privateAssoc, logicalId: privateAssocLogicalId } = Network.associateSubnetWithRouteTable(
           privateSubnetLogicalId,
           privateRouteTables[0],
         )
         resources[privateAssocLogicalId] = privateAssoc
-      }
-      else {
+      } else {
         // No NAT - private subnets are isolated
         const { routeTable: isolatedRt, logicalId: isolatedRtLogicalId } = Network.createRouteTable(
           `${slug}-${az}-isolated`,

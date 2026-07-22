@@ -90,8 +90,8 @@ export class LambdaVersionsManager {
    */
   private getNextVersionNumber(functionName: string): number {
     const existingVersions = Array.from(this.versions.values())
-      .filter(v => v.functionName === functionName)
-      .map(v => parseInt(v.version))
+      .filter((v) => v.functionName === functionName)
+      .map((v) => parseInt(v.version))
 
     return existingVersions.length > 0 ? Math.max(...existingVersions) + 1 : 1
   }
@@ -117,10 +117,7 @@ export class LambdaVersionsManager {
   /**
    * Create production alias
    */
-  createProductionAlias(options: {
-    functionName: string
-    version: string
-  }): LambdaAlias {
+  createProductionAlias(options: { functionName: string; version: string }): LambdaAlias {
     return this.createAlias({
       functionName: options.functionName,
       aliasName: 'production',
@@ -132,10 +129,7 @@ export class LambdaVersionsManager {
   /**
    * Create staging alias
    */
-  createStagingAlias(options: {
-    functionName: string
-    version: string
-  }): LambdaAlias {
+  createStagingAlias(options: { functionName: string; version: string }): LambdaAlias {
     return this.createAlias({
       functionName: options.functionName,
       aliasName: 'staging',
@@ -163,10 +157,7 @@ export class LambdaVersionsManager {
   /**
    * Configure weighted routing
    */
-  configureWeightedRouting(
-    aliasId: string,
-    weights: Record<string, number>
-  ): LambdaAlias {
+  configureWeightedRouting(aliasId: string, weights: Record<string, number>): LambdaAlias {
     const alias = this.aliases.get(aliasId)
 
     if (!alias) {
@@ -194,7 +185,7 @@ export class LambdaVersionsManager {
 
     // Find or create alias
     let alias = Array.from(this.aliases.values()).find(
-      a => a.functionName === options.functionName && a.aliasName === options.aliasName
+      (a) => a.functionName === options.functionName && a.aliasName === options.aliasName,
     )
 
     if (!alias) {
@@ -238,9 +229,7 @@ export class LambdaVersionsManager {
 
     // Update alias to point to new version
     const alias = Array.from(this.aliases.values()).find(
-      a =>
-        a.functionName === deployment.functionName &&
-        a.aliasName === deployment.aliasName
+      (a) => a.functionName === deployment.functionName && a.aliasName === deployment.aliasName,
     )
 
     if (alias) {
@@ -266,9 +255,7 @@ export class LambdaVersionsManager {
 
     // Revert alias to previous version
     const alias = Array.from(this.aliases.values()).find(
-      a =>
-        a.functionName === deployment.functionName &&
-        a.aliasName === deployment.aliasName
+      (a) => a.functionName === deployment.functionName && a.aliasName === deployment.aliasName,
     )
 
     if (alias) {
@@ -301,7 +288,7 @@ export class LambdaVersionsManager {
    */
   listVersions(functionName?: string): LambdaVersion[] {
     const versions = Array.from(this.versions.values())
-    return functionName ? versions.filter(v => v.functionName === functionName) : versions
+    return functionName ? versions.filter((v) => v.functionName === functionName) : versions
   }
 
   /**
@@ -316,7 +303,7 @@ export class LambdaVersionsManager {
    */
   listAliases(functionName?: string): LambdaAlias[] {
     const aliases = Array.from(this.aliases.values())
-    return functionName ? aliases.filter(a => a.functionName === functionName) : aliases
+    return functionName ? aliases.filter((a) => a.functionName === functionName) : aliases
   }
 
   /**
@@ -345,12 +332,12 @@ export class LambdaVersionsManager {
         Description: alias.description,
         ...(alias.routingConfig && {
           RoutingConfig: {
-            AdditionalVersionWeights: Object.entries(
-              alias.routingConfig.additionalVersionWeights || {}
-            ).map(([version, weight]) => ({
-              FunctionVersion: version,
-              FunctionWeight: weight,
-            })),
+            AdditionalVersionWeights: Object.entries(alias.routingConfig.additionalVersionWeights || {}).map(
+              ([version, weight]) => ({
+                FunctionVersion: version,
+                FunctionWeight: weight,
+              }),
+            ),
           },
         }),
       },

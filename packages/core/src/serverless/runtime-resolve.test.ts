@@ -25,7 +25,11 @@ describe('resolveServerlessRuntime', () => {
   })
 
   it('forces a custom layer when runtime is explicitly provided.al2023', () => {
-    const r = resolveServerlessRuntime({ kind: 'node', runtimeVersion: '20', runtime: 'provided.al2023' } as ServerlessAppConfig)
+    const r = resolveServerlessRuntime({
+      kind: 'node',
+      runtimeVersion: '20',
+      runtime: 'provided.al2023',
+    } as ServerlessAppConfig)
     expect(r.usesLayer).toBe(true)
     expect(r.layerKind).toBe('node')
   })

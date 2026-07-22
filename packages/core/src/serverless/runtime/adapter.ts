@@ -107,7 +107,8 @@ export function resolveApp(mod: unknown): ServerlessApp {
 
 // ── Body / content helpers ──────────────────────────────────────────────────
 
-const TEXT_CONTENT = /^(?:text\/|application\/(?:json|xml|javascript|graphql|x-www-form-urlencoded|.*\+json|.*\+xml)|image\/svg)/i
+const TEXT_CONTENT =
+  /^(?:text\/|application\/(?:json|xml|javascript|graphql|x-www-form-urlencoded|.*\+json|.*\+xml)|image\/svg)/i
 
 function isTextContentType(contentType: string | null): boolean {
   // No declared type → treat as text (the common case for `new Response(str)`).
@@ -130,7 +131,7 @@ export interface HttpAdapterOptions {
   }
 }
 
-function readMaintenance(opts?: HttpAdapterOptions): { enabled: boolean, bypassSecret?: string } {
+function readMaintenance(opts?: HttpAdapterOptions): { enabled: boolean; bypassSecret?: string } {
   if (opts?.maintenance) return opts.maintenance
   const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {}
   return {
@@ -168,9 +169,10 @@ export async function responseToResult(response: Response): Promise<ApiGatewayPr
   const cookies: string[] = []
 
   // `getSetCookie` is available in the Lambda runtime's undici Headers.
-  const setCookies = typeof (response.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
-    ? (response.headers as { getSetCookie: () => string[] }).getSetCookie()
-    : []
+  const setCookies =
+    typeof (response.headers as { getSetCookie?: () => string[] }).getSetCookie === 'function'
+      ? (response.headers as { getSetCookie: () => string[] }).getSetCookie()
+      : []
   for (const c of setCookies) cookies.push(c)
 
   response.headers.forEach((value, key) => {
@@ -203,13 +205,19 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
     }
 
     if (!handler) {
-      return { statusCode: 501, headers: { 'content-type': 'text/plain' }, body: 'No HTTP handler configured', isBase64Encoded: false }
+      return {
+        statusCode: 501,
+        headers: { 'content-type': 'text/plain' },
+        body: 'No HTTP handler configured',
+        isBase64Encoded: false,
+      }
     }
 
     const maintenance = readMaintenance(opts)
     if (maintenance.enabled) {
-      const bypass = event.headers?.['x-maintenance-bypass']
-        ?? (event.cookies?.find(c => c.startsWith('tscloud_bypass='))?.split('=')[1])
+      const bypass =
+        event.headers?.['x-maintenance-bypass'] ??
+        event.cookies?.find((c) => c.startsWith('tscloud_bypass='))?.split('=')[1]
       if (!maintenance.bypassSecret || bypass !== maintenance.bypassSecret) {
         return {
           statusCode: 503,
@@ -231,8 +239,7 @@ export function createHttpHandler(handler: FetchHandler | undefined, opts?: Http
 function parseRecordBody(body: string): unknown {
   try {
     return JSON.parse(body)
-  }
-  catch {
+  } catch {
     return body
   }
 }
@@ -253,8 +260,7 @@ export function createQueueHandler(handler: JobHandler | undefined): LambdaQueue
     for (const record of event.Records ?? []) {
       try {
         await handler(parseRecordBody(record.body), record)
-      }
-      catch {
+      } catch {
         batchItemFailures.push({ itemIdentifier: record.messageId })
       }
     }
@@ -279,7 +285,10 @@ export function createCliHandler(handler: CommandHandler | undefined): LambdaCli
 }
 
 /** Convenience: build all three Lambda handlers from a resolved app. */
-export function createHandlers(app: ServerlessApp, opts?: HttpAdapterOptions): {
+export function createHandlers(
+  app: ServerlessApp,
+  opts?: HttpAdapterOptions,
+): {
   http: LambdaHttpHandler
   queue: LambdaQueueHandler
   cli: LambdaCliHandler

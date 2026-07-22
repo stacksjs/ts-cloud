@@ -2,8 +2,7 @@
  * Secrets Manager Module
  * Clean API for AWS Secrets Manager
  */
-
-import type { SecretsManagerSecret, SecretsManagerSecretTargetAttachment, SecretsManagerRotationSchedule } from '@ts-cloud/aws-types'
+import type { SecretsManagerRotationSchedule, SecretsManagerSecret, SecretsManagerSecretTargetAttachment } from '@ts-cloud/aws-types'
 import type { EnvironmentType } from '../types'
 import { generateLogicalId, generateResourceName } from '../resource-naming'
 
@@ -38,7 +37,12 @@ export interface SecretTargetAttachmentOptions {
   environment: string
   secretId: string
   targetId: string
-  targetType: 'AWS::RDS::DBInstance' | 'AWS::RDS::DBCluster' | 'AWS::Redshift::Cluster' | 'AWS::DocDB::DBInstance' | 'AWS::DocDB::DBCluster'
+  targetType:
+    | 'AWS::RDS::DBInstance'
+    | 'AWS::RDS::DBCluster'
+    | 'AWS::Redshift::Cluster'
+    | 'AWS::DocDB::DBInstance'
+    | 'AWS::DocDB::DBCluster'
 }
 
 export interface SecretRotationOptions {
@@ -64,21 +68,15 @@ export class Secrets {
     secret: SecretsManagerSecret
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      secretName,
-      description,
-      secretString,
-      kmsKeyId,
-      tags,
-    } = options
+    const { slug, environment, secretName, description, secretString, kmsKeyId, tags } = options
 
-    const resourceName = secretName || generateResourceName({
-      slug,
-      environment: environment as EnvironmentType,
-      resourceType: 'secret',
-    })
+    const resourceName =
+      secretName ||
+      generateResourceName({
+        slug,
+        environment: environment as EnvironmentType,
+        resourceType: 'secret',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -126,11 +124,13 @@ export class Secrets {
       tags,
     } = options
 
-    const resourceName = secretName || generateResourceName({
-      slug,
-      environment: environment as EnvironmentType,
-      resourceType: 'secret',
-    })
+    const resourceName =
+      secretName ||
+      generateResourceName({
+        slug,
+        environment: environment as EnvironmentType,
+        resourceType: 'secret',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -180,23 +180,15 @@ export class Secrets {
     secret: SecretsManagerSecret
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      secretName,
-      username,
-      dbname,
-      engine,
-      host,
-      port,
-      kmsKeyId,
-    } = options
+    const { slug, environment, secretName, username, dbname, engine, host, port, kmsKeyId } = options
 
-    const resourceName = secretName || generateResourceName({
-      slug,
-      environment: environment as EnvironmentType,
-      resourceType: 'db-secret',
-    })
+    const resourceName =
+      secretName ||
+      generateResourceName({
+        slug,
+        environment: environment as EnvironmentType,
+        resourceType: 'db-secret',
+      })
 
     const logicalId = generateLogicalId(resourceName)
 
@@ -204,14 +196,10 @@ export class Secrets {
       username,
     }
 
-    if (dbname)
-      secretTemplate.dbname = dbname
-    if (engine)
-      secretTemplate.engine = engine
-    if (host)
-      secretTemplate.host = host
-    if (port)
-      secretTemplate.port = port
+    if (dbname) secretTemplate.dbname = dbname
+    if (engine) secretTemplate.engine = engine
+    if (host) secretTemplate.host = host
+    if (port) secretTemplate.port = port
 
     const secret: SecretsManagerSecret = {
       Type: 'AWS::SecretsManager::Secret',
@@ -247,13 +235,7 @@ export class Secrets {
     attachment: SecretsManagerSecretTargetAttachment
     logicalId: string
   } {
-    const {
-      slug,
-      environment,
-      secretId,
-      targetId,
-      targetType,
-    } = options
+    const { slug, environment, secretId, targetId, targetType } = options
 
     const resourceName = generateResourceName({
       slug,
@@ -314,8 +296,7 @@ export class Secrets {
 
     if (rotationLambdaArn) {
       rotation.Properties.RotationLambdaARN = rotationLambdaArn
-    }
-    else if (rotationType) {
+    } else if (rotationType) {
       // Use hosted rotation Lambda
       rotation.Properties.HostedRotationLambda = {
         RotationType: rotationType,
@@ -335,7 +316,11 @@ export class Secrets {
     /**
      * API key secret (32 chars, alphanumeric only)
      */
-    apiKey: (slug: string, environment: string, serviceName: string): { secret: SecretsManagerSecret; logicalId: string } => {
+    apiKey: (
+      slug: string,
+      environment: string,
+      serviceName: string,
+    ): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,
@@ -352,7 +337,11 @@ export class Secrets {
     /**
      * OAuth client secret (strong password)
      */
-    oauthClientSecret: (slug: string, environment: string, clientName: string): { secret: SecretsManagerSecret; logicalId: string } => {
+    oauthClientSecret: (
+      slug: string,
+      environment: string,
+      clientName: string,
+    ): { secret: SecretsManagerSecret; logicalId: string } => {
       return Secrets.createGeneratedSecret({
         slug,
         environment,

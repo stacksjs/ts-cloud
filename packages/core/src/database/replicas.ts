@@ -59,8 +59,7 @@ export interface RDSProxy {
   secretArn?: string
 }
 
-export type SessionPinningFilter =
-  | 'EXCLUDE_VARIABLE_SETS'
+export type SessionPinningFilter = 'EXCLUDE_VARIABLE_SETS'
 
 export interface ProxyTarget {
   id: string
@@ -489,10 +488,7 @@ export class ReplicaManager {
               Statement: [
                 {
                   Effect: 'Allow',
-                  Action: [
-                    'secretsmanager:GetSecretValue',
-                    'secretsmanager:DescribeSecret',
-                  ],
+                  Action: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
                   Resource: 'arn:aws:secretsmanager:*:*:secret:*',
                 },
                 {

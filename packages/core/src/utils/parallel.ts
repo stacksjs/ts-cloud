@@ -35,8 +35,7 @@ export async function parallel<T>(
     try {
       const result = await task()
       results[index] = result
-    }
-    catch (error) {
+    } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error))
       errors.push(err)
 
@@ -63,10 +62,7 @@ export async function parallel<T>(
 
       // Remove completed tasks
       for (let i = running.length - 1; i >= 0; i--) {
-        const settled = await Promise.race([
-          running[i].then(() => true),
-          Promise.resolve(false),
-        ])
+        const settled = await Promise.race([running[i].then(() => true), Promise.resolve(false)])
 
         if (settled) {
           running.splice(i, 1)
@@ -83,7 +79,7 @@ export async function parallel<T>(
   const duration = Date.now() - startTime
 
   return {
-    results: results.filter(r => r !== undefined),
+    results: results.filter((r) => r !== undefined),
     errors,
     duration,
   }
@@ -97,7 +93,7 @@ export async function batch<T, R>(
   processor: (item: T) => Promise<R>,
   options: ParallelOptions = {},
 ): Promise<ParallelResult<R>> {
-  const tasks = items.map(item => () => processor(item))
+  const tasks = items.map((item) => () => processor(item))
   return parallel(tasks, options)
 }
 
@@ -124,19 +120,18 @@ export async function parallelMap<T, R>(
  */
 export async function parallelWithRetry<T>(
   tasks: (() => Promise<T>)[],
-  options: ParallelOptions & { retries?: number, retryDelay?: number } = {},
+  options: ParallelOptions & { retries?: number; retryDelay?: number } = {},
 ): Promise<ParallelResult<T>> {
   const retries = options.retries || 3
   const retryDelay = options.retryDelay || 1000
 
-  const retriableTasks = tasks.map(task => async () => {
+  const retriableTasks = tasks.map((task) => async () => {
     let lastError: Error | undefined
 
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         return await task()
-      }
-      catch (error) {
+      } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error))
 
         // Wait before retry (except on last attempt)
@@ -155,9 +150,7 @@ export async function parallelWithRetry<T>(
 /**
  * Execute tasks in sequence (one after another)
  */
-export async function sequence<T>(
-  tasks: (() => Promise<T>)[],
-): Promise<T[]> {
+export async function sequence<T>(tasks: (() => Promise<T>)[]): Promise<T[]> {
   const results: T[] = []
 
   for (const task of tasks) {
@@ -172,7 +165,7 @@ export async function sequence<T>(
  * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -185,9 +178,7 @@ export async function withTimeout<T>(
 ): Promise<T> {
   return Promise.race([
     task(),
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs),
-    ),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)),
   ])
 }
 
@@ -216,8 +207,7 @@ export class RateLimiter {
 
     try {
       return await task()
-    }
-    finally {
+    } finally {
       this.running--
       this.processQueue()
     }
@@ -237,7 +227,7 @@ export class RateLimiter {
       return sleep(this.minInterval - timeSinceLastExecution)
     }
 
-    return new Promise(resolve => this.queue.push(resolve))
+    return new Promise((resolve) => this.queue.push(resolve))
   }
 
   /**
@@ -253,7 +243,7 @@ export class RateLimiter {
   /**
    * Get stats
    */
-  stats(): { running: number, queued: number } {
+  stats(): { running: number; queued: number } {
     return {
       running: this.running,
       queued: this.queue.length,
