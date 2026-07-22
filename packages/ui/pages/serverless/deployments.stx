@@ -42,6 +42,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
 
     <div class="section">
       <div class="panel">
+        @if (deployments.length)
         <table>
           <thead><tr><th>Build</th><th>Status</th><th>Version</th><th>Deploy hooks</th><th>By</th><th>Took</th><th>When</th></tr></thead>
           <tbody>
@@ -58,6 +59,9 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No deployments yet</strong><span>Deploy the application once to create immutable release history.</span></div>
+        @endif
         @include('../partials/op-confirm')
         <p class="note">Rollback restores the previous build's code and env and flips the live alias back instantly. Redeploy re-activates the current build without rebuilding.</p>
       </div>

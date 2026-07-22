@@ -75,6 +75,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
       </div>
     </header>
 
+    @if (functions.length)
     @foreach (functions as fn)
       <div class="section">
         <h2><span class="tag">{{ fn.key }}</span> <span class="mono">{{ fn.name }}</span></h2>
@@ -129,7 +130,11 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
         </div>
       </div>
     @endforeach
+    @else
+      <div class="section"><div class="empty"><strong>No functions deployed</strong><span>Deploy the serverless application to create its HTTP, queue, and CLI functions.</span></div></div>
+    @endif
 
+    @if (functions.length)
     <div class="section">
       <h2>Configure function</h2>
       <div class="panel">
@@ -158,6 +163,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
         <p class="note">Memory is 128 to 10240 MB, timeout is 1 to 900 s. Changes are applied to the live function immediately via <span class="mono">cloud functions:config</span>.</p>
       </div>
     </div>
+    @endif
   </div>
 </body>
 </html>

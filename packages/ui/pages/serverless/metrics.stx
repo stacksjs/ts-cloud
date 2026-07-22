@@ -55,6 +55,7 @@ function pct(v, max) { return Math.round((v / max) * 100) }
     <div class="section">
       <h2>Per function</h2>
       <div class="panel">
+        @if (perFn.length)
         <table>
           <thead><tr><th>Function</th><th>Invocations</th><th>Errors</th><th>Error rate</th><th>Throttles</th><th>Avg</th><th>Max</th><th>Est. cost</th></tr></thead>
           <tbody>
@@ -72,6 +73,9 @@ function pct(v, max) { return Math.round((v / max) * 100) }
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No function metrics</strong><span>Metrics appear after a deployed function receives traffic.</span></div>
+        @endif
         <p class="note">Live: <span class="mono">cloud metrics --since {{ window }}</span> · open in console with <span class="mono">cloud metrics:dashboard</span></p>
       </div>
     </div>

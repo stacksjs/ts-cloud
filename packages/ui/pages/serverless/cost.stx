@@ -40,8 +40,8 @@ const trend = __d?.costTrend ?? [5.9, 6.2, 7.1, 6.8, 7.4, 8.0, 7.6, 9.1, 8.4, 7.
 
 const totalServices = services.reduce((s, x) => s + x.usd, 0)
 function pct(v, max) { return Math.round((v / max) * 100) }
-const maxService = Math.max(...services.map(s => s.usd))
-const maxTrend = Math.max(...trend)
+const maxService = Math.max(1, ...services.map(s => s.usd))
+const maxTrend = Math.max(1, ...trend)
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -103,6 +103,7 @@ const maxTrend = Math.max(...trend)
       <div>
         <h2>By service</h2>
         <div class="panel">
+          @if (services.length)
           @foreach (services as s)
             <div style="padding:11px 0; border-top:1px solid rgba(255,255,255,0.05);">
               <div style="display:flex; align-items:center; gap:12px;">
@@ -114,11 +115,15 @@ const maxTrend = Math.max(...trend)
             </div>
           @endforeach
           <div class="kv" style="margin-top:6px; border-top:1px solid var(--panel-br); padding-top:12px;"><span>total</span> <b>${{ totalServices.toFixed(2) }}</b></div>
+          @else
+            <div class="empty"><strong>No cost data</strong><span>Cost allocation appears after provider billing data is available for this environment.</span></div>
+          @endif
         </div>
       </div>
       <div>
         <h2>Lambda by function</h2>
         <div class="panel">
+          @if (perFn.length)
           <table>
             <thead><tr><th>Fn</th><th>Requests</th><th>GB-sec</th><th>Cost</th></tr></thead>
             <tbody>
@@ -132,15 +137,22 @@ const maxTrend = Math.max(...trend)
               @endforeach
             </tbody>
           </table>
+          @else
+            <div class="empty"><strong>No function cost data</strong><span>Function-level estimates appear after the first metered invocations.</span></div>
+          @endif
         </div>
         <div style="height:16px"></div>
         <h2>Optimize</h2>
         <div class="panel">
+          @if (services.length)
           <p class="note" style="margin-top:0">Biggest lever: <b style="color:var(--txt)">{{ services[0].name }}</b> at ${{ services[0].usd.toFixed(2) }}.</p>
           <p class="note">• Right-size memory - over-provisioned MB inflates GB-seconds.</p>
           <p class="note">• Drop unused <span class="mono">provisionedConcurrency</span> for ping-based <span class="mono">warm</span> if cold starts are tolerable.</p>
           <p class="note">• Tighten Aurora <span class="mono">db-scale</span> min ACU off-peak.</p>
           <p class="note">Full breakdown: <span class="mono">cloud cost --env {{ app.env }}</span></p>
+          @else
+            <p class="note" style="margin-top:0">Optimization guidance becomes available with the first service-level cost breakdown.</p>
+          @endif
         </div>
       </div>
     </div>

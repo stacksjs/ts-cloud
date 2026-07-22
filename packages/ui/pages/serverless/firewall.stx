@@ -37,6 +37,7 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
     <div class="section">
       <h2>Rules</h2>
       <div class="panel">
+        @if (rules.length)
         <table>
           <thead><tr><th>Rule</th><th>Detail</th><th>Action</th><th>Blocked (24h)</th></tr></thead>
           <tbody>
@@ -50,6 +51,9 @@ function fmt(n) { return n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No WAF rules configured</strong><span>Add managed or rate-limit rules to the application firewall configuration.</span></div>
+        @endif
         <p class="note">Configured via <span class="mono">app.firewall</span> in cloud.config.</p>
       </div>
     </div>

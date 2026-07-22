@@ -220,6 +220,7 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
             <div class="item">{{ svc.name }} <span class="pill" :class="svcTone(svc.status)">{{ svc.status }}</span></div>
           </template>
         </div>
+        <div class="compact empty" @show="servicesC().length === 0"><strong>No managed services</strong><span>Configured services will appear after the next successful server probe.</span></div>
       </div>
     </div>
 
@@ -245,6 +246,7 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
     <div class="section">
       <h2>Sites <a class="more" href="/server/sites">View all →</a></h2>
       <div class="panel">
+        @if (sites.length)
         <table>
           <thead>
             <tr><th>Site</th><th>Route</th><th>Kind</th><th>Runtime</th><th>TLS</th><th>Deploy</th><th>Status</th></tr>
@@ -269,6 +271,9 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No sites configured</strong><span>Add a site to expose an application or static build from this server.</span></div>
+        @endif
       </div>
     </div>
 
@@ -294,9 +299,13 @@ const indicator = derived(() => pollingState() === 'stale' ? 'stale' : liveData(
       <div>
         <h2>Queues &amp; Scheduler <a class="more" href="/server/workers">Details →</a></h2>
         <div class="panel">
-          @foreach (workers as w)
-            <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
-          @endforeach
+          @if (workers.length)
+            @foreach (workers as w)
+              <div class="kv"><span>queue:{{ w.name }} ×{{ w.processes }}</span> <span class="pill {{ statusTone(w.status) }}">{{ w.status }}</span></div>
+            @endforeach
+          @else
+            <div class="compact empty"><strong>No queue workers</strong><span>Add worker definitions to a site to process background jobs.</span></div>
+          @endif
           <div class="kv"><span>scheduler</span> @if (scheduler.enabled)<span class="ok pill">on · {{ scheduler.lastRun }}</span>@else<span class="pill warn">off</span>@endif</div>
         </div>
         <div style="height: 16px"></div>

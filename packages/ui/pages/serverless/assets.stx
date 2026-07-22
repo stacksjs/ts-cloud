@@ -64,6 +64,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
     <div class="section">
       <h2>Recent assets</h2>
       <div class="panel">
+        @if (recent.length)
         <table>
           <thead><tr><th>Path</th><th>Type</th><th>Size</th></tr></thead>
           <tbody>
@@ -72,6 +73,9 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No assets deployed</strong><span>Publish an asset build to populate this bucket and CDN history.</span></div>
+        @endif
         <p class="note">Sync with <span class="mono">cloud assets:deploy</span> · invalidate with <span class="mono">cloud assets:invalidate</span></p>
       </div>
     </div>

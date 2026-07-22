@@ -14,18 +14,20 @@ const sites = __d?.sitesDetail ?? [
   { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', tls: 'loopback', deploy: 'service', root: '/var/www/api/current', branch: 'main', status: 'live' },
   { name: 'docs', route: 'stacksjs.com/docs', href: 'https://stacksjs.com/docs', kind: 'bunpress', runtime: 'static/bun', tls: 'https', deploy: 'server static', root: '/var/www/docs', branch: 'build artifact', status: 'live' },
 ]
+const initialSites = sites
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <script client>
 import { useOpConfirm } from '../../functions/useOpConfirm.ts'
 
 // Reactive site management - add, per-site deploy/edit/remove - via signals +
-// directives. Mutations re-render the server-built page (location.reload) once
-// the cloud config has changed.
+// directives. Mutation responses replace the site signal without reloading, so
+// status and success feedback remain visible.
 const addName = state(''); const addRoot = state(''); const addDomain = state(''); const addPath = state('')
 const addDeploy = state('server'); const addPort = state(''); const addBuild = state(''); const addStart = state('')
 const addMsg = state(''); const addMsgKind = state('')
 const addBusy = state(false)
+const siteRows = state(initialSites)
 async function addSite() {
   if (addBusy()) return
   addBusy.set(true); addMsg.set('Adding site...'); addMsgKind.set('')
@@ -34,6 +36,7 @@ async function addSite() {
     const res = await fetch('/api/sites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     const b = await res.json()
     if (!b.ok) throw new Error(b.error || 'Could not add site')
+    if (Array.isArray(b.data?.sitesDetail)) siteRows.set(b.data.sitesDetail)
     addMsg.set('Added ' + b.site + '.'); addMsgKind.set('ok')
   } catch (e) { addMsg.set((e && e.message) || String(e)); addMsgKind.set('bad') }
   finally { addBusy.set(false) }
@@ -49,10 +52,12 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
   if (p.operation.startsWith('site:edit:')) {
     const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p.payload) })
     const body = await res.json()
+    if (body.ok && Array.isArray(body.data?.sitesDetail)) siteRows.set(body.data.sitesDetail)
     return body.ok ? 'Updated ' + p.name + '.' : (body.error || 'Could not update site')
   }
   const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
   const body = await res.json()
+  if (body.ok && Array.isArray(body.data?.sitesDetail)) siteRows.set(body.data.sitesDetail)
   return body.ok ? 'Removed ' + p.name + ' from cloud config.' : (body.error || 'Could not remove site')
 })
 function askDeploy(name) { askOp('site:deploy:' + name, name, 'deploy ' + name, null, name, { name }) }
@@ -114,49 +119,41 @@ async function saveEdit(name) {
         </div>
       </div>
     @endif
-    @if (isMember && sites.length === 0)
-      <div class="empty">
+    @if (isMember)
+      <div class="empty" @show="siteRows().length === 0">
         <strong>No sites yet</strong>
         <span>You have not been given access to a site on this server. Ask the server owner to invite you to one.</span>
       </div>
     @endif
-    @foreach (sites as site)
+    <template :for="site in siteRows()">
       <div class="section">
-        <h2>{{ site.name }} <span class="more"><span class="pill {{ tone(site.status) }}">{{ site.status }}</span></span></h2>
+        <h2>{{ site.name }} <span class="more"><span class="pill" :class="tone(site.status)">{{ site.status }}</span></span></h2>
         <div class="cols">
           <div class="panel">
-            <div class="kv"><span>route</span> <b class="mono">@if (site.href)<a href="{{ site.href }}">{{ site.route }}</a>@else{{ site.route }}@endif</b></div>
+            <div class="kv"><span>route</span> <b class="mono"><a :href="site.href" @show="!!site.href">{{ site.route }}</a><span @show="!site.href">{{ site.route }}</span></b></div>
             <div class="kv"><span>kind</span> <b><span class="tag">{{ site.kind ?? site.type }}</span></b></div>
             <div class="kv"><span>runtime</span> <b class="mono">{{ site.runtime }}</b></div>
-            <div class="kv"><span>tls</span> <b><span class="{{ site.tls === 'https' ? 'ok' : 'warn' }} pill">{{ site.tls }}</span></b></div>
+            <div class="kv"><span>tls</span> <b><span class="pill" :class="site.tls === 'https' ? 'ok' : 'warn'">{{ site.tls }}</span></b></div>
           </div>
           <div class="panel">
             <div class="kv"><span>web root</span> <b class="mono" style="font-size:11px">{{ site.root }}</b></div>
             <div class="kv"><span>source</span> <b class="mono">{{ site.branch }}</b></div>
             <div class="kv"><span>deploy</span> <b>{{ site.deploy }}</b></div>
-            @if (site.envKeys && site.envKeys.length)
-              <div class="kv"><span>env vars</span> <b class="mono">{{ site.envKeys.join(', ') }}</b></div>
-            @endif
-            @if (site.aliases && site.aliases.length)
-              <div class="kv"><span>aliases</span> <b class="mono">{{ site.aliases.join(', ') }}</b></div>
-            @endif
-            @if (site.redirects && Object.keys(site.redirects).length)
-              <div class="kv"><span>redirects</span> <b class="mono">{{ Object.keys(site.redirects).length }}</b></div>
-            @endif
-            @if (site.shadowedBy)
-              <div class="kv"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
-            @endif
+            <div class="kv" @show="site.envKeys && site.envKeys.length"><span>env vars</span> <b class="mono">{{ (site.envKeys || []).join(', ') }}</b></div>
+            <div class="kv" @show="site.aliases && site.aliases.length"><span>aliases</span> <b class="mono">{{ (site.aliases || []).join(', ') }}</b></div>
+            <div class="kv" @show="site.redirects && Object.keys(site.redirects).length"><span>redirects</span> <b class="mono">{{ Object.keys(site.redirects || {}).length }}</b></div>
+            <div class="kv" @show="!!site.shadowedBy"><span>shadowed by</span> <b class="mono">{{ site.shadowedBy }}</b></div>
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px;">
-          @if (canDeploy)<button class="btn sm" type="button" @click="askDeploy('{{ site.name }}')">Deploy</button>@endif
-          @if (canEdit)<button class="btn ghost sm" type="button" @click="toggleEdit('{{ site.name }}')">Edit</button>@endif
+          @if (canDeploy)<button class="btn sm" type="button" @click="askDeploy(site.name)">Deploy</button>@endif
+          @if (canEdit)<button class="btn ghost sm" type="button" @click="toggleEdit(site.name)">Edit</button>@endif
           @if (!isMember)
-            <button class="btn danger sm" type="button" @click="askRemove('{{ site.name }}')">Remove</button>
+            <button class="btn danger sm" type="button" @click="askRemove(site.name)">Remove</button>
           @endif
         </div>
         @if (!canDeploy && !canEdit)<p class="note">This membership is read-only for {{ site.name }}. Ask an organization owner for deployment or configuration access.</p>@endif
-        <form class="form-grid" style="margin-top:14px;" @show="editing() === '{{ site.name }}'" @submit.prevent="saveEdit('{{ site.name }}')">
+        <form class="form-grid" style="margin-top:14px;" @show="editing() === site.name" @submit.prevent="saveEdit(site.name)">
           <div class="field-block">
             <label>TLS</label>
             <select :value="editSsl()" @change="editSsl.set($event.target.value)">
@@ -165,7 +162,7 @@ async function saveEdit(name) {
               <option value="false">disable</option>
             </select>
           </div>
-          <div class="field-block"><label>Domain</label><input placeholder="{{ site.domain }}" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
+          <div class="field-block"><label>Domain</label><input :placeholder="site.domain" :value="editDomain()" @input="editDomain.set($event.target.value)"></div>
           <div class="field-block">
             <label>PHP version</label>
             <select :value="editPhp()" @change="editPhp.set($event.target.value)">
@@ -182,7 +179,7 @@ async function saveEdit(name) {
           <div class="form-actions"><button class="btn" type="submit">Save changes</button></div>
         </form>
       </div>
-    @endforeach
+    </template>
     @include('../partials/op-confirm')
   </div>
 </body>

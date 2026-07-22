@@ -53,6 +53,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
     <div class="section">
       <h2>Scheduled tasks</h2>
       <div class="panel">
+        @if (tasks.length)
         <table>
           <thead><tr><th>Command</th><th>Schedule</th><th>Cron</th><th>Last run</th><th>Status</th></tr></thead>
           <tbody>
@@ -67,6 +68,9 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No scheduled tasks</strong><span>Add application scheduler definitions; discovered tasks will appear after the next refresh.</span></div>
+        @endif
         @include('../partials/op-confirm')
         <p class="note">Sub-minute mode loops <span class="mono">schedule:run</span> within each invocation. Run manually: <span class="mono">cloud command "schedule:run"</span></p>
       </div>

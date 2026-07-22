@@ -20,6 +20,14 @@ const dlq = state([])
 const dlqLoaded = state(false)
 const dlqMsg = state('')
 const target = state(queueNames[0] || '')
+function fmtQueue(n) { n = Number(n || 0); return n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n) }
+
+async function loadQueues() {
+  const response = await fetch('/api/dashboard-data')
+  if (!response.ok) throw new Error('Queue refresh failed with HTTP ' + response.status + '.')
+  const data = await response.json()
+  if (Array.isArray(data.queuesDetail)) rows.set(data.queuesDetail)
+}
 
 async function loadDlq() {
   dlqMsg.set('Loading dead-letter queue...')
@@ -30,7 +38,7 @@ async function loadDlq() {
   } catch (e) { dlqMsg.set('Failed to load DLQ: ' + ((e && e.message) || e)) }
   finally { dlqLoaded.set(true) }
 }
-onMount(() => { loadDlq() })
+onMount(() => { loadDlq(); loadQueues().catch(error => dlqMsg.set(error?.message || 'Queue refresh failed.')) })
 
 // Op runner (redrive / purge / per-queue purge) - typed-confirm bar.
 const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
@@ -42,7 +50,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
   else
     res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'queue:purge:' + p.operation.replace('purge-queue:', ''), confirm: p.apiConfirm }) })
   const body = await res.json()
-  if (body.ok) loadDlq()
+  if (body.ok) { loadDlq(); loadQueues().catch(error => dlqMsg.set(error?.message || 'Queue refresh failed.')) }
   return (body.ok ? 'OK ' : 'FAILED ') + (body.command || '') + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
 })
 </script>
@@ -64,10 +72,10 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
 
     <div class="section">
       <div class="panel">
-        <table>
+        <table @show="rows().length > 0">
           <thead><tr><th>Queue</th><th>Visible</th><th>In-flight</th><th>Oldest</th><th>Concurrency</th><th>Tries</th><th>Vis. timeout</th><th>Processed</th><th>DLQ</th><th class="table-actions">Action</th></tr></thead>
           <tbody>
-            @foreach (queues as q)
+            <template :for="q in rows()">
               <tr>
                 <td><b>{{ q.short }}</b><div class="mono" style="font-size:11px;color:var(--txt3)">{{ q.name }}</div></td>
                 <td>{{ q.visible }}</td>
@@ -76,13 +84,14 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
                 <td>{{ q.concurrency }}</td>
                 <td>{{ q.tries }}</td>
                 <td class="mono">{{ q.visTimeout }}s</td>
-                <td style="color:var(--txt2)">{{ fmt(q.processed) }}</td>
-                <td>@if (q.dlq > 0)<span class="bad pill">{{ q.dlq }}</span>@else<span style="color:var(--txt3)">0</span>@endif</td>
-                <td class="table-actions"><button class="btn danger sm" type="button" @click="askOp('purge-queue:{{ q.short }}', '{{ q.short }}', 'purge the {{ q.short }} queue')">Purge</button></td>
+                <td style="color:var(--txt2)">{{ fmtQueue(q.processed) }}</td>
+                <td><span class="bad pill" @show="q.dlq > 0">{{ q.dlq }}</span><span style="color:var(--txt3)" @show="!q.dlq">0</span></td>
+                <td class="table-actions"><button class="btn danger sm" type="button" @click="askOp('purge-queue:' + q.short, q.short, 'purge the ' + q.short + ' queue')">Purge</button></td>
               </tr>
-            @endforeach
+            </template>
           </tbody>
         </table>
+        <div class="empty" @show="rows().length === 0"><strong>No queues configured</strong><span>Add a queue definition to the serverless application to process background jobs.</span></div>
       </div>
     </div>
 

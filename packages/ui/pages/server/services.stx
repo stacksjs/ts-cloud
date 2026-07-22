@@ -36,6 +36,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
     </header>
     <div class="section">
       <div class="panel">
+        @if (services.length)
         <table>
           <thead><tr><th>Service</th><th>Status</th><th>Uptime</th><th>Memory</th><th>Autostart</th><th>Manage</th></tr></thead>
           <tbody>
@@ -60,6 +61,9 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
             @endforeach
           </tbody>
         </table>
+        @else
+          <div class="empty"><strong>No managed services</strong><span>Services appear here after they are configured and discovered on the server.</span></div>
+        @endif
         @include('../partials/op-confirm')
         <p class="note">Install software with <span class="mono">cloud server:recipe {{ server.name }} &lt;recipe&gt;</span>.</p>
       </div>
