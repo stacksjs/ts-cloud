@@ -1,7 +1,7 @@
-<div class="op-confirm panel" @show="pending() !== null">
-  <span>Type <b class="mono">{{ confirmTok() }}</b> to {{ confirmVerb() }}:</span>
-  <input class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off">
-  <button class="btn sm" :disabled="!canRun()" @click="runOp()">Run</button>
-  <button class="btn ghost sm" @click="cancelOp()">Cancel</button>
+<div class="op-confirm panel" @show="pending() !== null" role="group" aria-labelledby="op-confirm-prompt">
+  <span id="op-confirm-prompt">Type <b class="mono">{{ confirmTok() }}</b> to {{ confirmVerb() }}:</span>
+  <input @ref="opConfirmInput" class="op-confirm-input" :value="typed()" @input="typed.set($event.target.value)" @keydown.enter="runOp()" placeholder="confirm" autocomplete="off" aria-labelledby="op-confirm-prompt">
+  <button type="button" class="btn sm" :class="{ danger: confirmDanger() }" :disabled="!canRun()" @click="runOp()">{{ confirmLabel() }}</button>
+  <button type="button" class="btn ghost sm" :disabled="busy()" @click="cancelOp()">Cancel</button>
 </div>
-<pre class="action-output op-output" @show="opShown()">{{ opOutput() }}</pre>
+<pre class="action-output op-output" @show="opShown()" aria-live="polite">{{ opOutput() }}</pre>

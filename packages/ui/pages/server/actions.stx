@@ -4,33 +4,23 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const server = __d?.server ?? { name: 'stacks-production-app' }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Reactive action runner: non-mutating actions run immediately; mutating ones
 // (deploy) stage a typed-confirmation via the shared op-confirm bar.
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-async function execAction(action, confirm) {
-  opShown.set(true); opOutput.set('Running ' + action + '...')
-  try {
-    const res = await fetch('/api/actions/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || action) + '\nexit ' + (body.exitCode == null ? '-' : body.exitCode) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + action + '\n\n' + ((e && e.message) || e)) }
+async function executeAction(action, confirm) {
+  const res = await fetch('/api/actions/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action, confirm }) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || action) + '\nexit ' + (body.exitCode == null ? '-' : body.exitCode) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : '')
 }
-function askAction(action, confirm, verb) {
-  if (!confirm) { execAction(action, ''); return }
-  pending.set({ operation: action, confirm, verb: verb || ('run ' + action) }); typed.set('')
-}
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  await execAction(p.operation, p.confirm)
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(p => executeAction(p.operation, p.apiConfirm))
+async function askAction(action, confirm, verb) {
+  if (confirm) { askOp(action, confirm, verb || ('run ' + action)); return }
+  if (busy()) return
+  busy.set(true); opShown.set(true); opOutput.set('Running ' + action + '...')
+  try { opOutput.set(await executeAction(action, '')) }
+  catch (error) { opOutput.set('FAILED ' + action + '\n\n' + ((error && error.message) || error)) }
+  finally { busy.set(false) }
 }
 
 // Free-form server command runner (Forge-style). Runs on the app box over the

@@ -19,6 +19,8 @@ const initialPresets = presetsList
 function tone(s) { return s === 'ALARM' ? 'bad' : (s === 'OK' ? 'ok' : 'warn') }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Alarms manager: list/create/delete CloudWatch alarms via /api/serverless/alarms.
 const rows = state(initialAlarms)
 const presets = state(initialPresets)
@@ -26,12 +28,14 @@ const preset = state(initialPresets[0] ? initialPresets[0].key : '')
 const threshold = state('')
 const msg = state('')
 const msgOk = state(false)
-const busy = state(false)
 
-// Delete flow uses a typed-confirm (the alarm name) before firing.
-const pendingDelete = state(null)
-const typedDelete = state('')
-const canDelete = derived(() => { const p = pendingDelete(); return !!p && typedDelete() === p })
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/alarms', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.apiConfirm }) })
+  const body = await res.json()
+  msg.set(body.ok ? (body.stdout || 'Deleted.') : (body.error || 'Failed to delete.')); msgOk.set(!!body.ok)
+  if (body.ok) refresh()
+  return msg()
+})
 
 function toneOf(s) { return s === 'ALARM' ? 'bad' : (s === 'OK' ? 'ok' : 'warn') }
 
@@ -60,20 +64,7 @@ async function createAlarm() {
   finally { busy.set(false) }
 }
 
-function askDelete(name) { pendingDelete.set(name); typedDelete.set('') }
-function cancelDelete() { pendingDelete.set(null); typedDelete.set('') }
-async function confirmDelete() {
-  const name = pendingDelete()
-  if (!name || typedDelete() !== name) return
-  pendingDelete.set(null); typedDelete.set('')
-  msg.set('Deleting ' + name + '...'); msgOk.set(false)
-  try {
-    const res = await fetch('/api/serverless/alarms', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, confirm: name }) })
-    const body = await res.json()
-    msg.set(body.ok ? (body.stdout || 'Deleted.') : (body.error || 'Failed to delete.')); msgOk.set(!!body.ok)
-    if (body.ok) refresh()
-  } catch (e) { msg.set('Failed: ' + ((e && e.message) || e)); msgOk.set(false) }
-}
+function askDelete(name) { askOp('alarm:delete:' + name, name, 'delete alarm ' + name, null, name, { name, danger: true, label: 'Delete alarm' }) }
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
@@ -115,12 +106,7 @@ async function confirmDelete() {
           </tbody>
         </table>
 
-        <div class="op-confirm" @show="pendingDelete() !== null" style="margin-top:14px">
-          <span>Type <b class="mono">{{ pendingDelete() }}</b> to delete this alarm:</span>
-          <input class="op-confirm-input" :value="typedDelete()" @input="typedDelete.set($event.target.value)" @keydown.enter="confirmDelete()" placeholder="confirm" autocomplete="off">
-          <button class="btn danger sm" :disabled="!canDelete()" @click="confirmDelete()">Delete</button>
-          <button class="btn ghost sm" @click="cancelDelete()">Cancel</button>
-        </div>
+        @include('../partials/op-confirm')
       </div>
     </div>
 

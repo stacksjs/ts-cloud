@@ -12,29 +12,16 @@ const seedMin = aurora?.minAcu ?? 0.5
 const seedMax = aurora?.maxAcu ?? 4
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // db:scale runs live against AWS through /api/serverless/operations/run.
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
 const scaleMin = state(String(seedMin ?? ''))
 const scaleMax = state(String(seedMax ?? ''))
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb, apiConfirm) { pending.set({ operation, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
-  try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm, min: Number(scaleMin()), max: Number(scaleMax()) }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm, min: Number(scaleMin()), max: Number(scaleMax()) }) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">

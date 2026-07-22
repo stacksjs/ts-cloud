@@ -45,31 +45,18 @@ const modes = (__d?.functionsDetail ?? functions).map(f => f.key)
 const initialMode = modes[0] ?? 'http'
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Per-function config runs live against AWS through /api/serverless/functions/config.
 const mode = state(initialMode)
 const mem = state('1024')
 const to = state('28')
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
-function cancelOp() { pending.set(null) }
 function applyConfig() { const m = mode(); askOp(m, m, 'update the ' + m + ' function') }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Updating ' + p.operation + '...')
-  try {
-    const res = await fetch('/api/serverless/functions/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: p.operation, memory: Number(mem()), timeout: Number(to()), confirm: p.confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const res = await fetch('/api/serverless/functions/config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: p.operation, memory: Number(mem()), timeout: Number(to()), confirm: p.apiConfirm }) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">

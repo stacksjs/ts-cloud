@@ -4,6 +4,8 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const server = __d?.server ?? { name: 'acme-production-app' }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 const organization = state(null)
 const project = state(null)
 const environments = state([])
@@ -26,7 +28,6 @@ const editPassword = state('')
 const editConfirm = state('')
 const accessDiff = state(null)
 const removing = state(null)
-const removeConfirm = state('')
 const removePassword = state('')
 const oidcProviders = state([])
 const oidcCallbackPattern = state('')
@@ -42,6 +43,11 @@ const oidcDefaultRole = state('viewer')
 const oidcEnforce = state(false)
 const oidcPassword = state('')
 const oidcCode = state('')
+
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  await removeMembership(p.member, String(p.apiConfirm))
+  return message()
+})
 
 const roleSummary = {
   owner: 'Everything, including ownership transfer',
@@ -175,12 +181,15 @@ async function changeMembership(preview) {
   setMessage('Membership updated. Existing sessions were invalidated.', 'ok'); editing.set(null); load()
 }
 
-function beginRemove(member) { removing.set(member); removeConfirm.set(''); removePassword.set('') }
-async function removeMembership() {
-  const member = removing(); if (!member) return
+function beginRemove(member) {
+  removing.set(member); removePassword.set('')
+  askOp('membership:remove:' + member.id, member.id, 'remove ' + actorName(member) + ' from the organization', null, member.id, { member, danger: true, label: 'Remove membership' })
+}
+async function removeMembership(member, confirm) {
+  if (!member) return
   const response = await fetch('/api/organization/memberships', {
     method: 'DELETE', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ id: member.id, confirm: removeConfirm(), password: removePassword() }),
+    body: JSON.stringify({ id: member.id, confirm, password: removePassword() }),
   })
   const data = await response.json().catch(() => ({}))
   if (!response.ok) { setMessage(data.error || 'Membership could not be removed.', 'bad'); return }
@@ -282,7 +291,7 @@ onMount(() => { load(); loadOidc() })
       </form></div>
     </div>
 
-    <div class="section" @show="removing() !== null"><h2>Remove membership</h2><div class="op-confirm panel"><span>Type membership ID <b class="mono">{{ removing()?.id }}</b>. The member's active sessions will stop immediately.</span><input :value="removeConfirm()" @input="removeConfirm.set($event.target.value)" placeholder="membership ID"><input type="password" autocomplete="current-password" :value="removePassword()" @input="removePassword.set($event.target.value)" placeholder="your password if removing an owner"><button class="btn danger sm" @click="removeMembership()">Remove</button><button class="btn ghost sm" @click="removing.set(null)">Cancel</button></div></div>
+    <div class="section" @show="pending() !== null"><h2>Remove membership</h2><div class="panel"><div class="field-block"><label for="remove-owner-password">Your password (required when removing an owner)</label><input id="remove-owner-password" type="password" autocomplete="current-password" :value="removePassword()" @input="removePassword.set($event.target.value)"></div>@include('../partials/op-confirm')</div></div>
 
     <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>State</th><th></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
   </div>

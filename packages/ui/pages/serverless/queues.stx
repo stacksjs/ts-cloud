@@ -11,6 +11,8 @@ const initialQueues = queues
 const queueNames = queues.map(q => q.short)
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Live dead-letter queue: peek at messages, redrive them back onto a source
 // queue, or purge the DLQ. Per-queue purge runs the queue:purge:<name> op.
 const rows = state(initialQueues)
@@ -18,18 +20,6 @@ const dlq = state([])
 const dlqLoaded = state(false)
 const dlqMsg = state('')
 const target = state(queueNames[0] || '')
-const busy = state(false)
-
-// Op runner (redrive / purge / per-queue purge) - typed-confirm bar.
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(kind, confirm, verb, apiConfirm) { pending.set({ kind, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
-function cancelOp() { pending.set(null) }
 
 async function loadDlq() {
   dlqMsg.set('Loading dead-letter queue...')
@@ -42,26 +32,19 @@ async function loadDlq() {
 }
 onMount(() => { loadDlq() })
 
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running...')
-  busy.set(true)
-  try {
-    let res
-    if (p.kind === 'redrive')
-      res = await fetch('/api/serverless/dlq/redrive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'redrive', targetQueue: target(), max: 25 }) })
-    else if (p.kind === 'purge-dlq')
-      res = await fetch('/api/serverless/dlq/purge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: 'purge' }) })
-    else
-      res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'queue:purge:' + p.kind.replace('purge-queue:', ''), confirm: p.confirm }) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || '') + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
-    if (body.ok) loadDlq()
-  } catch (e) { opOutput.set('FAILED\n\n' + ((e && e.message) || e)) }
-  finally { busy.set(false) }
-}
+// Op runner (redrive / purge / per-queue purge) - typed-confirm bar.
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  let res
+  if (p.operation === 'redrive')
+    res = await fetch('/api/serverless/dlq/redrive', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: p.apiConfirm, targetQueue: target(), max: 25 }) })
+  else if (p.operation === 'purge-dlq')
+    res = await fetch('/api/serverless/dlq/purge', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: p.apiConfirm }) })
+  else
+    res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'queue:purge:' + p.operation.replace('purge-queue:', ''), confirm: p.apiConfirm }) })
+  const body = await res.json()
+  if (body.ok) loadDlq()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || '') + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">

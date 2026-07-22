@@ -5,6 +5,8 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 const initialKeys = __d?.sshKeys ?? []
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Reactive SSH key management - list + add + remove, via signals + directives.
 // Seeded from build-time data (stx server→client bridge); load() reconciles
 // against the live cloud config (same describeSshKeys shape).
@@ -41,17 +43,11 @@ async function removeKey(n) {
 // Removal runs through a typed-confirm bar (same pattern as firewall/team):
 // type the key name to confirm. Removing the wrong key can lock every operator
 // out of the box, so it should never be one misclick away.
-const pendingRemove = state(null)
-const typedRemove = state('')
-const canRemove = derived(() => { const k = pendingRemove(); return k !== null && typedRemove() === String(k.name) })
-function askRemove(key) { pendingRemove.set(key); typedRemove.set('') }
-function cancelRemove() { pendingRemove.set(null); typedRemove.set('') }
-async function confirmRemove() {
-  const k = pendingRemove()
-  if (!k || typedRemove() !== String(k.name)) return
-  pendingRemove.set(null); typedRemove.set('')
-  await removeKey(k.name)
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  await removeKey(String(p.name))
+  return message()
+})
+function askRemove(key) { askOp('ssh-key:remove:' + key.name, key.name, 'remove SSH key ' + key.name + ' from the box', null, key.name, { name: key.name, danger: true, label: 'Remove SSH key' }) }
 
 onMount(() => { load() })
 </script>
@@ -100,12 +96,7 @@ onMount(() => { load() })
           </tbody>
         </table>
         <div class="compact empty" @show="keys().length === 0"><strong>No SSH keys configured</strong><span>Add a public key above to update <span class="mono">infrastructure.compute.sshKeys</span>.</span></div>
-        <div class="op-confirm" @show="pendingRemove() !== null" style="margin-top:14px">
-          <span>Type <b class="mono">{{ pendingRemove()?.name }}</b> to remove this key from the box:</span>
-          <input class="op-confirm-input" :value="typedRemove()" @input="typedRemove.set($event.target.value)" @keydown.enter="confirmRemove()" placeholder="confirm" autocomplete="off" aria-label="Type the key name to confirm removal">
-          <button type="button" class="btn danger sm" :disabled="!canRemove()" @click="confirmRemove()">Remove</button>
-          <button type="button" class="btn ghost sm" @click="cancelRemove()">Cancel</button>
-        </div>
+        @include('../partials/op-confirm')
         <p class="note">Keys are declarative: this page edits <span class="mono">infrastructure.compute.sshKeys</span> in cloud config. Run <span class="mono">cloud deploy</span> to apply changes to the box. Connect with <span class="mono">cloud server:ssh {{ server.name }}</span>.</p>
       </div>
     </div>

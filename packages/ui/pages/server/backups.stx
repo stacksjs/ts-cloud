@@ -11,27 +11,14 @@ const history = __d?.backupHistory ?? [
 function tone(s) { return s === 'success' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <script client>
-const opOutput = state('')
-const opShown = state(false)
-const pending = state(null)
-const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb, to, apiConfirm) { pending.set({ operation, confirm, verb, to: to || null, apiConfirm: apiConfirm || confirm }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending()
-  if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set('Running ' + p.operation + '...')
-  try {
-    const payload = p.to ? { operation: p.operation, confirm: p.apiConfirm, to: p.to } : { operation: p.operation, confirm: p.apiConfirm }
-    const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    const body = await res.json()
-    opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
-  } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
-}
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  const payload = p.to ? { operation: p.operation, confirm: p.apiConfirm, to: p.to } : { operation: p.operation, confirm: p.apiConfirm }
+  const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+  const body = await res.json()
+  return (body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : '')
+})
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">

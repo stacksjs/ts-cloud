@@ -17,6 +17,8 @@ const sites = __d?.sitesDetail ?? [
 function tone(s) { return s === 'live' ? 'ok' : (s === 'failed' ? 'bad' : 'warn') }
 </script>
 <script client>
+import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+
 // Reactive site management - add, per-site deploy/edit/remove - via signals +
 // directives. Mutations re-render the server-built page (location.reload) once
 // the cloud config has changed.
@@ -35,31 +37,23 @@ async function addSite() {
 }
 
 // Deploy / remove run through the shared op-confirm bar.
-const opOutput = state(''); const opShown = state(false); const pending = state(null); const typed = state('')
-const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
-const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
-const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askDeploy(name) { pending.set({ kind: 'deploy', name, confirm: name, verb: 'deploy ' + name }); typed.set('') }
-function askRemove(name) { pending.set({ kind: 'remove', name, confirm: name, verb: 'remove ' + name }); typed.set('') }
-function cancelOp() { pending.set(null) }
-async function runOp() {
-  const p = pending(); if (!p || typed() !== p.confirm) return
-  pending.set(null); typed.set('')
-  opShown.set(true); opOutput.set((p.kind === 'deploy' ? 'Deploying ' : p.kind === 'edit' ? 'Updating ' : 'Removing ') + p.name + '...')
-  try {
-    if (p.kind === 'deploy') {
-      const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.name }) })
-      const b = await res.json()
-      opOutput.set((b.ok ? 'OK ' : 'FAILED ') + (b.command || ('deploy ' + p.name)) + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
-    } else if (p.kind === 'edit') {
-      await applyEdit(p.name, p.payload)
-    } else {
-      const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
-      const b = await res.json()
-      if (b.ok) { opOutput.set('Removed ' + p.name + ' from cloud config. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not remove site')
-    }
-  } catch (e) { opOutput.set('FAILED ' + p.name + '\n\n' + ((e && e.message) || e)) }
-}
+const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
+  if (p.operation.startsWith('site:deploy:')) {
+    const res = await fetch('/api/sites/deploy', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name, confirm: p.apiConfirm }) })
+    const body = await res.json()
+    return (body.ok ? 'OK ' : 'FAILED ') + (body.command || ('deploy ' + p.name)) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : '')
+  }
+  if (p.operation.startsWith('site:edit:')) {
+    const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(p.payload) })
+    const body = await res.json()
+    return body.ok ? 'Updated ' + p.name + '.' : (body.error || 'Could not update site')
+  }
+  const res = await fetch('/api/sites', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: p.name }) })
+  const body = await res.json()
+  return body.ok ? 'Removed ' + p.name + ' from cloud config.' : (body.error || 'Could not remove site')
+})
+function askDeploy(name) { askOp('site:deploy:' + name, name, 'deploy ' + name, null, name, { name }) }
+function askRemove(name) { askOp('site:remove:' + name, name, 'remove ' + name, null, name, { name, danger: true }) }
 
 // Inline per-site edit (TLS / domain / env).
 const editing = state(''); const editSsl = state(''); const editDomain = state(''); const editEnv = state(''); const editPhp = state(''); const editAliases = state(''); const editRedirects = state('')
@@ -76,20 +70,8 @@ function editPayload(name) {
 }
 async function saveEdit(name) {
   const payload = editPayload(name)
-  if (payload.ssl === false) {
-    pending.set({ kind: 'edit', name, payload, confirm: name, verb: 'disable TLS for ' + name })
-    typed.set('')
-    return
-  }
-  await applyEdit(name, payload)
-}
-async function applyEdit(name, payload) {
-  opShown.set(true); opOutput.set('Updating ' + name + '...')
-  try {
-    const res = await fetch('/api/sites', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    const b = await res.json()
-    if (b.ok) { opOutput.set('Updated ' + name + '. Refreshing...'); location.reload() } else opOutput.set(b.error || 'Could not update site')
-  } catch (e) { opOutput.set('FAILED ' + name + '\n\n' + ((e && e.message) || e)) }
+  const verb = payload.ssl === false ? 'disable TLS for ' + name : 'save configuration changes for ' + name
+  askOp('site:edit:' + name, name, verb, null, name, { name, payload, danger: payload.ssl === false })
 }
 </script>
 <!DOCTYPE html>
