@@ -55,6 +55,7 @@ export { registerOperationQueueCommands } from './operation-queue'
 export { registerRuntimeCommands } from './runtime'
 export { registerTelemetryCommands } from './telemetry'
 export { registerAlertingCommands } from './alerting'
+export { registerJobCommands } from './jobs'
 export { registerTunnelCommands } from './tunnel'
 
 export { loadValidatedConfig, resolveDnsProviderConfig, getDnsProvider } from './shared'

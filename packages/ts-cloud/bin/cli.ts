@@ -54,6 +54,7 @@ import {
   registerRuntimeCommands,
   registerTelemetryCommands,
   registerAlertingCommands,
+  registerJobCommands,
   registerTunnelCommands,
 } from './commands'
 
@@ -130,6 +131,7 @@ registerOperationQueueCommands(app)
 registerRuntimeCommands(app)
 registerTelemetryCommands(app)
 registerAlertingCommands(app)
+registerJobCommands(app)
 
 // Cost & Resources
 registerCostCommands(app)
