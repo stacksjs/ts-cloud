@@ -100,6 +100,16 @@ function mapDeployKey(row: Row): SourceDeployKey {
   return { id: String(row.id), connectionId: String(row.connection_id), name: String(row.name), publicKey: String(row.public_key), publicKeyFingerprint: String(row.public_key_fingerprint), host: String(row.host), hostKey: String(row.host_key), hostKeyFingerprint: String(row.host_key_fingerprint), createdByActorId: optional(row.created_by_actor_id), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
 }
 
+function mapWebhook(row: Row): SourceWebhook {
+  return { id: String(row.id), connectionId: String(row.connection_id), repositoryId: optional(row.repository_id), repositoryFullName: String(row.repository_full_name), providerWebhookId: optional(row.provider_webhook_id),
+    events: parse(row.events, []), status: String(row.status) as SourceWebhook['status'], healthMessage: optional(row.health_message), lastDeliveryAt: optional(row.last_delivery_at), lastReconciledAt: optional(row.last_reconciled_at), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }
+}
+
+function mapDelivery(row: Row): SourceWebhookDelivery {
+  return { id: String(row.id), connectionId: String(row.connection_id), webhookId: String(row.webhook_id), providerDeliveryId: String(row.provider_delivery_id), event: String(row.event), action: optional(row.action), commitSha: optional(row.commit_sha),
+    signatureStatus: String(row.signature_status) as SourceWebhookDelivery['signatureStatus'], status: String(row.status) as SourceWebhookDelivery['status'], payloadSummary: parse(row.payload_summary, {}), operationId: optional(row.operation_id), error: optional(row.error), receivedAt: String(row.received_at), processedAt: optional(row.processed_at) }
+}
+
 export class SourceConnectionStore {
   private readonly key?: Buffer
   private readonly nowFn: () => Date
@@ -228,6 +238,66 @@ export class SourceConnectionStore {
   listBindings(input: { connectionId?: string, projectId?: string, status?: SourceBinding['status'] } = {}): SourceBinding[] {
     const rows = this.controlPlane.database.query<Row, []>('SELECT * FROM source_bindings ORDER BY created_at DESC').all()
     return rows.map(mapBinding).filter(item => (!input.connectionId || item.connectionId === input.connectionId) && (!input.projectId || item.projectId === input.projectId) && (!input.status || item.status === input.status))
+  }
+
+  createWebhook(input: { connectionId: string, repositoryId?: string, repositoryFullName: string, events?: string[], endpointToken?: string, secret?: string }): { webhook: SourceWebhook, secret: string } {
+    const connection = this.getConnection(input.connectionId)
+    if (!connection || connection.status === 'disconnected') throw new Error('Active source connection was not found')
+    const id = this.idFn(); const now = this.now(); const endpointToken = input.endpointToken ?? randomBytes(24).toString('base64url'); const secret = input.secret ?? randomBytes(32).toString('base64url')
+    const events = [...new Set(input.events ?? ['push', 'pull_request'])].filter(value => ['push', 'pull_request'].includes(value))
+    if (!events.length) throw new Error('At least one supported webhook event is required')
+    this.run(`INSERT INTO source_webhooks (id, connection_id, repository_id, repository_full_name, endpoint_token_hash, secret_ciphertext, events, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      [id, input.connectionId, input.repositoryId ?? null, normalizeRepository(input.repositoryFullName), hash(endpointToken), this.encrypt(secret), json(events), now, now])
+    this.controlPlane.appendEvent({ organizationId: connection.organizationId, type: 'source.webhook.created', payload: { webhookId: id, connectionId: connection.id, repository: input.repositoryFullName, events } })
+    return { webhook: { ...this.getWebhook(id)!, endpointToken }, secret }
+  }
+  getWebhook(id: string): SourceWebhook | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_webhooks WHERE id = ?').get(id)
+    return row ? mapWebhook(row) : undefined
+  }
+  getWebhookByEndpointToken(endpointToken: string): SourceWebhook | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_webhooks WHERE endpoint_token_hash = ?').get(hash(endpointToken))
+    return row ? mapWebhook(row) : undefined
+  }
+  getWebhookSecret(id: string): string {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT secret_ciphertext FROM source_webhooks WHERE id = ?').get(id)
+    if (!row) throw new Error('Source webhook was not found')
+    return this.decrypt(String(row.secret_ciphertext))
+  }
+  listWebhooks(connectionId: string): SourceWebhook[] {
+    return this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_webhooks WHERE connection_id = ? ORDER BY repository_full_name').all(connectionId).map(mapWebhook)
+  }
+  updateWebhookState(id: string, input: { providerWebhookId?: string, status: SourceWebhook['status'], healthMessage?: string, reconciled?: boolean }): SourceWebhook {
+    const webhook = this.getWebhook(id)
+    if (!webhook) throw new Error('Source webhook was not found')
+    const now = this.now()
+    this.run(`UPDATE source_webhooks SET provider_webhook_id=COALESCE(?, provider_webhook_id), status=?, health_message=?, last_reconciled_at=COALESCE(?, last_reconciled_at), updated_at=? WHERE id=?`,
+      [input.providerWebhookId ?? null, input.status, input.healthMessage?.slice(0, 1000) ?? null, input.reconciled ? now : null, now, id])
+    return this.getWebhook(id)!
+  }
+  getDeliveryByProviderId(connectionId: string, providerDeliveryId: string): SourceWebhookDelivery | undefined {
+    const row = this.controlPlane.database.query<Row, [string, string]>('SELECT * FROM source_webhook_deliveries WHERE connection_id = ? AND provider_delivery_id = ?').get(connectionId, providerDeliveryId)
+    return row ? mapDelivery(row) : undefined
+  }
+  recordDelivery(input: { connectionId: string, webhookId: string, providerDeliveryId: string, event: string, action?: string, commitSha?: string, signatureStatus: SourceWebhookDelivery['signatureStatus'], status: SourceWebhookDelivery['status'], payloadSummary?: JsonValue, operationId?: string, error?: string }): { delivery: SourceWebhookDelivery, duplicate: boolean } {
+    const existing = this.getDeliveryByProviderId(input.connectionId, input.providerDeliveryId)
+    if (existing) return { delivery: existing, duplicate: true }
+    const id = this.idFn(); const now = this.now()
+    this.controlPlane.database.transaction(() => {
+      this.run(`INSERT INTO source_webhook_deliveries (id, connection_id, webhook_id, provider_delivery_id, event, action, commit_sha, signature_status, status, payload_summary, operation_id, error, received_at, processed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, input.connectionId, input.webhookId, input.providerDeliveryId, input.event.slice(0, 100), input.action?.slice(0, 100) ?? null, input.commitSha?.slice(0, 128) ?? null, input.signatureStatus, input.status, json(input.payloadSummary ?? {}), input.operationId ?? null, input.error?.slice(0, 2000) ?? null, now, ['enqueued', 'ignored', 'rejected', 'failed'].includes(input.status) ? now : null])
+      this.run('UPDATE source_webhooks SET last_delivery_at=?, updated_at=? WHERE id=?', [now, now, input.webhookId])
+    })()
+    return { delivery: this.getDeliveryByProviderId(input.connectionId, input.providerDeliveryId)!, duplicate: false }
+  }
+  updateDelivery(id: string, input: { status: SourceWebhookDelivery['status'], operationId?: string, error?: string }): SourceWebhookDelivery {
+    this.run('UPDATE source_webhook_deliveries SET status=?, operation_id=?, error=?, processed_at=? WHERE id=?', [input.status, input.operationId ?? null, input.error?.slice(0, 2000) ?? null, this.now(), id])
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM source_webhook_deliveries WHERE id = ?').get(id)
+    if (!row) throw new Error('Source webhook delivery was not found')
+    return mapDelivery(row)
+  }
+  listDeliveries(webhookId: string, limit = 100): SourceWebhookDelivery[] {
+    return this.controlPlane.database.query<Row, [string, number]>('SELECT * FROM source_webhook_deliveries WHERE webhook_id = ? ORDER BY received_at DESC LIMIT ?').all(webhookId, Math.min(500, Math.max(1, limit))).map(mapDelivery)
   }
   disconnectConnection(id: string, actorId?: string): { connection: SourceConnection, affectedBindings: SourceBinding[] } {
     const connection = this.getConnection(id)

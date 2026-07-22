@@ -104,7 +104,8 @@ export interface SourceWebhook {
   repositoryId?: string
   repositoryFullName: string
   providerWebhookId?: string
-  endpointToken: string
+  /** Returned only when the webhook endpoint is created; stored as a hash. */
+  endpointToken?: string
   events: string[]
   status: 'pending' | 'healthy' | 'degraded' | 'disabled'
   healthMessage?: string
