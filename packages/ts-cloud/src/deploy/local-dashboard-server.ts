@@ -39,6 +39,7 @@ import { createVolumeQueueHandlers, DockerNamedVolumeDriver, ServerPathVolumeDri
 import { createFleetQueueHandlers, FleetService, FleetStore, SshFleetDriver } from '../fleet'
 import { PlacementService, PlacementStore } from '../placement'
 import { createRegionQueueHandlers, RegionService, RegionStore, UnavailableRegionalDriver } from '../regions'
+import { ControlPlaneCleanupDriver, createMaintenanceQueueHandlers, MaintenanceService, MaintenanceStore, type CleanupPlan } from '../maintenance'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -452,6 +453,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/capacity/explain',
   'POST /api/regions',
   'POST /api/regions/action',
+  'POST /api/maintenance/cleanup-preview',
+  'POST /api/maintenance/cleanup-apply',
+  'POST /api/maintenance/drill',
+  'POST /api/maintenance/drill-run',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -803,6 +808,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/operations/previews': 'deployments:read',
   '/operations/releases': 'deployments:read',
   '/operations/regions': 'deployments:read',
+  '/operations/maintenance': 'deployments:read',
   '/operations/workloads': 'runtime:read',
   '/operations/observability': 'runtime:logs',
   '/operations/alerts': 'runtime:read',
@@ -1087,6 +1093,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const placementService = new PlacementService(placementStore, fleetStore)
   const regionStore = new RegionStore(controlPlane.store)
   const regionService = new RegionService(regionStore, operationQueue)
+  const maintenanceStore = new MaintenanceStore(controlPlane.store)
+  const maintenanceService = new MaintenanceService(maintenanceStore, operationQueue)
+  const cleanupDrivers = (['releases','artifacts','operations','logs','previews','snapshots','orphaned_resources'] as CleanupPlan['kind'][]).map(kind=>new ControlPlaneCleanupDriver(kind,controlPlane.store,controlPlane.project.id,controlPlane.organization.id))
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -1239,7 +1248,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createFleetQueueHandlers(fleetStore, fleetService.drivers), ...createRegionQueueHandlers(regionStore,[new UnavailableRegionalDriver('aws','AWS regional execution requires an injected AwsRegionalTransport; topology and plans were preserved without provider mutation.')]), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createFleetQueueHandlers(fleetStore, fleetService.drivers), ...createRegionQueueHandlers(regionStore,[new UnavailableRegionalDriver('aws','AWS regional execution requires an injected AwsRegionalTransport; topology and plans were preserved without provider mutation.')]), ...createMaintenanceQueueHandlers({store:maintenanceStore,cleanup:cleanupDrivers}), ...createVolumeQueueHandlers(volumeStore, volumeDrivers), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
         if (!policy.healthCheckId) return { healthy: true, mode: 'adapter' }
         const check = alertStore.getHealthCheck(policy.healthCheckId)
         if (!check || check.projectId !== policy.projectId) return { healthy: false, error: 'Configured restore health check was not found.' }
@@ -3705,6 +3714,14 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if(url.pathname==='/api/regions'&&req.method==='GET')return json({ok:true,topologies:regionStore.list(controlPlane.project.id).map(topology=>({topology,targets:regionStore.targets(topology.id),channels:regionStore.channels(topology.id),route:regionStore.route(topology.id),executions:regionStore.executions(topology.id)}))},200,{'cache-control':'no-store'})
           if(url.pathname==='/api/regions'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,topology:regionService.create({organizationId:controlPlane.organization.id,projectId:controlPlane.project.id,environmentId:controlPlane.environments.get(environment)?.id,name:String(body.name??''),hostname:String(body.hostname??''),regions:Array.isArray(body.regions)?body.regions:[],trafficPolicy:body.trafficPolicy==='weighted'||body.trafficPolicy==='latency'?body.trafficPolicy:'active_passive',dataPolicy:{replicate:Array.isArray(body.replicate)?body.replicate:['s3','dynamodb','secrets'],maxLagSeconds:Number(body.maxLagSeconds??30),retainOnDestroy:body.retainOnDestroy!==false},dnsProvider:'route53',cdnEnabled:body.cdnEnabled===true,wafEnabled:body.wafEnabled===true})},201)}catch(error){return regionFail(error,422)}}
           if(url.pathname==='/api/regions/action'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,...regionService.enqueue({topologyId:String(body.topologyId??''),kind:String(body.action??'') as any,targetRegion:body.targetRegion?String(body.targetRegion):undefined,revision:body.revision?String(body.revision):undefined,manifest:body.manifest&&typeof body.manifest==='object'?body.manifest:{},confirmation:body.confirmation?String(body.confirmation):undefined,deleteData:body.deleteData===true})},202)}catch(error){return regionFail(error,422)}}
+        }
+        if(url.pathname.startsWith('/api/maintenance')){
+          const maintenanceFail=(error:unknown,status=409)=>json({ok:false,error:error instanceof Error?error.message:String(error)},status,{'cache-control':'no-store'})
+          if(url.pathname==='/api/maintenance'&&req.method==='GET')return json({ok:true,manifests:maintenanceStore.manifests(controlPlane.organization.id),windows:maintenanceStore.windows(controlPlane.project.id),campaigns:maintenanceStore.campaigns(controlPlane.project.id).map(campaign=>({campaign,targets:maintenanceStore.targets(campaign.id)})),cleanups:maintenanceStore.cleanups(controlPlane.project.id),drills:maintenanceStore.drills(controlPlane.project.id)},200,{'cache-control':'no-store'})
+          if(url.pathname==='/api/maintenance/cleanup-preview'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,plan:await maintenanceService.previewCleanup({projectId:controlPlane.project.id,kind:String(body.kind??'operations') as CleanupPlan['kind'],criteria:{olderThanDays:Number(body.olderThanDays??30)}},cleanupDrivers)},201)}catch(error){return maintenanceFail(error,422)}}
+          if(url.pathname==='/api/maintenance/cleanup-apply'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,...maintenanceService.enqueueCleanup(String(body.planId??''),String(body.confirmation??''))},202)}catch(error){return maintenanceFail(error,422)}}
+          if(url.pathname==='/api/maintenance/drill'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,drill:maintenanceStore.createDrill({projectId:controlPlane.project.id,scenario:String(body.scenario??'control_plane') as any,isolatedTarget:String(body.isolatedTarget??''),expectedRpoMinutes:Number(body.expectedRpoMinutes??60),expectedRtoMinutes:Number(body.expectedRtoMinutes??30),recoveryPointId:body.recoveryPointId?String(body.recoveryPointId):undefined,topologyId:body.topologyId?String(body.topologyId):undefined})},201)}catch(error){return maintenanceFail(error,422)}}
+          if(url.pathname==='/api/maintenance/drill-run'&&req.method==='POST'){const body=await readJsonBody(req);try{return json({ok:true,...maintenanceService.enqueueDrill(String(body.drillId??''))},202)}catch(error){return maintenanceFail(error,422)}}
         }
 
         if (url.pathname.startsWith('/api/volumes')) {

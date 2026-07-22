@@ -80,6 +80,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('deployments:read'))<a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>@endif
           @if (canView('deployments:read'))<a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>@endif
           @if (canView('deployments:read'))<a class="{{ isActive('regions') ? 'active' : '' }}" href="{{ envHref('/operations/regions') }}">Regions & failover</a>@endif
+          @if (canView('deployments:read'))<a class="{{ isActive('maintenance') ? 'active' : '' }}" href="{{ envHref('/operations/maintenance') }}">Maintenance & DR</a>@endif
           @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
           @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
           @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif
@@ -151,6 +152,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('deployments:read'))<a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>@endif
         @if (canView('deployments:read'))<a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>@endif
         @if (canView('deployments:read'))<a class="{{ isActive('regions') ? 'active' : '' }}" href="{{ envHref('/operations/regions') }}">Regions & failover</a>@endif
+        @if (canView('deployments:read'))<a class="{{ isActive('maintenance') ? 'active' : '' }}" href="{{ envHref('/operations/maintenance') }}">Maintenance & DR</a>@endif
         @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
         @if (canView('runtime:logs'))<a class="{{ isActive('observability') ? 'active' : '' }}" href="{{ envHref('/operations/observability') }}">Observability</a>@endif
         @if (canView('runtime:read'))<a class="{{ isActive('alerts') ? 'active' : '' }}" href="{{ envHref('/operations/alerts') }}">Alerts & health</a>@endif

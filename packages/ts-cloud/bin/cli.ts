@@ -9,6 +9,7 @@ import {
   registerServerCommands,
   registerPlacementCommands,
   registerRegionCommands,
+  registerMaintenanceCommands,
   registerFunctionCommands,
   registerContainerCommands,
   registerDomainCommands,
@@ -96,6 +97,7 @@ registerStackCommands(app)
 registerServerCommands(app)
 registerPlacementCommands(app)
 registerRegionCommands(app)
+registerMaintenanceCommands(app)
 registerFunctionCommands(app)
 registerContainerCommands(app)
 registerCdnCommands(app)
