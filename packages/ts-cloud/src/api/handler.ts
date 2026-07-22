@@ -9,6 +9,7 @@ import { applyApplicationDraft, detectApplication, planApplication } from '../on
 import { DurableOperationQueue } from '../queue'
 import { PreviewEnvironmentService } from '../preview'
 import { ComposeApplicationService, listComposeTemplates } from '../compose'
+import { ReleaseService, releaseStrategyCapabilities } from '../release'
 import { AutomationApiService, ApiServiceError } from './service'
 import { API_VERSION, openApiDocument } from './openapi'
 
@@ -58,6 +59,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
   const queue = new DurableOperationQueue(options.controlPlane)
   const previews = new PreviewEnvironmentService(options.controlPlane)
   const compose = new ComposeApplicationService(options.controlPlane)
+  const releases = new ReleaseService(options.controlPlane)
   const windows = new Map<string, { start: number, count: number }>()
   const now = options.now ?? (() => new Date())
   const limit = options.rateLimit ?? 120
@@ -104,6 +106,7 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
       const previewAction = /^\/api\/v1\/previews\/([^/]+)\/(destroy|extend|rebuild)$/.exec(url.pathname)
       const composeAction = /^\/api\/v1\/compose-applications\/([^/]+)\/(deploy|redeploy|start|stop|scale|delete)$/.exec(url.pathname)
       const composeServices = /^\/api\/v1\/compose-applications\/([^/]+)\/services$/.exec(url.pathname)
+      const releaseAction = /^\/api\/v1\/releases\/([^/]+)\/(promote|approve|activate|health|pin)$/.exec(url.pathname)
       if (request.method === 'GET' && url.pathname === '/api/v1/projects')
         body = page(service.listProjects(principal), url, requestId)
       else if (request.method === 'GET' && projectEnvironments)
@@ -122,6 +125,31 @@ export function createApiV1Handler(options: ApiV1HandlerOptions): (request: Requ
         body = page(values, url, requestId)
       }
       else if (request.method === 'GET' && url.pathname === '/api/v1/compose-templates') body = page(listComposeTemplates().map(value => ({ ...value } as Record<string, unknown>)), url, requestId, ['id', 'version'])
+      else if (request.method === 'GET' && url.pathname === '/api/v1/releases/capabilities') {
+        const kind = String(url.searchParams.get('kind') ?? '') as any; body = { capabilities: releaseStrategyCapabilities({ kind, hasHealthGate: url.searchParams.get('health') === 'true', replicas: Number(url.searchParams.get('replicas')) || 1 }), requestId }
+      }
+      else if (request.method === 'GET' && url.pathname === '/api/v1/releases') {
+        const projectId = url.searchParams.get('projectId'); if (!projectId) throw new ApiServiceError('validation_error', 'projectId is required.', 422); service.authorize(principal, 'project:read', { type: 'project', id: projectId })
+        const values = releases.releases.list({ projectId, environmentId: url.searchParams.get('environmentId') ?? undefined, resourceId: url.searchParams.get('resourceId') ?? undefined }).filter((release) => { try { service.authorize(principal, 'deployments:read', { type: 'resource', id: release.resourceId }); return true } catch { return false } }).map(release => ({ ...release, artifact: releases.releases.getArtifact(release.artifactId), transitions: releases.releases.transitions(release.id), approvals: releases.releases.approvals(release.id) } as Record<string, unknown>)); body = page(values, url, requestId)
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/release-artifacts') {
+        const input = await readBody(); service.authorize(principal, 'applications:manage', { type: 'organization' }); body = { artifact: releases.releases.registerArtifact({ organizationId: principal.serviceAccount.organizationId, digest: String(input.digest ?? ''), kind: String(input.kind ?? '') as any, uri: String(input.uri ?? ''), size: Number(input.size), mediaType: typeof input.mediaType === 'string' ? input.mediaType : undefined, provenance: input.provenance as any, attestation: input.attestation as any }), requestId }
+      }
+      else if (request.method === 'POST' && url.pathname === '/api/v1/releases') {
+        const input = await readBody(); const resourceId = String(input.resourceId ?? ''); service.authorize(principal, 'applications:manage', { type: 'resource', id: resourceId })
+        body = { release: releases.releases.create({ organizationId: principal.serviceAccount.organizationId, projectId: String(input.projectId ?? ''), environmentId: String(input.environmentId ?? ''), resourceId, artifactId: String(input.artifactId ?? ''), kind: String(input.kind ?? '') as any, sourceSha: typeof input.sourceSha === 'string' ? input.sourceSha : undefined, config: input.config as any ?? {}, manifest: input.manifest as any ?? {}, provenance: input.provenance as any, strategy: String(input.strategy ?? 'atomic') as any, healthGate: input.healthGate as any, hooks: input.hooks as any, drainSeconds: Number(input.drainSeconds) || undefined, graceSeconds: Number(input.graceSeconds) || undefined, automaticRollback: input.automaticRollback !== false, actorId: principal.actor.id, trigger: typeof input.trigger === 'string' ? input.trigger : 'api', approvalRequired: input.approvalRequired === true, replicas: Number(input.replicas) || undefined }), requestId }
+      }
+      else if (request.method === 'GET' && /^\/api\/v1\/releases\/[^/]+$/.test(url.pathname)) {
+        const id = decodeURIComponent(url.pathname.split('/').at(-1)!); const release = releases.releases.get(id); if (!release) throw new ApiServiceError('not_found', 'Release was not found.', 404); service.authorize(principal, 'deployments:read', { type: 'resource', id: release.resourceId }); body = { release, artifact: releases.releases.getArtifact(release.artifactId), transitions: releases.releases.transitions(id), approvals: releases.releases.approvals(id), requestId }
+      }
+      else if (request.method === 'POST' && releaseAction) {
+        const release = releases.releases.get(decodeURIComponent(releaseAction[1])); if (!release) throw new ApiServiceError('not_found', 'Release was not found.', 404); const input = await readBody(); const action = releaseAction[2]
+        if (action === 'promote') { const targetResourceId = String(input.targetResourceId ?? ''); service.authorize(principal, 'deployments:create', { type: 'resource', id: targetResourceId }); body = { release: releases.releases.promote(release.id, { targetEnvironmentId: String(input.targetEnvironmentId ?? ''), targetResourceId, config: input.config as any ?? {}, strategy: input.strategy as any, healthGate: input.healthGate as any, actorId: principal.actor.id, approvalRequired: input.approvalRequired === true }), requestId } }
+        else if (action === 'approve') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { release: releases.releases.approve(release.id, { actorId: principal.actor.id, decision: input.decision === 'rejected' ? 'rejected' : 'approved', comment: typeof input.comment === 'string' ? input.comment : undefined }), requestId } }
+        else if (action === 'activate') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { operation: service.operation(releases.enqueueActivation(release, { actorId: principal.actor.id })), requestId } }
+        else if (action === 'health') { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); const result = releases.completeHealthGate(release.id, { healthy: input.healthy === true, operationId: typeof input.operationId === 'string' ? input.operationId : undefined, health: input.health as any, message: typeof input.message === 'string' ? input.message : undefined }); body = { release: result.release, rollbackOperation: result.rollbackOperation ? service.operation(result.rollbackOperation) : undefined, requestId } }
+        else { service.authorize(principal, 'deployments:create', { type: 'resource', id: release.resourceId }); body = { release: releases.releases.pin(release.id, input.pinned !== false, typeof input.reason === 'string' ? input.reason : undefined), requestId } }
+      }
       else if (request.method === 'GET' && url.pathname === '/api/v1/compose-applications') {
         const projectId = url.searchParams.get('projectId'); if (!projectId) throw new ApiServiceError('validation_error', 'projectId is required.', 422)
         service.authorize(principal, 'project:read', { type: 'project', id: projectId })

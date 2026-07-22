@@ -1,4 +1,4 @@
-export const API_VERSION = '1.5.0'
+export const API_VERSION = '1.6.0'
 
 export function openApiDocument(): Record<string, unknown> {
   const error = {
@@ -55,6 +55,11 @@ export function openApiDocument(): Record<string, unknown> {
       '/api/v1/compose-applications/preview': { post: { operationId: 'previewComposeApplication', summary: 'Parse and diagnose Compose without mutation', responses: { '200': { description: 'Normalized preview and actionable diagnostics.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/compose-applications/{applicationId}/services': { get: { operationId: 'listComposeServices', summary: 'Inspect per-service desired and observed state', responses: { '200': { description: 'Service topology and status.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/compose-applications/{applicationId}/{action}': { post: { operationId: 'operateComposeApplication', summary: 'Deploy, redeploy, start, stop, scale, or delete through the durable queue', responses: { '200': { description: 'Scoped operation queued.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/release-artifacts': { post: { operationId: 'createReleaseArtifact', summary: 'Register a verified content-addressed artifact', responses: { '200': { description: 'Artifact identity registered.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/releases': { get: { operationId: 'listReleases', summary: 'List unified authorized release history', responses: listResponses({ type: 'object' }) }, post: { operationId: 'createRelease', summary: 'Create an immutable release from an existing artifact', responses: { '200': { description: 'Release record created.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/releases/capabilities': { get: { operationId: 'getReleaseCapabilities', summary: 'Explain supported strategies, capacity, cost, and rollback', responses: { '200': { description: 'Provider-aware strategy capabilities.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/releases/{releaseId}': { get: { operationId: 'getRelease', summary: 'Inspect provenance, approvals, health, and transitions', responses: { '200': { description: 'Release detail.' }, default: { $ref: '#/components/responses/Error' } } } },
+      '/api/v1/releases/{releaseId}/{action}': { post: { operationId: 'operateRelease', summary: 'Promote, approve, activate, report health, or pin', responses: { '200': { description: 'Release lifecycle updated.' }, default: { $ref: '#/components/responses/Error' } } } },
       '/api/v1/queue/settings': {
         get: { operationId: 'getQueueSettings', summary: 'Get effective concurrency limits', responses: { '200': { description: 'Queue concurrency settings.' }, default: { $ref: '#/components/responses/Error' } } },
         patch: { operationId: 'updateQueueSettings', summary: 'Confirm and audit production concurrency changes', requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confirm', 'concurrency'], properties: { confirm: { const: 'update queue limits' }, concurrency: { $ref: '#/components/schemas/QueueConcurrency' } } } } } }, responses: { '200': { description: 'Updated effective limits.' }, default: { $ref: '#/components/responses/Error' } } },

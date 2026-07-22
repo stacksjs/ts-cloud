@@ -7,6 +7,7 @@ import { TsCloudClient } from './client'
 import { createApiV1Handler } from './handler'
 import { openApiDocument } from './openapi'
 import { PreviewEnvironmentStore } from '../preview'
+import { ReleaseStore } from '../release'
 
 function fixture(rateLimit = 120) {
   const controlPlane = new ControlPlaneStore({ path: ':memory:' })
@@ -253,9 +254,31 @@ describe('/api/v1 contract', () => {
     controlPlane.close()
   })
 
+  it('creates, inspects, activates, and health-gates immutable releases', async () => {
+    const { controlPlane, organization, project, production, productionService, call } = fixture()
+    const releases = new ReleaseStore(controlPlane)
+    const artifact = releases.registerArtifact({ organizationId: organization.id, digest: `sha256:${'a'.repeat(64)}`, kind: 'static', uri: 'oci:acme/web@sha256:immutable', size: 42, provenance: { builder: 'api-test' }, attestation: { verified: true } })
+    const capabilities = await (await call('/api/v1/releases/capabilities?kind=static&health=false&replicas=1')).json() as any
+    expect(capabilities.capabilities).toEqual(expect.arrayContaining([expect.objectContaining({ strategy: 'atomic', supported: true })]))
+    const createdResponse = await call('/api/v1/releases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ projectId: project.id, environmentId: production.id, resourceId: productionService.id, artifactId: artifact.id, kind: 'static', sourceSha: 'b'.repeat(40), config: { PUBLIC_URL: 'https://example.test', API_TOKEN: 'redact-me' }, manifest: { routes: ['/'] }, strategy: 'atomic' }) })
+    expect(createdResponse.status).toBe(200)
+    const created = await createdResponse.json() as any
+    expect(created.release).toMatchObject({ artifactId: artifact.id, status: 'built', sourceSha: 'b'.repeat(40) })
+    expect(JSON.stringify(created)).not.toContain('redact-me')
+    const listed = await (await call(`/api/v1/releases?projectId=${project.id}&environmentId=${production.id}`)).json() as any
+    expect(listed.data).toMatchObject([{ id: created.release.id, artifact: { digest: artifact.digest }, transitions: [{ toStatus: 'built' }] }])
+    const detail = await (await call(`/api/v1/releases/${created.release.id}`)).json() as any
+    expect(detail).toMatchObject({ release: { id: created.release.id }, artifact: { attestation: { verified: true } }, approvals: [] })
+    const activation = await (await call(`/api/v1/releases/${created.release.id}/activate`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).json() as any
+    expect(activation.operation).toMatchObject({ kind: 'release.activate', state: 'queued', resourceId: productionService.id })
+    const healthy = await (await call(`/api/v1/releases/${created.release.id}/health`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ healthy: true, operationId: activation.operation.id, health: { status: 200 } }) })).json() as any
+    expect(healthy.release).toMatchObject({ status: 'active' })
+    controlPlane.close()
+  })
+
   it('pins required OpenAPI operations and write-only authorization', () => {
     const document = openApiDocument() as any
-    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/compose-templates', '/api/v1/compose-applications', '/api/v1/compose-applications/preview', '/api/v1/compose-applications/{applicationId}/services', '/api/v1/compose-applications/{applicationId}/{action}', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
+    expect(Object.keys(document.paths)).toEqual(expect.arrayContaining(['/api/v1/projects', '/api/v1/services', '/api/v1/deployments', '/api/v1/operations', '/api/v1/events', '/api/v1/events/stream', '/api/v1/source/connections', '/api/v1/source/repositories', '/api/v1/source/refs', '/api/v1/source/bindings', '/api/v1/source/webhooks', '/api/v1/application-detections', '/api/v1/application-plans', '/api/v1/application-drafts', '/api/v1/applications', '/api/v1/application-artifacts', '/api/v1/registry-connections', '/api/v1/queue', '/api/v1/queue/settings', '/api/v1/queue/history', '/api/v1/preview-definitions', '/api/v1/previews', '/api/v1/previews/{previewId}/destroy', '/api/v1/previews/{previewId}/extend', '/api/v1/previews/{previewId}/rebuild', '/api/v1/previews/cleanup', '/api/v1/compose-templates', '/api/v1/compose-applications', '/api/v1/compose-applications/preview', '/api/v1/compose-applications/{applicationId}/services', '/api/v1/compose-applications/{applicationId}/{action}', '/api/v1/release-artifacts', '/api/v1/releases', '/api/v1/releases/capabilities', '/api/v1/releases/{releaseId}', '/api/v1/releases/{releaseId}/{action}', '/api/v1/operations/{operationId}/logs', '/api/v1/operations/{operationId}/logs/stream', '/api/v1/operations/{operationId}/cancel', '/api/v1/operations/{operationId}/retry']))
     expect(document.components.securitySchemes.bearerAuth).toMatchObject({ scheme: 'bearer', bearerFormat: 'tsc_v1' })
     expect(document.paths['/api/v1/deployments'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
     expect(document.paths['/api/v1/applications'].post.parameters[0]).toMatchObject({ name: 'Idempotency-Key', required: true })
