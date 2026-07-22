@@ -30,6 +30,7 @@ import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEst
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
+import { AwsDatabaseBackupSource, BackupCoordinator, BackupStore, createBackupQueueHandlers, DockerVolumeBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -403,6 +404,14 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/data-services/dependencies',
   'POST /api/data-services/management',
   'POST /api/data-services/reveal',
+  'POST /api/backups/destinations',
+  'POST /api/backups/destinations/test',
+  'POST /api/backups/policies',
+  'POST /api/backups/run',
+  'POST /api/backups/verify',
+  'POST /api/backups/restore',
+  'POST /api/backups/recovery-points',
+  'POST /api/backups/retention',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -986,14 +995,27 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const dataServiceSecrets = new EncryptedDataSecretStore(controlPlane.store, resolveAuthEncryptionKey(cwd))
   const dataServiceLifecycle = new DataServiceLifecycle(dataServiceStore, operationQueue, dataServiceSecrets)
   const dataServiceRegion = config.project?.region ?? 'us-east-1'
+  const rdsClient = new RDSClient(dataServiceRegion)
   const dataAdapters = {
-    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(new RDSClient(dataServiceRegion))),
-    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport(new RDSClient(dataServiceRegion))),
+    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport(rdsClient)),
+    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport(rdsClient)),
     aws_elasticache: new AwsElastiCacheDataAdapter(new AwsElastiCacheTransport(new ElastiCacheClient(dataServiceRegion))),
     server: new ServerDataAdapter(new DockerDataTransport()),
     container: new ContainerDataAdapter(new DockerDataTransport()),
   } as const
   const resolveDataAdapter = (service: DataService) => dataAdapters[service.provider as keyof typeof dataAdapters]
+  const backupStore = new BackupStore(controlPlane.store)
+  const backupCoordinator = new BackupCoordinator(backupStore, operationQueue)
+  const backupDestination = new S3BackupDestinationAdapter(dataServiceSecrets)
+  const backupSources = {
+    managed_database: new AwsDatabaseBackupSource(dataServiceStore, rdsClient),
+    logical_database: new LogicalDatabaseBackupSource(dataServiceStore, dataServiceSecrets),
+    volume: new DockerVolumeBackupSource(),
+  } as const
+  const resolveBackupSource = (policy: BackupPolicy) =>
+    backupSources[policy.resourceKind as keyof typeof backupSources]
+  const resolveBackupDestination = (destination: BackupDestination) =>
+    destination.provider === 'aws_backup' ? undefined : backupDestination
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -1035,6 +1057,14 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   healthCheckSweep.unref?.()
   const jobScheduleSweep = setInterval(() => { try { jobService.tick() } catch (error) { console.error('ts-cloud scheduled job evaluation failed:', error) } }, 30_000)
   jobScheduleSweep.unref?.()
+  const backupScheduleSweep = setInterval(() => {
+    try {
+      backupCoordinator.enqueueDue()
+      backupCoordinator.enqueueRetention()
+    }
+    catch (error) { console.error('ts-cloud backup policy evaluation failed:', error) }
+  }, 30_000)
+  backupScheduleSweep.unref?.()
   previewService.cleanup()
   const previewCleanupSweep = setInterval(() => {
     try { previewService.cleanup() }
@@ -1126,7 +1156,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createBackupQueueHandlers({ store: backupStore, queue: operationQueue, resolveSource: resolveBackupSource, resolveDestination: resolveBackupDestination, validateHealth: async (policy, target): Promise<Record<string, JsonValue>> => {
+        if (!policy.healthCheckId) return { healthy: true, mode: 'adapter' }
+        const check = alertStore.getHealthCheck(policy.healthCheckId)
+        if (!check || check.projectId !== policy.projectId) return { healthy: false, error: 'Configured restore health check was not found.' }
+        const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check)
+        return { healthy: outcome.result.status === 'healthy', healthCheckId: check.id, healthResultId: outcome.result.id, target }
+      } }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
         parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
         onError: error => console.error('ts-cloud deployment queue worker failed:', error),
       })
@@ -3483,6 +3519,226 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           }
         }
 
+        if (url.pathname === '/api/backups' && req.method === 'GET') {
+          const environmentRecord = controlPlane.environments.get(environment),
+            policies = backupStore.listPolicies(controlPlane.project.id, environmentRecord?.id),
+            policyIds = new Set(policies.map(item => item.id)),
+            recoveryPoints = backupStore.listRecoveryPoints(controlPlane.project.id).filter(item => !item.policyId || policyIds.has(item.policyId)),
+            jobs = backupStore.listJobs(controlPlane.project.id).filter(item => !item.policyId || policyIds.has(item.policyId)),
+            sanitizeDestination = (destination: BackupDestination) => ({
+              ...destination,
+              credentialRef: undefined,
+              encryptionKeyRef: undefined,
+              credentialsConfigured: !!destination.credentialRef,
+              clientEncryptionConfigured: !!destination.encryptionKeyRef,
+            })
+          return json({
+            ok: true,
+            destinations: backupStore.listDestinations(controlPlane.project.id).map(sanitizeDestination),
+            policies,
+            recoveryPoints,
+            jobs,
+            coverage: backupStore.coverage(controlPlane.project.id).filter(item => policyIds.has(item.policy.id)),
+          })
+        }
+
+        if (url.pathname === '/api/backups/destinations' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            name = String(body.name ?? '').trim(),
+            provider = String(body.provider ?? ''),
+            encryption = String(body.encryption ?? 'provider'),
+            secretPrefix = `secret://data-services/backups/${controlPlane.project.id}/${name}`,
+            storedRefs: string[] = []
+          if (!['aws_s3', 's3_compatible', 'aws_backup'].includes(provider))
+            return json({ ok: false, error: 'A supported backup destination provider is required.' }, 422)
+          if (!['provider', 'client_side', 'both'].includes(encryption))
+            return json({ ok: false, error: 'Encryption must be provider, client_side, or both.' }, 422)
+          try {
+            let credentialRef: string | undefined,
+              encryptionKeyRef: string | undefined
+            if (body.credentials && typeof body.credentials === 'object' && !Array.isArray(body.credentials)) {
+              credentialRef = `${secretPrefix}/credentials`
+              await dataServiceSecrets.put(credentialRef, JSON.stringify(body.credentials))
+              storedRefs.push(credentialRef)
+            }
+            if (encryption !== 'provider') {
+              const key = String(body.encryptionKey ?? '')
+              if (key.length < 32)
+                throw new Error('Client-side encryption keys must contain at least 32 characters.')
+              encryptionKeyRef = `${secretPrefix}/encryption-key`
+              await dataServiceSecrets.put(encryptionKeyRef, key)
+              storedRefs.push(encryptionKeyRef)
+            }
+            const destination = backupStore.createDestination({
+              organizationId: controlPlane.organization.id,
+              projectId: controlPlane.project.id,
+              name,
+              provider: provider as BackupDestination['provider'],
+              endpoint: body.endpoint ? String(body.endpoint) : undefined,
+              endpointPolicy: body.endpointPolicy === 'allow_private' ? 'allow_private' : 'public_https',
+              bucket: body.bucket ? String(body.bucket) : undefined,
+              prefix: String(body.prefix ?? ''),
+              region: body.region ? String(body.region) : dataServiceRegion,
+              forcePathStyle: body.forcePathStyle === true,
+              credentialRef,
+              encryption: encryption as BackupDestination['encryption'],
+              encryptionKeyRef,
+              immutability: body.immutability && typeof body.immutability === 'object' && !Array.isArray(body.immutability) ? body.immutability : {},
+              status: 'untested',
+            })
+            return json({
+              ok: true,
+              destination: {
+                ...destination,
+                credentialRef: undefined,
+                encryptionKeyRef: undefined,
+                credentialsConfigured: !!credentialRef,
+                clientEncryptionConfigured: !!encryptionKeyRef,
+              },
+            }, 201)
+          }
+          catch (error) {
+            for (const reference of storedRefs) await dataServiceSecrets.remove(reference).catch(() => {})
+            return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/backups/destinations/test' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            destination = backupStore.getDestination(String(body.id ?? ''))
+          if (!destination || destination.projectId !== controlPlane.project.id)
+            return json({ ok: false, error: 'Backup destination was not found.' }, 404)
+          if (destination.provider === 'aws_backup')
+            return json({ ok: false, error: 'AWS Backup destinations are verified by creating a provider recovery point.' }, 422)
+          try {
+            await backupDestination.test(destination)
+            return json({ ok: true, destination: backupStore.recordDestinationTest(destination.id, { ok: true }) })
+          }
+          catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            backupStore.recordDestinationTest(destination.id, { ok: false, error: message })
+            return json({ ok: false, error: message }, 502)
+          }
+        }
+
+        if (url.pathname === '/api/backups/policies' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            environmentRecord = controlPlane.environments.get(environment),
+            destination = backupStore.getDestination(String(body.destinationId ?? '')),
+            resourceKind = String(body.resourceKind ?? ''),
+            dataServiceId = body.dataServiceId ? String(body.dataServiceId) : undefined,
+            service = dataServiceId ? dataServiceStore.get(dataServiceId) : undefined,
+            resourceId = body.resourceId ? String(body.resourceId) : undefined,
+            resource = resourceId ? controlPlane.store.getResource(resourceId) : undefined
+          if (!environmentRecord) return json({ ok: false, error: 'Environment was not found.' }, 404)
+          if (!destination || destination.projectId !== controlPlane.project.id)
+            return json({ ok: false, error: 'Backup destination was not found.' }, 404)
+          if (!['managed_database', 'logical_database', 'volume', 'files', 'control_plane', 'infrastructure'].includes(resourceKind))
+            return json({ ok: false, error: 'A supported backup resource kind is required.' }, 422)
+          if (dataServiceId && (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord.id))
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          if (resourceId && (!resource || resource.projectId !== controlPlane.project.id || resource.environmentId !== environmentRecord.id))
+            return json({ ok: false, error: 'Resource was not found in this environment.' }, 404)
+          if (resourceKind === 'managed_database' && !service)
+            return json({ ok: false, error: 'Managed database policies require a data service.' }, 422)
+          if (resourceKind === 'logical_database' && (!service || !['container', 'server'].includes(service.provider)))
+            return json({ ok: false, error: 'Logical database policies require an on-box data service.' }, 422)
+          if (resourceKind === 'volume' && (!resource || !/^[A-Za-z0-9][A-Za-z0-9_.-]{1,127}$/.test(String(body.volumeName ?? ''))))
+            return json({ ok: false, error: 'Volume policies require a scoped resource and valid volumeName.' }, 422)
+          try {
+            const policy = backupStore.createPolicy({
+              organizationId: controlPlane.organization.id,
+              projectId: controlPlane.project.id,
+              environmentId: environmentRecord.id,
+              resourceId,
+              dataServiceId,
+              destinationId: destination.id,
+              name: String(body.name ?? '').trim(),
+              resourceKind: resourceKind as BackupPolicy['resourceKind'],
+              schedule: String(body.schedule ?? 'daily'),
+              timezone: String(body.timezone ?? 'UTC'),
+              retention: body.retention && typeof body.retention === 'object' && !Array.isArray(body.retention) ? body.retention : { keepLast: 7, expireAfterDays: 30 },
+              compression: ['none', 'gzip', 'zstd'].includes(String(body.compression)) ? body.compression : 'gzip',
+              encryption: ['destination', 'client_side', 'both'].includes(String(body.encryption)) ? body.encryption : 'destination',
+              includePatterns: resourceKind === 'volume'
+                ? [String(body.volumeName), ...(Array.isArray(body.includePatterns) ? body.includePatterns.map(String) : [])]
+                : Array.isArray(body.includePatterns) ? body.includePatterns.map(String) : [],
+              excludePatterns: Array.isArray(body.excludePatterns) ? body.excludePatterns.map(String) : [],
+              expectedRpoMinutes: Math.max(1, Number(body.expectedRpoMinutes) || 1440),
+              expectedRtoMinutes: Math.max(1, Number(body.expectedRtoMinutes) || 120),
+              healthCheckId: body.healthCheckId ? String(body.healthCheckId) : undefined,
+              enabled: body.enabled !== false,
+            })
+            return json({ ok: true, policy }, 201)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422) }
+        }
+
+        if (url.pathname === '/api/backups/run' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            policy = backupStore.getPolicy(String(body.policyId ?? '')),
+            environmentRecord = controlPlane.environments.get(environment)
+          if (!policy || policy.projectId !== controlPlane.project.id || policy.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Backup policy was not found in this environment.' }, 404)
+          try {
+            const job = backupCoordinator.enqueueBackup(policy, new Date().toISOString(), organizationPrincipal(user).actor?.id)
+            return json({ ok: true, job }, 202)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409) }
+        }
+
+        if (url.pathname === '/api/backups/verify' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            point = backupStore.getRecoveryPoint(String(body.recoveryPointId ?? ''))
+          if (!point || point.projectId !== controlPlane.project.id)
+            return json({ ok: false, error: 'Recovery point was not found.' }, 404)
+          return json({ ok: true, job: backupCoordinator.enqueueVerification(point) }, 202)
+        }
+
+        if (url.pathname === '/api/backups/restore' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            point = backupStore.getRecoveryPoint(String(body.recoveryPointId ?? '')),
+            mode = body.mode === 'in_place' ? 'in_place' as const : 'isolated' as const,
+            target = body.target && typeof body.target === 'object' && !Array.isArray(body.target) ? { ...body.target, inPlace: mode === 'in_place' } : { inPlace: mode === 'in_place' },
+            session = guard.resolveSession(req),
+            restoreInput = {
+              mode,
+              target,
+              targetName: String(body.targetName ?? ''),
+              confirm: body.confirm ? String(body.confirm) : undefined,
+              recentAuth: !authEnabled || (!!session && authentication.isRecentlyAuthenticated(session)),
+              downtimeAcknowledged: body.downtimeAcknowledged === true,
+              safetyBackupId: body.safetyBackupId ? String(body.safetyBackupId) : undefined,
+            }
+          if (!point || point.projectId !== controlPlane.project.id)
+            return json({ ok: false, error: 'Recovery point was not found.' }, 404)
+          if (body.drill === true && mode !== 'isolated')
+            return json({ ok: false, error: 'Recovery drills must use an isolated target.' }, 422)
+          try {
+            const plan = backupCoordinator.planRestore(point, restoreInput)
+            if (body.execute !== true) return json({ ok: true, plan, executionCreated: false })
+            const job = backupCoordinator.enqueueRestore(point, { ...restoreInput, drill: body.drill === true, actorId: organizationPrincipal(user).actor?.id })
+            return json({ ok: true, plan, job }, 202)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409) }
+        }
+
+        if (url.pathname === '/api/backups/recovery-points' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            point = backupStore.getRecoveryPoint(String(body.id ?? ''))
+          if (!point || point.projectId !== controlPlane.project.id)
+            return json({ ok: false, error: 'Recovery point was not found.' }, 404)
+          if (body.held == null && body.pinned == null)
+            return json({ ok: false, error: 'held or pinned must be provided.' }, 422)
+          return json({ ok: true, recoveryPoint: backupStore.updateRecoveryPoint(point.id, {
+            held: body.held == null ? point.held : body.held === true,
+            pinned: body.pinned == null ? point.pinned : body.pinned === true,
+          }) })
+        }
+
+        if (url.pathname === '/api/backups/retention' && req.method === 'POST')
+          return json({ ok: true, jobs: backupCoordinator.enqueueRetention() }, 202)
+
         if (url.pathname === '/api/data-services/capabilities' && req.method === 'GET') {
           const engine = String(url.searchParams.get('engine') ?? '') as DataEngine,
             provider = String(url.searchParams.get('provider') ?? '') as DataProvider
@@ -3972,6 +4228,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     clearInterval(alertEvaluationSweep)
     clearInterval(healthCheckSweep)
     clearInterval(jobScheduleSweep)
+    clearInterval(backupScheduleSweep)
     clearUiCache()
     runtimeStreams.clear()
     queueWorker?.stop()

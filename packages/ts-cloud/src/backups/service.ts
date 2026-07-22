@@ -6,7 +6,7 @@ import type {
   BackupPolicy,
   RecoveryPoint,
 } from './model'
-import type { StoredBackup } from './s3-destination'
+import type { MultipartCheckpoint, StoredBackup } from './s3-destination'
 import { createHash } from 'node:crypto'
 import { DurableOperationQueue } from '../queue'
 import { BackupStore } from './store'
@@ -63,7 +63,7 @@ export interface BackupDestinationAdapter {
       key: string
       body: Uint8Array
       contentType?: string
-      checkpoint?: (value: Record<string, JsonValue>) => void
+      checkpoint?: (value: MultipartCheckpoint) => void
     },
   ): Promise<StoredBackup>
   download(
@@ -377,7 +377,7 @@ export function createBackupQueueHandlers(input: {
                         `Uploaded ${Number(value.bytesUploaded ?? 0)} backup bytes.`,
                       )
                       input.store.updateJob(job.id, {
-                        progress: { phase: 'uploading', multipart: value },
+                        progress: { phase: 'uploading', multipart: { ...value } },
                       })
                     },
                   })

@@ -123,7 +123,7 @@ export class DockerVolumeBackupSource implements BackupSourceAdapter {
     policy: BackupPolicy,
     _context: QueueExecutionContext,
   ): Promise<BackupSourceResult> {
-    const volume = String(policy.resourceId ?? '')
+    const volume = String(policy.includePatterns[0] ?? policy.resourceId ?? '')
     if (!validVolume.test(volume))
       throw new Error('Volume backups require a valid named-volume resource identifier.')
     if (!(await this.runtime.exists(volume)))

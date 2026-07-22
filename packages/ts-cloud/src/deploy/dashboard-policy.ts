@@ -317,6 +317,15 @@ const POLICIES: Record<string, RoutePolicy> = {
   'POST /api/data-services/dependencies': { capability: 'data:admin' },
   'POST /api/data-services/management': { capability: 'data:admin' },
   'POST /api/data-services/reveal': { capability: 'data:admin' },
+  'GET /api/backups': { capability: 'backups:read' },
+  'POST /api/backups/destinations': { capability: 'backups:create' },
+  'POST /api/backups/destinations/test': { capability: 'backups:create' },
+  'POST /api/backups/policies': { capability: 'backups:create' },
+  'POST /api/backups/run': { capability: 'backups:create' },
+  'POST /api/backups/verify': { capability: 'backups:create' },
+  'POST /api/backups/restore': { capability: 'backups:restore' },
+  'POST /api/backups/recovery-points': { capability: 'backups:create' },
+  'POST /api/backups/retention': { capability: 'backups:create' },
 
   // Actions and server operations shell out on the box as root.
   'GET /api/actions': { capability: 'runtime:read' },
