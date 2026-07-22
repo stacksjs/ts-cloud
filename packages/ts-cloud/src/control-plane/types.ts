@@ -41,6 +41,8 @@ export type AuthorizationCapability
     | 'security:waive'
     | 'sources:read'
     | 'sources:manage'
+    | 'applications:read'
+    | 'applications:manage'
     | 'automation:read'
     | 'automation:manage'
     | 'tags:manage'

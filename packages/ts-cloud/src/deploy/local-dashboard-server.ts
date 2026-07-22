@@ -8,7 +8,7 @@ import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, extname, join, normalize } from 'node:path'
+import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
 import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorization, completeOidcAuthorization, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
@@ -17,6 +17,7 @@ import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
 import { listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
+import { ApplicationArtifactStore, ApplicationDraftStore, applyApplicationDraft, detectApplication, planApplication, RegistryConnectionStore, scanApplicationDirectory } from '../onboarding'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -304,6 +305,10 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
+  'POST /api/onboarding/registries',
+  'PATCH /api/onboarding/registries',
+  'DELETE /api/onboarding/registries',
+  'POST /api/onboarding/apply',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -547,6 +552,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/deployments',
   '/server/logs',
   '/integrations',
+  '/applications/new',
   '/account/security',
   '/security',
   '/access-denied',
@@ -580,6 +586,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/security': 'security:read',
   '/security': 'security:read',
   '/integrations': 'sources:read',
+  '/applications/new': 'applications:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -791,6 +798,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const automationIdentities = new AutomationIdentityStore(controlPlane.store)
   const securityPosture = new SecurityPostureStore(controlPlane.store)
   const sourceConnections = new SourceConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
+  const applicationDrafts = new ApplicationDraftStore(controlPlane.store)
+  const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
+  const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   ensureDefaultSecurityPolicies(controlPlane)
   recordDashboardHostPosture(securityPosture, securityScope(controlPlane, String(defaultEnvironment)), initialData)
   if (bootstrap) {
@@ -1347,6 +1357,92 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (!token || account?.organizationId !== controlPlane.organization.id)
             return json({ ok: false, error: 'API token was not found.' }, 404)
           return json({ ok: true, token: automationIdentities.revokeToken(token.id, principal.actor?.id) })
+        }
+
+        if (url.pathname === '/api/onboarding' && req.method === 'GET') {
+          const connections = sourceConnections.listConnections(controlPlane.organization.id)
+          return json({
+            drafts: applicationDrafts.list(controlPlane.project.id),
+            artifacts: applicationArtifacts.list(controlPlane.project.id),
+            registries: registryConnections.list(controlPlane.organization.id),
+            sourceConnections: connections,
+            repositories: connections.flatMap(connection => sourceConnections.listRepositories(connection.id)),
+            project: { id: controlPlane.project.id, slug: controlPlane.project.slug, name: controlPlane.project.name },
+            environments: [...controlPlane.environments.values()].map(item => ({ id: item.id, slug: item.slug, name: item.name, kind: item.kind, region: item.region })),
+            resources: controlPlane.store.listResources(controlPlane.project.id).filter(resource => resource.kind === 'application').map(resource => ({ id: resource.id, slug: resource.slug, name: resource.name, environmentId: resource.environmentId })),
+          })
+        }
+
+        if (url.pathname === '/api/onboarding/detect' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          try {
+            if (Array.isArray(body.files)) {
+              if (body.files.length > 10_000) throw new Error('Detection file-count limit exceeded')
+              const files = body.files.map((item: any) => ({ path: String(item.path ?? ''), size: Number(item.size ?? 0), content: typeof item.content === 'string' ? item.content.slice(0, 256 * 1024) : undefined }))
+              return json({ ok: true, candidates: detectApplication(files) })
+            }
+            const root = resolve(cwd, String(body.root ?? '.')); const rootRelative = relative(cwd, root)
+            if (rootRelative === '..' || rootRelative.startsWith(`..${sep}`)) throw new Error('Detection root must stay inside the project')
+            return json({ ok: true, candidates: detectApplication(scanApplicationDirectory(root)) })
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Application detection failed.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/plan' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          try { return json({ ok: true, plan: planApplication(body.draft, Array.isArray(body.suppliedSecretNames) ? body.suppliedSecretNames.map(String) : []) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Application plan could not be generated.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/drafts' && req.method === 'POST') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          try { return json({ ok: true, draft: applicationDrafts.create({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, name: String(body.name ?? body.draft?.name ?? 'Application draft'), draft: { ...body.draft, projectId: controlPlane.project.id }, step: body.step, suppliedSecretNames: Array.isArray(body.suppliedSecretNames) ? body.suppliedSecretNames.map(String) : [], actorId: principal.actor?.id }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Application draft could not be saved.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/drafts' && req.method === 'PATCH') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user); const current = applicationDrafts.get(String(body.id ?? ''))
+          if (!current || current.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Application draft was not found.' }, 404)
+          try { return json({ ok: true, draft: applicationDrafts.update(current.id, Number(body.version), { draft: { ...body.draft, projectId: controlPlane.project.id }, step: body.step, suppliedSecretNames: Array.isArray(body.suppliedSecretNames) ? body.suppliedSecretNames.map(String) : undefined, actorId: principal.actor?.id }) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Application draft could not be updated.' }, 409) }
+        }
+
+        if (url.pathname === '/api/onboarding/artifacts' && req.method === 'POST') {
+          const principal = organizationPrincipal(user); const declared = Number(req.headers.get('content-length') ?? 0)
+          if (declared > 100 * 1024 * 1024) return json({ ok: false, error: 'Artifact exceeds the 100 MB upload limit.' }, 413)
+          try { const bytes = new Uint8Array(await req.arrayBuffer()); return json({ ok: true, artifact: applicationArtifacts.create({ organizationId: controlPlane.organization.id, projectId: controlPlane.project.id, filename: req.headers.get('x-artifact-filename') ?? 'application.zip', bytes, actorId: principal.actor?.id }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Artifact could not be inspected.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/registries' && req.method === 'POST') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          try { return json({ ok: true, registry: registryConnections.create({ organizationId: controlPlane.organization.id, provider: body.provider, name: String(body.name ?? 'Container registry'), host: String(body.host ?? ''), credential: body.token || body.password ? { username: typeof body.username === 'string' ? body.username : undefined, password: typeof body.password === 'string' ? body.password : undefined, token: typeof body.token === 'string' ? body.token : undefined } : undefined, credentialExpiresAt: typeof body.credentialExpiresAt === 'string' ? body.credentialExpiresAt : undefined, actorId: principal.actor?.id }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Registry connection could not be created.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/registries' && req.method === 'PATCH') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user); const connection = registryConnections.get(String(body.id ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Registry connection was not found.' }, 404)
+          try {
+            if (body.action === 'test') return json({ ok: true, registry: await registryConnections.test(connection.id, { image: typeof body.image === 'string' ? body.image : undefined }) })
+            if (body.action === 'rotate') return json({ ok: true, registry: registryConnections.rotate(connection.id, { username: typeof body.username === 'string' ? body.username : undefined, password: typeof body.password === 'string' ? body.password : undefined, token: typeof body.token === 'string' ? body.token : undefined }, { expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : undefined, actorId: principal.actor?.id }) })
+            return json({ ok: false, error: 'Registry action must be test or rotate.' }, 422)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Registry connection could not be updated.' }, 422) }
+        }
+
+        if (url.pathname === '/api/onboarding/registries' && req.method === 'DELETE') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user); const connection = registryConnections.get(String(body.id ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Registry connection was not found.' }, 404)
+          const affectedDrafts = applicationDrafts.list(controlPlane.project.id).filter(draft => (draft.input.source.kind === 'image' && draft.input.source.registryConnectionId === connection.id) || (draft.input.build.kind === 'prebuilt_image' && draft.input.build.registryConnectionId === connection.id))
+          if (body.preview === true) return json({ ok: true, preview: true, affectedDrafts })
+          return json({ ok: true, registry: registryConnections.disconnect(connection.id, principal.actor?.id), affectedDrafts })
+        }
+
+        if (url.pathname === '/api/onboarding/apply' && req.method === 'POST') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          try { const result = applyApplicationDraft({ controlPlane: controlPlane.store, drafts: applicationDrafts, draftId: String(body.id ?? ''), expectedVersion: Number(body.version), confirmEnvironment: String(body.confirmEnvironment ?? ''), actorId: principal.actor?.id }); return json({ ok: true, resource: result.resource, operation: result.operation, plan: result.plan }, 202) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Application plan could not be applied.' }, 422) }
         }
 
         if (url.pathname === '/api/sources' && req.method === 'GET') {
