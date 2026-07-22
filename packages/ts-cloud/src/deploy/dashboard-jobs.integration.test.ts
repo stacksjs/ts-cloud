@@ -53,6 +53,8 @@ describe('dashboard jobs integration', () => {
 
     const invalidPayload = await call('/api/jobs', { method: 'POST', headers, body: JSON.stringify({ name: 'Unsafe', provider: 'server', expression: '0 * * * *', operationId: 'scheduler:run:web', payloadRefs: { token: 'inline-secret' } }) })
     expect(invalidPayload.status).toBe(422)
+    const destructiveTarget = await call('/api/jobs', { method: 'POST', headers, body: JSON.stringify({ name: 'Recurring deployment', provider: 'server', expression: '0 * * * *', operationId: 'deploy:web' }) })
+    expect(destructiveTarget.status).toBe(422)
 
     const createdResponse = await call('/api/jobs', { method: 'POST', headers, body: JSON.stringify({ name: 'Quarter-hour scheduler', provider: 'server', expression: '*/15 * * * *', timezone: 'UTC', operationId: 'scheduler:run:web', overlapPolicy: 'replace', missedRunPolicy: 'catch_up', payloadRefs: { token: 'secret://jobs/token' } }) })
     expect(createdResponse.status).toBe(201)

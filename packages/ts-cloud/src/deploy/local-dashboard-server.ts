@@ -702,6 +702,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/operations/workloads',
   '/operations/observability',
   '/operations/alerts',
+  '/operations/jobs',
   '/account/security',
   '/security',
   '/access-denied',
@@ -727,7 +728,6 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/logs': 'runtime:logs',
   '/server/metrics': 'runtime:read',
   '/server/services': 'runtime:read',
-  '/server/workers': 'automation:read',
   '/server/backups': 'backups:read',
   '/server/actions': 'runtime:restart',
   '/server/database': 'data:read',
@@ -743,6 +743,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/operations/workloads': 'runtime:read',
   '/operations/observability': 'runtime:logs',
   '/operations/alerts': 'runtime:read',
+  '/operations/jobs': 'automation:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -755,7 +756,6 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/serverless/traces': 'runtime:read',
   '/serverless/functions': 'config:read',
   '/serverless/queues': 'data:read',
-  '/serverless/scheduler': 'automation:read',
   '/serverless/data': 'data:read',
   '/serverless/assets': 'project:read',
   '/serverless/secrets': 'secrets:read',
@@ -1016,7 +1016,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     if (target.kind === 'dashboard_operation' && target.operationId) {
       const data = latestDataByEnvironment.get(jobEnvironment) ?? initialData
       const operation = resolveDashboardOperation(target.operationId, config as CloudConfig, data)
-      if (!operation)
+      if (!operation || operation.danger || !['scheduler', 'backup', 'worker'].includes(operation.group))
         return { ok: false, stderr: 'The allowlisted dashboard operation is no longer available.' }
 
       const result = await runDashboardOperation(config as CloudConfig, jobEnvironment, operation)
@@ -3149,6 +3149,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const actor = organizationPrincipal(user).actor
           const currentData = latestDataByEnvironment.get(environment) ?? initialData
           const operations = buildDashboardOperations(config as CloudConfig, currentData)
+          const schedulableOperations = operations.filter(item => !item.danger && ['scheduler', 'backup', 'worker'].includes(item.group))
           const deploymentMode = resolveDeploymentMode(config as CloudConfig)
           const recent = () => {
             const session = guard.resolveSession(req)
@@ -3196,7 +3197,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (provider !== expectedProvider)
               return json({ ok: false, error: `${deploymentMode} environments accept ${expectedProvider} schedules through this adapter.` }, 422)
             const operationId = body.operationId ? String(body.operationId) : undefined
-            if (provider === 'server' && (!operationId || !operations.some(item => item.id === operationId)))
+            if (provider === 'server' && (!operationId || !schedulableOperations.some(item => item.id === operationId)))
               return json({ ok: false, error: 'Server jobs require an allowlisted operation target.' }, 422)
             const resource = body.resourceId ? resources.find(item => item.id === body.resourceId || item.slug === body.resourceId) : undefined
             if (body.resourceId && (!resource || !visibleResource(resource.id)))
