@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 28
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 29
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1227,6 +1227,20 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX configuration_dependencies_resource_idx ON configuration_dependencies(resource_id,requires_redeploy);
       CREATE TABLE configuration_mutations (
         id TEXT PRIMARY KEY, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, idempotency_key TEXT NOT NULL UNIQUE, request_hash TEXT NOT NULL, result TEXT NOT NULL DEFAULT '{}', actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, created_at TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
+  {
+    version: 29,
+    name: 'encrypted_configuration_values',
+    sql: `
+      CREATE TABLE configuration_secret_values (
+        reference TEXT PRIMARY KEY,
+        ciphertext TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       ) STRICT;
     `,
   },
