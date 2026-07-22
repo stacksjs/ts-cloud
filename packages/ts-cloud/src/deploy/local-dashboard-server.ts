@@ -9,6 +9,7 @@ import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
 import { authorize, hashPassword, verifyPassword } from './dashboard-auth'
+import { initializeDashboardControlPlane, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
@@ -499,6 +500,10 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     process.env.TS_CLOUD_DASHBOARD_BOX = '1'
   await loadLocalEnv(cwd)
   const config = await loadCloudConfig()
+  const controlPlane = initializeDashboardControlPlane(cwd, config as CloudConfig)
+  if (controlPlane.reconciliation.failed > 0) {
+    console.warn(`  ts-cloud dashboard: marked ${controlPlane.reconciliation.failed} orphaned operation(s) as failed after restart.`)
+  }
   const availableEnvironments = Object.keys((config as CloudConfig).environments ?? {})
   // The active environment is mutable: the cockpit can switch via POST /api/env,
   // which re-resolves data, actions, and rebuilds the UI for the new environment.
@@ -724,6 +729,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/api/health') {
+          const storage = controlPlane.store.health()
           return json({
             ok: true,
             cwd,
@@ -733,6 +739,39 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             liveData: uiCache.size > 0,
             terminal: terminalEnabled,
             localPackage: import.meta.url.includes('/Code/Libraries/ts-cloud/'),
+            controlPlane: {
+              schemaVersion: storage.schemaVersion,
+              supportedSchemaVersion: storage.supportedSchemaVersion,
+              integrity: storage.integrity,
+              pendingRetryableOperations: storage.pendingRetryableOperations,
+            },
+          })
+        }
+
+        if (url.pathname === '/api/control-plane/operations') {
+          const state = url.searchParams.get('state')
+          const validState = state && ['queued', 'running', 'succeeded', 'failed', 'cancelled', 'timed_out'].includes(state)
+            ? state as 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out'
+            : undefined
+          return json({
+            operations: controlPlane.store.listOperations({
+              projectId: controlPlane.project.id,
+              state: validState,
+              kind: url.searchParams.get('kind') ?? undefined,
+              limit: Number(url.searchParams.get('limit')) || 100,
+            }),
+          })
+        }
+
+        if (url.pathname === '/api/control-plane/events') {
+          return json({
+            events: controlPlane.store.listEvents({
+              projectId: controlPlane.project.id,
+              operationId: url.searchParams.get('operationId') ?? undefined,
+              correlationId: url.searchParams.get('correlationId') ?? undefined,
+              afterSequence: Number(url.searchParams.get('afterSequence')) || undefined,
+              limit: Number(url.searchParams.get('limit')) || 200,
+            }),
           })
         }
 
@@ -992,7 +1031,16 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             command: ['deploy', '--env', environment, '--site', name, '--yes'],
             mutates: true,
           }
-          return json(await runAction(action, { cwd, cliEntry }))
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: 'dashboard.site.deploy',
+            resourceSlug: name,
+            input: { site: name },
+            execute: () => runAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
         if (url.pathname === '/api/actions')
@@ -1097,7 +1145,15 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Unknown dashboard action.' }, 404)
           if (action.mutates && body.confirm !== action.confirm)
             return json({ ok: false, error: `Type "${action.confirm}" to run this action.` }, 409)
-          return json(await runAction(action, { cwd, cliEntry }))
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: `dashboard.action.${action.id}`,
+            input: { action: action.id },
+            execute: () => runAction(action, { cwd, cliEntry }) as Promise<{ ok: boolean } & Record<string, any>>,
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
         if (url.pathname === '/api/server/operations/run' && req.method === 'POST') {
@@ -1107,14 +1163,31 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Unknown or unavailable server operation.' }, 404)
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
-          return json(await runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }))
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: `dashboard.server.${operation.id}`,
+            resourceSlug: operation.target,
+            input: { operation: operation.id, target: operation.target, to: body.to ?? null },
+            execute: () => runDashboardOperation(config as CloudConfig, environment, operation, { to: body.to }),
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
         if (url.pathname === '/api/server/command' && req.method === 'POST') {
           const body = await req.json().catch(() => ({})) as { command?: string, confirm?: string }
           if (body.confirm !== 'run')
             return json({ ok: false, error: 'Type "run" to execute this command on the server.' }, 409)
-          return json(await runServerShellCommand(config as CloudConfig, environment, String(body.command ?? '')))
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: 'dashboard.server.command',
+            input: { source: 'interactive-command' },
+            execute: () => runServerShellCommand(config as CloudConfig, environment, String(body.command ?? '')),
+          })
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
         // ── Serverless (Vapor-style) mutating operations ──────────────────────
@@ -1128,9 +1201,16 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Unknown or unavailable serverless operation.' }, 404)
           if (operation.mutates && body.confirm !== operation.confirm)
             return json({ ok: false, error: `Type "${operation.confirm}" to run this operation.` }, 409)
-          const result = await runServerlessOperation(config as CloudConfig, environment, operation, { min: body.min, max: body.max })
+          const tracked = await trackDashboardOperation({
+            controlPlane,
+            environment,
+            actor: user,
+            kind: `dashboard.serverless.${operation.id}`,
+            input: { operation: operation.id, min: body.min ?? null, max: body.max ?? null },
+            execute: () => runServerlessOperation(config as CloudConfig, environment, operation, { min: body.min, max: body.max }),
+          })
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-          return json(result)
+          return json({ ...tracked.result, controlPlaneOperation: tracked.operation })
         }
 
         if (url.pathname === '/api/serverless/command' && req.method === 'POST') {
@@ -1267,7 +1347,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   server.stop = ((closeActiveConnections?: boolean) => {
     clearInterval(throttleSweep)
     clearUiCache()
-    return stop(closeActiveConnections)
+    const result = stop(closeActiveConnections)
+    controlPlane.store.close()
+    return result
   }) as typeof server.stop
 
   return { server, url: `http://${host}:${server.port}/` }

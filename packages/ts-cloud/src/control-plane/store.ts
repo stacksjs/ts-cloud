@@ -314,6 +314,11 @@ export class ControlPlaneStore {
     return this.database.query<Row, [string]>('SELECT * FROM environments WHERE project_id = ? ORDER BY name COLLATE NOCASE, id').all(projectId).map(mapEnvironment)
   }
 
+  getEnvironmentBySlug(projectId: string, slug: string): ControlPlaneEnvironment | undefined {
+    const row = this.database.query<Row, [string, string]>('SELECT * FROM environments WHERE project_id = ? AND slug = ?').get(projectId, slug)
+    return row ? mapEnvironment(row) : undefined
+  }
+
   createResource(input: CreateResourceInput): ControlPlaneResource {
     const id = input.id ?? this.idFn()
     const now = this.now()
@@ -368,6 +373,11 @@ export class ControlPlaneStore {
       [id, input.kind, input.externalId ?? null, input.displayName, json(input.metadata ?? {}), now, now],
     )
     return mapActor(this.database.query<Row, [string]>('SELECT * FROM actors WHERE id = ?').get(id)!)
+  }
+
+  getActorByExternalId(kind: ControlPlaneActor['kind'], externalId: string): ControlPlaneActor | undefined {
+    const row = this.database.query<Row, [ControlPlaneActor['kind'], string]>('SELECT * FROM actors WHERE kind = ? AND external_id = ?').get(kind, externalId)
+    return row ? mapActor(row) : undefined
   }
 
   createOperation(input: CreateOperationInput): ControlPlaneOperation {
@@ -431,6 +441,25 @@ export class ControlPlaneStore {
       if (!row)
         return undefined
       const operation = mapOperation(row)
+      const result = run(this.database,
+        `UPDATE operations SET state = 'running', attempt = attempt + 1, lease_owner = ?, lease_expires_at = ?,
+        started_at = COALESCE(started_at, ?), updated_at = ?, version = version + 1 WHERE id = ? AND state = 'queued' AND version = ?`,
+        [workerId, expires, now, now, operation.id, operation.version],
+      )
+      if (result.changes !== 1)
+        return undefined
+      this.appendEvent({ projectId: operation.projectId, operationId: operation.id, resourceId: operation.resourceId, actorId: operation.actorId, correlationId: operation.correlationId, type: 'operation.running', payload: { attempt: operation.attempt + 1, workerId } })
+      return this.getOperation(operation.id)
+    })
+  }
+
+  claimOperation(id: string, workerId: string, leaseMs: number = 60_000): ControlPlaneOperation | undefined {
+    const now = this.now()
+    const expires = new Date(this.nowFn().getTime() + leaseMs).toISOString()
+    return this.transaction(() => {
+      const operation = this.getOperation(id)
+      if (!operation || operation.state !== 'queued')
+        return undefined
       const result = run(this.database,
         `UPDATE operations SET state = 'running', attempt = attempt + 1, lease_owner = ?, lease_expires_at = ?,
         started_at = COALESCE(started_at, ?), updated_at = ?, version = version + 1 WHERE id = ? AND state = 'queued' AND version = ?`,

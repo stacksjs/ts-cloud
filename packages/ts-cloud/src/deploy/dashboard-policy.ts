@@ -51,6 +51,9 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/config': { capability: 'site:read', anyUser: true },
   'GET /api/me': { capability: 'site:read', anyUser: true },
 
+  'GET /api/control-plane/operations': { capability: 'box:read' },
+  'GET /api/control-plane/events': { capability: 'box:read' },
+
   // --- Site-scoped: a member may reach their own sites -------------------
   'POST /api/sites/deploy': { capability: 'site:deploy', siteFrom: 'body' },
   'PATCH /api/sites': { capability: 'site:settings', siteFrom: 'body' },
