@@ -21,7 +21,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb, to) { pending.set({ operation, confirm, verb, to: to || null }); typed.set('') }
+function askOp(operation, confirm, verb, to, apiConfirm) { pending.set({ operation, confirm, verb, to: to || null, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -29,7 +29,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const payload = p.to ? { operation: p.operation, confirm: p.confirm, to: p.to } : { operation: p.operation, confirm: p.confirm }
+    const payload = p.to ? { operation: p.operation, confirm: p.apiConfirm, to: p.to } : { operation: p.operation, confirm: p.apiConfirm }
     const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
@@ -61,12 +61,12 @@ async function runOp() {
                 <td>@if (s.auto)<span class="ok pill">enabled</span>@else<span class="pill warn">disabled</span>@endif</td>
                 <td>
                   <div class="action-runner">
-                    <button class="btn ghost sm" type="button" @click="askOp('restart:{{ s.name }}', '{{ s.name }}', 'restart')">Restart</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('reload:{{ s.name }}', '{{ s.name }}', 'reload')">Reload</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('start:{{ s.name }}', '{{ s.name }}', 'start')">Start</button>
-                    <button class="btn danger sm" type="button" @click="askOp('stop:{{ s.name }}', '{{ s.name }}', 'stop')">Stop</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('enable:{{ s.name }}', '{{ s.name }}', 'enable')">Enable</button>
-                    <button class="btn ghost sm" type="button" @click="askOp('disable:{{ s.name }}', '{{ s.name }}', 'disable')">Disable</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('restart:{{ s.name }}', 'restart {{ s.name }}', 'restart {{ s.name }}', null, '{{ s.name }}')">Restart</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('reload:{{ s.name }}', 'reload {{ s.name }}', 'reload {{ s.name }}', null, '{{ s.name }}')">Reload</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('start:{{ s.name }}', 'start {{ s.name }}', 'start {{ s.name }}', null, '{{ s.name }}')">Start</button>
+                    <button class="btn danger sm" type="button" @click="askOp('stop:{{ s.name }}', 'stop {{ s.name }}', 'stop {{ s.name }}', null, '{{ s.name }}')">Stop</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('enable:{{ s.name }}', 'enable {{ s.name }}', 'enable {{ s.name }}', null, '{{ s.name }}')">Enable</button>
+                    <button class="btn ghost sm" type="button" @click="askOp('disable:{{ s.name }}', 'disable {{ s.name }}', 'disable {{ s.name }}', null, '{{ s.name }}')">Disable</button>
                   </div>
                 </td>
               </tr>

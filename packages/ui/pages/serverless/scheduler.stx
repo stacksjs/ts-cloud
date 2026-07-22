@@ -21,7 +21,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function askOp(operation, confirm, verb, apiConfirm) { pending.set({ operation, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -29,7 +29,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const res = await fetch('/api/serverless/scheduler', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: p.operation, confirm: p.confirm }) })
+    const res = await fetch('/api/serverless/scheduler', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: p.operation, confirm: p.apiConfirm }) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
   } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
@@ -50,9 +50,9 @@ async function runOp() {
         <p>An EventBridge rule invokes the CLI function with <span class="mono">schedule:run</span> every minute.</p>
       </div>
       <div class="header-actions">
-        <button class="btn sm" type="button" @click="askOp('run', 'run', 'run the scheduler now')">Run now</button>
-        <button class="btn sm" type="button" @click="askOp('enable', 'enable', 'enable the scheduler')">Enable</button>
-        <button class="btn danger sm" type="button" @click="askOp('disable', 'disable', 'disable the scheduler')">Disable</button>
+        <button class="btn sm" type="button" @click="askOp('run', '{{ app.name }} scheduler', 'run the {{ app.name }} scheduler now', 'run')">Run now</button>
+        <button class="btn sm" type="button" @click="askOp('enable', '{{ app.name }} scheduler', 'enable the {{ app.name }} scheduler', 'enable')">Enable</button>
+        <button class="btn danger sm" type="button" @click="askOp('disable', '{{ app.name }} scheduler', 'disable the {{ app.name }} scheduler', 'disable')">Disable</button>
       </div>
     </header>
 

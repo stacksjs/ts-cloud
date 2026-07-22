@@ -11,6 +11,7 @@ const users = state([])
 const dbError = state('')
 const output = state('')
 const outputShown = state(false)
+const busy = state(false)
 const dbName = state('')
 const uName = state('')
 const uPass = state('')
@@ -27,20 +28,30 @@ async function load() {
   } catch (e) { show('Could not read databases: ' + ((e && e.message) || e)) }
 }
 async function createDb() {
+  if (busy()) return
+  busy.set(true)
   show('Creating database ' + dbName() + '...')
-  const res = await fetch('/api/databases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: dbName() }) })
-  const b = await res.json()
-  show((b.ok ? 'OK created ' + (b.name || dbName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
-  if (b.ok) { dbName.set(''); load() }
+  try {
+    const res = await fetch('/api/databases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: dbName() }) })
+    const b = await res.json()
+    show((b.ok ? 'OK created ' + (b.name || dbName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    if (b.ok) { dbName.set(''); load() }
+  } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
+  finally { busy.set(false) }
 }
 async function createUser() {
+  if (busy()) return
+  busy.set(true)
   show('Creating user ' + uName() + '...')
   const payload = { username: uName(), password: uPass(), access: uAccess() }
   if (uDatabase()) payload.database = uDatabase()
-  const res = await fetch('/api/databases/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-  const b = await res.json()
-  show((b.ok ? 'OK created user ' + (b.username || uName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
-  if (b.ok) { uName.set(''); uPass.set(''); load() }
+  try {
+    const res = await fetch('/api/databases/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
+    const b = await res.json()
+    show((b.ok ? 'OK created user ' + (b.username || uName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    if (b.ok) { uName.set(''); uPass.set(''); load() }
+  } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
+  finally { busy.set(false) }
 }
 
 // Per-database backups: a gzipped dump written on the box, plus a live list.
@@ -49,11 +60,16 @@ async function loadBackups() {
   try { const res = await fetch('/api/databases/backups'); const d = await res.json(); if (d.ok) backups.set(d.backups || []) } catch {}
 }
 async function backupDb(name) {
+  if (busy()) return
+  busy.set(true)
   show('Backing up ' + name + '...')
-  const res = await fetch('/api/databases/backup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ database: name, confirm: name }) })
-  const b = await res.json()
-  show((b.ok ? 'OK backed up ' + (b.database || name) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
-  if (b.ok) loadBackups()
+  try {
+    const res = await fetch('/api/databases/backup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ database: name, confirm: name }) })
+    const b = await res.json()
+    show((b.ok ? 'OK backed up ' + (b.database || name) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
+    if (b.ok) loadBackups()
+  } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
+  finally { busy.set(false) }
 }
 onMount(() => { load(); loadBackups() })
 </script>
@@ -74,7 +90,7 @@ onMount(() => { load(); loadBackups() })
         <div class="panel">
           <form class="form-grid" @submit.prevent="createDb()">
             <div class="field-block wide"><label for="db-name">Name</label><input id="db-name" placeholder="acme_production" autocomplete="off" :value="dbName()" @input="dbName.set($event.target.value)"></div>
-            <div class="form-actions"><button class="btn" type="submit">Create database</button></div>
+            <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Create database</button></div>
           </form>
         </div>
       </div>
@@ -96,7 +112,7 @@ onMount(() => { load(); loadBackups() })
                 <option value="readonly">read only</option>
               </select>
             </div>
-            <div class="form-actions"><button class="btn" type="submit">Create user</button></div>
+            <div class="form-actions"><button class="btn" type="submit" :disabled="busy()">Create user</button></div>
           </form>
         </div>
       </div>
@@ -109,7 +125,7 @@ onMount(() => { load(); loadBackups() })
         <h2>Databases</h2>
         <div class="panel">
           <template :for="n in databases()">
-            <div class="kv"><span class="mono">{{ n }}</span> <button class="btn ghost sm" type="button" @click="backupDb(n)">Back up</button></div>
+            <div class="kv"><span class="mono">{{ n }}</span> <button class="btn ghost sm" type="button" :disabled="busy()" @click="backupDb(n)" :aria-label="'Back up ' + n">Back up</button></div>
           </template>
           <span class="item" @show="databases().length === 0 && dbError() !== ''">{{ dbError() }}</span>
           <span class="item" @show="databases().length === 0 && dbError() === ''">no databases</span>

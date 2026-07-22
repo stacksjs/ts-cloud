@@ -28,7 +28,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(kind, confirm, verb) { pending.set({ kind, confirm, verb }); typed.set('') }
+function askOp(kind, confirm, verb, apiConfirm) { pending.set({ kind, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 
 async function loadDlq() {
@@ -117,8 +117,8 @@ async function runOp() {
           </div>
           <div class="row-actions">
             <button class="btn ghost sm" type="button" :disabled="busy()" @click="loadDlq()">Refresh</button>
-            <button class="btn ghost sm" type="button" :disabled="busy()" @click="askOp('redrive', 'redrive', 'move DLQ messages back onto the source queue')">Redrive</button>
-            <button class="btn danger sm" type="button" :disabled="busy()" @click="askOp('purge-dlq', 'purge', 'permanently purge the dead-letter queue')">Purge DLQ</button>
+            <button class="btn ghost sm" type="button" :disabled="busy()" @click="askOp('redrive', target(), 'move DLQ messages into ' + target(), 'redrive')">Redrive</button>
+            <button class="btn danger sm" type="button" :disabled="busy()" @click="askOp('purge-dlq', 'dead-letter queue', 'permanently purge the dead-letter queue', 'purge')">Purge DLQ</button>
           </div>
         </div>
 

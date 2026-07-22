@@ -21,7 +21,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function askOp(operation, confirm, verb, apiConfirm) { pending.set({ operation, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -29,7 +29,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm }) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
   } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
@@ -50,7 +50,7 @@ async function runOp() {
         <p>Versioned static assets uploaded to S3 and served via CloudFront; <span class="mono">ASSET_URL</span> is injected into the app.</p>
       </div>
       <div class="header-actions">
-        <button class="btn sm" type="button" @click="askOp('assets:invalidate', 'invalidate', 'invalidate the CDN cache')">Invalidate CDN cache</button>
+        <button class="btn sm" type="button" @click="askOp('assets:invalidate', '{{ assets.bucket }}', 'invalidate the CDN cache for {{ assets.bucket }}', 'invalidate')">Invalidate CDN cache</button>
       </div>
     </header>
 

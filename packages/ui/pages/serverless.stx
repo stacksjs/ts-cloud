@@ -66,7 +66,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function askOp(operation, confirm, verb, apiConfirm) { pending.set({ operation, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -74,7 +74,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm }) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
     if (body.ok && p.operation === 'maintenance:on') maint.set(true)
@@ -137,10 +137,10 @@ async function runAppCmd() {
       </div>
       <div class="header-actions">
         <span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>
-        <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', 'maintenance', 'enable maintenance mode')">Maintenance</button>
-        <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', 'live', 'bring the app back live')">Go live</button>
-        <button class="btn ghost sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
-        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
+        <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', '{{ app.name }}', 'enable maintenance mode for {{ app.name }}', 'maintenance')">Maintenance</button>
+        <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', '{{ app.name }}', 'bring {{ app.name }} back live', 'live')">Go live</button>
+        <button class="btn ghost sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', '{{ app.name }}', 'redeploy {{ app.name }}', 'redeploy')">Redeploy</button>
       </div>
     </header>
 
@@ -261,7 +261,7 @@ async function runAppCmd() {
             </div>
           @endforeach
           <div style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--panel-br);">
-            <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back to previous</button>
+            <button class="btn danger sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back to previous</button>
           </div>
         </div>
       </div>

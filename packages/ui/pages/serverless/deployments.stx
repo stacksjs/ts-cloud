@@ -19,7 +19,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb) { pending.set({ operation, confirm, verb }); typed.set('') }
+function askOp(operation, confirm, verb, apiConfirm) { pending.set({ operation, confirm, verb, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -27,7 +27,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.confirm }) })
+    const res = await fetch('/api/serverless/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ operation: p.operation, confirm: p.apiConfirm }) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.error ? '\n' + body.error : ''))
   } catch (e) { opOutput.set('FAILED ' + p.operation + '\n\n' + ((e && e.message) || e)) }
@@ -48,8 +48,8 @@ async function runOp() {
         <p>Every deploy publishes an immutable artifact; activation is atomic and rollback flips back instantly.</p>
       </div>
       <div class="header-actions">
-        <button class="btn danger sm" type="button" @click="askOp('rollback', 'rollback', 'roll back to the previous build')">Roll back</button>
-        <button class="btn sm" type="button" @click="askOp('redeploy', 'redeploy', 'redeploy the current build')">Redeploy</button>
+        <button class="btn danger sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back</button>
+        <button class="btn sm" type="button" @click="askOp('redeploy', '{{ app.name }}', 'redeploy {{ app.name }}', 'redeploy')">Redeploy</button>
       </div>
     </header>
 

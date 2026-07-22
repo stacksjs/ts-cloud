@@ -18,7 +18,7 @@ const typed = state('')
 const confirmTok = derived(() => { const p = pending(); return p ? p.confirm : '' })
 const confirmVerb = derived(() => { const p = pending(); return p ? p.verb : '' })
 const canRun = derived(() => { const p = pending(); return !!p && typed() === p.confirm })
-function askOp(operation, confirm, verb, to) { pending.set({ operation, confirm, verb, to: to || null }); typed.set('') }
+function askOp(operation, confirm, verb, to, apiConfirm) { pending.set({ operation, confirm, verb, to: to || null, apiConfirm: apiConfirm || confirm }); typed.set('') }
 function cancelOp() { pending.set(null) }
 async function runOp() {
   const p = pending()
@@ -26,7 +26,7 @@ async function runOp() {
   pending.set(null); typed.set('')
   opShown.set(true); opOutput.set('Running ' + p.operation + '...')
   try {
-    const payload = p.to ? { operation: p.operation, confirm: p.confirm, to: p.to } : { operation: p.operation, confirm: p.confirm }
+    const payload = p.to ? { operation: p.operation, confirm: p.apiConfirm, to: p.to } : { operation: p.operation, confirm: p.apiConfirm }
     const res = await fetch('/api/server/operations/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     const body = await res.json()
     opOutput.set((body.ok ? 'OK ' : 'FAILED ') + (body.command || p.operation) + '\n\n' + (body.stdout || '') + (body.stderr ? '\n' + body.stderr : '') + (body.error ? '\n' + body.error : ''))
@@ -56,8 +56,8 @@ async function runOp() {
       <h2>Run a backup</h2>
       <div class="panel">
         <div class="row-actions">
-          <button class="btn" type="button" @click="askOp('backup:run', 'backup', 'run a backup now')">Run backup now</button>
-          <button class="btn danger" type="button" @click="askOp('backup:restore', 'restore', 'restore the latest backup')">Restore latest backup</button>
+          <button class="btn" type="button" @click="askOp('backup:run', '{{ backup.destination }}', 'run a backup to {{ backup.destination }}', null, 'backup')">Run backup now</button>
+          <button class="btn danger" type="button" @click="askOp('backup:restore', '{{ server.name }} database', 'restore the live database on {{ server.name }}', null, 'restore')">Restore latest backup</button>
         </div>
         @include('../partials/op-confirm')
         <p class="note">Backups dump the app database via ts-backups and upload to the configured destination. Restore replaces the live database from the most recent dump.</p>
