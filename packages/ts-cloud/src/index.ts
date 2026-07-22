@@ -12,6 +12,7 @@ export * from './telemetry'
 export { AlertEvaluator, AlertStore, HealthCheckRunner, NotificationRouter, evaluateTelemetryAlertRules, isQuietHours } from './alerts'
 export type { Alert, AlertEvaluation, AlertRule, AlertSample, AlertSeverity, AlertState, HealthCheck as AlertHealthCheck, HealthResult as AlertHealthResult, HealthStatus as AlertHealthStatus, NotificationChannel as AlertNotificationChannel, NotificationDelivery as AlertNotificationDelivery, NotificationRoute as AlertNotificationRoute } from './alerts'
 export * from './jobs'
+export * from './data-services'
 export * from './generators'
 
 // Validation exports - functions

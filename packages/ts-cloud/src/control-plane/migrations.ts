@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 24
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 25
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1142,6 +1142,25 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, observed_state TEXT NOT NULL DEFAULT '{}', reconciliation_status TEXT NOT NULL CHECK (reconciliation_status IN ('pending','in_sync','drifted','unsupported','unavailable')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, environment_id, source_key)
       ) STRICT;
       CREATE INDEX worker_definitions_scope_idx ON worker_definitions(project_id, environment_id, resource_id, enabled);
+    `,
+  },
+  {
+    version: 25,
+    name: 'data_service_lifecycle',
+    sql: `
+      CREATE TABLE data_services (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE SET NULL,
+        name TEXT NOT NULL, engine TEXT NOT NULL CHECK (engine IN ('postgres','mysql','mariadb','redis','mongodb','libsql')), provider TEXT NOT NULL CHECK (provider IN ('aws_rds','aws_aurora','aws_elasticache','server','container','external')), placement TEXT NOT NULL, engine_version TEXT, plan TEXT NOT NULL, storage_gb INTEGER, high_availability INTEGER NOT NULL DEFAULT 0 CHECK (high_availability IN (0,1)), public_exposure INTEGER NOT NULL DEFAULT 0 CHECK (public_exposure IN (0,1)), allowed_cidrs TEXT NOT NULL DEFAULT '[]',
+        desired_state TEXT NOT NULL DEFAULT '{}', observed_state TEXT NOT NULL DEFAULT '{}', capabilities TEXT NOT NULL DEFAULT '{}', credential_ref TEXT, status TEXT NOT NULL CHECK (status IN ('draft','planning','provisioning','available','modifying','degraded','failed','deleting','retained','adopted')), origin TEXT NOT NULL CHECK (origin IN ('managed','config','adopted')), management_enabled INTEGER NOT NULL DEFAULT 1 CHECK (management_enabled IN (0,1)), owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, environment_id, name)
+      ) STRICT;
+      CREATE INDEX data_services_scope_idx ON data_services(project_id, environment_id, status, engine);
+      CREATE TABLE data_service_credentials (
+        id TEXT PRIMARY KEY, service_id TEXT NOT NULL REFERENCES data_services(id) ON DELETE CASCADE, username TEXT NOT NULL, secret_ref TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, rotated_at TEXT, UNIQUE(service_id, username)
+      ) STRICT;
+      CREATE TABLE data_service_dependencies (
+        service_id TEXT NOT NULL REFERENCES data_services(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, secret_ref TEXT NOT NULL, requires_redeploy INTEGER NOT NULL DEFAULT 1 CHECK (requires_redeploy IN (0,1)), created_at TEXT NOT NULL, PRIMARY KEY(service_id, resource_id)
+      ) STRICT;
     `,
   },
 ]
