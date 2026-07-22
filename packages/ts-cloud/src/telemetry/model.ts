@@ -121,3 +121,13 @@ export interface TelemetryCollectionStatus {
   estimatedMonthlyCostUsd?: number
   message?: string
 }
+
+export interface SavedTelemetryQuery {
+  id: string
+  projectId: string
+  actorId?: string
+  name: string
+  query: TelemetryQuery
+  createdAt: string
+  updatedAt: string
+}

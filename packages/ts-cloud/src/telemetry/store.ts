@@ -8,6 +8,7 @@ import type {
   TelemetryQueryResult,
   TelemetryRecord,
   TelemetryRetentionPolicy,
+  SavedTelemetryQuery,
   TelemetrySeries,
   TelemetrySeriesPoint,
   TelemetrySeriesQuery,
@@ -104,7 +105,7 @@ export class TelemetryStore {
     const serialized = JSON.stringify({ ...input, id, timestamp, observedAt, attributes, message, pathTemplate: normalizedPath })
     const ingestedBytes = Buffer.byteLength(serialized)
     if (ingestedBytes > MAX_RECORD_BYTES) throw new Error(`Telemetry records are limited to ${MAX_RECORD_BYTES} bytes.`)
-    this.controlPlane.database.run(`INSERT INTO telemetry_records (id, project_id, environment_id, resource_id, kind, source, name, timestamp, observed_at, value, unit, level, message, duration_ms, status_code, method, host, path_template, bytes_in, bytes_out, region, cache_result, upstream, trace_id, request_id, deployment_id, release_id, workload_id, sampled, attributes, ingested_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+    this.controlPlane.database.run(`INSERT OR IGNORE INTO telemetry_records (id, project_id, environment_id, resource_id, kind, source, name, timestamp, observed_at, value, unit, level, message, duration_ms, status_code, method, host, path_template, bytes_in, bytes_out, region, cache_result, upstream, trace_id, request_id, deployment_id, release_id, workload_id, sampled, attributes, ingested_bytes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
       id, input.projectId, input.environmentId ?? null, input.resourceId ?? null, input.kind, input.source.slice(0, 128), input.name.slice(0, 256), timestamp, observedAt,
       input.value ?? null, input.unit ?? null, input.level ?? null, message ?? null, input.durationMs ?? null, input.statusCode ?? null, input.method?.slice(0, 16) ?? null,
       input.host?.slice(0, 256) ?? null, normalizedPath ?? null, input.bytesIn ?? null, input.bytesOut ?? null, input.region?.slice(0, 64) ?? null, input.cacheResult?.slice(0, 64) ?? null,
@@ -202,6 +203,27 @@ export class TelemetryStore {
       const spanDays = Math.max(1, (new Date(latest).getTime() - new Date(String(row.first)).getTime()) / 86_400_000)
       return { source: String(row.source), freshness: lagSeconds <= 120 ? 'live' : lagSeconds <= 600 ? 'stale' : 'unavailable', lastObservedAt: latest, lagSeconds, samplingRate: 1, retentionDays, estimatedDailyBytes: Math.round(Number(row.bytes) / spanDays) }
     })
+  }
+
+  saveQuery(projectId: string, actorId: string | undefined, name: string, query: TelemetryQuery): SavedTelemetryQuery {
+    const normalizedName = name.trim().slice(0, 80)
+    if (!normalizedName) throw new Error('Saved telemetry queries require a name.')
+    range(query)
+    if (query.projectId !== projectId) throw new Error('Saved telemetry queries cannot cross project scope.')
+    const now = this.now().toISOString(); const encoded = JSON.stringify(redactTelemetryValue(query, this.options.redaction))
+    if (Buffer.byteLength(encoded) > 16 * 1024) throw new Error('Saved telemetry queries are limited to 16 KB.')
+    const existing = this.controlPlane.database.query<Row, [string, string | null, string]>('SELECT * FROM telemetry_saved_queries WHERE project_id=? AND actor_id IS ? AND name=?').get(projectId, actorId ?? null, normalizedName)
+    const id = existing ? String(existing.id) : crypto.randomUUID()
+    this.controlPlane.database.run(`INSERT INTO telemetry_saved_queries (id, project_id, actor_id, name, query, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(project_id, actor_id, name) DO UPDATE SET query=excluded.query, updated_at=excluded.updated_at`, [id, projectId, actorId ?? null, normalizedName, encoded, existing ? String(existing.created_at) : now, now])
+    return { id, projectId, actorId, name: normalizedName, query: JSON.parse(encoded), createdAt: existing ? String(existing.created_at) : now, updatedAt: now }
+  }
+
+  listSavedQueries(projectId: string, actorId?: string): SavedTelemetryQuery[] {
+    return this.controlPlane.database.query<Row, [string, string | null]>('SELECT * FROM telemetry_saved_queries WHERE project_id=? AND actor_id IS ? ORDER BY updated_at DESC').all(projectId, actorId ?? null).map(row => ({ id: String(row.id), projectId: String(row.project_id), actorId: optional(row.actor_id), name: String(row.name), query: JSON.parse(String(row.query)), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }))
+  }
+
+  deleteSavedQuery(projectId: string, actorId: string | undefined, id: string): boolean {
+    return this.controlPlane.database.run('DELETE FROM telemetry_saved_queries WHERE id=? AND project_id=? AND actor_id IS ?', [id, projectId, actorId ?? null]).changes > 0
   }
 
   downsample(policy: TelemetryRetentionPolicy, projectId?: string): { compacted: number, rollups: number } {

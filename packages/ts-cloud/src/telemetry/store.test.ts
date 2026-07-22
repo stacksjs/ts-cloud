@@ -31,6 +31,16 @@ describe('telemetry safety and persistence', () => {
     expect(second.records.map(item => item.message)).toEqual(['line 0'])
     expect(new Set([...first.records, ...second.records].map(item => item.id)).size).toBe(3)
   })
+
+  it('saves bounded actor-scoped queries without allowing project changes', () => {
+    const { controlPlane, project, environment, telemetry } = fixture()
+    const actor = controlPlane.createActor({ kind: 'user', externalId: 'user:chris', displayName: 'Chris' })
+    const query = { projectId: project.id, environmentId: environment.id, from: '2026-07-21T11:00:00Z', to: '2026-07-21T12:00:00Z', kinds: ['log' as const], text: 'error' }
+    const saved = telemetry.saveQuery(project.id, actor.id, 'Errors', query)
+    expect(telemetry.listSavedQueries(project.id, actor.id)).toEqual([saved])
+    expect(() => telemetry.saveQuery('another-project', actor.id, 'Invalid', query)).toThrow('cross project')
+    expect(telemetry.deleteSavedQuery(project.id, actor.id, saved.id)).toBeTrue()
+  })
 })
 
 describe('telemetry aggregation and time semantics', () => {
