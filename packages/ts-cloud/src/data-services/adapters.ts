@@ -55,7 +55,13 @@ abstract class TransportAdapter implements DataServiceAdapter {
     return this.transport.execute(
       service.placement,
       action,
-      input,
+      {
+        engine: service.engine,
+        engineVersion: service.engineVersion ?? null,
+        plan: service.plan,
+        desiredState: service.desiredState,
+        ...input,
+      },
       credential,
       context,
     )

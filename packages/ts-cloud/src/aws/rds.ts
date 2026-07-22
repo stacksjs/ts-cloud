@@ -837,6 +837,53 @@ export class RDSClient {
     return { DBCluster: response.DBCluster }
   }
 
+  /** Restore an Aurora snapshot into a new deletion-protected cluster. */
+  async restoreDBClusterFromSnapshot(options: {
+    DBClusterIdentifier: string
+    SnapshotIdentifier: string
+    Engine: 'aurora-mysql' | 'aurora-postgresql'
+    EngineVersion?: string
+    DBSubnetGroupName?: string
+    VpcSecurityGroupIds?: string[]
+    DeletionProtection?: boolean
+    ServerlessV2ScalingConfiguration?: {
+      MinCapacity: number
+      MaxCapacity: number
+    }
+  }): Promise<{ DBCluster?: DBCluster }> {
+    const params: Record<string, any> = {
+      Action: 'RestoreDBClusterFromSnapshot',
+      Version: '2014-10-31',
+      DBClusterIdentifier: options.DBClusterIdentifier,
+      SnapshotIdentifier: options.SnapshotIdentifier,
+      Engine: options.Engine,
+    }
+    if (options.EngineVersion) params.EngineVersion = options.EngineVersion
+    if (options.DBSubnetGroupName)
+      params.DBSubnetGroupName = options.DBSubnetGroupName
+    if (options.DeletionProtection !== undefined)
+      params.DeletionProtection = options.DeletionProtection
+    options.VpcSecurityGroupIds?.forEach((id, index) => {
+      params[`VpcSecurityGroupIds.VpcSecurityGroupId.${index + 1}`] = id
+    })
+    if (options.ServerlessV2ScalingConfiguration) {
+      params['ServerlessV2ScalingConfiguration.MinCapacity'] =
+        options.ServerlessV2ScalingConfiguration.MinCapacity
+      params['ServerlessV2ScalingConfiguration.MaxCapacity'] =
+        options.ServerlessV2ScalingConfiguration.MaxCapacity
+    }
+    const result = await this.client.request({
+      service: 'rds',
+      region: this.region,
+      method: 'POST',
+      path: '/',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams(buildQueryParams(params)).toString(),
+    })
+    const response = result.RestoreDBClusterFromSnapshotResult || result
+    return { DBCluster: response.DBCluster }
+  }
+
   /**
    * Start a DB instance
    */

@@ -175,6 +175,18 @@ export class DataServiceLifecycle {
       throw new Error(
         'Major version changes require compatibilityReviewed=true and a backupId.',
       )
+    if (action === 'restore') {
+      const backupId = String(input.backupId ?? ''),
+        targetId = String(input.targetId ?? '')
+      if (!backupId || !targetId)
+        throw new Error('Restore requires both backupId and targetId.')
+      if (targetId === service.placement)
+        throw new Error('Restore targetId must differ from the source placement.')
+      if (!/^[a-z0-9][a-z0-9-]{1,62}$/.test(targetId))
+        throw new Error(
+          'Restore targetId must be 2-63 lowercase letters, numbers, or dashes.',
+        )
+    }
     return this.queue.enqueue({
       projectId: service.projectId,
       environmentId: service.environmentId,

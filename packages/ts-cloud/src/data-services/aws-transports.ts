@@ -110,6 +110,26 @@ export class AwsRdsTransport implements DataProviderTransport {
       })
       return { status: 'snapshotting', snapshotId }
     }
+    if (action === 'restore') {
+      const targetId = String(input.targetId),
+        result = await this.client.restoreDBInstanceFromDBSnapshot({
+          DBInstanceIdentifier: targetId,
+          DBSnapshotIdentifier: String(input.backupId),
+          DBInstanceClass: text(input, 'plan'),
+          DBSubnetGroupName: text(input, 'subnetGroup'),
+          MultiAZ: boolean(input, 'highAvailability'),
+          PubliclyAccessible: false,
+          StorageType: text(input, 'storageType') as 'gp2' | 'gp3' | 'io1' | 'standard' | undefined,
+          VpcSecurityGroupIds: strings(input, 'securityGroupIds'),
+          DeletionProtection: true,
+          Tags: [{ Key: 'managed-by', Value: 'ts-cloud' }],
+        })
+      return {
+        ...rdsObservation(result.DBInstance),
+        sourceId: id,
+        restoreTargetId: targetId,
+      }
+    }
     if (action === 'delete') {
       if (input.retention === 'retain') return { status: 'retained' }
       const finalSnapshotId = snapshotName(id, input)
@@ -219,6 +239,35 @@ export class AwsAuroraTransport implements DataProviderTransport {
       const snapshotId = snapshotName(id, input)
       await this.client.createDBClusterSnapshot(id, snapshotId)
       return { status: 'snapshotting', snapshotId }
+    }
+    if (action === 'restore') {
+      const targetId = String(input.targetId),
+        engine = String(input.engine) === 'postgres' ? 'aurora-postgresql' : 'aurora-mysql',
+        result = await this.client.restoreDBClusterFromSnapshot({
+          DBClusterIdentifier: targetId,
+          SnapshotIdentifier: String(input.backupId),
+          Engine: engine,
+          EngineVersion: text(input, 'engineVersion'),
+          DBSubnetGroupName: text(input, 'subnetGroup'),
+          VpcSecurityGroupIds: strings(input, 'securityGroupIds'),
+          DeletionProtection: true,
+          ServerlessV2ScalingConfiguration: {
+            MinCapacity: number(input, 'minCapacity') ?? 0.5,
+            MaxCapacity: number(input, 'maxCapacity') ?? 4,
+          },
+        })
+      await this.client.createDBInstance({
+        DBInstanceIdentifier: `${targetId}-writer-1`,
+        DBClusterIdentifier: targetId,
+        DBInstanceClass: text(input, 'plan', 'db.serverless')!,
+        Engine: engine,
+        PubliclyAccessible: false,
+      })
+      return {
+        ...clusterObservation(result.DBCluster),
+        sourceId: id,
+        restoreTargetId: targetId,
+      }
     }
     if (action === 'delete') {
       if (input.retention === 'retain') return { status: 'retained' }

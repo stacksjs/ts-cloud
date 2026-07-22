@@ -141,6 +141,49 @@ describe('data service capability model', () => {
 })
 
 describe('data service lifecycle', () => {
+  it('requires a typed, distinct, explicit restore target', () => {
+    const target = fixture(),
+      service = target.store.create({
+        organizationId: target.organization.id,
+        projectId: target.project.id,
+        environmentId: target.environment.id,
+        name: 'primary-db',
+        engine: 'postgres',
+        provider: 'aws_rds',
+        placement: 'primary-db',
+        plan: 'db.t4g.small',
+        highAvailability: false,
+        publicExposure: false,
+        allowedCidrs: [],
+        desiredState: {},
+        observedState: {},
+        status: 'available',
+        origin: 'managed',
+        managementEnabled: true,
+      }),
+      lifecycle = new DataServiceLifecycle(
+        target.store,
+        target.queue,
+        target.secrets,
+      )
+    expect(() =>
+      lifecycle.enqueue(service, 'restore', { confirm: 'primary-db' }),
+    ).toThrow('backupId and targetId')
+    expect(() =>
+      lifecycle.enqueue(service, 'restore', {
+        confirm: 'primary-db',
+        backupId: 'snapshot-1',
+        targetId: 'primary-db',
+      }),
+    ).toThrow('must differ')
+    expect(
+      lifecycle.enqueue(service, 'restore', {
+        confirm: 'primary-db',
+        backupId: 'snapshot-1',
+        targetId: 'primary-restored',
+      }),
+    ).toBeString()
+  })
   it('runs create, observe, atomic credential rotation, backup, and safe retained deletion', async () => {
     const target = fixture(),
       calls: Array<{ action: string; password?: string }> = [],

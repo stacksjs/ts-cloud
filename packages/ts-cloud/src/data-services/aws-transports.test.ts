@@ -113,6 +113,85 @@ describe('AWS data-service transports', () => {
     ])
   })
 
+  it('restores RDS and Aurora snapshots only into new private protected targets', async () => {
+    const rdsCalls: any[] = [],
+      rds = {
+        restoreDBInstanceFromDBSnapshot: async (input: any) => {
+          rdsCalls.push(input)
+          return {
+            DBInstance: {
+              DBInstanceIdentifier: input.DBInstanceIdentifier,
+              DBInstanceStatus: 'creating',
+            },
+          }
+        },
+      } as unknown as RDSClient
+    expect(
+      await new AwsRdsTransport(rds).execute('orders', 'restore', {
+        backupId: 'orders-snapshot',
+        targetId: 'orders-restored',
+        plan: 'db.t4g.small',
+      }),
+    ).toMatchObject({
+      providerId: 'orders-restored',
+      restoreTargetId: 'orders-restored',
+      sourceId: 'orders',
+    })
+    expect(rdsCalls[0]).toMatchObject({
+      DBInstanceIdentifier: 'orders-restored',
+      DBSnapshotIdentifier: 'orders-snapshot',
+      PubliclyAccessible: false,
+      DeletionProtection: true,
+    })
+
+    const auroraCalls: Array<[string, any]> = [],
+      aurora = {
+        restoreDBClusterFromSnapshot: async (input: any) => {
+          auroraCalls.push(['restore', input])
+          return {
+            DBCluster: {
+              DBClusterIdentifier: input.DBClusterIdentifier,
+              Status: 'creating',
+            },
+          }
+        },
+        createDBInstance: async (input: any) => {
+          auroraCalls.push(['writer', input])
+          return { DBInstance: {} }
+        },
+      } as unknown as RDSClient
+    expect(
+      await new AwsAuroraTransport(aurora).execute('primary', 'restore', {
+        backupId: 'primary-snapshot',
+        targetId: 'primary-restored',
+        engine: 'postgres',
+        plan: 'db.serverless',
+      }),
+    ).toMatchObject({
+      providerId: 'primary-restored',
+      restoreTargetId: 'primary-restored',
+      sourceId: 'primary',
+    })
+    expect(auroraCalls).toEqual([
+      [
+        'restore',
+        expect.objectContaining({
+          DBClusterIdentifier: 'primary-restored',
+          SnapshotIdentifier: 'primary-snapshot',
+          Engine: 'aurora-postgresql',
+          DeletionProtection: true,
+        }),
+      ],
+      [
+        'writer',
+        expect.objectContaining({
+          DBClusterIdentifier: 'primary-restored',
+          PubliclyAccessible: false,
+        }),
+      ],
+    ])
+  })
+
   it('keeps ElastiCache private and retains it without a provider mutation', async () => {
     let creates = 0,
       deletes = 0
