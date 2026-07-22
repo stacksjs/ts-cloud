@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 11
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 12
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -600,6 +600,138 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     name: 'required_security_scanners',
     sql: `
       ALTER TABLE security_policies ADD COLUMN required_scanners TEXT NOT NULL DEFAULT '[]';
+    `,
+  },
+  {
+    version: 12,
+    name: 'git_source_connections',
+    sql: `
+      CREATE TABLE source_connections (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL CHECK (provider IN ('github', 'gitlab', 'bitbucket', 'gitea', 'generic_https', 'generic_ssh')),
+        name TEXT NOT NULL,
+        host TEXT NOT NULL,
+        owner TEXT,
+        auth_kind TEXT NOT NULL CHECK (auth_kind IN ('app', 'oauth_token', 'access_token', 'deploy_key', 'none')),
+        credential_ciphertext TEXT,
+        credential_fingerprint TEXT,
+        granted_scopes TEXT NOT NULL DEFAULT '[]',
+        capabilities TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL CHECK (status IN ('pending', 'healthy', 'degraded', 'expired', 'disconnected')),
+        health_message TEXT,
+        last_tested_at TEXT,
+        last_synced_at TEXT,
+        credential_expires_at TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(organization_id, name)
+      ) STRICT;
+
+      CREATE TABLE source_repositories (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES source_connections(id) ON DELETE CASCADE,
+        provider_repository_id TEXT NOT NULL,
+        full_name TEXT NOT NULL,
+        clone_url TEXT NOT NULL,
+        default_branch TEXT NOT NULL,
+        visibility TEXT NOT NULL CHECK (visibility IN ('public', 'private', 'internal', 'unknown')),
+        archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1)),
+        metadata TEXT NOT NULL DEFAULT '{}',
+        synced_at TEXT NOT NULL,
+        UNIQUE(connection_id, provider_repository_id),
+        UNIQUE(connection_id, full_name)
+      ) STRICT;
+
+      CREATE TABLE source_deploy_keys (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES source_connections(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        public_key TEXT NOT NULL,
+        public_key_fingerprint TEXT NOT NULL,
+        private_key_ciphertext TEXT NOT NULL,
+        host TEXT NOT NULL,
+        host_key TEXT NOT NULL,
+        host_key_fingerprint TEXT NOT NULL,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(connection_id, name),
+        UNIQUE(connection_id, public_key_fingerprint)
+      ) STRICT;
+
+      CREATE TABLE source_bindings (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE,
+        resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        connection_id TEXT NOT NULL REFERENCES source_connections(id) ON DELETE RESTRICT,
+        repository_id TEXT REFERENCES source_repositories(id) ON DELETE SET NULL,
+        repository_full_name TEXT NOT NULL,
+        default_branch TEXT NOT NULL,
+        branch_rule TEXT,
+        tag_rule TEXT,
+        monorepo_root TEXT NOT NULL DEFAULT '.',
+        include_paths TEXT NOT NULL DEFAULT '[]',
+        exclude_paths TEXT NOT NULL DEFAULT '[]',
+        submodules INTEGER NOT NULL DEFAULT 0 CHECK (submodules IN (0, 1)),
+        clone_depth INTEGER CHECK (clone_depth IS NULL OR clone_depth > 0),
+        deploy_key_id TEXT REFERENCES source_deploy_keys(id) ON DELETE SET NULL,
+        auto_deploy INTEGER NOT NULL DEFAULT 1 CHECK (auto_deploy IN (0, 1)),
+        pull_request_previews INTEGER NOT NULL DEFAULT 1 CHECK (pull_request_previews IN (0, 1)),
+        status TEXT NOT NULL CHECK (status IN ('active', 'disabled')),
+        disabled_reason TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version > 0),
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(project_id, environment_id, resource_id)
+      ) STRICT;
+
+      CREATE TABLE source_webhooks (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES source_connections(id) ON DELETE CASCADE,
+        repository_id TEXT REFERENCES source_repositories(id) ON DELETE SET NULL,
+        repository_full_name TEXT NOT NULL,
+        provider_webhook_id TEXT,
+        endpoint_token_hash TEXT NOT NULL UNIQUE,
+        secret_ciphertext TEXT NOT NULL,
+        events TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'healthy', 'degraded', 'disabled')),
+        health_message TEXT,
+        last_delivery_at TEXT,
+        last_reconciled_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(connection_id, repository_full_name)
+      ) STRICT;
+
+      CREATE TABLE source_webhook_deliveries (
+        id TEXT PRIMARY KEY,
+        connection_id TEXT NOT NULL REFERENCES source_connections(id) ON DELETE CASCADE,
+        webhook_id TEXT NOT NULL REFERENCES source_webhooks(id) ON DELETE CASCADE,
+        provider_delivery_id TEXT NOT NULL,
+        event TEXT NOT NULL,
+        action TEXT,
+        commit_sha TEXT,
+        signature_status TEXT NOT NULL CHECK (signature_status IN ('verified', 'invalid', 'missing')),
+        status TEXT NOT NULL CHECK (status IN ('accepted', 'ignored', 'rejected', 'duplicate', 'enqueued', 'failed')),
+        payload_summary TEXT NOT NULL DEFAULT '{}',
+        operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL,
+        error TEXT,
+        received_at TEXT NOT NULL,
+        processed_at TEXT,
+        UNIQUE(connection_id, provider_delivery_id)
+      ) STRICT;
+
+      CREATE INDEX source_connections_org_idx ON source_connections(organization_id, status, provider, name);
+      CREATE INDEX source_repositories_connection_idx ON source_repositories(connection_id, full_name);
+      CREATE INDEX source_bindings_connection_idx ON source_bindings(connection_id, status);
+      CREATE INDEX source_bindings_repository_idx ON source_bindings(connection_id, repository_full_name, status);
+      CREATE INDEX source_webhooks_connection_idx ON source_webhooks(connection_id, status);
+      CREATE INDEX source_deliveries_webhook_idx ON source_webhook_deliveries(webhook_id, received_at DESC);
     `,
   },
 ]

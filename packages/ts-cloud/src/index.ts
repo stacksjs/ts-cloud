@@ -264,6 +264,9 @@ export {
   createGoDaddyValidator,
   createRoute53Validator,
 } from './dns'
+
+// Provider-neutral Git source connections, repository bindings, and webhooks
+export * from './source'
 export type {
   DnsProvider,
   DnsProviderConfig,
