@@ -15,6 +15,15 @@ const notice = state('')
 const actionError = state('')
 const busy = state(false)
 const createOpen = state(false)
+const operationAction = state('observe')
+
+const actionLabels = {
+  observe: 'Refresh status', backup: 'Create backup', restore: 'Restore backup',
+  restart: 'Restart', resize: 'Resize', version: 'Upgrade version',
+  rotate: 'Rotate credential', expose: 'Change exposure', delete: 'Retire service',
+  logs: 'Read logs', slow_queries: 'Read slow queries', users: 'Manage users',
+  databases: 'Manage databases',
+}
 
 async function api(url, options) {
   const response = await fetch(url, options)
@@ -89,11 +98,11 @@ async function previewAction(item, action, changes = {}) {
   }
   catch (error) { actionError.set(error.message) }
 }
-async function runAction(item, action) {
-  const proposed = await previewAction(item, action)
+async function runAction(item, action, requested = {}) {
+  const changes = { ...requested }
+  const proposed = await previewAction(item, action, changes)
   if (!proposed || !proposed.capability.supported) return
-  const changes = {}
-  if (action === 'delete') {
+  if (action === 'delete' && !changes.retention) {
     const retention = window.prompt('Deletion retention: type final_backup or retain', 'final_backup') || ''
     if (!['final_backup', 'retain'].includes(retention)) return
     changes.retention = retention
@@ -109,6 +118,34 @@ async function runAction(item, action) {
   }
   catch (error) { actionError.set(error.stepUpRequired ? `${error.message} Use Sign-in & security to verify again.` : error.message) }
   finally { busy.set(false) }
+}
+async function runConfiguredAction(event) {
+  event.preventDefault()
+  const item = selected()
+  if (!item) return
+  const action = operationAction()
+  const value = formBody(event.currentTarget)
+  const changes = {}
+  for (const key of ['backupId', 'targetId', 'plan', 'engineVersion', 'storageGb', 'memoryMb', 'cpus', 'minCapacity', 'maxCapacity', 'lines', 'operation', 'database', 'retention']) {
+    if (value[key] !== undefined && value[key] !== '') changes[key] = ['storageGb', 'memoryMb', 'cpus', 'minCapacity', 'maxCapacity', 'lines'].includes(key) ? Number(value[key]) : value[key]
+  }
+  if (action === 'version') {
+    changes.compatibilityReviewed = value.compatibilityReviewed === 'on'
+    if (value.versionBackupId) changes.backupId = value.versionBackupId
+  }
+  if (action === 'expose') {
+    changes.publicExposure = value.publicExposure === 'on'
+    changes.allowedCidrs = value.allowedCidrs ? String(value.allowedCidrs).split(',').map(item => item.trim()).filter(Boolean) : []
+  }
+  if (action === 'databases' && changes.operation === 'delete') {
+    changes.confirm = window.prompt(`Type ${changes.database} to delete this logical database.`) || ''
+    if (changes.confirm !== changes.database) return
+  }
+  await runAction(item, action, changes)
+}
+async function chooseAction(action) {
+  operationAction.set(action)
+  if (selected()) await previewAction(selected(), action)
 }
 async function reveal(item) {
   try {
@@ -175,7 +212,27 @@ function serviceOperations(item) { return operations().filter(operation => opera
 
     <aside class="panel detail" @show="!!selected()">
       <div class="detail-head"><div><small>Selected service</small><h2>{{ selected()?.name }}</h2></div><button class="btn ghost sm" aria-label="Close details" @click="selected.set(null)">Close</button></div>
-      <div class="capability"><h3>Action preview</h3><p class="note" @show="!plan()">Choose an action to inspect support, downtime, confirmation, backup, and compatibility gates before execution.</p><div @show="!!plan()"><span class="pill" :class="plan()?.capability?.supported?'ok':'bad'">{{ plan()?.capability?.supported?'supported':'unsupported' }}</span><span class="pill">downtime {{ plan()?.capability?.downtime }}</span><p>{{ plan()?.capability?.explanation }}</p><ul><li @show="plan()?.preflight?.backupRequired">Backup required</li><li @show="plan()?.preflight?.compatibilityRequired">Compatibility review required</li><li @show="plan()?.preflight?.retentionChoiceRequired">Retention choice required</li><template :for="warning in plan()?.warnings || []"><li>{{ warning }}</li></template></ul></div></div>
+      <div class="capability"><h3>Lifecycle operations</h3><p class="note">Every operation is capability-checked and previewed before a durable production job is created.</p><div class="operation-picker"><template :for="entry in Object.entries(selected()?.capabilities?.actions || {}).filter(([action])=>action!=='create'&&action!=='connect')"><button class="btn ghost sm" :class="{active:operationAction()===entry[0]}" :disabled="!entry[1].supported" :title="entry[1].explanation" @click="chooseAction(entry[0])">{{ actionLabels[entry[0]] || entry[0] }}</button></template></div>
+        <form class="operation-form" @submit="runConfiguredAction($event)">
+          <label @show="operationAction()==='restore'">Backup ID<input name="backupId" placeholder="orders-snapshot"></label>
+          <label @show="operationAction()==='restore'">New target ID<input name="targetId" placeholder="orders-restored"></label>
+          <label @show="operationAction()==='resize'">Provider plan<input name="plan" :placeholder="selected()?.plan"></label>
+          <label @show="operationAction()==='resize'">Storage GB<input name="storageGb" type="number" min="1"></label>
+          <label @show="operationAction()==='resize'">Runtime memory MB<input name="memoryMb" type="number" min="16"></label>
+          <label @show="operationAction()==='resize'">Runtime CPUs<input name="cpus" type="number" min="0.1" step="0.1"></label>
+          <label @show="operationAction()==='version'">Target engine version<input name="engineVersion" placeholder="17.0"></label>
+          <label class="check" @show="operationAction()==='version'"><input name="compatibilityReviewed" type="checkbox"> Compatibility reviewed</label>
+          <label @show="operationAction()==='version'">Pre-upgrade backup ID<input name="versionBackupId" placeholder="pre-upgrade-snapshot"></label>
+          <label @show="['logs','slow_queries'].includes(operationAction())">Maximum lines<input name="lines" type="number" min="1" max="2000" value="500"></label>
+          <label @show="['users','databases'].includes(operationAction())">Operation<select name="operation"><option value="list">List</option><option value="create" @show="operationAction()==='databases'">Create</option><option value="delete" @show="operationAction()==='databases'">Delete</option></select></label>
+          <label @show="operationAction()==='databases'">Database<input name="database" placeholder="analytics"></label>
+          <label @show="operationAction()==='delete'">Retention<select name="retention"><option value="final_backup">Final backup, then delete</option><option value="retain">Retain resource unmanaged</option></select></label>
+          <label class="check" @show="operationAction()==='expose'"><input name="publicExposure" type="checkbox"> Public endpoint</label>
+          <label @show="operationAction()==='expose'">Allowed CIDRs<input name="allowedCidrs" placeholder="203.0.113.8/32"></label>
+          <button class="btn sm" type="submit" :disabled="busy() || !selected()?.capabilities?.actions?.[operationAction()]?.supported">{{ busy()?'Queueing…':actionLabels[operationAction()] }}</button>
+        </form>
+        <div class="action-preview"><p class="note" @show="!plan()">Choose an action to inspect support, downtime, confirmation, backup, and compatibility gates.</p><div @show="!!plan()"><span class="pill" :class="plan()?.capability?.supported?'ok':'bad'">{{ plan()?.capability?.supported?'supported':'unsupported' }}</span><span class="pill">downtime {{ plan()?.capability?.downtime }}</span><p>{{ plan()?.capability?.explanation }}</p><ul><li @show="plan()?.preflight?.backupRequired">Backup required</li><li @show="plan()?.preflight?.compatibilityRequired">Compatibility review required</li><li @show="plan()?.preflight?.retentionChoiceRequired">Retention choice required</li><template :for="warning in plan()?.warnings || []"><li>{{ warning }}</li></template></ul></div></div>
+      </div>
       <div><h3>Connections</h3><template :for="item in guidance()"><div class="connection"><span class="pill">{{ item.type }}</span><code>{{ item.command }}</code><small>{{ item.secretRef || 'no managed credential' }}</small></div></template><p class="note" @show="!guidance().length">Endpoint discovery is pending. Refresh status after provisioning.</p></div>
       <div><h3>Credentials</h3><p class="note">Secret values are encrypted and omitted from lists, plans, logs, and operation payloads.</p><button class="btn ghost sm" @show="selected()?.credential?.configured" @click="reveal(selected())">Reveal with recent authentication</button></div>
       <div><h3>Recent operations</h3><template :for="operation in serviceOperations(selected())"><div class="operation"><span class="pill" :class="tone(operation.state)">{{ operation.state }}</span><b>{{ operation.input?.action }}</b><small>{{ when(operation.createdAt) }} · attempt {{ operation.attempt }}</small></div></template><p class="note" @show="!serviceOperations(selected()).length">No durable operations yet.</p></div>
@@ -188,7 +245,7 @@ function serviceOperations(item) { return operations().filter(operation => opera
   </section>
 </main>
 <style>
-.data-wrap{max-width:1500px}.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.summary article{display:grid;gap:5px}.summary strong{font-size:28px}.summary small,.service-grid small,.detail small{color:var(--txt3)}.create-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.create-grid label{display:grid;gap:5px;color:var(--txt3);font-size:11px}.create-grid input,.create-grid select,.filters input,.filters select{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px}.create-grid label span{font-size:10px}.create-grid .check{display:flex;align-items:center;gap:7px}.create-grid .check input{width:auto}.wide{grid-column:1/-1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) repeat(3,170px);gap:8px;margin-bottom:12px}.workspace{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}.workspace.hasDetail{grid-template-columns:minmax(0,1.6fr) minmax(320px,.7fr)}.data-cards{display:grid;gap:10px}.data-cards>.empty{max-width:none;width:100%}.service-card.selected{border-color:var(--accent)}.service-head,.detail-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.service-head>div{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.service-head h2{font-size:17px;margin:0 0 0 3px}.service-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.service-grid>div{display:grid;gap:4px;min-width:0}.service-grid b,.service-grid span{overflow-wrap:anywhere}.service-grid span{color:var(--txt3);font-size:11px}.actions{display:flex;gap:6px;flex-wrap:wrap}.detail{position:sticky;top:10px;display:grid;gap:18px}.detail h2,.detail h3{margin:0}.capability,.detail>div+div{border-top:1px solid var(--line);padding-top:14px}.capability ul{padding-left:18px;color:var(--txt2)}.connection{display:grid;gap:6px;padding:9px 0;border-bottom:1px solid var(--line)}.connection code{white-space:normal;overflow-wrap:anywhere;font-size:10px}.operation{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:7px 0}.operation small{margin-left:auto}.credential{position:fixed;z-index:30;right:18px;bottom:18px;width:min(620px,calc(100vw - 36px));display:grid;grid-template-columns:1fr auto;gap:10px;box-shadow:0 16px 60px #0009;border-color:var(--accent)}.credential h2,.credential p{margin:0}.secret{grid-column:1/-1;display:grid;gap:5px;background:var(--bg2);padding:10px;border-radius:8px}.secret code{overflow-wrap:anywhere}.mono,code{font-family:var(--mono)}@media(max-width:1100px){.workspace.hasDetail{grid-template-columns:1fr}.detail{position:static}.create-grid{grid-template-columns:repeat(2,1fr)}.service-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.summary{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr}.service-grid,.create-grid{grid-template-columns:1fr}.create-grid>*{grid-column:1!important}}@media(max-width:460px){.summary{grid-template-columns:1fr}.credential{grid-template-columns:1fr}}
+.data-wrap{max-width:1500px}.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}.summary article{display:grid;gap:5px}.summary strong{font-size:28px}.summary small,.service-grid small,.detail small{color:var(--txt3)}.create-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}.create-grid label{display:grid;gap:5px;color:var(--txt3);font-size:11px}.create-grid input,.create-grid select,.filters input,.filters select,.operation-form input,.operation-form select{width:100%;background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:9px}.create-grid label span{font-size:10px}.create-grid .check,.operation-form .check{display:flex;align-items:center;gap:7px}.create-grid .check input,.operation-form .check input{width:auto}.wide{grid-column:1/-1}.filters{display:grid;grid-template-columns:minmax(260px,1fr) repeat(3,170px);gap:8px;margin-bottom:12px}.workspace{display:grid;grid-template-columns:1fr;gap:12px;align-items:start}.workspace.hasDetail{grid-template-columns:minmax(0,1.6fr) minmax(360px,.8fr)}.data-cards{display:grid;gap:10px}.data-cards>.empty{max-width:none;width:100%}.service-card.selected{border-color:var(--accent)}.service-head,.detail-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.service-head>div{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.service-head h2{font-size:17px;margin:0 0 0 3px}.service-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:14px 0}.service-grid>div{display:grid;gap:4px;min-width:0}.service-grid b,.service-grid span{overflow-wrap:anywhere}.service-grid span{color:var(--txt3);font-size:11px}.actions,.operation-picker{display:flex;gap:6px;flex-wrap:wrap}.operation-picker{margin:10px 0}.operation-picker .active{border-color:var(--accent);color:var(--accent)}.operation-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.operation-form label{display:grid;gap:4px;color:var(--txt3);font-size:11px}.operation-form button{grid-column:1/-1}.action-preview{background:var(--bg2);border-radius:8px;padding:10px}.detail{position:sticky;top:10px;display:grid;gap:18px}.detail h2,.detail h3{margin:0}.capability,.detail>div+div{border-top:1px solid var(--line);padding-top:14px}.capability ul{padding-left:18px;color:var(--txt2)}.connection{display:grid;gap:6px;padding:9px 0;border-bottom:1px solid var(--line)}.connection code{white-space:normal;overflow-wrap:anywhere;font-size:10px}.operation{display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:7px 0}.operation small{margin-left:auto}.credential{position:fixed;z-index:30;right:18px;bottom:18px;width:min(620px,calc(100vw - 36px));display:grid;grid-template-columns:1fr auto;gap:10px;box-shadow:0 16px 60px #0009;border-color:var(--accent)}.credential h2,.credential p{margin:0}.secret{grid-column:1/-1;display:grid;gap:5px;background:var(--bg2);padding:10px;border-radius:8px}.secret code{overflow-wrap:anywhere}.mono,code{font-family:var(--mono)}@media(max-width:1100px){.workspace.hasDetail{grid-template-columns:1fr}.detail{position:static}.create-grid{grid-template-columns:repeat(2,1fr)}.service-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.summary{grid-template-columns:repeat(2,1fr)}.filters{grid-template-columns:1fr}.service-grid,.create-grid,.operation-form{grid-template-columns:1fr}.create-grid>*{grid-column:1!important}}@media(max-width:460px){.summary{grid-template-columns:1fr}.credential{grid-template-columns:1fr}}
 </style>
 </body>
 </html>

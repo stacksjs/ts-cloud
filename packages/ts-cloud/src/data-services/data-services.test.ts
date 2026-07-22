@@ -86,7 +86,9 @@ describe('data service capability model', () => {
     ).toMatchObject({
       backup: { supported: false },
       users: { supported: false },
-      resize: { supported: true },
+      resize: { supported: false },
+      version: { supported: false },
+      expose: { supported: false },
     })
     expect(
       dataServiceCapabilities('postgres', 'container').actions,

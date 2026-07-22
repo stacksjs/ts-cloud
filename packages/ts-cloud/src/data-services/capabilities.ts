@@ -71,7 +71,9 @@ export function dataServiceCapabilities(
             : 'Restart the owning service unit.',
           'required',
         )
-  actions.resize = managed
+  actions.resize = provider === 'aws_elasticache'
+    ? no('ElastiCache resizing requires a replication-group migration runner.')
+    : managed
     ? yes(
         'Provider plan/storage modification may enter a maintenance window.',
         'possible',
@@ -81,7 +83,7 @@ export function dataServiceCapabilities(
       : no('External resize requires a configured provider adapter.')
   actions.version = runtime
     ? no('Runtime version upgrades require an explicit image migration runner.')
-    : managed
+    : managed && provider !== 'aws_elasticache'
       ? yes(
           sql
             ? 'Major versions require compatibility preflight and backup.'
@@ -103,9 +105,11 @@ export function dataServiceCapabilities(
     ? no(
         'Direct container publishing is refused; use a reviewed firewall and proxy policy.',
       )
-    : yes(
+    : provider === 'aws_rds'
+      ? yes(
         'Exposure is reconciled through security groups; public access defaults off.',
       )
+      : no('Exposure changes require a provider-specific network runner.')
   actions.delete =
     provider === 'external'
       ? no('External deletion requires a configured provider adapter.')
