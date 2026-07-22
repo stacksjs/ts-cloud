@@ -79,6 +79,7 @@ const isActive = (...keys) => keys.includes(active ?? '')
           @if (canView('deployments:read'))<a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>@endif
           @if (canView('deployments:read'))<a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>@endif
           @if (canView('deployments:read'))<a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>@endif
+          @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
           @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
           @if (canView('automation:read'))<a href="{{ envHref('/server/workers') }}">Workers & schedules</a>@endif
           @if (canView('backups:read'))<a href="{{ envHref('/server/backups') }}">Backups</a>@endif
@@ -136,12 +137,13 @@ const isActive = (...keys) => keys.includes(active ?? '')
         @if (canView('sources:read'))<a class="{{ isActive('integrations') ? 'active' : '' }}" href="{{ envHref('/integrations') }}">Git integrations</a>@endif
       </section>
     @endif
-    @if (navMode === 'serverless' && canView('deployments:read'))
+    @if (navMode === 'serverless' && (canView('deployments:read') || canView('runtime:read')))
       <section class="nav-group">
         <h2>Operations</h2>
-        <a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>
-        <a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>
-        <a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>
+        @if (canView('deployments:read'))<a class="{{ isActive('operation-queue') ? 'active' : '' }}" href="{{ envHref('/operations/queue') }}">Deployment queue</a>@endif
+        @if (canView('deployments:read'))<a class="{{ isActive('previews') ? 'active' : '' }}" href="{{ envHref('/operations/previews') }}">Preview environments</a>@endif
+        @if (canView('deployments:read'))<a class="{{ isActive('releases') ? 'active' : '' }}" href="{{ envHref('/operations/releases') }}">Releases & promotion</a>@endif
+        @if (canView('runtime:read'))<a class="{{ isActive('workloads') ? 'active' : '' }}" href="{{ envHref('/operations/workloads') }}">Workloads</a>@endif
       </section>
     @endif
     @if (canView('users:read'))

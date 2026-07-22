@@ -146,6 +146,7 @@ async function saveEdit(name) {
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px;">
+          <a class="btn ghost sm" :href="'/operations/workloads?service=' + encodeURIComponent(site.name)">Backing workloads</a>
           @if (canDeploy)<button class="btn sm" type="button" @click="askDeploy(site.name)">Deploy</button>@endif
           @if (canEdit)<button class="btn ghost sm" type="button" @click="toggleEdit(site.name)">Edit</button>@endif
           @if (!isMember)

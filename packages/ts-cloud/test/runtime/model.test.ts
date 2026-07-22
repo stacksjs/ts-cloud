@@ -29,7 +29,7 @@ describe('systemd adapter fixtures', () => {
     const [workload] = systemdWorkloads(records, context, 'systemd:box-1')
     expect(workload).toMatchObject({ provider: 'systemd', name: 'acme-web@r1', status: 'running', runningReplicas: 1, restartCount: 2, ageSeconds: 3600 })
     expect(workload.capabilities.scale.supported).toBeFalse()
-    expect(workload.capabilities.exec.requiresRecentAuth).toBeTrue()
+    expect(workload.capabilities.exec).toMatchObject({ supported: false, reason: expect.any(String) })
   })
 
   it('rejects unsafe unit names', () => {

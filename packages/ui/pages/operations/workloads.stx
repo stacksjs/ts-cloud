@@ -1,0 +1,99 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const viewerCapabilities = __d?.viewer?.capabilities ?? []
+const canOperate = viewerCapabilities.length === 0 || viewerCapabilities.includes('runtime:restart')
+</script>
+<script client>
+import { usePolling } from '../../functions/usePolling.ts'
+
+const params = new URLSearchParams(location.search)
+const inventory = state({ generatedAt: '', workloads: [], sources: [], degraded: false })
+const query = state(params.get('search') || '')
+const provider = state(params.get('provider') || '')
+const status = state(params.get('status') || '')
+const serviceFilter = state(params.get('service') || '')
+const selectedId = state('')
+const logs = state([])
+const logsBusy = state(false)
+const operationBusy = state(false)
+const message = state('')
+const typed = state('')
+const replicas = state('1')
+const columns = state({ replicas: true, image: true, resources: true, age: true })
+const selected = derived(() => inventory().workloads.find(item => item.id === selectedId()) || null)
+const sources = derived(() => inventory().sources || [])
+const visible = derived(() => inventory().workloads.filter(item => {
+  const text = `${item.name} ${item.id} ${item.links?.service || ''} ${item.image || ''} ${Object.values(item.tags || {}).join(' ')}`.toLowerCase()
+  return (!query() || text.includes(query().toLowerCase())) && (!provider() || item.provider === provider()) && (!status() || item.status === status()) && (!serviceFilter() || item.links?.service === serviceFilter())
+}))
+function tone(value) { return value === 'running' ? 'ok' : ['failed', 'degraded'].includes(value) ? 'bad' : 'warn' }
+function bytes(value) { if (value == null) return '—'; const units = ['B','KB','MB','GB','TB']; let size = value; let unit = 0; while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit++ } return `${size.toFixed(unit ? 1 : 0)} ${units[unit]}` }
+function age(value) { if (value == null) return '—'; if (value < 60) return `${value}s`; if (value < 3600) return `${Math.floor(value / 60)}m`; if (value < 86400) return `${Math.floor(value / 3600)}h`; return `${Math.floor(value / 86400)}d` }
+function replicaLabel(item) { return item.desiredReplicas == null ? '—' : `${item.runningReplicas || 0}/${item.desiredReplicas}` }
+function capability(item, action) { return item.capabilities?.[action] || { supported: false, reason: 'Provider capability is unavailable.' } }
+function syncUrl() { const url = new URL(location.href); for (const [key, value] of [['search', query()], ['provider', provider()], ['status', status()], ['service', serviceFilter()]]) value ? url.searchParams.set(key, value) : url.searchParams.delete(key); history.replaceState(null, '', url) }
+function setFilter(signal, value) { signal.set(value); syncUrl() }
+async function load() {
+  const response = await fetch('/api/runtime/workloads' + location.search)
+  const body = await response.json()
+  if (!response.ok) throw new Error(body.error || 'Workloads could not be loaded.')
+  inventory.set(body)
+  if (selectedId() && !body.workloads.some(item => item.id === selectedId())) selectedId.set('')
+}
+const { pollingState, pollingError, pollingLabel, lastUpdatedAt, refresh } = usePolling(load, 10000)
+function open(item) { selectedId.set(item.id); logs.set([]); message.set(''); typed.set(''); replicas.set(String(item.desiredReplicas ?? 1)) }
+function close() { selectedId.set(''); logs.set([]); message.set(''); typed.set('') }
+async function readLogs() {
+  const item = selected(); if (!item || logsBusy()) return; logsBusy.set(true); message.set('')
+  try { const response = await fetch('/api/runtime/logs?workload=' + encodeURIComponent(item.id) + '&limit=300'); const body = await response.json(); if (!response.ok) throw new Error(body.error || 'Logs could not be loaded.'); logs.set(body.lines || []) }
+  catch (error) { message.set(error.message || String(error)) } finally { logsBusy.set(false) }
+}
+async function run(action) {
+  const item = selected(); if (!item || operationBusy()) return; operationBusy.set(true); message.set('')
+  try {
+    const response = await fetch('/api/runtime/operations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ workloadId: item.id, action, confirm: typed(), replicas: action === 'scale' ? Number(replicas()) : undefined }) })
+    const body = await response.json(); if (!response.ok || !body.ok) throw new Error(body.error || 'Operation failed.')
+    message.set(`${action} accepted as ${body.controlPlaneOperation?.id || 'a durable operation'}.`); typed.set(''); await refresh()
+  } catch (error) { message.set(error.message || String(error)) } finally { operationBusy.set(false) }
+}
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>@include('../partials/head', { title: 'ts-cloud - Workloads' })</head>
+<body>
+  @include('../partials/nav', { active: 'workloads', env: 'production' })
+  <main class="workload-wrap wrap" id="main-content">
+    <div class="crumbs">Operations <span class="sep">/</span> Workloads</div>
+    <header class="page"><div><h1>Workloads</h1><p>One live inventory for services, containers, tasks, and functions—with explicit provider capabilities and release context.</p></div><div class="freshness"><span class="pill" :class="pollingState() === 'live' ? 'ok' : 'warn'">{{ pollingLabel() }}</span><small>{{ lastUpdatedAt() ? lastUpdatedAt().toLocaleTimeString() : 'connecting' }}</small><button class="btn ghost sm" type="button" @click="refresh()">Refresh</button></div></header>
+    <div class="bad notice" role="status" @show="!!pollingError()">{{ pollingError() }}</div>
+    <section class="source-strip" aria-label="Runtime discovery sources"><template :for="item in sources()"><span :class="item.status === 'fresh' ? 'fresh' : 'degraded'"><b>{{ item.id }}</b> {{ item.status }} · {{ item.itemCount }}<small @show="!!item.message">{{ item.message }}</small></span></template></section>
+    <section class="panel workload-toolbar">
+      <label class="search-label">Search<input type="search" placeholder="Name, ID, image, tag…" :value="query()" @input="setFilter(query, $event.target.value)"></label>
+      <label>Provider<select :value="provider()" @change="setFilter(provider, $event.target.value)"><option value="">All</option><option value="systemd">systemd</option><option value="docker">docker</option><option value="ecs">ecs</option><option value="lambda">lambda</option></select></label>
+      <label>Status<select :value="status()" @change="setFilter(status, $event.target.value)"><option value="">All</option><option value="running">running</option><option value="starting">starting</option><option value="degraded">degraded</option><option value="stopping">stopping</option><option value="stopped">stopped</option><option value="failed">failed</option><option value="unknown">unknown</option></select></label>
+      <details><summary>Columns</summary><div class="column-menu"><label><input type="checkbox" :checked="columns().replicas" @change="columns.set({...columns(), replicas: $event.target.checked})">Replicas</label><label><input type="checkbox" :checked="columns().image" @change="columns.set({...columns(), image: $event.target.checked})">Image/runtime</label><label><input type="checkbox" :checked="columns().resources" @change="columns.set({...columns(), resources: $event.target.checked})">Resources</label><label><input type="checkbox" :checked="columns().age" @change="columns.set({...columns(), age: $event.target.checked})">Age</label></div></details>
+      <button class="btn ghost sm" type="button" @show="!!serviceFilter()" @click="setFilter(serviceFilter, '')">Clear service: {{ serviceFilter() }}</button>
+    </section>
+    <div class="workload-layout" :class="{ inspecting: !!selected() }">
+      <section class="panel workload-list">
+        <div class="workload-table-wrap"><table class="workload-table"><thead><tr><th scope="col">Workload</th><th scope="col">Status</th><th scope="col">Provider</th><th scope="col" @show="columns().replicas">Replicas</th><th scope="col" @show="columns().image">Image / runtime</th><th scope="col" @show="columns().resources">Memory</th><th scope="col" @show="columns().age">Age</th></tr></thead><tbody><template :for="item in visible()"><tr class="workload-row" :class="{ selected: item.id === selectedId() }" tabindex="0" @click="open(item)" @keydown.enter="open(item)"><td><b>{{ item.displayName || item.name }}</b><small>{{ item.links?.service || item.kind }} · {{ item.id }}</small></td><td><span class="pill" :class="tone(item.status)">{{ item.status }}</span><small>{{ item.rawStatus || 'normalized' }}</small></td><td><span class="tag">{{ item.provider }}</span><small>{{ item.runtime || item.kind }}</small></td><td @show="columns().replicas">{{ replicaLabel(item) }}</td><td class="mono" @show="columns().image">{{ item.image || item.runtime || '—' }}</td><td @show="columns().resources">{{ bytes(item.resources?.memoryBytes || item.resources?.memoryLimitBytes) }}</td><td @show="columns().age">{{ age(item.ageSeconds) }}</td></tr></template></tbody></table></div>
+        <div class="empty" @show="pollingState() !== 'loading' && visible().length === 0"><strong>No matching workloads</strong><span>Change the filters, or inspect degraded sources above for discovery guidance.</span></div>
+      </section>
+      <aside class="panel workload-detail" @show="!!selected()"><button class="detail-close" type="button" aria-label="Close workload detail" @click="close()">×</button><template :if="selected()"><div class="detail-content">
+        <span class="tag">{{ selected().provider }} · {{ selected().kind }}</span><h2>{{ selected().displayName || selected().name }}</h2><div class="detail-meta"><span class="pill" :class="tone(selected().status)">{{ selected().status }}</span><span class="mono">{{ selected().id }}</span></div>
+        <nav class="context-links" aria-label="Related resources"><a @show="!!selected().links?.service" :href="'/server/sites?service=' + encodeURIComponent(selected().links.service)">Service {{ selected().links?.service }}</a><a @show="!!selected().links?.release" :href="'/operations/releases?release=' + encodeURIComponent(selected().links.release)">Release {{ selected().links?.release }}</a><span @show="!!selected().links?.server">Server {{ selected().links?.server }}</span></nav>
+        <h3>Lifecycle</h3>@if (canOperate)<div class="capability-grid"><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'start').supported" :title="capability(selected(), 'start').supported ? `start ${selected().name}` : capability(selected(), 'start').reason" @click="run('start')">start</button><button class="btn danger sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'stop').supported" :title="capability(selected(), 'stop').supported ? `stop ${selected().name}` : capability(selected(), 'stop').reason" @click="run('stop')">stop</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'restart').supported" :title="capability(selected(), 'restart').supported ? `restart ${selected().name}` : capability(selected(), 'restart').reason" @click="run('restart')">restart</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'redeploy').supported" :title="capability(selected(), 'redeploy').supported ? `redeploy ${selected().name}` : capability(selected(), 'redeploy').reason" @click="run('redeploy')">redeploy</button><button class="btn ghost sm" type="button" :disabled="operationBusy() || typed() !== selected().name || !capability(selected(), 'scale').supported" :title="capability(selected(), 'scale').supported ? `scale ${selected().name}` : capability(selected(), 'scale').reason" @click="run('scale')">scale</button></div><div class="scale-row" @show="capability(selected(), 'scale').supported"><label>Desired replicas<input type="number" min="0" max="10000" :value="replicas()" @input="replicas.set($event.target.value)"></label></div><label class="confirm-label">Type <b>{{ selected().name }}</b> to run a mutation<input :value="typed()" @input="typed.set($event.target.value)" autocomplete="off"></label>@else<p class="note">Your current role can inspect this workload but cannot mutate it.</p>@endif<p class="notice" role="status" @show="!!message()">{{ message() }}</p>
+        <details open><summary>Replicas / processes ({{ selected().replicas?.length || 0 }})</summary><div class="detail-list"><template :for="replica in selected().replicas || []"><div><b>{{ replica.name || replica.id }}</b><span>{{ replica.status }} · PID {{ replica.pid || '—' }} · restarts {{ replica.restartCount || 0 }}</span></div></template><span @show="!(selected().replicas || []).length">Provider-managed or no active replica.</span></div></details>
+        <details><summary>Networks ({{ selected().networks?.length || 0 }})</summary><pre>{{ JSON.stringify(selected().networks || [], null, 2) }}</pre></details><details><summary>Mounts ({{ selected().mounts?.length || 0 }})</summary><pre>{{ JSON.stringify(selected().mounts || [], null, 2) }}</pre></details><details><summary>Redacted configuration</summary><pre>{{ JSON.stringify(selected().config || {}, null, 2) }}</pre></details><details><summary>Provider capabilities</summary><div class="detail-list"><template :for="entry in Object.entries(selected().capabilities || {})"><div><b>{{ entry[0] }}</b><span>{{ entry[1].supported ? 'supported' : entry[1].reason }}</span></div></template></div></details>
+        <div class="logs-head"><h3>Logs</h3><button class="btn ghost sm" type="button" :disabled="logsBusy() || !capability(selected(), 'logs').supported" :title="capability(selected(), 'logs').reason || ''" @click="readLogs()">{{ logsBusy() ? 'Loading…' : 'Load logs' }}</button></div><div class="logs" aria-live="polite"><template :for="line in logs()"><div><span class="ts">{{ line.timestamp || '—' }}</span> {{ line.message }}</div></template><span @show="!logs().length">No log lines loaded.</span></div>
+      </div></template></aside>
+    </div>
+  </main>
+  <style>
+    .workload-wrap{max-width:1540px}.freshness{display:flex;gap:8px;align-items:center;color:var(--txt3)}.source-strip{display:flex;gap:8px;overflow:auto;margin-bottom:12px}.source-strip>span{display:grid;min-width:max-content;padding:8px 10px;border:1px solid var(--line);border-radius:9px;color:var(--txt3);font-size:11px}.source-strip .fresh{border-color:color-mix(in srgb,var(--ok) 30%,var(--line))}.source-strip .degraded{border-color:color-mix(in srgb,var(--bad) 35%,var(--line))}.source-strip small{max-width:360px;white-space:normal;margin-top:3px}.workload-toolbar{display:flex;align-items:end;gap:10px;margin-bottom:14px;padding:14px}.workload-toolbar>label{display:grid;gap:5px;color:var(--txt3);font-size:11px}.workload-toolbar input,.workload-toolbar select,.confirm-label input,.scale-row input{background:var(--bg2);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:8px 10px}.search-label{flex:1;min-width:230px}.column-menu{position:absolute;z-index:5;display:grid;gap:8px;margin-top:6px;padding:12px;background:var(--panel);border:1px solid var(--line);border-radius:9px}.workload-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}.workload-layout.inspecting{grid-template-columns:minmax(650px,1.5fr) minmax(360px,.7fr)}.workload-list{padding:0;overflow:hidden}.workload-table-wrap{overflow:auto}.workload-table{min-width:900px}.workload-row{cursor:pointer}.workload-row.selected{background:color-mix(in srgb,var(--accent) 9%,transparent)}.workload-row td small{display:block;max-width:330px;margin-top:4px;color:var(--txt3);font-size:10px;overflow:hidden;text-overflow:ellipsis}.workload-detail{position:sticky;top:14px;align-self:start;max-height:calc(100vh - 28px);overflow:auto;padding:20px}.detail-close{float:right;border:0;background:transparent;color:var(--txt3);font-size:24px;cursor:pointer}.detail-meta,.context-links,.capability-grid,.logs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.detail-meta .mono{font-size:10px;color:var(--txt3);overflow-wrap:anywhere}.context-links{margin:12px 0}.context-links>*{font-size:11px}.capability-grid{margin:8px 0}.confirm-label,.scale-row label{display:grid;gap:6px;margin:12px 0;color:var(--txt3);font-size:11px}.workload-detail details{border-top:1px solid var(--line);padding:12px 0}.workload-detail summary{cursor:pointer;font-weight:700}.workload-detail pre{max-height:260px;overflow:auto;margin-top:10px;background:#090c12;padding:10px;border-radius:8px;font-size:10px;white-space:pre-wrap}.detail-list{display:grid;gap:8px;margin-top:10px}.detail-list>div{display:grid;gap:2px}.detail-list span{color:var(--txt3);font-size:11px}.logs-head{justify-content:space-between}.logs{min-height:80px}.notice{padding:9px 10px}
+    @media(max-width:1100px){.workload-layout.inspecting{grid-template-columns:1fr}.workload-detail{position:static;max-height:none}}
+    @media(max-width:700px){.source-strip{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));overflow:visible}.source-strip>span{min-width:0;overflow-wrap:anywhere}.workload-toolbar{align-items:stretch;flex-direction:column}.workload-toolbar>*{width:100%}.workload-table{min-width:0}.workload-table thead{display:none}.workload-table tbody,.workload-row{display:block}.workload-row{padding:12px}.workload-row td{display:grid;grid-template-columns:100px 1fr;padding:5px 0;border:0}.workload-row td:before{color:var(--txt3);font-size:10px}.workload-row td:nth-child(1):before{content:'Workload'}.workload-row td:nth-child(2):before{content:'Status'}.workload-row td:nth-child(3):before{content:'Provider'}.workload-row td:nth-child(4):before{content:'Replicas'}.workload-row td:nth-child(5):before{content:'Image'}.workload-row td:nth-child(6):before{content:'Memory'}.workload-row td:nth-child(7):before{content:'Age'}}
+  </style>
+</body>
+</html>

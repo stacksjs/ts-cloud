@@ -70,7 +70,7 @@ export function dockerWorkloads(records: DockerInspectRecord[], context: Runtime
       ageSeconds: ageSeconds(record.State?.StartedAt, now), restartCount: record.RestartCount ?? 0, tags: labels,
       links: { project: context.project, environment: context.environment, server: context.server ?? sourceId.replace(/^docker:/, ''), service: labels['com.docker.compose.service'] ?? labels['ts-cloud.service'] ?? name, release: labels['ts-cloud.release'], providerId: record.Id },
       resources: container.resources, replicas: [{ id: runtimeId('docker', sourceId, `${record.Id}:0`), name, status, rawStatus, startedAt: record.State?.StartedAt, stoppedAt: record.State?.FinishedAt, restartCount: record.RestartCount, containers: [container], resources: container.resources }],
-      networks, mounts, capabilities: capabilities(['start', 'stop', 'restart', 'redeploy', 'logs', 'exec', 'inspect', 'files'], 'standalone Docker containers cannot scale; scale the owning Compose service'),
+      networks, mounts, capabilities: capabilities(['start', 'stop', 'restart', 'logs', 'inspect'], 'Use the owning Compose service for redeploy, scale, exec, and file operations'),
       config: redactRuntimeConfig({ image: record.Config?.Image, labels, environmentKeys: (record.Config?.Env ?? []).map(value => value.split('=', 1)[0]), networkMode: record.HostConfig?.NetworkMode }),
       discoveredAt: now.toISOString(), sourceId,
     }

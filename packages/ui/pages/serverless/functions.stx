@@ -79,6 +79,7 @@ const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confir
     @foreach (functions as fn)
       <div class="section">
         <h2><span class="tag">{{ fn.key }}</span> <span class="mono">{{ fn.name }}</span></h2>
+        <p class="note"><a href="/operations/workloads?search={{ encodeURIComponent(fn.name) }}">Open normalized workload and release context</a></p>
         <div class="cols">
           <div class="panel">
             <h3>Invocations (24h)</h3>

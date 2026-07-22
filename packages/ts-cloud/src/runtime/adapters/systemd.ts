@@ -64,7 +64,7 @@ export function systemdWorkloads(records: SystemdUnitRecord[], context: RuntimeD
       replicas: [{ id: runtimeId('systemd', sourceId, `${record.unit}:main`), name: 'main', status, pid: record.pid, startedAt: record.activeSince, restartCount: record.restartCount, resources: { memoryBytes: record.memoryBytes } }],
       networks: [],
       mounts: [],
-      capabilities: capabilities(['start', 'stop', 'restart', 'redeploy', 'logs', 'exec', 'inspect', 'files'], 'systemd does not implement replica scaling'),
+      capabilities: capabilities(['start', 'stop', 'restart', 'logs', 'inspect'], 'This systemd runtime does not support that action through the scoped explorer'),
       config: redactRuntimeConfig({ fragmentPath: record.fragmentPath, environment: record.environment, enabled: record.enabled }),
       discoveredAt: now.toISOString(),
       sourceId,

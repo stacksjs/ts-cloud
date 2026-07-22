@@ -23,6 +23,7 @@ export const dashboardPageRoutes: readonly DashboardPageRoute[] = [
   { id: 'operations.queue', path: '/operations/queue', label: 'Deployment queue', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'operations.previews', path: '/operations/previews', label: 'Preview environments', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'operations.releases', path: '/operations/releases', label: 'Releases & promotion', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
+  { id: 'runtime.workloads', path: '/operations/workloads', label: 'Workloads', group: 'operations', modes: ['server', 'serverless'], adminOnly: false },
   { id: 'metrics.overview', path: '/server/metrics', label: 'Metrics', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'runtime.services', path: '/server/services', label: 'Runtime services', group: 'operations', modes: ['server'], adminOnly: true },
   { id: 'automation.workers', path: '/server/workers', label: 'Workers & schedules', group: 'operations', modes: ['server'], adminOnly: true },
