@@ -280,14 +280,134 @@ export class DockerDataTransport implements DataProviderTransport {
       database,
     }
   }
-  private async backup(id: string, input: Input): Promise<Input> {
+  async exportLogicalBackup(id: string): Promise<{
+    body: Uint8Array
+    engine: 'postgres' | 'mysql' | 'mariadb'
+    database: string
+    username: string
+    engineVersion?: string
+  }> {
     const name = runtimeId(id),
       inspect = await this.runtime.inspect(name)
     if (!inspect) throw new Error(`Data container ${name} was not found.`)
     const metadata = labels(inspect),
       engine = metadata['ts-cloud.engine'] as DataEngine,
       username = identifier(metadata['ts-cloud.username']),
-      database = identifier(metadata['ts-cloud.database']),
+      database = identifier(metadata['ts-cloud.database'])
+    let dump: string
+    if (engine === 'postgres')
+      dump = await this.runtime.exec(name, [
+        'sh',
+        '-c',
+        'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec pg_dumpall --clean --if-exists -U "$POSTGRES_USER"',
+      ])
+    else if (engine === 'mysql' || engine === 'mariadb')
+      dump = await this.runtime.exec(name, [
+        'sh',
+        '-c',
+        'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysqldump -u root --all-databases --single-transaction --add-drop-database --routines --events --triggers',
+      ])
+    else
+      throw new Error(`${engine} does not support engine-native SQL backups.`)
+    return {
+      body: new TextEncoder().encode(dump),
+      engine,
+      database,
+      username,
+      engineVersion: metadata['ts-cloud.engine-version'] || undefined,
+    }
+  }
+  async restoreLogicalBackup(input: {
+    sourceId: string
+    targetId: string
+    body: Uint8Array
+    credential: string
+    inPlace?: boolean
+  }): Promise<Input> {
+    const sourceName = runtimeId(input.sourceId),
+      targetName = runtimeId(input.targetId),
+      source = await this.runtime.inspect(sourceName)
+    if (!source) throw new Error(`Data container ${sourceName} was not found.`)
+    const metadata = labels(source),
+      engine = metadata['ts-cloud.engine'] as DataEngine,
+      username = identifier(metadata['ts-cloud.username']),
+      database = identifier(metadata['ts-cloud.database'])
+    if (!['postgres', 'mysql', 'mariadb'].includes(engine))
+      throw new Error(`${engine} does not support engine-native SQL restores.`)
+    if (!input.inPlace) {
+      if (input.sourceId === input.targetId)
+        throw new Error('An isolated restore requires a distinct target identifier.')
+      if (await this.runtime.inspect(targetName))
+        throw new Error(`Restore target ${targetName} already exists.`)
+      await this.apply(
+        {
+          id: input.targetId,
+          engine,
+          engineVersion: metadata['ts-cloud.engine-version'] ?? '',
+          username,
+          database,
+          publicExposure: false,
+        },
+        input.credential,
+      )
+    }
+    const command =
+        engine === 'postgres'
+          ? [
+              'sh',
+              '-c',
+              'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres',
+            ]
+          : [
+              'sh',
+              '-c',
+                'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root',
+            ],
+      sql = new TextDecoder('utf-8', { fatal: true }).decode(input.body)
+    let lastError: unknown
+    for (let attempt = 0; attempt < 30; attempt++) {
+      try {
+        await this.runtime.exec(targetName, command, sql)
+        const probe =
+          engine === 'postgres'
+            ? [
+                'sh',
+                '-c',
+                'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec psql -U "$POSTGRES_USER" -Atc "SELECT 1"',
+              ]
+            : [
+                'sh',
+                '-c',
+                'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysql -u root -N -e "SELECT 1"',
+              ]
+        if ((await this.runtime.exec(targetName, probe)).trim() !== '1')
+          throw new Error('Restored database health probe returned an unexpected result.')
+        return {
+          status: 'available',
+          providerId: targetName,
+          engine,
+          database,
+          username,
+          healthy: true,
+        }
+      } catch (error) {
+        lastError = error
+        if (attempt < 29) await Bun.sleep(1000)
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error('Restored database did not become ready.')
+  }
+  async removeRestoredService(id: string): Promise<void> {
+    const name = runtimeId(id)
+    await this.runtime.remove(name)
+    await this.runtime.removeVolume(`${name}-secret`)
+    await this.runtime.removeVolume(`${name}-data`)
+  }
+  private async backup(id: string, input: Input): Promise<Input> {
+    const exported = await this.exportLogicalBackup(id),
+      { engine, database, username } = exported,
       backupId = String(
         input.snapshotId ??
           `${id}-${new Date()
@@ -297,24 +417,9 @@ export class DockerDataTransport implements DataProviderTransport {
       )
     if (!/^[A-Za-z0-9_.-]{2,120}$/.test(backupId))
       throw new Error('Backup identifier contains unsupported characters.')
-    let dump: string
-    if (engine === 'postgres')
-      dump = await this.runtime.exec(name, [
-        'sh',
-        '-c',
-        'export PGPASSWORD="$(cat /run/ts-cloud-secrets/credential)"; exec pg_dumpall -U "$POSTGRES_USER"',
-      ])
-    else if (engine === 'mysql' || engine === 'mariadb')
-      dump = await this.runtime.exec(name, [
-        'sh',
-        '-c',
-        'export MYSQL_PWD="$(cat /run/ts-cloud-secrets/credential)"; exec mysqldump -u root --all-databases --single-transaction',
-      ])
-    else
-      throw new Error(`${engine} does not support engine-native SQL backups.`)
     await mkdir(this.backupRoot, { recursive: true, mode: 0o700 })
     const path = join(this.backupRoot, `${backupId}.sql`)
-    await writeFile(path, dump, { mode: 0o600 })
+    await writeFile(path, exported.body, { mode: 0o600 })
     return { status: 'available', backupId, path, engine, database, username }
   }
   async execute(

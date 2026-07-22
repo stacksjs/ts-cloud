@@ -14,7 +14,7 @@ class Runtime implements DockerRuntime {
   async removeVolume(name: string) {
     this.calls.push({ method: 'remove-volume', args: [name] })
   }
-  async inspect() {
+  async inspect(_name: string) {
     return this.metadata
   }
   async run(args: string[]) {
@@ -58,6 +58,8 @@ describe('Docker data transport', () => {
         Ports: { '5432/tcp': [{ HostIp: '127.0.0.1', HostPort: '5432' }] },
       },
     }
+    runtime.inspect = async (name: string) =>
+      name === 'tscloud-data-orders' ? runtime.metadata : undefined
     expect(await new DockerDataTransport(runtime).observe('orders')).toMatchObject({
       status: 'running',
       healthy: 'healthy',
@@ -151,5 +153,50 @@ describe('Docker data transport', () => {
         database: 'analytics',
       }),
     ).rejects.toThrow('Type analytics')
+  })
+  it('exports and restores an engine-native dump into a private isolated target', async () => {
+    const runtime = new Runtime(),
+      transport = new DockerDataTransport(runtime)
+    runtime.metadata = {
+      Config: {
+        Labels: {
+          'ts-cloud.engine': 'postgres',
+          'ts-cloud.engine-version': '17',
+          'ts-cloud.username': 'app',
+          'ts-cloud.database': 'orders',
+        },
+      },
+    }
+    runtime.inspect = async (name: string) =>
+      name === 'tscloud-data-orders' ? runtime.metadata : undefined
+    runtime.exec = async (_name: string, args: string[], stdin?: string) => {
+      runtime.calls.push({ method: 'exec', args, content: stdin })
+      return args.join(' ').includes('SELECT 1') ? '1\n' : '-- database dump'
+    }
+    const exported = await transport.exportLogicalBackup('orders')
+    expect(new TextDecoder().decode(exported.body)).toBe('-- database dump')
+    await transport.restoreLogicalBackup({
+      sourceId: 'orders',
+      targetId: 'orders-drill',
+      body: exported.body,
+      credential: 'managed-password',
+    })
+    expect(runtime.calls.find((call) => call.method === 'run')?.args).toContain(
+      '127.0.0.1:5432:5432',
+    )
+    expect(
+      runtime.calls.find(
+        (call) => call.method === 'exec' && call.content === '-- database dump',
+      ),
+    ).toBeDefined()
+    expect(runtime.calls.flatMap((call) => call.args ?? []).join(' ')).not.toContain(
+      'managed-password',
+    )
+    await transport.removeRestoredService('orders-drill')
+    expect(runtime.calls.slice(-3).map((call) => call.method)).toEqual([
+      'remove',
+      'remove-volume',
+      'remove-volume',
+    ])
   })
 })
