@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 23
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 24
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1117,6 +1117,31 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       ALTER TABLE notification_routes ADD COLUMN template TEXT;
       ALTER TABLE notification_routes ADD COLUMN rate_limit_per_minute INTEGER NOT NULL DEFAULT 60 CHECK (rate_limit_per_minute BETWEEN 1 AND 10000);
       CREATE INDEX notification_deliveries_route_created_idx ON notification_deliveries(route_id, created_at DESC);
+    `,
+  },
+  {
+    version: 24,
+    name: 'scheduled_jobs_and_workers',
+    sql: `
+      CREATE TABLE scheduled_jobs (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('server','eventbridge','lambda','platform')), expression TEXT NOT NULL, normalized_expression TEXT NOT NULL, timezone TEXT NOT NULL, starts_at TEXT, ends_at TEXT, flexible_minutes INTEGER NOT NULL DEFAULT 0,
+        target TEXT NOT NULL, payload_refs TEXT NOT NULL DEFAULT '{}', missed_run_policy TEXT NOT NULL CHECK (missed_run_policy IN ('skip','catch_up')), overlap_policy TEXT NOT NULL CHECK (overlap_policy IN ('allow','forbid','replace')), retry_policy TEXT NOT NULL, timeout_seconds INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), origin TEXT NOT NULL CHECK (origin IN ('managed','config','external')), source_key TEXT, owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, observed_state TEXT NOT NULL DEFAULT '{}', reconciliation_status TEXT NOT NULL CHECK (reconciliation_status IN ('pending','in_sync','drifted','unsupported','unavailable')),
+        next_run_at TEXT, last_scheduled_for TEXT, version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, environment_id, source_key)
+      ) STRICT;
+      CREATE INDEX scheduled_jobs_due_idx ON scheduled_jobs(enabled, next_run_at, project_id, environment_id);
+      CREATE TABLE job_executions (
+        id TEXT PRIMARY KEY, job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE, operation_id TEXT REFERENCES operations(id) ON DELETE SET NULL, trigger TEXT NOT NULL CHECK (trigger IN ('scheduled','manual','catch_up','external','retry')), scheduled_for TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE,
+        status TEXT NOT NULL CHECK (status IN ('queued','running','succeeded','failed','skipped','dead')), attempt INTEGER NOT NULL DEFAULT 0, started_at TEXT, finished_at TEXT, output TEXT NOT NULL DEFAULT '{}', error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX job_executions_job_idx ON job_executions(job_id, scheduled_for DESC, created_at DESC);
+      CREATE TABLE worker_definitions (
+        id TEXT PRIMARY KEY, organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE, project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE, environment_id TEXT REFERENCES environments(id) ON DELETE CASCADE, resource_id TEXT REFERENCES resources(id) ON DELETE CASCADE,
+        name TEXT NOT NULL, provider TEXT NOT NULL CHECK (provider IN ('systemd','ecs','lambda')), queue TEXT NOT NULL, processes INTEGER NOT NULL, timeout_seconds INTEGER NOT NULL, restart_policy TEXT NOT NULL CHECK (restart_policy IN ('always','on_failure','never')), target TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)), origin TEXT NOT NULL CHECK (origin IN ('managed','config','external')), source_key TEXT,
+        owner_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL, observed_state TEXT NOT NULL DEFAULT '{}', reconciliation_status TEXT NOT NULL CHECK (reconciliation_status IN ('pending','in_sync','drifted','unsupported','unavailable')), version INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, UNIQUE(project_id, environment_id, source_key)
+      ) STRICT;
+      CREATE INDEX worker_definitions_scope_idx ON worker_definitions(project_id, environment_id, resource_id, enabled);
     `,
   },
 ]
