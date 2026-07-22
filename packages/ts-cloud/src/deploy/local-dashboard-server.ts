@@ -16,6 +16,7 @@ import { AutomationIdentityStore } from '../automation'
 import { createApiV1Handler } from '../api'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { ensureDefaultSecurityPolicies, productionChangeReview, recordDashboardHostPosture, SecretFindingScanner, securityScope, SecurityPostureStore, SecurityScannerRunner } from '../security'
+import { listSourceReferences, processSourceWebhook, reconcileSourceWebhook, removeSourceWebhook, SourceConnectionStore, syncSourceRepositories, testSourceConnection, webhookEndpoint } from '../source'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -295,6 +296,14 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'PATCH /api/security/policies',
   'POST /api/security/waivers',
   'DELETE /api/security/waivers',
+  'POST /api/sources/connections',
+  'PATCH /api/sources/connections',
+  'DELETE /api/sources/connections',
+  'POST /api/sources/deploy-keys',
+  'DELETE /api/sources/deploy-keys',
+  'POST /api/sources/webhooks',
+  'PATCH /api/sources/webhooks',
+  'DELETE /api/sources/webhooks',
   'POST /api/serverless/secrets',
   'DELETE /api/serverless/secrets',
 ])
@@ -537,6 +546,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/sites',
   '/server/deployments',
   '/server/logs',
+  '/integrations',
   '/account/security',
   '/security',
   '/access-denied',
@@ -569,6 +579,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/firewall': 'fleet:read',
   '/server/security': 'security:read',
   '/security': 'security:read',
+  '/integrations': 'sources:read',
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
@@ -779,6 +790,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const authentication = new AuthenticationStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const automationIdentities = new AutomationIdentityStore(controlPlane.store)
   const securityPosture = new SecurityPostureStore(controlPlane.store)
+  const sourceConnections = new SourceConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   ensureDefaultSecurityPolicies(controlPlane)
   recordDashboardHostPosture(securityPosture, securityScope(controlPlane, String(defaultEnvironment)), initialData)
   if (bootstrap) {
@@ -880,6 +892,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       try {
         if (!isTrustedMutationRequest(req))
           return json({ ok: false, error: 'Cross-site requests are not allowed.' }, 403)
+
+        const sourceWebhookRoute = /^\/api\/source\/webhooks\/([A-Za-z0-9_-]{16,200})$/.exec(url.pathname)
+        if (sourceWebhookRoute && req.method === 'POST') {
+          const result = await processSourceWebhook({ sources: sourceConnections, controlPlane: controlPlane.store, endpointToken: sourceWebhookRoute[1]!, headers: req.headers, rawBody: new Uint8Array(await req.arrayBuffer()) })
+          return json({ accepted: result.accepted, duplicate: result.duplicate, status: result.status, operationIds: result.operations.map(operation => operation.id), message: result.message }, result.accepted ? 202 : 404)
+        }
 
         // --- Public: the login endpoints and the login page itself ----------
         const oidcRoute = /^\/auth\/oidc\/([a-z0-9-]+)\/(start|callback)$/.exec(url.pathname)
@@ -1159,7 +1177,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const decision = guard.check(req, url.pathname, user, site)
           if (!decision.ok)
             return json({ ok: false, error: decision.error }, decision.status ?? 403)
-          if (RECENT_AUTH_MUTATIONS.has(`${req.method.toUpperCase()} ${url.pathname}`)) {
+          if (authEnabled && RECENT_AUTH_MUTATIONS.has(`${req.method.toUpperCase()} ${url.pathname}`)) {
             const session = guard.resolveSession(req)
             if (!session || !authentication.isRecentlyAuthenticated(session))
               return json({ ok: false, error: 'Recent authentication is required for this change.', stepUpRequired: true }, 401)
@@ -1329,6 +1347,151 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           if (!token || account?.organizationId !== controlPlane.organization.id)
             return json({ ok: false, error: 'API token was not found.' }, 404)
           return json({ ok: true, token: automationIdentities.revokeToken(token.id, principal.actor?.id) })
+        }
+
+        if (url.pathname === '/api/sources' && req.method === 'GET') {
+          const connections = sourceConnections.listConnections(controlPlane.organization.id)
+          return json({
+            connections,
+            bindings: sourceConnections.listBindings({ projectId: controlPlane.project.id }),
+            repositories: connections.flatMap(connection => sourceConnections.listRepositories(connection.id)),
+            deployKeys: connections.flatMap(connection => sourceConnections.listDeployKeys(connection.id)),
+            webhooks: connections.flatMap(connection => sourceConnections.listWebhooks(connection.id)).map(webhook => ({ ...webhook, deliveries: sourceConnections.listDeliveries(webhook.id, 20) })),
+            project: { id: controlPlane.project.id, slug: controlPlane.project.slug },
+            environment: securityScope(controlPlane, String(environment)),
+            resources: controlPlane.store.listResources(controlPlane.project.id, securityScope(controlPlane, String(environment)).environmentId).filter(resource => resource.kind === 'application').map(resource => ({ id: resource.id, slug: resource.slug, name: resource.name })),
+          })
+        }
+
+        if (url.pathname === '/api/sources/connections' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const provider = String(body.provider ?? '')
+          if (!['github', 'gitlab', 'bitbucket', 'gitea', 'generic_https', 'generic_ssh'].includes(provider)) return json({ ok: false, error: 'A supported Git provider is required.' }, 422)
+          try {
+            const credential = provider === 'github' && (body.privateKey || body.appId)
+              ? { appId: typeof body.appId === 'string' ? body.appId : undefined, installationId: typeof body.installationId === 'string' ? body.installationId : undefined, privateKey: typeof body.privateKey === 'string' ? body.privateKey : undefined }
+              : provider !== 'generic_ssh' && body.token
+                ? { token: typeof body.token === 'string' ? body.token : undefined, username: typeof body.username === 'string' ? body.username : undefined }
+                : undefined
+            const defaults: Record<string, string> = { github: 'https://github.com', gitlab: 'https://gitlab.com', bitbucket: 'https://bitbucket.org', gitea: 'https://gitea.com' }
+            let connection!: ReturnType<SourceConnectionStore['createConnection']>
+            let repository: ReturnType<SourceConnectionStore['upsertRepository']> | undefined
+            let deployKey: ReturnType<SourceConnectionStore['createDeployKey']> | undefined
+            controlPlane.store.database.transaction(() => {
+              connection = sourceConnections.createConnection({ organizationId: controlPlane.organization.id, provider: provider as any, name: String(body.name ?? provider), host: String(body.host ?? defaults[provider] ?? ''), owner: typeof body.owner === 'string' ? body.owner : undefined,
+                authKind: body.authKind, credential, grantedScopes: Array.isArray(body.grantedScopes) ? body.grantedScopes.map(String) : [], credentialExpiresAt: typeof body.credentialExpiresAt === 'string' ? body.credentialExpiresAt : undefined, createdByActorId: principal.actor?.id })
+              if (typeof body.repositoryUrl === 'string' && typeof body.repositoryFullName === 'string') repository = sourceConnections.upsertRepository({ connectionId: connection.id, providerRepositoryId: `manual:${body.repositoryFullName}`, fullName: body.repositoryFullName, cloneUrl: body.repositoryUrl, defaultBranch: String(body.defaultBranch ?? 'main'), visibility: 'unknown', archived: false, metadata: { source: 'manual' } })
+              if (provider === 'generic_ssh') deployKey = sourceConnections.createDeployKey({ connectionId: connection.id, name: String(body.deployKeyName ?? 'Repository deploy key'), publicKey: String(body.publicKey ?? ''), privateKey: String(body.deployPrivateKey ?? ''), host: String(body.sshHost ?? ''), hostKey: String(body.hostKey ?? ''), actorId: principal.actor?.id })
+            })()
+            if (body.test === true) connection = await testSourceConnection(sourceConnections, connection.id, repository?.id)
+            return json({ ok: true, connection, repository, deployKey }, 201)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source connection could not be created.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/connections' && req.method === 'PATCH') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          const connection = sourceConnections.getConnection(String(body.id ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try {
+            if (body.action === 'test') return json({ ok: true, connection: await testSourceConnection(sourceConnections, connection.id, typeof body.repositoryId === 'string' ? body.repositoryId : undefined) })
+            if (body.action === 'rotate') return json({ ok: true, connection: sourceConnections.rotateCredential(connection.id, { token: typeof body.token === 'string' ? body.token : undefined, username: typeof body.username === 'string' ? body.username : undefined, appId: typeof body.appId === 'string' ? body.appId : undefined, installationId: typeof body.installationId === 'string' ? body.installationId : undefined, privateKey: typeof body.privateKey === 'string' ? body.privateKey : undefined }, { expiresAt: typeof body.expiresAt === 'string' ? body.expiresAt : undefined, actorId: principal.actor?.id }) })
+            return json({ ok: false, error: 'Connection action must be test or rotate.' }, 422)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source connection could not be updated.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/connections' && req.method === 'DELETE') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          const connection = sourceConnections.getConnection(String(body.id ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          const affectedBindings = sourceConnections.listBindings({ connectionId: connection.id, status: 'active' })
+          if (body.preview === true) return json({ ok: true, preview: true, affectedBindings })
+          return json({ ok: true, ...sourceConnections.disconnectConnection(connection.id, principal.actor?.id) })
+        }
+
+        if (url.pathname === '/api/sources/deploy-keys' && req.method === 'POST') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          const connection = sourceConnections.getConnection(String(body.connectionId ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try { return json({ ok: true, deployKey: sourceConnections.createDeployKey({ connectionId: connection.id, name: String(body.name ?? 'Repository deploy key'), publicKey: String(body.publicKey ?? ''), privateKey: String(body.privateKey ?? ''), host: String(body.host ?? ''), hostKey: String(body.hostKey ?? ''), actorId: principal.actor?.id }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Deploy key could not be stored.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/deploy-keys' && req.method === 'DELETE') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          const deployKey = sourceConnections.getDeployKey(String(body.id ?? ''))
+          const connection = deployKey ? sourceConnections.getConnection(deployKey.connectionId) : undefined
+          if (!deployKey || !connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Deploy key was not found.' }, 404)
+          const affectedBindings = sourceConnections.listBindings({ connectionId: connection.id }).filter(binding => binding.deployKeyId === deployKey.id)
+          if (body.preview === true) return json({ ok: true, preview: true, affectedBindings })
+          return json({ ok: true, ...sourceConnections.revokeDeployKey(deployKey.id, principal.actor?.id) })
+        }
+
+        if (url.pathname === '/api/sources/repositories/sync' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const connection = sourceConnections.getConnection(String(body.connectionId ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try { return json({ ok: true, repositories: await syncSourceRepositories(sourceConnections, String(body.connectionId ?? ''), { search: typeof body.search === 'string' ? body.search : undefined }) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Repositories could not be synchronized.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/references' && req.method === 'GET') {
+          const connection = sourceConnections.getConnection(String(url.searchParams.get('connectionId') ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try { return json(await listSourceReferences(sourceConnections, { connectionId: String(url.searchParams.get('connectionId') ?? ''), repository: String(url.searchParams.get('repository') ?? ''), repositoryId: url.searchParams.get('repositoryId') ?? undefined, deployKeyId: url.searchParams.get('deployKeyId') ?? undefined, type: url.searchParams.get('type') === 'tags' ? 'tags' : 'branches', cursor: url.searchParams.get('cursor') ?? undefined })) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'References could not be listed.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/bindings' && req.method === 'POST') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user); const scope = securityScope(controlPlane, String(environment))
+          const connection = sourceConnections.getConnection(String(body.connectionId ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try { return json({ ok: true, binding: sourceConnections.createBinding({ projectId: controlPlane.project.id, environmentId: scope.environmentId, resourceId: typeof body.resourceId === 'string' ? body.resourceId : undefined, connectionId: String(body.connectionId ?? ''), repositoryId: typeof body.repositoryId === 'string' ? body.repositoryId : undefined,
+            repositoryFullName: String(body.repositoryFullName ?? ''), defaultBranch: String(body.defaultBranch ?? 'main'), branchRule: typeof body.branchRule === 'string' ? body.branchRule : undefined, tagRule: typeof body.tagRule === 'string' ? body.tagRule : undefined, monorepoRoot: String(body.monorepoRoot ?? '.'), includePaths: Array.isArray(body.includePaths) ? body.includePaths.map(String) : [], excludePaths: Array.isArray(body.excludePaths) ? body.excludePaths.map(String) : [], submodules: body.submodules === true, cloneDepth: body.cloneDepth ? Number(body.cloneDepth) : undefined, deployKeyId: typeof body.deployKeyId === 'string' && body.deployKeyId ? body.deployKeyId : undefined, autoDeploy: body.autoDeploy !== false, pullRequestPreviews: body.pullRequestPreviews !== false, actorId: principal.actor?.id }) }, 201) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source binding could not be created.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/bindings' && req.method === 'PATCH') {
+          const body = await readJsonBody(req); const principal = organizationPrincipal(user)
+          const binding = sourceConnections.getBinding(String(body.id ?? ''))
+          if (!binding || binding.projectId !== controlPlane.project.id) return json({ ok: false, error: 'Source binding was not found.' }, 404)
+          try { return json({ ok: true, binding: sourceConnections.updateBinding(binding.id, Number(body.version), { defaultBranch: body.defaultBranch, branchRule: body.branchRule, tagRule: body.tagRule, monorepoRoot: body.monorepoRoot, includePaths: body.includePaths, excludePaths: body.excludePaths, submodules: body.submodules, cloneDepth: body.cloneDepth, deployKeyId: body.deployKeyId, autoDeploy: body.autoDeploy, pullRequestPreviews: body.pullRequestPreviews, status: body.status, disabledReason: body.disabledReason, actorId: principal.actor?.id }) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source binding could not be updated.' }, 409) }
+        }
+
+        if (url.pathname === '/api/sources/webhooks' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const connection = sourceConnections.getConnection(String(body.connectionId ?? ''))
+          if (!connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source connection was not found.' }, 404)
+          try {
+            const created = sourceConnections.createWebhook({ connectionId: String(body.connectionId ?? ''), repositoryId: typeof body.repositoryId === 'string' ? body.repositoryId : undefined, repositoryFullName: String(body.repositoryFullName ?? ''), events: Array.isArray(body.events) ? body.events.map(String) : undefined, secret: typeof body.secret === 'string' ? body.secret : undefined })
+            const baseUrl = process.env.TS_CLOUD_WEBHOOK_BASE_URL?.trim() || oidcOrigin
+            const endpoint = baseUrl ? webhookEndpoint(baseUrl, created.webhook) : undefined
+            const webhook = body.reconcile !== false && baseUrl ? await reconcileSourceWebhook(sourceConnections, created.webhook.id, baseUrl) : created.webhook
+            return json({ ok: true, webhook, endpoint, endpointRevealOnce: true }, 201)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source webhook could not be created.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/webhooks' && req.method === 'PATCH') {
+          const body = await readJsonBody(req); const baseUrl = process.env.TS_CLOUD_WEBHOOK_BASE_URL?.trim() || oidcOrigin
+          const sourceWebhook = sourceConnections.getWebhook(String(body.id ?? ''))
+          const connection = sourceWebhook ? sourceConnections.getConnection(sourceWebhook.connectionId) : undefined
+          if (!sourceWebhook || !connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source webhook was not found.' }, 404)
+          if (!baseUrl) return json({ ok: false, error: 'Set TS_CLOUD_WEBHOOK_BASE_URL to reconcile provider webhooks.' }, 422)
+          try { return json({ ok: true, webhook: await reconcileSourceWebhook(sourceConnections, String(body.id ?? ''), baseUrl) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source webhook could not be reconciled.' }, 422) }
+        }
+
+        if (url.pathname === '/api/sources/webhooks' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const sourceWebhook = sourceConnections.getWebhook(String(body.id ?? ''))
+          const connection = sourceWebhook ? sourceConnections.getConnection(sourceWebhook.connectionId) : undefined
+          if (!sourceWebhook || !connection || connection.organizationId !== controlPlane.organization.id) return json({ ok: false, error: 'Source webhook was not found.' }, 404)
+          try { return json({ ok: true, webhook: await removeSourceWebhook(sourceConnections, String(body.id ?? '')) }) }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : 'Source webhook could not be removed.' }, 422) }
         }
 
         if (url.pathname === '/api/security/posture' && req.method === 'GET') {

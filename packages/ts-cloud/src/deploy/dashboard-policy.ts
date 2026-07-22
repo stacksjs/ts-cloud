@@ -44,10 +44,13 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
   'POST /api/auth/password-reset/request',
   'POST /api/auth/password-reset/complete',
   'POST /api/auth/mfa/complete',
+  'POST /api/source/webhooks/:token',
 ])
 
 export function isPublicRoute(method: string, pathname: string): boolean {
   if (method.toUpperCase() === 'GET' && /^\/auth\/oidc\/[a-z0-9-]+\/(?:start|callback)$/.test(pathname))
+    return true
+  if (method.toUpperCase() === 'POST' && /^\/api\/source\/webhooks\/[A-Za-z0-9_-]{16,200}$/.test(pathname))
     return true
   return PUBLIC_ROUTES.has(`${method.toUpperCase()} ${pathname}`)
 }
@@ -94,6 +97,20 @@ const POLICIES: Record<string, RoutePolicy> = {
   'DELETE /api/security/waivers': { capability: 'security:waive' },
   'PATCH /api/security/findings': { capability: 'security:manage' },
   'POST /api/security/comments': { capability: 'security:manage' },
+
+  'GET /api/sources': { capability: 'sources:read' },
+  'POST /api/sources/connections': { capability: 'sources:manage' },
+  'PATCH /api/sources/connections': { capability: 'sources:manage' },
+  'DELETE /api/sources/connections': { capability: 'sources:manage' },
+  'POST /api/sources/deploy-keys': { capability: 'sources:manage' },
+  'DELETE /api/sources/deploy-keys': { capability: 'sources:manage' },
+  'POST /api/sources/repositories/sync': { capability: 'sources:manage' },
+  'GET /api/sources/references': { capability: 'sources:read' },
+  'POST /api/sources/bindings': { capability: 'sources:manage' },
+  'PATCH /api/sources/bindings': { capability: 'sources:manage' },
+  'POST /api/sources/webhooks': { capability: 'sources:manage' },
+  'PATCH /api/sources/webhooks': { capability: 'sources:manage' },
+  'DELETE /api/sources/webhooks': { capability: 'sources:manage' },
 
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },

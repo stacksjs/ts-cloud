@@ -94,8 +94,10 @@ describe('policy coverage', () => {
       'POST /api/invitations/accept',
       'POST /api/login',
       'POST /api/logout',
+      'POST /api/source/webhooks/:token',
     ])
     expect(isPublicRoute('POST', '/api/login')).toBe(true)
+    expect(isPublicRoute('POST', '/api/source/webhooks/abcdefghijklmnopqrstuvwxyz')).toBe(true)
     expect(isPublicRoute('GET', '/auth/oidc/workforce/start')).toBe(true)
     expect(isPublicRoute('GET', '/api/dashboard-data')).toBe(false)
     expect(isPublicRoute('POST', '/api/server/command')).toBe(false)
