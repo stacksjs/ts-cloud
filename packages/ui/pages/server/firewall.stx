@@ -7,6 +7,7 @@ const initialPorts = __d?.firewall?.ports ?? [8080, 6379]
 </script>
 <script client>
 import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { requestJson } from '../../functions/requestJson.ts'
 
 // Reactive host firewall (UFW) management - list + allow + remove, via signals +
 // directives. Seeded from build-time data (stx server→client bridge); load()
@@ -33,23 +34,25 @@ async function load() {
   } catch (e) { setMessage((e && e.message) || 'Could not read firewall config.', 'bad') }
 }
 async function allowPort() {
+  if (busy()) return
   const port = Number(newPort())
   if (!Number.isInteger(port) || port < 1 || port > 65535) { setMessage('Port must be a whole number between 1 and 65535.', 'bad'); return }
   if (reserved.includes(port)) { setMessage('Ports 22, 80, and 443 are always open, so there is nothing to add.', 'bad'); return }
-  setMessage('Allowing port ' + port + '...', '')
-  const res = await fetch('/api/firewall', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not allow port.', 'bad'); return }
-  ports.set(data.ports || []); newPort.set('')
-  setMessage('Allowed port ' + port + ' in cloud config.' + applyLine(data.apply), 'ok')
+  busy.set(true); setMessage('Allowing port ' + port + '...', '')
+  try {
+    const data = await requestJson('/api/firewall', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
+    ports.set(data.ports || []); newPort.set('')
+    setMessage('Allowed port ' + port + ' in cloud config.' + applyLine(data.apply), 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not allow port.', 'bad') }
+  finally { busy.set(false) }
 }
 async function removePort(port) {
   setMessage('Removing port ' + port + '...', '')
-  const res = await fetch('/api/firewall', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove port.', 'bad'); return }
-  ports.set(data.ports || [])
-  setMessage('Removed port ' + port + ' from cloud config.' + applyLine(data.apply), 'ok')
+  try {
+    const data = await requestJson('/api/firewall', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ port }) })
+    ports.set(data.ports || [])
+    setMessage('Removed port ' + port + ' from cloud config.' + applyLine(data.apply), 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not remove port.', 'bad') }
 }
 
 // Remove runs through the shared typed-confirm lifecycle.
@@ -97,7 +100,7 @@ onMount(() => { load() })
             <input id="fw-port" type="number" min="1" max="65535" autocomplete="off" placeholder="8080" :value="newPort()" @input="newPort.set($event.target.value)" required>
           </div>
           <div class="form-actions">
-            <button class="btn" type="submit">Allow</button>
+            <button class="btn" type="submit" :disabled="busy()">Allow</button>
             <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
           </div>
         </form>

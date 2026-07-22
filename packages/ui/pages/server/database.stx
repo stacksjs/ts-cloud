@@ -4,6 +4,8 @@ try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d =
 const server = __d?.server ?? { name: 'acme-production-app' }
 </script>
 <script client>
+import { requestJson } from '../../functions/requestJson.ts'
+
 // Reactive database management - create databases/users, live lists.
 const engine = state('mysql')
 const databases = state([])
@@ -32,8 +34,7 @@ async function createDb() {
   busy.set(true)
   show('Creating database ' + dbName() + '...')
   try {
-    const res = await fetch('/api/databases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: dbName() }) })
-    const b = await res.json()
+    const b = await requestJson('/api/databases', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: dbName() }) })
     show((b.ok ? 'OK created ' + (b.name || dbName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
     if (b.ok) { dbName.set(''); load() }
   } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
@@ -46,8 +47,7 @@ async function createUser() {
   const payload = { username: uName(), password: uPass(), access: uAccess() }
   if (uDatabase()) payload.database = uDatabase()
   try {
-    const res = await fetch('/api/databases/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    const b = await res.json()
+    const b = await requestJson('/api/databases/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     show((b.ok ? 'OK created user ' + (b.username || uName()) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
     if (b.ok) { uName.set(''); uPass.set(''); load() }
   } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }
@@ -64,8 +64,7 @@ async function backupDb(name) {
   busy.set(true)
   show('Backing up ' + name + '...')
   try {
-    const res = await fetch('/api/databases/backup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ database: name, confirm: name }) })
-    const b = await res.json()
+    const b = await requestJson('/api/databases/backup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ database: name, confirm: name }) })
     show((b.ok ? 'OK backed up ' + (b.database || name) : 'FAILED') + '\n\n' + (b.stdout || '') + (b.stderr ? '\n' + b.stderr : '') + (b.error ? '\n' + b.error : ''))
     if (b.ok) loadBackups()
   } catch (e) { show('FAILED\n\n' + ((e && e.message) || e)) }

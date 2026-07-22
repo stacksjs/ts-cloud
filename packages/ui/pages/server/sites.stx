@@ -25,15 +25,18 @@ import { useOpConfirm } from '../../functions/useOpConfirm.ts'
 const addName = state(''); const addRoot = state(''); const addDomain = state(''); const addPath = state('')
 const addDeploy = state('server'); const addPort = state(''); const addBuild = state(''); const addStart = state('')
 const addMsg = state(''); const addMsgKind = state('')
+const addBusy = state(false)
 async function addSite() {
-  addMsg.set('Adding site...'); addMsgKind.set('')
+  if (addBusy()) return
+  addBusy.set(true); addMsg.set('Adding site...'); addMsgKind.set('')
   const payload = { name: addName(), root: addRoot(), domain: addDomain(), path: addPath(), deploy: addDeploy(), port: addPort(), build: addBuild(), start: addStart() }
   try {
     const res = await fetch('/api/sites', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
     const b = await res.json()
     if (!b.ok) throw new Error(b.error || 'Could not add site')
-    addMsg.set('Added ' + b.site + '. Refreshing...'); addMsgKind.set('ok'); location.reload()
+    addMsg.set('Added ' + b.site + '.'); addMsgKind.set('ok')
   } catch (e) { addMsg.set((e && e.message) || String(e)); addMsgKind.set('bad') }
+  finally { addBusy.set(false) }
 }
 
 // Deploy / remove run through the shared op-confirm bar.
@@ -106,7 +109,7 @@ async function saveEdit(name) {
             <div class="field-block"><label>Port</label><input placeholder="3000" :value="addPort()" @input="addPort.set($event.target.value)"></div>
             <div class="field-block wide"><label>Build command</label><input placeholder="bun run build" :value="addBuild()" @input="addBuild.set($event.target.value)"></div>
             <div class="field-block wide"><label>Start command</label><input placeholder="bun run start" :value="addStart()" @input="addStart.set($event.target.value)"></div>
-            <div class="form-actions"><button class="btn" type="submit">Add site</button><span class="msg" :class="addMsgKind()">{{ addMsg() }}</span></div>
+            <div class="form-actions"><button class="btn" type="submit" :disabled="addBusy()">Add site</button><span class="msg" :class="addMsgKind()" role="status">{{ addMsg() }}</span></div>
           </form>
         </div>
       </div>

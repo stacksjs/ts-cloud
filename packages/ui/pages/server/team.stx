@@ -5,6 +5,7 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 </script>
 <script client>
 import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { requestJson } from '../../functions/requestJson.ts'
 
 const organization = state(null)
 const project = state(null)
@@ -43,6 +44,7 @@ const oidcDefaultRole = state('viewer')
 const oidcEnforce = state(false)
 const oidcPassword = state('')
 const oidcCode = state('')
+const pageBusy = state(false)
 
 const { opOutput, opShown, pending, typed, busy, confirmTok, confirmVerb, confirmDanger, confirmLabel, canRun, askOp, cancelOp, runOp } = useOpConfirm(async p => {
   await removeMembership(p.member, String(p.apiConfirm))
@@ -144,24 +146,27 @@ async function setOidcEnabled(provider, enabled) {
 }
 
 async function invite() {
+  if (pageBusy()) return
+  pageBusy.set(true)
   issued.set(null); setMessage('Creating invitation…', '')
-  const response = await fetch('/api/organization/invitations', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: email(), roleTemplate: roleTemplate(), scopeType: scopeType(), scopeId: scopeId(), password: ownerPassword() }),
-  })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) { setMessage(data.error || 'Could not create invitation.', 'bad'); return }
-  issued.set(data); email.set(''); ownerPassword.set(''); setMessage('Invitation created. Copy the one-time link below.', 'ok'); load()
+  try {
+    const data = await requestJson('/api/organization/invitations', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: email(), roleTemplate: roleTemplate(), scopeType: scopeType(), scopeId: scopeId(), password: ownerPassword() }) })
+    issued.set(data); email.set(''); ownerPassword.set(''); setMessage('Invitation created. Copy the one-time link below.', 'ok'); load()
+  } catch (error) { setMessage(error?.message || 'Could not create invitation.', 'bad') }
+  finally { pageBusy.set(false) }
 }
 
 async function invitationAction(invitation, action) {
+  if (pageBusy()) return
+  pageBusy.set(true)
   const endpoint = action === 'resend' ? '/api/organization/invitations/resend' : '/api/organization/invitations'
-  const response = await fetch(endpoint, { method: action === 'resend' ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: invitation.id }) })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) { setMessage(data.error || 'Invitation could not be updated.', 'bad'); return }
-  if (data.acceptUrl) { issued.set(data); setMessage('Invitation reissued. Copy the new one-time link.', 'ok') }
-  else setMessage('Invitation revoked.', 'ok')
-  load()
+  try {
+    const data = await requestJson(endpoint, { method: action === 'resend' ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: invitation.id }) })
+    if (data.acceptUrl) { issued.set(data); setMessage('Invitation reissued. Copy the new one-time link.', 'ok') }
+    else setMessage('Invitation revoked.', 'ok')
+    load()
+  } catch (error) { setMessage(error?.message || 'Invitation could not be updated.', 'bad') }
+  finally { pageBusy.set(false) }
 }
 
 function beginEdit(member) {
@@ -256,7 +261,7 @@ onMount(() => { load(); loadOidc() })
           <div class="field-block" @show="scopeType() === 'environment'"><label for="invite-environment">Environment</label><select id="invite-environment" :value="scopeId()" @change="scopeId.set($event.target.value)"><template :for="item in environments()"><option :value="item.id">{{ item.name }}</option></template></select></div>
           <div class="field-block" @show="scopeType() === 'resource'"><label for="invite-resource">Resource</label><select id="invite-resource" :value="scopeId()" @change="scopeId.set($event.target.value)"><template :for="item in resources()"><option :value="item.id">{{ item.name }} · {{ item.slug }}</option></template></select></div>
           <div class="field-block" @show="roleTemplate() === 'owner'"><label for="invite-owner-password">Your password</label><input id="invite-owner-password" type="password" autocomplete="current-password" :value="ownerPassword()" @input="ownerPassword.set($event.target.value)"><small>Required when adding another owner.</small></div>
-          <div class="form-actions"><button class="btn" type="submit">Create invitation</button></div>
+          <div class="form-actions"><button class="btn" type="submit" :disabled="pageBusy()">Create invitation</button></div>
         </form>
         <div class="issued" @show="!!issued()"><strong>One-time acceptance link</strong><code>{{ issued()?.acceptUrl }}</code><span>Copy this link now. Only its SHA-256 hash is stored, and resending replaces it.</span></div>
       </div>
@@ -293,7 +298,7 @@ onMount(() => { load(); loadOidc() })
 
     <div class="section" @show="pending() !== null"><h2>Remove membership</h2><div class="panel"><div class="field-block"><label for="remove-owner-password">Your password (required when removing an owner)</label><input id="remove-owner-password" type="password" autocomplete="current-password" :value="removePassword()" @input="removePassword.set($event.target.value)"></div>@include('../partials/op-confirm')</div></div>
 
-    <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>State</th><th></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
+    <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>State</th><th></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" :disabled="pageBusy()" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" :disabled="pageBusy()" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
   </div>
   <style>
     .access-message { min-height: 20px; margin-top: 12px; }

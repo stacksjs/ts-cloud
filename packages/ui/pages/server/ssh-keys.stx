@@ -6,6 +6,7 @@ const initialKeys = __d?.sshKeys ?? []
 </script>
 <script client>
 import { useOpConfirm } from '../../functions/useOpConfirm.ts'
+import { requestJson } from '../../functions/requestJson.ts'
 
 // Reactive SSH key management - list + add + remove, via signals + directives.
 // Seeded from build-time data (stx server→client bridge); load() reconciles
@@ -25,20 +26,22 @@ async function load() {
   } catch (e) { setMessage((e && e.message) || 'Could not read SSH keys.', 'bad') }
 }
 async function addKey() {
-  setMessage('Saving...', '')
-  const res = await fetch('/api/ssh-keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name(), publicKey: pub() }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not add key.', 'bad'); return }
-  keys.set(data.keys || []); name.set(''); pub.set('')
-  setMessage('Saved to cloud config. Run cloud deploy to apply.', 'ok')
+  if (busy()) return
+  busy.set(true); setMessage('Saving...', '')
+  try {
+    const data = await requestJson('/api/ssh-keys', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: name(), publicKey: pub() }) })
+    keys.set(data.keys || []); name.set(''); pub.set('')
+    setMessage('Saved to cloud config. Run cloud deploy to apply.', 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not add key.', 'bad') }
+  finally { busy.set(false) }
 }
 async function removeKey(n) {
   setMessage('Removing...', '')
-  const res = await fetch('/api/ssh-keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: n }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove key.', 'bad'); return }
-  keys.set(data.keys || [])
-  setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
+  try {
+    const data = await requestJson('/api/ssh-keys', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: n }) })
+    keys.set(data.keys || [])
+    setMessage('Removed from cloud config. Run cloud deploy to apply.', 'ok')
+  } catch (error) { setMessage(error?.message || 'Could not remove key.', 'bad') }
 }
 // Removal runs through a typed-confirm bar (same pattern as firewall/team):
 // type the key name to confirm. Removing the wrong key can lock every operator
@@ -72,7 +75,7 @@ onMount(() => { load() })
             <textarea id="ssh-public-key" rows="4" placeholder="ssh-ed25519 AAAA... chris@macbook" :value="pub()" @input="pub.set($event.target.value)" required></textarea>
           </div>
           <div class="form-actions">
-            <button class="btn" type="submit">Add key</button>
+            <button class="btn" type="submit" :disabled="busy()">Add key</button>
             <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
           </div>
         </form>
