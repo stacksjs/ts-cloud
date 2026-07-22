@@ -1,5 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
-import type { AuthOidcRole } from '../auth'
+import type { AuthOidcRole, OidcFetch } from '../auth'
 import type { AuthorizationCapability, AuthorizationScope, OrganizationRoleTemplate } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
@@ -65,6 +65,10 @@ export interface LocalDashboardServerOptions {
    * reaching out over SSH/SSM.
    */
   box?: boolean
+  /** Explicit config for embedded/test callers; CLI callers load the project config. */
+  config?: CloudConfig
+  /** Injectable OIDC transport for deterministic integration tests. */
+  oidcFetch?: OidcFetch
 }
 
 export interface LocalDashboardServer {
@@ -631,7 +635,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   if (options.box)
     process.env.TS_CLOUD_DASHBOARD_BOX = '1'
   await loadLocalEnv(cwd)
-  const config = await loadCloudConfig()
+  const config = options.config ?? await loadCloudConfig()
   const controlPlane = initializeDashboardControlPlane(cwd, config as CloudConfig)
   if (controlPlane.reconciliation.failed > 0) {
     console.warn(`  ts-cloud dashboard: marked ${controlPlane.reconciliation.failed} orphaned operation(s) as failed after restart.`)
@@ -799,7 +803,6 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
-  const oidcOrigin = resolveOidcDashboardOrigin(host, port)
   const networkHint = (address: string): string => createHash('sha256').update(`${secret}:${address}`).digest('hex').slice(0, 16)
   const userAgentLabel = (req: Request): string | undefined => req.headers.get('user-agent')?.trim().slice(0, 256) || undefined
   const issueSession = (identityId: string, req: Request, address: string, authMethod: 'local' | 'oidc' = 'local') => authentication.createSession({
@@ -841,6 +844,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     },
     async fetch(req, server) {
       const url = new URL(req.url)
+      const oidcOrigin = resolveOidcDashboardOrigin(host, server.port ?? port)
       const requestedEnvironment = url.searchParams.get('env')
       const environment = resolveDashboardEnvironment(availableEnvironments, defaultEnvironment, requestedEnvironment)
       let latestData = latestDataByEnvironment.get(environment)
@@ -861,7 +865,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return new Response(null, { status: 302, headers: { location: '/login?sso_error=configuration' } })
           if (action === 'start') {
             try {
-              const started = await beginOidcAuthorization(authentication, providerSlug, oidcOrigin, url.searchParams.get('return') ?? undefined)
+              const started = await beginOidcAuthorization(authentication, providerSlug, oidcOrigin, url.searchParams.get('return') ?? undefined, options.oidcFetch)
               return new Response(null, { status: 302, headers: { location: started.authorizationUrl, 'cache-control': 'no-store' } })
             }
             catch (error) {
@@ -882,7 +886,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               state: url.searchParams.get('state') ?? '',
               code: url.searchParams.get('code') ?? '',
               origin: oidcOrigin,
-            })
+            }, options.oidcFetch)
             const resolved = resolveOidcDashboardIdentity(authentication, controlPlane, cwd, completed.identity)
             authentication.recordLogin(resolved.identity.id)
             const issued = issueSession(resolved.identity.id, req, server.requestIP(req)?.address ?? 'unknown', 'oidc')
