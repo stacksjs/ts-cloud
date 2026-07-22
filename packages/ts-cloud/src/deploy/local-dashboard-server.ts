@@ -1,6 +1,6 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { AuthOidcRole, OidcFetch } from '../auth'
-import type { AuthorizationCapability, AuthorizationScope, OperationState, OrganizationRoleTemplate } from '../control-plane'
+import type { AuthorizationCapability, AuthorizationScope, JsonValue, OperationState, OrganizationRoleTemplate } from '../control-plane'
 import type { ReleaseDriverResolver } from '../release'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
@@ -161,6 +161,20 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
     status,
     headers: { 'content-type': 'application/json; charset=utf-8', ...headers },
   })
+}
+
+const DASHBOARD_AUDIT_FIELDS = new Set(['action', 'operation', 'site', 'name', 'username', 'database', 'secretId', 'port', 'key', 'resourceId', 'environmentId'])
+
+export function dashboardMutationAuditPayload(method: string, path: string, input: unknown, status: number, durationMs: number): { [key: string]: JsonValue } {
+  const sanitized: Record<string, string | number | boolean | null> = {}
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    for (const [key, raw] of Object.entries(input as Record<string, unknown>)) {
+      if (!DASHBOARD_AUDIT_FIELDS.has(key) || !['string', 'number', 'boolean'].includes(typeof raw)) continue
+      sanitized[key] = typeof raw === 'string' ? raw.slice(0, 256) : raw as number | boolean
+    }
+  }
+  const target = String(sanitized.resourceId || sanitized.site || sanitized.secretId || sanitized.database || sanitized.name || path)
+  return { method: method.toUpperCase(), path, target, status, outcome: status < 400 ? 'succeeded' : 'failed', durationMs: Math.max(0, Math.round(durationMs)), input: sanitized }
 }
 
 /**
@@ -1040,8 +1054,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       },
     },
     async fetch(req, runtimeServer) {
-      const activeServer = runtimeServer ?? server
+      const auditStartedAt = Date.now()
+      const auditRequest = req.clone()
+      const auditCorrelationId = req.headers.get('x-request-id')?.slice(0, 128) || crypto.randomUUID()
+      const auditMutation = !['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase())
       const url = new URL(req.url)
+      const handleRequest = async (): Promise<Response | undefined> => {
+      const activeServer = runtimeServer ?? server
       const oidcOrigin = resolveOidcDashboardOrigin(host, activeServer.port ?? port)
       const apiResponse = await apiV1(req, networkHint(activeServer.requestIP(req)?.address ?? 'unknown'))
       if (apiResponse)
@@ -3047,6 +3066,27 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           console.error(error)
         return json({ ok: false, error: error?.message ?? String(error) }, 500)
       }
+      }
+      const response = await handleRequest()
+      if (!response) return response
+      if (auditMutation && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/'))) {
+        let input: unknown
+        const contentType = auditRequest.headers.get('content-type') || ''
+        if (contentType.includes('application/json')) input = await auditRequest.json().catch(() => undefined)
+        const user = guard.resolveUser(req)
+        const actor = user ? organizationPrincipal(user).actor : undefined
+        controlPlane.store.appendEvent({
+          organizationId: controlPlane.organization.id,
+          projectId: controlPlane.project.id,
+          actorId: actor?.id,
+          correlationId: auditCorrelationId,
+          type: response.status < 400 ? 'dashboard.mutation.succeeded' : 'dashboard.mutation.failed',
+          level: response.status < 400 ? 'info' : 'warning',
+          payload: dashboardMutationAuditPayload(req.method, url.pathname, input, response.status, Date.now() - auditStartedAt),
+        })
+      }
+      response.headers.set('x-request-id', auditCorrelationId)
+      return response
     },
   })
 
