@@ -1,6 +1,6 @@
 import type { JsonValue } from '../control-plane'
 
-export type ConfigurationScopeType = 'project' | 'environment' | 'service' | 'preview'
+export type ConfigurationScopeType = 'project' | 'environment' | 'service' | 'function' | 'preview'
 export type ConfigurationKind = 'variable' | 'secret'
 export type ConfigurationBackend = 'plaintext' | 'local_encrypted' | 'aws_secrets_manager' | 'aws_ssm' | 'external'
 

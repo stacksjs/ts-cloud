@@ -128,10 +128,10 @@ export class ConfigurationStore {
       return
     }
 
-    if (scope.type === 'service') {
+    if (scope.type === 'service' || scope.type === 'function') {
       const resource = this.controlPlane.getResource(scope.id)
-      if (!resource || resource.projectId !== input.projectId || (scope.resourceId && scope.resourceId !== scope.id) || (scope.environmentId && resource.environmentId !== scope.environmentId) || scope.previewId)
-        throw new Error('Service configuration scope does not belong to the project.')
+      if (!resource || resource.projectId !== input.projectId || (scope.type === 'function' && resource.kind !== 'function') || (scope.resourceId && scope.resourceId !== scope.id) || (scope.environmentId && resource.environmentId !== scope.environmentId) || scope.previewId)
+        throw new Error(`${scope.type === 'function' ? 'Function' : 'Service'} configuration scope does not belong to the project.`)
       return
     }
 

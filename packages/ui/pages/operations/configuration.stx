@@ -4,6 +4,7 @@ const effectiveEntries = state([])
 const scopeProject = state(null)
 const environments = state([])
 const resources = state([])
+const functions = state([])
 const previews = state([])
 const warnings = state([])
 const configurationHash = state('')
@@ -34,13 +35,15 @@ async function api(path, options) {
 function scopeContext() {
   const type = scopeType(), id = scopeId()
   const resource = resources().find(item => item.id === id)
+  const functionResource = functions().find(item => item.id === id)
   const preview = previews().find(item => item.id === id)
-  return { scopeType: type, scopeId: id, environmentId: type === 'environment' ? id : resource?.environmentId || preview?.environmentId, resourceId: type === 'service' ? id : preview?.resourceId }
+  return { scopeType: type, scopeId: id, environmentId: type === 'environment' ? id : resource?.environmentId || functionResource?.environmentId || preview?.environmentId, resourceId: ['service','function'].includes(type) ? id : preview?.resourceId }
 }
-function chooseDefault(type, data = { project: scopeProject(), environments: environments(), resources: resources(), previews: previews() }) {
+function chooseDefault(type, data = { project: scopeProject(), environments: environments(), resources: resources(), functions: functions(), previews: previews() }) {
   if (type === 'project') return data.project?.id || ''
   if (type === 'environment') return data.environments.find(item => item.slug === currentEnv)?.id || data.environments[0]?.id || ''
   if (type === 'service') { const env = data.environments.find(item => item.slug === currentEnv); return data.resources.find(item => !env || item.environmentId === env.id)?.id || data.resources[0]?.id || '' }
+  if (type === 'function') { const env = data.environments.find(item => item.slug === currentEnv); return data.functions.find(item => !env || item.environmentId === env.id)?.id || data.functions[0]?.id || '' }
   return data.previews[0]?.id || ''
 }
 function changeScope(type) { scopeType.set(type); scopeId.set(chooseDefault(type)); selected.set([]); void load() }
@@ -51,7 +54,7 @@ async function load() {
     const query = new URLSearchParams()
     query.set('scopeType', context.scopeType); if (context.scopeId) query.set('scopeId', context.scopeId); if (context.environmentId) query.set('environmentId', context.environmentId); if (context.resourceId) query.set('resourceId', context.resourceId); if (search()) query.set('search', search())
     const result = await api(`/api/configuration?${query}`)
-    scopeProject.set(result.scopes?.project || null); environments.set(result.scopes?.environments || []); resources.set(result.scopes?.resources || []); previews.set(result.scopes?.previews || [])
+    scopeProject.set(result.scopes?.project || null); environments.set(result.scopes?.environments || []); resources.set(result.scopes?.resources || []); functions.set(result.scopes?.functions || []); previews.set(result.scopes?.previews || [])
     if (!scopeId()) { const id = chooseDefault(scopeType(), result.scopes); scopeId.set(id); if (id) return await load() }
     entries.set(result.entries || []); effectiveEntries.set(result.effectiveEntries || []); warnings.set(result.warnings || []); configurationHash.set(result.configurationHash || ''); error.set('')
   }
@@ -67,6 +70,7 @@ function scopeLabel(entry) {
   if (entry.scope.type === 'project') return 'Project'
   if (entry.scope.type === 'environment') return environments().find(item => item.id === entry.scope.id)?.name || 'Environment'
   if (entry.scope.type === 'service') return resources().find(item => item.id === entry.scope.id)?.name || 'Service'
+  if (entry.scope.type === 'function') return functions().find(item => item.id === entry.scope.id)?.name || 'Function'
   return previews().find(item => item.id === entry.scope.id)?.name || 'Preview'
 }
 function formData(form) { return Object.fromEntries(new FormData(form)) }
@@ -101,9 +105,9 @@ async function bulkDelete() {
   catch (cause) { error.set(cause.message) }
 }
 async function transfer(item) {
-  const targetScopeType = window.prompt('Destination scope: project, environment, service, or preview', item.scope.type === 'service' ? 'environment' : 'service') || ''
-  if (!['project', 'environment', 'service', 'preview'].includes(targetScopeType)) return
-  const options = targetScopeType === 'project' ? [scopeProject()] : targetScopeType === 'environment' ? environments() : targetScopeType === 'service' ? resources() : previews()
+  const targetScopeType = window.prompt('Destination scope: project, environment, service, function, or preview', ['service','function'].includes(item.scope.type) ? 'environment' : 'service') || ''
+  if (!['project', 'environment', 'service', 'function', 'preview'].includes(targetScopeType)) return
+  const options = targetScopeType === 'project' ? [scopeProject()] : targetScopeType === 'environment' ? environments() : targetScopeType === 'service' ? resources() : targetScopeType === 'function' ? functions() : previews()
   const hint = options.map(value => `${value.name || value.slug}: ${value.id}`).join('\n')
   const targetScopeId = window.prompt(`Destination id:\n${hint}`, options[0]?.id || '') || ''; if (!targetScopeId) return
   const mode = window.confirm('Move instead of copy? OK moves; Cancel copies.') ? 'move' : 'copy'
@@ -136,10 +140,11 @@ onMount(() => { void load() })
 
   <p class="notice" role="status" @show="!!notice()">{{ notice() }}</p><p class="notice bad" role="alert" @show="!!error()">{{ error() }}</p>
   <section class="scope-bar panel" aria-label="Configuration scope">
-    <div><span class="eyebrow">Scope</span><div class="segmented"><button :class="{active:scopeType()==='project'}" @click="changeScope('project')">Project</button><button :class="{active:scopeType()==='environment'}" @click="changeScope('environment')">Environment</button><button :class="{active:scopeType()==='service'}" @click="changeScope('service')">Service</button><button :class="{active:scopeType()==='preview'}" @click="changeScope('preview')">Preview</button></div></div>
+    <div><span class="eyebrow">Scope</span><div class="segmented"><button :class="{active:scopeType()==='project'}" @click="changeScope('project')">Project</button><button :class="{active:scopeType()==='environment'}" @click="changeScope('environment')">Environment</button><button :class="{active:scopeType()==='service'}" @click="changeScope('service')">Service</button><button :class="{active:scopeType()==='function'}" @click="changeScope('function')">Function</button><button :class="{active:scopeType()==='preview'}" @click="changeScope('preview')">Preview</button></div></div>
     <label @show="scopeType()==='project'"><span>Target</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><option :value="scopeProject()?.id">{{ scopeProject()?.name || 'Project' }}</option></select></label>
     <label @show="scopeType()==='environment'"><span>Target environment</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in environments()"><option :value="item.id">{{ item.name || item.slug }}</option></template></select></label>
     <label @show="scopeType()==='service'"><span>Target service</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in resources()"><option :value="item.id">{{ item.name || item.slug }}</option></template></select></label>
+    <label @show="scopeType()==='function'"><span>Target function</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in functions()"><option :value="item.id">{{ item.name || item.slug }}</option></template></select></label>
     <label @show="scopeType()==='preview'"><span>Target preview</span><select :value="scopeId()" @change="scopeId.set($event.currentTarget.value);selected.set([]);load()"><template :for="item in previews()"><option :value="item.id">{{ item.name }} · {{ item.status }}</option></template></select></label>
     <div class="scope-health"><span class="pill" :class="warnings().length?'warn':'ok'">{{ warnings().length ? warnings().length+' warning(s)' : 'references healthy' }}</span><code :title="configurationHash()">{{ configurationHash().slice(0,18) || 'not resolved' }}</code></div>
   </section>

@@ -354,12 +354,12 @@ async function readJsonBody(req: Request): Promise<Record<string, any>> {
 
 function parseConfigurationScope(input: Record<string, any>, defaults: { projectId: string; environmentId?: string }): ConfigurationScope {
   const type = String(input.scopeType ?? 'environment') as ConfigurationScope['type']
-  if (!['project', 'environment', 'service', 'preview'].includes(type)) throw new Error('Configuration scopeType must be project, environment, service, or preview.')
+  if (!['project', 'environment', 'service', 'function', 'preview'].includes(type)) throw new Error('Configuration scopeType must be project, environment, service, function, or preview.')
   const id = String(input.scopeId ?? (type === 'project' ? defaults.projectId : type === 'environment' ? defaults.environmentId ?? '' : ''))
   if (!id) throw new Error('Configuration scopeId is required.')
   if (type === 'project') return { type, id }
   if (type === 'environment') return { type, id, environmentId: id }
-  if (type === 'service') return { type, id, environmentId: String(input.environmentId ?? defaults.environmentId ?? '') || undefined, resourceId: id }
+  if (type === 'service' || type === 'function') return { type, id, environmentId: String(input.environmentId ?? defaults.environmentId ?? '') || undefined, resourceId: id }
   return { type, id, environmentId: String(input.environmentId ?? defaults.environmentId ?? '') || undefined, resourceId: String(input.resourceId ?? '') || undefined, previewId: id }
 }
 
@@ -1180,7 +1180,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (context.operation.kind !== 'preview.destroy') {
               const preview = command.target.previewId ? previewService.previews.getInstance(command.target.previewId) : undefined
               const definition = preview ? previewService.previews.getDefinition(preview.definitionId) : undefined
-              deploymentConfiguration = await configurationService.resolve({ projectId: controlPlane.project.id, environmentId: context.operation.environmentId, resourceId: context.operation.resourceId, previewId: preview?.id, trustedPreview: !!preview && !preview.fork, allowedPreviewSecrets: definition?.inheritedSecrets })
+              const targetResource = context.operation.resourceId ? controlPlane.store.getResource(context.operation.resourceId) : undefined
+              deploymentConfiguration = await configurationService.resolve({ projectId: controlPlane.project.id, environmentId: context.operation.environmentId, resourceId: context.operation.resourceId, functionId: targetResource?.kind === 'function' ? targetResource.id : undefined, previewId: preview?.id, trustedPreview: !!preview && !preview.fork, allowedPreviewSecrets: definition?.inheritedSecrets })
               if (deploymentConfiguration.warnings.some(warning => warning.code === 'missing_required')) throw new Error(`Required deployment configuration is unavailable: ${deploymentConfiguration.warnings.filter(warning => warning.code === 'missing_required').map(warning => warning.key).join(', ')}`)
               if (context.operation.resourceId) for (const item of Object.values(deploymentConfiguration.entries)) configurationStore.setDependency({ entryId: item.id, resourceId: context.operation.resourceId, injectionTarget: 'environment', required: item.required, requiresRedeploy: true })
               context.log(`Resolved configuration ${deploymentConfiguration.configurationHash.slice(0, 18)} for ${Object.keys(deploymentConfiguration.values).length} keys.`, { stream: 'system' })
@@ -3579,8 +3580,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const kind = ['variable', 'secret'].includes(String(query.kind)) ? query.kind as 'variable' | 'secret' : undefined
             const preview = scope?.type === 'preview' ? previewService.previews.getInstance(scope.id) : undefined
             const definition = preview ? previewService.previews.getDefinition(preview.definitionId) : undefined
-            const effective = scope ? await configurationService.resolve({ projectId: controlPlane.project.id, environmentId: scope.environmentId, resourceId: scope.resourceId, previewId: scope.previewId, trustedPreview: !!preview && !preview.fork, allowedPreviewSecrets: definition?.inheritedSecrets, nativeReferences: true, canReadSecretMetadata }) : undefined
-            return json({ ok: true, entries: configurationService.list({ projectId: controlPlane.project.id, scope, kind, search: query.search, canReadSecretMetadata }), effectiveEntries: effective ? Object.values(effective.entries).filter(entry => !kind || entry.kind === kind).filter(entry => !query.search || entry.key.toLowerCase().includes(String(query.search).toLowerCase())) : [], configurationHash: effective?.configurationHash, warnings: effective?.warnings ?? [], scopes: { project: controlPlane.project, environments: controlPlane.store.listEnvironments(controlPlane.project.id), resources: controlPlane.store.listResources(controlPlane.project.id), previews: previewService.previews.listInstances({ projectId: controlPlane.project.id }).filter(item => item.status !== 'destroyed').map(item => ({ id: item.id, name: item.name, environmentId: item.baseEnvironmentId, resourceId: item.resourceId, fork: item.fork, status: item.status })) } }, 200, noStore)
+            const effective = scope ? await configurationService.resolve({ projectId: controlPlane.project.id, environmentId: scope.environmentId, resourceId: scope.resourceId, functionId: scope.type === 'function' ? scope.id : undefined, previewId: scope.previewId, trustedPreview: !!preview && !preview.fork, allowedPreviewSecrets: definition?.inheritedSecrets, nativeReferences: true, canReadSecretMetadata }) : undefined
+            const allResources = controlPlane.store.listResources(controlPlane.project.id)
+            return json({ ok: true, entries: configurationService.list({ projectId: controlPlane.project.id, scope, kind, search: query.search, canReadSecretMetadata }), effectiveEntries: effective ? Object.values(effective.entries).filter(entry => !kind || entry.kind === kind).filter(entry => !query.search || entry.key.toLowerCase().includes(String(query.search).toLowerCase())) : [], configurationHash: effective?.configurationHash, warnings: effective?.warnings ?? [], scopes: { project: controlPlane.project, environments: controlPlane.store.listEnvironments(controlPlane.project.id), resources: allResources.filter(item => item.kind !== 'function'), functions: allResources.filter(item => item.kind === 'function'), previews: previewService.previews.listInstances({ projectId: controlPlane.project.id }).filter(item => item.status !== 'destroyed').map(item => ({ id: item.id, name: item.name, environmentId: item.baseEnvironmentId, resourceId: item.resourceId, fork: item.fork, status: item.status })) } }, 200, noStore)
           }
           if (url.pathname === '/api/configuration/export' && req.method === 'GET') {
             const scope = parseConfigurationScope(Object.fromEntries(url.searchParams), defaults)

@@ -26,6 +26,10 @@ export async function synchronizeConfiguredConfiguration(service: ConfigurationS
       const resource = controlPlane.store.listResources(controlPlane.project.id, environment.id).find(item => item.kind === 'application' && item.slug === siteSlug)
       if (resource) await synchronize({ type: 'service', id: resource.id, environmentId: environment.id, resourceId: resource.id }, { ...((site as Record<string, any>).env ?? {}) })
     }
+    for (const [functionSlug, definition] of Object.entries(config.infrastructure?.functions ?? {})) {
+      const resource = controlPlane.store.listResources(controlPlane.project.id, environment.id).find(item => item.kind === 'function' && item.slug === functionSlug)
+      if (resource) await synchronize({ type: 'function', id: resource.id, environmentId: environment.id, resourceId: resource.id }, { ...((definition as Record<string, any>).environment ?? {}) })
+    }
   }
   return result
 }

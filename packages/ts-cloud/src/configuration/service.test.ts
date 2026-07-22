@@ -37,6 +37,15 @@ describe('ConfigurationService', () => {
     expect(service.list({ projectId: project.id }).find(entry => entry.key === 'TOKEN')).toMatchObject({ key: 'TOKEN', kind: 'secret', backend: undefined, reference: undefined, value: undefined })
   })
 
+  test('applies function overrides after service values and before preview values', async () => {
+    const { control, organization, project, environment, resource, service } = setup(), fn = control.createResource({ projectId: project.id, environmentId: environment.id, kind: 'function', slug: 'http', name: 'HTTP function' })
+    await service.set({ organizationId: organization.id, projectId: project.id, scope: { type: 'service', id: resource.id, environmentId: environment.id, resourceId: resource.id }, key: 'TIMEOUT', kind: 'variable', value: 'service' })
+    await service.set({ organizationId: organization.id, projectId: project.id, scope: { type: 'function', id: fn.id, environmentId: environment.id, resourceId: fn.id }, key: 'TIMEOUT', kind: 'variable', value: 'function' })
+    const resolved = await service.resolve({ projectId: project.id, environmentId: environment.id, resourceId: resource.id, functionId: fn.id })
+    expect(resolved.values.TIMEOUT).toBe('function')
+    expect(resolved.entries.TIMEOUT?.scope.type).toBe('function')
+  })
+
   test('previews key-only drift and imports valid dotenv atom names', async () => {
     const { organization, project, resource, service } = setup()
     const scope = { type: 'project' as const, id: project.id }

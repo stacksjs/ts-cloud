@@ -183,7 +183,7 @@ export class ConfigurationService {
     return { entry: copied.entry, mutation }
   }
 
-  async resolve(input: { projectId: string; environmentId?: string; resourceId?: string; previewId?: string; trustedPreview?: boolean; allowedPreviewSecrets?: string[]; nativeReferences?: boolean; canReadSecretMetadata?: boolean }): Promise<ResolvedConfiguration> {
+  async resolve(input: { projectId: string; environmentId?: string; resourceId?: string; functionId?: string; previewId?: string; trustedPreview?: boolean; allowedPreviewSecrets?: string[]; nativeReferences?: boolean; canReadSecretMetadata?: boolean }): Promise<ResolvedConfiguration> {
     const all = this.store.list({ projectId: input.projectId }), candidates = all.filter(entry => this.applies(entry, input)).sort((left, right) => this.rank(left.scope.type) - this.rank(right.scope.type))
     const selected = new Map<string, ConfigurationEntry>(), overridden = new Set<string>()
     for (const entry of candidates) { if (selected.has(entry.key)) overridden.add(entry.key); selected.set(entry.key, entry) }
@@ -197,7 +197,7 @@ export class ConfigurationService {
         if (!await backend.validate(entry.secretRef!)) { warnings.push({ key, code: 'stale_reference', message: `${key} points to an unavailable secret.` }); if (entry.required) warnings.push({ key, code: 'missing_required', message: `${key} is required but unavailable.` }); continue }
         values[key] = await backend.resolve(entry.secretRef!)
       }
-      entries[key] = metadata(entry, { inherited: entry.scope.type !== (input.previewId ? 'preview' : input.resourceId ? 'service' : input.environmentId ? 'environment' : 'project'), overridden: overridden.has(key), canReadSecretMetadata: input.canReadSecretMetadata })
+      entries[key] = metadata(entry, { inherited: entry.scope.type !== (input.previewId ? 'preview' : input.functionId ? 'function' : input.resourceId ? 'service' : input.environmentId ? 'environment' : 'project'), overridden: overridden.has(key), canReadSecretMetadata: input.canReadSecretMetadata })
       this.store.controlPlane.database.run('UPDATE configuration_entries SET last_used_at=? WHERE id=?', [this.now().toISOString(), entry.id])
     }
     return { values, entries, warnings, configurationHash: this.fingerprint([...selected.values()].map(entry => `${entry.key}:${entry.valueFingerprint}:${entry.version}`).sort().join('\n')) }
@@ -226,13 +226,14 @@ export class ConfigurationService {
     return result
   }
 
-  private applies(entry: ConfigurationEntry, target: { projectId: string; environmentId?: string; resourceId?: string; previewId?: string }): boolean {
+  private applies(entry: ConfigurationEntry, target: { projectId: string; environmentId?: string; resourceId?: string; functionId?: string; previewId?: string }): boolean {
     if (entry.scope.type === 'project') return true
     if (entry.scope.type === 'environment') return entry.scope.id === target.environmentId
     if (entry.scope.type === 'service') return entry.scope.id === target.resourceId
+    if (entry.scope.type === 'function') return entry.scope.id === target.functionId
     return entry.scope.id === target.previewId
   }
-  private rank(scope: ConfigurationScope['type']): number { return ({ project: 0, environment: 1, service: 2, preview: 3 })[scope] }
+  private rank(scope: ConfigurationScope['type']): number { return ({ project: 0, environment: 1, service: 2, function: 3, preview: 4 })[scope] }
   private fingerprint(value: string): string { return `hmac-sha256:${createHmac('sha256', this.fingerprintKey).update(value).digest('hex')}` }
   private requestHash(input: SetConfigurationInput): string { return this.fingerprint(JSON.stringify({ ...input, idempotencyKey: undefined, actorId: undefined })) }
   private backend(kind: ConfigurationBackend): ConfigurationSecretBackend { const backend = this.backends.get(kind); if (!backend) throw new Error(`Configuration secret backend is not configured: ${kind}`); return backend }
@@ -241,7 +242,7 @@ export class ConfigurationService {
   private warnings(key: string, value: string): ConfigurationWarning[] { const warnings: ConfigurationWarning[] = []; if (RESERVED.test(key)) warnings.push({ key, code: 'reserved', message: `${key} may be reserved by the runtime or provider.` }); if (Buffer.byteLength(value) > 64 * 1024) warnings.push({ key, code: 'limit', message: `${key} exceeds the portable 64 KiB value limit.` }); return warnings }
   private affectedResources(projectId: string, scope: ConfigurationScope, keys: string[]): string[] {
     const explicit = this.store.list({ projectId, scope }).filter(entry => keys.includes(entry.key)).flatMap(entry => this.store.dependencies(entry.id).map(item => item.resourceId))
-    if (scope.type === 'service') return sorted([...explicit, scope.id])
+    if (scope.type === 'service' || scope.type === 'function') return sorted([...explicit, scope.id])
     if (scope.type === 'environment') return sorted([...explicit, ...this.store.controlPlane.listResources(projectId, scope.id).map(resource => resource.id)])
     if (scope.type === 'preview') { const preview = this.store.controlPlane.database.query<{ resource_id: string }, [string]>('SELECT resource_id FROM preview_instances WHERE id=?').get(scope.id); return sorted([...explicit, ...(preview ? [preview.resource_id] : [])]) }
     return sorted([...explicit, ...this.store.controlPlane.listResources(projectId).map(resource => resource.id)])

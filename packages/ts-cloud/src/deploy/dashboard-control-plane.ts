@@ -116,7 +116,13 @@ export function initializeDashboardControlPlane(cwd: string, config: CloudConfig
       syncResource('application', siteSlug, siteSlug, site as JsonValue)
     }
 
+    const serverlessApp = (desired as { app?: Record<string, unknown> })?.app
+    if (serverlessApp) for (const functionName of ['http', 'queue', 'cli'])
+      syncResource('function', functionName, `${functionName.toUpperCase()} function`, { ...sanitizeControlPlaneValue(serverlessApp) as Record<string, JsonValue>, function: functionName })
+
     const infrastructure = config.infrastructure
+    for (const [functionSlug, definition] of Object.entries(infrastructure?.functions ?? {}))
+      syncResource('function', functionSlug, functionSlug, definition as JsonValue)
     if (infrastructure?.compute) {
       syncResource('server', `${project.slug}-server`, project.name, {
         ...(sanitizeControlPlaneValue(infrastructure.compute) as Record<string, JsonValue>),

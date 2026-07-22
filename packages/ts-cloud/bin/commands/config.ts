@@ -52,12 +52,17 @@ function scope(value: ConfigurationContext, options: ScopeOptions): Configuratio
     if (!item) throw new Error('Service scope requires --target with a resource ID or slug.')
     return { type, id: item.id, environmentId: item.environmentId, resourceId: item.id }
   }
+  if (type === 'function') {
+    const resources = value.controlPlane.store.listResources(value.controlPlane.project.id), item = resources.find(candidate => candidate.kind === 'function' && (candidate.id === options.target || candidate.slug === options.target))
+    if (!item) throw new Error('Function scope requires --target with a function resource ID or slug.')
+    return { type, id: item.id, environmentId: item.environmentId, resourceId: item.id }
+  }
   if (type === 'preview') {
     const item = new PreviewEnvironmentStore(value.controlPlane.store).listInstances({ projectId: value.controlPlane.project.id }).find(candidate => candidate.id === options.target || candidate.name === options.target)
     if (!item) throw new Error('Preview scope requires --target with a preview ID or name.')
     return { type, id: item.id, environmentId: item.baseEnvironmentId, resourceId: item.resourceId, previewId: item.id }
   }
-  throw new Error('--scope must be project, environment, service, or preview.')
+  throw new Error('--scope must be project, environment, service, function, or preview.')
 }
 
 function backend(value: string | undefined): Exclude<ConfigurationBackend, 'plaintext'> {
@@ -77,7 +82,7 @@ async function inputValue(kind: 'variable' | 'secret', options: SetOptions): Pro
   return await output.prompt('Enter variable value', '')
 }
 function common(command: ReturnType<CLI['command']>): ReturnType<CLI['command']> {
-  return command.option('--env <environment>', 'Dashboard environment').option('--scope <scope>', 'project, environment, service, or preview', { default: 'environment' }).option('--target <id>', 'Environment, resource, or preview ID/name')
+  return command.option('--env <environment>', 'Dashboard environment').option('--scope <scope>', 'project, environment, service, function, or preview', { default: 'environment' }).option('--target <id>', 'Environment, resource, function, or preview ID/name')
 }
 
 export function registerConfigCommands(app: CLI): void {
