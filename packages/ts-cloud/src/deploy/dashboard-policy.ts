@@ -36,6 +36,8 @@ const FAIL_CLOSED: RoutePolicy = { capability: 'runtime:terminal', scope: 'organ
  * `/login` (the page) is served by the same public path.
  */
 export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
+  'GET /auth/oidc/:provider/callback',
+  'GET /auth/oidc/:provider/start',
   'POST /api/login',
   'POST /api/logout',
   'POST /api/invitations/accept',
@@ -45,6 +47,8 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
 ])
 
 export function isPublicRoute(method: string, pathname: string): boolean {
+  if (method.toUpperCase() === 'GET' && /^\/auth\/oidc\/[a-z0-9-]+\/(?:start|callback)$/.test(pathname))
+    return true
   return PUBLIC_ROUTES.has(`${method.toUpperCase()} ${pathname}`)
 }
 

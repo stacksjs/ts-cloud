@@ -66,14 +66,26 @@ const STYLES = `
   .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--txt2); }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
+  .sso { display: grid; gap: 10px; margin-top: 22px; }
+  .sso-button { display: block; border: 1px solid var(--panel-br); border-radius: 10px; padding: 11px 14px; color: var(--txt); text-align: center; font-size: 13.5px; font-weight: 700; background: rgba(255,255,255,0.04); }
+  .sso-button:hover { border-color: var(--accent); text-decoration: none; }
+  .separator { display: flex; align-items: center; gap: 10px; margin: 18px 0 -6px; color: var(--txt3); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
+  .separator::before, .separator::after { content: ''; height: 1px; flex: 1; background: var(--panel-br); }
 `
 
 /**
  * The page. `serverless` only picks the post-login landing route, matching the
  * redirect the server already does for a serverless deployment.
  */
-export function renderLoginPage(serverless = false): string {
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
+}
+
+export function renderLoginPage(serverless = false, oidcProviders: readonly { slug: string, name: string }[] = []): string {
   const home = serverless ? '/serverless' : '/'
+  const sso = oidcProviders.length > 0
+    ? `<div class="sso" aria-label="Single sign-on">${oidcProviders.map(provider => `<a class="sso-button" href="/auth/oidc/${encodeURIComponent(provider.slug)}/start?return=${encodeURIComponent(home)}">Continue with ${escapeHtml(provider.name)}</a>`).join('')}</div><div class="separator"><span>or use local recovery</span></div>`
+    : ''
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -90,6 +102,8 @@ export function renderLoginPage(serverless = false): string {
     <div class="brand"><span class="dot"></span> ts-cloud</div>
     <h1>Sign in</h1>
     <p class="sub">Manage the sites you have been given access to.</p>
+
+    ${sso}
 
     <form id="login" autocomplete="on">
       <div class="field">
@@ -118,6 +132,11 @@ export function renderLoginPage(serverless = false): string {
   const mfaField = document.getElementById('mfa-field')
   const mfaCode = document.getElementById('mfa-code')
   let challengeToken = ''
+
+  if (new URLSearchParams(location.search).has('sso_error')) {
+    msg.textContent = 'Single sign-on could not be completed. Try again or use the local recovery path.'
+    msg.classList.add('shown')
+  }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault()

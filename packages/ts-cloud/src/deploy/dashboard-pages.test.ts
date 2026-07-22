@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest } from './local-dashboard-server'
+import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest, resolveOidcDashboardOrigin } from './local-dashboard-server'
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
@@ -57,6 +57,20 @@ describe('isTrustedMutationRequest', () => {
     expect(isTrustedMutationRequest(new Request('https://cloud.example/api/auth/password/change', { method: 'POST', headers: { origin: 'https://cloud.example' } }))).toBe(true)
     expect(isTrustedMutationRequest(new Request('https://cloud.example/api/me'))).toBe(true)
     expect(isTrustedMutationRequest(new Request('https://cloud.example/api/auth/sessions/revoke-others', { method: 'POST' }))).toBe(true)
+  })
+})
+
+describe('resolveOidcDashboardOrigin', () => {
+  it('uses explicit HTTPS configuration and safe loopback defaults', () => {
+    expect(resolveOidcDashboardOrigin('127.0.0.1', 7676, {})).toBe('http://127.0.0.1:7676')
+    expect(resolveOidcDashboardOrigin('0.0.0.0', 7676, { TS_CLOUD_DASHBOARD_ORIGIN: 'https://cloud.acme.test' })).toBe('https://cloud.acme.test')
+    expect(resolveOidcDashboardOrigin('0.0.0.0', 7676, { TS_CLOUD_UI_DOMAIN: 'cloud.acme.test' })).toBe('https://cloud.acme.test')
+  })
+
+  it('refuses host-header fallback and insecure public or path origins', () => {
+    expect(resolveOidcDashboardOrigin('0.0.0.0', 7676, {})).toBeUndefined()
+    expect(resolveOidcDashboardOrigin('0.0.0.0', 7676, { TS_CLOUD_DASHBOARD_ORIGIN: 'http://cloud.acme.test' })).toBeUndefined()
+    expect(resolveOidcDashboardOrigin('0.0.0.0', 7676, { TS_CLOUD_DASHBOARD_ORIGIN: 'https://cloud.acme.test/base' })).toBeUndefined()
   })
 })
 

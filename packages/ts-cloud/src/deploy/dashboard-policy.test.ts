@@ -82,10 +82,12 @@ describe('policy coverage', () => {
     expect(missing).toEqual([])
   })
 
-  it('keeps the public surface to login, recovery, logout, and token-authenticated invitation acceptance', () => {
+  it('keeps the public surface to login, SSO, recovery, logout, and token-authenticated invitation acceptance', () => {
     // Anything reachable without a session is worth noticing in review, so pin
     // the exact set rather than asserting a count.
     expect([...PUBLIC_ROUTES].sort()).toEqual([
+      'GET /auth/oidc/:provider/callback',
+      'GET /auth/oidc/:provider/start',
       'POST /api/auth/mfa/complete',
       'POST /api/auth/password-reset/complete',
       'POST /api/auth/password-reset/request',
@@ -94,6 +96,7 @@ describe('policy coverage', () => {
       'POST /api/logout',
     ])
     expect(isPublicRoute('POST', '/api/login')).toBe(true)
+    expect(isPublicRoute('GET', '/auth/oidc/workforce/start')).toBe(true)
     expect(isPublicRoute('GET', '/api/dashboard-data')).toBe(false)
     expect(isPublicRoute('POST', '/api/server/command')).toBe(false)
   })

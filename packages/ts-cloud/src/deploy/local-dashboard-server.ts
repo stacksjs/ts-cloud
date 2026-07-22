@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
+import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorization, completeOidcAuthorization, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
@@ -18,7 +18,7 @@ import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
 import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
-import { synchronizeDashboardIdentities } from './dashboard-identities'
+import { localLoginRequiresSso, resolveOidcDashboardIdentity, synchronizeDashboardIdentities } from './dashboard-identities'
 import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
@@ -153,6 +153,25 @@ function text(data: string, status = 200): Response {
     status,
     headers: { 'content-type': 'text/plain; charset=utf-8' },
   })
+}
+
+export function resolveOidcDashboardOrigin(host: string, port: number, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const configured = env.TS_CLOUD_DASHBOARD_ORIGIN?.trim()
+    || (env.TS_CLOUD_UI_DOMAIN?.trim() ? `https://${env.TS_CLOUD_UI_DOMAIN.trim().replace(/^https?:\/\//, '')}` : '')
+  const fallbackHost = ['0.0.0.0', '::'].includes(host) ? undefined : host
+  const raw = configured || (fallbackHost && ['127.0.0.1', 'localhost', '::1'].includes(fallbackHost) ? `http://${fallbackHost.includes(':') ? `[${fallbackHost}]` : fallbackHost}:${port}` : '')
+  if (!raw)
+    return undefined
+  try {
+    const url = new URL(raw)
+    const loopback = ['127.0.0.1', 'localhost', '::1'].includes(url.hostname)
+    if ((url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) || url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== ''))
+      return undefined
+    return url.origin
+  }
+  catch {
+    return undefined
+  }
 }
 
 function selectedEnvironment(config: CloudConfig, requested?: EnvironmentType): EnvironmentType {
@@ -777,10 +796,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
+  const oidcOrigin = resolveOidcDashboardOrigin(host, port)
   const networkHint = (address: string): string => createHash('sha256').update(`${secret}:${address}`).digest('hex').slice(0, 16)
   const userAgentLabel = (req: Request): string | undefined => req.headers.get('user-agent')?.trim().slice(0, 256) || undefined
-  const issueSession = (identityId: string, req: Request, address: string) => authentication.createSession({
+  const issueSession = (identityId: string, req: Request, address: string, authMethod: 'local' | 'oidc' = 'local') => authentication.createSession({
     identityId,
+    authMethod,
     userAgent: userAgentLabel(req),
     networkHint: networkHint(address),
   })
@@ -830,6 +851,52 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: false, error: 'Cross-site requests are not allowed.' }, 403)
 
         // --- Public: the login endpoints and the login page itself ----------
+        const oidcRoute = /^\/auth\/oidc\/([a-z0-9-]+)\/(start|callback)$/.exec(url.pathname)
+        if (oidcRoute && req.method === 'GET') {
+          const [, providerSlug, action] = oidcRoute
+          if (!oidcOrigin)
+            return new Response(null, { status: 302, headers: { location: '/login?sso_error=configuration' } })
+          if (action === 'start') {
+            try {
+              const started = await beginOidcAuthorization(authentication, providerSlug, oidcOrigin, url.searchParams.get('return') ?? undefined)
+              return new Response(null, { status: 302, headers: { location: started.authorizationUrl, 'cache-control': 'no-store' } })
+            }
+            catch (error) {
+              controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, type: 'auth.oidc.start_failed', level: 'warning', payload: { provider: providerSlug, reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' } })
+              return new Response(null, { status: 302, headers: { location: '/login?sso_error=start', 'cache-control': 'no-store' } })
+            }
+          }
+          try {
+            if (url.searchParams.has('error')) {
+              const provider = authentication.getOidcProviderBySlug(providerSlug)
+              const state = url.searchParams.get('state')
+              if (provider && state)
+                authentication.consumeOidcTransaction(provider.id, state)
+              throw new Error('OIDC provider returned an authorization error')
+            }
+            const completed = await completeOidcAuthorization(authentication, {
+              providerSlug,
+              state: url.searchParams.get('state') ?? '',
+              code: url.searchParams.get('code') ?? '',
+              origin: oidcOrigin,
+            })
+            const resolved = resolveOidcDashboardIdentity(authentication, controlPlane, cwd, completed.identity)
+            authentication.recordLogin(resolved.identity.id)
+            const issued = issueSession(resolved.identity.id, req, server.requestIP(req)?.address ?? 'unknown', 'oidc')
+            clearUiCache()
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: resolved.identity.actorId, type: 'auth.login.succeeded', payload: { method: 'oidc', provider: providerSlug, provisioned: resolved.provisioned } })
+            return new Response(null, { status: 302, headers: {
+              location: completed.returnPath,
+              'cache-control': 'no-store',
+              'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
+            } })
+          }
+          catch (error) {
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, type: 'auth.oidc.callback_failed', level: 'warning', payload: { provider: providerSlug, reason: error instanceof Error ? error.message.slice(0, 200) : 'unknown' } })
+            return new Response(null, { status: 302, headers: { location: '/login?sso_error=callback', 'cache-control': 'no-store' } })
+          }
+        }
+
         if (url.pathname === '/api/invitations/accept' && req.method === 'POST') {
           const body = await readJsonBody(req)
           const invitationToken = String(body.token ?? '').trim()
@@ -946,6 +1013,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return json({ ok: false, error: 'Incorrect username or password.' }, 401)
           }
 
+          if (localLoginRequiresSso(authentication, controlPlane, identity!))
+            return json({ ok: false, error: 'Single sign-on is required for this account.' }, 403)
+
           throttle.recordSuccess(username, address)
           let currentIdentity = identity!
           const passwordUpgraded = currentIdentity.requiresPasswordUpgrade || passwordNeedsRehash(currentIdentity.passwordHash)
@@ -1012,7 +1082,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         }
 
         if (url.pathname === '/login') {
-          return new Response(renderLoginPage(initialData?.mode === 'serverless'), {
+          const providers = authentication.listOidcProviders(controlPlane.organization.id).map(provider => ({ slug: provider.slug, name: provider.name }))
+          return new Response(renderLoginPage(initialData?.mode === 'serverless', providers), {
             headers: { 'content-type': 'text/html; charset=utf-8' },
           })
         }
