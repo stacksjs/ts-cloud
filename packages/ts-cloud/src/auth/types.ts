@@ -70,4 +70,28 @@ export interface CreateAuthSessionInput {
 export interface AuthenticationStoreOptions {
   now?: () => Date
   id?: () => string
+  /** Secret used to encrypt MFA seeds at rest. MFA methods require it. */
+  encryptionKey?: string
+}
+
+export interface AuthMfaFactor {
+  id: ControlPlaneId
+  identityId: ControlPlaneId
+  type: 'totp'
+  label: string
+  createdAt: string
+  verifiedAt?: string
+  disabledAt?: string
+  state: 'pending' | 'active' | 'disabled'
+}
+
+export interface AuthMfaChallenge {
+  id: ControlPlaneId
+  identityId: ControlPlaneId
+  purpose: 'login' | 'step_up'
+  attempts: number
+  expiresAt: string
+  consumedAt?: string
+  createdAt: string
+  state: 'pending' | 'consumed' | 'expired' | 'locked'
 }

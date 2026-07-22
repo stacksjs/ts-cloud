@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 6
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 7
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -317,6 +317,46 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       CREATE INDEX auth_action_tokens_expiry_idx ON auth_action_tokens(expires_at, consumed_at);
       CREATE INDEX auth_sessions_identity_idx ON auth_sessions(identity_id, revoked_at, last_used_at DESC);
       CREATE INDEX auth_sessions_expiry_idx ON auth_sessions(idle_expires_at, absolute_expires_at, revoked_at);
+    `,
+  },
+  {
+    version: 7,
+    name: 'multi_factor_authentication',
+    sql: `
+      CREATE TABLE auth_mfa_factors (
+        id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL UNIQUE REFERENCES auth_identities(id) ON DELETE CASCADE,
+        type TEXT NOT NULL DEFAULT 'totp' CHECK (type = 'totp'),
+        label TEXT NOT NULL,
+        secret_ciphertext TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        verified_at TEXT,
+        disabled_at TEXT,
+        last_used_step INTEGER
+      ) STRICT;
+
+      CREATE TABLE auth_recovery_codes (
+        id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL REFERENCES auth_identities(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        consumed_at TEXT
+      ) STRICT;
+
+      CREATE TABLE auth_mfa_challenges (
+        id TEXT PRIMARY KEY,
+        identity_id TEXT NOT NULL REFERENCES auth_identities(id) ON DELETE CASCADE,
+        purpose TEXT NOT NULL CHECK (purpose IN ('login', 'step_up')),
+        token_hash TEXT NOT NULL UNIQUE,
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        expires_at TEXT NOT NULL,
+        consumed_at TEXT,
+        created_at TEXT NOT NULL
+      ) STRICT;
+
+      CREATE INDEX auth_recovery_codes_identity_idx ON auth_recovery_codes(identity_id, consumed_at);
+      CREATE INDEX auth_mfa_challenges_identity_idx ON auth_mfa_challenges(identity_id, purpose, expires_at);
+      CREATE INDEX auth_mfa_challenges_expiry_idx ON auth_mfa_challenges(expires_at, consumed_at);
     `,
   },
 ]

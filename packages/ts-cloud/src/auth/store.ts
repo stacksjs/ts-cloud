@@ -5,18 +5,22 @@ import type {
   AuthActionToken,
   AuthActionTokenType,
   AuthIdentity,
+  AuthMfaChallenge,
+  AuthMfaFactor,
   AuthenticationStoreOptions,
   AuthSession,
   CreateAuthIdentityInput,
   CreateAuthSessionInput,
 } from './types'
-import { createHash, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import { encodeBase32, matchTotpCounter, totpUri } from './totp'
 
 type Row = Record<string, unknown>
 
 export const AUTH_SESSION_IDLE_TTL_MS: number = 30 * 60 * 1000
 export const AUTH_SESSION_ABSOLUTE_TTL_MS: number = 12 * 60 * 60 * 1000
 export const AUTH_ACTION_TOKEN_TTL_MS: number = 60 * 60 * 1000
+export const AUTH_MFA_CHALLENGE_TTL_MS: number = 5 * 60 * 1000
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -107,13 +111,46 @@ function mapSession(row: Row, now: string): AuthSession {
   }
 }
 
+function mapMfaFactor(row: Row): AuthMfaFactor {
+  const verifiedAt = optionalString(row.verified_at)
+  const disabledAt = optionalString(row.disabled_at)
+  return {
+    id: String(row.id),
+    identityId: String(row.identity_id),
+    type: 'totp',
+    label: String(row.label),
+    createdAt: String(row.created_at),
+    verifiedAt,
+    disabledAt,
+    state: disabledAt ? 'disabled' : verifiedAt ? 'active' : 'pending',
+  }
+}
+
+function mapMfaChallenge(row: Row, now: string): AuthMfaChallenge {
+  const consumedAt = optionalString(row.consumed_at)
+  const expiresAt = String(row.expires_at)
+  const attempts = Number(row.attempts)
+  return {
+    id: String(row.id),
+    identityId: String(row.identity_id),
+    purpose: String(row.purpose) as AuthMfaChallenge['purpose'],
+    attempts,
+    expiresAt,
+    consumedAt,
+    createdAt: String(row.created_at),
+    state: consumedAt ? 'consumed' : attempts >= 5 ? 'locked' : expiresAt <= now ? 'expired' : 'pending',
+  }
+}
+
 export class AuthenticationStore {
   private readonly nowFn: () => Date
   private readonly idFn: () => string
+  private readonly encryptionKey?: Buffer
 
   constructor(private readonly controlPlane: ControlPlaneStore, options: AuthenticationStoreOptions = {}) {
     this.nowFn = options.now ?? (() => new Date())
     this.idFn = options.id ?? (() => crypto.randomUUID())
+    this.encryptionKey = options.encryptionKey ? createHash('sha256').update(options.encryptionKey).digest() : undefined
   }
 
   private now(): string {
@@ -122,6 +159,26 @@ export class AuthenticationStore {
 
   private run(sql: string, bindings: SQLQueryBindings[]): void {
     this.controlPlane.database.run(sql, bindings)
+  }
+
+  private encrypt(value: string): string {
+    if (!this.encryptionKey)
+      throw new Error('MFA encryption key is not configured')
+    const iv = randomBytes(12)
+    const cipher = createCipheriv('aes-256-gcm', this.encryptionKey, iv)
+    const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()])
+    return `v1.${iv.toString('base64url')}.${cipher.getAuthTag().toString('base64url')}.${ciphertext.toString('base64url')}`
+  }
+
+  private decrypt(value: string): string {
+    if (!this.encryptionKey)
+      throw new Error('MFA encryption key is not configured')
+    const [version, ivRaw, tagRaw, ciphertextRaw] = value.split('.')
+    if (version !== 'v1' || !ivRaw || !tagRaw || !ciphertextRaw)
+      throw new Error('MFA secret is unavailable')
+    const decipher = createDecipheriv('aes-256-gcm', this.encryptionKey, Buffer.from(ivRaw, 'base64url'))
+    decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'))
+    return Buffer.concat([decipher.update(Buffer.from(ciphertextRaw, 'base64url')), decipher.final()]).toString('utf8')
   }
 
   createIdentity(input: CreateAuthIdentityInput): AuthIdentity {
@@ -333,10 +390,185 @@ export class AuthenticationStore {
     ).changes
   }
 
+  getMfaFactor(identityId: string): AuthMfaFactor | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_mfa_factors WHERE identity_id = ?').get(identityId)
+    return row ? mapMfaFactor(row) : undefined
+  }
+
+  beginTotpEnrollment(identityId: string, options: { label?: string, issuer?: string } = {}): { factor: AuthMfaFactor, secret: string, uri: string } {
+    const identity = this.getIdentity(identityId)
+    if (!identity)
+      throw new Error('Authentication identity was not found')
+    const current = this.getMfaFactor(identityId)
+    if (current?.state === 'active')
+      throw new Error('MFA is already enabled')
+    const secret = encodeBase32(randomBytes(20))
+    const label = options.label?.trim().slice(0, 80) || identity.email || identity.username
+    const id = current?.id ?? this.idFn()
+    const now = this.now()
+    this.controlPlane.transaction(() => {
+      if (current) {
+        this.run(
+          'UPDATE auth_mfa_factors SET label = ?, secret_ciphertext = ?, created_at = ?, verified_at = NULL, disabled_at = NULL WHERE id = ?',
+          [label, this.encrypt(secret), now, id],
+        )
+      }
+      else {
+        this.run(
+          'INSERT INTO auth_mfa_factors (id, identity_id, label, secret_ciphertext, created_at) VALUES (?, ?, ?, ?, ?)',
+          [id, identityId, label, this.encrypt(secret), now],
+        )
+      }
+      this.run('DELETE FROM auth_recovery_codes WHERE identity_id = ?', [identityId])
+    })
+    return { factor: this.getMfaFactor(identityId)!, secret, uri: totpUri({ secret, account: label, issuer: options.issuer }) }
+  }
+
+  verifyTotpEnrollment(identityId: string, code: string): { factor: AuthMfaFactor, recoveryCodes: string[] } {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_mfa_factors WHERE identity_id = ?').get(identityId)
+    if (!row || mapMfaFactor(row).state !== 'pending')
+      throw new Error('MFA enrollment is not pending')
+    const counter = matchTotpCounter(this.decrypt(String(row.secret_ciphertext)), code, this.nowFn().getTime())
+    if (counter === undefined)
+      throw new Error('Authenticator code is invalid')
+    const recoveryCodes = Array.from({ length: 10 }, () => {
+      const value = encodeBase32(randomBytes(8)).slice(0, 12)
+      return `${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8)}`
+    })
+    const now = this.now()
+    this.controlPlane.transaction(() => {
+      this.run('UPDATE auth_mfa_factors SET verified_at = ?, disabled_at = NULL, last_used_step = ? WHERE identity_id = ?', [now, counter, identityId])
+      this.run('DELETE FROM auth_recovery_codes WHERE identity_id = ?', [identityId])
+      for (const recoveryCode of recoveryCodes) {
+        this.run(
+          'INSERT INTO auth_recovery_codes (id, identity_id, code_hash, created_at) VALUES (?, ?, ?, ?)',
+          [this.idFn(), identityId, hashToken(`${identityId}:${recoveryCode.replace(/-/g, '').toUpperCase()}`), now],
+        )
+      }
+    })
+    return { factor: this.getMfaFactor(identityId)!, recoveryCodes }
+  }
+
+  verifyMfaCode(identityId: string, code: string, options: { consumeRecovery?: boolean } = {}): { valid: boolean, method?: 'totp' | 'recovery' } {
+    const factorRow = this.controlPlane.database.query<Row, [string]>(
+      'SELECT * FROM auth_mfa_factors WHERE identity_id = ? AND verified_at IS NOT NULL AND disabled_at IS NULL',
+    ).get(identityId)
+    if (!factorRow)
+      return { valid: false }
+    const counter = matchTotpCounter(this.decrypt(String(factorRow.secret_ciphertext)), code, this.nowFn().getTime())
+    if (counter !== undefined) {
+      const accepted = this.controlPlane.database.run(
+        'UPDATE auth_mfa_factors SET last_used_step = ? WHERE identity_id = ? AND (last_used_step IS NULL OR last_used_step < ?)',
+        [counter, identityId, counter],
+      ).changes
+      if (accepted === 1)
+        return { valid: true, method: 'totp' }
+    }
+    const normalized = code.replace(/[-\s]/g, '').toUpperCase()
+    if (!/^[A-Z2-7]{12}$/.test(normalized))
+      return { valid: false }
+    const codeHash = hashToken(`${identityId}:${normalized}`)
+    const row = this.controlPlane.database.query<Row, [string, string]>(
+      'SELECT * FROM auth_recovery_codes WHERE identity_id = ? AND code_hash = ? AND consumed_at IS NULL',
+    ).get(identityId, codeHash)
+    if (!row)
+      return { valid: false }
+    if (options.consumeRecovery !== false) {
+      const consumed = this.controlPlane.database.run(
+        'UPDATE auth_recovery_codes SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL',
+        [this.now(), String(row.id)],
+      ).changes
+      if (consumed !== 1)
+        return { valid: false }
+    }
+    return { valid: true, method: 'recovery' }
+  }
+
+  remainingRecoveryCodes(identityId: string): number {
+    return Number(this.controlPlane.database.query<Row, [string]>(
+      'SELECT COUNT(*) AS count FROM auth_recovery_codes WHERE identity_id = ? AND consumed_at IS NULL',
+    ).get(identityId)?.count ?? 0)
+  }
+
+  disableMfa(identityId: string): void {
+    const now = this.now()
+    this.controlPlane.transaction(() => {
+      this.run('UPDATE auth_mfa_factors SET disabled_at = ? WHERE identity_id = ? AND disabled_at IS NULL', [now, identityId])
+      this.run('DELETE FROM auth_recovery_codes WHERE identity_id = ?', [identityId])
+      this.run('UPDATE auth_mfa_challenges SET consumed_at = ? WHERE identity_id = ? AND consumed_at IS NULL', [now, identityId])
+    })
+  }
+
+  createMfaChallenge(identityId: string, purpose: AuthMfaChallenge['purpose']): { challenge: AuthMfaChallenge, token: string } {
+    if (this.getMfaFactor(identityId)?.state !== 'active')
+      throw new Error('MFA is not enabled')
+    const token = randomBytes(32).toString('base64url')
+    const id = this.idFn()
+    const now = this.now()
+    const expiresAt = new Date(this.nowFn().getTime() + AUTH_MFA_CHALLENGE_TTL_MS).toISOString()
+    this.controlPlane.transaction(() => {
+      this.run('UPDATE auth_mfa_challenges SET consumed_at = ? WHERE identity_id = ? AND purpose = ? AND consumed_at IS NULL', [now, identityId, purpose])
+      this.run(
+        'INSERT INTO auth_mfa_challenges (id, identity_id, purpose, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        [id, identityId, purpose, hashToken(token), expiresAt, now],
+      )
+    })
+    return { challenge: this.getMfaChallenge(id)!, token }
+  }
+
+  getMfaChallenge(id: string): AuthMfaChallenge | undefined {
+    const row = this.controlPlane.database.query<Row, [string]>('SELECT * FROM auth_mfa_challenges WHERE id = ?').get(id)
+    return row ? mapMfaChallenge(row, this.now()) : undefined
+  }
+
+  inspectMfaChallengeToken(token: string, purpose: AuthMfaChallenge['purpose']): AuthMfaChallenge | undefined {
+    const row = this.controlPlane.database.query<Row, [string, string]>(
+      'SELECT * FROM auth_mfa_challenges WHERE token_hash = ? AND purpose = ?',
+    ).get(hashToken(token), purpose)
+    return row ? mapMfaChallenge(row, this.now()) : undefined
+  }
+
+  completeMfaChallenge(token: string, code: string, purpose: AuthMfaChallenge['purpose']): { identity: AuthIdentity, challenge: AuthMfaChallenge, method: 'totp' | 'recovery' } {
+    const row = this.controlPlane.database.query<Row, [string, string]>(
+      'SELECT * FROM auth_mfa_challenges WHERE token_hash = ? AND purpose = ?',
+    ).get(hashToken(token), purpose)
+    if (!row)
+      throw new Error('MFA challenge is invalid')
+    const challenge = mapMfaChallenge(row, this.now())
+    if (challenge.state !== 'pending')
+      throw new Error(`MFA challenge is ${challenge.state}`)
+    const verification = this.verifyMfaCode(challenge.identityId, code)
+    if (!verification.valid || !verification.method) {
+      this.run('UPDATE auth_mfa_challenges SET attempts = attempts + 1 WHERE id = ?', [challenge.id])
+      throw new Error('Authenticator or recovery code is invalid')
+    }
+    const consumed = this.controlPlane.database.run(
+      'UPDATE auth_mfa_challenges SET consumed_at = ? WHERE id = ? AND consumed_at IS NULL AND attempts < 5 AND expires_at > ?',
+      [this.now(), challenge.id, this.now()],
+    ).changes
+    if (consumed !== 1)
+      throw new Error('MFA challenge is no longer available')
+    return { identity: this.getIdentity(challenge.identityId)!, challenge: this.getMfaChallenge(challenge.id)!, method: verification.method }
+  }
+
+  markSessionStepUp(sessionId: string, mfa: boolean = false): AuthSession {
+    const now = this.now()
+    this.run('UPDATE auth_sessions SET recent_auth_at = ?, mfa_at = CASE WHEN ? = 1 THEN ? ELSE mfa_at END WHERE id = ? AND revoked_at IS NULL', [now, mfa ? 1 : 0, now, sessionId])
+    const session = this.getSession(sessionId)
+    if (!session)
+      throw new Error('Authentication session was not found')
+    return session
+  }
+
+  isRecentlyAuthenticated(session: AuthSession, maxAgeMs: number = 10 * 60 * 1000): boolean {
+    return this.nowFn().getTime() - new Date(session.recentAuthAt).getTime() <= maxAgeMs
+  }
+
   purgeExpired(): { actionTokens: number, sessions: number } {
     const now = this.now()
     const actionTokens = this.controlPlane.database.run('DELETE FROM auth_action_tokens WHERE expires_at < ? OR consumed_at IS NOT NULL', [now]).changes
     const sessions = this.controlPlane.database.run('DELETE FROM auth_sessions WHERE revoked_at IS NOT NULL OR idle_expires_at < ? OR absolute_expires_at < ?', [now, now]).changes
+    this.controlPlane.database.run('DELETE FROM auth_mfa_challenges WHERE consumed_at IS NOT NULL OR expires_at < ?', [now])
     return { actionTokens, sessions }
   }
 }
