@@ -4,6 +4,7 @@ import { ControlPlaneStore } from '../control-plane'
 import { DurableOperationQueue, DurableQueueWorker } from '../queue'
 import type { BackupDestinationAdapter, BackupSourceAdapter } from './service'
 import { BackupCoordinator, createBackupQueueHandlers } from './service'
+import type { MultipartCheckpoint } from './s3-destination'
 import { BackupStore } from './store'
 
 const controls: ControlPlaneStore[] = []
@@ -28,10 +29,19 @@ afterEach(() => { for (const control of controls.splice(0)) control.close() })
 class MemoryDestination implements BackupDestinationAdapter {
   objects = new Map<string, Buffer>()
   corrupt = false
+  failUpload = false
+  failAbort = false
+  resumes: Array<MultipartCheckpoint | undefined> = []
+  aborted: MultipartCheckpoint[] = []
   async upload(_destination: any, input: any) {
+    this.resumes.push(input.resume)
     const body = Buffer.from(input.body), checksum = sha(body)
+    if (this.failUpload) {
+      input.checkpoint?.({ uploadId: 'upload-1', key: input.key, parts: [{ PartNumber: 1, ETag: 'etag-1' }], bytesUploaded: 4 })
+      throw new Error('provider upload failed')
+    }
     this.objects.set(input.key, body)
-    input.checkpoint?.({ key: input.key, bytesUploaded: body.length })
+    input.checkpoint?.({ uploadId: 'upload-1', key: input.key, parts: [{ PartNumber: 1, ETag: 'etag-1' }], bytesUploaded: body.length })
     return { uri: `s3://backups/${input.key}`, key: input.key, sizeBytes: body.length, checksum, manifest: { format: 'ts-cloud-backup-v1' as const, encrypted: false, plaintextChecksum: checksum, storageChecksum: checksum, contentType: input.contentType ?? 'application/octet-stream' } }
   }
   async download(_destination: any, stored: any) {
@@ -41,6 +51,10 @@ class MemoryDestination implements BackupDestinationAdapter {
     return body
   }
   async delete(_destination: any, key: string) { this.objects.delete(key) }
+  async abortPartial(_destination: any, checkpoint: MultipartCheckpoint) {
+    if (this.failAbort) throw new Error('multipart abort failed')
+    this.aborted.push(checkpoint)
+  }
 }
 
 function adapters(target: ReturnType<typeof fixture>, overrides: Partial<BackupSourceAdapter> = {}) {
@@ -56,6 +70,11 @@ function adapters(target: ReturnType<typeof fixture>, overrides: Partial<BackupS
 }
 
 describe('durable backup and recovery lifecycle', () => {
+  it('uses the resource lock shared by backup, restore, and resource operations', () => {
+    const target = fixture(), job = target.coordinator.enqueueBackup(target.policy)
+    expect(target.queue.view(job.operationId!)?.job.lockKey).toBe(`resource:${target.resource.id}`)
+  })
+
   it('turns a due policy into a verified recovery point and enforces retention', async () => {
     const target = fixture(), runtime = adapters(target)
     target.clock.now = new Date(target.policy.nextRunAt!)
@@ -81,6 +100,35 @@ describe('durable backup and recovery lifecycle', () => {
     const verification = target.store.listJobs(target.project.id).find(item => item.kind === 'verify')!, verifyClaim = target.queue.claim(verification.operationId!)!
     await expect(runtime.handlers['backup.verify']({ operation: verifyClaim.operation, job: verifyClaim.job, signal: new AbortController().signal, log: () => {}, checkpoint: () => {}, heartbeat: () => {}, throwIfCancelled: () => {} } as any)).rejects.toThrow('corrupt')
     expect(target.store.getRecoveryPoint(point.id)?.verificationState).toBe('corrupt')
+  })
+
+  it('passes persisted multipart state to a resumed worker', async () => {
+    const target = fixture(), runtime = adapters(target), job = target.coordinator.enqueueBackup(target.policy),
+      resume: MultipartCheckpoint = { uploadId: 'upload-1', key: 'uploads-hourly/point.tar.zst', parts: [{ PartNumber: 1, ETag: 'etag-1' }], bytesUploaded: 4 }
+    target.store.updateJob(job.id, {
+      progress: { phase: 'uploading', multipart: { ...resume } as any },
+    })
+    const claimed = target.queue.claim(job.operationId!)!
+    await runtime.handlers['backup.run']({ operation: claimed.operation, job: claimed.job, signal: new AbortController().signal, log: () => {}, checkpoint: () => {}, heartbeat: () => {}, throwIfCancelled: () => {} } as any)
+    expect(runtime.destination.resumes).toEqual([resume])
+  })
+
+  it('aborts partial uploads after a graceful failure', async () => {
+    const target = fixture(), runtime = adapters(target), job = target.coordinator.enqueueBackup(target.policy)
+    runtime.destination.failUpload = true
+    const claimed = target.queue.claim(job.operationId!)!
+    await expect(runtime.handlers['backup.run']({ operation: claimed.operation, job: claimed.job, signal: new AbortController().signal, log: () => {}, checkpoint: () => {}, heartbeat: () => {}, throwIfCancelled: () => {} } as any)).rejects.toThrow('provider upload failed')
+    expect(runtime.destination.aborted).toHaveLength(1)
+    expect(target.store.getJob(job.id)).toMatchObject({ status: 'failed', progress: { partialCleanup: 'aborted' } })
+  })
+
+  it('keeps failed multipart cleanup visible for operator reconciliation', async () => {
+    const target = fixture(), runtime = adapters(target), job = target.coordinator.enqueueBackup(target.policy)
+    runtime.destination.failUpload = true
+    runtime.destination.failAbort = true
+    const claimed = target.queue.claim(job.operationId!)!
+    await expect(runtime.handlers['backup.run']({ operation: claimed.operation, job: claimed.job, signal: new AbortController().signal, log: () => {}, checkpoint: () => {}, heartbeat: () => {}, throwIfCancelled: () => {} } as any)).rejects.toThrow('provider upload failed')
+    expect(target.store.getJob(job.id)).toMatchObject({ status: 'cleanup_required', progress: { partialCleanup: 'required' } })
   })
 
   it('runs isolated restore drills with health validation and cleanup', async () => {

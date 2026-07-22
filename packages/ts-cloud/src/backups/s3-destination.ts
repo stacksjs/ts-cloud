@@ -49,6 +49,8 @@ export interface MultipartCheckpoint {
   key: string
   parts: Array<{ PartNumber: number; ETag: string }>
   bytesUploaded: number
+  encryptionIv?: string
+  plaintextChecksum?: string
 }
 
 export interface StoredBackup {
@@ -73,9 +75,10 @@ function encryptionKey(value: string): Buffer {
   return createHash('sha256').update(value).digest()
 }
 
-export function encryptBackup(value: Uint8Array, secret: string): Buffer {
-  const iv = randomBytes(12),
-    cipher = createCipheriv('aes-256-gcm', encryptionKey(secret), iv),
+export function encryptBackup(value: Uint8Array, secret: string, suppliedIv?: Uint8Array): Buffer {
+  const iv = suppliedIv ? Buffer.from(suppliedIv) : randomBytes(12)
+  if (iv.length !== 12) throw new Error('Backup encryption IV must contain 12 bytes.')
+  const cipher = createCipheriv('aes-256-gcm', encryptionKey(secret), iv),
     encrypted = Buffer.concat([cipher.update(value), cipher.final()]),
     tag = cipher.getAuthTag()
   return Buffer.concat([MAGIC, iv, tag, encrypted])
@@ -110,12 +113,50 @@ function credentials(value: string): {
     throw new Error(
       'Backup destination credential requires accessKeyId and secretAccessKey.',
     )
+  if (parsed.expiresAt) {
+    const expiresAt = new Date(String(parsed.expiresAt))
+    if (!Number.isFinite(expiresAt.getTime()))
+      throw new Error('Backup destination credential expiresAt must be an ISO timestamp.')
+    if (expiresAt.getTime() <= Date.now())
+      throw new Error('Backup destination credential has expired.')
+  }
   return {
     accessKeyId: String(parsed.accessKeyId),
     secretAccessKey: String(parsed.secretAccessKey),
     sessionToken: parsed.sessionToken
       ? String(parsed.sessionToken)
       : undefined,
+  }
+}
+
+// pickier-disable-next-line no-unused-vars
+export async function backupCredentialStatus(
+  _destination: BackupDestination,
+  secrets: BackupSecretBackend,
+  now: Date = new Date(),
+): Promise<{
+  status: 'default' | 'static' | 'valid' | 'expiring' | 'expired' | 'invalid'
+  expiresAt?: string
+}> {
+  if (!_destination.credentialRef) return { status: 'default' }
+  try {
+    const parsed = JSON.parse(await secrets.resolve(_destination.credentialRef)) as Record<string, unknown>
+    if (!parsed.accessKeyId || !parsed.secretAccessKey) return { status: 'invalid' }
+    if (!parsed.expiresAt) return { status: 'static' }
+    const expiresAt = new Date(String(parsed.expiresAt))
+    if (!Number.isFinite(expiresAt.getTime())) return { status: 'invalid' }
+    const remaining = expiresAt.getTime() - now.getTime()
+    return {
+      status:
+        remaining <= 0
+          ? 'expired'
+          : remaining <= 7 * 86_400_000
+            ? 'expiring'
+            : 'valid',
+      expiresAt: expiresAt.toISOString(),
+    }
+  } catch {
+    return { status: 'invalid' }
   }
 }
 
@@ -191,8 +232,13 @@ export class S3BackupDestinationAdapter {
         destination.encryption !== 'provider'
           ? await this.secrets.resolve(destination.encryptionKeyRef!)
           : undefined,
+      encryptionIv = encryptionSecret
+        ? input.resume?.encryptionIv
+          ? Buffer.from(input.resume.encryptionIv, 'base64url')
+          : randomBytes(12)
+        : undefined,
       body = encryptionSecret
-        ? encryptBackup(input.body, encryptionSecret)
+        ? encryptBackup(input.body, encryptionSecret, encryptionIv)
         : Buffer.from(input.body),
       storageChecksum = checksum(body),
       key = `${destination.prefix ? `${destination.prefix.replace(/\/$/, '')}/` : ''}${input.key.replace(/^\/+/, '')}`,
@@ -202,6 +248,16 @@ export class S3BackupDestinationAdapter {
         'ts-cloud-sha256': storageChecksum.slice(7),
         'ts-cloud-encrypted': encryptionSecret ? 'true' : 'false',
       }
+    if (input.resume && input.resume.key !== key)
+      throw new Error('Multipart checkpoint does not match the requested backup key.')
+    if (input.resume && encryptionSecret && !input.resume.encryptionIv)
+      throw new Error('Encrypted multipart checkpoint has no resumable envelope state.')
+    if (
+      input.resume &&
+      encryptionSecret &&
+      input.resume.plaintextChecksum !== plaintextChecksum
+    )
+      throw new Error('Encrypted multipart checkpoint does not match the backup payload.')
     if (body.length < this.multipartThreshold) {
       await client.putObject({
         bucket: destination.bucket,
@@ -222,6 +278,8 @@ export class S3BackupDestinationAdapter {
           key,
           parts: [],
           bytesUploaded: 0,
+          encryptionIv: encryptionIv?.toString('base64url'),
+          plaintextChecksum,
         },
         completed = new Map(
           state.parts.map((part) => [part.PartNumber, part]),

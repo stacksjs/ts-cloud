@@ -15,7 +15,7 @@ export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
 
   async create(
     policy: BackupPolicy,
-    _context: QueueExecutionContext,
+    context: QueueExecutionContext,
   ): Promise<BackupSourceResult> {
     if (!policy.dataServiceId)
       throw new Error('Logical database backups require a data service.')
@@ -24,7 +24,7 @@ export class LogicalDatabaseBackupSource implements BackupSourceAdapter {
     if (!['container', 'server'].includes(service.provider))
       throw new Error('Logical database backups require an on-box data service.')
     const dump = await this.transport.exportLogicalBackup(service.id),
-      timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)
+      timestamp = String(context.operation?.id ?? new Date().toISOString()).replace(/[^A-Za-z0-9]/g, '').slice(0, 32)
     return {
       mode: 'object',
       key: `${policy.projectId}/databases/${service.id}/${timestamp}.sql`,

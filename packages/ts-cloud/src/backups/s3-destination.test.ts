@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'bun:test'
 import type { BackupDestination } from './model'
 import type { BackupObjectClient, MultipartCheckpoint } from './s3-destination'
-import { S3BackupDestinationAdapter } from './s3-destination'
+import { backupCredentialStatus, S3BackupDestinationAdapter } from './s3-destination'
 
 class MemoryClient implements BackupObjectClient {
   objects = new Map<string, Buffer>()
   uploads = new Map<string, Map<number, Buffer>>()
   uploadedParts: number[] = []
   aborted: string[] = []
+  failPartOnce?: number
   async putObject(input: { bucket: string; key: string; body: string | Buffer | Uint8Array }) {
     this.objects.set(`${input.bucket}/${input.key}`, Buffer.from(input.body))
   }
@@ -19,6 +20,10 @@ class MemoryClient implements BackupObjectClient {
   async deleteObject(bucket: string, key: string) { this.objects.delete(`${bucket}/${key}`) }
   async createMultipartUpload() { this.uploads.set('upload-1', new Map()); return { UploadId: 'upload-1' } }
   async uploadPart(_bucket: string, _key: string, uploadId: string, partNumber: number, body: Uint8Array | Buffer) {
+    if (this.failPartOnce === partNumber) {
+      this.failPartOnce = undefined
+      throw new Error('transient multipart failure')
+    }
     this.uploadedParts.push(partNumber); this.uploads.get(uploadId)!.set(partNumber, Buffer.from(body)); return { ETag: `etag-${partNumber}` }
   }
   async completeMultipartUpload(bucket: string, key: string, uploadId: string, parts: Array<{ PartNumber: number }>) {
@@ -68,5 +73,32 @@ describe('S3 backup destination adapter', () => {
     client.uploads.set('abandoned', new Map())
     await adapter.abortPartial(destination(), { uploadId: 'abandoned', key: 'production/partial', parts: [], bytesUploaded: 0 })
     expect(client.aborted).toEqual(['abandoned'])
+  })
+
+  it('resumes encrypted multipart uploads with the same authenticated envelope', async () => {
+    const client = new MemoryClient(), adapter = new S3BackupDestinationAdapter(
+      { resolve: async ref => ref === 'secret://credentials' ? JSON.stringify({ accessKeyId: 'access', secretAccessKey: 'secret' }) : 'strong-backup-key' },
+      () => client, 4, 4,
+    ), body = Buffer.from('abcdefghij'), checkpoints: MultipartCheckpoint[] = []
+    client.failPartOnce = 2
+    await expect(adapter.upload(destination('both'), { key: 'encrypted.bin', body, checkpoint: value => checkpoints.push(structuredClone(value)) })).rejects.toThrow('transient')
+    const resume = checkpoints.at(-1)!
+    expect(resume).toMatchObject({ bytesUploaded: 4 })
+    expect(resume.encryptionIv).toBeString()
+    const stored = await adapter.upload(destination('both'), { key: 'encrypted.bin', body, resume })
+    expect(client.uploadedParts).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+    expect(await adapter.download(destination('both'), stored)).toEqual(body)
+  })
+
+  it('reports expiring credentials and rejects expired credentials before use', async () => {
+    const expiresAt = '2026-07-25T00:00:00.000Z', secrets = {
+      resolve: async () => JSON.stringify({ accessKeyId: 'access', secretAccessKey: 'secret', expiresAt }),
+    }
+    expect(await backupCredentialStatus(destination(), secrets, new Date('2026-07-21T00:00:00.000Z'))).toEqual({ status: 'expiring', expiresAt })
+    const expired = new S3BackupDestinationAdapter(
+      { resolve: async () => JSON.stringify({ accessKeyId: 'access', secretAccessKey: 'secret', expiresAt: '2000-01-01T00:00:00.000Z' }) },
+      () => new MemoryClient(),
+    )
+    await expect(expired.test(destination())).rejects.toThrow('expired')
   })
 })

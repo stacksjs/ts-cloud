@@ -568,20 +568,61 @@ export class BackupStore {
   }
 
   retentionCandidates(at: Date = this.now()): RecoveryPoint[] {
-    return this.controlPlane.database
+    const candidates = this.controlPlane.database
       .query<Row, [string, string]>(
         `SELECT rp.* FROM recovery_points rp
-         WHERE rp.status='available' AND rp.held=0 AND rp.pinned=0
-           AND rp.expires_at IS NOT NULL AND rp.expires_at<=?
-           AND (rp.locked_until IS NULL OR rp.locked_until<=?)
-           AND NOT EXISTS (
-             SELECT 1 FROM backup_jobs bj WHERE bj.recovery_point_id=rp.id
-             AND bj.kind IN ('restore','drill') AND bj.status IN ('queued','running','cleanup_required')
-           )
-         ORDER BY rp.expires_at,rp.id`,
+        WHERE rp.status='available' AND rp.held=0 AND rp.pinned=0
+          AND rp.expires_at IS NOT NULL AND rp.expires_at<=?
+          AND (rp.locked_until IS NULL OR rp.locked_until<=?)
+          AND NOT EXISTS (
+            SELECT 1 FROM backup_jobs bj WHERE bj.recovery_point_id=rp.id
+            AND bj.kind IN ('restore','drill') AND bj.status IN ('queued','running','cleanup_required')
+          )
+        ORDER BY rp.expires_at,rp.id`,
       )
       .all(at.toISOString(), at.toISOString())
       .map(point)
+    const protectedIds = new Set<string>()
+    for (const projectId of new Set(candidates.map((item) => item.projectId))) {
+      for (const policy of this.listPolicies(projectId)) {
+        const points = this.listRecoveryPoints(policy.projectId, policy.id)
+          .filter((item) => item.status === 'available')
+          .sort((a, b) => b.pointInTime.localeCompare(a.pointInTime))
+        for (const item of points.slice(0, Math.max(0, policy.retention.keepLast ?? 0)))
+          protectedIds.add(item.id)
+        const buckets: Array<
+          [number | undefined, (date: Date) => string]
+        > = [
+          [policy.retention.hourly, (date) => date.toISOString().slice(0, 13)],
+          [policy.retention.daily, (date) => date.toISOString().slice(0, 10)],
+          [
+            policy.retention.weekly,
+            (date) => {
+              const monday = new Date(
+                Date.UTC(
+                  date.getUTCFullYear(),
+                  date.getUTCMonth(),
+                  date.getUTCDate() - ((date.getUTCDay() + 6) % 7),
+                ),
+              )
+              return monday.toISOString().slice(0, 10)
+            },
+          ],
+          [policy.retention.monthly, (date) => date.toISOString().slice(0, 7)],
+        ]
+        for (const [count, bucket] of buckets) {
+          const seen = new Set<string>()
+          for (const item of points) {
+            const key = bucket(new Date(item.pointInTime))
+            if (seen.has(key)) continue
+            seen.add(key)
+            if (seen.size <= Math.max(0, count ?? 0))
+              protectedIds.add(item.id)
+          }
+        }
+      }
+    }
+    return candidates.filter((item) => !protectedIds.has(item.id))
   }
 
   coverage(projectId: string, at: Date = this.now()): BackupCoverage[] {

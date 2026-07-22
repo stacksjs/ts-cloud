@@ -39,7 +39,7 @@ describe('backup recovery control plane', () => {
       healthy = target.backups.recordDestinationTest(destination.id, { ok: true }),
       policy = target.backups.createPolicy({
         organizationId: target.organization.id, projectId: target.project.id, environmentId: target.environment.id, resourceId: target.resource.id,
-        destinationId: destination.id, name: 'uploads-hourly', resourceKind: 'volume', schedule: 'hourly', timezone: 'UTC', retention: { keepLast: 24, expireAfterDays: 7 }, compression: 'zstd', encryption: 'destination', includePatterns: [], excludePatterns: ['*.tmp'], expectedRpoMinutes: 60, expectedRtoMinutes: 30, enabled: true,
+        destinationId: destination.id, name: 'uploads-hourly', resourceKind: 'volume', schedule: 'hourly', timezone: 'UTC', retention: { keepLast: 0, expireAfterDays: 7 }, compression: 'zstd', encryption: 'destination', includePatterns: [], excludePatterns: ['*.tmp'], expectedRpoMinutes: 60, expectedRtoMinutes: 30, enabled: true,
       })
     expect(healthy).toMatchObject({ status: 'healthy', lastSuccessAt: target.clock.now.toISOString() })
     expect(policy.schedule).toBe('cron(0 * * * *)')
@@ -54,6 +54,25 @@ describe('backup recovery control plane', () => {
     expect(target.backups.retentionCandidates()).toEqual([point])
     target.backups.updateRecoveryPoint(point.id, { held: true })
     expect(target.backups.retentionCandidates()).toEqual([])
+  })
+
+  it('retains the newest point and tier representatives before expiry cleanup', () => {
+    const target = fixture(),
+      destination = target.backups.createDestination({ organizationId: target.organization.id, projectId: target.project.id, name: 'archive', provider: 'aws_s3', endpointPolicy: 'public_https', bucket: 'acme', prefix: '', forcePathStyle: false, encryption: 'provider', immutability: {}, status: 'healthy' }),
+      policy = target.backups.createPolicy({ organizationId: target.organization.id, projectId: target.project.id, environmentId: target.environment.id, resourceId: target.resource.id, destinationId: destination.id, name: 'tiered', resourceKind: 'volume', schedule: 'hourly', timezone: 'UTC', retention: { keepLast: 1, hourly: 2, daily: 2, expireAfterDays: 1 }, compression: 'gzip', encryption: 'destination', includePatterns: [], excludePatterns: [], expectedRpoMinutes: 60, expectedRtoMinutes: 30, enabled: true }),
+      createPoint = (pointInTime: string) => target.backups.createRecoveryPoint({ projectId: target.project.id, policyId: policy.id, destinationId: destination.id, resourceId: target.resource.id, kind: 'volume', pointInTime, uri: `s3://acme/${pointInTime}`, sizeBytes: 1, checksum: `sha256:${'c'.repeat(64)}`, manifest: {}, expiresAt: '2026-07-21T11:59:00.000Z', held: false, pinned: false, status: 'available', verificationState: 'verified' }),
+      newest = createPoint('2026-07-21T11:45:00.000Z'),
+      sameHour = createPoint('2026-07-21T11:15:00.000Z'),
+      previousHour = createPoint('2026-07-21T10:45:00.000Z'),
+      previousDay = createPoint('2026-07-20T10:00:00.000Z'),
+      oldest = createPoint('2026-07-19T10:00:00.000Z')
+    const candidateIds = target.backups.retentionCandidates().map((item) => item.id)
+    expect(candidateIds).toHaveLength(2)
+    expect(candidateIds).toContain(oldest.id)
+    expect(candidateIds).toContain(sameHour.id)
+    expect(candidateIds).not.toContain(newest.id)
+    expect(candidateIds).not.toContain(previousHour.id)
+    expect(candidateIds).not.toContain(previousDay.id)
   })
 
   it('deduplicates jobs and protects recovery points during restores', () => {

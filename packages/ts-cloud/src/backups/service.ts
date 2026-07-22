@@ -63,6 +63,7 @@ export interface BackupDestinationAdapter {
       key: string
       body: Uint8Array
       contentType?: string
+      resume?: MultipartCheckpoint
       checkpoint?: (value: MultipartCheckpoint) => void
     },
   ): Promise<StoredBackup>
@@ -71,6 +72,10 @@ export interface BackupDestinationAdapter {
     stored: Pick<StoredBackup, 'key' | 'checksum' | 'manifest'>,
   ): Promise<Buffer>
   delete(destination: BackupDestination, key: string): Promise<void>
+  abortPartial?(
+    destination: BackupDestination,
+    checkpoint: MultipartCheckpoint,
+  ): Promise<void>
 }
 
 const digest = (value: string) =>
@@ -107,7 +112,11 @@ export class BackupCoordinator {
         actorId,
         kind: 'backup.run',
         input: { backupJobId: job.id },
-        lockKey: `backup-target:${policy.dataServiceId ?? policy.resourceId}`,
+        lockKey: policy.dataServiceId
+          ? `data-service:${policy.dataServiceId}`
+          : policy.resourceId
+            ? `resource:${policy.resourceId}`
+            : `backup-policy:${policy.id}`,
         providerKey: 'backup',
         maxAttempts: 3,
         timeoutSeconds: 14_400,
@@ -255,7 +264,11 @@ export class BackupCoordinator {
         actorId: input.actorId,
         kind: input.drill ? 'backup.drill' : 'backup.restore',
         input: { backupJobId: job.id },
-        lockKey: `backup-target:${point.dataServiceId ?? point.resourceId}`,
+        lockKey: point.dataServiceId
+          ? `data-service:${point.dataServiceId}`
+          : point.resourceId
+            ? `resource:${point.resourceId}`
+            : `recovery-point:${point.id}`,
         providerKey: 'backup',
         maxAttempts: 1,
         timeoutSeconds: 14_400,
@@ -348,11 +361,12 @@ export function createBackupQueueHandlers(input: {
       return job
     },
     fail = (job: BackupJob, error: unknown) => {
+      const current = input.store.getJob(job.id) ?? job
       input.store.updateJob(job.id, {
         status: 'failed',
         finishedAt: now().toISOString(),
         error: error instanceof Error ? error.message : String(error),
-        progress: { ...job.progress, phase: 'failed' },
+        progress: { ...current.progress, phase: 'failed' },
       })
     }
   return {
@@ -367,10 +381,16 @@ export function createBackupQueueHandlers(input: {
               ? await (async () => {
                   if (!destinationAdapter)
                     throw new Error('Backup destination adapter is not configured.')
+                  const progress = input.store.getJob(job.id)?.progress,
+                    checkpoint = progress?.multipart,
+                    resume = checkpoint && typeof checkpoint === 'object' && !Array.isArray(checkpoint) && typeof checkpoint.uploadId === 'string' && typeof checkpoint.key === 'string' && Array.isArray(checkpoint.parts)
+                      ? checkpoint as unknown as MultipartCheckpoint
+                      : undefined
                   return destinationAdapter.upload(destination, {
                     key: result.key,
                     body: result.body,
                     contentType: result.contentType,
+                    resume,
                     checkpoint: (value) => {
                       context.checkpoint(
                         'uploading',
@@ -401,6 +421,7 @@ export function createBackupQueueHandlers(input: {
                   policy.retention.expireAfterDays * 86_400_000,
               ).toISOString()
             : undefined,
+          startedAt = input.store.getJob(job.id)?.startedAt,
           point = input.store.createRecoveryPoint({
             projectId: policy.projectId,
             policyId: policy.id,
@@ -431,6 +452,11 @@ export function createBackupQueueHandlers(input: {
             pinned: false,
             status: 'available',
             verificationState: 'unverified',
+            durationMs: Math.max(
+              0,
+              now().getTime() -
+                new Date(startedAt ?? now().toISOString()).getTime(),
+            ),
           })
         input.store.updateJob(job.id, {
           status: 'succeeded',
@@ -441,7 +467,55 @@ export function createBackupQueueHandlers(input: {
         coordinator.enqueueVerification(point)
         return { backupJobId: job.id, recoveryPointId: point.id }
       } catch (error) {
-        fail(job, error)
+        const current = input.store.getJob(job.id),
+          partial = current?.progress.multipart,
+          resolved = (() => {
+            try {
+              return resolve(job)
+            } catch {
+              return undefined
+            }
+          })()
+        let cleanupRequired = false
+        if (
+          partial &&
+          typeof partial === 'object' &&
+          !Array.isArray(partial) &&
+          resolved
+        ) {
+          const adapter = input.resolveDestination(resolved.destination)
+          cleanupRequired = true
+          if (adapter?.abortPartial) {
+            try {
+              await adapter.abortPartial(
+                resolved.destination,
+                partial as unknown as MultipartCheckpoint,
+              )
+              cleanupRequired = false
+              input.store.updateJob(job.id, {
+                progress: {
+                  ...current!.progress,
+                  partialCleanup: 'aborted',
+                },
+              })
+            } catch {
+              input.store.updateJob(job.id, {
+                progress: {
+                  ...current!.progress,
+                  partialCleanup: 'required',
+                },
+              })
+            }
+          }
+        }
+        if (cleanupRequired)
+          input.store.updateJob(job.id, {
+            status: 'cleanup_required',
+            finishedAt: now().toISOString(),
+            error: error instanceof Error ? error.message : String(error),
+            progress: { ...(input.store.getJob(job.id)?.progress ?? {}), phase: 'cleanup_required' },
+          })
+        else fail(job, error)
         throw error
       }
     },

@@ -28,13 +28,13 @@ export class AwsDatabaseBackupSource implements BackupSourceAdapter {
 
   async create(
     policy: BackupPolicy,
-    _context: QueueExecutionContext,
+    context: QueueExecutionContext,
   ): Promise<BackupSourceResult> {
     const service = this.service(policy),
-      snapshotId = `${service.placement}-${new Date()
-        .toISOString()
-        .replace(/[^0-9]/g, '')
-        .slice(0, 14)}`
+      token = String(context.operation?.id ?? new Date().toISOString())
+        .replace(/[^A-Za-z0-9]/g, '')
+        .slice(0, 20),
+      snapshotId = `${service.placement.slice(0, 42).replace(/-+$/, '')}-${token}`
     if (service.provider === 'aws_aurora')
       await this.client.createDBClusterSnapshot(service.placement, snapshotId)
     else

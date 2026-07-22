@@ -30,7 +30,7 @@ import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEst
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
 import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, ContainerDataAdapter, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, DockerDataTransport, EncryptedDataSecretStore, ServerDataAdapter, type DataAction, type DataEngine, type DataProvider, type DataService } from '../data-services'
-import { AwsDatabaseBackupSource, BackupCoordinator, BackupStore, createBackupQueueHandlers, DockerVolumeBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
+import { AwsDatabaseBackupSource, backupCredentialStatus, BackupCoordinator, BackupStore, createBackupQueueHandlers, DockerVolumeBackupSource, LogicalDatabaseBackupSource, S3BackupDestinationAdapter, type BackupDestination, type BackupPolicy } from '../backups'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -3533,9 +3533,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               credentialsConfigured: !!destination.credentialRef,
               clientEncryptionConfigured: !!destination.encryptionKeyRef,
             })
+          const destinations = await Promise.all(backupStore.listDestinations(controlPlane.project.id).map(async destination => ({
+            ...sanitizeDestination(destination),
+            credentialStatus: await backupCredentialStatus(destination, dataServiceSecrets),
+          })))
           return json({
             ok: true,
-            destinations: backupStore.listDestinations(controlPlane.project.id).map(sanitizeDestination),
+            destinations,
             policies,
             recoveryPoints,
             jobs,
