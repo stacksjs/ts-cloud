@@ -19,6 +19,7 @@ import {
   registerGitCommands,
   registerApplicationCommands,
   registerEnvironmentCommands,
+  registerComposeCommands,
   registerAssetsCommands,
   registerTeamCommands,
   registerDeployCommands,
@@ -128,6 +129,7 @@ registerCostCommands(app)
 registerGitCommands(app)
 registerApplicationCommands(app)
 registerEnvironmentCommands(app)
+registerComposeCommands(app)
 
 // Assets & Team
 registerAssetsCommands(app)

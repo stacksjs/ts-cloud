@@ -4,6 +4,7 @@ import { ControlPlaneStore } from '../control-plane'
 import { DurableOperationQueue } from './queue'
 import { createDeploymentQueueHandlers, resolveQueuedDeploymentCommand } from './deployment-handlers'
 import { PreviewEnvironmentStore } from '../preview'
+import { ComposeApplicationService, ComposeApplicationStore } from '../compose'
 
 const stores: ControlPlaneStore[] = []
 afterEach(() => { for (const store of stores.splice(0)) store.close() })
@@ -65,5 +66,20 @@ describe('deployment queue handlers', () => {
     expect(commands[1]).toEqual(['stack:delete', preview.stackName, '--yes'])
     expect(previews.getInstance(preview.id)?.status).toBe('destroyed')
     expect(previews.listResources(preview.id)[0]?.deletedAt).toBeString()
+  })
+
+  it('runs Compose applications through durable deploy, scale, and data-safe delete', async () => {
+    const target = setup(); const applications = new ComposeApplicationStore(target.store)
+    const application = applications.import(`services:\n  web: { image: acme/web:1.0.0 }\n  worker: { image: acme/worker:1.0.0 }\nvolumes: {}\n`, { name: 'Stack', projectId: target.project.id, environmentId: target.environment.id }).application
+    const lifecycle = new ComposeApplicationService(target.store); lifecycle.enqueue(application, 'deploy')
+    const commands: string[][] = []; const queue = lifecycle.queue; const handlers = createDeploymentQueueHandlers({ store: target.store, execute: async command => { commands.push(command.command); return { ok: true, exitCode: 0 } } })
+    expect(await queue.runOne(handlers)).toMatchObject({ terminalState: 'succeeded' })
+    expect(commands[0]).toEqual(['compose:apply', application.id, '--action', 'deploy', '--env', 'production'])
+    expect(applications.get(application.id)?.status).toBe('running')
+    expect(applications.services(application.id).map(service => service.status)).toEqual(['running', 'running'])
+    lifecycle.enqueue(applications.get(application.id)!, 'scale', { service: 'worker', replicas: 3 }); await queue.runOne(handlers)
+    expect(commands[1]).toEqual(['compose:apply', application.id, '--action', 'scale', '--env', 'production', '--service', 'worker', '--replicas', '3'])
+    lifecycle.enqueue(applications.get(application.id)!, 'delete', { confirmation: application.slug }); await queue.runOne(handlers)
+    expect(commands[2]).not.toContain('--remove-volumes'); expect(applications.get(application.id)?.status).toBe('deleted')
   })
 })
