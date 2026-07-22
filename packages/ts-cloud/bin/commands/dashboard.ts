@@ -1,8 +1,8 @@
 import type { CLI } from '@stacksjs/clapp'
-import type { ControlPlaneSnapshot } from '../../src/control-plane'
+import type { AuthorizationCapability, AuthorizationEffect, AuthorizationScope, ControlPlaneSnapshot, OrganizationRoleTemplate } from '../../src/control-plane'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { ControlPlaneStore } from '../../src/control-plane'
+import { AUTHORIZATION_CAPABILITIES, ControlPlaneStore } from '../../src/control-plane'
 import * as cli from '../../src/utils/cli'
 import { startLocalDashboardServer } from '../../src/deploy/local-dashboard-server'
 
@@ -21,6 +21,22 @@ function printControlPlaneHealth(store: ControlPlaneStore): void {
   cli.info(`Last backup: ${health.lastBackupAt ?? 'never'}`)
   cli.info(`Operations: ${Object.entries(health.operations).map(([state, count]) => `${state}=${count}`).join(', ')}`)
   cli.info(`Pending/retryable: ${health.pendingRetryableOperations}`)
+}
+
+function resolveOrganization(store: ControlPlaneStore, value: string) {
+  const organization = store.getOrganization(value) ?? store.getOrganizationBySlug(value)
+  if (!organization)
+    throw new Error(`Organization '${value}' was not found.`)
+  return organization
+}
+
+function commandScope(type?: string, id?: string): AuthorizationScope {
+  const scopeType = type ?? 'organization'
+  if (scopeType === 'organization')
+    return { type: 'organization' }
+  if (!['project', 'environment', 'resource'].includes(scopeType) || !id)
+    throw new Error('Scoped access requires --scope project|environment|resource and --scope-id <id>.')
+  return { type: scopeType as 'project' | 'environment' | 'resource', id }
 }
 
 export function registerDashboardCommands(app: CLI): void {
@@ -140,5 +156,132 @@ export function registerDashboardCommands(app: CLI): void {
       finally {
         store.close()
       }
+    })
+
+  app
+    .command('organization:list', 'List organizations in the local control plane')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        cli.header('Organizations')
+        for (const organization of store.listOrganizations())
+          cli.info(`${organization.slug}  ${organization.name}  ${organization.id}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:members <organization>', 'List memberships and scoped grants')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--all', 'Include revoked memberships')
+    .action((organizationValue: string, options?: { path?: string, all?: boolean }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        cli.header(`${organization.name} members`)
+        for (const membership of store.listMemberships(organization.id, { includeRevoked: options?.all })) {
+          const actor = store.getActor(membership.actorId)
+          cli.info(`${actor?.displayName ?? membership.actorId}  ${membership.roleTemplate}  ${membership.scope.type}:${membership.scope.id ?? organization.slug}  ${membership.status}  ${membership.id}`)
+          for (const grant of store.listGrants(membership.id))
+            cli.info(`  ${grant.effect} ${grant.capability} @ ${grant.scope.type}:${grant.scope.id ?? organization.slug}`)
+        }
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:invite <organization> <email>', 'Create a hashed, expiring organization invitation')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--role <role>', 'owner|admin|deployer|operator|viewer|auditor', { default: 'viewer' })
+    .option('--scope <scope>', 'organization|project|environment|resource', { default: 'organization' })
+    .option('--scope-id <id>', 'Project, environment, or resource ID')
+    .option('--days <days>', 'Invitation lifetime in days', { default: '7' })
+    .option('--base-url <url>', 'Dashboard URL used to print the acceptance link', { default: 'http://127.0.0.1:7676' })
+    .action((organizationValue: string, email: string, options?: { path?: string, role?: string, scope?: string, scopeId?: string, days?: string, baseUrl?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        if (!['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'].includes(options?.role ?? 'viewer'))
+          throw new Error('Unknown role template.')
+        const created = store.createInvitation({
+          organizationId: organization.id,
+          email,
+          roleTemplate: (options?.role ?? 'viewer') as OrganizationRoleTemplate,
+          scope: commandScope(options?.scope, options?.scopeId),
+          expiresInMs: Number(options?.days ?? 7) * 86_400_000,
+        })
+        cli.success(`Invitation created for ${created.invitation.email}; expires ${created.invitation.expiresAt}`)
+        cli.info(`${String(options?.baseUrl ?? 'http://127.0.0.1:7676').replace(/\/$/, '')}/accept-invitation?token=${encodeURIComponent(created.token)}`)
+        cli.info('This token is shown once. Resending revokes it and creates a new token.')
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:invitations <organization>', 'List invitation states without exposing tokens')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((organizationValue: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        cli.header(`${organization.name} invitations`)
+        for (const invitation of store.listInvitations(organization.id))
+          cli.info(`${invitation.email}  ${invitation.roleTemplate}  ${invitation.scope.type}:${invitation.scope.id ?? organization.slug}  ${invitation.state}  ${invitation.id}`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:revoke-invitation <id>', 'Revoke a pending organization invitation')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .action((id: string, options?: { path?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const invitation = store.revokeInvitation(id)
+        cli.success(`Invitation ${invitation.id} is ${invitation.state}.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:grant <organization> <membership> <capability>', 'Add an explicit scoped allow or deny')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--effect <effect>', 'allow|deny', { default: 'allow' })
+    .option('--scope <scope>', 'organization|project|environment|resource', { default: 'organization' })
+    .option('--scope-id <id>', 'Project, environment, or resource ID')
+    .action((organizationValue: string, membership: string, capabilityValue: string, options?: { path?: string, effect?: string, scope?: string, scopeId?: string }) => {
+      const store = openControlPlane(options?.path)
+      try {
+        const organization = resolveOrganization(store, organizationValue)
+        if (!AUTHORIZATION_CAPABILITIES.includes(capabilityValue as AuthorizationCapability))
+          throw new Error(`Unknown capability '${capabilityValue}'.`)
+        if (options?.effect !== undefined && !['allow', 'deny'].includes(options.effect))
+          throw new Error('Effect must be allow or deny.')
+        const grant = store.upsertGrant({
+          organizationId: organization.id,
+          membershipId: membership,
+          effect: (options?.effect ?? 'allow') as AuthorizationEffect,
+          capability: capabilityValue as AuthorizationCapability,
+          scope: commandScope(options?.scope, options?.scopeId),
+        })
+        cli.success(`${grant.effect} ${grant.capability} added at ${grant.scope.type}:${grant.scope.id ?? organization.slug}.`)
+      }
+      finally { store.close() }
+    })
+
+  app
+    .command('organization:revoke-member <membership>', 'Revoke a membership and invalidate its sessions')
+    .option('--path <path>', 'Use a non-default control-plane database')
+    .option('--confirm <id>', 'Type the membership ID to confirm')
+    .action((membership: string, options?: { path?: string, confirm?: string }) => {
+      if (options?.confirm !== membership)
+        throw new Error(`Pass --confirm ${membership} to revoke this membership.`)
+      const store = openControlPlane(options?.path)
+      try {
+        const revoked = store.revokeMembership(membership)
+        cli.success(`Membership ${revoked.id} revoked; session version is now ${revoked.sessionVersion}.`)
+      }
+      finally { store.close() }
     })
 }

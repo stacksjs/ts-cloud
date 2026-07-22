@@ -367,6 +367,7 @@ export interface CreateMembershipInput {
   roleTemplate: OrganizationRoleTemplate
   scope?: AuthorizationScope
   source?: AuthorizationRecordSource
+  performedByActorId?: ControlPlaneId
 }
 
 export interface CreateInvitationInput {
@@ -387,6 +388,7 @@ export interface CreateGrantInput {
   capability: AuthorizationCapability
   scope?: AuthorizationScope
   source?: AuthorizationRecordSource
+  actorId?: ControlPlaneId
 }
 
 export interface ControlPlaneTag {

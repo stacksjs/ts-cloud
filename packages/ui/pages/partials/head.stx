@@ -94,6 +94,17 @@
   .state-page h1 { font-size: clamp(28px, 5vw, 48px); letter-spacing: -.035em; }
   .state-page p { color: var(--txt2); max-width: 560px; font-size: 15px; line-height: 1.65; }
   .state-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+  .auth-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .auth-card { width: min(460px, 100%); display: grid; gap: 24px; padding: 28px; border: 1px solid var(--panel-br); border-radius: 18px; background: var(--panel); box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+  .auth-card .brand { padding: 0; }
+  .auth-card h1 { margin-top: 7px; font-size: 28px; }
+  .auth-card p { margin-top: 6px; color: var(--txt2); line-height: 1.55; }
+  .auth-form { display: grid; gap: 14px; }
+  .auth-form .field-block { display: grid; gap: 6px; }
+  .auth-form .field-block input { width: 100%; }
+  .auth-form small { color: var(--txt3); font-size: 11px; }
+  .auth-form .btn { justify-self: stretch; }
+  .auth-status { min-height: 20px; color: var(--txt2); font-size: 12px; }
   .sr-only { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
   .command-palette { width: min(660px, calc(100vw - 24px)); max-height: min(620px, calc(100vh - 40px)); margin: 9vh auto 0; padding: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.13); border-radius: 16px; background: #0f151f; color: var(--txt); box-shadow: 0 28px 90px rgba(0,0,0,.58); }
   .command-palette::backdrop { background: rgba(2,5,9,.72); backdrop-filter: blur(5px); }

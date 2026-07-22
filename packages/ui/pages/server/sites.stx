@@ -6,6 +6,9 @@ const server = __d?.server ?? { name: 'stacks-production-app' }
 // so the box-owner affordances - adding and removing sites - are not offered.
 // Presentation only: the server enforces this regardless of what is rendered.
 const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
+const viewerCapabilities = __d?.viewer?.capabilities ?? []
+const canDeploy = !isMember || viewerCapabilities.includes('deployments:create')
+const canEdit = !isMember || viewerCapabilities.includes('config:write')
 const sites = __d?.sitesDetail ?? [
   { name: 'main', route: 'stacksjs.com', href: 'https://stacksjs.com', kind: 'stacks', runtime: 'bun', tls: 'https', deploy: 'service', root: '/var/www/main/current', branch: 'main', status: 'live' },
   { name: 'api', route: 'internal', kind: 'api', runtime: 'bun', tls: 'loopback', deploy: 'service', root: '/var/www/api/current', branch: 'main', status: 'live' },
@@ -147,12 +150,13 @@ async function saveEdit(name) {
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px;">
-          <button class="btn sm" type="button" @click="askDeploy('{{ site.name }}')">Deploy</button>
-          <button class="btn ghost sm" type="button" @click="toggleEdit('{{ site.name }}')">Edit</button>
+          @if (canDeploy)<button class="btn sm" type="button" @click="askDeploy('{{ site.name }}')">Deploy</button>@endif
+          @if (canEdit)<button class="btn ghost sm" type="button" @click="toggleEdit('{{ site.name }}')">Edit</button>@endif
           @if (!isMember)
             <button class="btn danger sm" type="button" @click="askRemove('{{ site.name }}')">Remove</button>
           @endif
         </div>
+        @if (!canDeploy && !canEdit)<p class="note">This membership is read-only for {{ site.name }}. Ask an organization owner for deployment or configuration access.</p>@endif
         <form class="form-grid" style="margin-top:14px;" @show="editing() === '{{ site.name }}'" @submit.prevent="saveEdit('{{ site.name }}')">
           <div class="field-block">
             <label>TLS</label>

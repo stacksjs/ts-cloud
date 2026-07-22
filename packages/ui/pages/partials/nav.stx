@@ -4,6 +4,10 @@ try { __nav = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __n
 
 const navMode = __nav?.mode ?? 'server'
 const isMember = (__nav?.viewer?.role ?? 'admin') === 'member'
+const viewerCapabilities = __nav?.viewer?.capabilities ?? []
+const legacyMember = __nav?.viewer?.organizationSource === 'legacy'
+const legacyVisibleCapabilities = new Set(['project:read', 'config:read', 'deployments:read', 'deployments:create', 'runtime:read', 'runtime:logs'])
+const canView = capability => !isMember || (viewerCapabilities.includes(capability) && (!legacyMember || legacyVisibleCapabilities.has(capability)))
 const navEnvs = __nav?.environments ?? []
 const navEnv = __nav?.environment ?? env ?? 'production'
 const navProject = __nav?.project?.name ?? __nav?.project?.slug ?? name ?? 'Project'
@@ -53,65 +57,67 @@ const isActive = (...keys) => keys.includes(active ?? '')
 
   <div class="nav-groups">
     @if (navMode === 'server')
-      @if (!isMember)
+      @if (canView('runtime:read') || canView('audit:read'))
         <section class="nav-group">
           <h2>Overview</h2>
-          <a class="{{ isActive('server') ? 'active' : '' }}" href="{{ envHref('/') }}">Dashboard</a>
-          <a href="{{ envHref('/server/activity') }}">Activity</a>
+          @if (canView('runtime:read'))<a class="{{ isActive('server') ? 'active' : '' }}" href="{{ envHref('/') }}">Dashboard</a>@endif
+          @if (canView('audit:read'))<a href="{{ envHref('/server/activity') }}">Activity</a>@endif
         </section>
       @endif
       <section class="nav-group">
         <h2>Applications</h2>
-        <a class="{{ isActive('sites') ? 'active' : '' }}" href="{{ envHref('/server/sites') }}">Services</a>
-        <a class="{{ isActive('deployments') ? 'active' : '' }}" href="{{ envHref('/server/deployments') }}">Deployments</a>
-        <a class="{{ isActive('logs') ? 'active' : '' }}" href="{{ envHref('/server/logs') }}">Logs</a>
+        @if (canView('project:read'))<a class="{{ isActive('sites') ? 'active' : '' }}" href="{{ envHref('/server/sites') }}">Services</a>@endif
+        @if (canView('deployments:read'))<a class="{{ isActive('deployments') ? 'active' : '' }}" href="{{ envHref('/server/deployments') }}">Deployments</a>@endif
+        @if (canView('runtime:logs'))<a class="{{ isActive('logs') ? 'active' : '' }}" href="{{ envHref('/server/logs') }}">Logs</a>@endif
       </section>
-      @if (!isMember)
+      @if (canView('runtime:read') || canView('automation:read') || canView('backups:read') || canView('runtime:restart'))
         <section class="nav-group">
           <h2>Operations</h2>
-          <a href="{{ envHref('/server/metrics') }}">Metrics</a>
-          <a href="{{ envHref('/server/services') }}">Runtime services</a>
-          <a href="{{ envHref('/server/workers') }}">Workers & schedules</a>
-          <a href="{{ envHref('/server/backups') }}">Backups</a>
-          <a href="{{ envHref('/server/actions') }}">Run operations</a>
+          @if (canView('runtime:read'))<a href="{{ envHref('/server/metrics') }}">Metrics</a><a href="{{ envHref('/server/services') }}">Runtime services</a>@endif
+          @if (canView('automation:read'))<a href="{{ envHref('/server/workers') }}">Workers & schedules</a>@endif
+          @if (canView('backups:read'))<a href="{{ envHref('/server/backups') }}">Backups</a>@endif
+          @if (canView('runtime:restart'))<a href="{{ envHref('/server/actions') }}">Run operations</a>@endif
         </section>
+      @endif
+      @if (canView('data:read') || canView('fleet:read') || canView('audit:read') || canView('runtime:terminal'))
         <section class="nav-group">
           <h2>Infrastructure</h2>
-          <a class="{{ isActive('database') ? 'active' : '' }}" href="{{ envHref('/server/database') }}">Databases</a>
-          <a href="{{ envHref('/server/firewall') }}">Network & firewall</a>
-          <a href="{{ envHref('/server/security') }}">Security</a>
-          <a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>
-          <a href="{{ envHref('/server/terminal') }}">Terminal</a>
+          @if (canView('data:read'))<a class="{{ isActive('database') ? 'active' : '' }}" href="{{ envHref('/server/database') }}">Databases</a>@endif
+          @if (canView('fleet:read'))<a href="{{ envHref('/server/firewall') }}">Network & firewall</a><a href="{{ envHref('/server/ssh-keys') }}">SSH keys</a>@endif
+          @if (canView('audit:read'))<a href="{{ envHref('/server/security') }}">Security</a>@endif
+          @if (canView('runtime:terminal'))<a href="{{ envHref('/server/terminal') }}">Terminal</a>@endif
         </section>
       @endif
     @else
-      @if (!isMember)
+      @if (canView('project:read') || canView('deployments:read') || canView('runtime:read'))
         <section class="nav-group">
           <h2>Overview</h2>
-          <a class="{{ isActive('serverless') ? 'active' : '' }}" href="{{ envHref('/serverless') }}">Dashboard</a>
-          <a href="{{ envHref('/serverless/deployments') }}">Deployments</a>
-          <a href="{{ envHref('/serverless/logs') }}">Logs</a>
-          <a href="{{ envHref('/serverless/metrics') }}">Metrics</a>
-          <a href="{{ envHref('/serverless/traces') }}">Traces</a>
+          @if (canView('project:read'))<a class="{{ isActive('serverless') ? 'active' : '' }}" href="{{ envHref('/serverless') }}">Dashboard</a>@endif
+          @if (canView('deployments:read'))<a href="{{ envHref('/serverless/deployments') }}">Deployments</a>@endif
+          @if (canView('runtime:logs'))<a href="{{ envHref('/serverless/logs') }}">Logs</a>@endif
+          @if (canView('runtime:read'))<a href="{{ envHref('/serverless/metrics') }}">Metrics</a><a href="{{ envHref('/serverless/traces') }}">Traces</a>@endif
         </section>
+      @endif
+      @if (canView('config:read') || canView('data:read') || canView('automation:read') || canView('project:read'))
         <section class="nav-group">
           <h2>Compute & data</h2>
-          <a href="{{ envHref('/serverless/functions') }}">Functions</a>
-          <a href="{{ envHref('/serverless/queues') }}">Queues</a>
-          <a href="{{ envHref('/serverless/scheduler') }}">Schedules</a>
-          <a href="{{ envHref('/serverless/data') }}">Data</a>
-          <a href="{{ envHref('/serverless/assets') }}">Assets</a>
+          @if (canView('config:read'))<a href="{{ envHref('/serverless/functions') }}">Functions</a>@endif
+          @if (canView('data:read'))<a href="{{ envHref('/serverless/queues') }}">Queues</a><a href="{{ envHref('/serverless/data') }}">Data</a>@endif
+          @if (canView('automation:read'))<a href="{{ envHref('/serverless/scheduler') }}">Schedules</a>@endif
+          @if (canView('project:read'))<a href="{{ envHref('/serverless/assets') }}">Assets</a>@endif
         </section>
+      @endif
+      @if (canView('secrets:read') || canView('fleet:read') || canView('runtime:read'))
         <section class="nav-group">
           <h2>Settings</h2>
-          <a href="{{ envHref('/serverless/secrets') }}">Environment & secrets</a>
-          <a href="{{ envHref('/serverless/firewall') }}">Network</a>
-          <a href="{{ envHref('/serverless/alarms') }}">Alerts</a>
-          <a href="{{ envHref('/serverless/cost') }}">Costs</a>
+          @if (canView('secrets:read'))<a href="{{ envHref('/serverless/secrets') }}">Environment & secrets</a>@endif
+          @if (canView('fleet:read'))<a href="{{ envHref('/serverless/firewall') }}">Network</a>@endif
+          @if (canView('runtime:read'))<a href="{{ envHref('/serverless/alarms') }}">Alerts</a>@endif
+          @if (canView('project:read'))<a href="{{ envHref('/serverless/cost') }}">Costs</a>@endif
         </section>
       @endif
     @endif
-    @if (!isMember)
+    @if (canView('users:read'))
       <section class="nav-group">
         <h2>Organization</h2>
         <a class="{{ isActive('team') ? 'active' : '' }}" href="{{ envHref('/server/team') }}">People & access</a>

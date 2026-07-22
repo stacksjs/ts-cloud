@@ -7,6 +7,8 @@ const server = __d?.server ?? { name: 'acme-production-app' }
 // Members reach this page for their own sites; box-level CLI hints and the
 // server crumb are not theirs to act on.
 const isMember = (__d?.viewer?.role ?? 'admin') === 'member'
+const viewerCapabilities = __d?.viewer?.capabilities ?? []
+const canRollback = !isMember && viewerCapabilities.includes('deployments:rollback')
 const initialDeps = __d?.serverDeploymentsDetail ?? []
 const deploymentChart = renderDeploymentSparkline(initialDeps)
 const deploymentsEmptyReason = __d?.deploymentsEmptyReason ?? 'No deployment history has been recorded yet.'
@@ -110,7 +112,7 @@ async function runOp() {
                 <td style="color:var(--txt2)">{{ d.by }}</td>
                 <td class="mono">{{ d.took }}</td>
                 <td style="color:var(--txt3)">{{ d.when }}</td>
-                <td class="table-actions"><button class="btn danger sm" type="button" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button></td>
+                <td class="table-actions">@if (canRollback)<button class="btn danger sm" type="button" @click="askOp('rollback:' + d.site, d.site, 'roll back', d.release)">Roll back</button>@else<span class="mono">read only</span>@endif</td>
               </tr>
             </template>
           </tbody>
@@ -119,7 +121,7 @@ async function runOp() {
         <div class="compact empty" @show="deps().length > 0 && filtered().length === 0"><strong>No matches</strong><span>Try a different status or site filter.</span></div>
         @include('../partials/op-confirm')
         @if (isMember)
-          <p class="note">Roll back one of your sites to any prior release.</p>
+          <p class="note">Deployment history is visible in this scope. Rollback requires an organization administrator because it changes server-wide release state.</p>
         @else
           <p class="note">Roll back a site to any prior release, or inspect a box with <span class="mono">cloud server:logs {{ server.name }}</span>.</p>
         @endif

@@ -104,6 +104,29 @@ describe('organization membership and invitations', () => {
     store.close()
   })
 
+  it('adds an invitation scope to an existing member without replacing prior access', () => {
+    const store = new ControlPlaneStore({ path: ':memory:' })
+    const organization = store.createOrganization({ slug: 'acme-inc', name: 'Acme' })
+    const actor = store.createActor({ kind: 'user', externalId: 'dashboard:dev', displayName: 'Dev' })
+    const project = store.createProject({ organizationId: organization.id, slug: 'acme', name: 'Acme' })
+    const firstEnvironment = store.createEnvironment({ projectId: project.id, slug: 'staging', name: 'Staging', kind: 'staging' })
+    const secondEnvironment = store.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' })
+    const membership = store.createMembership({ organizationId: organization.id, actorId: actor.id, roleTemplate: 'viewer', scope: { type: 'environment', id: firstEnvironment.id } })
+    const created = store.createInvitation({ organizationId: organization.id, email: 'dev@acme.test', roleTemplate: 'deployer', scope: { type: 'environment', id: secondEnvironment.id } })
+
+    const accepted = store.acceptInvitation(created.token, actor.id)
+    const grants = store.listGrants(membership.id)
+    expect(accepted.membership.scope).toEqual({ type: 'environment', id: firstEnvironment.id })
+    expect(authorizeOrganization({
+      membership: accepted.membership,
+      grants,
+      capability: 'deployments:create',
+      target: { organizationId: organization.id, projectId: project.id, environmentId: secondEnvironment.id },
+    }).allowed).toBe(true)
+    expect(accepted.membership.sessionVersion).toBeGreaterThan(membership.sessionVersion)
+    store.close()
+  })
+
   it('rejects guessed scopes from another organization and isolates audit events', () => {
     const store = new ControlPlaneStore({ path: ':memory:' })
     const first = store.createOrganization({ slug: 'first-org', name: 'First' })

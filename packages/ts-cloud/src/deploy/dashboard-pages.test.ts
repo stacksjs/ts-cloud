@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { isBoxOnlyPage } from './local-dashboard-server'
+import { canOpenDashboardPage, isBoxOnlyPage } from './local-dashboard-server'
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
@@ -44,5 +44,26 @@ describe('isBoxOnlyPage', () => {
 
   it('treats the root as handled elsewhere', () => {
     expect(isBoxOnlyPage('/')).toBe(false)
+  })
+})
+
+describe('canOpenDashboardPage', () => {
+  it('preserves the legacy member allowlist during migration', () => {
+    const legacy = { role: 'member' as const, sites: { blog: 'collaborator' as const }, capabilities: ['runtime:read' as const], organizationSource: 'legacy' }
+    expect(canOpenDashboardPage('/server/sites', legacy as any)).toBe(true)
+    expect(canOpenDashboardPage('/server/metrics', legacy as any)).toBe(false)
+  })
+
+  it('maps organization capabilities to inspectable pages without exposing terminal', () => {
+    const operator = {
+      role: 'member' as const,
+      sites: {},
+      capabilities: ['project:read', 'runtime:read', 'runtime:logs', 'backups:read', 'runtime:restart'] as const,
+      organizationSource: 'invitation',
+    }
+    expect(canOpenDashboardPage('/server/metrics', operator as any)).toBe(true)
+    expect(canOpenDashboardPage('/server/backups', operator as any)).toBe(true)
+    expect(canOpenDashboardPage('/server/terminal', operator as any)).toBe(false)
+    expect(canOpenDashboardPage('/server/some-future-page', operator as any)).toBe(false)
   })
 })

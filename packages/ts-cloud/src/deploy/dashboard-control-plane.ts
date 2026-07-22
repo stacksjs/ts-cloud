@@ -51,7 +51,7 @@ function stableJson(value: unknown): string {
   return JSON.stringify(value) ?? 'null'
 }
 
-function ensureActor(store: ControlPlaneStore, user: DashboardUser): ControlPlaneActor {
+export function ensureDashboardActor(store: ControlPlaneStore, user: DashboardUser): ControlPlaneActor {
   const externalId = `dashboard:${user.username.toLowerCase()}`
   return store.getActorByExternalId('user', externalId) ?? store.createActor({
     kind: 'user',
@@ -140,7 +140,7 @@ export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, u
   const { store, organization, project } = controlPlane
   const activeActorIds = new Set<string>()
   for (const user of users) {
-    const actor = ensureActor(store, user)
+    const actor = ensureDashboardActor(store, user)
     activeActorIds.add(actor.id)
     const existing = store.getMembershipForActor(organization.id, actor.id)
     if (existing && existing.source !== 'legacy')
@@ -197,7 +197,7 @@ export function synchronizeDashboardUsers(controlPlane: DashboardControlPlane, u
 
 export async function trackDashboardOperation<T extends { ok: boolean }>(input: TrackDashboardOperationInput<T>): Promise<TrackedDashboardOperationResult<T>> {
   const { controlPlane, environment, actor: user } = input
-  const actor = ensureActor(controlPlane.store, user)
+  const actor = ensureDashboardActor(controlPlane.store, user)
   const environmentRecord = controlPlane.environments.get(environment)
   const resource = input.resourceSlug && environmentRecord
     ? controlPlane.store.listResources(controlPlane.project.id, environmentRecord.id).find(item => item.slug === input.resourceSlug)

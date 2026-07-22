@@ -38,6 +38,7 @@ const FAIL_CLOSED: RoutePolicy = { capability: 'runtime:terminal', scope: 'organ
 export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
   'POST /api/login',
   'POST /api/logout',
+  'POST /api/invitations/accept',
 ])
 
 export function isPublicRoute(method: string, pathname: string): boolean {
@@ -56,6 +57,16 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/search/preferences': { capability: 'project:read', anyUser: true },
   'POST /api/search/preferences': { capability: 'project:read', anyUser: true },
   'DELETE /api/search/preferences': { capability: 'project:read', anyUser: true },
+
+  'GET /api/organization': { capability: 'users:read', scope: 'organization' },
+  'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },
+  'POST /api/organization/invitations': { capability: 'users:manage', scope: 'organization' },
+  'DELETE /api/organization/invitations': { capability: 'users:manage', scope: 'organization' },
+  'POST /api/organization/invitations/resend': { capability: 'users:manage', scope: 'organization' },
+  'PATCH /api/organization/memberships': { capability: 'users:manage', scope: 'organization' },
+  'DELETE /api/organization/memberships': { capability: 'users:manage', scope: 'organization' },
+  'POST /api/organization/grants': { capability: 'users:manage', scope: 'organization' },
+  'DELETE /api/organization/grants': { capability: 'users:manage', scope: 'organization' },
 
   'GET /api/control-plane/operations': { capability: 'deployments:read' },
   'GET /api/control-plane/events': { capability: 'audit:read' },

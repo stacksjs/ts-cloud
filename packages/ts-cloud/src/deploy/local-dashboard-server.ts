@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
+import type { AuthorizationCapability, AuthorizationScope, OrganizationRoleTemplate } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
@@ -8,9 +9,9 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
-import { effectiveCapabilities, searchControlPlane } from '../control-plane'
+import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
 import { hashPassword, verifyPassword } from './dashboard-auth'
-import { initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
+import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
@@ -230,6 +231,24 @@ function replaceFirewallPorts(config: CloudConfig, ports: number[]): void {
 
 async function readJsonBody(req: Request): Promise<Record<string, any>> {
   return await req.json().catch(() => ({})) as Record<string, any>
+}
+
+const ORGANIZATION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'])
+const AUTHORIZATION_SCOPES: ReadonlySet<string> = new Set(['organization', 'project', 'environment', 'resource'])
+
+function organizationRole(value: unknown): OrganizationRoleTemplate | undefined {
+  const role = String(value ?? '')
+  return ORGANIZATION_ROLES.has(role) ? role as OrganizationRoleTemplate : undefined
+}
+
+function authorizationScope(body: Record<string, any>): AuthorizationScope | undefined {
+  const type = String(body.scopeType ?? 'organization')
+  if (!AUTHORIZATION_SCOPES.has(type))
+    return undefined
+  if (type === 'organization')
+    return { type: 'organization' }
+  const id = String(body.scopeId ?? '').trim()
+  return id ? { type: type as Exclude<AuthorizationScope['type'], 'organization'>, id } : undefined
 }
 
 /**
@@ -470,6 +489,54 @@ export function isBoxOnlyPage(pathname: string): boolean {
   return !MEMBER_PAGES.has(clean)
 }
 
+const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
+  '/': 'runtime:read',
+  '/server/activity': 'audit:read',
+  '/server/sites': 'project:read',
+  '/server/deployments': 'deployments:read',
+  '/server/logs': 'runtime:logs',
+  '/server/metrics': 'runtime:read',
+  '/server/services': 'runtime:read',
+  '/server/workers': 'automation:read',
+  '/server/backups': 'backups:read',
+  '/server/actions': 'runtime:restart',
+  '/server/database': 'data:read',
+  '/server/firewall': 'fleet:read',
+  '/server/security': 'audit:read',
+  '/server/ssh-keys': 'fleet:read',
+  '/server/terminal': 'runtime:terminal',
+  '/server/team': 'users:read',
+  '/serverless': 'project:read',
+  '/serverless/deployments': 'deployments:read',
+  '/serverless/logs': 'runtime:logs',
+  '/serverless/metrics': 'runtime:read',
+  '/serverless/traces': 'runtime:read',
+  '/serverless/functions': 'config:read',
+  '/serverless/queues': 'data:read',
+  '/serverless/scheduler': 'automation:read',
+  '/serverless/data': 'data:read',
+  '/serverless/assets': 'project:read',
+  '/serverless/secrets': 'secrets:read',
+  '/serverless/firewall': 'fleet:read',
+  '/serverless/alarms': 'runtime:read',
+  '/serverless/cost': 'project:read',
+}
+
+export function canOpenDashboardPage(pathname: string, user: DashboardUser & { capabilities?: AuthorizationCapability[], organizationSource?: string }): boolean {
+  if (user.role === 'admin')
+    return true
+  const extension = extname(pathname)
+  if (extension && extension !== '.html')
+    return true
+  if (user.organizationSource === 'legacy')
+    return !isBoxOnlyPage(pathname)
+  const clean = pathname.replace(/\.html$/, '').replace(/\/+$/, '') || '/'
+  if (clean === '/access-denied')
+    return true
+  const required = PAGE_CAPABILITIES[clean]
+  return !!required && !!user.capabilities?.includes(required)
+}
+
 function staticPath(uiRoot: string, pathname: string): string | null {
   const clean = decodeURIComponent(pathname).replace(/^\/+/, '')
   const wanted = clean === '' ? 'index.html' : clean
@@ -540,6 +607,30 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const ownedUiRoots = new Set<string>()
   let uiGeneration = 0
 
+  function dashboardViewUser(user: DashboardUser, environment: EnvironmentType): DashboardUser & { organizationRole?: OrganizationRoleTemplate, organizationSource?: string, capabilities?: AuthorizationCapability[] } {
+    if (user.role === 'admin' && !controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`))
+      return user
+    const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
+    const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
+    if (!membership || membership.status !== 'active')
+      return { ...user, role: 'member', sites: {}, capabilities: [] }
+    const grants = controlPlane.store.listGrants(membership.id)
+    const scopeTarget = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, membership.scope)
+      ?? controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'project', id: controlPlane.project.id })!
+    const capabilities = effectiveCapabilities({ membership, grants, target: scopeTarget })
+    if (membership.roleTemplate === 'owner' || membership.roleTemplate === 'admin')
+      return { ...user, role: 'admin', sites: {}, organizationRole: membership.roleTemplate, organizationSource: membership.source, capabilities }
+    const environmentRecord = controlPlane.environments.get(environment)
+    const sites: DashboardUser['sites'] = {}
+    for (const resource of controlPlane.store.listResources(controlPlane.project.id, environmentRecord?.id).filter(resource => resource.kind === 'application')) {
+      const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'resource', id: resource.id })
+      if (!target || !authorizeOrganization({ membership, grants, capability: 'project:read', target }).allowed)
+        continue
+      sites[resource.slug] = authorizeOrganization({ membership, grants, capability: 'config:write', target }).allowed ? 'owner' : 'collaborator'
+    }
+    return { ...user, role: 'member', sites, organizationRole: membership.roleTemplate, organizationSource: membership.source, capabilities }
+  }
+
   function clearUiCache(): void {
     uiGeneration += 1
     uiCache.clear()
@@ -548,12 +639,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
     ownedUiRoots.clear()
   }
 
-  const scopeKey = (user: DashboardUser, environment: EnvironmentType): string => `${environment}:${user.role === 'admin'
+  const scopeKey = (user: DashboardUser & { capabilities?: AuthorizationCapability[] }, environment: EnvironmentType): string => `${environment}:${user.role === 'admin'
     ? 'admin'
-    : `member:${Object.entries(user.sites).sort(([a], [b]) => a.localeCompare(b)).map(([site, role]) => `${site}=${role}`).join(',')}`}`
+    : `member:${Object.entries(user.sites).sort(([a], [b]) => a.localeCompare(b)).map(([site, role]) => `${site}=${role}`).join(',')}`}:${[...(user.capabilities ?? [])].sort().join(',')}`
 
   async function uiRootFor(user: DashboardUser, environment: EnvironmentType): Promise<string | undefined> {
-    const key = scopeKey(user, environment)
+    const viewUser = dashboardViewUser(user, environment)
+    const key = scopeKey(viewUser, environment)
     const cached = uiCache.get(key)
     if (cached)
       return cached
@@ -570,8 +662,8 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         ?? await resolveLiveDashboardData(config as CloudConfig, environment)
       latestDataByEnvironment.set(environment, latestData)
       const scoped = {
-        ...scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }),
-        viewer: { role: user.role },
+        ...scopeDashboardData(latestData, { user: viewUser, slug: (config as CloudConfig).project.slug }),
+        viewer: { role: viewUser.role, organizationRole: viewUser.organizationRole, organizationSource: viewUser.organizationSource, capabilities: viewUser.capabilities ?? [] },
       }
       // A failed build falls back to the packaged UI, which ships no baked data
       // (it renders its placeholder sample and hydrates from /api/*), so the
@@ -648,6 +740,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
+  const organizationPrincipal = (user: DashboardUser) => {
+    const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
+    const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
+    return { actor, membership, grants: membership ? controlPlane.store.listGrants(membership.id) : [] }
+  }
 
   const server = Bun.serve({
     hostname: host,
@@ -686,6 +783,39 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
       try {
         // --- Public: the login endpoints and the login page itself ----------
+        if (url.pathname === '/api/invitations/accept' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const invitationToken = String(body.token ?? '').trim()
+          const username = String(body.username ?? '').trim()
+          const password = String(body.password ?? '')
+          if (!invitationToken || !isValidUsername(username) || password.length < 12)
+            return json({ ok: false, error: 'Invitation token, valid username, and a password of at least 12 characters are required.' }, 422)
+          const existing = findUser(loadUsers(cwd), username)
+          if (existing && !verifyPassword(password, existing.passwordHash))
+            return json({ ok: false, error: 'That username already exists; enter its current password to continue.' }, 401)
+          const result = upsertMember(cwd, {
+            username,
+            password: existing ? undefined : password,
+            name: typeof body.name === 'string' ? body.name : undefined,
+            sites: existing?.sites ?? {},
+          })
+          const actor = ensureDashboardActor(controlPlane.store, result.user)
+          try {
+            const accepted = controlPlane.store.acceptInvitation(invitationToken, actor.id)
+            const token = createSessionToken(result.user.username, secret, undefined, { [controlPlane.organization.id]: accepted.membership.sessionVersion })
+            clearUiCache()
+            return json({ ok: true, user: describeUser(result.user), organization: controlPlane.organization, membership: accepted.membership }, 200, {
+              'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),
+            })
+          }
+          catch (error) {
+            if (!existing)
+              removeUser(cwd, result.user.username)
+            const message = error instanceof Error ? error.message : 'Invitation could not be accepted.'
+            return json({ ok: false, error: message }, message.includes('expired') || message.includes('revoked') || message.includes('accepted') ? 409 : 404)
+          }
+        }
+
         if (url.pathname === '/api/login' && req.method === 'POST') {
           const body = await readJsonBody(req)
           const username = String(body.username ?? '').trim()
@@ -735,6 +865,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           })
         }
 
+        if (url.pathname === '/accept-invitation')
+          return serveStatic(adminUiRoot, url.pathname)
+
         // --- Everything else requires a session ----------------------------
         const user = guard.resolveUser(req)
         if (!user) {
@@ -744,11 +877,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             return new Response(null, { status: 302, headers: { location: '/login' } })
           return json({ ok: false, error: 'Sign in to continue.' }, 401)
         }
+        const scopedUser = dashboardViewUser(user, environment)
 
         if (url.pathname === '/api/me') {
           const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
           const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
-          const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'project', id: controlPlane.project.id })!
+          const target = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, membership?.scope ?? { type: 'project', id: controlPlane.project.id })
+            ?? controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'project', id: controlPlane.project.id })!
           return json({
             ok: true,
             user: describeUser(user),
@@ -826,7 +961,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/search') {
           const query = String(url.searchParams.get('q') ?? '').trim().slice(0, 128)
-          const allowedResourceSlugs = user.role === 'member' ? new Set(Object.keys(user.sites)) : undefined
+          const allowedResourceSlugs = scopedUser.role === 'member' ? new Set(Object.keys(scopedUser.sites)) : undefined
           const results = query
             ? searchControlPlane(controlPlane.store, {
                 projectId: controlPlane.project.id,
@@ -868,6 +1003,171 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           return json({ ok: controlPlane.store.deleteSavedFilter(actorKey, String(body.id ?? '')) })
         }
 
+        if (url.pathname === '/api/organization' && req.method === 'GET') {
+          const memberships = controlPlane.store.listMemberships(controlPlane.organization.id, { includeRevoked: true }).map((membership) => {
+            const actor = controlPlane.store.getActor(membership.actorId)
+            return {
+              ...membership,
+              actor: actor ? { id: actor.id, displayName: actor.displayName, externalId: actor.externalId, disabledAt: actor.disabledAt } : undefined,
+              grants: controlPlane.store.listGrants(membership.id),
+            }
+          })
+          return json({
+            organization: controlPlane.organization,
+            project: controlPlane.project,
+            environments: controlPlane.store.listEnvironments(controlPlane.project.id),
+            resources: controlPlane.store.listResources(controlPlane.project.id).map(resource => ({
+              id: resource.id,
+              environmentId: resource.environmentId,
+              kind: resource.kind,
+              slug: resource.slug,
+              name: resource.name,
+            })),
+            memberships,
+            invitations: controlPlane.store.listInvitations(controlPlane.organization.id),
+          })
+        }
+
+        if (url.pathname === '/api/organization/invitations' && req.method === 'GET')
+          return json({ invitations: controlPlane.store.listInvitations(controlPlane.organization.id) })
+
+        if (url.pathname === '/api/organization/invitations' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const roleTemplate = organizationRole(body.roleTemplate)
+          const scope = authorizationScope(body)
+          if (!roleTemplate || !scope)
+            return json({ ok: false, error: 'Choose a valid role template and resource scope.' }, 422)
+          const principal = organizationPrincipal(user)
+          if (!principal.actor || !principal.membership)
+            return json({ ok: false, error: 'Your organization membership is unavailable.' }, 403)
+          if (roleTemplate === 'owner' && (!verifyPassword(String(body.password ?? ''), user.passwordHash) || principal.membership.roleTemplate !== 'owner'))
+            return json({ ok: false, error: 'Owner invitations require an owner to re-enter their password.' }, 401)
+          try {
+            const created = controlPlane.store.createInvitation({
+              organizationId: controlPlane.organization.id,
+              email: String(body.email ?? ''),
+              roleTemplate,
+              scope,
+              invitedByActorId: principal.actor.id,
+              expiresInMs: Number(body.expiresInMs) || undefined,
+            })
+            return json({
+              invitation: created.invitation,
+              token: created.token,
+              acceptUrl: `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}`,
+            }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Invitation could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/organization/invitations' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          try {
+            return json({ invitation: controlPlane.store.revokeInvitation(String(body.id ?? ''), principal.actor?.id) })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Invitation could not be revoked.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/organization/invitations/resend' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          try {
+            const created = controlPlane.store.reissueInvitation(String(body.id ?? ''), principal.actor?.id)
+            return json({ invitation: created.invitation, token: created.token, acceptUrl: `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}` })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Invitation could not be resent.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/organization/memberships' && req.method === 'PATCH') {
+          const body = await readJsonBody(req)
+          const membership = controlPlane.store.getMembership(String(body.id ?? ''))
+          const roleTemplate = organizationRole(body.roleTemplate)
+          const scope = authorizationScope(body)
+          if (!membership || membership.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Membership was not found.' }, 404)
+          if (!roleTemplate || !scope)
+            return json({ ok: false, error: 'Choose a valid role template and resource scope.' }, 422)
+          const principal = organizationPrincipal(user)
+          const ownerChange = membership.roleTemplate === 'owner' || roleTemplate === 'owner'
+          if (ownerChange && (!verifyPassword(String(body.password ?? ''), user.passwordHash) || principal.membership?.roleTemplate !== 'owner'))
+            return json({ ok: false, error: 'Ownership changes require an owner to re-enter their password.' }, 401)
+
+          const comparisonTarget = controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, scope)
+            ?? controlPlane.store.resolveAuthorizationTarget(controlPlane.organization.id, { type: 'project', id: controlPlane.project.id })!
+          const grants = controlPlane.store.listGrants(membership.id)
+          const before = effectiveCapabilities({ membership, grants, target: comparisonTarget })
+          const proposed = { ...membership, roleTemplate, scope }
+          const after = effectiveCapabilities({ membership: proposed, grants, target: comparisonTarget })
+          const accessDiff = { gained: after.filter(capability => !before.includes(capability)), lost: before.filter(capability => !after.includes(capability)) }
+          if (body.preview === true)
+            return json({ membership, proposed: { roleTemplate, scope }, accessDiff })
+          if (String(body.confirm ?? '') !== membership.id)
+            return json({ ok: false, error: `Confirm this change with membership ID ${membership.id}.`, accessDiff }, 409)
+          try {
+            return json({ membership: controlPlane.store.updateMembership({ id: membership.id, roleTemplate, scope, actorId: principal.actor?.id }), accessDiff })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Membership could not be updated.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/organization/memberships' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const membership = controlPlane.store.getMembership(String(body.id ?? ''))
+          if (!membership || membership.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Membership was not found.' }, 404)
+          if (String(body.confirm ?? '') !== membership.id)
+            return json({ ok: false, error: `Confirm removal with membership ID ${membership.id}.` }, 409)
+          const principal = organizationPrincipal(user)
+          if (membership.roleTemplate === 'owner' && (principal.membership?.roleTemplate !== 'owner' || !verifyPassword(String(body.password ?? ''), user.passwordHash)))
+            return json({ ok: false, error: 'Removing an owner requires an owner to re-enter their current password.' }, 401)
+          try {
+            return json({ membership: controlPlane.store.revokeMembership(membership.id, principal.actor?.id) })
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Membership could not be removed.' }, 409)
+          }
+        }
+
+        if (url.pathname === '/api/organization/grants' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const capability = String(body.capability ?? '') as AuthorizationCapability
+          const effect = body.effect === 'deny' ? 'deny' : body.effect === 'allow' ? 'allow' : undefined
+          const scope = authorizationScope(body)
+          const principal = organizationPrincipal(user)
+          if (!effect || !scope || !AUTHORIZATION_CAPABILITIES.includes(capability))
+            return json({ ok: false, error: 'Choose a valid capability, effect, and resource scope.' }, 422)
+          try {
+            return json({ grant: controlPlane.store.upsertGrant({
+              organizationId: controlPlane.organization.id,
+              membershipId: String(body.membershipId ?? ''),
+              effect,
+              capability,
+              scope,
+              actorId: principal.actor?.id,
+            }) }, 201)
+          }
+          catch (error) {
+            return json({ ok: false, error: error instanceof Error ? error.message : 'Grant could not be created.' }, 422)
+          }
+        }
+
+        if (url.pathname === '/api/organization/grants' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const principal = organizationPrincipal(user)
+          const grant = controlPlane.store.getGrant(String(body.id ?? ''))
+          if (!grant || grant.organizationId !== controlPlane.organization.id)
+            return json({ ok: false, error: 'Grant was not found.' }, 404)
+          return json({ ok: controlPlane.store.removeGrant(grant.id, principal.actor?.id) })
+        }
+
         if (url.pathname === '/api/tags' && req.method === 'GET') {
           return json({
             tags: controlPlane.store.listTags(controlPlane.project.id),
@@ -891,7 +1191,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         // The home page is the box's own dashboard (host metrics, services,
         // backups), which a member has no access to — land them on their sites.
-        if (url.pathname === '/' && user.role === 'member')
+        if (url.pathname === '/' && !canOpenDashboardPage(url.pathname, scopedUser))
           return new Response(null, { status: 302, headers: { location: `/server/sites?env=${encodeURIComponent(environment)}` } })
 
         // A serverless deployment has no server home — land on the serverless view.
@@ -912,7 +1212,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/api/config') {
           const sanitized = { ...sanitizeCloudConfig(config as CloudConfig), environment, environments: availableEnvironments }
-          return json(scopeCloudConfig(sanitized, user))
+          return json(scopeCloudConfig(sanitized, scopedUser))
         }
 
         if (url.pathname === '/api/ssh-keys' && req.method === 'GET') {
@@ -1065,7 +1365,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           // `build`/`start` are shell commands run as root at deploy time and
           // `root` is a filesystem path, so those stay with the box owner —
           // otherwise `site:settings` would quietly be root on a shared box.
-          if (user.role === 'member') {
+          if (scopedUser.role === 'member') {
             const fields = checkMemberSiteFields(body)
             if (!fields.ok)
               return json({ ok: false, error: fields.error }, 403)
@@ -1075,7 +1375,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               siteName: name,
               body,
               sites: (config.sites ?? {}) as Record<string, any>,
-              ownSites: Object.keys(user.sites),
+              ownSites: Object.keys(scopedUser.sites),
             })
             if (!conflict.ok)
               return json({ ok: false, error: conflict.error }, 409)
@@ -1204,7 +1504,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         if (url.pathname === '/api/dashboard-data') {
           latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
           latestDataByEnvironment.set(environment, latestData)
-          return json(scopeDashboardData(latestData, { user, slug: (config as CloudConfig).project.slug }))
+          return json(scopeDashboardData(latestData, { user: scopedUser, slug: (config as CloudConfig).project.slug }))
         }
 
         // --- Collaborators -------------------------------------------------
@@ -1246,6 +1546,15 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const username = String(body.username ?? '').trim()
           if (username.toLowerCase() === user.username.toLowerCase())
             return json({ ok: false, error: 'You cannot remove your own account.' }, 409)
+          const targetUser = findUser(loadUsers(cwd), username)
+          const targetActor = targetUser
+            ? controlPlane.store.getActorByExternalId('user', `dashboard:${targetUser.username.toLowerCase()}`)
+            : undefined
+          const targetMembership = targetActor
+            ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, targetActor.id)
+            : undefined
+          if (targetMembership && targetMembership.source !== 'legacy')
+            return json({ ok: false, error: 'Organization members must be removed from Organization access.' }, 409)
           const result = removeUser(cwd, username)
           if (!result.ok)
             return json(result, 409)
@@ -1429,7 +1738,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
         // Members get the pages built for their scope; the rest of the cockpit
         // is the box owner's. Their data is already withheld, so this is about
         // not handing someone a page whose every request will 403 at them.
-        if (user.role === 'member' && isBoxOnlyPage(url.pathname))
+        if (!canOpenDashboardPage(url.pathname, scopedUser))
           return new Response(null, { status: 302, headers: { location: `/access-denied?env=${encodeURIComponent(environment)}` } })
 
         const uiRoot = await uiRootFor(user, environment)

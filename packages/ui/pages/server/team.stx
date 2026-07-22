@@ -2,192 +2,201 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const server = __d?.server ?? { name: 'acme-production-app' }
-// Only the box owner reaches this page (the server refuses /api/users for
-// anyone else), so the site list here is always the full one.
-const siteNames = (__d?.sitesDetail ?? __d?.sites ?? [{ name: 'main' }, { name: 'docs' }]).map(s => s.name)
 </script>
 <script client>
-// Collaborator management: list, invite, revoke. A member holds a role per site
-// - 'owner' may also change that site's settings, 'collaborator' may view and
-// deploy it. Neither ever reaches the box itself (shell, SSH keys, firewall,
-// databases): those are the box owner's alone, because each of them is root on
-// a server that hosts other people's sites.
-const users = state([])
-const sites = state(siteNames)
-const username = state('')
-const displayName = state('')
-const grants = state({})
+const organization = state(null)
+const project = state(null)
+const environments = state([])
+const resources = state([])
+const memberships = state([])
+const invitations = state([])
+const email = state('')
+const roleTemplate = state('deployer')
+const scopeType = state('environment')
+const scopeId = state('')
+const ownerPassword = state('')
 const message = state('')
 const messageKind = state('')
-// Shown once after an invite - the password is generated server-side, hashed,
-// and never retrievable again.
 const issued = state(null)
+const editing = state(null)
+const editRole = state('viewer')
+const editScopeType = state('organization')
+const editScopeId = state('')
+const editPassword = state('')
+const editConfirm = state('')
+const accessDiff = state(null)
+const removing = state(null)
+const removeConfirm = state('')
+const removePassword = state('')
+
+const roleSummary = {
+  owner: 'Everything, including ownership transfer',
+  admin: 'Everything except ownership transfer',
+  deployer: 'View resources and create or roll back deployments',
+  operator: 'View resources, restart runtime, and create backups',
+  viewer: 'Read-only resource and deployment access',
+  auditor: 'Read-only posture and audit history',
+}
 
 function setMessage(text, kind) { message.set(text); messageKind.set(kind || '') }
-function grantFor(site) { return grants()[site] || 'none' }
-function setGrant(site, role) {
-  const next = { ...grants() }
-  if (role === 'none') delete next[site]
-  else next[site] = role
-  grants.set(next)
+function actorName(member) { return member.actor?.displayName || member.actor?.externalId?.replace('dashboard:', '') || 'Unknown user' }
+function scopeLabel(scope) {
+  if (!scope || scope.type === 'organization') return 'Entire organization'
+  if (scope.type === 'project') return 'Project: ' + (project()?.name || scope.id)
+  if (scope.type === 'environment') return 'Environment: ' + (environments().find(item => item.id === scope.id)?.name || scope.id)
+  const resource = resources().find(item => item.id === scope.id)
+  return 'Resource: ' + (resource ? resource.name + ' (' + resource.slug + ')' : scope.id)
 }
-function siteList(user) {
-  const entries = Object.entries(user.sites || {})
-  if (!entries.length) return '-'
-  return entries.map(([s, r]) => s + ' (' + r + ')').join(', ')
+function invitationState(invitation) {
+  if (invitation.state === 'pending') return 'Expires ' + new Date(invitation.expiresAt).toLocaleDateString()
+  return invitation.state
+}
+function setScope(type, idSignal) {
+  if (type === 'organization') idSignal.set('')
+  else if (type === 'project') idSignal.set(project()?.id || '')
+  else if (type === 'environment') idSignal.set(environments()[0]?.id || '')
+  else idSignal.set(resources()[0]?.id || '')
 }
 
 async function load() {
   try {
-    const res = await fetch('/api/users')
-    if (!res.ok) throw new Error('Could not read the team.')
-    const data = await res.json()
-    users.set(data.users || [])
-  } catch (e) { setMessage((e && e.message) || 'Could not read the team.', 'bad') }
+    const response = await fetch('/api/organization')
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.error || 'Could not read organization access.')
+    organization.set(data.organization); project.set(data.project); environments.set(data.environments || []); resources.set(data.resources || [])
+    memberships.set(data.memberships || []); invitations.set(data.invitations || [])
+    if (!scopeId()) setScope(scopeType(), scopeId)
+  } catch (error) { setMessage(error?.message || 'Could not read organization access.', 'bad') }
 }
 
 async function invite() {
-  setMessage('Saving...', ''); issued.set(null)
-  const payload = { username: username(), name: displayName(), sites: grants() }
-  const res = await fetch('/api/users', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not save.', 'bad'); return }
-  if (data.password) issued.set({ username: data.user.username, password: data.password })
-  setMessage(data.password ? 'Invited ' + data.user.username + '.' : 'Updated ' + data.user.username + '.', 'ok')
-  username.set(''); displayName.set(''); grants.set({})
+  issued.set(null); setMessage('Creating invitation…', '')
+  const response = await fetch('/api/organization/invitations', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: email(), roleTemplate: roleTemplate(), scopeType: scopeType(), scopeId: scopeId(), password: ownerPassword() }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) { setMessage(data.error || 'Could not create invitation.', 'bad'); return }
+  issued.set(data); email.set(''); ownerPassword.set(''); setMessage('Invitation created. Copy the one-time link below.', 'ok'); load()
+}
+
+async function invitationAction(invitation, action) {
+  const endpoint = action === 'resend' ? '/api/organization/invitations/resend' : '/api/organization/invitations'
+  const response = await fetch(endpoint, { method: action === 'resend' ? 'POST' : 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: invitation.id }) })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) { setMessage(data.error || 'Invitation could not be updated.', 'bad'); return }
+  if (data.acceptUrl) { issued.set(data); setMessage('Invitation reissued. Copy the new one-time link.', 'ok') }
+  else setMessage('Invitation revoked.', 'ok')
   load()
 }
 
-async function revoke(name) {
-  setMessage('Removing...', '')
-  const res = await fetch('/api/users', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: name }) })
-  const data = await res.json().catch(() => ({}))
-  if (!res.ok || data.ok === false) { setMessage(data.error || 'Could not remove.', 'bad'); return }
-  setMessage('Removed ' + name + '.', 'ok')
-  load()
+function beginEdit(member) {
+  editing.set(member); editRole.set(member.roleTemplate); editScopeType.set(member.scope.type); editScopeId.set(member.scope.id || '')
+  editPassword.set(''); editConfirm.set(''); accessDiff.set(null)
+}
+async function changeMembership(preview) {
+  const member = editing(); if (!member) return
+  const response = await fetch('/api/organization/memberships', {
+    method: 'PATCH', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: member.id, roleTemplate: editRole(), scopeType: editScopeType(), scopeId: editScopeId(), password: editPassword(), preview, confirm: editConfirm() }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) { accessDiff.set(data.accessDiff || null); setMessage(data.error || 'Membership could not be updated.', 'bad'); return }
+  accessDiff.set(data.accessDiff || null)
+  if (preview) { setMessage('Review the effective-access diff, then type the membership ID to apply.', '') ; return }
+  setMessage('Membership updated. Existing sessions were invalidated.', 'ok'); editing.set(null); load()
 }
 
-// Removal runs through a typed-confirm bar (same pattern as firewall/secrets):
-// type the username to confirm. Revoking pulls someone's access to every site
-// on the box at once and invalidates their password, so it should never be one
-// misclick away.
-const pendingRevoke = state(null)
-const typedRevoke = state('')
-const canRevoke = derived(() => { const u = pendingRevoke(); return u !== null && typedRevoke() === String(u.username) })
-function askRevoke(user) { pendingRevoke.set(user); typedRevoke.set('') }
-function cancelRevoke() { pendingRevoke.set(null); typedRevoke.set('') }
-async function confirmRevoke() {
-  const u = pendingRevoke()
-  if (!u || typedRevoke() !== String(u.username)) return
-  pendingRevoke.set(null); typedRevoke.set('')
-  await revoke(u.username)
+function beginRemove(member) { removing.set(member); removeConfirm.set(''); removePassword.set('') }
+async function removeMembership() {
+  const member = removing(); if (!member) return
+  const response = await fetch('/api/organization/memberships', {
+    method: 'DELETE', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: member.id, confirm: removeConfirm(), password: removePassword() }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) { setMessage(data.error || 'Membership could not be removed.', 'bad'); return }
+  setMessage('Membership removed and active sessions invalidated.', 'ok'); removing.set(null); load()
 }
 
 onMount(() => { load() })
 </script>
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>@include('../partials/head', { title: 'ts-cloud - Team' })</head>
+<head>@include('../partials/head', { title: 'ts-cloud - People & access' })</head>
 <body>
   @include('../partials/nav', { active: 'team', name: server.name, env: 'production' })
   <div class="wrap">
-    <div class="crumbs"><a href="/">Server</a> <span class="sep">/</span> Team</div>
+    <div class="crumbs"><a href="/">Dashboard</a> <span class="sep">/</span> Organization <span class="sep">/</span> People &amp; access</div>
     <header class="page">
-      <div>
-        <h1>Team</h1>
-        <p>Invite people to individual sites. They see only the sites you grant them, and never the box.</p>
-      </div>
+      <div><h1>People &amp; access</h1><p>Organization roles are inherited only within their assigned project, environment, or resource scope. Explicit denies always win.</p></div>
     </header>
 
+    <div class="access-message msg" :class="messageKind()" role="status">{{ message() }}</div>
+
     <div class="section">
-      <h2>Invite</h2>
+      <h2>Invite a member</h2>
       <div class="panel">
         <form class="form-grid" @submit.prevent="invite()">
-          <div class="field-block">
-            <label for="team-username">Username</label>
-            <input id="team-username" autocomplete="off" placeholder="dana" :value="username()" @input="username.set($event.target.value)" required>
-          </div>
-          <div class="field-block">
-            <label for="team-name">Display name</label>
-            <input id="team-name" autocomplete="off" placeholder="Dana Whitfield" :value="displayName()" @input="displayName.set($event.target.value)">
-          </div>
-          <div class="field-block wide">
-            <label>Site access</label>
-            <div class="grant-grid">
-              <template :for="s in sites()">
-                <div class="grant">
-                  <span class="mono">{{ s }}</span>
-                  <select :value="grantFor(s)" @change="setGrant(s, $event.target.value)">
-                    <option value="none">No access</option>
-                    <option value="collaborator">Collaborator - view and deploy</option>
-                    <option value="owner">Owner - view, deploy and edit settings</option>
-                  </select>
-                </div>
-              </template>
-            </div>
-          </div>
-          <div class="form-actions">
-            <button class="btn" type="submit">Send invite</button>
-            <span class="msg" :class="messageKind()" role="status">{{ message() }}</span>
-          </div>
+          <div class="field-block"><label for="invite-email">Email</label><input id="invite-email" type="email" autocomplete="email" placeholder="dana@example.com" :value="email()" @input="email.set($event.target.value)" required></div>
+          <div class="field-block"><label for="invite-role">Role template</label><select id="invite-role" :value="roleTemplate()" @change="roleTemplate.set($event.target.value)">
+            <option value="deployer">Developer / deployer</option><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="auditor">Auditor</option><option value="admin">Admin</option><option value="owner">Owner</option>
+          </select><small>{{ roleSummary[roleTemplate()] }}</small></div>
+          <div class="field-block"><label for="invite-scope">Access scope</label><select id="invite-scope" :value="scopeType()" @change="scopeType.set($event.target.value); setScope($event.target.value, scopeId)">
+            <option value="organization">Entire organization</option><option value="project">Current project</option><option value="environment">One environment</option><option value="resource">One resource</option>
+          </select></div>
+          <div class="field-block" @show="scopeType() === 'environment'"><label for="invite-environment">Environment</label><select id="invite-environment" :value="scopeId()" @change="scopeId.set($event.target.value)"><template :for="item in environments()"><option :value="item.id">{{ item.name }}</option></template></select></div>
+          <div class="field-block" @show="scopeType() === 'resource'"><label for="invite-resource">Resource</label><select id="invite-resource" :value="scopeId()" @change="scopeId.set($event.target.value)"><template :for="item in resources()"><option :value="item.id">{{ item.name }} · {{ item.slug }}</option></template></select></div>
+          <div class="field-block" @show="roleTemplate() === 'owner'"><label for="invite-owner-password">Your password</label><input id="invite-owner-password" type="password" autocomplete="current-password" :value="ownerPassword()" @input="ownerPassword.set($event.target.value)"><small>Required when adding another owner.</small></div>
+          <div class="form-actions"><button class="btn" type="submit">Create invitation</button></div>
         </form>
-
-        <div class="issued" @show="!!issued()">
-          <strong>Password for {{ issued()?.username }}</strong>
-          <code>{{ issued()?.password }}</code>
-          <span>Copy it now and send it over a channel you trust. It is stored hashed and cannot be shown again.</span>
-        </div>
+        <div class="issued" @show="!!issued()"><strong>One-time acceptance link</strong><code>{{ issued()?.acceptUrl }}</code><span>Copy this link now. Only its SHA-256 hash is stored, and resending replaces it.</span></div>
       </div>
     </div>
 
     <div class="section">
-      <h2>People</h2>
+      <h2>Members</h2>
       <div class="panel">
-        <table>
-          <thead><tr><th>User</th><th>Role</th><th>Sites</th><th></th></tr></thead>
-          <tbody>
-            <template :for="u in users()">
-              <tr>
-                <td><b>{{ u.name }}</b><span class="mono uname">{{ u.username }}</span></td>
-                <td><span class="tag">{{ u.role === 'admin' ? 'box owner' : 'member' }}</span></td>
-                <td class="mono">{{ u.role === 'admin' ? 'every site' : siteList(u) }}</td>
-                <td class="table-actions"><button type="button" class="btn danger sm" @click="askRevoke(u)">Remove</button></td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
-        <div class="compact empty" @show="users().length === 0"><strong>No one invited yet</strong><span>Invite someone above to give them access to a site.</span></div>
-        <div class="op-confirm" @show="pendingRevoke() !== null" style="margin-top:14px">
-          <span>Type <b class="mono">{{ pendingRevoke()?.username }}</b> to remove <b>{{ pendingRevoke()?.name }}</b> from every site:</span>
-          <input class="op-confirm-input" :value="typedRevoke()" @input="typedRevoke.set($event.target.value)" @keydown.enter="confirmRevoke()" placeholder="confirm" autocomplete="off">
-          <button class="btn danger sm" :disabled="!canRevoke()" @click="confirmRevoke()">Remove</button>
-          <button class="btn ghost sm" @click="cancelRevoke()">Cancel</button>
-        </div>
-        <p class="note">Box owners reach everything on this server. Members reach only the sites listed here, and never the shell, SSH keys, firewall or databases. Access is checked on every request.</p>
+        <table><thead><tr><th>Person</th><th>Role</th><th>Effective scope</th><th>Last activity</th><th></th></tr></thead><tbody>
+          <template :for="member in memberships()"><tr>
+            <td><b>{{ actorName(member) }}</b><span class="mono uname">{{ member.actor?.externalId?.replace('dashboard:', '') }}</span></td>
+            <td><span class="tag">{{ member.roleTemplate }}</span><small class="role-detail">{{ roleSummary[member.roleTemplate] }}</small></td>
+            <td><b>{{ scopeLabel(member.scope) }}</b><small class="role-detail">{{ member.source === 'legacy' ? 'Migrated direct access' : 'Inherited from membership' }}</small></td>
+            <td>{{ member.lastActiveAt ? new Date(member.lastActiveAt).toLocaleString() : 'Never' }}</td>
+            <td class="table-actions"><button class="btn ghost sm" type="button" @click="beginEdit(member)">Edit access</button><button class="btn danger sm" type="button" @click="beginRemove(member)">Remove</button></td>
+          </tr></template>
+        </tbody></table>
+        <div class="compact empty" @show="memberships().length === 0"><strong>No members</strong><span>Create an invitation to add someone.</span></div>
       </div>
     </div>
+
+    <div class="section" @show="editing() !== null">
+      <h2>Edit access</h2><div class="panel"><form class="form-grid" @submit.prevent="changeMembership(false)">
+        <div class="field-block"><label>Role template</label><select :value="editRole()" @change="editRole.set($event.target.value)"><option value="owner">Owner</option><option value="admin">Admin</option><option value="deployer">Developer / deployer</option><option value="operator">Operator</option><option value="viewer">Viewer</option><option value="auditor">Auditor</option></select></div>
+        <div class="field-block"><label>Scope</label><select :value="editScopeType()" @change="editScopeType.set($event.target.value); setScope($event.target.value, editScopeId)"><option value="organization">Entire organization</option><option value="project">Current project</option><option value="environment">One environment</option><option value="resource">One resource</option></select></div>
+        <div class="field-block" @show="editScopeType() === 'environment'"><label>Environment</label><select :value="editScopeId()" @change="editScopeId.set($event.target.value)"><template :for="item in environments()"><option :value="item.id">{{ item.name }}</option></template></select></div>
+        <div class="field-block" @show="editScopeType() === 'resource'"><label>Resource</label><select :value="editScopeId()" @change="editScopeId.set($event.target.value)"><template :for="item in resources()"><option :value="item.id">{{ item.name }} · {{ item.slug }}</option></template></select></div>
+        <div class="field-block"><label>Owner password</label><input type="password" autocomplete="current-password" :value="editPassword()" @input="editPassword.set($event.target.value)"><small>Required when adding, removing, or changing an owner.</small></div>
+        <div class="field-block"><label>Confirmation</label><input :placeholder="editing()?.id" :value="editConfirm()" @input="editConfirm.set($event.target.value)"><small>After previewing, type the membership ID.</small></div>
+        <div class="access-diff" @show="!!accessDiff()"><div><strong>Gained</strong><span>{{ accessDiff()?.gained?.join(', ') || 'None' }}</span></div><div><strong>Lost</strong><span>{{ accessDiff()?.lost?.join(', ') || 'None' }}</span></div></div>
+        <div class="form-actions"><button class="btn ghost" type="button" @click="changeMembership(true)">Preview effective access</button><button class="btn" type="submit">Apply change</button><button class="btn ghost" type="button" @click="editing.set(null)">Cancel</button></div>
+      </form></div>
+    </div>
+
+    <div class="section" @show="removing() !== null"><h2>Remove membership</h2><div class="op-confirm panel"><span>Type membership ID <b class="mono">{{ removing()?.id }}</b>. The member's active sessions will stop immediately.</span><input :value="removeConfirm()" @input="removeConfirm.set($event.target.value)" placeholder="membership ID"><input type="password" autocomplete="current-password" :value="removePassword()" @input="removePassword.set($event.target.value)" placeholder="your password if removing an owner"><button class="btn danger sm" @click="removeMembership()">Remove</button><button class="btn ghost sm" @click="removing.set(null)">Cancel</button></div></div>
+
+    <div class="section"><h2>Pending &amp; previous invitations</h2><div class="panel"><table><thead><tr><th>Email</th><th>Role</th><th>Scope</th><th>State</th><th></th></tr></thead><tbody><template :for="invitation in invitations()"><tr><td>{{ invitation.email }}</td><td><span class="tag">{{ invitation.roleTemplate }}</span></td><td>{{ scopeLabel(invitation.scope) }}</td><td>{{ invitationState(invitation) }}</td><td class="table-actions"><button class="btn ghost sm" type="button" @show="invitation.state !== 'accepted'" @click="invitationAction(invitation, 'resend')">Resend</button><button class="btn danger sm" type="button" @show="invitation.state === 'pending'" @click="invitationAction(invitation, 'revoke')">Revoke</button></td></tr></template></tbody></table><div class="compact empty" @show="invitations().length === 0"><strong>No invitations</strong><span>New and previous invitation states appear here.</span></div></div></div>
   </div>
   <style>
-    .grant-grid { display: grid; gap: 10px; }
-    .grant { display: grid; grid-template-columns: minmax(120px, 0.4fr) 1fr; gap: 12px; align-items: center; }
-    .grant > span { color: var(--txt2); font-size: 13px; }
-    .grant select {
-      width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--panel-br); border-radius: 10px;
-      padding: 9px 12px; color: var(--txt); font-family: inherit; font-size: 13.5px;
-    }
-    .grant select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(90,139,224,0.12); }
-    .issued {
-      display: grid; gap: 7px; margin-top: 16px; padding: 14px 16px;
-      border: 1px solid rgba(53,209,155,0.28); background: var(--okbg); border-radius: 12px;
-    }
-    .uname { margin-left: 8px; color: var(--txt3); }
-    .issued strong { font-size: 13px; color: var(--ok); }
-    .issued code {
-      font-family: var(--mono); font-size: 14px; color: var(--txt); user-select: all;
-      background: rgba(0,0,0,0.25); border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere;
-    }
-    .issued span { color: var(--txt2); font-size: 12px; line-height: 1.5; }
-    @media (max-width: 640px) { .grant { grid-template-columns: 1fr; gap: 6px; } }
+    .access-message { min-height: 20px; margin-top: 12px; }
+    .issued { display:grid; gap:7px; margin-top:16px; padding:14px 16px; border:1px solid rgba(53,209,155,.28); background:var(--okbg); border-radius:12px; }
+    .issued code { user-select:all; overflow-wrap:anywhere; padding:8px 10px; border-radius:8px; background:rgba(0,0,0,.25); }
+    .uname { display:block; margin-top:3px; color:var(--txt3); }
+    .role-detail { display:block; margin-top:4px; max-width:260px; color:var(--txt3); }
+    .access-diff { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .access-diff div { display:grid; gap:4px; padding:12px; border:1px solid var(--panel-br); border-radius:10px; }
+    .access-diff span { color:var(--txt2); font-size:12px; line-height:1.5; }
+    @media(max-width:640px){.access-diff{grid-template-columns:1fr}}
   </style>
 </body>
 </html>

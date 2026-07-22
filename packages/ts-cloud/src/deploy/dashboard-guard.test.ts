@@ -91,6 +91,18 @@ describe('dashboard organization guard', () => {
     controlPlane.store.close()
   })
 
+  it('invalidates an active session when a scoped grant is revoked', () => {
+    const { controlPlane, guard, users, request } = setup()
+    const req = request(users[1], '/api/me')
+    expect(guard.resolveUser(req)?.username).toBe('dev')
+    const actor = controlPlane.store.getActorByExternalId('user', 'dashboard:dev')!
+    const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id)!
+    const grant = controlPlane.store.listGrants(membership.id).find(item => item.capability === 'deployments:create')!
+    controlPlane.store.removeGrant(grant.id)
+    expect(guard.resolveUser(req)).toBeNull()
+    controlPlane.store.close()
+  })
+
   it('lets the migrated owner use owner-only organization capabilities', () => {
     const { controlPlane, guard, users, request } = setup()
     const req = request(users[0], '/api/users')

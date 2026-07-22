@@ -82,10 +82,10 @@ describe('policy coverage', () => {
     expect(missing).toEqual([])
   })
 
-  it('keeps the public surface to login and logout only', () => {
+  it('keeps the public surface to login, logout, and token-authenticated invitation acceptance', () => {
     // Anything reachable without a session is worth noticing in review, so pin
     // the exact set rather than asserting a count.
-    expect([...PUBLIC_ROUTES].sort()).toEqual(['POST /api/login', 'POST /api/logout'])
+    expect([...PUBLIC_ROUTES].sort()).toEqual(['POST /api/invitations/accept', 'POST /api/login', 'POST /api/logout'])
     expect(isPublicRoute('POST', '/api/login')).toBe(true)
     expect(isPublicRoute('GET', '/api/dashboard-data')).toBe(false)
     expect(isPublicRoute('POST', '/api/server/command')).toBe(false)

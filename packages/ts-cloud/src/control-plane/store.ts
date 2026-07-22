@@ -45,7 +45,7 @@ import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:
 import { dirname, join } from 'node:path'
 import { Database } from 'bun:sqlite'
 import { CONTROL_PLANE_SCHEMA_VERSION, controlPlaneMigrations } from './migrations'
-import { AUTHORIZATION_CAPABILITIES } from './authorization'
+import { AUTHORIZATION_CAPABILITIES, roleCapabilities } from './authorization'
 import { InvalidOperationTransitionError, OptimisticConcurrencyError, UnsupportedSchemaVersionError } from './types'
 
 export const CONTROL_PLANE_DATABASE_FILE: string = join('.ts-cloud', 'control-plane.sqlite')
@@ -556,7 +556,7 @@ export class ControlPlaneStore {
       [id, input.organizationId, input.actorId, input.roleTemplate, scope.type, scope.id ?? null, input.source ?? 'manual', now, now],
     )
     const membership = this.getMembership(id)!
-    this.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'organization.membership.created', payload: { membershipId: id, roleTemplate: input.roleTemplate, scope: scopePayload(scope) } })
+    this.appendEvent({ organizationId: input.organizationId, actorId: input.performedByActorId, type: 'organization.membership.created', payload: { membershipId: id, actorId: input.actorId, roleTemplate: input.roleTemplate, scope: scopePayload(scope) } })
     return membership
   }
 
@@ -673,15 +673,30 @@ export class ControlPlaneStore {
       if (changed.changes !== 1)
         throw new Error('Invitation is no longer available')
       const existing = this.getMembershipForActor(invitation.organizationId, actorId)
-      const membership = existing ?? this.createMembership({
+      let membership = existing ?? this.createMembership({
         organizationId: invitation.organizationId,
         actorId,
         roleTemplate: invitation.roleTemplate,
         scope: invitation.scope,
         source: 'invitation',
       })
+      if (existing && invitation.roleTemplate === 'owner' && existing.roleTemplate !== 'owner') {
+        membership = this.updateMembership({ id: existing.id, roleTemplate: 'owner', scope: { type: 'organization' }, actorId })
+      }
+      else if (existing) {
+        for (const capability of roleCapabilities(invitation.roleTemplate)) {
+          this.upsertGrant({
+            organizationId: invitation.organizationId,
+            membershipId: existing.id,
+            effect: 'allow',
+            capability,
+            scope: invitation.scope,
+            source: 'invitation',
+          })
+        }
+      }
       this.appendEvent({ organizationId: invitation.organizationId, actorId, type: 'organization.invitation.accepted', payload: { invitationId: invitation.id, membershipId: membership.id } })
-      return { invitation: this.getInvitation(invitation.id)!, membership }
+      return { invitation: this.getInvitation(invitation.id)!, membership: this.getMembership(membership.id)! }
     })
   }
 
@@ -732,7 +747,8 @@ export class ControlPlaneStore {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, input.organizationId, input.membershipId, input.effect, input.capability, scope.type, scope.id ?? null, input.source ?? 'manual', now, now],
     )
-    this.appendEvent({ organizationId: input.organizationId, type: 'organization.grant.created', payload: { grantId: id, membershipId: input.membershipId, effect: input.effect, capability: input.capability, scope: scopePayload(scope) } })
+    run(this.database, 'UPDATE organization_memberships SET session_version = session_version + 1, updated_at = ? WHERE id = ?', [now, input.membershipId])
+    this.appendEvent({ organizationId: input.organizationId, actorId: input.actorId, type: 'organization.grant.created', payload: { grantId: id, membershipId: input.membershipId, effect: input.effect, capability: input.capability, scope: scopePayload(scope) } })
     return this.getGrant(id)!
   }
 
@@ -750,8 +766,10 @@ export class ControlPlaneStore {
     if (!grant)
       return false
     const removed = run(this.database, 'DELETE FROM authorization_grants WHERE id = ?', [id]).changes === 1
-    if (removed)
+    if (removed) {
+      run(this.database, 'UPDATE organization_memberships SET session_version = session_version + 1, updated_at = ? WHERE id = ?', [this.now(), grant.membershipId])
       this.appendEvent({ organizationId: grant.organizationId, actorId, type: 'organization.grant.removed', payload: { grantId: id, membershipId: grant.membershipId } })
+    }
     return removed
   }
 
