@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 25
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 26
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1160,6 +1160,19 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
       ) STRICT;
       CREATE TABLE data_service_dependencies (
         service_id TEXT NOT NULL REFERENCES data_services(id) ON DELETE CASCADE, resource_id TEXT NOT NULL REFERENCES resources(id) ON DELETE CASCADE, secret_ref TEXT NOT NULL, requires_redeploy INTEGER NOT NULL DEFAULT 1 CHECK (requires_redeploy IN (0,1)), created_at TEXT NOT NULL, PRIMARY KEY(service_id, resource_id)
+      ) STRICT;
+    `,
+  },
+  {
+    version: 26,
+    name: 'encrypted_data_service_secrets',
+    sql: `
+      CREATE TABLE data_service_secrets (
+        reference TEXT PRIMARY KEY,
+        ciphertext TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       ) STRICT;
     `,
   },
