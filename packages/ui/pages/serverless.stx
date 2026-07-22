@@ -11,7 +11,7 @@ catch { __d = null }
 const dataLive = !!__d
 const app = __d?.app ?? { name: 'Project', env: 'production', region: 'unavailable', runtime: 'unavailable', url: '#', build: 'unavailable', deployedAt: 'unavailable' }
 const maintenance = __d?.maintenance ?? { enabled: false }
-const metrics = __d?.metrics ?? { invocations: 0, errorRatePct: 0, p95Ms: 0, coldStartPct: 0, concurrency: 0, estCostUsd: 0 }
+const metrics = __d?.metrics ?? { invocations: 0, errorRatePct: 0, p95Ms: 0, coldStartPct: undefined, concurrency: 0, estCostUsd: undefined }
 const functions = __d?.functions ?? []
 const queues = __d?.queues ?? []
 const scheduler = __d?.scheduler ?? { enabled: false, expression: 'unavailable', lastRun: 'unavailable' }
@@ -127,11 +127,11 @@ async function runAppCmd() {
       <a class="panel" href="/serverless/metrics">
         <h3>p95 Latency</h3>
         <div class="stat">{{ dataLive ? metrics.p95Ms + ' ms' : 'Unavailable' }}</div>
-        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive ? metrics.coldStartPct + '% cold starts' : 'Open Observability for source status' }}</p>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive && metrics.coldStartPct != null ? metrics.coldStartPct + '% cold starts' : 'Cold-start signal unavailable' }}</p>
       </a>
       <a class="panel" href="/serverless/cost">
         <h3>Est. Cost (24h)</h3>
-        <div class="stat">{{ dataLive ? '$' + metrics.estCostUsd : 'Unavailable' }}</div>
+        <div class="stat">{{ dataLive && metrics.estCostUsd != null ? '$' + metrics.estCostUsd : 'Unavailable' }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">cost analysis →</p>
       </a>
     </div>

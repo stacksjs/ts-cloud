@@ -157,7 +157,7 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
 
   const errorRatePct = totalInvocations ? Number(((totalErrors / totalInvocations) * 100).toFixed(2)) : 0
   const concurrency = Math.round(await lambdaMetric(cw, info.functions[0]?.name ?? '', 'ConcurrentExecutions', 'Maximum', start, end))
-  out.metrics = { invocations: Math.round(totalInvocations), errorRatePct, p95Ms: Math.round(maxDur), coldStartPct: 0, concurrency, estCostUsd: 0 }
+  out.metrics = { invocations: Math.round(totalInvocations), errorRatePct, p95Ms: Math.round(maxDur), coldStartPct: undefined, concurrency, estCostUsd: undefined }
 
   // ── Queues (+ DLQ) ───────────────────────────────────────────────────────────
   try {
@@ -269,8 +269,8 @@ export async function resolveDashboardData(config: CloudConfig, environment: Env
   catch { /* history optional */ }
 
   // ── Metrics page (totals + per-fn + invocation series) ───────────────────────
-  out.metricsTotals = { invocations: out.metrics.invocations, errors: Math.round(totalErrors), errorRatePct, p95Ms: out.metrics.p95Ms, throttles: fnsDetail.reduce((n, f) => n + f.throttles, 0), coldStartPct: 0, estCostUsd: 0, concurrency }
-  out.metricsPerFn = fnsDetail.map(f => ({ key: f.key, invocations: f.invocations, errors: f.errors, throttles: f.throttles, avgMs: f.p50, maxMs: f.p99, costUsd: 0 }))
+  out.metricsTotals = { invocations: out.metrics.invocations, errors: Math.round(totalErrors), errorRatePct, p95Ms: out.metrics.p95Ms, throttles: fnsDetail.reduce((n, f) => n + f.throttles, 0), coldStartPct: undefined, estCostUsd: undefined, concurrency }
+  out.metricsPerFn = fnsDetail.map(f => ({ key: f.key, invocations: f.invocations, errors: f.errors, throttles: f.throttles, avgMs: f.p50, maxMs: f.p99, costUsd: undefined }))
   try {
     out.invSpark = await cw.getMetricSeries({ Namespace: 'AWS/Lambda', MetricName: 'Invocations', Dimensions: [{ Name: 'FunctionName', Value: info.functions.find(f => f.mode === 'http')?.name ?? '' }], StartTime: new Date(end.getTime() - 24 * 3_600_000), EndTime: end, Period: 3600, Stat: 'Sum' })
   }
