@@ -15,6 +15,7 @@ export interface ExistingDistributionOriginInput {
   originPath?: string
   protocolPolicy?: 'https-only' | 'http-only' | 'match-viewer'
   customHeaders?: Record<string, string>
+  originAccessControlId?: string
   replaceExisting?: boolean
   dryRun?: boolean
 }
@@ -91,7 +92,7 @@ export class CloudFrontClient {
     const existingBehavior = behaviors.find(value => String(value.PathPattern) === input.pathPattern)
     if (existingOrigin && String(existingOrigin.DomainName) !== input.domainName && !input.replaceExisting) throw new Error(`Origin ${input.id} already targets ${existingOrigin.DomainName}; pass replaceExisting only after reviewing the live config`)
     if (existingBehavior && String(existingBehavior.TargetOriginId) !== input.id && !input.replaceExisting) throw new Error(`Path ${input.pathPattern} already targets ${existingBehavior.TargetOriginId}; pass replaceExisting only after reviewing the live config`)
-    const origin = { Id: input.id, DomainName: input.domainName, OriginPath: input.originPath ?? '', CustomHeaders: { Quantity: Object.keys(input.customHeaders ?? {}).length, ...(Object.keys(input.customHeaders ?? {}).length ? { Items: { OriginCustomHeader: Object.entries(input.customHeaders!).map(([HeaderName, HeaderValue]) => ({ HeaderName, HeaderValue })) } } : {}) }, CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: input.protocolPolicy ?? 'https-only', OriginSslProtocols: { Quantity: 1, Items: { SslProtocol: ['TLSv1.2'] } }, OriginReadTimeout: 30, OriginKeepaliveTimeout: 5 }, ConnectionAttempts: 3, ConnectionTimeout: 10 }
+    const origin = { Id: input.id, DomainName: input.domainName, OriginPath: input.originPath ?? '', CustomHeaders: { Quantity: Object.keys(input.customHeaders ?? {}).length, ...(Object.keys(input.customHeaders ?? {}).length ? { Items: { OriginCustomHeader: Object.entries(input.customHeaders!).map(([HeaderName, HeaderValue]) => ({ HeaderName, HeaderValue })) } } : {}) }, CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: input.protocolPolicy ?? 'https-only', OriginSslProtocols: { Quantity: 1, Items: { SslProtocol: ['TLSv1.2'] } }, OriginReadTimeout: 30, OriginKeepaliveTimeout: 5 }, ConnectionAttempts: 3, ConnectionTimeout: 10, ...(input.originAccessControlId ? { OriginAccessControlId: input.originAccessControlId } : {}) }
     const methods = ['GET', 'HEAD', 'OPTIONS', 'PUT', 'POST', 'PATCH', 'DELETE']
     const behavior = { PathPattern: input.pathPattern, TargetOriginId: input.id, ViewerProtocolPolicy: 'redirect-to-https', Compress: true, CachePolicyId: '4135ea2d-6df8-44a3-9df3-4b5a84be39ad', OriginRequestPolicyId: 'b689b0a8-53d0-40ab-baf2-68738e2966ac', AllowedMethods: { Quantity: methods.length, Items: { Method: methods }, CachedMethods: { Quantity: 2, Items: { Method: ['GET', 'HEAD'] } } }, SmoothStreaming: false, FieldLevelEncryptionId: '', TrustedSigners: { Enabled: false, Quantity: 0 }, TrustedKeyGroups: { Enabled: false, Quantity: 0 }, LambdaFunctionAssociations: { Quantity: 0 }, FunctionAssociations: { Quantity: 0 } }
     const nextOrigins = existingOrigin ? origins.map(value => String(value.Id) === input.id ? origin : value) : [...origins, origin]
@@ -1281,7 +1282,7 @@ export class CloudFrontClient {
     description?: string
     signingProtocol?: 'sigv4'
     signingBehavior?: 'always' | 'never' | 'no-override'
-    originType?: 's3'
+    originType?: 's3' | 'mediastore' | 'mediapackagev2' | 'lambda'
   }): Promise<{
     Id: string
     Name: string
@@ -1336,19 +1337,19 @@ export class CloudFrontClient {
   /**
    * Find or create an Origin Access Control
    */
-  async findOrCreateOriginAccessControl(name: string): Promise<{
+  async findOrCreateOriginAccessControl(name: string, originType: 's3' | 'mediastore' | 'mediapackagev2' | 'lambda' = 's3'): Promise<{
     Id: string
     Name: string
     isNew: boolean
   }> {
     const oacs = await this.listOriginAccessControls()
-    const existing = oacs.find(oac => oac.Name === name)
+    const existing = oacs.find(oac => oac.Name === name && oac.OriginAccessControlOriginType === originType)
 
     if (existing) {
       return { Id: existing.Id, Name: existing.Name, isNew: false }
     }
 
-    const created = await this.createOriginAccessControl({ name })
+    const created = await this.createOriginAccessControl({ name, originType })
     return { Id: created.Id, Name: created.Name, isNew: true }
   }
 

@@ -720,8 +720,8 @@ export class IAMClient {
   private client: AWSClient
   private region: string
 
-  constructor(region: string = 'us-east-1') {
-    this.client = new AWSClient()
+  constructor(region: string = 'us-east-1', profile?: string) {
+    this.client = new AWSClient(undefined, { profile })
     this.region = region
   }
 

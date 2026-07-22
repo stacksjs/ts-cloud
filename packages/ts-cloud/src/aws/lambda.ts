@@ -181,6 +181,8 @@ export interface AddPermissionParams {
   Principal: string
   SourceArn?: string
   SourceAccount?: string
+  FunctionUrlAuthType?: 'NONE' | 'AWS_IAM'
+  InvokedViaFunctionUrl?: boolean
 }
 
 /**
@@ -190,9 +192,9 @@ export class LambdaClient {
   private client: AWSClient
   private region: string
 
-  constructor(region: string = 'us-east-1') {
+  constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(undefined, { profile })
   }
 
   /**
@@ -729,7 +731,6 @@ export class LambdaClient {
       StatementId: 'FunctionURLAllowPublicAccess',
       Action: 'lambda:InvokeFunctionUrl',
       Principal: '*',
-      // @ts-ignore - FunctionUrlAuthType is a valid parameter
       FunctionUrlAuthType: 'NONE',
     })
   }

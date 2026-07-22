@@ -20,7 +20,7 @@ export class STSClient {
 
   constructor(region: string = 'us-east-1', profile?: string) {
     this.region = region
-    this.client = new AWSClient()
+    this.client = new AWSClient(undefined, { profile })
   }
 
   /**
