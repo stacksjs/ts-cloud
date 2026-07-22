@@ -1,5 +1,7 @@
 # Application onboarding
 
+Multi-service repositories use the dedicated [Compose applications and templates](/features/compose-applications) workflow. It previews services, dependency/health topology, ports, named volumes, networks, variables, resource limits, and unsupported fields before creating provider-visible state.
+
 ts-cloud provides one guided, reproducible flow for creating an application from Git, a local directory, a source archive, or a prebuilt OCI image. Open **Applications → Create application** in the dashboard to use the six-stage wizard:
 
 1. choose and inspect the source;

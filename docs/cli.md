@@ -68,6 +68,20 @@ See [Serverless](/features/serverless) for the full `app` config.
 
 See [Application onboarding](/features/application-onboarding) for draft JSON, build strategy, registry, and API examples.
 
+## Compose applications and templates
+
+| Command | Description |
+|---|---|
+| `cloud compose:preview <file>` / `compose:import <file>` | Diagnose without mutation, then persist a normalized multi-service manifest. |
+| `cloud compose:list` / `compose:export <id>` / `compose:diff <id> <file>` | Inspect applications, round-trip an editable file, or review field changes. |
+| `cloud compose:deploy\|redeploy\|start\|stop <id>` | Queue a durable stack lifecycle operation. |
+| `cloud compose:scale <id> <service> <replicas>` | Scale one service within provider and policy limits. |
+| `cloud compose:logs <id> <service>` / `compose:shell <id> <service> [command...]` | Read service logs or run an authorized command. |
+| `cloud compose:delete <id> [--remove-volumes] --confirm <text>` | Preserve named volumes by default; require a stronger confirmation to delete data. |
+| `cloud compose:templates` / `compose:template <id>` / `compose:catalog <file>` | Use pinned built-ins or validate a checksum-pinned local/custom catalog. |
+
+See [Compose applications and templates](/features/compose-applications) for supported fields, diagnostics, topology UX, catalogs, and safety boundaries.
+
 ## Durable operations
 
 | Command | Description |

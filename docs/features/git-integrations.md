@@ -53,6 +53,8 @@ Each provider delivery ID is persisted before work is queued. Replays return the
 
 Pull-request and selected branch events can instead reconcile one persistent preview environment. The provider receives deployment status for the exact commit, and close/merge/delete events queue isolated cleanup. Configure URL, TTL, fork, secret, database, and resource policies under **Operations → Preview environments**. See [Preview environments](/features/preview-environments).
 
+Repositories containing Compose definitions can be checked out through the same credential-safe exact-source path and imported into the [Compose applications](/features/compose-applications) model. The resulting stack uses normal source authorization, durable operations, and per-service observability rather than executing an unreviewed file directly from a webhook.
+
 ## SSH deploy keys
 
 Generic SSH connections require all of the following:
