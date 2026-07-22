@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { canOpenDashboardPage, isBoxOnlyPage } from './local-dashboard-server'
+import { canOpenDashboardPage, isBoxOnlyPage, isTrustedMutationRequest } from './local-dashboard-server'
 
 describe('isBoxOnlyPage', () => {
   it('lets members open their own pages', () => {
-    for (const page of ['/server/sites', '/server/deployments', '/server/logs'])
+    for (const page of ['/server/sites', '/server/deployments', '/server/logs', '/account/security'])
       expect(isBoxOnlyPage(page)).toBe(false)
   })
 
@@ -47,10 +47,24 @@ describe('isBoxOnlyPage', () => {
   })
 })
 
+describe('isTrustedMutationRequest', () => {
+  it('rejects cross-site browser mutations and mismatched origins', () => {
+    expect(isTrustedMutationRequest(new Request('https://cloud.example/api/auth/password/change', { method: 'POST', headers: { origin: 'https://evil.example' } }))).toBe(false)
+    expect(isTrustedMutationRequest(new Request('https://cloud.example/api/logout', { method: 'POST', headers: { 'sec-fetch-site': 'cross-site' } }))).toBe(false)
+  })
+
+  it('allows same-origin browsers, safe reads, and header-light CLI requests', () => {
+    expect(isTrustedMutationRequest(new Request('https://cloud.example/api/auth/password/change', { method: 'POST', headers: { origin: 'https://cloud.example' } }))).toBe(true)
+    expect(isTrustedMutationRequest(new Request('https://cloud.example/api/me'))).toBe(true)
+    expect(isTrustedMutationRequest(new Request('https://cloud.example/api/auth/sessions/revoke-others', { method: 'POST' }))).toBe(true)
+  })
+})
+
 describe('canOpenDashboardPage', () => {
   it('preserves the legacy member allowlist during migration', () => {
     const legacy = { role: 'member' as const, sites: { blog: 'collaborator' as const }, capabilities: ['runtime:read' as const], organizationSource: 'legacy' }
     expect(canOpenDashboardPage('/server/sites', legacy as any)).toBe(true)
+    expect(canOpenDashboardPage('/account/security', legacy as any)).toBe(true)
     expect(canOpenDashboardPage('/server/metrics', legacy as any)).toBe(false)
   })
 
@@ -63,6 +77,7 @@ describe('canOpenDashboardPage', () => {
     }
     expect(canOpenDashboardPage('/server/metrics', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/server/backups', operator as any)).toBe(true)
+    expect(canOpenDashboardPage('/account/security', operator as any)).toBe(true)
     expect(canOpenDashboardPage('/server/terminal', operator as any)).toBe(false)
     expect(canOpenDashboardPage('/server/some-future-page', operator as any)).toBe(false)
   })

@@ -76,6 +76,7 @@ describe('organization membership and invitations', () => {
     const actor = store.createActor({ kind: 'user', externalId: 'dashboard:dev', displayName: 'Dev' })
     const created = store.createInvitation({ organizationId: organization.id, email: 'dev@acme.test', roleTemplate: 'deployer', expiresInMs: 60_000 })
     expect(created.invitation).not.toHaveProperty('tokenHash')
+    expect(store.inspectInvitationToken(created.token)).toMatchObject({ id: created.invitation.id, state: 'pending' })
     expect(JSON.stringify(created.invitation)).not.toContain(created.token)
 
     const accepted = store.acceptInvitation(created.token, actor.id)

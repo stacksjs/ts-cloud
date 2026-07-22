@@ -2,6 +2,7 @@ import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import type { AuthorizationCapability, AuthorizationScope, OrganizationRoleTemplate } from '../control-plane'
 import type { DashboardUser } from './dashboard-auth'
 import { resolveDeploymentMode } from '@ts-cloud/core'
+import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { mkdtempSync } from 'node:fs'
@@ -9,21 +10,23 @@ import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadCloudConfig } from '../config'
+import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, sendAuthenticationEmail } from '../auth'
 import { AUTHORIZATION_CAPABILITIES, authorizeOrganization, effectiveCapabilities, searchControlPlane } from '../control-plane'
-import { hashPassword, verifyPassword } from './dashboard-auth'
+import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
 import { resolveServerDashboardData } from './dashboard-data-server'
 import { backupDatabase, createDatabase, createDatabaseUser, isValidDbIdentifier, listDatabaseBackups, listDatabases } from './dashboard-database'
-import { createDashboardGuard, dashboardMembershipVersions, siteFromRequest } from './dashboard-guard'
-import { renderLoginPage } from './dashboard-login-page'
+import { createDashboardGuard, siteFromRequest } from './dashboard-guard'
+import { synchronizeDashboardIdentities } from './dashboard-identities'
+import { renderLoginPage, renderPasswordRecoveryPage } from './dashboard-login-page'
 import { buildDashboardOperations, resolveDashboardOperation, runDashboardOperation, runServerShellCommand } from './dashboard-operations'
 import { resolveLegacyDashboardRoute } from './dashboard-route-manifest'
 import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
-import { clearSessionCookie, createSessionToken, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
+import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { LoginThrottle } from './dashboard-throttle'
-import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, upsertMember } from './dashboard-users'
+import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, updateUserPassword, upsertMember } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
 import {
@@ -231,6 +234,17 @@ function replaceFirewallPorts(config: CloudConfig, ports: number[]): void {
 
 async function readJsonBody(req: Request): Promise<Record<string, any>> {
   return await req.json().catch(() => ({})) as Record<string, any>
+}
+
+/** Reject browser cross-site mutations while retaining header-light CLI access. */
+export function isTrustedMutationRequest(req: Request): boolean {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method.toUpperCase()))
+    return true
+  const site = req.headers.get('sec-fetch-site')
+  if (site === 'cross-site')
+    return false
+  const origin = req.headers.get('origin')
+  return !origin || origin === new URL(req.url).origin
 }
 
 const ORGANIZATION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'])
@@ -474,6 +488,7 @@ const MEMBER_PAGES: ReadonlySet<string> = new Set([
   '/server/sites',
   '/server/deployments',
   '/server/logs',
+  '/account/security',
   '/access-denied',
 ])
 
@@ -506,6 +521,7 @@ const PAGE_CAPABILITIES: Readonly<Record<string, AuthorizationCapability>> = {
   '/server/ssh-keys': 'fleet:read',
   '/server/terminal': 'runtime:terminal',
   '/server/team': 'users:read',
+  '/account/security': 'project:read',
   '/serverless': 'project:read',
   '/serverless/deployments': 'deployments:read',
   '/serverless/logs': 'runtime:logs',
@@ -708,12 +724,16 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   const secret = resolveSessionSecret(cwd)
   const bootstrap = authEnabled ? ensureAdminUser(cwd, process.env.TS_CLOUD_UI_USERNAME?.trim() || 'admin') : undefined
-  if (bootstrap)
+  const authentication = new AuthenticationStore(controlPlane.store)
+  if (bootstrap) {
     synchronizeDashboardUsers(controlPlane, bootstrap.users)
+    synchronizeDashboardIdentities(authentication, controlPlane, bootstrap.users)
+  }
   const guard = createDashboardGuard({
     cwd,
     enabled: authEnabled,
     secret,
+    authentication,
     authorization: {
       store: controlPlane.store,
       organizationId: controlPlane.organization.id,
@@ -726,8 +746,11 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   // so failed attempts are rate-limited. Pruned periodically so the counters
   // cannot grow without bound; unref'd so it never holds the process open.
   const throttle = new LoginThrottle()
+  const recoveryThrottle = new LoginThrottle(3, 15 * 60 * 1000, 15 * 60 * 1000)
   const throttleSweep = setInterval(() => throttle.prune(), 5 * 60 * 1000)
+  const recoveryThrottleSweep = setInterval(() => recoveryThrottle.prune(), 5 * 60 * 1000)
   throttleSweep.unref?.()
+  recoveryThrottleSweep.unref?.()
 
   if (authEnabled) {
     if (bootstrap?.generated) {
@@ -740,6 +763,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
   // Cookies are marked Secure unless we're serving plain http on loopback.
   const cookieSecure = host !== '127.0.0.1' && host !== 'localhost'
+  const networkHint = (address: string): string => createHash('sha256').update(`${secret}:${address}`).digest('hex').slice(0, 16)
+  const userAgentLabel = (req: Request): string | undefined => req.headers.get('user-agent')?.trim().slice(0, 256) || undefined
+  const issueSession = (identityId: string, req: Request, address: string) => authentication.createSession({
+    identityId,
+    userAgent: userAgentLabel(req),
+    networkHint: networkHint(address),
+  })
   const organizationPrincipal = (user: DashboardUser) => {
     const actor = controlPlane.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
     const membership = actor ? controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id) : undefined
@@ -782,6 +812,9 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
       }
 
       try {
+        if (!isTrustedMutationRequest(req))
+          return json({ ok: false, error: 'Cross-site requests are not allowed.' }, 403)
+
         // --- Public: the login endpoints and the login page itself ----------
         if (url.pathname === '/api/invitations/accept' && req.method === 'POST') {
           const body = await readJsonBody(req)
@@ -790,22 +823,33 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const password = String(body.password ?? '')
           if (!invitationToken || !isValidUsername(username) || password.length < 12)
             return json({ ok: false, error: 'Invitation token, valid username, and a password of at least 12 characters are required.' }, 422)
+          const invitation = controlPlane.store.inspectInvitationToken(invitationToken)
+          if (!invitation || invitation.state !== 'pending')
+            return json({ ok: false, error: invitation ? `Invitation is ${invitation.state}` : 'Invitation is invalid' }, invitation ? 409 : 404)
           const existing = findUser(loadUsers(cwd), username)
-          if (existing && !verifyPassword(password, existing.passwordHash))
+          const existingIdentity = authentication.getIdentityByUsername(username)
+          if (existing && !verifyPassword(password, existingIdentity?.passwordHash ?? existing.passwordHash))
             return json({ ok: false, error: 'That username already exists; enter its current password to continue.' }, 401)
+          const emailOwner = authentication.getIdentityByEmail(invitation.email)
+          if (emailOwner && emailOwner.id !== existingIdentity?.id)
+            return json({ ok: false, error: 'This invitation belongs to an existing account. Sign in with that account or ask an owner to resend it.' }, 409)
           const result = upsertMember(cwd, {
             username,
             password: existing ? undefined : password,
             name: typeof body.name === 'string' ? body.name : undefined,
+            email: invitation.email,
             sites: existing?.sites ?? {},
           })
           const actor = ensureDashboardActor(controlPlane.store, result.user)
           try {
             const accepted = controlPlane.store.acceptInvitation(invitationToken, actor.id)
-            const token = createSessionToken(result.user.username, secret, undefined, { [controlPlane.organization.id]: accepted.membership.sessionVersion })
+            const identity = existingIdentity
+              ? authentication.setVerifiedEmail(existingIdentity.id, accepted.invitation.email)
+              : authentication.createIdentity({ actorId: actor.id, username: result.user.username, email: accepted.invitation.email, emailVerified: true, passwordHash: result.user.passwordHash })
+            const issued = issueSession(identity.id, req, server.requestIP(req)?.address ?? 'unknown')
             clearUiCache()
             return json({ ok: true, user: describeUser(result.user), organization: controlPlane.organization, membership: accepted.membership }, 200, {
-              'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),
+              'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
             })
           }
           catch (error) {
@@ -813,6 +857,50 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               removeUser(cwd, result.user.username)
             const message = error instanceof Error ? error.message : 'Invitation could not be accepted.'
             return json({ ok: false, error: message }, message.includes('expired') || message.includes('revoked') || message.includes('accepted') ? 409 : 404)
+          }
+        }
+
+        if (url.pathname === '/api/auth/password-reset/request' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const identifier = String(body.identifier ?? '').trim().toLowerCase()
+          const address = server.requestIP(req)?.address ?? 'unknown'
+          const gate = recoveryThrottle.check(identifier, address)
+          const identity = identifier.includes('@')
+            ? authentication.getIdentityByEmail(identifier)
+            : authentication.getIdentityByUsername(identifier)
+          if (gate.allowed)
+            recoveryThrottle.recordFailure(identifier, address)
+          if (gate.allowed && identity?.email && identity.emailVerifiedAt && !identity.disabledAt) {
+            authentication.revokeActionTokens(identity.id, 'password_reset')
+            const created = authentication.createActionToken(identity.id, 'password_reset')
+            const resetUrl = `${url.origin}/reset-password?token=${encodeURIComponent(created.token)}`
+            const delivered = await sendAuthenticationEmail(config as CloudConfig, {
+              to: identity.email,
+              subject: 'Reset your ts-cloud password',
+              text: `Reset your ts-cloud password: ${resetUrl}\n\nThis link expires in one hour and can be used once.`,
+            })
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.password_reset.requested', payload: { delivered } })
+          }
+          return json({ ok: true, message: 'If that account has a verified email, a reset link has been sent.' }, 202)
+        }
+
+        if (url.pathname === '/api/auth/password-reset/complete' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const token = String(body.token ?? '').trim()
+          const password = String(body.password ?? '')
+          if (!token || password.length < 12)
+            return json({ ok: false, error: 'A valid reset token and password of at least 12 characters are required.' }, 422)
+          try {
+            const consumed = authentication.consumeActionToken(token, 'password_reset')
+            const passwordHash = hashPassword(password)
+            const identity = authentication.updatePassword(consumed.identityId, passwordHash)
+            updateUserPassword(cwd, identity.username, passwordHash)
+            controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: identity.actorId, type: 'auth.password_reset.completed' })
+            return json({ ok: true, message: 'Password changed. Sign in again.' }, 200, { 'set-cookie': clearSessionCookie({ secure: cookieSecure }) })
+          }
+          catch (error) {
+            const message = error instanceof Error ? error.message : 'Password reset failed.'
+            return json({ ok: false, error: message.replace('Action token', 'Reset link') }, message.includes('consumed') || message.includes('expired') ? 409 : 404)
           }
         }
 
@@ -832,25 +920,38 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           }
 
           const user = findUser(loadUsers(cwd), username)
+          const identity = authentication.getIdentityByUsername(username)
 
           // Verify against a dummy hash when the user is unknown, so a missing
           // user and a wrong password take the same time and can't be told
           // apart by an attacker enumerating usernames.
-          const hash = user?.passwordHash || DUMMY_HASH
-          const ok = verifyPassword(password, hash) && !!user
+          const hash = identity?.passwordHash ?? user?.passwordHash ?? DUMMY_HASH
+          const ok = verifyPassword(password, hash) && !!user && !!identity && !identity.disabledAt
           if (!ok) {
             throttle.recordFailure(username, address)
             return json({ ok: false, error: 'Incorrect username or password.' }, 401)
           }
 
           throttle.recordSuccess(username, address)
-          const token = createSessionToken(user!.username, secret, undefined, dashboardMembershipVersions(controlPlane.store, controlPlane.organization.id, user!))
-          return json({ ok: true, user: describeUser(user!) }, 200, {
-            'set-cookie': serializeSessionCookie(token, { secure: cookieSecure }),
+          let currentIdentity = identity!
+          const passwordUpgraded = currentIdentity.requiresPasswordUpgrade || passwordNeedsRehash(currentIdentity.passwordHash)
+          if (passwordUpgraded) {
+            const passwordHash = hashPassword(password)
+            currentIdentity = authentication.rehashPassword(currentIdentity.id, passwordHash)
+            updateUserPassword(cwd, currentIdentity.username, passwordHash)
+          }
+          authentication.recordLogin(currentIdentity.id)
+          const issued = issueSession(currentIdentity.id, req, address)
+          controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: currentIdentity.actorId, type: 'auth.login.succeeded', payload: { method: 'local' } })
+          return json({ ok: true, user: describeUser(user!), passwordUpgraded }, 200, {
+            'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
           })
         }
 
         if (url.pathname === '/api/logout' && req.method === 'POST') {
+          const session = guard.resolveSession(req)
+          if (session)
+            authentication.revokeSession(session.identityId, session.id)
           const cookie = clearSessionCookie({ secure: cookieSecure })
           // The nav signs out with a plain form post (no client JS), so send a
           // browser back to the login page instead of a JSON body it would render.
@@ -861,6 +962,12 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
 
         if (url.pathname === '/login') {
           return new Response(renderLoginPage(initialData?.mode === 'serverless'), {
+            headers: { 'content-type': 'text/html; charset=utf-8' },
+          })
+        }
+
+        if (url.pathname === '/forgot-password' || url.pathname === '/reset-password') {
+          return new Response(renderPasswordRecoveryPage(url.pathname === '/reset-password' ? 'reset' : 'request'), {
             headers: { 'content-type': 'text/html; charset=utf-8' },
           })
         }
@@ -899,6 +1006,68 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const decision = guard.check(req, url.pathname, user, site)
           if (!decision.ok)
             return json({ ok: false, error: decision.error }, decision.status ?? 403)
+        }
+
+        if (url.pathname === '/api/auth/security' && req.method === 'GET') {
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          const session = guard.resolveSession(req)
+          return json({
+            identity: identity ? {
+              username: identity.username,
+              email: identity.email,
+              emailVerifiedAt: identity.emailVerifiedAt,
+              requiresPasswordUpgrade: identity.requiresPasswordUpgrade,
+              lastLoginAt: identity.lastLoginAt,
+            } : undefined,
+            currentSessionId: session?.id,
+            sessions: identity ? authentication.listSessions(identity.id, { includeInactive: true }) : [],
+          })
+        }
+
+        if (url.pathname === '/api/auth/sessions' && req.method === 'GET') {
+          const session = guard.resolveSession(req)
+          return json({ currentSessionId: session?.id, sessions: session ? authentication.listSessions(session.identityId, { includeInactive: true }) : [] })
+        }
+
+        if (url.pathname === '/api/auth/sessions' && req.method === 'DELETE') {
+          const body = await readJsonBody(req)
+          const current = guard.resolveSession(req)
+          if (!current)
+            return json({ ok: false, error: 'Sign in again to manage sessions.' }, 401)
+          const sessionId = String(body.id ?? '')
+          const revoked = authentication.revokeSession(current.identityId, sessionId)
+          const headers = sessionId === current.id && revoked ? { 'set-cookie': clearSessionCookie({ secure: cookieSecure }) } : undefined
+          return json({ ok: revoked, signedOut: sessionId === current.id && revoked }, revoked ? 200 : 404, headers)
+        }
+
+        if (url.pathname === '/api/auth/sessions/revoke-others' && req.method === 'POST') {
+          const current = guard.resolveSession(req)
+          if (!current)
+            return json({ ok: false, error: 'Sign in again to manage sessions.' }, 401)
+          return json({ ok: true, revoked: authentication.revokeOtherSessions(current.identityId, current.id) })
+        }
+
+        if (url.pathname === '/api/auth/password/change' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          const currentPassword = String(body.currentPassword ?? '')
+          const nextPassword = String(body.password ?? '')
+          const principal = organizationPrincipal(user)
+          const identity = principal.actor ? authentication.getIdentityByActor(principal.actor.id) : undefined
+          if (!identity || !verifyPassword(currentPassword, identity.passwordHash))
+            return json({ ok: false, error: 'Current password is incorrect.' }, 401)
+          if (nextPassword.length < 12)
+            return json({ ok: false, error: 'New password must be at least 12 characters.' }, 422)
+          if (verifyPassword(nextPassword, identity.passwordHash))
+            return json({ ok: false, error: 'Choose a different password.' }, 409)
+          const passwordHash = hashPassword(nextPassword)
+          const changed = authentication.updatePassword(identity.id, passwordHash)
+          updateUserPassword(cwd, changed.username, passwordHash)
+          const issued = issueSession(changed.id, req, server.requestIP(req)?.address ?? 'unknown')
+          controlPlane.store.appendEvent({ organizationId: controlPlane.organization.id, actorId: changed.actorId, type: 'auth.password.changed' })
+          return json({ ok: true, message: 'Password changed and other sessions were signed out.' }, 200, {
+            'set-cookie': serializeSessionCookie(issued.token, { secure: cookieSecure, maxAgeMs: AUTH_SESSION_ABSOLUTE_TTL_MS }),
+          })
         }
 
         if (url.pathname === '/api/terminal') {
@@ -1051,10 +1220,17 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
               invitedByActorId: principal.actor.id,
               expiresInMs: Number(body.expiresInMs) || undefined,
             })
+            const acceptUrl = `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}`
+            const delivered = await sendAuthenticationEmail(config as CloudConfig, {
+              to: created.invitation.email,
+              subject: 'Your ts-cloud organization invitation',
+              text: `Accept your ts-cloud invitation: ${acceptUrl}\n\nThis link expires ${created.invitation.expiresAt} and can be used once.`,
+            })
             return json({
               invitation: created.invitation,
               token: created.token,
-              acceptUrl: `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}`,
+              acceptUrl,
+              delivered,
             }, 201)
           }
           catch (error) {
@@ -1078,7 +1254,13 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
           const principal = organizationPrincipal(user)
           try {
             const created = controlPlane.store.reissueInvitation(String(body.id ?? ''), principal.actor?.id)
-            return json({ invitation: created.invitation, token: created.token, acceptUrl: `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}` })
+            const acceptUrl = `${url.origin}/accept-invitation?token=${encodeURIComponent(created.token)}`
+            const delivered = await sendAuthenticationEmail(config as CloudConfig, {
+              to: created.invitation.email,
+              subject: 'Your ts-cloud organization invitation',
+              text: `Accept your ts-cloud invitation: ${acceptUrl}\n\nThis replacement link expires ${created.invitation.expiresAt} and can be used once.`,
+            })
+            return json({ invitation: created.invitation, token: created.token, acceptUrl, delivered })
           }
           catch (error) {
             return json({ ok: false, error: error instanceof Error ? error.message : 'Invitation could not be resent.' }, 409)
@@ -1757,6 +1939,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const stop = server.stop.bind(server)
   server.stop = ((closeActiveConnections?: boolean) => {
     clearInterval(throttleSweep)
+    clearInterval(recoveryThrottleSweep)
     clearUiCache()
     const result = stop(closeActiveConnections)
     controlPlane.store.close()

@@ -63,6 +63,8 @@ const STYLES = `
   .msg.shown { display: block; }
   .note { color: var(--txt3); font-size: 12px; margin-top: 20px; line-height: 1.5; }
   .note code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--txt2); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
 `
 
 /**
@@ -101,7 +103,7 @@ export function renderLoginPage(serverless = false): string {
     </form>
 
     <p class="msg" id="msg" role="alert" aria-live="polite"></p>
-    <p class="note">Lost the first admin password? Delete <code>.ts-cloud/dashboard-users.json</code> on the deploy host and restart the dashboard to mint a new one.</p>
+    <p class="note"><a href="/forgot-password">Forgot your password?</a></p>
   </main>
 
 <script>
@@ -134,6 +136,73 @@ export function renderLoginPage(serverless = false): string {
       document.getElementById('password').value = ''
       document.getElementById('password').focus()
     }
+  })
+</script>
+</body>
+</html>`
+}
+
+export function renderPasswordRecoveryPage(mode: 'request' | 'reset'): string {
+  const reset = mode === 'reset'
+  const fields = reset
+    ? '<div class="field"><label for="password">New password</label><input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required></div><div class="field"><label for="confirmation">Confirm new password</label><input id="confirmation" name="confirmation" type="password" autocomplete="new-password" minlength="12" required></div>'
+    : '<div class="field"><label for="identifier">Username or email</label><input id="identifier" name="identifier" autocomplete="username" required autofocus></div>'
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${reset ? 'Choose a new password' : 'Recover your account'} · ts-cloud</title>
+<style>${STYLES}</style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand"><span class="dot"></span> ts-cloud</div>
+    <h1>${reset ? 'Choose a new password' : 'Recover your account'}</h1>
+    <p class="sub">${reset ? 'This one-time link expires after one hour.' : 'Enter your username or verified email. The response is the same whether or not an account exists.'}</p>
+    <form id="recovery" autocomplete="on">
+      ${fields}
+      <button type="submit" id="submit">${reset ? 'Change password' : 'Send reset link'}</button>
+    </form>
+    <p class="msg" id="msg" role="status" aria-live="polite"></p>
+    <p class="note"><a href="/login">Return to sign in</a></p>
+  </main>
+<script>
+  const form = document.getElementById('recovery')
+  const msg = document.getElementById('msg')
+  const submit = document.getElementById('submit')
+  const reset = ${JSON.stringify(reset)}
+  const token = new URLSearchParams(location.search).get('token') || ''
+  if (reset && !token) {
+    msg.textContent = 'This reset link is missing its token. Request a new link.'
+    msg.classList.add('shown')
+    submit.disabled = true
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault()
+    if (reset && document.getElementById('password').value !== document.getElementById('confirmation').value) {
+      msg.textContent = 'The passwords do not match.'
+      msg.classList.add('shown')
+      return
+    }
+    submit.disabled = true
+    msg.textContent = reset ? 'Changing password…' : 'Requesting reset link…'
+    msg.classList.add('shown')
+    const response = await fetch(reset ? '/api/auth/password-reset/complete' : '/api/auth/password-reset/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(reset
+        ? { token, password: document.getElementById('password').value }
+        : { identifier: document.getElementById('identifier').value }),
+    })
+    const result = await response.json().catch(() => ({}))
+    msg.textContent = result.message || result.error || 'The request could not be completed.'
+    if (!response.ok) {
+      submit.disabled = false
+      return
+    }
+    if (reset)
+      setTimeout(() => location.assign('/login'), 1200)
   })
 </script>
 </body>

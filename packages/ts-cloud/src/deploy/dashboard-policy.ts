@@ -39,6 +39,8 @@ export const PUBLIC_ROUTES: ReadonlySet<string> = new Set([
   'POST /api/login',
   'POST /api/logout',
   'POST /api/invitations/accept',
+  'POST /api/auth/password-reset/request',
+  'POST /api/auth/password-reset/complete',
 ])
 
 export function isPublicRoute(method: string, pathname: string): boolean {
@@ -57,6 +59,11 @@ const POLICIES: Record<string, RoutePolicy> = {
   'GET /api/search/preferences': { capability: 'project:read', anyUser: true },
   'POST /api/search/preferences': { capability: 'project:read', anyUser: true },
   'DELETE /api/search/preferences': { capability: 'project:read', anyUser: true },
+  'GET /api/auth/security': { capability: 'project:read', anyUser: true },
+  'GET /api/auth/sessions': { capability: 'project:read', anyUser: true },
+  'DELETE /api/auth/sessions': { capability: 'project:read', anyUser: true },
+  'POST /api/auth/sessions/revoke-others': { capability: 'project:read', anyUser: true },
+  'POST /api/auth/password/change': { capability: 'project:read', anyUser: true },
 
   'GET /api/organization': { capability: 'users:read', scope: 'organization' },
   'GET /api/organization/invitations': { capability: 'users:read', scope: 'organization' },

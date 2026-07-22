@@ -8,6 +8,7 @@
  */
 
 import type { DashboardUser } from './dashboard-auth'
+import type { AuthenticationStore, AuthSession } from '../auth'
 import type { ControlPlaneStore } from '../control-plane'
 import { authorizeOrganization } from '../control-plane'
 import { routePolicy } from './dashboard-policy'
@@ -31,6 +32,7 @@ export interface GuardOptions {
   /** When false, every request is treated as {@link LOCAL_ADMIN}. */
   enabled: boolean
   secret: string
+  authentication?: AuthenticationStore
   authorization: {
     store: ControlPlaneStore
     organizationId: string
@@ -51,12 +53,21 @@ export interface DashboardGuard {
   enabled: boolean
   /** The user for this request, or null when unauthenticated. */
   resolveUser: (req: Request) => DashboardUser | null
+  /** Durable v2 session metadata, when this request did not use a legacy cookie. */
+  resolveSession: (req: Request) => AuthSession | null
   /** Whether `user` may perform `req`. `site` is required for site-scoped routes. */
   check: (req: Request, pathname: string, user: DashboardUser | null, site?: string) => GuardDecision
 }
 
 export function createDashboardGuard(options: GuardOptions): DashboardGuard {
-  const { cwd, enabled, secret, authorization } = options
+  const { cwd, enabled, secret, authorization, authentication } = options
+
+  const durableSession = (req: Request) => {
+    if (!authentication)
+      return undefined
+    const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE)
+    return token?.startsWith('v2.') ? authentication.verifySessionToken(token) : undefined
+  }
 
   const identity = (user: DashboardUser) => {
     const actor = authorization.store.getActorByExternalId('user', `dashboard:${user.username.toLowerCase()}`)
@@ -72,22 +83,28 @@ export function createDashboardGuard(options: GuardOptions): DashboardGuard {
         return LOCAL_ADMIN
 
       const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE)
-      const payload = verifySessionToken(token, secret)
-      if (!payload)
+      const durable = durableSession(req)
+      const payload = durable ? undefined : verifySessionToken(token, secret)
+      const username = durable?.identity.username ?? payload?.u
+      if (!username)
         return null
 
       // Re-read the user and membership on every request rather than trusting the token's
       // claims: revoking a grant or deleting a user then takes effect at once,
       // instead of lingering until the session expires.
-      const user = findUser(loadUsers(cwd), payload.u)
+      const user = findUser(loadUsers(cwd), username)
       if (!user)
         return null
       const { membership } = identity(user)
-      if (!membership || membership.status !== 'active' || payload.mv?.[authorization.organizationId] !== membership.sessionVersion)
+      if (!membership || membership.status !== 'active' || (!durable && payload?.mv?.[authorization.organizationId] !== membership.sessionVersion))
         return null
       if (!membership.lastActiveAt || Date.now() - new Date(membership.lastActiveAt).getTime() > 5 * 60 * 1000)
         authorization.store.touchMembership(membership.id)
       return user
+    },
+
+    resolveSession(req: Request): AuthSession | null {
+      return durableSession(req)?.session ?? null
     },
 
     check(req: Request, pathname: string, user: DashboardUser | null, site?: string): GuardDecision {

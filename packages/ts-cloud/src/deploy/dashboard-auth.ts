@@ -42,6 +42,8 @@ export interface DashboardUser {
   sites: Record<string, SiteRole>
   /** Display name shown in the UI. Defaults to the username. */
   name?: string
+  /** Verified once an emailed invitation or verification link is consumed. */
+  email?: string
   createdAt?: string
 }
 
@@ -134,7 +136,7 @@ export function visibleSites(user: Pick<DashboardUser, 'role' | 'sites'>, allSit
  * scrypt parameters. N=16384 keeps a single hash near ~50ms on a small box,
  * which is a reasonable brute-force cost without stalling the login request.
  */
-const SCRYPT_N = 16_384
+const SCRYPT_N = 32_768
 const SCRYPT_R = 8
 const SCRYPT_P = 1
 const KEY_LEN = 32
@@ -147,7 +149,7 @@ const SALT_LEN = 16
  */
 export function hashPassword(password: string): string {
   const salt = randomBytes(SALT_LEN)
-  const hash = scryptSync(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P })
+  const hash = scryptSync(password, salt, KEY_LEN, { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, maxmem: 256 * 1024 * 1024 })
   return `scrypt$${SCRYPT_N}$${SCRYPT_R}$${SCRYPT_P}$${salt.toString('base64url')}$${hash.toString('base64url')}`
 }
 
@@ -181,6 +183,15 @@ export function verifyPassword(password: string, stored: string): boolean {
   catch {
     return false
   }
+}
+
+/** Whether a valid legacy hash should be transparently upgraded after login. */
+export function passwordNeedsRehash(stored: string): boolean {
+  const [algorithm, nRaw, rRaw, pRaw] = stored.split('$')
+  return algorithm !== 'scrypt'
+    || Number(nRaw) !== SCRYPT_N
+    || Number(rRaw) !== SCRYPT_R
+    || Number(pRaw) !== SCRYPT_P
 }
 
 /** A URL-safe generated password, for invites and the bootstrap admin. */

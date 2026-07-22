@@ -1,6 +1,6 @@
 import type { DashboardUser } from './dashboard-auth'
 import { describe, expect, it } from 'bun:test'
-import { authorize, generatePassword, hashPassword, isBoxCapability, verifyPassword, visibleSites } from './dashboard-auth'
+import { authorize, generatePassword, hashPassword, isBoxCapability, passwordNeedsRehash, verifyPassword, visibleSites } from './dashboard-auth'
 import { createSessionToken, readCookie, serializeSessionCookie, verifySessionToken } from './dashboard-session'
 
 const admin: Pick<DashboardUser, 'role' | 'sites'> = { role: 'admin', sites: {} }
@@ -89,6 +89,11 @@ describe('password hashing', () => {
 
   it('salts — the same password hashes differently each time', () => {
     expect(hashPassword('same')).not.toBe(hashPassword('same'))
+  })
+
+  it('detects legacy scrypt parameters for transparent login upgrades', () => {
+    expect(passwordNeedsRehash('scrypt$16384$8$1$c2FsdA$aGFzaA')).toBe(true)
+    expect(passwordNeedsRehash(hashPassword('current'))).toBe(false)
   })
 
   it('rejects malformed hashes rather than throwing', () => {

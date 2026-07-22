@@ -44,6 +44,7 @@ function normalizeUser(raw: any): DashboardUser | null {
     role,
     sites,
     name: typeof raw.name === 'string' ? raw.name : undefined,
+    email: typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : undefined,
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : undefined,
   }
 }
@@ -123,6 +124,7 @@ export interface UpsertMemberInput {
   username: string
   password?: string
   name?: string
+  email?: string
   sites: Record<string, SiteRole>
 }
 
@@ -146,6 +148,7 @@ export function upsertMember(cwd: string, input: UpsertMemberInput): { user: Das
     role: existing?.role ?? 'member',
     sites: input.sites,
     name: input.name ?? existing?.name,
+    email: input.email?.trim().toLowerCase() ?? existing?.email,
     createdAt: existing?.createdAt ?? new Date().toISOString(),
   }
 
@@ -154,6 +157,17 @@ export function upsertMember(cwd: string, input: UpsertMemberInput): { user: Das
     : [...users, user]
   saveUsers(cwd, next)
   return { user, password }
+}
+
+/** Replace a local credential while preserving the user's role and grants. */
+export function updateUserPassword(cwd: string, username: string, passwordHash: string): DashboardUser {
+  const users = loadUsers(cwd)
+  const existing = findUser(users, username)
+  if (!existing)
+    throw new Error('Authentication user was not found')
+  const user = { ...existing, passwordHash }
+  saveUsers(cwd, users.map(item => item.username.toLowerCase() === existing.username.toLowerCase() ? user : item))
+  return user
 }
 
 /**
@@ -179,6 +193,7 @@ export function describeUser(user: DashboardUser): Record<string, any> {
     username: user.username,
     name: user.name ?? user.username,
     role: user.role,
+    email: user.email,
     sites: user.sites,
     siteCount: Object.keys(user.sites).length,
     createdAt: user.createdAt,

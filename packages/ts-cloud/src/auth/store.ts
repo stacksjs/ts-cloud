@@ -180,6 +180,16 @@ export class AuthenticationStore {
     return this.getIdentity(identityId)!
   }
 
+  /** Upgrade password-hash parameters without treating it as a credential change. */
+  rehashPassword(identityId: string, passwordHash: string): AuthIdentity {
+    const now = this.now()
+    this.run('UPDATE auth_identities SET password_hash = ?, requires_password_upgrade = 0, updated_at = ? WHERE id = ?', [passwordHash, now, identityId])
+    const identity = this.getIdentity(identityId)
+    if (!identity)
+      throw new Error('Authentication identity was not found')
+    return identity
+  }
+
   setVerifiedEmail(identityId: string, email: string): AuthIdentity {
     const normalized = normalizeEmail(email)!
     const now = this.now()

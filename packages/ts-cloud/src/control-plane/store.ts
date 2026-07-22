@@ -655,6 +655,13 @@ export class ControlPlaneStore {
     return this.database.query<Row, [string]>('SELECT * FROM organization_invitations WHERE organization_id = ? ORDER BY created_at DESC').all(organizationId).map(row => mapInvitation(row, this.now()))
   }
 
+  /** Resolve a bearer invitation without exposing its stored hash. */
+  inspectInvitationToken(token: string): OrganizationInvitation | undefined {
+    const tokenHash = createHash('sha256').update(token).digest('hex')
+    const row = this.database.query<Row, [string]>('SELECT * FROM organization_invitations WHERE token_hash = ?').get(tokenHash)
+    return row ? mapInvitation(row, this.now()) : undefined
+  }
+
   acceptInvitation(token: string, actorId: string): { invitation: OrganizationInvitation, membership: OrganizationMembership } {
     const tokenHash = createHash('sha256').update(token).digest('hex')
     return this.transaction(() => {

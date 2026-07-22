@@ -5,3 +5,5 @@ export {
   AuthenticationStore,
 } from './store'
 export * from './types'
+export { sendAuthenticationEmail } from './mailer'
+export type { AuthenticationEmail } from './mailer'

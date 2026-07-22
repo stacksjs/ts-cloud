@@ -1,10 +1,12 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import type { DashboardUser } from './dashboard-auth'
 import { afterEach, describe, expect, it } from 'bun:test'
+import { AuthenticationStore } from '../auth'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { initializeDashboardControlPlane, synchronizeDashboardUsers } from './dashboard-control-plane'
+import { synchronizeDashboardIdentities } from './dashboard-identities'
 import { createDashboardGuard, dashboardMembershipVersions } from './dashboard-guard'
 import { createSessionToken, serializeSessionCookie } from './dashboard-session'
 import { saveUsers } from './dashboard-users'
@@ -35,10 +37,13 @@ function setup() {
   saveUsers(root, users)
   const controlPlane = initializeDashboardControlPlane(root, config)
   synchronizeDashboardUsers(controlPlane, users)
+  const authentication = new AuthenticationStore(controlPlane.store)
+  synchronizeDashboardIdentities(authentication, controlPlane, users)
   const guard = createDashboardGuard({
     cwd: root,
     enabled: true,
     secret,
+    authentication,
     authorization: {
       store: controlPlane.store,
       organizationId: controlPlane.organization.id,
@@ -54,7 +59,12 @@ function setup() {
       body: body ? JSON.stringify(body) : undefined,
     })
   }
-  return { controlPlane, guard, users, request }
+  const durableRequest = (user: DashboardUser, path: string) => {
+    const identity = authentication.getIdentityByUsername(user.username)!
+    const issued = authentication.createSession({ identityId: identity.id })
+    return new Request(`http://localhost${path}`, { headers: { cookie: serializeSessionCookie(issued.token, { secure: false }) } })
+  }
+  return { authentication, controlPlane, durableRequest, guard, users, request }
 }
 
 describe('dashboard organization guard', () => {
@@ -107,6 +117,18 @@ describe('dashboard organization guard', () => {
     const { controlPlane, guard, users, request } = setup()
     const req = request(users[0], '/api/users')
     expect(guard.check(req, '/api/users', guard.resolveUser(req))).toMatchObject({ ok: true })
+    controlPlane.store.close()
+  })
+
+  it('accepts durable v2 sessions and rejects them after membership removal', () => {
+    const { controlPlane, durableRequest, guard, users } = setup()
+    const req = durableRequest(users[1], '/api/me')
+    expect(guard.resolveUser(req)?.username).toBe('dev')
+    expect(guard.resolveSession(req)?.state).toBe('active')
+    const actor = controlPlane.store.getActorByExternalId('user', 'dashboard:dev')!
+    const membership = controlPlane.store.getMembershipForActor(controlPlane.organization.id, actor.id)!
+    controlPlane.store.revokeMembership(membership.id)
+    expect(guard.resolveUser(req)).toBeNull()
     controlPlane.store.close()
   })
 })

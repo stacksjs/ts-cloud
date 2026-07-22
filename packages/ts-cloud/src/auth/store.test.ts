@@ -40,6 +40,17 @@ describe('AuthenticationStore identities', () => {
     expect(auth.verifySessionToken(replacement.token)).toBeUndefined()
     controlPlane.close()
   })
+
+  it('rehashes legacy credentials without revoking otherwise valid sessions', () => {
+    const { controlPlane, auth, actor } = stores()
+    const identity = auth.createIdentity({ actorId: actor.id, username: 'chris', passwordHash: 'legacy', requiresPasswordUpgrade: true })
+    const issued = auth.createSession({ identityId: identity.id })
+    const upgraded = auth.rehashPassword(identity.id, 'modern')
+
+    expect(upgraded).toMatchObject({ credentialVersion: 1, requiresPasswordUpgrade: false, passwordHash: 'modern' })
+    expect(auth.verifySessionToken(issued.token)?.session.state).toBe('active')
+    controlPlane.close()
+  })
 })
 
 describe('AuthenticationStore action tokens', () => {
