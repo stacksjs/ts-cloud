@@ -25,7 +25,7 @@ ts-cloud is a modern infrastructure-as-code framework that lets you define cloud
 
 Every provision, deploy, and teardown flows through the same `CloudDriver` interface — the CLI and your config never talk to a provider directly:
 
-```
+```text
 cloud.config.ts
       │
       ▼

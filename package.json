@@ -40,10 +40,10 @@
     "fresh": "bun x rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build && bun run compile:all && bun run zip",
     "test": "find test packages \\( -name '*.test.ts' -o -name '*.test.js' \\) -print | xargs bun test",
-    "lint": "bun x --bun pickier .",
-    "lint:fix": "bun x --bun pickier . --fix",
-    "format": "bun x --bun pickier . --format",
-    "format:fix": "bun x --bun pickier . --format --write",
+    "lint": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config pickier.config.ts --max-warnings 0",
+    "lint:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config pickier.config.ts --fix --max-warnings 0",
+    "format": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode format --config pickier.config.ts --check",
+    "format:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode format --config pickier.config.ts --write",
     "changelog": "bun x logsmith --verbose",
     "changelog:generate": "bun x logsmith --output CHANGELOG.md",
     "release": "bun x --bun bumpx prompt --recursive",
@@ -59,18 +59,18 @@
   "devDependencies": {
     "better-dx": "^0.2.18"
   },
-  "workspaces": [
-    "packages/*"
-  ],
+  "overrides": {
+    "typescript": "^7.0.2"
+  },
   "git-hooks": {
     "pre-commit": {
       "staged-lint": {
-        "*.{js,ts,json,yaml,yml,md}": "bun x --bun pickier lint --fix"
+        "*.{js,ts,json,yaml,yml,md}": "bun x --bun --package github:pickier/pickier#95de532 pickier run --mode lint --config pickier.config.ts --fix --max-warnings 0"
       }
     },
     "commit-msg": "bun x gitlint --edit .git/COMMIT_EDITMSG"
   },
-  "overrides": {
-    "typescript": "^7.0.2"
-  }
+  "workspaces": [
+    "packages/*"
+  ]
 }

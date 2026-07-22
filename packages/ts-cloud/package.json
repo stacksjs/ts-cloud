@@ -80,24 +80,24 @@
     "zip:windows-x64": "zip -j bin/cloud-windows-x64.zip bin/cloud-windows-x64.exe",
     "zip:darwin-x64": "zip -j bin/cloud-darwin-x64.zip bin/cloud-darwin-x64",
     "zip:darwin-arm64": "zip -j bin/cloud-darwin-arm64.zip bin/cloud-darwin-arm64",
-    "lint": "bun x --bun pickier lint .",
-    "lint:fix": "bun x --bun pickier lint . --fix",
-    "format": "bun x --bun pickier format .",
-    "format:fix": "bun x --bun pickier format . --write",
+    "lint": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config ../../pickier.config.ts --max-warnings 0",
+    "lint:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config ../../pickier.config.ts --fix --max-warnings 0",
+    "format": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode format --config ../../pickier.config.ts --check",
+    "format:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode format --config ../../pickier.config.ts --write",
     "fresh": "bun x rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build",
     "test": "bun test"
   },
   "dependencies": {
+    "@stacksjs/ts-xml": "^0.1.0",
     "@ts-cloud/aws-types": "workspace:*",
-    "@ts-cloud/core": "workspace:*",
-    "@stacksjs/ts-xml": "^0.1.0"
+    "@ts-cloud/core": "workspace:*"
   },
   "devDependencies": {
-    "bunfig": "^0.15.6",
-    "better-dx": "^0.2.16"
+    "better-dx": "^0.2.16",
+    "bunfig": "^0.15.6"
   },
   "lint-staged": {
-    "*.{js,ts,json,yaml,yml,md}": "bun x --bun pickier lint --fix"
+    "*.{js,ts,json,yaml,yml,md}": "bun x --bun --package github:pickier/pickier#95de532 pickier run --mode lint --config ../../pickier.config.ts --fix --max-warnings 0"
   }
 }
