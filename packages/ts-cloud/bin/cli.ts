@@ -49,6 +49,7 @@ import {
   // Operations
   registerStatusCommands,
   registerBackupCommands,
+  registerRecoveryCommands,
   registerApiCommands,
   registerOperationQueueCommands,
   registerRuntimeCommands,
@@ -126,6 +127,7 @@ registerAuditCommands(app)
 
 // Operations & Backup
 registerBackupCommands(app)
+registerRecoveryCommands(app)
 registerApiCommands(app)
 registerOperationQueueCommands(app)
 registerRuntimeCommands(app)

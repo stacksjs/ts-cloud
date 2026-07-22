@@ -50,6 +50,7 @@ export { registerAuditCommands } from './audit'
 // Operations
 export { registerStatusCommands } from './status'
 export { registerBackupCommands } from './backup'
+export { registerRecoveryCommands } from './recovery'
 export { registerApiCommands } from './api'
 export { registerOperationQueueCommands } from './operation-queue'
 export { registerRuntimeCommands } from './runtime'
