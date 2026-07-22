@@ -15,8 +15,12 @@ export function isQuietHours(route: NotificationRoute, at: Date): boolean { if(!
 
 function matches(route:NotificationRoute,alert:Alert,eventType:string):boolean{const m=route.matcher;return (!m.projectIds?.length||m.projectIds.includes(alert.projectId))&&(!m.environmentIds?.length||!!alert.environmentId&&m.environmentIds.includes(alert.environmentId))&&(!m.resourceIds?.length||!!alert.resourceId&&m.resourceIds.includes(alert.resourceId))&&(!m.severities?.length||m.severities.includes(alert.severity))&&(!m.eventTypes?.length||m.eventTypes.includes(eventType))}
 function credential(value:string|undefined):Record<string,string>{if(!value)return{};try{const parsed=JSON.parse(value);return parsed&&typeof parsed==='object'?parsed:{value}}catch{return{value}}}
-function payload(alert: Alert, eventType: string): Record<string,JsonValue> {
-  return {schemaVersion:1,event:eventType,alert:{id:alert.id,state:alert.state,severity:alert.severity,title:alert.title,projectId:alert.projectId,environmentId:alert.environmentId??null,resourceId:alert.resourceId??null,groupKey:alert.groupKey,firstSeenAt:alert.firstSeenAt,lastSeenAt:alert.lastSeenAt,firingAt:alert.firingAt??null,resolvedAt:alert.resolvedAt??null,evidence:alert.evidence}}
+function notificationText(alert: Alert, eventType: string, template?: string): string {
+  const values: Record<string,string> = { severity: alert.severity.toUpperCase(), title: alert.title, state: alert.state, event: eventType, projectId: alert.projectId, environmentId: alert.environmentId ?? '', resourceId: alert.resourceId ?? '', groupKey: alert.groupKey }
+  return (template?.trim() || '[{{severity}}] {{title}} · {{state}}').replace(/\{\{(severity|title|state|event|projectId|environmentId|resourceId|groupKey)\}\}/g, (_, key: string) => values[key]).slice(0, 2000)
+}
+function payload(alert: Alert, eventType: string, template?: string): Record<string,JsonValue> {
+  return {schemaVersion:1,event:eventType,notificationText:notificationText(alert,eventType,template),alert:{id:alert.id,state:alert.state,severity:alert.severity,title:alert.title,projectId:alert.projectId,environmentId:alert.environmentId??null,resourceId:alert.resourceId??null,groupKey:alert.groupKey,firstSeenAt:alert.firstSeenAt,lastSeenAt:alert.lastSeenAt,firingAt:alert.firingAt??null,resolvedAt:alert.resolvedAt??null,evidence:alert.evidence}}
 }
 
 export class NotificationRouter {
@@ -24,16 +28,23 @@ export class NotificationRouter {
   constructor(private readonly store:AlertStore,private readonly options:{fetchImpl?:NotificationFetch,emailImpl?:NotificationEmail,now?:()=>Date}={}){this.fetchImpl=options.fetchImpl??(globalThis.fetch as unknown as NotificationFetch)}
   private now():Date{return this.options.now?.()??new Date()}
 
-  preview(organizationId: string, alert: Alert, eventType: string) {
-    return this.store.listRoutes(organizationId).filter(route => route.enabled && matches(route, alert, eventType)).map(route => ({route,channels:route.channelIds.flatMap((id) => {
-      const channel = this.store.getChannel(id)
-      return channel?.status === 'active' ? [channel] : []
-    }),quiet:isQuietHours(route,this.now())}))
+  preview(organizationId: string, alert: Alert, eventType: string): Array<{ route: NotificationRoute, channels: NotificationChannel[], quiet: boolean }> {
+    const result: Array<{ route: NotificationRoute, channels: NotificationChannel[], quiet: boolean }> = []
+    for (const route of this.store.listRoutes(organizationId)) {
+      if (!route.enabled || !matches(route, alert, eventType)) continue
+      const channels: NotificationChannel[] = []
+      for (const id of route.channelIds) {
+        const channel = this.store.getChannel(id)
+        if (channel?.status === 'active') channels.push(channel)
+      }
+      result.push({ route, channels, quiet: isQuietHours(route, this.now()) })
+    }
+    return result
   }
-  enqueue(organizationId:string,alert:Alert,eventType:'firing'|'resolved'|'reminder'|'escalation'):NotificationDelivery[]{const marker=eventType==='resolved'?alert.resolvedAt:eventType==='firing'?alert.firingAt:alert.updatedAt;const deliveries:NotificationDelivery[]=[];for(const match of this.preview(organizationId,alert,eventType)){if(match.quiet&&eventType!=='resolved')continue;const nextAttemptAt=eventType==='resolved'||match.route.groupWaitSeconds===0?undefined:new Date(this.now().getTime()+match.route.groupWaitSeconds*1000).toISOString();for(const channel of match.channels)deliveries.push(this.store.createDelivery({alertId:alert.id,channelId:channel.id,routeId:match.route.id,eventType,idempotencyKey:`${alert.id}:${eventType}:${marker}:${channel.id}`,payload:payload(alert,eventType),nextAttemptAt}))}return deliveries}
+  enqueue(organizationId:string,alert:Alert,eventType:'firing'|'resolved'|'reminder'|'escalation'):NotificationDelivery[]{const marker=eventType==='resolved'?alert.resolvedAt:eventType==='firing'?alert.firingAt:alert.updatedAt;const deliveries:NotificationDelivery[]=[];for(const match of this.preview(organizationId,alert,eventType)){if(match.quiet&&eventType!=='resolved')continue;const nextAttemptAt=eventType==='resolved'||match.route.groupWaitSeconds===0?undefined:new Date(this.now().getTime()+match.route.groupWaitSeconds*1000).toISOString();let remaining=eventType==='resolved'?Number.POSITIVE_INFINITY:Math.max(0,match.route.rateLimitPerMinute-this.store.countRouteDeliveries(match.route.id,new Date(this.now().getTime()-60_000).toISOString()));for(const channel of match.channels){if(remaining<=0)break;deliveries.push(this.store.createDelivery({alertId:alert.id,channelId:channel.id,routeId:match.route.id,eventType,idempotencyKey:`${alert.id}:${eventType}:${marker}:${channel.id}`,payload:payload(alert,eventType,match.route.template),nextAttemptAt}));remaining--}}return deliveries}
   enqueueRemindersAndEscalations(organizationId:string,alerts:Alert[]):NotificationDelivery[]{const now=this.now(),deliveries:NotificationDelivery[]=[];for(const alert of alerts.filter(item=>item.state==='firing'&&!item.acknowledgedAt&&item.firingAt)){const ageSeconds=Math.max(0,(now.getTime()-new Date(alert.firingAt!).getTime())/1000);for(const match of this.preview(organizationId,alert,'reminder')){if(match.quiet)continue;if(match.route.reminderSeconds&&ageSeconds>=match.route.reminderSeconds){const slot=Math.floor(ageSeconds/match.route.reminderSeconds);for(const channel of match.channels)deliveries.push(this.store.createDelivery({alertId:alert.id,channelId:channel.id,routeId:match.route.id,eventType:'reminder',idempotencyKey:`${alert.id}:reminder:${match.route.id}:${slot}:${channel.id}`,payload:payload(alert,'reminder')}))}for(const [index,step] of match.route.escalation.entries())if(ageSeconds>=step.afterSeconds)for(const channelId of step.channelIds){const channel=this.store.getChannel(channelId);if(channel?.status==='active')deliveries.push(this.store.createDelivery({alertId:alert.id,channelId,routeId:match.route.id,eventType:'escalation',idempotencyKey:`${alert.id}:escalation:${match.route.id}:${index}:${channelId}`,payload:payload(alert,'escalation')}))}}}return deliveries}
 
-  private async send(channel:NotificationChannel,body:Record<string,JsonValue>):Promise<{ok:boolean,status?:number,error?:string}>{const secret=credential(this.store.channelCredential(channel.id));const text=`[${String((body.alert as any)?.severity??'info').toUpperCase()}] ${String((body.alert as any)?.title??'ts-cloud alert')} · ${String((body.alert as any)?.state??body.event)}`;try{
+  private async send(channel:NotificationChannel,body:Record<string,JsonValue>):Promise<{ok:boolean,status?:number,error?:string}>{const secret=credential(this.store.channelCredential(channel.id));const text=typeof body.notificationText==='string'?body.notificationText:`[${String((body.alert as any)?.severity??'info').toUpperCase()}] ${String((body.alert as any)?.title??'ts-cloud alert')} · ${String((body.alert as any)?.state??body.event)}`;try{
     if(channel.kind==='email'){if(!this.options.emailImpl)return{ok:false,error:'Email adapter is not configured.'};await this.options.emailImpl({to:channel.config.to as string|string[],from:channel.config.from as string|undefined,subject:`[ts-cloud] ${String((body.alert as any)?.title??body.event)}`,text:`${text}\n\n${JSON.stringify(body,null,2)}`});return{ok:true,status:202}}
     let url = secret.url ?? secret.value
     let posted: unknown = body

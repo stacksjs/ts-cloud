@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 22
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 23
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1108,6 +1108,15 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
         id TEXT PRIMARY KEY, alert_id TEXT REFERENCES alerts(id) ON DELETE CASCADE, channel_id TEXT NOT NULL REFERENCES notification_channels(id) ON DELETE CASCADE, route_id TEXT REFERENCES notification_routes(id) ON DELETE SET NULL, event_type TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, state TEXT NOT NULL CHECK (state IN ('pending','delivered','retrying','failed','dead')), attempt INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3, next_attempt_at TEXT, response_status INTEGER, error TEXT, payload TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, delivered_at TEXT
       ) STRICT;
       CREATE INDEX notification_deliveries_state_idx ON notification_deliveries(state, next_attempt_at, updated_at);
+    `,
+  },
+  {
+    version: 23,
+    name: 'notification_templates_and_rate_limits',
+    sql: `
+      ALTER TABLE notification_routes ADD COLUMN template TEXT;
+      ALTER TABLE notification_routes ADD COLUMN rate_limit_per_minute INTEGER NOT NULL DEFAULT 60 CHECK (rate_limit_per_minute BETWEEN 1 AND 10000);
+      CREATE INDEX notification_deliveries_route_created_idx ON notification_deliveries(route_id, created_at DESC);
     `,
   },
 ]
