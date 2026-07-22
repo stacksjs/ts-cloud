@@ -27,7 +27,7 @@ import { deployAllComputeSites, renewRpxCertificates } from '../../src/drivers/s
 import { runConfigHook } from '../../src/deploy/hooks'
 import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-control-plane'
-import { ensureDefaultSecurityPolicies, productionChangeReview, recordPreDeploySecretScan, recordSkippedSecretScan, securityScope, SecurityPostureStore } from '../../src/security'
+import { ensureDefaultSecurityPolicies, productionChangeReview, recordPreDeploySecretScan, recordSkippedSecretScan, secureContainerRelease, securityScope, SecurityPostureStore } from '../../src/security'
 
 /**
  * Detect AWS credential source, warn on misconfiguration, and print the
@@ -313,6 +313,43 @@ function enforceSecurityPolicy(config: any, environmentValue: string | undefined
     const review = productionChangeReview(posture, { scope, desiredConfigHash: controlPlane.project.desiredConfigHash })
     cli.info(`Security policy: ${review.decision.policyId} v${review.decision.policyVersion} — ${review.decision.outcome.toUpperCase()}`)
     cli.info(`Security decision: ${review.decision.explanation}`)
+    return { allowed: review.decision.outcome !== 'block', explanation: review.decision.explanation }
+  }
+  finally {
+    controlPlane.store.close()
+  }
+}
+
+async function enforceContainerReleaseSecurity(config: any, input: {
+  imageRef: string
+  imageSha256?: string
+  artifactRoot: string
+  invocationId: string
+  startedAt: string
+}): Promise<{ allowed: boolean, explanation: string }> {
+  const environment = policyEnvironment(config)
+  const controlPlane = initializeDashboardControlPlane(process.cwd(), config)
+  try {
+    const posture = new SecurityPostureStore(controlPlane.store)
+    ensureDefaultSecurityPolicies(controlPlane)
+    const scope = securityScope(controlPlane, environment)
+    const releaseId = input.imageSha256 ? `${input.imageRef}@sha256:${input.imageSha256.replace(/^sha256:/, '')}` : input.imageRef
+    cli.step('Scanning the built image and producing release security artifacts...')
+    const result = await secureContainerRelease(posture, {
+      scope,
+      releaseId,
+      imageRef: input.imageRef,
+      imageSha256: input.imageSha256,
+      artifactRoot: input.artifactRoot,
+      invocationId: input.invocationId,
+      startedAt: input.startedAt,
+      externalParameters: { imageRef: input.imageRef, artifactRoot: input.artifactRoot },
+    })
+    cli.info(`Image scanner: ${result.scan.run.status} (${result.scan.findings.length} findings)`)
+    cli.info(`Release SBOM: ${result.sbomSource === 'image' ? 'full image inventory' : result.sbomSource === 'manifest' ? 'package-manifest fallback' : 'unavailable'}`)
+    const review = productionChangeReview(posture, { scope, operationId: input.invocationId, desiredConfigHash: controlPlane.project.desiredConfigHash })
+    cli.info(`Release policy: ${review.decision.policyId} v${review.decision.policyVersion} — ${review.decision.outcome.toUpperCase()}`)
+    cli.info(`Release decision: ${review.decision.explanation}`)
     return { allowed: review.decision.outcome !== 'block', explanation: review.decision.explanation }
   }
   finally {
@@ -1851,6 +1888,8 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         const context = options?.context || '.'
         const forceDeployment = options?.force || false
         const shouldWait = options?.wait || false
+        const releaseStartedAt = new Date().toISOString()
+        const releaseInvocationId = crypto.randomUUID()
 
         if (!cluster || !service) {
           cli.error('--cluster and --service are required')
@@ -1989,6 +2028,33 @@ https://${bucket}.s3.${region}.amazonaws.com${prefix ? `/${prefix}` : ''}/index.
         })
 
         pushSpinner.succeed('Image pushed to ECR')
+
+        let imageSha256: string | undefined
+        const dockerInspect = spawn('docker', ['image', 'inspect', '--format={{.Id}}', imageUri], { stdio: ['ignore', 'pipe', 'pipe'] })
+        const [inspectCode, inspectStdout] = await Promise.all([
+          new Promise<number | null>(resolve => dockerInspect.on('close', resolve)),
+          new Response(dockerInspect.stdout).text(),
+        ])
+        if (inspectCode === 0) {
+          const candidate = inspectStdout.trim()
+          if (/^sha256:[a-f0-9]{64}$/i.test(candidate))
+            imageSha256 = candidate
+        }
+
+        const releaseDecision = await enforceContainerReleaseSecurity(config, {
+          imageRef: imageUri,
+          imageSha256,
+          artifactRoot: context,
+          invocationId: releaseInvocationId,
+          startedAt: releaseStartedAt,
+        })
+        if (!releaseDecision.allowed) {
+          cli.error(`\n✗ ECS service update blocked by release security policy: ${releaseDecision.explanation}`)
+          cli.info('The image remains in ECR for investigation. Remediate and rebuild it, or create an authorized, time-limited waiver.')
+          process.exitCode = 1
+          return
+        }
+        cli.success('✓ Release security policy allows the ECS service update\n')
 
         // Step 5: Update ECS service
         const updateSpinner = new cli.Spinner('Updating ECS service...')
