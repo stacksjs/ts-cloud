@@ -1,0 +1,186 @@
+<script server>
+let __d = null
+try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
+const mode = __d?.mode ?? 'server'
+const project = __d?.project ?? { name: 'Project' }
+const environment = __d?.environment ?? 'production'
+</script>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  @include('./partials/head', { title: 'ts-cloud - Git integrations' })
+  <style>
+    .source-hero { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:start }
+    .source-actions,.row-actions { display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end }
+    .source-stats { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px }
+    .source-stat strong { display:block;font-size:1.8rem;margin-top:10px }
+    .source-layout { display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.8fr);gap:18px;align-items:start }
+    .source-stack,.connection-list,.repository-list,.binding-list,.webhook-list,.delivery-list { display:grid;gap:12px }
+    .source-sidebar { position:sticky;top:20px }
+    .connection,.repository,.binding,.webhook { border:1px solid var(--line);border-radius:11px;background:var(--panel);padding:16px;display:grid;gap:12px }
+    .connection-head,.repository-head,.binding-head,.webhook-head { display:flex;gap:12px;justify-content:space-between;align-items:flex-start }
+    .connection-title { display:flex;gap:10px;align-items:center }.provider-mark { display:grid;place-items:center;width:34px;height:34px;border-radius:9px;background:rgba(90,139,224,.12);color:var(--accent);font-weight:800;text-transform:uppercase }
+    .connection h3,.repository h3,.binding h3,.webhook h3 { margin:0;font-size:1rem }.connection p,.repository p,.binding p,.webhook p { margin:3px 0 0 }
+    .source-meta { display:flex;gap:7px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:.78rem }
+    .source-filters { display:grid;grid-template-columns:minmax(180px,1fr) minmax(150px,.35fr);gap:8px;margin-bottom:12px }
+    .source-filters input,.source-filters select,.source-dialog input,.source-dialog select,.source-dialog textarea { width:100%;min-width:0;background:rgba(255,255,255,.045);border:1px solid var(--panel-br);border-radius:8px;padding:9px 10px;color:var(--txt);font:inherit }
+    .source-filters input:focus,.source-filters select:focus,.source-dialog input:focus,.source-dialog select:focus,.source-dialog textarea:focus { outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(90,139,224,.12) }
+    .source-dialog { position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);margin:0;width:min(620px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto;box-sizing:border-box;border:1px solid var(--line);border-radius:12px;background:#111722;color:inherit;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.55) }
+    .source-dialog::backdrop { background:rgba(0,0,0,.68) }.source-dialog form { display:grid;gap:12px }
+    .source-dialog label { display:grid;gap:6px;color:var(--txt3);font-size:.72rem;font-weight:750;letter-spacing:.04em }.source-dialog label :is(input,select,textarea) { color:var(--txt);font-weight:450;letter-spacing:0 }
+    .form-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px }.check-grid { display:grid;grid-template-columns:1fr 1fr;gap:9px }.check-grid label { display:flex;align-items:center;gap:8px;font-size:.82rem }.check-grid input { width:auto }
+    .dialog-actions { display:flex;gap:8px;justify-content:flex-end }.status-line { min-height:1.3em;color:var(--muted) }
+    .empty-source { padding:26px;text-align:center;border:1px dashed var(--line);border-radius:10px;color:var(--muted) }
+    .delivery { display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font-size:.78rem;border-top:1px solid var(--line);padding-top:8px }
+    .impact-list { display:grid;gap:8px;max-height:240px;overflow:auto }.impact { padding:10px;border:1px solid var(--line);border-radius:8px }
+    .secret-note { border-left:2px solid #e4c35e;padding-left:10px;color:var(--muted) }
+    @media (max-width:900px) { .source-layout,.source-hero { grid-template-columns:1fr }.source-sidebar { position:static }.source-stats { grid-template-columns:1fr 1fr }.source-actions { justify-content:flex-start } }
+    @media (max-width:560px) { .source-stats,.source-filters,.form-grid,.check-grid { grid-template-columns:1fr }.connection-head,.repository-head,.binding-head,.webhook-head { display:grid }.row-actions { justify-content:flex-start } }
+  </style>
+</head>
+<body>
+  @include('./partials/nav', { active: 'integrations', name: project.name, env: environment })
+  <div class="wrap" id="main-content">
+    <div class="crumbs"><a href="{{ mode === 'serverless' ? '/serverless' : '/' }}">{{ project.name }}</a> <span class="sep">/</span> Git integrations</div>
+    <header class="page source-hero">
+      <div><h1>Git integrations</h1><p>Connect source once, bind repositories to applications, and deploy verified pushes or pull requests.</p></div>
+      <div class="source-actions"><button class="btn ghost" id="refresh-sources" type="button">Refresh</button><button class="btn" id="add-connection" type="button">Add connection</button></div>
+    </header>
+
+    <div class="source-stats section" aria-label="Git integration summary">
+      <div class="panel source-stat"><span class="note">Connections</span><strong id="connection-count">—</strong><small>Provider credentials</small></div>
+      <div class="panel source-stat"><span class="note">Repositories</span><strong id="repository-count">—</strong><small>Authorized sources</small></div>
+      <div class="panel source-stat"><span class="note">Auto deploy</span><strong id="binding-count">—</strong><small>Active bindings</small></div>
+      <div class="panel source-stat"><span class="note">Needs attention</span><strong id="unhealthy-count">—</strong><small>Connections or hooks</small></div>
+    </div>
+
+    <div class="source-layout section">
+      <main class="source-stack">
+        <section>
+          <div class="section-heading"><div><h2>Connections</h2><p class="note">Credentials stay encrypted and are never returned to this page.</p></div></div>
+          <div class="connection-list" id="connection-list"><div class="empty-source">Loading connections…</div></div>
+        </section>
+        <section>
+          <div class="section-heading"><div><h2>Repositories</h2><p class="note">Browse only repositories granted to a connection.</p></div></div>
+          <div class="source-filters"><input id="repository-search" type="search" placeholder="Search repositories…" aria-label="Search repositories"><select id="repository-connection" aria-label="Connection"><option value="">All connections</option></select></div>
+          <div class="repository-list" id="repository-list"><div class="empty-source">No repositories synchronized yet.</div></div>
+        </section>
+      </main>
+      <aside class="source-stack source-sidebar">
+        <section class="panel"><div class="section-heading"><div><h2>Application bindings</h2><p class="note">Branch, tag, root, and watched-path rules.</p></div></div><div class="binding-list" id="binding-list"><div class="note">No source bindings.</div></div></section>
+        <section class="panel"><div class="section-heading"><div><h2>Webhook delivery</h2><p class="note">Verified, replay-safe event history.</p></div></div><div class="webhook-list" id="webhook-list"><div class="note">No webhooks configured.</div></div></section>
+      </aside>
+    </div>
+    <p class="status-line" id="page-status" role="status"></p>
+  </div>
+
+  <dialog class="source-dialog" id="connection-dialog">
+    <form id="connection-form">
+      <div><h2>Add Git connection</h2><p class="note">Request read-only repository metadata/content and webhook scopes whenever the provider permits it.</p></div>
+      <div class="form-grid"><label>Provider<select name="provider"><option value="github">GitHub App</option><option value="gitlab">GitLab</option><option value="bitbucket">Bitbucket</option><option value="gitea">Gitea</option><option value="generic_https">Generic HTTPS</option><option value="generic_ssh">Generic SSH</option></select></label><label>Connection name<input name="name" maxlength="80" required placeholder="Production GitHub"></label></div>
+      <div class="form-grid"><label>Host<input name="host" type="url" required value="https://github.com"></label><label>Owner / workspace<input name="owner" placeholder="acme"></label></div>
+      <div data-app-fields><div class="form-grid"><label>GitHub App ID<input name="appId" autocomplete="off"></label><label>Installation ID<input name="installationId" autocomplete="off"></label></div><label>GitHub App private key<textarea name="privateKey" rows="4" autocomplete="off" spellcheck="false"></textarea></label></div>
+      <div data-token-fields hidden><div class="form-grid"><label>Access token<input name="token" type="password" autocomplete="new-password"></label><label>Token username (optional)<input name="username" autocomplete="off"></label></div></div>
+      <div data-generic-fields hidden><div class="form-grid"><label>Repository name<input name="repositoryFullName" placeholder="acme/web"></label><label>Default branch<input name="defaultBranch" value="main"></label></div><label>Credential-free clone URL<input name="repositoryUrl" placeholder="https://git.example/acme/web.git"></label></div>
+      <div data-ssh-fields hidden><label>Deploy key name<input name="deployKeyName" maxlength="80" placeholder="Readonly production"></label><label>Public key<textarea name="publicKey" rows="2" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 …"></textarea></label><label>Private key<textarea name="deployPrivateKey" rows="4" autocomplete="off" spellcheck="false" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></label><div class="form-grid"><label>SSH host<input name="sshHost" placeholder="git.example"></label><label>Pinned host key<textarea name="hostKey" rows="2" autocomplete="off" spellcheck="false" placeholder="ssh-ed25519 …"></textarea></label></div></div>
+      <p class="secret-note">Tokens and private keys are encrypted at rest. Clone URLs containing credentials are rejected.</p>
+      <div class="dialog-actions"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="submit">Connect</button></div><p class="status-line" id="connection-status" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog class="source-dialog" id="binding-dialog">
+    <form id="binding-form">
+      <div><h2>Bind repository</h2><p class="note" id="binding-repository"></p></div><input type="hidden" name="connectionId"><input type="hidden" name="repositoryId"><input type="hidden" name="repositoryFullName">
+      <div class="form-grid"><label>Application<select name="resourceId" required></select></label><label>Deploy branch<select name="defaultBranch" required><option>main</option></select></label></div>
+      <div class="form-grid"><label>Branch rule<input name="branchRule" placeholder="main or release/**"></label><label>Tag rule<input name="tagRule" placeholder="v*"></label></div>
+      <div class="form-grid"><label>Monorepo root<input name="monorepoRoot" value="." placeholder="apps/web"></label><label>SSH deploy key<select name="deployKeyId"><option value="">Provider credential / none</option></select></label></div>
+      <div class="form-grid"><label>Include paths<textarea name="includePaths" rows="3" placeholder="apps/web/**&#10;packages/shared/**"></textarea></label><label>Exclude paths<textarea name="excludePaths" rows="3" placeholder="**/*.md&#10;docs/**"></textarea></label></div>
+      <div class="form-grid"><label>Clone history<select name="cloneDepth"><option value="20">Shallow · 20 commits</option><option value="1">Shallow · latest commit</option><option value="">Full history</option></select></label><label>Event types<select name="events"><option value="push,pr">Push + pull request</option><option value="push">Push only</option><option value="pr">Pull request only</option></select></label></div>
+      <div class="check-grid"><label><input type="checkbox" name="submodules"> Include submodules</label><label><input type="checkbox" name="autoDeploy" checked> Auto-deploy pushes</label></div>
+      <div class="dialog-actions"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="submit">Create binding</button></div><p class="status-line" id="binding-status" role="status"></p>
+    </form>
+  </dialog>
+
+  <dialog class="source-dialog" id="rotate-dialog"><form id="rotate-form"><div><h2>Rotate credential</h2><p class="note" id="rotate-name"></p></div><input type="hidden" name="id"><label>Replacement access token<input name="token" type="password" autocomplete="new-password"></label><label>Credential expiry (optional)<input name="expiresAt" type="datetime-local"></label><p class="secret-note">The old encrypted credential is replaced immediately. Test the connection after rotation.</p><div class="dialog-actions"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn" type="submit">Rotate</button></div><p class="status-line" id="rotate-status"></p></form></dialog>
+
+  <dialog class="source-dialog" id="disconnect-dialog"><form id="disconnect-form"><div><h2>Disconnect source</h2><p class="note">Dependent automatic deploys will be disabled; they never fall back to another credential.</p></div><input type="hidden" name="id"><div class="impact-list" id="impact-list"></div><div class="dialog-actions"><button class="btn ghost" type="button" data-close>Cancel</button><button class="btn danger" type="submit">Disconnect and disable</button></div><p class="status-line" id="disconnect-status"></p></form></dialog>
+
+  <script>
+  (() => {
+    const state = { data: null }
+    const status = document.querySelector('#page-status')
+    const connectionList = document.querySelector('#connection-list'), repositoryList = document.querySelector('#repository-list'), bindingList = document.querySelector('#binding-list'), webhookList = document.querySelector('#webhook-list')
+    const request = async (path, options = {}) => { const response = await fetch(path, { credentials:'same-origin', ...options }); const body = await response.json().catch(() => ({})); if (!response.ok) { const error = new Error(body.error || `Request failed (${response.status})`); error.stepUpRequired = body.stepUpRequired; throw error } return body }
+    const node = (tag, cls, text) => { const value = document.createElement(tag); if (cls) value.className = cls; if (text != null) value.textContent = text; return value }
+    const formatDate = value => value ? new Date(value).toLocaleString() : 'never'
+    const tone = value => ['healthy','active','enqueued','verified'].includes(value) ? 'ok' : ['degraded','expired','failed','rejected','invalid'].includes(value) ? 'bad' : 'warn'
+    const connection = id => state.data.connections.find(item => item.id === id)
+    const lines = value => String(value || '').split(/\r?\n|,/).map(item => item.trim()).filter(Boolean)
+    const api = (path, method, body) => request(path, { method, headers:{'content-type':'application/json'}, body:JSON.stringify(body) })
+    const setStatus = (element, message, bad = false) => { element.textContent = message; element.style.color = bad ? '#ff858c' : '' }
+
+    function badge(value) { const pill = node('span', `pill ${tone(value)}`, value); return pill }
+    function action(label, handler, cls = 'btn ghost sm') { const button = node('button', cls, label); button.type = 'button'; button.addEventListener('click', handler); return button }
+    function renderSummary() {
+      document.querySelector('#connection-count').textContent = state.data.connections.length
+      document.querySelector('#repository-count').textContent = state.data.repositories.length
+      document.querySelector('#binding-count').textContent = state.data.bindings.filter(item => item.status === 'active' && item.autoDeploy).length
+      document.querySelector('#unhealthy-count').textContent = state.data.connections.filter(item => !['healthy','pending'].includes(item.status)).length + state.data.webhooks.filter(item => item.status === 'degraded').length
+    }
+    function renderConnections() {
+      connectionList.replaceChildren()
+      if (!state.data.connections.length) { connectionList.append(node('div','empty-source','Connect GitHub, GitLab, Bitbucket, Gitea, or a generic Git host.')); return }
+      const select = document.querySelector('#repository-connection'); const previous = select.value; select.replaceChildren(new Option('All connections',''))
+      for (const item of state.data.connections) {
+        select.append(new Option(item.name,item.id))
+        const card=node('article','connection'), head=node('div','connection-head'), title=node('div','connection-title'), mark=node('span','provider-mark',item.provider.split('_')[0].slice(0,2)), copy=node('div')
+        copy.append(node('h3','',item.name),node('p','note',`${item.provider.replace('_',' ')} · ${item.host}${item.owner ? ` · ${item.owner}` : ''}`)); title.append(mark,copy); head.append(title,badge(item.status)); card.append(head)
+        const keys=state.data.deployKeys.filter(key=>key.connectionId===item.id);const meta=node('div','source-meta'); meta.append(node('span','',`Scopes: ${item.grantedScopes.join(', ') || 'not reported'}`),node('span','',`Tested: ${formatDate(item.lastTestedAt)}`),node('span','',`Synced: ${formatDate(item.lastSyncedAt)}`),node('span','',`Deploy keys: ${keys.length}`)); card.append(meta)
+        for(const key of keys){const keyRow=node('div','source-meta');keyRow.append(node('span','',`${key.name} · ${key.publicKeyFingerprint.slice(0,22)}…`),action('Revoke key',()=>revokeDeployKey(key),'btn danger ghost sm'));card.append(keyRow)}
+        if (item.healthMessage) card.append(node('p','note',item.healthMessage))
+        const actions=node('div','row-actions'); actions.append(action('Test',()=>connectionAction(item,'test')),action('Sync repositories',()=>syncRepositories(item)),action('Rotate',()=>openRotate(item)),action('Disconnect',()=>openDisconnect(item),'btn danger ghost sm')); card.append(actions); connectionList.append(card)
+      }
+      select.value = state.data.connections.some(item => item.id === previous) ? previous : ''
+    }
+    function renderRepositories() {
+      const search=document.querySelector('#repository-search').value.toLowerCase(), selected=document.querySelector('#repository-connection').value
+      repositoryList.replaceChildren(); const values=state.data.repositories.filter(item => (!selected || item.connectionId === selected) && item.fullName.toLowerCase().includes(search))
+      if (!values.length) { repositoryList.append(node('div','empty-source','No repositories match this view. Synchronize a hosted connection or add a manual generic repository.')); return }
+      for (const item of values) { const card=node('article','repository'),head=node('div','repository-head'),copy=node('div');copy.append(node('h3','',item.fullName),node('p','note',`${connection(item.connectionId)?.name || 'Connection'} · default ${item.defaultBranch}`));head.append(copy,badge(item.visibility));card.append(head);const meta=node('div','source-meta');meta.append(node('span','',item.archived?'Archived':'Active repository'),node('span','',`Synced ${formatDate(item.syncedAt)}`));card.append(meta);const actions=node('div','row-actions');actions.append(action('Browse branches',()=>browseBranches(item)),action('Bind application',()=>openBinding(item),'btn sm'),action('Configure webhook',()=>createWebhook(item)));card.append(actions);repositoryList.append(card) }
+    }
+    function renderBindings() {
+      bindingList.replaceChildren(); if (!state.data.bindings.length) { bindingList.append(node('div','note','No source bindings.')); return }
+      for (const item of state.data.bindings) { const card=node('article','binding'),head=node('div','binding-head'),copy=node('div');copy.append(node('h3','',item.repositoryFullName),node('p','note',`${item.branchRule || item.defaultBranch} · ${item.monorepoRoot}`));head.append(copy,badge(item.status));card.append(head);const meta=node('div','source-meta');meta.append(node('span','',item.autoDeploy?'Push deploy on':'Push deploy off'),node('span','',item.pullRequestPreviews?'PR previews on':'PR previews off'),node('span','',item.cloneDepth?`Depth ${item.cloneDepth}`:'Full clone'));card.append(meta);if(item.includePaths.length||item.excludePaths.length)card.append(node('p','note',`Watch ${item.includePaths.join(', ') || 'all'} · ignore ${item.excludePaths.join(', ') || 'none'}`));const actions=node('div','row-actions');actions.append(action(item.autoDeploy?'Pause auto-deploy':'Enable auto-deploy',()=>updateBinding(item,{autoDeploy:!item.autoDeploy})),action(item.status==='active'?'Disable':'Enable',()=>updateBinding(item,{status:item.status==='active'?'disabled':'active',disabledReason:item.status==='active'?'Disabled by operator':''})));card.append(actions);bindingList.append(card) }
+    }
+    function renderWebhooks() {
+      webhookList.replaceChildren(); if(!state.data.webhooks.length){webhookList.append(node('div','note','No webhooks configured.'));return}
+      for(const item of state.data.webhooks){const card=node('article','webhook'),head=node('div','webhook-head'),copy=node('div');copy.append(node('h3','',item.repositoryFullName),node('p','note',`${item.events.join(' + ')} · provider ${item.providerWebhookId || 'manual/pending'}`));head.append(copy,badge(item.status));card.append(head);if(item.healthMessage)card.append(node('p','note',item.healthMessage));const actions=node('div','row-actions');actions.append(action('Reconcile',()=>webhookAction(item,'PATCH')),action('Remove',()=>webhookAction(item,'DELETE'),'btn danger ghost sm'));card.append(actions);const deliveries=node('div','delivery-list');for(const delivery of (item.deliveries||[]).slice(0,5)){const row=node('div','delivery');row.append(badge(delivery.status),node('span','',`${delivery.event}${delivery.commitSha?` · ${delivery.commitSha.slice(0,8)}`:''}`),node('time','note',formatDate(delivery.receivedAt)));deliveries.append(row)}if(!item.deliveries?.length)deliveries.append(node('div','note','No deliveries yet.'));card.append(deliveries);webhookList.append(card)}
+    }
+    function render(){renderSummary();renderConnections();renderRepositories();renderBindings();renderWebhooks()}
+    async function load(){setStatus(status,'Loading integrations…');try{state.data=await request(`/api/sources${location.search}`);render();setStatus(status,'')}catch(error){setStatus(status,error.message,true)}}
+    async function connectionAction(item,actionName){setStatus(status,`${actionName==='test'?'Testing':'Updating'} ${item.name}…`);try{await api(`/api/sources/connections${location.search}`,'PATCH',{id:item.id,action:actionName});await load()}catch(error){setStatus(status,error.message,true)}}
+    async function syncRepositories(item){setStatus(status,`Synchronizing ${item.name}…`);try{await api(`/api/sources/repositories/sync${location.search}`,'POST',{connectionId:item.id});await load()}catch(error){setStatus(status,error.message,true)}}
+    async function browseBranches(repo){setStatus(status,`Loading branches for ${repo.fullName}…`);try{const query=new URLSearchParams({connectionId:repo.connectionId,repositoryId:repo.id,repository:repo.fullName,type:'branches'});const key=state.data.deployKeys.find(item=>item.connectionId===repo.connectionId);if(key)query.set('deployKeyId',key.id);const result=await request(`/api/sources/references?${query}`);setStatus(status,result.refs.length?`Branches: ${result.refs.map(item=>item.name).join(', ')}`:'No branches returned.')}catch(error){setStatus(status,error.message,true)}}
+    async function createWebhook(repo){setStatus(status,`Configuring webhook for ${repo.fullName}…`);try{const result=await api(`/api/sources/webhooks${location.search}`,'POST',{connectionId:repo.connectionId,repositoryId:repo.id,repositoryFullName:repo.fullName,events:['push','pull_request']});await load();setStatus(status,result.endpoint?`Webhook ready: ${result.endpoint}`:'Webhook saved. Configure a public base URL to reconcile it.')}catch(error){setStatus(status,error.message,true)}}
+    async function updateBinding(item,changes){try{await api(`/api/sources/bindings${location.search}`,'PATCH',{id:item.id,version:item.version,...changes});await load()}catch(error){setStatus(status,error.message,true)}}
+    async function webhookAction(item,method){setStatus(status,`${method==='PATCH'?'Reconciling':'Removing'} webhook…`);try{await api(`/api/sources/webhooks${location.search}`,method,{id:item.id});await load()}catch(error){setStatus(status,error.message,true)}}
+    async function revokeDeployKey(key){if(!confirm(`Revoke ${key.name}? Every binding using it will be disabled.`))return;setStatus(status,`Revoking ${key.name}…`);try{await api(`/api/sources/deploy-keys${location.search}`,'DELETE',{id:key.id});await load()}catch(error){setStatus(status,error.message,true)}}
+
+    const connectionDialog=document.querySelector('#connection-dialog'),connectionForm=document.querySelector('#connection-form')
+    function providerFields(){const provider=connectionForm.elements.provider.value;const defaults={github:'https://github.com',gitlab:'https://gitlab.com',bitbucket:'https://bitbucket.org',gitea:'https://gitea.com',generic_https:'https://git.example',generic_ssh:'https://git.example'};connectionForm.elements.host.value=defaults[provider];connectionForm.querySelector('[data-app-fields]').hidden=provider!=='github';connectionForm.querySelector('[data-token-fields]').hidden=provider==='github'||provider==='generic_ssh';connectionForm.querySelector('[data-generic-fields]').hidden=!provider.startsWith('generic_');connectionForm.querySelector('[data-ssh-fields]').hidden=provider!=='generic_ssh'}
+    document.querySelector('#add-connection').addEventListener('click',()=>{connectionForm.reset();providerFields();connectionDialog.showModal()});connectionForm.elements.provider.addEventListener('change',providerFields)
+    connectionForm.addEventListener('submit',async event=>{event.preventDefault();const out=document.querySelector('#connection-status'),data=Object.fromEntries(new FormData(connectionForm));data.authKind=data.provider==='github'?'app':data.provider==='generic_ssh'?'deploy_key':'access_token';setStatus(out,'Encrypting and saving connection…');try{await api(`/api/sources/connections${location.search}`,'POST',data);connectionForm.reset();connectionDialog.close();await load()}catch(error){setStatus(out,error.message,true)}})
+
+    const bindingDialog=document.querySelector('#binding-dialog'),bindingForm=document.querySelector('#binding-form')
+    async function openBinding(repo){bindingForm.reset();bindingForm.elements.connectionId.value=repo.connectionId;bindingForm.elements.repositoryId.value=repo.id;bindingForm.elements.repositoryFullName.value=repo.fullName;bindingForm.elements.monorepoRoot.value='.';document.querySelector('#binding-repository').textContent=repo.fullName;const resources=bindingForm.elements.resourceId;resources.replaceChildren();for(const item of state.data.resources)resources.append(new Option(item.name,item.id));const deployKeys=bindingForm.elements.deployKeyId;deployKeys.replaceChildren(new Option('Provider credential / none',''));const availableKeys=state.data.deployKeys.filter(item=>item.connectionId===repo.connectionId);for(const key of availableKeys)deployKeys.append(new Option(`${key.name} · ${key.host}`,key.id));if(connection(repo.connectionId)?.provider==='generic_ssh'&&availableKeys[0])deployKeys.value=availableKeys[0].id;const branches=bindingForm.elements.defaultBranch;branches.replaceChildren(new Option(repo.defaultBranch,repo.defaultBranch));bindingDialog.showModal();try{const query=new URLSearchParams({connectionId:repo.connectionId,repositoryId:repo.id,repository:repo.fullName,type:'branches'});if(deployKeys.value)query.set('deployKeyId',deployKeys.value);const result=await request(`/api/sources/references?${query}`);branches.replaceChildren(...result.refs.map(item=>new Option(item.name,item.name)));branches.value=result.refs.some(item=>item.name===repo.defaultBranch)?repo.defaultBranch:result.refs[0]?.name||repo.defaultBranch}catch(error){setStatus(document.querySelector('#binding-status'),`Branch discovery unavailable: ${error.message}`,true)}}
+    bindingForm.addEventListener('submit',async event=>{event.preventDefault();const out=document.querySelector('#binding-status'),data=Object.fromEntries(new FormData(bindingForm));data.includePaths=lines(data.includePaths);data.excludePaths=lines(data.excludePaths);data.submodules=bindingForm.elements.submodules.checked;data.autoDeploy=data.events!=='pr';data.pullRequestPreviews=data.events!=='push';data.cloneDepth=data.cloneDepth?Number(data.cloneDepth):undefined;setStatus(out,'Creating source binding…');try{await api(`/api/sources/bindings${location.search}`,'POST',data);bindingDialog.close();await load()}catch(error){setStatus(out,error.message,true)}})
+
+    const rotateDialog=document.querySelector('#rotate-dialog'),rotateForm=document.querySelector('#rotate-form');function openRotate(item){rotateForm.reset();rotateForm.elements.id.value=item.id;document.querySelector('#rotate-name').textContent=item.name;rotateDialog.showModal()}rotateForm.addEventListener('submit',async event=>{event.preventDefault();const out=document.querySelector('#rotate-status'),data=Object.fromEntries(new FormData(rotateForm));data.action='rotate';if(data.expiresAt)data.expiresAt=new Date(data.expiresAt).toISOString();setStatus(out,'Rotating encrypted credential…');try{await api(`/api/sources/connections${location.search}`,'PATCH',data);rotateForm.reset();rotateDialog.close();await load()}catch(error){setStatus(out,error.message,true)}})
+    const disconnectDialog=document.querySelector('#disconnect-dialog'),disconnectForm=document.querySelector('#disconnect-form');async function openDisconnect(item){const out=document.querySelector('#disconnect-status');disconnectForm.elements.id.value=item.id;document.querySelector('#impact-list').replaceChildren(node('div','note','Loading affected applications…'));disconnectDialog.showModal();try{const result=await api(`/api/sources/connections${location.search}`,'DELETE',{id:item.id,preview:true});const list=document.querySelector('#impact-list');list.replaceChildren();if(!result.affectedBindings.length)list.append(node('div','note','No active application bindings.'));for(const binding of result.affectedBindings)list.append(node('div','impact',`${binding.repositoryFullName} · ${binding.branchRule||binding.defaultBranch} · ${binding.monorepoRoot}`));setStatus(out,`${result.affectedBindings.length} binding${result.affectedBindings.length===1?'':'s'} will be disabled.`)}catch(error){setStatus(out,error.message,true)}}disconnectForm.addEventListener('submit',async event=>{event.preventDefault();const out=document.querySelector('#disconnect-status');setStatus(out,'Disconnecting and disabling dependents…');try{await api(`/api/sources/connections${location.search}`,'DELETE',{id:disconnectForm.elements.id.value});disconnectDialog.close();await load()}catch(error){setStatus(out,error.message,true)}})
+    for(const button of document.querySelectorAll('[data-close]'))button.addEventListener('click',()=>button.closest('dialog').close())
+    document.querySelector('#refresh-sources').addEventListener('click',load);document.querySelector('#repository-search').addEventListener('input',renderRepositories);document.querySelector('#repository-connection').addEventListener('change',renderRepositories)
+    load()
+  })()
+  </script>
+</body>
+</html>
