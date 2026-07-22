@@ -1,48 +1,26 @@
 <script server>
 // ts-cloud serverless (Vapor-style) dashboard. Real data is injected at build
-// time via TSCLOUD_DASHBOARD_DATA (run `cloud dashboard:build`); the sample
-// values below render the design when nothing is injected. Sections drill into
+// time via TSCLOUD_DASHBOARD_DATA (run `cloud dashboard:build`). Missing data
+// remains explicit and is never replaced by samples. Sections drill into
 // dedicated pages under /serverless/*, and the header operations run live
 // against AWS via /api/serverless/*.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') }
 catch { __d = null }
 
-const app = __d?.app ?? {
-  name: 'acme', env: 'production', region: 'us-east-1', runtime: 'php-8.3 (fpm)',
-  url: 'https://acme.com', build: 'a4d63d2', deployedAt: '12m ago',
-}
+const dataLive = !!__d
+const app = __d?.app ?? { name: 'Project', env: 'production', region: 'unavailable', runtime: 'unavailable', url: '#', build: 'unavailable', deployedAt: 'unavailable' }
 const maintenance = __d?.maintenance ?? { enabled: false }
-const metrics = __d?.metrics ?? { invocations: 184320, errorRatePct: 0.12, p95Ms: 86, coldStartPct: 1.8, concurrency: 42, estCostUsd: 7.4 }
-const functions = __d?.functions ?? [
-  { key: 'http', name: 'acme-production-http', memory: 1024, timeout: 28, runtime: 'provided.al2023', invocations: 171200, errors: 21, p95: 86, status: 'active' },
-  { key: 'queue', name: 'acme-production-queue', memory: 1024, timeout: 120, runtime: 'provided.al2023', invocations: 12840, errors: 3, p95: 240, status: 'active' },
-  { key: 'cli', name: 'acme-production-cli', memory: 1024, timeout: 900, runtime: 'provided.al2023', invocations: 1440, errors: 0, p95: 1100, status: 'active' },
-]
-const queues = __d?.queues ?? [
-  { name: 'default', visible: 0, inFlight: 2, processed: 12830, dlq: 0 },
-  { name: 'emails', visible: 4, inFlight: 1, processed: 9210, dlq: 1 },
-]
-const scheduler = __d?.scheduler ?? { enabled: true, expression: 'rate(1 minute)', lastRun: '36s ago' }
-const dataServices = __d?.dataServices ?? [
-  { name: 'Aurora Serverless v2', detail: 'acme-production-db · 0.5-4 ACU', status: 'available' },
-  { name: 'RDS Proxy', detail: 'acme-production-proxy', status: 'available' },
-  { name: 'ElastiCache (redis)', detail: 'cache.t4g.micro', status: 'available' },
-]
-const assets = __d?.assetsInfo ?? { bucket: 'acme-production-assets', cdn: 'd2x1.cloudfront.net', assetUrl: 'https://d2x1.cloudfront.net/a4d63d2' }
-const waf = __d?.waf ?? { enabled: true, rules: ['rate-limit', 'common', 'sqlInjection'], blocked24h: 318 }
+const metrics = __d?.metrics ?? { invocations: 0, errorRatePct: 0, p95Ms: 0, coldStartPct: 0, concurrency: 0, estCostUsd: 0 }
+const functions = __d?.functions ?? []
+const queues = __d?.queues ?? []
+const scheduler = __d?.scheduler ?? { enabled: false, expression: 'unavailable', lastRun: 'unavailable' }
+const dataServices = __d?.dataServices ?? []
+const assets = __d?.assetsInfo ?? { bucket: 'unavailable', cdn: 'unavailable', assetUrl: '#' }
+const waf = __d?.waf ?? { enabled: false, rules: [], blocked24h: 0 }
 const wafRules = __d?.wafRules ?? []
-const deployments = __d?.deploymentsDetail ?? [
-  { sha: 'a4d63d2', status: 'success', when: '12m ago', took: '41s', by: 'chris' },
-  { sha: '9557430', status: 'success', when: '2h ago', took: '38s', by: 'ci' },
-  { sha: 'c38fc09', status: 'success', when: '1d ago', took: '44s', by: 'ci' },
-  { sha: '5a2b284', status: 'rolled-back', when: '1d ago', took: '12s', by: 'chris' },
-]
-const secrets = (__d?.secretsList ?? [
-  { key: 'APP_KEY', updated: '14d ago' },
-  { key: 'DB_PASSWORD', updated: '14d ago' },
-  { key: 'STRIPE_SECRET', updated: '3d ago' },
-])
+const deployments = __d?.deploymentsDetail ?? []
+const secrets = __d?.secretsList ?? []
 const wafRuleText = waf.rules ? waf.rules.join(', ') : (wafRules.length ? wafRules.map(r => r.name).join(', ') : '-')
 function statusTone(status) {
   if (status === 'active' || status === 'available' || status === 'success' || status === 'on') return 'ok'
@@ -123,7 +101,7 @@ async function runAppCmd() {
         </div>
       </div>
       <div class="header-actions">
-        <span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>
+        @if (dataLive)<span class="pill" :class="maint() ? 'warn' : 'ok'">{{ maint() ? 'maintenance' : 'live' }}</span>@else<span class="pill warn">data unavailable</span>@endif
         <button class="btn ghost sm" type="button" @show="!maint()" @click="askOp('maintenance:on', '{{ app.name }}', 'enable maintenance mode for {{ app.name }}', 'maintenance')">Maintenance</button>
         <button class="btn ghost sm" type="button" @show="maint()" @click="askOp('maintenance:off', '{{ app.name }}', 'bring {{ app.name }} back live', 'live')">Go live</button>
         <button class="btn ghost sm" type="button" @click="askOp('rollback', '{{ app.name }}', 'roll back {{ app.name }} to the previous build', 'rollback')">Roll back</button>
@@ -138,22 +116,22 @@ async function runAppCmd() {
     <div class="grid cards">
       <a class="panel" href="/serverless/metrics">
         <h3>Invocations (24h)</h3>
-        <div class="stat">{{ fmt(metrics.invocations) }}</div>
-        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.concurrency }} concurrent now</p>
+        <div class="stat">{{ dataLive ? fmt(metrics.invocations) : 'Unavailable' }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive ? metrics.concurrency + ' concurrent now' : 'No sample data shown' }}</p>
       </a>
       <a class="panel" href="/serverless/metrics">
         <h3>Error Rate</h3>
-        <div class="stat">{{ metrics.errorRatePct }}%</div>
-        <div class="bar"><i style="width: {{ Math.min(100, metrics.errorRatePct * 10) }}%"></i></div>
+        <div class="stat">{{ dataLive ? metrics.errorRatePct + '%' : 'Unavailable' }}</div>
+        <div class="bar"><i style="width: {{ dataLive ? Math.min(100, metrics.errorRatePct * 10) : 0 }}%"></i></div>
       </a>
       <a class="panel" href="/serverless/metrics">
         <h3>p95 Latency</h3>
-        <div class="stat">{{ metrics.p95Ms }} <small>ms</small></div>
-        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ metrics.coldStartPct }}% cold starts</p>
+        <div class="stat">{{ dataLive ? metrics.p95Ms + ' ms' : 'Unavailable' }}</div>
+        <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">{{ dataLive ? metrics.coldStartPct + '% cold starts' : 'Open Observability for source status' }}</p>
       </a>
       <a class="panel" href="/serverless/cost">
         <h3>Est. Cost (24h)</h3>
-        <div class="stat">${{ metrics.estCostUsd }}</div>
+        <div class="stat">{{ dataLive ? '$' + metrics.estCostUsd : 'Unavailable' }}</div>
         <p style="color: var(--txt2); font-size: 13px; margin-top: 8px;">cost analysis →</p>
       </a>
     </div>

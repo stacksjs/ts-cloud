@@ -3,20 +3,13 @@ import { renderResourceBars } from '../../src/charts.ts'
 
 // ts-cloud server health view. Real data is injected at build time via
 // TSCLOUD_DASHBOARD_DATA (see deploy/dashboard-data-server.ts); the sample
-// values below render the design when nothing is injected.
+// No fallback samples: missing data must remain visibly unavailable.
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 
-const server = __d?.server ?? {
-  name: 'acme-production-app', provider: 'Hetzner', region: 'fsn1',
-  os: 'Ubuntu 24.04', uptime: '14d 6h', ip: '203.0.113.42',
-}
-const m = __d?.systemMetrics ?? {
-  load: 0.42, cpus: 4,
-  memUsedMb: 2480, memTotalMb: 7860,
-  diskUsedPct: 38, diskUsedGb: 19, diskTotalGb: 50,
-}
-const live = __d ? !!__d?._serverReachable && !__d?.metricsUnavailable : true
+const server = __d?.server ?? { name: 'Server', provider: 'unavailable', region: 'unavailable', os: 'unavailable', uptime: 'unavailable' }
+const m = __d?.systemMetrics ?? { load: 0, cpus: 0, memUsedMb: 0, memTotalMb: 0, diskUsedPct: 0, diskUsedGb: 0, diskTotalGb: 0 }
+const live = !!__d && !!__d?._serverReachable && !__d?.metricsUnavailable
 
 // ── Derived percentages ───────────────────────────────────────────────
 const memPct = live ? Math.min(100, Math.round((m.memUsedMb / Math.max(1, m.memTotalMb)) * 100)) : 0
@@ -63,10 +56,9 @@ const resourceChart = renderResourceBars([
   { label: 'Disk', value: diskPct, detail: live ? `${m.diskUsedGb} / ${m.diskTotalGb} GB` : unavailableNote },
 ], { disabled: !live })
 
-// ── Load trend (sample only - not part of the live metrics payload) ────
-const loadTrend = __d?.loadTrend ?? [22, 28, 31, 26, 40, 38, 33, 45, 41, 30, 27, 35, 48, 52, 39, 33, 29, 44, 50, 47, 36, 31, 28, 34]
+const loadTrend = __d?.loadTrend ?? []
 const maxLoad = Math.max(...loadTrend, 1)
-const trendPeak = Math.max(...loadTrend)
+const trendPeak = loadTrend.length ? Math.max(...loadTrend) : 0
 function barPct(v) { return Math.round((v / maxLoad) * 100) }
 function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7 ? 'hot' : '' }
 </script>
@@ -165,7 +157,7 @@ function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7
     <div class="section">
       <h2>CPU load trend</h2>
       <div class="chart panel">
-        @if (live)
+        @if (live && loadTrend.length)
           <div class="spark">
             @foreach (loadTrend as v)
               <i class="{{ barTone(v) }}" style="height: {{ barPct(v) }}%"></i>
@@ -174,7 +166,7 @@ function barTone(v) { const r = v / maxLoad; return r >= 0.9 ? 'peak' : r >= 0.7
           <div class="xaxis"><span>-24 snapshots</span><span>peak {{ trendPeak }}% · now</span></div>
           <p class="note">% of CPU capacity · refresh with <span class="mono">cloud server:monitoring {{ server.name }}</span></p>
         @else
-          <div class="compact empty"><strong>No live trend</strong><span>{{ unavailableNote }}</span></div>
+          <div class="compact empty"><strong>No historical trend</strong><span>Open <a href="/operations/observability">Observability</a> for persisted host metrics, source freshness, timezone, and gaps.</span></div>
         @endif
       </div>
     </div>

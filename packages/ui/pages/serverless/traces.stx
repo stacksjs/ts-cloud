@@ -2,11 +2,7 @@
 let __d = null
 try { __d = JSON.parse(process.env.TSCLOUD_DASHBOARD_DATA || '') } catch { __d = null }
 const app = __d?.app ?? { name: 'acme', env: 'production' }
-const initialTraces = __d?.traces ?? [
-  { id: '1-6630a1b2-abc123', method: 'GET', url: 'https://acme.com/', httpStatus: 200, responseMs: 84, durationMs: 86, status: 'ok' },
-  { id: '1-6630a1c4-def456', method: 'POST', url: 'https://acme.com/checkout', httpStatus: 500, responseMs: 240, durationMs: 512, status: 'fault' },
-  { id: '1-6630a1d9-9a0f21', method: 'GET', url: 'https://acme.com/api/orders', httpStatus: 429, responseMs: 12, durationMs: 12, status: 'throttle' },
-]
+const initialTraces = __d?.traces ?? []
 </script>
 <script client>
 // X-Ray traces for the HTTP function, refreshed over /api/serverless/traces.
