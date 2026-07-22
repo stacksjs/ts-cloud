@@ -56,6 +56,8 @@ curl --fail-with-body \
   "$TS_CLOUD_API_URL/api/v1/deployments"
 ```
 
+The same replay-safe contract is available for guided application creation, including detection, normalized plans, resumable secret-free drafts, bounded artifact uploads, and encrypted registry connections. See [Application onboarding](/features/application-onboarding) for the endpoint map and examples.
+
 ## Progress and event delivery
 
 Use `GET /api/v1/events/stream?projectId=...&after=...` for authenticated server-sent events. The stream sends event sequence IDs, heartbeats while idle, and rechecks token validity while connected. Reconnect with the last observed sequence in `after`.

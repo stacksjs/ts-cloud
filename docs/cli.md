@@ -53,6 +53,21 @@ This page groups the surface by area; the deep dives live in the feature pages.
 
 See [Serverless](/features/serverless) for the full `app` config.
 
+## Application onboarding
+
+| Command | Description |
+|---|---|
+| `cloud app:detect [root]` | Detect frameworks and build strategies without executing project code. |
+| `cloud app:plan <draft> [--secrets <names>]` | Validate and normalize a secret-free application draft. |
+| `cloud app:draft:save <draft>` / `app:drafts` | Save, resume, and list versioned wizard drafts. |
+| `cloud app:import <site> [--connection <id>]` | Convert an existing configured site into an application draft. |
+| `cloud app:export <draft>` | Export a deterministic `ts-cloud.dev/v1` manifest. |
+| `cloud app:deploy <draft> --confirm <environment>` | Confirm the exact target and queue the application operation. |
+| `cloud app:artifact:add <file>` | Inspect and store a bounded ZIP or TAR source artifact. |
+| `cloud app:registry:add/test/rotate/disconnect` | Manage encrypted, write-only private-registry credentials. |
+
+See [Application onboarding](/features/application-onboarding) for draft JSON, build strategy, registry, and API examples.
+
 ## Server management (Forge-style)
 
 | Command | Description |
