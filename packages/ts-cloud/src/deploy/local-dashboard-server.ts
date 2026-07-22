@@ -27,6 +27,7 @@ import { resolveRuntimeInventory, RuntimeOperationService, RuntimeStreamRegistry
 import { loadTelemetryPolicy, saveTelemetryPolicy, telemetryCursor, telemetryEstimatedMonthlyCost, TelemetryStore, type TelemetryAggregation, type TelemetryKind, type TelemetryQuery } from '../telemetry'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createJobQueueHandlers, jobProviderCapability, JobService, JobStore, previewSchedule, synchronizeConfiguredJobs, type JobExecutor } from '../jobs'
+import { AwsAuroraDataAdapter, AwsAuroraTransport, AwsElastiCacheDataAdapter, AwsElastiCacheTransport, AwsRdsDataAdapter, AwsRdsTransport, connectionGuidance, createDataServiceQueueHandlers, dataServiceCapabilities, DataServiceLifecycle, DataServiceStore, EncryptedDataSecretStore, type DataEngine, type DataProvider, type DataService } from '../data-services'
 import { hashPassword, passwordNeedsRehash, verifyPassword } from './dashboard-auth'
 import { ensureDashboardActor, initializeDashboardControlPlane, synchronizeDashboardUsers, trackDashboardOperation } from './dashboard-control-plane'
 import { resolveDashboardData } from './dashboard-data'
@@ -395,6 +396,11 @@ const RECENT_AUTH_MUTATIONS: ReadonlySet<string> = new Set([
   'PATCH /api/jobs',
   'POST /api/jobs/reconcile',
   'POST /api/workers/action',
+  'POST /api/data-services',
+  'POST /api/data-services/action',
+  'POST /api/data-services/dependencies',
+  'POST /api/data-services/management',
+  'POST /api/data-services/reveal',
   'POST /api/sources/webhooks',
   'PATCH /api/sources/webhooks',
   'DELETE /api/sources/webhooks',
@@ -958,6 +964,15 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
   const applicationArtifacts = new ApplicationArtifactStore(controlPlane.store, { cwd })
   const registryConnections = new RegistryConnectionStore(controlPlane.store, { encryptionKey: resolveAuthEncryptionKey(cwd) })
   const operationQueue = new DurableOperationQueue(controlPlane.store, { workerId: `dashboard:${process.pid}` })
+  const dataServiceStore = new DataServiceStore(controlPlane.store)
+  const dataServiceSecrets = new EncryptedDataSecretStore(controlPlane.store, resolveAuthEncryptionKey(cwd))
+  const dataServiceLifecycle = new DataServiceLifecycle(dataServiceStore, operationQueue, dataServiceSecrets)
+  const dataAdapters = {
+    aws_rds: new AwsRdsDataAdapter(new AwsRdsTransport()),
+    aws_aurora: new AwsAuroraDataAdapter(new AwsAuroraTransport()),
+    aws_elasticache: new AwsElastiCacheDataAdapter(new AwsElastiCacheTransport()),
+  } as const
+  const resolveDataAdapter = (service: DataService) => dataAdapters[service.provider as keyof typeof dataAdapters]
   const jobStore = new JobStore(controlPlane.store)
   const jobService = new JobService(jobStore, { queue: operationQueue })
   const previewService = new PreviewEnvironmentService(controlPlane.store)
@@ -1090,7 +1105,7 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             if (checkoutRoot) rmSync(checkoutRoot, { recursive: true, force: true })
           }
         },
-      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
+      }), ...createJobQueueHandlers({ store: jobStore, executor: executeScheduledJob }), ...createDataServiceQueueHandlers({ store: dataServiceStore, secrets: dataServiceSecrets, resolveAdapter: resolveDataAdapter }), ...createReleaseQueueHandlers({ store: controlPlane.store, resolveDriver: options.releaseDriver ?? ((release) => ({ name: `${controlPlane.store.getResource(release.resourceId)?.provider ?? 'provider'} release driver`, capability: () => ({ strategy: release.strategy, supported: false, explanation: 'This dashboard process has no immutable activation driver configured for the target provider.', capacityMultiplier: 1, costImpact: 'none', rollback: 'The previous release remains preserved; configure a release driver before retrying.' }), activate: async () => { throw new Error('Immutable activation driver is not configured') }, rollback: async () => { throw new Error('Immutable rollback driver is not configured') } })), resolveHealthGate: async (name, release) => { const check = alertStore.listHealthChecks(release.projectId, release.environmentId).find(item => item.enabled && item.name === name && (!item.resourceId || item.resourceId === release.resourceId)); if (!check) return { healthy: false, message: `Named health gate ${name} was not found for this release.` }; const outcome = await new HealthCheckRunner(alertStore).runAndEvaluate(check); return { healthy: outcome.result.status === 'healthy', evidence: { healthCheckId: check.id, healthResultId: outcome.result.id, status: outcome.result.status, timings: outcome.result.timings }, message: outcome.result.message } } }) }, {
         parallelism: options.queueParallelism ?? (Number(process.env.TS_CLOUD_QUEUE_PARALLELISM) || 8),
         onError: error => console.error('ts-cloud deployment queue worker failed:', error),
       })
@@ -3445,6 +3460,159 @@ export async function startLocalDashboardServer(options: LocalDashboardServerOpt
             const removed = telemetry.deleteSavedQuery(controlPlane.project.id, principal.actor?.id, String(body.id ?? ''))
             return json({ ok: removed }, removed ? 200 : 404)
           }
+        }
+
+        if (url.pathname === '/api/data-services/capabilities' && req.method === 'GET') {
+          const engine = String(url.searchParams.get('engine') ?? '') as DataEngine,
+            provider = String(url.searchParams.get('provider') ?? '') as DataProvider
+          if (!['postgres', 'mysql', 'mariadb', 'redis', 'mongodb', 'libsql'].includes(engine) || !['aws_rds', 'aws_aurora', 'aws_elasticache', 'server', 'container', 'external'].includes(provider))
+            return json({ ok: false, error: 'A supported engine and provider are required.' }, 422)
+          return json({ ok: true, engine, provider, capabilities: dataServiceCapabilities(engine, provider) })
+        }
+
+        if (url.pathname === '/api/data-services' && req.method === 'GET') {
+          const environmentRecord = controlPlane.environments.get(environment)
+          const services = dataServiceStore.list(controlPlane.project.id, environmentRecord?.id).map((service) => {
+            const credential = dataServiceStore.credential(service.id)
+            return {
+              ...service,
+              credentialRef: undefined,
+              credential: credential ? { configured: true, username: credential.username, version: credential.version, rotatedAt: credential.rotatedAt } : undefined,
+              dependencies: dataServiceStore.dependencies(service.id).map(item => ({ resourceId: item.resourceId, requiresRedeploy: item.requiresRedeploy })),
+            }
+          })
+          return json({ ok: true, services })
+        }
+
+        if (url.pathname === '/api/data-services/preview' && req.method === 'POST') {
+          const body = await readJsonBody(req)
+          if (body.id) {
+            const service = dataServiceStore.get(String(body.id)),
+              environmentRecord = controlPlane.environments.get(environment)
+            if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+              return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+            try { return json({ ok: true, plan: dataServiceLifecycle.plan(service, String(body.action ?? 'observe') as any, body.changes ?? {}) }) }
+            catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422) }
+          }
+          const engine = String(body.engine ?? '') as DataEngine,
+            provider = String(body.provider ?? '') as DataProvider
+          if (!['postgres', 'mysql', 'mariadb', 'redis', 'mongodb', 'libsql'].includes(engine) || !['aws_rds', 'aws_aurora', 'aws_elasticache', 'server', 'container', 'external'].includes(provider))
+            return json({ ok: false, error: 'A supported engine and provider are required.' }, 422)
+          return json({ ok: true, capabilities: dataServiceCapabilities(engine, provider), defaults: { publicExposure: false, backupRetentionDays: 7, deletionProtection: true }, productionExecutionCreated: false })
+        }
+
+        if (url.pathname === '/api/data-services' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            engine = String(body.engine ?? '') as DataEngine,
+            provider = String(body.provider ?? '') as DataProvider,
+            environmentRecord = controlPlane.environments.get(environment),
+            principal = organizationPrincipal(user)
+          if (!environmentRecord) return json({ ok: false, error: 'Environment was not found.' }, 404)
+          if (!['postgres', 'mysql', 'mariadb', 'redis', 'mongodb', 'libsql'].includes(engine) || !['aws_rds', 'aws_aurora', 'aws_elasticache', 'server', 'container', 'external'].includes(provider))
+            return json({ ok: false, error: 'A supported engine and provider are required.' }, 422)
+          const input = {
+            organizationId: controlPlane.organization.id,
+            projectId: controlPlane.project.id,
+            environmentId: environmentRecord.id,
+            resourceId: body.resourceId ? String(body.resourceId) : undefined,
+            name: String(body.name ?? '').trim(),
+            engine,
+            provider,
+            placement: String(body.placement ?? body.name ?? '').trim(),
+            engineVersion: body.engineVersion ? String(body.engineVersion) : undefined,
+            plan: String(body.plan ?? (provider === 'aws_elasticache' ? 'cache.t4g.micro' : provider === 'aws_aurora' ? 'db.serverless' : 'db.t4g.micro')),
+            storageGb: body.storageGb == null ? undefined : Number(body.storageGb),
+            highAvailability: body.highAvailability === true,
+            publicExposure: body.publicExposure === true,
+            allowedCidrs: Array.isArray(body.allowedCidrs) ? body.allowedCidrs.map(String) : [],
+            desiredState: body.desiredState && typeof body.desiredState === 'object' && !Array.isArray(body.desiredState) ? body.desiredState : {},
+            observedState: {},
+            origin: body.adopt === true ? 'adopted' as const : 'managed' as const,
+            managementEnabled: body.adopt !== true,
+            ownerActorId: principal.actor?.id,
+            username: body.username ? String(body.username) : undefined,
+          }
+          try {
+            if (body.adopt === true) {
+              const service = dataServiceStore.create({ ...input, status: 'adopted', credentialRef: undefined })
+              return json({ ok: true, service, readOnly: true }, 201)
+            }
+            if (!resolveDataAdapter({ provider, engine } as DataService))
+              return json({ ok: false, error: `No ${provider}/${engine} provisioning adapter is configured; adopt it read-only or choose a supported provider.` }, 422)
+            const created = await dataServiceLifecycle.create(input)
+            return json({ ok: true, service: created.service, operationId: created.operationId, oneTimeCredential: created.credential }, 201)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 422) }
+        }
+
+        if (url.pathname === '/api/data-services/connections' && req.method === 'GET') {
+          const service = dataServiceStore.get(String(url.searchParams.get('id') ?? '')),
+            environmentRecord = controlPlane.environments.get(environment)
+          if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          const endpoint = typeof service.observedState.endpoint === 'string' ? service.observedState.endpoint : undefined,
+            reader = typeof service.observedState.readerEndpoint === 'string' ? service.observedState.readerEndpoint : undefined,
+            port = Number(service.observedState.port) || (service.engine === 'postgres' ? 5432 : service.engine === 'redis' ? 6379 : 3306),
+            database = typeof service.observedState.database === 'string' ? service.observedState.database : undefined,
+            endpoints = [
+              ...(endpoint ? [{ type: service.publicExposure ? 'external' as const : 'internal' as const, host: endpoint, port, database, tls: true }] : []),
+              ...(reader ? [{ type: 'internal' as const, host: reader, port, database, tls: true }] : []),
+              { type: 'tunnel' as const, host: endpoint ?? service.placement, port, database, tls: true },
+            ]
+          return json({ ok: true, serviceId: service.id, guidance: connectionGuidance(service, endpoints) })
+        }
+
+        if (url.pathname === '/api/data-services/action' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            service = dataServiceStore.get(String(body.id ?? '')),
+            environmentRecord = controlPlane.environments.get(environment),
+            action = String(body.action ?? '') as any
+          if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          const changes = body.changes && typeof body.changes === 'object' && !Array.isArray(body.changes) ? body.changes : {}
+          try {
+            const plan = dataServiceLifecycle.plan(service, action, changes)
+            if (body.execute !== true) return json({ ok: true, plan, productionExecutionCreated: false })
+            const operationId = dataServiceLifecycle.enqueue(service, action, changes, organizationPrincipal(user).actor?.id)
+            return json({ ok: true, plan, operationId }, 202)
+          }
+          catch (error) { return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 409) }
+        }
+
+        if (url.pathname === '/api/data-services/dependencies' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            service = dataServiceStore.get(String(body.id ?? '')),
+            environmentRecord = controlPlane.environments.get(environment),
+            resource = controlPlane.store.getResource(String(body.resourceId ?? ''))
+          if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          if (!resource || resource.projectId !== controlPlane.project.id || resource.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Dependent resource was not found in this environment.' }, 404)
+          if (body.remove === true) return json({ ok: dataServiceStore.removeDependency(service.id, resource.id) })
+          dataServiceStore.addDependency({ serviceId: service.id, resourceId: resource.id, secretRef: service.credentialRef ?? `secret://data-services/${service.projectId}/${service.name}`, requiresRedeploy: body.requiresRedeploy !== false })
+          return json({ ok: true, dependencies: dataServiceStore.dependencies(service.id).map(item => ({ resourceId: item.resourceId, requiresRedeploy: item.requiresRedeploy })) })
+        }
+
+        if (url.pathname === '/api/data-services/management' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            service = dataServiceStore.get(String(body.id ?? '')),
+            environmentRecord = controlPlane.environments.get(environment)
+          if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          if (service.origin !== 'adopted' || body.reviewed !== true || body.confirm !== service.name)
+            return json({ ok: false, error: `Enabling management requires reviewed=true and typing ${service.name}.` }, 409)
+          return json({ ok: true, service: dataServiceStore.update(service.id, service.version, { managementEnabled: true }) })
+        }
+
+        if (url.pathname === '/api/data-services/reveal' && req.method === 'POST') {
+          const body = await readJsonBody(req),
+            service = dataServiceStore.get(String(body.id ?? '')),
+            environmentRecord = controlPlane.environments.get(environment),
+            credential = service ? dataServiceStore.credential(service.id) : undefined
+          if (!service || service.projectId !== controlPlane.project.id || service.environmentId !== environmentRecord?.id)
+            return json({ ok: false, error: 'Data service was not found in this environment.' }, 404)
+          if (!credential) return json({ ok: false, error: 'No managed credential is configured.' }, 404)
+          return json({ ok: true, credential: { username: credential.username, password: await dataServiceSecrets.resolve(credential.secretRef), version: credential.version } }, 200, { 'cache-control': 'no-store' })
         }
 
         if (url.pathname === '/api/databases' && req.method === 'GET')

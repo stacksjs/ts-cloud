@@ -172,10 +172,9 @@ export class DataServiceStore {
   }
   credential(serviceId: string): DataCredential | undefined {
     const row = this.controlPlane.database
-      .query<
-        Row,
-        [string]
-      >('SELECT * FROM data_service_credentials WHERE service_id=? ORDER BY version DESC LIMIT 1')
+      .query<Row, [string]>(
+        'SELECT * FROM data_service_credentials WHERE service_id=? ORDER BY version DESC LIMIT 1',
+      )
       .get(serviceId)
     return row
       ? {
@@ -238,6 +237,14 @@ export class DataServiceStore {
         requiresRedeploy: bool(row.requires_redeploy),
         createdAt: String(row.created_at),
       }))
+  }
+  removeDependency(serviceId: string, resourceId: string): boolean {
+    return (
+      this.controlPlane.database.run(
+        'DELETE FROM data_service_dependencies WHERE service_id=? AND resource_id=?',
+        [serviceId, resourceId],
+      ).changes === 1
+    )
   }
   remove(id: string): void {
     this.controlPlane.database.run('DELETE FROM data_services WHERE id=?', [id])

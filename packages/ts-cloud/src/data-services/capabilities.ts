@@ -73,9 +73,12 @@ export function dataServiceCapabilities(
         'required',
       )
     : yes('Engine upgrades require a maintenance window.', 'required')
-  actions.rotate = yes(
-    'Rotate through the secret backend, update the engine, then flag dependent releases.',
-  )
+  actions.rotate =
+    provider === 'aws_elasticache'
+      ? no('AUTH rotation is not available for this ElastiCache cluster mode.')
+      : yes(
+          'Rotate through the secret backend, update the engine, then flag dependent releases.',
+        )
   actions.expose = yes(
     'Exposure is reconciled through security groups or firewall rules; public access defaults off.',
   )

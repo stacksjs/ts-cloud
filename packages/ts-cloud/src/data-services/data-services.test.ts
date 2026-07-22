@@ -286,5 +286,9 @@ describe('data service lifecycle', () => {
       expect.arrayContaining(['postgres', 'mysql', 'redis']),
     )
     expect(new AwsElastiCacheDataAdapter(transport).engines).toEqual(['redis'])
+    expect(
+      dataServiceCapabilities('redis', 'aws_elasticache').actions.rotate
+        .supported,
+    ).toBe(false)
   })
 })

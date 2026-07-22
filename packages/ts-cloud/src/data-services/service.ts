@@ -81,7 +81,7 @@ export class DataServiceLifecycle {
   }> {
     let credential: OneTimeCredential | undefined,
       credentialRef: string | undefined
-    if (input.engine !== 'redis') {
+    if (input.provider !== 'aws_elasticache') {
       const username = input.username ?? 'app',
         value = password()
       credentialRef = `secret://data-services/${input.projectId}/${input.name}/${username}`
