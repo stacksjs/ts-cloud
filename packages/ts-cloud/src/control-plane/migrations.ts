@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 13
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 14
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -739,6 +739,28 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     name: 'encrypted_source_webhook_endpoint_tokens',
     sql: `
       ALTER TABLE source_webhooks ADD COLUMN endpoint_token_ciphertext TEXT;
+    `,
+  },
+  {
+    version: 14,
+    name: 'application_onboarding_drafts',
+    sql: `
+      CREATE TABLE application_drafts (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        schema_version INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        step TEXT NOT NULL,
+        input TEXT NOT NULL,
+        supplied_secret_names TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft',
+        version INTEGER NOT NULL DEFAULT 1,
+        created_by_actor_id TEXT REFERENCES actors(id) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX application_drafts_project_idx ON application_drafts(project_id, updated_at DESC);
     `,
   },
 ]

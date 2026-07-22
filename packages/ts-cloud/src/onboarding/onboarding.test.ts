@@ -1,8 +1,11 @@
 import type { ApplicationDraftInput } from './types'
 import { describe, expect, it } from 'bun:test'
+import { ControlPlaneStore } from '../control-plane'
 import { inspectApplicationArchive } from './archive'
 import { detectApplication } from './detection'
+import { migrateApplicationDraft } from './migrations'
 import { parseApplicationManifest, planApplication } from './plan'
+import { ApplicationDraftStore } from './store'
 
 function base(build: ApplicationDraftInput['build'], runtime: ApplicationDraftInput['runtime']): ApplicationDraftInput {
   return { schemaVersion: 1, name: 'Web', slug: 'web', projectId: 'project', environmentId: 'production', source: { kind: 'local', root: '.' }, build, runtime }
@@ -75,5 +78,37 @@ describe('application archive inspection', () => {
     expect(() => inspectApplicationArchive(tar('link', '2'), 'bad.tar')).toThrow('links are not accepted')
     expect(() => inspectApplicationArchive(storedZip('large', '123456'), 'large.zip', { maxExpandedBytes: 5 })).toThrow('expansion limit')
     expect(() => inspectApplicationArchive(new Uint8Array([1, 2, 3]), 'bad.exe')).toThrow('Only ZIP')
+  })
+})
+
+describe('resumable application drafts', () => {
+  it('persists only non-secret inputs, resumes optimistically, and marks a confirmed plan applied', () => {
+    let sequence = 0
+    const controlPlane = new ControlPlaneStore({ path: ':memory:', id: () => `control-${++sequence}` })
+    const organization = controlPlane.createOrganization({ slug: 'drafts', name: 'Drafts' })
+    const project = controlPlane.createProject({ organizationId: organization.id, slug: 'web', name: 'Web' })
+    const environment = controlPlane.createEnvironment({ projectId: project.id, slug: 'production', name: 'Production', kind: 'production' })
+    const drafts = new ApplicationDraftStore(controlPlane, { id: () => `draft-${++sequence}` })
+    const input = base({ kind: 'server', runtime: 'bun', startCommand: 'bun run start' }, { target: 'server', architecture: 'arm64', port: 3000, healthCheck: { protocol: 'http', path: '/health' } })
+    input.projectId = project.id; input.environmentId = environment.id; input.environment = { APP_ENV: 'production', DATABASE_PASSWORD: { secretRef: 'DATABASE_PASSWORD' } }; input.requiredSecretNames = ['DATABASE_PASSWORD']
+    const created = drafts.create({ organizationId: organization.id, projectId: project.id, name: 'Web import', draft: input, step: 'environment' })
+    expect(created).toMatchObject({ status: 'draft', step: 'environment', version: 1, suppliedSecretNames: [] })
+    expect(planApplication(created.input, created.suppliedSecretNames).missingSecrets).toEqual(['DATABASE_PASSWORD'])
+    expect(JSON.stringify(created)).not.toContain('database-runtime-value')
+    const ready = drafts.update(created.id, 1, { draft: input, step: 'review', suppliedSecretNames: ['DATABASE_PASSWORD'] })
+    expect(ready).toMatchObject({ status: 'ready', step: 'review', version: 2 })
+    expect(() => drafts.update(created.id, 1, { draft: input, step: 'review' })).toThrow('changed since version')
+    expect(drafts.markApplied(created.id, 2)).toMatchObject({ status: 'applied', version: 3 })
+    expect(controlPlane.listEvents({ projectId: project.id }).map(event => event.type)).toEqual(['application.draft.created', 'application.draft.updated', 'application.draft.applied'])
+    controlPlane.close()
+  })
+
+  it('migrates prototype drafts and refuses embedded secret values', () => {
+    const migrated = migrateApplicationDraft({ schemaVersion: 0, appName: 'Legacy', applicationSlug: 'legacy', projectId: 'project', environmentId: 'prod', strategy: 'static', publishDirectory: 'public', secretNames: ['API_TOKEN'] })
+    expect(migrated).toMatchObject({ schemaVersion: 1, name: 'Legacy', slug: 'legacy', build: { kind: 'static', publishDirectory: 'public' }, requiredSecretNames: ['API_TOKEN'] })
+    const controlPlane = new ControlPlaneStore({ path: ':memory:' }); const organization = controlPlane.createOrganization({ slug: 'secrets', name: 'Secrets' }); const project = controlPlane.createProject({ organizationId: organization.id, slug: 'app', name: 'App' })
+    const draft = base({ kind: 'dockerfile', context: '.', dockerfile: 'Dockerfile', buildArgs: { API_TOKEN: 'runtime-secret' } }, { target: 'container', architecture: 'x86_64' }); draft.projectId = project.id
+    expect(() => new ApplicationDraftStore(controlPlane).create({ organizationId: organization.id, projectId: project.id, name: 'Unsafe', draft })).toThrow('build secret name')
+    controlPlane.close()
   })
 })
