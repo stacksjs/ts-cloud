@@ -152,6 +152,34 @@ describe('buildRpxConfig', () => {
     // app.other.com isn't apex (3 labels), so it gets no www counterpart.
     expect(config.onDemandTls?.allowedSuffixes.sort()).toEqual(['app.other.com', 'stacksjs.com', 'www.stacksjs.com'])
     expect(config.onDemandTls?.certsDir).toBe('/etc/bun-gateway/certs')
+    // Emitted explicitly, never left undefined: tlsx picks the production ACME
+    // directory only on an explicit `false` and otherwise issues staging certs
+    // that chain to an untrusted root while reporting success.
+    expect(config.onDemandTls?.staging).toBe(false)
+  })
+
+  it('emits staging: true only when explicitly opted in', () => {
+    const config = buildRpxConfig(sites, {
+      proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsStaging: true },
+    })
+    expect(config.onDemandTls?.staging).toBe(true)
+  })
+
+  it('mergeRpxFragments lets production win a staging disagreement', () => {
+    const frag = (domain: string, staging: boolean) =>
+      buildRpxConfig({ main: { domain, start: 'x', port: 3000 } }, {
+        proxy: { engine: 'rpx', onDemandTls: true, onDemandTlsStaging: staging },
+      })
+
+    // A tenant that wants a real cert must not be handed a staging one just
+    // because a co-tenant on the same box is only smoke-testing its wiring.
+    expect(mergeRpxFragments([frag('a.com', true), frag('b.com', false)]).onDemandTls?.staging).toBe(false)
+    expect(mergeRpxFragments([frag('a.com', true), frag('b.com', true)]).onDemandTls?.staging).toBe(true)
+
+    // A fragment written before the flag existed counts as production.
+    const legacy = frag('c.com', true)
+    delete (legacy.onDemandTls as { staging?: boolean }).staging
+    expect(mergeRpxFragments([legacy]).onDemandTls?.staging).toBe(false)
   })
 
   it('enables origin lockdown from proxy.cdn when a secret is set', () => {

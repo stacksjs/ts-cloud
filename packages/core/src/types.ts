@@ -2890,6 +2890,21 @@ export interface ComputeProxyConfig {
   /** Contact email for the ACME account when {@link onDemandTls} is enabled. */
   onDemandTlsEmail?: string
   /**
+   * Issue on-demand certs from Let's Encrypt's **staging** directory instead of
+   * production. Untrusted by browsers, but effectively un-rate-limited — useful
+   * when bringing up many new hostnames at once and only checking wiring.
+   *
+   * Always emitted into the rpx fragment, including the `false` default, rather
+   * than left undefined: `obtainCertificate` selects the production directory
+   * only on an explicit `false`, so an absent flag silently yields staging
+   * certs that chain to an untrusted root while issuance reports success.
+   * Stating the intent here keeps the deploy correct regardless of the
+   * defaulting behaviour of whatever rpx version the box has installed.
+   *
+   * @default false
+   */
+  onDemandTlsStaging?: boolean
+  /**
    * Webroot the gateway serves ACME http-01 challenge tokens from on `:80` (and
    * that the deploy-time issuance + renewal cron write tokens into). Only used
    * when {@link onDemandTls} is enabled, where ts-cloud also installs a daily

@@ -124,7 +124,7 @@ export interface RpxGatewayConfig {
    * On-demand TLS (opt-in): lazily issue a real cert for an approved host the
    * first time it's needed. The site domains form the allowlist.
    */
-  onDemandTls?: { enabled: true; allowedSuffixes: string[]; email?: string; certsDir: string }
+  onDemandTls?: { enabled: true; allowedSuffixes: string[]; email?: string; certsDir: string; staging: boolean }
   /**
    * Directory the gateway serves ACME http-01 challenge tokens from on `:80`
    * before redirecting to HTTPS. Set when ts-cloud manages certs so the renewal
@@ -312,6 +312,10 @@ function buildRpxConfigInternal(
       allowedSuffixes: [...domains],
       email: options.proxy.onDemandTlsEmail,
       certsDir,
+      // Always explicit — see ComputeProxyConfig.onDemandTlsStaging. An absent
+      // flag makes tlsx fall back to the staging directory, which issues certs
+      // that every client rejects while the deploy reports success.
+      staging: options.proxy.onDemandTlsStaging ?? false,
     }
   }
 
@@ -452,6 +456,7 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
   let certsDir = DEFAULT_RPX_CERTS_DIR
   let acmeChallengeWebroot: string | undefined
   let guard: { header: string; value: string } | undefined
+  let anyProduction = false
 
   for (const f of fragments) {
     for (const p of f.proxies ?? []) {
@@ -462,6 +467,12 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
     }
     for (const s of f.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)
     email ??= f.onDemandTls?.email
+    // One gateway means one ACME directory, so co-tenants must agree. Production
+    // wins any disagreement: a production cert is valid for a tenant that only
+    // wanted staging, whereas a staging cert breaks every client of a tenant
+    // that wanted production. A fragment predating this field counts as
+    // production, matching the documented default.
+    if (f.onDemandTls && f.onDemandTls.staging !== true) anyProduction = true
     if (f.productionCerts?.certsDir) certsDir = f.productionCerts.certsDir
     acmeChallengeWebroot ??= f.acmeChallengeWebroot
     if (f.originGuard) {
@@ -477,7 +488,8 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
   }
-  if (suffixes.size > 0) merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir }
+  if (suffixes.size > 0)
+    merged.onDemandTls = { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction }
   if (acmeChallengeWebroot) merged.acmeChallengeWebroot = acmeChallengeWebroot
   if (guard) merged.originGuard = { header: guard.header, value: guard.value, hosts: [...guardHosts] }
   return merged
@@ -508,6 +520,7 @@ let email
 let certsDir = ${JSON.stringify(defaultCertsDir)}
 let acmeChallengeWebroot
 let guard
+let anyProduction = false
 let files = []
 try { files = readdirSync(dir).filter(n => n.endsWith('.json')).sort() } catch {}
 for (const f of files) {
@@ -527,6 +540,11 @@ for (const f of files) {
   }
   for (const s of frag.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)
   email ??= frag.onDemandTls?.email
+  // One gateway, one ACME directory: production wins any disagreement between
+  // co-tenants, and a fragment predating the flag counts as production. A
+  // staging cert chains to an untrusted root, so defaulting the other way
+  // breaks every client of every tenant that wanted a real cert.
+  if (frag.onDemandTls && frag.onDemandTls.staging !== true) anyProduction = true
   if (frag.productionCerts?.certsDir) certsDir = frag.productionCerts.certsDir
   acmeChallengeWebroot ??= frag.acmeChallengeWebroot
   if (frag.originGuard) {
@@ -546,7 +564,7 @@ const config = {
   // journal and a production TLS failure looks like "nothing happens". Silence
   // it by setting RPX_VERBOSE=false on the systemd unit.
   verbose: process.env.RPX_VERBOSE !== 'false',
-  ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir } } : {}),
+  ...(suffixes.size > 0 ? { onDemandTls: { enabled: true, allowedSuffixes: [...suffixes], email, certsDir, staging: !anyProduction } } : {}),
   ...(acmeChallengeWebroot ? { acmeChallengeWebroot } : {}),
   ...(guard ? { originGuard: { header: guard.header, value: guard.value, hosts: [...guardHosts] } } : {}),
 }
