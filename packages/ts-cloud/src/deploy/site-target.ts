@@ -219,3 +219,23 @@ export function validateDeploymentConfig(config: CloudConfig): DeploymentValidat
 
   return { errors, warnings }
 }
+
+/**
+ * Does this site produce a release the compute deploy has to build, package and
+ * ship?
+ *
+ * `false` for the two kinds that ship nothing:
+ *  - `bucket`   — handled by the S3/CloudFront static-site path instead;
+ *  - `redirect` — the gateway answers the domain with a Location header, so
+ *    there is no `root` to package. Filtering these BEFORE the packaging loop
+ *    matters: that loop reads `site.root` to build a tarball, and a redirect
+ *    site has none, which failed the whole deploy with
+ *    "Build output not found at undefined".
+ *
+ * Excluding a site here never drops its routes — the rpx gateway is
+ * regenerated from the full `sites` model, not from this list.
+ */
+export function shipsARelease(site: SiteConfig): boolean {
+  const kind = resolveSiteKind(site)
+  return kind !== 'bucket' && kind !== 'redirect'
+}

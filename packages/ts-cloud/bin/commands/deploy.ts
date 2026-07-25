@@ -18,7 +18,7 @@ import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-cont
 import { ensureDynamicMethodsForDomains } from '../../src/deploy/ensure-dynamic-cloudfront'
 import { runConfigHook } from '../../src/deploy/hooks'
 import { collectServerDnsDomains, removeStaleServerAddressRecords } from '../../src/deploy/server-dns'
-import { resolveSiteKind, validateDeploymentConfig } from '../../src/deploy/site-target'
+import { resolveSiteKind, shipsARelease, validateDeploymentConfig } from '../../src/deploy/site-target'
 import { deployStaticSiteWithExternalDnsFull } from '../../src/deploy/static-site-external-dns'
 import { createDnsProvider } from '../../src/dns'
 import { createCloudDriver } from '../../src/drivers'
@@ -109,12 +109,15 @@ async function deployAppToCompute(
   const deployable = allSites.filter(([name, s]) => {
     if (!s) return false
     if (onlySite && name !== onlySite) return false
-    const kind = resolveSiteKind(s)
-    if (kind === 'bucket') {
+    if (resolveSiteKind(s) === 'bucket') {
       cli.warn(`Site '${name}' targets a bucket — skipping compute deploy (handled by the static-site path).`)
       return false
     }
-    return true
+    // Redirect-only sites are dropped too: the preparation loop below reads
+    // `site.root` to build a tarball and a redirect site has none, which
+    // failed the whole deploy with "Build output not found at undefined".
+    // Their routes survive — the gateway regenerates from the full model.
+    return shipsARelease(s)
   })
   if (deployable.length === 0) return true
 

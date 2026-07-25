@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test'
 import {
   resolveSiteDeployTarget,
   resolveSiteKind,
+  shipsARelease,
   siteInstallBase,
   validateDeploymentConfig,
 } from '../../src/deploy/site-target'
@@ -257,5 +258,24 @@ describe('siteInstallBase', () => {
     expect(tenant).not.toBe(owner)
     expect(tenant.startsWith('/var/www/')).toBe(true)
     expect(owner.startsWith('/var/www/')).toBe(true)
+  })
+})
+
+describe('shipsARelease', () => {
+  it('excludes redirect-only sites, which have no root to package', () => {
+    // Regression: the deploy command filtered only `bucket`, so a redirect
+    // site reached the packaging loop, which read its undefined `root` and
+    // aborted the entire deploy with "Build output not found at undefined".
+    expect(shipsARelease({ domain: 'www.example.com', redirect: 'https://example.com' })).toBe(false)
+    expect(shipsARelease({ domain: 'a.com', redirect: { to: 'https://b.com', status: 308 } })).toBe(false)
+  })
+
+  it('excludes bucket sites, handled by the static-site path', () => {
+    expect(shipsARelease({ root: 'dist' })).toBe(false)
+  })
+
+  it('includes the sites that actually produce a release', () => {
+    expect(shipsARelease({ root: 'dist', deploy: 'server' })).toBe(true)
+    expect(shipsARelease({ root: '.', start: 'bun run server.ts', port: 3000 })).toBe(true)
   })
 })
