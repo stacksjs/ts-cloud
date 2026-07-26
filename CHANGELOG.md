@@ -1,3 +1,266 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.56...v0.7.57)
+
+## 🚀 Features
+
+- **cloudfront**: add protected media delivery ([897ff59](https://github.com/stacksjs/ts-cloud/commit/897ff59)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **media**: add native delivery signing ([6176f0d](https://github.com/stacksjs/ts-cloud/commit/6176f0d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cost**: add actionable optimization advice ([0e5c12d](https://github.com/stacksjs/ts-cloud/commit/0e5c12d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **resources**: detect real idle resources ([3785591](https://github.com/stacksjs/ts-cloud/commit/3785591)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **resources**: add real AWS inventory ([3abf0fb](https://github.com/stacksjs/ts-cloud/commit/3abf0fb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cost**: implement projections trends and egress ([beb8162](https://github.com/stacksjs/ts-cloud/commit/beb8162)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cost**: add cached dimension queries ([b24dc74](https://github.com/stacksjs/ts-cloud/commit/b24dc74)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: complete S3-compatible endpoints ([824bc80](https://github.com/stacksjs/ts-cloud/commit/824bc80)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: operate maintenance and recovery ([e2bc08f](https://github.com/stacksjs/ts-cloud/commit/e2bc08f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **maintenance**: secure platform lifecycle ([c69d555](https://github.com/stacksjs/ts-cloud/commit/c69d555)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: operate regional failover ([b0a975c](https://github.com/stacksjs/ts-cloud/commit/b0a975c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **regions**: orchestrate regional topology ([50352fb](https://github.com/stacksjs/ts-cloud/commit/50352fb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: manage capacity and placement ([6e97507](https://github.com/stacksjs/ts-cloud/commit/6e97507)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **build**: execute isolated remote builds ([0e1d04c](https://github.com/stacksjs/ts-cloud/commit/0e1d04c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **scheduler**: add durable capacity placement ([f765173](https://github.com/stacksjs/ts-cloud/commit/f765173)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: execute reviewed bootstrap plans ([a8dd0e8](https://github.com/stacksjs/ts-cloud/commit/a8dd0e8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage fleet enrollment ([0e54a81](https://github.com/stacksjs/ts-cloud/commit/0e54a81)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add fleet onboarding workspace ([e65fac0](https://github.com/stacksjs/ts-cloud/commit/e65fac0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: add strict ssh validation driver ([2d534af](https://github.com/stacksjs/ts-cloud/commit/2d534af)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fleet**: add durable server enrollment ([e9a0695](https://github.com/stacksjs/ts-cloud/commit/e9a0695)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: restore replacement volumes ([3018b9a](https://github.com/stacksjs/ts-cloud/commit/3018b9a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: reconcile compose volumes ([844bd7e](https://github.com/stacksjs/ts-cloud/commit/844bd7e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add persistent volume workspace ([7065ae1](https://github.com/stacksjs/ts-cloud/commit/7065ae1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: add named and cloud volume drivers ([c0d9e50](https://github.com/stacksjs/ts-cloud/commit/c0d9e50)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: add persistent volume lifecycle ([1922fc7](https://github.com/stacksjs/ts-cloud/commit/1922fc7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **config**: add function-level overrides ([56b5842](https://github.com/stacksjs/ts-cloud/commit/56b5842)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage scoped configuration ([3731f80](https://github.com/stacksjs/ts-cloud/commit/3731f80)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **config**: migrate configured environment values ([8923a20](https://github.com/stacksjs/ts-cloud/commit/8923a20)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add scoped configuration workspace ([dfa08d5](https://github.com/stacksjs/ts-cloud/commit/dfa08d5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose unified configuration workflows ([c9c03be](https://github.com/stacksjs/ts-cloud/commit/c9c03be)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **config**: unify resolution and secret backends ([c7f514d](https://github.com/stacksjs/ts-cloud/commit/c7f514d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **config**: add scoped configuration model ([aeaeb71](https://github.com/stacksjs/ts-cloud/commit/aeaeb71)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: protect AWS infrastructure ([1addf19](https://github.com/stacksjs/ts-cloud/commit/1addf19)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: protect files and control plane ([99f5716](https://github.com/stacksjs/ts-cloud/commit/99f5716)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: operate recovery workflows ([b98bf40](https://github.com/stacksjs/ts-cloud/commit/b98bf40)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add recovery operations workspace ([8f45d4d](https://github.com/stacksjs/ts-cloud/commit/8f45d4d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose recovery operations ([9871d65](https://github.com/stacksjs/ts-cloud/commit/9871d65)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: restore local databases and volumes ([1565e1b](https://github.com/stacksjs/ts-cloud/commit/1565e1b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: operate managed database snapshots ([f0103fd](https://github.com/stacksjs/ts-cloud/commit/f0103fd)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: schedule and verify recovery jobs ([416bf36](https://github.com/stacksjs/ts-cloud/commit/416bf36)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: support encrypted resumable S3 storage ([d86ccd7](https://github.com/stacksjs/ts-cloud/commit/d86ccd7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: add recovery control plane ([c5a23d8](https://github.com/stacksjs/ts-cloud/commit/c5a23d8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: surface data service metrics and state ([4a8d4dc](https://github.com/stacksjs/ts-cloud/commit/4a8d4dc)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: expose complete data lifecycle operations ([d70341f](https://github.com/stacksjs/ts-cloud/commit/d70341f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: restore managed databases safely ([e226cd9](https://github.com/stacksjs/ts-cloud/commit/e226cd9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: operate on-box database runtimes ([21e804a](https://github.com/stacksjs/ts-cloud/commit/21e804a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: operate data service lifecycle ([f6150ea](https://github.com/stacksjs/ts-cloud/commit/f6150ea)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: unify data service operations ([12333d2](https://github.com/stacksjs/ts-cloud/commit/12333d2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose data service lifecycle ([f790018](https://github.com/stacksjs/ts-cloud/commit/f790018)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: encrypt service credentials at rest ([e2b88e2](https://github.com/stacksjs/ts-cloud/commit/e2b88e2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: operate managed AWS services ([bba10c2](https://github.com/stacksjs/ts-cloud/commit/bba10c2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: add service lifecycle control plane ([add5c71](https://github.com/stacksjs/ts-cloud/commit/add5c71)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **jobs**: reconcile provider schedule state ([e0b9779](https://github.com/stacksjs/ts-cloud/commit/e0b9779)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage jobs and workers ([b9eab35](https://github.com/stacksjs/ts-cloud/commit/b9eab35)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: unify jobs and workers workspace ([164d809](https://github.com/stacksjs/ts-cloud/commit/164d809)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: operate schedules and workers ([751d875](https://github.com/stacksjs/ts-cloud/commit/751d875)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **jobs**: add durable scheduling control plane ([fd21288](https://github.com/stacksjs/ts-cloud/commit/fd21288)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **notifications**: bound and template routed messages ([5b0cb8e](https://github.com/stacksjs/ts-cloud/commit/5b0cb8e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add alerts and health workspace ([a5f0c4b](https://github.com/stacksjs/ts-cloud/commit/a5f0c4b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: operate alerts and health checks ([5b83e07](https://github.com/stacksjs/ts-cloud/commit/5b83e07)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: operate health checks and alerts ([20ff755](https://github.com/stacksjs/ts-cloud/commit/20ff755)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **release**: enforce named health gates ([18affe0](https://github.com/stacksjs/ts-cloud/commit/18affe0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **alerts**: persist health and notification lifecycles ([bc516f9](https://github.com/stacksjs/ts-cloud/commit/bc516f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: control observability collection ([ab87e9c](https://github.com/stacksjs/ts-cloud/commit/ab87e9c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: query and manage telemetry ([18873d7](https://github.com/stacksjs/ts-cloud/commit/18873d7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **telemetry**: configure collection and live tail ([336811d](https://github.com/stacksjs/ts-cloud/commit/336811d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add correlated observability workspace ([80abee4](https://github.com/stacksjs/ts-cloud/commit/80abee4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: query and export telemetry ([5eb37cf](https://github.com/stacksjs/ts-cloud/commit/5eb37cf)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **telemetry**: collect correlated provider signals ([5a89965](https://github.com/stacksjs/ts-cloud/commit/5a89965)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **telemetry**: persist normalized signals ([1bbdc04](https://github.com/stacksjs/ts-cloud/commit/1bbdc04)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: operate workload diagnostics ([5592c90](https://github.com/stacksjs/ts-cloud/commit/5592c90)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: access runtime diagnostics ([c718be3](https://github.com/stacksjs/ts-cloud/commit/c718be3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: stream runtime diagnostics ([60665f9](https://github.com/stacksjs/ts-cloud/commit/60665f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **runtime**: add scoped diagnostic access ([6d60ea1](https://github.com/stacksjs/ts-cloud/commit/6d60ea1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add workload runtime explorer ([423c3ed](https://github.com/stacksjs/ts-cloud/commit/423c3ed)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage provider workloads ([833b976](https://github.com/stacksjs/ts-cloud/commit/833b976)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose scoped runtime operations ([8a6528d](https://github.com/stacksjs/ts-cloud/commit/8a6528d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **runtime**: execute scoped lifecycle operations ([cd992d4](https://github.com/stacksjs/ts-cloud/commit/cd992d4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **runtime**: discover live provider workloads ([1217b7a](https://github.com/stacksjs/ts-cloud/commit/1217b7a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **runtime**: model provider workloads ([04c4415](https://github.com/stacksjs/ts-cloud/commit/04c4415)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **audit**: record every dashboard mutation ([d99b56c](https://github.com/stacksjs/ts-cloud/commit/d99b56c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **infra**: preserve stateful backend data ([ae125b2](https://github.com/stacksjs/ts-cloud/commit/ae125b2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: deploy full-stack container backends ([2c2209a](https://github.com/stacksjs/ts-cloud/commit/2c2209a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **containers**: publish immutable ECR artifacts ([c24a2d4](https://github.com/stacksjs/ts-cloud/commit/c24a2d4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: orchestrate existing frontend backends ([c72598d](https://github.com/stacksjs/ts-cloud/commit/c72598d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fargate**: restrict ALB origins by header ([a6cc294](https://github.com/stacksjs/ts-cloud/commit/a6cc294)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **presets**: add existing frontend backend stack ([dcf40b2](https://github.com/stacksjs/ts-cloud/commit/dcf40b2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fargate**: provision load balanced services ([5bda899](https://github.com/stacksjs/ts-cloud/commit/5bda899)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dns**: support external API domain records ([42ebf96](https://github.com/stacksjs/ts-cloud/commit/42ebf96)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: deploy static site API origins ([b14c32d](https://github.com/stacksjs/ts-cloud/commit/b14c32d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: attach private APIs to static sites ([b2e9bfc](https://github.com/stacksjs/ts-cloud/commit/b2e9bfc)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: support private lambda url origins ([ba860d0](https://github.com/stacksjs/ts-cloud/commit/ba860d0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cdn**: patch existing distribution origins safely ([ccaa431](https://github.com/stacksjs/ts-cloud/commit/ccaa431)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: manage releases and promotion ([8946def](https://github.com/stacksjs/ts-cloud/commit/8946def)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: add explicit rollback workflow ([f81a066](https://github.com/stacksjs/ts-cloud/commit/f81a066)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: execute durable activation and rollback ([7a101b2](https://github.com/stacksjs/ts-cloud/commit/7a101b2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose unified release lifecycle ([a2e9364](https://github.com/stacksjs/ts-cloud/commit/a2e9364)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: manage promotion from cli ([a030c37](https://github.com/stacksjs/ts-cloud/commit/a030c37)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: define provider activation contract ([5ce292e](https://github.com/stacksjs/ts-cloud/commit/5ce292e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: persist immutable activation model ([ac9bf4b](https://github.com/stacksjs/ts-cloud/commit/ac9bf4b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **compose**: validate custom template catalogs ([934bbd3](https://github.com/stacksjs/ts-cloud/commit/934bbd3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: operate compose application topology ([9d2098b](https://github.com/stacksjs/ts-cloud/commit/9d2098b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: manage compose applications ([60e3202](https://github.com/stacksjs/ts-cloud/commit/60e3202)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **compose**: execute durable service operations ([62d8e7e](https://github.com/stacksjs/ts-cloud/commit/62d8e7e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **compose**: persist application lifecycle ([423ab1f](https://github.com/stacksjs/ts-cloud/commit/423ab1f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **compose**: normalize safe multi-service manifests ([db6e765](https://github.com/stacksjs/ts-cloud/commit/db6e765)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: publish source deployment status ([79ca5bb](https://github.com/stacksjs/ts-cloud/commit/79ca5bb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: reconcile branch lifecycle ([af4a637](https://github.com/stacksjs/ts-cloud/commit/af4a637)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: manage preview environments ([d1cd1f2](https://github.com/stacksjs/ts-cloud/commit/d1cd1f2)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: manage preview environments ([a7e7443](https://github.com/stacksjs/ts-cloud/commit/a7e7443)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: manage ttl lifecycle from cli ([a1280c8](https://github.com/stacksjs/ts-cloud/commit/a1280c8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: reconcile ttl cleanup and resources ([f96a5b6](https://github.com/stacksjs/ts-cloud/commit/f96a5b6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: deploy immutable isolated stacks ([3231afb](https://github.com/stacksjs/ts-cloud/commit/3231afb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: reconcile pull request lifecycle ([e184f05](https://github.com/stacksjs/ts-cloud/commit/e184f05)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: persist isolated environment policy ([d5faf12](https://github.com/stacksjs/ts-cloud/commit/d5faf12)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: consume queued deployment jobs ([748b567](https://github.com/stacksjs/ts-cloud/commit/748b567)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: execute scoped deployment commands ([4782633](https://github.com/stacksjs/ts-cloud/commit/4782633)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: run bounded durable workers ([c714903](https://github.com/stacksjs/ts-cloud/commit/c714903)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add live deployment queue console ([0b245da](https://github.com/stacksjs/ts-cloud/commit/0b245da)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage durable operation queues ([e49a3da](https://github.com/stacksjs/ts-cloud/commit/e49a3da)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose durable deployment queue ([4b3a822](https://github.com/stacksjs/ts-cloud/commit/4b3a822)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: route deployments through durable jobs ([ade6ffe](https://github.com/stacksjs/ts-cloud/commit/ade6ffe)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: add durable operation orchestration ([d181a5c](https://github.com/stacksjs/ts-cloud/commit/d181a5c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose application onboarding ([1009621](https://github.com/stacksjs/ts-cloud/commit/1009621)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: add reproducible application onboarding ([02a1c55](https://github.com/stacksjs/ts-cloud/commit/02a1c55)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add guided application wizard ([62b9909](https://github.com/stacksjs/ts-cloud/commit/62b9909)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: detect bounded git workspaces ([0cb9353](https://github.com/stacksjs/ts-cloud/commit/0cb9353)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: expose application onboarding APIs ([138e071](https://github.com/stacksjs/ts-cloud/commit/138e071)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: confirm and queue application plans ([6030220](https://github.com/stacksjs/ts-cloud/commit/6030220)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: inspect application sources safely ([5489968](https://github.com/stacksjs/ts-cloud/commit/5489968)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: secure private registry connections ([648e08a](https://github.com/stacksjs/ts-cloud/commit/648e08a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: persist resumable secret-free drafts ([851a9f3](https://github.com/stacksjs/ts-cloud/commit/851a9f3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: add pluggable application plans ([7959880](https://github.com/stacksjs/ts-cloud/commit/7959880)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: audit provider scope and webhook changes ([a3caec7](https://github.com/stacksjs/ts-cloud/commit/a3caec7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose git source automation ([1d52770](https://github.com/stacksjs/ts-cloud/commit/1d52770)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: manage git deployment sources ([6f32179](https://github.com/stacksjs/ts-cloud/commit/6f32179)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add git integrations workspace ([fdc2d2e](https://github.com/stacksjs/ts-cloud/commit/fdc2d2e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: expose git source APIs ([e5d719e](https://github.com/stacksjs/ts-cloud/commit/e5d719e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: manage pinned deploy keys ([238e692](https://github.com/stacksjs/ts-cloud/commit/238e692)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: orchestrate repository connections ([05411bd](https://github.com/stacksjs/ts-cloud/commit/05411bd)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: add bounded git workspaces ([868c883](https://github.com/stacksjs/ts-cloud/commit/868c883)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: verify and enqueue git webhooks ([cb58403](https://github.com/stacksjs/ts-cloud/commit/cb58403)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: persist webhook deliveries ([15d742b](https://github.com/stacksjs/ts-cloud/commit/15d742b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: add hosted git adapters ([ab5704d](https://github.com/stacksjs/ts-cloud/commit/ab5704d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: persist encrypted git connections ([4f8629b](https://github.com/stacksjs/ts-cloud/commit/4f8629b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **deploy**: gate container releases ([d3f409a](https://github.com/stacksjs/ts-cloud/commit/d3f409a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: record container release evidence ([d7a16af](https://github.com/stacksjs/ts-cloud/commit/d7a16af)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add security posture center ([1aeb06f](https://github.com/stacksjs/ts-cloud/commit/1aeb06f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: enforce cli deployment policies ([68ed391](https://github.com/stacksjs/ts-cloud/commit/68ed391)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: gate production operations ([229588a](https://github.com/stacksjs/ts-cloud/commit/229588a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: attach sbom and provenance artifacts ([d52c5b8](https://github.com/stacksjs/ts-cloud/commit/d52c5b8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: run bounded posture scanners ([a8068a1](https://github.com/stacksjs/ts-cloud/commit/a8068a1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: persist posture findings and gates ([21b9f00](https://github.com/stacksjs/ts-cloud/commit/21b9f00)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: stream scoped automation events ([6949d93](https://github.com/stacksjs/ts-cloud/commit/6949d93)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: add automation token controls ([d2a275e](https://github.com/stacksjs/ts-cloud/commit/d2a275e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: expose versioned automation contract ([53f8d11](https://github.com/stacksjs/ts-cloud/commit/53f8d11)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: add scoped machine identities ([e6804f4](https://github.com/stacksjs/ts-cloud/commit/e6804f4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add oidc operator controls ([d2b9a53](https://github.com/stacksjs/ts-cloud/commit/d2b9a53)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: connect dashboard oidc login ([3e37b54](https://github.com/stacksjs/ts-cloud/commit/3e37b54)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: verify oidc authorization flow ([f449cdf](https://github.com/stacksjs/ts-cloud/commit/f449cdf)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: persist oidc provider state ([5594bd9](https://github.com/stacksjs/ts-cloud/commit/5594bd9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: enforce MFA and recent auth ([370c43d](https://github.com/stacksjs/ts-cloud/commit/370c43d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add encrypted TOTP factors ([3099660](https://github.com/stacksjs/ts-cloud/commit/3099660)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add account security center ([b9a6c82](https://github.com/stacksjs/ts-cloud/commit/b9a6c82)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add recovery and session controls ([90466a6](https://github.com/stacksjs/ts-cloud/commit/90466a6)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add durable identity sessions ([3f769e3](https://github.com/stacksjs/ts-cloud/commit/3f769e3)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add organization access management ([332956f](https://github.com/stacksjs/ts-cloud/commit/332956f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: enforce scoped dashboard policies ([3112d6e](https://github.com/stacksjs/ts-cloud/commit/3112d6e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: add organization RBAC foundation ([52a6e6c](https://github.com/stacksjs/ts-cloud/commit/52a6e6c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **search**: add global resource discovery ([b308f1e](https://github.com/stacksjs/ts-cloud/commit/b308f1e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: add environment-scoped dashboard shell ([906f51c](https://github.com/stacksjs/ts-cloud/commit/906f51c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: persist operator activity ([58f26f7](https://github.com/stacksjs/ts-cloud/commit/58f26f7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: add control-plane maintenance commands ([0a0af45](https://github.com/stacksjs/ts-cloud/commit/0a0af45)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **control-plane**: add durable state store ([a7edc4c](https://github.com/stacksjs/ts-cloud/commit/a7edc4c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **deploy**: skip redirect-only sites when packaging releases ([b5a8038](https://github.com/stacksjs/ts-cloud/commit/b5a8038)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **rpx**: state the ACME directory explicitly in the gateway fragment ([9493624](https://github.com/stacksjs/ts-cloud/commit/9493624)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **types**: restore strict repository checks ([50b1bb8](https://github.com/stacksjs/ts-cloud/commit/50b1bb8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: cover infrastructure route policies ([90a0e17](https://github.com/stacksjs/ts-cloud/commit/90a0e17)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **build**: emit fleet and storage declarations ([24d6d91](https://github.com/stacksjs/ts-cloud/commit/24d6d91)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: eliminate placeholder command success ([40087f1](https://github.com/stacksjs/ts-cloud/commit/40087f1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: authorize volume lifecycle routes ([0648d35](https://github.com/stacksjs/ts-cloud/commit/0648d35)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: scope configuration table headers ([3b47b45](https://github.com/stacksjs/ts-cloud/commit/3b47b45)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: wait for provider readiness ([5b2932a](https://github.com/stacksjs/ts-cloud/commit/5b2932a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **backups**: harden recovery execution ([0141e0e](https://github.com/stacksjs/ts-cloud/commit/0141e0e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: label alert delivery columns ([b96a4a7](https://github.com/stacksjs/ts-cloud/commit/b96a4a7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: validate actions and connection guidance ([4bb25f5](https://github.com/stacksjs/ts-cloud/commit/4bb25f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: honor region and report runtime metrics ([02335c8](https://github.com/stacksjs/ts-cloud/commit/02335c8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **jobs**: preserve idempotent config reconciliation ([b23fce1](https://github.com/stacksjs/ts-cloud/commit/b23fce1)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **jobs**: restrict recurring operation targets ([62da394](https://github.com/stacksjs/ts-cloud/commit/62da394)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **telemetry**: distinguish unavailable provider signals ([8742e48](https://github.com/stacksjs/ts-cloud/commit/8742e48)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: remove sample telemetry fallbacks ([8614eef](https://github.com/stacksjs/ts-cloud/commit/8614eef)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: sanitize runtime operation input ([758b18a](https://github.com/stacksjs/ts-cloud/commit/758b18a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: improve dashboard accessibility ([a4659eb](https://github.com/stacksjs/ts-cloud/commit/a4659eb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: render resilient resource states ([baa8e51](https://github.com/stacksjs/ts-cloud/commit/baa8e51)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: surface stale dashboard polling ([eeab6b8](https://github.com/stacksjs/ts-cloud/commit/eeab6b8)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: guard dashboard mutations ([7c8b2de](https://github.com/stacksjs/ts-cloud/commit/7c8b2de)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: identify resources in operation confirms ([28fccc7](https://github.com/stacksjs/ts-cloud/commit/28fccc7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws**: honor profiles for stack and registry clients ([f3f7d06](https://github.com/stacksjs/ts-cloud/commit/f3f7d06)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: authorize release dashboard routes ([90f5b22](https://github.com/stacksjs/ts-cloud/commit/90f5b22)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: preserve fifo timestamp ties ([c8418be](https://github.com/stacksjs/ts-cloud/commit/c8418be)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: harden policy and branch lifecycle ([e2a7215](https://github.com/stacksjs/ts-cloud/commit/e2a7215)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: ignore generated dependency trees ([050d495](https://github.com/stacksjs/ts-cloud/commit/050d495)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: fail closed on expired credentials ([f810ad8](https://github.com/stacksjs/ts-cloud/commit/f810ad8)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ♻️ Code Refactoring
+
+- **ui**: centralize operation confirmation ([cbc4c25](https://github.com/stacksjs/ts-cloud/commit/cbc4c25)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 📚 Documentation
+
+- link the community as stacksjs.com/discord ([32fc036](https://github.com/stacksjs/ts-cloud/commit/32fc036)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **fargate**: add existing frontend runbook ([349e368](https://github.com/stacksjs/ts-cloud/commit/349e368)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **serverless**: add static API origin runbook ([52c0ceb](https://github.com/stacksjs/ts-cloud/commit/52c0ceb)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **releases**: document promotion and rollback ([e2c1562](https://github.com/stacksjs/ts-cloud/commit/e2c1562)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **compose**: document application and catalog workflows ([07f20f9](https://github.com/stacksjs/ts-cloud/commit/07f20f9)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **previews**: document isolated environment lifecycle ([93cc4de](https://github.com/stacksjs/ts-cloud/commit/93cc4de)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: document durable deployment operations ([3e3de3d](https://github.com/stacksjs/ts-cloud/commit/3e3de3d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: document guided application setup ([6f5601c](https://github.com/stacksjs/ts-cloud/commit/6f5601c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **source**: document git integrations ([c8a88d4](https://github.com/stacksjs/ts-cloud/commit/c8a88d4)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **security**: document posture workflows ([64061fa](https://github.com/stacksjs/ts-cloud/commit/64061fa)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **api**: complete openapi operation metadata ([6d227ad](https://github.com/stacksjs/ts-cloud/commit/6d227ad)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 💅 Styles
+
+- **repo**: normalize examples and tooling ([1e979e0](https://github.com/stacksjs/ts-cloud/commit/1e979e0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ui**: normalize dashboard formatting ([0a3ef04](https://github.com/stacksjs/ts-cloud/commit/0a3ef04)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **ts-cloud**: normalize package fixtures ([14a7054](https://github.com/stacksjs/ts-cloud/commit/14a7054)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **operations**: normalize runtime formatting ([5595813](https://github.com/stacksjs/ts-cloud/commit/5595813)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **data**: normalize lifecycle formatting ([0fca522](https://github.com/stacksjs/ts-cloud/commit/0fca522)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **control-plane**: normalize service formatting ([bd4e5bd](https://github.com/stacksjs/ts-cloud/commit/bd4e5bd)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: normalize deployment formatting ([aafdc9a](https://github.com/stacksjs/ts-cloud/commit/aafdc9a)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **infrastructure**: normalize provider formatting ([b5f9a7e](https://github.com/stacksjs/ts-cloud/commit/b5f9a7e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: normalize command formatting ([f45f532](https://github.com/stacksjs/ts-cloud/commit/f45f532)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **core**: normalize package fixtures ([8fed711](https://github.com/stacksjs/ts-cloud/commit/8fed711)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **core**: normalize source formatting ([b6cc48b](https://github.com/stacksjs/ts-cloud/commit/b6cc48b)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **aws-types**: normalize package formatting ([12037fc](https://github.com/stacksjs/ts-cloud/commit/12037fc)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧪 Tests
+
+- **cloudfront**: cover protected media setup ([8345e86](https://github.com/stacksjs/ts-cloud/commit/8345e86)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **storage**: align endpoint transport assertions ([23c5b90](https://github.com/stacksjs/ts-cloud/commit/23c5b90)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **cli**: isolate unsupported exit codes ([2b03025](https://github.com/stacksjs/ts-cloud/commit/2b03025)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **config**: cover provider secret backends ([964870d](https://github.com/stacksjs/ts-cloud/commit/964870d)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **onboarding**: cover deployment strategy matrix ([950d56e](https://github.com/stacksjs/ts-cloud/commit/950d56e)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: isolate oidc integration ([8a10ab7](https://github.com/stacksjs/ts-cloud/commit/8a10ab7)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **auth**: cover dashboard oidc flow ([dd901bd](https://github.com/stacksjs/ts-cloud/commit/dd901bd)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.57 ([db94f54](https://github.com/stacksjs/ts-cloud/commit/db94f54)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **lint**: enforce strict pickier checks ([db7e8ca](https://github.com/stacksjs/ts-cloud/commit/db7e8ca)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.55...v0.7.56)
 
 ## 🐛 Bug Fixes
