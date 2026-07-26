@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.59...v0.7.60)
+
+## 🚀 Features
+
+- **config**: make the local state directory configurable ([e94648a](https://github.com/stacksjs/ts-cloud/commit/e94648a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **cache**: stop creating the template cache directory at import time ([43bbb1c](https://github.com/stacksjs/ts-cloud/commit/43bbb1c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.60 ([0da7625](https://github.com/stacksjs/ts-cloud/commit/0da7625)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.58...v0.7.59)
 
 ## 🐛 Bug Fixes
