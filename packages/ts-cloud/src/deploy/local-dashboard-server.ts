@@ -16,7 +16,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { resolveDeploymentMode } from '@ts-cloud/core'
+import { resolveDeploymentMode, resolveStatePath } from '@ts-cloud/core'
 import { AlertStore, evaluateTelemetryAlertRules, HealthCheckRunner, NotificationRouter } from '../alerts'
 import { createApiV1Handler } from '../api'
 import { AUTH_SESSION_ABSOLUTE_TTL_MS, AuthenticationStore, beginOidcAuthorization, completeOidcAuthorization, resolveAuthEncryptionKey, sendAuthenticationEmail } from '../auth'
@@ -60,7 +60,7 @@ import { scopeCloudConfig, scopeDashboardData } from './dashboard-scope'
 import { clearSessionCookie, resolveSessionSecret, serializeSessionCookie } from './dashboard-session'
 import { checkMemberSiteFields, checkRouteConflict } from './dashboard-site-settings'
 import { LoginThrottle } from './dashboard-throttle'
-import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, updateUserPassword, upsertMember } from './dashboard-users'
+import { describeUser, ensureAdminUser, findUser, isValidUsername, loadUsers, removeUser, updateUserPassword, upsertMember, usersFile } from './dashboard-users'
 import { addFirewallPort, isValidPort, normalizePorts, removeFirewallPort } from './firewall-config-editor'
 import { resolveUiSource } from './management-dashboard'
 import { buildServerlessOperations, configuredSecretIds, controlScheduler, createAlarm, deleteAlarm, deleteServerlessSecret, listAlarms, listDlqMessages, listTraces, purgeDlq, redriveDlq, resolveServerlessOperation, runServerlessCommand, runServerlessOperation, setServerlessSecret, updateFunctionConfig } from './serverless-operations'
@@ -1218,7 +1218,7 @@ export async function startLocalDashboardServer(
   const resolveBackupDestination = (destination: BackupDestination) =>
     destination.provider === 'aws_backup' ? undefined : backupDestination
   const volumeStore = new VolumeStore(controlPlane.store)
-  const volumeDrivers = [new DockerNamedVolumeDriver(), new ServerPathVolumeDriver(join(cwd, '.ts-cloud', 'volumes'))]
+  const volumeDrivers = [new DockerNamedVolumeDriver(), new ServerPathVolumeDriver(resolveStatePath(cwd, 'volumes'))]
   const volumeService = new VolumeService(volumeStore, volumeDrivers, operationQueue)
   const fleetStore = new FleetStore(controlPlane.store)
   const fleetService = new FleetService(
@@ -1684,7 +1684,7 @@ export async function startLocalDashboardServer(
   if (authEnabled) {
     if (bootstrap?.generated) {
       console.warn(
-        `\n  ts-cloud dashboard: created the first admin.\n    username: ${bootstrap.generated.username}\n    password: ${bootstrap.generated.password}\n  Saved (hashed) to .ts-cloud/dashboard-users.json. This password is shown once.\n`,
+        `\n  ts-cloud dashboard: created the first admin.\n    username: ${bootstrap.generated.username}\n    password: ${bootstrap.generated.password}\n  Saved (hashed) to ${usersFile()}. This password is shown once.\n`,
       )
     }
   } else {

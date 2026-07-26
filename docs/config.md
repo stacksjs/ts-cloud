@@ -29,6 +29,42 @@ what gets deployed:
 | `hetzner` | `HetznerConfig` | Hetzner Cloud settings when `cloud.provider` is `hetzner` ([below](#hetzner)). |
 | `objectStorage` | `ObjectStorageConfig` | Object-storage provider (AWS S3, Backblaze B2, Hetzner) — independent of `cloud.provider`. |
 | `aws` | `AwsConfig` | AWS account/credential overrides. |
+| `stateDir` | `string` | Where machine-local state is kept. Defaults to `.ts-cloud` ([below](#state-directory)). |
+
+## State directory
+
+Everything ts-cloud persists on the machine running a deploy lives under one
+directory: the dashboard credentials and session key, the auth encryption key,
+the control-plane database, the staged dashboard release, cached templates, and
+restore scratch space. It defaults to a hidden `.ts-cloud/` in the project root.
+
+Projects that already have a home for machine-local state can point it there
+instead of collecting a second state directory in their root:
+
+```typescript
+export default {
+  project: { name: 'My App', slug: 'my-app', region: 'us-east-1' },
+  // A Stacks application keeps every runtime-owned directory under storage/.
+  stateDir: 'storage/cloud',
+  environments: { production: { type: 'production' } },
+} satisfies Partial<CloudConfig>
+```
+
+Relative paths resolve against the project root; absolute paths are used as-is.
+`TS_CLOUD_STATE_DIR` overrides the config, which is the way to keep a CLI and
+the processes it spawns in agreement.
+
+Two things deliberately do NOT follow this setting:
+
+- **`storage/cloud/state/<stack>.json`**, where the drivers record the
+  provisioned box. That one is meant to be committed, so CI can find the
+  existing server instead of provisioning a duplicate.
+- **The dashboard's state on the box.** `stateDir` describes your machine; the
+  box keeps users and the session key in its release's own `.ts-cloud/`, which
+  the deploy carries across releases.
+
+Never commit the state directory - it holds credentials. Deploy packaging skips
+it wherever it is configured to live.
 
 ## Hetzner
 
@@ -359,6 +395,7 @@ ts-cloud reads credentials from environment variables:
 | `AWS_DEFAULT_REGION` | Default region |
 | `AWS_PROFILE` | Named profile from `~/.aws/credentials` |
 | `AWS_SESSION_TOKEN` | Session token for temporary credentials |
+| `TS_CLOUD_STATE_DIR` | Overrides `stateDir` ([above](#state-directory)) |
 
 ## TypeScript Configuration
 

@@ -1,4 +1,5 @@
 import type { CloudConfig, EnvironmentType, SiteConfig } from '../types'
+import { DEFAULT_STATE_DIR } from '../state-dir'
 
 /**
  * Auto-deployed management dashboard (the `@ts-cloud/ui` stx app — the Server +
@@ -60,8 +61,16 @@ export interface ManagementDashboardOptions {
   version?: string
 }
 
-/** Where the live dashboard keeps its users, session key and cache. */
-export const DASHBOARD_STATE_DIR = '.ts-cloud'
+/**
+ * Where the live dashboard keeps its users, session key and cache ON THE BOX,
+ * relative to its release directory.
+ *
+ * Deliberately the literal default rather than {@link stateDir}: that one is
+ * about the operator's machine (a Stacks checkout points it at `storage/cloud`),
+ * while this is the path the deploy carries across releases via `sharedPaths`.
+ * The two must agree with each other, not with the local checkout.
+ */
+export const DASHBOARD_STATE_DIR: string = DEFAULT_STATE_DIR
 
 /**
  * The dashboard service's entry point inside its release dir. The CLI is

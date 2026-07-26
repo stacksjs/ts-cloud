@@ -43,7 +43,7 @@ export {
 // buddy) can inject it BEFORE provisioning, when rpx routes + DNS are derived.
 export {
   buildManagementDashboardArtifact,
-  DASHBOARD_CREDENTIALS_FILE,
+  dashboardCredentialsFile,
   ensureManagementDashboard,
   type EnsureDashboardLogger,
   MANAGEMENT_DASHBOARD_SITE,

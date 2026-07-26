@@ -3,6 +3,7 @@ import type { DataProviderTransport } from './adapters'
 import type { DataAction, DataEngine } from './model'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { resolveStatePath } from '@ts-cloud/core'
 
 type Input = Record<string, JsonValue>
 
@@ -144,7 +145,7 @@ function labels(inspect: Record<string, any>): Record<string, string> {
 export class DockerDataTransport implements DataProviderTransport {
   constructor(
     private readonly runtime: DockerRuntime = new BunDockerRuntime(),
-    private readonly backupRoot: string = resolve('.ts-cloud/backups/data'),
+    private readonly backupRoot: string = resolveStatePath(process.cwd(), 'backups', 'data'),
   ) {}
   async observe(id: string): Promise<Input> {
     const name = runtimeId(id),

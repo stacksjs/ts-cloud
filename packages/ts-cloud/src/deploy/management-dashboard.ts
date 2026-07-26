@@ -37,7 +37,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites } from '@ts-cloud/core'
+import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites, resolveStatePath, statePath } from '@ts-cloud/core'
 import { serializeDashboardConfig } from './dashboard-config-module'
 
 /**
@@ -50,7 +50,9 @@ import { serializeDashboardConfig } from './dashboard-config-module'
 export const MANAGEMENT_DASHBOARD_SITE = 'dashboard'
 
 /** Where an auto-generated dashboard password is persisted (per project checkout). */
-export const DASHBOARD_CREDENTIALS_FILE: string = join('.ts-cloud', 'dashboard-credentials.json')
+export function dashboardCredentialsFile(): string {
+  return statePath('dashboard-credentials.json')
+}
 
 /** A URL-safe, shell-safe strong password (base64url, no padding). */
 function generatePassword(): string {
@@ -69,7 +71,8 @@ export interface ResolvedDashboardAuth {
  *  1. `TS_CLOUD_UI_PASSWORD` when set → use it verbatim.
  *  2. `TS_CLOUD_UI_PUBLIC` truthy → serve with NO auth (deliberate opt-out).
  *  3. Otherwise → reuse a previously-generated password from
- *     `.ts-cloud/dashboard-credentials.json`, or generate + persist a new one.
+ *     `dashboard-credentials.json` in the state directory, or generate and
+ *     persist a new one.
  *
  * Persisting the generated password keeps htpasswd stable across deploys (so a
  * saved credential keeps working) and lets the operator retrieve it locally.
@@ -83,7 +86,8 @@ export function resolveDashboardAuth(
   if (explicit) return { password: explicit, source: 'env' }
   if (truthy(process.env.TS_CLOUD_UI_PUBLIC)) return { password: undefined, source: 'public' }
 
-  const file = join(cwd, DASHBOARD_CREDENTIALS_FILE)
+  const credentialsFile = dashboardCredentialsFile()
+  const file = resolveStatePath(cwd, 'dashboard-credentials.json')
   try {
     if (existsSync(file)) {
       const saved = JSON.parse(readFileSync(file, 'utf8')) as { password?: string }
@@ -102,14 +106,14 @@ export function resolveDashboardAuth(
     // terminal scrollback and the systemd journal, all of which outlive the
     // deploy and are readable by more people than the 0600 file is.
     logger.info(
-      `Management dashboard: generated a password for '${username}' and saved it to ${DASHBOARD_CREDENTIALS_FILE} (read it there — it is not printed). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`,
+      `Management dashboard: generated a password for '${username}' and saved it to ${credentialsFile} (read it there — it is not printed). Set TS_CLOUD_UI_PASSWORD to pin your own, or TS_CLOUD_UI_PUBLIC=1 to serve without auth.`,
     )
   } catch (error: any) {
     // Only place the password is still printed: persisting failed, so this log
     // line is the operator's single copy. Say plainly that it is now in the log
     // so they can rotate it once the underlying write problem is fixed.
     logger.warn(
-      `Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}\nThis password is now in your deploy log. Set TS_CLOUD_UI_PASSWORD to a value of your own and redeploy once ${DASHBOARD_CREDENTIALS_FILE} is writable.`,
+      `Management dashboard: could not persist the generated password (${error?.message ?? error}). Using it for this deploy only — pass: ${password}\nThis password is now in your deploy log. Set TS_CLOUD_UI_PASSWORD to a value of your own and redeploy once ${credentialsFile} is writable.`,
     )
   }
   return { password, source: 'generated' }
@@ -127,7 +131,9 @@ function truthy(v: string | undefined): boolean {
 }
 
 /** Where the live dashboard's release is staged, inside the project checkout. */
-export const LIVE_STAGE_DIR: string = join('.ts-cloud', 'dashboard-release')
+export function liveStageDir(): string {
+  return statePath('dashboard-release')
+}
 
 /**
  * The ts-cloud version the box should install. Reads this package's own version
@@ -170,7 +176,7 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
     return null
   }
 
-  const stage = join(cwd, LIVE_STAGE_DIR)
+  const stage = resolveStatePath(cwd, 'dashboard-release')
   try {
     mkdirSync(stage, { recursive: true })
     writeFileSync(join(stage, 'cloud.config.ts'), serializeDashboardConfig(config))
@@ -182,7 +188,7 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
       dependencies: { '@stacksjs/ts-cloud': resolveDashboardVersion() },
     }
     writeFileSync(join(stage, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
-    return LIVE_STAGE_DIR
+    return liveStageDir()
   } catch (error: any) {
     logger.warn(`Management dashboard: could not stage the live release (${error?.message ?? error}) — skipping.`)
     return null
@@ -304,7 +310,7 @@ export function ensureManagementDashboard(
       ? 'NO AUTH — TS_CLOUD_UI_PUBLIC is set (dashboard is publicly reachable)'
       : auth.source === 'env'
         ? 'htpasswd-protected (TS_CLOUD_UI_PASSWORD)'
-        : `htpasswd-protected (auto-generated — see ${DASHBOARD_CREDENTIALS_FILE})`
+        : `htpasswd-protected (auto-generated — see ${dashboardCredentialsFile()})`
   logger.warn(
     'Management dashboard: static mode — one shared password, and no per-site collaborators. Unset TS_CLOUD_UI_STATIC for the live dashboard.',
   )

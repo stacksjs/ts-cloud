@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { statePath } from '../state-dir'
 
 export interface CacheOptions {
   ttl?: number // Time to live in milliseconds
@@ -223,7 +224,7 @@ export class FileCache<T = any> {
 export class TemplateCache {
   private cache: FileCache<string>
 
-  constructor(cacheDir: string = '.ts-cloud/cache/templates') {
+  constructor(cacheDir: string = statePath('cache', 'templates')) {
     this.cache = new FileCache<string>(cacheDir, {
       ttl: 24 * 60 * 60 * 1000, // 24 hours
     })

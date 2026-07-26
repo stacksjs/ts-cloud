@@ -14,6 +14,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { createZip } from '../serverless/zip'
+import { stateDir } from '../state-dir'
 import { LARAVEL_SERVERLESS_BUILD_STEPS } from './runtime-assets'
 
 /** Paths excluded from the PHP deployment artifact by default. */
@@ -84,7 +85,10 @@ export function runPhpBuildHooks(opts: PackagePhpOptions): void {
  */
 export function collectPhpAppEntries(projectRoot: string, exclude: string[] = []): ZipEntry[] {
   const root = resolve(projectRoot)
-  const excludes = [...PHP_DEFAULT_EXCLUDES, ...exclude]
+  // `stateDir()` rather than the literal in PHP_DEFAULT_EXCLUDES: the state
+  // directory is configurable, and it holds the dashboard credentials — a
+  // package that carries them is a credential leak.
+  const excludes = [...PHP_DEFAULT_EXCLUDES, stateDir(), ...exclude]
   const entries: ZipEntry[] = []
   for (const file of walk(root, root, excludes)) {
     const rel = relative(root, file).replace(/\\/g, '/')

@@ -9,7 +9,7 @@ export {
 export * from './types'
 export { sendAuthenticationEmail } from './mailer'
 export type { AuthenticationEmail } from './mailer'
-export { AUTH_ENCRYPTION_KEY_FILE, resolveAuthEncryptionKey } from './encryption'
+export { authEncryptionKeyFile, resolveAuthEncryptionKey } from './encryption'
 export { decodeBase32, encodeBase32, hotp, matchTotpCounter, totp, totpUri, verifyTotp } from './totp'
 export { beginOidcAuthorization, completeOidcAuthorization, discoverOidcProvider, sanitizeOidcReturnPath } from './oidc'
 export type { OidcDiscoveryDocument, OidcFetch, VerifiedOidcIdentity } from './oidc'

@@ -3,6 +3,7 @@ import type { ApplicationArtifactRecord } from './types'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
+import { resolveStatePath } from '@ts-cloud/core'
 import { inspectApplicationArchive } from './archive'
 
 type Row = Record<string, unknown>
@@ -30,7 +31,7 @@ export class ApplicationArtifactStore {
     private readonly controlPlane: ControlPlaneStore,
     options: { cwd: string; id?: () => string; now?: () => Date },
   ) {
-    this.root = resolve(options.cwd, '.ts-cloud', 'artifacts')
+    this.root = resolveStatePath(options.cwd, 'artifacts')
     this.idFn = options.id ?? (() => crypto.randomUUID())
     this.nowFn = options.now ?? (() => new Date())
   }

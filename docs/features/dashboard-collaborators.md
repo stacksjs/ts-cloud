@@ -84,7 +84,7 @@ Both files are written `0600`, and neither belongs in git:
 | `.ts-cloud/dashboard-users.json` | Users, scrypt password hashes, site grants |
 | `.ts-cloud/dashboard-secret` | The session signing key. Rotating it signs everyone out. |
 
-On the box these live in the dashboard site's `shared/.ts-cloud/`, symlinked into each release, so a deploy never wipes your collaborators. On the deploy host they sit in your project checkout.
+On the box these live in the dashboard site's `shared/.ts-cloud/`, symlinked into each release, so a deploy never wipes your collaborators. On the deploy host they sit in your project checkout, under the [state directory](/config#state-directory) - `.ts-cloud/` unless you point `stateDir` elsewhere.
 
 Sessions are stateless signed cookies (`HttpOnly`, `SameSite=Lax`, `Secure` off loopback) and last 8 hours. The user is re-read from the store on every request, so a revoked grant applies immediately.
 

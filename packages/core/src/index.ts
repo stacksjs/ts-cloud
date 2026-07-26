@@ -5,6 +5,9 @@
 // Core types
 export * from './types'
 
+// Where machine-local state lives (`.ts-cloud/` by default, configurable)
+export * from './state-dir'
+
 // Deployment-mode detection (server vs serverless, mutually exclusive)
 export * from './deployment-mode'
 

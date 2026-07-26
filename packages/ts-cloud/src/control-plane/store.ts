@@ -3,12 +3,16 @@ import type { AppendEventInput, AuthorizationGrant, AuthorizationScope, Authoriz
 import { createHash, randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { resolveStatePath, statePath } from '@ts-cloud/core'
 import { Database } from 'bun:sqlite'
 import { AUTHORIZATION_CAPABILITIES, roleCapabilities } from './authorization'
 import { CONTROL_PLANE_SCHEMA_VERSION, controlPlaneMigrations } from './migrations'
 import { InvalidOperationTransitionError, OptimisticConcurrencyError, UnsupportedSchemaVersionError } from './types'
 
-export const CONTROL_PLANE_DATABASE_FILE: string = join('.ts-cloud', 'control-plane.sqlite')
+/** Project-relative location of the control-plane database. */
+export function controlPlaneDatabaseFile(): string {
+  return statePath('control-plane.sqlite')
+}
 export const MAX_CONTROL_PLANE_JSON_BYTES: number = 64 * 1024
 export const MAX_CONTROL_PLANE_ERROR_BYTES: number = 16 * 1024
 
@@ -311,7 +315,7 @@ export class ControlPlaneStore {
   private readonly idFn: () => string
 
   constructor(options: ControlPlaneStoreOptions = {}) {
-    this.path = options.path ?? join(options.cwd ?? process.cwd(), CONTROL_PLANE_DATABASE_FILE)
+    this.path = options.path ?? resolveStatePath(options.cwd ?? process.cwd(), 'control-plane.sqlite')
     this.nowFn = options.now ?? (() => new Date())
     this.idFn = options.id ?? (() => crypto.randomUUID())
     const inMemory = this.path === ':memory:'

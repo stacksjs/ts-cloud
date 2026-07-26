@@ -1,8 +1,8 @@
 /**
  * The dashboard's user store: a JSON file of {@link DashboardUser} records at
- * `.ts-cloud/dashboard-users.json` (0600), holding scrypt hashes and site
- * grants. Small on purpose — a box hosts a handful of collaborators, not a
- * directory service.
+ * `dashboard-users.json` (0600) inside the state directory, holding scrypt
+ * hashes and site grants. Small on purpose — a box hosts a handful of
+ * collaborators, not a directory service.
  *
  * On first use the store bootstraps a single admin so a freshly provisioned
  * dashboard is never reachable without credentials. The generated password is
@@ -10,10 +10,14 @@
  */
 import type { BoxRole, DashboardUser, SiteRole } from './dashboard-auth'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
+import { resolveStatePath, statePath } from '@ts-cloud/core'
 import { generatePassword, hashPassword } from './dashboard-auth'
 
-export const USERS_FILE: string = join('.ts-cloud', 'dashboard-users.json')
+/** Project-relative location of the user store, for messages and docs. */
+export function usersFile(): string {
+  return statePath('dashboard-users.json')
+}
 
 interface UsersFile {
   users: DashboardUser[]
@@ -57,7 +61,7 @@ export function parseUsersFile(text: string): DashboardUser[] {
 }
 
 export function usersFilePath(cwd: string): string {
-  return join(cwd, USERS_FILE)
+  return resolveStatePath(cwd, 'dashboard-users.json')
 }
 
 export function loadUsers(cwd: string): DashboardUser[] {

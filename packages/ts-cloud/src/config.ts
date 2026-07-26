@@ -2,6 +2,7 @@ import type { CloudOptions } from '@ts-cloud/core'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { setStateDir } from '@ts-cloud/core'
 import { loadConfig } from 'bunfig'
 
 export const defaultConfig: CloudOptions = {
@@ -51,6 +52,10 @@ export async function getConfig(): Promise<CloudOptions> {
     if (isDefaultConfig(_config)) {
       _config = (await loadStacksCloudConfig()) ?? _config
     }
+    // Publish `stateDir` to the resolver the state helpers read. They are
+    // called from module scope in places that never see the config object, so
+    // the value has to live somewhere global once we know it.
+    setStateDir(_config.stateDir)
   }
   return _config
 }

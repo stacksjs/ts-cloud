@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { deriveManagementDashboardPort } from '@ts-cloud/core'
+import { deriveManagementDashboardPort, setStateDir } from '@ts-cloud/core'
 import {
   buildManagementDashboardArtifact,
   ensureManagementDashboard,
-  LIVE_STAGE_DIR,
+  liveStageDir,
   resolveDashboardVersion,
   resolveUiSource,
 } from '../../src/deploy/management-dashboard'
@@ -199,7 +199,7 @@ describe('ensureManagementDashboard (live, the default)', () => {
     try {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
       const root = (c.sites as any)['dashboard-acme-com'].root as string
-      expect(root).toBe(LIVE_STAGE_DIR)
+      expect(root).toBe(liveStageDir())
 
       const stage = join(dir, root)
       // The box resolves the same sites from this config.
@@ -215,6 +215,27 @@ describe('ensureManagementDashboard (live, the default)', () => {
     }
   })
 
+  it('stages into the configured state directory, and never ships it to the box', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tscloud-statedir-'))
+    setStateDir('storage/cloud')
+    try {
+      const c = ensureManagementDashboard(cfg(), { cwd: dir })
+      const root = (c.sites as any)['dashboard-acme-com'].root as string
+      expect(root).toBe(join('storage', 'cloud', 'dashboard-release'))
+      expect(existsSync(join(dir, root, 'cloud.config.ts'))).toBe(true)
+
+      // `stateDir` describes THIS machine. On the box the dashboard's users and
+      // session key have to stay in the release's own `.ts-cloud`, which is what
+      // `sharedPaths` carries across deploys.
+      const staged = readFileSync(join(dir, root, 'cloud.config.ts'), 'utf8')
+      expect(staged).not.toContain('stateDir')
+      expect((c.sites as any)['dashboard-acme-com'].sharedPaths).toEqual(['.ts-cloud'])
+    } finally {
+      setStateDir(null)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   /**
    * A real config imports things that do not exist on the box — Stacks' does
    * `import { servers } from '~/cloud/servers'` — so the config is shipped as
@@ -226,7 +247,7 @@ describe('ensureManagementDashboard (live, the default)', () => {
       const c = ensureManagementDashboard(cfg(), { cwd: dir })
       expect((c.sites as any)['dashboard-acme-com']).toBeTruthy()
 
-      const staged = readFileSync(join(dir, LIVE_STAGE_DIR, 'cloud.config.ts'), 'utf8')
+      const staged = readFileSync(join(dir, liveStageDir(), 'cloud.config.ts'), 'utf8')
       expect(staged).not.toMatch(/^\s*import\s/m)
       expect(staged).toContain('export default')
       expect(staged).toContain('acme.com')
@@ -274,7 +295,7 @@ describe('ensureManagementDashboard (live, the default)', () => {
     try {
       process.env.TS_CLOUD_UI_VERSION = '0.7.21'
       ensureManagementDashboard(cfg(), { cwd: dir })
-      const pkg = JSON.parse(readFileSync(join(dir, LIVE_STAGE_DIR, 'package.json'), 'utf8'))
+      const pkg = JSON.parse(readFileSync(join(dir, liveStageDir(), 'package.json'), 'utf8'))
       expect(pkg.dependencies['@stacksjs/ts-cloud']).toBe('0.7.21')
     } finally {
       rmSync(dir, { recursive: true, force: true })

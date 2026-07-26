@@ -5,6 +5,7 @@ import type { BackupSourceAdapter, BackupSourceResult } from './service'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { basename, resolve, sep } from 'node:path'
+import { resolveStatePath } from '@ts-cloud/core'
 import { Database } from 'bun:sqlite'
 import { ControlPlaneStore } from '../control-plane'
 import { compressBackup, decompressBackup } from './filesystem-source'
@@ -54,7 +55,7 @@ export class ControlPlaneBackupSource implements BackupSourceAdapter {
   constructor(
     private readonly controlPlane: ControlPlaneStore,
     root: string,
-    restoreRoot: string = resolve(root, '.ts-cloud', 'restores', 'control-plane'),
+    restoreRoot: string = resolveStatePath(root, 'restores', 'control-plane'),
   ) {
     this.root = resolve(root)
     this.restoreRoot = resolve(restoreRoot)

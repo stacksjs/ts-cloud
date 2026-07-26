@@ -197,7 +197,7 @@ export {
   setMaintenance,
   // Management-dashboard auto-deploy (inject the `dashboard.<apex>` site)
   buildManagementDashboardArtifact,
-  DASHBOARD_CREDENTIALS_FILE,
+  dashboardCredentialsFile,
   ensureManagementDashboard,
   MANAGEMENT_DASHBOARD_SITE,
   resolveDashboardAuth,

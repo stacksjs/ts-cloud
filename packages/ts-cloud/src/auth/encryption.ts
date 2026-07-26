@@ -1,14 +1,18 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
+import { resolveStatePath, statePath } from '@ts-cloud/core'
 
-export const AUTH_ENCRYPTION_KEY_FILE: string = join('.ts-cloud', 'auth-encryption-key')
+/** Project-relative location of the MFA encryption key, for messages and docs. */
+export function authEncryptionKeyFile(): string {
+  return statePath('auth-encryption-key')
+}
 
 /** Keep MFA encryption independent from legacy session-signing-key rotation. */
 export function resolveAuthEncryptionKey(cwd: string): string {
   const configured = process.env.TS_CLOUD_AUTH_ENCRYPTION_KEY?.trim()
   if (configured) return configured
-  const file = join(cwd, AUTH_ENCRYPTION_KEY_FILE)
+  const file = resolveStatePath(cwd, 'auth-encryption-key')
   try {
     if (existsSync(file)) {
       const saved = readFileSync(file, 'utf8').trim()

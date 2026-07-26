@@ -5,6 +5,7 @@ import type { BackupSourceAdapter, BackupSourceResult } from './service'
 import { existsSync } from 'node:fs'
 import { mkdir, readdir, rename, rm } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
+import { resolveStatePath } from '@ts-cloud/core'
 
 export interface FilesystemArchiveRuntime {
   create(root: string, paths: string[], excludes: string[]): Promise<Buffer>
@@ -93,7 +94,7 @@ export class FilesystemBackupSource implements BackupSourceAdapter {
   constructor(
     root: string,
     private readonly runtime: FilesystemArchiveRuntime = new BunFilesystemArchiveRuntime(),
-    restoreRoot: string = resolve(root, '.ts-cloud', 'restores', 'files'),
+    restoreRoot: string = resolveStatePath(root, 'restores', 'files'),
   ) {
     this.root = resolve(root)
     this.restoreRoot = resolve(restoreRoot)

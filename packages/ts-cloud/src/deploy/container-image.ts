@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
+import { isStatePath } from '@ts-cloud/core'
 import { ECRClient } from '../aws/ecr'
 
 export interface BuildContainerImageOptions {
@@ -35,13 +36,17 @@ export interface ContainerImageDependencies {
   ) => void
 }
 
-const IGNORED_DIRECTORIES = new Set(['.git', '.ts-cloud', 'node_modules', 'dist', 'coverage'])
+const IGNORED_DIRECTORIES = new Set(['.git', 'node_modules', 'dist', 'coverage'])
 
 function filesIn(directory: string, base = directory): string[] {
   const files: string[] = []
   for (const name of readdirSync(directory).sort()) {
     if (IGNORED_DIRECTORIES.has(name)) continue
     const path = join(directory, name)
+    // The state directory holds the dashboard credentials and session key —
+    // never let them into an image. Matched by path, not name, because it is
+    // configurable (a Stacks checkout puts it at `storage/cloud`).
+    if (isStatePath(path, base)) continue
     const stat = statSync(path)
     if (stat.isDirectory()) files.push(...filesIn(path, base))
     else if (stat.isFile()) files.push(relative(base, path))

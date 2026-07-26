@@ -8,15 +8,20 @@
  * lingering until the token expires.
  *
  * The signing secret is resolved from `TS_CLOUD_DASHBOARD_SECRET`, else
- * generated once and persisted to `.ts-cloud/dashboard-secret`. Rotating it
- * invalidates every outstanding session.
+ * generated once and persisted to `dashboard-secret` in the state directory.
+ * Rotating it invalidates every outstanding session.
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
+import { resolveStatePath, statePath } from '@ts-cloud/core'
 
 export const SESSION_COOKIE = 'ts_cloud_session'
-export const SECRET_FILE: string = join('.ts-cloud', 'dashboard-secret')
+
+/** Project-relative location of the session signing secret. */
+export function secretFile(): string {
+  return statePath('dashboard-secret')
+}
 
 /** Eight hours: long enough to work through a deploy, short enough to expire. */
 export const SESSION_TTL_MS: number = 8 * 60 * 60 * 1000
@@ -38,7 +43,7 @@ export function resolveSessionSecret(cwd: string): string {
   const fromEnv = process.env.TS_CLOUD_DASHBOARD_SECRET?.trim()
   if (fromEnv) return fromEnv
 
-  const file = join(cwd, SECRET_FILE)
+  const file = resolveStatePath(cwd, 'dashboard-secret')
   try {
     if (existsSync(file)) {
       const saved = readFileSync(file, 'utf8').trim()

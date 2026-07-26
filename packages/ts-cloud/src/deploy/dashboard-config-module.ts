@@ -25,7 +25,7 @@ function blankValues(record: Record<string, unknown> | undefined): Record<string
 /**
  * Strip everything the dashboard does not need to read.
  *
- * Two rules:
+ * Three rules:
  *
  * 1. **No credentials.** The Hetzner API token is the big one: it controls the
  *    whole cloud account (create and destroy any server), and unlike a site's
@@ -37,6 +37,12 @@ function blankValues(record: Record<string, unknown> | undefined): Record<string
  *    vars a site defines, never their values — so ship the keys and blank the
  *    values. The running site has its own `.env` on the box regardless; there
  *    is no reason for a second copy to sit in the dashboard's directory.
+ *
+ * 3. **No local paths.** `stateDir` says where the operator's machine keeps
+ *    ts-cloud state; it means nothing on the box, whose dashboard state lives
+ *    in the release's `DASHBOARD_STATE_DIR` (the path the deploy preserves
+ *    across releases via `sharedPaths`). Shipping it would move the box's users
+ *    and session key outside that shared path and wipe them every deploy.
  */
 export function redactForDashboard(config: CloudConfig): Record<string, any> {
   // A JSON round-trip both deep-clones and drops functions (deploy hooks),
@@ -47,6 +53,7 @@ export function redactForDashboard(config: CloudConfig): Record<string, any> {
   // The whole AWS block is account credentials + region hints the box dashboard
   // has no use for in box mode.
   delete safe.aws
+  delete safe.stateDir
 
   for (const site of Object.values(safe.sites ?? {}) as Array<Record<string, any>>) {
     if (site?.env) site.env = blankValues(site.env)

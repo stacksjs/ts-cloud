@@ -172,6 +172,22 @@ export interface CloudConfig {
    * Tags applied to all resources
    */
   tags?: Record<string, string>
+
+  /**
+   * Where ts-cloud keeps its machine-local state: dashboard credentials and
+   * session secret, the auth encryption key, the control-plane database, the
+   * staged dashboard release, cached templates, restore scratch space.
+   *
+   * Defaults to `.ts-cloud` in the project root. Point it at an existing home
+   * for runtime state to keep the root clean - a Stacks application sets
+   * `storage/cloud`. Relative paths resolve against the project root; absolute
+   * paths are used as-is. `TS_CLOUD_STATE_DIR` overrides this.
+   *
+   * Not to be confused with `storage/cloud/state/`, where the drivers record
+   * the provisioned box per stack - that one is meant to be committed so CI can
+   * find an existing server instead of provisioning a duplicate.
+   */
+  stateDir?: string
 }
 
 export type CloudOptions = Partial<CloudConfig>

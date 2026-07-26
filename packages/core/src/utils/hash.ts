@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { stateDir } from '../state-dir'
 
 export interface FileHash {
   path: string
@@ -54,7 +55,7 @@ export function hashBuffer(buffer: Buffer, algorithm: 'md5' | 'sha1' | 'sha256' 
  * Hash all files in a directory
  */
 export async function hashDirectory(dirPath: string, options: HashOptions = {}): Promise<FileHash[]> {
-  const ignorePatterns = options.ignorePatterns || ['node_modules', '.git', 'dist', 'build', '.ts-cloud']
+  const ignorePatterns = options.ignorePatterns || ['node_modules', '.git', 'dist', 'build', stateDir()]
 
   const files: FileHash[] = []
 
