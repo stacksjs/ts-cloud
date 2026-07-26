@@ -88,5 +88,9 @@ describe('dashboard security posture integration', () => {
     expect(
       await (await dashboardFetch('/api/security/review?env=production', { method: 'POST', headers })).json(),
     ).toMatchObject({ decision: { outcome: 'allow' } })
-  })
+  // 30s, not the 5000ms default: this drives a real dashboard server through
+  // login (deliberately slow password hashing), a blocked deploy, a waiver and
+  // a remediation. It runs in ~3s locally but measured 5013ms on CI — flaking
+  // the whole pipeline on a 13ms margin.
+  }, 30_000)
 })
