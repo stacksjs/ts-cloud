@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.58...v0.7.59)
+
+## 🐛 Bug Fixes
+
+- **porkbun**: clear the parking ALIAS so apex A records persist ([6847bb4](https://github.com/stacksjs/ts-cloud/commit/6847bb4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.59 ([e68e847](https://github.com/stacksjs/ts-cloud/commit/e68e847)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.57...v0.7.58)
 
 ## 🧪 Tests
