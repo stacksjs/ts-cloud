@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.57...v0.7.58)
+
+## 🧪 Tests
+
+- **security**: give the dashboard integration test a real timeout ([e9386f6](https://github.com/stacksjs/ts-cloud/commit/e9386f6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.58 ([9820f71](https://github.com/stacksjs/ts-cloud/commit/9820f71)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.56...v0.7.57)
 
 ## 🚀 Features
