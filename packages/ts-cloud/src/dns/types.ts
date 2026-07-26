@@ -3,7 +3,14 @@
  * Common interfaces for DNS provider abstraction
  */
 
-export type DnsRecordType = 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
+/**
+ * `ALIAS` is a provider-specific CNAME-like record permitted at a zone apex
+ * (Porkbun, DNSimple, Route53's ALIAS). It is included because ts-cloud has to
+ * *see* one to manage a zone correctly, not because it writes them: Porkbun
+ * puts a parking `ALIAS` on the apex of every new domain, and an apex `A`
+ * written while that exists is accepted and then silently discarded.
+ */
+export type DnsRecordType = 'A' | 'AAAA' | 'ALIAS' | 'CNAME' | 'TXT' | 'MX' | 'NS' | 'SRV' | 'CAA'
 
 export interface DnsRecord {
   name: string
