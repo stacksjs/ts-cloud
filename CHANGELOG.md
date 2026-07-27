@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.66...v0.7.67)
+
+## 🐛 Bug Fixes
+
+- **dns**: validate and normalize Route53 records ([9beec7c](https://github.com/stacksjs/ts-cloud/commit/9beec7c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.67 ([4306e8a](https://github.com/stacksjs/ts-cloud/commit/4306e8a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.65...v0.7.66)
 
 ## 🐛 Bug Fixes
