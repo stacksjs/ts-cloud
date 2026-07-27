@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.75...v0.7.76)
+
+## 🐛 Bug Fixes
+
+- **monitoring**: drain route probe responses ([a794e69](https://github.com/stacksjs/ts-cloud/commit/a794e69)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.76 ([18523de](https://github.com/stacksjs/ts-cloud/commit/18523de)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.74...v0.7.75)
 
 ## 🐛 Bug Fixes
