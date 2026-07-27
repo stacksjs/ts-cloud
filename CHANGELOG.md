@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.60...v0.7.61)
+
+## 🐛 Bug Fixes
+
+- **deploy**: serialize deploys per site, and never wipe the live release ([ce56314](https://github.com/stacksjs/ts-cloud/commit/ce56314)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.61 ([66fee88](https://github.com/stacksjs/ts-cloud/commit/66fee88)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.59...v0.7.60)
 
 ## 🚀 Features
