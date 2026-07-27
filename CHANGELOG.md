@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.74...v0.7.75)
+
+## 🐛 Bug Fixes
+
+- **deploy**: validate attached compute targets ([2dc9ee6](https://github.com/stacksjs/ts-cloud/commit/2dc9ee6)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.75 ([a0ac05b](https://github.com/stacksjs/ts-cloud/commit/a0ac05b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.73...v0.7.74)
 
 ## 🐛 Bug Fixes
