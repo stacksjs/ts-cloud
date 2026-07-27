@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.73...v0.7.74)
+
+## 🐛 Bug Fixes
+
+- **security**: distinguish framework paths from secrets ([1754a24](https://github.com/stacksjs/ts-cloud/commit/1754a24)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.74 ([2850418](https://github.com/stacksjs/ts-cloud/commit/2850418)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.72...v0.7.73)
 
 ## 🐛 Bug Fixes
