@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.72...v0.7.73)
+
+## 🐛 Bug Fixes
+
+- **security**: ignore generated framework backups ([3e46803](https://github.com/stacksjs/ts-cloud/commit/3e46803)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.73 ([75624c3](https://github.com/stacksjs/ts-cloud/commit/75624c3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.71...v0.7.72)
 
 ## ⚡ Performance Improvements
