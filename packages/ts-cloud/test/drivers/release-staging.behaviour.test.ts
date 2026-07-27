@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'bun:test'
-import { buildIsReleaseLive, buildPromoteStagedRelease, buildResetReleaseDir, releasePaths } from '../../src/drivers/shared/releases'
+import { buildIsReleaseLive, buildPromoteStagedRelease, buildResetReleaseDir, buildStrandedReleaseTrap, releasePaths } from '../../src/drivers/shared/releases'
 
 /**
  * These run the emitted shell instead of asserting on its text.
@@ -112,5 +112,59 @@ describe('release staging, executed', () => {
     const proc = Bun.spawnSync(['bash', '-c', script], { stdout: 'pipe', stderr: 'pipe' })
 
     expect(proc.stdout.toString()).toBe('no')
+  })
+})
+
+/**
+ * The trap that cleans up a half-built release has to decide "is this release
+ * live?" when it fires, not when it is armed. A deploy arms it at the top and
+ * activates the release much later; a value computed up front says "not live"
+ * for the rest of the script, so a failure in any step after activation would
+ * delete the release the site had just started serving.
+ */
+describe('stranded-release trap, executed', () => {
+  async function runDeploy(base: string, releaseId: string, options: { activate: boolean, fail: boolean }): Promise<void> {
+    const paths = releasePaths(base, releaseId)
+
+    const script = [
+      'set -euo pipefail',
+      buildStrandedReleaseTrap(paths),
+      `mkdir -p ${paths.release}`,
+      `printf NEW > ${paths.release}/marker.txt`,
+      ...(options.activate ? [`ln -sfn ${paths.release} ${paths.current}`] : []),
+      ...(options.fail ? ['false'] : []),
+    ].join('\n')
+
+    Bun.spawnSync(['bash', '-c', script], { stderr: 'pipe', stdout: 'pipe' })
+  }
+
+  it('keeps a release that had already gone live when a later step fails', async () => {
+    const base = sandbox()
+    mkdirSync(join(base, 'releases'), { recursive: true })
+
+    await runDeploy(base, 'abc123', { activate: true, fail: true })
+
+    // The site is serving this release; the failure must not have taken it away.
+    expect(existsSync(join(base, 'releases', 'abc123', 'marker.txt'))).toBe(true)
+    expect(readFileSync(join(base, 'current', 'marker.txt'), 'utf8')).toBe('NEW')
+  })
+
+  it('removes a release that failed before it went live', async () => {
+    const base = sandbox()
+    mkdirSync(join(base, 'releases'), { recursive: true })
+
+    await runDeploy(base, 'abc123', { activate: false, fail: true })
+
+    // Nothing points at it and it never served: rollback must not find it.
+    expect(existsSync(join(base, 'releases', 'abc123'))).toBe(false)
+  })
+
+  it('leaves a successful deploy alone', async () => {
+    const base = sandbox()
+    mkdirSync(join(base, 'releases'), { recursive: true })
+
+    await runDeploy(base, 'abc123', { activate: true, fail: false })
+
+    expect(readFileSync(join(base, 'releases', 'abc123', 'marker.txt'), 'utf8')).toBe('NEW')
   })
 })

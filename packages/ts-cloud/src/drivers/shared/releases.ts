@@ -166,6 +166,24 @@ export function buildResetReleaseDir(paths: ReleasePaths): string[] {
 }
 
 /**
+ * Remove a half-built release if the deploy fails before it went live.
+ *
+ * The check has to run *when the trap fires*, not when it is armed. A deploy
+ * arms this at the top and activates the release much later, so a value
+ * computed up front says "not live" for the rest of the script — and a failure
+ * in any step after activation would then delete the release the site had just
+ * started serving. Both paths are resolved at that moment for the reason in
+ * {@link buildIsReleaseLive}.
+ */
+export function buildStrandedReleaseTrap(paths: ReleasePaths): string {
+  const live = `TS_CLOUD_TRAP_LIVE="$(readlink -f ${paths.current} 2>/dev/null || true)"`
+  const target = `TS_CLOUD_TRAP_TARGET="$(readlink -f ${paths.release} 2>/dev/null || echo ${paths.release})"`
+  const body = `if [ $? -ne 0 ]; then ${live}; ${target}; [ "$TS_CLOUD_TRAP_LIVE" = "$TS_CLOUD_TRAP_TARGET" ] || rm -rf ${paths.release}; fi`
+
+  return `trap '${body}' EXIT`
+}
+
+/**
  * Set `TS_CLOUD_IS_LIVE` to "yes" when `current` resolves to this release.
  *
  * Both sides are resolved before comparing. Comparing a resolved `current`

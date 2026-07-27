@@ -11,7 +11,7 @@
  * instant rollback. See {@link import('./releases')}.
  */
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildIsReleaseLive, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
+import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, buildStrandedReleaseTrap, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -136,10 +136,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // A failed deploy must not strand its half-built release dir: rollback
     // picks the newest non-current dir and would activate this never-activated
     // (broken) release. On any failure before activation, remove it.
-    // Resolve both sides before comparing (see buildIsReleaseLive): a
-    // symlinked ancestor made this trap delete a release that WAS live.
-    ...buildIsReleaseLive(paths),
-    `trap 'if [ \$? -ne 0 ] && [ "\$TS_CLOUD_IS_LIVE" != "yes" ]; then rm -rf ${paths.release}; fi' EXIT`,
+    buildStrandedReleaseTrap(paths),
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
     // Unpack this deploy into its own release dir. When that id is the one
@@ -325,10 +322,7 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
     ...buildDeployLock(paths),
     // Same stranded-release guard as buildSiteDeployScript: never let a failed
     // deploy leave a release rollback could activate.
-    // Resolve both sides before comparing (see buildIsReleaseLive): a
-    // symlinked ancestor made this trap delete a release that WAS live.
-    ...buildIsReleaseLive(paths),
-    `trap 'if [ \$? -ne 0 ] && [ "\$TS_CLOUD_IS_LIVE" != "yes" ]; then rm -rf ${paths.release}; fi' EXIT`,
+    buildStrandedReleaseTrap(paths),
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, []),
     // Same staging rule as buildSiteDeployScript: never delete the tree the
