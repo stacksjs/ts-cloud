@@ -84,6 +84,24 @@ describe('pre-deployment secret scanning', () => {
     expect(result.findings).toEqual([])
   })
 
+  it('does not classify mixed-case framework paths as generic AWS secrets', async () => {
+    const directory = fixture(
+      'features.ts',
+      [
+        "const path = 'resources/components/Dashboard/Commerce/'",
+        'const contract = "getAuthUrl/getAccessToken/getUserByToken"',
+      ].join('\n'),
+    )
+
+    const result = await new PreDeployScanner().scan({
+      directory,
+      failOnSeverity: 'high',
+    })
+
+    expect(result.passed).toBe(true)
+    expect(result.findings).toEqual([])
+  })
+
   it('does not scan generated framework backup trees', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-secret-scan-'))
     temporaryDirectories.push(directory)

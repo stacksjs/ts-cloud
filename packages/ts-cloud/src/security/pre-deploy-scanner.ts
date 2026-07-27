@@ -629,7 +629,9 @@ export class PreDeployScanner {
   }
 
   private hasSecretCharacterDiversity(value: string): boolean {
-    return [/[a-z]/.test(value), /[A-Z]/.test(value), /\d/.test(value), /[/+=]/.test(value)].filter(Boolean).length >= 3
+    const hasRandomAlphabetMarker = /[\d+=]/.test(value)
+    const characterClasses = [/[a-z]/.test(value), /[A-Z]/.test(value), /\d/.test(value), /[/+=]/.test(value)]
+    return hasRandomAlphabetMarker && characterClasses.filter(Boolean).length >= 3
   }
 
   /**
