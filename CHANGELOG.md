@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.71...v0.7.72)
+
+## ⚡ Performance Improvements
+
+- **monitoring**: use bodyless route probes ([4dfc3a4](https://github.com/stacksjs/ts-cloud/commit/4dfc3a4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.72 ([6b9b6a4](https://github.com/stacksjs/ts-cloud/commit/6b9b6a4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.70...v0.7.71)
 
 ## 🐛 Bug Fixes
