@@ -58,7 +58,7 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   {
     name: 'AWS Secret Access Key',
     pattern:
-      /(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretAccessKey)\s*[=:]\s*['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
+      /(?:aws_secret_access_key|aws_secret_key|secret_access_key|secretAccessKey)['"]?\s*[=:]\s*['"]?([A-Za-z0-9/+=]{40})['"]?/gi,
     severity: 'critical',
     description: 'AWS Secret Access Key detected',
   },
@@ -496,11 +496,21 @@ export class PreDeployScanner {
           continue
         }
 
+        const candidate = match[1] || match[0]
+
+        // A bare 40-character hexadecimal value is overwhelmingly a SHA-1
+        // source/content digest, especially in manifests and lock files. Keep
+        // the named AWS credential rule strict, but do not let the generic
+        // base64-shaped fallback classify ordinary digests as credentials.
+        if (pattern.name === 'AWS Secret Key (Generic)' && /^[a-f0-9]{40}$/i.test(candidate)) {
+          continue
+        }
+
         // Entropy guard — real secrets/keys are high-entropy strings.
         // ASCII section dividers (`====...===`) and other low-diversity
         // matches (`0000...000`, `XXXX...XXX`) overwhelmingly produce
         // false positives against the generic 40-char base64 pattern.
-        if (this.isLowEntropy(match[1] || match[0])) {
+        if (this.isLowEntropy(candidate)) {
           continue
         }
 
