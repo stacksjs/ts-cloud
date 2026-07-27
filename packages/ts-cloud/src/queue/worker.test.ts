@@ -124,4 +124,29 @@ describe('durable queue worker', () => {
     await Bun.sleep(15)
     expect(handled).toBe(1)
   })
+
+  it('wakes immediately for in-process work while retaining a long fallback poll', async () => {
+    const target = setup()
+    const queue = new DurableOperationQueue(target.store)
+    let handledAt = 0
+    const worker = new DurableQueueWorker(
+      queue,
+      {
+        'deployment.create': async () => {
+          handledAt = performance.now()
+        },
+      },
+      { parallelism: 1, pollIntervalMs: 60_000 },
+    ).start()
+
+    await Bun.sleep(10)
+    const queuedAt = performance.now()
+    queue.enqueue({ projectId: target.project.id, resourceId: target.first.id, kind: 'deployment.create' })
+    while (!handledAt && performance.now() - queuedAt < 500) await Bun.sleep(5)
+
+    expect(handledAt).toBeGreaterThan(0)
+    expect(handledAt - queuedAt).toBeLessThan(250)
+    worker.stop()
+    await worker.settled()
+  })
 })

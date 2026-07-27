@@ -25,6 +25,7 @@ export class DurableQueueWorker {
   private readonly waits = new Map<ReturnType<typeof setTimeout>, () => void>()
   private lanes: Promise<void>[] = []
   private running = false
+  private unsubscribeAvailability?: () => void
 
   constructor(
     private readonly queue: DurableOperationQueue,
@@ -32,7 +33,7 @@ export class DurableQueueWorker {
     options: DurableQueueWorkerOptions = {},
   ) {
     this.parallelism = bounded(options.parallelism, 4, 100)
-    this.pollIntervalMs = bounded(options.pollIntervalMs, 500, 60_000)
+    this.pollIntervalMs = bounded(options.pollIntervalMs, 5_000, 60_000)
     this.onResult = options.onResult
     this.onError = options.onError
   }
@@ -44,12 +45,19 @@ export class DurableQueueWorker {
   start(): this {
     if (this.running) return this
     this.running = true
+    this.unsubscribeAvailability = this.queue.onAvailable(() => this.wake())
     this.lanes = Array.from({ length: this.parallelism }, () => this.runLane())
     return this
   }
 
   stop(): void {
     this.running = false
+    this.unsubscribeAvailability?.()
+    this.unsubscribeAvailability = undefined
+    this.wake()
+  }
+
+  private wake(): void {
     for (const [timer, resolve] of this.waits) {
       clearTimeout(timer)
       resolve()

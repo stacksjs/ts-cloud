@@ -64,6 +64,7 @@ export class DurableOperationQueue {
   private readonly idFn: () => string
   private readonly workerId: string
   private readonly leaseMs: number
+  private readonly availabilityListeners = new Set<() => void>()
   readonly limits: QueueConcurrencyLimits
 
   constructor(
@@ -126,7 +127,23 @@ export class DurableOperationQueue {
       ],
     )
     this.appendLog(operation.id, 'Queued for durable execution.', { stream: 'system' })
-    return this.view(operation.id)!
+    const view = this.view(operation.id)!
+    this.notifyAvailable()
+    return view
+  }
+
+  /**
+   * Wake in-process workers as soon as work becomes available. Durable workers
+   * still poll as a cross-process/recovery fallback, but dashboard API actions
+   * no longer need an aggressive idle database polling interval.
+   */
+  onAvailable(listener: () => void): () => void {
+    this.availabilityListeners.add(listener)
+    return () => this.availabilityListeners.delete(listener)
+  }
+
+  private notifyAvailable(): void {
+    for (const listener of this.availabilityListeners) listener()
   }
 
   getJob(operationId: string): OperationJob | undefined {
@@ -145,7 +162,7 @@ export class DurableOperationQueue {
       const ahead = Number(
         this.controlPlane.database
           .query<Row, [string, number, number, string]>(
-            "SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? AND (o.priority>? OR (o.priority=? AND o.created_at<?))",
+            `SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='queued' AND j.available_at<=? AND (o.priority>? OR (o.priority=? AND o.created_at<?))`,
           )
           .get(this.now(), operation.priority, operation.priority, operation.createdAt)?.count ?? 0,
       )
@@ -198,14 +215,14 @@ export class DurableOperationQueue {
     }
     if (
       operation.projectId &&
-      this.runningCount("SELECT COUNT(*) AS count FROM operations WHERE state='running' AND project_id=?", [
+      this.runningCount(`SELECT COUNT(*) AS count FROM operations WHERE state='running' AND project_id=?`, [
         operation.projectId,
       ]) >= this.limits.project
     )
       return 'project_concurrency'
     if (
       operation.environmentId &&
-      this.runningCount("SELECT COUNT(*) AS count FROM operations WHERE state='running' AND environment_id=?", [
+      this.runningCount(`SELECT COUNT(*) AS count FROM operations WHERE state='running' AND environment_id=?`, [
         operation.environmentId,
       ]) >= this.limits.environment
     )
@@ -213,7 +230,7 @@ export class DurableOperationQueue {
     if (
       metadata.providerKey &&
       this.runningCount(
-        "SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='running' AND j.provider_key=?",
+        `SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='running' AND j.provider_key=?`,
         [metadata.providerKey],
       ) >= this.limits.provider
     )
@@ -221,7 +238,7 @@ export class DurableOperationQueue {
     if (
       metadata.buildSlot &&
       this.runningCount(
-        "SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='running' AND j.build_slot=1",
+        `SELECT COUNT(*) AS count FROM operations o JOIN operation_jobs j ON j.operation_id=o.id WHERE o.state='running' AND j.build_slot=1`,
         [],
       ) >= this.limits.builds
     )
@@ -293,7 +310,7 @@ export class DurableOperationQueue {
     const expiry = this.leaseExpiry()
     const metadata = this.getJob(operationId)
     const changed = this.controlPlane.database.run(
-      "UPDATE operations SET lease_expires_at=?, updated_at=?, version=version+1 WHERE id=? AND state='running' AND lease_owner=? AND version=?",
+      `UPDATE operations SET lease_expires_at=?, updated_at=?, version=version+1 WHERE id=? AND state='running' AND lease_owner=? AND version=?`,
       [expiry, now, operationId, this.workerId, operation.version],
     ).changes
     if (changed !== 1) throw new Error('Operation lease changed before heartbeat')
@@ -414,7 +431,9 @@ export class DurableOperationQueue {
       payload: { errorClass, availableAt: available, nextAttempt: operation.attempt + 1 },
     })
     this.appendLog(operationId, `Retry queued for error class ${errorClass}.`, { stream: 'system' })
-    return this.controlPlane.getOperation(queued.id)!
+    const operationView = this.controlPlane.getOperation(queued.id)!
+    this.notifyAvailable()
+    return operationView
   }
 
   private release(operationId: string): void {
@@ -589,7 +608,7 @@ export class DurableOperationQueue {
           error: 'Worker lease expired; safely requeued from the last checkpoint.',
         })
         this.controlPlane.database.run(
-          "UPDATE operation_jobs SET available_at=?, blocked_reason='worker_restart', updated_at=? WHERE operation_id=?",
+          `UPDATE operation_jobs SET available_at=?, blocked_reason='worker_restart', updated_at=? WHERE operation_id=?`,
           [this.now(), this.now(), operation.id],
         )
         this.appendLog(operation.id, 'Worker lease expired; operation requeued from its persisted checkpoint.', {
