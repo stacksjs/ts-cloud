@@ -8,6 +8,7 @@ import { initializeDashboardControlPlane } from '../../src/deploy/dashboard-cont
 import { HetznerClient, resolveHetznerApiToken } from '../../src/drivers/hetzner/client'
 import { resolveHetznerSettings } from '../../src/drivers/hetzner/config'
 import { buildHetznerFirewallRules } from '../../src/drivers/hetzner/firewall-rules'
+import { collectHetznerServerMonitoring } from '../../src/drivers/hetzner/monitoring'
 import {
   applyHetznerHostOptimization,
   collectHetznerHostOptimizationReport,
@@ -71,9 +72,85 @@ interface OptimizeCommandOptions {
   json?: boolean
 }
 
+interface MonitoringCommandOptions {
+  env?: string
+  range?: string
+  step?: string
+  json?: boolean
+}
+
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value ?? '', 10)
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
+}
+
+function monitoringRange(value = '3h'): number {
+  const match = value.match(/^(\d+)(m|h)$/)
+  if (!match) throw new Error('--range must use minutes or hours, for example 30m or 3h.')
+  const milliseconds = Number(match[1]) * (match[2] === 'h' ? 3_600_000 : 60_000)
+  if (milliseconds < 5 * 60_000 || milliseconds > 24 * 3_600_000)
+    throw new Error('--range must be between 5 minutes and 24 hours.')
+  return milliseconds
+}
+
+function formatMonitoringValue(value: number | null, suffix = '%'): string {
+  return value == null ? 'unavailable' : `${value.toFixed(1)}${suffix}`
+}
+
+async function runHetznerMonitoring(name: string, options: MonitoringCommandOptions): Promise<void> {
+  const config = await loadValidatedConfig()
+  if (config.cloud?.provider !== 'hetzner') throw new Error('server:monitoring currently requires the Hetzner provider.')
+
+  const environment = (options.env ?? process.env.CLOUD_ENV ?? 'production') as EnvironmentType
+  const stackName = resolveProjectStackName(config, environment)
+  const driverState = await readDriverState(stackName)
+  if (!driverState?.serverId) throw new Error(`No pinned Hetzner server was found for ${stackName}.`)
+  if (![driverState.serverName, String(driverState.serverId), driverState.stackName].includes(name))
+    throw new Error(`Refusing to read ${name}: project state is pinned to ${driverState.serverName}.`)
+
+  const settings = resolveHetznerSettings(config)
+  const client = new HetznerClient({ apiToken: resolveHetznerApiToken(settings.apiToken, config) })
+  const server = await client.getServer(driverState.serverId)
+  const host = driverState.publicIp ?? server.public_net.ipv4?.ip
+  if (!host) throw new Error(`Server ${server.name} has no public IPv4 address.`)
+
+  const to = new Date()
+  const from = new Date(to.getTime() - monitoringRange(options.range))
+  const step = Math.min(3600, Math.max(60, positiveInteger(options.step, 60)))
+  const result = await collectHetznerServerMonitoring({
+    client,
+    serverId: server.id,
+    cores: Math.max(1, Number(server.server_type.cores) || 1),
+    from,
+    to,
+    step,
+    remote: {
+      host,
+      user: driverState.sshUser ?? settings.sshUser,
+      identityFile: settings.sshPrivateKeyPath,
+      connectTimeoutSec: 15,
+    },
+  })
+
+  if (options.json) {
+    console.log(JSON.stringify({ schemaVersion: 1, server: server.name, result }, null, 2))
+    return
+  }
+  cli.table(
+    ['Server', 'Window', 'CPU average / peak', 'RAM average / peak', 'Minimum available', 'Swap peak'],
+    [
+      [
+        server.name,
+        `${result.from} to ${result.to}`,
+        `${formatMonitoringValue(result.summary.cpuAveragePercent)} / ${formatMonitoringValue(result.summary.cpuPeakPercent)}`,
+        `${formatMonitoringValue(result.summary.memoryAveragePercent)} / ${formatMonitoringValue(result.summary.memoryPeakPercent)}`,
+        result.summary.memoryMinimumAvailableBytes == null
+          ? 'unavailable'
+          : `${(result.summary.memoryMinimumAvailableBytes / 1024 ** 3).toFixed(2)} GB`,
+        formatMonitoringValue(result.summary.swapPeakPercent),
+      ],
+    ],
+  )
 }
 
 function resizePlanOutput(plan: Awaited<ReturnType<typeof planHetznerServerResize>>) {
@@ -474,6 +551,19 @@ export function registerServerCommands(app: CLI): void {
       }
     })
   app
+    .command('server:monitoring <name>', 'Read historical Hetzner CPU, RAM, swap, disk, and network metrics')
+    .option('--env <environment>', 'Deployment environment', { default: 'production' })
+    .option('--range <duration>', 'Historical window from 5m to 24h', { default: '3h' })
+    .option('--step <seconds>', 'Hetzner provider sample interval', { default: '60' })
+    .option('--json', 'Print structured JSON')
+    .action(async (name: string, options: MonitoringCommandOptions) => {
+      try {
+        await runHetznerMonitoring(name, options)
+      } catch (error) {
+        fail(error)
+      }
+    })
+  app
     .command('server:list', 'List fleet servers')
     .option('--json', 'Print structured JSON')
     .action(async (options: { json?: boolean }) => {
@@ -653,7 +743,6 @@ export function registerServerCommands(app: CLI): void {
     ['server:firewall:remove <name> <rule>', 'Remove firewall rule'],
     ['server:ssl:install <domain>', 'Install TLS'],
     ['server:ssl:renew <domain>', 'Renew TLS'],
-    ['server:monitoring <name>', 'Read server metrics'],
     ['server:snapshot <name>', 'Create provider snapshot'],
     ['server:snapshot:restore <name> <snapshot-id>', 'Restore provider snapshot'],
     ['server:update <name>', 'Update OS packages'],

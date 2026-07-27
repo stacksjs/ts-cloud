@@ -213,6 +213,33 @@ describe('HetznerClient', () => {
     expect(actions[0].id).toBe(9)
   })
 
+  it('reads bounded historical server metrics', async () => {
+    const fetchImpl = mock(async (url: string) => {
+      const request = new URL(url)
+      expect(request.pathname).toBe('/v1/servers/42/metrics')
+      expect(request.searchParams.get('type')).toBe('cpu,disk,network')
+      expect(request.searchParams.get('step')).toBe('60')
+      return new Response(
+        JSON.stringify({
+          metrics: {
+            start: '2026-07-27T18:00:00Z',
+            end: '2026-07-27T21:00:00Z',
+            step: 60,
+            time_series: { cpu: { values: [[1785175200, '75.5']] } },
+          },
+        }),
+        { status: 200 },
+      )
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    const metrics = await client.getServerMetrics(42, {
+      types: ['cpu', 'disk', 'network'],
+      start: new Date('2026-07-27T18:00:00Z'),
+      end: new Date('2026-07-27T21:00:00Z'),
+    })
+    expect(metrics.time_series.cpu.values[0]).toEqual([1785175200, '75.5'])
+  })
+
   it('creates a server with labels and user_data', async () => {
     let capturedBody: any
     const fetchImpl = mock(async (_url: string, init?: RequestInit) => {

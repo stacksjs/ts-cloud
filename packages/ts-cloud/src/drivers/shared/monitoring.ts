@@ -69,6 +69,10 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
   const servicesJson = SERVICE_PROBES.map(([name]) => `"${name}":"$SVC_${name.toUpperCase()}"`).join(',')
 
   return [
+    // sysstat keeps CPU/RAM/swap history locally, so server:monitoring and the
+    // dashboard can explain the last few hours instead of showing one snapshot.
+    'if ! command -v sadf >/dev/null 2>&1; then export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; apt-get install -y -qq sysstat; fi',
+    'systemctl enable --now sysstat.service 2>/dev/null || true',
     'mkdir -p /var/lib/ts-cloud',
     `cat > /usr/local/bin/ts-cloud-metrics.sh <<'TS_CLOUD_METRICS_EOF'`,
     '#!/bin/bash',

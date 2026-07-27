@@ -9,6 +9,8 @@ describe('buildMonitoringScript', () => {
 
   it('installs the collector + minute timer when enabled', () => {
     const s = buildMonitoringScript(true).join('\n')
+    expect(s).toContain('apt-get install -y -qq sysstat')
+    expect(s).toContain('systemctl enable --now sysstat.service')
     expect(s).toContain('/usr/local/bin/ts-cloud-metrics.sh')
     // Written atomically (temp + rename) so readers never see a partial file.
     expect(s).toContain(`cat > ${METRICS_PATH}.tmp`)

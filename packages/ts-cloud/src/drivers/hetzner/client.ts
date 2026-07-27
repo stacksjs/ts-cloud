@@ -118,6 +118,15 @@ export interface HetznerAction {
   error?: { code: string; message: string }
 }
 
+export type HetznerServerMetricType = 'cpu' | 'disk' | 'network'
+
+export interface HetznerServerMetrics {
+  start: string
+  end: string
+  step: number
+  time_series: Record<string, { values: Array<[number, string]> }>
+}
+
 export interface CreateServerOptions {
   name: string
   serverType: string
@@ -267,6 +276,25 @@ export class HetznerClient {
   async getServer(id: number): Promise<HetznerServer> {
     const data = await this.request<{ server: HetznerServer }>('GET', `/servers/${id}`)
     return data.server
+  }
+
+  async getServerMetrics(
+    id: number,
+    options: {
+      types: HetznerServerMetricType[]
+      start: Date
+      end: Date
+      step?: number
+    },
+  ): Promise<HetznerServerMetrics> {
+    const query = new URLSearchParams({
+      type: options.types.join(','),
+      start: options.start.toISOString(),
+      end: options.end.toISOString(),
+      step: String(Math.max(60, Math.floor(options.step ?? 60))),
+    })
+    const data = await this.request<{ metrics: HetznerServerMetrics }>('GET', `/servers/${id}/metrics?${query}`)
+    return data.metrics
   }
 
   async listServerTypes(name?: string): Promise<HetznerServerType[]> {
