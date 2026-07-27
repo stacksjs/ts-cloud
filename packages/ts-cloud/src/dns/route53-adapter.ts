@@ -58,8 +58,12 @@ export class Route53Provider implements DnsProvider {
   /**
    * Ensure domain name ends with a dot (Route53 requirement)
    */
-  private normalizeName(name: string): string {
-    return name.endsWith('.') ? name : `${name}.`
+  private normalizeName(domain: string, name: string): string {
+    const zone = domain.replace(/\.$/, '')
+    const record = name.replace(/\.$/, '')
+    if (!record || record === '@') return `${zone}.`
+    if (record === zone || record.endsWith(`.${zone}`)) return `${record}.`
+    return `${record}.${zone}.`
   }
 
   async createRecord(domain: string, record: DnsRecord): Promise<CreateRecordResult> {
@@ -72,7 +76,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -126,7 +130,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -180,7 +184,7 @@ export class Route53Provider implements DnsProvider {
         }
       }
 
-      const recordName = this.normalizeName(record.name)
+      const recordName = this.normalizeName(domain, record.name)
       let recordValue = record.content
 
       // TXT records need to be quoted
@@ -340,7 +344,7 @@ export class Route53Provider implements DnsProvider {
 
       const result = await this.client.createAliasRecord({
         HostedZoneId: hostedZoneId,
-        Name: this.normalizeName(params.name),
+        Name: this.normalizeName(params.domain, params.name),
         TargetHostedZoneId: params.targetHostedZoneId,
         TargetDNSName: params.targetDnsName,
         EvaluateTargetHealth: params.evaluateTargetHealth,

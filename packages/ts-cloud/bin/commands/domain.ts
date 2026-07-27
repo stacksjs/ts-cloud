@@ -295,12 +295,18 @@ export function registerDomainCommands(app: CLI): void {
           const spinner = new cli.Spinner(`Adding record via ${providerName}...`)
           spinner.start()
 
-          await provider.createRecord(domain, {
+          const result = await provider.createRecord(domain, {
             type: recordType,
             name: name === '@' ? '' : name,
             content: value,
             ttl,
           })
+
+          if (!result.success) {
+            spinner.fail('Failed to add DNS record')
+            cli.error(result.message || 'DNS provider rejected the record')
+            return
+          }
 
           spinner.succeed('DNS record added successfully')
 
