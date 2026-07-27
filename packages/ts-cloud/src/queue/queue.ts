@@ -10,6 +10,23 @@ const DEFAULT_LIMITS: QueueConcurrencyLimits = { project: 2, environment: 1, pro
 const DEFAULT_RETENTION_DAYS = 30
 const MAX_LOG_BYTES = 16 * 1024
 const TERMINAL_STATES: readonly OperationState[] = ['succeeded', 'failed', 'cancelled', 'timed_out']
+const fileAvailabilityListeners = new Map<string, Set<() => void>>()
+const memoryAvailabilityListeners = new WeakMap<ControlPlaneStore, Set<() => void>>()
+
+function availabilityListeners(store: ControlPlaneStore): Set<() => void> {
+  if (store.path === ':memory:') {
+    const existing = memoryAvailabilityListeners.get(store)
+    if (existing) return existing
+    const created = new Set<() => void>()
+    memoryAvailabilityListeners.set(store, created)
+    return created
+  }
+  const existing = fileAvailabilityListeners.get(store.path)
+  if (existing) return existing
+  const created = new Set<() => void>()
+  fileAvailabilityListeners.set(store.path, created)
+  return created
+}
 
 function optional(value: unknown): string | undefined {
   return typeof value === 'string' && value ? value : undefined
@@ -64,7 +81,6 @@ export class DurableOperationQueue {
   private readonly idFn: () => string
   private readonly workerId: string
   private readonly leaseMs: number
-  private readonly availabilityListeners = new Set<() => void>()
   readonly limits: QueueConcurrencyLimits
 
   constructor(
@@ -138,12 +154,17 @@ export class DurableOperationQueue {
    * no longer need an aggressive idle database polling interval.
    */
   onAvailable(listener: () => void): () => void {
-    this.availabilityListeners.add(listener)
-    return () => this.availabilityListeners.delete(listener)
+    const listeners = availabilityListeners(this.controlPlane)
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+      if (listeners.size === 0 && this.controlPlane.path !== ':memory:')
+        fileAvailabilityListeners.delete(this.controlPlane.path)
+    }
   }
 
   private notifyAvailable(): void {
-    for (const listener of this.availabilityListeners) listener()
+    for (const listener of availabilityListeners(this.controlPlane)) listener()
   }
 
   getJob(operationId: string): OperationJob | undefined {

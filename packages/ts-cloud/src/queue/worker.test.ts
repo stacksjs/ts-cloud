@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { ControlPlaneStore } from '../control-plane'
 import { DurableOperationQueue } from './queue'
 import { DurableQueueWorker } from './worker'
@@ -148,5 +151,37 @@ describe('durable queue worker', () => {
     expect(handledAt - queuedAt).toBeLessThan(250)
     worker.stop()
     await worker.settled()
+  })
+
+  it('wakes workers opened through another SQLite handle to the same file', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ts-cloud-queue-wake-'))
+    const path = join(root, 'control-plane.sqlite')
+    const workerStore = new ControlPlaneStore({ path })
+    const writerStore = new ControlPlaneStore({ path })
+    stores.push(workerStore, writerStore)
+    const organization = workerStore.createOrganization({ slug: 'shared', name: 'Shared' })
+    const project = workerStore.createProject({ organizationId: organization.id, slug: 'shared', name: 'Shared' })
+    const workerQueue = new DurableOperationQueue(workerStore)
+    const writerQueue = new DurableOperationQueue(writerStore)
+    let handledAt = 0
+    const worker = new DurableQueueWorker(
+      workerQueue,
+      { 'deployment.create': async () => { handledAt = performance.now() } },
+      { parallelism: 1, pollIntervalMs: 60_000 },
+    ).start()
+
+    try {
+      await Bun.sleep(10)
+      const queuedAt = performance.now()
+      writerQueue.enqueue({ projectId: project.id, kind: 'deployment.create' })
+      while (!handledAt && performance.now() - queuedAt < 500) await Bun.sleep(5)
+      expect(handledAt).toBeGreaterThan(0)
+      expect(handledAt - queuedAt).toBeLessThan(250)
+    }
+    finally {
+      worker.stop()
+      await worker.settled()
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
