@@ -339,6 +339,77 @@ export interface DeployAllSitesOptions {
   rpxConfig?: CloudConfig
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
+ * Reconcile only the auto-managed dashboard units for one project. Dashboard
+ * host derivation can legitimately change when ownership metadata is fixed;
+ * without this bounded cleanup, the superseded unit remains enabled forever
+ * and can keep crash-looping on its old port. Release data and shared dashboard
+ * state stay on disk for recovery.
+ */
+export function buildManagementDashboardServiceReconciliationScript(
+  slug: string,
+  desiredSiteNames: string[],
+): string[] {
+  const prefix = `${slug}-dashboard-`
+  const desiredUnits = desiredSiteNames.map(siteName => `${slug}-${siteName}.service`)
+
+  return [
+    'set -euo pipefail',
+    `TS_CLOUD_DASHBOARD_PREFIX=${shellSingleQuote(prefix)}`,
+    `TS_CLOUD_DASHBOARD_DESIRED=${shellSingleQuote(` ${desiredUnits.join(' ')} `)}`,
+    'for TS_CLOUD_UNIT_FILE in /etc/systemd/system/*.service; do',
+    '  [ -e "$TS_CLOUD_UNIT_FILE" ] || continue',
+    '  TS_CLOUD_UNIT=$(basename "$TS_CLOUD_UNIT_FILE")',
+    '  case "$TS_CLOUD_UNIT" in',
+    '    "$TS_CLOUD_DASHBOARD_PREFIX"*.service)',
+    '      case "$TS_CLOUD_DASHBOARD_DESIRED" in',
+    '        *" $TS_CLOUD_UNIT "*) ;;',
+    '        *)',
+    '          systemctl disable --now "$TS_CLOUD_UNIT" 2>/dev/null || true',
+    '          rm -f "$TS_CLOUD_UNIT_FILE"',
+    '          ;;',
+    '      esac',
+    '      ;;',
+    '  esac',
+    'done',
+    'systemctl daemon-reload',
+    'systemctl reset-failed',
+  ]
+}
+
+async function reconcileManagementDashboardServices(
+  driver: CloudDriver,
+  options: DeployAllSitesOptions,
+  desiredSiteNames: string[],
+  logger: ComputeDeployLogger,
+): Promise<boolean> {
+  const { config, environment } = options
+  const slug = config.project.slug
+  const stackName = resolveProjectStackName(config, environment)
+  const targets = await driver.findComputeTargets({ slug, environment, role: 'app', stackName })
+  if (targets.length === 0) return true
+
+  const result = await driver.runRemoteDeploy({
+    targets,
+    commands: buildManagementDashboardServiceReconciliationScript(slug, desiredSiteNames),
+    comment: `ts-cloud reconcile management dashboard ${slug}`,
+    tags: {
+      Project: slug,
+      Environment: environment,
+      Role: 'app',
+    },
+  })
+  if (!result.success) {
+    logger.error(`Management dashboard reconciliation failed: ${result.error || 'unknown error'}`)
+    return false
+  }
+  return true
+}
+
 /**
  * Attach mode (`cloud.attachTo`): this project rides a box its OWNER provisioned,
  * so no cloud-init of ours ever ran the on-box database setup — the tenant role
@@ -426,6 +497,11 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // (it may be a different object than `config` on a single-site deploy).
   if (autoDashboard && options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
     ensureManagementDashboard(options.rpxConfig, { cwd, logger: { info: () => {}, warn: () => {} } })
+  if (
+    autoDashboard &&
+    !(await reconcileManagementDashboardServices(driver, options, managementDashboardSiteNames(config), logger))
+  )
+    return false
 
   // When WE injected the dashboard(s) (e.g. a Stacks deploy that never built a
   // tarball for it), build its artifact ONCE and reuse it for every per-apex

@@ -50,6 +50,16 @@ describe('resolveDashboardDomain', () => {
     expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.example.org')
   })
 
+  it('does not claim an owner hosted zone from an attached project', () => {
+    const c = cfg({
+      cloud: { provider: 'hetzner', attachTo: 'stacks' },
+      infrastructure: { dns: { domain: 'stacksjs.com' } } as any,
+      environments: { production: { type: 'production', domain: 'whitepaper.stacksjs.com' } },
+      sites: { main: { root: 'dist', domain: 'whitepaper.stacksjs.com' } as any },
+    })
+    expect(resolveDashboardDomain(c, 'production')).toBe('dashboard.whitepaper.stacksjs.com')
+  })
+
   it('returns null when no domain is configured', () => {
     expect(resolveDashboardDomain(cfg({}), 'production')).toBeNull()
   })

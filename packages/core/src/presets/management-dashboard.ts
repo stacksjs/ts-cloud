@@ -156,12 +156,17 @@ function dashboardHostFor(domain: string, ownedDomains: Iterable<string>): strin
  * dashboard).
  */
 function collectDomains(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
 ): string[] {
   const candidates: string[] = []
   const dnsDomain = (config.infrastructure as { dns?: { domain?: string } } | undefined)?.dns?.domain
-  if (dnsDomain) candidates.push(dnsDomain)
+  // On an attached project, `dns.domain` is commonly the owner's hosted zone
+  // (for example stacksjs.com), not a domain the tenant serves. Treating that
+  // zone as project ownership makes every tenant claim dashboard.stacksjs.com,
+  // derive the same port, and crash-loop behind the first dashboard that bound
+  // it. Attached projects derive ownership from their environment/sites only.
+  if (dnsDomain && !config.cloud?.attachTo) candidates.push(dnsDomain)
   if (environment && config.environments?.[environment]?.domain)
     candidates.push(config.environments[environment].domain!)
   for (const site of Object.values(config.sites ?? {})) {
@@ -184,7 +189,7 @@ function collectDomains(
  * nothing is available.
  */
 export function resolveDashboardDomain(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
   explicit?: string,
 ): string | null {
@@ -208,7 +213,7 @@ export function resolveDashboardDomain(
  * suppresses the per-apex fan-out — an operator asking for one host gets one.
  */
 export function resolveDashboardDomains(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment?: EnvironmentType,
   explicit?: string,
 ): string[] {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, mock } from 'bun:test'
 import type { CloudConfig, CloudDriver } from '@ts-cloud/core'
 import { deriveManagementDashboardPort } from '@ts-cloud/core'
 import {
+  buildManagementDashboardServiceReconciliationScript,
   deployAllComputeSites,
   deploySiteRelease,
   reloadRpxGateway,
@@ -572,14 +573,25 @@ describe('deployAllComputeSites with rpx gateway', () => {
       delete process.env.TS_CLOUD_UI_DISABLE
     }
     expect(ok).toBe(true)
-    // One deploy call for the site + one for the gateway reload.
+    // One dashboard reconciliation, one site deploy, and one gateway reload.
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    expect(calls.length).toBe(2)
-    expect(calls[1][0].commands.join('\n')).toContain('rpx-gateway.service')
+    expect(calls.length).toBe(3)
+    expect(calls[2][0].commands.join('\n')).toContain('rpx-gateway.service')
   })
 })
 
 describe('deployAllComputeSites auto-injects the management dashboard', () => {
+  it('removes only superseded dashboard units while preserving releases and state', () => {
+    const script = buildManagementDashboardServiceReconciliationScript('white-paper', [
+      'dashboard-whitepaper-stacksjs-com',
+    ]).join('\n')
+    expect(script).toContain('white-paper-dashboard-whitepaper-stacksjs-com.service')
+    expect(script).toContain('systemctl disable --now "$TS_CLOUD_UNIT"')
+    expect(script).toContain('rm -f "$TS_CLOUD_UNIT_FILE"')
+    expect(script).not.toContain('/var/www')
+    expect(script).not.toContain('rm -rf')
+  })
+
   function baseConfig(): CloudConfig {
     return {
       project: { name: 'App', slug: 'my-app', region: 'fsn1' },
@@ -811,9 +823,9 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const { ok, driver } = await deploy(attachConfig('canonical', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    // One ensure call + one site deploy call (no rpx configured → no reload).
-    expect(calls.length).toBe(2)
-    const ensure = calls[0][0]
+    // One dashboard reconciliation, one ensure, and one site deploy call.
+    expect(calls.length).toBe(3)
+    const ensure = calls[1][0]
     const sql = ensure.commands.join('\n')
     // Same idempotent script the provisioning path runs at first boot.
     expect(sql).toContain("IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'training')")
@@ -826,15 +838,15 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     expect(ensure.comment).toBe('ts-cloud ensure database training/training')
     // The ensure strictly precedes the site deploy so the app's first boot
     // already finds its database.
-    expect(calls[1][0].commands.join('\n')).toContain('systemctl restart training-web@abc.service')
+    expect(calls[2][0].commands.join('\n')).toContain('systemctl restart training-web@abc.service')
   })
 
   it('honors the deprecated infrastructure.compute.database alias (bughq shape)', async () => {
     const { ok, driver } = await deploy(attachConfig('legacy', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    expect(calls.length).toBe(2)
-    const sql = calls[0][0].commands.join('\n')
+    expect(calls.length).toBe(3)
+    const sql = calls[1][0].commands.join('\n')
     expect(sql).toContain('CREATE ROLE "training" LOGIN PASSWORD \'pw\'')
     expect(sql).toContain('CREATE DATABASE "training" OWNER "training"')
   })
@@ -843,8 +855,8 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const { ok, driver } = await deploy(attachConfig('canonical'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    // Only the site deploy — cloud-init already ran the db setup at first boot.
-    expect(calls.length).toBe(1)
+    // Dashboard reconciliation plus the site deploy. Cloud-init already ran DB setup.
+    expect(calls.length).toBe(2)
     expect(calls[0][0].commands.join('\n')).not.toContain('CREATE DATABASE')
   })
 
@@ -852,7 +864,7 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     const { ok, driver } = await deploy(attachConfig('none', 'stacks'))
     expect(ok).toBe(true)
     const calls = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
-    expect(calls.length).toBe(1)
+    expect(calls.length).toBe(2)
     expect(calls[0][0].commands.join('\n')).not.toContain('CREATE DATABASE')
   })
 
