@@ -12,10 +12,13 @@ import {
 } from './dashboard-data-server'
 
 describe('sharedBoxProbeScript', () => {
-  it('uses bodyless HEAD probes so monitoring does not churn proxy streams', () => {
+  it('drains route probe responses so pooled proxy streams close cleanly', () => {
     const encoded = sharedBoxProbeScript().match(/^echo '([^']+)'/)?.[1]
     expect(encoded).toBeTruthy()
-    expect(Buffer.from(encoded!, 'base64').toString('utf8')).toContain("method: 'HEAD'")
+    const script = Buffer.from(encoded!, 'base64').toString('utf8')
+    expect(script).toContain("method: 'GET'")
+    expect(script).toContain('await response.arrayBuffer()')
+    expect(script).not.toContain('response.body?.cancel()')
   })
 })
 

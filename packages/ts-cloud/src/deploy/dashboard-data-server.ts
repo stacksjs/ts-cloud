@@ -114,13 +114,13 @@ const routes = await Promise.all(configuredRoutes.map(async route => {
   let httpStatus = 0
   const probe = async (href) => {
     const response = await fetch(href, {
-      method: 'HEAD',
+      method: 'GET',
       redirect: 'manual',
       headers: { 'user-agent': 'ts-cloud-monitor/1.0' },
       signal: AbortSignal.timeout(6000),
     })
     const status = response.status
-    await response.body?.cancel()
+    await response.arrayBuffer()
     return status
   }
   try {
