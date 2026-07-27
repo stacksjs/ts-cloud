@@ -13,6 +13,7 @@ import {
   applyHetznerHostOptimization,
   collectHetznerHostOptimizationReport,
   resolveHetznerHostOptimizationPlan,
+  verifyHetznerHostContinuity,
   verifyHetznerHostOptimization,
 } from '../../src/drivers/hetzner/host-optimization'
 import { resolveHetznerServerType } from '../../src/drivers/hetzner/instance-sizes'
@@ -377,11 +378,6 @@ async function runHetznerResize(name: string, type: string, options: ResizeComma
   }
 }
 
-function missingValues(expected: string[], actual: string[]): string[] {
-  const values = new Set(actual)
-  return expected.filter(value => !values.has(value))
-}
-
 async function runHetznerHostOptimization(name: string, options: OptimizeCommandOptions): Promise<void> {
   const config = await loadValidatedConfig()
   if (config.cloud?.provider !== 'hetzner') throw new Error('server:optimize currently requires the Hetzner provider.')
@@ -456,17 +452,18 @@ async function runHetznerHostOptimization(name: string, options: OptimizeCommand
     collectHetznerHostOptimizationReport(remote),
   ])
   const failures = verifyHetznerHostOptimization(plan, report)
-  const missingServices = missingValues(before.runningServices, after.runningServices)
-  const changedRoutes = missingValues(before.routeFragments, after.routeFragments)
-  const missingRouteIds = missingValues(before.routeIds, after.routeIds)
-  const missingReleases = missingValues(before.releaseLinks, after.releaseLinks)
-  const missingData = missingValues(before.dataCatalog, after.dataCatalog)
+  const continuity = verifyHetznerHostContinuity(before, after)
   const unhealthyAfter = after.routeProbes.filter(probe => !probe.ok)
-  if (missingServices.length > 0) failures.push(`services stopped: ${missingServices.join(', ')}`)
-  if (changedRoutes.length > 0) failures.push(`route fragments changed: ${changedRoutes.join(', ')}`)
-  if (missingRouteIds.length > 0) failures.push(`routes disappeared: ${missingRouteIds.join(', ')}`)
-  if (missingReleases.length > 0) failures.push(`release links changed: ${missingReleases.join(', ')}`)
-  if (missingData.length > 0) failures.push(`databases or volumes disappeared: ${missingData.join(', ')}`)
+  if (continuity.stoppedServices.length > 0)
+    failures.push(`services stopped: ${continuity.stoppedServices.join(', ')}`)
+  if (continuity.changedRouteFragments.length > 0)
+    failures.push(`route fragments changed: ${continuity.changedRouteFragments.join(', ')}`)
+  if (continuity.missingRouteIds.length > 0)
+    failures.push(`routes disappeared: ${continuity.missingRouteIds.join(', ')}`)
+  if (continuity.changedReleaseLinks.length > 0)
+    failures.push(`release links changed: ${continuity.changedReleaseLinks.join(', ')}`)
+  if (continuity.missingData.length > 0)
+    failures.push(`databases or volumes disappeared: ${continuity.missingData.join(', ')}`)
   if (unhealthyAfter.length > 0)
     failures.push(`unhealthy routes: ${unhealthyAfter.map(probe => probe.domain).join(', ')}`)
   if (failures.length > 0) throw new Error(`Host optimization verification failed: ${failures.join('; ')}`)

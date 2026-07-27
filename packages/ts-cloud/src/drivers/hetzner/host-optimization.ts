@@ -1,5 +1,6 @@
 import type { CloudConfig } from '@ts-cloud/core'
 import type { RemoteExecOptions } from '../shared/remote-exec'
+import type { HetznerResizeManifest } from './resize-remote'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
 import { buildMonitoringScript } from '../shared/monitoring'
 import { sshExecOrThrow } from '../shared/remote-exec'
@@ -33,6 +34,51 @@ export interface HetznerHostOptimizationReport {
 
 export interface HetznerHostOptimizationOptions extends RemoteExecOptions {
   host: string
+}
+
+export interface HetznerHostContinuityFailures {
+  stoppedServices: string[]
+  changedRouteFragments: string[]
+  missingRouteIds: string[]
+  changedReleaseLinks: string[]
+  missingData: string[]
+}
+
+function entryName(value: string): string {
+  return value.split('=', 1)[0] ?? value
+}
+
+function serviceWorkload(value: string): string {
+  return value.replace(/@[^.]+(?=\.service$)/, '')
+}
+
+/**
+ * Compare workload identities rather than immutable release values.
+ *
+ * Host optimization does not stop application services, but a normal deploy
+ * may finish while its package installs and system services are being
+ * reconciled. In that case `api@old.service` becoming `api@new.service`, a
+ * `current` link advancing, or a route fragment being atomically rewritten is
+ * healthy continuity, not loss. Exact route IDs and data catalog entries still
+ * have to survive, and a workload with no replacement still fails closed.
+ */
+export function verifyHetznerHostContinuity(
+  before: HetznerResizeManifest,
+  after: HetznerResizeManifest,
+): HetznerHostContinuityFailures {
+  const services = new Set(after.runningServices.map(serviceWorkload))
+  const routeFragments = new Set(after.routeFragments.map(entryName))
+  const releaseLinks = new Set(after.releaseLinks.map(entryName))
+  const routeIds = new Set(after.routeIds)
+  const data = new Set(after.dataCatalog)
+
+  return {
+    stoppedServices: before.runningServices.filter(service => !services.has(serviceWorkload(service))),
+    changedRouteFragments: before.routeFragments.filter(fragment => !routeFragments.has(entryName(fragment))),
+    missingRouteIds: before.routeIds.filter(route => !routeIds.has(route)),
+    changedReleaseLinks: before.releaseLinks.filter(link => !releaseLinks.has(entryName(link))),
+    missingData: before.dataCatalog.filter(value => !data.has(value)),
+  }
 }
 
 function computeConfig(config: CloudConfig) {

@@ -3,6 +3,7 @@ import type { CloudConfig } from '@ts-cloud/core'
 import {
   buildHetznerHostOptimizationScript,
   resolveHetznerHostOptimizationPlan,
+  verifyHetznerHostContinuity,
   verifyHetznerHostOptimization,
 } from '../../src/drivers/hetzner/host-optimization'
 
@@ -101,5 +102,78 @@ describe('Hetzner host optimization', () => {
     expect(failures.some(failure => failure.includes('unexpected ports'))).toBe(true)
     expect(failures).toContain('SSH password authentication remains enabled')
     expect(failures.some(failure => failure.includes('app.service'))).toBe(true)
+  })
+
+  it('accepts a healthy release rollover during host optimization', () => {
+    const manifest = {
+      capturedAt: '2026-07-27T00:00:00.000Z',
+      hostname: 'app',
+      cpuCores: 2,
+      memoryBytes: 4 * 1024 ** 3,
+      rootSource: '/dev/sda1',
+      rootFsType: 'ext4',
+      rootDiskBytes: 40 * 1024 ** 3,
+      rootFilesystemBytes: 40 * 1024 ** 3,
+      failedUnits: [],
+      runningServices: ['app-api@old.service', 'rpx-gateway.service'],
+      releaseLinks: ['/var/www/app-api/current=/var/www/app-api/releases/old'],
+      routeFragments: ['/etc/rpx/sites.d/app.json=old-digest'],
+      routeIds: ['/etc/rpx/sites.d/app.json:app.test:/'],
+      routeDomains: ['app.test'],
+      persistentData: [],
+      dataCatalog: ['postgres:app'],
+      routeProbes: [{ domain: 'app.test', ok: true, status: 200 }],
+    }
+    const after = {
+      ...manifest,
+      runningServices: ['app-api@new.service', 'rpx-gateway.service'],
+      releaseLinks: ['/var/www/app-api/current=/var/www/app-api/releases/new'],
+      routeFragments: ['/etc/rpx/sites.d/app.json=new-digest'],
+    }
+
+    expect(verifyHetznerHostContinuity(manifest, after)).toEqual({
+      stoppedServices: [],
+      changedRouteFragments: [],
+      missingRouteIds: [],
+      changedReleaseLinks: [],
+      missingData: [],
+    })
+  })
+
+  it('still rejects a workload, route, link, or database that disappears', () => {
+    const before = {
+      capturedAt: '2026-07-27T00:00:00.000Z',
+      hostname: 'app',
+      cpuCores: 2,
+      memoryBytes: 4 * 1024 ** 3,
+      rootSource: '/dev/sda1',
+      rootFsType: 'ext4',
+      rootDiskBytes: 40 * 1024 ** 3,
+      rootFilesystemBytes: 40 * 1024 ** 3,
+      failedUnits: [],
+      runningServices: ['app-api@old.service'],
+      releaseLinks: ['/var/www/app-api/current=/var/www/app-api/releases/old'],
+      routeFragments: ['/etc/rpx/sites.d/app.json=old-digest'],
+      routeIds: ['/etc/rpx/sites.d/app.json:app.test:/'],
+      routeDomains: ['app.test'],
+      persistentData: [],
+      dataCatalog: ['postgres:app'],
+      routeProbes: [{ domain: 'app.test', ok: true, status: 200 }],
+    }
+    const after = {
+      ...before,
+      runningServices: [],
+      releaseLinks: [],
+      routeFragments: [],
+      routeIds: [],
+      dataCatalog: [],
+    }
+
+    const failures = verifyHetznerHostContinuity(before, after)
+    expect(failures.stoppedServices).toEqual(['app-api@old.service'])
+    expect(failures.changedRouteFragments).toEqual(['/etc/rpx/sites.d/app.json=old-digest'])
+    expect(failures.missingRouteIds).toEqual(['/etc/rpx/sites.d/app.json:app.test:/'])
+    expect(failures.changedReleaseLinks).toEqual(['/var/www/app-api/current=/var/www/app-api/releases/old'])
+    expect(failures.missingData).toEqual(['postgres:app'])
   })
 })
