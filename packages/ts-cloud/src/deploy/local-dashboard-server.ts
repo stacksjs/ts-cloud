@@ -8,7 +8,13 @@ import type { JobExecutor } from '../jobs'
 import type { CleanupPlan } from '../maintenance'
 import type { ReleaseDriverResolver } from '../release'
 import type { RuntimeStreamSnapshot } from '../runtime'
-import type { TelemetryAggregation, TelemetryKind, TelemetryQuery } from '../telemetry'
+import type {
+  TelemetryAggregation,
+  TelemetryCollectionStatus,
+  TelemetryKind,
+  TelemetryPolicy,
+  TelemetryQuery,
+} from '../telemetry'
 import type { DashboardUser } from './dashboard-auth'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
@@ -369,7 +375,10 @@ async function loadLocalEnv(cwd: string): Promise<void> {
       const key = trimmed.slice(0, eq).trim()
       let value = trimmed.slice(eq + 1).trim()
       if (!/^[A-Z_][A-Z0-9_]*$/i.test(key) || process.env[key] != null) continue
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith('\u0027') && value.endsWith('\u0027'))
+      )
         value = value.slice(1, -1)
       process.env[key] = value
     }
@@ -452,7 +461,27 @@ export function isTrustedMutationRequest(req: Request): boolean {
   const site = req.headers.get('sec-fetch-site')
   if (site === 'cross-site') return false
   const origin = req.headers.get('origin')
-  return !origin || origin === new URL(req.url).origin
+  if (!origin) return true
+
+  const requestUrl = new URL(req.url)
+  if (origin === requestUrl.origin) return true
+
+  // TLS terminates at rpx, so Bun sees an HTTP request even though the browser
+  // correctly reports the public HTTPS origin. Accept that proxy boundary only
+  // for a browser-confirmed same-origin request whose host and forwarded
+  // protocol still match exactly.
+  if (site !== 'same-origin') return false
+  try {
+    const originUrl = new URL(origin)
+    const forwardedHost = (req.headers.get('x-forwarded-host') ?? req.headers.get('host') ?? requestUrl.host)
+      .split(',')[0]!
+      .trim()
+    const forwardedProto = req.headers.get('x-forwarded-proto')?.split(',')[0]?.trim()
+    if (!/^[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(forwardedHost) || originUrl.host !== forwardedHost) return false
+    return !forwardedProto || originUrl.protocol === `${forwardedProto}:`
+  } catch {
+    return false
+  }
 }
 
 const ORGANIZATION_ROLES: ReadonlySet<string> = new Set(['owner', 'admin', 'deployer', 'operator', 'viewer', 'auditor'])
@@ -1004,7 +1033,66 @@ export async function startLocalDashboardServer(
   const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, defaultEnvironment)
   const latestDataByEnvironment = new Map<EnvironmentType, Record<string, any>>([[defaultEnvironment, initialData]])
+  const liveDataRefreshesByEnvironment = new Map<EnvironmentType, Promise<Record<string, any>>>()
+  const refreshLatestDashboardData = (environment: EnvironmentType): Promise<Record<string, any>> => {
+    const running = liveDataRefreshesByEnvironment.get(environment)
+    if (running) return running
+    const refresh = resolveLiveDashboardData(config as CloudConfig, environment)
+      .then((data) => {
+        const previous = latestDataByEnvironment.get(environment)
+        latestDataByEnvironment.set(environment, data)
+        if (
+          previous?._serverReachable !== data._serverReachable ||
+          previous?._metricsStatus !== data._metricsStatus ||
+          (previous?.sitesDetail?.length ?? 0) !== (data.sitesDetail?.length ?? 0)
+        )
+          clearUiCache()
+        return data
+      })
+      .finally(() => liveDataRefreshesByEnvironment.delete(environment))
+    liveDataRefreshesByEnvironment.set(environment, refresh)
+    return refresh
+  }
   const packagedUi = resolveUiSource(cwd)
+
+  // Box dashboards are the monitoring agent for their host. Collect once on
+  // startup and every minute after that so CPU, RAM, disk, swap, network, and
+  // site availability history continues even when no browser tab is open.
+  // Demand-driven API refreshes still share the same cache and dedupe path.
+  const telemetryPreference = process.env.TS_CLOUD_DASHBOARD_TELEMETRY?.trim()
+  const backgroundTelemetryEnabled =
+    options.box &&
+    telemetryPreference !== '0' &&
+    (telemetryPreference === '1' || !(config as CloudConfig).cloud?.attachTo)
+  if (backgroundTelemetryEnabled) {
+    let telemetryCollectionRunning = false
+    const collectHostHistory = async (): Promise<void> => {
+      if (telemetryCollectionRunning) return
+      telemetryCollectionRunning = true
+      try {
+        const environmentRecord = controlPlane.environments.get(defaultEnvironment)
+        await collectDashboardTelemetry({
+          controlPlane: controlPlane.store,
+          projectId: controlPlane.project.id,
+          environmentId: environmentRecord?.id,
+          config: config as CloudConfig,
+          environment: defaultEnvironment,
+          force: true,
+          lightweight: true,
+        })
+      } catch (error) {
+        if (options.verbose)
+          console.warn(
+            `  ts-cloud dashboard: background telemetry collection failed: ${error instanceof Error ? error.message : String(error)}`,
+          )
+      } finally {
+        telemetryCollectionRunning = false
+      }
+    }
+    void collectHostHistory()
+    const telemetryTimer = setInterval(() => void collectHostHistory(), 60_000)
+    telemetryTimer.unref?.()
+  }
 
   // The stx pages render their data at BUILD time (baked into the HTML), so a
   // single shared build would hand every visitor every tenant's sites, logs and
@@ -1775,6 +1863,7 @@ export async function startLocalDashboardServer(
   const server = Bun.serve({
     hostname: host,
     port,
+    idleTimeout: 30,
     websocket: {
       open(ws) {
         if (!terminalEnabled) {
@@ -1820,8 +1909,7 @@ export async function startLocalDashboardServer(
         const environment = resolveDashboardEnvironment(availableEnvironments, defaultEnvironment, requestedEnvironment)
         let latestData = latestDataByEnvironment.get(environment)
         if (!latestData) {
-          latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-          latestDataByEnvironment.set(environment, latestData)
+          latestData = await refreshLatestDashboardData(environment)
         }
 
         try {
@@ -5905,10 +5993,34 @@ export async function startLocalDashboardServer(
                 config: config as CloudConfig,
                 environment,
                 force,
+                lightweight: !force,
               })
+            const collectionSnapshot = (): {
+              generatedAt: string
+              cached: true
+              statuses: TelemetryCollectionStatus[]
+              errors: Array<{ source: string; message: string }>
+              policy: TelemetryPolicy
+            } => {
+              const saved = (controlPlane.store.getSetting(
+                `telemetry.collection:${controlPlane.project.id}:${environmentRecord?.id ?? 'all'}`,
+              ) ?? {}) as Record<string, any>
+              return {
+                generatedAt: String(saved.generatedAt ?? new Date().toISOString()),
+                cached: true,
+                statuses: Array.isArray(saved.statuses) ? saved.statuses : [],
+                errors: Array.isArray(saved.errors) ? saved.errors : [],
+                policy: (saved.policy as TelemetryPolicy | undefined) ??
+                  loadTelemetryPolicy(controlPlane.store, controlPlane.project.id),
+              }
+            }
 
             if (url.pathname === '/api/telemetry/status' && req.method === 'GET') {
-              const collection = await collect(false)
+              // Historical reads use the persisted snapshot. Host collection
+              // continues asynchronously so UI requests never inherit probe
+              // latency or the reverse proxy timeout.
+              void collect(false)
+              const collection = collectionSnapshot()
               const scopedStatuses = environmentWide
                 ? collection.statuses
                 : telemetry.status(
@@ -5948,7 +6060,8 @@ export async function startLocalDashboardServer(
               return json({ ok: true, policy })
             }
             if (url.pathname === '/api/telemetry/query' && req.method === 'GET') {
-              const collection = await collect(false)
+              void collect(false)
+              const collection = collectionSnapshot()
               return json({
                 ok: true,
                 collection: { generatedAt: collection.generatedAt, cached: collection.cached },
@@ -5956,7 +6069,7 @@ export async function startLocalDashboardServer(
               })
             }
             if (url.pathname === '/api/telemetry/tail' && req.method === 'GET') {
-              await collect(false)
+              void collect(false)
               const encoder = new TextEncoder()
               const initialTo = new Date()
               const baseQuery = queryFrom({
@@ -6035,7 +6148,8 @@ export async function startLocalDashboardServer(
               })
             }
             if (url.pathname === '/api/telemetry/series' && req.method === 'GET') {
-              const collection = await collect(false)
+              void collect(false)
+              const collection = collectionSnapshot()
               const aggregation = (
                 ['sum', 'avg', 'min', 'max', 'count', 'p50', 'p90', 'p95', 'p99'].includes(String(urlInput.aggregation))
                   ? urlInput.aggregation
@@ -7714,8 +7828,11 @@ export async function startLocalDashboardServer(
           }
 
           if (url.pathname === '/api/dashboard-data') {
-            latestData = await resolveLiveDashboardData(config as CloudConfig, environment)
-            latestDataByEnvironment.set(environment, latestData)
+            // Browser polling should never wait on SSH, host probes, or site
+            // health checks. Serve the last verified snapshot immediately and
+            // deduplicate a refresh for the following poll.
+            latestData = latestDataByEnvironment.get(environment) ?? (await refreshLatestDashboardData(environment))
+            void refreshLatestDashboardData(environment)
             return json(
               scopeDashboardData(latestData, { user: scopedUser, slug: (config as CloudConfig).project.slug }),
             )

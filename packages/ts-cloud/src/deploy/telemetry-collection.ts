@@ -64,6 +64,8 @@ export interface TelemetryCollectionContext {
   config: CloudConfig
   environment: EnvironmentType
   force?: boolean
+  /** Collect host and site metrics without expensive runtime logs or inventory. */
+  lightweight?: boolean
 }
 
 function id(...parts: unknown[]): string {
@@ -214,7 +216,9 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
     const data =
       (mode === 'serverless'
         ? await resolveDashboardData(context.config, context.environment)
-        : await resolveServerDashboardData(context.config, context.environment)) ?? {}
+        : await resolveServerDashboardData(context.config, context.environment, {
+            telemetryOnly: context.lightweight,
+          })) ?? {}
     if (mode === 'serverless') {
       for (const fn of data.functionsDetail ?? []) {
         const resourceId = resourceBySlug(context.controlPlane, context.projectId, context.environmentId, fn.key)
@@ -392,14 +396,32 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
       if (data.metricsUnavailable || !metrics)
         errors.push({ source: 'host', message: 'The host metrics probe is unavailable.' })
       else {
+        const memoryUsedPercent =
+          Number(metrics.memTotalMb) > 0 ? (Number(metrics.memUsedMb) / Number(metrics.memTotalMb)) * 100 : 0
+        const swapUsedPercent =
+          Number(metrics.swapTotalMb) > 0 ? (Number(metrics.swapUsedMb) / Number(metrics.swapTotalMb)) * 100 : 0
         const values: Array<[string, number, string]> = [
           ['host.load', Number(metrics.load), 'load'],
+          ['host.load.5m', Number(metrics.load5), 'load'],
+          ['host.load.15m', Number(metrics.load15), 'load'],
           ['host.cpu.capacity', Number(metrics.cpus), 'count'],
+          ['host.cpu.used_percent', Number(metrics.cpuUsedPct), 'percent'],
           ['host.memory.used', Number(metrics.memUsedMb) * 1024 * 1024, 'bytes'],
           ['host.memory.total', Number(metrics.memTotalMb) * 1024 * 1024, 'bytes'],
+          ['host.memory.available', Number(metrics.memAvailableMb) * 1024 * 1024, 'bytes'],
+          ['host.memory.cache', Number(metrics.memCacheMb) * 1024 * 1024, 'bytes'],
+          ['host.memory.used_percent', memoryUsedPercent, 'percent'],
+          ['host.swap.used', Number(metrics.swapUsedMb) * 1024 * 1024, 'bytes'],
+          ['host.swap.total', Number(metrics.swapTotalMb) * 1024 * 1024, 'bytes'],
+          ['host.swap.used_percent', swapUsedPercent, 'percent'],
           ['host.disk.used_percent', Number(metrics.diskUsedPct), 'percent'],
           ['host.disk.used', Number(metrics.diskUsedGb) * 1024 ** 3, 'bytes'],
           ['host.disk.total', Number(metrics.diskTotalGb) * 1024 ** 3, 'bytes'],
+          ['host.disk.inode_used_percent', Number(metrics.inodeUsedPct), 'percent'],
+          ['host.network.rx', Number(metrics.networkRxBytes), 'bytes'],
+          ['host.network.tx', Number(metrics.networkTxBytes), 'bytes'],
+          ['host.processes', Number(metrics.processes), 'count'],
+          ['host.uptime', Number(metrics.uptimeSeconds), 'seconds'],
         ]
         for (const [name, value, unit] of values)
           if (Number.isFinite(value))
@@ -413,6 +435,49 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
               value,
               unit,
             })
+
+        for (const site of data.siteHealth ?? []) {
+          const project = String(site.project ?? context.config.project.slug)
+          const displayName = String(site.name)
+          const siteName = displayName.startsWith(`${project}:`) ? displayName.slice(project.length + 1) : displayName
+          const source = `site:${project}:${siteName}`
+          const resourceId = resourceBySlug(
+            context.controlPlane,
+            context.projectId,
+            context.environmentId,
+            displayName,
+          )
+          const base = {
+            ...scope,
+            resourceId,
+            source,
+            timestamp: site.checkedAt || now.toISOString(),
+            host: site.route,
+            attributes: {
+              project,
+              site: siteName,
+              route: String(site.route),
+              status: String(site.status),
+            },
+          }
+          const siteValues: Array<[string, number, string]> = [
+            ['site.health.up', site.status === 'live' ? 1 : 0, 'boolean'],
+            ['site.http.status', Number(site.httpStatus), 'status'],
+            ['site.response.time', Number(site.responseMs), 'ms'],
+          ]
+          if (site.tlsDaysRemaining != null)
+            siteValues.push(['site.tls.days_remaining', Number(site.tlsDaysRemaining), 'days'])
+          for (const [name, value, unit] of siteValues)
+            if (Number.isFinite(value))
+              records.push({
+                ...base,
+                id: id(source, name, base.timestamp),
+                kind: 'metric',
+                name,
+                value,
+                unit,
+              })
+        }
       }
     }
   } catch (error) {
@@ -422,7 +487,8 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
     })
   }
 
-  try {
+  if (!context.lightweight)
+    try {
     const inventory = await resolveRuntimeInventory(context.config, context.environment)
     const runtime = new RuntimeOperationService(context.config, context.environment, {
       inventory: async () => inventory,
@@ -492,9 +558,9 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
     }
     for (const source of inventory.sources.filter((source) => source.status !== 'fresh'))
       errors.push({ source: source.id, message: source.message ?? `Runtime source is ${source.status}.` })
-  } catch (error) {
-    errors.push({ source: 'runtime', message: error instanceof Error ? error.message : String(error) })
-  }
+    } catch (error) {
+      errors.push({ source: 'runtime', message: error instanceof Error ? error.message : String(error) })
+    }
 
   for (const event of context.controlPlane.listEvents({ projectId: context.projectId, limit: 1_000 })) {
     const payload = event.payload as Record<string, JsonValue>
@@ -553,8 +619,9 @@ export async function collectDashboardTelemetry(
   context: TelemetryCollectionContext,
 ): Promise<TelemetryCollectionResult> {
   const key = `${context.projectId}:${context.environmentId ?? 'all'}:${context.environment}`
+  const tieredKey = `${key}:${context.lightweight ? 'lightweight' : 'full'}`
   const ttl = resolveDeploymentMode(context.config) === 'serverless' ? 5 * 60_000 : 60_000
-  const result = await collectionCache.getOrCreate(key, ttl, !!context.force, () => collectNow(context))
+  const result = await collectionCache.getOrCreate(tieredKey, ttl, !!context.force, () => collectNow(context))
   return { ...result.value, cached: result.cached }
 }
 

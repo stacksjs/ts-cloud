@@ -94,6 +94,23 @@ describe('resolveManagementDashboardSite', () => {
     expect(r?.site.port).toBe(deriveManagementDashboardPort('dashboard.acme.com'))
   })
 
+  it('assigns background telemetry to the shared-box owner only', () => {
+    const owner = resolveManagementDashboardSite(base, 'production', {
+      uiRoot: '.ts-cloud/dashboard-release',
+      build: false,
+    })
+    const tenant = resolveManagementDashboardSite(
+      cfg({
+        cloud: { provider: 'hetzner', attachTo: 'stacks' },
+        sites: { main: { root: 'dist', domain: 'tenant.example' } as any },
+      }),
+      'production',
+      { uiRoot: '.ts-cloud/dashboard-release', build: false },
+    )
+    expect(owner?.site.env).toEqual({ TS_CLOUD_DASHBOARD_TELEMETRY: '1' })
+    expect(tenant?.site.env).toEqual({ TS_CLOUD_DASHBOARD_TELEMETRY: '0' })
+  })
+
   /**
    * The systemd unit runs `/usr/local/bin/bun <args>`, so a bare `cloud` would
    * be resolved by bun as a FILE to execute and the service would never start.

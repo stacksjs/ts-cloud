@@ -301,6 +301,25 @@ describe('ensureManagementDashboard (live, the default)', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('refreshes a local tarball dependency in the staged release', () => {
+    const dir = repoCwd()
+    try {
+      writeFileSync(join(dir, 'ts-cloud-local.tgz'), 'current package bytes')
+      process.env.TS_CLOUD_UI_VERSION = 'file:./ts-cloud-local.tgz'
+      ensureManagementDashboard(cfg(), { cwd: dir })
+      const stage = join(dir, liveStageDir())
+      const pkg = JSON.parse(readFileSync(join(stage, 'package.json'), 'utf8'))
+      expect(pkg.dependencies['@stacksjs/ts-cloud']).toBe('file:./ts-cloud-local.tgz')
+      expect(readFileSync(join(stage, 'ts-cloud-local.tgz'), 'utf8')).toBe('current package bytes')
+
+      writeFileSync(join(dir, 'ts-cloud-local.tgz'), 'updated package bytes')
+      ensureManagementDashboard(cfg(), { cwd: dir })
+      expect(readFileSync(join(stage, 'ts-cloud-local.tgz'), 'utf8')).toBe('updated package bytes')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('resolveDashboardVersion', () => {

@@ -277,7 +277,7 @@ export function isManagementDashboardSiteName(name: string): boolean {
  * feature (the default) — the same files served on each domain.
  */
 export function resolveManagementDashboardSites(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
 ): Array<{ name: string; site: SiteConfig }> {
@@ -304,6 +304,12 @@ export function resolveManagementDashboardSites(
       preStart: ['bun install --production --no-save'],
       start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
       port,
+      // The shared-box owner is the single background monitoring agent.
+      // Attached tenant dashboards remain fully usable but do not duplicate
+      // every host, route, TLS, runtime, and log probe once per minute.
+      env: {
+        TS_CLOUD_DASHBOARD_TELEMETRY: config.cloud?.attachTo ? '0' : '1',
+      },
       // The zero-downtime cutover overlaps two instances on one port via
       // SO_REUSEPORT. The dashboard's server does not bind that way, so the new
       // instance would hit EADDRINUSE, fail, and only start after a retry that
@@ -347,7 +353,7 @@ export function resolveManagementDashboardSites(
  * callers that only want the single primary host.
  */
 export function resolveManagementDashboardSite(
-  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure'>,
+  config: Pick<CloudConfig, 'sites' | 'environments' | 'infrastructure' | 'cloud'>,
   environment: EnvironmentType,
   opts: ManagementDashboardOptions,
 ): { name: string; site: SiteConfig } | null {

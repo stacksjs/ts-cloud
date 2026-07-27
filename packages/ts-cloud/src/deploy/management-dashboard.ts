@@ -33,9 +33,9 @@
 import type { CloudConfig, EnvironmentType } from '@ts-cloud/core'
 import { execSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { hasManagementDashboardSite, isManagementDashboardSiteName, resolveManagementDashboardSites, resolveStatePath, statePath } from '@ts-cloud/core'
 import { serializeDashboardConfig } from './dashboard-config-module'
@@ -181,11 +181,24 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
     mkdirSync(stage, { recursive: true })
     writeFileSync(join(stage, 'cloud.config.ts'), serializeDashboardConfig(config))
 
+    let dependency = resolveDashboardVersion()
+    if (dependency.startsWith('file:')) {
+      const requested = dependency.slice('file:'.length)
+      const source = isAbsolute(requested) ? requested : resolve(cwd, requested)
+      if (!existsSync(source) || !statSync(source).isFile()) {
+        throw new Error(`TS_CLOUD_UI_VERSION points to a missing package file: ${source}`)
+      }
+      const name = basename(source)
+      const destination = join(stage, name)
+      if (source !== destination) copyFileSync(source, destination)
+      dependency = `file:./${name}`
+    }
+
     const pkg = {
       name: 'ts-cloud-dashboard',
       private: true,
       type: 'module',
-      dependencies: { '@stacksjs/ts-cloud': resolveDashboardVersion() },
+      dependencies: { '@stacksjs/ts-cloud': dependency },
     }
     writeFileSync(join(stage, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`)
     return liveStageDir()

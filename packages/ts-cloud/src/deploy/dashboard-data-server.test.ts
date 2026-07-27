@@ -5,6 +5,7 @@ import {
   parseDeployHistory,
   parseServerLogs,
   parseServerSecurity,
+  mergeDiscoveredSites,
   resolveConfigOnlyServerDashboardData,
   serverLogSources,
 } from './dashboard-data-server'
@@ -79,6 +80,94 @@ describe('parseBlock (server metrics probe output)', () => {
   it('keeps values containing = (only splits on the first)', () => {
     const r = parseBlock('OS=Name=With=Equals')
     expect(r.OS).toBe('Name=With=Equals')
+  })
+
+  it('decodes safe shared-box route inventory records', () => {
+    const site = {
+      name: 'main',
+      project: 'analyticshq',
+      route: 'analyticshq.com',
+      href: 'https://analyticshq.com',
+      domain: 'analyticshq.com',
+      path: '/',
+      kind: 'app',
+      runtime: 'service',
+      deploy: 'service',
+      tls: 'https',
+      root: 'localhost:3200',
+      branch: 'main',
+      status: 'live',
+      httpStatus: 200,
+      responseMs: 42,
+      tlsDaysRemaining: 71,
+      checkedAt: '2026-07-26T12:00:00.000Z',
+    } as const
+    const r = parseBlock(`DISCOVERED_SITE=${Buffer.from(JSON.stringify(site)).toString('base64')}`)
+    expect(r.discoveredSites).toEqual([site])
+  })
+})
+
+describe('mergeDiscoveredSites', () => {
+  it('keeps owner metadata and adds routes from attached projects', () => {
+    const owner = [{ name: 'main', route: 'stacksjs.com', kind: 'stacks', runtime: 'bun', root: '/var/www/stacks-main/current' }]
+    const discovered = [
+      {
+        name: 'main',
+        project: 'stacks',
+        route: 'stacksjs.com',
+        href: 'https://stacksjs.com',
+        domain: 'stacksjs.com',
+        path: '/',
+        kind: 'app',
+        runtime: 'service',
+        deploy: 'service',
+        tls: 'https',
+        root: 'localhost:3000',
+        branch: 'main',
+        status: 'live',
+        managedBy: 'owner',
+        httpStatus: 200,
+        responseMs: 23,
+        checkedAt: '2026-07-26T12:00:00.000Z',
+      },
+      {
+        name: 'site',
+        project: 'whitepaper',
+        route: 'whitepaper.dev',
+        href: 'https://whitepaper.dev',
+        domain: 'whitepaper.dev',
+        path: '/',
+        kind: 'static',
+        runtime: 'static',
+        deploy: 'server static',
+        tls: 'https',
+        root: '/var/www/whitepaper-site/current',
+        branch: 'build artifact',
+        status: 'live',
+        managedBy: 'attached',
+        httpStatus: 200,
+        responseMs: 31,
+        checkedAt: '2026-07-26T12:00:00.000Z',
+      },
+    ] as any
+
+    expect(mergeDiscoveredSites(owner, discovered, 'stacks')).toEqual([
+      expect.objectContaining({
+        name: 'main',
+        route: 'stacksjs.com',
+        kind: 'stacks',
+        runtime: 'bun',
+        managedBy: 'owner',
+        responseMs: 23,
+      }),
+      expect.objectContaining({
+        name: 'whitepaper:site',
+        project: 'whitepaper',
+        route: 'whitepaper.dev',
+        managedBy: 'attached',
+        responseMs: 31,
+      }),
+    ])
   })
 })
 

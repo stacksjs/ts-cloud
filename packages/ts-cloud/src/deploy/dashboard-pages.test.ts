@@ -88,12 +88,51 @@ describe('isTrustedMutationRequest', () => {
         }),
       ),
     ).toBe(true)
+    expect(
+      isTrustedMutationRequest(
+        new Request('http://127.0.0.1:29346/api/login', {
+          method: 'POST',
+          headers: {
+            host: 'cloud.example',
+            origin: 'https://cloud.example',
+            'sec-fetch-site': 'same-origin',
+            'x-forwarded-host': 'cloud.example',
+            'x-forwarded-proto': 'https',
+          },
+        }),
+      ),
+    ).toBe(true)
     expect(isTrustedMutationRequest(new Request('https://cloud.example/api/me'))).toBe(true)
     expect(
       isTrustedMutationRequest(
         new Request('https://cloud.example/api/auth/sessions/revoke-others', { method: 'POST' }),
       ),
     ).toBe(true)
+  })
+
+  it('rejects a proxy origin when the forwarded host or protocol does not match', () => {
+    for (const headers of [
+      {
+        origin: 'https://evil.example',
+        'sec-fetch-site': 'same-origin',
+        'x-forwarded-host': 'cloud.example',
+        'x-forwarded-proto': 'https',
+      },
+      {
+        origin: 'https://cloud.example',
+        'sec-fetch-site': 'same-origin',
+        'x-forwarded-host': 'cloud.example',
+        'x-forwarded-proto': 'http',
+      },
+    ])
+      expect(
+        isTrustedMutationRequest(
+          new Request('http://127.0.0.1:29346/api/login', {
+            method: 'POST',
+            headers,
+          }),
+        ),
+      ).toBe(false)
   })
 })
 

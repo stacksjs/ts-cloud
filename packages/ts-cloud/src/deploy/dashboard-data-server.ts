@@ -41,29 +41,209 @@ interface ProbedService {
   since?: string
 }
 
+export interface DiscoveredSite {
+  name: string
+  project: string
+  route: string
+  href: string
+  domain: string
+  path: string
+  kind: 'app' | 'static' | 'redirect'
+  runtime: string
+  deploy: string
+  tls: 'https'
+  root: string
+  branch: string
+  status: 'live' | 'degraded' | 'failed'
+  managedBy?: 'owner' | 'attached'
+  httpStatus: number
+  responseMs: number
+  tlsDaysRemaining?: number
+  checkedAt: string
+  release?: string
+  deployedAt?: string
+}
+
+function sharedBoxProbeScript(projectFilter?: string): string {
+  const source = String.raw`
+import { basename, join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
+
+const fragmentsRoot = '/etc/rpx/sites.d'
+const certsRoot = '/etc/rpx/certs'
+const projectFilter = ${JSON.stringify(projectFilter ?? '')}
+const configuredRoutes = []
+if (existsSync(fragmentsRoot)) {
+  for (const file of readdirSync(fragmentsRoot).filter(name => name.endsWith('.json')).sort()) {
+    try {
+      const fragment = JSON.parse(readFileSync(join(fragmentsRoot, file), 'utf8'))
+      const project = String(fragment.slug || basename(file, '.json'))
+      if (projectFilter && project !== projectFilter) continue
+      for (const route of Array.isArray(fragment.proxies) ? fragment.proxies : []) {
+        if (!route || !route.to) continue
+        const path = route.path || '/'
+        const staticRoot = typeof route.static === 'string' ? route.static : route.static?.dir
+        const kind = route.redirect ? 'redirect' : staticRoot ? 'static' : 'app'
+        const install = staticRoot || ''
+        const installName = install.match(/^\/var\/www\/(.+?)\/current(?:\/|$)/)?.[1]
+        const siteName = installName?.startsWith(project + '-') ? installName.slice(project.length + 1) : String(route.id || route.to)
+        const href = 'https://' + route.to + (path === '/' ? '' : path)
+        configuredRoutes.push({
+          name: siteName,
+          project,
+          route: path === '/' ? route.to : route.to + path,
+          href,
+          domain: route.to,
+          path,
+          kind,
+          runtime: kind === 'app' ? 'service' : kind,
+          deploy: kind === 'app' ? 'service' : kind === 'static' ? 'server static' : 'redirect',
+          tls: 'https',
+          root: install || (Array.isArray(route.from) ? route.from.join(', ') : route.from || 'gateway'),
+          branch: kind === 'static' ? 'build artifact' : 'main',
+          install,
+        })
+      }
+    }
+    catch {}
+  }
+}
+
+const routes = await Promise.all(configuredRoutes.map(async route => {
+  const started = performance.now()
+  let httpStatus = 0
+  const probe = async (href) => {
+    const response = await fetch(href, {
+      redirect: 'manual',
+      headers: { 'user-agent': 'ts-cloud-monitor/1.0' },
+      signal: AbortSignal.timeout(6000),
+    })
+    const status = response.status
+    await response.body?.cancel()
+    return status
+  }
+  try {
+    httpStatus = await probe(route.href)
+    if (httpStatus === 404 && route.kind === 'app') {
+      const healthHref = route.href.replace(/\/$/, '') + '/health'
+      httpStatus = await probe(healthHref)
+    }
+  }
+  catch {}
+  const responseMs = Math.max(0, Math.round(performance.now() - started))
+  let tlsDaysRemaining
+  const cert = join(certsRoot, route.domain + '.crt')
+  if (existsSync(cert)) {
+    const result = Bun.spawnSync(['openssl', 'x509', '-in', cert, '-noout', '-enddate'])
+    const expiry = result.success ? result.stdout.toString().trim().replace(/^notAfter=/, '') : ''
+    const expiresAt = Date.parse(expiry)
+    if (Number.isFinite(expiresAt)) tlsDaysRemaining = Math.floor((expiresAt - Date.now()) / 86400000)
+  }
+  let release
+  let deployedAt
+  if (route.install) {
+    try {
+      release = basename(readlinkSync(route.install))
+      deployedAt = statSync(route.install).mtime.toISOString()
+    }
+    catch {}
+  }
+  const status = httpStatus === 0 || httpStatus >= 500 ? 'failed' : httpStatus === 404 ? 'degraded' : 'live'
+  const { install, ...site } = route
+  return {
+    ...site,
+    status,
+    httpStatus,
+    responseMs,
+    tlsDaysRemaining,
+    checkedAt: new Date().toISOString(),
+    release,
+    deployedAt,
+  }
+}))
+for (const route of routes) console.log('DISCOVERED_SITE=' + Buffer.from(JSON.stringify(route)).toString('base64'))
+
+const serviceOutput = Bun.spawnSync([
+  'systemctl', 'list-units', '--type=service', '--state=running', '--no-legend', '--plain',
+]).stdout.toString()
+for (const line of serviceOutput.split('\n')) {
+  const unit = line.trim().split(/\s+/)[0]
+  if (!unit) continue
+  const properties = Bun.spawnSync([
+    'systemctl',
+    'show',
+    unit,
+    '--property=WorkingDirectory,ExecStart,MemoryCurrent,UnitFileState,ActiveEnterTimestamp',
+  ]).stdout.toString()
+  const values = Object.fromEntries(properties.split('\n').filter(Boolean).map(value => {
+    const separator = value.indexOf('=')
+    return separator < 0 ? [value, ''] : [value.slice(0, separator), value.slice(separator + 1)]
+  }))
+  if (!/^\/var\/www\/|^\/opt\/ts-cloud\//.test(values.WorkingDirectory || '') && !/\/var\/www\/|\/opt\/ts-cloud\//.test(values.ExecStart || '')) continue
+  console.log([
+    'SVC',
+    unit,
+    'active',
+    values.MemoryCurrent || '0',
+    values.UnitFileState || '-',
+    values.ActiveEnterTimestamp || '-',
+  ].join('='))
+}
+`
+  return `echo '${Buffer.from(source).toString('base64')}' | base64 -d | bun -`
+}
+
 /** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
-function metricsScript(): string[] {
-  return [
+function metricsScript(options: { includeServices?: boolean; projectFilter?: string } = {}): string[] {
+  const commands = [
     'set +e',
     'echo "CPUS=$(nproc 2>/dev/null || echo 1)"',
+    'read TS_TOTAL_1 TS_IDLE_1 <<EOF\n$(awk \'/^cpu /{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}\' /proc/stat 2>/dev/null)\nEOF',
+    'sleep 0.2',
+    'read TS_TOTAL_2 TS_IDLE_2 <<EOF\n$(awk \'/^cpu /{idle=$5+$6; total=0; for(i=2;i<=NF;i++) total+=$i; print total, idle; exit}\' /proc/stat 2>/dev/null)\nEOF',
+    'echo "CPUUSED=$(awk -v t1="$TS_TOTAL_1" -v i1="$TS_IDLE_1" -v t2="$TS_TOTAL_2" -v i2="$TS_IDLE_2" \'BEGIN { dt=t2-t1; di=i2-i1; if (dt>0) printf "%.1f", 100*(dt-di)/dt; else print 0 }\')"',
     'echo "LOAD=$(cut -d\' \' -f1 /proc/loadavg 2>/dev/null || echo 0)"',
+    'echo "LOAD5=$(cut -d\' \' -f2 /proc/loadavg 2>/dev/null || echo 0)"',
+    'echo "LOAD15=$(cut -d\' \' -f3 /proc/loadavg 2>/dev/null || echo 0)"',
     'echo "MEMTOTAL=$(free -m 2>/dev/null | awk \'/^Mem:/{print $2}\')"',
     'echo "MEMUSED=$(free -m 2>/dev/null | awk \'/^Mem:/{print $3}\')"',
+    'echo "MEMAVAILABLE=$(free -m 2>/dev/null | awk \'/^Mem:/{print $7}\')"',
+    'echo "MEMCACHE=$(free -m 2>/dev/null | awk \'/^Mem:/{print $6}\')"',
+    'echo "SWAPTOTAL=$(free -m 2>/dev/null | awk \'/^Swap:/{print $2}\')"',
+    'echo "SWAPUSED=$(free -m 2>/dev/null | awk \'/^Swap:/{print $3}\')"',
     'echo "DISKPCT=$(df -P / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
     'echo "DISKUSEDG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$3);print $3}\')"',
     'echo "DISKTOTG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$2);print $2}\')"',
+    'echo "INODEPCT=$(df -Pi / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
+    'echo "NETRX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$3} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
+    'echo "NETTX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$11} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
+    'echo "PROCESSES=$(ps -e --no-headers 2>/dev/null | awk \'END{print NR+0}\')"',
     'echo "UPTIME=$(uptime -p 2>/dev/null | sed \'s/^up //\' || echo unknown)"',
+    'echo "UPTIME_SECONDS=$(cut -d\' \' -f1 /proc/uptime 2>/dev/null || echo 0)"',
     'echo "OS=$(. /etc/os-release 2>/dev/null; echo "$PRETTY_NAME")"',
-    `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
-    'true',
   ]
+  if (options.includeServices !== false)
+    commands.push(
+      `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
+    )
+  commands.push(sharedBoxProbeScript(options.projectFilter), 'true')
+  return commands
 }
 
-export function parseBlock(output: string): Record<string, string> & { services: ProbedService[] } {
-  const kv: any = { services: [] }
+export function parseBlock(
+  output: string,
+): Record<string, string> & { services: ProbedService[]; discoveredSites: DiscoveredSite[] } {
+  const kv: any = { services: [], discoveredSites: [] }
   for (const line of output.split('\n')) {
     const l = line.trim()
-    if (l.startsWith('SVC=')) {
+    if (l.startsWith('DISCOVERED_SITE=')) {
+      try {
+        const site = JSON.parse(Buffer.from(l.slice('DISCOVERED_SITE='.length), 'base64').toString('utf8'))
+        if (site?.domain && site?.route) kv.discoveredSites.push(site)
+      } catch {
+        // A malformed fragment must not hide otherwise valid host metrics.
+      }
+    } else if (l.startsWith('SVC=')) {
       const [, name, status, memBytes, enabled, since] =
         /^SVC=([^=]+)=([^=]+)(?:=([^=]*)(?:=([^=]*)(?:=(.*))?)?)?$/.exec(l) ?? []
       if (name) {
@@ -256,6 +436,36 @@ function configuredSites(config: CloudConfig): Array<Record<string, any>> {
       shadowedBy,
       lastDeploy: UNKNOWN,
     }
+  })
+}
+
+export function mergeDiscoveredSites(
+  configured: Array<Record<string, any>>,
+  discovered: DiscoveredSite[],
+  ownerSlug: string,
+): Array<Record<string, any>> {
+  const routes = new Map<string, Record<string, any>>(
+    configured.map((site) => [String(site.route), { ...site, project: ownerSlug, managedBy: 'owner' }]),
+  )
+  for (const site of discovered) {
+    const current = routes.get(site.route)
+    const name = current?.name ?? `${site.project}:${site.name}`
+    routes.set(site.route, {
+      ...current,
+      ...site,
+      name,
+      kind: current?.kind ?? site.kind,
+      type: current?.type ?? site.kind,
+      runtime: current?.runtime ?? site.runtime,
+      deploy: current?.deploy ?? site.deploy,
+      root: current?.root ?? site.root,
+      branch: current?.branch ?? site.branch,
+      managedBy: site.project === ownerSlug ? 'owner' : 'attached',
+    })
+  }
+  return [...routes.values()].sort((a, b) => {
+    if (a.managedBy !== b.managedBy) return a.managedBy === 'owner' ? -1 : 1
+    return String(a.route).localeCompare(String(b.route))
   })
 }
 
@@ -675,12 +885,24 @@ export function resolveConfigOnlyServerDashboardData(
     },
     systemMetrics: {
       load: 0,
+      load5: 0,
+      load15: 0,
+      cpuUsedPct: 0,
       cpus: Math.max(1, Number((config.infrastructure?.compute as any)?.instances ?? 1)),
       memUsedMb: 0,
       memTotalMb: 0,
+      memAvailableMb: 0,
+      memCacheMb: 0,
+      swapUsedMb: 0,
+      swapTotalMb: 0,
       diskUsedPct: 0,
       diskUsedGb: 0,
       diskTotalGb: diskSize,
+      inodeUsedPct: 0,
+      networkRxBytes: 0,
+      networkTxBytes: 0,
+      processes: 0,
+      uptimeSeconds: 0,
     },
     metricsUnavailable: true,
     services,
@@ -715,6 +937,7 @@ export function resolveConfigOnlyServerDashboardData(
         envKeys: Object.keys(site.env ?? site.environment ?? {}),
       }
     }),
+    siteHealth: [],
     sshKeys: describeSshKeys((config.infrastructure?.compute as any)?.sshKeys ?? []),
     _serverReachable: false,
     _metricsStatus: 'unavailable',
@@ -727,6 +950,7 @@ export function resolveConfigOnlyServerDashboardData(
 export async function resolveServerDashboardData(
   config: CloudConfig,
   environment: EnvironmentType,
+  options: { telemetryOnly?: boolean } = {},
 ): Promise<Record<string, any> | null> {
   if (!config.infrastructure?.compute) return null
   let driver: ReturnType<typeof createCloudDriver> | null = null
@@ -746,7 +970,10 @@ export async function resolveServerDashboardData(
       if (targets.length) {
         const result = await driver.runRemoteDeploy({
           targets: [targets[0]],
-          commands: metricsScript(),
+          commands: metricsScript({
+            includeServices: !options.telemetryOnly,
+            projectFilter: config.cloud?.attachTo ? config.project.slug : undefined,
+          }),
           comment: `ts-cloud dashboard:build ${config.project.slug}`,
           tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
         })
@@ -771,19 +998,32 @@ export async function resolveServerDashboardData(
     out._metricsStatus = 'live'
     out.systemMetrics = {
       load: num(parsed.LOAD),
+      load5: num(parsed.LOAD5),
+      load15: num(parsed.LOAD15),
+      cpuUsedPct: num(parsed.CPUUSED),
       cpus: num(parsed.CPUS, 1),
       memUsedMb: num(parsed.MEMUSED),
       memTotalMb: num(parsed.MEMTOTAL, 1),
+      memAvailableMb: num(parsed.MEMAVAILABLE),
+      memCacheMb: num(parsed.MEMCACHE),
+      swapUsedMb: num(parsed.SWAPUSED),
+      swapTotalMb: num(parsed.SWAPTOTAL),
       diskUsedPct: num(parsed.DISKPCT),
       diskUsedGb: num(parsed.DISKUSEDG),
       diskTotalGb: num(parsed.DISKTOTG, 1),
+      inodeUsedPct: num(parsed.INODEPCT),
+      networkRxBytes: num(parsed.NETRX),
+      networkTxBytes: num(parsed.NETTX),
+      processes: num(parsed.PROCESSES),
+      uptimeSeconds: num(parsed.UPTIME_SECONDS),
     }
     if (parsed.services.length) {
-      out.services = parsed.services.map((s) => ({
+      const services = [...new Map(parsed.services.map((service) => [service.name, service])).values()]
+      out.services = services.map((s) => ({
         name: s.name,
         status: s.status === 'active' ? 'running' : s.status,
       }))
-      out.servicesDetail = parsed.services.map((s) => ({
+      out.servicesDetail = services.map((s) => ({
         name: s.name,
         status: s.status === 'active' ? 'running' : s.status,
         since: s.since && s.since !== UNKNOWN ? s.since : out.server.uptime,
@@ -791,68 +1031,102 @@ export async function resolveServerDashboardData(
         auto: s.enabled ? !['disabled', 'static', 'masked'].includes(s.enabled) : true,
       }))
     }
+    if (parsed.discoveredSites.length) {
+      out.sitesDetail = mergeDiscoveredSites(out.sitesDetail, parsed.discoveredSites, config.project.slug)
+      out.sites = out.sitesDetail.map((site: Record<string, any>) => ({
+        name: site.name,
+        project: site.project,
+        managedBy: site.managedBy,
+        route: site.route,
+        href: site.href,
+        domain: site.domain,
+        path: site.path,
+        kind: site.kind,
+        type: site.type,
+        runtime: site.runtime,
+        deploy: site.deploy,
+        tls: site.tls,
+        status: site.status,
+        httpStatus: site.httpStatus,
+        responseMs: site.responseMs,
+        tlsDaysRemaining: site.tlsDaysRemaining,
+        checkedAt: site.checkedAt,
+      }))
+      out.siteHealth = out.sitesDetail.map((site: Record<string, any>) => ({
+        name: site.name,
+        project: site.project,
+        route: site.route,
+        status: site.status,
+        httpStatus: site.httpStatus,
+        responseMs: site.responseMs,
+        tlsDaysRemaining: site.tlsDaysRemaining,
+        checkedAt: site.checkedAt,
+      }))
+    }
   }
 
-  if (driver && targets.length) {
-    try {
-      const siteNames = Object.keys(config.sites ?? {})
-      const historyResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: deployHistoryScript(siteNames, config.project.slug),
-        comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const historyOutput = historyResult.perInstance?.[0]?.output ?? ''
-      const records = parseDeployHistory(historyOutput, config.sites as any)
-      out.serverDeployments = records.slice(0, 5)
-      out.serverDeploymentsDetail = records.slice(0, 50)
-      out.deploymentsEmptyReason = records.length
-        ? undefined
-        : 'No deployment history was found on the server yet. Deploy again to populate this timeline.'
-    } catch {
-      out.deploymentsEmptyReason = 'Deployment history could not be read from the server.'
-    }
+  if (driver && targets.length && !options.telemetryOnly) {
+    await Promise.all([
+      (async () => {
+        try {
+          const siteNames = Object.keys(config.sites ?? {})
+          const historyResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: deployHistoryScript(siteNames, config.project.slug),
+            comment: `ts-cloud dashboard:deploy-history ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const historyOutput = historyResult.perInstance?.[0]?.output ?? ''
+          const records = parseDeployHistory(historyOutput, config.sites as any)
+          out.serverDeployments = records.slice(0, 5)
+          out.serverDeploymentsDetail = records.slice(0, 50)
+          out.deploymentsEmptyReason = records.length
+            ? undefined
+            : 'No deployment history was found on the server yet. Deploy again to populate this timeline.'
+        } catch {
+          out.deploymentsEmptyReason = 'Deployment history could not be read from the server.'
+        }
+      })(),
+      (async () => {
+        try {
+          const logsResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: serverLogsScript(config),
+            comment: `ts-cloud dashboard:server-logs ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const logsOutput = logsResult.perInstance?.[0]?.output ?? ''
+          const records = parseServerLogs(logsOutput)
+          out.serverLogs = records
+          out.serverLogsEmptyReason = records.length
+            ? undefined
+            : 'No recent journal entries were found for the managed server units.'
+        } catch {
+          out.serverLogsEmptyReason = 'Server logs could not be read from the box.'
+        }
+      })(),
+      (async () => {
+        try {
+          const securityResult = await driver.runRemoteDeploy({
+            targets: [targets[0]],
+            commands: securityScript(config),
+            comment: `ts-cloud dashboard:security ${config.project.slug}`,
+            tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
+          })
+          const securityOutput = securityResult.perInstance?.[0]?.output ?? ''
+          const liveSecurity = parseServerSecurity(securityOutput)
+          const declaredSecurity = configuredSecurity(config)
+          if (!liveSecurity.ports.length) liveSecurity.ports = declaredSecurity.ports
+          if (!liveSecurity.tlsCertificates.length) liveSecurity.tlsCertificates = declaredSecurity.tlsCertificates
+          out.security = liveSecurity
+          out.securityEmptyReason = undefined
+        } catch {
+          out.securityEmptyReason = 'Server security checks could not be read from the box.'
+        }
+      })(),
+    ])
   } else if (driver && instanceCount === 0) {
     out.deploymentsEmptyReason = 'No app server target was found for this environment.'
-  }
-
-  if (driver && targets.length) {
-    try {
-      const logsResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: serverLogsScript(config),
-        comment: `ts-cloud dashboard:server-logs ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const logsOutput = logsResult.perInstance?.[0]?.output ?? ''
-      const records = parseServerLogs(logsOutput)
-      out.serverLogs = records
-      out.serverLogsEmptyReason = records.length
-        ? undefined
-        : 'No recent journal entries were found for the managed server units.'
-    } catch {
-      out.serverLogsEmptyReason = 'Server logs could not be read from the box.'
-    }
-  }
-
-  if (driver && targets.length) {
-    try {
-      const securityResult = await driver.runRemoteDeploy({
-        targets: [targets[0]],
-        commands: securityScript(config),
-        comment: `ts-cloud dashboard:security ${config.project.slug}`,
-        tags: { Project: config.project.slug, Environment: environment, Role: 'app' },
-      })
-      const securityOutput = securityResult.perInstance?.[0]?.output ?? ''
-      const liveSecurity = parseServerSecurity(securityOutput)
-      const declaredSecurity = configuredSecurity(config)
-      if (!liveSecurity.ports.length) liveSecurity.ports = declaredSecurity.ports
-      if (!liveSecurity.tlsCertificates.length) liveSecurity.tlsCertificates = declaredSecurity.tlsCertificates
-      out.security = liveSecurity
-      out.securityEmptyReason = undefined
-    } catch {
-      out.securityEmptyReason = 'Server security checks could not be read from the box.'
-    }
   }
 
   // Sites + SSH keys are declarative — derive from config (no box needed).
