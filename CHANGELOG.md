@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.61...v0.7.62)
+
+## 🐛 Bug Fixes
+
+- **deploy**: resolve both paths before deciding a release is live ([55d0617](https://github.com/stacksjs/ts-cloud/commit/55d0617)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.62 ([4b1a9ea](https://github.com/stacksjs/ts-cloud/commit/4b1a9ea)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.60...v0.7.61)
 
 ## 🐛 Bug Fixes
