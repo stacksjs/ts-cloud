@@ -11,7 +11,7 @@
  * instant rollback. See {@link import('./releases')}.
  */
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
+import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildIsReleaseLive, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -136,7 +136,10 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // A failed deploy must not strand its half-built release dir: rollback
     // picks the newest non-current dir and would activate this never-activated
     // (broken) release. On any failure before activation, remove it.
-    `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
+    // Resolve both sides before comparing (see buildIsReleaseLive): a
+    // symlinked ancestor made this trap delete a release that WAS live.
+    ...buildIsReleaseLive(paths),
+    `trap 'if [ \$? -ne 0 ] && [ "\$TS_CLOUD_IS_LIVE" != "yes" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
     // Unpack this deploy into its own release dir. When that id is the one
@@ -208,7 +211,11 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
       // SO_REUSEPORT support can't share its port, so the very first
       // zero-downtime deploy does one last stop-then-start cutover.
       `if [ -f /etc/systemd/system/${serviceName} ] && systemctl is-active --quiet ${serviceName}; then echo "[ts-cloud] retiring pre-zero-downtime unit ${serviceName} (one-time restart cutover)"; systemctl stop ${serviceName}; fi`,
-      `systemctl start ${instance}`,
+      // `restart` starts an inactive new-SHA instance just like `start`, but it
+      // also refreshes an already-active same-SHA instance after its release
+      // directory and EnvironmentFile were atomically replaced. A plain start
+      // is a no-op in that retry case and strands the process in a deleted cwd.
+      `systemctl restart ${instance}`,
       // Health gate (attempt 1): the instance must stay active for the whole
       // window (a crash-on-boot lands in activating/auto-restart and fails
       // is-active). When the app binds SO_REUSEPORT the new release overlaps
@@ -318,7 +325,10 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
     ...buildDeployLock(paths),
     // Same stranded-release guard as buildSiteDeployScript: never let a failed
     // deploy leave a release rollback could activate.
-    `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
+    // Resolve both sides before comparing (see buildIsReleaseLive): a
+    // symlinked ancestor made this trap delete a release that WAS live.
+    ...buildIsReleaseLive(paths),
+    `trap 'if [ \$? -ne 0 ] && [ "\$TS_CLOUD_IS_LIVE" != "yes" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, []),
     // Same staging rule as buildSiteDeployScript: never delete the tree the

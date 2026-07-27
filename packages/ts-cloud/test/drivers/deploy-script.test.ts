@@ -51,14 +51,15 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(joined).toContain('WorkingDirectory=/var/www/web/releases/%i')
     expect(joined).toContain('EnvironmentFile=/var/www/web/releases/%i/.env')
     expect(joined).toContain('Environment=PORT=3000')
-    expect(joined).toContain('systemctl start my-app-web@abc123.service')
-    // No blunt restart of a shared unit in the zero-downtime path.
+    expect(joined).toContain('systemctl restart my-app-web@abc123.service')
+    // Only the release-scoped instance is restarted. The shared legacy unit is
+    // never bluntly restarted in the zero-downtime path.
     expect(joined).not.toContain('systemctl restart my-app-web.service')
   })
 
   it('health-gates the new instance BEFORE stopping the old one, and aborts without flipping current on failure', () => {
     const script = buildSiteDeployScript(opts)
-    const startIdx = script.findIndex((l) => l === 'systemctl start my-app-web@abc123.service')
+    const startIdx = script.findIndex((l) => l === 'systemctl restart my-app-web@abc123.service')
     const gateIdx = script.findIndex((l) => l.includes('failed its health gate'))
     const activateIdx = script.findIndex((l) => l.includes('mv -Tf') && l.includes('/current'))
     const stopOldIdx = script.findIndex((l) => l.includes('for TS_CLOUD_U in ${TS_CLOUD_OLD_UNITS}'))
@@ -143,7 +144,7 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(joined).toContain('cd /var/www/web/releases/abc123')
     const extractIdx = script.findIndex((l) => l.includes('tar xzf'))
     const installIdx = script.findIndex((l) => l === 'bun install --frozen-lockfile')
-    const startIdx = script.findIndex((l) => l === 'systemctl start my-app-web@abc123.service')
+    const startIdx = script.findIndex((l) => l === 'systemctl restart my-app-web@abc123.service')
     expect(extractIdx).toBeLessThan(installIdx)
     expect(installIdx).toBeLessThan(startIdx)
   })
@@ -294,7 +295,10 @@ describe('deploy concurrency and re-deploys of a live release', () => {
 
     // The unconditional wipe is gone: the delete is now inside the branch that
     // runs only when `current` points somewhere else.
-    expect(joined).toContain('if [ "$(readlink -f /var/www/web/current 2>/dev/null || true)" = "/var/www/web/releases/abc123" ]; then')
+    // Both sides resolved before comparing — see the behaviour test for why a
+    // literal comparison here silently deleted the live release.
+    expect(joined).toContain('TS_CLOUD_LIVE_PATH="$(readlink -f /var/www/web/current 2>/dev/null || true)"')
+    expect(joined).toContain('if [ "$TS_CLOUD_IS_LIVE" = "yes" ]; then')
     expect(joined).toContain('TS_CLOUD_STAGED=/var/www/web/releases/abc123.incoming')
     expect(joined).toMatch(/else\n\s*rm -rf \/var\/www\/web\/releases\/abc123/)
   })
@@ -302,8 +306,8 @@ describe('deploy concurrency and re-deploys of a live release', () => {
   it('swaps a staged release into place with renames, not a delete-then-extract', () => {
     const joined = buildSiteDeployScript(opts).join('\n')
 
-    expect(joined).toContain('mv -T /var/www/web/releases/abc123 /var/www/web/releases/abc123.previous')
-    expect(joined).toContain('mv -T /var/www/web/releases/abc123.incoming /var/www/web/releases/abc123')
+    expect(joined).toContain('mv /var/www/web/releases/abc123 /var/www/web/releases/abc123.previous')
+    expect(joined).toContain('mv /var/www/web/releases/abc123.incoming /var/www/web/releases/abc123')
     expect(joined).toContain('rm -rf /var/www/web/releases/abc123.previous')
   })
 

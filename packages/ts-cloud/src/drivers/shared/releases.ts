@@ -153,7 +153,8 @@ export function buildResetReleaseDir(paths: ReleasePaths): string[] {
   return [
     `rm -rf ${staging}`,
     `mkdir -p ${staging}`,
-    `if [ "$(readlink -f ${paths.current} 2>/dev/null || true)" = "${paths.release}" ]; then`,
+    ...buildIsReleaseLive(paths),
+    'if [ "$TS_CLOUD_IS_LIVE" = "yes" ]; then',
     `  TS_CLOUD_STAGED=${staging}`,
     'else',
     `  rm -rf ${paths.release}`,
@@ -165,17 +166,39 @@ export function buildResetReleaseDir(paths: ReleasePaths): string[] {
 }
 
 /**
+ * Set `TS_CLOUD_IS_LIVE` to "yes" when `current` resolves to this release.
+ *
+ * Both sides are resolved before comparing. Comparing a resolved `current`
+ * against the literal release path looks equivalent and is not: one symlinked
+ * ancestor anywhere above the site — `/var/www` moved onto a data volume, a
+ * `/tmp` that is really `/private/tmp` — makes the two spellings differ, the
+ * guard misses, and the branch it was guarding deletes the directory the site
+ * is being served from.
+ */
+export function buildIsReleaseLive(paths: ReleasePaths): string[] {
+  return [
+    `TS_CLOUD_LIVE_PATH="$(readlink -f ${paths.current} 2>/dev/null || true)"`,
+    `TS_CLOUD_RELEASE_PATH="$(readlink -f ${paths.release} 2>/dev/null || echo ${paths.release})"`,
+    'if [ -n "$TS_CLOUD_LIVE_PATH" ] && [ "$TS_CLOUD_LIVE_PATH" = "$TS_CLOUD_RELEASE_PATH" ]; then TS_CLOUD_IS_LIVE=yes; else TS_CLOUD_IS_LIVE=no; fi',
+  ]
+}
+
+/**
  * Move a staged release into place, if it was staged (see
  * {@link buildResetReleaseDir}). A no-op when the deploy extracted directly.
  */
 export function buildPromoteStagedRelease(paths: ReleasePaths): string[] {
   const staging = `${paths.release}.incoming`
 
+  // Plain `mv`, not `mv -T`: both destinations are removed first, so there is
+  // no directory for `mv` to move *into* and the rename is unambiguous. `-T`
+  // would say the same thing but is GNU-only, which silently makes this
+  // untestable anywhere with a BSD userland.
   return [
     `if [ "$TS_CLOUD_STAGED" = "${staging}" ]; then`,
     `  rm -rf ${paths.release}.previous`,
-    `  mv -T ${paths.release} ${paths.release}.previous`,
-    `  mv -T ${staging} ${paths.release}`,
+    `  mv ${paths.release} ${paths.release}.previous`,
+    `  mv ${staging} ${paths.release}`,
     `  rm -rf ${paths.release}.previous`,
     'fi',
   ]
