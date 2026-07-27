@@ -140,10 +140,7 @@ export function liveStageDir(): string {
  * so a box runs a dashboard matching the CLI that deployed it, rather than
  * drifting to whatever `latest` happens to be mid-deploy.
  */
-export function resolveDashboardVersion(): string {
-  const explicit = process.env.TS_CLOUD_UI_VERSION?.trim()
-  if (explicit) return explicit
-
+function resolvePackagedDashboardVersion(): string {
   const here = dirname(fileURLToPath(import.meta.url))
   // Built layout is dist/deploy/, source layout is src/deploy/ — package.json
   // sits two levels up from either.
@@ -156,6 +153,11 @@ export function resolveDashboardVersion(): string {
     }
   }
   return 'latest'
+}
+
+export function resolveDashboardVersion(): string {
+  const explicit = process.env.TS_CLOUD_UI_VERSION?.trim()
+  return explicit || resolvePackagedDashboardVersion()
 }
 
 /**
@@ -186,12 +188,17 @@ export function stageLiveDashboardRoot(config: CloudConfig, cwd: string, logger:
       const requested = dependency.slice('file:'.length)
       const source = isAbsolute(requested) ? requested : resolve(cwd, requested)
       if (!existsSync(source) || !statSync(source).isFile()) {
-        throw new Error(`TS_CLOUD_UI_VERSION points to a missing package file: ${source}`)
+        dependency = resolvePackagedDashboardVersion()
+        logger.warn(
+          `Management dashboard: TS_CLOUD_UI_VERSION points to a missing package file (${source}); using the deploying ts-cloud version ${dependency} instead.`,
+        )
       }
-      const name = basename(source)
-      const destination = join(stage, name)
-      if (source !== destination) copyFileSync(source, destination)
-      dependency = `file:./${name}`
+      else {
+        const name = basename(source)
+        const destination = join(stage, name)
+        if (source !== destination) copyFileSync(source, destination)
+        dependency = `file:./${name}`
+      }
     }
 
     const pkg = {

@@ -320,6 +320,27 @@ describe('ensureManagementDashboard (live, the default)', () => {
       rmSync(dir, { recursive: true, force: true })
     }
   })
+
+  it('falls back to the deploying package when a local tarball override is unavailable', () => {
+    const dir = repoCwd()
+    const warnings: string[] = []
+    try {
+      process.env.TS_CLOUD_UI_VERSION = 'file:./missing-local-package.tgz'
+      const result = ensureManagementDashboard(cfg(), {
+        cwd: dir,
+        logger: { info: () => {}, warn: message => warnings.push(message) },
+      })
+      const site = (result.sites as any)['dashboard-acme-com']
+      const pkg = JSON.parse(readFileSync(join(dir, liveStageDir(), 'package.json'), 'utf8'))
+
+      expect(site).toBeTruthy()
+      expect(pkg.dependencies['@stacksjs/ts-cloud']).toMatch(/^\^\d+\.\d+\.\d+/)
+      expect(warnings).toHaveLength(1)
+      expect(warnings[0]).toContain('using the deploying ts-cloud version')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('resolveDashboardVersion', () => {
