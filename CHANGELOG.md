@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.70...v0.7.71)
+
+## 🐛 Bug Fixes
+
+- **security**: ignore typed module paths in secret scans ([06a7f96](https://github.com/stacksjs/ts-cloud/commit/06a7f96)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.71 ([4b0b0d7](https://github.com/stacksjs/ts-cloud/commit/4b0b0d7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.69...v0.7.70)
 
 ## 🐛 Bug Fixes
