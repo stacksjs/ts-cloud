@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PreDeployScanner } from './pre-deploy-scanner'
@@ -81,6 +81,24 @@ describe('pre-deployment secret scanning', () => {
     })
 
     expect(result.passed).toBe(true)
+    expect(result.findings).toEqual([])
+  })
+
+  it('does not scan generated framework backup trees', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ts-cloud-secret-scan-'))
+    temporaryDirectories.push(directory)
+    const backupDirectory = join(directory, 'storage/framework/framework.bak/framework.bak')
+    mkdirSync(backupDirectory, { recursive: true })
+    writeFileSync(join(backupDirectory, 'config.ts'), 'const value = "aB3dE5fG7hI9jK/lMnOpQrStUvWxYz0123456789"\n')
+    writeFileSync(join(directory, 'app.ts'), 'export const app = true\n')
+
+    const result = await new PreDeployScanner().scan({
+      directory,
+      failOnSeverity: 'high',
+    })
+
+    expect(result.passed).toBe(true)
+    expect(result.scannedFiles).toBe(1)
     expect(result.findings).toEqual([])
   })
 

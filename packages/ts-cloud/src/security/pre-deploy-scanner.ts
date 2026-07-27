@@ -322,6 +322,10 @@ const DEFAULT_EXCLUDE_DIRS = [
   '.turbo',
   '.next',
   '.nuxt',
+  // Framework upgrades keep recoverable source snapshots in this generated
+  // directory. Scanning the copies adds no coverage and can report the same
+  // source token repeatedly after several upgrades.
+  'framework.bak',
   // Local toolchain caches — typically vendored .d.ts/package.json files
   // that trip generic secret patterns (base64-ish strings, hashes).
   'pantry',
