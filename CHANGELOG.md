@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.69...v0.7.70)
+
+## 🐛 Bug Fixes
+
+- **queue**: wake workers across shared stores ([07dfc18](https://github.com/stacksjs/ts-cloud/commit/07dfc18)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.70 ([73df4bf](https://github.com/stacksjs/ts-cloud/commit/73df4bf)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.68...v0.7.69)
 
 ## ⚡ Performance Improvements
