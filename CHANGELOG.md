@@ -1,3 +1,23 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.63...v0.7.64)
+
+## 🚀 Features
+
+- **hetzner**: add historical server monitoring ([c73950c](https://github.com/stacksjs/ts-cloud/commit/c73950c)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **hetzner**: automate guarded host operations ([62aad65](https://github.com/stacksjs/ts-cloud/commit/62aad65)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **dashboard**: add historical host observability ([ceef84b](https://github.com/stacksjs/ts-cloud/commit/ceef84b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🐛 Bug Fixes
+
+- **dashboard**: reconcile attached site ownership ([50a78a1](https://github.com/stacksjs/ts-cloud/commit/50a78a1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.64 ([314352d](https://github.com/stacksjs/ts-cloud/commit/314352d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.62...v0.7.63)
 
 ## 🐛 Bug Fixes
