@@ -113,6 +113,75 @@ export function buildEnsureReleaseLayout(
 }
 
 /**
+ * Take the site's deploy lock for the rest of the script.
+ *
+ * Two deploys of one site used to be free to run at the same time, and they
+ * write to the same directories: the second one's `rm -rf releases/<id>` ran
+ * against a tree the first was still extracting into, which fails with
+ * "Directory not empty" — an error that reads like a permissions problem and
+ * is really a race. It happens more easily than it sounds, because a deploy
+ * whose *client* is interrupted keeps running on the box; the operator sees a
+ * dead terminal and re-runs.
+ *
+ * `flock` on a descriptor held by the shell serializes them, and the lock is
+ * released when the script exits however it exits. Waiting rather than failing
+ * outright, because the common case is a retry that is only a few seconds
+ * ahead of itself.
+ */
+export function buildDeployLock(paths: ReleasePaths, waitSeconds = 900): string[] {
+  const lock = `${deployMetaDir(paths.base)}/deploy.lock`
+
+  return [
+    `mkdir -p "$(dirname ${lock})"`,
+    `exec 9>${lock}`,
+    `flock -w ${waitSeconds} 9 || { echo "[ts-cloud] another deploy of this site has held the lock for ${waitSeconds}s — refusing to race it" >&2; exit 1; }`,
+  ]
+}
+
+/**
+ * Clear the release directory, unless it is the one currently being served.
+ *
+ * Re-deploying a release id that is already live — the same commit twice, a
+ * retry after an interrupted run — used to `rm -rf` the directory `current`
+ * points at, so the site was serving a half-deleted tree until the new
+ * extraction finished. The replacement is staged beside it and swapped in with
+ * two renames, which is atomic enough that no request lands mid-swap.
+ */
+export function buildResetReleaseDir(paths: ReleasePaths): string[] {
+  const staging = `${paths.release}.incoming`
+
+  return [
+    `rm -rf ${staging}`,
+    `mkdir -p ${staging}`,
+    `if [ "$(readlink -f ${paths.current} 2>/dev/null || true)" = "${paths.release}" ]; then`,
+    `  TS_CLOUD_STAGED=${staging}`,
+    'else',
+    `  rm -rf ${paths.release}`,
+    `  mkdir -p ${paths.release}`,
+    `  rmdir ${staging}`,
+    `  TS_CLOUD_STAGED=${paths.release}`,
+    'fi',
+  ]
+}
+
+/**
+ * Move a staged release into place, if it was staged (see
+ * {@link buildResetReleaseDir}). A no-op when the deploy extracted directly.
+ */
+export function buildPromoteStagedRelease(paths: ReleasePaths): string[] {
+  const staging = `${paths.release}.incoming`
+
+  return [
+    `if [ "$TS_CLOUD_STAGED" = "${staging}" ]; then`,
+    `  rm -rf ${paths.release}.previous`,
+    `  mv -T ${paths.release} ${paths.release}.previous`,
+    `  mv -T ${staging} ${paths.release}`,
+    `  rm -rf ${paths.release}.previous`,
+    'fi',
+  ]
+}
+
+/**
  * Symlink every shared path from `shared/` into the freshly checked-out release,
  * replacing whatever the checkout shipped (e.g. the repo's empty `storage`).
  */

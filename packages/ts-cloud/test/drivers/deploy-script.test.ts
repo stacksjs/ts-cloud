@@ -39,7 +39,10 @@ describe('buildSiteDeployScript (zero-downtime cutover, ported sites)', () => {
     expect(script[0]).toBe('set -euo pipefail')
     expect(joined).toContain('mv "/var/ts-cloud/staging/release.tar.gz" /tmp/my-app-web-abc123-release.tar.gz')
     // Tarball goes into THIS release dir, never the live one.
-    expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz -C /var/www/web/releases/abc123')
+    // Extraction goes to $TS_CLOUD_STAGED, which is the release dir itself
+    // unless that dir is the one currently being served (see buildResetReleaseDir).
+    expect(joined).toContain('tar xzf /tmp/my-app-web-abc123-release.tar.gz -C "$TS_CLOUD_STAGED"')
+    expect(joined).toContain('rm -rf /var/www/web/releases/abc123.incoming')
     // .env persists in shared/ and is symlinked into the release.
     expect(joined).toContain('/var/www/web/shared/.env')
     expect(joined).toContain('ln -sfn /var/www/web/shared/.env /var/www/web/releases/abc123/.env')
@@ -191,7 +194,8 @@ describe('buildStaticSiteDeployScript (zero-downtime atomic release)', () => {
   it('unpacks into a release dir and swaps current atomically — no empty-docroot window, no restart', () => {
     const script = buildStaticSiteDeployScript(opts)
     const joined = script.join('\n')
-    expect(joined).toContain('tar xzf /tmp/docs-rel9-release.tar.gz -C /var/www/docs/releases/rel9')
+    expect(joined).toContain('tar xzf /tmp/docs-rel9-release.tar.gz -C "$TS_CLOUD_STAGED"')
+    expect(joined).toContain('rm -rf /var/www/docs/releases/rel9.incoming')
     expect(joined).toContain('mv -Tf /var/www/docs/current.tmp /var/www/docs/current')
     // No destructive wipe of the live docroot, and no systemd (static).
     expect(joined).not.toContain('find /var/www/docs -mindepth')
@@ -240,5 +244,73 @@ describe('releaseTarballTmpPath', () => {
   it('namespaces the staged tarball by slug, site, and release id (shared-box safe)', () => {
     expect(releaseTarballTmpPath('my-app', 'web', 'abc123')).toBe('/tmp/my-app-web-abc123-release.tar.gz')
     expect(releaseTarballTmpPath(undefined, 'docs', 'rel9')).toBe('/tmp/docs-rel9-release.tar.gz')
+  })
+})
+
+/**
+ * Two deploys of one site used to be free to run at once, and the second one's
+ * `rm -rf releases/<id>` ran against a tree the first was still extracting
+ * into — which fails with "Directory not empty", an error that reads like a
+ * permissions problem and is really a race. It is easy to hit: a deploy whose
+ * client is interrupted keeps running on the box, the operator sees a dead
+ * terminal and re-runs.
+ */
+describe('deploy concurrency and re-deploys of a live release', () => {
+  const opts = {
+    siteName: 'web',
+    slug: 'my-app',
+    artifactFetch: buildLocalArtifactFetch(
+      '/var/ts-cloud/staging/release.tar.gz',
+      '/tmp/my-app-web-abc123-release.tar.gz',
+    ),
+    releaseId: 'abc123',
+    execStart: '/usr/local/bin/bun run server.ts',
+    envEntries: { NODE_ENV: 'production' },
+    port: 3000,
+  }
+
+  const opts2 = {
+    siteName: 'docs',
+    artifactFetch: buildLocalArtifactFetch('/tmp/staging.tar.gz', '/tmp/docs-rel9-release.tar.gz'),
+    releaseId: 'rel9',
+  }
+
+  it('takes the site lock before touching anything', () => {
+    const script = buildSiteDeployScript(opts)
+    const joined = script.join('\n')
+
+    expect(joined).toContain('/var/www/web/.ts-cloud/deploy.lock')
+    expect(joined).toContain('flock -w 900 9')
+
+    // Before the first destructive step, or it is not a guard.
+    const lockIdx = script.findIndex(line => line.includes('flock -w'))
+    const destructiveIdx = script.findIndex(line => line.includes('rm -rf /var/www/web/releases/abc123'))
+    expect(lockIdx).toBeGreaterThanOrEqual(0)
+    expect(destructiveIdx).toBeGreaterThan(lockIdx)
+  })
+
+  it('never deletes the release the site is currently serving', () => {
+    const joined = buildSiteDeployScript(opts).join('\n')
+
+    // The unconditional wipe is gone: the delete is now inside the branch that
+    // runs only when `current` points somewhere else.
+    expect(joined).toContain('if [ "$(readlink -f /var/www/web/current 2>/dev/null || true)" = "/var/www/web/releases/abc123" ]; then')
+    expect(joined).toContain('TS_CLOUD_STAGED=/var/www/web/releases/abc123.incoming')
+    expect(joined).toMatch(/else\n\s*rm -rf \/var\/www\/web\/releases\/abc123/)
+  })
+
+  it('swaps a staged release into place with renames, not a delete-then-extract', () => {
+    const joined = buildSiteDeployScript(opts).join('\n')
+
+    expect(joined).toContain('mv -T /var/www/web/releases/abc123 /var/www/web/releases/abc123.previous')
+    expect(joined).toContain('mv -T /var/www/web/releases/abc123.incoming /var/www/web/releases/abc123')
+    expect(joined).toContain('rm -rf /var/www/web/releases/abc123.previous')
+  })
+
+  it('locks the static-site path too', () => {
+    const joined = buildStaticSiteDeployScript(opts2).join('\n')
+
+    expect(joined).toContain('/var/www/docs/.ts-cloud/deploy.lock')
+    expect(joined).toContain('flock -w 900 9')
   })
 })

@@ -11,7 +11,7 @@
  * instant rollback. See {@link import('./releases')}.
  */
 import { formatEnvFile } from './env-file'
-import { buildActivateRelease, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPruneReleases, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
+import { buildActivateRelease, buildDeployLock, buildEnsureReleaseLayout, buildLinkSharedPaths, buildPromoteStagedRelease, buildPruneReleases, buildResetReleaseDir, DEFAULT_KEEP_RELEASES, releasePaths } from './releases'
 
 /**
  * Translate a `start` command (e.g. "bun run server.ts") into an absolute
@@ -129,16 +129,22 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
 
   const stageRelease = [
     'set -euo pipefail',
+    // Serialize deploys of this site before touching anything (see
+    // buildDeployLock): a second deploy racing the first is how a release dir
+    // gets `rm -rf`'d while it is still being extracted into.
+    ...buildDeployLock(paths),
     // A failed deploy must not strand its half-built release dir: rollback
     // picks the newest non-current dir and would activate this never-activated
     // (broken) release. On any failure before activation, remove it.
     `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, sharedPaths),
-    // Unpack this deploy into its own release dir (never touches the live one).
-    `rm -rf ${paths.release}`,
-    `mkdir -p ${paths.release}`,
-    `tar xzf ${tarball} -C ${paths.release}`,
+    // Unpack this deploy into its own release dir. When that id is the one
+    // being served — the same commit deployed twice, a retry after an
+    // interrupted run — it is staged beside the live tree and swapped in
+    // below, rather than deleted out from under the running service.
+    ...buildResetReleaseDir(paths),
+    `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
     // Drop the staged tarball once extracted — don't leave a world-readable
     // copy of the release (or a stale one for a later deploy to trip over).
     `rm -f ${tarball}`,
@@ -154,6 +160,7 @@ export function buildSiteDeployScript(options: BuildSiteDeployScriptOptions): st
     // shared box — the "stacksjs.com intermittently served another site" bug.
     // Bun natively loads `.env`/`.env.<mode>`, so strip every env file here, not
     // just the shared one.
+    ...buildPromoteStagedRelease(paths),
     `for TS_CLOUD_ENV in ${paths.shared}/.env ${paths.release}/.env ${paths.release}/.env.*; do [ -f "$TS_CLOUD_ENV" ] && sed -i -E '/^[[:space:]]*(PORT|PORT_BACKEND|PORT_ADMIN|PORT_FRONTEND)[[:space:]]*=/d' "$TS_CLOUD_ENV" 2>/dev/null || true; done`,
     ...buildLinkSharedPaths(paths, sharedPaths),
     ...preStart,
@@ -308,14 +315,17 @@ export function buildStaticSiteDeployScript(options: BuildStaticSiteDeployScript
 
   return [
     'set -euo pipefail',
+    ...buildDeployLock(paths),
     // Same stranded-release guard as buildSiteDeployScript: never let a failed
     // deploy leave a release rollback could activate.
     `trap 'if [ \$? -ne 0 ] && [ "\$(readlink -f ${paths.current} 2>/dev/null || true)" != "${paths.release}" ]; then rm -rf ${paths.release}; fi' EXIT`,
     ...artifactFetch,
     ...buildEnsureReleaseLayout(paths, []),
-    `rm -rf ${paths.release}`,
-    `mkdir -p ${paths.release}`,
-    `tar xzf ${tarball} -C ${paths.release}`,
+    // Same staging rule as buildSiteDeployScript: never delete the tree the
+    // docroot currently points at.
+    ...buildResetReleaseDir(paths),
+    `tar xzf ${tarball} -C "$TS_CLOUD_STAGED"`,
+    ...buildPromoteStagedRelease(paths),
     // Drop the staged tarball once extracted (see buildSiteDeployScript).
     `rm -f ${tarball}`,
     ...preStart,
