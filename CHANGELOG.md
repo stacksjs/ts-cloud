@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.62...v0.7.63)
+
+## 🐛 Bug Fixes
+
+- **deploy**: decide 'is this release live' when the trap fires, not when it is armed ([658570c](https://github.com/stacksjs/ts-cloud/commit/658570c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.63 ([5fafb7b](https://github.com/stacksjs/ts-cloud/commit/5fafb7b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.61...v0.7.62)
 
 ## 🐛 Bug Fixes
