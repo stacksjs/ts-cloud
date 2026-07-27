@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.64...v0.7.65)
+
+## 🐛 Bug Fixes
+
+- **security**: distinguish source digests from secrets ([9434ac5](https://github.com/stacksjs/ts-cloud/commit/9434ac5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.65 ([e9fc4e1](https://github.com/stacksjs/ts-cloud/commit/e9fc4e1)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.63...v0.7.64)
 
 ## 🚀 Features
