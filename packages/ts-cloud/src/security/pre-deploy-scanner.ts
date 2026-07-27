@@ -506,6 +506,24 @@ export class PreDeployScanner {
           continue
         }
 
+        // A bare identifier can also be exactly 40 characters long. Requiring
+        // three character classes keeps the generic fallback focused on
+        // base64-shaped random material instead of class/action names made
+        // entirely from letters. The named AWS rule above remains strict and
+        // catches credentials with unusual low-diversity values.
+        if (pattern.name === 'AWS Secret Key (Generic)' && !this.hasSecretCharacterDiversity(candidate)) {
+          continue
+        }
+
+        if (
+          pattern.name === 'AWS Secret Key (Generic)' &&
+          /^(?:Actions|Commands|Controllers|Handlers|Jobs|Listeners|Middleware|Models|Resources|Services)\//.test(
+            candidate,
+          )
+        ) {
+          continue
+        }
+
         // Entropy guard — real secrets/keys are high-entropy strings.
         // ASCII section dividers (`====...===`) and other low-diversity
         // matches (`0000...000`, `XXXX...XXX`) overwhelmingly produce
@@ -604,6 +622,10 @@ export class PreDeployScanner {
     if (/(.)\1{3,}/.test(value)) return true
 
     return false
+  }
+
+  private hasSecretCharacterDiversity(value: string): boolean {
+    return [/[a-z]/.test(value), /[A-Z]/.test(value), /\d/.test(value), /[/+=]/.test(value)].filter(Boolean).length >= 3
   }
 
   /**

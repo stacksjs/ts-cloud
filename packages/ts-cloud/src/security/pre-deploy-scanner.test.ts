@@ -53,4 +53,49 @@ describe('pre-deployment secret scanning', () => {
     expect(result.passed).toBe(false)
     expect(result.findings.some(finding => finding.pattern.name === 'AWS Secret Access Key')).toBe(true)
   })
+
+  it('does not classify a 40-character TypeScript identifier as a generic AWS secret', async () => {
+    const directory = fixture(
+      'routes.ts',
+      'const handler = ActionResourceDeploymentConfigurationNam\n',
+    )
+
+    const result = await new PreDeployScanner().scan({
+      directory,
+      failOnSeverity: 'high',
+    })
+
+    expect(result.passed).toBe(true)
+    expect(result.findings).toEqual([])
+  })
+
+  it('does not classify a 40-character action module path as a generic AWS secret', async () => {
+    const directory = fixture(
+      'routes.ts',
+      "route.post('/checkout', 'Actions/Payment/CreateSubscriptionAction')\n",
+    )
+
+    const result = await new PreDeployScanner().scan({
+      directory,
+      failOnSeverity: 'high',
+    })
+
+    expect(result.passed).toBe(true)
+    expect(result.findings).toEqual([])
+  })
+
+  it('still detects diverse unlabelled AWS-secret-shaped material', async () => {
+    const directory = fixture(
+      'config.ts',
+      'const credential = "aB3dE5fG7hI9jK/lMnOpQrStUvWxYz0123456789"\n',
+    )
+
+    const result = await new PreDeployScanner().scan({
+      directory,
+      failOnSeverity: 'high',
+    })
+
+    expect(result.passed).toBe(false)
+    expect(result.findings.some(finding => finding.pattern.name === 'AWS Secret Key (Generic)')).toBe(true)
+  })
 })
