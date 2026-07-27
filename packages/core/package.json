@@ -1,7 +1,7 @@
 {
   "name": "@ts-cloud/core",
   "type": "module",
-  "version": "0.7.68",
+  "version": "0.7.69",
   "description": "Core CloudFormation generation library for ts-cloud",
   "author": "Chris Breuer <chris@stacksjs.com>",
   "license": "MIT",
