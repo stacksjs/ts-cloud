@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.67...v0.7.68)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: tolerate concurrent release rollovers ([6d70831](https://github.com/stacksjs/ts-cloud/commit/6d70831)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.68 ([a5183c7](https://github.com/stacksjs/ts-cloud/commit/a5183c7)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.66...v0.7.67)
 
 ## 🐛 Bug Fixes
