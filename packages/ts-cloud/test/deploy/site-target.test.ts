@@ -111,6 +111,19 @@ describe('validateDeploymentConfig', () => {
     expect(errors).toEqual([])
   })
 
+  it('accepts server sites and redirects that attach to an owner compute box', () => {
+    const config = makeConfig({
+      app: { root: '.', domain: 'app.example.com', start: 'bun run serve', port: 3000 },
+      docs: { root: 'dist', domain: 'docs.example.com', deploy: 'server' },
+      www: { domain: 'www.example.com', redirect: 'https://example.com' },
+    })
+    config.cloud = { provider: 'hetzner', attachTo: 'stacks' }
+
+    const { errors } = validateDeploymentConfig(config)
+
+    expect(errors).toEqual([])
+  })
+
   it('errors when a server-static site has compute but no root', () => {
     const { errors } = validateDeploymentConfig(
       makeConfig(

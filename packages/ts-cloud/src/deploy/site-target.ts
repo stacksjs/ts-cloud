@@ -86,9 +86,9 @@ export function resolveSiteKind(site: SiteConfig): SiteDeployKind {
   return site.start ? 'server-app' : 'server-static'
 }
 
-/** Does this environment have a compute server configured to deploy onto? */
+/** Does this project own a compute server or attach to an owner's server? */
 function hasComputeConfigured(config: CloudConfig): boolean {
-  return config.infrastructure?.compute != null
+  return config.infrastructure?.compute != null || Boolean(config.cloud?.attachTo?.trim())
 }
 
 export interface DeploymentValidationResult {
