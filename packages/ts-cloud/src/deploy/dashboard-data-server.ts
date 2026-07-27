@@ -64,7 +64,7 @@ export interface DiscoveredSite {
   deployedAt?: string
 }
 
-function sharedBoxProbeScript(projectFilter?: string): string {
+export function sharedBoxProbeScript(projectFilter?: string): string {
   const source = String.raw`
 import { basename, join } from 'node:path'
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
@@ -114,6 +114,7 @@ const routes = await Promise.all(configuredRoutes.map(async route => {
   let httpStatus = 0
   const probe = async (href) => {
     const response = await fetch(href, {
+      method: 'HEAD',
       redirect: 'manual',
       headers: { 'user-agent': 'ts-cloud-monitor/1.0' },
       signal: AbortSignal.timeout(6000),

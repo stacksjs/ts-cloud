@@ -8,7 +8,16 @@ import {
   mergeDiscoveredSites,
   resolveConfigOnlyServerDashboardData,
   serverLogSources,
+  sharedBoxProbeScript,
 } from './dashboard-data-server'
+
+describe('sharedBoxProbeScript', () => {
+  it('uses bodyless HEAD probes so monitoring does not churn proxy streams', () => {
+    const encoded = sharedBoxProbeScript().match(/^echo '([^']+)'/)?.[1]
+    expect(encoded).toBeTruthy()
+    expect(Buffer.from(encoded!, 'base64').toString('utf8')).toContain("method: 'HEAD'")
+  })
+})
 
 describe('serverLogSources', () => {
   const config = {
