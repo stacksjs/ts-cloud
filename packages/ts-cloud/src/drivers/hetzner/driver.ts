@@ -167,11 +167,12 @@ export class HetznerDriver implements CloudDriver {
     const labels = tsCloudLabels(slug, environment, 'app')
     const sites = config.sites || {}
 
-    // ts-cloud does not run a reverse proxy on the box by default — the operator
-    // runs their own. Open the upstream app/site ports so the operator's proxy
-    // (or direct access) can reach each app. When `compute.proxy.engine` is set,
-    // ts-cloud provisions that gateway (rpx) on the box from the sites model.
-    const sitePorts = this.collectUpstreamPorts(sites)
+    // ts-cloud does not run a reverse proxy on the box by default, so raw site
+    // ports must remain reachable for an operator-owned proxy or direct access.
+    // An rpx-backed box is different: every upstream is reached over loopback,
+    // and publishing those ports bypasses TLS, route auth, redirects, and every
+    // other gateway policy. Keep them out of the provider firewall entirely.
+    const sitePorts = usesRpxProxy(compute) ? [] : this.collectUpstreamPorts(sites)
     const firewallName = `${slug}-${environment}-app-fw`
     const { firewall } = await this.ensureFirewall(
       firewallName,

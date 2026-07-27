@@ -15,6 +15,60 @@ export interface HetznerApiErrorBody {
   }
 }
 
+export class HetznerApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly details?: unknown,
+  ) {
+    super(message)
+    this.name = 'HetznerApiError'
+  }
+}
+
+export class HetznerActionError extends Error {
+  constructor(
+    message: string,
+    readonly action: HetznerAction,
+  ) {
+    super(message)
+    this.name = 'HetznerActionError'
+  }
+}
+
+export interface HetznerServerTypeLocation {
+  id: number
+  name: string
+  available: boolean
+  recommended: boolean
+  deprecation?: unknown
+}
+
+export interface HetznerServerTypePrice {
+  location: string
+  price_hourly: { net: string; gross: string }
+  price_monthly: { net: string; gross: string }
+  included_traffic?: number
+  price_per_tb_traffic?: { net: string; gross: string }
+}
+
+export interface HetznerServerType {
+  id?: number
+  name: string
+  architecture?: string
+  cores?: number
+  cpu_type?: string
+  category?: string
+  deprecated?: boolean
+  description?: string
+  disk?: number
+  memory?: number
+  prices?: HetznerServerTypePrice[]
+  storage_type?: string
+  locations?: HetznerServerTypeLocation[]
+}
+
 export interface HetznerServer {
   id: number
   name: string
@@ -25,8 +79,13 @@ export interface HetznerServer {
   }
   private_net?: Array<{ ip: string }>
   labels?: Record<string, string>
-  server_type: { name: string }
-  datacenter: { name: string; location: { name: string } }
+  server_type: HetznerServerType
+  /** Current API shape. */
+  location?: { id?: number; name: string; description?: string; city?: string; country?: string }
+  /** Legacy API shape retained for compatibility with recorded fixtures. */
+  datacenter?: { name: string; location: { name: string } }
+  primary_disk_size?: number
+  locked?: boolean
 }
 
 export interface HetznerFirewall {
@@ -166,7 +225,12 @@ export class HetznerClient {
     if (!response.ok) {
       const message = data.error?.message || response.statusText || 'Hetzner API error'
       const code = data.error?.code ? ` [${data.error.code}]` : ''
-      throw new Error(`Hetzner API ${method} ${path} (${response.status})${code}: ${message}`)
+      throw new HetznerApiError(
+        `Hetzner API ${method} ${path} (${response.status})${code}: ${message}`,
+        response.status,
+        data.error?.code,
+        data.error?.details,
+      )
     }
 
     return data as T
@@ -203,6 +267,15 @@ export class HetznerClient {
   async getServer(id: number): Promise<HetznerServer> {
     const data = await this.request<{ server: HetznerServer }>('GET', `/servers/${id}`)
     return data.server
+  }
+
+  async listServerTypes(name?: string): Promise<HetznerServerType[]> {
+    const query = name ? `?name=${encodeURIComponent(name)}` : ''
+    return this.requestAll<'server_types', HetznerServerType>(`/server_types${query}`, 'server_types')
+  }
+
+  async getServerType(name: string): Promise<HetznerServerType | null> {
+    return (await this.listServerTypes(name)).find((item) => item.name === name) ?? null
   }
 
   async createServer(options: CreateServerOptions): Promise<{ server: HetznerServer; action: HetznerAction }> {
@@ -361,6 +434,29 @@ export class HetznerClient {
     return data.ssh_key
   }
 
+  async getAction(actionId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('GET', `/actions/${actionId}`)
+    return data.action
+  }
+
+  async shutdownServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/shutdown`, {})
+    return data.action
+  }
+
+  async powerOnServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/poweron`, {})
+    return data.action
+  }
+
+  async changeServerType(serverId: number, serverType: string, upgradeDisk: boolean): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/change_type`, {
+      server_type: serverType,
+      upgrade_disk: upgradeDisk,
+    })
+    return data.action
+  }
+
   async waitForAction(
     actionId: number,
     options?: { pollIntervalMs?: number; maxWaitMs?: number },
@@ -370,10 +466,10 @@ export class HetznerClient {
     const start = Date.now()
 
     while (Date.now() - start < maxWait) {
-      const data = await this.request<{ action: HetznerAction }>('GET', `/actions/${actionId}`)
-      if (data.action.status === 'success') return data.action
-      if (data.action.status === 'error') {
-        throw new Error(data.action.error?.message || 'Hetzner action failed')
+      const action = await this.getAction(actionId)
+      if (action.status === 'success') return action
+      if (action.status === 'error') {
+        throw new HetznerActionError(action.error?.message || 'Hetzner action failed', action)
       }
       await new Promise((resolve) => setTimeout(resolve, pollInterval))
     }
@@ -396,6 +492,24 @@ export class HetznerClient {
     }
 
     throw new Error(`Timed out waiting for server ${serverId} to reach running state`)
+  }
+
+  async waitForServerStatus(
+    serverId: number,
+    status: string,
+    options?: { pollIntervalMs?: number; maxWaitMs?: number },
+  ): Promise<HetznerServer> {
+    const pollInterval = options?.pollIntervalMs ?? 3000
+    const maxWait = options?.maxWaitMs ?? 600000
+    const start = Date.now()
+
+    while (Date.now() - start < maxWait) {
+      const server = await this.getServer(serverId)
+      if (server.status === status) return server
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+    }
+
+    throw new Error(`Timed out waiting for server ${serverId} to reach ${status} state`)
   }
 }
 

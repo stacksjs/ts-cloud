@@ -17,8 +17,10 @@ describe('buildMonitoringScript', () => {
     expect(s).toContain('LOAD=${LOAD:-0}')
     expect(s).toContain('DISK_PCT=${DISK_PCT:-0}')
     expect(s).toContain('/etc/systemd/system/ts-cloud-metrics.timer')
-    expect(s).toContain('OnUnitActiveSec=60')
-    expect(s).toContain('systemctl enable ts-cloud-metrics.timer')
+    expect(s).toContain('OnCalendar=*-*-* *:*:00')
+    expect(s).toContain('Persistent=true')
+    expect(s).toContain('systemctl enable --now ts-cloud-metrics.timer')
+    expect(s).toContain('systemctl start ts-cloud-metrics.service')
   })
 
   it('collects network throughput, swap, uptime, and per-service health', () => {
@@ -31,6 +33,9 @@ describe('buildMonitoringScript', () => {
     expect(s).toContain('exec 3<>/dev/tcp/127.0.0.1/$1')
     expect(s).toContain('SVC_NGINX=$(probe 80)')
     expect(s).toContain('SVC_MYSQL=$(probe 3306)')
+    expect(s).toContain('SVC_HTTPS=$(probe 443)')
+    expect(s).toContain('SVC_TYPESENSE=$(probe 8108)')
+    expect(s).toContain('SVC_SMTP=$(probe 25)')
     expect(s).toContain('"nginx":"$SVC_NGINX"')
   })
 

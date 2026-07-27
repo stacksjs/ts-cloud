@@ -1,5 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
-import { HetznerClient } from '../../src/drivers/hetzner/client'
+import { HetznerApiError, HetznerClient } from '../../src/drivers/hetzner/client'
 import { matchesTsCloudLabels, resolveHetznerServerType } from '../../src/drivers/hetzner/instance-sizes'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from '../../src/drivers/hetzner/cloud-init'
 
@@ -247,5 +247,72 @@ describe('HetznerClient', () => {
     expect(capturedBody.server_type).toBe('cx22')
     expect(capturedBody.user_data).toContain('#cloud-config')
     expect(server.id).toBe(99)
+  })
+
+  it('fetches a server type with location capacity and pricing', async () => {
+    const fetchImpl = mock(async (url: string) => {
+      expect(url).toContain('/server_types?name=cx43&per_page=50&page=1')
+      return new Response(
+        JSON.stringify({
+          server_types: [
+            {
+              id: 45,
+              name: 'cx43',
+              cores: 8,
+              memory: 16,
+              disk: 160,
+              locations: [{ id: 1, name: 'fsn1', available: false, recommended: false }],
+              prices: [
+                {
+                  location: 'fsn1',
+                  price_hourly: { net: '0.0264', gross: '0.0264' },
+                  price_monthly: { net: '16.49', gross: '16.49' },
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      )
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    const type = await client.getServerType('cx43')
+    expect(type?.locations?.[0].available).toBe(false)
+    expect(type?.prices?.[0].price_monthly.gross).toBe('16.49')
+  })
+
+  it('sends shutdown, power-on, and change-type actions with the expected payloads', async () => {
+    const calls: Array<{ url: string; body: unknown }> = []
+    const fetchImpl = mock(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: JSON.parse(String(init?.body)) })
+      return new Response(JSON.stringify({ action: { id: calls.length, status: 'running' } }), { status: 201 })
+    })
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    await client.shutdownServer(42)
+    await client.powerOnServer(42)
+    await client.changeServerType(42, 'cx43', true)
+    expect(calls.map((call) => call.url.split('/').pop())).toEqual(['shutdown', 'poweron', 'change_type'])
+    expect(calls[2].body).toEqual({ server_type: 'cx43', upgrade_disk: true })
+  })
+
+  it('preserves the API status and code for capacity failures', async () => {
+    const fetchImpl = mock(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: { message: 'No fitting host found', code: 'resource_unavailable' },
+          }),
+          { status: 412 },
+        ),
+    )
+    const client = new HetznerClient({ apiToken: 'test-token', fetchImpl })
+    try {
+      await client.changeServerType(42, 'cx43', true)
+      throw new Error('Expected changeServerType to fail')
+    } catch (error) {
+      expect(error).toBeInstanceOf(HetznerApiError)
+      expect((error as HetznerApiError).status).toBe(412)
+      expect((error as HetznerApiError).code).toBe('resource_unavailable')
+    }
   })
 })

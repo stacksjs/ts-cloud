@@ -72,13 +72,18 @@ export async function deploySiteRelease(
   const dbEnv = outputs.servicesPrivateIp
     ? buildFleetServicesEnv(outputs.servicesPrivateIp, resolveAppDatabase(config))
     : buildManagedDbEnv(resolveAppDatabase(config))
-  const envWithServices = Object.keys(dbEnv).length > 0 ? { ...dbEnv, ...(site.env || {}) } : site.env || {}
+  const compute = config.infrastructure?.compute
+  // rpx reaches every server-app over loopback. Default the process bind to
+  // loopback too, so an application cannot accidentally bypass TLS, route
+  // authentication, or proxy policy by listening on the public interface.
+  // Explicit site env remains authoritative for uncommon direct-bind setups.
+  const proxyEnv: Record<string, string> = usesRpxProxy(compute) ? { HOST: '127.0.0.1' } : {}
+  const envWithServices: Record<string, string> = { ...dbEnv, ...proxyEnv, ...(site.env || {}) }
 
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the
   // new release, flips `current`, then nginx is (re)pointed at it.
   if (isPhpSite(site)) {
-    const compute = config.infrastructure?.compute
     const phpVersion = site.phpVersion ?? compute?.php?.default ?? compute?.php?.versions?.[0]
     const appBase = siteInstallBase(slug, siteName)
 
@@ -235,7 +240,6 @@ export async function deploySiteRelease(
   // A static site served on the box can be fronted by nginx (default) with
   // HTTP Basic auth + Let's Encrypt — this is how the ts-cloud UI is published
   // behind htpasswd. When the operator runs rpx instead, skip the vhost.
-  const compute = config.infrastructure?.compute
   const wantsNginxStatic = kind === 'server-static' && !usesRpxProxy(compute) && !!site.domain
   const staticVhost = wantsNginxStatic
     ? buildNginxVhostScript({
@@ -319,6 +323,13 @@ export interface DeployAllSitesOptions {
   logger?: ComputeDeployLogger
   /** Project root used to resolve/build the management dashboard UI. Defaults to `process.cwd()`. */
   cwd?: string
+  /**
+   * Auto-inject the management dashboard when the caller has not already
+   * prepared it. Framework integrations that inject before provisioning must
+   * disable this for narrowed single-site deploys, otherwise the dashboard is
+   * unexpectedly added back to the narrowed site set.
+   */
+  managementDashboard?: boolean
   /**
    * The FULL site model for regenerating the rpx gateway, distinct from `config`
    * which may be narrowed to a single site for a partial deploy. The rpx gateway
@@ -404,14 +415,16 @@ export async function deployAllComputeSites(options: DeployAllSitesOptions): Pro
   // consumer of this shared path — the ts-cloud CLI, Stacks' `buddy deploy`, or
   // any other driver-API caller — ships the cockpit alongside the app. Idempotent:
   // a no-op when the CLI already injected it or the user configured one.
+  const autoDashboard = options.managementDashboard !== false
   const hadDashboard = hasManagementDashboardSite(config)
-  ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
+  if (autoDashboard)
+    ensureManagementDashboard(config, { cwd, logger: { info: logger.info, warn: logger.warn } })
   // The dashboard sites WE injected this deploy — one per apex domain (all share
   // the same UI artifact). Empty when the user configured one by hand.
-  const injectedDashboardSites = hadDashboard ? [] : managementDashboardSiteNames(config)
+  const injectedDashboardSites = !autoDashboard || hadDashboard ? [] : managementDashboardSiteNames(config)
   // Keep the rpx route source in sync so the gateway routes every dashboard too
   // (it may be a different object than `config` on a single-site deploy).
-  if (options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
+  if (autoDashboard && options.rpxConfig && options.rpxConfig !== config && !hasManagementDashboardSite(options.rpxConfig))
     ensureManagementDashboard(options.rpxConfig, { cwd, logger: { info: () => {}, warn: () => {} } })
 
   // When WE injected the dashboard(s) (e.g. a Stacks deploy that never built a

@@ -514,6 +514,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 const dir = ${JSON.stringify(sitesDir)}
 const proxies = []
 const seen = new Set()
+const owners = new Map()
 const suffixes = new Set()
 const guardHosts = new Set()
 let email
@@ -534,8 +535,12 @@ for (const f of files) {
   catch (err) { console.error('[rpx-assembler] SKIPPING malformed fragment ' + f + ' — its host(s) will 404 until fixed: ' + err); continue }
   for (const p of frag.proxies ?? []) {
     const key = p.id || (p.to + (p.path ?? ''))
-    if (seen.has(key)) continue
+    if (seen.has(key)) {
+      console.warn('[rpx-assembler] duplicate route ' + key + ' in ' + f + ' ignored; first declared by ' + owners.get(key))
+      continue
+    }
     seen.add(key)
+    owners.set(key, f)
     proxies.push(p)
   }
   for (const s of frag.onDemandTls?.allowedSuffixes ?? []) suffixes.add(s)

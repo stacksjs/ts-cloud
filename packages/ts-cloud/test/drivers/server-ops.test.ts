@@ -11,6 +11,7 @@ describe('buildUfwScript', () => {
     expect(script).toContain('ufw allow 80/tcp')
     expect(script).toContain('ufw allow 443/tcp')
     expect(script).toContain('ufw allow 8080/tcp')
+    expect(script).toContain('ufw --force reset')
     expect(script).toContain('ufw --force enable')
   })
 
@@ -39,7 +40,8 @@ describe('buildMonitoringScript', () => {
     const script = buildMonitoringScript(true).join('\n')
     expect(script).toContain('/usr/local/bin/ts-cloud-metrics.sh')
     expect(script).toContain('ts-cloud-metrics.timer')
-    expect(script).toContain('OnUnitActiveSec=60')
+    expect(script).toContain('OnCalendar=*-*-* *:*:00')
+    expect(script).toContain('Persistent=true')
   })
   it('is empty when disabled', () => {
     expect(buildMonitoringScript(false)).toEqual([])

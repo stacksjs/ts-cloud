@@ -28,11 +28,14 @@ const DEFAULT_DISK_PERCENT = 90
 /** TCP services the collector probes for health (name → localhost port). */
 const SERVICE_PROBES: ReadonlyArray<readonly [string, number]> = [
   ['nginx', 80],
+  ['https', 443],
   ['phpFpm', 9074],
   ['mysql', 3306],
   ['postgres', 5432],
   ['redis', 6379],
   ['meilisearch', 7700],
+  ['typesense', 8108],
+  ['smtp', 25],
 ]
 
 /** Resolve `{ enabled, thresholds }` from the (boolean | object) monitoring config. */
@@ -67,20 +70,20 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
 
   return [
     'mkdir -p /var/lib/ts-cloud',
-    "cat > /usr/local/bin/ts-cloud-metrics.sh <<'TS_CLOUD_METRICS_EOF'",
+    `cat > /usr/local/bin/ts-cloud-metrics.sh <<'TS_CLOUD_METRICS_EOF'`,
     '#!/bin/bash',
     'set -uo pipefail',
-    "LOAD=$(cut -d' ' -f1 /proc/loadavg)",
+    `LOAD=$(cut -d' ' -f1 /proc/loadavg)`,
     'CPUS=$(nproc)',
-    "MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')",
-    "MEM_USED=$(free -m | awk '/^Mem:/{print $3}')",
-    "SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')",
-    "SWAP_USED=$(free -m | awk '/^Swap:/{print $3}')",
+    `MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')`,
+    `MEM_USED=$(free -m | awk '/^Mem:/{print $3}')`,
+    `SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')`,
+    `SWAP_USED=$(free -m | awk '/^Swap:/{print $3}')`,
     'DISK_PCT=$(df -P / | awk \'NR==2{gsub("%","",$5); print $5}\')',
-    "UPTIME_SEC=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)",
+    `UPTIME_SEC=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)`,
     // Network throughput: cumulative rx/tx bytes across non-loopback interfaces.
-    "RX_BYTES=$(awk -F'[: ]+' 'NR>2 && $2!=\"lo\"{rx+=$3} END{print rx+0}' /proc/net/dev)",
-    "TX_BYTES=$(awk -F'[: ]+' 'NR>2 && $2!=\"lo\"{tx+=$11} END{print tx+0}' /proc/net/dev)",
+    `RX_BYTES=$(awk -F'[: ]+' 'NR>2 && $2!="lo"{rx+=$3} END{print rx+0}' /proc/net/dev)`,
+    `TX_BYTES=$(awk -F'[: ]+' 'NR>2 && $2!="lo"{tx+=$11} END{print tx+0}' /proc/net/dev)`,
     // Per-service TCP health (up/down) without extra tooling. The connection is
     // opened + closed inside the subshell; success ⇒ up.
     'probe(){ (exec 3<>/dev/tcp/127.0.0.1/$1) 2>/dev/null && echo up || echo down; }',
@@ -114,7 +117,7 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
     'TS_CLOUD_METRICS_EOF',
     'chmod +x /usr/local/bin/ts-cloud-metrics.sh',
     // systemd service + timer (every minute).
-    "cat > /etc/systemd/system/ts-cloud-metrics.service <<'TS_CLOUD_METRICS_SVC_EOF'",
+    `cat > /etc/systemd/system/ts-cloud-metrics.service <<'TS_CLOUD_METRICS_SVC_EOF'`,
     '[Unit]',
     'Description=ts-cloud metrics collector',
     '',
@@ -122,19 +125,21 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
     'Type=oneshot',
     'ExecStart=/usr/local/bin/ts-cloud-metrics.sh',
     'TS_CLOUD_METRICS_SVC_EOF',
-    "cat > /etc/systemd/system/ts-cloud-metrics.timer <<'TS_CLOUD_METRICS_TMR_EOF'",
+    `cat > /etc/systemd/system/ts-cloud-metrics.timer <<'TS_CLOUD_METRICS_TMR_EOF'`,
     '[Unit]',
     'Description=Run ts-cloud metrics collector every minute',
     '',
     '[Timer]',
-    'OnBootSec=60',
-    'OnUnitActiveSec=60',
+    'OnCalendar=*-*-* *:*:00',
+    'AccuracySec=1s',
+    'RandomizedDelaySec=5s',
+    'Persistent=true',
     '',
     '[Install]',
     'WantedBy=timers.target',
     'TS_CLOUD_METRICS_TMR_EOF',
     'systemctl daemon-reload',
-    'systemctl enable ts-cloud-metrics.timer',
-    'systemctl start ts-cloud-metrics.timer',
+    'systemctl enable --now ts-cloud-metrics.timer',
+    'systemctl start ts-cloud-metrics.service',
   ]
 }

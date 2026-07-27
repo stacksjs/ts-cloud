@@ -13,8 +13,10 @@ import type { ComputeFirewallConfig } from '@ts-cloud/core'
 export const UFW_BASE_PORTS: readonly number[] = [80, 443]
 
 /**
- * Build the UFW provisioning commands. Idempotent: `ufw allow` is a no-op when
- * a rule already exists, and `--force enable` is safe to re-run.
+ * Build the UFW provisioning commands. The ts-cloud declaration owns the host
+ * firewall, so every reconciliation resets stale/manual rules before applying
+ * the exact desired set. This prevents a removed app port from remaining
+ * publicly reachable forever.
  */
 export function buildUfwScript(firewall: ComputeFirewallConfig = {}): string[] {
   if (firewall.enabled === false) return []
@@ -27,7 +29,8 @@ export function buildUfwScript(firewall: ComputeFirewallConfig = {}): string[] {
 
   const lines = [
     'export DEBIAN_FRONTEND=noninteractive',
-    'apt-get install -y ufw',
+    'command -v ufw >/dev/null 2>&1 || apt-get install -y ufw',
+    'ufw --force reset',
     'ufw default deny incoming',
     'ufw default allow outgoing',
     // Named profile keeps the SSH port open even if it's non-standard.

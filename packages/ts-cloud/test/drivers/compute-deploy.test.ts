@@ -87,7 +87,7 @@ describe('deploySiteRelease', () => {
     expect(deployCall.commands.join('\n')).toContain(
       'aws s3 cp "s3://my-app-production-deploy/releases/web/abc123.tar.gz"',
     )
-    expect(deployCall.commands.join('\n')).toContain('systemctl start my-app-web@abc123.service')
+    expect(deployCall.commands.join('\n')).toContain('systemctl restart my-app-web@abc123.service')
     expect(deployCall.commands.join('\n')).toContain('/var/www/my-app-web/.ts-cloud/deploy-history.log')
     expect(deployCall.commands.join('\n')).toContain('ts_cloud_record_deploy')
   })
@@ -264,6 +264,31 @@ describe('deploySiteRelease', () => {
     const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
     expect(commands).toContain('REDIS_HOST="cache.internal"')
     expect(commands).not.toContain('REDIS_HOST="10.0.0.99"')
+  })
+
+  it('binds rpx-fronted app services to loopback unless explicitly overridden', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const rpxConfig: CloudConfig = {
+      ...config,
+      infrastructure: { compute: { webServer: 'rpx', proxy: { engine: 'rpx' } } },
+    }
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const tarball = join(tempDir, 'release.tar.gz')
+    writeFileSync(tarball, 'fake tarball')
+
+    await deploySiteRelease(driver, {
+      config: rpxConfig,
+      environment: 'production',
+      siteName: 'web',
+      site: rpxConfig.sites!.web,
+      slug: 'my-app',
+      sha: 'abc123',
+      runtime: 'bun',
+      localTarballPath: tarball,
+    })
+
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(commands).toContain('HOST="127.0.0.1"')
   })
 
   it('wires the managed/on-box database env for bun apps when there is no services box', async () => {
@@ -630,6 +655,33 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect((config.sites as any)['dashboard-my-app-example-com']).toBeUndefined()
   })
 
+  it('does not add the dashboard back to a caller-narrowed single-site deploy', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const config = baseConfig()
+    const ok = await deployAllComputeSites({
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: process.cwd(),
+      managementDashboard: false,
+      tarballForSite: () => webTar,
+    })
+
+    expect(ok).toBe(true)
+    expect((config.sites as any)['dashboard-my-app-example-com']).toBeUndefined()
+    const commands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls
+      .map(call => call[0].commands.join('\n'))
+      .join('\n')
+    expect(commands).toContain('/var/www/my-app-web')
+    expect(commands).not.toContain('/var/www/my-app-dashboard-my-app-example-com')
+  })
+
   it('deploys the dashboard as a live service by default', async () => {
     const repo = mkdtempSync(join(tmpdir(), 'ts-cloud-liveui-'))
     const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
@@ -774,7 +826,7 @@ describe('deployAllComputeSites attach-mode database ensure', () => {
     expect(ensure.comment).toBe('ts-cloud ensure database training/training')
     // The ensure strictly precedes the site deploy so the app's first boot
     // already finds its database.
-    expect(calls[1][0].commands.join('\n')).toContain('systemctl start training-web@abc.service')
+    expect(calls[1][0].commands.join('\n')).toContain('systemctl restart training-web@abc.service')
   })
 
   it('honors the deprecated infrastructure.compute.database alias (bughq shape)', async () => {

@@ -568,6 +568,13 @@ describe('buildRpxProvisionScript', () => {
     expect(assembler).toContain('SKIPPING malformed fragment')
   })
 
+  it('generates an assembler that reports duplicate route ownership', () => {
+    const assembler = renderRpxAssembler()
+    expect(assembler).toContain('const owners = new Map()')
+    expect(assembler).toContain('duplicate route')
+    expect(assembler).toContain('first declared by')
+  })
+
   // A production gateway must bound stalled upstreams, or rpx's per-upstream
   // connection pool leaks slots until the gateway wedges (the outage this fixes).
   it('bounds stalled upstreams with a default upstream timeout', () => {

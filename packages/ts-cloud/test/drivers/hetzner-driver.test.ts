@@ -713,6 +713,41 @@ describe('HetznerDriver', () => {
     expect(ports).toContain('4000')
   })
 
+  it('keeps raw upstream ports private when rpx fronts the box', async () => {
+    let createdRules: Array<{ port: string }> = []
+    const client = mockHetznerClient({
+      createFirewall: mock(async (opts: any) => {
+        createdRules = opts.rules
+        return { firewall: { id: 10, name: opts.name, rules: opts.rules }, actions: [] }
+      }),
+    })
+    const driver = new HetznerDriver({
+      client,
+      apiToken: 'test-token',
+      sshPublicKeyPath: await writeTestPublicKey(),
+      waitForBoot: false,
+    })
+
+    const config: CloudConfig = {
+      ...baseConfig,
+      infrastructure: {
+        compute: {
+          ...baseConfig.infrastructure!.compute,
+          webServer: 'rpx',
+          proxy: { engine: 'rpx' },
+        },
+      },
+      sites: {
+        app: { root: '.', port: 4000, start: 'bun run server.ts', domain: 'example.com' },
+        dashboard: { root: '.', port: 4100, start: 'bun run dashboard.ts', domain: 'dashboard.example.com' },
+      },
+    }
+    await driver.provisionComputeInfrastructure!({ config, environment: 'production' })
+
+    const ports = createdRules.map((rule) => rule.port).sort()
+    expect(ports).toEqual(['22', '443', '80'])
+  })
+
   it('does not install or configure a reverse proxy on the box', async () => {
     let capturedUserData = ''
     const client = mockHetznerClient({
