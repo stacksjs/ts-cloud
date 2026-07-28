@@ -645,6 +645,37 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     )
   }, 60_000)
 
+  it('reconciles an attached project to the server owner dashboard', async () => {
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+    const tempDir = mkdtempSync(join(tmpdir(), 'ts-cloud-deploy-'))
+    const webTar = join(tempDir, 'web.tar.gz')
+    writeFileSync(webTar, 'fake tarball')
+
+    const config = baseConfig()
+    config.cloud = { provider: 'hetzner', attachTo: 'stacks' }
+    const ok = await deployAllComputeSites({
+      config,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      cwd: process.cwd(),
+      tarballForSite: () => webTar,
+    })
+
+    expect(ok).toBe(true)
+    expect(Object.keys(config.sites ?? {}).filter(name => name.startsWith('dashboard'))).toEqual([])
+    const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map(call =>
+      call[0].commands.join('\n'),
+    )
+    const reconciliation = allCommands.find(commands =>
+      commands.includes('TS_CLOUD_DASHBOARD_PREFIX') && commands.includes('my-app-dashboard-'),
+    )
+    expect(reconciliation).toContain('systemctl disable --now "$TS_CLOUD_UNIT"')
+    expect(allCommands.some(commands => commands.includes('/var/www/my-app-web'))).toBe(true)
+    expect(allCommands.some(commands => commands.includes('/var/www/my-app-dashboard-'))).toBe(false)
+  })
+
   it('is a no-op when TS_CLOUD_UI_DISABLE is set', async () => {
     process.env.TS_CLOUD_UI_DISABLE = '1'
     const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })

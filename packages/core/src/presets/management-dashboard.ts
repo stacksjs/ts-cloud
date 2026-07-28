@@ -21,8 +21,10 @@ import { DEFAULT_STATE_DIR } from '../state-dir'
  * site on the box. Kept for boxes that cannot run the service.
  *
  * Live mode is single-host by design: one control panel per box, many sites,
- * per-site grants (the Forge/Coolify model). Static mode fans out one dashboard
- * per apex, since it is only serving the same files on each domain.
+ * per-site grants (the Forge/Coolify model). Attached projects never create
+ * another dashboard; the server owner's dashboard discovers their rpx fragments
+ * and managed services. Static mode fans out one dashboard per apex only for the
+ * server-owning project, since it is only serving the same files on each domain.
  */
 
 export interface ManagementDashboardOptions {
@@ -287,6 +289,7 @@ export function resolveManagementDashboardSites(
   opts: ManagementDashboardOptions,
 ): Array<{ name: string; site: SiteConfig }> {
   if (hasManagementDashboardSite(config)) return []
+  if (config.cloud?.attachTo) return []
 
   const auth = opts.password
     ? { auth: { username: opts.username || 'admin', password: opts.password, realm: opts.realm } }
@@ -310,10 +313,9 @@ export function resolveManagementDashboardSites(
       start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
       port,
       // The shared-box owner is the single background monitoring agent.
-      // Attached tenant dashboards remain fully usable but do not duplicate
-      // every host, route, TLS, runtime, and log probe once per minute.
+      // Attached tenant configs return no dashboard site above.
       env: {
-        TS_CLOUD_DASHBOARD_TELEMETRY: config.cloud?.attachTo ? '0' : '1',
+        TS_CLOUD_DASHBOARD_TELEMETRY: '1',
       },
       // The zero-downtime cutover overlaps two instances on one port via
       // SO_REUSEPORT. The dashboard's server does not bind that way, so the new

@@ -259,6 +259,12 @@ export function ensureManagementDashboard(
     logger.info('Management dashboard: skipped (TS_CLOUD_UI_DISABLE set).')
     return config
   }
+  if (config.cloud?.attachTo) {
+    logger.info(
+      `Management dashboard: ${config.project.slug} is attached to ${config.cloud.attachTo}; the server owner's dashboard monitors every attached project.`,
+    )
+    return config
+  }
   if (hasManagementDashboardSite(config)) return config
 
   const environment = (config.environments && Object.keys(config.environments)[0]) as EnvironmentType | undefined

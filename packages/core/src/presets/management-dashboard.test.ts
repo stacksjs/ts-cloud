@@ -104,7 +104,7 @@ describe('resolveManagementDashboardSite', () => {
     expect(r?.site.port).toBe(deriveManagementDashboardPort('dashboard.acme.com'))
   })
 
-  it('assigns background telemetry to the shared-box owner only', () => {
+  it('creates the shared-box owner dashboard and no attached tenant dashboard', () => {
     const owner = resolveManagementDashboardSite(base, 'production', {
       uiRoot: '.ts-cloud/dashboard-release',
       build: false,
@@ -118,7 +118,7 @@ describe('resolveManagementDashboardSite', () => {
       { uiRoot: '.ts-cloud/dashboard-release', build: false },
     )
     expect(owner?.site.env).toEqual({ TS_CLOUD_DASHBOARD_TELEMETRY: '1' })
-    expect(tenant?.site.env).toEqual({ TS_CLOUD_DASHBOARD_TELEMETRY: '0' })
+    expect(tenant).toBeNull()
   })
 
   /**

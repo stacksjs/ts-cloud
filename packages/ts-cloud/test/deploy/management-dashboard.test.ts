@@ -142,6 +142,24 @@ describe('ensureManagementDashboard', () => {
     }
   })
 
+  it('leaves dashboard ownership to the server owner for attached projects', () => {
+    const dir = repoCwd()
+    try {
+      const c = cfg()
+      c.cloud = { provider: 'hetzner', attachTo: 'stacks' }
+      const messages: string[] = []
+      ensureManagementDashboard(c, {
+        cwd: dir,
+        logger: { info: message => messages.push(message), warn: () => {} },
+      })
+      expect(Object.keys(c.sites ?? {}).filter(name => name.startsWith('dashboard'))).toEqual([])
+      expect(messages.join('\n')).toContain("attached to stacks")
+      expect(existsSync(join(dir, '.ts-cloud', 'dashboard-release'))).toBe(false)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   it('honors TS_CLOUD_UI_DOMAIN override', () => {
     const dir = repoCwd()
     try {
