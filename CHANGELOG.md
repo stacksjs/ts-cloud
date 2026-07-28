@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.78...v0.7.79)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: honor attached server state pins ([9bfc689](https://github.com/stacksjs/ts-cloud/commit/9bfc689)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.79 ([6fc15d0](https://github.com/stacksjs/ts-cloud/commit/6fc15d0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.77...v0.7.78)
 
 ## 🐛 Bug Fixes
