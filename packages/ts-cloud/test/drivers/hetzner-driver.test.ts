@@ -513,6 +513,51 @@ describe('HetznerDriver', () => {
     expect(targets[0]?.publicIp).toBe('203.0.113.50')
   })
 
+  it('prefers an attachment state pin over a historic exact-label server', async () => {
+    const server = (id: number, project: string, ip: string) => ({
+      id,
+      name: `${project}-production-app`,
+      status: 'running',
+      public_net: { ipv4: { ip } },
+      labels: {
+        'ts-cloud/managed-by': 'ts-cloud',
+        'ts-cloud/project': project,
+        'ts-cloud/environment': 'production',
+        'ts-cloud/role': 'app',
+      },
+      server_type: { name: 'cx22' },
+      datacenter: { name: 'fsn1-dc14', location: { name: 'fsn1' } },
+    })
+    const client = mockHetznerClient({
+      listServers: mock(async () => [
+        server(501, 'stacks', '203.0.113.50'),
+        server(777, 'my-app', '203.0.113.77'),
+      ]),
+    })
+
+    await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 501,
+        serverName: 'stacks-production-app',
+        publicIp: '203.0.113.50',
+      }),
+    )
+
+    const driver = new HetznerDriver({ client, apiToken: 'test-token' })
+    const targets = await driver.findComputeTargets({
+      slug: 'my-app',
+      environment: 'production',
+      role: 'app',
+      stackName,
+    })
+
+    expect(targets.map(target => target.id)).toEqual(['501'])
+  })
+
   it('ignores a state-pinned server that no longer exists and falls through to the unique candidate', async () => {
     const survivor = {
       id: 700,

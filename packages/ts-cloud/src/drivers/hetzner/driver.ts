@@ -1007,16 +1007,12 @@ export class HetznerDriver implements CloudDriver {
       status: server.status,
     })
 
-    // 1) Exact match by this project's labels.
-    const exact = servers.filter((server) =>
-      matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
-    )
-    if (exact.length > 0) return exact.map(toTarget)
-
-    // 2) State pinning: a project that rides a shared box records its server
+    // 1) State pinning: a project that rides a shared box records its server
     //    in `storage/cloud/state/<stack>.json`, but the box's labels belong to the
     //    project that provisioned it (`ts-cloud/project` holds one value), so
-    //    the label scan above can't see it. Trust the state file's ids —
+    //    its own historic labels may still point at a dedicated server. Trust
+    //    the explicit state file's ids before label discovery so attach-mode
+    //    migrations cannot silently deploy back to the old server. Pins are
     //    re-resolved via the API so a deleted server is never targeted and the
     //    IP is always fresh. Without this, the moment a SECOND managed app
     //    server appears in the account, step 3's uniqueness requirement fails
@@ -1041,6 +1037,12 @@ export class HetznerDriver implements CloudDriver {
         if (pinned.length > 0) return pinned.map(toTarget)
       }
     }
+
+    // 2) Exact match by this project's labels when there is no live state pin.
+    const exact = servers.filter((server) =>
+      matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
+    )
+    if (exact.length > 0) return exact.map(toTarget)
 
     // 3) Adopt-on-rename (mirrors findExistingServer): when a project's slug
     //    changed but the same box still serves it, target the unique ts-cloud
