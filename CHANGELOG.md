@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.84...v0.7.85)
+
+## 🚀 Features
+
+- **dns**: publish AAAA records for dual-stack boxes ([96c0517](https://github.com/stacksjs/ts-cloud/commit/96c0517)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.85 ([4f2c2a9](https://github.com/stacksjs/ts-cloud/commit/4f2c2a9)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.83...v0.7.84)
 
 ## ⚡ Performance Improvements
