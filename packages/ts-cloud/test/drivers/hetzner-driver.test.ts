@@ -233,7 +233,7 @@ describe('HetznerDriver', () => {
     ).toEqual(['502'])
   })
 
-  it('stages each site under a site-specific path so a shared SHA cannot collide', async () => {
+  it('stages every upload under a unique site-specific path', async () => {
     const client = mockHetznerClient()
     const driver = new HetznerDriver({
       client,
@@ -266,13 +266,25 @@ describe('HetznerDriver', () => {
       localPath: '/tmp/my-app-verygoodadblockWww.tar.gz',
       remoteKey: `releases/verygoodadblockWww/${sha}.tar.gz`,
     })
+    const retry = await driver.uploadRelease!({
+      config: baseConfig,
+      environment: 'production',
+      targets,
+      localPath: '/tmp/my-app-verygoodadblock-retry.tar.gz',
+      remoteKey: `releases/verygoodadblock/${sha}.tar.gz`,
+    })
 
-    // The two staging paths must differ (each carries its site name), so the
-    // second upload can never clobber the first's tarball before extraction.
-    expect(a.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblock-${sha}.tar.gz`)
-    expect(b.artifactRef).toBe(`/var/ts-cloud/staging/verygoodadblockWww-${sha}.tar.gz`)
+    // Different sites and overlapping deploys of the same site/SHA must all
+    // have distinct staging paths. Uploads happen before the remote deploy lock.
+    expect(a.artifactRef).toMatch(
+      new RegExp(`^/var/ts-cloud/staging/verygoodadblock-${sha}-[0-9a-f-]+\\.tar\\.gz$`),
+    )
+    expect(b.artifactRef).toMatch(
+      new RegExp(`^/var/ts-cloud/staging/verygoodadblockWww-${sha}-[0-9a-f-]+\\.tar\\.gz$`),
+    )
     expect(a.artifactRef).not.toBe(b.artifactRef)
-    expect(scpCalls.map((c) => c.remotePath)).toEqual([a.artifactRef, b.artifactRef])
+    expect(retry.artifactRef).not.toBe(a.artifactRef)
+    expect(scpCalls.map((c) => c.remotePath)).toEqual([a.artifactRef, b.artifactRef, retry.artifactRef])
   })
 
   it('does not provision a gateway by default (no proxy configured)', async () => {

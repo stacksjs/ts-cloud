@@ -3,6 +3,7 @@ import type { RpxLbAppBox } from '../shared/rpx-gateway'
 import type { HetznerFirewall, HetznerFirewallRule, HetznerServer } from './client'
 import type { HetznerDriverState } from './state'
 import { execSync } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
@@ -979,12 +980,16 @@ export class HetznerDriver implements CloudDriver {
       throw new Error('No Hetzner compute targets found for release upload')
     }
 
-    // Keep the site in the staging filename. `remoteKey` is
+    // Keep the site and a per-upload nonce in the staging filename. `remoteKey` is
     // `releases/<siteName>/<sha>.tar.gz`; collapsing it to just `<sha>.tar.gz`
     // made every site sharing a commit SHA (i.e. all of them, every deploy)
     // upload to ONE staging file — a later site's upload clobbered an earlier
     // site's tarball before its extract ran, cross-contaminating releases.
-    const stagingName = options.remoteKey.replace(/^releases\//, '').replace(/\//g, '-')
+    // The nonce also isolates two CI/manual deploys of the SAME site and SHA:
+    // the per-site remote deploy lock serializes extraction, but uploads happen
+    // before that lock is acquired and therefore must never share a path.
+    const stagingStem = options.remoteKey.replace(/^releases\//, '').replace(/\.tar\.gz$/, '').replace(/\//g, '-')
+    const stagingName = `${stagingStem}-${randomUUID()}.tar.gz`
     const remotePath = `/var/ts-cloud/staging/${stagingName}`
     for (const target of targets) {
       if (!target.publicIp) {
