@@ -1,3 +1,21 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.86...v0.7.87)
+
+## 🐛 Bug Fixes
+
+- enforce production runtime environments ([88c7906](https://github.com/stacksjs/ts-cloud/commit/88c7906)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ⚡ Performance Improvements
+
+- compile the rpx gateway for production ([3d55229](https://github.com/stacksjs/ts-cloud/commit/3d55229)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.87 ([6134201](https://github.com/stacksjs/ts-cloud/commit/6134201)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.85...v0.7.86)
 
 ## ♻️ Code Refactoring
