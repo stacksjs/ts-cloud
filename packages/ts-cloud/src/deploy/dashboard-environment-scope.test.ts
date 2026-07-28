@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { resolveDashboardEnvironment } from './local-dashboard-server'
+import { dashboardDataRefreshDue, resolveDashboardEnvironment } from './local-dashboard-server'
 
 describe('dashboard environment scope', () => {
   it('resolves each request independently without shared mutable state', () => {
@@ -15,5 +15,13 @@ describe('dashboard environment scope', () => {
   it('falls back safely for stale or guessed environment links', () => {
     expect(resolveDashboardEnvironment(['production'], 'production', 'deleted')).toBe('production')
     expect(resolveDashboardEnvironment(['production'], 'production', null)).toBe('production')
+  })
+})
+
+describe('dashboard data refresh cadence', () => {
+  it('coalesces browser polling inside the minimum refresh interval', () => {
+    expect(dashboardDataRefreshDue(undefined, 30_000, 30_000)).toBe(true)
+    expect(dashboardDataRefreshDue(1_000, 30_999, 30_000)).toBe(false)
+    expect(dashboardDataRefreshDue(1_000, 31_000, 30_000)).toBe(true)
   })
 })

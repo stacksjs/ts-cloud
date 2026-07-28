@@ -66,8 +66,9 @@ export interface DiscoveredSite {
 
 export function sharedBoxProbeScript(projectFilter?: string): string {
   const source = String.raw`
-import { basename, join } from 'node:path'
+import { X509Certificate } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs'
+import { basename, join } from 'node:path'
 
 const fragmentsRoot = '/etc/rpx/sites.d'
 const certsRoot = '/etc/rpx/certs'
@@ -109,7 +110,20 @@ if (existsSync(fragmentsRoot)) {
   }
 }
 
-const routes = await Promise.all(configuredRoutes.map(async route => {
+async function mapWithConcurrency(values, limit, mapper) {
+  const results = new Array(values.length)
+  let next = 0
+  const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
+    while (next < values.length) {
+      const index = next++
+      results[index] = await mapper(values[index])
+    }
+  })
+  await Promise.all(workers)
+  return results
+}
+
+const routes = await mapWithConcurrency(configuredRoutes, 8, async route => {
   const started = performance.now()
   let httpStatus = 0
   const probe = async (href) => {
@@ -135,10 +149,11 @@ const routes = await Promise.all(configuredRoutes.map(async route => {
   let tlsDaysRemaining
   const cert = join(certsRoot, route.domain + '.crt')
   if (existsSync(cert)) {
-    const result = Bun.spawnSync(['openssl', 'x509', '-in', cert, '-noout', '-enddate'])
-    const expiry = result.success ? result.stdout.toString().trim().replace(/^notAfter=/, '') : ''
-    const expiresAt = Date.parse(expiry)
-    if (Number.isFinite(expiresAt)) tlsDaysRemaining = Math.floor((expiresAt - Date.now()) / 86400000)
+    try {
+      const expiresAt = Date.parse(new X509Certificate(readFileSync(cert)).validTo)
+      if (Number.isFinite(expiresAt)) tlsDaysRemaining = Math.floor((expiresAt - Date.now()) / 86400000)
+    }
+    catch {}
   }
   let release
   let deployedAt
@@ -161,7 +176,7 @@ const routes = await Promise.all(configuredRoutes.map(async route => {
     release,
     deployedAt,
   }
-}))
+})
 for (const route of routes) console.log('DISCOVERED_SITE=' + Buffer.from(JSON.stringify(route)).toString('base64'))
 
 const serviceOutput = Bun.spawnSync([
@@ -195,7 +210,9 @@ for (const line of serviceOutput.split('\n')) {
 }
 
 /** Shell script that emits a parseable metrics block (no jq/printf-JSON needed). */
-function metricsScript(options: { includeServices?: boolean; projectFilter?: string } = {}): string[] {
+export function metricsScript(
+  options: { includeServices?: boolean; includeSites?: boolean; projectFilter?: string } = {},
+): string[] {
   const commands = [
     'set +e',
     'echo "CPUS=$(nproc 2>/dev/null || echo 1)"',
@@ -227,7 +244,8 @@ function metricsScript(options: { includeServices?: boolean; projectFilter?: str
     commands.push(
       `for s in ${PROBED_SERVICES.join(' ')}; do st=$(systemctl is-active "$s" 2>/dev/null); if [ -n "$st" ] && [ "$st" != "inactive" ] && [ "$st" != "unknown" ]; then mem=$(systemctl show "$s" -p MemoryCurrent --value 2>/dev/null); en=$(systemctl is-enabled "$s" 2>/dev/null); since=$(systemctl show "$s" -p ActiveEnterTimestamp --value 2>/dev/null); echo "SVC=$s=$st=$mem=$en=$since"; fi; done`,
     )
-  commands.push(sharedBoxProbeScript(options.projectFilter), 'true')
+  if (options.includeSites !== false) commands.push(sharedBoxProbeScript(options.projectFilter))
+  commands.push('true')
   return commands
 }
 
@@ -951,7 +969,7 @@ export function resolveConfigOnlyServerDashboardData(
 export async function resolveServerDashboardData(
   config: CloudConfig,
   environment: EnvironmentType,
-  options: { telemetryOnly?: boolean } = {},
+  options: { includeSiteHealth?: boolean; telemetryOnly?: boolean } = {},
 ): Promise<Record<string, any> | null> {
   if (!config.infrastructure?.compute) return null
   let driver: ReturnType<typeof createCloudDriver> | null = null
@@ -973,6 +991,7 @@ export async function resolveServerDashboardData(
           targets: [targets[0]],
           commands: metricsScript({
             includeServices: !options.telemetryOnly,
+            includeSites: options.includeSiteHealth !== false,
             projectFilter: config.cloud?.attachTo ? config.project.slug : undefined,
           }),
           comment: `ts-cloud dashboard:build ${config.project.slug}`,

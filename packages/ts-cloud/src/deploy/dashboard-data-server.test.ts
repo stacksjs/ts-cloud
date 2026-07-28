@@ -6,6 +6,7 @@ import {
   parseServerLogs,
   parseServerSecurity,
   mergeDiscoveredSites,
+  metricsScript,
   resolveConfigOnlyServerDashboardData,
   serverLogSources,
   sharedBoxProbeScript,
@@ -18,7 +19,15 @@ describe('sharedBoxProbeScript', () => {
     const script = Buffer.from(encoded!, 'base64').toString('utf8')
     expect(script).toContain("method: 'GET'")
     expect(script).toContain('await response.arrayBuffer()')
+    expect(script).toContain('mapWithConcurrency(configuredRoutes, 8')
+    expect(script).toContain('new X509Certificate(readFileSync(cert))')
+    expect(script).not.toContain("Bun.spawnSync(['openssl'")
     expect(script).not.toContain('response.body?.cancel()')
+  })
+
+  it('can collect minute-level host metrics without probing every route', () => {
+    expect(metricsScript({ includeServices: false, includeSites: false }).join('\n')).not.toContain('base64 -d | bun -')
+    expect(metricsScript({ includeServices: false, includeSites: true }).join('\n')).toContain('base64 -d | bun -')
   })
 })
 

@@ -355,6 +355,10 @@ export function resolveDashboardEnvironment(
   return (requested && available.includes(requested) ? requested : fallback) as EnvironmentType
 }
 
+export function dashboardDataRefreshDue(lastRefreshedAt: number | undefined, now: number, minimumIntervalMs: number): boolean {
+  return lastRefreshedAt == null || now - lastRefreshedAt >= minimumIntervalMs
+}
+
 async function loadLocalEnv(cwd: string): Promise<void> {
   const candidates = [
     join(here, '..', '..', '..', '..', '.env'),
@@ -1033,14 +1037,30 @@ export async function startLocalDashboardServer(
   const configPath = resolveCloudConfigPath(cwd)
   const initialData = await resolveLiveDashboardData(config as CloudConfig, defaultEnvironment)
   const latestDataByEnvironment = new Map<EnvironmentType, Record<string, any>>([[defaultEnvironment, initialData]])
+  const latestDataRefreshedAtByEnvironment = new Map<EnvironmentType, number>([[defaultEnvironment, Date.now()]])
   const liveDataRefreshesByEnvironment = new Map<EnvironmentType, Promise<Record<string, any>>>()
+  const dashboardDataMinimumRefreshMs = Math.min(
+    5 * 60_000,
+    Math.max(5_000, Number(process.env.TS_CLOUD_DASHBOARD_REFRESH_MS) || 30_000),
+  )
   const refreshLatestDashboardData = (environment: EnvironmentType): Promise<Record<string, any>> => {
+    const previous = latestDataByEnvironment.get(environment)
+    if (
+      previous &&
+      !dashboardDataRefreshDue(
+        latestDataRefreshedAtByEnvironment.get(environment),
+        Date.now(),
+        dashboardDataMinimumRefreshMs,
+      )
+    )
+      return Promise.resolve(previous)
     const running = liveDataRefreshesByEnvironment.get(environment)
     if (running) return running
     const refresh = resolveLiveDashboardData(config as CloudConfig, environment)
       .then((data) => {
         const previous = latestDataByEnvironment.get(environment)
         latestDataByEnvironment.set(environment, data)
+        latestDataRefreshedAtByEnvironment.set(environment, Date.now())
         if (
           previous?._serverReachable !== data._serverReachable ||
           previous?._metricsStatus !== data._metricsStatus ||
@@ -1055,10 +1075,11 @@ export async function startLocalDashboardServer(
   }
   const packagedUi = resolveUiSource(cwd)
 
-  // Box dashboards are the monitoring agent for their host. Collect once on
-  // startup and every minute after that so CPU, RAM, disk, swap, network, and
-  // site availability history continues even when no browser tab is open.
-  // Demand-driven API refreshes still share the same cache and dedupe path.
+  // The server owner's box dashboard is the single monitoring agent for its
+  // host. Collect CPU, RAM, disk, swap, and network every minute, while the
+  // heavier all-route HTTP + TLS sweep runs every five minutes. This preserves
+  // useful availability history without creating a synchronized proxy spike
+  // every minute. Demand-driven API refreshes still share the cache/dedupe path.
   const telemetryPreference = process.env.TS_CLOUD_DASHBOARD_TELEMETRY?.trim()
   const backgroundTelemetryEnabled =
     options.box &&
@@ -1066,10 +1087,14 @@ export async function startLocalDashboardServer(
     (telemetryPreference === '1' || !(config as CloudConfig).cloud?.attachTo)
   if (backgroundTelemetryEnabled) {
     let telemetryCollectionRunning = false
+    let nextSiteHealthCollectionAt = 0
     const collectHostHistory = async (): Promise<void> => {
       if (telemetryCollectionRunning) return
       telemetryCollectionRunning = true
       try {
+        const now = Date.now()
+        const includeSiteHealth = now >= nextSiteHealthCollectionAt
+        if (includeSiteHealth) nextSiteHealthCollectionAt = now + 5 * 60_000
         const environmentRecord = controlPlane.environments.get(defaultEnvironment)
         await collectDashboardTelemetry({
           controlPlane: controlPlane.store,
@@ -1079,6 +1104,7 @@ export async function startLocalDashboardServer(
           environment: defaultEnvironment,
           force: true,
           lightweight: true,
+          includeSiteHealth,
         })
       } catch (error) {
         if (options.verbose)

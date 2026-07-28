@@ -66,6 +66,8 @@ export interface TelemetryCollectionContext {
   force?: boolean
   /** Collect host and site metrics without expensive runtime logs or inventory. */
   lightweight?: boolean
+  /** Include route and TLS probes in lightweight host telemetry. */
+  includeSiteHealth?: boolean
 }
 
 function id(...parts: unknown[]): string {
@@ -217,6 +219,7 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
       (mode === 'serverless'
         ? await resolveDashboardData(context.config, context.environment)
         : await resolveServerDashboardData(context.config, context.environment, {
+            includeSiteHealth: context.includeSiteHealth,
             telemetryOnly: context.lightweight,
           })) ?? {}
     if (mode === 'serverless') {
