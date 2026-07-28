@@ -22,7 +22,11 @@ export class DurableQueueWorker {
   private readonly pollIntervalMs: number
   private readonly onResult?: (result: QueueRunResult) => void
   private readonly onError?: (error: unknown) => void
-  private readonly waits = new Map<ReturnType<typeof setTimeout>, () => void>()
+  private readonly waits = new Map<
+    number,
+    { resolve: () => void; timer?: ReturnType<typeof setTimeout> }
+  >()
+  private nextWaitId = 0
   private lanes: Promise<void>[] = []
   private running = false
   private unsubscribeAvailability?: () => void
@@ -46,7 +50,7 @@ export class DurableQueueWorker {
     if (this.running) return this
     this.running = true
     this.unsubscribeAvailability = this.queue.onAvailable(() => this.wake())
-    this.lanes = Array.from({ length: this.parallelism }, () => this.runLane())
+    this.lanes = Array.from({ length: this.parallelism }, (_, index) => this.runLane(index))
     return this
   }
 
@@ -58,8 +62,8 @@ export class DurableQueueWorker {
   }
 
   private wake(): void {
-    for (const [timer, resolve] of this.waits) {
-      clearTimeout(timer)
+    for (const { resolve, timer } of this.waits.values()) {
+      if (timer) clearTimeout(timer)
       resolve()
     }
     this.waits.clear()
@@ -79,30 +83,40 @@ export class DurableQueueWorker {
     }
   }
 
-  private wait(): Promise<void> {
+  private wait(useFallbackPoll: boolean): Promise<void> {
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        this.waits.delete(timer)
-        resolve()
-      }, this.pollIntervalMs)
-      timer.unref?.()
-      this.waits.set(timer, resolve)
+      const id = ++this.nextWaitId
+      const timer = useFallbackPoll
+        ? setTimeout(() => {
+            this.waits.delete(id)
+            resolve()
+          }, this.pollIntervalMs)
+        : undefined
+      timer?.unref?.()
+      this.waits.set(id, { resolve, timer })
     })
   }
 
-  private async runLane(): Promise<void> {
+  private async runLane(index: number): Promise<void> {
     while (this.running) {
       try {
         const result = await this.queue.runOne(this.handlers)
         if (!this.running) break
         if (result.handled) {
           this.onResult?.(result)
+          // A claimed job proves work exists. Wake the other lanes so they can
+          // fill the configured concurrency without giving every idle lane its
+          // own database poll timer.
+          this.wake()
           continue
         }
       } catch (error) {
         this.onError?.(error)
       }
-      await this.wait()
+      // One coordinator lane retains the durable cross-process recovery poll.
+      // Every other lane sleeps until an enqueue or a successful claim wakes
+      // it, reducing idle SQLite reads from parallelism-per-interval to one.
+      await this.wait(index === 0)
     }
   }
 }

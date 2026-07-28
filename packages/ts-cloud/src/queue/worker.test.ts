@@ -153,6 +153,31 @@ describe('durable queue worker', () => {
     await worker.settled()
   })
 
+  it('uses one fallback polling coordinator regardless of parallelism', async () => {
+    const target = setup()
+    const queue = new DurableOperationQueue(target.store)
+    const runOne = queue.runOne.bind(queue)
+    let calls = 0
+    queue.runOne = async (...args) => {
+      calls++
+      return runOne(...args)
+    }
+    const worker = new DurableQueueWorker(
+      queue,
+      { 'deployment.create': async () => {} },
+      { parallelism: 8, pollIntervalMs: 10 },
+    ).start()
+
+    await Bun.sleep(55)
+    worker.stop()
+    await worker.settled()
+
+    // Eight initial lane checks plus roughly five coordinator polls. The old
+    // lane-per-timer model performed about 48 checks over the same interval.
+    expect(calls).toBeGreaterThanOrEqual(11)
+    expect(calls).toBeLessThanOrEqual(16)
+  })
+
   it('wakes workers opened through another SQLite handle to the same file', async () => {
     const root = mkdtempSync(join(tmpdir(), 'ts-cloud-queue-wake-'))
     const path = join(root, 'control-plane.sqlite')
