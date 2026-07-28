@@ -83,15 +83,20 @@ export async function removeStaleServerAddressRecords(
 }
 
 /**
- * Hetzner hands a cloud server a routed /64 and configures `::1` inside it on
- * the interface, but the API reports the block (`2a01:4f8:c014:6186::/64`), not
- * the address. Publishing the block verbatim as an AAAA record yields a host
- * nothing answers on, so turn it into the address the box actually holds.
+ * Turn whatever a provider reports as a box's IPv6 into an address an AAAA
+ * record can point at.
  *
- * A plain address (no prefix) is returned unchanged, so this is safe to apply
- * to whatever the driver surfaced.
+ * Providers disagree on what "the server's IPv6" means. Hetzner hands out a
+ * routed /64 and reports the block (`2a01:4f8:c014:6186::/64`) while the
+ * interface actually holds `::1` inside it; AWS reports a plain address per
+ * network interface. Publishing a block verbatim gives an AAAA record nothing
+ * answers on, which is the kind of failure that only shows up for the fraction
+ * of visitors whose network prefers IPv6 — so every driver runs its value
+ * through here rather than reinventing the narrowing.
+ *
+ * A plain address passes through unchanged.
  */
-export function hetznerBoxIpv6(reported: string | undefined | null): string | undefined {
+export function normalizePublicIpv6(reported: string | undefined | null): string | undefined {
   if (!reported) return undefined
 
   const trimmed = reported.trim()
@@ -101,4 +106,115 @@ export function hetznerBoxIpv6(reported: string | undefined | null): string | un
   const [block] = trimmed.split('/')
   if (!block.endsWith('::')) return block || undefined
   return `${block}1`
+}
+
+/**
+ * Hostname labels that must stay IPv4-only.
+ *
+ * A box typically runs its mail server on IPv4 alone, and its IPv6 address
+ * usually has no PTR — both of which make an AAAA on a mail host actively
+ * harmful: senders try the v6 address first, find nothing listening (or get
+ * rejected for the missing reverse record) and defer the message. Web traffic
+ * has no such constraint, so the exclusion is per-host rather than per-zone.
+ */
+export const IPV6_EXCLUDED_HOST_LABELS: ReadonlySet<string> = new Set(['mail', 'smtp', 'imap', 'mx'])
+
+/** Whether `fqdn` should get an AAAA record pointing at the box. */
+export function hostAcceptsIpv6(fqdn: string): boolean {
+  return !IPV6_EXCLUDED_HOST_LABELS.has(fqdn.split('.')[0] ?? '')
+}
+
+export interface AddressRecordReport {
+  /** Records confirmed present at the provider after the write. */
+  published: Array<{ fqdn: string; type: 'A' | 'AAAA'; content: string }>
+  /** Anything the caller should surface: failed writes, unverified writes, stale-record cleanup problems. */
+  warnings: string[]
+}
+
+interface ReconcileAddressRecordsOptions {
+  provider: DnsProvider
+  zone: string
+  fqdn: string
+  ipv4: string
+  /** Omit when the box has no public IPv6; the AAAA pass is then skipped entirely. */
+  ipv6?: string
+  ttl?: number
+}
+
+/**
+ * Point one hostname at a box on every address family the box actually has.
+ *
+ * Shared by every driver and by the framework's deploy command so the rules
+ * live in one place: upsert, then remove the *other* records of that family for
+ * the same hostname (a leftover address round-robins traffic to a dead host —
+ * and a stale AAAA is the worse of the two, because dual-stack clients prefer
+ * IPv6), then verify against the provider rather than trusting the write.
+ */
+export async function reconcileAddressRecords(
+  options: ReconcileAddressRecordsOptions,
+): Promise<AddressRecordReport> {
+  const { provider, zone, fqdn, ipv4, ipv6, ttl = 600 } = options
+  const report: AddressRecordReport = { published: [], warnings: [] }
+
+  const families: Array<{ type: 'A' | 'AAAA'; content: string }> = [{ type: 'A', content: ipv4 }]
+  if (ipv6 && hostAcceptsIpv6(fqdn)) families.push({ type: 'AAAA', content: ipv6 })
+
+  for (const { type, content } of families) {
+    const result = await provider.upsertRecord(zone, { name: fqdn, type, content, ttl })
+    if (result?.success === false) {
+      report.warnings.push(
+        `${fqdn} → ${content} failed: ${(result as any).error || result.message || 'unknown error'}`,
+      )
+      continue
+    }
+
+    report.warnings.push(
+      ...(await removeStaleServerAddressRecords(provider, zone, fqdn, content, type)).map(
+        (warning) => `${fqdn} cleanup: ${warning}`,
+      ),
+    )
+
+    if (await verifyAddressRecord(provider, zone, fqdn, content, type)) report.published.push({ fqdn, type, content })
+    else
+      report.warnings.push(
+        `${fqdn} → ${content} reported success at ${provider.name} but no matching ${type} record exists — create it manually: ${type} ${fqdn} → ${content}`,
+      )
+  }
+
+  return report
+}
+
+/**
+ * Best-effort post-write check that the record exists at the provider.
+ *
+ * Returns true when the provider offers no list API or the listing itself
+ * fails: verification must never turn a possibly-good write into a false
+ * alarm. It exists to catch phantom successes — an upsert that reported OK
+ * while editing the wrong record — at providers that can list their zone.
+ *
+ * The listing is deliberately untyped. Typed listings map to endpoints like
+ * Porkbun's retrieveByNameType, whose subdomain-less form returns apex records
+ * only, which made verification blind to every non-apex record.
+ */
+export async function verifyAddressRecord(
+  provider: DnsProvider,
+  zone: string,
+  fqdn: string,
+  content: string,
+  recordType: 'A' | 'AAAA',
+): Promise<boolean> {
+  try {
+    if (typeof provider?.listRecords !== 'function') return true
+
+    const listed = await provider.listRecords(zone)
+    if (!listed?.success || !Array.isArray(listed.records)) return true
+
+    return listed.records.some((record) => {
+      const name = typeof record?.name === 'string' ? record.name.replace(/\.$/, '') : ''
+      return record?.type === recordType && name === fqdn && record?.content === content
+    })
+  }
+  catch {
+    return true
+  }
 }

@@ -12,6 +12,12 @@ export interface ComputeTarget {
   id: string
   name?: string
   publicIp?: string
+  /**
+   * Public IPv6 address, normalized to something an AAAA record can point at
+   * (see `normalizePublicIpv6` — providers report anything from a plain
+   * address to a routed block).
+   */
+  publicIpv6?: string
   privateIp?: string
   status?: string
 }

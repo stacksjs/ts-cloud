@@ -14,6 +14,12 @@ export interface Instance {
   }
   PrivateIpAddress?: string
   PublicIpAddress?: string
+  /**
+   * First public IPv6 address across the instance's network interfaces. EC2
+   * carries IPv6 per-ENI rather than on the instance, so this is flattened out
+   * of `networkInterfaceSet` for callers that just want "the box's v6".
+   */
+  Ipv6Address?: string
   SubnetId?: string
   VpcId?: string
   SecurityGroups?: { GroupId?: string; GroupName?: string }[]
@@ -1653,6 +1659,21 @@ export class EC2Client {
     return Array.isArray(item) ? item : [item]
   }
 
+  /**
+   * Flatten the first public IPv6 address out of an instance's network
+   * interfaces. EC2 attaches IPv6 per-ENI, and an instance with several
+   * interfaces reports several lists; callers reconciling DNS want one address,
+   * and the primary interface's first address is the one traffic arrives on.
+   */
+  private parseFirstIpv6Address(item: any): string | undefined {
+    for (const eni of this.parseArray(item)) {
+      for (const entry of this.parseArray(eni?.ipv6AddressesSet?.item)) {
+        if (entry?.ipv6Address) return entry.ipv6Address
+      }
+    }
+    return undefined
+  }
+
   private parseTags(item: any): { Key?: string; Value?: string }[] {
     return this.parseArray(item).map((t: any) => ({
       Key: t.key,
@@ -1680,6 +1701,7 @@ export class EC2Client {
         : undefined,
       PrivateIpAddress: i.privateIpAddress,
       PublicIpAddress: i.ipAddress,
+      Ipv6Address: this.parseFirstIpv6Address(i.networkInterfaceSet?.item),
       SubnetId: i.subnetId,
       VpcId: i.vpcId,
       SecurityGroups: this.parseArray(i.groupSet?.item).map((g: any) => ({

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveProjectStackName } from '@ts-cloud/core'
 import { CloudFormationClient } from '../../aws/cloudformation'
+import { normalizePublicIpv6 } from '../../deploy/server-dns'
 import { EC2Client } from '../../aws/ec2'
 import { S3Client } from '../../aws/s3'
 import { SSMClient } from '../../aws/ssm'
@@ -70,6 +71,7 @@ export class AwsDriver implements CloudDriver {
       return {
         appInstanceId: first.id,
         appPublicIp: first.publicIp,
+        appPublicIpv6: first.publicIpv6,
         sshUser: 'ubuntu',
         deployStoragePath: '/var/ts-cloud/staging',
       }
@@ -163,6 +165,7 @@ export class AwsDriver implements CloudDriver {
     return {
       appInstanceId: instanceId,
       appPublicIp: running.PublicIpAddress,
+      appPublicIpv6: normalizePublicIpv6(running.Ipv6Address),
       sshUser: 'ubuntu',
       deployStoragePath: '/var/ts-cloud/staging',
     }
@@ -230,6 +233,7 @@ export class AwsDriver implements CloudDriver {
       return {
         appInstanceId: first?.id,
         appPublicIp: first?.publicIp,
+        appPublicIpv6: first?.publicIpv6,
         sshUser: 'ubuntu',
         deployStoragePath: '/var/ts-cloud/staging',
       }
@@ -310,6 +314,7 @@ export class AwsDriver implements CloudDriver {
           id: instance.InstanceId,
           name: nameTag,
           publicIp: instance.PublicIpAddress,
+          publicIpv6: normalizePublicIpv6(instance.Ipv6Address),
           privateIp: instance.PrivateIpAddress,
           status: instance.State?.Name,
         })
