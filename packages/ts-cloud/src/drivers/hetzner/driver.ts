@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { resolveDeployBucketName, resolveProjectStackName } from '@ts-cloud/core'
+import { hetznerBoxIpv6 } from '../../deploy/server-dns'
 import { buildComputeProvisionScripts } from '../shared/compute-provision'
 import { buildFleetServicesBoxProvision, resolveFleetTopology } from '../shared/fleet'
 import { buildAutoUpdatesScript } from '../shared/maintenance'
@@ -207,6 +208,7 @@ export class HetznerDriver implements CloudDriver {
         serverId: alreadyRunning.id,
         serverName: alreadyRunning.name,
         publicIp: alreadyRunning.public_net.ipv4?.ip,
+        publicIpv6: hetznerBoxIpv6(alreadyRunning.public_net.ipv6?.ip),
         deployStoragePath: '/var/ts-cloud/staging',
         sshUser: this.sshUser,
       }
@@ -272,6 +274,7 @@ export class HetznerDriver implements CloudDriver {
       serverName: running.name,
       firewallId: firewall.id,
       publicIp: running.public_net.ipv4?.ip,
+      publicIpv6: hetznerBoxIpv6(running.public_net.ipv6?.ip),
       deployStoragePath: '/var/ts-cloud/staging',
       sshUser: this.sshUser,
     }
@@ -1388,12 +1391,13 @@ export class HetznerDriver implements CloudDriver {
 
   private outputsFromState(
     state: HetznerDriverState,
-    server?: { public_net: { ipv4?: { ip: string } } },
+    server?: { public_net: { ipv4?: { ip: string }; ipv6?: { ip: string } } },
   ): ComputeStackOutputs {
     return {
       deployStoragePath: state.deployStoragePath || '/var/ts-cloud/staging',
       appInstanceId: state.serverId ? String(state.serverId) : undefined,
       appPublicIp: server?.public_net.ipv4?.ip || state.publicIp,
+      appPublicIpv6: hetznerBoxIpv6(server?.public_net.ipv6?.ip) || state.publicIpv6,
       sshUser: state.sshUser || this.sshUser,
       // Fleet: surface the services box private IP so the deploy wires the
       // app .env at it (DB/Redis/Meilisearch).

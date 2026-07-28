@@ -9,6 +9,14 @@ export interface HetznerDriverState {
   serverName?: string
   firewallId?: number
   publicIp?: string
+  /**
+   * The box's public IPv6 address, already narrowed from the routed /64 the
+   * API reports to the address the interface actually holds. Recorded so a
+   * deploy can publish AAAA records alongside the A records without having to
+   * call the Hetzner API again — attach-mode tenants read this state and never
+   * see the server object at all.
+   */
+  publicIpv6?: string
   deployStoragePath?: string
   sshUser?: string
   /** Fleet: network/LB ids + the services box private IP, for deploy + teardown. */

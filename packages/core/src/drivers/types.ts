@@ -21,6 +21,12 @@ export interface ComputeStackOutputs {
   deployStoragePath?: string
   appInstanceId?: string
   appPublicIp?: string
+  /**
+   * Public IPv6 address of the app box, when the provider gives it one. Drivers
+   * narrow a routed block to the address the interface actually holds before
+   * reporting it here, so this is always something an AAAA record can point at.
+   */
+  appPublicIpv6?: string
   sshUser?: string
   /** Fleet: private IP of the dedicated services box (DB/cache/search). */
   servicesPrivateIp?: string

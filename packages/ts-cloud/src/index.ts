@@ -203,7 +203,7 @@ export {
   resolveDashboardAuth,
   resolveUiSource,
 } from './deploy'
-export { collectServerDnsDomains, removeStaleServerAddressRecords } from './deploy/server-dns'
+export { collectServerDnsDomains, hetznerBoxIpv6, removeStaleServerAddressRecords } from './deploy/server-dns'
 export type {
   EnsureDashboardLogger,
   ResolvedDashboardAuth,

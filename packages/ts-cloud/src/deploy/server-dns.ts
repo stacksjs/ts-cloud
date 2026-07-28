@@ -41,22 +41,31 @@ function matchesHostname(record: DnsRecordResult, zone: string, hostname: string
 
 /**
  * A compute deployment owns one address per managed hostname. After an upsert,
- * remove only duplicate A records for that exact hostname, preserving one copy
- * of the desired address and leaving every unrelated record untouched.
+ * remove only duplicate address records for that exact hostname, preserving one
+ * copy of the desired address and leaving every unrelated record untouched.
+ *
+ * `recordType` selects the family. It used to be hardcoded to 'A', which meant
+ * a dual-stack box could clean up its stale IPv4 records but accumulated stale
+ * AAAA ones forever — and a stale AAAA is worse than a stale A, because
+ * dual-stack clients prefer IPv6 and would keep landing on the dead address.
  */
 export async function removeStaleServerAddressRecords(
   provider: DnsProvider,
   zone: string,
   hostname: string,
   desiredAddress: string,
+  recordType: 'A' | 'AAAA' = 'A',
 ): Promise<string[]> {
   // Retrieve the whole zone. Porkbun's retrieveByNameType endpoint treats a
   // missing record name as an apex-only lookup, so listRecords(zone, 'A')
   // silently hides duplicate subdomain records such as www.
   const listed = await provider.listRecords(zone)
-  if (!listed.success) return [`could not list A records: ${listed.message || 'unknown provider error'}`]
+  if (!listed.success)
+    return [`could not list ${recordType} records: ${listed.message || 'unknown provider error'}`]
 
-  const matching = listed.records.filter((record) => record.type === 'A' && matchesHostname(record, zone, hostname))
+  const matching = listed.records.filter(
+    (record) => record.type === recordType && matchesHostname(record, zone, hostname),
+  )
   const desiredIndex = matching.findIndex((record) => record.content === desiredAddress)
   if (matching.length <= 1 || desiredIndex === -1) return []
 
@@ -67,8 +76,29 @@ export async function removeStaleServerAddressRecords(
     const result = await provider.deleteRecord(zone, record)
     if (!result.success)
       warnings.push(
-        `could not remove stale ${record.name} A ${record.content}: ${result.message || 'unknown provider error'}`,
+        `could not remove stale ${record.name} ${recordType} ${record.content}: ${result.message || 'unknown provider error'}`,
       )
   }
   return warnings
+}
+
+/**
+ * Hetzner hands a cloud server a routed /64 and configures `::1` inside it on
+ * the interface, but the API reports the block (`2a01:4f8:c014:6186::/64`), not
+ * the address. Publishing the block verbatim as an AAAA record yields a host
+ * nothing answers on, so turn it into the address the box actually holds.
+ *
+ * A plain address (no prefix) is returned unchanged, so this is safe to apply
+ * to whatever the driver surfaced.
+ */
+export function hetznerBoxIpv6(reported: string | undefined | null): string | undefined {
+  if (!reported) return undefined
+
+  const trimmed = reported.trim()
+  if (!trimmed) return undefined
+  if (!trimmed.includes('/')) return trimmed
+
+  const [block] = trimmed.split('/')
+  if (!block.endsWith('::')) return block || undefined
+  return `${block}1`
 }
