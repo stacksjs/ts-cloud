@@ -29,7 +29,13 @@ export function isValidUsername(value: string): boolean {
 }
 
 function normalizeUser(raw: any): DashboardUser | null {
-  if (!raw || typeof raw.username !== 'string' || typeof raw.passwordHash !== 'string') return null
+  if (
+    !raw
+    || typeof raw.username !== 'string'
+    || !isValidUsername(raw.username)
+    || typeof raw.passwordHash !== 'string'
+  )
+    return null
   const role: BoxRole = raw.role === 'admin' ? 'admin' : 'member'
   const sites: Record<string, SiteRole> = {}
   if (raw.sites && typeof raw.sites === 'object') {
