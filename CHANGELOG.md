@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.81...v0.7.82)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: prune stale tenant routes ([a9c16e0](https://github.com/stacksjs/ts-cloud/commit/a9c16e0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.82 ([6cc7b03](https://github.com/stacksjs/ts-cloud/commit/6cc7b03)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.80...v0.7.81)
 
 ## 🐛 Bug Fixes
