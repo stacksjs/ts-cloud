@@ -354,9 +354,49 @@ export function buildManagementDashboardServiceReconciliationScript(
   slug: string,
   desiredSiteNames: string[],
   serverOwner = false,
+  desiredDomains: string[] = [],
 ): string[] {
   const prefix = `${slug}-dashboard-`
   const desiredUnits = desiredSiteNames.map(siteName => `${slug}-${siteName}.service`)
+  const routeReconciliation = serverOwner
+    ? [
+        `export TS_CLOUD_DASHBOARD_KEEP_DOMAINS=${shellSingleQuote(JSON.stringify(desiredDomains))}`,
+        'rm -f /run/ts-cloud-dashboard-routes-changed',
+        `/usr/local/bin/bun --bun -e ${shellSingleQuote(`
+          const { chmodSync, existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } = require('node:fs')
+          const { basename, join } = require('node:path')
+          const root = '/etc/rpx/sites.d'
+          const keep = new Set(JSON.parse(process.env.TS_CLOUD_DASHBOARD_KEEP_DOMAINS || '[]'))
+          let changed = false
+          for (const name of existsSync(root) ? readdirSync(root) : []) {
+            if (!name.endsWith('.json')) continue
+            const file = join(root, name)
+            let config
+            try { config = JSON.parse(readFileSync(file, 'utf8')) } catch { continue }
+            if (!Array.isArray(config.proxies)) continue
+            const project = basename(name, '.json')
+            const proxies = config.proxies.filter((route) => {
+              const domain = typeof route?.to === 'string' ? route.to.toLowerCase() : ''
+              if (!/^(?:dashboard|cloud)\\./.test(domain) || keep.has(domain)) return true
+              const siteName = domain.replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+              return !existsSync('/var/www/' + project + '-' + siteName)
+            })
+            if (proxies.length === config.proxies.length) continue
+            const temporary = file + '.tmp-' + process.pid
+            const mode = statSync(file).mode & 0o777
+            writeFileSync(temporary, JSON.stringify({ ...config, proxies }, null, 2) + '\\n', { mode })
+            chmodSync(temporary, mode)
+            renameSync(temporary, file)
+            changed = true
+          }
+          if (changed) writeFileSync('/run/ts-cloud-dashboard-routes-changed', '')
+        `)}`,
+        'if [ -e /run/ts-cloud-dashboard-routes-changed ]; then',
+        '  systemctl restart rpx-gateway.service',
+        '  rm -f /run/ts-cloud-dashboard-routes-changed',
+        'fi',
+      ]
+    : []
 
   return [
     'set -euo pipefail',
@@ -383,6 +423,7 @@ export function buildManagementDashboardServiceReconciliationScript(
     'done',
     'systemctl daemon-reload',
     'systemctl reset-failed',
+    ...routeReconciliation,
   ]
 }
 
@@ -404,6 +445,9 @@ async function reconcileManagementDashboardServices(
       slug,
       desiredSiteNames,
       !config.cloud?.attachTo,
+      desiredSiteNames
+        .map(siteName => config.sites?.[siteName]?.domain)
+        .filter((domain): domain is string => typeof domain === 'string'),
     ),
     comment: `ts-cloud reconcile management dashboard ${slug}`,
     tags: {

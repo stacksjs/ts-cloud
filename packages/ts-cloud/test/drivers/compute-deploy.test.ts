@@ -597,10 +597,16 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
       'stacks',
       ['dashboard-stacksjs-com'],
       true,
+      ['dashboard.stacksjs.com'],
     ).join('\n')
     expect(script).toContain('TS_CLOUD_DASHBOARD_SERVER_OWNER=1')
     expect(script).toContain('*-dashboard-*.service')
     expect(script).toContain('stacks-dashboard-stacksjs-com.service')
+    expect(script).toContain('TS_CLOUD_DASHBOARD_KEEP_DOMAINS')
+    expect(script).toContain('dashboard.stacksjs.com')
+    expect(script).toContain('/etc/rpx/sites.d')
+    expect(script).toContain('/var/www/')
+    expect(script).toContain('systemctl restart rpx-gateway.service')
   })
 
   function baseConfig(): CloudConfig {
