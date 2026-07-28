@@ -426,6 +426,7 @@ export function usesRpxProxy(compute?: { webServer?: string; proxy?: { engine?: 
 export const RPX_DIR = '/etc/rpx'
 export const RPX_INSTALL_DIR = '/opt/rpx-gateway'
 export const RPX_LAUNCHER_PATH = '/etc/rpx/gateway.ts'
+export const RPX_BINARY_PATH = '/etc/rpx/gateway'
 export const RPX_SERVICE_NAME = 'rpx-gateway.service'
 /**
  * Per-app gateway registry. Each project's deploy writes ONLY its own fragment
@@ -804,6 +805,14 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
     // ... and the stable assembler launcher that merges every app's fragment.
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, assembler, 'TS_CLOUD_RPX_EOF'),
+    // Compile the generated, route-specific launcher in Bun production mode.
+    // This removes runtime TypeScript parsing/module traversal from the hot
+    // gateway process. The command runs before the unit is rewritten or
+    // restarted, so a failed compile leaves the currently-running gateway
+    // untouched.
+    `${bunBin} build --production --compile --outfile ${RPX_BINARY_PATH}.next ${RPX_LAUNCHER_PATH}`,
+    `chmod 0755 ${RPX_BINARY_PATH}.next`,
+    `mv -f ${RPX_BINARY_PATH}.next ${RPX_BINARY_PATH}`,
     // systemd unit: runs the launcher as root so it can bind :80/:443.
     ...writeFileHeredoc(
       `/etc/systemd/system/${RPX_SERVICE_NAME}`,
@@ -815,9 +824,11 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
         '',
         '[Service]',
         'Type=simple',
-        `ExecStart=${bunBin} ${RPX_LAUNCHER_PATH}`,
+        `ExecStart=${RPX_BINARY_PATH}`,
         `WorkingDirectory=${RPX_INSTALL_DIR}`,
         `Environment=BUN_INSTALL=/root/.bun`,
+        `Environment=APP_ENV=production`,
+        `Environment=NODE_ENV=production`,
         ...poolEnv,
         'MemoryAccounting=true',
         `MemoryHigh=${memoryHigh}`,
