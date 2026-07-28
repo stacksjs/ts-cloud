@@ -131,6 +131,11 @@ describe('buildRpxConfig', () => {
   it('points TLS at the default certs dir and disables hosts management', () => {
     const config = buildRpxConfig(sites, { proxy: rpxProxy })
     expect(config.productionCerts.certsDir).toBe('/etc/rpx/certs')
+    expect(config.productionCerts.certsDirServerNames?.sort()).toEqual([
+      'app.other.com',
+      'stacksjs.com',
+      'www.stacksjs.com',
+    ])
     expect(config.https).toBe(true)
     expect(config.hostsManagement).toBe(false)
     expect(config.onDemandTls).toBeUndefined()
@@ -521,7 +526,10 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('WorkingDirectory=/opt/rpx-gateway')
     expect(script).toContain('AmbientCapabilities=CAP_NET_BIND_SERVICE')
     expect(script).toContain('systemctl disable --now bun-gateway.service')
+    expect(script).toContain('systemctl disable --now bun-gateway-renew.timer bun-gateway-renew.service')
     expect(script).toContain('systemctl disable --now ts-cloud-nginx.service')
+    expect(script).toContain('rpx-cert-renew-*.timer')
+    expect(script).toContain('[ -f "/etc/rpx/sites.d/$tenant.json" ] && continue')
     expect(script).toContain(`systemctl enable ${RPX_SERVICE_NAME}`)
     expect(script).toContain(`systemctl restart ${RPX_SERVICE_NAME}`)
   })
@@ -778,6 +786,8 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(hosts).toContain('b.com')
     expect(merged.onDemandTls?.allowedSuffixes).toContain('a.com')
     expect(merged.onDemandTls?.allowedSuffixes).toContain('b.com')
+    expect(merged.productionCerts.certsDirServerNames).toContain('a.com')
+    expect(merged.productionCerts.certsDirServerNames).toContain('b.com')
   })
 
   it('mergeRpxFragments dedupes routes by id (first writer wins)', () => {
@@ -794,6 +804,7 @@ describe('per-app gateway registry (independent deploys)', () => {
     expect(asm).toContain('readdirSync')
     expect(asm).toContain(RPX_SITES_DIR)
     expect(asm).toContain('startProxies(config)')
+    expect(asm).toContain('certsDirServerNames')
     // Resilient: a malformed fragment is skipped (not fatal), but the skip is
     // logged loud rather than swallowed silently.
     expect(asm).toContain('continue')

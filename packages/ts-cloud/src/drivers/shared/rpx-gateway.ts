@@ -119,7 +119,7 @@ export interface RpxGatewayConfig {
    * Production per-domain SNI certs: rpx serves a real PEM per server name from
    * this directory (`<domain>.crt` / `<domain>.key`).
    */
-  productionCerts: { certsDir: string }
+  productionCerts: { certsDir: string; certsDirServerNames?: string[] }
   /**
    * On-demand TLS (opt-in): lazily issue a real cert for an approved host the
    * first time it's needed. The site domains form the allowlist.
@@ -300,7 +300,7 @@ function buildRpxConfigInternal(
 
   const config: RpxGatewayConfig = {
     proxies,
-    productionCerts: { certsDir },
+    productionCerts: { certsDir, certsDirServerNames: [...domains] },
     https: true,
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
@@ -483,7 +483,10 @@ export function mergeRpxFragments(fragments: RpxGatewayConfig[]): RpxGatewayConf
 
   const merged: RpxGatewayConfig = {
     proxies,
-    productionCerts: { certsDir },
+    productionCerts: {
+      certsDir,
+      certsDirServerNames: [...new Set(proxies.map(proxy => proxy.to).filter(Boolean))],
+    },
     https: true,
     hostsManagement: false,
     cleanup: { hosts: false, certs: false },
@@ -559,7 +562,13 @@ for (const f of files) {
 }
 const config = {
   proxies,
-  productionCerts: { certsDir },
+  productionCerts: {
+    certsDir,
+    // A shared host's cert directory also contains mail and retired-site PEMs.
+    // Keep those files on disk for their owners, but do not turn them into live
+    // OpenSSL SNI contexts when no current route can select them.
+    certsDirServerNames: [...new Set(proxies.map(p => p.to).filter(Boolean))],
+  },
   https: true,
   hostsManagement: false,
   cleanup: { hosts: false, certs: false },
@@ -828,7 +837,13 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     // Older ts-cloud/stacks boxes used bun-gateway.service for the same
     // :80/:443 role. Retire managed predecessors so rpx can bind cleanly.
     'systemctl disable --now bun-gateway.service 2>/dev/null || true',
+    'systemctl disable --now bun-gateway-renew.timer bun-gateway-renew.service 2>/dev/null || true',
+    'rm -f /etc/systemd/system/bun-gateway-renew.timer /etc/systemd/system/bun-gateway-renew.service',
     'systemctl disable --now ts-cloud-nginx.service 2>/dev/null || true',
+    // Retired tenants must not leave daily renewal processes behind. A live
+    // tenant always owns a same-slug atomic route fragment, so absence is a
+    // safe and deterministic ownership test on a shared box.
+    `for timer in /etc/systemd/system/rpx-cert-renew-*.timer; do [ -e "$timer" ] || continue; unit="$(basename "$timer")"; tenant="\${unit#rpx-cert-renew-}"; tenant="\${tenant%.timer}"; [ -f "${RPX_SITES_DIR}/$tenant.json" ] && continue; systemctl disable --now "$unit" 2>/dev/null || true; rm -f "$timer" "/etc/systemd/system/rpx-cert-renew-$tenant.service" "${RPX_DIR}/renew-certs-$tenant.sh"; done`,
     `systemctl enable ${RPX_SERVICE_NAME}`,
     `systemctl restart ${RPX_SERVICE_NAME}`,
     // Managed TLS (issue on deploy + daily renewal). No-op unless onDemandTls is
