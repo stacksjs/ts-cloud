@@ -1,3 +1,22 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.76...v0.7.77)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: enforce one instance per server ([195df5d](https://github.com/stacksjs/ts-cloud/commit/195df5d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## ⚡ Performance Improvements
+
+- **dashboard**: smooth telemetry collection ([3edc721](https://github.com/stacksjs/ts-cloud/commit/3edc721)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **queue**: coordinate idle worker polling ([a86007d](https://github.com/stacksjs/ts-cloud/commit/a86007d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.77 ([599a604](https://github.com/stacksjs/ts-cloud/commit/599a604)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.75...v0.7.76)
 
 ## 🐛 Bug Fixes
