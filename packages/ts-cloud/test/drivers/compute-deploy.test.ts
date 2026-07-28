@@ -80,6 +80,9 @@ describe('deploySiteRelease', () => {
     expect(driver.runRemoteDeploy).toHaveBeenCalled()
 
     const deployCall = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0]
+    const deployScript = deployCall.commands.join('\n')
+    expect(deployScript).toContain('APP_ENV="production"')
+    expect(deployScript).toContain('NODE_ENV="production"')
     expect(deployCall.tags).toEqual({
       Project: 'my-app',
       Environment: 'production',

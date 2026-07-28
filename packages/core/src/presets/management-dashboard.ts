@@ -315,6 +315,8 @@ export function resolveManagementDashboardSites(
       // The shared-box owner is the single background monitoring agent.
       // Attached tenant configs return no dashboard site above.
       env: {
+        APP_ENV: 'production',
+        NODE_ENV: 'production',
         TS_CLOUD_DASHBOARD_TELEMETRY: '1',
       },
       // The zero-downtime cutover overlaps two instances on one port via

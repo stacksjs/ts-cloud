@@ -79,7 +79,12 @@ const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
 export const stacksDriver: AppFrameworkDriver = {
   id: 'stacks',
   wrapExec: (command) => command,
-  execEnv: { PATH: '/usr/local/bin:/usr/bin:/bin', BUN_INSTALL: '/root/.bun' },
+  execEnv: {
+    PATH: '/usr/local/bin:/usr/bin:/bin',
+    BUN_INSTALL: '/root/.bun',
+    APP_ENV: 'production',
+    NODE_ENV: 'production',
+  },
   // `buddy schedule:run` stays alive (in-process timers) → one always-on unit.
   // systemd sets WorkingDirectory to the release dir, so the CLI path is relative.
   schedulerMode: 'daemon',

@@ -117,7 +117,11 @@ describe('resolveManagementDashboardSite', () => {
       'production',
       { uiRoot: '.ts-cloud/dashboard-release', build: false },
     )
-    expect(owner?.site.env).toEqual({ TS_CLOUD_DASHBOARD_TELEMETRY: '1' })
+    expect(owner?.site.env).toEqual({
+      APP_ENV: 'production',
+      NODE_ENV: 'production',
+      TS_CLOUD_DASHBOARD_TELEMETRY: '1',
+    })
     expect(tenant).toBeNull()
   })
 

@@ -29,6 +29,8 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     )
     expect(script).toContain('--tries=5')
     expect(script).toContain('Environment="BUN_INSTALL=/root/.bun"')
+    expect(script).toContain('Environment="APP_ENV=production"')
+    expect(script).toContain('Environment="NODE_ENV=production"')
     // No login-shell wrapper (that would hang `systemctl restart` over SSH).
     expect(script).not.toContain('/bin/sh -lc')
     expect(script).not.toContain('pantry env')

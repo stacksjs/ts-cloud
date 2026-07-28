@@ -78,7 +78,18 @@ export async function deploySiteRelease(
   // authentication, or proxy policy by listening on the public interface.
   // Explicit site env remains authoritative for uncommon direct-bind setups.
   const proxyEnv: Record<string, string> = usesRpxProxy(compute) ? { HOST: '127.0.0.1' } : {}
-  const envWithServices: Record<string, string> = { ...dbEnv, ...proxyEnv, ...(site.env || {}) }
+  const productionEnv: Record<string, string> = environment === 'production'
+    ? { APP_ENV: 'production', NODE_ENV: 'production' }
+    : {}
+  const envWithServices: Record<string, string> = {
+    ...dbEnv,
+    ...proxyEnv,
+    ...(site.env || {}),
+    // Production is a deployment invariant, not an app-level suggestion.
+    // Keep these last so a stale committed site config cannot accidentally
+    // select Bun's development exports or dev-only runtime paths on the box.
+    ...productionEnv,
+  }
 
   // PHP/Laravel sites deploy via git clone + atomic releases on the box (no
   // tarball upload). The box clones the repo, runs the deploy script inside the
