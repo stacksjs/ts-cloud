@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.79...v0.7.80)
+
+## 🐛 Bug Fixes
+
+- **hetzner**: isolate concurrent release uploads ([c7fce2c](https://github.com/stacksjs/ts-cloud/commit/c7fce2c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.80 ([1e1c033](https://github.com/stacksjs/ts-cloud/commit/1e1c033)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.78...v0.7.79)
 
 ## 🐛 Bug Fixes
