@@ -182,28 +182,34 @@ for (const route of routes) console.log('DISCOVERED_SITE=' + Buffer.from(JSON.st
 const serviceOutput = Bun.spawnSync([
   'systemctl', 'list-units', '--type=service', '--state=running', '--no-legend', '--plain',
 ]).stdout.toString()
-for (const line of serviceOutput.split('\n')) {
-  const unit = line.trim().split(/\s+/)[0]
-  if (!unit) continue
-  const properties = Bun.spawnSync([
+const runningUnits = serviceOutput
+  .split('\n')
+  .map(line => line.trim().split(/\s+/)[0])
+  .filter(Boolean)
+if (runningUnits.length > 0) {
+  const propertiesOutput = Bun.spawnSync([
     'systemctl',
     'show',
-    unit,
-    '--property=WorkingDirectory,ExecStart,MemoryCurrent,UnitFileState,ActiveEnterTimestamp',
+    ...runningUnits,
+    '--property=Id,WorkingDirectory,ExecStart,MemoryCurrent,UnitFileState,ActiveEnterTimestamp',
   ]).stdout.toString()
-  const values = Object.fromEntries(properties.split('\n').filter(Boolean).map(value => {
-    const separator = value.indexOf('=')
-    return separator < 0 ? [value, ''] : [value.slice(0, separator), value.slice(separator + 1)]
-  }))
-  if (!/^\/var\/www\/|^\/opt\/ts-cloud\//.test(values.WorkingDirectory || '') && !/\/var\/www\/|\/opt\/ts-cloud\//.test(values.ExecStart || '')) continue
-  console.log([
-    'SVC',
-    unit,
-    'active',
-    values.MemoryCurrent || '0',
-    values.UnitFileState || '-',
-    values.ActiveEnterTimestamp || '-',
-  ].join('='))
+  for (const properties of propertiesOutput.split(/\n\n+/)) {
+    const values = Object.fromEntries(properties.split('\n').filter(Boolean).map(value => {
+      const separator = value.indexOf('=')
+      return separator < 0 ? [value, ''] : [value.slice(0, separator), value.slice(separator + 1)]
+    }))
+    const unit = values.Id
+    if (!unit) continue
+    if (!/^\/var\/www\/|^\/opt\/ts-cloud\//.test(values.WorkingDirectory || '') && !/\/var\/www\/|\/opt\/ts-cloud\//.test(values.ExecStart || '')) continue
+    console.log([
+      'SVC',
+      unit,
+      'active',
+      values.MemoryCurrent || '0',
+      values.UnitFileState || '-',
+      values.ActiveEnterTimestamp || '-',
+    ].join('='))
+  }
 }
 `
   return `echo '${Buffer.from(source).toString('base64')}' | base64 -d | bun -`
@@ -223,15 +229,17 @@ export function metricsScript(
     'echo "LOAD=$(cut -d\' \' -f1 /proc/loadavg 2>/dev/null || echo 0)"',
     'echo "LOAD5=$(cut -d\' \' -f2 /proc/loadavg 2>/dev/null || echo 0)"',
     'echo "LOAD15=$(cut -d\' \' -f3 /proc/loadavg 2>/dev/null || echo 0)"',
-    'echo "MEMTOTAL=$(free -m 2>/dev/null | awk \'/^Mem:/{print $2}\')"',
-    'echo "MEMUSED=$(free -m 2>/dev/null | awk \'/^Mem:/{print $3}\')"',
-    'echo "MEMAVAILABLE=$(free -m 2>/dev/null | awk \'/^Mem:/{print $7}\')"',
-    'echo "MEMCACHE=$(free -m 2>/dev/null | awk \'/^Mem:/{print $6}\')"',
-    'echo "SWAPTOTAL=$(free -m 2>/dev/null | awk \'/^Swap:/{print $2}\')"',
-    'echo "SWAPUSED=$(free -m 2>/dev/null | awk \'/^Swap:/{print $3}\')"',
-    'echo "DISKPCT=$(df -P / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
-    'echo "DISKUSEDG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$3);print $3}\')"',
-    'echo "DISKTOTG=$(df -BG / 2>/dev/null | awk \'NR==2{gsub("G","",$2);print $2}\')"',
+    'read MEMTOTAL MEMUSED MEMAVAILABLE MEMCACHE SWAPTOTAL SWAPUSED <<EOF\n$(free -m 2>/dev/null | awk \'/^Mem:/{total=$2; used=$3; available=$7; cache=$6} /^Swap:/{print total, used, available, cache, $2, $3}\')\nEOF',
+    'echo "MEMTOTAL=${MEMTOTAL:-0}"',
+    'echo "MEMUSED=${MEMUSED:-0}"',
+    'echo "MEMAVAILABLE=${MEMAVAILABLE:-0}"',
+    'echo "MEMCACHE=${MEMCACHE:-0}"',
+    'echo "SWAPTOTAL=${SWAPTOTAL:-0}"',
+    'echo "SWAPUSED=${SWAPUSED:-0}"',
+    'read DISKTOTG DISKUSEDG DISKPCT <<EOF\n$(df -BG -P / 2>/dev/null | awk \'NR==2{gsub("G","",$2); gsub("G","",$3); gsub("%","",$5); print $2, $3, $5}\')\nEOF',
+    'echo "DISKPCT=${DISKPCT:-0}"',
+    'echo "DISKUSEDG=${DISKUSEDG:-0}"',
+    'echo "DISKTOTG=${DISKTOTG:-0}"',
     'echo "INODEPCT=$(df -Pi / 2>/dev/null | awk \'NR==2{gsub("%","",$5);print $5}\')"',
     'echo "NETRX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$3} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',
     'echo "NETTX=$(awk -F\'[: ]+\' \'NR>2 && $2!="lo"{sum+=$11} END{print sum+0}\' /proc/net/dev 2>/dev/null)"',

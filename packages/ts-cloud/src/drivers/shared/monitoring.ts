@@ -79,10 +79,9 @@ export function buildMonitoringScript(monitoring: boolean | ComputeMonitoringCon
     'set -uo pipefail',
     `LOAD=$(cut -d' ' -f1 /proc/loadavg)`,
     'CPUS=$(nproc)',
-    `MEM_TOTAL=$(free -m | awk '/^Mem:/{print $2}')`,
-    `MEM_USED=$(free -m | awk '/^Mem:/{print $3}')`,
-    `SWAP_TOTAL=$(free -m | awk '/^Swap:/{print $2}')`,
-    `SWAP_USED=$(free -m | awk '/^Swap:/{print $3}')`,
+    `read MEM_TOTAL MEM_USED SWAP_TOTAL SWAP_USED <<EOF
+$(free -m | awk '/^Mem:/{total=$2; used=$3} /^Swap:/{print total, used, $2, $3}')
+EOF`,
     'DISK_PCT=$(df -P / | awk \'NR==2{gsub("%","",$5); print $5}\')',
     `UPTIME_SEC=$(cut -d' ' -f1 /proc/uptime | cut -d. -f1)`,
     // Network throughput: cumulative rx/tx bytes across non-loopback interfaces.

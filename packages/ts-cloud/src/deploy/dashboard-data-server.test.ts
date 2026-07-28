@@ -29,6 +29,12 @@ describe('sharedBoxProbeScript', () => {
     expect(metricsScript({ includeServices: false, includeSites: false }).join('\n')).not.toContain('base64 -d | bun -')
     expect(metricsScript({ includeServices: false, includeSites: true }).join('\n')).toContain('base64 -d | bun -')
   })
+
+  it('collects memory and root-disk fields with one command each', () => {
+    const script = metricsScript({ includeServices: false, includeSites: false }).join('\n')
+    expect((script.match(/free -m/g) ?? [])).toHaveLength(1)
+    expect((script.match(/df -BG -P/g) ?? [])).toHaveLength(1)
+  })
 })
 
 describe('serverLogSources', () => {
