@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.80...v0.7.81)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: ignore invalid legacy identities ([293a1e3](https://github.com/stacksjs/ts-cloud/commit/293a1e3)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.81 ([93c937c](https://github.com/stacksjs/ts-cloud/commit/93c937c)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.79...v0.7.80)
 
 ## 🐛 Bug Fixes
