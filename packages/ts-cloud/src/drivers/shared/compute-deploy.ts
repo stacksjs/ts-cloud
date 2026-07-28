@@ -353,6 +353,7 @@ function shellSingleQuote(value: string): string {
 export function buildManagementDashboardServiceReconciliationScript(
   slug: string,
   desiredSiteNames: string[],
+  serverOwner = false,
 ): string[] {
   const prefix = `${slug}-dashboard-`
   const desiredUnits = desiredSiteNames.map(siteName => `${slug}-${siteName}.service`)
@@ -360,12 +361,16 @@ export function buildManagementDashboardServiceReconciliationScript(
   return [
     'set -euo pipefail',
     `TS_CLOUD_DASHBOARD_PREFIX=${shellSingleQuote(prefix)}`,
+    `TS_CLOUD_DASHBOARD_SERVER_OWNER=${serverOwner ? '1' : '0'}`,
     `TS_CLOUD_DASHBOARD_DESIRED=${shellSingleQuote(` ${desiredUnits.join(' ')} `)}`,
     'for TS_CLOUD_UNIT_FILE in /etc/systemd/system/*.service; do',
     '  [ -e "$TS_CLOUD_UNIT_FILE" ] || continue',
     '  TS_CLOUD_UNIT=$(basename "$TS_CLOUD_UNIT_FILE")',
     '  case "$TS_CLOUD_UNIT" in',
-    '    "$TS_CLOUD_DASHBOARD_PREFIX"*.service)',
+    '    *-dashboard-*.service)',
+    '      if [ "$TS_CLOUD_DASHBOARD_SERVER_OWNER" != 1 ]; then',
+    '        case "$TS_CLOUD_UNIT" in "$TS_CLOUD_DASHBOARD_PREFIX"*.service) ;; *) continue ;; esac',
+    '      fi',
     '      case "$TS_CLOUD_DASHBOARD_DESIRED" in',
     '        *" $TS_CLOUD_UNIT "*) ;;',
     '        *)',
@@ -395,7 +400,11 @@ async function reconcileManagementDashboardServices(
 
   const result = await driver.runRemoteDeploy({
     targets,
-    commands: buildManagementDashboardServiceReconciliationScript(slug, desiredSiteNames),
+    commands: buildManagementDashboardServiceReconciliationScript(
+      slug,
+      desiredSiteNames,
+      !config.cloud?.attachTo,
+    ),
     comment: `ts-cloud reconcile management dashboard ${slug}`,
     tags: {
       Project: slug,

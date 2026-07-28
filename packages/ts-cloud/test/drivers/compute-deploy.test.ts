@@ -592,6 +592,17 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     expect(script).not.toContain('rm -rf')
   })
 
+  it('lets the server owner remove orphaned tenant dashboard units', () => {
+    const script = buildManagementDashboardServiceReconciliationScript(
+      'stacks',
+      ['dashboard-stacksjs-com'],
+      true,
+    ).join('\n')
+    expect(script).toContain('TS_CLOUD_DASHBOARD_SERVER_OWNER=1')
+    expect(script).toContain('*-dashboard-*.service')
+    expect(script).toContain('stacks-dashboard-stacksjs-com.service')
+  })
+
   function baseConfig(): CloudConfig {
     return {
       project: { name: 'App', slug: 'my-app', region: 'fsn1' },
@@ -636,6 +647,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const allCommands = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls.map((c) =>
       c[0].commands.join('\n'),
     )
+    expect(allCommands.some(commands => commands.includes('TS_CLOUD_DASHBOARD_SERVER_OWNER=1'))).toBe(true)
     expect(allCommands.some((c) => c.includes('/var/www/my-app-dashboard-my-app-example-com'))).toBe(true)
     // Every site deploy is ownership-guarded so another attachTo tenant deriving
     // the same site key is refused instead of overwriting releases.
@@ -671,6 +683,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const reconciliation = allCommands.find(commands =>
       commands.includes('TS_CLOUD_DASHBOARD_PREFIX') && commands.includes('my-app-dashboard-'),
     )
+    expect(reconciliation).toContain('TS_CLOUD_DASHBOARD_SERVER_OWNER=0')
     expect(reconciliation).toContain('systemctl disable --now "$TS_CLOUD_UNIT"')
     expect(allCommands.some(commands => commands.includes('/var/www/my-app-web'))).toBe(true)
     expect(allCommands.some(commands => commands.includes('/var/www/my-app-dashboard-'))).toBe(false)
