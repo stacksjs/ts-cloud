@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { dashboardDataRefreshDue, resolveDashboardEnvironment } from './local-dashboard-server'
+import {
+  dashboardDataRefreshDue,
+  preserveDashboardSiteSnapshot,
+  resolveDashboardEnvironment,
+} from './local-dashboard-server'
 
 describe('dashboard environment scope', () => {
   it('resolves each request independently without shared mutable state', () => {
@@ -23,5 +27,25 @@ describe('dashboard data refresh cadence', () => {
     expect(dashboardDataRefreshDue(undefined, 30_000, 30_000)).toBe(true)
     expect(dashboardDataRefreshDue(1_000, 30_999, 30_000)).toBe(false)
     expect(dashboardDataRefreshDue(1_000, 31_000, 30_000)).toBe(true)
+  })
+
+  it('keeps the last route-health snapshot during lightweight host refreshes', () => {
+    const previous = {
+      sites: [{ route: 'example.com', status: 'live' }],
+      sitesDetail: [{ route: 'example.com', status: 'live', responseMs: 12 }],
+      siteHealth: [{ route: 'example.com', status: 'live', responseMs: 12 }],
+      systemMetrics: { cpuUsedPct: 10 },
+    }
+    const refreshed = preserveDashboardSiteSnapshot(previous, {
+      sites: [{ route: 'example.com' }],
+      sitesDetail: [{ route: 'example.com' }],
+      siteHealth: [],
+      systemMetrics: { cpuUsedPct: 20 },
+    })
+
+    expect(refreshed.systemMetrics).toEqual({ cpuUsedPct: 20 })
+    expect(refreshed.sites).toEqual(previous.sites)
+    expect(refreshed.sitesDetail).toEqual(previous.sitesDetail)
+    expect(refreshed.siteHealth).toEqual(previous.siteHealth)
   })
 })

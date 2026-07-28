@@ -603,6 +603,7 @@ function authorizationScope(body: Record<string, any>): AuthorizationScope | und
 async function resolveLiveDashboardData(
   config: CloudConfig,
   environment: EnvironmentType,
+  options: { includeSiteHealth?: boolean } = {},
 ): Promise<Record<string, any>> {
   const mode = resolveDeploymentMode(config)
   // The nav renders a mode-aware view set + a server-rendered environment switcher.
@@ -616,12 +617,27 @@ async function resolveLiveDashboardData(
     const data =
       mode === 'serverless'
         ? await resolveDashboardData(config, environment)
-        : await resolveServerDashboardData(config, environment)
+        : await resolveServerDashboardData(config, environment, {
+            includeSiteHealth: options.includeSiteHealth,
+          })
     return { ...(data ?? {}), ...meta }
   } catch {
     // A serverless config without a fully-defined app (or an unreachable box)
     // shouldn't crash the cockpit; fall back to the sample-rendered UI.
     return { ...meta }
+  }
+}
+
+export function preserveDashboardSiteSnapshot(
+  previous: Record<string, any> | undefined,
+  next: Record<string, any>,
+): Record<string, any> {
+  if (!previous) return next
+  return {
+    ...next,
+    ...(Array.isArray(previous.sites) ? { sites: previous.sites } : {}),
+    ...(Array.isArray(previous.sitesDetail) ? { sitesDetail: previous.sitesDetail } : {}),
+    ...(Array.isArray(previous.siteHealth) ? { siteHealth: previous.siteHealth } : {}),
   }
 }
 
@@ -1038,11 +1054,19 @@ export async function startLocalDashboardServer(
   const initialData = await resolveLiveDashboardData(config as CloudConfig, defaultEnvironment)
   const latestDataByEnvironment = new Map<EnvironmentType, Record<string, any>>([[defaultEnvironment, initialData]])
   const latestDataRefreshedAtByEnvironment = new Map<EnvironmentType, number>([[defaultEnvironment, Date.now()]])
+  const latestSiteHealthRefreshedAtByEnvironment = new Map<EnvironmentType, number>([
+    [defaultEnvironment, Date.now()],
+  ])
   const liveDataRefreshesByEnvironment = new Map<EnvironmentType, Promise<Record<string, any>>>()
   const dashboardDataMinimumRefreshMs = Math.min(
     5 * 60_000,
     Math.max(5_000, Number(process.env.TS_CLOUD_DASHBOARD_REFRESH_MS) || 30_000),
   )
+  const dashboardSiteHealthMinimumRefreshMs = Math.min(
+    30 * 60_000,
+    Math.max(60_000, Number(process.env.TS_CLOUD_DASHBOARD_SITE_REFRESH_MS) || 5 * 60_000),
+  )
+  const computeDashboard = resolveDeploymentMode(config as CloudConfig) !== 'serverless'
   const refreshLatestDashboardData = (environment: EnvironmentType): Promise<Record<string, any>> => {
     const previous = latestDataByEnvironment.get(environment)
     if (
@@ -1056,11 +1080,22 @@ export async function startLocalDashboardServer(
       return Promise.resolve(previous)
     const running = liveDataRefreshesByEnvironment.get(environment)
     if (running) return running
-    const refresh = resolveLiveDashboardData(config as CloudConfig, environment)
-      .then((data) => {
+    const includeSiteHealth =
+      !computeDashboard ||
+      dashboardDataRefreshDue(
+        latestSiteHealthRefreshedAtByEnvironment.get(environment),
+        Date.now(),
+        dashboardSiteHealthMinimumRefreshMs,
+      )
+    const refresh = resolveLiveDashboardData(config as CloudConfig, environment, { includeSiteHealth })
+      .then((refreshedData) => {
         const previous = latestDataByEnvironment.get(environment)
+        const data = includeSiteHealth
+          ? refreshedData
+          : preserveDashboardSiteSnapshot(previous, refreshedData)
         latestDataByEnvironment.set(environment, data)
         latestDataRefreshedAtByEnvironment.set(environment, Date.now())
+        if (includeSiteHealth) latestSiteHealthRefreshedAtByEnvironment.set(environment, Date.now())
         if (
           previous?._serverReachable !== data._serverReachable ||
           previous?._metricsStatus !== data._metricsStatus ||
@@ -1087,7 +1122,10 @@ export async function startLocalDashboardServer(
     (telemetryPreference === '1' || !(config as CloudConfig).cloud?.attachTo)
   if (backgroundTelemetryEnabled) {
     let telemetryCollectionRunning = false
-    let nextSiteHealthCollectionAt = 0
+    // The initial live-data load already performed a full route sweep. Delay
+    // the history collector's first route sweep so a dashboard restart does
+    // not immediately send the same request to every site a second time.
+    let nextSiteHealthCollectionAt = Date.now() + 5 * 60_000
     const collectHostHistory = async (): Promise<void> => {
       if (telemetryCollectionRunning) return
       telemetryCollectionRunning = true
