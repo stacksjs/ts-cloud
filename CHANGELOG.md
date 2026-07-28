@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.77...v0.7.78)
+
+## 🐛 Bug Fixes
+
+- **dashboard**: reconcile stale server instances ([0be1fd2](https://github.com/stacksjs/ts-cloud/commit/0be1fd2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.78 ([10e5dc4](https://github.com/stacksjs/ts-cloud/commit/10e5dc4)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.76...v0.7.77)
 
 ## 🐛 Bug Fixes
