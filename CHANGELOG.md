@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.83...v0.7.84)
+
+## ⚡ Performance Improvements
+
+- **dashboard**: bound route health probes ([7c7315e](https://github.com/stacksjs/ts-cloud/commit/7c7315e)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.84 ([53554f5](https://github.com/stacksjs/ts-cloud/commit/53554f5)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.82...v0.7.83)
 
 ## ⚡ Performance Improvements
