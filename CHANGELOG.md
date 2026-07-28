@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.85...v0.7.86)
+
+## ♻️ Code Refactoring
+
+- **dns**: make dual-stack DNS driver-agnostic ([c2bc0b2](https://github.com/stacksjs/ts-cloud/commit/c2bc0b2)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.86 ([1aaac38](https://github.com/stacksjs/ts-cloud/commit/1aaac38)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.84...v0.7.85)
 
 ## 🚀 Features
