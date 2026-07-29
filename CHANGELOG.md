@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.92...v0.7.93)
+
+## ⚡ Performance Improvements
+
+- maintain telemetry source rollups ([6af6ec0](https://github.com/stacksjs/ts-cloud/commit/6af6ec0)) _(by Chris <chrisbreuer93@gmail.com>)_
+- stream control plane backups to disk ([14ae18d](https://github.com/stacksjs/ts-cloud/commit/14ae18d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.93 ([f546434](https://github.com/stacksjs/ts-cloud/commit/f546434)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.91...v0.7.92)
 
 ## 🐛 Bug Fixes
