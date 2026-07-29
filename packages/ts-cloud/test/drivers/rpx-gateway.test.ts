@@ -544,6 +544,23 @@ describe('buildRpxProvisionScript', () => {
     expect(script).toContain('bun add @stacksjs/rpx@0.12.0')
   })
 
+  it('preserves the live dashboard route during an app-only gateway reload', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxProvisionScript({
+      proxy: rpxProxy,
+      config,
+      preserveManagementDashboardRoutes: true,
+    }).join('\n')
+
+    expect(script).toContain(`mktemp "${RPX_SITES_DIR}/app.json.candidate.XXXXXX"`)
+    expect(script).toContain('TS_CLOUD_RPX_CURRENT_FRAGMENT=/etc/rpx/sites.d/app.json')
+    expect(script).toContain('current.proxies.filter(isDashboard)')
+    expect(script).toContain('candidate.proxies = [...next, ...retained]')
+    expect(script.indexOf('candidate.proxies = [...next, ...retained]')).toBeLessThan(
+      script.indexOf(`mv -f "$__tsc_fragment_candidate" ${RPX_SITES_DIR}/app.json`),
+    )
+  })
+
   // Regression: a non-atomic `cat > sites.d/<slug>.json` truncates then streams,
   // so an overlapping deploy's assembler read can catch a half-written fragment,
   // fail to parse it, and drop that host from the routing table (→ transient
@@ -679,6 +696,19 @@ describe('buildRpxFragmentRefreshScript', () => {
     expect(script).not.toContain(`/etc/systemd/system/${RPX_SERVICE_NAME}`)
     expect(script).not.toContain(`systemctl enable ${RPX_SERVICE_NAME}`)
     expect(script).not.toContain('tlsx')
+  })
+
+  it('can preserve the running dashboard route on a fleet fragment refresh', () => {
+    const config = buildRpxConfig(sites, { proxy: rpxProxy })
+    const script = buildRpxFragmentRefreshScript({
+      config,
+      slug: 'my-app',
+      preserveManagementDashboardRoutes: true,
+    }).join('\n')
+
+    expect(script).toContain('TS_CLOUD_RPX_CURRENT_FRAGMENT=/etc/rpx/sites.d/my-app.json')
+    expect(script).toContain('current.proxies.filter(isDashboard)')
+    expect(script).toContain('candidate.proxies = [...next, ...retained]')
   })
 
   it('defaults the fragment slug to app and carries multi-upstream LB routes verbatim', () => {

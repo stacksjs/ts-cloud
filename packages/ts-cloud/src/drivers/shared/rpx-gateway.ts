@@ -617,6 +617,56 @@ function writeFileHeredoc(path: string, content: string, delimiter: string, mode
   ]
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+/**
+ * Write one project's route fragment while optionally retaining the dashboard
+ * routes already active on the box.
+ *
+ * A narrowed application deploy intentionally does not restart the management
+ * dashboard. Its local config can still contain a different dashboard port,
+ * for example from a stale TS_CLOUD_UI_PORT override. Replacing the whole
+ * fragment in that state points rpx at a service the deploy never started and
+ * turns an otherwise healthy dashboard into a 502. Preserve the current
+ * dashboard routes for those app-only reloads, while replacing every regular
+ * application route from the new source model.
+ */
+function writeRpxFragment(
+  path: string,
+  content: string,
+  delimiter: string,
+  options: { preserveManagementDashboardRoutes?: boolean, bunBin: string },
+): string[] {
+  if (!options.preserveManagementDashboardRoutes)
+    return writeFileHeredoc(path, content, delimiter, '0600')
+
+  const mergeScript = `
+const { readFileSync, writeFileSync } = require('node:fs')
+const currentPath = process.env.TS_CLOUD_RPX_CURRENT_FRAGMENT
+const candidatePath = process.env.TS_CLOUD_RPX_CANDIDATE_FRAGMENT
+const isDashboard = route => /^(?:dashboard|cloud)\\./i.test(String(route?.to || ''))
+const current = JSON.parse(readFileSync(currentPath, 'utf8'))
+const candidate = JSON.parse(readFileSync(candidatePath, 'utf8'))
+const retained = Array.isArray(current.proxies) ? current.proxies.filter(isDashboard) : []
+const next = Array.isArray(candidate.proxies) ? candidate.proxies.filter(route => !isDashboard(route)) : []
+candidate.proxies = [...next, ...retained]
+writeFileSync(candidatePath, JSON.stringify(candidate, null, 2) + '\\n', { mode: 0o600 })
+`.trim()
+
+  return [
+    `__tsc_fragment_candidate="$(mktemp "${path}.candidate.XXXXXX")"`,
+    `cat > "$__tsc_fragment_candidate" <<'${delimiter}'`,
+    content,
+    delimiter,
+    'chmod 0600 "$__tsc_fragment_candidate"',
+    `if [ -f ${path} ]; then TS_CLOUD_RPX_CURRENT_FRAGMENT=${path} TS_CLOUD_RPX_CANDIDATE_FRAGMENT="$__tsc_fragment_candidate" ${options.bunBin} -e ${shellSingleQuote(mergeScript)}; fi`,
+    `mv -f "$__tsc_fragment_candidate" ${path}`,
+    `chmod 0600 ${path}`,
+  ]
+}
+
 export interface BuildRpxProvisionOptions {
   config: RpxGatewayConfig
   proxy: ComputeProxyConfig
@@ -629,6 +679,8 @@ export interface BuildRpxProvisionOptions {
   slug?: string
   /** Absolute path to the `bun` binary on the box. @default '/usr/local/bin/bun' */
   bunBin?: string
+  /** Keep the dashboard route currently running on the box during an app-only deploy. */
+  preserveManagementDashboardRoutes?: boolean
 }
 
 export const RPX_CERT_RENEW_SCRIPT = '/etc/rpx/renew-certs.sh'
@@ -802,7 +854,10 @@ export function buildRpxProvisionScript(options: BuildRpxProvisionOptions): stri
     // Write THIS app's registry fragment (its routes only) — root-only: it
     // carries basic-auth passwords and the origin-guard shared secret, and the
     // assembler runs as root so nothing else needs read access.
-    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
+    ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+      bunBin,
+      preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
+    }),
     // ... and the stable assembler launcher that merges every app's fragment.
     ...writeFileHeredoc(RPX_LAUNCHER_PATH, assembler, 'TS_CLOUD_RPX_EOF'),
     // Compile the generated, route-specific launcher in Bun production mode.
@@ -872,6 +927,8 @@ export interface BuildRpxFragmentRefreshOptions {
    * Defaults to `'app'`.
    */
   slug?: string
+  /** Keep the dashboard route currently running on the box during an app-only deploy. */
+  preserveManagementDashboardRoutes?: boolean
 }
 
 /**
@@ -899,7 +956,10 @@ export function buildRpxFragmentRefreshScript(options: BuildRpxFragmentRefreshOp
     `mkdir -p ${RPX_SITES_DIR}`,
     // Root-only (0600), atomic temp+rename — same as the provision-time write:
     // the fragment carries basic-auth passwords and the origin-guard secret.
-    ...writeFileHeredoc(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', '0600'),
+    ...writeRpxFragment(`${RPX_SITES_DIR}/${slug}.json`, fragment, 'TS_CLOUD_RPX_FRAGMENT_EOF', {
+      bunBin: '/usr/local/bin/bun',
+      preserveManagementDashboardRoutes: options.preserveManagementDashboardRoutes,
+    }),
     `systemctl restart ${RPX_SERVICE_NAME}`,
   ]
 }

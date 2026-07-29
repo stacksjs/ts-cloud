@@ -732,7 +732,11 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
     logger.step(`Reloading the load balancer's rpx gateway with ${lbConfig.proxies.length} route(s)...`)
     const result = await driver.runRemoteDeploy({
       targets: lbTargets,
-      commands: buildRpxFragmentRefreshScript({ config: lbConfig, slug }),
+      commands: buildRpxFragmentRefreshScript({
+        config: lbConfig,
+        slug,
+        preserveManagementDashboardRoutes: options.managementDashboard === false,
+      }),
       comment: `ts-cloud rpx gateway reload ${slug}`,
       tags: {
         Project: slug,
@@ -767,7 +771,12 @@ export async function reloadRpxGateway(options: DeployAllSitesOptions): Promise<
   }
 
   logger.step(`Reloading rpx gateway with ${rpxConfig.proxies.length} route(s)...`)
-  const script = buildRpxProvisionScript({ proxy, config: rpxConfig, slug })
+  const script = buildRpxProvisionScript({
+    proxy,
+    config: rpxConfig,
+    slug,
+    preserveManagementDashboardRoutes: options.managementDashboard === false,
+  })
   const result = await driver.runRemoteDeploy({
     targets,
     commands: script,

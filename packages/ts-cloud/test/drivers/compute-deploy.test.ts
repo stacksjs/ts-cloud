@@ -401,6 +401,39 @@ describe('reloadRpxGateway', () => {
     expect(script).toContain('localhost:3001')
   })
 
+  it('preserves the live dashboard route on a narrowed app-only reload', async () => {
+    const full: CloudConfig = {
+      ...rpxConfig,
+      sites: {
+        web: rpxConfig.sites!.web,
+        dashboard: {
+          domain: 'dashboard.example.com',
+          port: 31999,
+          root: '.dashboard',
+          start: 'bun dashboard-server.js',
+        },
+      },
+    }
+    const narrowed: CloudConfig = { ...full, sites: { web: full.sites!.web } }
+    const driver = createMockDriver({ name: 'hetzner', usesCloudFormation: false })
+
+    const ok = await reloadRpxGateway({
+      config: narrowed,
+      rpxConfig: full,
+      environment: 'production',
+      driver,
+      sha: 'abc',
+      runtime: 'bun',
+      managementDashboard: false,
+      tarballForSite: () => '/tmp/x.tar.gz',
+    })
+
+    expect(ok).toBe(true)
+    const script = (driver.runRemoteDeploy as ReturnType<typeof mock>).mock.calls[0][0].commands.join('\n')
+    expect(script).toContain('TS_CLOUD_RPX_CURRENT_FRAGMENT=/etc/rpx/sites.d/my-app.json')
+    expect(script).toContain('candidate.proxies = [...next, ...retained]')
+  })
+
   // Fleet regression: the reload used to run the single-box provision script on
   // the APP targets — installing a pointless gateway on boxes designed to run
   // none — while the dedicated LB box kept its first-boot routes forever.
