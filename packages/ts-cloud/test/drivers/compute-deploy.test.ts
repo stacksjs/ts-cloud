@@ -781,7 +781,7 @@ describe('deployAllComputeSites auto-injects the management dashboard', () => {
     const text = dashboardCommands.join('\n')
     // Installs the CLI, runs it by module path, and keeps its state in shared/.
     expect(text).toContain('bun install --production --no-save')
-    expect(text).toContain('node_modules/@stacksjs/ts-cloud/dist/bin/cli.js dashboard:serve --box')
+    expect(text).toContain('node_modules/@stacksjs/ts-cloud/dist/bin/dashboard-server.js --box')
     expect(text).toContain('shared/.ts-cloud')
     rmSync(repo, { recursive: true, force: true })
   }, 60_000)

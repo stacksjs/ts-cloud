@@ -73,6 +73,29 @@ async function build() {
     process.exit(1)
   }
 
+  // The long-running dashboard must not boot the general-purpose CLI and its
+  // entire command graph. Build a dedicated production entry that contains
+  // only the dashboard server and its runtime dependencies.
+  const dashboardResult = await Bun.build({
+    entrypoints: [join(__dirname, 'bin/dashboard-server.ts')],
+    outdir: join(__dirname, 'dist/bin'),
+    target: 'node',
+    format: 'esm',
+    splitting: false,
+    minify: true,
+    define: {
+      'process.env.NODE_ENV': '"production"',
+    },
+  })
+
+  if (!dashboardResult.success) {
+    console.error('Dashboard server build failed:')
+    for (const log of dashboardResult.logs) {
+      console.error(log)
+    }
+    process.exit(1)
+  }
+
   // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package so
   // `cloud deploy` can auto-ship it from any consumer project (no local packages/ui).
   await bundleManagementUi()

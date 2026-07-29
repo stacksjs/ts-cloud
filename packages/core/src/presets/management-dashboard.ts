@@ -75,15 +75,14 @@ export interface ManagementDashboardOptions {
 export const DASHBOARD_STATE_DIR: string = DEFAULT_STATE_DIR
 
 /**
- * The dashboard service's entry point inside its release dir. The CLI is
- * installed from npm by the release's `bun install`, so this path exists on the
- * box without the deploy having to ship a binary.
+ * The dashboard service's dedicated production entry inside its release dir.
+ * It is installed from npm by the release's `bun install`, so this path exists
+ * on the box without the deploy having to ship a separate binary.
  *
- * Called through the module path rather than the `cloud` bin shim because the
- * systemd unit runs `/usr/local/bin/bun <args>` directly — a bare `cloud` would
- * be resolved by bun as a FILE to execute, and the service would never start.
+ * This avoids loading the general-purpose cloud CLI and every command module
+ * into a long-running monitoring process.
  */
-export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/cli.js'
+export const DASHBOARD_ENTRY = './node_modules/@stacksjs/ts-cloud/dist/bin/dashboard-server.js'
 
 /** The registrable apex (`acme.com`) of a hostname, naïvely the last two labels. */
 function apexOf(domain: string): string {
@@ -310,7 +309,7 @@ export function resolveManagementDashboardSites(
       deploy: 'server',
       domain,
       preStart: ['bun install --production --no-save'],
-      start: `bun ${DASHBOARD_ENTRY} dashboard:serve --box --host 127.0.0.1 --port ${port}`,
+      start: `bun ${DASHBOARD_ENTRY} --box --host 127.0.0.1 --port ${port}`,
       port,
       // The shared-box owner is the single background monitoring agent.
       // Attached tenant configs return no dashboard site above.

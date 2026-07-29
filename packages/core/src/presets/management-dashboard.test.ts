@@ -137,7 +137,7 @@ describe('resolveManagementDashboardSite', () => {
       port: 7700,
     })
     expect(r?.site.start).toBe(
-      'bun ./node_modules/@stacksjs/ts-cloud/dist/bin/cli.js dashboard:serve --box --host 127.0.0.1 --port 7700',
+      'bun ./node_modules/@stacksjs/ts-cloud/dist/bin/dashboard-server.js --box --host 127.0.0.1 --port 7700',
     )
     expect(r?.site.start).not.toMatch(/^bun cloud\b/)
     expect(r?.site.port).toBe(7700)
