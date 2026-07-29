@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.88...v0.7.89)
+
+## ⚡ Performance Improvements
+
+- add a dedicated Stacks scheduler runtime ([041cc64](https://github.com/stacksjs/ts-cloud/commit/041cc64)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.89 ([881838a](https://github.com/stacksjs/ts-cloud/commit/881838a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.87...v0.7.88)
 
 ## ⚡ Performance Improvements
