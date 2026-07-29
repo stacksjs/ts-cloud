@@ -112,6 +112,16 @@ describe('createCloudDriver', () => {
     expect(driver.name).toBe('hetzner')
     expect(driver.usesCloudFormation).toBe(false)
   })
+
+  it('allows an attached project to construct a state-only Hetzner driver', () => {
+    const config: CloudConfig = {
+      ...baseConfig,
+      cloud: { provider: 'hetzner', attachTo: 'stacks' },
+      hetzner: { location: 'fsn1' },
+    }
+    const driver = createCloudDriver({ config })
+    expect(driver.name).toBe('hetzner')
+  })
 })
 
 describe('HetznerDriver', () => {
@@ -474,6 +484,7 @@ describe('HetznerDriver', () => {
         status: 'running',
       },
     ])
+
   })
 
   it('pins targets from driver state when the box is shared (labels belong to another project)', async () => {
@@ -568,6 +579,61 @@ describe('HetznerDriver', () => {
     })
 
     expect(targets.map(target => target.id)).toEqual(['501'])
+  })
+
+  it('resolves an attached target from local state without a provider token', async () => {
+    await mkdir(dirname(driverStatePath(stackName)), { recursive: true })
+    await writeFile(
+      driverStatePath(stackName),
+      JSON.stringify({
+        provider: 'hetzner',
+        stackName,
+        serverId: 501,
+        serverName: 'stacks-production-app',
+        publicIp: '203.0.113.50',
+        publicIpv6: '2001:db8::50',
+      }),
+    )
+
+    const originalToken = process.env.HCLOUD_TOKEN
+    const originalAlias = process.env.HETZNER_API_TOKEN
+    delete process.env.HCLOUD_TOKEN
+    delete process.env.HETZNER_API_TOKEN
+    const targets = await (async () => {
+      try {
+        const driver = new HetznerDriver({ allowStateOnly: true })
+        const app = await driver.findComputeTargets({
+          slug: 'my-app',
+          environment: 'production',
+          role: 'app',
+          stackName,
+        })
+        const loadBalancer = await driver.findComputeTargets({
+          slug: 'my-app',
+          environment: 'production',
+          role: 'lb',
+          stackName,
+        })
+        return { app, loadBalancer }
+      }
+      finally {
+        if (originalToken === undefined) delete process.env.HCLOUD_TOKEN
+        else process.env.HCLOUD_TOKEN = originalToken
+        if (originalAlias === undefined) delete process.env.HETZNER_API_TOKEN
+        else process.env.HETZNER_API_TOKEN = originalAlias
+      }
+    })()
+
+    expect(targets.app).toEqual([
+      {
+        id: '501',
+        name: 'stacks-production-app',
+        publicIp: '203.0.113.50',
+        publicIpv6: '2001:db8::50',
+        status: 'running',
+      },
+    ])
+    expect(targets.loadBalancer).toEqual([])
   })
 
   it('ignores a state-pinned server that no longer exists and falls through to the unique candidate', async () => {

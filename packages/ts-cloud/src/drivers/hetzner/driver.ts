@@ -16,9 +16,9 @@ import { buildNotifierScript } from '../shared/notifications'
 import { buildPhpProvisionScript } from '../shared/php-provision'
 import { buildRpxConfig, buildRpxFragmentRefreshScript, buildRpxLbConfig, buildRpxProvisionScript, usesRpxProxy } from '../shared/rpx-gateway'
 import { buildAuthorizedKeysScript } from '../shared/ssh-keys'
-import { HetznerClient, normalizeSshPublicKey, resolveHetznerApiToken } from './client'
+import { HetznerClient, normalizeSshPublicKey } from './client'
 import { generateUbuntuAppCloudInit, wrapCloudInitUserData } from './cloud-init'
-import { resolveHetznerImage, resolveHetznerSettings } from './config'
+import { resolveHetznerApiToken, resolveHetznerImage, resolveHetznerSettings } from './config'
 import { buildHetznerFirewallRules } from './firewall-rules'
 import { matchesTsCloudLabels, resolveHetznerServerType, TS_CLOUD_LABEL_PREFIX, tsCloudLabels } from './instance-sizes'
 import { readDriverState, writeDriverState } from './state'
@@ -55,6 +55,12 @@ export function formatSshFailure(error: unknown): string {
 
 export interface HetznerDriverOptions {
   apiToken?: string
+  /**
+   * Permit SSH-only deploy operations to use an existing local state pin when
+   * no provider token is available. Intended for tenants attached to compute
+   * owned and provisioned by another project.
+   */
+  allowStateOnly?: boolean
   sshPrivateKeyPath?: string
   sshPublicKeyPath?: string
   sshUser?: string
@@ -92,14 +98,22 @@ export class HetznerDriver implements CloudDriver {
   private sshPublicKeyPath: string
   private sshUser: string
   private location: string
+  private stateOnly: boolean
   private waitForBoot: boolean
   private bootWait: Required<NonNullable<HetznerDriverOptions['bootWait']>>
 
   constructor(options: HetznerDriverOptions = {}) {
+    const apiToken = resolveHetznerApiToken(options.apiToken)
+    this.stateOnly = !options.client && !apiToken && options.allowStateOnly === true
+    if (!options.client && !apiToken && !this.stateOnly) {
+      throw new Error(
+        'Hetzner API token required. Set hetzner.apiToken in cloud.config.ts or HCLOUD_TOKEN / HETZNER_API_TOKEN.',
+      )
+    }
     this.client =
       options.client ??
       new HetznerClient({
-        apiToken: resolveHetznerApiToken(options.apiToken),
+        apiToken: apiToken ?? '',
       })
     // Every Hetzner setting resolves through one chain (see ./config), so the
     // driver, the API client and the dashboard cannot disagree about where a
@@ -1005,7 +1019,6 @@ export class HetznerDriver implements CloudDriver {
   }
 
   async findComputeTargets(options: FindComputeTargetsOptions): Promise<ComputeTarget[]> {
-    const servers = await this.client.listServers()
     const role = options.role || 'app'
     const toTarget = (server: HetznerServer): ComputeTarget => ({
       id: String(server.id),
@@ -1037,6 +1050,24 @@ export class HetznerDriver implements CloudDriver {
               : [state?.servicesServerId],
         ),
       ].filter((id): id is number => typeof id === 'number')
+      if (this.stateOnly) {
+        if (pinnedIds.length > 0 && state?.publicIp) {
+          return pinnedIds.map((id) => ({
+            id: String(id),
+            name: id === state.serverId ? state.serverName : undefined,
+            publicIp: state.publicIp,
+            publicIpv6: state.publicIpv6,
+            status: 'running',
+          }))
+        }
+        if (role !== 'app')
+          return []
+        throw new Error(
+          `Hetzner API token required because '${options.stackName ?? `${options.slug}-${options.environment}`}' has no complete local compute state pin.`,
+        )
+      }
+
+      const servers = await this.client.listServers()
       if (pinnedIds.length > 0) {
         const pinned: HetznerServer[] = []
         for (const id of pinnedIds) {
@@ -1045,28 +1076,40 @@ export class HetznerDriver implements CloudDriver {
         }
         if (pinned.length > 0) return pinned.map(toTarget)
       }
+
+      // 2) Exact match by this project's labels when there is no live state pin.
+      const exact = servers.filter((server) =>
+        matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
+      )
+      if (exact.length > 0) return exact.map(toTarget)
+
+      // 3) Adopt-on-rename (mirrors findExistingServer): when a project's slug
+      //    changed but the same box still serves it, target the unique ts-cloud
+      //    app server for this environment rather than reporting none - only when
+      //    unambiguous, so a release never ships to another project's server.
+      if (role === 'app') {
+        const candidates = servers.filter(
+          (server) =>
+            server.status !== 'off' &&
+            server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud' &&
+            server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === options.environment &&
+            server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
+        )
+        if (candidates.length === 1) return candidates.map(toTarget)
+      }
+
+      return []
     }
 
-    // 2) Exact match by this project's labels when there is no live state pin.
+    if (this.stateOnly) {
+      throw new Error(`Hetzner API token required to discover '${role}' compute targets.`)
+    }
+
+    const servers = await this.client.listServers()
     const exact = servers.filter((server) =>
       matchesTsCloudLabels(server.labels, options.slug, options.environment, role),
     )
     if (exact.length > 0) return exact.map(toTarget)
-
-    // 3) Adopt-on-rename (mirrors findExistingServer): when a project's slug
-    //    changed but the same box still serves it, target the unique ts-cloud
-    //    app server for this environment rather than reporting none — only when
-    //    unambiguous, so a release never ships to another project's server.
-    if (role === 'app') {
-      const candidates = servers.filter(
-        (server) =>
-          server.status !== 'off' &&
-          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/managed-by`] === 'ts-cloud' &&
-          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/environment`] === options.environment &&
-          server.labels?.[`${TS_CLOUD_LABEL_PREFIX}/role`] === 'app',
-      )
-      if (candidates.length === 1) return candidates.map(toTarget)
-    }
 
     return []
   }

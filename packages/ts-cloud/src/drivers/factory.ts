@@ -30,6 +30,7 @@ export function createCloudDriver(options: CreateCloudDriverOptions): CloudDrive
       // config directly, per-call, since compute.image can override it.)
       return new HetznerDriver({
         apiToken: options.config.hetzner?.apiToken,
+        allowStateOnly: Boolean(options.config.cloud?.attachTo),
         sshPrivateKeyPath: options.config.hetzner?.sshPrivateKeyPath,
         sshPublicKeyPath: options.config.hetzner?.sshPublicKeyPath,
         sshUser: options.config.hetzner?.sshUser,
