@@ -96,6 +96,30 @@ async function build() {
     process.exit(1)
   }
 
+  // The Stacks scheduler action is itself the long-lived process. Invoking it
+  // through Buddy leaves the full CLI command graph resident while Buddy waits
+  // on the child forever. This dedicated production entry resolves and imports
+  // only the app's canonical scheduler action.
+  const schedulerResult = await Bun.build({
+    entrypoints: [join(__dirname, 'bin/stacks-scheduler.ts')],
+    outdir: join(__dirname, 'dist/bin'),
+    target: 'node',
+    format: 'esm',
+    splitting: false,
+    minify: true,
+    define: {
+      'process.env.NODE_ENV': '"production"',
+    },
+  })
+
+  if (!schedulerResult.success) {
+    console.error('Stacks scheduler build failed:')
+    for (const log of schedulerResult.logs) {
+      console.error(log)
+    }
+    process.exit(1)
+  }
+
   // Bundle the management dashboard (the @ts-cloud/ui stx app) into the package so
   // `cloud deploy` can auto-ship it from any consumer project (no local packages/ui).
   await bundleManagementUi()

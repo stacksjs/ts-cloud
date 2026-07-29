@@ -14,7 +14,9 @@ describe('buildSiteServicesScript — Stacks (default framework)', () => {
     const site: SiteConfig = { root: '.', scheduler: true }
     const script = buildSiteServicesScript({ ...base, site }).join('\n')
     expect(script).toContain('/etc/systemd/system/acme-app-scheduler.service')
-    expect(script).toContain('/usr/local/bin/bun storage/framework/core/buddy/src/cli.ts schedule:run')
+    expect(script).toContain(
+      '/usr/local/bin/bun node_modules/@stacksjs/ts-cloud/dist/bin/stacks-scheduler.js',
+    )
     expect(script).toContain('systemctl enable acme-app-scheduler.service')
     expect(script).not.toContain('php artisan')
     // Stacks scheduler is a daemon → no cron.d entry.

@@ -65,9 +65,10 @@ export interface AppFrameworkDriver {
 /** Loads pantry's env (PATH + LD_LIBRARY_PATH) so bare `php`/`composer` resolve. */
 const PANTRY_ENV_EVAL = `eval "$(cd ${PANTRY_PROJECT_DIR} && pantry env 2>/dev/null)"`
 
-/** The ts-cloud-installed bun (see ubuntu-bootstrap) + the Stacks CLI entry. */
+/** The ts-cloud-installed bun (see ubuntu-bootstrap) + dedicated runtime entries. */
 const BUN_BIN = '/usr/local/bin/bun'
 const STACKS_CLI = 'storage/framework/core/buddy/src/cli.ts'
+const STACKS_SCHEDULER = 'node_modules/@stacksjs/ts-cloud/dist/bin/stacks-scheduler.js'
 
 /**
  * Stacks (Bun) — the default. bun lives at an absolute path installed by the box
@@ -85,10 +86,11 @@ export const stacksDriver: AppFrameworkDriver = {
     APP_ENV: 'production',
     NODE_ENV: 'production',
   },
-  // `buddy schedule:run` stays alive (in-process timers) → one always-on unit.
-  // systemd sets WorkingDirectory to the release dir, so the CLI path is relative.
+  // The scheduler action stays alive through its in-process timers. Launch it
+  // through ts-cloud's dedicated production entry so Buddy's full command
+  // dispatcher does not remain resident while waiting on a child process.
   schedulerMode: 'daemon',
-  schedulerCommand: () => `${BUN_BIN} ${STACKS_CLI} schedule:run`,
+  schedulerCommand: () => `${BUN_BIN} ${STACKS_SCHEDULER}`,
   queueWorkerCommand: (worker, { current }) => {
     const flags = [
       `--queue=${worker.queue || 'default'}`,
