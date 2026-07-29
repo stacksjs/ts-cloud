@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.91...v0.7.92)
+
+## 🐛 Bug Fixes
+
+- preserve dashboard routes on partial deploys ([2c57998](https://github.com/stacksjs/ts-cloud/commit/2c57998)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.92 ([f04016b](https://github.com/stacksjs/ts-cloud/commit/f04016b)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.90...v0.7.91)
 
 ## 🐛 Bug Fixes
