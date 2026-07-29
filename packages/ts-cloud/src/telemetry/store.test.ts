@@ -133,6 +133,52 @@ describe('telemetry safety and persistence', () => {
     expect(resumed.records.map((item) => item.message)).toEqual(['second'])
   })
 
+  it('maintains exact source status rollups across inserts and retention', () => {
+    const { controlPlane, project, environment, resource, telemetry } = fixture()
+    telemetry.appendMany([
+      {
+        projectId: project.id,
+        environmentId: environment.id,
+        resourceId: resource.id,
+        kind: 'metric',
+        source: 'host',
+        name: 'cpu',
+        timestamp: '2026-06-01T00:00:00Z',
+        value: 10,
+      },
+      {
+        projectId: project.id,
+        environmentId: environment.id,
+        resourceId: resource.id,
+        kind: 'metric',
+        source: 'host',
+        name: 'cpu',
+        timestamp: '2026-07-21T11:59:00Z',
+        value: 20,
+      },
+    ])
+
+    expect(telemetry.status(project.id, environment.id, 30, 1, [resource.id])).toMatchObject([
+      {
+        source: 'host',
+        lastObservedAt: '2026-07-21T12:00:00.000Z',
+        freshness: 'live',
+      },
+    ])
+    expect(telemetry.status(project.id, environment.id, 30, 1, [])).toEqual([])
+
+    telemetry.enforceRetention(
+      { rawDays: 30, downsampleAfterDays: 30, downsampleBucketMs: 3_600_000, maxRecords: 100 },
+      project.id,
+    )
+    const rollup = controlPlane.database
+      .query<{ count: number }, []>(
+        'SELECT SUM(record_count) count FROM telemetry_source_rollups',
+      )
+      .get()
+    expect(Number(rollup?.count)).toBe(1)
+  })
+
   it('saves bounded actor-scoped queries without allowing project changes', () => {
     const { controlPlane, project, environment, telemetry } = fixture()
     const actor = controlPlane.createActor({ kind: 'user', externalId: 'user:chris', displayName: 'Chris' })

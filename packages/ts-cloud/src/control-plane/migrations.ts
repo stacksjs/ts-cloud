@@ -4,7 +4,7 @@ export interface ControlPlaneMigration {
   sql: string
 }
 
-export const CONTROL_PLANE_SCHEMA_VERSION: number = 35
+export const CONTROL_PLANE_SCHEMA_VERSION: number = 36
 
 export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
   {
@@ -1419,5 +1419,50 @@ export const controlPlaneMigrations: readonly ControlPlaneMigration[] = [
     CREATE INDEX cleanup_plan_status ON cleanup_plans(project_id,status,expires_at);
     CREATE INDEX dr_drill_status ON disaster_recovery_drills(project_id,status,created_at DESC);
   `,
+  },
+  {
+    version: 36,
+    name: 'telemetry_source_rollups',
+    sql: `
+      CREATE TABLE telemetry_source_rollups (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        environment_id TEXT NOT NULL DEFAULT '',
+        resource_id TEXT NOT NULL DEFAULT '',
+        source TEXT NOT NULL,
+        first_observed_at TEXT NOT NULL,
+        latest_observed_at TEXT NOT NULL,
+        ingested_bytes INTEGER NOT NULL DEFAULT 0 CHECK (ingested_bytes >= 0),
+        record_count INTEGER NOT NULL DEFAULT 0 CHECK (record_count >= 0),
+        PRIMARY KEY(project_id, environment_id, resource_id, source)
+      ) STRICT;
+
+      INSERT INTO telemetry_source_rollups (
+        project_id, environment_id, resource_id, source,
+        first_observed_at, latest_observed_at, ingested_bytes, record_count
+      )
+      SELECT
+        project_id, COALESCE(environment_id, ''), COALESCE(resource_id, ''), source,
+        MIN(observed_at), MAX(observed_at), SUM(ingested_bytes), COUNT(*)
+      FROM telemetry_records
+      GROUP BY project_id, COALESCE(environment_id, ''), COALESCE(resource_id, ''), source;
+
+      CREATE TRIGGER telemetry_source_rollups_insert
+      AFTER INSERT ON telemetry_records
+      BEGIN
+        INSERT INTO telemetry_source_rollups (
+          project_id, environment_id, resource_id, source,
+          first_observed_at, latest_observed_at, ingested_bytes, record_count
+        )
+        VALUES (
+          NEW.project_id, COALESCE(NEW.environment_id, ''), COALESCE(NEW.resource_id, ''), NEW.source,
+          NEW.observed_at, NEW.observed_at, NEW.ingested_bytes, 1
+        )
+        ON CONFLICT(project_id, environment_id, resource_id, source) DO UPDATE SET
+          first_observed_at = MIN(first_observed_at, excluded.first_observed_at),
+          latest_observed_at = MAX(latest_observed_at, excluded.latest_observed_at),
+          ingested_bytes = ingested_bytes + excluded.ingested_bytes,
+          record_count = record_count + 1;
+      END;
+    `,
   },
 ]

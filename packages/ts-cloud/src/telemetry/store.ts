@@ -412,11 +412,12 @@ export class TelemetryStore {
     const environment = environmentId ? ' AND environment_id=?' : ''
     if (environmentId) bindings.push(environmentId)
     const boundedResources = [...new Set(resourceIds ?? [])].slice(0, 100)
+    if (resourceIds && boundedResources.length === 0) return []
     const resources = resourceIds ? ` AND resource_id IN (${boundedResources.map(() => '?').join(',') || "''"})` : ''
     bindings.push(...boundedResources)
     const rows = this.controlPlane.database
       .query<Row, SQLQueryBindings[]>(
-        `SELECT source, MAX(observed_at) latest, SUM(ingested_bytes) bytes, COUNT(*) count, MIN(observed_at) first FROM telemetry_records WHERE project_id=?${environment}${resources} GROUP BY source`,
+        `SELECT source, MAX(latest_observed_at) latest, SUM(ingested_bytes) bytes, SUM(record_count) count, MIN(first_observed_at) first FROM telemetry_source_rollups WHERE project_id=?${environment}${resources} GROUP BY source`,
       )
       .all(...bindings)
     const now = this.now().getTime()
@@ -590,6 +591,31 @@ export class TelemetryStore {
         `DELETE FROM telemetry_records WHERE id IN (SELECT id FROM telemetry_records${projectId ? ' WHERE project_id=?' : ''} ORDER BY timestamp ASC LIMIT ?)`,
         projectId ? [projectId, excess] : [excess],
       )
+    this.rebuildStatusRollups(projectId)
     return { deleted: removed + excess, ...downsampled }
+  }
+
+  private rebuildStatusRollups(projectId?: string): void {
+    const scope = projectId ? ' WHERE project_id=?' : ''
+    const bindings: SQLQueryBindings[] = projectId ? [projectId] : []
+    const rebuild = this.controlPlane.database.transaction(() => {
+      this.controlPlane.database.run(
+        `DELETE FROM telemetry_source_rollups${scope}`,
+        bindings,
+      )
+      this.controlPlane.database.run(
+        `INSERT INTO telemetry_source_rollups (
+          project_id, environment_id, resource_id, source,
+          first_observed_at, latest_observed_at, ingested_bytes, record_count
+        )
+        SELECT
+          project_id, COALESCE(environment_id, ''), COALESCE(resource_id, ''), source,
+          MIN(observed_at), MAX(observed_at), SUM(ingested_bytes), COUNT(*)
+        FROM telemetry_records${scope}
+        GROUP BY project_id, COALESCE(environment_id, ''), COALESCE(resource_id, ''), source`,
+        bindings,
+      )
+    })
+    rebuild()
   }
 }
