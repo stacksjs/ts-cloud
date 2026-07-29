@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test'
-import { TelemetryCollectionCache, telemetryRecordsFromLog } from './telemetry-collection'
+import {
+  TelemetryCollectionCache,
+  TelemetryMaintenanceGate,
+  telemetryRecordsFromLog,
+} from './telemetry-collection'
 
 describe('telemetry log correlation', () => {
   it('derives request golden signals without retaining query values or bodies', () => {
@@ -53,5 +57,21 @@ describe('telemetry provider cache', () => {
     expect(await cache.getOrCreate('aws', 300_000, true, load)).toEqual({ value: 2, cached: false })
     now += 300_001
     expect(await cache.getOrCreate('aws', 300_000, false, load)).toEqual({ value: 3, cached: false })
+  })
+})
+
+describe('telemetry maintenance gate', () => {
+  it('throttles background maintenance while allowing full refreshes to force it', () => {
+    let now = 1_000
+    const gate = new TelemetryMaintenanceGate(() => now)
+    expect(gate.shouldRun('project', 60_000)).toBeTrue()
+    expect(gate.shouldRun('project', 60_000)).toBeFalse()
+    now += 30_000
+    expect(gate.shouldRun('project', 60_000)).toBeFalse()
+    expect(gate.shouldRun('project', 60_000, true)).toBeTrue()
+    now += 59_999
+    expect(gate.shouldRun('project', 60_000)).toBeFalse()
+    now += 1
+    expect(gate.shouldRun('project', 60_000)).toBeTrue()
   })
 })

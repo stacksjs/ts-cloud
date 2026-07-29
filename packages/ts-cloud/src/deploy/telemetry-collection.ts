@@ -34,8 +34,22 @@ export class TelemetryCollectionCache<T> {
   }
 }
 
+export class TelemetryMaintenanceGate {
+  private readonly lastRun = new Map<string, number>()
+  constructor(private readonly now: () => number = Date.now) {}
+  shouldRun(key: string, intervalMs: number, force = false): boolean {
+    const now = this.now()
+    const lastRun = this.lastRun.get(key)
+    if (!force && lastRun != null && now - lastRun < intervalMs) return false
+    this.lastRun.set(key, now)
+    return true
+  }
+}
+
 const collectionCache = new TelemetryCollectionCache<TelemetryCollectionResult>()
+const maintenanceGate = new TelemetryMaintenanceGate()
 const MAX_COLLECTED_LOGS = 2_000
+const RETENTION_MAINTENANCE_INTERVAL_MS = 60 * 60_000
 
 export interface TelemetryCollectionResult {
   collected: number
@@ -565,24 +579,30 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
       errors.push({ source: 'runtime', message: error instanceof Error ? error.message : String(error) })
     }
 
-  for (const event of context.controlPlane.listEvents({ projectId: context.projectId, limit: 1_000 })) {
-    const payload = event.payload as Record<string, JsonValue>
-    records.push({
-      ...scope,
-      id: `telemetry:event:${event.id}`,
-      resourceId: event.resourceId,
-      kind: 'event',
-      source: 'control-plane',
-      name: event.type,
-      timestamp: event.createdAt,
-      level: event.level,
-      message: event.type,
-      deploymentId: event.operationId,
-      releaseId: typeof payload.releaseId === 'string' ? payload.releaseId : undefined,
-      traceId: event.correlationId,
-      attributes: payload,
-    })
-  }
+  // Lightweight minute-level host sampling should remain proportional to the
+  // handful of new metrics it writes. Replaying up to 1,000 immutable
+  // control-plane events on every sample only produces duplicate INSERT OR
+  // IGNORE work. Full and operator-triggered collections still correlate the
+  // complete event history.
+  if (!context.lightweight)
+    for (const event of context.controlPlane.listEvents({ projectId: context.projectId, limit: 1_000 })) {
+      const payload = event.payload as Record<string, JsonValue>
+      records.push({
+        ...scope,
+        id: `telemetry:event:${event.id}`,
+        resourceId: event.resourceId,
+        kind: 'event',
+        source: 'control-plane',
+        name: event.type,
+        timestamp: event.createdAt,
+        level: event.level,
+        message: event.type,
+        deploymentId: event.operationId,
+        releaseId: typeof payload.releaseId === 'string' ? payload.releaseId : undefined,
+        traceId: event.correlationId,
+        attributes: payload,
+      })
+    }
 
   const retained = records
     .filter((record) => retainedByPolicy(record, policy))
@@ -596,7 +616,17 @@ async function collectNow(context: TelemetryCollectionContext): Promise<Telemetr
           record.name.startsWith('request.')),
     }))
   const inserted = telemetry.appendMany(retained).length
-  telemetry.enforceRetention(policy, context.projectId)
+  // Retention scans and rollups grow with the telemetry table. Full/manual
+  // collections run maintenance immediately; background lightweight samples
+  // run it at most hourly instead of rescanning the table every minute.
+  if (
+    maintenanceGate.shouldRun(
+      context.projectId,
+      RETENTION_MAINTENANCE_INTERVAL_MS,
+      !context.lightweight,
+    )
+  )
+    telemetry.enforceRetention(policy, context.projectId)
   const statuses = telemetry.status(context.projectId, context.environmentId, policy.rawDays, policy.samplingRate)
   for (const error of errors)
     if (!statuses.some((status) => status.source === error.source))
