@@ -1,7 +1,7 @@
 import type { Changes, SQLQueryBindings } from 'bun:sqlite'
 import type { AppendEventInput, AuthorizationGrant, AuthorizationScope, AuthorizationScopeType, AuthorizationTarget, CompactResult, ControlPlaneActor, ControlPlaneEnvironment, ControlPlaneEvent, ControlPlaneHealth, ControlPlaneOperation, ControlPlaneOrganization, ControlPlaneProject, ControlPlaneResource, ControlPlaneSnapshot, ControlPlaneStoreOptions, ControlPlaneTag, CreateActorInput, CreateEnvironmentInput, CreateGrantInput, CreateInvitationInput, CreateMembershipInput, CreateOperationInput, CreateOrganizationInput, CreateProjectInput, CreateResourceInput, EventListOptions, ImportSnapshotOptions, JsonValue, NavigationPreference, OperationListOptions, OperationState, OrganizationInvitation, OrganizationMembership, ReconcileResult, SavedFilter, TransitionOperationInput, UpdateProjectInput, UpdateResourceInput } from './types'
 import { createHash, randomBytes } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { resolveStatePath, statePath } from '@ts-cloud/core'
 import { Database } from 'bun:sqlite'
@@ -349,6 +349,16 @@ export class ControlPlaneStore {
     }
   }
 
+  private backupTo(path: string): void {
+    // SQLite writes VACUUM INTO incrementally. database.serialize() duplicates
+    // the complete database in the Bun heap, which makes a routine schema
+    // migration consume hundreds of megabytes once telemetry history grows.
+    this.database.run('VACUUM INTO ?', [path])
+    try {
+      chmodSync(path, 0o600)
+    } catch {}
+  }
+
   private migrate(): void {
     const row = this.database.query<Row, []>('PRAGMA user_version').get()
     const current = Number(row?.user_version ?? 0)
@@ -359,7 +369,7 @@ export class ControlPlaneStore {
     let backupPath: string | undefined
     if (current > 0 && this.path !== ':memory:') {
       backupPath = `${this.path}.v${current}.${Date.now()}.bak`
-      writeFileSync(backupPath, this.database.serialize(), { mode: 0o600 })
+      this.backupTo(backupPath)
     }
 
     try {
@@ -723,7 +733,7 @@ export class ControlPlaneStore {
   }
 
   listMemberships(organizationId: string, options: { includeRevoked?: boolean } = {}): OrganizationMembership[] {
-    const revoked = options.includeRevoked ? '' : "AND status = 'active'"
+    const revoked = options.includeRevoked ? '' : `AND status = 'active'`
     return this.database
       .query<Row, [string]>(
         `SELECT * FROM organization_memberships WHERE organization_id = ? ${revoked} ORDER BY created_at, id`,
@@ -802,7 +812,7 @@ export class ControlPlaneStore {
     const owners = Number(
       this.database
         .query<Row, [string, string]>(
-          "SELECT COUNT(*) AS count FROM organization_memberships WHERE organization_id = ? AND status = ? AND role_template = 'owner'",
+          `SELECT COUNT(*) AS count FROM organization_memberships WHERE organization_id = ? AND status = ? AND role_template = 'owner'`,
         )
         .get(current.organizationId, 'active')?.count ?? 0,
     )
@@ -1535,7 +1545,7 @@ export class ControlPlaneStore {
   createBackup(reason: string = 'manual'): string {
     if (this.path === ':memory:') throw new Error('Cannot create a filesystem backup for an in-memory control plane')
     const backupPath = `${this.path}.${Date.now()}.bak`
-    writeFileSync(backupPath, this.database.serialize(), { mode: 0o600 })
+    this.backupTo(backupPath)
     this.setSetting('storage.last_backup', { path: backupPath, createdAt: this.now(), reason })
     return backupPath
   }
