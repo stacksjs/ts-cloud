@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.87...v0.7.88)
+
+## ⚡ Performance Improvements
+
+- ship a dedicated dashboard runtime ([55d6044](https://github.com/stacksjs/ts-cloud/commit/55d6044)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.88 ([7ad1b6f](https://github.com/stacksjs/ts-cloud/commit/7ad1b6f)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.86...v0.7.87)
 
 ## 🐛 Bug Fixes
