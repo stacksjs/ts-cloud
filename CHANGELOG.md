@@ -1,3 +1,17 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.89...v0.7.90)
+
+## ⚡ Performance Improvements
+
+- reduce dashboard telemetry maintenance ([b44d0a0](https://github.com/stacksjs/ts-cloud/commit/b44d0a0)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.90 ([f487a3a](https://github.com/stacksjs/ts-cloud/commit/f487a3a)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.88...v0.7.89)
 
 ## ⚡ Performance Improvements
