@@ -74,8 +74,10 @@ export interface HetznerServer {
   name: string
   status: string
   public_net: {
-    ipv4?: { ip: string }
-    ipv6?: { ip: string }
+    // The id is what primary-IP assignment works in terms of; the address
+    // itself cannot be moved between servers by value.
+    ipv4?: { ip: string; id?: number }
+    ipv6?: { ip: string; id?: number }
   }
   private_net?: Array<{ ip: string }>
   labels?: Record<string, string>
@@ -109,6 +111,33 @@ export interface HetznerSshKey {
   fingerprint: string
   public_key: string
   labels?: Record<string, string>
+}
+
+export interface HetznerImage {
+  id: number
+  type: string
+  status: string
+  name?: string | null
+  description?: string
+  /** Size of the disk the image was taken from, in GB. */
+  disk_size?: number
+  /** Size of the image itself once stored, in GB. */
+  image_size?: number | null
+  architecture?: string
+  created_from?: { id: number; name: string }
+  labels?: Record<string, string>
+}
+
+export interface HetznerPrimaryIp {
+  id: number
+  ip: string
+  type: 'ipv4' | 'ipv6'
+  name?: string
+  assignee_id?: number | null
+  assignee_type?: string
+  auto_delete?: boolean
+  /** Current API shape omits this; retained for recorded fixtures. */
+  datacenter?: { name: string; location?: { name: string } }
 }
 
 export interface HetznerAction {
@@ -481,6 +510,125 @@ export class HetznerClient {
     const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/change_type`, {
       server_type: serverType,
       upgrade_disk: upgradeDisk,
+    })
+    return data.action
+  }
+
+  /**
+   * Power a server off at the virtual power button.
+   *
+   * Distinct from {@link shutdownServer}, which asks the guest to shut down
+   * cleanly via ACPI and does nothing at all when the guest ignores it. Every
+   * operation that requires a stopped server — rebuild, primary-IP moves —
+   * needs the server to actually reach `off`, so callers shut down first and
+   * fall back to this.
+   */
+  async powerOffServer(serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/poweroff`, {})
+    return data.action
+  }
+
+  /**
+   * Stop a server, preferring a clean guest shutdown.
+   *
+   * A guest that has not stopped within the grace period is powered off at the
+   * button: waiting forever on an unresponsive box is worse than a hard stop
+   * on a machine whose disk is about to be replaced anyway.
+   */
+  async stopServer(
+    serverId: number,
+    options?: { gracefulWaitMs?: number; pollIntervalMs?: number },
+  ): Promise<void> {
+    const server = await this.getServer(serverId)
+    if (server.status === 'off') return
+
+    await this.shutdownServer(serverId)
+
+    const grace = options?.gracefulWaitMs ?? 120000
+    const poll = options?.pollIntervalMs ?? 3000
+    const start = Date.now()
+    while (Date.now() - start < grace) {
+      if ((await this.getServer(serverId)).status === 'off') return
+      await new Promise(resolve => setTimeout(resolve, poll))
+    }
+
+    const action = await this.powerOffServer(serverId)
+    await this.waitForAction(action.id)
+    await this.waitForServerStatus(serverId, 'off')
+  }
+
+  async renameServer(serverId: number, name: string): Promise<HetznerServer> {
+    const data = await this.request<{ server: HetznerServer }>('PUT', `/servers/${serverId}`, { name })
+    return data.server
+  }
+
+  async listImages(options?: { type?: string }): Promise<HetznerImage[]> {
+    const query = options?.type ? `?type=${encodeURIComponent(options.type)}` : ''
+    return this.requestAll<'images', HetznerImage>(`/images${query}`, 'images')
+  }
+
+  async getImage(id: number): Promise<HetznerImage> {
+    const data = await this.request<{ image: HetznerImage }>('GET', `/images/${id}`)
+    return data.image
+  }
+
+  /**
+   * Snapshot a server's disk into a reusable image.
+   *
+   * Hetzner will snapshot a running server, but the result is a crash-consistent
+   * copy: whatever was mid-write is captured mid-write. For anything holding a
+   * database open that is a restore-time problem rather than a snapshot-time
+   * one, so callers that care stop the server first.
+   */
+  async createImage(
+    serverId: number,
+    options: { description: string; type?: 'snapshot' | 'backup'; labels?: Record<string, string> },
+  ): Promise<{ image: HetznerImage; action: HetznerAction }> {
+    return this.request<{ image: HetznerImage; action: HetznerAction }>(
+      'POST',
+      `/servers/${serverId}/actions/create_image`,
+      { description: options.description, type: options.type ?? 'snapshot', labels: options.labels },
+    )
+  }
+
+  async deleteImage(imageId: number): Promise<void> {
+    await this.request('DELETE', `/images/${imageId}`)
+  }
+
+  /**
+   * Replace a server's disk with an image.
+   *
+   * Destructive and not undoable: everything on the target's disk is gone the
+   * moment this succeeds. The image's `disk_size` must be no larger than the
+   * target server type's disk, which is the asymmetry that decides which way a
+   * migration between two differently sized servers can run.
+   */
+  async rebuildServer(serverId: number, image: number | string): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/servers/${serverId}/actions/rebuild`, {
+      image,
+    })
+    return data.action
+  }
+
+  async listPrimaryIps(): Promise<HetznerPrimaryIp[]> {
+    return this.requestAll<'primary_ips', HetznerPrimaryIp>('/primary_ips', 'primary_ips')
+  }
+
+  /**
+   * Detach a primary IP from whatever server currently holds it.
+   *
+   * The server has to be off. Hetzner rejects this outright on a running
+   * server rather than dropping its address underneath it.
+   */
+  async unassignPrimaryIp(ipId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/primary_ips/${ipId}/actions/unassign`, {})
+    return data.action
+  }
+
+  async assignPrimaryIp(ipId: number, serverId: number): Promise<HetznerAction> {
+    const data = await this.request<{ action: HetznerAction }>('POST', `/primary_ips/${ipId}/actions/assign`, {
+      assignee_id: serverId,
+      assignee_type: 'server',
     })
     return data.action
   }

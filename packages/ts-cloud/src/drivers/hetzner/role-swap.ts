@@ -34,8 +34,13 @@
 export interface SwapServer {
   id: number
   name: string
-  /** Datacenter, not location: primary IPs are bound at datacenter granularity. */
-  datacenter: string
+  /**
+   * Where the server sits, for the purpose of deciding whether an address can
+   * move to it. Derive it with {@link placementOf} rather than reading a field
+   * off the API response, and see that function for why. Null when unknown,
+   * which is a blocker rather than a pass.
+   */
+  placement: string | null
   serverType: string
   diskSizeGb: number
   /** Bytes actually in use, so a move onto a smaller disk can be refused early. */
@@ -80,6 +85,32 @@ export function fits(usedGb: number, targetDiskGb: number, marginRatio = 1.3): b
 }
 
 /**
+ * Where a server sits, from whichever field the API still reports.
+ *
+ * Primary IPs are bound at datacenter granularity, so `datacenter` is the
+ * field this wants. The API has stopped returning it — `datacenter` is now
+ * null on both the server and the primary IP, leaving only `location`.
+ *
+ * Reading the missing field directly is worse than useless: two servers in
+ * different datacenters both report `undefined`, `undefined === undefined`,
+ * and the guard that exists to stop a cross-datacenter swap waves it through.
+ * The failure then lands halfway, with both boxes off and their addresses
+ * detached, which is the exact outcome the check was written to prevent.
+ *
+ * So: prefer the datacenter when present, fall back to the location, and
+ * return null when neither is known so the caller can refuse. Location is a
+ * sound proxy today because every Hetzner location contains exactly one
+ * datacenter; if that ever stops being true, this returns the coarser answer
+ * and the assign call is the backstop.
+ */
+export function placementOf(server: {
+  datacenter?: { name?: string } | null
+  location?: { name?: string } | null
+}): string | null {
+  return server.datacenter?.name ?? server.location?.name ?? null
+}
+
+/**
  * The ordered steps to exchange two servers' addresses and names.
  *
  * Both are powered off before either address moves. Hetzner refuses to detach a
@@ -93,9 +124,18 @@ export function planRoleSwap(a: SwapServer, b: SwapServer): SwapPlan {
   if (a.id === b.id)
     blockers.push('A server cannot swap roles with itself')
 
-  if (a.datacenter !== b.datacenter) {
+  // Fail closed on an unknown placement. Treating "we could not tell" as
+  // "they match" is how a cross-datacenter swap gets attempted.
+  if (a.placement === null || b.placement === null) {
+    const unknown = [a, b].filter(s => s.placement === null).map(s => s.name).join(' and ')
     blockers.push(
-      `A primary IP cannot move between datacenters: ${a.name} is in ${a.datacenter} and ${b.name} is in ${b.datacenter}. `
+      `Cannot tell which datacenter ${unknown} is in, and a primary IP cannot move between datacenters. `
+      + 'Confirm both are in the same one before swapping.',
+    )
+  }
+  else if (a.placement !== b.placement) {
+    blockers.push(
+      `A primary IP cannot move between datacenters: ${a.name} is in ${a.placement} and ${b.name} is in ${b.placement}. `
       + 'Rebuild one of them in the other datacenter first.',
     )
   }

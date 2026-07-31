@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { canMigrateTo, fits, planRoleSwap, resizeAdvice, type SwapServer } from './role-swap'
+import { canMigrateTo, fits, placementOf, planRoleSwap, resizeAdvice, type SwapServer } from './role-swap'
 
 /**
  * Swapping two servers' roles is the answer when a server type has been retired
@@ -12,7 +12,7 @@ function server(overrides: Partial<SwapServer> = {}): SwapServer {
   return {
     id: 1,
     name: 'alpha',
-    datacenter: 'fsn1-dc14',
+    placement: 'fsn1-dc14',
     serverType: 'cx33',
     diskSizeGb: 80,
     usedGb: 20,
@@ -92,7 +92,7 @@ describe('planRoleSwap', () => {
   })
 
   it('refuses a swap across datacenters', () => {
-    const elsewhere = server({ id: 2, name: 'beta', datacenter: 'nbg1-dc3', primaryIpId: 22 })
+    const elsewhere = server({ id: 2, name: 'beta', placement: 'nbg1-dc3', primaryIpId: 22 })
     const plan = planRoleSwap(server(), elsewhere)
 
     expect(plan.ok).toBe(false)
@@ -120,16 +120,81 @@ describe('planRoleSwap', () => {
   })
 
   it('reports every blocker at once rather than the first', () => {
-    const bad = server({ id: 2, name: 'beta', datacenter: 'nbg1-dc3', primaryIpId: null, primaryIp: null, usedGb: 500 })
+    const bad = server({ id: 2, name: 'beta', placement: 'nbg1-dc3', primaryIpId: null, primaryIp: null, usedGb: 500 })
     const plan = planRoleSwap(server(), bad)
 
     expect(plan.blockers.length).toBeGreaterThanOrEqual(2)
   })
 
   it('emits no steps at all when blocked', () => {
-    const plan = planRoleSwap(server(), server({ id: 2, datacenter: 'other', primaryIpId: 22 }))
+    const plan = planRoleSwap(server(), server({ id: 2, placement: 'other', primaryIpId: 22 }))
 
     expect(plan.steps).toEqual([])
+  })
+})
+
+describe('placementOf', () => {
+  it('prefers the datacenter when the API still reports one', () => {
+    expect(placementOf({ datacenter: { name: 'fsn1-dc14' }, location: { name: 'fsn1' } })).toBe('fsn1-dc14')
+  })
+
+  it('falls back to the location now that datacenter is gone', () => {
+    // The current API shape: datacenter null, location present.
+    expect(placementOf({ datacenter: null, location: { name: 'fsn1' } })).toBe('fsn1')
+  })
+
+  it('reports null when neither field is present', () => {
+    expect(placementOf({})).toBeNull()
+  })
+})
+
+describe('placement is not silently unknown', () => {
+  /**
+   * The regression this guards. The API stopped returning `datacenter`, so a
+   * plan built by reading that field compared undefined with undefined, called
+   * it a match, and cleared a swap between two servers in different
+   * datacenters. The unassign succeeds, the assign fails, and both boxes are
+   * left off with no address.
+   */
+  it('refuses a swap when either placement is unknown', () => {
+    const plan = planRoleSwap(server({ placement: null }), big)
+
+    expect(plan.ok).toBe(false)
+    expect(plan.blockers.join()).toContain('Cannot tell which datacenter')
+    expect(plan.steps).toEqual([])
+  })
+
+  it('refuses when both placements are unknown rather than calling them equal', () => {
+    const plan = planRoleSwap(
+      server({ placement: null }),
+      server({ id: 2, name: 'beta', placement: null, primaryIpId: 22, diskSizeGb: 160, usedGb: 11 }),
+    )
+
+    expect(plan.ok).toBe(false)
+    expect(plan.steps).toEqual([])
+  })
+
+  it('names both servers whose placement could not be determined', () => {
+    const plan = planRoleSwap(
+      server({ name: 'alpha', placement: null }),
+      server({ id: 2, name: 'beta', placement: null, primaryIpId: 22, diskSizeGb: 160, usedGb: 11 }),
+    )
+
+    expect(plan.blockers.join()).toContain('alpha and beta')
+  })
+
+  it('still allows a swap when both resolve to the same location', () => {
+    const a = { ...server(), placement: placementOf({ datacenter: null, location: { name: 'fsn1' } }) }
+    const b = { ...big, placement: placementOf({ datacenter: null, location: { name: 'fsn1' } }) }
+
+    expect(planRoleSwap(a, b).ok).toBe(true)
+  })
+
+  it('catches a cross-location swap through the fallback', () => {
+    const a = { ...server(), placement: placementOf({ location: { name: 'fsn1' } }) }
+    const b = { ...big, placement: placementOf({ location: { name: 'nbg1' } }) }
+
+    expect(planRoleSwap(a, b).ok).toBe(false)
   })
 })
 
