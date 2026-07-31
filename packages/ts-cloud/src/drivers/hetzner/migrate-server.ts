@@ -40,6 +40,12 @@
 
 export type MigrationMethod = 'snapshot-rebuild' | 'redeploy-restore'
 
+export interface AttachedVolume {
+  id: number
+  name: string
+  sizeGb?: number
+}
+
 export interface MigrateServer {
   id: number
   name: string
@@ -49,6 +55,17 @@ export interface MigrateServer {
   /** Bytes actually in use, so a move onto a smaller disk is refused early. */
   usedGb: number
   architecture?: string
+  /**
+   * Block-storage volumes attached to this server.
+   *
+   * These do NOT travel with a snapshot. A volume is a separate device that
+   * happens to be attached, so imaging the machine copies the system disk and
+   * silently leaves the volume behind on the old server - along with whatever
+   * lived on it. The migrated box then boots with an fstab entry for a device
+   * that is not there, and whatever depended on that mount stays down while
+   * every other check looks healthy.
+   */
+  attachedVolumes?: AttachedVolume[]
 }
 
 export type MigrationStepKind =
@@ -58,6 +75,7 @@ export type MigrationStepKind =
   | 'rebuild'
   | 'power-on'
   | 'grow-filesystem'
+  | 'move-volume'
   | 'deploy'
   | 'restore'
   | 'verify'
@@ -184,6 +202,18 @@ export function planServerMigration(
       { kind: 'deploy', serverId: target.id, description: `Deploy ${source.name}'s applications onto ${target.name}` },
       { kind: 'restore', serverId: target.id, description: `Restore ${source.name}'s data onto ${target.name}` },
     )
+  }
+
+  // Volumes move after the target is up and before anything is verified. They
+  // are the step people forget, because nothing about the migration fails
+  // without them: the machine boots, the services that need no volume come up
+  // healthy, and only the one thing living on the volume stays down.
+  for (const volume of source.attachedVolumes ?? []) {
+    steps.push({
+      kind: 'move-volume',
+      serverId: target.id,
+      description: `Detach volume ${volume.name} from ${source.name} and attach it to ${target.name}, then mount it`,
+    })
   }
 
   steps.push({ kind: 'verify', serverId: target.id, description: `Verify ${target.name} serves what ${source.name} did` })

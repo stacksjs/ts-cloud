@@ -173,3 +173,74 @@ describe('growFilesystemCommands', () => {
     expect(growFilesystemCommands({ device: '/dev/vda' })[0]).toContain('/dev/vda 1')
   })
 })
+
+/**
+ * Attached volumes.
+ *
+ * A Hetzner Volume is a separate block device that happens to be attached to a
+ * server, so a snapshot does not contain it. Migrating the machine leaves the
+ * volume - and everything on it - behind on the old server. Nothing about the
+ * migration looks wrong afterwards: the box boots, every service that does not
+ * need the volume is healthy, and only the one thing that lived there stays
+ * down, gated behind a mount that never appears. That is how a mail server
+ * ends up quietly off for an afternoon.
+ */
+describe('attached volumes', () => {
+  const withVolume = () => small({
+    attachedVolumes: [{ id: 106489843, name: 'stacks-production-mail', sizeGb: 20 }],
+  })
+
+  it('plans a move for an attached volume', () => {
+    const plan = planServerMigration(withVolume(), large())
+
+    expect(plan.steps.some(s => s.kind === 'move-volume')).toBe(true)
+  })
+
+  it('names the volume so it can be checked off', () => {
+    const step = planServerMigration(withVolume(), large()).steps.find(s => s.kind === 'move-volume')
+
+    expect(step?.description).toContain('stacks-production-mail')
+  })
+
+  it('plans one move per volume', () => {
+    const two = small({
+      attachedVolumes: [
+        { id: 1, name: 'mail' },
+        { id: 2, name: 'uploads' },
+      ],
+    })
+
+    expect(planServerMigration(two, large()).steps.filter(s => s.kind === 'move-volume')).toHaveLength(2)
+  })
+
+  it('moves the volume before verification, so verifying can actually catch it', () => {
+    const steps = planServerMigration(withVolume(), large()).steps
+    const move = steps.findIndex(s => s.kind === 'move-volume')
+    const verify = steps.findIndex(s => s.kind === 'verify')
+
+    expect(move).toBeLessThan(verify)
+  })
+
+  it('moves the volume only once the target is running', () => {
+    const steps = planServerMigration(withVolume(), large()).steps
+    const powerOn = steps.findIndex(s => s.kind === 'power-on')
+    const move = steps.findIndex(s => s.kind === 'move-volume')
+
+    expect(move).toBeGreaterThan(powerOn)
+  })
+
+  it('plans no volume steps when there are none attached', () => {
+    expect(planServerMigration(small(), large()).steps.some(s => s.kind === 'move-volume')).toBe(false)
+  })
+
+  it('moves volumes on the redeploy path too', () => {
+    // The image geometry decides the method; the volume has to move either way.
+    const plan = planServerMigration(
+      large({ attachedVolumes: [{ id: 1, name: 'mail' }] }),
+      small(),
+    )
+
+    expect(plan.method).toBe('redeploy-restore')
+    expect(plan.steps.some(s => s.kind === 'move-volume')).toBe(true)
+  })
+})
