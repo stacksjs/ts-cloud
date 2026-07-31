@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { canMigrateTo, fits, placementOf, planRoleSwap, resizeAdvice, type SwapServer } from './role-swap'
+import { canMigrateTo, fits, placementOf, planRoleSwap, resizeAdvice, type SwapServer, swapTempName } from './role-swap'
 
 /**
  * Swapping two servers' roles is the answer when a server type has been retired
@@ -81,8 +81,44 @@ describe('planRoleSwap', () => {
     const plan = planRoleSwap(server(), big)
     const renames = plan.steps.filter(s => s.kind === 'rename')
 
-    expect(renames.find(s => s.serverId === 1)?.name).toBe('beta')
-    expect(renames.find(s => s.serverId === 2)?.name).toBe('alpha')
+    // Final resting names, whatever the route taken to get there.
+    expect(renames.filter(s => s.serverId === 1).at(-1)?.name).toBe('beta')
+    expect(renames.filter(s => s.serverId === 2).at(-1)?.name).toBe('alpha')
+  })
+
+  /**
+   * The regression. Hetzner names are unique per account, so renaming alpha to
+   * "beta" while beta still answers to it fails with a 409 - halfway through a
+   * swap, with the addresses already moved and the console now mislabelling
+   * both machines.
+   */
+  it('parks one name on a temporary before the two cross', () => {
+    const renames = planRoleSwap(server(), big).steps.filter(s => s.kind === 'rename')
+
+    expect(renames).toHaveLength(3)
+    expect(renames[0]!.name).toBe(swapTempName('alpha'))
+  })
+
+  it('never assigns a name while the other server still holds it', () => {
+    const renames = planRoleSwap(server(), big).steps.filter(s => s.kind === 'rename')
+    const held = new Map<number, string>([[1, 'alpha'], [2, 'beta']])
+
+    for (const step of renames) {
+      const taken = [...held.entries()].some(([id, name]) => id !== step.serverId && name === step.name)
+      expect(taken).toBe(false)
+      held.set(step.serverId, step.name!)
+    }
+
+    expect(held.get(1)).toBe('beta')
+    expect(held.get(2)).toBe('alpha')
+  })
+
+  it('renames only after the addresses have moved', () => {
+    const steps = planRoleSwap(server(), big).steps
+    const lastAssign = steps.map(s => s.kind).lastIndexOf('assign-ip')
+    const firstRename = steps.map(s => s.kind).indexOf('rename')
+
+    expect(firstRename).toBeGreaterThan(lastAssign)
   })
 
   it('powers both back on last', () => {

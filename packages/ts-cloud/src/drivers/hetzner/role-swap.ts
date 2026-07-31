@@ -111,6 +111,15 @@ export function placementOf(server: {
 }
 
 /**
+ * The parking name one server wears while the other takes its name.
+ *
+ * Hetzner rejects a duplicate server name, so the two cannot cross directly.
+ */
+export function swapTempName(name: string): string {
+  return `${name}-swap-tmp`
+}
+
+/**
  * The ordered steps to exchange two servers' addresses and names.
  *
  * Both are powered off before either address moves. Hetzner refuses to detach a
@@ -163,8 +172,13 @@ export function planRoleSwap(a: SwapServer, b: SwapServer): SwapPlan {
     // Names follow the addresses, so the console stops lying about which box
     // serves what. A wrong name here is how the next person powers off the
     // wrong server.
-    { kind: 'rename', serverId: a.id, name: b.name, description: `Rename ${a.name} to ${b.name}` },
+    //
+    // Three steps, not two: server names are unique per account, so renaming a
+    // to b's name while b still holds it is rejected outright. Swapping two
+    // names needs a temporary exactly as swapping two variables does.
+    { kind: 'rename', serverId: a.id, name: swapTempName(a.name), description: `Rename ${a.name} to ${swapTempName(a.name)} to free the name` },
     { kind: 'rename', serverId: b.id, name: a.name, description: `Rename ${b.name} to ${a.name}` },
+    { kind: 'rename', serverId: a.id, name: b.name, description: `Rename ${swapTempName(a.name)} to ${b.name}` },
     { kind: 'power-on', serverId: a.id, description: `Power on ${a.name} (now ${b.name})` },
     { kind: 'power-on', serverId: b.id, description: `Power on ${b.name} (now ${a.name})` },
   ]
