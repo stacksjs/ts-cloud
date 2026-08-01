@@ -265,6 +265,11 @@ export {
   resolveExecStart,
   deployAllComputeSites,
   deploySiteRelease,
+  // Re-exported so a deploy can re-run cert issuance and reload after DNS
+  // lands: a brand-new subdomain has no A record when the gateway is first
+  // reloaded, so ACME cannot have issued a certificate for it yet.
+  reloadRpxGateway,
+  renewRpxCertificates,
 } from './drivers'
 export type { CreateCloudDriverOptions } from './drivers/factory'
 export {
