@@ -55,7 +55,10 @@ describe('opt-in', () => {
 
 describe('packages', () => {
   it('installs vitess, etcd, and mysql for a self-contained cluster', () => {
-    expect(vitessPackages({})).toEqual(['vitess.io', 'etcd.io', 'mysql.com'])
+    // Pinned to the same GA release planServices installs. Unpinned resolves
+    // to a 9.x "innovation" tag, which is how a box got a mysqld linked
+    // against an ICU it did not have.
+    expect(vitessPackages({})).toEqual(['vitess.io', 'etcd.io', 'mysql.com@8.0.43'])
   })
 
   it('skips etcd when an external topology store is configured', () => {
@@ -65,7 +68,7 @@ describe('packages', () => {
   it('installs only vitess for combo, which carries its own topology and mysqld', () => {
     // vtcombo has no embedded storage: `--start-mysql` launches a real
     // mysqld, and the health gate's client comes from the same package.
-    expect(vitessPackages({ mode: 'combo' })).toEqual(['vitess.io', 'mysql.com'])
+    expect(vitessPackages({ mode: 'combo' })).toEqual(['vitess.io', 'mysql.com@8.0.43'])
   })
 
   it('honors a pinned version', () => {

@@ -95,7 +95,12 @@ export function vitessPackages(config: VitessServiceConfig): PantrySpec[] {
   // vttablet manages one, and vtcombo starts its own via `--start-mysql`.
   // Omitting it from combo also broke the health gate, which invokes the
   // `mysql` client from this package.
-  packages.push('mysql.com')
+  //
+  // Pinned to the same GA release the rest of ts-cloud installs (see
+  // `planServices`). Unpinned resolves to the newest tag, which is a 9.x
+  // "innovation" release; that is how a box ended up with a mysqld linked
+  // against an ICU it did not have, failing to start at all.
+  packages.push('mysql.com@8.0.43')
   return packages as PantrySpec[]
 }
 
