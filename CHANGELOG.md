@@ -1,3 +1,18 @@
+[Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.94...v0.7.95)
+
+## 🐛 Bug Fixes
+
+- **tls**: keep gateway ready between ACME challenges ([302f64f](https://github.com/stacksjs/ts-cloud/commit/302f64f)) _(by Chris <chrisbreuer93@gmail.com>)_
+- **vitess**: pin mysql to the GA release ts-cloud already installs ([3ed2c5d](https://github.com/stacksjs/ts-cloud/commit/3ed2c5d)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## 🧹 Chores
+
+- release v0.7.95 ([b3946fa](https://github.com/stacksjs/ts-cloud/commit/b3946fa)) _(by Chris <chrisbreuer93@gmail.com>)_
+
+## Contributors
+
+- _Chris <chrisbreuer93@gmail.com>_
+
 [Compare changes](https://github.com/stacksjs/ts-cloud/compare/v0.7.93...v0.7.94)
 
 ## 🚀 Features
