@@ -768,6 +768,8 @@ describe('managed TLS (acmeChallengeWebroot + cert renewal)', () => {
     expect(joined).toContain('acme:renew')
     expect(joined).toContain('--webroot')
     expect(joined).toContain(DEFAULT_ACME_WEBROOT)
+    expect(joined).toContain(`[ -s "$CERTS/$d.crt" ] && systemctl restart ${RPX_SERVICE_NAME}`)
+    expect(joined.indexOf(`systemctl restart ${RPX_SERVICE_NAME}`)).toBeLessThan(joined.indexOf('acme:renew'))
     // Per-app renewal units (slug defaults to 'app').
     expect(joined).toContain('rpx-cert-renew-app.timer')
     expect(joined).toContain('hello@stacksjs.com')
