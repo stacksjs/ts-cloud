@@ -75,10 +75,35 @@ describe('vtctldclient install', () => {
     expect(buildVtctldClientInstallScript('20.0.3').join('\n')).toContain('v20.0.3')
   })
 
-  it('resolves the CPU architecture rather than assuming amd64', () => {
+  it('resolves the asset URL from the releases API instead of constructing it', () => {
+    // Regression. The first version built the filename as
+    // `vitess-<version>-<arch>.tar.gz`, but the real asset embeds the release
+    // commit (`vitess-21.0.0-d9bc0da.tar.gz`), which cannot be derived from
+    // the version. Every install 404'd, and the original test passed because
+    // it only asserted the script MENTIONED a version and `uname -m` - it
+    // never checked that the URL could resolve.
+    const script = buildVtctldClientInstallScript('21.0.0').join('\n')
+    expect(script).toContain('api.github.com/repos/vitessio/vitess/releases/tags/v21.0.0')
+    expect(script).toContain('browser_download_url')
+    // The filename must never be assembled from parts.
+    expect(script).not.toMatch(/vitess-\$\{?version/)
+    expect(script).not.toContain('vitess-21.0.0-${arch}')
+  })
+
+  it('fails clearly on architectures Vitess does not publish for', () => {
+    // Vitess ships one x86_64 tarball; there is no arm64 asset. Saying so
+    // beats a 404 from a URL that was quietly wrong.
     const script = buildVtctldClientInstallScript().join('\n')
     expect(script).toContain('uname -m')
-    expect(script).toContain('arm64')
+    expect(script).toContain('x86_64')
+    expect(script).toContain('only an x86_64 release tarball')
+  })
+
+  it('stops the download once the binary is found', () => {
+    // The tarball is ~600MB and holds every Vitess binary; only one is wanted.
+    const script = buildVtctldClientInstallScript().join('\n')
+    expect(script).toContain('--occurrence=1')
+    expect(script).toContain('vtctldclient')
   })
 })
 

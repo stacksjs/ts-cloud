@@ -84,22 +84,34 @@ export function isValidMigrationUuid(value: string): boolean {
  */
 export function buildVtctldClientInstallScript(version: string = DEFAULT_VTCTLDCLIENT_VERSION): string[] {
   const v = sh(version)
-  const tarball = `vitess-${version}-*.tar.gz`
   return [
     `if ${VTCTLDCLIENT_BIN} --version 2>/dev/null | grep -q ${v}; then echo "vtctldclient ${version} already installed"; else`,
     '  command -v curl >/dev/null 2>&1 || (apt-get update -y && apt-get install -y curl ca-certificates)',
+    // Vitess publishes ONE release tarball, built for x86_64. There is no
+    // arm64 asset, so an arm64 box has to build from source or use a
+    // pantry-published artifact. Failing here with that sentence beats a
+    // 404 from a URL that was silently wrong.
+    '  if [ "$(uname -m)" != "x86_64" ]; then',
+    '    echo "vtctldclient: Vitess publishes only an x86_64 release tarball; this box is $(uname -m). Build from source or install via pantry." >&2',
+    '    exit 1',
+    '  fi',
     '  tmp="$(mktemp -d)"',
-    `  arch="$(uname -m)"; case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac`,
-    `  url="https://github.com/vitessio/vitess/releases/download/v${version}/vitess-${version}-\${arch}.tar.gz"`,
-    '  curl -fsSL "$url" -o "$tmp/vitess.tar.gz"',
-    // Extract only the one binary we need; the full release tarball is large
-    // and nothing else on the box uses it.
-    `  tar -xzf "$tmp/vitess.tar.gz" -C "$tmp" --strip-components=2 --wildcards '*/bin/vtctldclient'`,
+    // The asset filename embeds the release commit (vitess-21.0.0-d9bc0da.tar.gz),
+    // which cannot be derived from the version, so it is resolved from the
+    // releases API rather than constructed. Constructing it is exactly the
+    // bug this replaced: every install 404'd.
+    `  api="https://api.github.com/repos/vitessio/vitess/releases/tags/v${version}"`,
+    `  url="$(curl -fsSL "$api" | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+vitess-[0-9][^"]*\\.tar\\.gz"' | head -1 | sed -E 's/.*"(https[^"]+)"/\\1/')"`,
+    '  if [ -z "$url" ]; then echo "vtctldclient: no release tarball found for v' + version + '" >&2; rm -rf "$tmp"; exit 1; fi',
+    // The tarball is ~600MB and holds every Vitess binary; only one is
+    // wanted. `--occurrence=1` makes tar exit at the first match, which
+    // closes the pipe and stops the download early instead of pulling the
+    // whole archive to disk.
+    `  curl -fsSL "$url" | tar -xz -C "$tmp" --strip-components=2 --wildcards --occurrence=1 '*/bin/vtctldclient'`,
     `  install -m 0755 "$tmp/vtctldclient" ${VTCTLDCLIENT_BIN}`,
     '  rm -rf "$tmp"',
     `  echo "installed vtctldclient ${version}"`,
     'fi',
-    `# ${tarball}`,
   ]
 }
 
