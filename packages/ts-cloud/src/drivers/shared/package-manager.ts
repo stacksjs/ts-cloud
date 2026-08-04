@@ -30,6 +30,10 @@ export const PANTRY_PACKAGES = {
   // (`mariadb.org` has no linux build).
   mariadb: 'mariadb.com/server',
   postgres: 'postgresql.org',
+  // Vitess ships every daemon (vtgate, vttablet, vtctld, vtorc, vtcombo) in
+  // one package; etcd backs its topology store.
+  vitess: 'vitess.io',
+  etcd: 'etcd.io',
   redis: 'redis.io',
   memcached: 'memcached.org',
   meilisearch: 'meilisearch.com',

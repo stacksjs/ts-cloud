@@ -2878,7 +2878,59 @@ export interface ComputePhpConfig {
  * Each entry is `true` (install with defaults) or an object pinning a version.
  * See {@link ComputeConfig.services}.
  */
+export interface VitessKeyspaceConfig {
+  /** Keyspace name. */
+  name: string
+  /**
+   * Whether the keyspace is sharded. An unsharded keyspace has one shard
+   * (`0`) and needs no VSchema to be routable, which makes it the right
+   * starting point for an application that has not yet decided how to shard.
+   */
+  sharded?: boolean
+}
+
+export interface VitessServiceConfig {
+  /**
+   * `combo` for a single-process development stack, `cluster` for real
+   * daemons. Defaults to `cluster`, because a config that provisions
+   * infrastructure should not quietly give you a non-durable one.
+   */
+  mode?: 'combo' | 'cluster'
+  /** Pantry version spec for `vitess.io`. Omit for the registry's latest. */
+  version?: string
+  /** Cell (failure domain) name. Vitess requires at least one. */
+  cell?: string
+  /** Keyspaces to create at provision time. */
+  keyspaces?: VitessKeyspaceConfig[]
+  /** Override vtgate's MySQL port. Applications connect here. */
+  vtgatePort?: number
+  /**
+   * External topology store, e.g. `http://etcd-a.internal:2379`. When set,
+   * etcd is not installed on the box and the daemons point here instead.
+   */
+  etcdEndpoint?: string
+  /**
+   * MySQL port for the tablet's managed mysqld. Not something applications
+   * should connect to: writing directly to a tablet's mysqld bypasses Vitess.
+   */
+  mysqlPort?: number
+}
+
 export interface ComputeServicesConfig {
+  /**
+   * Provision Vitess on this box.
+   *
+   * `true` provisions a single-box cluster (etcd, vtctld, vttablet beside a
+   * managed mysqld, vtgate) with default ports. Pass an object for keyspaces,
+   * an external topology store, or `mode: 'combo'` - a single-process
+   * development stack that is NOT durable.
+   *
+   * Single-box by design: spreading tablets across machines needs per-shard
+   * placement and reparent policy, which are operator decisions rather than
+   * provisioner defaults. A sharded keyspace here gets Vitess's routing and
+   * online DDL, not fault tolerance.
+   */
+  vitess?: boolean | VitessServiceConfig
   mysql?: boolean | { version?: string }
   mariadb?: boolean | { version?: string }
   postgres?: boolean | { version?: string }

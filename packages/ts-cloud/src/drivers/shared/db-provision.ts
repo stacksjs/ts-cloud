@@ -13,13 +13,17 @@
 import type { ComputeServicesConfig, DatabaseConfig, DatabaseUserConfig } from '@ts-cloud/core'
 import type { PantrySpec } from './package-manager'
 import { buildPantryInstallScript, buildPantryServiceScript, PANTRY_PACKAGES, pantryEnvActivation } from './package-manager'
+import { buildVitessProvisionScript } from './vitess-provision'
 
 /**
- * Engines that only ever exist as an external cluster.
+ * Engines whose APP DATABASE is always administered off-box.
  *
- * Neither has a pantry package, so the box can never host one: SingleStore
- * is a managed service (Helios), and Vitess is a sharded cluster of vtgate,
- * vttablet, and a topology service that no single-box provisioner installs.
+ * SingleStore is a managed service (Helios) with no self-hosted package.
+ * Vitess now has one (`services.vitess` provisions a single-box cluster),
+ * but it still belongs here: even when this box runs the daemons, the app's
+ * keyspace is created through vtctld, not by `CREATE DATABASE` over a local
+ * mysqld socket. The tablet's mysqld exists, and writing to it directly
+ * bypasses Vitess entirely.
  *
  * This matters because {@link isLocalDatabase} decides "on-box or not" from
  * the HOST, and host is optional. Declaring `engine: 'singlestore'` without
@@ -128,8 +132,17 @@ export function buildServicesProvisionScript(
   _options: { bindPrivate?: boolean } = {},
 ): string[] {
   const plan = planServices(services)
-  if (plan.packages.length === 0) return []
-  return [...buildPantryInstallScript(plan.packages), ...buildPantryServiceScript(plan.services)]
+  // Vitess is appended rather than folded into `planServices` because it is
+  // not a `pantry start <name>` service: its daemons need explicit systemd
+  // units with an ordering graph, its own topology bootstrap, and a health
+  // gate. See `./vitess-provision`.
+  const vitess = buildVitessProvisionScript(services.vitess)
+  if (plan.packages.length === 0) return vitess
+  return [
+    ...buildPantryInstallScript(plan.packages),
+    ...buildPantryServiceScript(plan.services),
+    ...vitess,
+  ]
 }
 
 /**
