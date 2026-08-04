@@ -290,3 +290,18 @@ describe('resolveVitessConfig', () => {
     expect(resolveVitessConfig(cfg(DB))).toEqual({})
   })
 })
+
+describe('the upstream drift check stays honest', () => {
+  it('validates the version this module actually pins', async () => {
+    // scripts/check-vitess-upstream.ts hits the real GitHub API on a schedule
+    // to catch release-process changes unit tests cannot see. If its pinned
+    // version drifts from this one, it happily verifies a version nobody
+    // installs and the guard silently stops guarding.
+    const src = await Bun.file(
+      new URL('../../../../scripts/check-vitess-upstream.ts', import.meta.url).pathname,
+    ).text()
+    const match = src.match(/^const PINNED_VERSION = '([^']+)'/m)
+    expect(match).not.toBeNull()
+    expect(match?.[1]).toBe(DEFAULT_VTCTLDCLIENT_VERSION)
+  })
+})

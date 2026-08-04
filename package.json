@@ -39,6 +39,7 @@
     "zip:darwin-arm64": "zip -j bin/cloud-darwin-arm64.zip bin/cloud-darwin-arm64",
     "fresh": "bun x rimraf node_modules/ bun.lock && bun i",
     "prepublishOnly": "bun --bun run build && bun run compile:all && bun run zip",
+    "check:vitess-upstream": "bun scripts/check-vitess-upstream.ts",
     "test": "find test packages \\( -name '*.test.ts' -o -name '*.test.js' \\) -print | xargs bun test",
     "lint": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config pickier.config.ts --max-warnings 0",
     "lint:fix": "bun x --bun --package github:pickier/pickier#95de532 pickier run . --mode lint --config pickier.config.ts --fix --max-warnings 0",
