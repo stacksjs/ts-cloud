@@ -171,7 +171,10 @@ async function main(): Promise<void> {
       for (const match of exec.matchAll(/--([a-zA-Z0-9_-]+)/g)) {
         const flag = match[1]
         checked++
-        if (!new RegExp(`^\\s+--${flag}[ =]`, 'm').test(doc))
+        // A flag with a short alias is listed as `-v, --version`, so the
+        // optional prefix matters: without it the check would reject flags
+        // that exist, which is the worse failure for a guard.
+        if (!new RegExp(`^\\s+(?:-\\w, )?--${flag}[ =]`, 'm').test(doc))
           problems.push(`${daemon}: --${flag} does not exist in ${tag}`)
       }
     }
